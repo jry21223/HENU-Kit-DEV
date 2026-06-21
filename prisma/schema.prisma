@@ -1,0 +1,411 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT     @map("student")
+  ADMIN       @map("admin")
+  REVIEWER    @map("reviewer")
+  CONTRIBUTOR @map("contributor")
+
+  @@map("user_role")
+}
+
+enum RecordStatus {
+  DRAFT     @map("draft")
+  PUBLISHED @map("published")
+  ARCHIVED  @map("archived")
+
+  @@map("record_status")
+}
+
+enum MaterialType {
+  KNOWLEDGE_NOTE @map("knowledge_note")
+  MOCK_PAPER     @map("mock_paper")
+  ANSWER         @map("answer")
+  QUICK_REVIEW   @map("quick_review")
+  PAST_EXAM      @map("past_exam")
+  OTHER          @map("other")
+
+  @@map("material_type")
+}
+
+enum MaterialAccessLevel {
+  FREE           @map("free")
+  LOGIN_REQUIRED @map("login_required")
+  PAID           @map("paid")
+
+  @@map("material_access_level")
+}
+
+enum MaterialStatus {
+  DRAFT          @map("draft")
+  PENDING_REVIEW @map("pending_review")
+  PUBLISHED      @map("published")
+  ARCHIVED       @map("archived")
+
+  @@map("material_status")
+}
+
+enum QuestionType {
+  SINGLE_CHOICE  @map("single_choice")
+  MULTIPLE_CHOICE @map("multiple_choice")
+  TRUE_FALSE     @map("true_false")
+  BLANK          @map("blank")
+  CALCULATION    @map("calculation")
+  PROOF          @map("proof")
+
+  @@map("question_type")
+}
+
+enum OrderStatus {
+  PENDING   @map("pending")
+  PAID      @map("paid")
+  FAILED    @map("failed")
+  CANCELLED @map("cancelled")
+  REFUNDED  @map("refunded")
+
+  @@map("order_status")
+}
+
+enum SubmissionStatus {
+  PENDING  @map("pending")
+  APPROVED @map("approved")
+  REJECTED @map("rejected")
+  ARCHIVED @map("archived")
+
+  @@map("submission_status")
+}
+
+enum AiJobStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  SUCCEEDED @map("succeeded")
+  FAILED    @map("failed")
+  CANCELLED @map("cancelled")
+
+  @@map("ai_job_status")
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  schoolId        String?  @map("school_id")
+  majorId         String?  @map("major_id")
+  grade           String?
+  role            UserRole @default(STUDENT)
+  emailVerified   Boolean  @default(false) @map("email_verified")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  school       School?        @relation(fields: [schoolId], references: [id])
+  major        Major?         @relation(fields: [majorId], references: [id])
+  materials    Material[]     @relation("MaterialCreatedBy")
+  downloads    Download[]
+  wrongAnswers WrongQuestion[]
+  orders       Order[]
+  entitlements Entitlement[]
+  submissions  Submission[]
+
+  @@map("users")
+}
+
+model School {
+  id           String       @id
+  name         String
+  slug         String       @unique
+  emailDomains String[]     @default([]) @map("email_domains")
+  status       RecordStatus @default(PUBLISHED)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  users    User[]
+  colleges College[]
+  majors   Major[]
+  courses  Course[]
+  packages CoursePackage[]
+
+  @@map("schools")
+}
+
+model College {
+  id        String   @id
+  schoolId  String   @map("school_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  majors  Major[]
+  courses Course[]
+
+  @@unique([schoolId, name])
+  @@map("colleges")
+}
+
+model Major {
+  id        String   @id
+  schoolId  String   @map("school_id")
+  collegeId String   @map("college_id")
+  name      String
+  slug      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school       School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  college      College         @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  users        User[]
+  courseLinks  CourseMajor[]
+  packages     CoursePackage[]
+
+  @@unique([schoolId, slug])
+  @@map("majors")
+}
+
+model Course {
+  id          String       @id
+  schoolId    String       @map("school_id")
+  collegeId   String       @map("college_id")
+  grades      String[]     @default([])
+  name        String
+  slug        String
+  description String
+  examScope   String       @map("exam_scope")
+  status      RecordStatus @default(DRAFT)
+  teacher     String?
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  college         College          @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  majorLinks      CourseMajor[]
+  materials       Material[]
+  knowledgePoints KnowledgePoint[]
+  questions       Question[]
+  submissions     Submission[]
+  aiJobs          AiJob[]
+
+  @@unique([schoolId, slug])
+  @@index([schoolId, collegeId])
+  @@map("courses")
+}
+
+model CourseMajor {
+  courseId String @map("course_id")
+  majorId  String @map("major_id")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  major  Major  @relation(fields: [majorId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, majorId])
+  @@map("course_majors")
+}
+
+model Material {
+  id             String              @id
+  courseId       String              @map("course_id")
+  title          String
+  type           MaterialType
+  description    String
+  fileUrl        String?             @map("file_url")
+  fileName       String?             @map("file_name")
+  fileSize       Int?                @map("file_size")
+  previewContent String              @map("preview_content")
+  accessLevel    MaterialAccessLevel @default(LOGIN_REQUIRED) @map("access_level")
+  status         MaterialStatus      @default(DRAFT)
+  createdById    String?             @map("created_by")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdBy User?      @relation("MaterialCreatedBy", fields: [createdById], references: [id])
+  downloads Download[]
+
+  @@index([courseId, status])
+  @@map("materials")
+}
+
+model Download {
+  id           String   @id @default(cuid())
+  userId       String?  @map("user_id")
+  materialId   String   @map("material_id")
+  ip           String?
+  userAgent    String?  @map("user_agent")
+  downloadedAt DateTime @default(now()) @map("downloaded_at")
+
+  user     User?    @relation(fields: [userId], references: [id])
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([materialId])
+  @@map("downloads")
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email, used])
+  @@map("email_verifications")
+}
+
+model KnowledgePoint {
+  id          String  @id @default(cuid())
+  courseId    String  @map("course_id")
+  parentId    String? @map("parent_id")
+  title       String
+  description String?
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  parent    KnowledgePoint?  @relation("KnowledgePointTree", fields: [parentId], references: [id])
+  children  KnowledgePoint[] @relation("KnowledgePointTree")
+  questions Question[]
+
+  @@index([courseId, parentId])
+  @@map("knowledge_points")
+}
+
+model Question {
+  id               String       @id @default(cuid())
+  courseId         String       @map("course_id")
+  knowledgePointId String?      @map("knowledge_point_id")
+  type             QuestionType
+  stem             String
+  options          Json?
+  answer           Json
+  explanation      String?
+  difficulty       Int          @default(1)
+  status           RecordStatus @default(DRAFT)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  course         Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  knowledgePoint KnowledgePoint? @relation(fields: [knowledgePointId], references: [id])
+  wrongAnswers   WrongQuestion[]
+
+  @@index([courseId, status])
+  @@map("questions")
+}
+
+model WrongQuestion {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  questionId String   @map("question_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@map("wrong_questions")
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  userId      String      @map("user_id")
+  amount      Decimal     @db.Decimal(10, 2)
+  status      OrderStatus @default(PENDING)
+  productType String      @map("product_type")
+  productId   String      @map("product_id")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  paidAt      DateTime?   @map("paid_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("orders")
+}
+
+model Entitlement {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  resourceType String    @map("resource_type")
+  resourceId   String    @map("resource_id")
+  source       String
+  expiresAt    DateTime? @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resourceType, resourceId])
+  @@map("entitlements")
+}
+
+model CoursePackage {
+  id          String       @id @default(cuid())
+  title       String
+  description String
+  schoolId    String       @map("school_id")
+  majorId     String?      @map("major_id")
+  grade       String?
+  price       Decimal      @db.Decimal(10, 2)
+  status      RecordStatus @default(DRAFT)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  school School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  major  Major?        @relation(fields: [majorId], references: [id])
+  items  PackageItem[]
+
+  @@map("packages")
+}
+
+model PackageItem {
+  id           String @id @default(cuid())
+  packageId    String @map("package_id")
+  resourceType String @map("resource_type")
+  resourceId   String @map("resource_id")
+
+  package CoursePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, resourceType, resourceId])
+  @@map("package_items")
+}
+
+model Submission {
+  id            String           @id @default(cuid())
+  userId        String           @map("user_id")
+  courseId      String           @map("course_id")
+  title         String
+  description   String
+  fileUrl       String           @map("file_url")
+  status        SubmissionStatus @default(PENDING)
+  reviewComment String?          @map("review_comment")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  reviewedAt    DateTime?        @map("reviewed_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("submissions")
+}
+
+model AiJob {
+  id               String      @id @default(cuid())
+  courseId         String      @map("course_id")
+  inputMaterialIds String[]    @default([]) @map("input_material_ids")
+  outputType       MaterialType @map("output_type")
+  status           AiJobStatus @default(QUEUED)
+  result           Json?
+  error            String?
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, status])
+  @@map("ai_jobs")
+}
+
