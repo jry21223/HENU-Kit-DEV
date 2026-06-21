@@ -1,5 +1,16 @@
 # Roadmap
 
+## Phase 16 Direction Correction
+
+Current focus: WeChat Pay Native replacement and material delivery hardening.
+
+- EasyPay is no longer the target payment solution.
+- Do not add Alipay, multi-provider abstraction, coupons, distribution, social features, or recommendation systems in this phase.
+- Core course materials are assumed to be manually prepared.
+- The product delivery path is material import, course/package binding, WeChat Native payment, server-side entitlement grant, and paid material download checks.
+- First correction round scope: payment direction, docs, env vars, and secret ignore rules only.
+- Next implementation round: replace legacy EasyPay order/payment code with WeChat Native services and tests.
+
 ## 当前阶段
 
 Phase 15：移动端优化（基础版完成）。
@@ -179,7 +190,7 @@ Phase 15：移动端优化（基础版完成）。
 
 目标：
 
-- 接入易支付优先。
+- 接入微信支付 Native 优先，EasyPay 不再作为目标方案。
 - 创建订单、支付回调、签名校验、发放 entitlement。
 
 验收：
@@ -191,8 +202,8 @@ Phase 15：移动端优化（基础版完成）。
 当前状态：
 
 - 已完成基础验收。
-- 当前实现为易支付兼容协议，支持本地签名和回调闭环。
-- 未绑定真实商户号和真实支付网关；上线前必须按具体服务商文档复核。
+- 当前仍有 EasyPay 遗留实现，下一轮需要替换为微信 Native 下单、回调验签/解密和幂等授权。
+- 未绑定真实微信商户号和真实支付网关；上线前必须按微信支付官方文档复核。
 - 未实现退款、取消、支付查询和后台订单管理。
 
 ## Phase 11：资料共建与审核

@@ -1,5 +1,21 @@
 # API Design
 
+## Phase 16 Payment Direction Note
+
+- Target payment provider: WeChat Pay Native (`wechat_native`).
+- EasyPay routes are legacy code and must not be treated as the current default payment path.
+- Mock WeChat Native order creation and order status polling are implemented. Real WeChat Pay live API integration is still deferred.
+- Frontend polling must never grant paid access. Entitlements are granted only by server-side payment confirmation.
+- Paid material download must always go through a server-side entitlement check.
+
+Target payment APIs:
+
+- `POST /api/orders`: create a local `pending` order for a published course package.
+- `POST /api/payments/wechat/native`: create a WeChat Native QR code for the user's own pending/paying order.
+- `GET /api/orders/:id/status`: return order state only; no entitlement side effects.
+- `POST /api/payments/wechat/notify`: verify signature, decrypt resource, validate order and amount, then grant entitlement idempotently.
+- `POST /api/payments/wechat/close`: close the user's own pending/paying order, with admin override.
+
 ## 设计原则
 
 - API 必须服务当前 Phase，不提前实现后续复杂能力。
@@ -208,25 +224,25 @@ admin 手动给用户发放 `package` 或 `material` 权限。Phase 9 用于支�
 
 ### POST `/api/orders`
 
-创建订单。Phase 10 已实现课程包订单，必须绑定当前登录且邮箱已验证的用户和已发布商品。
+创建课程包订单。目标支付方案为微信支付 Native，订单必须绑定当前登录且邮箱已验证的用户和已发布课程包。
 
 请求：
 
-- `productType=package`
-- `productId`
-- `paymentType`，默认 `alipay`
+- `packageId`
 
 返回：
 
-- 订单基础信息。
-- 易支付兼容支付参数。
-- 真实支付网关已配置时返回支付跳转 URL。
+- `orderId`
+- `status`
+- 已拥有有效 entitlement 时返回 `already_owned`
 
 约束：
 
 - 未登录或邮箱未验证返回 401。
-- 当前阶段不支持前端自定义金额。
-- 生产环境必须配置真实 `EASYPAY_*`。
+- package 必须存在且为 published。
+- 订单金额必须从服务端 package 读取，前端不能传入金额。
+- `payment_provider` 目标值为 `wechat_native`。
+- 本轮仅完成方向纠偏，具体 WeChat Native 下单逻辑在下一轮实现。
 
 ### GET `/api/orders`
 
@@ -236,20 +252,35 @@ admin 手动给用户发放 `package` 或 `material` 权限。Phase 9 用于支�
 
 查询当前用户单个订单。只能查询当前用户自己的订单。
 
-### POST `/api/payments/easypay/notify`
+### POST `/api/payments/wechat/native`
 
-易支付异步回调。必须校验签名、支付状态、金额和订单状态。成功返回纯文本 `success`，失败返回 `fail`。
+为当前用户自己的 pending/paying 订单发起微信 Native 下单，返回 `codeUrl`、`expiresAt` 和 `status=paying`。
 
 约束：
 
-- 必须排除 `sign`、`sign_type` 和空值后验签。
-- 必须校验 `trade_status=TRADE_SUCCESS`。
-- 必须校验回调金额等于订单金额。
-- 重复回调必须幂等，不重复发放 entitlement。
+- 必须登录。
+- 用户只能支付自己的订单，admin 不能代替用户发起付款。
+- 生产环境禁止 mock。
+- live 模式缺少微信商户配置时必须返回配置错误，不能 fallback 到 mock。
 
-### GET `/api/payments/easypay/return`
+### GET `/api/orders/:id/status`
 
-支付同步返回。签名有效且支付成功时完成同一套幂等结算，然后跳转 `/me/orders?payment=success&orderId=...`。
+查询订单状态。该接口只返回状态，不允许触发授权。
+
+### POST `/api/payments/wechat/notify`
+
+微信支付服务器异步回调。必须验签、解密 resource、校验 `out_trade_no`、校验 `amount.total`、校验 appid/mchid，并幂等发放 entitlement。
+
+### POST `/api/payments/wechat/close`
+
+关闭当前用户自己的 pending/paying 订单。live 模式下需要调用微信关单接口。
+
+### Legacy EasyPay Routes
+
+以下接口为遗留路径，下一轮应删除或替换，不再作为默认支付方案：
+
+- `POST /api/payments/easypay/notify`
+- `GET /api/payments/easypay/return`
 
 ## Submissions
 

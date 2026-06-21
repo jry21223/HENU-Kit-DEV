@@ -1,5 +1,41 @@
 # Database Design
 
+## Phase 16 Payment Direction Note
+
+- Target payment provider: `wechat_native`.
+- EasyPay-specific fields or examples are legacy references and must be replaced in the next implementation round.
+- Order amounts for paid packages must be stored as integer cents, not floating-point yuan.
+- Entitlements for paid course packages must be granted by confirmed server-side payment callbacks only.
+- A minimal WeChat Native order migration has been added; existing legacy order fields remain for compatibility.
+
+Planned order fields for the WeChat Native round:
+
+- `id`
+- `user_id`
+- `package_id`
+- `out_trade_no`
+- `transaction_id`
+- `payment_provider`
+- `status`
+- `wx_trade_state`
+- `amount_total`
+- `currency`
+- `code_url`
+- `paid_at`
+- `expires_at`
+- `raw_notify`
+- `risk_flag`
+- `created_at`
+- `updated_at`
+
+Planned entitlement rule:
+
+- `resource_type = course_package`
+- `resource_id = package_id`
+- `source = order`
+- `order_id` should be stored or otherwise traceable.
+- Duplicate successful callbacks must not create duplicate entitlements.
+
 ## 数据库原则
 
 - 第一阶段先用 mock，Phase 2 再接 PostgreSQL。
@@ -172,8 +208,8 @@
 
 - Phase 10 已启用，用于课程复习包支付订单。
 - `product_type=package` 表示购买课程复习包。
-- 当前用本地订单 `id` 作为易支付 `out_trade_no`。
-- 当前 schema 尚未保存第三方交易号；后续若要做支付查询、退款或对账，建议新增 `provider`、`provider_trade_no`、`raw_notify` 等字段。
+- 当前 EasyPay 订单字段属于遗留实现，下一轮应迁移到微信 Native 所需的唯一 `out_trade_no`。
+- 当前 schema 尚未完整保存微信交易号、微信交易状态、二维码链接和原始回调；下一轮建议新增 `payment_provider`、`transaction_id`、`wx_trade_state`、`code_url`、`raw_notify`、`risk_flag` 等字段。
 
 ### entitlements
 
@@ -190,7 +226,7 @@
 - Phase 9 支持 `resource_type=package` 和 `resource_type=material`。
 - paid 下载会检查直接资料授权或包含该资料的 package 授权。
 - `expires_at` 为空表示长期有效。
-- Phase 10 支付成功后使用 `source=easypay` 自动发放课程包 entitlement。
+- 下一轮微信 Native 支付成功后应使用 `source=order` 自动发放课程包 entitlement，并保证重复回调幂等。
 
 ### packages
 

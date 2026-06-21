@@ -73,7 +73,7 @@ export default async function PackageDetailPage({ params }: PackageDetailPagePro
           <h2 className="text-lg font-semibold text-ink">解锁状态</h2>
           <p className="mt-3 text-3xl font-semibold text-ink">￥{pkg.price}</p>
           <p className="mt-3 text-sm leading-6 text-muted">
-            支持易支付兼容订单。支付成功必须经过服务端签名校验后才会发放权限。
+            目标方案为微信 Native 扫码支付。支付成功必须经过服务端回调确认后才会发放权限。
           </p>
           {pkg.unlocked ? (
             <div className="mt-5 rounded-lg border border-[#b8dccf] bg-[#f1faf6] p-4 text-sm font-semibold text-[#185c48]">

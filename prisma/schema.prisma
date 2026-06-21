@@ -65,8 +65,11 @@ enum QuestionType {
 
 enum OrderStatus {
   PENDING   @map("pending")
+  PAYING    @map("paying")
   PAID      @map("paid")
   FAILED    @map("failed")
+  CLOSED    @map("closed")
+  EXPIRED   @map("expired")
   CANCELLED @map("cancelled")
   REFUNDED  @map("refunded")
 
@@ -312,18 +315,30 @@ model WrongQuestion {
 }
 
 model Order {
-  id          String      @id @default(cuid())
-  userId      String      @map("user_id")
-  amount      Decimal     @db.Decimal(10, 2)
-  status      OrderStatus @default(PENDING)
-  productType String      @map("product_type")
-  productId   String      @map("product_id")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  paidAt      DateTime?   @map("paid_at")
+  id              String      @id @default(cuid())
+  userId          String      @map("user_id")
+  amount          Decimal     @db.Decimal(10, 2)
+  amountTotal     Int         @default(0) @map("amount_total")
+  currency        String      @default("CNY")
+  paymentProvider String      @default("wechat_native") @map("payment_provider")
+  outTradeNo      String?     @unique @map("out_trade_no")
+  transactionId   String?     @unique @map("transaction_id")
+  wxTradeState    String?     @map("wx_trade_state")
+  status          OrderStatus @default(PENDING)
+  productType     String      @map("product_type")
+  productId       String      @map("product_id")
+  codeUrl         String?     @map("code_url")
+  expiresAt       DateTime?   @map("expires_at")
+  rawNotify       Json?       @map("raw_notify")
+  riskFlag        Boolean     @default(false) @map("risk_flag")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @default(now()) @updatedAt @map("updated_at")
+  paidAt          DateTime?   @map("paid_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
+  @@index([paymentProvider, status])
   @@map("orders")
 }
 
@@ -408,4 +423,3 @@ model AiJob {
   @@index([courseId, status])
   @@map("ai_jobs")
 }
-

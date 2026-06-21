@@ -11,7 +11,7 @@ export default async function PackagesPage() {
     <PageShell
       eyebrow="课程复习包"
       title="按课程解锁复习资料"
-      description="支持课程包浏览、手动授权和易支付兼容购买；真实支付网关配置后才会展示外部跳转。"
+      description="支持课程包浏览、手动授权和微信 Native 支付联调准备；真实微信商户参数配置后再进入扫码支付。"
     >
       {packages.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">

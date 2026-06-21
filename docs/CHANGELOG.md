@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-06-21 - Phase 16 WeChat Native Mock Implementation
+
+### Changed
+
+- Added WeChat Pay Native mock payment configuration and production mock blocking.
+- Added WeChat Native order fields and a migration for integer-cent amounts, provider, out trade number, code URL, expiry, trade state, raw notify, and risk flag.
+- Changed package order creation so it no longer returns EasyPay payment params.
+- Added `/api/payments/wechat/native` and `/api/orders/[id]/status`.
+- Soft-disabled legacy EasyPay notify/return routes with `410 Gone`.
+- Updated the package purchase UI to create a WeChat Native mock payment and poll status.
+- Replaced EasyPay unit tests with WeChat config, Native mock, and payment permission tests.
+
+### Deferred
+
+- Real WeChat Pay live API calls, request signing, callback verification/decryption, and callback-based entitlement grants are not implemented yet.
+
+## 2026-06-21 - Phase 16 WeChat Native Direction Correction
+
+### Changed
+
+- Updated the payment direction from EasyPay to WeChat Pay Native.
+- Rewrote README payment status to describe the current project as internal-test and WeChat Pay integration preparation, not production-ready payment.
+- Added WeChat Pay Native environment variables to `.env.example`.
+- Added WeChat Pay certificate and private-key ignore rules to `.gitignore`.
+- Added `docs/WECHAT_PAY_NATIVE.md` with the target payment flow, mock/live mode rules, notify verification/decryption requirements, order state machine, and integration checklist.
+- Added Phase 16 correction notes to API, database, roadmap, and self-check docs.
+
+### Deferred
+
+- Legacy EasyPay runtime code is still present and must be replaced in the next implementation round.
+- Real WeChat Pay Native API calls, callback verification/decryption, database migration, QR payment UI, and payment tests are not implemented in this first correction round.
+
 ## 2026-06-21 - Phase 16
 
 ### Hardened

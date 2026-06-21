@@ -12,18 +12,21 @@ type OrdersPageProps = {
 
 const statusLabels = {
   pending: "待支付",
+  paying: "待扫码",
   paid: "已支付",
   failed: "支付失败",
+  closed: "已关闭",
+  expired: "已过期",
   cancelled: "已取消",
   refunded: "已退款",
 } as const;
 
 function getPaymentMessage(payment?: string) {
   if (payment === "success") {
-    return "支付结果已校验，订单状态已更新。";
+    return "支付结果已确认，订单状态已更新。";
   }
   if (payment === "invalid") {
-    return "支付返回签名无效，未更新订单。";
+    return "支付返回校验失败，未更新订单。";
   }
   if (payment === "failed") {
     return "支付未成功，订单仍待处理。";
@@ -77,12 +80,15 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-base font-semibold text-ink">{order.productTitle}</h2>
-                  <p className="mt-2 text-sm text-muted">
-                    订单号：{order.id}
-                  </p>
+                  <p className="mt-2 text-sm text-muted">订单号：{order.id}</p>
                   <p className="mt-1 text-sm text-muted">
                     创建时间：{new Date(order.createdAt).toLocaleString()}
                   </p>
+                  {order.expiresAt ? (
+                    <p className="mt-1 text-sm text-muted">
+                      过期时间：{new Date(order.expiresAt).toLocaleString()}
+                    </p>
+                  ) : null}
                   {order.paidAt ? (
                     <p className="mt-1 text-sm text-muted">
                       支付时间：{new Date(order.paidAt).toLocaleString()}

@@ -43,7 +43,11 @@ id_rsa
 id_ed25519
 secrets/
 secret/
+certs/
 *.secret
+apiclient_key.pem
+apiclient_cert.pem
+wechatpay_*.pem
 
 # Runtime uploads and generated artifacts
 uploads/*

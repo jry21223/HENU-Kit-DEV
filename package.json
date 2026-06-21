@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "tsx tests/unit/auth.test.ts && tsx tests/unit/permissions.test.ts && tsx tests/unit/questions.test.ts && tsx tests/unit/wrong-questions.test.ts && tsx tests/unit/easypay.test.ts && tsx tests/unit/uploads.test.ts && tsx tests/unit/submissions.test.ts && tsx tests/unit/ai-jobs.test.ts && tsx tests/unit/pdf-watermark.test.ts && tsx tests/unit/analytics.test.ts",
+    "test": "tsx tests/unit/auth.test.ts && tsx tests/unit/permissions.test.ts && tsx tests/unit/payment-permissions.test.ts && tsx tests/unit/production-payment-config.test.ts && tsx tests/unit/wechat-native.test.ts && tsx tests/unit/questions.test.ts && tsx tests/unit/wrong-questions.test.ts && tsx tests/unit/uploads.test.ts && tsx tests/unit/submissions.test.ts && tsx tests/unit/ai-jobs.test.ts && tsx tests/unit/pdf-watermark.test.ts && tsx tests/unit/analytics.test.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
