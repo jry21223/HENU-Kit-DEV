@@ -1,13 +1,84 @@
-node_modules
-.next
-out
-dist
-coverage
-tsconfig.tsbuildinfo
-artifacts/
-.env
-.env*.local
-uploads/*
-!uploads/.gitkeep
+# Dependencies
+node_modules/
+.pnp/
+.pnp.*
+
+# Next.js / build output
+.next/
+out/
+dist/
+build/
+.vercel/
+.netlify/
+.turbo/
+.swc/
+.cache/
+
+# TypeScript / tooling cache
+*.tsbuildinfo
+.eslintcache
+
+# Logs
+logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 .next-dev*.log
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+.envrc
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+secrets/
+secret/
+*.secret
+
+# Runtime uploads and generated artifacts
+uploads/*
+!uploads/
+!uploads/.gitkeep
+artifacts/
+tmp/
+temp/
+
+# Local databases, dumps, and backups
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+*.backup
+*.rdb
+*.aof
+
+# Test reports and coverage
+coverage/
+test-results/
+playwright-report/
+.nyc_output/
+.vitest/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+*.swp
+*.swo
