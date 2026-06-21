@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getEasypayConfig, verifyEasypaySignature, type EasypayParams } from "@/lib/easypay";
+import { getEasypayConfig, validateEasypaySignedParams, type EasypayParams } from "@/lib/easypay";
 import { settleEasypayOrder } from "@/services/order-service";
 
 export async function GET(request: Request) {
@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const config = getEasypayConfig();
   const orderId = String(params.out_trade_no ?? "");
 
-  if (!config.pid || !config.key || !verifyEasypaySignature(params, config.key)) {
+  if (!validateEasypaySignedParams(params, config)) {
     return NextResponse.redirect(`${config.appUrl}/me/orders?payment=invalid`);
   }
 

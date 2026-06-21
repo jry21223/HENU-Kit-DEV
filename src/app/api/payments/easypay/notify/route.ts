@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getEasypayConfig, verifyEasypaySignature, type EasypayParams } from "@/lib/easypay";
+import { getEasypayConfig, validateEasypaySignedParams, type EasypayParams } from "@/lib/easypay";
 import { settleEasypayOrder } from "@/services/order-service";
 
 async function collectParams(request: Request): Promise<EasypayParams> {
@@ -28,7 +28,7 @@ async function handleNotify(request: Request) {
   const params = await collectParams(request);
   const config = getEasypayConfig();
 
-  if (!config.pid || !config.key || !verifyEasypaySignature(params, config.key)) {
+  if (!validateEasypaySignedParams(params, config)) {
     return new NextResponse("fail", { status: 400 });
   }
 

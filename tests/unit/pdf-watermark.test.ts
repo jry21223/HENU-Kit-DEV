@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { PDFDocument } from "pdf-lib";
 import {
   addPdfWatermark,
@@ -10,24 +9,37 @@ import {
 assert.equal(isPdfFileName("note.pdf"), true);
 assert.equal(isPdfFileName("note.PDF"), true);
 assert.equal(isPdfFileName("note.txt"), false);
+assert.equal(isPdfFileName("../note.pdf"), true);
 
 const fixedDate = new Date("2026-06-19T12:00:00.000Z");
-assert.deepEqual(buildWatermarkLines({ userEmail: "student@stu.henu.edu.cn", downloadedAt: fixedDate }), [
-  "Jerry 制作｜仅供个人复习使用｜禁止盗印与商用传播",
-  "用户：student@stu.henu.edu.cn｜下载时间：2026-06-19T12:00:00.000Z",
-]);
+const lines = buildWatermarkLines({
+  notice: "Unit test notice",
+  userEmail: "student@stu.henu.edu.cn",
+  downloadedAt: fixedDate,
+});
+assert.equal(lines[0], "Unit test notice");
+assert.equal(lines[1].includes("student@stu.henu.edu.cn"), true);
+assert.equal(lines[1].includes("2026-06-19T12:00:00.000Z"), true);
+
+async function createPdf() {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([320, 240]);
+  page.drawText("Original review material", { x: 32, y: 180, size: 14 });
+  return Buffer.from(await pdf.save());
+}
 
 async function main() {
-  const original = await readFile("uploads/mock/discrete-math-sample.pdf");
+  const original = await createPdf();
   const originalCopy = Buffer.from(original);
   const watermarked = await addPdfWatermark(original, {
+    notice: "Unit test notice",
     userEmail: "student@stu.henu.edu.cn",
     downloadedAt: fixedDate,
   });
 
   assert.equal(original.equals(originalCopy), true);
   assert.equal(watermarked.subarray(0, 5).toString("utf8"), "%PDF-");
-  assert.equal(watermarked.length > original.length, true);
+  assert.notEqual(Buffer.compare(watermarked, original), 0);
 
   const originalDoc = await PDFDocument.load(original);
   const watermarkedDoc = await PDFDocument.load(watermarked);

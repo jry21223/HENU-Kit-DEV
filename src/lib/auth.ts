@@ -41,6 +41,13 @@ export function hashVerificationCode(email: string, code: string) {
     .digest("hex");
 }
 
+export function isVerificationCodeUsable(
+  verification: { used: boolean; expiresAt: Date },
+  now = new Date(),
+) {
+  return !verification.used && verification.expiresAt > now;
+}
+
 export function createSessionToken(payload: SessionPayload) {
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   return `${encodedPayload}.${sign(encodedPayload)}`;
@@ -125,4 +132,3 @@ export async function getCurrentUser() {
 
   return user;
 }
-

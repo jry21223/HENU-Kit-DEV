@@ -3,7 +3,7 @@ import {
   findPublishedMockQuestion,
   getPublishedMockQuestionsByCourse,
 } from "@/constants/mock-questions";
-import { isDatabaseConfigured, prisma } from "@/lib/db";
+import { prisma, shouldUseMockData } from "@/lib/db";
 import {
   formatAnswerForDisplay,
   getNormalizedSubmittedAnswer,
@@ -58,7 +58,7 @@ function mapMockQuestion(question: ReturnType<typeof findPublishedMockQuestion>)
 }
 
 export async function listQuestionsByCourse(courseId: string): Promise<PracticeQuestion[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return getPublishedMockQuestionsByCourse(courseId).map(
       (question) => mapMockQuestion(question)!,
     );
@@ -81,7 +81,7 @@ export async function listQuestionsByCourse(courseId: string): Promise<PracticeQ
 }
 
 export async function getQuestionById(questionId: string): Promise<PracticeQuestion | null> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return mapMockQuestion(findPublishedMockQuestion(questionId));
   }
 
@@ -105,7 +105,7 @@ export async function submitQuestionAnswer(
   submittedAnswer: unknown,
   user: CurrentUserForPractice,
 ): Promise<QuestionSubmitResult | null> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     const question = findPublishedMockQuestion(questionId);
     if (!question) {
       return null;
@@ -169,7 +169,7 @@ export async function listWrongQuestionsForUser(
   userId: string,
   filters: WrongQuestionFilters = {},
 ): Promise<WrongQuestionItem[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return [];
   }
 
@@ -216,7 +216,7 @@ export async function listWrongQuestionsForUser(
 }
 
 export async function deleteWrongQuestionForUser(userId: string, wrongQuestionId: string) {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return false;
   }
 
@@ -231,7 +231,7 @@ export async function deleteWrongQuestionForUser(userId: string, wrongQuestionId
 }
 
 export async function listWeakPointsForUser(userId: string): Promise<WeakPointItem[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return [];
   }
 

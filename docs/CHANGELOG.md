@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-06-21 - Phase 16
+
+### Hardened
+
+- 限定 mock fallback：仅非生产环境且无 `DATABASE_URL` 时使用 mock 数据。
+- 加固验证码消费：验证码使用时通过条件 `updateMany` 再次检查未使用和未过期，降低并发重复消费风险。
+- 加固上传校验：PDF/TXT 后缀和 MIME 必须匹配，继续限制空文件和 10MB 大小。
+- 加固下载路径：新增 `src/lib/downloads.ts`，使用 `path.relative` 限定文件必须位于本地 `uploads/` 内。
+- 下载响应增加 `X-Content-Type-Options: nosniff`。
+- 加固 EasyPay 校验：签名验证同时检查商户号和 `sign_type`。
+- README 重写为真实可验证状态描述，明确 demo 级能力和上线前待办。
+
+### Tests
+
+- 完善 `auth.test.ts`：邮箱域名、验证码哈希、验证码可用性、session 篡改和过期。
+- 完善 `permissions.test.ts`：paid entitlement、未发布资料拒绝、下载路径穿越、mock fallback 生产环境禁用。
+- 完善 `uploads.test.ts`：后缀/MIME 绕过、危险后缀、空文件、超大文件。
+- 完善 `easypay.test.ts`：签名、商户号、`sign_type`、金额篡改和支付 URL。
+- 完善 `questions.test.ts`：公开题目不泄露答案/解析、答案提交绕过尝试。
+- 完善 `pdf-watermark.test.ts`：测试内生成 PDF，验证不覆盖原始字节且页数不变。
+
+### Verified
+
+- `npm run typecheck` 通过。
+- `npm run lint` 通过。
+- `npm test` 通过。
+
+### Not Added
+
+- 未新增产品功能。
+- 未接真实邮件、真实 AI、真实支付商户生产配置。
+- 未补完整 E2E、限流、审计日志、对象存储和病毒扫描。
+
 ## 2026-06-20 - Phase 0
 
 ### Added

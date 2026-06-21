@@ -4,6 +4,12 @@ import path from "node:path";
 
 export const MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024;
 export const ALLOWED_UPLOAD_TYPES = new Set(["application/pdf", "text/plain"]);
+export const ALLOWED_UPLOAD_EXTENSIONS = new Set([".pdf", ".txt"]);
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+};
 
 export type UploadLike = {
   name: string;
@@ -27,15 +33,24 @@ export function sanitizeFileName(fileName: string) {
   return safeName || "upload";
 }
 
+export function getUploadFileExtension(fileName: string) {
+  return path.extname(sanitizeFileName(fileName)).toLowerCase();
+}
+
 export function validateUploadFile(file: UploadLike): UploadValidationResult {
-  if (!ALLOWED_UPLOAD_TYPES.has(file.type)) {
-    return { ok: false, message: "仅支持 PDF 或 TXT 文件。" };
+  const extension = getUploadFileExtension(file.name);
+
+  if (!ALLOWED_UPLOAD_EXTENSIONS.has(extension)) {
+    return { ok: false, message: "Only PDF and TXT files are supported." };
+  }
+  if (!ALLOWED_UPLOAD_TYPES.has(file.type) || MIME_BY_EXTENSION[extension] !== file.type) {
+    return { ok: false, message: "File MIME type does not match its extension." };
   }
   if (file.size <= 0) {
-    return { ok: false, message: "文件不能为空。" };
+    return { ok: false, message: "File cannot be empty." };
   }
   if (file.size > MAX_UPLOAD_FILE_SIZE) {
-    return { ok: false, message: "文件不能超过 10MB。" };
+    return { ok: false, message: "File cannot exceed 10MB." };
   }
   return { ok: true };
 }

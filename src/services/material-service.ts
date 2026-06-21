@@ -3,7 +3,7 @@ import {
   findMaterial as findMockMaterial,
   getPublishedMaterialsByCourse as getMockMaterialsByCourse,
 } from "@/constants/mock-data";
-import { isDatabaseConfigured, prisma } from "@/lib/db";
+import { prisma, shouldUseMockData } from "@/lib/db";
 import {
   formatFileSize,
   mapAccessLevel,
@@ -31,7 +31,7 @@ function mapMaterial(material: DbMaterial): Material {
 }
 
 export async function listMaterialsByCourse(courseId: string): Promise<Material[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return getMockMaterialsByCourse(courseId);
   }
 
@@ -47,7 +47,7 @@ export async function listMaterialsByCourse(courseId: string): Promise<Material[
 }
 
 export async function getMaterialById(materialId: string): Promise<Material | undefined> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return findMockMaterial(materialId);
   }
 
@@ -60,4 +60,3 @@ export async function getMaterialById(materialId: string): Promise<Material | un
 
   return material ? mapMaterial(material) : undefined;
 }
-

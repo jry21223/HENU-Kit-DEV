@@ -3,7 +3,7 @@ import {
   findCourse as findMockCourse,
   getPublishedCourses as getMockCourses,
 } from "@/constants/mock-data";
-import { isDatabaseConfigured, prisma } from "@/lib/db";
+import { prisma, shouldUseMockData } from "@/lib/db";
 import { mapRecordStatus } from "@/services/mappers";
 import type { Course } from "@/types";
 
@@ -57,7 +57,7 @@ function mapCourse(course: DbCourse): Course {
 }
 
 export async function listCourses(filters: CourseFilters = {}): Promise<Course[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return filterMockCourses(filters);
   }
 
@@ -87,7 +87,7 @@ export async function listCourses(filters: CourseFilters = {}): Promise<Course[]
 }
 
 export async function getCourseById(courseId: string): Promise<Course | undefined> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return findMockCourse(courseId);
   }
 

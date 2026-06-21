@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   createSessionToken,
   hashVerificationCode,
+  isVerificationCodeUsable,
   parseSessionToken,
 } from "../../src/lib/auth";
 import {
@@ -24,6 +25,7 @@ assert.equal(isAllowedStudentEmail("teacher@henu.edu.cn"), true);
 assert.equal(isAllowedStudentEmail("user@qq.com"), false);
 assert.equal(isAllowedStudentEmail("user@gmail.com"), false);
 assert.equal(isAllowedStudentEmail("user@evil-stu.henu.edu.cn"), false);
+assert.equal(isAllowedStudentEmail("user@stu.henu.edu.cn.evil.com"), false);
 
 assert.equal(isValidGrade("2023级"), true);
 assert.equal(isValidGrade("2024级"), true);
@@ -34,6 +36,20 @@ assert.notEqual(hash, "123456");
 assert.equal(hash, hashVerificationCode(" student@STU.HENU.EDU.CN ", "123456"));
 assert.notEqual(hash, hashVerificationCode("student@stu.henu.edu.cn", "654321"));
 
+const now = new Date("2026-06-21T00:00:00.000Z");
+assert.equal(
+  isVerificationCodeUsable({ used: false, expiresAt: new Date("2026-06-21T00:01:00.000Z") }, now),
+  true,
+);
+assert.equal(
+  isVerificationCodeUsable({ used: true, expiresAt: new Date("2026-06-21T00:01:00.000Z") }, now),
+  false,
+);
+assert.equal(
+  isVerificationCodeUsable({ used: false, expiresAt: new Date("2026-06-20T23:59:59.000Z") }, now),
+  false,
+);
+
 const token = createSessionToken({
   userId: "user-1",
   email: "student@stu.henu.edu.cn",
@@ -43,8 +59,11 @@ const token = createSessionToken({
 assert.equal(parseSessionToken(token)?.userId, "user-1");
 
 const [payload, signature] = token.split(".");
-const tampered = `${payload.slice(0, -1)}x.${signature}`;
-assert.equal(parseSessionToken(tampered), null);
+const tamperedPayload = `${payload.slice(0, -1)}x.${signature}`;
+assert.equal(parseSessionToken(tamperedPayload), null);
+
+const tamperedSignature = `${payload}.${signature.slice(0, -1)}x`;
+assert.equal(parseSessionToken(tamperedSignature), null);
 
 const expiredToken = createSessionToken({
   userId: "user-1",

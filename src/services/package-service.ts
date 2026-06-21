@@ -1,5 +1,5 @@
 import { RecordStatus } from "@prisma/client";
-import { isDatabaseConfigured, prisma } from "@/lib/db";
+import { isDatabaseConfigured, prisma, shouldUseMockData } from "@/lib/db";
 import { mapAccessLevel, mapRecordStatus } from "@/services/mappers";
 import type { CoursePackage, CoursePackageItem, PackageStatus } from "@/types";
 
@@ -86,7 +86,7 @@ function mapPackage(pkg: DbPackage, unlockedPackageIds: Set<string>): CoursePack
 }
 
 export async function listPackages(userId?: string): Promise<CoursePackage[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return [];
   }
 
@@ -110,7 +110,7 @@ export async function getPackageById(
   packageId: string,
   userId?: string,
 ): Promise<CoursePackage | null> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return null;
   }
 

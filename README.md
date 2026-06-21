@@ -1,73 +1,66 @@
 # 一站式期末复习平台
 
-面向高校学生的课程级期末复习平台。平台目标是通过学生邮箱认证，按学校、学院、年级、专业和课程精准匹配知识点讲义、模拟卷、答案解析、考前速背版、历年真题、在线刷题和错题本。
+面向高校学生的课程级期末复习平台。当前项目聚焦河南大学软件学院的 MVP：学生邮箱登录、课程资料浏览、资料下载权限、基础题库、错题本、课程包授权、投稿审核、PDF 水印、运营统计，以及支付和 AI 任务的基础模拟流程。
 
-当前第一阶段聚焦：
+## 当前真实状态
 
-- 河南大学
-- 软件学院
-- 2023级 / 2024级
-- 网络工程 / 软件工程
-- 离散数学、概率论与数理统计A、大学物理、高等数学A、软件工程、移动开发
+当前进入 `Phase 16：MVP 硬化与上线前审查`。这不是生产可直接上线版本，而是一个已经具备端到端数据流和核心安全边界的 MVP。
 
-## 当前状态
+已验证：
+- Next.js App Router 页面和 API 可本地运行。
+- Prisma schema、migration、seed 已建立。
+- `free / login_required / paid` 下载权限在服务端判断。
+- `paid` 资料下载需要登录、邮箱验证和有效 entitlement。
+- admin API 和 reviewer API 使用服务端角色校验。
+- 题目列表 API 不返回 `answer` / `explanation`。
+- Email 验证码哈希存储、过期、一次性消费，API 不向前端返回验证码。
+- 上传限制 PDF/TXT、10MB、后缀与 MIME 必须匹配。
+- 下载只允许读取本地 `uploads/` 内文件，拒绝路径穿越。
+- PDF 水印生成新 Buffer，不覆盖原文件。
+- EasyPay 兼容流程校验签名、商户号、金额、订单状态，并使用 upsert 保持授权幂等。
+- AI job 只生成 `draft` material，不会自动发布。
+- mock fallback 仅允许非生产环境；生产环境缺少 `DATABASE_URL` 时不会回退到 mock 数据。
 
-当前 Phase 0 到 Phase 15 已完成基础验收。后续进入按真实运营需求细化的迭代阶段。
-
-已完成：
-
-- Phase 1 静态页面：首页、登录页、学校选择页、课程列表页、课程详情页、资料详情页、管理后台首页。
-- Phase 2 基础模型：Prisma PostgreSQL schema、seed 脚本、Docker Compose、DB-first service。
-- Phase 3 学生邮箱验证码登录、当前用户和退出登录。
-- Phase 4 学校、学院、专业、课程和资料只读 API。
-- Phase 5 资料下载 API 和 free/login_required/paid 基础权限。
-- Phase 6 admin 服务端权限检查、课程/资料写 API 和上传限制。
-- Phase 7 单选/判断题刷题、提交判题、解析展示和基础错题保存。
-- Phase 8 错题本、课程/知识点筛选、移除错题和薄弱知识点统计。
-- Phase 9 课程复习包、手动授权和 paid 内容 entitlement 校验。
-- Phase 10 易支付兼容订单创建、签名校验、支付回调幂等结算和自动授权。
-- Phase 11 学生资料投稿、我的投稿、reviewer/admin 审核、驳回原因和审核通过生成资料。
-- Phase 12 admin AI 任务、本地草稿生成、失败状态记录和 draft 不自动发布约束。
-- Phase 13 PDF 下载动态水印、原文件保护和非 PDF 正常下载。
-- Phase 14 admin 数据统计、热门课程、高下载资料和错题知识点分布。
-- Phase 15 关键页面 390px 移动端巡检与触控/文案优化。
-- 无 `DATABASE_URL` 时 fallback 到 `src/constants/mock-data.ts`，保证本地仍可运行。
-- 已通过 `npm install`、`npm run db:generate`、`npm run typecheck`、`npm run lint`、`npm test`、`npm run build` 和 `npm audit`。
-
-尚未完成：
-
-- Windows 主机 Prisma schema engine 写库失败；已使用 Linux Node Docker 容器成功执行 Prisma migrate。
-- 尚未绑定真实支付商户和生产支付网关；上线前必须按目标易支付服务商文档复核字段、网关和回调细节。
-- 尚未接入真实 AI 服务。
-- Computer Use 插件当前初始化失败，最终 Computer Use 自检尚未通过。
+仍未生产化：
+- 未接真实邮件服务，开发环境使用 mock 邮件输出。
+- 未完成真实支付商户联调，EasyPay 目前是兼容基础版。
+- 未接真实 AI 模型、文本提取、异步队列和人工审核队列。
+- admin 后台表单仍是基础维护能力，不是成熟运营后台。
+- 本地文件存储尚未迁移到对象存储。
+- 缺少完整 E2E、压力测试、审计日志、限流、防刷验证码和生产监控。
 
 ## 技术栈
 
 - Frontend：Next.js、React、TypeScript、Tailwind CSS
-- Backend：Next.js Route Handlers / Server Actions
+- Backend：Next.js Route Handlers / Server Components
 - Database：PostgreSQL
 - ORM：Prisma
-- Auth：学生邮箱验证码登录，Phase 3 实现
-- Storage：本地 `uploads/`，后续预留对象存储
-- Payment：Phase 10 已实现易支付兼容基础版；真实商户配置前不会展示外部支付跳转
-- AI：Phase 12 已实现本地草稿生成流程，真实 AI 服务后续接入
+- Auth：学生邮箱验证码登录，HTTP-only session cookie
+- Storage：本地 `uploads/`
+- Payment：EasyPay 兼容基础流程
+- PDF：`pdf-lib` + `@pdf-lib/fontkit`
 
-## 本地启动方式
+## 本地启动
 
-无数据库 fallback 启动：
+安装依赖：
 
 ```bash
 npm install
+```
+
+启动开发服务：
+
+```bash
 npm run dev
 ```
 
-本地地址：
+访问：
 
 ```text
 http://localhost:3000
 ```
 
-## 环境变量说明
+## 环境变量
 
 复制 `.env.example` 为 `.env` 后按需修改：
 
@@ -86,19 +79,21 @@ EASYPAY_GATEWAY_URL="https://pay.example.com/submit.php"
 EASYPAY_TYPE="alipay"
 ```
 
-Phase 2 中，如果没有 `DATABASE_URL`，页面会 fallback 到 mock 数据。
-Phase 10 中，如果没有真实 `EASYPAY_*` 配置，开发环境仍可用本地签名和回调验收订单结算，但不会在前端展示真实支付跳转。
-Phase 13 中，PDF 水印默认尝试使用 Windows 中文字体；非 Windows 部署建议通过 `PDF_WATERMARK_FONT_PATH` 指向可用中文 TTF/TTC 字体。
+注意：
+- 非生产环境且没有 `DATABASE_URL` 时，课程和资料读取可以 fallback 到 mock 数据。
+- `NODE_ENV=production` 时不会使用 mock fallback。
+- 真实上线必须设置强随机 `AUTH_SECRET`、真实 `DATABASE_URL` 和真实邮件/支付配置。
+- `.env` 不应提交到 Git；仓库只保留 `.env.example`。
 
-## 数据库迁移方式
+## 数据库
 
-如使用本仓库提供的 PostgreSQL Docker Compose：
+启动 PostgreSQL：
 
 ```bash
 docker compose up -d postgres
 ```
 
-数据库可用后执行：
+生成 Prisma Client、迁移并写入 seed：
 
 ```bash
 npm run db:generate
@@ -106,32 +101,24 @@ npm run db:migrate
 npm run db:seed
 ```
 
-如果 Windows 主机直接执行 `npm run db:migrate` 遇到 schema engine 空错误，可使用 Linux Node 容器执行迁移：
+Seed 包含：
+- 河南大学 / 软件学院
+- 网络工程、软件工程
+- 2023级、2024级
+- 离散数学、概率论与数理统计A、大学物理、高等数学A、软件工程、移动开发
+- 示例资料、题目、课程包、开发环境 admin
 
-```bash
-docker run --rm --network codex-codex-demo-2023-2024-a_default -v "%cd%:/app" -v final-review-node-modules:/app/node_modules -w /app -e DATABASE_URL="postgresql://final_review:final_review_dev@postgres:5432/final_review?schema=public" mirror.gcr.io/library/node:22-alpine sh -lc "npm ci && npm run db:migrate -- --name init"
+开发环境 admin：
+
+```text
+admin@example.com
 ```
 
-当前 Phase 2 已完成迁移和 seed 验收。
+仅用于本地开发和演示，不代表生产账号方案。
 
-## Seed 数据方式
+## 测试与验证
 
-`prisma/seed.ts` 提供河南大学软件学院基础 seed：
-
-- 学校：河南大学
-- 学院：软件学院
-- 专业：网络工程、软件工程
-- 年级：2023级、2024级
-- 课程：离散数学、概率论与数理统计A、大学物理、高等数学A、软件工程、移动开发
-- 资料：讲义、模拟卷、答案解析、考前速背版、免费样例资料
-- 题库：离散数学、概率论与数理统计A、大学物理基础单选/判断题
-- 课程包：离散数学期末复习包，包含 paid 模拟卷和答案解析
-- 开发环境 admin：`admin@example.com`，仅开发使用
-- 资料共建：学生可提交 PDF/TXT 资料，进入人工审核后才可能发布
-
-## 测试方式
-
-当前可运行检查：
+推荐上线前至少运行：
 
 ```bash
 npm run db:generate
@@ -142,87 +129,93 @@ npm run build
 npm audit
 ```
 
-后续建议逐步加入：
-
-- Unit：邮箱域名校验、验证码过期、权限判断、课程筛选。
-- Integration：登录、课程列表、资料详情、下载权限。
-- E2E：用户登录、查看课程、下载资料、admin 上传资料、刷题、错题保存。
+当前单元测试覆盖：
+- 邮箱域名、验证码哈希、验证码可用性、session 防篡改和过期
+- 下载权限：free、login_required、paid、未发布资料拒绝
+- 下载路径穿越防护和响应 Content-Type
+- 上传类型、大小、后缀/MIME 绕过尝试
+- EasyPay 签名、商户号、sign_type、金额篡改
+- 题目公开字段不泄露答案，答案提交规则
+- PDF 水印不覆盖原文件
+- 投稿、AI job、错题、analytics 基础规则
 
 ## 目录结构
 
-当前核心结构：
-
 ```text
 src/
-  app/
-  components/
-  constants/
-  lib/
-  services/
-  types/
+  app/          页面与 API Route Handlers
+  components/   UI 组件
+  constants/    开发 mock 数据
+  lib/          鉴权、权限、上传、支付、水印等基础库
+  services/     数据访问和业务服务
+  types/        公共类型
 prisma/
   schema.prisma
   seed.ts
+  migrations/
 docs/
+tests/
 uploads/
-docker-compose.yml
-package.json
 ```
 
-## 当前功能状态
+## 安全边界
 
-- 项目文档：已初始化。
-- 页面：Phase 1 静态页面已完成。
-- 数据库：schema、migration、seed、DB-first service 已完成。
-- API：auth API 和课程/资料只读 API 已完成。
-- 登录：学生邮箱验证码登录已完成。
-- 下载权限：free/login_required/paid 规则已完成；paid entitlement 已接入课程包授权。
-- 管理后台写操作：基础 API 已完成，表单 UI 待细化。
-- 题库：基础单选/判断题、提交判题和解析展示已完成。
-- 错题本：错题页、筛选、移除、重新练习入口和薄弱知识点统计已完成。
-- 课程复习包：公开列表/详情、admin API、手动授权和 paid 下载校验已完成。
-- 支付：订单创建、易支付兼容签名、异步通知、同步返回、重复回调幂等处理和 paid 自动授权已完成基础版。
-- 资料共建：学生投稿、我的投稿、reviewer/admin 审核、通过发布资料和驳回原因已完成基础版。
-- AI：admin AI 任务、本地生成草稿、失败状态和 draft 不自动发布已完成基础版；尚未接真实模型。
-- PDF 水印：PDF 下载时动态生成浅灰斜向水印，包含用户、下载时间和用途声明；原文件不被覆盖。
-- 数据统计：admin 可查看用户数、认证数、资料下载、热门课程、高下载资料和高错题知识点；不返回用户邮箱明细。
-- 移动端：关键页面 390px 视口无横向溢出，筛选控件和刷题选项已做基础触控优化。
+当前已做：
+- admin/reviewer 权限在服务端检查。
+- paid 下载在服务端检查 entitlement。
+- draft、pending_review、archived 资料不会对普通用户展示或下载。
+- 题目列表不返回答案。
+- 上传文件名会清洗，文件类型和大小受限。
+- 本地下载路径限定在 `uploads/` 内。
+- 支付回调校验签名、商户号、金额和订单状态。
+- AI 生成结果默认 draft。
+- 学生投稿默认 pending，必须 reviewer/admin 审核。
 
-## 后续路线图
+仍需上线前补强：
+- 验证码发送限流和失败次数限制。
+- CSRF 策略和更细的 session 安全策略。
+- 文件内容嗅探和病毒扫描。
+- 对象存储私有桶与临时签名 URL。
+- 支付商户真实回调字段复核、订单对账和退款流程。
+- 操作审计日志和告警。
+- E2E 覆盖登录、下载、支付回调、admin 审核。
 
-近期阶段：
+## 功能成熟度
 
-- Phase 2：数据库与基础数据模型，已完成。
-- Phase 3：学生邮箱登录。
-- Phase 4：课程与资料真实 API 数据流。
-- Phase 5：资料下载权限控制。
-- Phase 6：管理员后台。
-- Phase 7：在线题库基础版，已完成。
-- Phase 8：错题本与知识点关联，已完成。
-- Phase 9：课程复习包与权限体系，已完成。
-- Phase 10：支付接入，已完成基础版。
-- Phase 11：资料共建与审核，已完成基础版。
-- Phase 12：AI 辅助内容生成，已完成基础版。
-- Phase 13：PDF 水印与防盗传，已完成基础版。
-- Phase 14：数据统计与运营后台，已完成基础版。
-- Phase 15：移动端优化，已完成基础版。
+可作为 MVP 继续迭代：
+- 学校/学院/专业/课程/资料结构
+- 学生邮箱登录基础流程
+- 资料权限下载
+- 题库和错题本基础版
+- 课程包和手动授权
+- 投稿审核基础版
+- PDF 水印基础版
+- admin analytics 基础指标
 
-后续建议：
+Demo 级或待联调：
+- EasyPay 真实商户支付
+- AI 内容生成
+- admin 后台深度运营
+- 文件存储和防盗链
+- 移动端完整产品级体验
 
-- 增加课程访问日志和趋势统计。
-- 完善 admin 表单 UI。
-- 引入真实 AI 模型和异步任务队列。
-- 真实支付商户联调和退款/对账。
-- 大 PDF 水印性能优化。
+## 仓库卫生
 
-完整路线见 `docs/ROADMAP.md`。
+`.gitignore` 已排除：
+- `.env*` 真实环境文件，保留 `.env.example`
+- `node_modules/`
+- `.next/`、`dist/`、`out/`
+- 日志、测试报告、缓存
+- `uploads/` 运行时文件，保留 `uploads/.gitkeep`
+- 本地数据库、dump、私钥和证书
 
-## 开发约束
+GitHub 仓库当前为 private。
 
-- 不跳过当前 Phase。
-- 不一次性重写整个项目。
-- 不提前接 AI。
-- 不把 mock 数据当成真实完成。
-- 不把 admin 权限只做成前端隐藏按钮。
-- 不把 paid 权限只做成前端判断。
-- 每个阶段结束后必须更新 `docs/SELF_CHECK.md`。
+## 下一步建议
+
+1. 做真实 E2E 测试：登录、下载、投稿审核、支付回调。
+2. 增加验证码限流和登录失败保护。
+3. 将本地上传迁移到私有对象存储。
+4. 做 EasyPay 真实商户沙箱/小额联调。
+5. 拆出 AI 任务队列和人工审核工作台。
+6. 补生产部署文档、备份策略、监控和审计日志。

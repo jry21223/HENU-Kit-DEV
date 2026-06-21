@@ -11,6 +11,8 @@ type VerifyCodeBody = {
   grade?: string;
 };
 
+const verificationFailure = "Verification code is invalid, expired, or already used.";
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as VerifyCodeBody | null;
   const email = normalizeEmail(body?.email ?? "");
@@ -20,32 +22,34 @@ export async function POST(request: Request) {
   const grade = body?.grade ?? "";
 
   if (!isAllowedStudentEmail(email)) {
-    return NextResponse.json({ error: "请使用河南大学学生邮箱登录。" }, { status: 400 });
+    return NextResponse.json({ error: "Please use an allowed student email address." }, { status: 400 });
   }
   if (!/^\d{6}$/.test(code)) {
-    return NextResponse.json({ error: "验证码格式不正确。" }, { status: 400 });
+    return NextResponse.json({ error: "Verification code format is invalid." }, { status: 400 });
   }
   if (!schoolId || !majorId || !isValidGrade(grade)) {
-    return NextResponse.json({ error: "请选择学校、专业和年级。" }, { status: 400 });
+    return NextResponse.json({ error: "Please select school, major, and grade." }, { status: 400 });
   }
 
-  const school = await prisma.school.findFirst({
-    where: {
-      id: schoolId,
-      emailDomains: { has: email.split("@")[1] },
-      status: "PUBLISHED",
-    },
-  });
-
-  const major = await prisma.major.findFirst({
-    where: {
-      id: majorId,
-      schoolId,
-    },
-  });
+  const emailDomain = email.split("@")[1];
+  const [school, major] = await Promise.all([
+    prisma.school.findFirst({
+      where: {
+        id: schoolId,
+        emailDomains: { has: emailDomain },
+        status: "PUBLISHED",
+      },
+    }),
+    prisma.major.findFirst({
+      where: {
+        id: majorId,
+        schoolId,
+      },
+    }),
+  ]);
 
   if (!school || !major) {
-    return NextResponse.json({ error: "学校或专业不存在。" }, { status: 400 });
+    return NextResponse.json({ error: "School or major does not exist." }, { status: 400 });
   }
 
   const hashedCode = hashVerificationCode(email, code);
@@ -60,14 +64,22 @@ export async function POST(request: Request) {
   });
 
   if (!verification) {
-    return NextResponse.json({ error: "验证码错误、已过期或已使用。" }, { status: 400 });
+    return NextResponse.json({ error: verificationFailure }, { status: 400 });
   }
 
   const user = await prisma.$transaction(async (tx) => {
-    await tx.emailVerification.update({
-      where: { id: verification.id },
+    const consumed = await tx.emailVerification.updateMany({
+      where: {
+        id: verification.id,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
       data: { used: true },
     });
+
+    if (consumed.count !== 1) {
+      return null;
+    }
 
     return tx.user.upsert({
       where: { email },
@@ -94,6 +106,10 @@ export async function POST(request: Request) {
     });
   });
 
+  if (!user) {
+    return NextResponse.json({ error: verificationFailure }, { status: 400 });
+  }
+
   await setSessionCookie(user);
 
   return NextResponse.json({
@@ -105,4 +121,3 @@ export async function POST(request: Request) {
     },
   });
 }
-

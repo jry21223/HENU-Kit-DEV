@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { getDownloadContentType, resolveLocalUploadPath } from "@/lib/downloads";
 import { addPdfWatermark, isPdfFileName } from "@/lib/pdf-watermark";
 import { canDownloadMaterial } from "@/lib/permissions";
 import { userCanAccessMaterial } from "@/services/package-service";
@@ -12,27 +12,6 @@ export const runtime = "nodejs";
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
-
-function getContentType(fileName?: string | null) {
-  if (fileName?.toLowerCase().endsWith(".pdf")) {
-    return "application/pdf";
-  }
-  if (fileName?.toLowerCase().endsWith(".txt")) {
-    return "text/plain; charset=utf-8";
-  }
-  return "application/octet-stream";
-}
-
-function resolveLocalUploadPath(fileUrl: string) {
-  const normalized = fileUrl.replaceAll("\\", "/");
-  if (!normalized.startsWith("/uploads/")) {
-    return null;
-  }
-  const relativePath = normalized.replace(/^\/uploads\//, "");
-  const uploadRoot = path.resolve(/*turbopackIgnore: true*/ process.cwd(), "uploads");
-  const resolvedPath = path.resolve(uploadRoot, relativePath);
-  return resolvedPath.startsWith(uploadRoot) ? resolvedPath : null;
-}
 
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
@@ -92,10 +71,11 @@ export async function GET(request: Request, context: RouteContext) {
 
   return new NextResponse(new Uint8Array(responseFile), {
     headers: {
-      "Content-Type": getContentType(material.fileName),
+      "Content-Type": getDownloadContentType(material.fileName),
       "Content-Disposition": `attachment; filename=\"${encodeURIComponent(material.fileName)}\"`,
       "Content-Length": responseFile.byteLength.toString(),
       "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
       "X-Watermark-Applied": shouldWatermark ? "true" : "false",
     },
   });

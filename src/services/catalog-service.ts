@@ -5,11 +5,11 @@ import {
   majors as mockMajors,
   schools as mockSchools,
 } from "@/constants/mock-data";
-import { isDatabaseConfigured, prisma } from "@/lib/db";
+import { prisma, shouldUseMockData } from "@/lib/db";
 import type { College, Major, School } from "@/types";
 
 export async function listSchools(): Promise<School[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return mockSchools;
   }
 
@@ -28,7 +28,7 @@ export async function listSchools(): Promise<School[]> {
 }
 
 export async function listMajors(): Promise<Major[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return mockMajors;
   }
 
@@ -46,7 +46,7 @@ export async function listMajors(): Promise<Major[]> {
 }
 
 export async function listColleges(schoolId?: string): Promise<College[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return mockColleges.filter((college) => !schoolId || college.schoolId === schoolId);
   }
 
@@ -63,7 +63,7 @@ export async function listColleges(schoolId?: string): Promise<College[]> {
 }
 
 export async function listGrades(): Promise<string[]> {
-  if (!isDatabaseConfigured()) {
+  if (shouldUseMockData()) {
     return mockGrades;
   }
 

@@ -76,6 +76,19 @@ export function verifyEasypaySignature(params: EasypayParams, key: string) {
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
 
+export function validateEasypaySignedParams(params: EasypayParams, config: EasypayConfig) {
+  const pid = normalizeValue(params.pid);
+  const signType = normalizeValue(params.sign_type).toLowerCase();
+
+  if (!config.pid || !config.key || pid !== config.pid) {
+    return false;
+  }
+  if (signType && signType !== "md5") {
+    return false;
+  }
+  return verifyEasypaySignature(params, config.key);
+}
+
 export function formatMoney(value: unknown) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount < 0) {
