@@ -1,3 +1,5 @@
+name: final-review-platform-v2
+
 services:
   postgres:
     image: postgres:17-alpine

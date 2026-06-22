@@ -50,12 +50,13 @@ apiclient_cert.pem
 wechatpay_*.pem
 
 # Runtime uploads and generated artifacts
-uploads/*
+uploads/**
 !uploads/
-!uploads/.gitkeep
+!uploads/**/
+!uploads/**/.gitkeep
 artifacts/
-tmp/
-temp/
+/tmp/
+/temp/
 
 # Local databases, dumps, and backups
 *.db
@@ -73,6 +74,15 @@ test-results/
 playwright-report/
 .nyc_output/
 .vitest/
+.pytest_cache/
+__pycache__/
+
+# Go build/test output
+bin/
+*.test
+
+# Root leftovers from the pre-monorepo plugin location.
+final-review-sales-agent/
 
 # OS files
 .DS_Store

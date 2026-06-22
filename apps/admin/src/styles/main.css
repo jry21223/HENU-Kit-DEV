@@ -1,0 +1,36 @@
+body {
+  margin: 0;
+  background: #f4f6f3;
+  color: #1f2933;
+  font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.admin-login {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(420px, 100%);
+}
+
+.admin-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: 240px 1fr;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-right: 1px solid #d7ddd4;
+  background: #fff;
+  padding: 24px;
+}
+
+.content {
+  padding: 24px;
+}

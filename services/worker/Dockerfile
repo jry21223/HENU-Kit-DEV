@@ -1,0 +1,11 @@
+FROM golang:1.23-alpine AS builder
+WORKDIR /src
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN go build -o /bin/final-review-worker ./cmd/worker
+
+FROM alpine:3.21
+WORKDIR /app
+COPY --from=builder /bin/final-review-worker /usr/local/bin/final-review-worker
+CMD ["final-review-worker"]
