@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
-import { useRef } from "react";
+import { motion, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { useRef, useState } from "react";
 import { archiveDirectory, courseBooks } from "./home-data";
 import { PdfCourseBook } from "./pdf-course-book";
 import styles from "./home-visuals.module.css";
@@ -14,6 +14,7 @@ export function ArchiveBookReveal() {
     target: ref,
     offset: ["start start", "end end"],
   });
+  const [contentReady, setContentReady] = useState(() => scrollYProgress.get() >= 0.62);
 
   const rotate = useTransform(scrollYProgress, [0, 0.32], [-10, 0]);
   const y = useTransform(scrollYProgress, [0, 0.32], [120, 0]);
@@ -21,6 +22,13 @@ export function ArchiveBookReveal() {
   const coverRotate = useTransform(scrollYProgress, [0.35, 0.78], [0, -172]);
   const contentOpacity = useTransform(scrollYProgress, [0.62, 0.78], [0, 1]);
   const contentY = useTransform(scrollYProgress, [0.62, 0.78], [24, 0]);
+  useMotionValueEvent(scrollYProgress, "change", (latest) => {
+    const nextReady = latest >= 0.62;
+    setContentReady((current) => (current === nextReady ? current : nextReady));
+  });
+  const contentFocusable = reduceMotion || contentReady;
+  const contentTabIndex = contentFocusable ? undefined : -1;
+  const contentAriaHidden = contentFocusable ? undefined : true;
 
   return (
     <section ref={ref} className={styles.bookStage} aria-label="课程资料档案册">
@@ -36,9 +44,11 @@ export function ArchiveBookReveal() {
           <div className={styles.bookBase} aria-hidden="true" />
           <div className={styles.bookInside}>
             <motion.div
-              className={`${styles.bookPage} p-7`}
+              className={`${styles.bookPage} p-6 xl:p-7`}
+              aria-hidden={contentAriaHidden}
               style={{
                 opacity: reduceMotion ? 1 : contentOpacity,
+                pointerEvents: contentFocusable ? "auto" : "none",
                 y: reduceMotion ? 0 : contentY,
               }}
             >
@@ -46,7 +56,7 @@ export function ArchiveBookReveal() {
               <h2 className="mt-3 text-4xl font-black tracking-tight text-[#2b2117]">资料目录</h2>
               <div className="mt-5 grid gap-1">
                 {archiveDirectory.map((item) => (
-                  <Link key={item.label} className={`${styles.directoryLine} group block py-2.5`} href={item.href}>
+                  <Link key={item.label} className={`${styles.directoryLine} group block py-2.5`} href={item.href} tabIndex={contentTabIndex}>
                     <span className="flex items-baseline justify-between gap-3">
                       <span className="text-lg font-bold text-[#2b2117] group-hover:text-[#2f6b58]">{item.label}</span>
                       <span className="font-mono text-xs text-[#a26b43]">打开</span>
@@ -58,9 +68,11 @@ export function ArchiveBookReveal() {
             </motion.div>
 
             <motion.div
-              className={`${styles.bookPage} p-6`}
+              className={`${styles.bookPage} p-5 xl:p-6`}
+              aria-hidden={contentAriaHidden}
               style={{
                 opacity: reduceMotion ? 1 : contentOpacity,
+                pointerEvents: contentFocusable ? "auto" : "none",
                 y: reduceMotion ? 0 : contentY,
               }}
             >
@@ -68,7 +80,7 @@ export function ArchiveBookReveal() {
               <h2 className="mt-3 text-4xl font-black tracking-tight text-[#2b2117]">课程入口</h2>
               <div className="mt-5 grid grid-cols-2 gap-3">
                 {courseBooks.map((course) => (
-                  <PdfCourseBook key={course.label} course={course} />
+                  <PdfCourseBook key={course.label} course={course} tabIndex={contentTabIndex} />
                 ))}
               </div>
             </motion.div>
@@ -77,7 +89,7 @@ export function ArchiveBookReveal() {
           <motion.div
             className={styles.bookCover}
             style={{ rotateY: reduceMotion ? -172 : coverRotate }}
-            aria-label="课程资料档案册封面"
+            aria-hidden="true"
           >
             <div className="flex h-full flex-col justify-between p-12">
               <div>

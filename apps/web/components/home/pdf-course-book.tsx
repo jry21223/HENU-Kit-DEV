@@ -22,12 +22,13 @@ const tilt: Record<CourseBook["tone"], string> = {
   cyan: "1deg",
 };
 
-export function PdfCourseBook({ course }: { course: CourseBook }) {
+export function PdfCourseBook({ course, tabIndex }: { course: CourseBook; tabIndex?: number }) {
   return (
     <Link
       className={`${styles.courseBook} ${toneClass[course.tone]}`}
       href={course.href}
       style={{ "--book-tilt": tilt[course.tone] } as CSSProperties}
+      tabIndex={tabIndex}
     >
       <span className="relative z-10 flex items-center justify-between gap-3 font-mono text-xs font-semibold text-[#2b2117]/78">
         <span>{course.code}</span>

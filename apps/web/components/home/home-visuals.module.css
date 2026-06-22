@@ -200,6 +200,7 @@
     inset 0 0 0 2px rgb(255 255 255 / 0.18),
     0 28px 72px rgb(70 45 22 / 0.26);
   backface-visibility: hidden;
+  pointer-events: none;
 }
 
 .bookInside {
@@ -231,6 +232,28 @@
 @media (max-width: 1023px) {
   .bookStage {
     display: none;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1120px) {
+  .bookSticky {
+    padding: 72px 18px 32px;
+  }
+
+  .archiveBook {
+    width: min(980px, 94vw);
+    height: min(620px, 60vw);
+    min-height: 600px;
+  }
+
+  .bookInside {
+    gap: 12px;
+    padding: 18px;
+  }
+
+  .bookPage .courseBook {
+    min-height: 116px;
+    padding: 12px;
   }
 }
 
