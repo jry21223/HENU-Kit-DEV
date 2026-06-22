@@ -11,7 +11,7 @@ import { SalesAssistantNote } from "./sales-assistant-note";
 
 export function HomePage() {
   return (
-    <main className="home-page min-h-[100dvh] overflow-x-hidden text-[#2b2117]">
+    <main className="home-page min-h-[100dvh] overflow-x-clip text-[#2b2117]">
       <HomeNav />
       <HeroIntro />
       <ArchiveBookReveal />

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from "motion/react";
-import { useRef, useState } from "react";
+import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import { archiveDirectory, courseBooks } from "./home-data";
 import { PdfCourseBook } from "./pdf-course-book";
 import styles from "./home-visuals.module.css";
@@ -22,10 +22,38 @@ export function ArchiveBookReveal() {
   const coverRotate = useTransform(scrollYProgress, [0.35, 0.78], [0, -172]);
   const contentOpacity = useTransform(scrollYProgress, [0.62, 0.78], [0, 1]);
   const contentY = useTransform(scrollYProgress, [0.62, 0.78], [24, 0]);
-  useMotionValueEvent(scrollYProgress, "change", (latest) => {
-    const nextReady = latest >= 0.62;
-    setContentReady((current) => (current === nextReady ? current : nextReady));
-  });
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setContentReady(true);
+      return;
+    }
+
+    const updateContentReady = () => {
+      const stage = ref.current;
+
+      if (!stage) {
+        return;
+      }
+
+      const rect = stage.getBoundingClientRect();
+      const scrollableDistance = Math.max(stage.offsetHeight - window.innerHeight, 1);
+      const progress = Math.min(Math.max(-rect.top / scrollableDistance, 0), 1);
+      const nextReady = progress >= 0.62;
+
+      setContentReady((current) => (current === nextReady ? current : nextReady));
+    };
+
+    updateContentReady();
+    window.addEventListener("scroll", updateContentReady, { passive: true });
+    window.addEventListener("resize", updateContentReady);
+
+    return () => {
+      window.removeEventListener("scroll", updateContentReady);
+      window.removeEventListener("resize", updateContentReady);
+    };
+  }, [reduceMotion]);
+
   const contentFocusable = reduceMotion || contentReady;
   const contentTabIndex = contentFocusable ? undefined : -1;
   const contentAriaHidden = contentFocusable ? undefined : true;
@@ -53,15 +81,15 @@ export function ArchiveBookReveal() {
               }}
             >
               <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#b75c32]">资料档案</p>
-              <h2 className="mt-3 text-4xl font-black tracking-tight text-[#2b2117]">资料目录</h2>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-[#2b2117] xl:text-4xl">资料目录</h2>
               <div className="mt-5 grid gap-1">
-                {archiveDirectory.map((item) => (
-                  <Link key={item.label} className={`${styles.directoryLine} group block py-2.5`} href={item.href} tabIndex={contentTabIndex}>
+                {archiveDirectory.slice(0, 6).map((item) => (
+                  <Link key={item.label} className={`${styles.directoryLine} group block py-2`} href={item.href} tabIndex={contentTabIndex}>
                     <span className="flex items-baseline justify-between gap-3">
-                      <span className="text-lg font-bold text-[#2b2117] group-hover:text-[#2f6b58]">{item.label}</span>
+                      <span className="text-base font-bold text-[#2b2117] group-hover:text-[#2f6b58] xl:text-lg">{item.label}</span>
                       <span className="font-mono text-xs text-[#a26b43]">打开</span>
                     </span>
-                    <span className="mt-1 block text-sm leading-6 text-[#756653]">{item.description}</span>
+                    <span className="mt-1 block text-sm leading-5 text-[#756653] xl:leading-6">{item.description}</span>
                   </Link>
                 ))}
               </div>
