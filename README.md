@@ -6,7 +6,7 @@ V2 is a greenfield rebuild of the one-stop study and final-review platform. The 
 
 - V2 monorepo skeleton is in place.
 - The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, school/course/material endpoints, admin CRUD for organization/course/material records, local material upload guards, material download permission checks, quiz submission, wrong-question records, and basic weakness counts.
-- The Next.js web app has real routes for the home page, course list, course detail, material detail, and course quiz practice. Login is still a visible placeholder wired for the next auth UI pass.
+- The Next.js web app has real routes for the home page, course list, course detail, material detail, course quiz practice, and student email-code login.
 - Go API, Go Worker, Next.js Web, Vue Admin, PostgreSQL, and Redis are the target runtime.
 - No production data migration is planned.
 - WeChat Pay Native is the target payment provider; local development starts with mock payment boundaries.
@@ -61,6 +61,7 @@ This repo can also be checked with a portable Go toolchain under `.tools/`; `.to
 Implemented API checks currently cover:
 
 - email-code login and role denial
+- web login form build/type coverage
 - material detail not leaking storage keys
 - free/login-required/paid material download gates
 - unsafe material storage keys returning 404

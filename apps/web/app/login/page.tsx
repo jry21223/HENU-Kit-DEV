@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LoginForm } from "@/components/auth/login-form";
 
 export default function LoginPage() {
   return (
@@ -9,22 +10,9 @@ export default function LoginPage() {
         </Link>
         <h1 className="mt-6 text-2xl font-semibold">学生邮箱登录</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Go API 已支持邮箱验证码、JWT Cookie 和角色权限。本页面下一步会接入真实登录表单；当前仍是前端入口占位。
+          使用学校邮箱获取验证码。开发环境会显示固定验证码；生产环境必须接入真实邮件发送并关闭固定验证码。
         </p>
-        <form className="mt-6 space-y-4">
-          <label className="block text-sm font-medium">
-            学生邮箱
-            <input
-              className="mt-2 w-full rounded-md border border-line px-3 py-2"
-              placeholder="name@stu.henu.edu.cn"
-              type="email"
-              disabled
-            />
-          </label>
-          <button className="w-full rounded-md bg-sage px-4 py-2 text-sm font-medium text-white opacity-60" disabled>
-            登录表单待接入
-          </button>
-        </form>
+        <LoginForm />
       </section>
     </main>
   );

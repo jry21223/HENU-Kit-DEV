@@ -12,6 +12,7 @@
 - Admin organization/course/material CRUD
 - Local material upload guardrails
 - Web course list/detail, material detail, and quiz practice pages
+- Web email-code login form
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
@@ -21,7 +22,7 @@
 ## Next Deliverable
 
 - Course package and package-level material grants
-- Web auth form wired to email-code login
+- Web profile/session polish and school/major binding UI
 - Admin review and publish flows
 - Download audit logs and PDF watermark integration
 
