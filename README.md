@@ -146,3 +146,9 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Worker：`services/worker`
 - Web：`apps/web`
 - Admin：`apps/admin`
+
+## 10. Current Admin Notes
+
+- Vue Admin includes `/downloads` for successful material download audit logs.
+- The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
+- The page is read-only: it does not grant paid access, mutate logs, or expose material `storage_key`.

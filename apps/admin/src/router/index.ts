@@ -3,6 +3,7 @@ import { useAuthStore } from "../stores/auth";
 
 import CoursesView from "../views/CoursesView.vue";
 import DashboardView from "../views/DashboardView.vue";
+import DownloadsView from "../views/DownloadsView.vue";
 import LoginView from "../views/LoginView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
 
@@ -14,6 +15,7 @@ export const router = createRouter({
     { path: "/dashboard", component: DashboardView },
     { path: "/courses", component: CoursesView },
     { path: "/materials", component: MaterialsView },
+    { path: "/downloads", component: DownloadsView },
   ],
 });
 
