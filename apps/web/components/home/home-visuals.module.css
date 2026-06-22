@@ -82,6 +82,7 @@
   height: 22px;
   border-radius: inherit;
   background: rgb(255 255 255 / 0.24);
+  pointer-events: none;
 }
 
 .noteYellow {
@@ -128,6 +129,7 @@
   border-radius: 999px;
   background: #f7efe4;
   transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .ticket::before {
