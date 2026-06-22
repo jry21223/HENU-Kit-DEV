@@ -22,6 +22,20 @@
   --el-border-radius-base: 10px;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
 body {
   margin: 0;
   background: var(--fr-bg);
@@ -37,10 +51,24 @@ a {
 .el-card {
   border-color: var(--fr-border);
   border-radius: var(--fr-radius);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.el-card__body,
+.el-card__header,
+.el-form,
+.el-form-item,
+.el-form-item__content,
+.el-input {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .el-button {
   border-radius: 10px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .el-table {
@@ -51,11 +79,16 @@ a {
 .admin-login {
   display: grid;
   min-height: 100vh;
+  max-width: 100%;
+  min-width: 0;
   place-items: center;
   padding: 24px;
+  width: 100%;
 }
 
 .login-card {
+  min-width: 0;
+  max-width: 100%;
   width: min(460px, 100%);
 }
 
@@ -196,6 +229,10 @@ a {
   width: 100%;
 }
 
+.inline-row > * {
+  min-width: 0;
+}
+
 .full-width {
   width: 100%;
 }
@@ -205,6 +242,10 @@ a {
 }
 
 @media (max-width: 860px) {
+  .admin-login {
+    padding: 16px;
+  }
+
   .admin-shell {
     grid-template-columns: 1fr;
   }
@@ -223,8 +264,23 @@ a {
     display: grid;
   }
 
+  .inline-row {
+    grid-template-columns: 1fr;
+  }
+
   .stat-grid,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-login {
+    justify-items: start;
+  }
+
+  .login-card {
+    justify-self: start;
+    width: 100%;
   }
 }
