@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import { archiveDirectory, courseBooks } from "./home-data";
 import { PdfCourseBook } from "./pdf-course-book";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import styles from "./home-visuals.module.css";
 
 const visibleDirectory = archiveDirectory.slice(0, 6);
 
 export function MobileArchiveIntro() {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = usePrefersReducedMotion();
 
   return (
     <section

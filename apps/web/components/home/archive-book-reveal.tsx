@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { motion, useScroll, useTransform } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { archiveDirectory, courseBooks } from "./home-data";
 import { PdfCourseBook } from "./pdf-course-book";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import styles from "./home-visuals.module.css";
 
 export function ArchiveBookReveal() {
   const ref = useRef<HTMLElement>(null);
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = usePrefersReducedMotion();
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start start", "end end"],
