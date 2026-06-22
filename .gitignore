@@ -17,6 +17,7 @@ build/
 # TypeScript / tooling cache
 *.tsbuildinfo
 .eslintcache
+.codegraph/
 
 # Logs
 logs/

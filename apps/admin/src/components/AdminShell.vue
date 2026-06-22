@@ -1,13 +1,18 @@
 <template>
   <main class="admin-shell">
     <aside class="sidebar">
-      <strong>Final Review Admin</strong>
-      <span class="muted">{{ copy.subtitle }}</span>
-      <nav class="side-nav">
-        <RouterLink to="/dashboard">{{ copy.dashboard }}</RouterLink>
-        <RouterLink to="/courses">{{ copy.courses }}</RouterLink>
-        <RouterLink to="/materials">{{ copy.materials }}</RouterLink>
-        <RouterLink to="/downloads">{{ copy.downloads }}</RouterLink>
+      <div class="brand">
+        <strong>资料运营工作台</strong>
+        <span class="muted">软件学院课程资料库</span>
+      </div>
+      <nav class="side-nav" aria-label="后台导航">
+        <RouterLink to="/dashboard">运营概览</RouterLink>
+        <RouterLink to="/courses">课程维护</RouterLink>
+        <RouterLink to="/materials">PDF 资料</RouterLink>
+        <RouterLink to="/downloads">下载审计</RouterLink>
+        <span class="nav-section">预留能力</span>
+        <span class="disabled-nav" aria-disabled="true">内容审核</span>
+        <span class="disabled-nav" aria-disabled="true">课程社区</span>
       </nav>
       <div class="sidebar-footer">
         <span>{{ auth.user?.email }}</span>
@@ -25,12 +30,7 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
 const copy = {
-  subtitle: "\u0056\u0032 \u7ba1\u7406\u540e\u53f0",
-  dashboard: "\u4eea\u8868\u76d8",
-  courses: "\u8bfe\u7a0b\u7ba1\u7406",
-  materials: "\u8d44\u6599\u7ba1\u7406",
-  downloads: "\u4e0b\u8f7d\u5ba1\u8ba1",
-  logout: "\u9000\u51fa",
+  logout: "退出",
 };
 
 const auth = useAuthStore();

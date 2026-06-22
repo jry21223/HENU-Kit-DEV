@@ -2,9 +2,9 @@
   <main class="admin-login">
     <el-card class="login-card" shadow="never">
       <template #header>
-        <strong>管理后台登录</strong>
+        <strong>资料运营工作台登录</strong>
       </template>
-      <p class="muted">使用 Go API 的邮箱验证码登录。当前只有 admin / super_admin 可以进入后台。</p>
+      <p class="muted">管理员登录后可以维护课程、上传 PDF 资料，并管理资料保障相关状态。</p>
       <el-form class="form-stack" label-position="top" @submit.prevent>
         <el-form-item label="管理员邮箱">
           <el-input v-model="email" placeholder="admin@example.com" />

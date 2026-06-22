@@ -4,15 +4,113 @@
 
 :root {
   color-scheme: light;
+  --background: 48 28% 94%;
+  --foreground: 150 8% 18%;
+  --card: 48 32% 98%;
+  --card-foreground: 150 9% 17%;
+  --popover: 72 24% 98%;
+  --popover-foreground: 150 9% 17%;
+  --primary: 148 20% 34%;
+  --primary-foreground: 78 28% 96%;
+  --secondary: 76 16% 90%;
+  --secondary-foreground: 150 9% 17%;
+  --muted: 76 16% 90%;
+  --muted-foreground: 150 7% 42%;
+  --accent: 155 18% 88%;
+  --accent-foreground: 165 14% 28%;
+  --destructive: 8 45% 44%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 67 13% 80%;
+  --input: 67 13% 80%;
+  --ring: 148 22% 36%;
+  --radius: 0.25rem;
+  --sidebar: 48 32% 98%;
+  --sidebar-foreground: 150 9% 17%;
+  --sidebar-primary: 148 20% 34%;
+  --sidebar-primary-foreground: 78 28% 96%;
+  --sidebar-accent: 76 16% 90%;
+  --sidebar-accent-foreground: 150 9% 17%;
+  --sidebar-border: 67 13% 80%;
+  --sidebar-ring: 148 20% 34%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  background: #f8faf7;
-  color: #17202a;
+  background:
+    radial-gradient(circle at 48% 18%, hsl(48 35% 98% / 0.92), transparent 36rem),
+    linear-gradient(hsl(64 18% 78% / 0.28) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(64 18% 78% / 0.28) 1px, transparent 1px),
+    hsl(var(--background));
+  background-attachment: fixed;
+  background-size: auto, 48px 48px, 48px 48px, auto;
+  color: hsl(var(--foreground));
+  font-family:
+    Inter, "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.2);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--secondary));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.45);
+  border: 2px solid hsl(var(--secondary));
+  border-radius: 999px;
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer components {
+  .archive-panel {
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card) / 0.9);
+    box-shadow: 0 18px 70px hsl(58 12% 44% / 0.12);
+    backdrop-filter: blur(10px);
+  }
+
+  .archive-panel-soft {
+    border: 1px solid hsl(var(--border) / 0.78);
+    background: hsl(var(--card) / 0.68);
+    box-shadow: 0 10px 36px hsl(58 12% 44% / 0.08);
+    backdrop-filter: blur(8px);
+  }
 }
