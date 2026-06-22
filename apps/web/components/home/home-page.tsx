@@ -2,6 +2,7 @@ import { ArchiveBookReveal } from "./archive-book-reveal";
 import { FinalHomeCta } from "./final-home-cta";
 import { HeroIntro } from "./hero-intro";
 import { HomeNav } from "./home-nav";
+import { MobileArchiveIntro } from "./mobile-archive-intro";
 
 export function HomePage() {
   return (
@@ -9,6 +10,7 @@ export function HomePage() {
       <HomeNav />
       <HeroIntro />
       <ArchiveBookReveal />
+      <MobileArchiveIntro />
       <FinalHomeCta />
       <footer className="mx-auto w-[min(1120px,calc(100%-32px))] py-10 text-center text-xs text-[#85745f]">
         软件学院资料库 / 课程资料、刷题、共创和资料保障

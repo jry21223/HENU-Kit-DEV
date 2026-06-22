@@ -266,3 +266,20 @@
     position: relative;
   }
 }
+
+.mobileArchive {
+  display: none;
+}
+
+.mobileBook {
+  border-radius: 28px;
+  border: 2px solid rgb(43 33 23 / 0.14);
+  background: linear-gradient(135deg, #d99c5d 0%, #b67846 100%);
+  box-shadow: 0 24px 70px rgb(70 45 22 / 0.2);
+}
+
+@media (max-width: 1023px) {
+  .mobileArchive {
+    display: block;
+  }
+}
