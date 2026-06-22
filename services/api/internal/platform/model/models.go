@@ -147,6 +147,29 @@ type Material struct {
 	CreatedBy      *string `json:"createdBy,omitempty" gorm:"type:uuid;index"`
 }
 
+type CoursePackage struct {
+	BaseModel
+	SchoolID    string  `json:"schoolId" gorm:"type:uuid;index;not null"`
+	CollegeID   string  `json:"collegeId" gorm:"type:uuid;index;not null"`
+	MajorID     string  `json:"majorId" gorm:"type:uuid;index;not null"`
+	CourseID    *string `json:"courseId,omitempty" gorm:"type:uuid;index"`
+	Grade       string  `json:"grade" gorm:"size:32;index;not null"`
+	Title       string  `json:"title" gorm:"size:200;not null"`
+	Slug        string  `json:"slug" gorm:"size:220;uniqueIndex;not null"`
+	Description string  `json:"description" gorm:"size:1000"`
+	PriceFen    int64   `json:"priceFen" gorm:"not null;default:0"`
+	Currency    string  `json:"currency" gorm:"size:8;default:CNY"`
+	Status      string  `json:"status" gorm:"size:32;default:draft;index"`
+}
+
+type CoursePackageItem struct {
+	BaseModel
+	PackageID    string `json:"packageId" gorm:"type:uuid;uniqueIndex:idx_package_resource;not null"`
+	ResourceType string `json:"resourceType" gorm:"size:40;uniqueIndex:idx_package_resource;not null"`
+	ResourceID   string `json:"resourceId" gorm:"type:uuid;uniqueIndex:idx_package_resource;not null"`
+	SortOrder    int    `json:"sortOrder" gorm:"default:0"`
+}
+
 type MaterialAccessGrant struct {
 	BaseModel
 	UserID     string     `json:"userId" gorm:"type:uuid;index;not null"`
@@ -155,6 +178,16 @@ type MaterialAccessGrant struct {
 	Source     string     `json:"source" gorm:"size:40;index;not null"`
 	OrderID    *string    `json:"orderId,omitempty" gorm:"type:uuid;index"`
 	ExpiresAt  *time.Time `json:"expiresAt,omitempty" gorm:"index"`
+}
+
+type MaterialDownloadLog struct {
+	BaseModel
+	UserID       *string   `json:"userId,omitempty" gorm:"type:uuid;index"`
+	MaterialID   string    `json:"materialId" gorm:"type:uuid;index;not null"`
+	AccessLevel  string    `json:"accessLevel" gorm:"size:32;index;not null"`
+	IP           string    `json:"ip" gorm:"size:80"`
+	UserAgent    string    `json:"userAgent" gorm:"size:500"`
+	DownloadedAt time.Time `json:"downloadedAt" gorm:"index;not null"`
 }
 
 type Order struct {
@@ -464,7 +497,7 @@ func AllModels() []interface{} {
 	return []interface{}{
 		&User{}, &EmailVerificationCode{},
 		&School{}, &College{}, &Major{}, &Course{},
-		&Material{}, &MaterialAccessGrant{},
+		&Material{}, &CoursePackage{}, &CoursePackageItem{}, &MaterialAccessGrant{}, &MaterialDownloadLog{},
 		&Order{}, &PaymentRecord{},
 		&QuizQuestion{}, &QuizOption{}, &QuizAttempt{}, &QuizAnswer{}, &WrongQuestion{}, &WeaknessReport{},
 		&WikiEntry{}, &WikiEditHistory{}, &WikiCreatorApplication{},

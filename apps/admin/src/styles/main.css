@@ -233,6 +233,19 @@ a {
   min-width: 0;
 }
 
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cell-muted {
+  color: #667085;
+  font-size: 12px;
+  margin: 4px 0 0;
+  word-break: break-all;
+}
+
 .full-width {
   width: 100%;
 }

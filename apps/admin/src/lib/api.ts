@@ -66,6 +66,17 @@ export type Material = {
   status: string;
 };
 
+export type DownloadRecord = {
+  id: string;
+  userId?: string;
+  materialId: string;
+  accessLevel: string;
+  ip?: string;
+  userAgent?: string;
+  downloadedAt: string;
+  material?: Material;
+};
+
 export type LoginData = {
   user: User;
   accessToken: string;

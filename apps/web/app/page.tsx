@@ -204,6 +204,7 @@ const mobileCategories = navSections[0].items.slice(0, 4);
 
 const sidebarQuickLinks = [
   { label: "资料补充建议", href: "/courses", icon: Upload, detail: "缺失资料反馈" },
+  { label: "我的下载", href: "/me/downloads", icon: Download, detail: "下载记录与资料回看" },
   { label: "维护状态", href: "/courses", icon: ShieldCheck, detail: "稳定供应记录" },
   { label: "账号设置", href: "/login", icon: Settings, detail: "登录与通知" },
 ];
@@ -412,6 +413,9 @@ function DesktopTopBar() {
         <Link className="pb-1 text-muted-foreground hover:text-primary" href="#documents">
           资料
         </Link>
+        <Link className="pb-1 text-muted-foreground hover:text-primary" href="/me/downloads">
+          我的下载
+        </Link>
       </nav>
 
       <div className="flex items-center gap-2">
@@ -421,6 +425,13 @@ function DesktopTopBar() {
         <button className="grid size-8 place-items-center rounded text-muted-foreground hover:bg-secondary hover:text-primary" aria-label="帮助">
           <CircleHelp className="size-4" aria-hidden="true" />
         </button>
+        <Link
+          className="grid size-8 place-items-center rounded text-muted-foreground hover:bg-secondary hover:text-primary"
+          href="/me/downloads"
+          aria-label="我的下载"
+        >
+          <Download className="size-4" aria-hidden="true" />
+        </Link>
         <Button asChild size="sm" className="h-8 rounded px-3 text-xs">
           <Link href="/login">登录</Link>
         </Button>
@@ -442,9 +453,18 @@ function MobileHeader() {
             <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">SE Material Library</p>
           </div>
         </div>
-        <Button asChild size="sm" className="h-8 rounded px-3 text-xs">
-          <Link href="/login">登录</Link>
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            className="grid size-8 place-items-center rounded border border-border text-muted-foreground hover:bg-secondary hover:text-primary"
+            href="/me/downloads"
+            aria-label="我的下载"
+          >
+            <Download className="size-4" aria-hidden="true" />
+          </Link>
+          <Button asChild size="sm" className="h-8 rounded px-3 text-xs">
+            <Link href="/login">登录</Link>
+          </Button>
+        </div>
       </div>
       <div className="relative mt-3">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />

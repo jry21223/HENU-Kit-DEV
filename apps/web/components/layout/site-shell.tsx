@@ -14,13 +14,16 @@ export function SiteShell({ children }: { children: ReactNode }) {
               </span>
               <span className="min-w-0 truncate">软件学院资料库</span>
             </Link>
-            <div className="grid w-full min-w-0 grid-cols-3 gap-1.5 text-sm text-muted-foreground sm:flex sm:w-auto sm:items-center sm:justify-end sm:gap-2">
+            <div className="grid w-full min-w-0 grid-cols-4 gap-1.5 text-sm text-muted-foreground sm:flex sm:w-auto sm:items-center sm:justify-end sm:gap-2">
               <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/courses">
                 课程资料
               </Link>
               <a className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/#guarantee">
                 资料保障
               </a>
+              <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/me/downloads">
+                我的下载
+              </Link>
               <Link className="min-w-0 rounded-lg border border-border bg-card px-1.5 py-2 text-center text-foreground hover:bg-muted sm:px-3" href="/login">
                 登录
               </Link>

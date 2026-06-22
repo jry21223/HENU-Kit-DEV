@@ -73,6 +73,8 @@ func (h Handler) Download(ctx *gin.Context) {
 		return
 	}
 
+	h.recordDownload(ctx, material, user, hasUser)
+
 	fileName := strings.TrimSpace(material.FileName)
 	if fileName == "" {
 		fileName = filepath.Base(path)
@@ -109,7 +111,7 @@ func (h Handler) canDownload(material model.Material, user *model.User, hasUser 
 		if !user.EmailVerified {
 			return errEmailNotVerified
 		}
-		if h.hasMaterialGrant(user.ID, material.ID) {
+		if h.hasMaterialGrant(user.ID, material.ID) || h.hasPackageMaterialGrant(user.ID, material.ID) {
 			return nil
 		}
 		return errEntitlementRequired
@@ -120,7 +122,7 @@ func (h Handler) canDownload(material model.Material, user *model.User, hasUser 
 		if !user.EmailVerified {
 			return errEmailNotVerified
 		}
-		if h.hasActiveMembership(user.ID) || h.hasMaterialGrant(user.ID, material.ID) {
+		if h.hasActiveMembership(user.ID) || h.hasMaterialGrant(user.ID, material.ID) || h.hasPackageMaterialGrant(user.ID, material.ID) {
 			return nil
 		}
 		return errEntitlementRequired
@@ -138,6 +140,21 @@ func (h Handler) hasMaterialGrant(userID string, materialID string) bool {
 	return count > 0
 }
 
+func (h Handler) hasPackageMaterialGrant(userID string, materialID string) bool {
+	now := time.Now()
+	var count int64
+	h.db.Model(&model.MaterialAccessGrant{}).
+		Joins("JOIN course_package_items ON course_package_items.package_id = material_access_grants.package_id").
+		Joins("JOIN course_packages ON course_packages.id = material_access_grants.package_id").
+		Where("material_access_grants.user_id = ?", userID).
+		Where("course_package_items.resource_type = ? AND course_package_items.resource_id = ?", "material", materialID).
+		Where("course_packages.status = ?", model.StatusPublished).
+		Where("course_package_items.deleted_at IS NULL AND course_packages.deleted_at IS NULL").
+		Where("material_access_grants.expires_at IS NULL OR material_access_grants.expires_at > ?", now).
+		Count(&count)
+	return count > 0
+}
+
 func (h Handler) hasActiveMembership(userID string) bool {
 	now := time.Now()
 	var count int64
@@ -145,6 +162,30 @@ func (h Handler) hasActiveMembership(userID string) bool {
 		Where("user_id = ? AND status = ? AND (expires_at IS NULL OR expires_at > ?)", userID, "active", now).
 		Count(&count)
 	return count > 0
+}
+
+func (h Handler) recordDownload(ctx *gin.Context, material model.Material, user *model.User, hasUser bool) {
+	var userID *string
+	if hasUser && user != nil {
+		userID = &user.ID
+	}
+	ip := strings.TrimSpace(ctx.ClientIP())
+	if ip == "" {
+		ip = "unknown"
+	}
+	userAgent := strings.TrimSpace(ctx.Request.UserAgent())
+	if userAgent == "" {
+		userAgent = "unknown"
+	}
+	log := model.MaterialDownloadLog{
+		UserID:       userID,
+		MaterialID:   material.ID,
+		AccessLevel:  material.AccessLevel,
+		IP:           ip,
+		UserAgent:    userAgent,
+		DownloadedAt: time.Now(),
+	}
+	_ = h.db.Create(&log).Error
 }
 
 func safeStoragePath(uploadDir string, storageKey string) (string, error) {

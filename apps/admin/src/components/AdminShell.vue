@@ -9,13 +9,14 @@
         <RouterLink to="/dashboard">运营概览</RouterLink>
         <RouterLink to="/courses">课程维护</RouterLink>
         <RouterLink to="/materials">PDF 资料</RouterLink>
+        <RouterLink to="/downloads">下载审计</RouterLink>
         <span class="nav-section">预留能力</span>
         <span class="disabled-nav" aria-disabled="true">内容审核</span>
         <span class="disabled-nav" aria-disabled="true">课程社区</span>
       </nav>
       <div class="sidebar-footer">
         <span>{{ auth.user?.email }}</span>
-        <el-button size="small" @click="handleLogout">退出</el-button>
+        <el-button size="small" @click="handleLogout">{{ copy.logout }}</el-button>
       </div>
     </aside>
     <section class="content">
@@ -27,6 +28,10 @@
 <script setup lang="ts">
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+
+const copy = {
+  logout: "退出",
+};
 
 const auth = useAuthStore();
 const router = useRouter();

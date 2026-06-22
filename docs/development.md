@@ -4,7 +4,7 @@
 
 - Docker Desktop
 - Node.js 22+
-- Go 1.23+ for local Go commands, or Docker for containerized checks
+- Go 1.25+ for local Go commands, or Docker for containerized checks
 
 ## Commands
 

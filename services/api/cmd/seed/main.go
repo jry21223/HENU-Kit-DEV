@@ -33,6 +33,7 @@ func main() {
 	users := seedUsers(db, school, network)
 	courses := seedCourses(db, school, college, network, software)
 	seedMaterials(db, courses)
+	seedCoursePackages(db, courses)
 	seedQuestions(db, courses)
 	seedWikiAndCommunity(db, users, courses)
 	seedPointsAndMembership(db, users)
@@ -138,6 +139,53 @@ func seedMaterials(db *gorm.DB, courses map[string]model.Course) {
 	}
 	for index := range materials {
 		firstOrCreate(db, &materials[index], "course_id = ? AND title = ?", materials[index].CourseID, materials[index].Title)
+	}
+}
+
+func seedCoursePackages(db *gorm.DB, courses map[string]model.Course) {
+	discreteCourse := courses["discrete-math"]
+	courseID := discreteCourse.ID
+	coursePackage := model.CoursePackage{
+		SchoolID:    discreteCourse.SchoolID,
+		CollegeID:   discreteCourse.CollegeID,
+		MajorID:     discreteCourse.MajorID,
+		CourseID:    &courseID,
+		Grade:       discreteCourse.Grade,
+		Title:       "Discrete Math Final Review Package",
+		Slug:        "henu-software-2023-discrete-math-final",
+		Description: "Seed package for course-package permission checks. Paid materials still require a package grant.",
+		PriceFen:    1990,
+		Currency:    "CNY",
+		Status:      model.StatusPublished,
+	}
+	firstOrCreate(db, &coursePackage, "slug = ?", coursePackage.Slug)
+	db.Model(&coursePackage).Updates(map[string]interface{}{
+		"school_id":   coursePackage.SchoolID,
+		"college_id":  coursePackage.CollegeID,
+		"major_id":    coursePackage.MajorID,
+		"course_id":   coursePackage.CourseID,
+		"grade":       coursePackage.Grade,
+		"title":       coursePackage.Title,
+		"description": coursePackage.Description,
+		"price_fen":   coursePackage.PriceFen,
+		"currency":    coursePackage.Currency,
+		"status":      coursePackage.Status,
+	})
+
+	var paidMaterials []model.Material
+	if err := db.Where("course_id = ? AND access_level = ? AND status = ?", discreteCourse.ID, model.MaterialAccessPaid, model.StatusPublished).
+		Order("created_at asc").
+		Find(&paidMaterials).Error; err != nil {
+		log.Fatal(err)
+	}
+	for index := range paidMaterials {
+		item := model.CoursePackageItem{
+			PackageID:    coursePackage.ID,
+			ResourceType: "material",
+			ResourceID:   paidMaterials[index].ID,
+			SortOrder:    index + 1,
+		}
+		firstOrCreate(db, &item, "package_id = ? AND resource_type = ? AND resource_id = ?", item.PackageID, item.ResourceType, item.ResourceID)
 	}
 }
 

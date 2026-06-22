@@ -13,9 +13,11 @@ import (
 	"final-review-platform/services/api/internal/ai"
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/course"
+	"final-review-platform/services/api/internal/downloadlog"
 	"final-review-platform/services/api/internal/health"
 	"final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/org"
+	"final-review-platform/services/api/internal/packagecatalog"
 	"final-review-platform/services/api/internal/quiz"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/middleware"
@@ -49,6 +51,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	orgHandler := org.NewHandler(db)
 	courseHandler := course.NewHandler(db)
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
+	downloadLogHandler := downloadlog.NewHandler(db)
+	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
@@ -74,10 +78,13 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/courses", orgHandler.Courses)
 	v1.GET("/courses/:id", orgHandler.Course)
 	v1.GET("/courses/:id/materials", courseHandler.CourseMaterials)
+	v1.GET("/courses/:id/packages", packageHandler.CoursePackages)
 	v1.GET("/courses/:id/questions", quizHandler.CourseQuestions)
 	v1.GET("/materials", materialHandler.List)
 	v1.GET("/materials/:id", materialHandler.Detail)
 	v1.GET("/materials/:id/download", authMiddleware.OptionalAuth(), materialHandler.Download)
+	v1.GET("/packages", packageHandler.List)
+	v1.GET("/packages/:id", packageHandler.Detail)
 	v1.GET("/questions/:id", quizHandler.Question)
 	v1.POST("/questions/:id/submit", authMiddleware.OptionalAuth(), quizHandler.Submit)
 	v1.POST("/quiz/attempts", authMiddleware.RequireAuth(), quizHandler.CreateAttempt)
@@ -85,6 +92,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
 	v1.DELETE("/me/wrong-questions/:id", authMiddleware.RequireAuth(), quizHandler.DeleteWrongQuestion)
 	v1.GET("/me/weakness-report", authMiddleware.RequireAuth(), quizHandler.WeaknessReport)
+	v1.GET("/me/downloads", authMiddleware.RequireAuth(), downloadLogHandler.MyDownloads)
 	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 
@@ -109,6 +117,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.PATCH("/materials/:id", adminHandler.UpdateMaterial)
 	admin.DELETE("/materials/:id", adminHandler.ArchiveMaterial)
 	admin.POST("/materials/upload", adminHandler.UploadMaterial)
+	admin.GET("/downloads", downloadLogHandler.AdminDownloads)
 	admin.GET("/ai/tasks", aiHandler.AdminTasks)
 	admin.GET("/ai/drafts", aiHandler.AdminDrafts)
 	admin.POST("/ai/drafts/:id/approve", aiHandler.ApproveDraft)
