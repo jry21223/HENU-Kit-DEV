@@ -23,3 +23,10 @@ Common fields:
 Reviewable content includes reviewer and review result fields.
 
 `services/api/migrations/0001_v2_schema.sql` records the bootstrap SQL prerequisite. During this greenfield stage, GORM AutoMigrate is enabled by default through `AUTO_MIGRATE=true`.
+
+Current access-control notes:
+
+- `materials.storage_key` is internal-only and is not serialized in public API responses.
+- `material_access_grants.material_id` is the active paid-material unlock path in the current foundation.
+- `material_access_grants.package_id` is reserved for the course-package module and is not treated as a completed package entitlement flow yet.
+- `wrong_questions` uses a unique user/question pair so repeated wrong answers increment `wrong_count` instead of creating duplicate rows.

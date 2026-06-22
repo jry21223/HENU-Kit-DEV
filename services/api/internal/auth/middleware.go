@@ -23,6 +23,33 @@ func NewMiddleware(db *gorm.DB, tokens *TokenManager) Middleware {
 	return Middleware{db: db, tokens: tokens}
 }
 
+func (m Middleware) OptionalAuth() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		tokenText := bearerToken(ctx.GetHeader("Authorization"))
+		if tokenText == "" {
+			if cookie, err := ctx.Cookie("access_token"); err == nil {
+				tokenText = cookie
+			}
+		}
+		if tokenText == "" {
+			ctx.Next()
+			return
+		}
+
+		claims, err := m.tokens.Parse(tokenText, TokenTypeAccess)
+		if err != nil {
+			ctx.Next()
+			return
+		}
+
+		var user model.User
+		if err := m.db.First(&user, "id = ?", claims.UserID).Error; err == nil {
+			ctx.Set(CurrentUserKey, &user)
+		}
+		ctx.Next()
+	}
+}
+
 func (m Middleware) RequireAuth() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		tokenText := bearerToken(ctx.GetHeader("Authorization"))

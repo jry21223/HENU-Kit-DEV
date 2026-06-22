@@ -5,7 +5,7 @@ V2 is a greenfield rebuild of the one-stop study and final-review platform. The 
 ## Current Status
 
 - V2 monorepo skeleton is in place.
-- The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, and read-only school/course/material seed query endpoints.
+- The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, read-only school/course/material endpoints, material download permission checks, quiz submission, wrong-question records, and basic weakness counts.
 - Go API, Go Worker, Next.js Web, Vue Admin, PostgreSQL, and Redis are the target runtime.
 - No production data migration is planned.
 - WeChat Pay Native is the target payment provider; local development starts with mock payment boundaries.
@@ -57,6 +57,15 @@ cd ../worker && go test ./...
 
 This repo can also be checked with a portable Go toolchain under `.tools/`; `.tools/` is ignored and must not be committed.
 
+Implemented API checks currently cover:
+
+- email-code login and role denial
+- material detail not leaking storage keys
+- free/login-required/paid material download gates
+- unsafe material storage keys returning 404
+- quiz list/detail not leaking answers
+- quiz submission and wrong-question user isolation
+
 ## Seed Data
 
 After PostgreSQL is available:
@@ -80,3 +89,4 @@ Development verification code is `123456` by default. Production must configure 
 - Do not commit `.env`, JWT private keys, WeChat Pay keys, LLM API keys, or real course PDFs.
 - `uploads/` is runtime storage and is ignored except placeholder files.
 - Production must not use fixed verification codes or mock payment.
+- Paid material access is enforced by the Go API before serving local files; the current V2 foundation checks direct material grants only. Course package grants are still a later module.

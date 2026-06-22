@@ -23,6 +23,7 @@ type Config struct {
 	RateLimitBurst     int
 	AutoMigrate        bool
 	DevFixedCode       string
+	LocalUploadDir     string
 	JWT                JWTConfig
 }
 
@@ -48,6 +49,7 @@ func Load() Config {
 		RateLimitBurst:     intEnv("RATE_LIMIT_BURST", 40),
 		AutoMigrate:        boolEnv("AUTO_MIGRATE", true),
 		DevFixedCode:       env("DEV_FIXED_VERIFICATION_CODE", "123456"),
+		LocalUploadDir:     env("LOCAL_UPLOAD_DIR", "uploads"),
 		JWT: JWTConfig{
 			Issuer:           env("JWT_ISSUER", "final-review-platform"),
 			AccessTTLMinutes: intEnv("JWT_ACCESS_TTL_MINUTES", 15),
