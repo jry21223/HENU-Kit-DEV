@@ -78,6 +78,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/materials/:id/download", authMiddleware.OptionalAuth(), materialHandler.Download)
 	v1.GET("/questions/:id", quizHandler.Question)
 	v1.POST("/questions/:id/submit", authMiddleware.OptionalAuth(), quizHandler.Submit)
+	v1.POST("/quiz/attempts", authMiddleware.RequireAuth(), quizHandler.CreateAttempt)
+	v1.GET("/me/quiz-attempts", authMiddleware.RequireAuth(), quizHandler.MyAttempts)
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
 	v1.DELETE("/me/wrong-questions/:id", authMiddleware.RequireAuth(), quizHandler.DeleteWrongQuestion)
 	v1.GET("/me/weakness-report", authMiddleware.RequireAuth(), quizHandler.WeaknessReport)

@@ -24,6 +24,8 @@ Currently implemented endpoints:
 - `GET /api/v1/materials/:id/download`
 - `GET /api/v1/questions/:id`
 - `POST /api/v1/questions/:id/submit`
+- `POST /api/v1/quiz/attempts`
+- `GET /api/v1/me/quiz-attempts`
 - `GET /api/v1/me/wrong-questions`
 - `DELETE /api/v1/me/wrong-questions/:id`
 - `GET /api/v1/me/weakness-report`
@@ -87,6 +89,7 @@ Implemented quiz behavior:
 - question list/detail responses do not expose answers
 - submit returns correctness, score, and explanation
 - unauthenticated users can submit practice answers, but wrong questions are not persisted
+- logged-in users can create quiz attempts and list only their own attempts
 - authenticated wrong answers create or update user-scoped wrong-question records
 - weak-point reporting currently returns per-course wrong-count totals
 

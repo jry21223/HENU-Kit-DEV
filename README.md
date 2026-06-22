@@ -5,7 +5,7 @@ V2 is a greenfield rebuild of the one-stop study and final-review platform. The 
 ## Current Status
 
 - V2 monorepo skeleton is in place.
-- The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, school/course/material endpoints, admin CRUD for organization/course/material records, local material upload guards, material download permission checks, quiz submission, wrong-question records, and basic weakness counts.
+- The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, school/course/material endpoints, admin CRUD for organization/course/material records, local material upload guards, material download permission checks, quiz attempts, quiz submission, wrong-question records, and basic weakness counts.
 - The Next.js web app has real routes for the home page, course list, course detail, material detail, course quiz practice, and student email-code login.
 - The Vue admin app has email-code login, route guards, dashboard, course management, and material upload/list/archive pages wired to the Go API.
 - Go API, Go Worker, Next.js Web, Vue Admin, PostgreSQL, and Redis are the target runtime.
@@ -70,7 +70,7 @@ Implemented API checks currently cover:
 - upload filename, extension, content, and size guards
 - Vue admin build/type coverage for dashboard, course management, and material management
 - quiz list/detail not leaking answers
-- quiz submission and wrong-question user isolation
+- quiz attempts, submission, and wrong-question user isolation
 
 ## Seed Data
 

@@ -105,6 +105,43 @@ func TestJudgeMultipleChoiceAndFillBlank(t *testing.T) {
 	}
 }
 
+func TestQuizAttemptsRequireAuthAndAreUserScoped(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	course := createTestCourse(t, db)
+
+	unauthorized := performJSON(router, http.MethodPost, "/api/v1/quiz/attempts", `{"courseId":"`+course.ID+`"}`, "")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated attempt create 401, got %d: %s", unauthorized.Code, unauthorized.Body.String())
+	}
+
+	studentToken := loginTestUser(t, router, "student@stu.henu.edu.cn")
+	createResponse := performJSON(router, http.MethodPost, "/api/v1/quiz/attempts", `{"courseId":"`+course.ID+`","mode":"practice"}`, studentToken)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected attempt create 200, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	if !strings.Contains(createResponse.Body.String(), `"courseId":"`+course.ID+`"`) {
+		t.Fatalf("expected created attempt course id, got %s", createResponse.Body.String())
+	}
+
+	listResponse := performJSON(router, http.MethodGet, "/api/v1/me/quiz-attempts?courseId="+course.ID, "", studentToken)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected attempt list 200, got %d: %s", listResponse.Code, listResponse.Body.String())
+	}
+	if !strings.Contains(listResponse.Body.String(), course.ID) {
+		t.Fatalf("expected attempt in own list, got %s", listResponse.Body.String())
+	}
+
+	otherToken := loginTestUser(t, router, "other@stu.henu.edu.cn")
+	otherList := performJSON(router, http.MethodGet, "/api/v1/me/quiz-attempts", "", otherToken)
+	if otherList.Code != http.StatusOK {
+		t.Fatalf("expected other attempt list 200, got %d: %s", otherList.Code, otherList.Body.String())
+	}
+	if strings.Contains(otherList.Body.String(), course.ID) {
+		t.Fatalf("other user saw student's attempt: %s", otherList.Body.String())
+	}
+}
+
 func createTestQuestion(t *testing.T, db *gorm.DB, courseID string, questionType string, answer string) model.QuizQuestion {
 	t.Helper()
 	question := model.QuizQuestion{

@@ -38,6 +38,17 @@ type questionDTO struct {
 	Options          []optionDTO `json:"options,omitempty"`
 }
 
+type attemptDTO struct {
+	ID           string     `json:"id"`
+	CourseID     string     `json:"courseId"`
+	Mode         string     `json:"mode"`
+	Score        float64    `json:"score"`
+	StartedAt    time.Time  `json:"startedAt"`
+	FinishedAt   *time.Time `json:"finishedAt,omitempty"`
+	AnswerCount  int64      `json:"answerCount"`
+	CorrectCount int64      `json:"correctCount"`
+}
+
 func (h Handler) CourseQuestions(ctx *gin.Context) {
 	var questions []model.QuizQuestion
 	if err := h.db.Where("course_id = ? AND status = ?", ctx.Param("id"), model.StatusPublished).
@@ -90,6 +101,74 @@ func (h Handler) Submit(ctx *gin.Context) {
 		"score":       result.Score,
 		"explanation": question.Explanation,
 	})
+}
+
+func (h Handler) CreateAttempt(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+
+	var request struct {
+		CourseID string `json:"courseId"`
+		Mode     string `json:"mode"`
+	}
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	if request.CourseID == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "course_id_required", nil)
+		return
+	}
+
+	var course model.Course
+	if err := h.db.First(&course, "id = ? AND status = ?", request.CourseID, model.StatusPublished).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "course_not_found", nil)
+		return
+	}
+
+	mode := request.Mode
+	if mode == "" {
+		mode = "practice"
+	}
+	attempt := model.QuizAttempt{
+		UserID:    user.ID,
+		CourseID:  course.ID,
+		Mode:      mode,
+		Score:     0,
+		StartedAt: time.Now(),
+	}
+	if err := h.db.Create(&attempt).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "create_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"attempt": h.toAttemptDTO(attempt)})
+}
+
+func (h Handler) MyAttempts(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+
+	query := h.db.Where("user_id = ?", user.ID)
+	if courseID := ctx.Query("courseId"); courseID != "" {
+		query = query.Where("course_id = ?", courseID)
+	}
+	var attempts []model.QuizAttempt
+	if err := query.Order("started_at desc").Limit(50).Find(&attempts).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+
+	result := make([]attemptDTO, 0, len(attempts))
+	for _, attempt := range attempts {
+		result = append(result, h.toAttemptDTO(attempt))
+	}
+	response.OK(ctx, gin.H{"attempts": result})
 }
 
 func (h Handler) WrongQuestions(ctx *gin.Context) {
@@ -198,6 +277,23 @@ func toOptionDTOs(options []model.QuizOption) []optionDTO {
 		})
 	}
 	return result
+}
+
+func (h Handler) toAttemptDTO(attempt model.QuizAttempt) attemptDTO {
+	var answerCount int64
+	var correctCount int64
+	h.db.Model(&model.QuizAnswer{}).Where("attempt_id = ?", attempt.ID).Count(&answerCount)
+	h.db.Model(&model.QuizAnswer{}).Where("attempt_id = ? AND is_correct = ?", attempt.ID, true).Count(&correctCount)
+	return attemptDTO{
+		ID:           attempt.ID,
+		CourseID:     attempt.CourseID,
+		Mode:         attempt.Mode,
+		Score:        attempt.Score,
+		StartedAt:    attempt.StartedAt,
+		FinishedAt:   attempt.FinishedAt,
+		AnswerCount:  answerCount,
+		CorrectCount: correctCount,
+	}
 }
 
 func (h Handler) recordQuizAnswer(userID string, question model.QuizQuestion, submitted string, result JudgeResult) error {
