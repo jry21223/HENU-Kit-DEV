@@ -29,6 +29,8 @@ Currently implemented endpoints:
 - `GET /api/v1/me/wrong-questions`
 - `DELETE /api/v1/me/wrong-questions/:id`
 - `GET /api/v1/me/weakness-report`
+- `POST /api/v1/ai/tasks`
+- `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/admin/schools`
 - `PATCH /api/v1/admin/schools/:id`
 - `DELETE /api/v1/admin/schools/:id`
@@ -45,6 +47,10 @@ Currently implemented endpoints:
 - `PATCH /api/v1/admin/materials/:id`
 - `DELETE /api/v1/admin/materials/:id`
 - `POST /api/v1/admin/materials/upload`
+- `GET /api/v1/admin/ai/tasks`
+- `GET /api/v1/admin/ai/drafts`
+- `POST /api/v1/admin/ai/drafts/:id/approve`
+- `POST /api/v1/admin/ai/drafts/:id/reject`
 
 Response envelope:
 
@@ -101,3 +107,12 @@ Implemented admin behavior:
 - upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with a PDF header
 - upload rejects files larger than 20 MiB
 - manually supplied `storageKey` values with path traversal are rejected
+
+Implemented AI behavior:
+
+- logged-in users can create AI tasks and query only their own tasks
+- supported task types are `chat`, `wrong_question_analysis`, `targeted_question`, `paper_generation`, and `draft_review`
+- admin users can list AI tasks and AI drafts
+- Redis Stream enqueue is best-effort; database task creation remains the source of truth
+- worker mock mode turns pending tasks into pending AI drafts
+- approving a draft marks the draft reviewed but does not publish generated content automatically

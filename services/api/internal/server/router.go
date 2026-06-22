@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/admin"
+	"final-review-platform/services/api/internal/ai"
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/course"
 	"final-review-platform/services/api/internal/health"
@@ -50,6 +51,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
 	quizHandler := quiz.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir)
+	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
 	router.GET("/healthz", healthHandler.Healthz)
 
 	v1 := router.Group("/api/v1")
@@ -83,6 +85,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
 	v1.DELETE("/me/wrong-questions/:id", authMiddleware.RequireAuth(), quizHandler.DeleteWrongQuestion)
 	v1.GET("/me/weakness-report", authMiddleware.RequireAuth(), quizHandler.WeaknessReport)
+	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
+	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 
 	admin := v1.Group("/admin")
 	admin.Use(authMiddleware.RequireAuth(), authMiddleware.RequireAdmin())
@@ -105,6 +109,10 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.PATCH("/materials/:id", adminHandler.UpdateMaterial)
 	admin.DELETE("/materials/:id", adminHandler.ArchiveMaterial)
 	admin.POST("/materials/upload", adminHandler.UploadMaterial)
+	admin.GET("/ai/tasks", aiHandler.AdminTasks)
+	admin.GET("/ai/drafts", aiHandler.AdminDrafts)
+	admin.POST("/ai/drafts/:id/approve", aiHandler.ApproveDraft)
+	admin.POST("/ai/drafts/:id/reject", aiHandler.RejectDraft)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})

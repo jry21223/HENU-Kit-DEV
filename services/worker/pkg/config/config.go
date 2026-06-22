@@ -8,19 +8,23 @@ import (
 
 type Config struct {
 	Environment   string
+	DatabaseURL   string
 	RedisAddr     string
 	RedisPassword string
 	RedisDB       int
 	LLMMode       string
+	TaskStream    string
 }
 
 func Load() Config {
 	return Config{
 		Environment:   env("APP_ENV", "development"),
+		DatabaseURL:   env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
 		RedisAddr:     env("REDIS_ADDR", "localhost:6379"),
 		RedisPassword: env("REDIS_PASSWORD", ""),
 		RedisDB:       intEnv("REDIS_DB", 0),
 		LLMMode:       env("LLM_MODE", "mock"),
+		TaskStream:    env("AI_TASK_STREAM", "ai_tasks"),
 	}
 }
 

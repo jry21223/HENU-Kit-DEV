@@ -14,6 +14,7 @@
 - Web course list/detail, material detail, and quiz practice pages
 - Web email-code login form
 - Vue admin dashboard, login guard, course management, and material upload pages
+- Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
@@ -26,6 +27,7 @@
 - Web profile/session polish and school/major binding UI
 - Admin review/publish flows and richer edit dialogs
 - Download audit logs and PDF watermark integration
+- Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables
 

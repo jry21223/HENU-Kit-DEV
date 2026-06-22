@@ -24,6 +24,7 @@ type Config struct {
 	AutoMigrate        bool
 	DevFixedCode       string
 	LocalUploadDir     string
+	AITaskStream       string
 	JWT                JWTConfig
 }
 
@@ -50,6 +51,7 @@ func Load() Config {
 		AutoMigrate:        boolEnv("AUTO_MIGRATE", true),
 		DevFixedCode:       env("DEV_FIXED_VERIFICATION_CODE", "123456"),
 		LocalUploadDir:     env("LOCAL_UPLOAD_DIR", "uploads"),
+		AITaskStream:       env("AI_TASK_STREAM", "ai_tasks"),
 		JWT: JWTConfig{
 			Issuer:           env("JWT_ISSUER", "final-review-platform"),
 			AccessTTLMinutes: intEnv("JWT_ACCESS_TTL_MINUTES", 15),
