@@ -1,102 +1,70 @@
-# Final Review Platform V2
+# 一站式学习平台 V2
 
-V2 is a greenfield rebuild of the one-stop study and final-review platform. The old Next.js + Prisma app has been archived under `legacy/v1-next-prisma` for reference only.
+> 面向高校学生的课程级学习平台：资料、刷题、AI、Wiki 共创、社区讨论、积分会员与前台销售闭环。
 
-## Current Status
+## 1. 项目概览
 
-- V2 monorepo skeleton is in place.
-- The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, school/course/material endpoints, admin CRUD for organization/course/material records, local material upload guards, material download permission checks, quiz attempts, quiz submission, wrong-question records, and basic weakness counts.
-- The Go API and Worker include a mock AI task flow: users create tasks, worker completes pending tasks, and generated output is stored as reviewable drafts.
-- The Next.js web app has real routes for the home page, course list, course detail, material detail, course quiz practice, and student email-code login.
-- The Vue admin app has email-code login, route guards, dashboard, course management, and material upload/list/archive pages wired to the Go API.
-- Go API, Go Worker, Next.js Web, Vue Admin, PostgreSQL, and Redis are the target runtime.
-- No production data migration is planned.
-- WeChat Pay Native is the target payment provider; local development starts with mock payment boundaries.
-- AI uses mock LLM first and must never publish generated content without review.
+本项目是一个面向高校学生的课程级学习平台。平台按「学校 → 学院 → 专业 → 课程」组织学习内容，围绕期末复习、课程资料、刷题训练、AI 讲解、Wiki 共创和学生社区构建完整学习闭环。
 
-## Directory Layout
+项目当前按 V2 架构重构，目标不是简单资料站，而是一个可运营、可商业化、可扩展的学习平台。
+
+### 核心目标
+
+* 让学生快速找到自己学校、专业、课程对应的复习资料。
+* 支持课程刷题、错题本、薄弱点统计和 AI 针对性强化。
+* 用 Wiki、博客、帖子、动态沉淀学生原创内容和学习经验。
+* 用积分和会员体系建立创作者激励与 AI 成本控制。
+* 用 LangBot 前台销售承接咨询、介绍权益、引导注册和购买。
+* 用独立管理后台完成内容审核、AI 草稿审核、用户运营和系统配置。
+
+## 2. 产品形态
+
+| 产品端          | 面向对象                     | 说明                              |
+| ------------ | ------------------------ | ------------------------------- |
+| Web 主站       | 学生、创作者、普通访客              | 找资料、刷题、AI 问答、Wiki、博客、帖子、动态、会员购买 |
+| Admin 管理后台   | 管理员、审核员、运营人员             | 内容审核、用户管理、AI 工作流、积分会员、系统配置      |
+| LangBot 前台销售 | 潜在用户、QQ群/微信群访客、客服入口      | 自动答疑、介绍套餐、引导注册、发放购买链接、售后分流      |
+| Go API 服务    | Web、Admin、LangBot、Worker | 统一业务 API、鉴权、数据读写、支付回调、权限校验      |
+
+## 3. 推荐目录结构
 
 ```txt
-apps/web                 Next.js student web app
-apps/admin               Vue 3 admin console
-services/api             Go Gin/GORM monolith API
-services/worker          Go Redis Streams worker
-integrations/langbot-sales-agent
-legacy/v1-next-prisma    Archived V1 reference implementation
-infra                    Docker and nginx support files
-docs                     V2 docs
-scripts                  Seed and development scripts
-uploads                  Local runtime storage, ignored except .gitkeep files
+.
+├── apps/
+│   ├── web/                    # Next.js Web 主站
+│   └── admin/                  # Vue 3 管理后台
+├── services/
+│   ├── api/                    # Go API 单体服务
+│   ├── worker/                 # AI Worker / 异步任务服务
+│   └── langbot/                # LangBot 前台销售适配层，可选
+├── infra/
+│   ├── docker/                 # Docker 相关配置
+│   └── nginx/                  # Nginx 配置，可选
+├── docs/
+│   ├── architecture.md         # 架构设计
+│   ├── api.md                  # API 文档
+│   ├── database.md             # 数据库设计
+│   ├── business.md             # 业务逻辑
+│   ├── ai-workflow.md          # AI 工作流
+│   ├── langbot-sales.md        # LangBot 前台销售说明
+│   └── deployment.md           # 部署说明
+├── scripts/
+├── uploads/
+├── docker-compose.yml
+├── docker-compose.dev.yml
+├── .env.example
+└── README.md
 ```
 
-## Quick Start
+## 4. 新成员快速上手路线
 
-```bash
-cp .env.example .env
-docker compose -f docker-compose.dev.yml up --build
-```
-
-Expected local ports:
-
-- Web: `http://localhost:3000`
-- Admin: `http://localhost:5173`
-- API: `http://localhost:8080/api/v1/healthz`
-
-## Local Checks
-
-```bash
-docker compose -f docker-compose.dev.yml config
-npm install
-npm run build
-npm audit --audit-level=low
-```
-
-If Go is installed locally:
-
-```bash
-cd services/api && go test ./...
-cd ../worker && go test ./...
-```
-
-This repo can also be checked with a portable Go toolchain under `.tools/`; `.tools/` is ignored and must not be committed.
-
-Implemented API checks currently cover:
-
-- email-code login and role denial
-- web login form build/type coverage
-- material detail not leaking storage keys
-- free/login-required/paid material download gates
-- unsafe material storage keys returning 404
-- admin-only organization/course/material mutation
-- upload filename, extension, content, and size guards
-- Vue admin build/type coverage for dashboard, course management, and material management
-- quiz list/detail not leaking answers
-- quiz attempts, submission, and wrong-question user isolation
-- AI task ownership, admin visibility, and worker draft-generation idempotency
-
-## Seed Data
-
-After PostgreSQL is available:
-
-```bash
-cd services/api
-go run ./cmd/seed
-```
-
-The seed creates demo organization/course data, materials, questions, community content, points/membership examples, a mock AI task, and demo accounts:
-
-- `admin@example.com`
-- `reviewer@example.com`
-- `creator@example.com`
-- `user@example.com`
-
-Development verification code is `123456` by default. Production must configure real delivery and must not depend on a fixed code.
-
-Seeded material records use local `uploads/materials/...` storage keys only; real PDFs are not committed and must be mounted or uploaded separately.
-
-## Security Notes
-
-- Do not commit `.env`, JWT private keys, WeChat Pay keys, LLM API keys, or real course PDFs.
-- `uploads/` is runtime storage and is ignored except placeholder files.
-- Production must not use fixed verification codes or mock payment.
-- Paid material access is enforced by the Go API before serving local files; the current V2 foundation checks direct material grants only. Course package grants are still a later module.
+1. 先读本 README，理解项目边界。
+2. 再读 `docs/architecture.md`，理解系统架构。
+3. 再读 `docs/business.md`，理解业务流程。
+4. 后端开发读 `services/api/internal`。
+5. Web 开发读 `apps/web`。
+6. 后台开发读 `apps/admin`。
+7. AI/异步任务开发读 `services/worker`。
+8. LangBot 销售开发读 `docs/langbot-sales.md` 和 `services/langbot`。
+9. 接口开发前先看 `docs/api.md`。
+10. 数据库改动前先看 `docs/database.md`。
