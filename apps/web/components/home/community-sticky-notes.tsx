@@ -2,6 +2,10 @@ import type { CSSProperties } from "react";
 import { communityNotes } from "./home-data";
 import styles from "./home-visuals.module.css";
 
+type NoteTiltStyle = CSSProperties & {
+  "--note-tilt": string;
+};
+
 const toneClass = {
   yellow: styles.noteYellow,
   pink: styles.notePink,
@@ -33,16 +37,16 @@ export function CommunityStickyNotes() {
       </div>
 
       <div className="mt-16 grid gap-5 md:grid-cols-4">
-        {communityNotes.map((note) => (
-          <article
-            key={note.title}
-            className={`${styles.stickyNote} ${toneClass[note.tone]}`}
-            style={{ "--note-tilt": noteTilt[note.tilt] } as CSSProperties}
-          >
-            <h3 className="relative z-10 text-2xl font-black tracking-tight text-[#2b2117]">{note.title}</h3>
-            <p className="relative z-10 mt-5 text-sm leading-7 text-[#493621]">{note.body}</p>
-          </article>
-        ))}
+        {communityNotes.map((note) => {
+          const noteStyle: NoteTiltStyle = { "--note-tilt": noteTilt[note.tilt] };
+
+          return (
+            <article key={note.title} className={`${styles.stickyNote} ${toneClass[note.tone]}`} style={noteStyle}>
+              <h3 className="relative z-10 text-2xl font-black tracking-tight text-[#2b2117]">{note.title}</h3>
+              <p className="relative z-10 mt-5 text-sm leading-7 text-[#493621]">{note.body}</p>
+            </article>
+          );
+        })}
       </div>
     </section>
   );
