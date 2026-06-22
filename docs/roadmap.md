@@ -15,6 +15,7 @@
 - Web email-code login form
 - Vue admin dashboard, login guard, course management, and material upload pages
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
+- Course package catalog and package-level material grants
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
@@ -23,7 +24,6 @@
 
 ## Next Deliverable
 
-- Course package and package-level material grants
 - Web profile/session polish and school/major binding UI
 - Admin review/publish flows and richer edit dialogs
 - Download audit logs and PDF watermark integration

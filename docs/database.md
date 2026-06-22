@@ -6,7 +6,7 @@ Current model coverage:
 
 - users and email verification codes
 - schools, colleges, majors, courses
-- materials and material access grants
+- materials, course packages, package items, and material access grants
 - orders and payment records
 - quiz questions, attempts, answers, wrong questions, weakness reports
 - wiki, blog, forum, moments, relations
@@ -28,5 +28,5 @@ Current access-control notes:
 
 - `materials.storage_key` is internal-only and is not serialized in public API responses.
 - `material_access_grants.material_id` is the active paid-material unlock path in the current foundation.
-- `material_access_grants.package_id` is reserved for the course-package module and is not treated as a completed package entitlement flow yet.
+- `material_access_grants.package_id` unlocks paid materials included through `course_package_items` when the package is published and the grant has not expired.
 - `wrong_questions` uses a unique user/question pair so repeated wrong answers increment `wrong_count` instead of creating duplicate rows.

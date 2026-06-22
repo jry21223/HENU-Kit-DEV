@@ -109,7 +109,7 @@ func (h Handler) canDownload(material model.Material, user *model.User, hasUser 
 		if !user.EmailVerified {
 			return errEmailNotVerified
 		}
-		if h.hasMaterialGrant(user.ID, material.ID) {
+		if h.hasMaterialGrant(user.ID, material.ID) || h.hasPackageMaterialGrant(user.ID, material.ID) {
 			return nil
 		}
 		return errEntitlementRequired
@@ -120,7 +120,7 @@ func (h Handler) canDownload(material model.Material, user *model.User, hasUser 
 		if !user.EmailVerified {
 			return errEmailNotVerified
 		}
-		if h.hasActiveMembership(user.ID) || h.hasMaterialGrant(user.ID, material.ID) {
+		if h.hasActiveMembership(user.ID) || h.hasMaterialGrant(user.ID, material.ID) || h.hasPackageMaterialGrant(user.ID, material.ID) {
 			return nil
 		}
 		return errEntitlementRequired
@@ -134,6 +134,21 @@ func (h Handler) hasMaterialGrant(userID string, materialID string) bool {
 	var count int64
 	h.db.Model(&model.MaterialAccessGrant{}).
 		Where("user_id = ? AND material_id = ? AND (expires_at IS NULL OR expires_at > ?)", userID, materialID, now).
+		Count(&count)
+	return count > 0
+}
+
+func (h Handler) hasPackageMaterialGrant(userID string, materialID string) bool {
+	now := time.Now()
+	var count int64
+	h.db.Model(&model.MaterialAccessGrant{}).
+		Joins("JOIN course_package_items ON course_package_items.package_id = material_access_grants.package_id").
+		Joins("JOIN course_packages ON course_packages.id = material_access_grants.package_id").
+		Where("material_access_grants.user_id = ?", userID).
+		Where("course_package_items.resource_type = ? AND course_package_items.resource_id = ?", "material", materialID).
+		Where("course_packages.status = ?", model.StatusPublished).
+		Where("course_package_items.deleted_at IS NULL AND course_packages.deleted_at IS NULL").
+		Where("material_access_grants.expires_at IS NULL OR material_access_grants.expires_at > ?", now).
 		Count(&count)
 	return count > 0
 }
