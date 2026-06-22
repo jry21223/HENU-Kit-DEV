@@ -1,0 +1,148 @@
+.courseBook {
+  position: relative;
+  display: flex;
+  min-height: 176px;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  border-radius: 18px 14px 14px 18px;
+  border: 2px solid rgb(43 33 23 / 0.18);
+  padding: 18px;
+  color: #2b2117;
+  box-shadow:
+    8px 10px 0 rgb(43 33 23 / 0.12),
+    0 22px 48px rgb(71 49 27 / 0.16);
+  transform: rotate(var(--book-tilt, -2deg));
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.courseBook:hover {
+  transform: translateY(-6px) rotate(var(--book-tilt, -2deg));
+  box-shadow:
+    10px 14px 0 rgb(43 33 23 / 0.14),
+    0 30px 68px rgb(71 49 27 / 0.2);
+}
+
+.courseBook::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 18px;
+  background: rgb(43 33 23 / 0.14);
+}
+
+.courseBook::after {
+  content: "";
+  position: absolute;
+  inset: 10px 10px 10px auto;
+  width: 10px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.44);
+}
+
+.toneBlue {
+  background: linear-gradient(135deg, #7fc7ff 0%, #3978e8 100%);
+}
+
+.toneOrange {
+  background: linear-gradient(135deg, #ffd166 0%, #ef7d31 100%);
+}
+
+.toneGreen {
+  background: linear-gradient(135deg, #a9e67d 0%, #30a66a 100%);
+}
+
+.tonePink {
+  background: linear-gradient(135deg, #ff9bc6 0%, #eb4f8a 100%);
+}
+
+.tonePurple {
+  background: linear-gradient(135deg, #b6a0ff 0%, #6f55dc 100%);
+}
+
+.toneCyan {
+  background: linear-gradient(135deg, #8de7e2 0%, #2aa6c8 100%);
+}
+
+.stickyNote {
+  position: relative;
+  min-height: 210px;
+  border-radius: 10px;
+  padding: 28px 24px;
+  box-shadow: 0 24px 54px rgb(71 49 27 / 0.16);
+  transform: rotate(var(--note-tilt, 0deg));
+}
+
+.stickyNote::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 22px;
+  border-radius: inherit;
+  background: rgb(255 255 255 / 0.24);
+}
+
+.noteYellow {
+  background: linear-gradient(180deg, #ffe36b 0%, #ffd242 100%);
+}
+
+.notePink {
+  background: linear-gradient(180deg, #ffb5cc 0%, #ff8eb3 100%);
+}
+
+.noteBlue {
+  background: linear-gradient(180deg, #a8d9ff 0%, #73c2ff 100%);
+}
+
+.noteGreen {
+  background: linear-gradient(180deg, #bdf08b 0%, #90d85c 100%);
+}
+
+.paperCard {
+  border: 1px solid rgb(43 33 23 / 0.12);
+  border-radius: 24px;
+  background:
+    linear-gradient(rgb(47 107 88 / 0.08) 1px, transparent 1px),
+    #fffaf2;
+  background-size: 100% 30px;
+  box-shadow: 0 20px 58px rgb(71 49 27 / 0.12);
+}
+
+.ticket {
+  position: relative;
+  border: 1px solid rgb(43 33 23 / 0.14);
+  border-radius: 28px;
+  background: #fff7df;
+  box-shadow: 0 22px 64px rgb(71 49 27 / 0.13);
+}
+
+.ticket::before,
+.ticket::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #f7efe4;
+  transform: translateY(-50%);
+}
+
+.ticket::before {
+  left: -14px;
+}
+
+.ticket::after {
+  right: -14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .courseBook,
+  .courseBook:hover,
+  .stickyNote {
+    transform: none;
+    transition: none;
+  }
+}
