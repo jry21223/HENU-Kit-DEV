@@ -13,13 +13,16 @@ export function HeroIntro() {
         <p className="mt-6 max-w-lg text-base leading-7 text-[#685b4b] sm:text-lg">
           按课程找到讲义、真题、实验资料和复习包，围绕资料继续刷题、讨论和共创。
         </p>
-        <div className="mt-7 flex max-w-lg items-center rounded-2xl border border-[#2b2117]/14 bg-white/86 p-2 shadow-[0_20px_60px_rgba(71,49,27,0.11)]">
+        <form action="/courses" className="mt-7 flex max-w-lg items-center rounded-2xl border border-[#2b2117]/14 bg-white/86 p-2 shadow-[0_20px_60px_rgba(71,49,27,0.11)]" method="get">
+          <label className="sr-only" htmlFor="home-search">
+            搜索课程、讲义、真题、实验资料
+          </label>
           <Search className="ml-2 size-5 shrink-0 text-[#9a7154]" aria-hidden="true" />
-          <input className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-[#2b2117] outline-none placeholder:text-[#9b8b78]" placeholder="搜索课程、讲义、真题、实验资料" type="search" />
-          <Link className="inline-flex shrink-0 items-center rounded-xl bg-[#2f6b58] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#285a4b]" href={heroLinks.primary.href}>
+          <input id="home-search" name="q" className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-[#2b2117] outline-none placeholder:text-[#9b8b78]" placeholder="搜索课程、讲义、真题、实验资料" type="search" />
+          <button className="inline-flex shrink-0 items-center rounded-xl bg-[#2f6b58] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#285a4b]" type="submit">
             搜索
-          </Link>
-        </div>
+          </button>
+        </form>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link className="inline-flex items-center gap-2 rounded-full bg-[#2b2117] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(43,33,23,0.2)] transition hover:-translate-y-0.5" href={heroLinks.primary.href}>
             {heroLinks.primary.label}

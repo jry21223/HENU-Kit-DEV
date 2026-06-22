@@ -11,7 +11,7 @@ const links = [
 export function HomeNav() {
   return (
     <header className="sticky top-3 z-40 mx-auto flex w-[min(1120px,calc(100%-24px))] items-center justify-between rounded-full border border-[#2b2117]/12 bg-[#fffaf2]/86 px-3 py-2 shadow-[0_16px_48px_rgba(71,49,27,0.12)] backdrop-blur-md">
-      <Link className="flex min-w-0 items-center gap-2 rounded-full pr-2 text-sm font-semibold text-[#2b2117]" href="/">
+      <Link aria-label="软件学院资料库" className="flex min-w-0 items-center gap-2 rounded-full pr-2 text-sm font-semibold text-[#2b2117]" href="/">
         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#2f6b58] text-white">
           <BookOpen className="size-4" aria-hidden="true" />
         </span>
@@ -24,7 +24,7 @@ export function HomeNav() {
           </Link>
         ))}
       </nav>
-      <Link className="inline-flex items-center gap-2 rounded-full border border-[#2b2117]/16 bg-white px-3 py-2 text-sm font-medium text-[#2b2117] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/me/downloads">
+      <Link aria-label="我的下载" className="inline-flex items-center gap-2 rounded-full border border-[#2b2117]/16 bg-white px-3 py-2 text-sm font-medium text-[#2b2117] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/me/downloads">
         <Download className="size-4" aria-hidden="true" />
         <span className="hidden sm:inline">我的下载</span>
       </Link>
