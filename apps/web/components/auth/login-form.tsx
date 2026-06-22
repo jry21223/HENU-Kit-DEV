@@ -119,54 +119,95 @@ export function LoginForm() {
   return (
     <div className="mt-6">
       {currentUser ? (
-        <div className="rounded-md border border-line bg-paper p-4">
-          <p className="text-sm text-slate-500">当前登录</p>
-          <p className="mt-1 font-semibold">{currentUser.email}</p>
-          <p className="mt-1 text-sm text-slate-600">
+        <div className="rounded-2xl border border-border bg-muted p-4">
+          <p className="text-sm text-muted-foreground">当前登录</p>
+          <p className="mt-1 break-words font-semibold text-foreground">{currentUser.email}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
             {currentUser.name} · {currentUser.role} · {currentUser.emailVerified ? "邮箱已验证" : "邮箱未验证"}
           </p>
-          <button className="mt-4 rounded-md border border-line bg-white px-3 py-2 text-sm font-medium" disabled={loading} onClick={logout} type="button">
+          <button
+            className="mt-4 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={loading}
+            onClick={logout}
+            type="button"
+          >
             退出登录
           </button>
         </div>
       ) : (
         <form className="space-y-4" onSubmit={login}>
-          <label className="block text-sm font-medium">
+          <label className="block text-sm font-medium text-foreground">
             学生邮箱
             <input
-              className="mt-2 w-full rounded-md border border-line px-3 py-2"
+              className="mt-2 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-sm"
               onChange={(event) => setEmail(event.target.value)}
               placeholder="name@stu.henu.edu.cn"
               type="email"
               value={email}
             />
           </label>
-          <label className="block text-sm font-medium">
+          <label className="block text-sm font-medium text-foreground">
             昵称
-            <input className="mt-2 w-full rounded-md border border-line px-3 py-2" onChange={(event) => setName(event.target.value)} placeholder="可选" value={name} />
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-sm"
+              onChange={(event) => setName(event.target.value)}
+              placeholder="可选"
+              value={name}
+            />
           </label>
-          <label className="block text-sm font-medium">
+          <label className="block text-sm font-medium text-foreground">
             年级
-            <input className="mt-2 w-full rounded-md border border-line px-3 py-2" onChange={(event) => setGrade(event.target.value)} placeholder="2023" value={grade} />
+            <input
+              className="mt-2 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-sm"
+              onChange={(event) => setGrade(event.target.value)}
+              placeholder="2023"
+              value={grade}
+            />
           </label>
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-            <label className="block text-sm font-medium">
+            <label className="block text-sm font-medium text-foreground">
               验证码
-              <input className="mt-2 w-full rounded-md border border-line px-3 py-2" onChange={(event) => setCode(event.target.value)} placeholder="123456" value={code} />
+              <input
+                className="mt-2 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-sm"
+                onChange={(event) => setCode(event.target.value)}
+                placeholder="123456"
+                value={code}
+              />
             </label>
-            <button className="mt-7 rounded-md border border-line px-3 py-2 text-sm font-medium disabled:opacity-60" disabled={loading || !email} onClick={sendCode} type="button">
+            <button
+              className="rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:mt-7"
+              disabled={loading || !email}
+              onClick={sendCode}
+              type="button"
+            >
               发送验证码
             </button>
           </div>
-          <button className="w-full rounded-md bg-sage px-4 py-2 text-sm font-medium text-white disabled:opacity-60" disabled={loading || !email || !code} type="submit">
+          <button
+            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-[#254d42] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={loading || !email || !code}
+            type="submit"
+          >
             {loading ? "处理中" : "登录"}
           </button>
         </form>
       )}
 
-      {devCode ? <p className="mt-3 rounded-md bg-paper p-3 text-xs text-slate-600">开发环境验证码：{devCode}</p> : null}
-      {message ? <p className="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-700">{message}</p> : null}
-      {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {devCode ? (
+        <p className="mt-3 rounded-xl border border-border bg-muted p-3 text-xs text-muted-foreground" role="status" aria-live="polite">
+          开发环境验证码：{devCode}
+        </p>
+      ) : null}
+      {message ? (
+        <p className="mt-3 rounded-xl border border-border bg-card p-3 text-sm text-foreground" role="status" aria-live="polite">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
