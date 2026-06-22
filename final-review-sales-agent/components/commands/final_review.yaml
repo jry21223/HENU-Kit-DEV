@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: final_review
+  label:
+    en_US: FinalReview
+    zh_Hans: FinalReview
+    th_TH: FinalReview
+    vi_VN: FinalReview
+    es_ES: FinalReview
+  description:
+    en_US: 'Final review sales commands'
+    zh_Hans: 'Final review sales commands'
+    th_TH: 'Final review sales commands'
+    vi_VN: 'Final review sales commands'
+    es_ES: 'Final review sales commands'
+spec:
+execution:
+  python:
+    path: final_review.py
+    attr: FinalReview

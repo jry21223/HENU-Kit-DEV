@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: Codex
+  name: final-review-sales-agent
+  repository: https://github.com/jry21223/final-review-platform
+  version: 0.1.0
+  description:
+    en_US: Sales agent plugin for final-review-platform
+    zh_Hans: 期末复习平台销售助手插件
+  label:
+    en_US: Final Review Sales Agent
+    zh_Hans: 期末复习资料销售助手
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: FINAL_REVIEW_API_BASE_URL
+      label:
+        en_US: Final Review API Base URL
+        zh_Hans: 后端 API 地址
+      description:
+        en_US: Base URL of final-review-platform Agent API
+        zh_Hans: final-review-platform Agent API 的基础地址
+      type: string
+      required: true
+      default: http://localhost:3000
+    - name: FINAL_REVIEW_AGENT_SECRET
+      label:
+        en_US: Agent Secret
+        zh_Hans: Agent 访问密钥
+      description:
+        en_US: Bearer token used only for Agent API calls
+        zh_Hans: 仅用于调用 Agent API 的 Bearer Token
+      type: string
+      required: true
+      default: change-me
+    - name: FINAL_REVIEW_AGENT_ID
+      label:
+        en_US: Agent ID
+        zh_Hans: Agent 标识
+      type: string
+      required: true
+      default: langbot-final-review-sales
+    - name: ORDER_POLL_INTERVAL_SECONDS
+      label:
+        en_US: Order Poll Interval
+        zh_Hans: 订单轮询间隔
+      type: integer
+      required: true
+      default: 5
+    - name: ORDER_POLL_TIMEOUT_SECONDS
+      label:
+        en_US: Order Poll Timeout
+        zh_Hans: 订单轮询超时
+      type: integer
+      required: true
+      default: 900
+    - name: ENABLE_GROUP_SALES
+      label:
+        en_US: Enable Group Sales
+        zh_Hans: 启用群聊销售引导
+      type: boolean
+      required: true
+      default: true
+    - name: ENABLE_PRIVATE_DELIVERY
+      label:
+        en_US: Enable Private Delivery
+        zh_Hans: 启用私聊发货入口
+      type: boolean
+      required: true
+      default: true
+    - name: ENABLE_AUTO_AGENT_REPLY
+      label:
+        en_US: Enable Auto Agent Reply
+        zh_Hans: 启用自由 Agent 自动回复
+      type: boolean
+      required: true
+      default: false
+    - name: DEFAULT_SCHOOL
+      label:
+        en_US: Default School
+        zh_Hans: 默认学校
+      type: string
+      required: true
+      default: 河南大学
+    - name: DEFAULT_COLLEGE
+      label:
+        en_US: Default College
+        zh_Hans: 默认学院
+      type: string
+      required: true
+      default: 软件学院
+    - name: LOG_LEVEL
+      label:
+        en_US: Log Level
+        zh_Hans: 日志级别
+      type: string
+      required: true
+      default: INFO
+  components:
+    Command:
+      fromDirs:
+        - path: components/commands/
+    Tool:
+      fromDirs:
+        - path: components/tools/
+    EventListener:
+      fromDirs:
+        - path: components/event_listener/
+execution:
+  python:
+    path: main.py
+    attr: finalreviewsalesagent

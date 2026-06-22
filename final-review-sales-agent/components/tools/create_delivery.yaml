@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: create_delivery
+  label:
+    en_US: Create Delivery
+    zh_Hans: 创建发货入口
+  description:
+    en_US: Create a delivery link for a paid order
+    zh_Hans: 为已支付订单创建发货入口
+spec:
+  parameters:
+    type: object
+    properties:
+      orderId:
+        type: string
+      chatPlatform:
+        type: string
+      chatUserId:
+        type: string
+    required:
+      - orderId
+  llm_prompt: Only create delivery when backend order status is paid. Never send PDF files directly.
+execution:
+  python:
+    path: create_delivery.py
+    attr: CreateDelivery

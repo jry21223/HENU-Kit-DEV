@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: create_order
+  label:
+    en_US: Create Order
+    zh_Hans: 创建订单
+  description:
+    en_US: Create a package order and return WeChat Native codeUrl
+    zh_Hans: 创建课程包订单并返回微信 Native 支付 codeUrl
+spec:
+  parameters:
+    type: object
+    properties:
+      packageId:
+        type: string
+      chatPlatform:
+        type: string
+      chatUserId:
+        type: string
+      chatGroupId:
+        type: string
+    required:
+      - packageId
+      - chatPlatform
+      - chatUserId
+  llm_prompt: Create an order without sending price, amount, paid, entitlement, or downloadUrl fields. Payment must be confirmed by backend.
+execution:
+  python:
+    path: create_order.py
+    attr: CreateOrder

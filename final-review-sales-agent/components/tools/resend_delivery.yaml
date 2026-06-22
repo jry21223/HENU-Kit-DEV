@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: resend_delivery
+  label:
+    en_US: Resend Delivery
+    zh_Hans: 重发发货入口
+  description:
+    en_US: Resend an existing valid delivery link for a paid order
+    zh_Hans: 为已支付订单重发现有有效发货入口
+spec:
+  parameters:
+    type: object
+    properties:
+      orderId:
+        type: string
+      chatPlatform:
+        type: string
+      chatUserId:
+        type: string
+    required:
+      - orderId
+  llm_prompt: Resend only existing or backend-approved delivery link. Do not create unlimited delivery records.
+execution:
+  python:
+    path: resend_delivery.py
+    attr: ResendDelivery

@@ -1,0 +1,5 @@
+langbot_plugin>=0.4.5
+httpx>=0.28.1
+qrcode[pil]>=8.0
+pillow>=11.0.0
+pytest>=8.4.0

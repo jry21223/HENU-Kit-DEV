@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: query_order
+  label:
+    en_US: Query Order
+    zh_Hans: 查询订单
+  description:
+    en_US: Query order status from final-review-platform
+    zh_Hans: 查询订单支付和发货状态
+spec:
+  parameters:
+    type: object
+    properties:
+      orderId:
+        type: string
+    required:
+      - orderId
+  llm_prompt: Query order status only. Do not grant access or deliver files.
+execution:
+  python:
+    path: query_order.py
+    attr: QueryOrder
