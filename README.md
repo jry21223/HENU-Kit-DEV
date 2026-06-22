@@ -81,7 +81,7 @@ cd services/api
 go run ./cmd/seed
 ```
 
-The seed creates demo organization/course data and demo accounts:
+The seed creates demo organization/course data, materials, questions, community content, points/membership examples, a mock AI task, and demo accounts:
 
 - `admin@example.com`
 - `reviewer@example.com`
@@ -89,6 +89,8 @@ The seed creates demo organization/course data and demo accounts:
 - `user@example.com`
 
 Development verification code is `123456` by default. Production must configure real delivery and must not depend on a fixed code.
+
+Seeded material records use local `uploads/materials/...` storage keys only; real PDFs are not committed and must be mounted or uploaded separately.
 
 ## Security Notes
 
