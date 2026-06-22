@@ -1,0 +1,98 @@
+"use client";
+
+import Link from "next/link";
+import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { useRef } from "react";
+import { archiveDirectory, courseBooks } from "./home-data";
+import { PdfCourseBook } from "./pdf-course-book";
+import styles from "./home-visuals.module.css";
+
+export function ArchiveBookReveal() {
+  const ref = useRef<HTMLElement>(null);
+  const reduceMotion = useReducedMotion();
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end end"],
+  });
+
+  const rotate = useTransform(scrollYProgress, [0, 0.32], [-10, 0]);
+  const y = useTransform(scrollYProgress, [0, 0.32], [120, 0]);
+  const scale = useTransform(scrollYProgress, [0, 0.32], [0.86, 1]);
+  const coverRotate = useTransform(scrollYProgress, [0.35, 0.78], [0, -172]);
+  const contentOpacity = useTransform(scrollYProgress, [0.62, 0.78], [0, 1]);
+  const contentY = useTransform(scrollYProgress, [0.62, 0.78], [24, 0]);
+
+  return (
+    <section ref={ref} className={styles.bookStage} aria-label="课程资料档案册">
+      <div className={styles.bookSticky}>
+        <motion.div
+          className={styles.archiveBook}
+          style={{
+            rotate: reduceMotion ? 0 : rotate,
+            scale: reduceMotion ? 1 : scale,
+            y: reduceMotion ? 0 : y,
+          }}
+        >
+          <div className={styles.bookBase} aria-hidden="true" />
+          <div className={styles.bookInside}>
+            <motion.div
+              className={`${styles.bookPage} p-7`}
+              style={{
+                opacity: reduceMotion ? 1 : contentOpacity,
+                y: reduceMotion ? 0 : contentY,
+              }}
+            >
+              <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#b75c32]">资料档案</p>
+              <h2 className="mt-3 text-4xl font-black tracking-tight text-[#2b2117]">资料目录</h2>
+              <div className="mt-5 grid gap-1">
+                {archiveDirectory.map((item) => (
+                  <Link key={item.label} className={`${styles.directoryLine} group block py-2.5`} href={item.href}>
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="text-lg font-bold text-[#2b2117] group-hover:text-[#2f6b58]">{item.label}</span>
+                      <span className="font-mono text-xs text-[#a26b43]">打开</span>
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-[#756653]">{item.description}</span>
+                  </Link>
+                ))}
+              </div>
+            </motion.div>
+
+            <motion.div
+              className={`${styles.bookPage} p-6`}
+              style={{
+                opacity: reduceMotion ? 1 : contentOpacity,
+                y: reduceMotion ? 0 : contentY,
+              }}
+            >
+              <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#b75c32]">课程 PDF</p>
+              <h2 className="mt-3 text-4xl font-black tracking-tight text-[#2b2117]">课程入口</h2>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                {courseBooks.map((course) => (
+                  <PdfCourseBook key={course.label} course={course} />
+                ))}
+              </div>
+            </motion.div>
+          </div>
+
+          <motion.div
+            className={styles.bookCover}
+            style={{ rotateY: reduceMotion ? -172 : coverRotate }}
+            aria-label="课程资料档案册封面"
+          >
+            <div className="flex h-full flex-col justify-between p-12">
+              <div>
+                <p className="font-mono text-sm font-semibold tracking-[0.18em] text-[#593a24]/70">软件学院</p>
+                <h2 className="mt-5 max-w-md text-6xl font-black leading-[0.94] tracking-tight text-[#2b2117]">
+                  软件学院资料库
+                </h2>
+              </div>
+              <p className="max-w-sm text-base leading-7 text-[#593a24]/76">
+                课程资料、真题、刷题、共创和资料保障，从这一册开始展开。
+              </p>
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
