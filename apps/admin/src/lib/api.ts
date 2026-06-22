@@ -1,0 +1,134 @@
+const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const tokenKey = "final-review-admin-token";
+
+export type Envelope<T> = {
+  code: number;
+  message: string;
+  data?: T;
+  details?: unknown;
+};
+
+export type User = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  emailVerified: boolean;
+};
+
+export type Course = {
+  id: string;
+  schoolId: string;
+  collegeId: string;
+  majorId: string;
+  grade: string;
+  name: string;
+  slug: string;
+  description: string;
+  examScope: string;
+  status: string;
+};
+
+export type School = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+};
+
+export type College = {
+  id: string;
+  schoolId: string;
+  name: string;
+  status: string;
+};
+
+export type Major = {
+  id: string;
+  schoolId: string;
+  collegeId: string;
+  name: string;
+  slug: string;
+  status: string;
+};
+
+export type Material = {
+  id: string;
+  courseId: string;
+  title: string;
+  type: string;
+  description: string;
+  fileName: string;
+  fileSize: number;
+  previewContent: string;
+  accessLevel: string;
+  status: string;
+};
+
+export type LoginData = {
+  user: User;
+  accessToken: string;
+  tokenType: string;
+  expiresAt: string;
+};
+
+export function getStoredToken() {
+  return localStorage.getItem(tokenKey) ?? "";
+}
+
+export function setStoredToken(token: string) {
+  if (token) {
+    localStorage.setItem(tokenKey, token);
+  } else {
+    localStorage.removeItem(tokenKey);
+  }
+}
+
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<Envelope<T>> {
+  const token = getStoredToken();
+  const headers = new Headers(init.headers);
+  if (!(init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+  const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
+  if (!response.ok || payload.code !== 0) {
+    throw new Error(payload.message || `API request failed with ${response.status}`);
+  }
+  return payload;
+}
+
+export async function sendCode(email: string) {
+  return apiRequest<{ expiresInSeconds: number; devCode?: string }>("/auth/send-code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function login(email: string, code: string, name: string) {
+  const response = await apiRequest<LoginData>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, code, name }),
+  });
+  if (response.data?.accessToken) {
+    setStoredToken(response.data.accessToken);
+  }
+  return response;
+}
+
+export async function logout() {
+  try {
+    await apiRequest<{ ok: boolean }>("/auth/logout", { method: "POST" });
+  } finally {
+    setStoredToken("");
+  }
+}

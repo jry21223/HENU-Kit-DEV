@@ -13,6 +13,7 @@
 - Local material upload guardrails
 - Web course list/detail, material detail, and quiz practice pages
 - Web email-code login form
+- Vue admin dashboard, login guard, course management, and material upload pages
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
@@ -23,7 +24,7 @@
 
 - Course package and package-level material grants
 - Web profile/session polish and school/major binding UI
-- Admin review and publish flows
+- Admin review/publish flows and richer edit dialogs
 - Download audit logs and PDF watermark integration
 
 ## Later Deliverables
