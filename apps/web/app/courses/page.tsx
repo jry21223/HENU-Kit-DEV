@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { ArrowRight, FileDown, ShieldCheck } from "lucide-react";
+import { SiteShell } from "@/components/layout/site-shell";
+import { Badge } from "@/components/ui/badge";
 import { Course, getApi } from "@/lib/api";
 
 async function loadCourses() {
@@ -14,40 +17,59 @@ export default async function CoursesPage() {
   const { courses, error } = await loadCourses();
 
   return (
-    <main className="min-h-screen px-5 py-6 sm:px-8">
-      <section className="mx-auto max-w-5xl">
-        <nav className="flex items-center justify-between text-sm">
-          <Link className="font-semibold text-sage" href="/">
-            Final Review V2
-          </Link>
-          <Link href="/login">登录</Link>
-        </nav>
-
-        <header className="mt-8">
-          <p className="text-sm font-medium text-sage">课程库</p>
-          <h1 className="mt-2 text-3xl font-semibold">按课程进入资料和刷题</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-            当前列表来自 Go API。筛选器、学校/专业联动和分页会在下一轮前端功能里接入。
-          </p>
-        </header>
-
-        {error ? <p className="mt-6 rounded-md border border-line bg-white p-4 text-sm text-slate-600">{error}</p> : null}
-
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {courses.map((course) => (
-            <Link key={course.id} className="rounded-lg border border-line bg-white p-5 shadow-sm transition hover:border-sage" href={`/courses/${course.id}`}>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">{course.name}</h2>
-                <span className="shrink-0 rounded-md bg-paper px-2 py-1 text-xs text-slate-600">{course.grade}</span>
-              </div>
-              <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">{course.description || "暂无课程简介"}</p>
-              <p className="mt-4 text-xs text-slate-500">slug: {course.slug}</p>
-            </Link>
-          ))}
-        </div>
-
-        {!error && courses.length === 0 ? <p className="mt-6 rounded-md border border-line bg-white p-4 text-sm text-slate-600">暂无课程。</p> : null}
+    <SiteShell>
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <p className="text-sm font-medium text-primary">课程资料库</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">按课程查找软件学院 PDF 资料</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+          当前资料按课程组织，重点展示讲义、真题、解析和考前速背。后续课程社区会围绕资料补充建议和讨论。
+        </p>
       </section>
-    </main>
+
+      {error ? (
+        <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">{error}</p>
+      ) : null}
+
+      <section className="grid gap-4 md:grid-cols-2">
+        {courses.map((course) => (
+          <Link
+            key={course.id}
+            className="group rounded-3xl border border-border bg-card p-5 shadow-sm transition hover:border-primary/60 hover:shadow-md"
+            href={`/courses/${course.id}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Badge tone="success">资料保障</Badge>
+                <h2 className="mt-4 text-lg font-semibold tracking-tight">{course.name}</h2>
+              </div>
+              <span className="shrink-0 rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground">
+                {course.grade || "适用年级待补充"}
+              </span>
+            </div>
+            <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">
+              {course.description || "这门课程的 PDF 资料会按讲义、真题、解析等类型持续整理。"}
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center rounded-full bg-muted px-3 py-1">
+                <FileDown className="mr-1.5 size-3.5" aria-hidden="true" />
+                PDF 资料入口
+              </span>
+              <span className="inline-flex items-center rounded-full bg-muted px-3 py-1">
+                <ShieldCheck className="mr-1.5 size-3.5" aria-hidden="true" />
+                轻水印下载
+              </span>
+            </div>
+            <span className="mt-5 inline-flex items-center text-sm font-medium text-primary">
+              查看资料
+              <ArrowRight className="ml-1.5 size-4 transition group-hover:translate-x-0.5" aria-hidden="true" />
+            </span>
+          </Link>
+        ))}
+      </section>
+
+      {!error && courses.length === 0 ? (
+        <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">暂无课程。</p>
+      ) : null}
+    </SiteShell>
   );
 }
