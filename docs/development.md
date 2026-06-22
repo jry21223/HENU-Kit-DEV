@@ -12,8 +12,10 @@
 docker compose -f docker-compose.dev.yml config
 docker compose -f docker-compose.dev.yml up --build
 npm install
-npm run build:web
-npm run build:admin
+npm run build
+npm audit --audit-level=low
+cd services/api && go test ./...
+cd ../worker && go test ./...
 ```
 
 ## Local Ports
@@ -23,3 +25,12 @@ npm run build:admin
 - Admin: `5173`
 - PostgreSQL: `5432`
 - Redis: `6379`
+
+## API Seed
+
+```bash
+cd services/api
+go run ./cmd/seed
+```
+
+The seed command runs AutoMigrate and inserts the current demo school, majors, courses, one material, one question, and demo users.

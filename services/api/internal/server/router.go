@@ -2,13 +2,17 @@ package server
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	redislib "github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/course"
 	"final-review-platform/services/api/internal/health"
+	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/middleware"
 	"final-review-platform/services/api/pkg/response"
@@ -32,6 +36,14 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	}))
 
 	healthHandler := health.NewHandler(cfg, db, cache)
+	tokenManager, err := auth.NewTokenManager(cfg)
+	if err != nil {
+		panic(err)
+	}
+	authHandler := auth.NewHandler(cfg, db, tokenManager)
+	authMiddleware := auth.NewMiddleware(db, tokenManager)
+	orgHandler := org.NewHandler(db)
+	courseHandler := course.NewHandler(db)
 	router.GET("/healthz", healthHandler.Healthz)
 
 	v1 := router.Group("/api/v1")
@@ -42,6 +54,31 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 			"version":     cfg.Version,
 			"environment": cfg.Environment,
 		})
+	})
+	v1.POST("/auth/send-code", authHandler.SendCode)
+	v1.POST("/auth/login", authHandler.Login)
+	v1.POST("/auth/refresh", authHandler.Refresh)
+	v1.POST("/auth/logout", authHandler.Logout)
+	v1.GET("/auth/me", authMiddleware.RequireAuth(), authHandler.Me)
+	v1.GET("/schools", orgHandler.Schools)
+	v1.GET("/colleges", orgHandler.Colleges)
+	v1.GET("/majors", orgHandler.Majors)
+	v1.GET("/courses", orgHandler.Courses)
+	v1.GET("/courses/:id", orgHandler.Course)
+	v1.GET("/courses/:id/materials", courseHandler.CourseMaterials)
+
+	admin := v1.Group("/admin")
+	admin.Use(authMiddleware.RequireAuth(), authMiddleware.RequireAdmin())
+	admin.GET("/healthz", func(ctx *gin.Context) {
+		response.OK(ctx, gin.H{"admin": true})
+	})
+
+	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
+		response.OK(ctx, gin.H{"ok": true})
+	})
+
+	router.NoRoute(func(ctx *gin.Context) {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "not_found", nil)
 	})
 
 	return router

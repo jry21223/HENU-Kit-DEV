@@ -26,6 +26,16 @@ func main() {
 		log.Error("database connection failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	if cfg.AutoMigrate {
+		if err := database.EnsureExtensions(db); err != nil {
+			log.Error("database extension setup failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		if err := database.AutoMigrate(db); err != nil {
+			log.Error("database migration failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	}
 
 	cache, err := redisclient.Connect(context.Background(), cfg.Redis)
 	if err != nil {

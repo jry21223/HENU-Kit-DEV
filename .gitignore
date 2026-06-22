@@ -80,6 +80,7 @@ __pycache__/
 # Go build/test output
 bin/
 *.test
+.tools/
 
 # Root leftovers from the pre-monorepo plugin location.
 final-review-sales-agent/

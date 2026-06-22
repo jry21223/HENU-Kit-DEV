@@ -4,6 +4,9 @@
 
 - V2 monorepo skeleton
 - Go API health/version endpoints
+- Go API email-code auth and role middleware
+- GORM model coverage for the V2 table set
+- Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
 - Vue Admin shell
@@ -11,11 +14,10 @@
 
 ## Next Deliverable
 
-- New database schema and migrations
-- Seed data
-- Email verification login
-- JWT RS256 auth and role middleware
 - Organization, course, material, quiz, wrong-question MVP
+- Admin CRUD for organization/course/materials
+- File upload/download permission checks
+- Quiz submission and wrong-question persistence
 
 ## Later Deliverables
 

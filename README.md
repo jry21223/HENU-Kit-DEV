@@ -4,7 +4,8 @@ V2 is a greenfield rebuild of the one-stop study and final-review platform. The 
 
 ## Current Status
 
-- V2 monorepo skeleton is being built.
+- V2 monorepo skeleton is in place.
+- The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, and read-only school/course/material seed query endpoints.
 - Go API, Go Worker, Next.js Web, Vue Admin, PostgreSQL, and Redis are the target runtime.
 - No production data migration is planned.
 - WeChat Pay Native is the target payment provider; local development starts with mock payment boundaries.
@@ -43,8 +44,8 @@ Expected local ports:
 ```bash
 docker compose -f docker-compose.dev.yml config
 npm install
-npm run build:web
-npm run build:admin
+npm run build
+npm audit --audit-level=low
 ```
 
 If Go is installed locally:
@@ -53,6 +54,26 @@ If Go is installed locally:
 cd services/api && go test ./...
 cd ../worker && go test ./...
 ```
+
+This repo can also be checked with a portable Go toolchain under `.tools/`; `.tools/` is ignored and must not be committed.
+
+## Seed Data
+
+After PostgreSQL is available:
+
+```bash
+cd services/api
+go run ./cmd/seed
+```
+
+The seed creates demo organization/course data and demo accounts:
+
+- `admin@example.com`
+- `reviewer@example.com`
+- `creator@example.com`
+- `user@example.com`
+
+Development verification code is `123456` by default. Production must configure real delivery and must not depend on a fixed code.
 
 ## Security Notes
 
