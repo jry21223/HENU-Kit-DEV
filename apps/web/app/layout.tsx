@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "一站式学习平台 V2",
-  description: "高校课程资料、刷题、Wiki 与 AI 学习平台",
+  title: "软件学院资料库",
+  description: "面向软件学院课程 PDF、讲义、真题和复习资料的一站式资料库",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
