@@ -1,12 +1,17 @@
 <template>
   <main class="admin-shell">
     <aside class="sidebar">
-      <strong>Final Review Admin</strong>
-      <span class="muted">V2 管理后台</span>
-      <nav class="side-nav">
-        <RouterLink to="/dashboard">仪表盘</RouterLink>
-        <RouterLink to="/courses">课程管理</RouterLink>
-        <RouterLink to="/materials">资料管理</RouterLink>
+      <div class="brand">
+        <strong>资料运营工作台</strong>
+        <span class="muted">软件学院课程资料库</span>
+      </div>
+      <nav class="side-nav" aria-label="后台导航">
+        <RouterLink to="/dashboard">运营概览</RouterLink>
+        <RouterLink to="/courses">课程维护</RouterLink>
+        <RouterLink to="/materials">PDF 资料</RouterLink>
+        <span class="nav-section">预留能力</span>
+        <span class="disabled-nav" aria-disabled="true">内容审核</span>
+        <span class="disabled-nav" aria-disabled="true">课程社区</span>
       </nav>
       <div class="sidebar-footer">
         <span>{{ auth.user?.email }}</span>
