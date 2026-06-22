@@ -11,6 +11,7 @@
 - Basic weak-point counts
 - Admin organization/course/material CRUD
 - Local material upload guardrails
+- Web course list/detail, material detail, and quiz practice pages
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
@@ -20,7 +21,7 @@
 ## Next Deliverable
 
 - Course package and package-level material grants
-- Web pages wired to material download and quiz APIs
+- Web auth form wired to email-code login
 - Admin review and publish flows
 - Download audit logs and PDF watermark integration
 
