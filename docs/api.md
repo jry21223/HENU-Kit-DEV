@@ -32,6 +32,7 @@ Currently implemented endpoints:
 - `GET /api/v1/me/wrong-questions`
 - `DELETE /api/v1/me/wrong-questions/:id`
 - `GET /api/v1/me/weakness-report`
+- `GET /api/v1/me/downloads`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/admin/schools`
@@ -50,6 +51,7 @@ Currently implemented endpoints:
 - `PATCH /api/v1/admin/materials/:id`
 - `DELETE /api/v1/admin/materials/:id`
 - `POST /api/v1/admin/materials/upload`
+- `GET /api/v1/admin/downloads?materialId=&userId=`
 - `GET /api/v1/admin/ai/tasks`
 - `GET /api/v1/admin/ai/drafts`
 - `POST /api/v1/admin/ai/drafts/:id/approve`
@@ -93,6 +95,8 @@ Implemented material behavior:
 - `paid` materials require an authenticated, email-verified user and either a valid material grant or a valid package grant containing that material
 - successful downloads create `material_download_logs` records with material, optional user, access level, IP, user agent, and download time
 - denied downloads, unsafe storage keys, and missing files are not recorded as successful downloads
+- logged-in users can list only their own successful downloads through `/me/downloads`
+- admin users can list successful download audit logs, including IP and User-Agent metadata
 - unsafe or missing storage keys return `file_not_found` without revealing local paths
 
 Implemented package behavior:

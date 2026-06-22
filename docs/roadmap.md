@@ -8,11 +8,13 @@
 - GORM model coverage for the V2 table set
 - Material download permission checks
 - Material download audit logs
+- User and admin download-history APIs
 - Quiz submission and wrong-question persistence
 - Basic weak-point counts
 - Admin organization/course/material CRUD
 - Local material upload guardrails
 - Web course list/detail, material detail, and quiz practice pages
+- Web personal download-history page
 - Web course package cards with price and included material links
 - Web email-code login form
 - Vue admin dashboard, login guard, course management, and material upload pages
@@ -28,6 +30,7 @@
 
 - Web profile/session polish and school/major binding UI
 - Admin review/publish flows and richer edit dialogs
+- Admin analytics UI for download trends
 - PDF watermark integration
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 

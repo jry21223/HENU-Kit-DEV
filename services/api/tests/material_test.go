@@ -91,6 +91,26 @@ func TestMaterialDownloadPermissions(t *testing.T) {
 	if countDownloadLogs(t, db, paidMaterial.ID, user.ID) != 1 {
 		t.Fatal("expected paid download to create one user audit log")
 	}
+
+	myDownloads := performJSON(router, http.MethodGet, "/api/v1/me/downloads", "", token)
+	if myDownloads.Code != http.StatusOK || !strings.Contains(myDownloads.Body.String(), paidMaterial.ID) || strings.Contains(myDownloads.Body.String(), freeMaterial.ID) {
+		t.Fatalf("expected my downloads to include only authenticated user logs, got %d: %s", myDownloads.Code, myDownloads.Body.String())
+	}
+
+	createTestUser(t, db, "download-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, "download-admin@stu.henu.edu.cn")
+	adminDownloads := performJSON(router, http.MethodGet, "/api/v1/admin/downloads", "", adminToken)
+	if adminDownloads.Code != http.StatusOK || !strings.Contains(adminDownloads.Body.String(), paidMaterial.ID) || !strings.Contains(adminDownloads.Body.String(), freeMaterial.ID) {
+		t.Fatalf("expected admin downloads to include all successful logs, got %d: %s", adminDownloads.Code, adminDownloads.Body.String())
+	}
+	if !strings.Contains(adminDownloads.Body.String(), "userAgent") {
+		t.Fatalf("expected admin downloads to include request metadata, got %s", adminDownloads.Body.String())
+	}
+
+	studentAdminDenied := performJSON(router, http.MethodGet, "/api/v1/admin/downloads", "", token)
+	if studentAdminDenied.Code != http.StatusForbidden {
+		t.Fatalf("expected student admin downloads access 403, got %d: %s", studentAdminDenied.Code, studentAdminDenied.Body.String())
+	}
 }
 
 func TestMaterialDownloadRejectsUnsafeStorageKey(t *testing.T) {

@@ -169,12 +169,20 @@ func (h Handler) recordDownload(ctx *gin.Context, material model.Material, user 
 	if hasUser && user != nil {
 		userID = &user.ID
 	}
+	ip := strings.TrimSpace(ctx.ClientIP())
+	if ip == "" {
+		ip = "unknown"
+	}
+	userAgent := strings.TrimSpace(ctx.Request.UserAgent())
+	if userAgent == "" {
+		userAgent = "unknown"
+	}
 	log := model.MaterialDownloadLog{
 		UserID:       userID,
 		MaterialID:   material.ID,
 		AccessLevel:  material.AccessLevel,
-		IP:           ctx.ClientIP(),
-		UserAgent:    ctx.Request.UserAgent(),
+		IP:           ip,
+		UserAgent:    userAgent,
 		DownloadedAt: time.Now(),
 	}
 	_ = h.db.Create(&log).Error

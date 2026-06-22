@@ -15,6 +15,7 @@ export default function HomePage() {
           <span className="font-semibold text-sage">Final Review V2</span>
           <div className="flex gap-4">
             <Link href="/courses">课程库</Link>
+            <Link href="/me/downloads">我的下载</Link>
             <Link href="/health">API 状态</Link>
             <Link href="/login">登录</Link>
           </div>

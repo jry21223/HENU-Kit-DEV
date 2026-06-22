@@ -88,6 +88,14 @@ export type CoursePackageDetail = {
   materials: Material[];
 };
 
+export type MaterialDownload = {
+  id: string;
+  materialId: string;
+  accessLevel: Material["accessLevel"];
+  downloadedAt: string;
+  material?: Material;
+};
+
 export type QuizOption = {
   id: string;
   label: string;
