@@ -21,6 +21,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 
 - V2 monorepo 骨架已建立。
 - Go API 已实现 health/version、邮箱验证码登录、JWT cookie/token、角色中间件、学校/课程/资料/课程包接口、组织/课程/资料 admin CRUD、上传防护、资料下载权限、刷题提交、错题记录和基础薄弱点统计。
+- 成功资料下载会写入服务端审计日志，失败鉴权、不安全路径和缺失文件不会记为成功下载。
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包展示、资料详情、课程刷题和学生邮箱登录页面。
@@ -92,6 +93,7 @@ cd ../worker && go test ./...
 - Web 登录表单 build/type 覆盖。
 - 资料详情不泄露 `storage_key`。
 - free/login_required/paid 资料下载权限。
+- 成功下载审计日志，以及拒绝下载不产生日志。
 - 课程包授权解锁包内 paid 资料。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态。
 - 不安全 storage key 返回 404。

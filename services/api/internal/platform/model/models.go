@@ -180,6 +180,16 @@ type MaterialAccessGrant struct {
 	ExpiresAt  *time.Time `json:"expiresAt,omitempty" gorm:"index"`
 }
 
+type MaterialDownloadLog struct {
+	BaseModel
+	UserID       *string   `json:"userId,omitempty" gorm:"type:uuid;index"`
+	MaterialID   string    `json:"materialId" gorm:"type:uuid;index;not null"`
+	AccessLevel  string    `json:"accessLevel" gorm:"size:32;index;not null"`
+	IP           string    `json:"ip" gorm:"size:80"`
+	UserAgent    string    `json:"userAgent" gorm:"size:500"`
+	DownloadedAt time.Time `json:"downloadedAt" gorm:"index;not null"`
+}
+
 type Order struct {
 	BaseModel
 	UserID          string         `json:"userId" gorm:"type:uuid;index;not null"`
@@ -487,7 +497,7 @@ func AllModels() []interface{} {
 	return []interface{}{
 		&User{}, &EmailVerificationCode{},
 		&School{}, &College{}, &Major{}, &Course{},
-		&Material{}, &CoursePackage{}, &CoursePackageItem{}, &MaterialAccessGrant{},
+		&Material{}, &CoursePackage{}, &CoursePackageItem{}, &MaterialAccessGrant{}, &MaterialDownloadLog{},
 		&Order{}, &PaymentRecord{},
 		&QuizQuestion{}, &QuizOption{}, &QuizAttempt{}, &QuizAnswer{}, &WrongQuestion{}, &WeaknessReport{},
 		&WikiEntry{}, &WikiEditHistory{}, &WikiCreatorApplication{},

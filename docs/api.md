@@ -91,6 +91,8 @@ Implemented material behavior:
 - `free` materials can be downloaded without login
 - `login_required` materials require an authenticated, email-verified user
 - `paid` materials require an authenticated, email-verified user and either a valid material grant or a valid package grant containing that material
+- successful downloads create `material_download_logs` records with material, optional user, access level, IP, user agent, and download time
+- denied downloads, unsafe storage keys, and missing files are not recorded as successful downloads
 - unsafe or missing storage keys return `file_not_found` without revealing local paths
 
 Implemented package behavior:

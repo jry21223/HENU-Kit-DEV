@@ -7,6 +7,7 @@
 - Go API email-code auth and role middleware
 - GORM model coverage for the V2 table set
 - Material download permission checks
+- Material download audit logs
 - Quiz submission and wrong-question persistence
 - Basic weak-point counts
 - Admin organization/course/material CRUD
@@ -27,7 +28,7 @@
 
 - Web profile/session polish and school/major binding UI
 - Admin review/publish flows and richer edit dialogs
-- Download audit logs and PDF watermark integration
+- PDF watermark integration
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables

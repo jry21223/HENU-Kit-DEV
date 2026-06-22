@@ -73,6 +73,8 @@ func (h Handler) Download(ctx *gin.Context) {
 		return
 	}
 
+	h.recordDownload(ctx, material, user, hasUser)
+
 	fileName := strings.TrimSpace(material.FileName)
 	if fileName == "" {
 		fileName = filepath.Base(path)
@@ -160,6 +162,22 @@ func (h Handler) hasActiveMembership(userID string) bool {
 		Where("user_id = ? AND status = ? AND (expires_at IS NULL OR expires_at > ?)", userID, "active", now).
 		Count(&count)
 	return count > 0
+}
+
+func (h Handler) recordDownload(ctx *gin.Context, material model.Material, user *model.User, hasUser bool) {
+	var userID *string
+	if hasUser && user != nil {
+		userID = &user.ID
+	}
+	log := model.MaterialDownloadLog{
+		UserID:       userID,
+		MaterialID:   material.ID,
+		AccessLevel:  material.AccessLevel,
+		IP:           ctx.ClientIP(),
+		UserAgent:    ctx.Request.UserAgent(),
+		DownloadedAt: time.Now(),
+	}
+	_ = h.db.Create(&log).Error
 }
 
 func safeStoragePath(uploadDir string, storageKey string) (string, error) {
