@@ -27,6 +27,22 @@ Currently implemented endpoints:
 - `GET /api/v1/me/wrong-questions`
 - `DELETE /api/v1/me/wrong-questions/:id`
 - `GET /api/v1/me/weakness-report`
+- `POST /api/v1/admin/schools`
+- `PATCH /api/v1/admin/schools/:id`
+- `DELETE /api/v1/admin/schools/:id`
+- `POST /api/v1/admin/colleges`
+- `PATCH /api/v1/admin/colleges/:id`
+- `DELETE /api/v1/admin/colleges/:id`
+- `POST /api/v1/admin/majors`
+- `PATCH /api/v1/admin/majors/:id`
+- `DELETE /api/v1/admin/majors/:id`
+- `POST /api/v1/admin/courses`
+- `PATCH /api/v1/admin/courses/:id`
+- `DELETE /api/v1/admin/courses/:id`
+- `POST /api/v1/admin/materials`
+- `PATCH /api/v1/admin/materials/:id`
+- `DELETE /api/v1/admin/materials/:id`
+- `POST /api/v1/admin/materials/upload`
 
 Response envelope:
 
@@ -73,3 +89,12 @@ Implemented quiz behavior:
 - unauthenticated users can submit practice answers, but wrong questions are not persisted
 - authenticated wrong answers create or update user-scoped wrong-question records
 - weak-point reporting currently returns per-course wrong-count totals
+
+Implemented admin behavior:
+
+- all admin endpoints require an authenticated `admin` or `super_admin` role
+- organization/course/material delete operations archive by setting `status=archived`
+- material upload uses server-generated storage keys under `materials/{courseId}/`
+- upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with a PDF header
+- upload rejects files larger than 20 MiB
+- manually supplied `storageKey` values with path traversal are rejected

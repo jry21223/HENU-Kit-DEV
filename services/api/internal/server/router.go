@@ -9,6 +9,7 @@ import (
 	redislib "github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"final-review-platform/services/api/internal/admin"
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/course"
 	"final-review-platform/services/api/internal/health"
@@ -48,6 +49,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	courseHandler := course.NewHandler(db)
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
 	quizHandler := quiz.NewHandler(db)
+	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir)
 	router.GET("/healthz", healthHandler.Healthz)
 
 	v1 := router.Group("/api/v1")
@@ -85,6 +87,22 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.GET("/healthz", func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"admin": true})
 	})
+	admin.POST("/schools", adminHandler.CreateSchool)
+	admin.PATCH("/schools/:id", adminHandler.UpdateSchool)
+	admin.DELETE("/schools/:id", adminHandler.ArchiveSchool)
+	admin.POST("/colleges", adminHandler.CreateCollege)
+	admin.PATCH("/colleges/:id", adminHandler.UpdateCollege)
+	admin.DELETE("/colleges/:id", adminHandler.ArchiveCollege)
+	admin.POST("/majors", adminHandler.CreateMajor)
+	admin.PATCH("/majors/:id", adminHandler.UpdateMajor)
+	admin.DELETE("/majors/:id", adminHandler.ArchiveMajor)
+	admin.POST("/courses", adminHandler.CreateCourse)
+	admin.PATCH("/courses/:id", adminHandler.UpdateCourse)
+	admin.DELETE("/courses/:id", adminHandler.ArchiveCourse)
+	admin.POST("/materials", adminHandler.CreateMaterial)
+	admin.PATCH("/materials/:id", adminHandler.UpdateMaterial)
+	admin.DELETE("/materials/:id", adminHandler.ArchiveMaterial)
+	admin.POST("/materials/upload", adminHandler.UploadMaterial)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})

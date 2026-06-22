@@ -58,6 +58,21 @@ func createTestMaterial(t *testing.T, db *gorm.DB, courseID string, title string
 	return material
 }
 
+func createTestUser(t *testing.T, db *gorm.DB, email string, role string) model.User {
+	t.Helper()
+	user := model.User{
+		Email:         email,
+		Name:          role + " user",
+		Role:          role,
+		Status:        "active",
+		EmailVerified: true,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	return user
+}
+
 func loginTestUser(t *testing.T, router http.Handler, email string) string {
 	t.Helper()
 	sendResponse := performJSON(router, http.MethodPost, "/api/v1/auth/send-code", `{"email":"`+email+`"}`, "")

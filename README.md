@@ -5,7 +5,7 @@ V2 is a greenfield rebuild of the one-stop study and final-review platform. The 
 ## Current Status
 
 - V2 monorepo skeleton is in place.
-- The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, read-only school/course/material endpoints, material download permission checks, quiz submission, wrong-question records, and basic weakness counts.
+- The Go API includes health/version, email-code auth, JWT cookies/tokens, role middleware, school/course/material endpoints, admin CRUD for organization/course/material records, local material upload guards, material download permission checks, quiz submission, wrong-question records, and basic weakness counts.
 - Go API, Go Worker, Next.js Web, Vue Admin, PostgreSQL, and Redis are the target runtime.
 - No production data migration is planned.
 - WeChat Pay Native is the target payment provider; local development starts with mock payment boundaries.
@@ -63,6 +63,8 @@ Implemented API checks currently cover:
 - material detail not leaking storage keys
 - free/login-required/paid material download gates
 - unsafe material storage keys returning 404
+- admin-only organization/course/material mutation
+- upload filename, extension, content, and size guards
 - quiz list/detail not leaking answers
 - quiz submission and wrong-question user isolation
 
