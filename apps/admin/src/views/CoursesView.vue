@@ -3,8 +3,8 @@
     <div class="page-header">
       <div>
         <p class="eyebrow">Courses</p>
-        <h1>课程管理</h1>
-        <p class="muted">维护学校、学院、专业下的课程。删除操作会归档，不会物理删除。</p>
+        <h1>课程维护</h1>
+        <p class="muted">课程是资料库的一级入口。当前只服务软件学院，不把院校筛选作为前台主路径。</p>
       </div>
       <el-button type="primary" @click="loadAll">刷新</el-button>
     </div>
@@ -13,6 +13,7 @@
       <template #header>
         <strong>新增课程</strong>
       </template>
+      <p class="muted">组织字段用于入库关联，学生端展示时会弱化院校筛选。</p>
       <el-form class="form-grid" label-position="top">
         <el-form-item label="学校">
           <el-select v-model="form.schoolId" placeholder="选择学校" @change="form.collegeId = ''; form.majorId = ''">

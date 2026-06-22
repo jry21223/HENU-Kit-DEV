@@ -3,15 +3,15 @@
     <div class="page-header">
       <div>
         <p class="eyebrow">Materials</p>
-        <h1>资料管理</h1>
-        <p class="muted">资料文件必须通过服务端上传或安全 storageKey 入库，前台下载仍走权限检查。</p>
+        <h1>PDF 资料</h1>
+        <p class="muted">上传课程 PDF 资料，并保持资料类型、权限和预览内容清晰。下载仍走服务端权限检查；轻水印能力按资料保障口径预留。</p>
       </div>
       <el-button type="primary" @click="loadAll">刷新</el-button>
     </div>
 
     <el-card class="section-card" shadow="never">
       <template #header>
-        <strong>上传资料</strong>
+        <strong>上传 PDF 资料</strong>
       </template>
       <el-form class="form-grid" label-position="top">
         <el-form-item label="课程">
@@ -45,6 +45,7 @@
         </el-form-item>
         <el-form-item label="文件">
           <input type="file" accept=".pdf,.txt,.md,.docx" @change="onFileChange" />
+          <p class="muted">优先上传 PDF，仍兼容 TXT / MD / DOCX。</p>
         </el-form-item>
       </el-form>
       <el-button type="primary" :loading="loading" @click="uploadMaterial">上传并入库</el-button>
