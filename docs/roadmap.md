@@ -12,6 +12,7 @@
 - Admin organization/course/material CRUD
 - Local material upload guardrails
 - Web course list/detail, material detail, and quiz practice pages
+- Web course package cards with price and included material links
 - Web email-code login form
 - Vue admin dashboard, login guard, course management, and material upload pages
 - Mock AI task API, worker completion, usage log, and reviewable draft creation

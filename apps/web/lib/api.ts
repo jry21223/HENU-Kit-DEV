@@ -59,6 +59,35 @@ export type Material = {
   updatedAt?: string;
 };
 
+export type CoursePackage = {
+  id: string;
+  schoolId: string;
+  collegeId: string;
+  majorId: string;
+  courseId?: string;
+  grade: string;
+  title: string;
+  slug: string;
+  description: string;
+  priceFen: number;
+  currency: string;
+  status: string;
+};
+
+export type CoursePackageItem = {
+  id: string;
+  packageId: string;
+  resourceType: string;
+  resourceId: string;
+  sortOrder: number;
+};
+
+export type CoursePackageDetail = {
+  package: CoursePackage;
+  items: CoursePackageItem[];
+  materials: Material[];
+};
+
 export type QuizOption = {
   id: string;
   label: string;
