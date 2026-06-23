@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, MessageSquareText, Trophy } from "lucide-react";
+import { ForumPostComposer } from "@/components/forum/forum-post-composer";
 import { SiteShell } from "@/components/layout/site-shell";
 import { Badge } from "@/components/ui/badge";
 import { ForumBoard, ForumPost, getApi } from "@/lib/api";
@@ -64,6 +65,8 @@ export default async function ForumPage({ searchParams }: PageProps) {
       </section>
 
       {error ? <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">{error}</p> : null}
+
+      <ForumPostComposer boards={boards} selectedBoardId={boardId} />
 
       <nav className="flex gap-2 overflow-x-auto pb-1">
         <Link
