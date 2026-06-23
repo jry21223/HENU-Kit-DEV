@@ -1,4 +1,5 @@
 import { practiceFeatures } from "./home-data";
+import { homeAnimAttr } from "./home-animation-selectors";
 import styles from "./home-visuals.module.css";
 
 export function PracticeVisionSection() {
@@ -23,7 +24,8 @@ export function PracticeVisionSection() {
           const Icon = feature.icon;
 
           return (
-            <article key={feature.title} className={`${styles.paperCard} p-5`}>
+            <article key={feature.title} className={`${styles.paperCard} p-5`} {...homeAnimAttr("practiceCard")}>
+              <span className={styles.practiceMark} aria-hidden="true" {...homeAnimAttr("practiceMark")} />
               <Icon className="size-6 text-[#2f6b58]" aria-hidden={true} />
               <h3 className="mt-5 text-xl font-black tracking-tight text-[#2b2117]">{feature.title}</h3>
               <p className="mt-3 text-sm leading-7 text-[#6f604f]">{feature.body}</p>

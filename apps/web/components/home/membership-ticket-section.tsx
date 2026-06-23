@@ -1,10 +1,12 @@
 import { membershipFeatures } from "./home-data";
+import { homeAnimAttr } from "./home-animation-selectors";
 import styles from "./home-visuals.module.css";
 
 export function MembershipTicketSection() {
   return (
     <section aria-labelledby="membership-title" className="mx-auto w-[min(1120px,calc(100%-32px))] py-20">
-      <div className={`${styles.ticket} p-6 lg:p-10`}>
+      <div className={`${styles.ticket} p-6 lg:p-10`} {...homeAnimAttr("membershipTicket")}>
+        <span className={styles.membershipStamp} aria-hidden="true" {...homeAnimAttr("membershipStamp")} />
         <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
           <div>
             <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#b75c32]">

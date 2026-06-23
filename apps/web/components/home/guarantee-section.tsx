@@ -1,4 +1,6 @@
 import { guaranteeItems } from "./home-data";
+import { homeAnimAttr } from "./home-animation-selectors";
+import styles from "./home-visuals.module.css";
 
 export function GuaranteeSection() {
   return (
@@ -19,7 +21,8 @@ export function GuaranteeSection() {
             const Icon = item.icon;
 
             return (
-              <article key={item.title} className="rounded-3xl border border-[#2b2117]/10 bg-white/70 p-5">
+              <article key={item.title} className="relative overflow-hidden rounded-3xl border border-[#2b2117]/10 bg-white/70 p-5">
+                <span className={styles.guaranteeSeal} aria-hidden="true" {...homeAnimAttr("guaranteeSeal")} />
                 <Icon className="size-6 text-[#2f6b58]" aria-hidden={true} />
                 <h3 className="mt-4 text-lg font-black tracking-tight text-[#2b2117]">{item.title}</h3>
                 <p className="mt-3 text-sm leading-7 text-[#6f604f]">{item.body}</p>

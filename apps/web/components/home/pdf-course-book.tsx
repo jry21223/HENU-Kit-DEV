@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { homeAnimAttr } from "./home-animation-selectors";
 import type { CourseBook } from "./home-types";
 import styles from "./home-visuals.module.css";
 
@@ -23,21 +24,36 @@ const tilt: Record<CourseBook["tone"], string> = {
 };
 
 export function PdfCourseBook({
+  animationMarked,
   compact = false,
   course,
   tabIndex,
 }: {
+  animationMarked?: boolean;
   compact?: boolean;
   course: CourseBook;
   tabIndex?: number;
 }) {
+  const shouldMarkAnimation = animationMarked ?? compact;
+
   return (
     <Link
       className={`${styles.courseBook} ${compact ? styles.courseBookCompact : ""} ${toneClass[course.tone]}`}
       href={course.href}
       style={{ "--book-tilt": tilt[course.tone] } as CSSProperties}
       tabIndex={tabIndex}
+      {...(shouldMarkAnimation ? homeAnimAttr("courseBook") : {})}
     >
+      <span
+        className={styles.courseBookSpine}
+        aria-hidden="true"
+        {...(shouldMarkAnimation ? homeAnimAttr("courseBookSpine") : {})}
+      />
+      <span
+        className={styles.courseBookGloss}
+        aria-hidden="true"
+        {...(shouldMarkAnimation ? homeAnimAttr("courseBookGloss") : {})}
+      />
       <span className="relative z-10 flex items-center justify-between gap-3 font-mono text-xs font-semibold text-[#2b2117]/78">
         <span>{course.code}</span>
         <span>PDF</span>

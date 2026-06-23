@@ -31,20 +31,28 @@
 }
 
 .courseBook::before {
-  content: "";
+  content: none;
+}
+
+.courseBook::after {
+  content: none;
+}
+
+.courseBookSpine {
   position: absolute;
   inset: 0 auto 0 0;
   width: 18px;
   background: rgb(43 33 23 / 0.14);
+  pointer-events: none;
 }
 
-.courseBook::after {
-  content: "";
+.courseBookGloss {
   position: absolute;
   inset: 10px 10px 10px auto;
   width: 10px;
   border-radius: 999px;
   background: rgb(255 255 255 / 0.44);
+  pointer-events: none;
 }
 
 .toneBlue {
@@ -107,6 +115,8 @@
 }
 
 .paperCard {
+  position: relative;
+  overflow: hidden;
   border: 1px solid rgb(43 33 23 / 0.12);
   border-radius: 24px;
   background:
@@ -114,6 +124,18 @@
     #fffaf2;
   background-size: 100% 30px;
   box-shadow: 0 20px 58px rgb(71 49 27 / 0.12);
+}
+
+.practiceMark {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 44px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgb(183 92 50 / 0.16);
+  transform: rotate(-8deg);
+  pointer-events: none;
 }
 
 .ticket {
@@ -143,6 +165,46 @@
 
 .ticket::after {
   right: -14px;
+}
+
+.membershipStamp {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  width: 82px;
+  height: 82px;
+  border: 2px dashed rgb(183 92 50 / 0.52);
+  border-radius: 999px;
+  opacity: 0.72;
+  transform: rotate(11deg);
+  pointer-events: none;
+}
+
+.membershipStamp::after {
+  content: "PASS";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: rgb(183 92 50 / 0.62);
+}
+
+.guaranteeSeal {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgb(47 107 88 / 0.24);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, transparent 42%, rgb(47 107 88 / 0.08) 43% 58%, transparent 59%),
+    rgb(47 107 88 / 0.05);
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -289,16 +351,46 @@
 }
 
 .bookPage .courseBook::before {
-  width: 12px;
+  content: none;
 }
 
 .bookPage .courseBook::after {
+  content: none;
+}
+
+.bookPage .courseBookSpine {
+  width: 12px;
+}
+
+.bookPage .courseBookGloss {
   inset: 8px 8px 8px auto;
   width: 7px;
 }
 
 .directoryLine {
   border-bottom: 1px solid rgb(43 33 23 / 0.12);
+}
+
+.directoryScan {
+  position: absolute;
+  z-index: 0;
+  inset: 42% 14px auto;
+  height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgb(47 107 88 / 0.12), transparent);
+  pointer-events: none;
+}
+
+.pageHighlight {
+  position: absolute;
+  z-index: 0;
+  top: 16px;
+  right: 18px;
+  width: 86px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgb(255 209 102 / 0.2);
+  pointer-events: none;
 }
 
 .bookSpine {
