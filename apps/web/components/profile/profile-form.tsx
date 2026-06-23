@@ -36,6 +36,7 @@ const copy = {
   saved: "\u4e2a\u4eba\u8d44\u6599\u5df2\u66f4\u65b0\u3002",
   downloads: "\u67e5\u770b\u6211\u7684\u4e0b\u8f7d",
   forum: "\u6211\u7684\u8ba8\u8bba",
+  notifications: "\u6211\u7684\u901a\u77e5",
   entitlements: "\u6211\u7684\u8d44\u6599\u6743\u9650",
   unlockedMaterials: "\u53ef\u8bbf\u95ee\u8d44\u6599",
   packageGrants: "\u8bfe\u7a0b\u5305",
@@ -199,6 +200,9 @@ export function ProfileForm() {
           </Link>
           <Link className="rounded-xl border border-border px-3 py-2 text-foreground hover:bg-muted" href="/me/forum">
             {copy.forum}
+          </Link>
+          <Link className="rounded-xl border border-border px-3 py-2 text-foreground hover:bg-muted" href="/me/notifications">
+            {copy.notifications}
           </Link>
           <button
             className="rounded-xl border border-border px-3 py-2 text-left text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"

@@ -1,6 +1,7 @@
 package forum
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/audit"
@@ -666,6 +668,9 @@ func (h Handler) reviewPost(ctx *gin.Context, status string) {
 			}
 			auditRewardStatus = "refunded"
 		}
+		if err := createForumReviewNotification(tx, "forum_post", post.AuthorID, post.ID, post.Title, status, reason); err != nil {
+			return err
+		}
 		return audit.Record(ctx, tx, action, "forum_post", post.ID, map[string]interface{}{
 			"authorId":       post.AuthorID,
 			"boardId":        post.BoardID,
@@ -753,6 +758,13 @@ func (h Handler) reviewReply(ctx *gin.Context, status string) {
 			if err := tx.Model(&model.ForumPost{}).Where("id = ?", reply.PostID).UpdateColumn("comment_count", gorm.Expr("comment_count + ?", 1)).Error; err != nil {
 				return err
 			}
+		}
+		var post model.ForumPost
+		if err := tx.Select("id", "title").First(&post, "id = ?", reply.PostID).Error; err != nil {
+			return err
+		}
+		if err := createForumReviewNotification(tx, "forum_reply", reply.AuthorID, reply.ID, post.Title, status, reason); err != nil {
+			return err
 		}
 		return audit.Record(ctx, tx, action, "forum_reply", reply.ID, map[string]interface{}{
 			"authorId":       reply.AuthorID,
@@ -883,6 +895,45 @@ func settleForumReward(tx *gorm.DB, userID string, postID string, replyID string
 		ReferenceType:  "forum_reply",
 		ReferenceID:    replyID,
 		IdempotencyKey: "forum_reward_settlement:" + postID,
+	}).Error
+}
+
+func createForumReviewNotification(tx *gorm.DB, resourceType string, userID string, resourceID string, resourceTitle string, status string, reason string) error {
+	title := "讨论内容审核已通过"
+	body := "你的讨论内容已通过审核。"
+	if resourceType == "forum_reply" {
+		title = "讨论回复审核已通过"
+		body = "你在「" + resourceTitle + "」下的回复已通过审核。"
+	} else if resourceTitle != "" {
+		body = "你的帖子「" + resourceTitle + "」已通过审核。"
+	}
+	if status == model.StatusRejected {
+		title = "讨论内容审核未通过"
+		body = "你的讨论内容审核未通过。"
+		if resourceType == "forum_reply" {
+			title = "讨论回复审核未通过"
+			body = "你在「" + resourceTitle + "」下的回复审核未通过。"
+		} else if resourceTitle != "" {
+			body = "你的帖子「" + resourceTitle + "」审核未通过。"
+		}
+		if reason != "" {
+			body += " 原因：" + reason
+		}
+	}
+	data, err := json.Marshal(map[string]string{
+		"resourceType": resourceType,
+		"resourceId":   resourceID,
+		"status":       status,
+	})
+	if err != nil {
+		return err
+	}
+	return tx.Create(&model.Notification{
+		UserID: userID,
+		Type:   "forum_review",
+		Title:  title,
+		Body:   body,
+		Data:   datatypes.JSON(data),
 	}).Error
 }
 

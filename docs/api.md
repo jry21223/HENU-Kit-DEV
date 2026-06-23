@@ -52,6 +52,9 @@ Currently implemented endpoints:
 - `PATCH /api/v1/me/forum-posts/:id`
 - `GET /api/v1/me/forum-replies?limit=`
 - `PATCH /api/v1/me/forum-replies/:id`
+- `GET /api/v1/me/notifications?limit=&unread=true`
+- `POST /api/v1/me/notifications/:id/read`
+- `POST /api/v1/me/notifications/read-all`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/admin/schools`
@@ -121,7 +124,7 @@ Error envelope:
 }
 ```
 
-Later stages add membership, richer wiki conflict resolution, notification, report, and expanded admin APIs.
+Later stages add membership, richer wiki conflict resolution, report, expanded admin APIs, and more notification sources.
 
 Implemented authentication behavior:
 
@@ -209,6 +212,16 @@ Implemented forum behavior:
 - reward-post best-answer selection requires `rewardStatus=escrowed`, marks the reply `isBest=true`, sets the post `rewardStatus=settled`, grants points to the reply author, and writes a `forum_reward_settlement` points log
 - normal/question best-answer selection marks the reply `isBest=true` without changing points
 - reply editing and UI-level best-answer controls remain later work
+
+Implemented notification behavior:
+
+- logged-in users can list only their own notifications through `/me/notifications`
+- `?unread=true` filters the returned list to unread notifications while still returning total unread count for the current user
+- logged-in users can mark their own notification as read through `/me/notifications/:id/read`; reading another user's notification returns HTTP 404
+- logged-in users can mark all of their own unread notifications as read through `/me/notifications/read-all`
+- forum post/reply approve or reject actions create a `forum_review` notification for the content author in the same transaction as the review update and operation log
+- forum review notifications include safe data fields (`resourceType`, `resourceId`, `status`) and do not expose reviewer ids
+- current automatic notification source is forum review only; material, wiki, blog, AI, payment, and membership notifications remain later work
 
 Implemented wiki behavior:
 

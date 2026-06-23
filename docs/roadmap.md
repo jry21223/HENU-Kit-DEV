@@ -19,6 +19,7 @@
 - Web personal download-history page
 - Web personal forum submission tracking page for current user's posts/replies and review status
 - Web personal forum edit/resubmit flow for draft/pending/needs_changes/rejected posts and replies
+- Web personal notification inbox with user-scoped read/read-all state
 - Web profile entitlement summary for active material/package grants
 - Web course package cards with price and included material links
 - Web email-code login form
@@ -37,6 +38,7 @@
 - Vue admin forum reply review queue with reviewer-role access, approve/reject actions, review notes, public-only published reply APIs, and once-only comment-count updates
 - Forum reward posts with server-side point escrow, review visibility, rejection refunds, and points ledger rows
 - Forum best-answer selection with one-answer-per-post guardrails and escrowed reward settlement to the selected reply author
+- Forum review notifications for post/reply approve/reject outcomes
 - Vue admin read-only analytics page for download trend and course demand
 - Vue admin read-only operation-log browser for high-risk admin mutations
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
@@ -51,7 +53,7 @@
 
 ## Next Deliverable
 
-- Richer content review workflows for wiki conflict-resolution UX and richer forum moderation/user notification controls
+- Richer content review workflows for wiki conflict-resolution UX and broader notification sources beyond forum review
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 

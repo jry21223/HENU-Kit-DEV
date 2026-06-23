@@ -27,7 +27,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包展示、资料详情、课程刷题、论坛列表/详情、发帖、回复提交、最佳答案操作入口和学生邮箱登录页面。
-- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，并在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复。
+- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
 - 微信支付 Native 是目标支付方案；当前仍是本地 mock 边界，未完成真实商户联调。
@@ -106,6 +106,8 @@ cd ../worker && go test ./...
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态。
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
+- Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
+- `/me/notifications` 用户隔离、已读幂等、全部已读，以及论坛审核通知生成。
 - 不安全 storage key 返回 404。
 - admin-only 组织/课程/资料变更。
 - 上传文件名、后缀、内容和大小限制。
@@ -183,6 +185,8 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Forum replies are review-first for the MVP: replies can only target published public posts, approved replies increment the parent post comment count once, and rejected replies stay hidden.
 - User-scoped forum tracking and resubmission are available through `GET/PATCH /api/v1/me/forum-posts`, `GET/PATCH /api/v1/me/forum-replies`, and Web `/me/forum`; they return only the current user's submissions, do not expose reviewer ids or other users' hidden content, and reset editable submissions back to `pending`.
 - Reward-post resubmission re-freezes the original reward points after a prior rejection/refund; insufficient points keep the post rejected and do not reopen it for review.
+- User notifications are available through `GET /api/v1/me/notifications`, `POST /api/v1/me/notifications/:id/read`, `POST /api/v1/me/notifications/read-all`, and Web `/me/notifications`; users only see/read their own notifications.
+- Forum post/reply review creates a `forum_review` notification for the author in the same transaction as the review update and operation log. Other notification sources remain later work.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
 - Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.
@@ -190,3 +194,4 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.
 - Web `/me` also reads `GET /api/v1/me/entitlements` to show active direct material grants, published course package grants, and unlocked material counts for the current user.
 - Web `/me/forum` reads and patches `GET/PATCH /api/v1/me/forum-posts` and `GET/PATCH /api/v1/me/forum-replies` with httpOnly-cookie credentials to show and resubmit the current user's discussion review state.
+- Web `/me/notifications` reads and patches notification read state with httpOnly-cookie credentials.

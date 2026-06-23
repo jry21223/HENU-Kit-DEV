@@ -20,6 +20,7 @@ import (
 	"final-review-platform/services/api/internal/forum"
 	"final-review-platform/services/api/internal/health"
 	"final-review-platform/services/api/internal/material"
+	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/internal/packagecatalog"
 	"final-review-platform/services/api/internal/quiz"
@@ -60,6 +61,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
 	downloadLogHandler := downloadlog.NewHandler(db)
 	entitlementHandler := entitlement.NewHandler(db)
+	notificationHandler := notification.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
 	wikiHandler := wiki.NewHandler(db)
@@ -122,6 +124,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.PATCH("/me/forum-posts/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.ResubmitPost)
 	v1.GET("/me/forum-replies", authMiddleware.RequireAuth(), forumHandler.MyReplies)
 	v1.PATCH("/me/forum-replies/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.ResubmitReply)
+	v1.GET("/me/notifications", authMiddleware.RequireAuth(), notificationHandler.MyNotifications)
+	v1.POST("/me/notifications/:id/read", authMiddleware.RequireAuth(), notificationHandler.MarkRead)
+	v1.POST("/me/notifications/read-all", authMiddleware.RequireAuth(), notificationHandler.MarkAllRead)
 	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 

@@ -236,6 +236,18 @@ export type MyForumReply = {
   updatedAt: string;
 };
 
+export type NotificationItem = {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  readAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export function apiBaseUrl() {
   return baseUrl;
 }
