@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
 import AnalyticsView from "../views/AnalyticsView.vue";
+import BlogReviewsView from "../views/BlogReviewsView.vue";
 import CoursesView from "../views/CoursesView.vue";
 import AiDraftsView from "../views/AiDraftsView.vue";
 import DashboardView from "../views/DashboardView.vue";
@@ -22,6 +23,7 @@ export const router = createRouter({
     { path: "/downloads", component: DownloadsView },
     { path: "/operation-logs", component: OperationLogsView },
     { path: "/material-reviews", component: MaterialReviewsView, meta: { reviewer: true } },
+    { path: "/blog-reviews", component: BlogReviewsView, meta: { reviewer: true } },
     { path: "/ai/drafts", component: AiDraftsView, meta: { reviewer: true } },
     { path: "/analytics", component: AnalyticsView },
   ],

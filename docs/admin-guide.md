@@ -8,6 +8,8 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
 - `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
 - `/downloads`: successful material download audit logs.
+- `/material-reviews`: reviewer/admin material approve/reject review queue with review notes.
+- `/blog-reviews`: reviewer/admin blog post approve/reject review queue with review notes.
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations with review notes.
 - `/analytics`: read-only material download and course demand analytics.
 - `/operation-logs`: read-only high-risk admin operation logs.
@@ -48,13 +50,14 @@ Status flow used by the MVP:
 - `draft`: stored but hidden from public pages
 - `pending`: submitted for review, still hidden from public pages
 - `published`: visible to public material list/detail and eligible for server-side download permission checks
+- `rejected`: reviewed and rejected, hidden from public pages
 - `archived`: hidden from public pages
 
 Important boundaries:
 
 - Upload and manual create default to `draft` when no status is provided.
 - The admin UI can edit course binding, title, type, description, preview content, access level, and status.
-- The admin UI can move materials to `pending`, `published`, `draft`, or `archived`.
+- The admin UI can move materials to `pending`, `published`, `rejected`, `draft`, or `archived`.
 - Public APIs only expose `published` materials.
 - Invalid statuses, material types, and access levels are rejected by the Go API.
 - The UI does not display `storage_key`; downloads still go through `GET /api/v1/materials/:id/download`.
@@ -107,6 +110,25 @@ Important boundaries:
 - Only `pending` materials can be reviewed; repeating review on published/rejected/archived materials returns `409 material_not_reviewable`.
 - Material approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
 
+## Blog Review
+
+`/blog-reviews` calls:
+
+- `GET /api/v1/admin/blog/posts?status=`
+- `POST /api/v1/admin/blog/posts/:id/approve`
+- `POST /api/v1/admin/blog/posts/:id/reject`
+
+The page is available to `reviewer`, `admin`, and `super_admin` roles. It lists student-submitted blog posts by review status and does not provide edit/delete controls.
+
+Important boundaries:
+
+- Logged-in users submit blog posts through `POST /api/v1/blog/posts`; posts always enter `pending`.
+- Public blog list/detail endpoints only expose `published` posts.
+- Approving a post sets it to `published`, records reviewer metadata, and makes it visible through public blog endpoints.
+- Rejecting a post requires `reviewReason`, records reviewer metadata, and keeps it hidden from public blog endpoints.
+- Only `draft`, `pending`, and `needs_changes` posts can be reviewed; repeating review on published/rejected posts returns `409 post_not_reviewable`.
+- Blog approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+
 ## AI Draft Review
 
 `/ai/drafts` calls:
@@ -121,7 +143,7 @@ The page shows recent AI tasks and reviewable AI drafts created by the worker.
 Important boundaries:
 
 - AI review endpoints require an authenticated `reviewer`, `admin`, or `super_admin` role.
-- `reviewer` users can access `/ai/drafts` and `/material-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
+- `reviewer` users can access `/ai/drafts`, `/material-reviews`, and `/blog-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
 - Approving a draft can include an optional review note; rejecting a draft requires a review reason.
 - Approving or rejecting a draft only changes the draft review status and review metadata.
 - Only `draft`, `pending`, and `needs_changes` drafts can be reviewed; repeating review on `approved` or `rejected` drafts returns `409 draft_not_reviewable`.
@@ -138,7 +160,7 @@ Important boundaries:
 - `GET /api/v1/admin/operation-logs/export`
 - `GET /api/v1/admin/operation-logs/retention`
 
-The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, blog review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
 Filters:
 

@@ -46,6 +46,7 @@
             <el-option label="college" value="college" />
             <el-option label="major" value="major" />
             <el-option label="ai_draft" value="ai_draft" />
+            <el-option label="blog_post" value="blog_post" />
           </el-select>
         </el-form-item>
         <el-form-item :label="copy.targetId">

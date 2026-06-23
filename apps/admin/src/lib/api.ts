@@ -123,6 +123,24 @@ export type AIDraft = {
   updatedAt: string;
 };
 
+export type BlogPost = {
+  id: string;
+  authorId: string;
+  title: string;
+  slug: string;
+  content: string;
+  status: string;
+  reviewerId?: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  visibility?: string;
+  likeCount?: number;
+  commentCount?: number;
+  collectCount?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AnalyticsOverview = {
   totals: {
     users: number;

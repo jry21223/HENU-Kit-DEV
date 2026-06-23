@@ -13,6 +13,7 @@ import (
 	"final-review-platform/services/api/internal/ai"
 	"final-review-platform/services/api/internal/analytics"
 	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/blog"
 	"final-review-platform/services/api/internal/course"
 	"final-review-platform/services/api/internal/downloadlog"
 	"final-review-platform/services/api/internal/entitlement"
@@ -50,6 +51,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	}
 	authHandler := auth.NewHandler(cfg, db, tokenManager)
 	authMiddleware := auth.NewMiddleware(db, tokenManager)
+	blogHandler := blog.NewHandler(db)
 	orgHandler := org.NewHandler(db)
 	courseHandler := course.NewHandler(db)
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
@@ -92,6 +94,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/packages/:id", packageHandler.Detail)
 	v1.GET("/questions/:id", quizHandler.Question)
 	v1.POST("/questions/:id/submit", authMiddleware.OptionalAuth(), quizHandler.Submit)
+	v1.GET("/blog/posts", blogHandler.ListPublished)
+	v1.GET("/blog/posts/:id", blogHandler.Detail)
+	v1.POST("/blog/posts", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), blogHandler.Create)
 	v1.POST("/quiz/attempts", authMiddleware.RequireAuth(), quizHandler.CreateAttempt)
 	v1.GET("/me/quiz-attempts", authMiddleware.RequireAuth(), quizHandler.MyAttempts)
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
@@ -133,7 +138,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.GET("/analytics/overview", analyticsHandler.Overview)
 
 	review := v1.Group("/admin")
-	review.Use(authMiddleware.RequireAuth(), authMiddleware.RequireReviewer())
+	review.Use(authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireReviewer())
 	review.GET("/ai/tasks", aiHandler.AdminTasks)
 	review.GET("/ai/drafts", aiHandler.AdminDrafts)
 	review.POST("/ai/drafts/:id/approve", aiHandler.ApproveDraft)
@@ -141,6 +146,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	review.GET("/material-reviews", adminHandler.ListMaterialReviews)
 	review.POST("/materials/:id/approve", adminHandler.ApproveMaterial)
 	review.POST("/materials/:id/reject", adminHandler.RejectMaterial)
+	review.GET("/blog/posts", blogHandler.AdminPosts)
+	review.POST("/blog/posts/:id/approve", blogHandler.ApprovePost)
+	review.POST("/blog/posts/:id/reject", blogHandler.RejectPost)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})

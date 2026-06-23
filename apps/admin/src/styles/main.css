@@ -279,6 +279,17 @@ a {
   word-break: break-word;
 }
 
+.content-preview {
+  display: -webkit-box;
+  line-height: 1.6;
+  margin: 0;
+  max-height: 4.8em;
+  overflow: hidden;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .table-actions {
   display: flex;
   flex-wrap: wrap;

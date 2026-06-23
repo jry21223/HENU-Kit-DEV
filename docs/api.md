@@ -28,6 +28,9 @@ Currently implemented endpoints:
 - `GET /api/v1/packages/:id`
 - `GET /api/v1/questions/:id`
 - `POST /api/v1/questions/:id/submit`
+- `GET /api/v1/blog/posts?limit=`
+- `GET /api/v1/blog/posts/:id`
+- `POST /api/v1/blog/posts`
 - `POST /api/v1/quiz/attempts`
 - `GET /api/v1/me/quiz-attempts`
 - `GET /api/v1/me/wrong-questions`
@@ -64,6 +67,9 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/ai/drafts`
 - `POST /api/v1/admin/ai/drafts/:id/approve`
 - `POST /api/v1/admin/ai/drafts/:id/reject`
+- `GET /api/v1/admin/blog/posts?status=pending|published|rejected&authorId=&limit=`
+- `POST /api/v1/admin/blog/posts/:id/approve`
+- `POST /api/v1/admin/blog/posts/:id/reject`
 - `GET /api/v1/admin/analytics/overview`
 - `GET /api/v1/admin/operation-logs?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
 - `GET /api/v1/admin/operation-logs/export?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
@@ -135,10 +141,20 @@ Implemented quiz behavior:
 - authenticated wrong answers create or update user-scoped wrong-question records
 - weak-point reporting currently returns per-course wrong-count totals
 
+Implemented blog behavior:
+
+- public blog list/detail endpoints only return `published` posts
+- logged-in, non-frozen users can submit blog posts; submissions always enter `pending`
+- blog submission validates required title, lowercase URL slug, and content length
+- reviewer/admin users can list pending/published/rejected blog posts through `/admin/blog/posts`
+- approving a blog post sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
+- rejecting a blog post sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public endpoints
+- blog review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected posts return HTTP 409 with `post_not_reviewable`
+
 Implemented admin behavior:
 
 - all admin endpoints require an authenticated `admin` or `super_admin` role
-- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, and `/api/v1/admin/materials/:id/approve|reject` allow `reviewer`, `admin`, or `super_admin`
+- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, and `/api/v1/admin/blog/posts*` allow `reviewer`, `admin`, or `super_admin`
 - `reviewer` users remain blocked from material CRUD, course CRUD, download audit, analytics, operation logs, and other admin-only APIs
 - organization/course/material delete operations archive by setting `status=archived`
 - admin course list returns all course statuses; public course list/detail returns only `published`
