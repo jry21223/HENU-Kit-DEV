@@ -45,9 +45,9 @@ html {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 48% 18%, hsl(48 35% 98% / 0.92), transparent 36rem),
-    linear-gradient(hsl(64 18% 78% / 0.28) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(64 18% 78% / 0.28) 1px, transparent 1px),
+    radial-gradient(circle at 50% 8%, hsl(38 82% 96% / 0.92), transparent 34rem),
+    linear-gradient(hsl(38 36% 84% / 0.2) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(38 36% 84% / 0.2) 1px, transparent 1px),
     hsl(var(--background));
   background-attachment: fixed;
   background-size: auto, 48px 48px, 48px 48px, auto;
@@ -56,6 +56,13 @@ body {
     Inter, "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+.home-page {
+  background:
+    radial-gradient(circle at 82% 4%, rgb(255 210 66 / 0.32), transparent 22rem),
+    radial-gradient(circle at 8% 34%, rgb(127 199 255 / 0.2), transparent 24rem),
+    #f7efe4;
 }
 
 a {

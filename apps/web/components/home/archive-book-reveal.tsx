@@ -1,0 +1,244 @@
+"use client";
+
+import Link from "next/link";
+import { ArrowRight, Search } from "lucide-react";
+import { motion, useMotionValueEvent, useScroll, useTransform } from "motion/react";
+import { useRef, useState } from "react";
+import { archiveDirectory, courseBooks, heroLinks } from "./home-data";
+import { PdfCourseBook } from "./pdf-course-book";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import styles from "./home-visuals.module.css";
+
+const INTRO_END = 0.34;
+const STRAIGHT_START = 0.3;
+const COPY_END = 0.5;
+const OPEN_START = 0.68;
+const OPEN_END = 0.86;
+
+export function ArchiveBookReveal() {
+  const ref = useRef<HTMLElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end end"],
+  });
+  const [contentReady, setContentReady] = useState(() => {
+    const progress = scrollYProgress.get();
+
+    return progress >= OPEN_START && progress <= OPEN_END;
+  });
+  const [introReady, setIntroReady] = useState(() => scrollYProgress.get() < INTRO_END);
+  const [openCopyReady, setOpenCopyReady] = useState(() => {
+    const progress = scrollYProgress.get();
+
+    return progress >= STRAIGHT_START && progress <= COPY_END;
+  });
+  const [closingCopyReady, setClosingCopyReady] = useState(() => scrollYProgress.get() >= 0.84);
+
+  const rotate = useTransform(scrollYProgress, [0, STRAIGHT_START, 0.86, 1], [-12, 0, 0, 2]);
+  const x = useTransform(scrollYProgress, [0, STRAIGHT_START, COPY_END, OPEN_START, OPEN_END, 1], [300, 0, 0, 0, 0, 0]);
+  const y = useTransform(scrollYProgress, [0, STRAIGHT_START, COPY_END, OPEN_START, OPEN_END, 1], [220, 0, 0, 0, 0, 18]);
+  const coverRotate = useTransform(scrollYProgress, [0, OPEN_START, OPEN_END, 0.94, 1], [0, 0, -176, -176, 0]);
+  const coverOpacity = useTransform(scrollYProgress, [0, OPEN_START, OPEN_END, 0.94, 1], [1, 1, 0, 0, 1]);
+  const baseOpacity = useTransform(scrollYProgress, [OPEN_START, 0.76, OPEN_END, 0.94], [0, 1, 1, 0]);
+  const pageOpacity = useTransform(scrollYProgress, [OPEN_START, 0.76, OPEN_END, 0.9], [0, 1, 1, 0]);
+  const pageY = useTransform(scrollYProgress, [OPEN_START, 0.76, OPEN_END, 0.9], [18, 0, 0, 12]);
+  const introOpacity = useTransform(scrollYProgress, [0, 0.22, INTRO_END], [1, 1, 0]);
+  const openCopyOpacity = useTransform(scrollYProgress, [0.28, 0.36, 0.43, COPY_END], [0, 1, 1, 0]);
+  const closingCopyOpacity = useTransform(scrollYProgress, [0.76, 0.9, 1], [0, 1, 1]);
+  const closingCopyY = useTransform(scrollYProgress, [0.76, 0.9], [18, 0]);
+
+  useMotionValueEvent(scrollYProgress, "change", (progress) => {
+    if (reduceMotion) {
+      return;
+    }
+
+    const nextReady = progress >= OPEN_START && progress <= OPEN_END;
+    const nextIntroReady = progress < INTRO_END;
+    const nextOpenCopyReady = progress >= STRAIGHT_START && progress <= COPY_END;
+    const nextClosingCopyReady = progress >= 0.84;
+
+    setContentReady((current) => (current === nextReady ? current : nextReady));
+    setIntroReady((current) => (current === nextIntroReady ? current : nextIntroReady));
+    setOpenCopyReady((current) => (current === nextOpenCopyReady ? current : nextOpenCopyReady));
+    setClosingCopyReady((current) => (current === nextClosingCopyReady ? current : nextClosingCopyReady));
+  });
+
+  const contentFocusable = reduceMotion || contentReady;
+  const contentTabIndex = contentFocusable ? undefined : -1;
+  const contentAriaHidden = contentFocusable ? undefined : true;
+  const introFocusable = reduceMotion || introReady;
+  const introTabIndex = introFocusable ? undefined : -1;
+  const introAriaHidden = introFocusable ? undefined : true;
+
+  return (
+    <section ref={ref} className={styles.bookStage} aria-label="课程资料档案册">
+      <div className={styles.bookSticky}>
+        <div className={styles.bookScene}>
+          <div className={styles.bookCopy}>
+            <motion.div
+              className={styles.bookCopyPanel}
+              data-testid="archive-copy-intro"
+              aria-hidden={introAriaHidden}
+              style={{
+                opacity: reduceMotion ? 1 : introOpacity,
+                pointerEvents: introFocusable ? "auto" : "none",
+                visibility: introFocusable ? "visible" : "hidden",
+              }}
+            >
+              <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#b75c32]">Final Review Platform</p>
+              <h1 className="mt-5 text-5xl font-black leading-[0.95] tracking-tight text-[#2b2117] xl:text-7xl">
+                打开你的期末复习资料册
+              </h1>
+              <p className="mt-6 max-w-lg text-base leading-7 text-[#685b4b] sm:text-lg">
+                按课程找到讲义、真题、实验资料和复习包，围绕资料继续刷题、讨论和共创。
+              </p>
+              <form action="/courses" className="mt-7 flex max-w-lg items-center rounded-2xl border border-[#2b2117]/14 bg-white/86 p-2 shadow-[0_20px_60px_rgba(71,49,27,0.11)]" method="get">
+                <label className="sr-only" htmlFor="archive-search">
+                  搜索课程、讲义、真题、实验资料
+                </label>
+                <Search className="ml-2 size-5 shrink-0 text-[#9a7154]" aria-hidden="true" />
+                <input id="archive-search" name="q" className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-[#2b2117] outline-none placeholder:text-[#9b8b78]" placeholder="搜索课程、讲义、真题、实验资料" tabIndex={introTabIndex} type="search" />
+                <button className="inline-flex shrink-0 items-center rounded-xl bg-[#2f6b58] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#285a4b]" tabIndex={introTabIndex} type="submit">
+                  搜索
+                </button>
+              </form>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link className="inline-flex items-center gap-2 rounded-full bg-[#2b2117] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(43,33,23,0.2)] transition hover:-translate-y-0.5" href={heroLinks.primary.href} tabIndex={introTabIndex}>
+                  {heroLinks.primary.label}
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+                <Link className="inline-flex items-center rounded-full border border-[#2b2117]/18 bg-white/72 px-5 py-3 text-sm font-semibold text-[#2b2117] transition hover:-translate-y-0.5 hover:bg-white" href={heroLinks.secondary.href} tabIndex={introTabIndex}>
+                  {heroLinks.secondary.label}
+                </Link>
+              </div>
+            </motion.div>
+
+            <motion.div
+              className={styles.bookCopyPanel}
+              data-testid="archive-copy-open"
+              style={{
+                opacity: reduceMotion ? 0 : openCopyOpacity,
+                pointerEvents: "none",
+                visibility: !reduceMotion && openCopyReady ? "visible" : "hidden",
+              }}
+              aria-hidden="true"
+            >
+              <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#b75c32]">Archive Map</p>
+              <h2 className="mt-4 text-4xl font-black leading-[1] tracking-tight text-[#2b2117] xl:text-6xl">
+                先把资料夹摆正
+              </h2>
+              <p className="mt-5 max-w-md text-base leading-7 text-[#685b4b]">
+                这一段先不打开，只把竖版资料夹对齐到右侧。继续往下滚，封面才会沿着中缝翻开。
+              </p>
+            </motion.div>
+
+            <motion.div
+              className={styles.bookCopyPanel}
+              data-testid="archive-copy-closing"
+              style={{
+                opacity: reduceMotion ? 0 : closingCopyOpacity,
+                pointerEvents: "none",
+                visibility: !reduceMotion && closingCopyReady ? "visible" : "hidden",
+                y: reduceMotion ? 0 : closingCopyY,
+              }}
+              aria-hidden="true"
+            >
+              <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#b75c32]">Community</p>
+              <h2 className="mt-4 text-4xl font-black leading-[1] tracking-tight text-[#2b2117] xl:text-6xl">
+                资料合上以后，还会继续生长
+              </h2>
+              <p className="mt-5 max-w-md text-base leading-7 text-[#685b4b]">
+                再往下是 Wiki、博客、课程帖子和动态。资料不是一次性下载，而是围绕课程持续补充、勘误和共创。
+              </p>
+            </motion.div>
+          </div>
+
+          <div className={styles.bookDock} style={{ pointerEvents: contentFocusable ? "auto" : "none" }}>
+            <motion.div
+              className={styles.archiveBook}
+              data-testid="archive-book"
+              style={{
+                rotate: reduceMotion ? 0 : rotate,
+                x: reduceMotion ? 0 : x,
+                y: reduceMotion ? 0 : y,
+              }}
+            >
+              <motion.div className={styles.bookBase} aria-hidden="true" style={{ opacity: reduceMotion ? 1 : baseOpacity }} />
+              <motion.div className={styles.bookInside} style={{ opacity: reduceMotion ? 1 : baseOpacity }}>
+                <motion.div
+                  className={`${styles.bookPage} ${styles.directoryPage} p-4 xl:p-5`}
+                  aria-hidden={contentAriaHidden}
+                  style={{
+                    opacity: reduceMotion ? 1 : pageOpacity,
+                    pointerEvents: contentFocusable ? "auto" : "none",
+                    y: reduceMotion ? 0 : pageY,
+                  }}
+                >
+                  <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#b75c32]">资料档案</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-[#2b2117] xl:text-3xl">资料目录</h2>
+                  <div className="mt-3 grid gap-0.5">
+                    {archiveDirectory.slice(0, 6).map((item) => (
+                      <Link key={item.label} className={`${styles.directoryLine} group block py-1.5`} href={item.href} tabIndex={contentTabIndex}>
+                        <span className="flex items-baseline justify-between gap-3">
+                          <span className="text-sm font-bold text-[#2b2117] group-hover:text-[#2f6b58] xl:text-base">{item.label}</span>
+                          <span className="font-mono text-xs text-[#a26b43]">打开</span>
+                        </span>
+                        <span className="mt-0.5 block text-xs leading-5 text-[#756653]">{item.description}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </motion.div>
+
+                <motion.div
+                  className={`${styles.bookPage} ${styles.coursePage} p-4`}
+                  aria-hidden={contentAriaHidden}
+                  style={{
+                    opacity: reduceMotion ? 1 : pageOpacity,
+                    pointerEvents: contentFocusable ? "auto" : "none",
+                    y: reduceMotion ? 0 : pageY,
+                  }}
+                >
+                  <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#b75c32]">课程 PDF</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-[#2b2117] xl:text-3xl">课程入口</h2>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    {courseBooks.map((course) => (
+                      <PdfCourseBook key={course.label} compact course={course} tabIndex={contentTabIndex} />
+                    ))}
+                  </div>
+                </motion.div>
+              </motion.div>
+
+              <motion.div
+                className={styles.bookCover}
+                data-testid="archive-cover"
+                style={{ opacity: reduceMotion ? 0 : coverOpacity, rotateY: reduceMotion ? -176 : coverRotate }}
+                aria-hidden="true"
+              >
+                <div className="flex h-full flex-col justify-between p-7 xl:p-8">
+                  <div>
+                    <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#593a24]/70 xl:text-sm">软件学院</p>
+                    <h2 className="mt-4 max-w-none text-3xl font-black leading-[0.98] tracking-tight text-[#2b2117] xl:text-4xl">
+                      软件学院资料库
+                    </h2>
+                  </div>
+                  <p className="max-w-xs text-sm leading-6 text-[#593a24]/76">
+                    课程资料、真题、刷题、共创和资料保障，从这一册开始展开。
+                  </p>
+                </div>
+                <span className={styles.coverLabel} aria-hidden="true">
+                  A4 ARCHIVE
+                </span>
+              </motion.div>
+              <div className={styles.bookSpine} data-testid="archive-seam" aria-hidden="true" />
+              <div className={styles.bookPencil} aria-hidden="true">
+                <span className={styles.pencilEraser} />
+                <span className={styles.pencilTip} />
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
