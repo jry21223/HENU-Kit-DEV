@@ -73,14 +73,33 @@ func (h Handler) Download(ctx *gin.Context) {
 		return
 	}
 
-	h.recordDownload(ctx, material, user, hasUser)
-
 	fileName := strings.TrimSpace(material.FileName)
 	if fileName == "" {
 		fileName = filepath.Base(path)
 	}
+	downloadPath := path
+	watermarkApplied := false
+	if shouldWatermarkPDF(path, fileName) {
+		watermarkedPath, cleanup, err := watermarkedPDFPath(path, watermarkContext{
+			User:       user,
+			MaterialID: material.ID,
+			Time:       time.Now(),
+		})
+		if err != nil {
+			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "watermark_failed", nil)
+			return
+		}
+		defer cleanup()
+		downloadPath = watermarkedPath
+		watermarkApplied = true
+		ctx.Header("Content-Type", "application/pdf")
+	}
+
+	h.recordDownload(ctx, material, user, hasUser)
+
+	ctx.Header("X-Watermark-Applied", boolHeader(watermarkApplied))
 	ctx.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
-	ctx.File(path)
+	ctx.File(downloadPath)
 }
 
 func (h Handler) findPublished(ctx *gin.Context) (model.Material, bool) {
@@ -217,4 +236,11 @@ func writeAccessError(ctx *gin.Context, err error) {
 	default:
 		response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "forbidden", nil)
 	}
+}
+
+func boolHeader(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }

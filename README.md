@@ -22,6 +22,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - V2 monorepo 骨架已建立。
 - Go API 已实现 health/version、邮箱验证码登录、JWT cookie/token、角色中间件、学校/课程/资料/课程包接口、组织/课程/资料 admin CRUD、上传防护、资料下载权限、刷题提交、错题记录和基础薄弱点统计。
 - 成功资料下载会写入服务端审计日志，失败鉴权、不安全路径和缺失文件不会记为成功下载。
+- PDF 下载会在服务端生成临时轻水印副本，水印包含用户标识、资料 ID 和下载时间；源文件不会被覆盖。非 PDF 文件保持原样下载。
 - 用户可以查看自己的成功下载记录；管理员可以查看全量下载审计日志。
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
@@ -96,6 +97,7 @@ cd ../worker && go test ./...
 - 资料详情不泄露 `storage_key`。
 - free/login_required/paid 资料下载权限。
 - 成功下载审计日志，以及拒绝下载不产生日志。
+- PDF 动态轻水印、非 PDF 原样下载、原 PDF 文件不被覆盖。
 - `/me/downloads` 用户隔离和 `/admin/downloads` 管理员权限。
 - `/auth/me` 个人资料更新、学校/专业绑定校验和专业-学校匹配校验。
 - 资料默认 draft 入库、admin 全量可见、公开端只展示 published、非法状态拒绝。
@@ -136,6 +138,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - 生产环境不能使用固定验证码或 mock 支付。
 - paid 资料下载必须经过 Go API 服务端鉴权，不能只靠前端隐藏按钮。
 - 当前 paid 资料支持直接 material grant 和 published 课程包 grant。
+- PDF 水印由 Go API 下载接口动态生成临时文件；如果 PDF 处理失败，下载会返回错误而不是静默直出未水印文件。
 - AI 生成内容必须先进入 draft/review 流程，不能自动发布为正式内容。
 
 ## 9. 开发入口

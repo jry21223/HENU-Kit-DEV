@@ -30,4 +30,5 @@ Current access-control notes:
 - `material_access_grants.material_id` is the active paid-material unlock path in the current foundation.
 - `material_access_grants.package_id` unlocks paid materials included through `course_package_items` when the package is published and the grant has not expired.
 - `material_download_logs` records only successful file downloads after permission checks and storage-key validation.
+- PDF watermarking is generated at response time from the stored source file; no separate watermarked file record is persisted.
 - `wrong_questions` uses a unique user/question pair so repeated wrong answers increment `wrong_count` instead of creating duplicate rows.

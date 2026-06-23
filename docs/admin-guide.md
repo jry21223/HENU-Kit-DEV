@@ -80,6 +80,9 @@ Important boundaries:
 
 - The admin UI only reads audit logs; it does not grant access or mutate download records.
 - Failed authorization, unsafe storage keys, and missing files are not recorded as successful downloads.
+- PDF downloads are dynamically watermarked by the Go API using a temporary copy; the stored source PDF is not overwritten.
+- Non-PDF downloads are served unchanged and explicitly return `X-Watermark-Applied: false`.
+- PDF watermark failures return an API error instead of falling back to an unwatermarked PDF.
 - `storage_key` is not returned in material JSON and is not displayed in the admin UI.
 
 ## AI Draft Review

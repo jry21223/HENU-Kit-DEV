@@ -8,6 +8,7 @@
 - GORM model coverage for the V2 table set
 - Material download permission checks
 - Material download audit logs
+- Dynamic PDF watermarking during download without mutating source files
 - User and admin download-history APIs
 - Quiz submission and wrong-question persistence
 - Basic weak-point counts
@@ -38,7 +39,7 @@
 - Web session polish for richer account status and entitlement summaries
 - Richer content review workflows beyond AI drafts
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
-- PDF watermark integration
+- Admin material storage-key update hardening
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables

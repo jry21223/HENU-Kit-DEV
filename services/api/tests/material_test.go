@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"bytes"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,6 +43,9 @@ func TestMaterialDownloadPermissions(t *testing.T) {
 	freeResponse := performJSON(router, http.MethodGet, "/api/v1/materials/"+freeMaterial.ID+"/download", "", "")
 	if freeResponse.Code != http.StatusOK {
 		t.Fatalf("expected free download 200, got %d: %s", freeResponse.Code, freeResponse.Body.String())
+	}
+	if freeResponse.Header().Get("X-Watermark-Applied") != "false" || freeResponse.Body.String() != "free" {
+		t.Fatalf("expected non-PDF download without watermark, got header=%q body=%q", freeResponse.Header().Get("X-Watermark-Applied"), freeResponse.Body.String())
 	}
 	if countDownloadLogs(t, db, freeMaterial.ID, "") != 1 {
 		t.Fatal("expected free download to create one anonymous audit log")
@@ -128,6 +133,46 @@ func TestMaterialDownloadRejectsUnsafeStorageKey(t *testing.T) {
 	}
 	if countDownloadLogs(t, db, material.ID, "") != 0 {
 		t.Fatal("expected unsafe storage key to create no download audit log")
+	}
+}
+
+func TestPDFDownloadAppliesWatermarkWithoutMutatingSource(t *testing.T) {
+	db := newTestDB(t)
+	uploadDir := t.TempDir()
+	cfg := testConfig()
+	cfg.LocalUploadDir = uploadDir
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	material := createTestMaterial(t, db, course.ID, "Watermarked note", model.MaterialAccessLoginRequired, "materials/watermarked.pdf")
+	material.FileName = "watermarked.pdf"
+	if err := db.Save(&material).Error; err != nil {
+		t.Fatal(err)
+	}
+	original := minimalPDF(t)
+	writeUploadBytes(t, uploadDir, material.StorageKey, original)
+
+	token := loginTestUser(t, router, "watermark@stu.henu.edu.cn")
+	response := performJSON(router, http.MethodGet, "/api/v1/materials/"+material.ID+"/download", "", token)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected watermarked PDF download 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("X-Watermark-Applied") != "true" {
+		t.Fatalf("expected watermark header true, got %q", response.Header().Get("X-Watermark-Applied"))
+	}
+	if !bytes.HasPrefix(response.Body.Bytes(), []byte("%PDF")) {
+		t.Fatalf("expected PDF response, got %q", response.Body.String())
+	}
+	if bytes.Equal(response.Body.Bytes(), original) {
+		t.Fatal("expected watermarked PDF response to differ from source")
+	}
+	sourcePath := filepath.Join(uploadDir, filepath.FromSlash(material.StorageKey))
+	after, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, original) {
+		t.Fatal("expected source PDF to remain unchanged after watermarking")
 	}
 }
 
@@ -233,11 +278,43 @@ func countDownloadLogs(t *testing.T, db *gorm.DB, materialID string, userID stri
 
 func writeUploadFile(t *testing.T, uploadDir string, storageKey string, content string) {
 	t.Helper()
+	writeUploadBytes(t, uploadDir, storageKey, []byte(content))
+}
+
+func writeUploadBytes(t *testing.T, uploadDir string, storageKey string, content []byte) {
+	t.Helper()
 	path := filepath.Join(uploadDir, filepath.FromSlash(storageKey))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, content, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func minimalPDF(t *testing.T) []byte {
+	t.Helper()
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		"<< /Length 44 >>\nstream\nBT /F1 24 Tf 72 720 Td (Original) Tj ET\nendstream",
+	}
+	var buf bytes.Buffer
+	buf.WriteString("%PDF-1.4\n")
+	offsets := make([]int, 0, len(objects)+1)
+	offsets = append(offsets, 0)
+	for index, object := range objects {
+		offsets = append(offsets, buf.Len())
+		buf.WriteString(fmt.Sprintf("%d 0 obj\n%s\nendobj\n", index+1, object))
+	}
+	xrefOffset := buf.Len()
+	buf.WriteString(fmt.Sprintf("xref\n0 %d\n", len(objects)+1))
+	buf.WriteString("0000000000 65535 f \n")
+	for _, offset := range offsets[1:] {
+		buf.WriteString(fmt.Sprintf("%010d 00000 n \n", offset))
+	}
+	buf.WriteString(fmt.Sprintf("trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xrefOffset))
+	return buf.Bytes()
 }
