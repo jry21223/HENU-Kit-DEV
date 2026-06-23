@@ -116,6 +116,38 @@ export type CoursePackageDetail = {
   materials: Material[];
 };
 
+export type MaterialAccessGrant = {
+  id: string;
+  userId: string;
+  materialId?: string;
+  packageId?: string;
+  source: string;
+  expiresAt?: string;
+};
+
+export type EntitlementSummary = {
+  directMaterialGrants: number;
+  packageGrants: number;
+  unlockedMaterials: number;
+};
+
+export type MaterialEntitlement = {
+  grant: MaterialAccessGrant;
+  material?: Material;
+};
+
+export type PackageEntitlement = {
+  grant: MaterialAccessGrant;
+  package?: CoursePackage;
+  materials: Material[];
+};
+
+export type Entitlements = {
+  summary: EntitlementSummary;
+  materialGrants: MaterialEntitlement[];
+  packageGrants: PackageEntitlement[];
+};
+
 export type MaterialDownload = {
   id: string;
   materialId: string;

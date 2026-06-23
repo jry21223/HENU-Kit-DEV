@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { apiBaseUrl, type Major, type School, type User } from "@/lib/api";
+import { apiBaseUrl, type Entitlements, type Major, type School, type User } from "@/lib/api";
 
 type Envelope<T> = {
   code: number;
@@ -35,6 +35,15 @@ const copy = {
   saving: "\u4fdd\u5b58\u4e2d...",
   saved: "\u4e2a\u4eba\u8d44\u6599\u5df2\u66f4\u65b0\u3002",
   downloads: "\u67e5\u770b\u6211\u7684\u4e0b\u8f7d",
+  entitlements: "\u6211\u7684\u8d44\u6599\u6743\u9650",
+  unlockedMaterials: "\u53ef\u8bbf\u95ee\u8d44\u6599",
+  packageGrants: "\u8bfe\u7a0b\u5305",
+  directMaterialGrants: "\u5355\u8d44\u6599",
+  noEntitlements: "\u6682\u65e0\u5df2\u89e3\u9501\u7684\u4ed8\u8d39\u8d44\u6599\u6216\u8bfe\u7a0b\u5305\u3002",
+  packageMaterials: "\u4efd\u8d44\u6599",
+  expiresAt: "\u5230\u671f",
+  neverExpires: "\u957f\u671f\u6709\u6548",
+  entitlementsFailed: "\u6743\u9650\u6458\u8981\u6682\u65f6\u4e0d\u53ef\u7528",
   logout: "\u9000\u51fa\u767b\u5f55",
   loggedOut: "\u5df2\u9000\u51fa\u767b\u5f55\u3002",
   loadFailed: "\u4e2a\u4eba\u8d44\u6599\u6682\u65f6\u4e0d\u53ef\u7528",
@@ -43,6 +52,7 @@ const copy = {
 
 export function ProfileForm() {
   const [user, setUser] = useState<User | null>(null);
+  const [entitlements, setEntitlements] = useState<Entitlements | null>(null);
   const [schools, setSchools] = useState<School[]>([]);
   const [majors, setMajors] = useState<Major[]>([]);
   const [form, setForm] = useState<ProfileFormState>({ name: "", schoolId: "", majorId: "", grade: "2023" });
@@ -50,6 +60,7 @@ export function ProfileForm() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [entitlementError, setEntitlementError] = useState("");
 
   useEffect(() => {
     void loadProfile();
@@ -80,12 +91,25 @@ export function ProfileForm() {
           majorId: nextUser.majorId ?? "",
           grade: nextUser.grade || "2023",
         });
+        await loadEntitlements();
       }
     } catch (err) {
       setUser(null);
+      setEntitlements(null);
       setError(err instanceof Error ? err.message : copy.loadFailed);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadEntitlements() {
+    setEntitlementError("");
+    try {
+      const response = await request<Entitlements>("/me/entitlements", { method: "GET" });
+      setEntitlements(response.data ?? null);
+    } catch {
+      setEntitlements(null);
+      setEntitlementError(copy.entitlementsFailed);
     }
   }
 
@@ -123,6 +147,7 @@ export function ProfileForm() {
     try {
       await request<{ ok: boolean }>("/auth/logout", { method: "POST" });
       setUser(null);
+      setEntitlements(null);
       setMessage(copy.loggedOut);
     } catch (err) {
       setError(err instanceof Error ? err.message : copy.saveFailed);
@@ -133,6 +158,13 @@ export function ProfileForm() {
 
   function updateForm(patch: Partial<ProfileFormState>) {
     setForm((current) => ({ ...current, ...patch }));
+  }
+
+  function formatExpiry(value?: string) {
+    if (!value) return copy.neverExpires;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return `${copy.expiresAt}: ${value}`;
+    return `${copy.expiresAt}: ${date.toLocaleDateString("zh-CN")}`;
   }
 
   if (loading) {
@@ -172,6 +204,49 @@ export function ProfileForm() {
           >
             {copy.logout}
           </button>
+        </div>
+        <div className="mt-6 rounded-2xl border border-border bg-background p-4">
+          <p className="text-sm font-medium text-foreground">{copy.entitlements}</p>
+          {entitlements ? (
+            <>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-muted-foreground">
+                <div className="rounded-xl border border-border bg-card p-2">
+                  <strong className="block text-base text-foreground">{entitlements.summary.unlockedMaterials}</strong>
+                  {copy.unlockedMaterials}
+                </div>
+                <div className="rounded-xl border border-border bg-card p-2">
+                  <strong className="block text-base text-foreground">{entitlements.summary.packageGrants}</strong>
+                  {copy.packageGrants}
+                </div>
+                <div className="rounded-xl border border-border bg-card p-2">
+                  <strong className="block text-base text-foreground">{entitlements.summary.directMaterialGrants}</strong>
+                  {copy.directMaterialGrants}
+                </div>
+              </div>
+              {entitlements.packageGrants.length > 0 || entitlements.materialGrants.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {entitlements.packageGrants.slice(0, 3).map((row) => (
+                    <div className="rounded-xl border border-border bg-card p-3 text-sm" key={row.grant.id}>
+                      <p className="font-medium text-foreground">{row.package?.title ?? row.grant.packageId}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {row.materials.length} {copy.packageMaterials} / {formatExpiry(row.grant.expiresAt)}
+                      </p>
+                    </div>
+                  ))}
+                  {entitlements.materialGrants.slice(0, 3).map((row) => (
+                    <div className="rounded-xl border border-border bg-card p-3 text-sm" key={row.grant.id}>
+                      <p className="font-medium text-foreground">{row.material?.title ?? row.grant.materialId}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatExpiry(row.grant.expiresAt)}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{copy.noEntitlements}</p>
+              )}
+            </>
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">{entitlementError || copy.noEntitlements}</p>
+          )}
         </div>
       </aside>
 

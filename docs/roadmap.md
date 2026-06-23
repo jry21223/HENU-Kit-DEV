@@ -16,6 +16,7 @@
 - Local material upload guardrails
 - Web course list/detail, material detail, and quiz practice pages
 - Web personal download-history page
+- Web profile entitlement summary for active material/package grants
 - Web course package cards with price and included material links
 - Web email-code login form
 - Web profile page with school/major/grade binding
@@ -38,7 +39,6 @@
 
 ## Next Deliverable
 
-- Web session polish for richer account status and entitlement summaries
 - Richer content review workflows beyond AI drafts
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Operation-log exports and retention policy

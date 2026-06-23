@@ -34,6 +34,7 @@ Currently implemented endpoints:
 - `DELETE /api/v1/me/wrong-questions/:id`
 - `GET /api/v1/me/weakness-report`
 - `GET /api/v1/me/downloads`
+- `GET /api/v1/me/entitlements`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/admin/schools`
@@ -106,6 +107,7 @@ Implemented material behavior:
 - non-PDF downloads return the original file with `X-Watermark-Applied: false`
 - if PDF watermark generation fails, the API returns `watermark_failed` instead of silently serving an unwatermarked PDF
 - logged-in users can list only their own successful downloads through `/me/downloads`
+- logged-in users can list only their own active material/package entitlements through `/me/entitlements`
 - admin users can list successful download audit logs, including IP and User-Agent metadata
 - unsafe or missing storage keys return `file_not_found` without revealing local paths
 
@@ -115,6 +117,8 @@ Implemented package behavior:
 - package detail returns package items plus published materials included in the package
 - a `material_access_grants.package_id` grant unlocks paid package materials on the server side
 - expired package grants do not unlock paid materials
+- `/me/entitlements` returns direct material grants, published package grants, included materials, and summary counts for the current user only
+- expired grants and grants for unpublished packages are excluded from `/me/entitlements`
 
 Implemented quiz behavior:
 

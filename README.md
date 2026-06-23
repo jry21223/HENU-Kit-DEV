@@ -169,3 +169,4 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Real AI publish-to-resource flows remain later work.
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.
+- Web `/me` also reads `GET /api/v1/me/entitlements` to show active direct material grants, published course package grants, and unlocked material counts for the current user.

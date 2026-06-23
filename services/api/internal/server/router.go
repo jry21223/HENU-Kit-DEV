@@ -15,6 +15,7 @@ import (
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/course"
 	"final-review-platform/services/api/internal/downloadlog"
+	"final-review-platform/services/api/internal/entitlement"
 	"final-review-platform/services/api/internal/health"
 	"final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/org"
@@ -53,6 +54,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	courseHandler := course.NewHandler(db)
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
 	downloadLogHandler := downloadlog.NewHandler(db)
+	entitlementHandler := entitlement.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir)
@@ -96,6 +98,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.DELETE("/me/wrong-questions/:id", authMiddleware.RequireAuth(), quizHandler.DeleteWrongQuestion)
 	v1.GET("/me/weakness-report", authMiddleware.RequireAuth(), quizHandler.WeaknessReport)
 	v1.GET("/me/downloads", authMiddleware.RequireAuth(), downloadLogHandler.MyDownloads)
+	v1.GET("/me/entitlements", authMiddleware.RequireAuth(), entitlementHandler.Me)
 	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 
