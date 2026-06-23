@@ -14,6 +14,7 @@ export const homeAnim = {
   courseBook: "course-book",
   courseBookSpine: "course-book-spine",
   courseBookGloss: "course-book-gloss",
+  mobileCourseBook: "mobile-course-book",
   communityNote: "community-note",
   practiceCard: "practice-card",
   practiceMark: "practice-mark",

@@ -114,6 +114,7 @@ test("homepage exposes precision animation markers", async ({ page }) => {
   await expect(page.locator('[data-home-anim="archive-directory-scan"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-directory-line"]')).toHaveCount(6);
   await expect(page.locator('[data-home-anim="course-book"]')).toHaveCount(6);
+  await expect(page.locator('[data-home-anim="mobile-course-book"]')).toHaveCount(6);
   await expect(page.locator('[data-home-anim="community-note"]')).toHaveCount(4);
   await expect(page.locator('[data-home-anim="practice-card"]')).toHaveCount(4);
   await expect(page.locator('[data-home-anim="membership-stamp"]')).toHaveCount(1);

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef } from "react";
-import { homeAnimSelector } from "./home-animation-selectors";
+import { homeAnimAttr, homeAnimSelector } from "./home-animation-selectors";
 import { archiveDirectory, courseBooks } from "./home-data";
 import { PdfCourseBook } from "./pdf-course-book";
 import { useHomeAnimeInView } from "./use-home-anime-in-view";
@@ -18,7 +18,7 @@ export function MobileArchiveIntro() {
   useHomeAnimeInView({
     reduceMotion,
     rootRef: sectionRef,
-    selector: homeAnimSelector("courseBook"),
+    selector: homeAnimSelector("mobileCourseBook"),
   });
 
   return (
@@ -53,7 +53,11 @@ export function MobileArchiveIntro() {
         className="mt-6 flex snap-x gap-4 overflow-x-auto pb-5"
       >
         {courseBooks.map((course) => (
-          <div key={`${course.code}-${course.label}`} className="w-56 shrink-0 snap-start">
+          <div
+            key={`${course.code}-${course.label}`}
+            className={`${styles.mobileCourseBookItem} w-56 shrink-0 snap-start`}
+            {...homeAnimAttr("mobileCourseBook")}
+          >
             <PdfCourseBook course={course} />
           </div>
         ))}
