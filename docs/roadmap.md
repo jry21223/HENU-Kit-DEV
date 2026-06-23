@@ -21,7 +21,7 @@
 - Web personal forum edit/resubmit flow for draft/pending/needs_changes/rejected posts and replies
 - Web personal notification inbox with user-scoped read/read-all state
 - Web profile entitlement summary for active material/package grants
-- Web course package cards with price and included material links
+- Web course package cards and detail page with price, included material links, and logged-in entitlement status
 - Web email-code login form
 - Web profile page with school/major/grade binding
 - Vue admin dashboard, login guard, course management, and material upload pages

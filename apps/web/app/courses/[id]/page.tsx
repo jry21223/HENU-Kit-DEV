@@ -116,6 +116,12 @@ export default async function CourseDetailPage({ params }: PageProps) {
                         <div className="shrink-0 rounded-2xl border border-border bg-card px-4 py-3 text-left sm:text-right">
                           <p className="text-xs text-muted-foreground">价格</p>
                           <p className="mt-1 text-lg font-semibold">{formatPrice(detail.package.priceFen, detail.package.currency)}</p>
+                          <Link
+                            className="mt-2 inline-flex rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-muted"
+                            href={`/packages/${detail.package.id}`}
+                          >
+                            查看课程包
+                          </Link>
                         </div>
                       </div>
 

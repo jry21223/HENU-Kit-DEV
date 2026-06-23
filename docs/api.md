@@ -166,6 +166,7 @@ Implemented package behavior:
 - package list/detail endpoints only return `published` course packages
 - package detail returns package items plus published materials included in the package
 - public package detail must filter both `items` and `materials` to published material resources; package items that point at draft, pending, rejected, or archived materials must not appear in the public response, even as raw resource ids
+- Web `/packages/[id]` uses public package detail plus the logged-in user's `/me/entitlements` to display locked/unlocked state; it does not create orders, mark payment success, or grant access from the frontend
 - a `material_access_grants.package_id` grant unlocks paid package materials on the server side
 - expired package grants do not unlock paid materials
 - `/me/entitlements` returns direct material grants, published package grants, included materials, and summary counts for the current user only
