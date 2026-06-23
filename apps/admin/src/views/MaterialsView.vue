@@ -3,67 +3,78 @@
     <div class="page-header">
       <div>
         <p class="eyebrow">Materials</p>
-        <h1>PDF 资料</h1>
-        <p class="muted">上传课程 PDF 资料，并保持资料类型、权限和预览内容清晰。下载仍走服务端权限检查；轻水印能力按资料保障口径预留。</p>
+        <h1>{{ copy.title }}</h1>
+        <p class="muted">{{ copy.description }}</p>
       </div>
-      <el-button type="primary" @click="loadAll">刷新</el-button>
+      <el-button type="primary" :loading="loading" @click="loadAll">{{ copy.refresh }}</el-button>
     </div>
 
     <el-card class="section-card" shadow="never">
       <template #header>
-        <strong>上传 PDF 资料</strong>
+        <strong>{{ copy.upload }}</strong>
       </template>
       <el-form class="form-grid" label-position="top">
-        <el-form-item label="课程">
-          <el-select v-model="uploadForm.courseId" placeholder="选择课程">
-            <el-option v-for="course in courses" :key="course.id" :label="`${course.name} · ${course.grade}`" :value="course.id" />
+        <el-form-item :label="copy.course">
+          <el-select v-model="uploadForm.courseId" :placeholder="copy.selectCourse">
+            <el-option v-for="course in courses" :key="course.id" :label="`${course.name} - ${course.grade}`" :value="course.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="标题">
-          <el-input v-model="uploadForm.title" placeholder="离散数学重点讲义" />
+        <el-form-item :label="copy.name">
+          <el-input v-model="uploadForm.title" placeholder="Discrete math final notes" />
         </el-form-item>
-        <el-form-item label="类型">
+        <el-form-item :label="copy.type">
           <el-select v-model="uploadForm.type">
-            <el-option label="知识点讲义" value="knowledge_note" />
-            <el-option label="模拟卷" value="mock_paper" />
-            <el-option label="答案解析" value="answer" />
-            <el-option label="考前速背" value="quick_review" />
-            <el-option label="历年真题" value="past_exam" />
-            <el-option label="其他" value="other" />
+            <el-option v-for="item in materialTypes" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="权限">
+        <el-form-item :label="copy.access">
           <el-select v-model="uploadForm.accessLevel">
-            <el-option label="免费" value="free" />
-            <el-option label="登录可见" value="login_required" />
-            <el-option label="付费" value="paid" />
-            <el-option label="会员" value="member_only" />
+            <el-option v-for="item in accessLevels" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item class="wide" label="预览内容">
+        <el-form-item :label="copy.status">
+          <el-select v-model="uploadForm.status">
+            <el-option v-for="item in statuses" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item class="wide" :label="copy.preview">
           <el-input v-model="uploadForm.previewContent" type="textarea" :rows="2" />
         </el-form-item>
-        <el-form-item label="文件">
+        <el-form-item :label="copy.file">
           <input type="file" accept=".pdf,.txt,.md,.docx" @change="onFileChange" />
-          <p class="muted">优先上传 PDF，仍兼容 TXT / MD / DOCX。</p>
+          <p class="muted">{{ copy.fileHint }}</p>
         </el-form-item>
       </el-form>
-      <el-button type="primary" :loading="loading" @click="uploadMaterial">上传并入库</el-button>
+      <div class="action-row">
+        <el-button type="primary" :loading="loading" @click="uploadMaterial">{{ copy.uploadAction }}</el-button>
+        <span class="muted">{{ copy.uploadHint }}</span>
+      </div>
     </el-card>
 
     <el-card class="section-card" shadow="never">
       <template #header>
-        <strong>资料列表</strong>
+        <strong>{{ copy.list }}</strong>
       </template>
-      <el-table :data="materials" style="width: 100%">
-        <el-table-column prop="title" label="标题" min-width="180" />
-        <el-table-column prop="type" label="类型" width="130" />
-        <el-table-column prop="accessLevel" label="权限" width="130" />
-        <el-table-column prop="status" label="状态" width="120" />
-        <el-table-column prop="fileName" label="文件名" min-width="160" />
-        <el-table-column label="操作" width="120">
+      <el-table v-loading="loading" :data="materials" empty-text="No materials" style="width: 100%">
+        <el-table-column prop="title" :label="copy.name" min-width="180" />
+        <el-table-column prop="type" :label="copy.type" width="140" />
+        <el-table-column prop="accessLevel" :label="copy.access" width="130" />
+        <el-table-column :label="copy.status" width="130">
           <template #default="{ row }">
-            <el-button size="small" type="danger" plain @click="archiveMaterial(row.id)">归档</el-button>
+            <el-tag :type="statusTag(row.status)">{{ statusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="fileName" :label="copy.fileName" min-width="160" />
+        <el-table-column :label="copy.actions" min-width="280" fixed="right">
+          <template #default="{ row }">
+            <div class="table-actions">
+              <el-button v-if="row.status !== 'pending'" size="small" @click="setStatus(row.id, 'pending')">{{ copy.markPending }}</el-button>
+              <el-button v-if="row.status !== 'published'" size="small" type="success" plain @click="setStatus(row.id, 'published')">
+                {{ copy.publish }}
+              </el-button>
+              <el-button v-if="row.status !== 'draft'" size="small" plain @click="setStatus(row.id, 'draft')">{{ copy.backToDraft }}</el-button>
+              <el-button v-if="row.status !== 'archived'" size="small" type="danger" plain @click="archiveMaterial(row.id)">{{ copy.archive }}</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -78,6 +89,63 @@ import { onMounted, reactive, ref } from "vue";
 import AdminShell from "../components/AdminShell.vue";
 import { apiRequest, type Course, type Material } from "../lib/api";
 
+const copy = {
+  title: "\u0050\u0044\u0046 \u8d44\u6599",
+  description:
+    "\u4e0a\u4f20\u8bfe\u7a0b PDF \u8d44\u6599\u5e76\u4fdd\u6301\u7c7b\u578b\u3001\u6743\u9650\u548c\u9884\u89c8\u5185\u5bb9\u6e05\u6670\u3002\u8d44\u6599\u9ed8\u8ba4\u4ee5 draft \u5165\u5e93\uff0c\u53ea\u6709 published \u72b6\u6001\u4f1a\u5728\u524d\u53f0\u5c55\u793a\u5e76\u8fdb\u5165\u4e0b\u8f7d\u6743\u9650\u5224\u65ad\u3002",
+  refresh: "\u5237\u65b0",
+  upload: "\u4e0a\u4f20 PDF \u8d44\u6599",
+  course: "\u8bfe\u7a0b",
+  selectCourse: "\u9009\u62e9\u8bfe\u7a0b",
+  name: "\u6807\u9898",
+  type: "\u7c7b\u578b",
+  access: "\u6743\u9650",
+  status: "\u72b6\u6001",
+  preview: "\u9884\u89c8\u5185\u5bb9",
+  file: "\u6587\u4ef6",
+  fileHint: "\u4f18\u5148\u4e0a\u4f20 PDF\uff0c\u4ecd\u517c\u5bb9 TXT / MD / DOCX\u3002",
+  fileName: "\u6587\u4ef6\u540d",
+  uploadAction: "\u4e0a\u4f20\u5e76\u5165\u5e93",
+  uploadHint: "\u672a\u9009\u72b6\u6001\u65f6\u670d\u52a1\u7aef\u4e5f\u4f1a\u9ed8\u8ba4\u4e3a draft\u3002",
+  list: "\u8d44\u6599\u5217\u8868",
+  actions: "\u64cd\u4f5c",
+  markPending: "\u63d0\u4ea4\u5ba1\u6838",
+  publish: "\u53d1\u5e03",
+  backToDraft: "\u9000\u56de\u8349\u7a3f",
+  archive: "\u5f52\u6863",
+  chooseFile: "\u8bf7\u9009\u62e9\u6587\u4ef6\u3002",
+  loadFailed: "\u52a0\u8f7d\u5931\u8d25",
+  uploadDone: "\u8d44\u6599\u5df2\u4e0a\u4f20\u3002",
+  uploadFailed: "\u4e0a\u4f20\u5931\u8d25",
+  statusUpdated: "\u8d44\u6599\u72b6\u6001\u5df2\u66f4\u65b0\u3002",
+  statusFailed: "\u72b6\u6001\u66f4\u65b0\u5931\u8d25",
+  archived: "\u8d44\u6599\u5df2\u5f52\u6863\u3002",
+  archiveFailed: "\u5f52\u6863\u5931\u8d25",
+};
+
+const statuses = [
+  { label: "\u8349\u7a3f", value: "draft" },
+  { label: "\u5f85\u5ba1\u6838", value: "pending" },
+  { label: "\u5df2\u53d1\u5e03", value: "published" },
+  { label: "\u5df2\u5f52\u6863", value: "archived" },
+];
+
+const materialTypes = [
+  { label: "\u77e5\u8bc6\u70b9\u8bb2\u4e49", value: "knowledge_note" },
+  { label: "\u6a21\u62df\u5377", value: "mock_paper" },
+  { label: "\u7b54\u6848\u89e3\u6790", value: "answer" },
+  { label: "\u8003\u524d\u901f\u80cc", value: "quick_review" },
+  { label: "\u5386\u5e74\u771f\u9898", value: "past_exam" },
+  { label: "\u5176\u4ed6", value: "other" },
+];
+
+const accessLevels = [
+  { label: "\u514d\u8d39", value: "free" },
+  { label: "\u767b\u5f55\u53ef\u89c1", value: "login_required" },
+  { label: "\u4ed8\u8d39", value: "paid" },
+  { label: "\u4f1a\u5458", value: "member_only" },
+];
+
 const courses = ref<Course[]>([]);
 const materials = ref<Material[]>([]);
 const file = ref<File | null>(null);
@@ -90,24 +158,27 @@ const uploadForm = reactive({
   title: "",
   type: "knowledge_note",
   accessLevel: "login_required",
-  status: "published",
+  status: "draft",
   previewContent: "",
 });
 
 onMounted(loadAll);
 
 async function loadAll() {
+  loading.value = true;
   error.value = "";
   try {
     const [courseResponse, materialResponse] = await Promise.all([
       apiRequest<{ courses: Course[] }>("/courses"),
-      apiRequest<{ materials: Material[] }>("/materials"),
+      apiRequest<{ materials: Material[] }>("/admin/materials"),
     ]);
     courses.value = courseResponse.data?.courses ?? [];
     materials.value = materialResponse.data?.materials ?? [];
     if (!uploadForm.courseId && courses.value[0]) uploadForm.courseId = courses.value[0].id;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载失败";
+    error.value = err instanceof Error ? err.message : copy.loadFailed;
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -118,7 +189,7 @@ function onFileChange(event: Event) {
 
 async function uploadMaterial() {
   if (!file.value) {
-    error.value = "请选择文件。";
+    error.value = copy.chooseFile;
     return;
   }
   loading.value = true;
@@ -134,15 +205,31 @@ async function uploadMaterial() {
     body.set("previewContent", uploadForm.previewContent);
     body.set("file", file.value);
     await apiRequest<{ material: Material }>("/admin/materials/upload", { method: "POST", body });
-    message.value = "资料已上传。";
+    message.value = copy.uploadDone;
     uploadForm.title = "";
     uploadForm.previewContent = "";
+    uploadForm.status = "draft";
     file.value = null;
     await loadAll();
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "上传失败";
+    error.value = err instanceof Error ? err.message : copy.uploadFailed;
   } finally {
     loading.value = false;
+  }
+}
+
+async function setStatus(id: string, status: string) {
+  error.value = "";
+  message.value = "";
+  try {
+    await apiRequest<{ updated: boolean; status: string }>(`/admin/materials/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+    message.value = copy.statusUpdated;
+    await loadAll();
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : copy.statusFailed;
   }
 }
 
@@ -151,10 +238,21 @@ async function archiveMaterial(id: string) {
   message.value = "";
   try {
     await apiRequest<{ archived: boolean }>(`/admin/materials/${id}`, { method: "DELETE" });
-    message.value = "资料已归档。";
+    message.value = copy.archived;
     await loadAll();
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "归档失败";
+    error.value = err instanceof Error ? err.message : copy.archiveFailed;
   }
+}
+
+function statusLabel(status: string) {
+  return statuses.find((item) => item.value === status)?.label ?? status;
+}
+
+function statusTag(status: string) {
+  if (status === "published") return "success";
+  if (status === "pending") return "warning";
+  if (status === "archived") return "info";
+  return "";
 }
 </script>

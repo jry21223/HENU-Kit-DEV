@@ -120,6 +120,19 @@ func TestAdminMaterialUploadGuards(t *testing.T) {
 		t.Fatalf("expected large file rejection, got %d: %s", tooLarge.Code, tooLarge.Body.String())
 	}
 
+	filesBeforeInvalidStatus := countRegularFiles(t, cfg.LocalUploadDir)
+	invalidStatus := performMultipart(router, "/api/v1/admin/materials/upload", adminToken, map[string]string{
+		"courseId": course.ID,
+		"title":    "Invalid Status",
+		"status":   "live",
+	}, "file", "note.txt", []byte("plain text"))
+	if invalidStatus.Code != http.StatusBadRequest || !strings.Contains(invalidStatus.Body.String(), "invalid_status") {
+		t.Fatalf("expected invalid status rejection, got %d: %s", invalidStatus.Code, invalidStatus.Body.String())
+	}
+	if countRegularFiles(t, cfg.LocalUploadDir) != filesBeforeInvalidStatus {
+		t.Fatal("expected invalid status upload to leave no file on disk")
+	}
+
 	upload := performMultipart(router, "/api/v1/admin/materials/upload", adminToken, map[string]string{
 		"courseId":       course.ID,
 		"title":          "Admin Upload",
@@ -144,6 +157,62 @@ func TestAdminMaterialUploadGuards(t *testing.T) {
 	}
 }
 
+func TestAdminMaterialStatusFlow(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	createTestUser(t, db, "material-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, "material-admin@stu.henu.edu.cn")
+	studentToken := loginTestUser(t, router, "material-student@stu.henu.edu.cn")
+
+	createBody := `{"courseId":"` + course.ID + `","title":"Draft Material","storageKey":"materials/draft-material.txt","accessLevel":"free"}`
+	createResponse := performJSON(router, http.MethodPost, "/api/v1/admin/materials", createBody, adminToken)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected draft material create 200, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+
+	var material model.Material
+	if err := db.First(&material, "title = ?", "Draft Material").Error; err != nil {
+		t.Fatal(err)
+	}
+	if material.Status != model.StatusDraft {
+		t.Fatalf("expected missing status to default to draft, got %s", material.Status)
+	}
+
+	publicList := performJSON(router, http.MethodGet, "/api/v1/materials", "", "")
+	if publicList.Code != http.StatusOK || strings.Contains(publicList.Body.String(), material.ID) {
+		t.Fatalf("expected draft material hidden from public list, got %d: %s", publicList.Code, publicList.Body.String())
+	}
+	publicDetail := performJSON(router, http.MethodGet, "/api/v1/materials/"+material.ID, "", "")
+	if publicDetail.Code != http.StatusNotFound {
+		t.Fatalf("expected draft material detail 404, got %d: %s", publicDetail.Code, publicDetail.Body.String())
+	}
+
+	adminList := performJSON(router, http.MethodGet, "/api/v1/admin/materials", "", adminToken)
+	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), material.ID) {
+		t.Fatalf("expected admin list to include draft material, got %d: %s", adminList.Code, adminList.Body.String())
+	}
+	studentDenied := performJSON(router, http.MethodGet, "/api/v1/admin/materials", "", studentToken)
+	if studentDenied.Code != http.StatusForbidden {
+		t.Fatalf("expected student admin material list 403, got %d: %s", studentDenied.Code, studentDenied.Body.String())
+	}
+
+	invalidStatus := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID+"/status", `{"status":"live"}`, adminToken)
+	if invalidStatus.Code != http.StatusBadRequest || !strings.Contains(invalidStatus.Body.String(), "invalid_status") {
+		t.Fatalf("expected invalid status rejection, got %d: %s", invalidStatus.Code, invalidStatus.Body.String())
+	}
+
+	publish := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID+"/status", `{"status":"published"}`, adminToken)
+	if publish.Code != http.StatusOK {
+		t.Fatalf("expected publish status update 200, got %d: %s", publish.Code, publish.Body.String())
+	}
+	publicListAfterPublish := performJSON(router, http.MethodGet, "/api/v1/materials", "", "")
+	if publicListAfterPublish.Code != http.StatusOK || !strings.Contains(publicListAfterPublish.Body.String(), material.ID) {
+		t.Fatalf("expected published material in public list, got %d: %s", publicListAfterPublish.Code, publicListAfterPublish.Body.String())
+	}
+}
+
 func performMultipart(router http.Handler, path string, token string, fields map[string]string, fileField string, fileName string, content []byte) *httptest.ResponseRecorder {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -162,4 +231,24 @@ func performMultipart(router http.Handler, path string, token string, fields map
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	return response
+}
+
+func countRegularFiles(t *testing.T, root string) int {
+	t.Helper()
+	count := 0
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return 0
+	}
+	if err := filepath.WalkDir(root, func(_ string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type().IsRegular() {
+			count++
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return count
 }

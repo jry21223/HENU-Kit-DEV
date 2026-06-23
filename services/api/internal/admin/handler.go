@@ -84,6 +84,10 @@ type materialRequest struct {
 	Status         string `json:"status"`
 }
 
+type materialStatusRequest struct {
+	Status string `json:"status"`
+}
+
 func (h Handler) CreateSchool(ctx *gin.Context) {
 	var req schoolRequest
 	if !bindJSON(ctx, &req) {
@@ -259,6 +263,11 @@ func (h Handler) CreateMaterial(ctx *gin.Context) {
 	if !bindJSON(ctx, &req) {
 		return
 	}
+	status, ok := normalizeMaterialStatus(req.Status, model.StatusDraft)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
 	material := model.Material{
 		CourseID:       strings.TrimSpace(req.CourseID),
 		Title:          required(req.Title),
@@ -269,7 +278,7 @@ func (h Handler) CreateMaterial(ctx *gin.Context) {
 		FileSize:       req.FileSize,
 		PreviewContent: strings.TrimSpace(req.PreviewContent),
 		AccessLevel:    defaultAccessLevel(req.AccessLevel),
-		Status:         defaultStatus(req.Status),
+		Status:         status,
 	}
 	if material.CourseID == "" || material.Title == "" || material.StorageKey == "" {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
@@ -286,10 +295,39 @@ func (h Handler) CreateMaterial(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"material": material})
 }
 
+func (h Handler) ListMaterials(ctx *gin.Context) {
+	query := h.db.Model(&model.Material{})
+	if courseID := strings.TrimSpace(ctx.Query("courseId")); courseID != "" {
+		query = query.Where("course_id = ?", courseID)
+	}
+	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
+		if _, ok := normalizeMaterialStatus(status, ""); !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		query = query.Where("status = ?", status)
+	}
+	var materials []model.Material
+	if err := query.Order("updated_at desc").Limit(500).Find(&materials).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"materials": materials})
+}
+
 func (h Handler) UpdateMaterial(ctx *gin.Context) {
 	var req materialRequest
 	if !bindJSON(ctx, &req) {
 		return
+	}
+	status := strings.TrimSpace(req.Status)
+	if status != "" {
+		normalized, ok := normalizeMaterialStatus(status, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		status = normalized
 	}
 	updates := compactMap(map[string]interface{}{
 		"course_id":       strings.TrimSpace(req.CourseID),
@@ -300,7 +338,7 @@ func (h Handler) UpdateMaterial(ctx *gin.Context) {
 		"file_name":       strings.TrimSpace(req.FileName),
 		"preview_content": strings.TrimSpace(req.PreviewContent),
 		"access_level":    strings.TrimSpace(req.AccessLevel),
-		"status":          strings.TrimSpace(req.Status),
+		"status":          status,
 		"file_size":       req.FileSize,
 	})
 	if storageKey, ok := updates["storage_key"].(string); ok && hasUnsafePath(storageKey) {
@@ -308,6 +346,28 @@ func (h Handler) UpdateMaterial(ctx *gin.Context) {
 		return
 	}
 	h.updateByID(ctx, &model.Material{}, updates, "material")
+}
+
+func (h Handler) UpdateMaterialStatus(ctx *gin.Context) {
+	var req materialStatusRequest
+	if !bindJSON(ctx, &req) {
+		return
+	}
+	status, ok := normalizeMaterialStatus(req.Status, "")
+	if !ok || status == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
+	result := h.db.Model(&model.Material{}).Where("id = ?", ctx.Param("id")).Update("status", status)
+	if result.Error != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "update_failed", nil)
+		return
+	}
+	if result.RowsAffected == 0 {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "material_not_found", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"updated": true, "status": status})
 }
 
 func (h Handler) ArchiveMaterial(ctx *gin.Context) {
@@ -347,6 +407,11 @@ func (h Handler) UploadMaterial(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
 		return
 	}
+	status, ok := normalizeMaterialStatus(ctx.PostForm("status"), model.StatusDraft)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
 	storageKey := filepath.ToSlash(filepath.Join("materials", courseID, uuid.NewString()+ext))
 	targetPath := filepath.Join(h.uploadDir, filepath.FromSlash(storageKey))
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
@@ -379,7 +444,7 @@ func (h Handler) UploadMaterial(ctx *gin.Context) {
 		FileSize:       written,
 		PreviewContent: strings.TrimSpace(ctx.PostForm("previewContent")),
 		AccessLevel:    defaultAccessLevel(ctx.PostForm("accessLevel")),
-		Status:         defaultStatus(ctx.PostForm("status")),
+		Status:         status,
 	}
 	if err := h.db.Create(&material).Error; err != nil {
 		_ = os.Remove(targetPath)
@@ -474,6 +539,19 @@ func defaultAccessLevel(value string) string {
 		return model.MaterialAccessLoginRequired
 	}
 	return value
+}
+
+func normalizeMaterialStatus(value string, fallback string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, true
+	}
+	switch value {
+	case model.StatusDraft, model.StatusPending, model.StatusPublished, model.StatusArchived:
+		return value, true
+	default:
+		return "", false
+	}
 }
 
 func safeUploadFileName(header *multipart.FileHeader) (string, string, error) {

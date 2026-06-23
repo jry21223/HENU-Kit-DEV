@@ -26,7 +26,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包展示、资料详情、课程刷题和学生邮箱登录页面。
-- Vue Admin 已有邮箱登录、路由守卫、仪表盘、课程管理、资料上传/列表/归档页面。
+- Vue Admin 已有邮箱登录、路由守卫、仪表盘、课程管理、资料上传、资料状态流转、下载审计页面。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
 - 微信支付 Native 是目标支付方案；当前仍是本地 mock 边界，未完成真实商户联调。
 - AI 当前使用 mock LLM；AI 生成内容不会绕过审核自动发布。
@@ -96,6 +96,7 @@ cd ../worker && go test ./...
 - free/login_required/paid 资料下载权限。
 - 成功下载审计日志，以及拒绝下载不产生日志。
 - `/me/downloads` 用户隔离和 `/admin/downloads` 管理员权限。
+- 资料默认 draft 入库、admin 全量可见、公开端只展示 published、非法状态拒绝。
 - 课程包授权解锁包内 paid 资料。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态。
 - 不安全 storage key 返回 404。
@@ -150,5 +151,6 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 ## 10. Current Admin Notes
 
 - Vue Admin includes `/downloads` for successful material download audit logs.
+- Vue Admin includes material status operations for `draft`, `pending`, `published`, and `archived`.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
-- The page is read-only: it does not grant paid access, mutate logs, or expose material `storage_key`.
+- Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.

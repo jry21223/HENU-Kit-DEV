@@ -6,8 +6,27 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 
 - `/dashboard`: module status summary.
 - `/courses`: organization-backed course creation and archiving.
-- `/materials`: local material upload, material listing, and material archiving.
+- `/materials`: local material upload, all-status material listing, and material status operations.
 - `/downloads`: successful material download audit logs.
+
+## Material Operations
+
+`/materials` calls `GET /api/v1/admin/materials` and requires an authenticated `admin` or `super_admin` role.
+
+Status flow used by the MVP:
+
+- `draft`: stored but hidden from public pages
+- `pending`: submitted for review, still hidden from public pages
+- `published`: visible to public material list/detail and eligible for server-side download permission checks
+- `archived`: hidden from public pages
+
+Important boundaries:
+
+- Upload and manual create default to `draft` when no status is provided.
+- The admin UI can move materials to `pending`, `published`, `draft`, or `archived`.
+- Public APIs only expose `published` materials.
+- Invalid statuses are rejected by the Go API.
+- The UI does not display `storage_key`; downloads still go through `GET /api/v1/materials/:id/download`.
 
 ## Download Audit
 

@@ -47,7 +47,9 @@ Currently implemented endpoints:
 - `POST /api/v1/admin/courses`
 - `PATCH /api/v1/admin/courses/:id`
 - `DELETE /api/v1/admin/courses/:id`
+- `GET /api/v1/admin/materials?courseId=&status=`
 - `POST /api/v1/admin/materials`
+- `PATCH /api/v1/admin/materials/:id/status`
 - `PATCH /api/v1/admin/materials/:id`
 - `DELETE /api/v1/admin/materials/:id`
 - `POST /api/v1/admin/materials/upload`
@@ -119,6 +121,9 @@ Implemented admin behavior:
 
 - all admin endpoints require an authenticated `admin` or `super_admin` role
 - organization/course/material delete operations archive by setting `status=archived`
+- admin material list returns all material statuses; public material list/detail returns only `published`
+- material create/upload defaults to `draft` when status is omitted
+- material status updates accept only `draft`, `pending`, `published`, or `archived`
 - material upload uses server-generated storage keys under `materials/{courseId}/`
 - upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with a PDF header
 - upload rejects files larger than 20 MiB

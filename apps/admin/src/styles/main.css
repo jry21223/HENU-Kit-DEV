@@ -246,6 +246,12 @@ a {
   word-break: break-all;
 }
 
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .full-width {
   width: 100%;
 }
