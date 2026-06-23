@@ -26,7 +26,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - 用户可以查看自己的成功下载记录；管理员可以查看全量下载审计日志。
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
-- Next.js Web 已有首页、课程列表、课程详情、课程包展示、资料详情、课程刷题和学生邮箱登录页面。
+- Next.js Web 已有首页、课程列表、课程详情、课程包展示、资料详情、课程刷题、论坛列表/详情、回复提交、最佳答案操作入口和学生邮箱登录页面。
 - Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
@@ -104,6 +104,7 @@ cd ../worker && go test ./...
 - Admin material metadata PATCH rejects direct file-field mutation; file replacement remains an upload flow.
 - 课程包授权解锁包内 paid 资料。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态。
+- Web 论坛页展示已发布公开帖子，详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - 不安全 storage key 返回 404。
 - admin-only 组织/课程/资料变更。
 - 上传文件名、后缀、内容和大小限制。

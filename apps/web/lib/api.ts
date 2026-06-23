@@ -172,6 +172,41 @@ export type QuizQuestion = {
   options?: QuizOption[];
 };
 
+export type ForumBoard = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  status: string;
+};
+
+export type ForumPost = {
+  id: string;
+  authorId: string;
+  boardId: string;
+  title: string;
+  content: string;
+  type: "normal" | "question" | "reward";
+  rewardPoints: number;
+  rewardStatus?: string;
+  visibility: string;
+  likeCount: number;
+  commentCount: number;
+  collectCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ForumReply = {
+  id: string;
+  authorId: string;
+  postId: string;
+  content: string;
+  isBest: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export function apiBaseUrl() {
   return baseUrl;
 }

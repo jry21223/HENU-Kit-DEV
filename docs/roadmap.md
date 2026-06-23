@@ -15,6 +15,7 @@
 - Admin organization/course/material CRUD
 - Local material upload guardrails
 - Web course list/detail, material detail, and quiz practice pages
+- Web forum list/detail pages with reply submission and best-answer action entry
 - Web personal download-history page
 - Web profile entitlement summary for active material/package grants
 - Web course package cards with price and included material links
@@ -48,7 +49,7 @@
 
 ## Next Deliverable
 
-- Richer content review workflows for wiki conflict-resolution UX and user-facing best-answer controls
+- Richer content review workflows for wiki conflict-resolution UX, forum post creation, and richer user-facing forum controls
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
