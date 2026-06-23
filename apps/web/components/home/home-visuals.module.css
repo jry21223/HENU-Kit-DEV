@@ -252,6 +252,16 @@
   width: min(560px, 100%);
 }
 
+.bookStage :global([data-home-anim="archive-intro-copy"]) {
+  opacity: 1;
+}
+
+.bookStage :global([data-home-anim="archive-open-copy"]),
+.bookStage :global([data-home-anim="archive-closing-copy"]) {
+  opacity: 0;
+  transform: translateY(18px);
+}
+
 .bookDock {
   position: absolute;
   top: 50%;
@@ -268,6 +278,7 @@
   aspect-ratio: 1.42 / 1;
   perspective: 1800px;
   transform-style: preserve-3d;
+  transform: translate3d(300px, 220px, 0) rotate(-12deg);
 }
 
 .bookBase,
@@ -280,6 +291,7 @@
 
 .bookBase {
   z-index: 1;
+  opacity: 0;
   background:
     linear-gradient(90deg, rgb(78 47 23 / 0.2), transparent 10%, transparent 90%, rgb(78 47 23 / 0.16)),
     linear-gradient(135deg, #cf955d 0%, #a87044 100%);
@@ -292,7 +304,9 @@
 .bookCover {
   z-index: 3;
   inset: 0 0 0 50%;
+  opacity: 1;
   transform-origin: left center;
+  transform: rotateY(0deg);
   border-radius: 30px 36px 36px 30px;
   border: 2px solid rgb(43 33 23 / 0.16);
   background:
@@ -312,6 +326,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0;
+  opacity: 0;
   padding: 22px;
   background:
     linear-gradient(90deg, transparent 0 calc(50% - 13px), rgb(84 52 28 / 0.5) calc(50% - 13px) calc(50% + 13px), transparent calc(50% + 13px) 100%),
@@ -321,8 +336,10 @@
 .bookPage {
   position: relative;
   overflow: hidden;
+  opacity: 0;
   border: 1px solid rgb(43 33 23 / 0.12);
   border-radius: 26px;
+  transform: translateY(18px);
   background: #fffaf2;
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.62),
@@ -476,6 +493,186 @@
   border-top: 12px solid #2b2117;
 }
 
+@media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .bookStage[data-anime-fallback] {
+      view-timeline-name: --archive-reveal;
+      view-timeline-axis: block;
+    }
+
+    .bookStage[data-anime-fallback] .archiveBook,
+    .bookStage[data-anime-fallback] .bookBase,
+    .bookStage[data-anime-fallback] .bookInside,
+    .bookStage[data-anime-fallback] .bookPage,
+    .bookStage[data-anime-fallback] .bookCover,
+    .bookStage[data-anime-fallback] :global([data-home-anim="archive-intro-copy"]),
+    .bookStage[data-anime-fallback] :global([data-home-anim="archive-open-copy"]),
+    .bookStage[data-anime-fallback] :global([data-home-anim="archive-closing-copy"]) {
+      animation-duration: 1s;
+      animation-fill-mode: both;
+      animation-range: contain 0% contain 100%;
+      animation-timeline: --archive-reveal;
+      animation-timing-function: linear;
+    }
+
+    .bookStage[data-anime-fallback] .archiveBook {
+      animation-name: archiveBookFallback;
+    }
+
+    .bookStage[data-anime-fallback] .bookBase,
+    .bookStage[data-anime-fallback] .bookInside {
+      animation-name: archiveBaseFallback;
+    }
+
+    .bookStage[data-anime-fallback] .bookPage {
+      animation-name: archivePageFallback;
+    }
+
+    .bookStage[data-anime-fallback] .bookCover {
+      animation-name: archiveCoverFallback;
+    }
+
+    .bookStage[data-anime-fallback] :global([data-home-anim="archive-intro-copy"]) {
+      animation-name: archiveIntroCopyFallback;
+    }
+
+    .bookStage[data-anime-fallback] :global([data-home-anim="archive-open-copy"]) {
+      animation-name: archiveOpenCopyFallback;
+    }
+
+    .bookStage[data-anime-fallback] :global([data-home-anim="archive-closing-copy"]) {
+      animation-name: archiveClosingCopyFallback;
+    }
+  }
+}
+
+@keyframes archiveBookFallback {
+  0% {
+    transform: translate3d(300px, 220px, 0) rotate(-12deg);
+  }
+
+  30%,
+  86% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+
+  100% {
+    transform: translate3d(0, 18px, 0) rotate(2deg);
+  }
+}
+
+@keyframes archiveCoverFallback {
+  0%,
+  68% {
+    opacity: 1;
+    transform: rotateY(0deg);
+    visibility: visible;
+  }
+
+  86%,
+  94% {
+    opacity: 0;
+    transform: rotateY(-176deg);
+    visibility: hidden;
+  }
+
+  100% {
+    opacity: 1;
+    transform: rotateY(0deg);
+    visibility: visible;
+  }
+}
+
+@keyframes archiveBaseFallback {
+  0%,
+  68% {
+    opacity: 0;
+  }
+
+  76%,
+  86% {
+    opacity: 1;
+  }
+
+  94%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes archivePageFallback {
+  0%,
+  67.99% {
+    opacity: 0;
+    transform: translateY(18px);
+    visibility: hidden;
+  }
+
+  76%,
+  86% {
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+  }
+
+  90%,
+  100% {
+    opacity: 0;
+    transform: translateY(12px);
+    visibility: hidden;
+  }
+}
+
+@keyframes archiveIntroCopyFallback {
+  0%,
+  22% {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  34%,
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@keyframes archiveOpenCopyFallback {
+  0%,
+  27.99% {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  36%,
+  43% {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@keyframes archiveClosingCopyFallback {
+  0%,
+  83.99% {
+    opacity: 0;
+    transform: translateY(18px);
+    visibility: hidden;
+  }
+
+  90%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+  }
+}
+
 @media (max-width: 1023px) {
   .bookStage {
     display: none;
@@ -533,6 +730,28 @@
     left: auto;
     width: min(1040px, 92vw);
     margin: 32px auto 0;
+    transform: none;
+  }
+
+  .archiveBook {
+    transform: none;
+  }
+
+  .bookBase,
+  .bookInside,
+  .bookPage {
+    opacity: 1;
+    transform: none;
+  }
+
+  .bookCover {
+    opacity: 0;
+    transform: rotateY(-176deg);
+  }
+
+  .bookStage :global([data-home-anim="archive-open-copy"]),
+  .bookStage :global([data-home-anim="archive-closing-copy"]) {
+    opacity: 0;
     transform: none;
   }
 }

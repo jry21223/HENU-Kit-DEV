@@ -2,68 +2,32 @@
 
 import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
-import { motion, useMotionValueEvent, useScroll, useTransform } from "motion/react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { archiveDirectory, courseBooks, heroLinks } from "./home-data";
 import { homeAnimAttr } from "./home-animation-selectors";
 import { PdfCourseBook } from "./pdf-course-book";
+import { useHomeAnimeTimeline } from "./use-home-anime-timeline";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import styles from "./home-visuals.module.css";
-
-const INTRO_END = 0.34;
-const STRAIGHT_START = 0.3;
-const COPY_END = 0.5;
-const OPEN_START = 0.68;
-const OPEN_END = 0.86;
 
 export function ArchiveBookReveal() {
   const ref = useRef<HTMLElement>(null);
   const reduceMotion = usePrefersReducedMotion();
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end end"],
-  });
-  const [contentReady, setContentReady] = useState(() => {
-    const progress = scrollYProgress.get();
+  const [contentReady, setContentReady] = useState(true);
+  const [introReady, setIntroReady] = useState(true);
+  const [openCopyReady, setOpenCopyReady] = useState(false);
+  const [closingCopyReady, setClosingCopyReady] = useState(false);
+  const readiness = useMemo(
+    () => ({
+      setClosingCopyReady,
+      setContentReady,
+      setIntroReady,
+      setOpenCopyReady,
+    }),
+    [],
+  );
 
-    return progress >= OPEN_START && progress <= OPEN_END;
-  });
-  const [introReady, setIntroReady] = useState(() => scrollYProgress.get() < INTRO_END);
-  const [openCopyReady, setOpenCopyReady] = useState(() => {
-    const progress = scrollYProgress.get();
-
-    return progress >= STRAIGHT_START && progress <= COPY_END;
-  });
-  const [closingCopyReady, setClosingCopyReady] = useState(() => scrollYProgress.get() >= 0.84);
-
-  const rotate = useTransform(scrollYProgress, [0, STRAIGHT_START, 0.86, 1], [-12, 0, 0, 2]);
-  const x = useTransform(scrollYProgress, [0, STRAIGHT_START, COPY_END, OPEN_START, OPEN_END, 1], [300, 0, 0, 0, 0, 0]);
-  const y = useTransform(scrollYProgress, [0, STRAIGHT_START, COPY_END, OPEN_START, OPEN_END, 1], [220, 0, 0, 0, 0, 18]);
-  const coverRotate = useTransform(scrollYProgress, [0, OPEN_START, OPEN_END, 0.94, 1], [0, 0, -176, -176, 0]);
-  const coverOpacity = useTransform(scrollYProgress, [0, OPEN_START, OPEN_END, 0.94, 1], [1, 1, 0, 0, 1]);
-  const baseOpacity = useTransform(scrollYProgress, [OPEN_START, 0.76, OPEN_END, 0.94], [0, 1, 1, 0]);
-  const pageOpacity = useTransform(scrollYProgress, [OPEN_START, 0.76, OPEN_END, 0.9], [0, 1, 1, 0]);
-  const pageY = useTransform(scrollYProgress, [OPEN_START, 0.76, OPEN_END, 0.9], [18, 0, 0, 12]);
-  const introOpacity = useTransform(scrollYProgress, [0, 0.22, INTRO_END], [1, 1, 0]);
-  const openCopyOpacity = useTransform(scrollYProgress, [0.28, 0.36, 0.43, COPY_END], [0, 1, 1, 0]);
-  const closingCopyOpacity = useTransform(scrollYProgress, [0.76, 0.9, 1], [0, 1, 1]);
-  const closingCopyY = useTransform(scrollYProgress, [0.76, 0.9], [18, 0]);
-
-  useMotionValueEvent(scrollYProgress, "change", (progress) => {
-    if (reduceMotion) {
-      return;
-    }
-
-    const nextReady = progress >= OPEN_START && progress <= OPEN_END;
-    const nextIntroReady = progress < INTRO_END;
-    const nextOpenCopyReady = progress >= STRAIGHT_START && progress <= COPY_END;
-    const nextClosingCopyReady = progress >= 0.84;
-
-    setContentReady((current) => (current === nextReady ? current : nextReady));
-    setIntroReady((current) => (current === nextIntroReady ? current : nextIntroReady));
-    setOpenCopyReady((current) => (current === nextOpenCopyReady ? current : nextOpenCopyReady));
-    setClosingCopyReady((current) => (current === nextClosingCopyReady ? current : nextClosingCopyReady));
-  });
+  useHomeAnimeTimeline({ readiness, reduceMotion, stageRef: ref });
 
   const contentFocusable = reduceMotion || contentReady;
   const contentTabIndex = contentFocusable ? undefined : -1;
@@ -73,16 +37,16 @@ export function ArchiveBookReveal() {
   const introAriaHidden = introFocusable ? undefined : true;
 
   return (
-    <section ref={ref} className={styles.bookStage} aria-label="课程资料档案册">
+    <section ref={ref} className={styles.bookStage} data-anime-fallback="" aria-label="课程资料档案册">
       <div className={styles.bookSticky}>
         <div className={styles.bookScene}>
           <div className={styles.bookCopy}>
-            <motion.div
+            <div
               className={styles.bookCopyPanel}
               data-testid="archive-copy-intro"
+              {...homeAnimAttr("archiveIntroCopy")}
               aria-hidden={introAriaHidden}
               style={{
-                opacity: reduceMotion ? 1 : introOpacity,
                 pointerEvents: introFocusable ? "auto" : "none",
                 visibility: introFocusable ? "visible" : "hidden",
               }}
@@ -113,13 +77,13 @@ export function ArchiveBookReveal() {
                   {heroLinks.secondary.label}
                 </Link>
               </div>
-            </motion.div>
+            </div>
 
-            <motion.div
+            <div
               className={styles.bookCopyPanel}
               data-testid="archive-copy-open"
+              {...homeAnimAttr("archiveOpenCopy")}
               style={{
-                opacity: reduceMotion ? 0 : openCopyOpacity,
                 pointerEvents: "none",
                 visibility: !reduceMotion && openCopyReady ? "visible" : "hidden",
               }}
@@ -132,16 +96,15 @@ export function ArchiveBookReveal() {
               <p className="mt-5 max-w-md text-base leading-7 text-[#685b4b]">
                 这一段先不打开，只把竖版资料夹对齐到右侧。继续往下滚，封面才会沿着中缝翻开。
               </p>
-            </motion.div>
+            </div>
 
-            <motion.div
+            <div
               className={styles.bookCopyPanel}
               data-testid="archive-copy-closing"
+              {...homeAnimAttr("archiveClosingCopy")}
               style={{
-                opacity: reduceMotion ? 0 : closingCopyOpacity,
                 pointerEvents: "none",
                 visibility: !reduceMotion && closingCopyReady ? "visible" : "hidden",
-                y: reduceMotion ? 0 : closingCopyY,
               }}
               aria-hidden="true"
             >
@@ -152,35 +115,28 @@ export function ArchiveBookReveal() {
               <p className="mt-5 max-w-md text-base leading-7 text-[#685b4b]">
                 再往下是 Wiki、博客、课程帖子和动态。资料不是一次性下载，而是围绕课程持续补充、勘误和共创。
               </p>
-            </motion.div>
+            </div>
           </div>
 
           <div className={styles.bookDock} style={{ pointerEvents: contentFocusable ? "auto" : "none" }}>
-            <motion.div
+            <div
               className={styles.archiveBook}
               data-testid="archive-book"
               {...homeAnimAttr("archiveBook")}
-              style={{
-                rotate: reduceMotion ? 0 : rotate,
-                x: reduceMotion ? 0 : x,
-                y: reduceMotion ? 0 : y,
-              }}
             >
-              <motion.div
+              <div
                 className={styles.bookBase}
                 aria-hidden="true"
-                style={{ opacity: reduceMotion ? 1 : baseOpacity }}
                 {...homeAnimAttr("archiveBase")}
               />
-              <motion.div className={styles.bookInside} style={{ opacity: reduceMotion ? 1 : baseOpacity }} {...homeAnimAttr("archiveInside")}>
-                <motion.div
+              <div className={styles.bookInside} {...homeAnimAttr("archiveInside")}>
+                <div
                   className={`${styles.bookPage} ${styles.directoryPage} p-4 xl:p-5`}
                   aria-hidden={contentAriaHidden}
                   {...homeAnimAttr("archivePage")}
                   style={{
-                    opacity: reduceMotion ? 1 : pageOpacity,
                     pointerEvents: contentFocusable ? "auto" : "none",
-                    y: reduceMotion ? 0 : pageY,
+                    visibility: contentFocusable ? "visible" : "hidden",
                   }}
                 >
                   <span className={styles.pageHighlight} aria-hidden="true" {...homeAnimAttr("archivePageHighlight")} />
@@ -204,16 +160,15 @@ export function ArchiveBookReveal() {
                       </Link>
                     ))}
                   </div>
-                </motion.div>
+                </div>
 
-                <motion.div
+                <div
                   className={`${styles.bookPage} ${styles.coursePage} p-4`}
                   aria-hidden={contentAriaHidden}
                   {...homeAnimAttr("archivePage")}
                   style={{
-                    opacity: reduceMotion ? 1 : pageOpacity,
                     pointerEvents: contentFocusable ? "auto" : "none",
-                    y: reduceMotion ? 0 : pageY,
+                    visibility: contentFocusable ? "visible" : "hidden",
                   }}
                 >
                   <span className={styles.pageHighlight} aria-hidden="true" {...homeAnimAttr("archivePageHighlight")} />
@@ -224,13 +179,12 @@ export function ArchiveBookReveal() {
                       <PdfCourseBook key={course.label} animationMarked compact course={course} tabIndex={contentTabIndex} />
                     ))}
                   </div>
-                </motion.div>
-              </motion.div>
+                </div>
+              </div>
 
-              <motion.div
+              <div
                 className={styles.bookCover}
                 data-testid="archive-cover"
-                style={{ opacity: reduceMotion ? 0 : coverOpacity, rotateY: reduceMotion ? -176 : coverRotate }}
                 aria-hidden="true"
                 {...homeAnimAttr("archiveCover")}
               >
@@ -248,13 +202,13 @@ export function ArchiveBookReveal() {
                 <span className={styles.coverLabel} aria-hidden="true">
                   A4 ARCHIVE
                 </span>
-              </motion.div>
+              </div>
               <div className={styles.bookSpine} data-testid="archive-seam" aria-hidden="true" {...homeAnimAttr("archiveSpine")} />
               <div className={styles.bookPencil} aria-hidden="true">
                 <span className={styles.pencilEraser} />
                 <span className={styles.pencilTip} />
               </div>
-            </motion.div>
+            </div>
           </div>
         </div>
       </div>
