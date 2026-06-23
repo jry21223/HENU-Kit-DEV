@@ -41,6 +41,10 @@ function restoreTargets(targets: AnimationTarget[]) {
   }
 }
 
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 export function useHomeAnimeInView({
   reduceMotion,
   rootRef,
@@ -53,7 +57,7 @@ export function useHomeAnimeInView({
   useEffect(() => {
     const root = rootRef.current;
 
-    if (!root || reduceMotion) {
+    if (!root || reduceMotion || prefersReducedMotion()) {
       return;
     }
 

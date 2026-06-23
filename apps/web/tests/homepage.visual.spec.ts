@@ -140,6 +140,54 @@ test("homepage preserves precision animation markers in-view rotations", async (
   expect(transformSkew).toBeGreaterThan(0.03);
 });
 
+test("homepage keeps precision animation markers unprepared with reduced motion", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(() => {
+    type PrepWrite = { propertyName: string; value: string };
+    const pageWindow = window as Window & { __homeInViewPrepWrites?: PrepWrite[] };
+    const originalSetProperty = CSSStyleDeclaration.prototype.setProperty;
+
+    pageWindow.__homeInViewPrepWrites = [];
+    CSSStyleDeclaration.prototype.setProperty = function setProperty(propertyName, value, priority) {
+      const stringValue = String(value ?? "");
+
+      if (
+        (propertyName === "opacity" && stringValue === "0") ||
+        (propertyName === "translate" && stringValue === "0 18px") ||
+        (propertyName === "will-change" && stringValue === "opacity, translate")
+      ) {
+        pageWindow.__homeInViewPrepWrites?.push({ propertyName, value: stringValue });
+      }
+
+      return originalSetProperty.call(this, propertyName, value, priority);
+    };
+  });
+  await page.goto(homeUrl, { waitUntil: "networkidle" });
+
+  const firstNote = page.locator('[data-home-anim="community-note"]').first();
+  await firstNote.scrollIntoViewIfNeeded();
+  await expect(firstNote).toBeVisible();
+
+  const reducedMotionState = await firstNote.evaluate((element) => {
+    const pageWindow = window as Window & {
+      __homeInViewPrepWrites?: Array<{ propertyName: string; value: string }>;
+    };
+
+    return {
+      opacity: element.style.getPropertyValue("opacity"),
+      prepWrites: pageWindow.__homeInViewPrepWrites ?? [],
+      translate: element.style.getPropertyValue("translate"),
+      willChange: element.style.getPropertyValue("will-change"),
+    };
+  });
+
+  expect(reducedMotionState.prepWrites).toEqual([]);
+  expect(reducedMotionState.opacity).toBe("");
+  expect(reducedMotionState.translate).toBe("");
+  expect(reducedMotionState.willChange).toBe("");
+});
+
 test("homepage uses simplified archive on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto(homeUrl, { waitUntil: "networkidle" });
