@@ -260,6 +260,22 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 		t.Fatalf("expected invalid material type rejection, got %d: %s", invalidType.Code, invalidType.Body.String())
 	}
 
+	originalStorageKey := material.StorageKey
+	blockedFileUpdate := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID, `{"storageKey":"materials/other.txt","fileName":"other.txt","fileSize":42}`, adminToken)
+	if blockedFileUpdate.Code != http.StatusBadRequest || !strings.Contains(blockedFileUpdate.Body.String(), "material_file_fields_immutable") {
+		t.Fatalf("expected material file fields immutable rejection, got %d: %s", blockedFileUpdate.Code, blockedFileUpdate.Body.String())
+	}
+	blockedSnakeCaseUpdate := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID, `{"storage_key":"materials/other.txt"}`, adminToken)
+	if blockedSnakeCaseUpdate.Code != http.StatusBadRequest || !strings.Contains(blockedSnakeCaseUpdate.Body.String(), "material_file_fields_immutable") {
+		t.Fatalf("expected snake_case file field immutable rejection, got %d: %s", blockedSnakeCaseUpdate.Code, blockedSnakeCaseUpdate.Body.String())
+	}
+	if err := db.First(&material, "id = ?", material.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if material.StorageKey != originalStorageKey || material.FileName != "" || material.FileSize != 0 {
+		t.Fatalf("material file fields changed through metadata update: %#v", material)
+	}
+
 	updateBody := `{"title":"Edited Material","type":"answer","description":"Edited description","previewContent":"Edited preview","accessLevel":"paid","status":"pending"}`
 	update := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID, updateBody, adminToken)
 	if update.Code != http.StatusOK {

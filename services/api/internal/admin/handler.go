@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"mime/multipart"
@@ -367,6 +369,9 @@ func (h Handler) ListMaterials(ctx *gin.Context) {
 }
 
 func (h Handler) UpdateMaterial(ctx *gin.Context) {
+	if !rejectMaterialFileFieldUpdates(ctx) {
+		return
+	}
 	var req materialRequest
 	if !bindJSON(ctx, &req) {
 		return
@@ -403,17 +408,10 @@ func (h Handler) UpdateMaterial(ctx *gin.Context) {
 		"title":           strings.TrimSpace(req.Title),
 		"type":            materialType,
 		"description":     strings.TrimSpace(req.Description),
-		"storage_key":     strings.TrimSpace(req.StorageKey),
-		"file_name":       strings.TrimSpace(req.FileName),
 		"preview_content": strings.TrimSpace(req.PreviewContent),
 		"access_level":    accessLevel,
 		"status":          status,
-		"file_size":       req.FileSize,
 	})
-	if storageKey, ok := updates["storage_key"].(string); ok && hasUnsafePath(storageKey) {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsafe_storage_key", nil)
-		return
-	}
 	h.updateByID(ctx, &model.Material{}, updates, "material")
 }
 
@@ -568,6 +566,28 @@ func bindJSON(ctx *gin.Context, target interface{}) bool {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
 		return false
 	}
+	return true
+}
+
+func rejectMaterialFileFieldUpdates(ctx *gin.Context) bool {
+	body, err := io.ReadAll(ctx.Request.Body)
+	if err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return false
+	}
+	ctx.Request.Body = io.NopCloser(bytes.NewReader(body))
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return false
+	}
+	for _, field := range []string{"storageKey", "storage_key", "fileName", "file_name", "fileSize", "file_size"} {
+		if _, ok := raw[field]; ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "material_file_fields_immutable", nil)
+			return false
+		}
+	}
+	ctx.Request.Body = io.NopCloser(bytes.NewReader(body))
 	return true
 }
 

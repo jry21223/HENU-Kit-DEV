@@ -136,7 +136,7 @@ Implemented admin behavior:
 - material create/upload defaults to `draft` when status is omitted
 - material status updates accept only `draft`, `pending`, `published`, or `archived`
 - material create/update/upload accept only known material types and access levels
-- material update can edit metadata but must not expose `storage_key` through admin UI
+- material metadata update rejects `storageKey`, `storage_key`, `fileName`, `file_name`, `fileSize`, and `file_size`; file replacement must use upload flow
 - material upload uses server-generated storage keys under `materials/{courseId}/`
 - upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with a PDF header
 - upload rejects files larger than 20 MiB

@@ -56,7 +56,8 @@ Important boundaries:
 - Public APIs only expose `published` materials.
 - Invalid statuses, material types, and access levels are rejected by the Go API.
 - The UI does not display `storage_key`; downloads still go through `GET /api/v1/materials/:id/download`.
-- The edit dialog does not expose or mutate `storage_key`; replacing the actual file remains an upload flow.
+- The edit dialog does not expose or mutate `storage_key`; the Go API also rejects metadata PATCH attempts that include `storageKey`, `fileName`, or `fileSize`.
+- Replacing the actual file remains an upload flow.
 
 ## Download Audit
 

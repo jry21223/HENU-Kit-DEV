@@ -101,6 +101,7 @@ cd ../worker && go test ./...
 - `/me/downloads` 用户隔离和 `/admin/downloads` 管理员权限。
 - `/auth/me` 个人资料更新、学校/专业绑定校验和专业-学校匹配校验。
 - 资料默认 draft 入库、admin 全量可见、公开端只展示 published、非法状态拒绝。
+- Admin material metadata PATCH rejects direct file-field mutation; file replacement remains an upload flow.
 - 课程包授权解锁包内 paid 资料。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态。
 - 不安全 storage key 返回 404。
@@ -158,7 +159,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Vue Admin includes `/downloads` for successful material download audit logs.
 - Vue Admin includes admin-only all-status course listing and a course edit dialog.
 - Vue Admin includes material status operations for `draft`, `pending`, `published`, and `archived`.
-- Vue Admin includes material metadata editing; the actual storage key remains hidden and file replacement still goes through upload.
+- Vue Admin includes material metadata editing; the actual storage key remains hidden, and the Go API rejects direct file-field mutation through metadata PATCH.
 - Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility, draft approve/reject review, and review reason capture.
 - Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, and course demand.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.

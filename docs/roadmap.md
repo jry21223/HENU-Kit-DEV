@@ -39,7 +39,7 @@
 - Web session polish for richer account status and entitlement summaries
 - Richer content review workflows beyond AI drafts
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
-- Admin material storage-key update hardening
+- AI draft review state-machine hardening
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables
