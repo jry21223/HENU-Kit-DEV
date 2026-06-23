@@ -172,7 +172,7 @@ Implemented package behavior:
 - package list/detail endpoints only return `published` course packages
 - package detail returns package items plus published materials included in the package
 - public package detail must filter both `items` and `materials` to published material resources; package items that point at draft, pending, rejected, or archived materials must not appear in the public response, even as raw resource ids
-- Web `/packages` lists published course packages; Web `/packages/[id]` uses public package detail plus the logged-in user's `/me/entitlements` to display locked/unlocked state; it does not mark payment success or grant access from the frontend
+- Web `/packages` lists published course packages; Web `/packages/[id]` uses public package detail plus the logged-in user's `/me/entitlements` to display locked/unlocked state, create/reuse pending package orders, request a WeChat Native code URL, render a local QR code, and poll read-only order status; it does not mark payment success or grant access from the frontend
 - a `material_access_grants.package_id` grant unlocks paid package materials on the server side
 - expired package grants do not unlock paid materials
 - `/me/entitlements` returns direct material grants, published package grants, included materials, and summary counts for the current user only
@@ -218,7 +218,7 @@ Implemented WeChat Native payment boundary:
 - development/test `WECHAT_PAY_MODE=mock` returns a mock `weixin://wxpay/mock/...` `codeUrl`, stores transient Native metadata, and moves the local order to `status=paying`
 - production rejects `WECHAT_PAY_MODE=mock` with `wechat_mock_forbidden_in_production`
 - `WECHAT_PAY_MODE=live` validates required merchant configuration before use, but real WeChat API calls are not implemented yet and return `wechat_live_not_implemented`
-- Native code URL creation never marks an order paid, never grants entitlement, and never changes paid material access
+- Native code URL creation never marks an order paid, never grants entitlement, and never changes paid material access; Web QR rendering is only a display layer over the server-returned `codeUrl`
 - WeChat notify signature verification, resource decryption, idempotent paid transition, and automatic entitlement issuance remain later work
 
 Implemented quiz behavior:

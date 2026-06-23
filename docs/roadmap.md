@@ -57,6 +57,7 @@
 - Course package catalog, Web package list/detail pages, package-level material grants, and public package-detail filtering that hides unpublished package items as well as unpublished material objects
 - Course package pending-order foundation with server-authoritative package pricing, duplicate pending-order reuse, and user-scoped order status
 - WeChat Native mock payment request endpoint for development/test, with production mock guard and no entitlement side effects
+- Web package detail renders server-returned WeChat Native code URLs as local QR codes and polls read-only order status
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton

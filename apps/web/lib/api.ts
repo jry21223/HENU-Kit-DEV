@@ -183,6 +183,17 @@ export type OrderStatus = {
   packageTitle?: string;
 };
 
+export type WeChatNativePayment = {
+  orderId: string;
+  codeUrl: string;
+  expiresAt: string;
+  status: string;
+  amountTotal: number;
+  currency: string;
+  title: string;
+  mock: boolean;
+};
+
 export type MaterialDownload = {
   id: string;
   materialId: string;
