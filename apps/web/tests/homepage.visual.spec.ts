@@ -64,6 +64,8 @@ test("homepage renders product vision on desktop", async ({ page }) => {
 
   await expect(page.getByTestId("archive-copy-intro")).toBeVisible();
   await expect(page.getByRole("heading", { name: "打开你的期末复习资料册" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /进入工作区/ })).toHaveAttribute("href", "/workspace");
+  await expect(page.getByRole("link", { name: /浏览课程资料/ })).toHaveAttribute("href", "/courses");
   await expect(page.getByText("软件学院资料库").first()).toBeVisible();
 
   await scrollArchiveTo(page, 0.6);
@@ -96,6 +98,22 @@ test("homepage renders product vision on desktop", async ({ page }) => {
 
   const closedAgainBox = await archiveBookBox(page);
   expect(Math.abs(closedAgainBox.centerX - openBox.centerX)).toBeLessThan(120);
+});
+
+test("homepage exposes precision animation markers", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto(homeUrl, { waitUntil: "networkidle" });
+
+  await expect(page.locator('[data-home-anim="archive-book"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="archive-cover"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="archive-directory-scan"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="archive-directory-line"]')).toHaveCount(6);
+  await expect(page.locator('[data-home-anim="course-book"]')).toHaveCount(6);
+  await expect(page.locator('[data-home-anim="community-note"]')).toHaveCount(4);
+  await expect(page.locator('[data-home-anim="practice-card"]')).toHaveCount(4);
+  await expect(page.locator('[data-home-anim="membership-stamp"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="sales-note"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="guarantee-seal"]')).toHaveCount(4);
 });
 
 test("homepage uses simplified archive on mobile", async ({ page }) => {
