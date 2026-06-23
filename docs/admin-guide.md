@@ -11,6 +11,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/material-reviews`: reviewer/admin material approve/reject review queue with review notes.
 - `/wiki-reviews`: reviewer/admin wiki entry approve/reject review queue with review notes.
 - `/blog-reviews`: reviewer/admin blog post approve/reject review queue with review notes.
+- `/forum-reviews`: reviewer/admin forum post approve/reject review queue with review notes.
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations with review notes.
 - `/analytics`: read-only material download and course demand analytics.
 - `/operation-logs`: read-only high-risk admin operation logs.
@@ -151,6 +152,27 @@ Important boundaries:
 - The initial submission writes a `wiki_edit_histories` version-1 row, but reviewable edit proposals for already-published entries remain later work.
 - Wiki approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
 
+## Forum Review
+
+`/forum-reviews` calls:
+
+- `GET /api/v1/admin/forum/posts?status=`
+- `POST /api/v1/admin/forum/posts/:id/approve`
+- `POST /api/v1/admin/forum/posts/:id/reject`
+
+The page is available to `reviewer`, `admin`, and `super_admin` roles. It lists student-submitted forum posts by review status and does not provide edit/delete controls.
+
+Important boundaries:
+
+- Logged-in, non-frozen users submit forum posts through `POST /api/v1/forum/posts`; posts always enter `pending`.
+- Public forum post list/detail endpoints only expose `published` posts with `visibility=public` under a published board.
+- Public forum post responses use a public DTO and do not expose review metadata.
+- Approving a post sets it to `published`, records reviewer metadata, and makes it visible through public forum endpoints.
+- Rejecting a post requires `reviewReason`, records reviewer metadata, and keeps it hidden from public forum endpoints.
+- Only `draft`, `pending`, and `needs_changes` posts can be reviewed; repeating review on published/rejected posts returns `409 forum_post_not_reviewable`.
+- The MVP supports `normal` and `question` post types. Reward posts, reply creation/review, best-answer settlement, and point grants remain later work.
+- Forum approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+
 ## AI Draft Review
 
 `/ai/drafts` calls:
@@ -165,7 +187,7 @@ The page shows recent AI tasks and reviewable AI drafts created by the worker.
 Important boundaries:
 
 - AI review endpoints require an authenticated `reviewer`, `admin`, or `super_admin` role.
-- `reviewer` users can access `/ai/drafts`, `/material-reviews`, `/wiki-reviews`, and `/blog-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
+- `reviewer` users can access `/ai/drafts`, `/material-reviews`, `/wiki-reviews`, `/blog-reviews`, and `/forum-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
 - Approving a draft can include an optional review note; rejecting a draft requires a review reason.
 - Approving or rejecting a draft only changes the draft review status and review metadata.
 - Only `draft`, `pending`, and `needs_changes` drafts can be reviewed; repeating review on `approved` or `rejected` drafts returns `409 draft_not_reviewable`.
@@ -182,7 +204,7 @@ Important boundaries:
 - `GET /api/v1/admin/operation-logs/export`
 - `GET /api/v1/admin/operation-logs/retention`
 
-The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki review, blog review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki review, blog review, forum review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
 Filters:
 

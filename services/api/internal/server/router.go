@@ -17,6 +17,7 @@ import (
 	"final-review-platform/services/api/internal/course"
 	"final-review-platform/services/api/internal/downloadlog"
 	"final-review-platform/services/api/internal/entitlement"
+	"final-review-platform/services/api/internal/forum"
 	"final-review-platform/services/api/internal/health"
 	"final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/org"
@@ -53,6 +54,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	authHandler := auth.NewHandler(cfg, db, tokenManager)
 	authMiddleware := auth.NewMiddleware(db, tokenManager)
 	blogHandler := blog.NewHandler(db)
+	forumHandler := forum.NewHandler(db)
 	orgHandler := org.NewHandler(db)
 	courseHandler := course.NewHandler(db)
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
@@ -99,6 +101,10 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/blog/posts", blogHandler.ListPublished)
 	v1.GET("/blog/posts/:id", blogHandler.Detail)
 	v1.POST("/blog/posts", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), blogHandler.Create)
+	v1.GET("/forum/boards", forumHandler.Boards)
+	v1.GET("/forum/posts", forumHandler.ListPublished)
+	v1.GET("/forum/posts/:id", forumHandler.Detail)
+	v1.POST("/forum/posts", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.Create)
 	v1.GET("/wiki/entries", wikiHandler.ListPublished)
 	v1.GET("/wiki/entries/:id", wikiHandler.Detail)
 	v1.POST("/wiki/entries", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.Create)
@@ -154,6 +160,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	review.GET("/blog/posts", blogHandler.AdminPosts)
 	review.POST("/blog/posts/:id/approve", blogHandler.ApprovePost)
 	review.POST("/blog/posts/:id/reject", blogHandler.RejectPost)
+	review.GET("/forum/posts", forumHandler.AdminPosts)
+	review.POST("/forum/posts/:id/approve", forumHandler.ApprovePost)
+	review.POST("/forum/posts/:id/reject", forumHandler.RejectPost)
 	review.GET("/wiki/entries", wikiHandler.AdminEntries)
 	review.POST("/wiki/entries/:id/approve", wikiHandler.ApproveEntry)
 	review.POST("/wiki/entries/:id/reject", wikiHandler.RejectEntry)

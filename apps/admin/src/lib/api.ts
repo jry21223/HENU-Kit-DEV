@@ -161,6 +161,25 @@ export type WikiEntry = {
   updatedAt: string;
 };
 
+export type ForumPost = {
+  id: string;
+  authorId: string;
+  boardId: string;
+  title: string;
+  content: string;
+  type: string;
+  status: string;
+  reviewerId?: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  visibility?: string;
+  likeCount?: number;
+  commentCount?: number;
+  collectCount?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AnalyticsOverview = {
   totals: {
     users: number;

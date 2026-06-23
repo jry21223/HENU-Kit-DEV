@@ -338,12 +338,15 @@ type ForumBoard struct {
 type ForumPost struct {
 	BaseModel
 	ContentStats
-	AuthorID string `json:"authorId" gorm:"type:uuid;index;not null"`
-	BoardID  string `json:"boardId" gorm:"type:uuid;index;not null"`
-	Title    string `json:"title" gorm:"size:200;not null"`
-	Content  string `json:"content" gorm:"type:text"`
-	Type     string `json:"type" gorm:"size:40;default:normal;index"`
-	Status   string `json:"status" gorm:"size:32;default:published;index"`
+	AuthorID     string     `json:"authorId" gorm:"type:uuid;index;not null"`
+	BoardID      string     `json:"boardId" gorm:"type:uuid;index;not null"`
+	Title        string     `json:"title" gorm:"size:200;not null"`
+	Content      string     `json:"content" gorm:"type:text"`
+	Type         string     `json:"type" gorm:"size:40;default:normal;index"`
+	Status       string     `json:"status" gorm:"size:32;default:published;index"`
+	ReviewerID   *string    `json:"reviewerId,omitempty" gorm:"type:uuid;index"`
+	ReviewedAt   *time.Time `json:"reviewedAt,omitempty"`
+	ReviewReason string     `json:"reviewReason,omitempty" gorm:"size:1000"`
 }
 
 type ForumReply struct {
