@@ -110,17 +110,41 @@ async function expectPostBookSectionMarkerInViewport(
 
   if (animated) {
     await expect
-      .poll(async () => target.evaluate((element) => Number(getComputedStyle(element).opacity)), { timeout: 7000 })
-      .toBeGreaterThan(minOpacity);
-  } else {
-    const visibleOpacity = await target.evaluate((element) => Number(getComputedStyle(element).opacity));
-    expect(visibleOpacity).toBeGreaterThan(minOpacity);
+      .poll(
+        async () =>
+          target.evaluate((element, expectedOpacity) => {
+            const styles = getComputedStyle(element);
+            const computedOpacity = Number(styles.opacity);
+            const computedTranslate = styles.translate;
+            const inlineOpacity = element.style.getPropertyValue("opacity");
+            const inlineTranslate = element.style.getPropertyValue("translate");
+            const inlineWillChange = element.style.getPropertyValue("will-change");
+
+            return {
+              inlineOpacity,
+              inlineTranslate,
+              inlineWillChange,
+              opacityReady: computedOpacity > expectedOpacity,
+              translateRestored: computedTranslate !== "0px 18px" && computedTranslate !== "0 18px",
+            };
+          }, minOpacity),
+        { timeout: 7000 },
+      )
+      .toEqual({
+        inlineOpacity: "",
+        inlineTranslate: "",
+        inlineWillChange: "",
+        opacityReady: true,
+        translateRestored: true,
+      });
+    return;
   }
 
-  const animationState = await target.evaluate((element) => {
+  const nonAnimatedState = await target.evaluate((element) => {
     const styles = getComputedStyle(element);
 
     return {
+      computedOpacity: Number(styles.opacity),
       computedTranslate: styles.translate,
       inlineOpacity: element.style.getPropertyValue("opacity"),
       inlineTranslate: element.style.getPropertyValue("translate"),
@@ -128,11 +152,12 @@ async function expectPostBookSectionMarkerInViewport(
     };
   });
 
-  expect(animationState.computedTranslate).not.toBe("0px 18px");
-  expect(animationState.computedTranslate).not.toBe("0 18px");
-  expect(animationState.inlineOpacity).toBe("");
-  expect(animationState.inlineTranslate).toBe("");
-  expect(animationState.inlineWillChange).toBe("");
+  expect(nonAnimatedState.computedOpacity).toBeGreaterThan(minOpacity);
+  expect(nonAnimatedState.computedTranslate).not.toBe("0px 18px");
+  expect(nonAnimatedState.computedTranslate).not.toBe("0 18px");
+  expect(nonAnimatedState.inlineOpacity).toBe("");
+  expect(nonAnimatedState.inlineTranslate).toBe("");
+  expect(nonAnimatedState.inlineWillChange).toBe("");
 }
 
 test("homepage renders product vision on desktop", async ({ page }) => {
