@@ -41,7 +41,7 @@
 - Vue admin AI task visibility and draft approve/reject page with reviewer-role access, review notes, and one-way review state checks
 - Vue admin material review queue with reviewer-role access, approve/reject actions, review notes, and one-way pending review checks
 - Vue admin wiki review queue with reviewer-role access, approve/reject actions, review notes, public-only published wiki APIs, and initial edit-history capture
-- Vue admin wiki edit proposal review queue with reviewer-role access, stale-version protection, live-entry version updates, and edit-history capture
+- Vue admin wiki edit proposal review queue with reviewer-role access, stale-version protection, stale approve UI guard, live-entry version updates, and edit-history capture
 - Vue admin blog review queue with reviewer-role access, approve/reject actions, review notes, and public-only published blog APIs
 - Vue admin forum review queue with reviewer-role access, approve/reject actions, review notes, public-only published forum post APIs, and published-board checks
 - Vue admin forum reply review queue with reviewer-role access, approve/reject actions, review notes, public-only published reply APIs, and once-only comment-count updates

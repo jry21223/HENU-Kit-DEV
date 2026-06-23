@@ -34,7 +34,10 @@
           </template>
         </el-table-column>
         <el-table-column :label="copy.version" width="130">
-          <template #default="{ row }">v{{ row.baseVersion }} -> v{{ row.baseVersion + 1 }}</template>
+          <template #default="{ row }">
+            <span>v{{ row.baseVersion }} -> v{{ row.baseVersion + 1 }}</span>
+            <el-tag v-if="row.isStale" class="stale-tag" type="warning" size="small">{{ copy.stale }}</el-tag>
+          </template>
         </el-table-column>
         <el-table-column :label="copy.status" width="130">
           <template #default="{ row }">
@@ -60,7 +63,7 @@
                 size="small"
                 type="success"
                 plain
-                :disabled="!canReview(row.status)"
+                :disabled="!canApprove(row)"
                 @click="openReview(row, 'approve')"
               >
                 {{ copy.approve }}
@@ -182,6 +185,8 @@ const copy = {
   proposalBaseVersion: "\u63d0\u6848\u57fa\u51c6\u7248\u672c",
   baseContentMissing: "\u672a\u627e\u5230\u57fa\u51c6\u7248\u672c\u5386\u53f2\u5185\u5bb9",
   currentEntryMissing: "\u65e0\u6cd5\u8bfb\u53d6\u5f53\u524d\u8bcd\u6761",
+  stale: "\u5df2\u8fc7\u671f",
+  staleApproveBlocked: "\u8be5\u63d0\u6848\u57fa\u4e8e\u65e7\u7248\u672c\uff0c\u4e0d\u80fd\u76f4\u63a5\u901a\u8fc7\uff1b\u53ef\u9a73\u56de\u540e\u7531\u521b\u4f5c\u8005\u57fa\u4e8e\u65b0\u7248\u672c\u91cd\u65b0\u63d0\u4ea4\u3002",
   versionMismatch:
     "\u5f53\u524d\u8bcd\u6761\u7248\u672c\u5df2\u53d8\u66f4\uff0c\u670d\u52a1\u7aef\u5c06\u62d2\u7edd\u8fc7\u671f\u63d0\u6848\u901a\u8fc7\u3002",
   loadFailed: "Wiki \u7f16\u8f91\u63d0\u6848\u52a0\u8f7d\u5931\u8d25",
@@ -241,6 +246,10 @@ async function loadProposals() {
 }
 
 function openReview(proposal: WikiEditProposal, action: "approve" | "reject") {
+  if (action === "approve" && proposal.isStale) {
+    error.value = copy.staleApproveBlocked;
+    return;
+  }
   reviewTarget.value = proposal;
   reviewAction.value = action;
   reviewReason.value = "";
@@ -276,6 +285,10 @@ async function submitReview() {
 
 function canReview(status: string) {
   return status === "pending" || status === "draft" || status === "needs_changes";
+}
+
+function canApprove(proposal: WikiEditProposal) {
+  return canReview(proposal.status) && !proposal.isStale;
 }
 
 function statusLabel(status: string) {
@@ -314,5 +327,10 @@ function formatDate(value?: string) {
 .compare-content {
   max-height: 180px;
   overflow: auto;
+}
+
+.stale-tag {
+  margin-left: 8px;
+  margin-top: 6px;
 }
 </style>

@@ -201,6 +201,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - User notifications are available through `GET /api/v1/me/notifications`, `POST /api/v1/me/notifications/:id/read`, `POST /api/v1/me/notifications/read-all`, and Web `/me/notifications`; users only see/read their own notifications.
 - Forum post/reply review creates a `forum_review` notification for the author in the same transaction as the review update and operation log.
 - Material, wiki entry/proposal, blog post, and AI draft review creates a `content_review` notification for the original author/editor/task owner in the same transaction as the review update and operation log.
+- Vue Admin Wiki proposal review marks stale proposals and blocks stale approval in the UI; the Go API still enforces the final stale-version rejection.
 - Basic report APIs, Web material/wiki/blog/forum report buttons, and Vue Admin `/reports` are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
 - Payment and membership notifications remain later work.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
