@@ -260,8 +260,9 @@ function Sidebar({
           </Link>
           {!collapsed ? (
             <button
-              aria-label="切换资料库"
-              className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-card hover:text-foreground"
+              aria-label="切换资料库暂未开放"
+              className="grid size-8 cursor-not-allowed place-items-center rounded-md text-muted-foreground opacity-60"
+              disabled
               type="button"
             >
               <ChevronsUpDown className="size-4" aria-hidden="true" />
@@ -395,9 +396,14 @@ function DesktopTopBar() {
   return (
     <header className="sticky top-0 z-20 hidden h-[64px] items-center justify-between border-b border-border bg-card/70 px-6 backdrop-blur-md lg:flex">
       <div className="relative w-full max-w-md">
+        <label className="sr-only" htmlFor="workspace-desktop-search">
+          搜索课程、讲义、真题、实验资料
+        </label>
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <input
           className="h-9 w-full rounded-lg border border-input bg-card/70 px-9 font-mono text-[12px] text-foreground shadow-[0_10px_30px_hsl(58_12%_44%/0.06)] outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+          id="workspace-desktop-search"
+          name="q"
           placeholder="搜索课程、讲义、真题、实验资料..."
           type="search"
         />
@@ -419,10 +425,20 @@ function DesktopTopBar() {
       </nav>
 
       <div className="flex items-center gap-2">
-        <button className="grid size-8 place-items-center rounded text-muted-foreground hover:bg-secondary hover:text-primary" aria-label="通知">
+        <button
+          className="grid size-8 cursor-not-allowed place-items-center rounded text-muted-foreground opacity-60"
+          aria-label="通知暂未开放"
+          disabled
+          type="button"
+        >
           <Bell className="size-4" aria-hidden="true" />
         </button>
-        <button className="grid size-8 place-items-center rounded text-muted-foreground hover:bg-secondary hover:text-primary" aria-label="帮助">
+        <button
+          className="grid size-8 cursor-not-allowed place-items-center rounded text-muted-foreground opacity-60"
+          aria-label="帮助暂未开放"
+          disabled
+          type="button"
+        >
           <CircleHelp className="size-4" aria-hidden="true" />
         </button>
         <Link
@@ -445,7 +461,12 @@ function MobileHeader() {
     <header className="sticky top-0 z-30 border-b border-border bg-card/75 px-4 py-3 backdrop-blur-md lg:hidden">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <button className="grid size-9 place-items-center rounded border border-border text-muted-foreground" aria-label="打开菜单">
+          <button
+            className="grid size-9 cursor-not-allowed place-items-center rounded border border-border text-muted-foreground opacity-60"
+            aria-label="打开菜单暂未开放"
+            disabled
+            type="button"
+          >
             <Menu className="size-4" aria-hidden="true" />
           </button>
           <div className="min-w-0">
@@ -467,9 +488,14 @@ function MobileHeader() {
         </div>
       </div>
       <div className="relative mt-3">
+        <label className="sr-only" htmlFor="workspace-mobile-search">
+          搜索课程、讲义、真题
+        </label>
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <input
           className="h-10 w-full rounded-lg border border-input bg-card/70 px-9 text-sm text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+          id="workspace-mobile-search"
+          name="q"
           placeholder="搜索课程、讲义、真题"
           type="search"
         />
@@ -616,7 +642,12 @@ function DocumentRepository() {
     <section id="documents" className="archive-panel overflow-hidden rounded-xl lg:col-span-12">
       <div className="flex items-center justify-between border-b border-border bg-secondary/70 px-4 py-3">
         <h2 className="text-xs font-semibold text-foreground">资料归档</h2>
-        <button className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card/80 px-2 text-xs text-muted-foreground transition hover:border-primary hover:text-primary">
+        <button
+          className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-card/80 px-2 text-xs text-muted-foreground opacity-60"
+          aria-label="筛选暂未开放"
+          disabled
+          type="button"
+        >
           <Filter className="size-3.5" aria-hidden="true" />
           筛选
         </button>
