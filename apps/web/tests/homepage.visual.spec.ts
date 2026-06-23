@@ -50,6 +50,33 @@ async function elementBox(page: Page, testId: string) {
   });
 }
 
+async function expectHomeAnimMarkerInViewport(page: Page, marker: string, expectedCount: number) {
+  const locator = page.locator(`[data-home-anim="${marker}"]`);
+  await expect(locator).toHaveCount(expectedCount);
+
+  const target = locator.first();
+  await target.scrollIntoViewIfNeeded();
+  await expect(target).toBeVisible();
+
+  const box = await target.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+
+    return {
+      bottom: rect.bottom,
+      height: rect.height,
+      top: rect.top,
+      width: rect.width,
+      windowHeight: window.innerHeight,
+    };
+  });
+
+  expect(box.width).toBeGreaterThan(20);
+  expect(box.height).toBeGreaterThan(20);
+  expect(box.top).toBeLessThan(box.windowHeight);
+  expect(box.bottom).toBeGreaterThan(0);
+  await expect(target).toHaveAttribute("data-home-anim", marker);
+}
+
 test("homepage renders product vision on desktop", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto(homeUrl, { waitUntil: "networkidle" });
@@ -103,6 +130,21 @@ test("homepage renders product vision on desktop", async ({ page }) => {
 
   const closedAgainBox = await archiveBookBox(page);
   expect(Math.abs(closedAgainBox.centerX - openBox.centerX)).toBeLessThan(120);
+});
+
+test("homepage reveals post-book product sections while preserving animation markers", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto(homeUrl, { waitUntil: "networkidle" });
+
+  await scrollArchiveTo(page, 0.93);
+  await expect(page.getByTestId("archive-copy-closing")).toBeVisible();
+
+  await expectHomeAnimMarkerInViewport(page, "community-note", 4);
+  await expectHomeAnimMarkerInViewport(page, "practice-card", 4);
+  await expectHomeAnimMarkerInViewport(page, "membership-ticket", 1);
+  await expectHomeAnimMarkerInViewport(page, "membership-stamp", 1);
+  await expectHomeAnimMarkerInViewport(page, "sales-note", 1);
+  await expectHomeAnimMarkerInViewport(page, "guarantee-seal", 4);
 });
 
 test("homepage exposes precision animation markers", async ({ page }) => {
