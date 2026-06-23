@@ -16,7 +16,7 @@ The Go API writes `operation_logs` for the current hardening scope:
 - material create/upload/update/status-update/archive
 - AI draft approve/reject review
 
-Log rows include the authenticated operator id, action, target type/id, IP, User-Agent, and minimal metadata. Invalid or rejected requests do not write operation logs. The Vue Admin operation-log browser is still planned work.
+Log rows include the authenticated operator id, action, target type/id, IP, User-Agent, and minimal metadata. Invalid or rejected requests do not write operation logs. Vue Admin exposes a read-only operation-log browser; logs cannot be edited or deleted from the admin UI.
 
 ## Dependency Checks
 

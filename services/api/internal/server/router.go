@@ -124,6 +124,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.DELETE("/materials/:id", adminHandler.ArchiveMaterial)
 	admin.POST("/materials/upload", adminHandler.UploadMaterial)
 	admin.GET("/downloads", downloadLogHandler.AdminDownloads)
+	admin.GET("/operation-logs", adminHandler.OperationLogs)
 	admin.GET("/analytics/overview", analyticsHandler.Overview)
 
 	review := v1.Group("/admin")

@@ -330,6 +330,59 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	}
 }
 
+func TestAdminOperationLogsRequiresAdminAndFilters(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+
+	admin := createTestUser(t, db, "logs-admin@stu.henu.edu.cn", model.RoleAdmin)
+	otherAdmin := createTestUser(t, db, "logs-other-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, "logs-admin@stu.henu.edu.cn")
+	studentToken := loginTestUser(t, router, "logs-student@stu.henu.edu.cn")
+
+	targetID := "course-log-target"
+	logs := []model.OperationLog{
+		{
+			OperatorID: admin.ID,
+			Action:     "course.update",
+			TargetType: "course",
+			TargetID:   targetID,
+			IP:         "192.0.2.10",
+			UserAgent:  "test-agent",
+		},
+		{
+			OperatorID: otherAdmin.ID,
+			Action:     "material.update",
+			TargetType: "material",
+			TargetID:   "material-log-target",
+		},
+	}
+	if err := db.Create(&logs).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	denied := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs", "", studentToken)
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("expected student operation logs 403, got %d: %s", denied.Code, denied.Body.String())
+	}
+
+	filtered := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs?action=course.update&targetType=course&targetId="+targetID+"&operatorId="+admin.ID+"&limit=10", "", adminToken)
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("expected operation log filter 200, got %d: %s", filtered.Code, filtered.Body.String())
+	}
+	body := filtered.Body.String()
+	if !strings.Contains(body, `"operationLogs"`) || !strings.Contains(body, logs[0].ID) {
+		t.Fatalf("expected filtered operation log in response, got %s", body)
+	}
+	if strings.Contains(body, logs[1].ID) {
+		t.Fatalf("filtered operation logs leaked unrelated row: %s", body)
+	}
+
+	invalidLimit := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs?limit=0", "", adminToken)
+	if invalidLimit.Code != http.StatusBadRequest || !strings.Contains(invalidLimit.Body.String(), "invalid_limit") {
+		t.Fatalf("expected invalid limit rejection, got %d: %s", invalidLimit.Code, invalidLimit.Body.String())
+	}
+}
+
 func performMultipart(router http.Handler, path string, token string, fields map[string]string, fileField string, fileName string, content []byte) *httptest.ResponseRecorder {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)

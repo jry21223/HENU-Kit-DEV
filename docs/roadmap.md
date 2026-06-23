@@ -26,6 +26,7 @@
 - Vue admin download audit page
 - Vue admin AI task visibility and draft approve/reject page with reviewer-role access, review notes, and one-way review state checks
 - Vue admin read-only analytics page for download trend and course demand
+- Vue admin read-only operation-log browser for high-risk admin mutations
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
 - Server-side operation logs for organization, course, material, upload, status/archive, and AI draft review mutations
@@ -40,7 +41,7 @@
 - Web session polish for richer account status and entitlement summaries
 - Richer content review workflows beyond AI drafts
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
-- Vue Admin operation-log browser UI and filters
+- Operation-log exports and retention policy
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables

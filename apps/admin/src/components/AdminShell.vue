@@ -11,6 +11,7 @@
         <RouterLink v-if="auth.isAdmin" to="/materials">{{ copy.materials }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/downloads">{{ copy.downloads }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/analytics">{{ copy.analytics }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/operation-logs">{{ copy.operationLogs }}</RouterLink>
         <span v-if="auth.canReviewAI" class="nav-section">{{ copy.reviewSection }}</span>
         <RouterLink v-if="auth.canReviewAI" to="/ai/drafts">{{ copy.aiDrafts }}</RouterLink>
         <span v-if="auth.isAdmin" class="disabled-nav" aria-disabled="true">{{ copy.community }}</span>
@@ -39,6 +40,7 @@ const copy = {
   materials: "PDF \u8d44\u6599",
   downloads: "\u4e0b\u8f7d\u5ba1\u8ba1",
   analytics: "\u8fd0\u8425\u5206\u6790",
+  operationLogs: "\u64cd\u4f5c\u65e5\u5fd7",
   reviewSection: "\u5ba1\u6838\u6d41\u7a0b",
   aiDrafts: "AI \u8349\u7a3f",
   community: "\u8bfe\u7a0b\u793e\u533a",

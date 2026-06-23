@@ -10,6 +10,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/downloads`: successful material download audit logs.
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations with review notes.
 - `/analytics`: read-only material download and course demand analytics.
+- `/operation-logs`: read-only high-risk admin operation logs.
 
 ## Course Operations
 
@@ -113,9 +114,24 @@ Important boundaries:
 
 ## Operation Logs
 
+`/operation-logs` calls `GET /api/v1/admin/operation-logs` and requires an authenticated `admin` or `super_admin` role.
+
 The Go API currently writes operation logs for organization, course, material, upload, archive, material status, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
-Current limitation: Vue Admin does not yet expose an operation-log search page. Logs are queryable from the database and covered by API tests.
+Filters:
+
+- `operatorId`
+- `action`
+- `targetType`
+- `targetId`
+- `limit`
+
+Important boundaries:
+
+- The page is read-only.
+- Logs cannot be edited or deleted from Vue Admin.
+- Reviewer-only users cannot access operation logs.
+- Invalid or rejected mutation requests do not write operation log rows.
 
 ## Analytics
 
@@ -144,4 +160,4 @@ Important boundaries:
 - Orders
 - Reports
 - System config
-- Operation log browser UI
+- Richer operation-log exports and retention policy

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -90,6 +91,33 @@ type materialRequest struct {
 
 type materialStatusRequest struct {
 	Status string `json:"status"`
+}
+
+func (h Handler) OperationLogs(ctx *gin.Context) {
+	query := h.db.Model(&model.OperationLog{})
+	if operatorID := strings.TrimSpace(ctx.Query("operatorId")); operatorID != "" {
+		query = query.Where("operator_id = ?", operatorID)
+	}
+	if action := strings.TrimSpace(ctx.Query("action")); action != "" {
+		query = query.Where("action = ?", action)
+	}
+	if targetType := strings.TrimSpace(ctx.Query("targetType")); targetType != "" {
+		query = query.Where("target_type = ?", targetType)
+	}
+	if targetID := strings.TrimSpace(ctx.Query("targetId")); targetID != "" {
+		query = query.Where("target_id = ?", targetID)
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 200, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var logs []model.OperationLog
+	if err := query.Order("created_at desc").Limit(limit).Find(&logs).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"operationLogs": logs})
 }
 
 func (h Handler) CreateSchool(ctx *gin.Context) {
@@ -726,6 +754,21 @@ func updateMetadata(updates map[string]interface{}) map[string]interface{} {
 		}
 	}
 	return metadata
+}
+
+func parseLimit(raw string, fallback int, max int) (int, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return fallback, true
+	}
+	limit, err := strconv.Atoi(value)
+	if err != nil || limit <= 0 {
+		return 0, false
+	}
+	if limit > max {
+		return max, true
+	}
+	return limit, true
 }
 
 func required(value string) string {

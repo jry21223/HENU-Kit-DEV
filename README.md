@@ -166,6 +166,6 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.
 - Admin analytics are based on successful server-side download logs; denied download attempts, page visits, search intent, and payment conversion are not included yet.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
-- Go API now writes server-side `operation_logs` for organization, course, material, upload/status/archive, and AI draft review mutations; the Vue Admin operation-log browser is still planned.
+- Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Real AI publish-to-resource flows remain later work.
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.

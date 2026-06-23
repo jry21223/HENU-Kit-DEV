@@ -8,6 +8,7 @@ import DashboardView from "../views/DashboardView.vue";
 import DownloadsView from "../views/DownloadsView.vue";
 import LoginView from "../views/LoginView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
+import OperationLogsView from "../views/OperationLogsView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -18,6 +19,7 @@ export const router = createRouter({
     { path: "/courses", component: CoursesView },
     { path: "/materials", component: MaterialsView },
     { path: "/downloads", component: DownloadsView },
+    { path: "/operation-logs", component: OperationLogsView },
     { path: "/ai/drafts", component: AiDraftsView, meta: { reviewer: true } },
     { path: "/analytics", component: AnalyticsView },
   ],

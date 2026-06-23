@@ -77,6 +77,19 @@ export type DownloadRecord = {
   material?: Material;
 };
 
+export type OperationLog = {
+  id: string;
+  operatorId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  ip?: string;
+  userAgent?: string;
+  metadata?: unknown;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AITask = {
   id: string;
   userId?: string;
