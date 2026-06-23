@@ -31,8 +31,14 @@ const defaultOperationLogRetentionDays = 180
 const defaultOperationLogExportLimit = 5000
 
 var (
-	errUnsafeSelfUpdate   = errors.New("unsafe_self_update")
-	errSuperAdminRequired = errors.New("super_admin_required")
+	errUnsafeSelfUpdate          = errors.New("unsafe_self_update")
+	errSuperAdminRequired        = errors.New("super_admin_required")
+	errGrantUserNotFound         = errors.New("grant_user_not_found")
+	errGrantResourceNotFound     = errors.New("grant_resource_not_found")
+	errGrantResourceNotPublished = errors.New("grant_resource_not_published")
+	errGrantMaterialNotGrantable = errors.New("grant_material_not_grantable")
+	errGrantResourceSelection    = errors.New("grant_resource_selection")
+	errGrantExpirationInPast     = errors.New("grant_expiration_in_past")
 )
 
 var allowedUploadExtensions = map[string]bool{
@@ -125,6 +131,21 @@ type userUpdateRequest struct {
 	Name   *string `json:"name"`
 	Role   *string `json:"role"`
 	Status *string `json:"status"`
+}
+
+type accessGrantRequest struct {
+	UserID     string `json:"userId"`
+	MaterialID string `json:"materialId"`
+	PackageID  string `json:"packageId"`
+	ExpiresAt  string `json:"expiresAt"`
+}
+
+type accessGrantRow struct {
+	Grant    model.MaterialAccessGrant `json:"grant"`
+	User     *model.User               `json:"user,omitempty"`
+	Material *model.Material           `json:"material,omitempty"`
+	Package  *model.CoursePackage      `json:"package,omitempty"`
+	Active   bool                      `json:"active"`
 }
 
 func (h Handler) ListUsers(ctx *gin.Context) {
@@ -246,6 +267,129 @@ func (h Handler) UpdateUser(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"user": updated})
+}
+
+func (h Handler) ListAccessGrants(ctx *gin.Context) {
+	query := h.db.Model(&model.MaterialAccessGrant{})
+	if userID := strings.TrimSpace(ctx.Query("userId")); userID != "" {
+		query = query.Where("user_id = ?", userID)
+	}
+	if materialID := strings.TrimSpace(ctx.Query("materialId")); materialID != "" {
+		query = query.Where("material_id = ?", materialID)
+	}
+	if packageID := strings.TrimSpace(ctx.Query("packageId")); packageID != "" {
+		query = query.Where("package_id = ?", packageID)
+	}
+	if source := strings.TrimSpace(ctx.Query("source")); source != "" {
+		query = query.Where("source = ?", source)
+	}
+	now := time.Now()
+	if active := strings.TrimSpace(ctx.Query("active")); active != "" {
+		switch active {
+		case "true":
+			query = query.Where("expires_at IS NULL OR expires_at > ?", now)
+		case "false":
+			query = query.Where("expires_at IS NOT NULL AND expires_at <= ?", now)
+		default:
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_active_filter", nil)
+			return
+		}
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 200, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var grants []model.MaterialAccessGrant
+	if err := query.Order("created_at desc").Limit(limit).Find(&grants).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	rows, err := h.accessGrantRows(grants, now)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"grants": rows})
+}
+
+func (h Handler) CreateAccessGrant(ctx *gin.Context) {
+	var req accessGrantRequest
+	if !bindJSON(ctx, &req) {
+		return
+	}
+	userID := strings.TrimSpace(req.UserID)
+	materialID := strings.TrimSpace(req.MaterialID)
+	packageID := strings.TrimSpace(req.PackageID)
+	expiresAt, ok := parseGrantExpiresAt(req.ExpiresAt)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_expires_at", nil)
+		return
+	}
+	if expiresAt != nil && !expiresAt.After(time.Now()) {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "expires_at_in_past", nil)
+		return
+	}
+
+	var grant model.MaterialAccessGrant
+	alreadyGranted := false
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		created, existing, err := h.createAccessGrant(ctx, tx, userID, materialID, packageID, expiresAt)
+		if err != nil {
+			return err
+		}
+		grant = created
+		alreadyGranted = existing
+		return nil
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, errGrantUserNotFound):
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "user_not_found", nil)
+		case errors.Is(err, errGrantResourceNotFound):
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "grant_resource_not_found", nil)
+		case errors.Is(err, errGrantResourceNotPublished):
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "grant_resource_not_published", nil)
+		case errors.Is(err, errGrantMaterialNotGrantable):
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "material_not_grantable", nil)
+		case errors.Is(err, errGrantResourceSelection):
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_grant_resource", nil)
+		case errors.Is(err, errGrantExpirationInPast):
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "expires_at_in_past", nil)
+		default:
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
+		}
+		return
+	}
+	response.OK(ctx, gin.H{"grant": grant, "alreadyGranted": alreadyGranted})
+}
+
+func (h Handler) RevokeAccessGrant(ctx *gin.Context) {
+	grantID := ctx.Param("id")
+	var grant model.MaterialAccessGrant
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&grant, "id = ?", grantID).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&grant).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "access_grant.revoke", "access_grant", grant.ID, map[string]interface{}{
+			"userId":     grant.UserID,
+			"materialId": grant.MaterialID,
+			"packageId":  grant.PackageID,
+			"source":     grant.Source,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "grant_not_found", nil)
+			return
+		}
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "revoke_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"revoked": true})
 }
 
 func (h Handler) OperationLogs(ctx *gin.Context) {
@@ -970,6 +1114,179 @@ func (h Handler) UploadMaterial(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"material": material})
 }
 
+func (h Handler) createAccessGrant(ctx *gin.Context, tx *gorm.DB, userID string, materialID string, packageID string, expiresAt *time.Time) (model.MaterialAccessGrant, bool, error) {
+	if userID == "" || (materialID == "" && packageID == "") || (materialID != "" && packageID != "") {
+		return model.MaterialAccessGrant{}, false, errGrantResourceSelection
+	}
+	if expiresAt != nil && !expiresAt.After(time.Now()) {
+		return model.MaterialAccessGrant{}, false, errGrantExpirationInPast
+	}
+
+	var user model.User
+	if err := tx.First(&user, "id = ?", userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.MaterialAccessGrant{}, false, errGrantUserNotFound
+		}
+		return model.MaterialAccessGrant{}, false, err
+	}
+
+	now := time.Now()
+	existingQuery := tx.Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", userID, now)
+	grant := model.MaterialAccessGrant{
+		UserID:    userID,
+		Source:    "manual_admin",
+		ExpiresAt: expiresAt,
+	}
+	metadata := map[string]interface{}{
+		"userId": userID,
+		"source": grant.Source,
+	}
+	if materialID != "" {
+		var material model.Material
+		if err := tx.First(&material, "id = ?", materialID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return model.MaterialAccessGrant{}, false, errGrantResourceNotFound
+			}
+			return model.MaterialAccessGrant{}, false, err
+		}
+		if material.Status != model.StatusPublished {
+			return model.MaterialAccessGrant{}, false, errGrantResourceNotPublished
+		}
+		if !isGrantableMaterialAccess(material.AccessLevel) {
+			return model.MaterialAccessGrant{}, false, errGrantMaterialNotGrantable
+		}
+		grant.MaterialID = &materialID
+		existingQuery = existingQuery.Where("material_id = ?", materialID)
+		metadata["materialId"] = materialID
+		metadata["accessLevel"] = material.AccessLevel
+	} else {
+		var coursePackage model.CoursePackage
+		if err := tx.First(&coursePackage, "id = ?", packageID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return model.MaterialAccessGrant{}, false, errGrantResourceNotFound
+			}
+			return model.MaterialAccessGrant{}, false, err
+		}
+		if coursePackage.Status != model.StatusPublished {
+			return model.MaterialAccessGrant{}, false, errGrantResourceNotPublished
+		}
+		grant.PackageID = &packageID
+		existingQuery = existingQuery.Where("package_id = ?", packageID)
+		metadata["packageId"] = packageID
+	}
+
+	var existing model.MaterialAccessGrant
+	if err := existingQuery.Order("created_at desc").First(&existing).Error; err == nil {
+		return existing, true, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.MaterialAccessGrant{}, false, err
+	}
+	if err := tx.Create(&grant).Error; err != nil {
+		return model.MaterialAccessGrant{}, false, err
+	}
+	if expiresAt != nil {
+		metadata["expiresAt"] = expiresAt.UTC().Format(time.RFC3339)
+	}
+	if err := audit.Record(ctx, tx, "access_grant.create", "access_grant", grant.ID, metadata); err != nil {
+		return model.MaterialAccessGrant{}, false, err
+	}
+	return grant, false, nil
+}
+
+func (h Handler) accessGrantRows(grants []model.MaterialAccessGrant, now time.Time) ([]accessGrantRow, error) {
+	userIDs := make([]string, 0, len(grants))
+	materialIDs := make([]string, 0, len(grants))
+	packageIDs := make([]string, 0, len(grants))
+	for _, grant := range grants {
+		userIDs = append(userIDs, grant.UserID)
+		if grant.MaterialID != nil && *grant.MaterialID != "" {
+			materialIDs = append(materialIDs, *grant.MaterialID)
+		}
+		if grant.PackageID != nil && *grant.PackageID != "" {
+			packageIDs = append(packageIDs, *grant.PackageID)
+		}
+	}
+	users, err := h.usersByID(userIDs)
+	if err != nil {
+		return nil, err
+	}
+	materials, err := h.adminMaterialsByID(materialIDs)
+	if err != nil {
+		return nil, err
+	}
+	packages, err := h.adminPackagesByID(packageIDs)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]accessGrantRow, 0, len(grants))
+	for _, grant := range grants {
+		row := accessGrantRow{
+			Grant:  grant,
+			Active: grant.ExpiresAt == nil || grant.ExpiresAt.After(now),
+		}
+		if user, ok := users[grant.UserID]; ok {
+			row.User = &user
+		}
+		if grant.MaterialID != nil {
+			if material, ok := materials[*grant.MaterialID]; ok {
+				row.Material = &material
+			}
+		}
+		if grant.PackageID != nil {
+			if coursePackage, ok := packages[*grant.PackageID]; ok {
+				row.Package = &coursePackage
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func (h Handler) usersByID(ids []string) (map[string]model.User, error) {
+	rows := map[string]model.User{}
+	if len(ids) == 0 {
+		return rows, nil
+	}
+	var users []model.User
+	if err := h.db.Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	for _, user := range users {
+		rows[user.ID] = user
+	}
+	return rows, nil
+}
+
+func (h Handler) adminMaterialsByID(ids []string) (map[string]model.Material, error) {
+	rows := map[string]model.Material{}
+	if len(ids) == 0 {
+		return rows, nil
+	}
+	var materials []model.Material
+	if err := h.db.Where("id IN ?", ids).Find(&materials).Error; err != nil {
+		return nil, err
+	}
+	for _, material := range materials {
+		rows[material.ID] = material
+	}
+	return rows, nil
+}
+
+func (h Handler) adminPackagesByID(ids []string) (map[string]model.CoursePackage, error) {
+	rows := map[string]model.CoursePackage{}
+	if len(ids) == 0 {
+		return rows, nil
+	}
+	var packages []model.CoursePackage
+	if err := h.db.Where("id IN ?", ids).Find(&packages).Error; err != nil {
+		return nil, err
+	}
+	for _, coursePackage := range packages {
+		rows[coursePackage.ID] = coursePackage
+	}
+	return rows, nil
+}
+
 func (h Handler) updateByID(ctx *gin.Context, target interface{}, updates map[string]interface{}, name string) {
 	if len(updates) == 0 {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "empty_update", nil)
@@ -1130,6 +1447,21 @@ func parseLogTime(raw string, endOfDay bool) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+func parseGrantExpiresAt(raw string) (*time.Time, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, true
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return &parsed, true
+	}
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		endOfDay := parsed.Add(24*time.Hour - time.Nanosecond)
+		return &endOfDay, true
+	}
+	return nil, false
+}
+
 func jsonString(value interface{}) string {
 	if value == nil {
 		return ""
@@ -1252,6 +1584,15 @@ func normalizeUserStatus(value string, fallback string) (string, bool) {
 		return value, true
 	default:
 		return "", false
+	}
+}
+
+func isGrantableMaterialAccess(accessLevel string) bool {
+	switch accessLevel {
+	case model.MaterialAccessPaid, model.MaterialAccessMemberOnly:
+		return true
+	default:
+		return false
 	}
 }
 

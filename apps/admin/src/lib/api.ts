@@ -76,6 +76,41 @@ export type Material = {
   reviewReason?: string;
 };
 
+export type CoursePackage = {
+  id: string;
+  schoolId: string;
+  collegeId: string;
+  majorId: string;
+  courseId?: string;
+  grade: string;
+  title: string;
+  slug: string;
+  description: string;
+  priceFen: number;
+  currency: string;
+  status: string;
+};
+
+export type MaterialAccessGrant = {
+  id: string;
+  userId: string;
+  materialId?: string;
+  packageId?: string;
+  source: string;
+  orderId?: string;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccessGrantRow = {
+  grant: MaterialAccessGrant;
+  user?: User;
+  material?: Material;
+  package?: CoursePackage;
+  active: boolean;
+};
+
 export type DownloadRecord = {
   id: string;
   userId?: string;

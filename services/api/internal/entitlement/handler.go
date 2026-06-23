@@ -88,7 +88,7 @@ func (h Handler) expandGrants(grants []model.MaterialAccessGrant) ([]materialEnt
 		}
 	}
 
-	materialsByID, err := h.materialsByID(materialIDs)
+	materialsByID, err := h.publishedMaterialsByID(materialIDs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -105,11 +105,10 @@ func (h Handler) expandGrants(grants []model.MaterialAccessGrant) ([]materialEnt
 	packageRows := make([]packageEntitlement, 0, len(packageIDs))
 	for _, grant := range grants {
 		if grant.MaterialID != nil && *grant.MaterialID != "" {
-			var material *model.Material
 			if row, ok := materialsByID[*grant.MaterialID]; ok {
-				material = &row
+				material := row
+				materialRows = append(materialRows, materialEntitlement{Grant: grant, Material: &material})
 			}
-			materialRows = append(materialRows, materialEntitlement{Grant: grant, Material: material})
 			continue
 		}
 		if grant.PackageID != nil && *grant.PackageID != "" {
@@ -127,13 +126,13 @@ func (h Handler) expandGrants(grants []model.MaterialAccessGrant) ([]materialEnt
 	return materialRows, packageRows, nil
 }
 
-func (h Handler) materialsByID(ids []string) (map[string]model.Material, error) {
+func (h Handler) publishedMaterialsByID(ids []string) (map[string]model.Material, error) {
 	rows := map[string]model.Material{}
 	if len(ids) == 0 {
 		return rows, nil
 	}
 	var materials []model.Material
-	if err := h.db.Where("id IN ?", ids).Find(&materials).Error; err != nil {
+	if err := h.db.Where("id IN ? AND status = ?", ids, model.StatusPublished).Find(&materials).Error; err != nil {
 		return nil, err
 	}
 	for _, material := range materials {
@@ -172,7 +171,7 @@ func (h Handler) packageMaterials(packageIDs []string) (map[string][]model.Mater
 	for _, item := range items {
 		materialIDs = append(materialIDs, item.ResourceID)
 	}
-	materialsByID, err := h.materialsByID(materialIDs)
+	materialsByID, err := h.publishedMaterialsByID(materialIDs)
 	if err != nil {
 		return nil, err
 	}

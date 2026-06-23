@@ -60,6 +60,9 @@ Currently implemented endpoints:
 - `POST /api/v1/reports`
 - `GET /api/v1/admin/users?email=&role=&status=&limit=`
 - `PATCH /api/v1/admin/users/:id`
+- `GET /api/v1/admin/access-grants?userId=&materialId=&packageId=&source=&active=&limit=`
+- `POST /api/v1/admin/access-grants`
+- `DELETE /api/v1/admin/access-grants/:id`
 - `POST /api/v1/admin/schools`
 - `PATCH /api/v1/admin/schools/:id`
 - `DELETE /api/v1/admin/schools/:id`
@@ -273,6 +276,13 @@ Implemented admin behavior:
 - only `super_admin` users can edit an existing `super_admin` account or grant the `super_admin` role
 - setting a user back to `active` clears `frozenUntil`; frozen users remain blocked by `RequireNotFrozen` write endpoints
 - user updates write `operation_logs` with previous/current role and status metadata
+- admin users can list, manually create, and revoke access grants through `/admin/access-grants`
+- manual access grants use source `manual_admin`; they do not create payment orders and do not mark any order as paid
+- manual material grants are limited to `published` materials whose `accessLevel` is `paid` or `member_only`
+- manual package grants are limited to `published` course packages
+- duplicate active grants for the same user/resource return the existing grant with `alreadyGranted=true` instead of creating another row
+- revoking a grant soft-deletes the grant, immediately removing it from `/me/entitlements` and paid download checks
+- access grant create/revoke operations write `operation_logs`
 - review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, `/api/v1/admin/wiki/entries*`, `/api/v1/admin/wiki/proposals*`, `/api/v1/admin/blog/posts*`, `/api/v1/admin/forum/posts*`, and `/api/v1/admin/forum/replies*` allow `reviewer`, `admin`, or `super_admin`
 - `reviewer` users remain blocked from user management, material CRUD, course CRUD, download audit, analytics, operation logs, and other admin-only APIs
 - organization/course/material delete operations archive by setting `status=archived`

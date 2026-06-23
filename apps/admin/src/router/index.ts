@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
+import AccessGrantsView from "../views/AccessGrantsView.vue";
 import AnalyticsView from "../views/AnalyticsView.vue";
 import BlogReviewsView from "../views/BlogReviewsView.vue";
 import CoursesView from "../views/CoursesView.vue";
@@ -25,6 +26,7 @@ export const router = createRouter({
     { path: "/login", component: LoginView, meta: { public: true } },
     { path: "/dashboard", component: DashboardView },
     { path: "/users", component: UsersView },
+    { path: "/access-grants", component: AccessGrantsView },
     { path: "/courses", component: CoursesView },
     { path: "/materials", component: MaterialsView },
     { path: "/downloads", component: DownloadsView },

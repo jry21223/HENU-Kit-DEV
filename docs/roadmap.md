@@ -26,6 +26,7 @@
 - Web profile page with school/major/grade binding
 - Vue admin dashboard, login guard, course management, and material upload pages
 - Vue admin user management page for filtered user listing, role updates, active/frozen status changes, self-lockout prevention, and super_admin protection
+- Vue admin manual access-grant page for internal/after-sales material and package delivery, with duplicate-grant protection and server-side revoke
 - Vue admin all-status course listing and course edit dialog
 - Vue admin material metadata edit dialog with server-side type/access validation
 - Vue admin material draft/pending/published/archive status operations
@@ -46,7 +47,7 @@
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
-- Server-side operation logs for user management, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
+- Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell

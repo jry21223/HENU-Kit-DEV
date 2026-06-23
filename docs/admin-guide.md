@@ -6,6 +6,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 
 - `/dashboard`: module status summary.
 - `/users`: user listing, role update, and active/frozen status management.
+- `/access-grants`: manual material/package access grants for internal testing and after-sales delivery.
 - `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
 - `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
 - `/downloads`: successful material download audit logs.
@@ -38,6 +39,26 @@ Important boundaries:
 - Only `super_admin` users can edit an existing `super_admin` account or grant the `super_admin` role.
 - Freezing a user is enforced by server-side `RequireNotFrozen` checks on protected write endpoints; it is not a frontend-only toggle.
 - User updates write `operation_logs` with previous/current role and status metadata.
+
+## Access Grants
+
+`/access-grants` calls:
+
+- `GET /api/v1/admin/access-grants?userId=&materialId=&packageId=&source=&active=&limit=`
+- `POST /api/v1/admin/access-grants`
+- `DELETE /api/v1/admin/access-grants/:id`
+
+The page is available only to `admin` and `super_admin` roles. It supports manual delivery during internal testing or after-sales handling by granting a user access to a paid/member-only material or a published course package.
+
+Important boundaries:
+
+- Manual grants use source `manual_admin`; they do not create payment orders, mark orders as paid, or simulate a payment callback.
+- Material grants can target only `published` materials with `access_level=paid` or `member_only`.
+- Package grants can target only `published` course packages.
+- Duplicate active grants for the same user/resource return the existing grant instead of creating another record.
+- Revoking a grant soft-deletes it. The revoked grant is removed from `/me/entitlements` and no longer unlocks paid downloads.
+- The page does not expose raw file storage keys and does not send PDF files directly.
+- Grant create/revoke operations write `operation_logs`.
 
 ## Course Operations
 

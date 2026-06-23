@@ -26,6 +26,10 @@ func TestMyEntitlementsRequireLoginAndSummarizeActiveGrants(t *testing.T) {
 	directMaterial := createTestMaterial(t, db, course.ID, "Direct grant note", model.MaterialAccessPaid, "materials/direct-grant.txt")
 	packageMaterial := createTestMaterial(t, db, course.ID, "Package grant paper", model.MaterialAccessPaid, "materials/package-grant.txt")
 	expiredMaterial := createTestMaterial(t, db, course.ID, "Expired grant note", model.MaterialAccessPaid, "materials/expired-grant.txt")
+	draftDirectMaterial := createTestMaterial(t, db, course.ID, "Draft direct grant note", model.MaterialAccessPaid, "materials/draft-direct-grant.txt")
+	if err := db.Model(&draftDirectMaterial).Update("status", model.StatusDraft).Error; err != nil {
+		t.Fatal(err)
+	}
 	draftPackageMaterial := createTestMaterial(t, db, course.ID, "Draft package paper", model.MaterialAccessPaid, "materials/draft-package.txt")
 
 	coursePackage := createTestPackage(t, db, course, "entitlement-package", model.StatusPublished)
@@ -48,6 +52,7 @@ func TestMyEntitlementsRequireLoginAndSummarizeActiveGrants(t *testing.T) {
 		{UserID: user.ID, MaterialID: &directMaterial.ID, Source: "manual"},
 		{UserID: user.ID, PackageID: &coursePackage.ID, Source: "order"},
 		{UserID: user.ID, MaterialID: &expiredMaterial.ID, Source: "expired", ExpiresAt: &expiredAt},
+		{UserID: user.ID, MaterialID: &draftDirectMaterial.ID, Source: "draft_direct"},
 		{UserID: user.ID, PackageID: &draftPackage.ID, Source: "draft_package"},
 	}
 	if err := db.Create(&grants).Error; err != nil {
@@ -64,7 +69,7 @@ func TestMyEntitlementsRequireLoginAndSummarizeActiveGrants(t *testing.T) {
 			t.Fatalf("expected entitlement response to contain %q, got %s", expected, body)
 		}
 	}
-	for _, unexpected := range []string{expiredMaterial.ID, draftPackage.ID, draftPackageMaterial.ID} {
+	for _, unexpected := range []string{expiredMaterial.ID, draftDirectMaterial.ID, draftPackage.ID, draftPackageMaterial.ID} {
 		if strings.Contains(body, unexpected) {
 			t.Fatalf("entitlement response exposed inactive grant %q: %s", unexpected, body)
 		}

@@ -33,6 +33,8 @@ Current access-control notes:
 - `materials.reviewer_id`, `materials.reviewed_at`, and `materials.review_reason` record the current material-review decision; public material endpoints still expose only `published` rows.
 - `material_access_grants.material_id` is the active paid-material unlock path in the current foundation.
 - `material_access_grants.package_id` unlocks paid materials included through `course_package_items` when the package is published and the grant has not expired.
+- Admin-created manual grants use `material_access_grants.source=manual_admin`; duplicate active grants for the same user/resource are not recreated.
+- `/me/entitlements` expands only published direct-granted materials and published package grants, so draft/pending/archived materials are not exposed through the personal entitlement summary.
 - `material_download_logs` records only successful file downloads after permission checks and storage-key validation.
 - PDF watermarking is generated at response time from the stored source file; no separate watermarked file record is persisted.
 - `wrong_questions` uses a unique user/question pair so repeated wrong answers increment `wrong_count` instead of creating duplicate rows.
