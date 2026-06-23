@@ -12,26 +12,41 @@ import MaterialsView from "../views/MaterialsView.vue";
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/dashboard" },
+    { path: "/", component: DashboardView },
     { path: "/login", component: LoginView, meta: { public: true } },
     { path: "/dashboard", component: DashboardView },
     { path: "/courses", component: CoursesView },
     { path: "/materials", component: MaterialsView },
     { path: "/downloads", component: DownloadsView },
-    { path: "/ai/drafts", component: AiDraftsView },
+    { path: "/ai/drafts", component: AiDraftsView, meta: { reviewer: true } },
     { path: "/analytics", component: AnalyticsView },
   ],
 });
 
 router.beforeEach(async (to) => {
+  const auth = useAuthStore();
   if (to.meta.public) {
+    if (!auth.ready) {
+      await auth.loadMe();
+    }
+    if (auth.authenticated && auth.canAccessAdminConsole) {
+      return auth.isAdmin ? "/dashboard" : "/ai/drafts";
+    }
     return true;
   }
-  const auth = useAuthStore();
   if (!auth.ready) {
     await auth.loadMe();
   }
-  if (!auth.authenticated || !auth.isAdmin) {
+  if (!auth.authenticated || !auth.canAccessAdminConsole) {
+    return "/login";
+  }
+  if (to.path === "/") {
+    return auth.isAdmin ? "/dashboard" : "/ai/drafts";
+  }
+  if (to.meta.reviewer) {
+    return auth.canReviewAI ? true : "/login";
+  }
+  if (!auth.isAdmin) {
     return "/login";
   }
   return true;

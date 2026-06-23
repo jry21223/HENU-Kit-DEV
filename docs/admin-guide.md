@@ -95,7 +95,8 @@ The page shows recent AI tasks and reviewable AI drafts created by the worker.
 
 Important boundaries:
 
-- All endpoints require an authenticated `admin` or `super_admin` role.
+- AI review endpoints require an authenticated `reviewer`, `admin`, or `super_admin` role.
+- `reviewer` users can access `/ai/drafts`, but they cannot access course, material, download, analytics, or other admin-only pages.
 - Approving or rejecting a draft only changes the draft review status.
 - The MVP does not automatically publish AI drafts as materials, questions, wiki entries, or papers.
 - The UI displays task input/result and draft content for review, but it does not call any LLM directly.

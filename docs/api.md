@@ -125,6 +125,7 @@ Implemented quiz behavior:
 Implemented admin behavior:
 
 - all admin endpoints require an authenticated `admin` or `super_admin` role
+- AI review endpoints under `/api/v1/admin/ai/*` are the exception: they allow `reviewer`, `admin`, or `super_admin`, while `reviewer` users remain blocked from material, course, download, analytics, and other admin-only APIs
 - organization/course/material delete operations archive by setting `status=archived`
 - admin course list returns all course statuses; public course list/detail returns only `published`
 - course create/update accepts only `draft`, `published`, or `archived`
@@ -143,9 +144,9 @@ Implemented AI behavior:
 
 - logged-in users can create AI tasks and query only their own tasks
 - supported task types are `chat`, `wrong_question_analysis`, `targeted_question`, `paper_generation`, and `draft_review`
-- admin users can list AI tasks and AI drafts
+- reviewer, admin, and super_admin users can list AI tasks and AI drafts
 - Redis Stream enqueue is best-effort; database task creation remains the source of truth
 - worker mock mode turns pending tasks into pending AI drafts
 - approving a draft marks the draft reviewed but does not publish generated content automatically
 - rejecting a draft marks the draft rejected and does not delete the source task or generated content
-- the Vue admin `/ai/drafts` page is a UI wrapper over these admin-only AI review endpoints
+- the Vue admin `/ai/drafts` page is a UI wrapper over these reviewer-capable AI review endpoints

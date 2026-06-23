@@ -61,7 +61,7 @@ func TestAITaskCreateQueryAndIsolation(t *testing.T) {
 	}
 }
 
-func TestAdminAIDraftReviewRequiresAdminAndDoesNotPublish(t *testing.T) {
+func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 	db := newTestDB(t)
 	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
 	course := createTestCourse(t, db)
@@ -99,16 +99,35 @@ func TestAdminAIDraftReviewRequiresAdminAndDoesNotPublish(t *testing.T) {
 		t.Fatalf("expected student draft approve 403, got %d: %s", forbiddenApprove.Code, forbiddenApprove.Body.String())
 	}
 
-	admin := createTestUser(t, db, "ai-admin@stu.henu.edu.cn", model.RoleAdmin)
+	reviewer := createTestUser(t, db, "ai-reviewer@stu.henu.edu.cn", model.RoleReviewer)
+	reviewerToken := loginTestUser(t, router, "ai-reviewer@stu.henu.edu.cn")
+	reviewerTaskList := performJSON(router, http.MethodGet, "/api/v1/admin/ai/tasks", "", reviewerToken)
+	if reviewerTaskList.Code != http.StatusOK || !strings.Contains(reviewerTaskList.Body.String(), task.ID) {
+		t.Fatalf("expected reviewer AI task list, got %d: %s", reviewerTaskList.Code, reviewerTaskList.Body.String())
+	}
+	reviewerList := performJSON(router, http.MethodGet, "/api/v1/admin/ai/drafts", "", reviewerToken)
+	if reviewerList.Code != http.StatusOK || !strings.Contains(reviewerList.Body.String(), draft.ID) {
+		t.Fatalf("expected reviewer AI draft list, got %d: %s", reviewerList.Code, reviewerList.Body.String())
+	}
+	reviewerMaterials := performJSON(router, http.MethodGet, "/api/v1/admin/materials", "", reviewerToken)
+	if reviewerMaterials.Code != http.StatusForbidden {
+		t.Fatalf("expected reviewer material admin list 403, got %d: %s", reviewerMaterials.Code, reviewerMaterials.Body.String())
+	}
+	reviewerAnalytics := performJSON(router, http.MethodGet, "/api/v1/admin/analytics/overview", "", reviewerToken)
+	if reviewerAnalytics.Code != http.StatusForbidden {
+		t.Fatalf("expected reviewer analytics 403, got %d: %s", reviewerAnalytics.Code, reviewerAnalytics.Body.String())
+	}
+
+	createTestUser(t, db, "ai-admin@stu.henu.edu.cn", model.RoleAdmin)
 	adminToken := loginTestUser(t, router, "ai-admin@stu.henu.edu.cn")
 	adminList := performJSON(router, http.MethodGet, "/api/v1/admin/ai/drafts", "", adminToken)
 	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), draft.ID) {
 		t.Fatalf("expected admin AI draft list, got %d: %s", adminList.Code, adminList.Body.String())
 	}
 
-	approve := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+draft.ID+"/approve", "", adminToken)
+	approve := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+draft.ID+"/approve", "", reviewerToken)
 	if approve.Code != http.StatusOK || !strings.Contains(approve.Body.String(), model.StatusApproved) {
-		t.Fatalf("expected admin draft approve 200, got %d: %s", approve.Code, approve.Body.String())
+		t.Fatalf("expected reviewer draft approve 200, got %d: %s", approve.Code, approve.Body.String())
 	}
 	var approved model.AIDraft
 	if err := db.First(&approved, "id = ?", draft.ID).Error; err != nil {
@@ -117,8 +136,8 @@ func TestAdminAIDraftReviewRequiresAdminAndDoesNotPublish(t *testing.T) {
 	if approved.Status != model.StatusApproved {
 		t.Fatalf("expected approved draft, got %s", approved.Status)
 	}
-	if approved.ReviewerID == nil || *approved.ReviewerID != admin.ID {
-		t.Fatalf("expected reviewer id %s, got %#v", admin.ID, approved.ReviewerID)
+	if approved.ReviewerID == nil || *approved.ReviewerID != reviewer.ID {
+		t.Fatalf("expected reviewer id %s, got %#v", reviewer.ID, approved.ReviewerID)
 	}
 	if approved.PublishedID != nil || approved.Status == model.StatusPublished {
 		t.Fatalf("AI draft review must not auto-publish generated content: %#v", approved)

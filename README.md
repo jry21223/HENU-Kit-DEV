@@ -27,7 +27,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包展示、资料详情、课程刷题和学生邮箱登录页面。
 - Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定。
-- Vue Admin 已有邮箱登录、路由守卫、仪表盘、课程管理、资料上传、资料状态流转、下载审计页面。
+- Vue Admin 已有邮箱登录、路由守卫、仪表盘、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
 - 微信支付 Native 是目标支付方案；当前仍是本地 mock 边界，未完成真实商户联调。
 - AI 当前使用 mock LLM；AI 生成内容不会绕过审核自动发布。
@@ -107,7 +107,7 @@ cd ../worker && go test ./...
 - Vue Admin dashboard、课程管理和资料管理 build/type 覆盖。
 - 题目列表/详情不泄露答案。
 - 刷题提交、错题用户隔离和 quiz attempt。
-- AI task 所有权、admin 可见性和 worker draft 生成幂等。
+- AI task 所有权、reviewer/admin 可见性、AI 草稿审核权限边界和 worker draft 生成幂等。
 
 ## 7. Seed 数据
 
@@ -156,7 +156,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Vue Admin includes admin-only all-status course listing and a course edit dialog.
 - Vue Admin includes material status operations for `draft`, `pending`, `published`, and `archived`.
 - Vue Admin includes material metadata editing; the actual storage key remains hidden and file replacement still goes through upload.
-- Vue Admin includes `/ai/drafts` for admin-only AI task visibility and draft approve/reject review.
+- Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility and draft approve/reject review.
 - Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, and course demand.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
 - Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.

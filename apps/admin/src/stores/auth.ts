@@ -9,6 +9,10 @@ export const useAuthStore = defineStore("auth", {
   getters: {
     authenticated: (state) => Boolean(state.user),
     isAdmin: (state) => state.user?.role === "admin" || state.user?.role === "super_admin",
+    canReviewAI: (state) =>
+      state.user?.role === "reviewer" || state.user?.role === "admin" || state.user?.role === "super_admin",
+    canAccessAdminConsole: (state) =>
+      state.user?.role === "reviewer" || state.user?.role === "admin" || state.user?.role === "super_admin",
   },
   actions: {
     async loadMe() {

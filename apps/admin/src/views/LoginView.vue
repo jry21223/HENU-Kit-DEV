@@ -66,11 +66,11 @@ async function handleLogin() {
   try {
     const response = await login(email.value, code.value, name.value);
     auth.setUser(response.data?.user ?? null);
-    if (!auth.isAdmin) {
-      error.value = "当前账号不是管理员，无法进入后台。";
+    if (!auth.canAccessAdminConsole) {
+      error.value = "当前账号没有后台访问权限。";
       return;
     }
-    await router.push("/dashboard");
+    await router.push(auth.isAdmin ? "/dashboard" : "/ai/drafts");
   } catch (err) {
     error.value = err instanceof Error ? err.message : "登录失败";
   } finally {

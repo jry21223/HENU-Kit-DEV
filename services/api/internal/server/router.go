@@ -124,11 +124,14 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.DELETE("/materials/:id", adminHandler.ArchiveMaterial)
 	admin.POST("/materials/upload", adminHandler.UploadMaterial)
 	admin.GET("/downloads", downloadLogHandler.AdminDownloads)
-	admin.GET("/ai/tasks", aiHandler.AdminTasks)
-	admin.GET("/ai/drafts", aiHandler.AdminDrafts)
-	admin.POST("/ai/drafts/:id/approve", aiHandler.ApproveDraft)
-	admin.POST("/ai/drafts/:id/reject", aiHandler.RejectDraft)
 	admin.GET("/analytics/overview", analyticsHandler.Overview)
+
+	review := v1.Group("/admin")
+	review.Use(authMiddleware.RequireAuth(), authMiddleware.RequireReviewer())
+	review.GET("/ai/tasks", aiHandler.AdminTasks)
+	review.GET("/ai/drafts", aiHandler.AdminDrafts)
+	review.POST("/ai/drafts/:id/approve", aiHandler.ApproveDraft)
+	review.POST("/ai/drafts/:id/reject", aiHandler.RejectDraft)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})

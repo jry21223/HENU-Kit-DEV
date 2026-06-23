@@ -23,7 +23,7 @@
 - Vue admin material metadata edit dialog with server-side type/access validation
 - Vue admin material draft/pending/published/archive status operations
 - Vue admin download audit page
-- Vue admin AI task visibility and draft approve/reject page
+- Vue admin AI task visibility and draft approve/reject page with reviewer-role access
 - Vue admin read-only analytics page for download trend and course demand
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
@@ -36,7 +36,7 @@
 ## Next Deliverable
 
 - Web session polish for richer account status and entitlement summaries
-- Admin review comments and reviewer role workflows
+- Admin review comments for AI/content review decisions
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - PDF watermark integration
 - Real LLM/RAG integration and AI draft publish-to-resource flows

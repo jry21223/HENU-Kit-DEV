@@ -6,14 +6,14 @@
         <span class="muted">{{ copy.subtitle }}</span>
       </div>
       <nav class="side-nav" :aria-label="copy.navLabel">
-        <RouterLink to="/dashboard">{{ copy.dashboard }}</RouterLink>
-        <RouterLink to="/courses">{{ copy.courses }}</RouterLink>
-        <RouterLink to="/materials">{{ copy.materials }}</RouterLink>
-        <RouterLink to="/downloads">{{ copy.downloads }}</RouterLink>
-        <RouterLink to="/analytics">{{ copy.analytics }}</RouterLink>
-        <span class="nav-section">{{ copy.reviewSection }}</span>
-        <RouterLink to="/ai/drafts">{{ copy.aiDrafts }}</RouterLink>
-        <span class="disabled-nav" aria-disabled="true">{{ copy.community }}</span>
+        <RouterLink v-if="auth.isAdmin" to="/dashboard">{{ copy.dashboard }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/courses">{{ copy.courses }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/materials">{{ copy.materials }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/downloads">{{ copy.downloads }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/analytics">{{ copy.analytics }}</RouterLink>
+        <span v-if="auth.canReviewAI" class="nav-section">{{ copy.reviewSection }}</span>
+        <RouterLink v-if="auth.canReviewAI" to="/ai/drafts">{{ copy.aiDrafts }}</RouterLink>
+        <span v-if="auth.isAdmin" class="disabled-nav" aria-disabled="true">{{ copy.community }}</span>
       </nav>
       <div class="sidebar-footer">
         <span>{{ auth.user?.email }}</span>
