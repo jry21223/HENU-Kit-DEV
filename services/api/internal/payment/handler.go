@@ -167,7 +167,7 @@ func (h Handler) WeChatNotify(ctx *gin.Context) {
 		return
 	}
 	if payCfg.Mode == wechatModeLive {
-		wechatNotifyFailure(ctx, ErrWeChatLiveNotImplemented.Error(), http.StatusNotImplemented)
+		h.handleLiveNotify(ctx, payCfg)
 		return
 	}
 	if payCfg.APIV3Key == "" {
@@ -371,6 +371,9 @@ func (h Handler) recordPaymentNotifyTx(tx *gorm.DB, order model.Order, payload m
 	var existing model.PaymentRecord
 	err := tx.First(&existing, "idempotency_key = ?", record.IdempotencyKey).Error
 	if err == nil {
+		if existing.OrderID != order.ID {
+			return errors.New("payment_record_conflict")
+		}
 		return nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -400,7 +403,7 @@ func ensurePackageGrantTx(tx *gorm.DB, order model.Order) error {
 func wechatNotifySuccess(ctx *gin.Context, data gin.H) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"code":    "SUCCESS",
-		"message": "成功",
+		"message": "success",
 		"data":    data,
 	})
 }

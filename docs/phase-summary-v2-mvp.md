@@ -1,6 +1,6 @@
 # V2 MVP 本阶段总结
 
-日期：2026-06-23
+日期：2026-06-24
 
 本文档用于对照原始「一站式学习平台 V2 全量重构版」计划，说明当前阶段实际完成了什么、还有哪些没有完成、哪些内容只是 MVP / mock / 预留边界。本文以仓库当前代码和可运行检查为准，不把未接通的能力写成已完成。
 
@@ -94,14 +94,14 @@
   - mock 下单不会标记 `paid`。
   - mock 下单不会发放 entitlement。
   - production 环境禁止 mock 支付。
-  - live 模式会做配置检查，但真实微信 API 调用还没有完成。
+  - live 模式会做配置检查，并已接入真实微信 Native 下单请求签名与微信响应验签代码路径。
 - 已实现开发/测试环境 mock notify 边界：
   - `POST /api/v1/payments/wechat/notify` 不要求用户登录，模拟微信服务器回调入口。
   - mock notify 必须带 `X-WeChat-Mock-Signature` HMAC 头。
   - mock notify 必须校验订单号和金额。
   - 签名错误、金额不一致、订单不存在、缺少 mock secret 时不会更新订单，也不会发放 entitlement。
   - 成功 mock notify 会把订单置为 `paid`，写入 `payment_records`，并幂等发放一次课程包 entitlement。
-  - 这只是本地联调 harness，不是微信官方验签/解密实现。
+  - 这只是本地联调 harness，不能代替生产微信官方回调。
 - 已实现并单测微信支付 API v3 live 所需密码学基础件：
   - RSA 请求签名。
   - Authorization header 组装。
@@ -114,7 +114,13 @@
   - 请求金额来自服务端订单整数分。
   - 响应必须通过平台证书/公钥验签后才保存 `code_url`。
   - 当前仍未做真实商户环境端到端联调。
-  - 官方支付 notify handler 尚未接入。
+- live 官方 notify handler 已接入：
+  - 校验微信回调 HTTP 头签名。
+  - 解密 AES-256-GCM `resource`。
+  - 校验 appid/mchid、订单号和整数分金额。
+  - `SUCCESS` 后把订单置为 `paid`，写入 `payment_records`，并幂等发放课程包 entitlement。
+  - 重复 SUCCESS 回调不会重复授权，transaction id 指向不同订单会被拒绝。
+  - 当前仍未做真实商户环境端到端联调、证书轮换和支付告警。
 - Web 课程包详情页现在可以：
   - 创建或复用待支付课程包订单。
   - 调用 Native 下单接口获取服务端返回的 `codeUrl`。
@@ -197,18 +203,19 @@ Admin 页面不会直接授予支付成功，也不会绕过 Go API 权限。
 
 ## 3. 本阶段没有做完什么
 
-### 3.1 真实微信 Native 支付未完成
+### 3.1 真实微信 Native 支付仍未完成生产联调
 
-目前已有 mock Native codeUrl、前端二维码展示、开发/测试环境带 HMAC 的 mock notify 闭环，以及带响应验签的 live Native 下单代码路径。
+目前已有 mock Native codeUrl、前端二维码展示、开发/测试环境带 HMAC 的 mock notify 闭环、带响应验签的 live Native 下单代码路径，以及 live 官方 notify 验签、解密、金额校验和幂等授权代码路径。
 
 还没有完成：
 
 - 真实微信商户参数环境端到端联调。
-- 官方支付 notify handler。
-- appid / mchid 校验。
 - 关单接口。
+- 退款流程。
+- 证书轮换自动化。
+- 支付异常告警和人工处理台账。
 
-因此当前不能声明为“真实支付可用”。
+因此当前只能声明为“微信 Native 联调准备中”，不能声明为“真实支付已上线可收款”。
 
 ### 3.2 会员与积分产品未完整闭环
 
@@ -276,7 +283,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、Web 错题本存在；练习 session、复杂评分仍需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review 存在；真实 LLM、RAG、发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在论坛悬赏等场景已使用；会员产品和兑换链路未完整闭环。 |
-| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环，以及带请求签名/响应验签的 live Native 下单代码路径；真实微信商户联调和官方 notify 处理未完成。 |
+| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、带请求签名/响应验签的 live Native 下单代码路径，以及 live 官方 notify 验签/解密/金额校验/幂等授权代码路径；真实微信商户端到端联调、关单、退款、证书轮换和支付告警未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 / 强 MVP | Wiki 公开页、修订提案、审核、历史、stale 防护已做；创作者申请流未完整完成。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog、Forum 基础和审核已做；Moment、关系系统、用户主页未做。 |
 | Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已做；搜索和排行榜未做。 |
@@ -336,7 +343,7 @@ git diff --check
 ## 7. 当前风险
 
 - 真实微信支付尚未接通，不能对外收款上线。
-- 生产环境 entitlement 自动交付必须等微信官方回调验签、解密、金额校验、appid/mchid 校验、幂等都完成后再开放。
+- 生产环境 entitlement 自动交付的代码边界已经包含微信官方回调验签、解密、金额校验、appid/mchid 校验和幂等授权，但必须等真实商户端到端联调、证书轮换和支付告警完成后再开放真实收款。
 - 当前资料导入和真实 PDF 挂载仍需部署流程配合。
 - 真实 AI 成本、内容质量、审核发布链路都未硬化。
 - 缺少浏览器级 E2E 与移动端截图回归。
@@ -349,7 +356,7 @@ git diff --check
 1. 继续微信 Native 支付硬化：
    - live 配置校验；
    - 真实商户参数联调 Native 下单；
-   - 官方 notify handler；
+   - 真实商户端到端 notify 联调；
    - appid/mchid 校验；
    - 关单；
    - live 支付链路端到端测试。
@@ -375,4 +382,4 @@ git diff --check
 
 当前仓库已经不是纯骨架，V2 MVP 的核心技术路径已经形成：Go API 作为唯一业务后端，Web/Admin 作为前端入口，Worker 处理异步任务，课程资料、刷题、审核、举报、通知、课程包和支付 mock 联调边界都已有可验证基础。
 
-但当前仍不能声明为生产可上线版本。最大缺口是微信 Native 真实支付与支付后 entitlement 自动交付，其次是完整 E2E、会员/积分、真实 AI、搜索/排行榜/社交关系和生产部署硬化。
+但当前仍不能声明为生产可上线版本。最大缺口是微信 Native 真实商户端到端联调、关单/退款/告警等支付运维硬化，其次是完整 E2E、会员/积分、真实 AI、搜索/排行榜/社交关系和生产部署硬化。

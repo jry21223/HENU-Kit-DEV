@@ -61,6 +61,7 @@
 - Development/test signed mock WeChat notify can mark an order paid and idempotently issue a package entitlement after signature and amount checks
 - Tested WeChat Pay API v3 crypto helpers for RSA request signing, Authorization header construction, RSA notify verification, private/public key parsing, and AES-256-GCM resource decryption
 - Live WeChat Native order creation signs the request with the merchant private key and verifies the signed WeChat response before storing `code_url`
+- Live WeChat official notify handler verifies callback signatures, decrypts AES-256-GCM resources, validates appid/mchid and amount, marks successful orders paid, and idempotently grants package entitlements
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton
@@ -72,7 +73,7 @@
 
 - Richer content review workflows for wiki conflict-resolution UX and additional notification sources for payment and membership
 - Admin analytics expansion for page visits, search intent, course request voting, payment, and membership conversion metrics
-- Wire the WeChat crypto helpers into the official notify handler, appid/mchid validation, and production entitlement issuance after verified payment
+- Real WeChat merchant end-to-end payment verification, order closing, certificate rotation handling, and payment operation alerts
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables

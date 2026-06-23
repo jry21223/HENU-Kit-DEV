@@ -2,15 +2,28 @@ package tests
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -281,13 +294,13 @@ func TestWeChatNotifyMockMarksPaidAndGrantsEntitlementIdempotently(t *testing.T)
 	if stored.Status != model.OrderPaid || stored.PaidAt == nil {
 		t.Fatalf("expected order paid with paidAt, got status=%s paidAt=%v", stored.Status, stored.PaidAt)
 	}
-	assertPaymentDeliveryCounts(t, db, user.ID, coursePackage.ID, order.ID, 1, 1)
+	assertPaymentDeliveryCounts(t, db, user.ID, coursePackage.ID, order.ID, "TX_SUCCESS_001", 1, 1)
 
 	repeated := performSignedMockNotify(router, body, cfg.WeChatPay.APIV3Key)
 	if repeated.Code != http.StatusOK || !strings.Contains(repeated.Body.String(), `"code":"SUCCESS"`) {
 		t.Fatalf("expected repeated notify success, got %d: %s", repeated.Code, repeated.Body.String())
 	}
-	assertPaymentDeliveryCounts(t, db, user.ID, coursePackage.ID, order.ID, 1, 1)
+	assertPaymentDeliveryCounts(t, db, user.ID, coursePackage.ID, order.ID, "TX_SUCCESS_001", 1, 1)
 
 	status := performJSON(router, http.MethodGet, "/api/v1/orders/"+order.ID+"/status", "", token)
 	if status.Code != http.StatusOK {
@@ -313,6 +326,154 @@ func TestWeChatNotifyMockRequiresExplicitSecret(t *testing.T) {
 	}
 }
 
+func TestWeChatNotifyLiveProcessesEncryptedSuccessIdempotently(t *testing.T) {
+	db := newTestDB(t)
+	merchantKey := mustWechatTestPrivateKey(t)
+	platformKey := mustWechatTestPrivateKey(t)
+	serial := "ABC123"
+	apiV3Key := "12345678901234567890123456789012"
+	certsDir := t.TempDir()
+	writeWechatTestCertificate(t, certsDir, serial, platformKey)
+	cfg := testConfig()
+	cfg.WeChatPay = liveWechatTestConfig(t, merchantKey, certsDir, apiV3Key)
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	coursePackage := createTestPackage(t, db, course, "wechat-live-notify-package", model.StatusPublished)
+	user := createTestUser(t, db, "wechat-live-notify@stu.henu.edu.cn", model.RoleUser)
+	token := loginTestUser(t, router, user.Email)
+	order := model.Order{
+		UserID:          user.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "FRLIVE_NOTIFY_001",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPaying,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+	}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := officialWechatNotifyBody(t, apiV3Key, "wx-test", "mch-test", order.OutTradeNo, "WXTX_LIVE_001", "SUCCESS", 1990)
+	notify := performSignedLiveNotify(router, body, platformKey, serial)
+	if notify.Code != http.StatusOK || !strings.Contains(notify.Body.String(), `"code":"SUCCESS"`) {
+		t.Fatalf("expected live notify success, got %d: %s", notify.Code, notify.Body.String())
+	}
+
+	var stored model.Order
+	if err := db.First(&stored, "id = ?", order.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != model.OrderPaid || stored.PaidAt == nil {
+		t.Fatalf("expected live notify to mark order paid, got status=%s paidAt=%v", stored.Status, stored.PaidAt)
+	}
+	assertPaymentDeliveryCounts(t, db, user.ID, coursePackage.ID, order.ID, "WXTX_LIVE_001", 1, 1)
+
+	repeated := performSignedLiveNotify(router, body, platformKey, serial)
+	if repeated.Code != http.StatusOK {
+		t.Fatalf("expected repeated live notify success, got %d: %s", repeated.Code, repeated.Body.String())
+	}
+	assertPaymentDeliveryCounts(t, db, user.ID, coursePackage.ID, order.ID, "WXTX_LIVE_001", 1, 1)
+
+	status := performJSON(router, http.MethodGet, "/api/v1/orders/"+order.ID+"/status", "", token)
+	if status.Code != http.StatusOK || !strings.Contains(status.Body.String(), `"status":"paid"`) || !strings.Contains(status.Body.String(), `"entitlementGranted":true`) {
+		t.Fatalf("expected paid status with entitlement, got %d: %s", status.Code, status.Body.String())
+	}
+
+	secondOrder := model.Order{
+		UserID:          user.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "FRLIVE_NOTIFY_002",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPaying,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+	}
+	if err := db.Create(&secondOrder).Error; err != nil {
+		t.Fatal(err)
+	}
+	conflictBody := officialWechatNotifyBody(t, apiV3Key, "wx-test", "mch-test", secondOrder.OutTradeNo, "WXTX_LIVE_001", "SUCCESS", 1990)
+	conflict := performSignedLiveNotify(router, conflictBody, platformKey, serial)
+	if conflict.Code != http.StatusBadRequest || !strings.Contains(conflict.Body.String(), "payment_record_conflict") {
+		t.Fatalf("expected transaction-id conflict rejection, got %d: %s", conflict.Code, conflict.Body.String())
+	}
+	var conflictStored model.Order
+	if err := db.First(&conflictStored, "id = ?", secondOrder.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if conflictStored.Status != model.OrderPaying || conflictStored.PaidAt != nil {
+		t.Fatalf("conflicting transaction id must not mark second order paid, got status=%s paidAt=%v", conflictStored.Status, conflictStored.PaidAt)
+	}
+}
+
+func TestWeChatNotifyLiveRejectsBypassAttempts(t *testing.T) {
+	db := newTestDB(t)
+	merchantKey := mustWechatTestPrivateKey(t)
+	platformKey := mustWechatTestPrivateKey(t)
+	otherPlatformKey := mustWechatTestPrivateKey(t)
+	serial := "DEF456"
+	apiV3Key := "12345678901234567890123456789012"
+	certsDir := t.TempDir()
+	writeWechatTestCertificate(t, certsDir, serial, platformKey)
+	cfg := testConfig()
+	cfg.WeChatPay = liveWechatTestConfig(t, merchantKey, certsDir, apiV3Key)
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	coursePackage := createTestPackage(t, db, course, "wechat-live-bypass-package", model.StatusPublished)
+	user := createTestUser(t, db, "wechat-live-bypass@stu.henu.edu.cn", model.RoleUser)
+	order := model.Order{
+		UserID:          user.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "FRLIVE_BYPASS_001",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPaying,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+	}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	validBody := officialWechatNotifyBody(t, apiV3Key, "wx-test", "mch-test", order.OutTradeNo, "WXTX_BYPASS_001", "SUCCESS", 1990)
+	badSignature := performSignedLiveNotify(router, validBody, otherPlatformKey, serial)
+	if badSignature.Code != http.StatusBadRequest || !strings.Contains(badSignature.Body.String(), payment.ErrInvalidSignature.Error()) {
+		t.Fatalf("expected bad signature rejection, got %d: %s", badSignature.Code, badSignature.Body.String())
+	}
+	wrongApp := officialWechatNotifyBody(t, apiV3Key, "wrong-app", "mch-test", order.OutTradeNo, "WXTX_BYPASS_002", "SUCCESS", 1990)
+	appMismatch := performSignedLiveNotify(router, wrongApp, platformKey, serial)
+	if appMismatch.Code != http.StatusBadRequest || !strings.Contains(appMismatch.Body.String(), payment.ErrWeChatNotifyAppMismatch.Error()) {
+		t.Fatalf("expected app mismatch rejection, got %d: %s", appMismatch.Code, appMismatch.Body.String())
+	}
+	wrongAmount := officialWechatNotifyBody(t, apiV3Key, "wx-test", "mch-test", order.OutTradeNo, "WXTX_BYPASS_003", "SUCCESS", 1)
+	amountMismatch := performSignedLiveNotify(router, wrongAmount, platformKey, serial)
+	if amountMismatch.Code != http.StatusBadRequest || !strings.Contains(amountMismatch.Body.String(), "amount_mismatch") {
+		t.Fatalf("expected amount mismatch rejection, got %d: %s", amountMismatch.Code, amountMismatch.Body.String())
+	}
+	badCipherBody := officialWechatNotifyBody(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "wx-test", "mch-test", order.OutTradeNo, "WXTX_BYPASS_004", "SUCCESS", 1990)
+	badCipher := performSignedLiveNotify(router, badCipherBody, platformKey, serial)
+	if badCipher.Code != http.StatusBadRequest || !strings.Contains(badCipher.Body.String(), payment.ErrWeChatNotifyDecryptFailed.Error()) {
+		t.Fatalf("expected decrypt failure, got %d: %s", badCipher.Code, badCipher.Body.String())
+	}
+
+	var stored model.Order
+	if err := db.First(&stored, "id = ?", order.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != model.OrderPaying || stored.PaidAt != nil {
+		t.Fatalf("bypass attempts must not mark live order paid, got status=%s paidAt=%v", stored.Status, stored.PaidAt)
+	}
+	var grants int64
+	db.Model(&model.MaterialAccessGrant{}).Where("user_id = ? AND package_id = ?", user.ID, coursePackage.ID).Count(&grants)
+	if grants != 0 {
+		t.Fatalf("bypass attempts must not grant entitlement, got %d grants", grants)
+	}
+}
+
 func performSignedMockNotify(router http.Handler, body string, secret string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/payments/wechat/notify", bytes.NewBufferString(body))
 	request.Header.Set("Content-Type", "application/json")
@@ -328,7 +489,99 @@ func mockNotifySignature(body string, secret string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func assertPaymentDeliveryCounts(t *testing.T, db *gorm.DB, userID string, packageID string, orderID string, wantGrants int64, wantRecords int64) {
+func performSignedLiveNotify(router http.Handler, body []byte, platformKey *rsa.PrivateKey, serial string) *httptest.ResponseRecorder {
+	timestamp := "1770000200"
+	nonce := "live-notify-nonce"
+	message := payment.BuildWeChatNotifySignatureMessage(timestamp, nonce, body)
+	signature, err := payment.SignWeChatMessage(message, platformKey)
+	if err != nil {
+		panic(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/payments/wechat/notify", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Wechatpay-Timestamp", timestamp)
+	request.Header.Set("Wechatpay-Nonce", nonce)
+	request.Header.Set("Wechatpay-Signature", signature)
+	request.Header.Set("Wechatpay-Serial", serial)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	return response
+}
+
+func officialWechatNotifyBody(t *testing.T, apiV3Key string, appID string, mchID string, outTradeNo string, transactionID string, tradeState string, amountTotal int64) []byte {
+	t.Helper()
+	plaintext := fmt.Sprintf(`{"appid":"%s","mchid":"%s","out_trade_no":"%s","transaction_id":"%s","trade_state":"%s","amount":{"total":%d}}`, appID, mchID, outTradeNo, transactionID, tradeState, amountTotal)
+	block, err := aes.NewCipher([]byte(apiV3Key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce := "notify-nonce"
+	associatedData := "transaction"
+	ciphertext := aead.Seal(nil, []byte(nonce), []byte(plaintext), []byte(associatedData))
+	body := fmt.Sprintf(
+		`{"id":"notify-%s","create_time":"2026-06-24T00:00:00+08:00","event_type":"TRANSACTION.SUCCESS","resource_type":"encrypt-resource","summary":"支付成功","resource":{"original_type":"transaction","algorithm":"AEAD_AES_256_GCM","ciphertext":"%s","associated_data":"%s","nonce":"%s"}}`,
+		transactionID,
+		base64.StdEncoding.EncodeToString(ciphertext),
+		associatedData,
+		nonce,
+	)
+	return []byte(body)
+}
+
+func liveWechatTestConfig(t *testing.T, merchantKey *rsa.PrivateKey, certsDir string, apiV3Key string) config.WeChatPayConfig {
+	t.Helper()
+	privatePEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(merchantKey)})
+	return config.WeChatPayConfig{
+		Mode:                "live",
+		APIBaseURL:          "https://api.mch.weixin.qq.com",
+		AppID:               "wx-test",
+		MchID:               "mch-test",
+		APIV3Key:            apiV3Key,
+		MerchantSerialNo:    "merchant-serial",
+		MerchantPrivateKey:  string(privatePEM),
+		PlatformCertsDir:    certsDir,
+		NotifyURL:           "https://example.com/api/v1/payments/wechat/notify",
+		NativeExpireMinutes: 15,
+	}
+}
+
+func mustWechatTestPrivateKey(t *testing.T) *rsa.PrivateKey {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
+func writeWechatTestCertificate(t *testing.T, dir string, serial string, key *rsa.PrivateKey) {
+	t.Helper()
+	serialNumber := new(big.Int)
+	if _, ok := serialNumber.SetString(serial, 16); !ok {
+		t.Fatalf("invalid serial: %s", serial)
+	}
+	template := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      pkix.Name{CommonName: "wechatpay-test"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	if err := os.WriteFile(filepath.Join(dir, "wechatpay_"+serial+".pem"), content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertPaymentDeliveryCounts(t *testing.T, db *gorm.DB, userID string, packageID string, orderID string, transactionID string, wantGrants int64, wantRecords int64) {
 	t.Helper()
 	var grants int64
 	db.Model(&model.MaterialAccessGrant{}).Where("user_id = ? AND package_id = ? AND order_id = ? AND source = ?", userID, packageID, orderID, "order").Count(&grants)
@@ -336,7 +589,7 @@ func assertPaymentDeliveryCounts(t *testing.T, db *gorm.DB, userID string, packa
 		t.Fatalf("expected %d payment grants, got %d", wantGrants, grants)
 	}
 	var records int64
-	db.Model(&model.PaymentRecord{}).Where("order_id = ? AND provider = ? AND transaction_id = ?", orderID, "wechat_native", "TX_SUCCESS_001").Count(&records)
+	db.Model(&model.PaymentRecord{}).Where("order_id = ? AND provider = ? AND transaction_id = ?", orderID, "wechat_native", transactionID).Count(&records)
 	if records != wantRecords {
 		t.Fatalf("expected %d payment records, got %d", wantRecords, records)
 	}
