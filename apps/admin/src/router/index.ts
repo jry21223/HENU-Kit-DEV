@@ -7,6 +7,7 @@ import CoursesView from "../views/CoursesView.vue";
 import AiDraftsView from "../views/AiDraftsView.vue";
 import DashboardView from "../views/DashboardView.vue";
 import DownloadsView from "../views/DownloadsView.vue";
+import ForumReplyReviewsView from "../views/ForumReplyReviewsView.vue";
 import ForumReviewsView from "../views/ForumReviewsView.vue";
 import LoginView from "../views/LoginView.vue";
 import MaterialReviewsView from "../views/MaterialReviewsView.vue";
@@ -28,6 +29,7 @@ export const router = createRouter({
     { path: "/wiki-reviews", component: WikiReviewsView, meta: { reviewer: true } },
     { path: "/blog-reviews", component: BlogReviewsView, meta: { reviewer: true } },
     { path: "/forum-reviews", component: ForumReviewsView, meta: { reviewer: true } },
+    { path: "/forum-reply-reviews", component: ForumReplyReviewsView, meta: { reviewer: true } },
     { path: "/ai/drafts", component: AiDraftsView, meta: { reviewer: true } },
     { path: "/analytics", component: AnalyticsView },
   ],

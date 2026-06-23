@@ -35,6 +35,7 @@ Currently implemented endpoints:
 - `GET /api/v1/forum/posts?boardId=&limit=`
 - `GET /api/v1/forum/posts/:id`
 - `POST /api/v1/forum/posts`
+- `POST /api/v1/forum/posts/:id/replies`
 - `GET /api/v1/wiki/entries?courseId=&limit=`
 - `GET /api/v1/wiki/entries/:id`
 - `POST /api/v1/wiki/entries`
@@ -80,6 +81,9 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/forum/posts?status=draft|pending|needs_changes|published|rejected&authorId=&boardId=&limit=`
 - `POST /api/v1/admin/forum/posts/:id/approve`
 - `POST /api/v1/admin/forum/posts/:id/reject`
+- `GET /api/v1/admin/forum/replies?status=draft|pending|needs_changes|published|rejected&authorId=&postId=&limit=`
+- `POST /api/v1/admin/forum/replies/:id/approve`
+- `POST /api/v1/admin/forum/replies/:id/reject`
 - `GET /api/v1/admin/wiki/entries?status=draft|pending|needs_changes|published|rejected&authorId=&courseId=&limit=`
 - `POST /api/v1/admin/wiki/entries/:id/approve`
 - `POST /api/v1/admin/wiki/entries/:id/reject`
@@ -108,7 +112,7 @@ Error envelope:
 }
 ```
 
-Later stages add points, membership, richer wiki version proposals, forum replies and rewards, notification, report, and expanded admin APIs.
+Later stages add points, membership, richer wiki version proposals, forum reward posts, notification, report, and expanded admin APIs.
 
 Implemented authentication behavior:
 
@@ -172,11 +176,16 @@ Implemented forum behavior:
 - logged-in, non-frozen users can submit forum posts; submissions always enter `pending`
 - forum submission validates required board, title, content, and post type
 - supported post types in the MVP are `normal` and `question`; reward posts remain later work
+- logged-in, non-frozen users can submit replies to published public forum posts; replies always enter `pending`
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected forum posts through `/admin/forum/posts`
+- reviewer/admin users can list draft/pending/needs_changes/published/rejected forum replies through `/admin/forum/replies`
 - approving a forum post sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
 - rejecting a forum post sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public endpoints
 - forum post review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected posts return HTTP 409 with `forum_post_not_reviewable`
-- published replies can be returned with public post detail, but reply creation/review, reward settlement, best-answer flow, and point grants remain later work
+- approving a forum reply sets `status=published`, records reviewer metadata, increments the parent post `commentCount` once, and makes it visible through public post detail
+- rejecting a forum reply sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public post detail
+- forum reply review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected replies return HTTP 409 with `forum_reply_not_reviewable`
+- reward settlement, best-answer flow, reply editing, and point grants remain later work
 
 Implemented wiki behavior:
 
@@ -195,7 +204,7 @@ Implemented wiki behavior:
 Implemented admin behavior:
 
 - all admin endpoints require an authenticated `admin` or `super_admin` role
-- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, `/api/v1/admin/wiki/entries*`, `/api/v1/admin/blog/posts*`, and `/api/v1/admin/forum/posts*` allow `reviewer`, `admin`, or `super_admin`
+- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, `/api/v1/admin/wiki/entries*`, `/api/v1/admin/blog/posts*`, `/api/v1/admin/forum/posts*`, and `/api/v1/admin/forum/replies*` allow `reviewer`, `admin`, or `super_admin`
 - `reviewer` users remain blocked from material CRUD, course CRUD, download audit, analytics, operation logs, and other admin-only APIs
 - organization/course/material delete operations archive by setting `status=archived`
 - admin course list returns all course statuses; public course list/detail returns only `published`

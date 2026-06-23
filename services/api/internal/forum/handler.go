@@ -21,8 +21,9 @@ type Handler struct {
 }
 
 var (
-	errPostNotReviewable = errors.New("forum_post_not_reviewable")
-	reviewableStatuses   = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
+	errPostNotReviewable  = errors.New("forum_post_not_reviewable")
+	errReplyNotReviewable = errors.New("forum_reply_not_reviewable")
+	reviewableStatuses    = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
 )
 
 func NewHandler(db *gorm.DB) Handler {
@@ -34,6 +35,10 @@ type postRequest struct {
 	Title   string `json:"title"`
 	Content string `json:"content"`
 	Type    string `json:"type"`
+}
+
+type replyRequest struct {
+	Content string `json:"content"`
 }
 
 type reviewRequest struct {
@@ -154,6 +159,43 @@ func (h Handler) Create(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"post": post})
 }
 
+func (h Handler) CreateReply(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req replyRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	content := strings.TrimSpace(req.Content)
+	if err := validateReplyInput(content); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+	var post model.ForumPost
+	if err := h.db.Model(&model.ForumPost{}).
+		Joins("JOIN forum_boards ON forum_boards.id = forum_posts.board_id").
+		Where("forum_posts.id = ? AND forum_posts.status = ? AND forum_posts.visibility = ? AND forum_boards.status = ?", ctx.Param("id"), model.StatusPublished, "public", model.StatusPublished).
+		First(&post).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "post_not_found", nil)
+		return
+	}
+	reply := model.ForumReply{
+		AuthorID: user.ID,
+		PostID:   post.ID,
+		Content:  content,
+		Status:   model.StatusPending,
+	}
+	if err := h.db.Create(&reply).Error; err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"reply": reply})
+}
+
 func (h Handler) AdminPosts(ctx *gin.Context) {
 	status := strings.TrimSpace(ctx.Query("status"))
 	if status == "" {
@@ -183,12 +225,49 @@ func (h Handler) AdminPosts(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"posts": posts})
 }
 
+func (h Handler) AdminReplies(ctx *gin.Context) {
+	status := strings.TrimSpace(ctx.Query("status"))
+	if status == "" {
+		status = model.StatusPending
+	}
+	if !isReviewListStatus(status) {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 100, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	query := h.db.Where("status = ?", status)
+	if authorID := strings.TrimSpace(ctx.Query("authorId")); authorID != "" {
+		query = query.Where("author_id = ?", authorID)
+	}
+	if postID := strings.TrimSpace(ctx.Query("postId")); postID != "" {
+		query = query.Where("post_id = ?", postID)
+	}
+	var replies []model.ForumReply
+	if err := query.Order("updated_at desc").Limit(limit).Find(&replies).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"replies": replies})
+}
+
 func (h Handler) ApprovePost(ctx *gin.Context) {
 	h.reviewPost(ctx, model.StatusPublished)
 }
 
 func (h Handler) RejectPost(ctx *gin.Context) {
 	h.reviewPost(ctx, model.StatusRejected)
+}
+
+func (h Handler) ApproveReply(ctx *gin.Context) {
+	h.reviewReply(ctx, model.StatusPublished)
+}
+
+func (h Handler) RejectReply(ctx *gin.Context) {
+	h.reviewReply(ctx, model.StatusRejected)
 }
 
 func (h Handler) reviewPost(ctx *gin.Context, status string) {
@@ -272,6 +351,91 @@ func (h Handler) reviewPost(ctx *gin.Context, status string) {
 	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
 }
 
+func (h Handler) reviewReply(ctx *gin.Context, status string) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req reviewRequest
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+			return
+		}
+	}
+	reason := strings.TrimSpace(req.ReviewReason)
+	if len(reason) > 1000 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_too_long", nil)
+		return
+	}
+	if status == model.StatusRejected && reason == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_required", nil)
+		return
+	}
+
+	var reply model.ForumReply
+	if err := h.db.First(&reply, "id = ?", ctx.Param("id")).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "reply_not_found", nil)
+		return
+	}
+	if !isReviewableStatus(reply.Status) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "forum_reply_not_reviewable", gin.H{"status": reply.Status})
+		return
+	}
+	previousStatus := reply.Status
+	action := "forum_reply.published"
+	if status == model.StatusRejected {
+		action = "forum_reply.rejected"
+	}
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.ForumReply{}).
+			Where("id = ? AND status IN ?", reply.ID, reviewableStatuses).
+			Updates(map[string]interface{}{
+				"status":        status,
+				"reviewer_id":   user.ID,
+				"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+				"review_reason": reason,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errReplyNotReviewable
+		}
+		if status == model.StatusPublished {
+			if err := tx.Model(&model.ForumPost{}).Where("id = ?", reply.PostID).UpdateColumn("comment_count", gorm.Expr("comment_count + ?", 1)).Error; err != nil {
+				return err
+			}
+		}
+		return audit.Record(ctx, tx, action, "forum_reply", reply.ID, map[string]interface{}{
+			"authorId":       reply.AuthorID,
+			"postId":         reply.PostID,
+			"previousStatus": previousStatus,
+			"status":         status,
+			"reviewReason":   reason,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, errReplyNotReviewable) {
+			latestStatus := reply.Status
+			var latest model.ForumReply
+			if queryErr := h.db.Select("status").First(&latest, "id = ?", reply.ID).Error; queryErr == nil {
+				latestStatus = latest.Status
+			}
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "forum_reply_not_reviewable", gin.H{"status": latestStatus})
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "reply_not_found", nil)
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "review_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
+}
+
 func validatePostInput(boardID string, title string, content string, postType string) error {
 	if boardID == "" || title == "" || content == "" {
 		return errors.New("missing_required_fields")
@@ -288,6 +452,16 @@ func validatePostInput(boardID string, title string, content string, postType st
 	default:
 		return errors.New("invalid_post_type")
 	}
+}
+
+func validateReplyInput(content string) error {
+	if content == "" {
+		return errors.New("missing_required_fields")
+	}
+	if len([]rune(content)) > 10000 {
+		return errors.New("content_too_long")
+	}
+	return nil
 }
 
 func publicPosts(posts []model.ForumPost) []publicPost {

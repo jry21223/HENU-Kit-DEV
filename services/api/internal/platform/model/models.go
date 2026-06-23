@@ -351,11 +351,14 @@ type ForumPost struct {
 
 type ForumReply struct {
 	BaseModel
-	AuthorID string `json:"authorId" gorm:"type:uuid;index;not null"`
-	PostID   string `json:"postId" gorm:"type:uuid;index;not null"`
-	Content  string `json:"content" gorm:"type:text;not null"`
-	IsBest   bool   `json:"isBest" gorm:"default:false"`
-	Status   string `json:"status" gorm:"size:32;default:published;index"`
+	AuthorID     string     `json:"authorId" gorm:"type:uuid;index;not null"`
+	PostID       string     `json:"postId" gorm:"type:uuid;index;not null"`
+	Content      string     `json:"content" gorm:"type:text;not null"`
+	IsBest       bool       `json:"isBest" gorm:"default:false"`
+	Status       string     `json:"status" gorm:"size:32;default:published;index"`
+	ReviewerID   *string    `json:"reviewerId,omitempty" gorm:"type:uuid;index"`
+	ReviewedAt   *time.Time `json:"reviewedAt,omitempty"`
+	ReviewReason string     `json:"reviewReason,omitempty" gorm:"size:1000"`
 }
 
 type Moment struct {

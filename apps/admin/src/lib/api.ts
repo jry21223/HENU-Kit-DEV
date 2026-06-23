@@ -180,6 +180,20 @@ export type ForumPost = {
   updatedAt: string;
 };
 
+export type ForumReply = {
+  id: string;
+  authorId: string;
+  postId: string;
+  content: string;
+  isBest: boolean;
+  status: string;
+  reviewerId?: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AnalyticsOverview = {
   totals: {
     users: number;

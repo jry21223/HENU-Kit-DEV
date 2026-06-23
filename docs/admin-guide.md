@@ -12,6 +12,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/wiki-reviews`: reviewer/admin wiki entry approve/reject review queue with review notes.
 - `/blog-reviews`: reviewer/admin blog post approve/reject review queue with review notes.
 - `/forum-reviews`: reviewer/admin forum post approve/reject review queue with review notes.
+- `/forum-reply-reviews`: reviewer/admin forum reply approve/reject review queue with review notes.
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations with review notes.
 - `/analytics`: read-only material download and course demand analytics.
 - `/operation-logs`: read-only high-risk admin operation logs.
@@ -170,8 +171,29 @@ Important boundaries:
 - Approving a post sets it to `published`, records reviewer metadata, and makes it visible through public forum endpoints.
 - Rejecting a post requires `reviewReason`, records reviewer metadata, and keeps it hidden from public forum endpoints.
 - Only `draft`, `pending`, and `needs_changes` posts can be reviewed; repeating review on published/rejected posts returns `409 forum_post_not_reviewable`.
-- The MVP supports `normal` and `question` post types. Reward posts, reply creation/review, best-answer settlement, and point grants remain later work.
+- The MVP supports `normal` and `question` post types. Reward posts, best-answer settlement, and point grants remain later work.
 - Forum approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+
+## Forum Reply Review
+
+`/forum-reply-reviews` calls:
+
+- `GET /api/v1/admin/forum/replies?status=`
+- `POST /api/v1/admin/forum/replies/:id/approve`
+- `POST /api/v1/admin/forum/replies/:id/reject`
+
+The page is available to `reviewer`, `admin`, and `super_admin` roles. It lists student-submitted forum replies by review status and does not provide edit/delete controls.
+
+Important boundaries:
+
+- Logged-in, non-frozen users submit replies through `POST /api/v1/forum/posts/:id/replies`.
+- Replies can only be submitted to published public posts under published forum boards.
+- Public forum post detail only exposes published replies.
+- Approving a reply sets it to `published`, records reviewer metadata, increments the parent post `comment_count` once, and makes it visible through public post detail.
+- Rejecting a reply requires `reviewReason`, records reviewer metadata, and keeps it hidden from public post detail.
+- Only `draft`, `pending`, and `needs_changes` replies can be reviewed; repeating review on published/rejected replies returns `409 forum_reply_not_reviewable`.
+- Best-answer selection, reward settlement, reply editing, and point grants remain later work.
+- Forum reply approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
 
 ## AI Draft Review
 
@@ -187,7 +209,7 @@ The page shows recent AI tasks and reviewable AI drafts created by the worker.
 Important boundaries:
 
 - AI review endpoints require an authenticated `reviewer`, `admin`, or `super_admin` role.
-- `reviewer` users can access `/ai/drafts`, `/material-reviews`, `/wiki-reviews`, `/blog-reviews`, and `/forum-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
+- `reviewer` users can access `/ai/drafts`, `/material-reviews`, `/wiki-reviews`, `/blog-reviews`, `/forum-reviews`, and `/forum-reply-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
 - Approving a draft can include an optional review note; rejecting a draft requires a review reason.
 - Approving or rejecting a draft only changes the draft review status and review metadata.
 - Only `draft`, `pending`, and `needs_changes` drafts can be reviewed; repeating review on `approved` or `rejected` drafts returns `409 draft_not_reviewable`.
@@ -204,7 +226,7 @@ Important boundaries:
 - `GET /api/v1/admin/operation-logs/export`
 - `GET /api/v1/admin/operation-logs/retention`
 
-The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki review, blog review, forum review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki review, blog review, forum post/reply review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
 Filters:
 

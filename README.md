@@ -164,6 +164,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Vue Admin includes `/wiki-reviews` for reviewer/admin wiki entry approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/blog-reviews` for reviewer/admin blog post approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/forum-reviews` for reviewer/admin forum post approve/reject review, review reason capture, and one-way review checks.
+- Vue Admin includes `/forum-reply-reviews` for reviewer/admin forum reply approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility, draft approve/reject review, and review reason capture.
 - Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, and course demand.
 - Vue Admin includes operation-log time filtering, CSV export, and a read-only retention policy panel.
@@ -174,8 +175,9 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Wiki submission is review-first for the MVP: creator/admin users can submit entries, public wiki APIs expose only published public entries, public responses hide review metadata, and rejected entries stay hidden.
 - Blog submission is review-first for the MVP: logged-in users can submit posts, public blog APIs expose only published posts, and rejected posts stay hidden.
 - Forum submission is review-first for the MVP: logged-in users can submit normal/question posts, public forum APIs expose only published public posts under published boards, and rejected posts stay hidden.
+- Forum replies are review-first for the MVP: replies can only target published public posts, approved replies increment the parent post comment count once, and rejected replies stay hidden.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
-- Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, material review, wiki review, blog review, forum review, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
+- Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, material review, wiki review, blog review, forum post/reply review, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.
 - Real AI publish-to-resource flows remain later work.
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.
