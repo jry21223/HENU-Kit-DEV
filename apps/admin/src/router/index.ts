@@ -14,6 +14,7 @@ import LoginView from "../views/LoginView.vue";
 import MaterialReviewsView from "../views/MaterialReviewsView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
 import OperationLogsView from "../views/OperationLogsView.vue";
+import OrdersView from "../views/OrdersView.vue";
 import PackagesView from "../views/PackagesView.vue";
 import ReportsView from "../views/ReportsView.vue";
 import UsersView from "../views/UsersView.vue";
@@ -28,6 +29,7 @@ export const router = createRouter({
     { path: "/dashboard", component: DashboardView },
     { path: "/users", component: UsersView },
     { path: "/access-grants", component: AccessGrantsView },
+    { path: "/orders", component: OrdersView },
     { path: "/packages", component: PackagesView },
     { path: "/courses", component: CoursesView },
     { path: "/materials", component: MaterialsView },

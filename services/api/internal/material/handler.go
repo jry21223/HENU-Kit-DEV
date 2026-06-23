@@ -119,6 +119,9 @@ func (h Handler) canDownload(material model.Material, user *model.User, hasUser 
 		if !hasUser {
 			return errLoginRequired
 		}
+		if userFrozen(user) {
+			return errUserFrozen
+		}
 		if !user.EmailVerified {
 			return errEmailNotVerified
 		}
@@ -126,6 +129,9 @@ func (h Handler) canDownload(material model.Material, user *model.User, hasUser 
 	case model.MaterialAccessPaid:
 		if !hasUser {
 			return errLoginRequired
+		}
+		if userFrozen(user) {
+			return errUserFrozen
 		}
 		if !user.EmailVerified {
 			return errEmailNotVerified
@@ -138,6 +144,9 @@ func (h Handler) canDownload(material model.Material, user *model.User, hasUser 
 		if !hasUser {
 			return errLoginRequired
 		}
+		if userFrozen(user) {
+			return errUserFrozen
+		}
 		if !user.EmailVerified {
 			return errEmailNotVerified
 		}
@@ -148,6 +157,13 @@ func (h Handler) canDownload(material model.Material, user *model.User, hasUser 
 	default:
 		return errEntitlementRequired
 	}
+}
+
+func userFrozen(user *model.User) bool {
+	if user == nil {
+		return false
+	}
+	return user.Status == "frozen" || (user.FrozenUntil != nil && user.FrozenUntil.After(time.Now()))
 }
 
 func (h Handler) hasMaterialGrant(userID string, materialID string) bool {
@@ -223,6 +239,7 @@ var (
 	errLoginRequired       = errors.New("login_required")
 	errEmailNotVerified    = errors.New("email_not_verified")
 	errEntitlementRequired = errors.New("entitlement_required")
+	errUserFrozen          = errors.New("user_frozen")
 )
 
 func writeAccessError(ctx *gin.Context, err error) {
@@ -231,6 +248,8 @@ func writeAccessError(ctx *gin.Context, err error) {
 		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "login_required", nil)
 	case errEmailNotVerified:
 		response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "email_not_verified", nil)
+	case errUserFrozen:
+		response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "user_frozen", nil)
 	case errEntitlementRequired:
 		response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "entitlement_required", nil)
 	default:

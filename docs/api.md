@@ -66,6 +66,7 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/access-grants?userId=&materialId=&packageId=&source=&active=&limit=`
 - `POST /api/v1/admin/access-grants`
 - `DELETE /api/v1/admin/access-grants/:id`
+- `GET /api/v1/admin/orders?status=&userEmail=&outTradeNo=&packageId=&paymentProvider=&productType=&limit=`
 - `POST /api/v1/admin/schools`
 - `PATCH /api/v1/admin/schools/:id`
 - `DELETE /api/v1/admin/schools/:id`
@@ -154,6 +155,7 @@ Implemented material behavior:
 - `free` materials can be downloaded without login
 - `login_required` materials require an authenticated, email-verified user
 - `paid` materials require an authenticated, email-verified user and either a valid material grant or a valid package grant containing that material
+- frozen users cannot download `login_required`, `paid`, or `member_only` materials even when they already have a grant
 - successful downloads create `material_download_logs` records with material, optional user, access level, IP, user agent, and download time
 - denied downloads, unsafe storage keys, and missing files are not recorded as successful downloads
 - PDF downloads generate a temporary watermarked copy and return `X-Watermark-Applied: true`; the original stored file is not modified
@@ -206,6 +208,7 @@ Implemented order foundation:
 - users who already have an active package grant receive `alreadyOwned=true`; no new order is created
 - `GET /api/v1/orders/:id` and `GET /api/v1/orders/:id/status` are user-scoped; admins may inspect all orders
 - order status is read-only and does not grant entitlement; paid access still requires a package/material grant created by a trusted server-side flow
+- admins can inspect orders through `/admin/orders` with status, buyer email, package, provider, product type, and out-trade-number filters; this endpoint is read-only
 - this foundation does not yet create WeChat Native code URLs, process payment notify callbacks, mark orders paid, or issue entitlements
 
 Implemented quiz behavior:

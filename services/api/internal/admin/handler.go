@@ -171,6 +171,13 @@ type accessGrantRow struct {
 	Active   bool                      `json:"active"`
 }
 
+type orderRow struct {
+	Order              model.Order          `json:"order"`
+	User               *model.User          `json:"user,omitempty"`
+	Package            *model.CoursePackage `json:"package,omitempty"`
+	EntitlementGranted bool                 `json:"entitlementGranted"`
+}
+
 type packageItemRow struct {
 	Item     model.CoursePackageItem `json:"item"`
 	Material *model.Material         `json:"material,omitempty"`
@@ -418,6 +425,64 @@ func (h Handler) RevokeAccessGrant(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"revoked": true})
+}
+
+func (h Handler) ListOrders(ctx *gin.Context) {
+	query := h.db.Model(&model.Order{})
+	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
+		if !validOrderStatus(status) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		query = query.Where("status = ?", status)
+	}
+	if provider := strings.TrimSpace(ctx.Query("paymentProvider")); provider != "" {
+		query = query.Where("payment_provider = ?", provider)
+	}
+	if productType := strings.TrimSpace(ctx.Query("productType")); productType != "" {
+		query = query.Where("product_type = ?", productType)
+	}
+	if packageID := strings.TrimSpace(ctx.Query("packageId")); packageID != "" {
+		query = query.Where("product_type = ? AND product_id = ?", "course_package", packageID)
+	}
+	if userID := strings.TrimSpace(ctx.Query("userId")); userID != "" {
+		query = query.Where("user_id = ?", userID)
+	}
+	if outTradeNo := strings.TrimSpace(ctx.Query("outTradeNo")); outTradeNo != "" {
+		query = query.Where("out_trade_no LIKE ?", "%"+outTradeNo+"%")
+	}
+	if userEmail := strings.TrimSpace(ctx.Query("userEmail")); userEmail != "" {
+		var users []model.User
+		if err := h.db.Where("email LIKE ?", "%"+userEmail+"%").Limit(200).Find(&users).Error; err != nil {
+			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+			return
+		}
+		if len(users) == 0 {
+			response.OK(ctx, gin.H{"orders": []orderRow{}})
+			return
+		}
+		userIDs := make([]string, 0, len(users))
+		for _, user := range users {
+			userIDs = append(userIDs, user.ID)
+		}
+		query = query.Where("user_id IN ?", userIDs)
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 200, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var orders []model.Order
+	if err := query.Order("created_at desc").Limit(limit).Find(&orders).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	rows, err := h.orderRows(orders, time.Now())
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"orders": rows})
 }
 
 func (h Handler) OperationLogs(ctx *gin.Context) {
@@ -1571,6 +1636,81 @@ func (h Handler) accessGrantRows(grants []model.MaterialAccessGrant, now time.Ti
 	return rows, nil
 }
 
+func (h Handler) orderRows(orders []model.Order, now time.Time) ([]orderRow, error) {
+	userIDs := make([]string, 0, len(orders))
+	packageIDs := make([]string, 0, len(orders))
+	for _, order := range orders {
+		userIDs = append(userIDs, order.UserID)
+		if order.ProductType == "course_package" {
+			packageIDs = append(packageIDs, order.ProductID)
+		}
+	}
+	users, err := h.usersByID(userIDs)
+	if err != nil {
+		return nil, err
+	}
+	packages, err := h.adminPackagesByID(packageIDs)
+	if err != nil {
+		return nil, err
+	}
+	granted, err := h.activePackageGrantsForOrders(orders, now)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]orderRow, 0, len(orders))
+	for _, order := range orders {
+		row := orderRow{
+			Order:              order,
+			EntitlementGranted: granted[order.ID],
+		}
+		if user, ok := users[order.UserID]; ok {
+			row.User = &user
+		}
+		if order.ProductType == "course_package" {
+			if coursePackage, ok := packages[order.ProductID]; ok {
+				row.Package = &coursePackage
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func (h Handler) activePackageGrantsForOrders(orders []model.Order, now time.Time) (map[string]bool, error) {
+	result := map[string]bool{}
+	pairs := make([]model.Order, 0, len(orders))
+	userIDs := make([]string, 0, len(orders))
+	packageIDs := make([]string, 0, len(orders))
+	for _, order := range orders {
+		if order.ProductType == "course_package" {
+			pairs = append(pairs, order)
+			userIDs = append(userIDs, order.UserID)
+			packageIDs = append(packageIDs, order.ProductID)
+		}
+	}
+	if len(pairs) == 0 {
+		return result, nil
+	}
+	var grants []model.MaterialAccessGrant
+	if err := h.db.
+		Where("package_id IS NOT NULL").
+		Where("user_id IN ?", userIDs).
+		Where("package_id IN ?", packageIDs).
+		Where("expires_at IS NULL OR expires_at > ?", now).
+		Find(&grants).Error; err != nil {
+		return nil, err
+	}
+	for _, order := range pairs {
+		for _, grant := range grants {
+			if grant.PackageID != nil && grant.UserID == order.UserID && *grant.PackageID == order.ProductID {
+				result[order.ID] = true
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 func (h Handler) usersByID(ids []string) (map[string]model.User, error) {
 	rows := map[string]model.User{}
 	if len(ids) == 0 {
@@ -2007,6 +2147,15 @@ func normalizeCourseStatus(value string, fallback string) (string, bool) {
 		return value, true
 	default:
 		return "", false
+	}
+}
+
+func validOrderStatus(value string) bool {
+	switch strings.TrimSpace(value) {
+	case model.OrderPending, model.OrderPaid, model.OrderFailed, model.OrderCancelled, model.OrderRefunded:
+		return true
+	default:
+		return false
 	}
 }
 

@@ -126,6 +126,30 @@ export type AccessGrantRow = {
   active: boolean;
 };
 
+export type Order = {
+  id: string;
+  userId: string;
+  productType: string;
+  productId: string;
+  outTradeNo: string;
+  paymentProvider: string;
+  status: string;
+  amountTotal: number;
+  currency: string;
+  paidAt?: string;
+  riskFlag?: string;
+  metadata?: unknown;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrderRow = {
+  order: Order;
+  user?: User;
+  package?: CoursePackage;
+  entitlementGranted: boolean;
+};
+
 export type DownloadRecord = {
   id: string;
   userId?: string;

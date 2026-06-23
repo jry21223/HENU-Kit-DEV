@@ -20,7 +20,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 ## 2. 当前可验证状态
 
 - V2 monorepo 骨架已建立。
-- Go API 已实现 health/version、邮箱验证码登录、JWT cookie/token、角色中间件、学校/课程/资料/课程包接口、组织/课程/资料/课程包 admin CRUD、包内资料绑定、上传防护、资料下载权限、刷题提交、错题记录和基础薄弱点统计。
+- Go API 已实现 health/version、邮箱验证码登录、JWT cookie/token、角色中间件、学校/课程/资料/课程包接口、组织/课程/资料/课程包 admin CRUD、包内资料绑定、上传防护、资料下载权限、课程包 pending 订单、刷题提交、错题记录和基础薄弱点统计。
 - 成功资料下载会写入服务端审计日志，失败鉴权、不安全路径和缺失文件不会记为成功下载。
 - PDF 下载会在服务端生成临时轻水印副本，水印包含用户标识、资料 ID 和下载时间；源文件不会被覆盖。非 PDF 文件保持原样下载。
 - 用户可以查看自己的成功下载记录；管理员可以查看全量下载审计日志。
@@ -104,7 +104,7 @@ cd ../worker && go test ./...
 - Admin material metadata PATCH rejects direct file-field mutation; file replacement remains an upload flow.
 - 课程包授权解锁包内 paid 资料。
 - 后台课程包 CRUD、包内资料绑定/解绑、重复绑定保护，以及公开课程包详情不泄露未发布资料 item。
-- Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建不发放权益的 pending 课程包订单。
+- Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建不发放权益的 pending 课程包订单。Vue Admin `/orders` 可以只读查询订单状态，不能标记支付成功或发放权益。
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
@@ -166,6 +166,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Vue Admin includes `/downloads` for successful material download audit logs.
 - Vue Admin includes `/users` for admin-only user listing, role updates, and active/frozen status changes. The Go API prevents self role/status changes and restricts `super_admin` edits/grants to `super_admin` users.
 - Vue Admin includes `/access-grants` for admin-only manual material/package access grants used in internal testing or after-sales delivery; it does not create payment orders or mark orders as paid.
+- Vue Admin includes `/orders` for admin-only, read-only order inspection with buyer, package, amount, provider, status, and entitlement visibility.
 - Vue Admin includes `/packages` for admin-only course package CRUD, integer-cent pricing, `draft/published/archived` status control, and package-material binding without exposing raw file storage keys.
 - Vue Admin includes admin-only all-status course listing and a course edit dialog.
 - Vue Admin includes material status operations for `draft`, `pending`, `published`, `rejected`, and `archived`.

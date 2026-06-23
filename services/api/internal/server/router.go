@@ -148,6 +148,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.GET("/access-grants", adminHandler.ListAccessGrants)
 	admin.POST("/access-grants", adminHandler.CreateAccessGrant)
 	admin.DELETE("/access-grants/:id", adminHandler.RevokeAccessGrant)
+	admin.GET("/orders", adminHandler.ListOrders)
 	admin.POST("/schools", adminHandler.CreateSchool)
 	admin.PATCH("/schools/:id", adminHandler.UpdateSchool)
 	admin.DELETE("/schools/:id", adminHandler.ArchiveSchool)

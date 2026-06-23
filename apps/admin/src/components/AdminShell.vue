@@ -9,6 +9,7 @@
         <RouterLink v-if="auth.isAdmin" to="/dashboard">{{ copy.dashboard }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/users">{{ copy.users }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/access-grants">{{ copy.accessGrants }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/orders">{{ copy.orders }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/packages">{{ copy.packages }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/courses">{{ copy.courses }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/materials">{{ copy.materials }}</RouterLink>
@@ -48,6 +49,7 @@ const copy = {
   dashboard: "\u8fd0\u8425\u6982\u89c8",
   users: "\u7528\u6237\u7ba1\u7406",
   accessGrants: "\u6743\u76ca\u6388\u6743",
+  orders: "\u8ba2\u5355\u67e5\u8be2",
   packages: "\u8bfe\u7a0b\u5305",
   courses: "\u8bfe\u7a0b\u7ef4\u62a4",
   materials: "PDF \u8d44\u6599",

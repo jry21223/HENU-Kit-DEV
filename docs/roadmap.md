@@ -7,6 +7,7 @@
 - Go API email-code auth and role middleware
 - GORM model coverage for the V2 table set
 - Material download permission checks
+- Frozen-user denial for non-free material downloads
 - Material download audit logs
 - Dynamic PDF watermarking during download without mutating source files
 - User and admin download-history APIs
@@ -28,6 +29,7 @@
 - Vue admin dashboard, login guard, course management, and material upload pages
 - Vue admin user management page for filtered user listing, role updates, active/frozen status changes, self-lockout prevention, and super_admin protection
 - Vue admin manual access-grant page for internal/after-sales material and package delivery, with duplicate-grant protection and server-side revoke
+- Vue admin read-only order browser for pending course package payment support and entitlement visibility
 - Vue admin course package management page for package CRUD, integer-cent pricing, status control, and package-material binding/unbinding
 - Vue admin all-status course listing and course edit dialog
 - Vue admin material metadata edit dialog with server-side type/access validation

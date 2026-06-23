@@ -97,6 +97,24 @@ func TestMaterialDownloadPermissions(t *testing.T) {
 		t.Fatal("expected paid download to create one user audit log")
 	}
 
+	if err := db.Model(&user).Update("status", "frozen").Error; err != nil {
+		t.Fatal(err)
+	}
+	frozenLoginDenied := performJSON(router, http.MethodGet, "/api/v1/materials/"+loginMaterial.ID+"/download", "", token)
+	if frozenLoginDenied.Code != http.StatusForbidden || !strings.Contains(frozenLoginDenied.Body.String(), "user_frozen") {
+		t.Fatalf("expected frozen user login_required download 403, got %d: %s", frozenLoginDenied.Code, frozenLoginDenied.Body.String())
+	}
+	if countDownloadLogs(t, db, loginMaterial.ID, user.ID) != 1 {
+		t.Fatal("expected frozen login_required denial to create no audit log")
+	}
+	frozenPaidDenied := performJSON(router, http.MethodGet, "/api/v1/materials/"+paidMaterial.ID+"/download", "", token)
+	if frozenPaidDenied.Code != http.StatusForbidden || !strings.Contains(frozenPaidDenied.Body.String(), "user_frozen") {
+		t.Fatalf("expected frozen user paid download 403, got %d: %s", frozenPaidDenied.Code, frozenPaidDenied.Body.String())
+	}
+	if countDownloadLogs(t, db, paidMaterial.ID, user.ID) != 1 {
+		t.Fatal("expected frozen paid denial to create no audit log")
+	}
+
 	myDownloads := performJSON(router, http.MethodGet, "/api/v1/me/downloads", "", token)
 	if myDownloads.Code != http.StatusOK || !strings.Contains(myDownloads.Body.String(), paidMaterial.ID) || strings.Contains(myDownloads.Body.String(), freeMaterial.ID) {
 		t.Fatalf("expected my downloads to include only authenticated user logs, got %d: %s", myDownloads.Code, myDownloads.Body.String())
