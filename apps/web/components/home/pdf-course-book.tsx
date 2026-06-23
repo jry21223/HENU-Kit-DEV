@@ -22,10 +22,18 @@ const tilt: Record<CourseBook["tone"], string> = {
   cyan: "1deg",
 };
 
-export function PdfCourseBook({ course, tabIndex }: { course: CourseBook; tabIndex?: number }) {
+export function PdfCourseBook({
+  compact = false,
+  course,
+  tabIndex,
+}: {
+  compact?: boolean;
+  course: CourseBook;
+  tabIndex?: number;
+}) {
   return (
     <Link
-      className={`${styles.courseBook} ${toneClass[course.tone]}`}
+      className={`${styles.courseBook} ${compact ? styles.courseBookCompact : ""} ${toneClass[course.tone]}`}
       href={course.href}
       style={{ "--book-tilt": tilt[course.tone] } as CSSProperties}
       tabIndex={tabIndex}
@@ -35,7 +43,9 @@ export function PdfCourseBook({ course, tabIndex }: { course: CourseBook; tabInd
         <span>PDF</span>
       </span>
       <span className="relative z-10">
-        <span className="block text-2xl font-black tracking-tight text-[#2b2117]">{course.label}</span>
+        <span className={`block font-black tracking-tight text-[#2b2117] ${compact ? "text-xl" : "text-2xl"}`}>
+          {course.label}
+        </span>
         <span className="mt-1 block font-mono text-xs text-[#2b2117]/70">{course.subtitle}</span>
       </span>
       <span className="relative z-10 flex items-center justify-between gap-2 text-xs font-semibold text-[#2b2117]/72">

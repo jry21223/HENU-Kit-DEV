@@ -13,7 +13,9 @@ export function HomePage() {
   return (
     <main className="home-page min-h-[100dvh] overflow-x-clip text-[#2b2117]">
       <HomeNav />
-      <HeroIntro />
+      <div className="lg:hidden">
+        <HeroIntro />
+      </div>
       <ArchiveBookReveal />
       <MobileArchiveIntro />
       <CommunityStickyNotes />

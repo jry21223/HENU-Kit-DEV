@@ -1,17 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 test.use({ channel: "chrome" });
 
 const homeUrl = process.env.HOME_URL ?? "http://127.0.0.1:3000/";
 
-test("homepage renders product vision on desktop", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.goto(homeUrl, { waitUntil: "networkidle" });
-
-  await expect(page.getByRole("heading", { name: "打开你的期末复习资料册" })).toBeVisible();
-  await expect(page.getByText("软件学院资料库").first()).toBeVisible();
-
-  await page.evaluate(() => {
+async function scrollArchiveTo(page: Page, progress: number) {
+  await page.evaluate((nextProgress) => {
     const archive = document.querySelector<HTMLElement>('[aria-label="课程资料档案册"]');
 
     if (!archive) {
@@ -20,11 +14,88 @@ test("homepage renders product vision on desktop", async ({ page }) => {
 
     const stageTop = window.scrollY + archive.getBoundingClientRect().top;
     const scrollableDistance = Math.max(archive.offsetHeight - window.innerHeight, 1);
-    window.scrollTo(0, stageTop + scrollableDistance * 0.72);
+    window.scrollTo(0, stageTop + scrollableDistance * nextProgress);
+  }, progress);
+}
+
+async function archiveBookBox(page: Page) {
+  return page.getByTestId("archive-book").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+
+    return {
+      bottom: rect.bottom,
+      centerX: rect.left + rect.width / 2,
+      height: rect.height,
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      width: rect.width,
+    };
   });
+}
+
+async function elementBox(page: Page, testId: string) {
+  return page.getByTestId(testId).evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+
+    return {
+      bottom: rect.bottom,
+      centerX: rect.left + rect.width / 2,
+      height: rect.height,
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      width: rect.width,
+    };
+  });
+}
+
+test("homepage renders product vision on desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto(homeUrl, { waitUntil: "networkidle" });
+
+  const startBox = await archiveBookBox(page);
+  const startCoverBox = await elementBox(page, "archive-cover");
+  expect(startBox.width).toBeGreaterThan(1180);
+  expect(startCoverBox.width / startCoverBox.height).toBeLessThan(0.86);
+  expect(startCoverBox.centerX).toBeGreaterThan(1440 * 0.62);
+  expect(startCoverBox.right).toBeGreaterThan(1440);
+  expect(startCoverBox.bottom).toBeGreaterThan(1100);
+
+  await expect(page.getByTestId("archive-copy-intro")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "打开你的期末复习资料册" })).toBeVisible();
+  await expect(page.getByText("软件学院资料库").first()).toBeVisible();
+
+  await scrollArchiveTo(page, 0.6);
+  await expect(page.getByTestId("archive-copy-intro")).toBeHidden();
+  await expect(page.getByTestId("archive-copy-open")).toBeHidden();
+  await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
+  await expect(page.getByTestId("archive-cover")).toBeVisible();
+
+  const closedCoverBox = await elementBox(page, "archive-cover");
+  expect(closedCoverBox.centerX).toBeGreaterThan(1440 * 0.68);
+  expect(closedCoverBox.centerX).toBeLessThan(1440 * 0.86);
+  expect(closedCoverBox.width / closedCoverBox.height).toBeLessThan(0.86);
+
+  await scrollArchiveTo(page, 0.8);
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   await expect(page.getByText("数据结构").first()).toBeVisible();
+
+  const openBox = await archiveBookBox(page);
+  expect(openBox.width).toBeGreaterThan(1180);
+  expect(openBox.width / openBox.height).toBeGreaterThan(1.25);
+  expect(Math.abs(openBox.centerX - 720)).toBeLessThan(28);
+  const seamBox = await elementBox(page, "archive-seam");
+  expect(Math.abs(seamBox.centerX - openBox.centerX)).toBeLessThan(8);
+
+  await scrollArchiveTo(page, 0.93);
+  await expect(page.getByTestId("archive-copy-closing")).toBeVisible();
+  await expect(page.getByTestId("archive-copy-closing").getByText("资料合上以后，还会继续生长")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
+
+  const closedAgainBox = await archiveBookBox(page);
+  expect(Math.abs(closedAgainBox.centerX - openBox.centerX)).toBeLessThan(120);
 });
 
 test("homepage uses simplified archive on mobile", async ({ page }) => {
