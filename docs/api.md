@@ -281,7 +281,7 @@ Implemented admin behavior:
 - upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with a PDF header
 - upload rejects files larger than 20 MiB
 - manually supplied `storageKey` values with path traversal are rejected
-- admin analytics overview returns read-only totals, 14-day successful-download trend, top materials, course demand, and access-level breakdown
+- admin analytics overview returns read-only totals, 14-day successful-download trend, top materials, course demand, access-level breakdown, and report target/status breakdown
 - admin operation logs support filtering by operator, action, target, created time range, and limit
 - operation log CSV export reuses the same filters, requires admin role, and caps output by `OPERATION_LOG_EXPORT_LIMIT`
 - operation log retention policy is exposed read-only through `/admin/operation-logs/retention`; automatic deletion is not enabled in the MVP

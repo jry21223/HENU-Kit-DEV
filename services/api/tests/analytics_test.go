@@ -58,6 +58,27 @@ func TestAdminAnalyticsOverviewRequiresAdminAndAggregatesDownloads(t *testing.T)
 	if err := db.Create(&logs).Error; err != nil {
 		t.Fatal(err)
 	}
+	reports := []model.Report{
+		{
+			ReviewFields: model.ReviewFields{Status: model.StatusPending},
+			ReporterID:   user.ID,
+			TargetType:   "material",
+			TargetID:     paidMaterial.ID,
+			Reason:       "疑似侵权",
+			Description:  "analytics pending report",
+		},
+		{
+			ReviewFields: model.ReviewFields{Status: model.StatusApproved},
+			ReporterID:   user.ID,
+			TargetType:   "user",
+			TargetID:     user.ID,
+			Reason:       "骚扰",
+			Description:  "analytics handled report",
+		},
+	}
+	if err := db.Create(&reports).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	noToken := performJSON(router, http.MethodGet, "/api/v1/admin/analytics/overview", "", "")
 	if noToken.Code != http.StatusUnauthorized {
@@ -85,6 +106,8 @@ func TestAdminAnalyticsOverviewRequiresAdminAndAggregatesDownloads(t *testing.T)
 				PendingMaterials   int64 `json:"pendingMaterials"`
 				Packages           int64 `json:"packages"`
 				Downloads          int64 `json:"downloads"`
+				Reports            int64 `json:"reports"`
+				PendingReports     int64 `json:"pendingReports"`
 			} `json:"totals"`
 			DownloadTrend []struct {
 				Date  string `json:"date"`
@@ -105,6 +128,11 @@ func TestAdminAnalyticsOverviewRequiresAdminAndAggregatesDownloads(t *testing.T)
 				AccessLevel string `json:"accessLevel"`
 				Downloads   int64  `json:"downloads"`
 			} `json:"accessBreakdown"`
+			ReportBreakdown []struct {
+				TargetType string `json:"targetType"`
+				Status     string `json:"status"`
+				Count      int64  `json:"count"`
+			} `json:"reportBreakdown"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
@@ -116,6 +144,9 @@ func TestAdminAnalyticsOverviewRequiresAdminAndAggregatesDownloads(t *testing.T)
 	}
 	if payload.Data.Totals.PendingMaterials != 1 || payload.Data.Totals.Packages != 1 || payload.Data.Totals.Downloads != 3 {
 		t.Fatalf("unexpected pending/package/download totals: %#v", payload.Data.Totals)
+	}
+	if payload.Data.Totals.Reports != 2 || payload.Data.Totals.PendingReports != 1 {
+		t.Fatalf("unexpected report totals: %#v", payload.Data.Totals)
 	}
 	if len(payload.Data.DownloadTrend) != 14 {
 		t.Fatalf("expected 14 trend points, got %d", len(payload.Data.DownloadTrend))
@@ -132,4 +163,23 @@ func TestAdminAnalyticsOverviewRequiresAdminAndAggregatesDownloads(t *testing.T)
 	if len(payload.Data.AccessBreakdown) == 0 {
 		t.Fatal("expected access breakdown")
 	}
+	if !hasReportBreakdown(payload.Data.ReportBreakdown, "material", model.StatusPending, 1) {
+		t.Fatalf("expected pending material report breakdown, got %#v", payload.Data.ReportBreakdown)
+	}
+	if !hasReportBreakdown(payload.Data.ReportBreakdown, "user", model.StatusApproved, 1) {
+		t.Fatalf("expected approved user report breakdown, got %#v", payload.Data.ReportBreakdown)
+	}
+}
+
+func hasReportBreakdown(rows []struct {
+	TargetType string `json:"targetType"`
+	Status     string `json:"status"`
+	Count      int64  `json:"count"`
+}, targetType string, status string, count int64) bool {
+	for _, row := range rows {
+		if row.TargetType == targetType && row.Status == status && row.Count == count {
+			return true
+		}
+	}
+	return false
 }

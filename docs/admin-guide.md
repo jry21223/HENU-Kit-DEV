@@ -283,6 +283,7 @@ The page shows:
 - top downloaded materials
 - access-level download breakdown
 - course demand rows sorted by download count and material supply
+- report totals and target/status distribution
 
 Important boundaries:
 

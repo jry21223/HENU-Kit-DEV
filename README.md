@@ -172,11 +172,11 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Vue Admin includes `/forum-reviews` for reviewer/admin forum post approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/forum-reply-reviews` for reviewer/admin forum reply approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility, draft approve/reject review, and review reason capture.
-- Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, and course demand.
+- Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, course demand, and report handling distribution.
 - Vue Admin includes operation-log time filtering, CSV export, and a read-only retention policy panel.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
 - Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.
-- Admin analytics are based on successful server-side download logs; denied download attempts, page visits, search intent, and payment conversion are not included yet.
+- Admin analytics are based on successful server-side download logs and current report records; denied download attempts, page visits, search intent, and payment conversion are not included yet.
 - Material review is one-way for the MVP: only pending materials can be approved or rejected through reviewer endpoints, rejected materials stay hidden from public pages, and rejection requires a review reason.
 - Wiki submission is review-first for the MVP: creator/admin users can submit entries, public wiki APIs expose only published public entries, public responses hide review metadata, and rejected entries stay hidden.
 - Wiki edit proposals are review-first for the MVP: creator/admin users can propose edits to published public entries, reviewer queues compare base/current/proposed content, public content stays unchanged until approval, stale base versions return `409 proposal_stale`, and successful approval updates the live entry, increments its version, and writes `wiki_edit_histories`.

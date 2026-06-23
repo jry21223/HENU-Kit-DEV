@@ -30,6 +30,8 @@ type totals struct {
 	PendingMaterials   int64 `json:"pendingMaterials"`
 	Packages           int64 `json:"packages"`
 	Downloads          int64 `json:"downloads"`
+	Reports            int64 `json:"reports"`
+	PendingReports     int64 `json:"pendingReports"`
 }
 
 type trendPoint struct {
@@ -62,6 +64,12 @@ type accessBreakdown struct {
 	Downloads   int64  `json:"downloads"`
 }
 
+type reportBreakdown struct {
+	TargetType string `json:"targetType"`
+	Status     string `json:"status"`
+	Count      int64  `json:"count"`
+}
+
 func (h Handler) Overview(ctx *gin.Context) {
 	var total totals
 	if err := h.db.Model(&model.User{}).Count(&total.Users).Error; err != nil {
@@ -92,6 +100,14 @@ func (h Handler) Overview(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
+	if err := h.db.Model(&model.Report{}).Count(&total.Reports).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	if err := h.db.Model(&model.Report{}).Where("status = ?", model.StatusPending).Count(&total.PendingReports).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
 
 	var courses []model.Course
 	if err := h.db.Where("status <> ?", model.StatusArchived).Find(&courses).Error; err != nil {
@@ -113,6 +129,11 @@ func (h Handler) Overview(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
+	var reports []model.Report
+	if err := h.db.Order("created_at desc").Limit(5000).Find(&reports).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
 
 	materialsByID := make(map[string]model.Material, len(materials))
 	for _, material := range materials {
@@ -125,6 +146,7 @@ func (h Handler) Overview(ctx *gin.Context) {
 		"topMaterials":    buildTopMaterials(logs, materialsByID),
 		"courseDemand":    buildCourseDemand(logs, materials, courses),
 		"accessBreakdown": buildAccessBreakdown(logs),
+		"reportBreakdown": buildReportBreakdown(reports),
 	})
 }
 
@@ -245,4 +267,36 @@ func buildAccessBreakdown(logs []model.MaterialDownloadLog) []accessBreakdown {
 		return rows[i].Downloads > rows[j].Downloads
 	})
 	return rows
+}
+
+func buildReportBreakdown(reports []model.Report) []reportBreakdown {
+	counts := map[string]int64{}
+	for _, report := range reports {
+		key := report.TargetType + "\x00" + report.Status
+		counts[key]++
+	}
+	rows := make([]reportBreakdown, 0, len(counts))
+	for key, count := range counts {
+		parts := splitReportBreakdownKey(key)
+		rows = append(rows, reportBreakdown{TargetType: parts[0], Status: parts[1], Count: count})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Count == rows[j].Count {
+			if rows[i].TargetType == rows[j].TargetType {
+				return rows[i].Status < rows[j].Status
+			}
+			return rows[i].TargetType < rows[j].TargetType
+		}
+		return rows[i].Count > rows[j].Count
+	})
+	return rows
+}
+
+func splitReportBreakdownKey(key string) [2]string {
+	for i := 0; i < len(key); i++ {
+		if key[i] == 0 {
+			return [2]string{key[:i], key[i+1:]}
+		}
+	}
+	return [2]string{key, ""}
 }

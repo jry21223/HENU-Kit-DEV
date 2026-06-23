@@ -243,6 +243,8 @@ export type AnalyticsOverview = {
     pendingMaterials: number;
     packages: number;
     downloads: number;
+    reports: number;
+    pendingReports: number;
   };
   downloadTrend: Array<{ date: string; count: number }>;
   topMaterials: Array<{
@@ -264,6 +266,7 @@ export type AnalyticsOverview = {
     downloadCount: number;
   }>;
   accessBreakdown: Array<{ accessLevel: string; downloads: number }>;
+  reportBreakdown: Array<{ targetType: string; status: string; count: number }>;
 };
 
 export type LoginData = {
