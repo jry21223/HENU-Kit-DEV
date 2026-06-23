@@ -25,6 +25,7 @@ const (
 	StatusArchived     = "archived"
 
 	OrderPending   = "pending"
+	OrderPaying    = "paying"
 	OrderPaid      = "paid"
 	OrderFailed    = "failed"
 	OrderCancelled = "cancelled"

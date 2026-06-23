@@ -29,6 +29,7 @@ Currently implemented endpoints:
 - `POST /api/v1/orders`
 - `GET /api/v1/orders/:id`
 - `GET /api/v1/orders/:id/status`
+- `POST /api/v1/payments/wechat/native`
 - `GET /api/v1/questions/:id`
 - `POST /api/v1/questions/:id/submit`
 - `GET /api/v1/blog/posts?limit=`
@@ -209,7 +210,16 @@ Implemented order foundation:
 - `GET /api/v1/orders/:id` and `GET /api/v1/orders/:id/status` are user-scoped; admins may inspect all orders
 - order status is read-only and does not grant entitlement; paid access still requires a package/material grant created by a trusted server-side flow
 - admins can inspect orders through `/admin/orders` with status, buyer email, package, provider, product type, and out-trade-number filters; this endpoint is read-only
-- this foundation does not yet create WeChat Native code URLs, process payment notify callbacks, mark orders paid, or issue entitlements
+
+Implemented WeChat Native payment boundary:
+
+- `POST /api/v1/payments/wechat/native` accepts `orderId` and requires the logged-in, non-frozen order owner
+- only `pending` or `paying` `wechat_native` orders with positive integer-cent amounts can create a Native payment request
+- development/test `WECHAT_PAY_MODE=mock` returns a mock `weixin://wxpay/mock/...` `codeUrl`, stores transient Native metadata, and moves the local order to `status=paying`
+- production rejects `WECHAT_PAY_MODE=mock` with `wechat_mock_forbidden_in_production`
+- `WECHAT_PAY_MODE=live` validates required merchant configuration before use, but real WeChat API calls are not implemented yet and return `wechat_live_not_implemented`
+- Native code URL creation never marks an order paid, never grants entitlement, and never changes paid material access
+- WeChat notify signature verification, resource decryption, idempotent paid transition, and automatic entitlement issuance remain later work
 
 Implemented quiz behavior:
 

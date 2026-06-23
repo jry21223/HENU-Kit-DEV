@@ -43,6 +43,9 @@ Additional implementation after the listed commits:
 - The form submits to `POST /api/v1/wiki/entries/:id/proposals`.
 - Normal users and guests see the review boundary instead of the editable form.
 - Submitted proposals remain pending until reviewer/admin approval; public Wiki content is not changed by the frontend.
+- Go API now includes `POST /api/v1/payments/wechat/native` for development/test mock Native code URL creation.
+- Mock Native creation moves eligible owned orders from `pending` to `paying`, but does not mark orders paid or grant entitlement.
+- Production rejects mock WeChat Pay configuration, and live WeChat API calls remain unimplemented.
 
 ## Verification Run For Latest Work
 
@@ -88,7 +91,7 @@ Legend:
 | Stage 5: quiz system | Question types, submission, attempts, wrong questions, weakness report | Partial | Single/multiple/true-false/fill/short-answer structures and judging foundation exist; Web course quiz and Web wrong-question book exist. Advanced scoring and richer practice sessions remain incomplete. |
 | Stage 6: AI infrastructure and worker | Redis Streams worker, mock/real LLM, AI tasks, draft review | Partial | Mock AI task flow, worker completion, usage logs, draft creation, and Admin draft review exist. Real LLM, RAG, and publish-to-resource flows remain incomplete. |
 | Stage 7: points and membership | Points logs/rules, memberships, redemption, member benefits | Partial | Model and some points ledger behavior exist, especially forum reward escrow/settlement. Full member purchase/redeem UX and benefits enforcement are not complete. |
-| Stage 8: payment system | Original V2 text said Yipay; later direction changed to WeChat Native | Partial / direction changed | Pending course-package orders exist with server-side pricing. Real WeChat Native code URL, notify verification, payment status update, and automatic entitlement issuance are not complete. Yipay is not the target path after product direction changed. |
+| Stage 8: payment system | Original V2 text said Yipay; later direction changed to WeChat Native | Partial / direction changed | Pending course-package orders exist with server-side pricing. Development/test mock Native code URL creation exists and moves orders to `paying`. Real WeChat Native API calls, notify verification, paid status update, and automatic entitlement issuance are not complete. Yipay is not the target path after product direction changed. |
 | Stage 9: Wiki co-creation | Creator application, entries, proposals, history, review | Partial / strong MVP | Public Wiki read pages, creator/admin submission, Web edit proposal form, review queues, history writes, stale-version protection, and stale UI guard exist. Creator application flow remains incomplete. |
 | Stage 10: blog, moments, forum, relations | Blog, dynamic moments, forum, follow/block | Partial | Blog public pages and review flow exist. Forum list/detail/create/reply/resubmission/reward best-answer basics exist. Moments and user relation features are not implemented. |
 | Stage 11: notifications, reports, search, leaderboards | Notifications, reports, search, leaderboards | Partial | User notification inbox, review notifications, report API, Web report buttons, Admin report handling, and report analytics exist. Search and leaderboards are not implemented. |
@@ -107,6 +110,7 @@ Legend:
 - School, college, major, course, material, and package APIs.
 - Material upload guardrails, download permissions, download audit logs, and PDF watermarking.
 - Course package catalog, package grants, public package list/detail pages, and pending-order creation.
+- Development/test WeChat Native mock code URL creation with production mock guard and no entitlement side effects.
 - Question listing/detail without answer leakage.
 - Quiz submission, wrong-question recording, current-user wrong-question page, and basic weakness totals.
 - Wiki public list/detail, review-first creation, Web edit proposal form, review queue, history writes, stale protection.
@@ -123,7 +127,7 @@ Legend:
 High-priority gaps:
 
 - Real WeChat Native payment integration:
-  - no live code URL creation,
+  - no live WeChat API code URL creation,
   - no signed/decrypted notify callback,
   - no paid status transition from payment provider,
   - no automatic entitlement issuance from successful callback.

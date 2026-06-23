@@ -10,7 +10,8 @@
 - Public package detail must filter both `materials` and package `items` to published materials. It is not enough to hide unpublished material objects while still returning item resource ids for draft/pending/rejected/archived materials.
 - Web package detail can show entitlement state from `/me/entitlements`, but that display does not grant access; paid downloads still require the Go API material download permission check.
 - Frozen users cannot download `login_required`, `paid`, or `member_only` materials even when they have an active grant. Free materials remain publicly downloadable.
-- Course package orders are server-priced pending records only. Creating or querying an order does not mark payment success, create entitlement, or bypass paid download checks.
+- Course package orders are server-priced pending/paying records only. Creating an order or generating a WeChat Native mock code URL does not mark payment success, create entitlement, or bypass paid download checks.
+- `WECHAT_PAY_MODE=mock` is allowed only outside production; production mock configuration is rejected by the API payment boundary.
 - The admin order browser is read-only. It can inspect order status and whether an entitlement already exists, but it cannot mark orders paid or issue grants.
 - Manual access grants are server-side restricted to admin users, use `manual_admin` source, cannot create or mark payment orders, and can target only published paid/member-only materials or published course packages. Revoked grants are soft-deleted and no longer unlock paid downloads.
 - User-scoped forum tracking/resubmission endpoints expose only the authenticated user's own posts/replies and may include that user's review reason, but they do not expose `reviewerId`, `reviewedAt`, or hidden submissions from other users. Resubmission is server-side restricted to draft/pending/needs_changes/rejected content, clears old reviewer metadata, and returns the content to pending review.

@@ -24,6 +24,7 @@ import (
 	"final-review-platform/services/api/internal/order"
 	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/internal/packagecatalog"
+	"final-review-platform/services/api/internal/payment"
 	"final-review-platform/services/api/internal/quiz"
 	"final-review-platform/services/api/internal/report"
 	"final-review-platform/services/api/internal/wiki"
@@ -65,6 +66,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	entitlementHandler := entitlement.NewHandler(db)
 	notificationHandler := notification.NewHandler(db)
 	orderHandler := order.NewHandler(db)
+	paymentHandler := payment.NewHandler(db, cfg)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
 	reportHandler := report.NewHandler(db)
@@ -105,6 +107,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.POST("/orders", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), orderHandler.Create)
 	v1.GET("/orders/:id", authMiddleware.RequireAuth(), orderHandler.Detail)
 	v1.GET("/orders/:id/status", authMiddleware.RequireAuth(), orderHandler.Status)
+	v1.POST("/payments/wechat/native", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), paymentHandler.WeChatNative)
 	v1.GET("/questions/:id", quizHandler.Question)
 	v1.POST("/questions/:id/submit", authMiddleware.OptionalAuth(), quizHandler.Submit)
 	v1.GET("/blog/posts", blogHandler.ListPublished)

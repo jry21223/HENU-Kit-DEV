@@ -187,7 +187,7 @@ func (h Handler) readOrderForUser(ctx *gin.Context, user *model.User) (model.Ord
 
 func (h Handler) latestPendingOrder(userID string, packageID string) (model.Order, bool, error) {
 	var existing model.Order
-	err := h.db.Where("user_id = ? AND product_type = ? AND product_id = ? AND payment_provider = ? AND status = ?", userID, productTypeCoursePackage, packageID, paymentProviderWechat, model.OrderPending).
+	err := h.db.Where("user_id = ? AND product_type = ? AND product_id = ? AND payment_provider = ? AND status IN ?", userID, productTypeCoursePackage, packageID, paymentProviderWechat, []string{model.OrderPending, model.OrderPaying}).
 		Order("created_at desc").
 		First(&existing).Error
 	if err == nil {
