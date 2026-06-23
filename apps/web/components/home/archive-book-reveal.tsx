@@ -13,7 +13,7 @@ import styles from "./home-visuals.module.css";
 export function ArchiveBookReveal() {
   const ref = useRef<HTMLElement>(null);
   const reduceMotion = usePrefersReducedMotion();
-  const [contentReady, setContentReady] = useState(true);
+  const [contentReady, setContentReady] = useState(false);
   const [introReady, setIntroReady] = useState(true);
   const [openCopyReady, setOpenCopyReady] = useState(false);
   const [closingCopyReady, setClosingCopyReady] = useState(false);
@@ -37,7 +37,7 @@ export function ArchiveBookReveal() {
   const introAriaHidden = introFocusable ? undefined : true;
 
   return (
-    <section ref={ref} className={styles.bookStage} data-anime-fallback="" aria-label="课程资料档案册">
+    <section ref={ref} className={styles.bookStage} aria-label="课程资料档案册">
       <div className={styles.bookSticky}>
         <div className={styles.bookScene}>
           <div className={styles.bookCopy}>

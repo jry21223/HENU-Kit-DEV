@@ -248,7 +248,6 @@ export function useHomeAnimeTimeline({ reduceMotion, readiness, stageRef }: UseH
       return;
     }
 
-    stage.removeAttribute("data-anime-fallback");
     const timeline = createArchiveTimeline(stage);
     let animationFrame: number | null = null;
 

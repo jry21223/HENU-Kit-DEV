@@ -289,6 +289,19 @@
   border-radius: 36px;
 }
 
+.bookBase,
+.bookInside,
+.bookPage,
+.pageHighlight,
+.directoryLine,
+.courseBook {
+  will-change: opacity, transform;
+}
+
+.bookCover {
+  will-change: opacity, transform;
+}
+
 .bookBase {
   z-index: 1;
   opacity: 0;
@@ -491,186 +504,6 @@
   border-right: 4px solid transparent;
   border-left: 4px solid transparent;
   border-top: 12px solid #2b2117;
-}
-
-@media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    .bookStage[data-anime-fallback] {
-      view-timeline-name: --archive-reveal;
-      view-timeline-axis: block;
-    }
-
-    .bookStage[data-anime-fallback] .archiveBook,
-    .bookStage[data-anime-fallback] .bookBase,
-    .bookStage[data-anime-fallback] .bookInside,
-    .bookStage[data-anime-fallback] .bookPage,
-    .bookStage[data-anime-fallback] .bookCover,
-    .bookStage[data-anime-fallback] :global([data-home-anim="archive-intro-copy"]),
-    .bookStage[data-anime-fallback] :global([data-home-anim="archive-open-copy"]),
-    .bookStage[data-anime-fallback] :global([data-home-anim="archive-closing-copy"]) {
-      animation-duration: 1s;
-      animation-fill-mode: both;
-      animation-range: contain 0% contain 100%;
-      animation-timeline: --archive-reveal;
-      animation-timing-function: linear;
-    }
-
-    .bookStage[data-anime-fallback] .archiveBook {
-      animation-name: archiveBookFallback;
-    }
-
-    .bookStage[data-anime-fallback] .bookBase,
-    .bookStage[data-anime-fallback] .bookInside {
-      animation-name: archiveBaseFallback;
-    }
-
-    .bookStage[data-anime-fallback] .bookPage {
-      animation-name: archivePageFallback;
-    }
-
-    .bookStage[data-anime-fallback] .bookCover {
-      animation-name: archiveCoverFallback;
-    }
-
-    .bookStage[data-anime-fallback] :global([data-home-anim="archive-intro-copy"]) {
-      animation-name: archiveIntroCopyFallback;
-    }
-
-    .bookStage[data-anime-fallback] :global([data-home-anim="archive-open-copy"]) {
-      animation-name: archiveOpenCopyFallback;
-    }
-
-    .bookStage[data-anime-fallback] :global([data-home-anim="archive-closing-copy"]) {
-      animation-name: archiveClosingCopyFallback;
-    }
-  }
-}
-
-@keyframes archiveBookFallback {
-  0% {
-    transform: translate3d(300px, 220px, 0) rotate(-12deg);
-  }
-
-  30%,
-  86% {
-    transform: translate3d(0, 0, 0) rotate(0deg);
-  }
-
-  100% {
-    transform: translate3d(0, 18px, 0) rotate(2deg);
-  }
-}
-
-@keyframes archiveCoverFallback {
-  0%,
-  68% {
-    opacity: 1;
-    transform: rotateY(0deg);
-    visibility: visible;
-  }
-
-  86%,
-  94% {
-    opacity: 0;
-    transform: rotateY(-176deg);
-    visibility: hidden;
-  }
-
-  100% {
-    opacity: 1;
-    transform: rotateY(0deg);
-    visibility: visible;
-  }
-}
-
-@keyframes archiveBaseFallback {
-  0%,
-  68% {
-    opacity: 0;
-  }
-
-  76%,
-  86% {
-    opacity: 1;
-  }
-
-  94%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes archivePageFallback {
-  0%,
-  67.99% {
-    opacity: 0;
-    transform: translateY(18px);
-    visibility: hidden;
-  }
-
-  76%,
-  86% {
-    opacity: 1;
-    transform: translateY(0);
-    visibility: visible;
-  }
-
-  90%,
-  100% {
-    opacity: 0;
-    transform: translateY(12px);
-    visibility: hidden;
-  }
-}
-
-@keyframes archiveIntroCopyFallback {
-  0%,
-  22% {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  34%,
-  100% {
-    opacity: 0;
-    visibility: hidden;
-  }
-}
-
-@keyframes archiveOpenCopyFallback {
-  0%,
-  27.99% {
-    opacity: 0;
-    visibility: hidden;
-  }
-
-  36%,
-  43% {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  50%,
-  100% {
-    opacity: 0;
-    visibility: hidden;
-  }
-}
-
-@keyframes archiveClosingCopyFallback {
-  0%,
-  83.99% {
-    opacity: 0;
-    transform: translateY(18px);
-    visibility: hidden;
-  }
-
-  90%,
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-    visibility: visible;
-  }
 }
 
 @media (max-width: 1023px) {
