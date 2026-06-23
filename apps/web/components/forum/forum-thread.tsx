@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Send, Trophy } from "lucide-react";
+import { ReportButton } from "@/components/report/report-button";
 import { Badge } from "@/components/ui/badge";
 import { apiBaseUrl, type ForumPost, type ForumReply, type User } from "@/lib/api";
 
@@ -147,17 +148,20 @@ export function ForumThread({ initialPost, initialReplies }: { initialPost: Foru
                     </div>
                     <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{reply.content}</p>
                   </div>
-                  {showMarkButton ? (
-                    <button
-                      className="inline-flex shrink-0 items-center justify-center rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-primary transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={Boolean(markingReplyId)}
-                      onClick={() => void markBest(reply)}
-                      type="button"
-                    >
-                      {markingReplyId === reply.id ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <Trophy className="mr-2 size-4" aria-hidden="true" />}
-                      {markingReplyId === reply.id ? copy.markingBest : copy.markBest}
-                    </button>
-                  ) : null}
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {showMarkButton ? (
+                      <button
+                        className="inline-flex items-center justify-center rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-primary transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={Boolean(markingReplyId)}
+                        onClick={() => void markBest(reply)}
+                        type="button"
+                      >
+                        {markingReplyId === reply.id ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <Trophy className="mr-2 size-4" aria-hidden="true" />}
+                        {markingReplyId === reply.id ? copy.markingBest : copy.markBest}
+                      </button>
+                    ) : null}
+                    <ReportButton compact targetId={reply.id} targetLabel={reply.content.slice(0, 60) || reply.id} targetType="forum_reply" />
+                  </div>
                 </div>
               </article>
             );

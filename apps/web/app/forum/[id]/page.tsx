@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, MessageSquareText, Trophy } from "lucide-react";
 import { ForumThread } from "@/components/forum/forum-thread";
 import { SiteShell } from "@/components/layout/site-shell";
+import { ReportButton } from "@/components/report/report-button";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button-link";
 import { ForumPost, ForumReply, getApi } from "@/lib/api";
@@ -66,19 +67,22 @@ export default async function ForumDetailPage({ params }: PageProps) {
                 <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-muted-foreground">{post.content}</p>
               </div>
 
-              <dl className="grid shrink-0 gap-3 text-sm sm:grid-cols-2 lg:w-72 lg:grid-cols-1">
-                <div className="rounded-2xl border border-border bg-background p-4">
-                  <dt className="text-xs text-muted-foreground">{copy.replies}</dt>
-                  <dd className="mt-1 flex items-center font-medium">
-                    <MessageSquareText className="mr-1.5 size-4 text-primary" aria-hidden="true" />
-                    {post.commentCount}
-                  </dd>
-                </div>
-                <div className="rounded-2xl border border-border bg-background p-4">
-                  <dt className="text-xs text-muted-foreground">{copy.updatedAt}</dt>
-                  <dd className="mt-1 font-medium">{formatDate(post.updatedAt)}</dd>
-                </div>
-              </dl>
+              <div className="grid shrink-0 gap-3 text-sm sm:grid-cols-2 lg:w-72 lg:grid-cols-1">
+                <dl className="contents">
+                  <div className="rounded-2xl border border-border bg-background p-4">
+                    <dt className="text-xs text-muted-foreground">{copy.replies}</dt>
+                    <dd className="mt-1 flex items-center font-medium">
+                      <MessageSquareText className="mr-1.5 size-4 text-primary" aria-hidden="true" />
+                      {post.commentCount}
+                    </dd>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background p-4">
+                    <dt className="text-xs text-muted-foreground">{copy.updatedAt}</dt>
+                    <dd className="mt-1 font-medium">{formatDate(post.updatedAt)}</dd>
+                  </div>
+                </dl>
+                <ReportButton targetId={post.id} targetLabel={post.title} targetType="forum_post" />
+              </div>
             </div>
           </section>
 

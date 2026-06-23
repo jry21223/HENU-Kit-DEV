@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Download, FileText, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
+import { ReportButton } from "@/components/report/report-button";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Material, apiBaseUrl, getApi } from "@/lib/api";
@@ -110,6 +111,9 @@ export default async function MaterialDetailPage({ params }: PageProps) {
                 {isPdf ? "下载 PDF" : "下载资料"}
                 <Download className="ml-2 size-4" aria-hidden="true" />
               </a>
+              <div className="mt-3">
+                <ReportButton targetId={material.id} targetLabel={material.title} targetType="material" />
+              </div>
             </section>
           </aside>
         </article>
