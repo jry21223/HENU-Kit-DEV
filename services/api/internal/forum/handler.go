@@ -76,6 +76,35 @@ type publicReply struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
+type myPost struct {
+	ID           string `json:"id"`
+	BoardID      string `json:"boardId"`
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	Type         string `json:"type"`
+	RewardPoints int64  `json:"rewardPoints"`
+	RewardStatus string `json:"rewardStatus,omitempty"`
+	Status       string `json:"status"`
+	ReviewReason string `json:"reviewReason,omitempty"`
+	Visibility   string `json:"visibility"`
+	CommentCount int64  `json:"commentCount"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
+type myReply struct {
+	ID           string `json:"id"`
+	PostID       string `json:"postId"`
+	PostTitle    string `json:"postTitle"`
+	PostStatus   string `json:"postStatus"`
+	Content      string `json:"content"`
+	IsBest       bool   `json:"isBest"`
+	Status       string `json:"status"`
+	ReviewReason string `json:"reviewReason,omitempty"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
 func (h Handler) Boards(ctx *gin.Context) {
 	var boards []model.ForumBoard
 	if err := h.db.Where("status = ?", model.StatusPublished).Order("created_at asc").Find(&boards).Error; err != nil {
@@ -120,6 +149,64 @@ func (h Handler) Detail(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"post": toPublicPost(post), "replies": publicReplies(replies)})
+}
+
+func (h Handler) MyPosts(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 50, 100)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var posts []model.ForumPost
+	if err := h.db.Where("author_id = ?", user.ID).Order("updated_at desc").Limit(limit).Find(&posts).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"posts": myPosts(posts)})
+}
+
+func (h Handler) MyReplies(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 50, 100)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var replies []model.ForumReply
+	if err := h.db.Where("author_id = ?", user.ID).Order("updated_at desc").Limit(limit).Find(&replies).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	postIDs := make([]string, 0, len(replies))
+	seenPostIDs := make(map[string]struct{}, len(replies))
+	for _, reply := range replies {
+		if _, seen := seenPostIDs[reply.PostID]; seen {
+			continue
+		}
+		seenPostIDs[reply.PostID] = struct{}{}
+		postIDs = append(postIDs, reply.PostID)
+	}
+	postsByID := make(map[string]model.ForumPost, len(postIDs))
+	if len(postIDs) > 0 {
+		var posts []model.ForumPost
+		if err := h.db.Where("id IN ?", postIDs).Find(&posts).Error; err != nil {
+			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+			return
+		}
+		for _, post := range posts {
+			postsByID[post.ID] = post
+		}
+	}
+	response.OK(ctx, gin.H{"replies": myReplies(replies, postsByID)})
 }
 
 func (h Handler) Create(ctx *gin.Context) {
@@ -708,6 +795,48 @@ func publicReplies(replies []model.ForumReply) []publicReply {
 			IsBest:    reply.IsBest,
 			CreatedAt: reply.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			UpdatedAt: reply.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+	return result
+}
+
+func myPosts(posts []model.ForumPost) []myPost {
+	result := make([]myPost, 0, len(posts))
+	for _, post := range posts {
+		result = append(result, myPost{
+			ID:           post.ID,
+			BoardID:      post.BoardID,
+			Title:        post.Title,
+			Content:      post.Content,
+			Type:         post.Type,
+			RewardPoints: post.RewardPoints,
+			RewardStatus: post.RewardStatus,
+			Status:       post.Status,
+			ReviewReason: post.ReviewReason,
+			Visibility:   post.Visibility,
+			CommentCount: post.CommentCount,
+			CreatedAt:    post.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:    post.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+	return result
+}
+
+func myReplies(replies []model.ForumReply, postsByID map[string]model.ForumPost) []myReply {
+	result := make([]myReply, 0, len(replies))
+	for _, reply := range replies {
+		post := postsByID[reply.PostID]
+		result = append(result, myReply{
+			ID:           reply.ID,
+			PostID:       reply.PostID,
+			PostTitle:    post.Title,
+			PostStatus:   post.Status,
+			Content:      reply.Content,
+			IsBest:       reply.IsBest,
+			Status:       reply.Status,
+			ReviewReason: reply.ReviewReason,
+			CreatedAt:    reply.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:    reply.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}
 	return result

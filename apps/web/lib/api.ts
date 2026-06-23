@@ -207,6 +207,35 @@ export type ForumReply = {
   updatedAt: string;
 };
 
+export type MyForumPost = {
+  id: string;
+  boardId: string;
+  title: string;
+  content: string;
+  type: ForumPost["type"];
+  rewardPoints: number;
+  rewardStatus?: string;
+  status: string;
+  reviewReason?: string;
+  visibility: string;
+  commentCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MyForumReply = {
+  id: string;
+  postId: string;
+  postTitle: string;
+  postStatus: string;
+  content: string;
+  isBest: boolean;
+  status: string;
+  reviewReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export function apiBaseUrl() {
   return baseUrl;
 }

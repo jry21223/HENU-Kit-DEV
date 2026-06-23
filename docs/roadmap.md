@@ -17,6 +17,7 @@
 - Web course list/detail, material detail, and quiz practice pages
 - Web forum list/detail pages with post creation, reply submission, and best-answer action entry
 - Web personal download-history page
+- Web personal forum submission tracking page for current user's posts/replies and review status
 - Web profile entitlement summary for active material/package grants
 - Web course package cards with price and included material links
 - Web email-code login form
@@ -49,7 +50,7 @@
 
 ## Next Deliverable
 
-- Richer content review workflows for wiki conflict-resolution UX and richer user-facing forum controls
+- Richer content review workflows for wiki conflict-resolution UX and forum edit/resubmit controls after rejection
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 

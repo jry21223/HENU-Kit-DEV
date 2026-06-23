@@ -48,6 +48,8 @@ Currently implemented endpoints:
 - `GET /api/v1/me/weakness-report`
 - `GET /api/v1/me/downloads`
 - `GET /api/v1/me/entitlements`
+- `GET /api/v1/me/forum-posts?limit=`
+- `GET /api/v1/me/forum-replies?limit=`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/admin/schools`
@@ -183,6 +185,9 @@ Implemented forum behavior:
 - supported post types are `normal`, `question`, and `reward`
 - reward posts require a positive `rewardPoints` value, freeze points on submission with a `forum_reward_escrow` points log, and remain hidden while pending review
 - logged-in, non-frozen users can submit replies to published public forum posts; replies always enter `pending`
+- logged-in users can list only their own forum posts through `/me/forum-posts`, including `status` and their own `reviewReason` for rejected/needs-changes content
+- logged-in users can list only their own forum replies through `/me/forum-replies`, including parent post title/status, reply `status`, and their own `reviewReason`
+- `/me/forum-posts` and `/me/forum-replies` do not expose other users' submissions, `reviewerId`, `reviewedAt`, or admin-only review metadata
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected forum posts through `/admin/forum/posts`
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected forum replies through `/admin/forum/replies`
 - approving a forum post sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`

@@ -5,6 +5,7 @@
 - Production must reject mock payment and fixed verification code configuration.
 - AI-generated content must be reviewed before publication.
 - Admin course, organization, material, upload, archive, status-change, material-review, wiki entry/proposal-review, blog-review, forum post/reply review, forum best-answer selection, and AI draft-review operations write server-side operation logs in the same database transaction as the protected mutation.
+- User-scoped forum tracking endpoints expose only the authenticated user's own posts/replies and may include that user's review reason, but they do not expose `reviewerId`, `reviewedAt`, or hidden submissions from other users.
 - CORS must not use wildcard origins with credentials.
 
 ## Operation Logs
