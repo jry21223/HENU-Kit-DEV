@@ -1,0 +1,48 @@
+[
+  {
+    "school": "河南大学",
+    "college": "软件学院",
+    "major": "网络工程",
+    "majorSlug": "network-engineering",
+    "grade": "2023级",
+    "courseSlug": "discrete-math",
+    "courseName": "离散数学",
+    "courseDescription": "命题逻辑、集合、关系、图论与树的期末复习课程。",
+    "examScope": "命题逻辑、集合论、关系、图论、树。",
+    "packageSlug": "henu-software-2023-discrete-math-final",
+    "packageTitle": "离散数学期末复习包",
+    "packageDescription": "适合河南大学软件学院 2023 级网络工程使用。",
+    "packageStatus": "published",
+    "priceFen": 1990,
+    "currency": "CNY",
+    "materials": [
+      {
+        "title": "离散数学重点知识点讲义",
+        "type": "knowledge_note",
+        "description": "覆盖命题逻辑、集合、关系、图论、树等期末重点。",
+        "filePath": "uploads/materials/discrete-math/knowledge-note.pdf",
+        "accessLevel": "login_required",
+        "status": "published",
+        "previewContent": "本讲义整理离散数学期末高频知识点。"
+      },
+      {
+        "title": "离散数学模拟卷一",
+        "type": "mock_paper",
+        "description": "按期末题型整理的第一套模拟卷。",
+        "filePath": "uploads/materials/discrete-math/mock-1.pdf",
+        "accessLevel": "paid",
+        "status": "published",
+        "previewContent": "包含选择题、判断题、计算证明题和综合应用题。"
+      },
+      {
+        "title": "离散数学答案解析",
+        "type": "answer",
+        "description": "模拟卷配套答案与详细解析。",
+        "filePath": "uploads/materials/discrete-math/answers.pdf",
+        "accessLevel": "paid",
+        "status": "published",
+        "previewContent": "提供关键步骤和易错点说明。"
+      }
+    ]
+  }
+]

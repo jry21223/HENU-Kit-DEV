@@ -17,3 +17,11 @@ The seed is safe to run repeatedly and creates demo data for local development:
 - wiki, blog, forum, moment, points, membership, notification, and mock AI task examples
 
 The seed does not create or commit real course files. Material `storage_key` values point under `uploads/materials/...`; provide local files separately when testing downloads.
+
+Prepared real course materials can be imported after files are mounted under `LOCAL_UPLOAD_DIR`:
+
+```bash
+go run ./cmd/import-materials ../../data/material-manifest.example.json
+```
+
+The manifest importer rejects missing files and path traversal, and repeated imports update existing rows without duplicating materials or package-item bindings.

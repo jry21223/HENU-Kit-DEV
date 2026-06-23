@@ -141,7 +141,23 @@ seed 会创建示例组织/课程、资料、课程包、题目、社区内容�
 
 seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 不会提交到仓库，应通过部署挂载或后台上传提供。
 
-## 8. 安全边界
+## 8. 资料 Manifest 导入
+
+已准备好的课程资料可以通过 manifest 导入，示例文件在 `data/material-manifest.example.json`。真实 PDF / DOCX / TXT 文件仍放在 `uploads/materials/...` 或部署挂载目录中，不提交到 Git。
+
+```bash
+cd services/api
+go run ./cmd/import-materials ../../data/material-manifest.example.json
+```
+
+导入规则：
+
+- manifest 中的 `uploads/materials/...` 会转换为内部 `storage_key=materials/...`。
+- 文件必须真实存在，并且必须位于 `LOCAL_UPLOAD_DIR` 内。
+- 危险路径如 `../../secret.pdf` 会被拒绝。
+- 重复导入会更新已有资料并复用课程包绑定，不重复创建 material 或 package item。
+
+## 9. 安全边界
 
 - 不提交 `.env`、JWT 私钥、微信支付密钥、LLM API Key 或真实课程 PDF。
 - `uploads/` 是运行时存储，除占位文件外被忽略。
@@ -152,7 +168,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - PDF 水印由 Go API 下载接口动态生成临时文件；如果 PDF 处理失败，下载会返回错误而不是静默直出未水印文件。
 - AI 生成内容必须先进入 draft/review 流程，不能自动发布为正式内容。
 
-## 9. 开发入口
+## 10. 开发入口
 
 - 架构设计：`docs/architecture.md`
 - API 文档：`docs/api.md`
@@ -166,7 +182,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Web：`apps/web`
 - Admin：`apps/admin`
 
-## 10. Current Admin Notes
+## 11. Current Admin Notes
 
 - Vue Admin includes `/downloads` for successful material download audit logs.
 - Vue Admin includes `/users` for admin-only user listing, role updates, and active/frozen status changes. The Go API prevents self role/status changes and restricts `super_admin` edits/grants to `super_admin` users.

@@ -56,6 +56,7 @@
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog, Web package list/detail pages, package-level material grants, and public package-detail filtering that hides unpublished package items as well as unpublished material objects
 - Course package pending-order foundation with server-authoritative package pricing, duplicate pending-order reuse, and user-scoped order status
+- Material manifest import command with example manifest, existing-file checks, path traversal rejection, idempotent material upsert, and idempotent course-package item binding
 - WeChat Native mock payment request endpoint for development/test, with production mock guard and no entitlement side effects
 - Web package detail renders server-returned WeChat Native code URLs as local QR codes and polls read-only order status
 - Development/test signed mock WeChat notify can mark an order paid and idempotently issue a package entitlement after signature and amount checks
@@ -73,6 +74,7 @@
 
 - Richer content review workflows for wiki conflict-resolution UX and additional notification sources for payment and membership
 - Admin analytics expansion for page visits, search intent, course request voting, payment, and membership conversion metrics
+- Real internal material import dry run with mounted course files, package binding audit, and paid-download smoke verification
 - Real WeChat merchant end-to-end payment verification, order closing, certificate rotation handling, and payment operation alerts
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 

@@ -33,4 +33,15 @@ cd services/api
 go run ./cmd/seed
 ```
 
-The seed command runs AutoMigrate and inserts the current demo school, majors, courses, one material, one question, and demo users.
+The seed command runs AutoMigrate and inserts the current demo school, majors, courses, materials, questions, community content, mock AI task, and demo users.
+
+## Material Manifest Import
+
+Prepared course files can be imported through a manifest after the files are mounted or copied under `LOCAL_UPLOAD_DIR`:
+
+```bash
+cd services/api
+go run ./cmd/import-materials ../../data/material-manifest.example.json
+```
+
+The importer is safe to run repeatedly. It upserts schools, colleges, majors, courses, packages, and materials, then idempotently binds imported materials to the course package. File paths in the manifest must resolve inside `LOCAL_UPLOAD_DIR`; missing files and traversal attempts fail the import transaction.
