@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -167,6 +168,60 @@ func ParsePlatformPublicKeyPEM(content []byte) (*rsa.PublicKey, error) {
 		}
 	}
 	return nil, ErrInvalidPlatformPublicKey
+}
+
+func LoadPlatformPublicKeyBySerial(dir string, serial string) (*rsa.PublicKey, error) {
+	dir = strings.TrimSpace(dir)
+	serial = strings.ToUpper(strings.TrimSpace(serial))
+	if dir == "" || serial == "" {
+		return nil, ErrInvalidPlatformPublicKey
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.ToUpper(entry.Name())
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".pem" && ext != ".crt" && ext != ".cer" {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		if publicKey, ok := platformPublicKeyFromCertificate(content, serial); ok {
+			return publicKey, nil
+		}
+		if strings.Contains(name, serial) {
+			if publicKey, err := ParsePlatformPublicKeyPEM(content); err == nil {
+				return publicKey, nil
+			}
+		}
+	}
+	return nil, ErrInvalidPlatformPublicKey
+}
+
+func platformPublicKeyFromCertificate(content []byte, serial string) (*rsa.PublicKey, bool) {
+	block, _ := pem.Decode(content)
+	if block == nil {
+		return nil, false
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, false
+	}
+	if strings.ToUpper(cert.SerialNumber.Text(16)) != serial {
+		return nil, false
+	}
+	publicKey, ok := cert.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, false
+	}
+	return publicKey, true
 }
 
 func escapeAuthorizationValue(value string) string {

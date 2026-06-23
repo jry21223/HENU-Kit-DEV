@@ -119,7 +119,25 @@ func (h Handler) WeChatNative(ctx *gin.Context) {
 		return
 	}
 	if payCfg.Mode == wechatModeLive {
-		response.Error(ctx, http.StatusNotImplemented, response.CodeInternalServer, ErrWeChatLiveNotImplemented.Error(), nil)
+		result, err := createLiveNativePayment(ctx.Request.Context(), payCfg, order, coursePackage)
+		if err != nil {
+			response.Error(ctx, http.StatusBadGateway, response.CodeInternalServer, err.Error(), nil)
+			return
+		}
+		if err := h.markOrderPaying(order.ID, result.CodeURL, result.ExpiresAt); err != nil {
+			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "payment_create_failed", nil)
+			return
+		}
+		response.OK(ctx, nativeResponse{
+			OrderID:     order.ID,
+			CodeURL:     result.CodeURL,
+			ExpiresAt:   result.ExpiresAt,
+			Status:      model.OrderPaying,
+			AmountTotal: order.AmountTotal,
+			Currency:    order.Currency,
+			Title:       coursePackage.Title,
+			Mock:        false,
+		})
 		return
 	}
 
@@ -189,10 +207,13 @@ func ValidateWeChatNativeConfig(environment string, cfg config.WeChatPayConfig) 
 		}
 		return nil
 	case wechatModeLive:
-		if cfg.AppID == "" || cfg.MchID == "" || cfg.APIV3Key == "" || cfg.MerchantSerialNo == "" || cfg.NotifyURL == "" {
+		if cfg.APIBaseURL == "" || cfg.AppID == "" || cfg.MchID == "" || cfg.APIV3Key == "" || cfg.MerchantSerialNo == "" || cfg.NotifyURL == "" {
 			return ErrWeChatLiveConfigMissing
 		}
 		if cfg.MerchantPrivateKey == "" && cfg.MerchantPrivateKeyPath == "" {
+			return ErrWeChatLiveConfigMissing
+		}
+		if cfg.PlatformCertsDir == "" {
 			return ErrWeChatLiveConfigMissing
 		}
 		return nil
@@ -205,6 +226,10 @@ func normalizedWeChatConfig(cfg config.WeChatPayConfig) config.WeChatPayConfig {
 	cfg.Mode = strings.ToLower(strings.TrimSpace(cfg.Mode))
 	if cfg.Mode == "" {
 		cfg.Mode = wechatModeMock
+	}
+	cfg.APIBaseURL = strings.TrimRight(strings.TrimSpace(cfg.APIBaseURL), "/")
+	if cfg.APIBaseURL == "" {
+		cfg.APIBaseURL = "https://api.mch.weixin.qq.com"
 	}
 	cfg.AppID = strings.TrimSpace(cfg.AppID)
 	cfg.MchID = strings.TrimSpace(cfg.MchID)

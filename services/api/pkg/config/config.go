@@ -43,6 +43,7 @@ type JWTConfig struct {
 
 type WeChatPayConfig struct {
 	Mode                   string
+	APIBaseURL             string
 	AppID                  string
 	MchID                  string
 	APIV3Key               string
@@ -81,6 +82,7 @@ func Load() Config {
 		},
 		WeChatPay: WeChatPayConfig{
 			Mode:                   env("WECHAT_PAY_MODE", "mock"),
+			APIBaseURL:             env("WECHAT_PAY_API_BASE_URL", "https://api.mch.weixin.qq.com"),
 			AppID:                  env("WECHAT_PAY_APPID", ""),
 			MchID:                  env("WECHAT_PAY_MCH_ID", ""),
 			APIV3Key:               env("WECHAT_PAY_API_V3_KEY", ""),

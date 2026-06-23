@@ -157,6 +157,7 @@ func TestWeChatNativeConfigValidation(t *testing.T) {
 		APIV3Key:            "api-v3-key",
 		MerchantSerialNo:    "serial",
 		MerchantPrivateKey:  "private-key",
+		PlatformCertsDir:    "certs/wechat",
 		NotifyURL:           "https://example.com/api/v1/payments/wechat/notify",
 		NativeExpireMinutes: 15,
 	}

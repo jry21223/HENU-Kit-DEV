@@ -220,11 +220,11 @@ Implemented WeChat Native payment boundary:
 - development/test `POST /api/v1/payments/wechat/notify` accepts mock callback JSON signed with `X-WeChat-Mock-Signature = hmac_sha256(WECHAT_PAY_API_V3_KEY, raw_body)`; this is only a local test harness, not the real WeChat callback verifier
 - mock notify rejects missing/invalid signatures, missing mock secret, unknown orders, and amount mismatches without granting entitlement
 - a successful mock notify changes the matching order to `paid`, records a `payment_records` row, and creates one idempotent package grant with `source=order`
-- live-mode helper functions exist for WeChat Pay API v3 request signing, Authorization header construction, RSA notify signature verification, merchant/private-key parsing, platform public-key parsing, and AES-256-GCM resource decryption
+- live mode builds a signed WeChat Native `POST /v3/pay/transactions/native` request using the merchant private key, sends integer-cent server-side package pricing, requires a matching platform certificate/public key for response signature verification, and stores the returned `code_url` only after the signed response verifies
 - production rejects `WECHAT_PAY_MODE=mock` with `wechat_mock_forbidden_in_production`
-- `WECHAT_PAY_MODE=live` validates required merchant configuration before use, but real WeChat API calls are not implemented yet and return `wechat_live_not_implemented`
+- `WECHAT_PAY_MODE=live` requires `WECHAT_PAY_API_BASE_URL`, appid, mchid, API v3 key, merchant serial number, merchant private key or key path, platform certs dir, and notify URL before use
 - Native code URL creation never marks an order paid, never grants entitlement, and never changes paid material access; Web QR rendering is only a display layer over the server-returned `codeUrl`
-- wiring those live helpers into real Native HTTP calls, official notify processing, appid/mchid checks, and live entitlement issuance remains later work
+- official WeChat notify signature verification/decryption, appid/mchid checks, and live entitlement issuance remains later work
 
 Implemented quiz behavior:
 
