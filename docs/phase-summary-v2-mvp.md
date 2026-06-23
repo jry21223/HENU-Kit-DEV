@@ -102,6 +102,14 @@
   - 签名错误、金额不一致、订单不存在、缺少 mock secret 时不会更新订单，也不会发放 entitlement。
   - 成功 mock notify 会把订单置为 `paid`，写入 `payment_records`，并幂等发放一次课程包 entitlement。
   - 这只是本地联调 harness，不是微信官方验签/解密实现。
+- 已实现并单测微信支付 API v3 live 所需密码学基础件：
+  - RSA 请求签名。
+  - Authorization header 组装。
+  - 微信 notify 原文验签。
+  - 商户私钥解析。
+  - 平台公钥/证书公钥解析。
+  - AES-256-GCM resource 解密。
+  - 这些函数尚未接入真实微信 HTTP 下单与官方 notify handler。
 - Web 课程包详情页现在可以：
   - 创建或复用待支付课程包订单。
   - 调用 Native 下单接口获取服务端返回的 `codeUrl`。
@@ -191,10 +199,7 @@ Admin 页面不会直接授予支付成功，也不会绕过 Go API 权限。
 还没有完成：
 
 - 真实微信 Native 下单 HTTP 调用。
-- 商户私钥签名。
-- 平台证书验签。
-- 微信官方支付回调签名验证。
-- 微信官方回调 resource 解密。
+- 将已测试的商户签名、平台验签和 resource 解密 helper 接入真实处理链路。
 - appid / mchid 校验。
 - 关单接口。
 
@@ -266,7 +271,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、Web 错题本存在；练习 session、复杂评分仍需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review 存在；真实 LLM、RAG、发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在论坛悬赏等场景已使用；会员产品和兑换链路未完整闭环。 |
-| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询，以及开发/测试 mock notify 支付成功、幂等授权闭环；真实微信支付未完成。 |
+| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环，以及 live 所需签名/验签/解密基础件；真实微信 HTTP 下单和官方 notify 处理未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 / 强 MVP | Wiki 公开页、修订提案、审核、历史、stale 防护已做；创作者申请流未完整完成。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog、Forum 基础和审核已做；Moment、关系系统、用户主页未做。 |
 | Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已做；搜索和排行榜未做。 |
@@ -339,8 +344,7 @@ git diff --check
 1. 继续微信 Native 支付硬化：
    - live 配置校验；
    - 真实 Native 下单；
-   - 微信官方回调验签；
-   - resource 解密；
+   - 把已测试的微信签名/验签/解密 helper 接进 live handler；
    - appid/mchid 校验；
    - 关单；
    - live 支付链路端到端测试。

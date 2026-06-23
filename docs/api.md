@@ -220,10 +220,11 @@ Implemented WeChat Native payment boundary:
 - development/test `POST /api/v1/payments/wechat/notify` accepts mock callback JSON signed with `X-WeChat-Mock-Signature = hmac_sha256(WECHAT_PAY_API_V3_KEY, raw_body)`; this is only a local test harness, not the real WeChat callback verifier
 - mock notify rejects missing/invalid signatures, missing mock secret, unknown orders, and amount mismatches without granting entitlement
 - a successful mock notify changes the matching order to `paid`, records a `payment_records` row, and creates one idempotent package grant with `source=order`
+- live-mode helper functions exist for WeChat Pay API v3 request signing, Authorization header construction, RSA notify signature verification, merchant/private-key parsing, platform public-key parsing, and AES-256-GCM resource decryption
 - production rejects `WECHAT_PAY_MODE=mock` with `wechat_mock_forbidden_in_production`
 - `WECHAT_PAY_MODE=live` validates required merchant configuration before use, but real WeChat API calls are not implemented yet and return `wechat_live_not_implemented`
 - Native code URL creation never marks an order paid, never grants entitlement, and never changes paid material access; Web QR rendering is only a display layer over the server-returned `codeUrl`
-- real WeChat notify signature verification, resource decryption, appid/mchid checks, and live entitlement issuance remain later work
+- wiring those live helpers into real Native HTTP calls, official notify processing, appid/mchid checks, and live entitlement issuance remains later work
 
 Implemented quiz behavior:
 

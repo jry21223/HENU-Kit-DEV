@@ -30,7 +30,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
-- 微信支付 Native 是目标支付方案；当前支持开发/测试环境 mock Native codeUrl 和带 HMAC 的 mock notify 闭环，生产环境禁止 mock，真实商户下单、微信验签和回调解密仍未完成。
+- 微信支付 Native 是目标支付方案；当前支持开发/测试环境 mock Native codeUrl 和带 HMAC 的 mock notify 闭环，生产环境禁止 mock；真实商户下单和官方 notify 处理仍未接通，但 live 所需签名、验签和 resource 解密基础件已有单测覆盖。
 - AI 当前使用 mock LLM；AI 生成内容不会绕过审核自动发布。
 - 当前没有生产数据迁移要求。
 
