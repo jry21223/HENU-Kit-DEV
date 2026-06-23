@@ -132,7 +132,11 @@ Important boundaries:
 
 ## Operation Logs
 
-`/operation-logs` calls `GET /api/v1/admin/operation-logs` and requires an authenticated `admin` or `super_admin` role.
+`/operation-logs` calls the following endpoints and requires an authenticated `admin` or `super_admin` role:
+
+- `GET /api/v1/admin/operation-logs`
+- `GET /api/v1/admin/operation-logs/export`
+- `GET /api/v1/admin/operation-logs/retention`
 
 The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
@@ -142,12 +146,16 @@ Filters:
 - `action`
 - `targetType`
 - `targetId`
+- `createdFrom`
+- `createdTo`
 - `limit`
 
 Important boundaries:
 
 - The page is read-only.
 - Logs cannot be edited or deleted from Vue Admin.
+- CSV export uses the same filters as the table and is capped by `OPERATION_LOG_EXPORT_LIMIT`.
+- The retention panel shows `OPERATION_LOG_RETENTION_DAYS`; automatic deletion is not enabled in the MVP.
 - Reviewer-only users cannot access operation logs.
 - Invalid or rejected mutation requests do not write operation log rows.
 
@@ -178,4 +186,4 @@ Important boundaries:
 - Orders
 - Reports
 - System config
-- Richer operation-log exports and retention policy
+- Automatic operation-log retention cleanup after a production-safe archival flow exists

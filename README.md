@@ -163,12 +163,14 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Vue Admin includes `/material-reviews` for reviewer/admin material approve/reject review, review reason capture, and one-way pending review checks.
 - Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility, draft approve/reject review, and review reason capture.
 - Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, and course demand.
+- Vue Admin includes operation-log time filtering, CSV export, and a read-only retention policy panel.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
 - Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.
 - Admin analytics are based on successful server-side download logs; denied download attempts, page visits, search intent, and payment conversion are not included yet.
 - Material review is one-way for the MVP: only pending materials can be approved or rejected through reviewer endpoints, rejected materials stay hidden from public pages, and rejection requires a review reason.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
 - Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, material review, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
+- Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.
 - Real AI publish-to-resource flows remain later work.
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.
 - Web `/me` also reads `GET /api/v1/me/entitlements` to show active direct material grants, published course package grants, and unlocked material counts for the current user.

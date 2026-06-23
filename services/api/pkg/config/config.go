@@ -13,19 +13,21 @@ type RedisConfig struct {
 }
 
 type Config struct {
-	Environment        string
-	Port               string
-	Version            string
-	DatabaseURL        string
-	Redis              RedisConfig
-	CORSAllowedOrigins []string
-	RateLimitRPS       float64
-	RateLimitBurst     int
-	AutoMigrate        bool
-	DevFixedCode       string
-	LocalUploadDir     string
-	AITaskStream       string
-	JWT                JWTConfig
+	Environment               string
+	Port                      string
+	Version                   string
+	DatabaseURL               string
+	Redis                     RedisConfig
+	CORSAllowedOrigins        []string
+	RateLimitRPS              float64
+	RateLimitBurst            int
+	AutoMigrate               bool
+	DevFixedCode              string
+	LocalUploadDir            string
+	AITaskStream              string
+	OperationLogRetentionDays int
+	OperationLogExportLimit   int
+	JWT                       JWTConfig
 }
 
 type JWTConfig struct {
@@ -40,18 +42,20 @@ type JWTConfig struct {
 
 func Load() Config {
 	return Config{
-		Environment:        env("APP_ENV", "development"),
-		Port:               env("API_PORT", "8080"),
-		Version:            env("APP_VERSION", "0.1.0"),
-		DatabaseURL:        env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
-		Redis:              loadRedisConfig(),
-		CORSAllowedOrigins: csvEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"),
-		RateLimitRPS:       floatEnv("RATE_LIMIT_RPS", 20),
-		RateLimitBurst:     intEnv("RATE_LIMIT_BURST", 40),
-		AutoMigrate:        boolEnv("AUTO_MIGRATE", true),
-		DevFixedCode:       env("DEV_FIXED_VERIFICATION_CODE", "123456"),
-		LocalUploadDir:     env("LOCAL_UPLOAD_DIR", "uploads"),
-		AITaskStream:       env("AI_TASK_STREAM", "ai_tasks"),
+		Environment:               env("APP_ENV", "development"),
+		Port:                      env("API_PORT", "8080"),
+		Version:                   env("APP_VERSION", "0.1.0"),
+		DatabaseURL:               env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
+		Redis:                     loadRedisConfig(),
+		CORSAllowedOrigins:        csvEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"),
+		RateLimitRPS:              floatEnv("RATE_LIMIT_RPS", 20),
+		RateLimitBurst:            intEnv("RATE_LIMIT_BURST", 40),
+		AutoMigrate:               boolEnv("AUTO_MIGRATE", true),
+		DevFixedCode:              env("DEV_FIXED_VERIFICATION_CODE", "123456"),
+		LocalUploadDir:            env("LOCAL_UPLOAD_DIR", "uploads"),
+		AITaskStream:              env("AI_TASK_STREAM", "ai_tasks"),
+		OperationLogRetentionDays: intEnv("OPERATION_LOG_RETENTION_DAYS", 180),
+		OperationLogExportLimit:   intEnv("OPERATION_LOG_EXPORT_LIMIT", 5000),
 		JWT: JWTConfig{
 			Issuer:           env("JWT_ISSUER", "final-review-platform"),
 			AccessTTLMinutes: intEnv("JWT_ACCESS_TTL_MINUTES", 15),

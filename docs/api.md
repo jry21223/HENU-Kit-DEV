@@ -65,6 +65,9 @@ Currently implemented endpoints:
 - `POST /api/v1/admin/ai/drafts/:id/approve`
 - `POST /api/v1/admin/ai/drafts/:id/reject`
 - `GET /api/v1/admin/analytics/overview`
+- `GET /api/v1/admin/operation-logs?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
+- `GET /api/v1/admin/operation-logs/export?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
+- `GET /api/v1/admin/operation-logs/retention`
 
 Response envelope:
 
@@ -153,6 +156,9 @@ Implemented admin behavior:
 - upload rejects files larger than 20 MiB
 - manually supplied `storageKey` values with path traversal are rejected
 - admin analytics overview returns read-only totals, 14-day successful-download trend, top materials, course demand, and access-level breakdown
+- admin operation logs support filtering by operator, action, target, created time range, and limit
+- operation log CSV export reuses the same filters, requires admin role, and caps output by `OPERATION_LOG_EXPORT_LIMIT`
+- operation log retention policy is exposed read-only through `/admin/operation-logs/retention`; automatic deletion is not enabled in the MVP
 
 Implemented AI behavior:
 

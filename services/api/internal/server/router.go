@@ -57,7 +57,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	entitlementHandler := entitlement.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
-	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir)
+	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
 	analyticsHandler := analytics.NewHandler(db)
 	router.GET("/healthz", healthHandler.Healthz)
@@ -128,6 +128,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.POST("/materials/upload", adminHandler.UploadMaterial)
 	admin.GET("/downloads", downloadLogHandler.AdminDownloads)
 	admin.GET("/operation-logs", adminHandler.OperationLogs)
+	admin.GET("/operation-logs/export", adminHandler.ExportOperationLogs)
+	admin.GET("/operation-logs/retention", adminHandler.OperationLogRetention)
 	admin.GET("/analytics/overview", analyticsHandler.Overview)
 
 	review := v1.Group("/admin")

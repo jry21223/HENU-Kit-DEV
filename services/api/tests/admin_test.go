@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"encoding/csv"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/internal/server"
@@ -482,6 +484,85 @@ func TestAdminOperationLogsRequiresAdminAndFilters(t *testing.T) {
 	invalidLimit := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs?limit=0", "", adminToken)
 	if invalidLimit.Code != http.StatusBadRequest || !strings.Contains(invalidLimit.Body.String(), "invalid_limit") {
 		t.Fatalf("expected invalid limit rejection, got %d: %s", invalidLimit.Code, invalidLimit.Body.String())
+	}
+}
+
+func TestAdminOperationLogExportAndRetentionPolicy(t *testing.T) {
+	db := newTestDB(t)
+	cfg := testConfig()
+	cfg.OperationLogRetentionDays = 30
+	cfg.OperationLogExportLimit = 2
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
+
+	admin := createTestUser(t, db, "log-export-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, "log-export-admin@stu.henu.edu.cn")
+	studentToken := loginTestUser(t, router, "log-export-student@stu.henu.edu.cn")
+
+	oldTime := time.Date(2026, 6, 20, 8, 0, 0, 0, time.UTC)
+	midTime := time.Date(2026, 6, 21, 8, 0, 0, 0, time.UTC)
+	newTime := time.Date(2026, 6, 22, 8, 0, 0, 0, time.UTC)
+	logs := []model.OperationLog{
+		{BaseModel: model.BaseModel{CreatedAt: oldTime}, OperatorID: admin.ID, Action: "=danger", TargetType: "material", TargetID: "old-log", IP: "192.0.2.1", UserAgent: "old-agent"},
+		{BaseModel: model.BaseModel{CreatedAt: midTime}, OperatorID: admin.ID, Action: "material.approved", TargetType: "material", TargetID: "mid-log", IP: "192.0.2.2", UserAgent: "mid-agent"},
+		{BaseModel: model.BaseModel{CreatedAt: newTime}, OperatorID: admin.ID, Action: "material.rejected", TargetType: "material", TargetID: "new-log", IP: "192.0.2.3", UserAgent: "new-agent"},
+	}
+	if err := db.Create(&logs).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deniedExport := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs/export", "", studentToken)
+	if deniedExport.Code != http.StatusForbidden {
+		t.Fatalf("expected student operation log export 403, got %d: %s", deniedExport.Code, deniedExport.Body.String())
+	}
+	invalidDate := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs/export?createdFrom=not-a-date", "", adminToken)
+	if invalidDate.Code != http.StatusBadRequest || !strings.Contains(invalidDate.Body.String(), "invalid_created_from") {
+		t.Fatalf("expected invalid export date rejection, got %d: %s", invalidDate.Code, invalidDate.Body.String())
+	}
+
+	exportResponse := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs/export?targetType=material&createdFrom=2026-06-21&limit=10", "", adminToken)
+	if exportResponse.Code != http.StatusOK {
+		t.Fatalf("expected operation log export 200, got %d: %s", exportResponse.Code, exportResponse.Body.String())
+	}
+	if !strings.Contains(exportResponse.Header().Get("Content-Type"), "text/csv") {
+		t.Fatalf("expected csv content type, got %s", exportResponse.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(exportResponse.Header().Get("Content-Disposition"), "operation-logs-") {
+		t.Fatalf("expected operation log attachment header, got %s", exportResponse.Header().Get("Content-Disposition"))
+	}
+	reader := csv.NewReader(strings.NewReader(exportResponse.Body.String()))
+	records, err := reader.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("expected header plus 2 capped export rows, got %#v", records)
+	}
+	if records[0][0] != "id" || records[0][3] != "action" {
+		t.Fatalf("unexpected csv header: %#v", records[0])
+	}
+	csvBody := exportResponse.Body.String()
+	if strings.Contains(csvBody, "old-log") {
+		t.Fatalf("export leaked row before createdFrom filter: %s", csvBody)
+	}
+	if !strings.Contains(csvBody, "mid-log") || !strings.Contains(csvBody, "new-log") {
+		t.Fatalf("expected filtered rows in export, got %s", csvBody)
+	}
+
+	formulaExport := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs/export?action==danger&limit=1", "", adminToken)
+	if formulaExport.Code != http.StatusOK {
+		t.Fatalf("expected formula export 200, got %d: %s", formulaExport.Code, formulaExport.Body.String())
+	}
+	if !strings.Contains(formulaExport.Body.String(), "'=danger") {
+		t.Fatalf("expected formula-like CSV cell to be escaped, got %s", formulaExport.Body.String())
+	}
+
+	retention := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs/retention", "", adminToken)
+	if retention.Code != http.StatusOK || !strings.Contains(retention.Body.String(), `"retentionDays":30`) || !strings.Contains(retention.Body.String(), `"exportLimit":2`) {
+		t.Fatalf("expected configured retention policy, got %d: %s", retention.Code, retention.Body.String())
+	}
+	studentRetention := performJSON(router, http.MethodGet, "/api/v1/admin/operation-logs/retention", "", studentToken)
+	if studentRetention.Code != http.StatusForbidden {
+		t.Fatalf("expected student operation log retention 403, got %d: %s", studentRetention.Code, studentRetention.Body.String())
 	}
 }
 

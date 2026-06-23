@@ -29,6 +29,7 @@
 - Vue admin material review queue with reviewer-role access, approve/reject actions, review notes, and one-way pending review checks
 - Vue admin read-only analytics page for download trend and course demand
 - Vue admin read-only operation-log browser for high-risk admin mutations
+- Vue admin operation-log filtering, CSV export, and read-only retention policy panel
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
 - Server-side operation logs for organization, course, material, upload, status/archive, and AI draft review mutations
@@ -42,7 +43,6 @@
 
 - Richer content review workflows for wiki/blog/forum submissions
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
-- Operation-log exports and retention policy
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables

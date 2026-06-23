@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,6 +26,8 @@ import (
 )
 
 const maxUploadBytes = 20 * 1024 * 1024
+const defaultOperationLogRetentionDays = 180
+const defaultOperationLogExportLimit = 5000
 
 var allowedUploadExtensions = map[string]bool{
 	".pdf":  true,
@@ -33,15 +37,28 @@ var allowedUploadExtensions = map[string]bool{
 }
 
 type Handler struct {
-	db        *gorm.DB
-	uploadDir string
+	db                        *gorm.DB
+	uploadDir                 string
+	operationLogRetentionDays int
+	operationLogExportLimit   int
 }
 
-func NewHandler(db *gorm.DB, uploadDir string) Handler {
+func NewHandler(db *gorm.DB, uploadDir string, operationLogRetentionDays int, operationLogExportLimit int) Handler {
 	if strings.TrimSpace(uploadDir) == "" {
 		uploadDir = "uploads"
 	}
-	return Handler{db: db, uploadDir: uploadDir}
+	if operationLogRetentionDays <= 0 {
+		operationLogRetentionDays = defaultOperationLogRetentionDays
+	}
+	if operationLogExportLimit <= 0 {
+		operationLogExportLimit = defaultOperationLogExportLimit
+	}
+	return Handler{
+		db:                        db,
+		uploadDir:                 uploadDir,
+		operationLogRetentionDays: operationLogRetentionDays,
+		operationLogExportLimit:   operationLogExportLimit,
+	}
 }
 
 type schoolRequest struct {
@@ -99,6 +116,75 @@ type materialReviewRequest struct {
 }
 
 func (h Handler) OperationLogs(ctx *gin.Context) {
+	query, ok := h.operationLogQuery(ctx)
+	if !ok {
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 200, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var logs []model.OperationLog
+	if err := query.Order("created_at desc").Limit(limit).Find(&logs).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"operationLogs": logs})
+}
+
+func (h Handler) ExportOperationLogs(ctx *gin.Context) {
+	query, ok := h.operationLogQuery(ctx)
+	if !ok {
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), h.operationLogExportLimit, h.operationLogExportLimit)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var logs []model.OperationLog
+	if err := query.Order("created_at desc").Limit(limit).Find(&logs).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+
+	fileName := "operation-logs-" + time.Now().UTC().Format("20060102-150405") + ".csv"
+	ctx.Header("Content-Type", "text/csv; charset=utf-8")
+	ctx.Header("Content-Disposition", "attachment; filename="+fileName)
+	writer := csv.NewWriter(ctx.Writer)
+	_ = writer.Write([]string{"id", "created_at", "operator_id", "action", "target_type", "target_id", "ip", "user_agent", "metadata"})
+	for _, log := range logs {
+		_ = writer.Write([]string{
+			safeCSVCell(log.ID),
+			safeCSVCell(log.CreatedAt.UTC().Format(time.RFC3339)),
+			safeCSVCell(log.OperatorID),
+			safeCSVCell(log.Action),
+			safeCSVCell(log.TargetType),
+			safeCSVCell(log.TargetID),
+			safeCSVCell(log.IP),
+			safeCSVCell(log.UserAgent),
+			safeCSVCell(jsonString(log.Metadata)),
+		})
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "export_failed", nil)
+		return
+	}
+}
+
+func (h Handler) OperationLogRetention(ctx *gin.Context) {
+	response.OK(ctx, gin.H{
+		"retentionDays":     h.operationLogRetentionDays,
+		"exportLimit":       h.operationLogExportLimit,
+		"automaticDeletion": false,
+		"policy":            "Operation logs are retained for audit review; automatic deletion is not enabled in the MVP.",
+		"recommendedReview": "Review and export high-risk admin mutations before manual retention cleanup.",
+	})
+}
+
+func (h Handler) operationLogQuery(ctx *gin.Context) (*gorm.DB, bool) {
 	query := h.db.Model(&model.OperationLog{})
 	if operatorID := strings.TrimSpace(ctx.Query("operatorId")); operatorID != "" {
 		query = query.Where("operator_id = ?", operatorID)
@@ -112,17 +198,23 @@ func (h Handler) OperationLogs(ctx *gin.Context) {
 	if targetID := strings.TrimSpace(ctx.Query("targetId")); targetID != "" {
 		query = query.Where("target_id = ?", targetID)
 	}
-	limit, ok := parseLimit(ctx.Query("limit"), 200, 500)
-	if !ok {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
-		return
+	if createdFrom := strings.TrimSpace(ctx.Query("createdFrom")); createdFrom != "" {
+		parsed, ok := parseLogTime(createdFrom, false)
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_created_from", nil)
+			return nil, false
+		}
+		query = query.Where("created_at >= ?", parsed)
 	}
-	var logs []model.OperationLog
-	if err := query.Order("created_at desc").Limit(limit).Find(&logs).Error; err != nil {
-		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
-		return
+	if createdTo := strings.TrimSpace(ctx.Query("createdTo")); createdTo != "" {
+		parsed, ok := parseLogTime(createdTo, true)
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_created_to", nil)
+			return nil, false
+		}
+		query = query.Where("created_at <= ?", parsed)
 	}
-	response.OK(ctx, gin.H{"operationLogs": logs})
+	return query, true
 }
 
 func (h Handler) CreateSchool(ctx *gin.Context) {
@@ -869,6 +961,49 @@ func parseLimit(raw string, fallback int, max int) (int, bool) {
 		return max, true
 	}
 	return limit, true
+}
+
+func parseLogTime(raw string, endOfDay bool) (time.Time, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return time.Time{}, false
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed, true
+	}
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		if endOfDay {
+			parsed = parsed.Add(24*time.Hour - time.Nanosecond)
+		}
+		return parsed, true
+	}
+	return time.Time{}, false
+}
+
+func jsonString(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func safeCSVCell(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	trimmed := strings.TrimLeft(value, " \t")
+	if trimmed == "" {
+		return value
+	}
+	switch trimmed[0] {
+	case '=', '+', '-', '@':
+		return "'" + value
+	default:
+		return value
+	}
 }
 
 func required(value string) string {

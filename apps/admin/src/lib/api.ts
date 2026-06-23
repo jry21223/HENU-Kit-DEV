@@ -174,6 +174,10 @@ export function setStoredToken(token: string) {
   }
 }
 
+export function apiUrl(path: string) {
+  return `${baseUrl}${path}`;
+}
+
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<Envelope<T>> {
   const token = getStoredToken();
   const headers = new Headers(init.headers);
