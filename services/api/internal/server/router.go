@@ -24,6 +24,7 @@ import (
 	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/internal/packagecatalog"
 	"final-review-platform/services/api/internal/quiz"
+	"final-review-platform/services/api/internal/report"
 	"final-review-platform/services/api/internal/wiki"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/middleware"
@@ -64,6 +65,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	notificationHandler := notification.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
+	reportHandler := report.NewHandler(db)
 	wikiHandler := wiki.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
@@ -113,6 +115,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/wiki/entries/:id", wikiHandler.Detail)
 	v1.POST("/wiki/entries", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.Create)
 	v1.POST("/wiki/entries/:id/proposals", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.CreateProposal)
+	v1.POST("/reports", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), reportHandler.Create)
 	v1.POST("/quiz/attempts", authMiddleware.RequireAuth(), quizHandler.CreateAttempt)
 	v1.GET("/me/quiz-attempts", authMiddleware.RequireAuth(), quizHandler.MyAttempts)
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
@@ -184,6 +187,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	review.GET("/wiki/proposals", wikiHandler.AdminProposals)
 	review.POST("/wiki/proposals/:id/approve", wikiHandler.ApproveProposal)
 	review.POST("/wiki/proposals/:id/reject", wikiHandler.RejectProposal)
+	review.GET("/reports", reportHandler.AdminReports)
+	review.POST("/reports/:id/resolve", reportHandler.Resolve)
+	review.POST("/reports/:id/reject", reportHandler.Reject)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})

@@ -39,6 +39,7 @@
 - Forum reward posts with server-side point escrow, review visibility, rejection refunds, and points ledger rows
 - Forum best-answer selection with one-answer-per-post guardrails and escrowed reward settlement to the selected reply author
 - Review notifications for forum post/reply, material, wiki entry/proposal, blog post, and AI draft approve/reject outcomes
+- Basic report submission, reviewer/admin report handling, operation logs, and reporter result notifications
 - Vue admin read-only analytics page for download trend and course demand
 - Vue admin read-only operation-log browser for high-risk admin mutations
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
@@ -53,7 +54,7 @@
 
 ## Next Deliverable
 
-- Richer content review workflows for wiki conflict-resolution UX and additional notification sources for payment, membership, and reports
+- Richer content review workflows for wiki conflict-resolution UX and additional notification sources for payment and membership
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
@@ -63,5 +64,5 @@
 - Points and membership
 - Wiki creator workflow refinements and richer revision diff tooling
 - Blog, moments, forum
-- Notifications, reports, leaderboards
+- Notifications, richer reports, leaderboards
 - Production deployment and monitoring

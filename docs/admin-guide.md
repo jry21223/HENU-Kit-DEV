@@ -297,6 +297,6 @@ Important boundaries:
 - Richer content review
 - Points and memberships
 - Orders
-- Reports
+- Reports UI; the Go API already supports reviewer/admin report listing and resolve/reject actions
 - System config
 - Automatic operation-log retention cleanup after a production-safe archival flow exists

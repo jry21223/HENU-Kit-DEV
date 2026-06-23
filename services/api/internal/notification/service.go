@@ -21,6 +21,15 @@ type ReviewNotificationInput struct {
 	Reason           string
 }
 
+type ReportResultNotificationInput struct {
+	UserID     string
+	ReportID   string
+	TargetType string
+	TargetID   string
+	Status     string
+	Reason     string
+}
+
 func CreateReviewNotification(tx *gorm.DB, input ReviewNotificationInput) error {
 	input.UserID = strings.TrimSpace(input.UserID)
 	if input.UserID == "" {
@@ -42,6 +51,38 @@ func CreateReviewNotification(tx *gorm.DB, input ReviewNotificationInput) error 
 	return tx.Create(&model.Notification{
 		UserID: input.UserID,
 		Type:   notificationType,
+		Title:  title,
+		Body:   body,
+		Data:   datatypes.JSON(data),
+	}).Error
+}
+
+func CreateReportResultNotification(tx *gorm.DB, input ReportResultNotificationInput) error {
+	userID := strings.TrimSpace(input.UserID)
+	if userID == "" {
+		return nil
+	}
+	title := "\u4e3e\u62a5\u5df2\u5904\u7406"
+	body := "\u4f60\u63d0\u4ea4\u7684\u4e3e\u62a5\u5df2\u5904\u7406\u3002"
+	if input.Status == model.StatusRejected {
+		title = "\u4e3e\u62a5\u672a\u91c7\u7eb3"
+		body = "\u4f60\u63d0\u4ea4\u7684\u4e3e\u62a5\u672a\u88ab\u91c7\u7eb3\u3002"
+	}
+	if reason := strings.TrimSpace(input.Reason); reason != "" {
+		body += " \u539f\u56e0\uff1a" + reason
+	}
+	data, err := json.Marshal(map[string]string{
+		"reportId":   strings.TrimSpace(input.ReportID),
+		"targetType": strings.TrimSpace(input.TargetType),
+		"targetId":   strings.TrimSpace(input.TargetID),
+		"status":     strings.TrimSpace(input.Status),
+	})
+	if err != nil {
+		return err
+	}
+	return tx.Create(&model.Notification{
+		UserID: userID,
+		Type:   "report_result",
 		Title:  title,
 		Body:   body,
 		Data:   datatypes.JSON(data),

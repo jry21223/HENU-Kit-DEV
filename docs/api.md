@@ -57,6 +57,7 @@ Currently implemented endpoints:
 - `POST /api/v1/me/notifications/read-all`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
+- `POST /api/v1/reports`
 - `POST /api/v1/admin/schools`
 - `PATCH /api/v1/admin/schools/:id`
 - `DELETE /api/v1/admin/schools/:id`
@@ -93,6 +94,9 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/forum/replies?status=draft|pending|needs_changes|published|rejected&authorId=&postId=&limit=`
 - `POST /api/v1/admin/forum/replies/:id/approve`
 - `POST /api/v1/admin/forum/replies/:id/reject`
+- `GET /api/v1/admin/reports?status=pending|approved|rejected|all&targetType=&limit=`
+- `POST /api/v1/admin/reports/:id/resolve`
+- `POST /api/v1/admin/reports/:id/reject`
 - `GET /api/v1/admin/wiki/entries?status=draft|pending|needs_changes|published|rejected&authorId=&courseId=&limit=`
 - `POST /api/v1/admin/wiki/entries/:id/approve`
 - `POST /api/v1/admin/wiki/entries/:id/reject`
@@ -221,8 +225,20 @@ Implemented notification behavior:
 - logged-in users can mark all of their own unread notifications as read through `/me/notifications/read-all`
 - forum post/reply approve or reject actions create a `forum_review` notification for the content author in the same transaction as the review update and operation log
 - material, wiki entry/proposal, blog post, and AI draft approve/reject actions create a `content_review` notification for the original author/editor/task owner in the same transaction as the review update and operation log
+- report resolve/reject actions create a `report_result` notification for the reporter in the same transaction as the report update and operation log
 - review notifications include safe data fields (`resourceType`, `resourceId`, `status`) and do not expose reviewer ids
+- report result notifications include safe data fields (`reportId`, `targetType`, `targetId`, `status`) and do not expose reviewer ids
 - payment and membership notifications remain later work
+
+Implemented report behavior:
+
+- logged-in, non-frozen users can submit reports through `POST /api/v1/reports`
+- reportable targets are `material`, `wiki_entry`, `blog_post`, `forum_post`, `forum_reply`, and `user`
+- content targets must be public/published where applicable; hidden draft/pending/rejected content returns HTTP 404
+- duplicate pending reports from the same reporter for the same target return the existing pending report instead of creating another row
+- reviewer/admin users can list reports and resolve/reject pending reports through `/admin/reports`
+- rejecting a report requires `reviewReason`; already handled reports return HTTP 409 with `report_not_reviewable`
+- report handling writes an operation log and notifies the reporter in the same database transaction
 
 Implemented wiki behavior:
 
