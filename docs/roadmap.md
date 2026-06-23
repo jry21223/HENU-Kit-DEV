@@ -52,7 +52,7 @@
 - Vue admin read-only operation-log browser for high-risk admin mutations
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
-- Course package catalog, package-level material grants, and public package-detail filtering that hides unpublished package items as well as unpublished material objects
+- Course package catalog, Web package list/detail pages, package-level material grants, and public package-detail filtering that hides unpublished package items as well as unpublished material objects
 - Course package pending-order foundation with server-authoritative package pricing, duplicate pending-order reuse, and user-scoped order status
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
