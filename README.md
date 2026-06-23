@@ -27,7 +27,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包列表/详情与解锁状态展示、资料详情、课程刷题、Wiki 只读列表/详情、Blog 只读列表/详情、论坛列表/详情、发帖、回复提交、最佳答案操作入口和学生邮箱登录页面。
-- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，并在 `/me/notifications` 查看审核通知。
+- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
 - 微信支付 Native 是目标支付方案；当前仍是本地 mock 边界，未完成真实商户联调。
@@ -118,6 +118,7 @@ cd ../worker && go test ./...
 - Vue Admin dashboard、课程管理和资料管理 build/type 覆盖。
 - 题目列表/详情不泄露答案。
 - 刷题提交、错题用户隔离和 quiz attempt。
+- Web `/me/wrong-questions` 展示当前用户自己的错题、薄弱课程统计和移出错题本操作；题目详情使用不含答案的公开 question DTO。
 - AI task 所有权、reviewer/admin 可见性、AI 草稿审核权限边界、审核意见持久化和 worker draft 生成幂等。
 
 ## 7. Seed 数据

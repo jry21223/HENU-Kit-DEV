@@ -20,6 +20,7 @@
 - Web blog list/detail read-only pages backed by published public blog APIs
 - Web forum list/detail pages with post creation, reply submission, and best-answer action entry
 - Web personal download-history page
+- Web personal wrong-question book with per-course weakness totals and current-user delete action
 - Web personal forum submission tracking page for current user's posts/replies and review status
 - Web personal forum edit/resubmit flow for draft/pending/needs_changes/rejected posts and replies
 - Web personal notification inbox with user-scoped read/read-all state

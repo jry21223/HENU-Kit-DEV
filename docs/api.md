@@ -219,6 +219,7 @@ Implemented quiz behavior:
 - logged-in users can create quiz attempts and list only their own attempts
 - authenticated wrong answers create or update user-scoped wrong-question records
 - weak-point reporting currently returns per-course wrong-count totals
+- Web `/me/wrong-questions` consumes the user-scoped wrong-question and weakness endpoints, fetches public question DTOs without answers, and can delete only the current user's wrong-question rows
 
 Implemented blog behavior:
 

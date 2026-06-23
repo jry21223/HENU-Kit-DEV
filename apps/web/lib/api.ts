@@ -207,6 +207,22 @@ export type QuizQuestion = {
   options?: QuizOption[];
 };
 
+export type WrongQuestion = {
+  id: string;
+  userId: string;
+  questionId: string;
+  courseId: string;
+  wrongCount: number;
+  lastAnswer: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WeaknessPoint = {
+  courseId: string;
+  wrongCount: number;
+};
+
 export type ForumBoard = {
   id: string;
   name: string;
