@@ -6,6 +6,8 @@
 - AI-generated content must be reviewed before publication.
 - Admin user, access-grant, course, organization, material, upload, archive, status-change, material-review, wiki entry/proposal-review, blog-review, forum post/reply review, forum best-answer selection, AI draft-review, and report handling operations write server-side operation logs in the same database transaction as the protected mutation.
 - Admin user management is server-side restricted to `admin` and `super_admin` roles. Admins cannot change their own role/status, and only `super_admin` users can edit or grant `super_admin`. Frozen users are blocked by backend `RequireNotFrozen` middleware on protected write endpoints.
+- Course package management is server-side restricted to `admin` and `super_admin` roles. Creating/updating/archiving packages and binding/unbinding package materials must be authorized on the Go API and logged; frontend route hiding is not a security boundary.
+- Public package detail must filter both `materials` and package `items` to published materials. It is not enough to hide unpublished material objects while still returning item resource ids for draft/pending/rejected/archived materials.
 - Manual access grants are server-side restricted to admin users, use `manual_admin` source, cannot create or mark payment orders, and can target only published paid/member-only materials or published course packages. Revoked grants are soft-deleted and no longer unlock paid downloads.
 - User-scoped forum tracking/resubmission endpoints expose only the authenticated user's own posts/replies and may include that user's review reason, but they do not expose `reviewerId`, `reviewedAt`, or hidden submissions from other users. Resubmission is server-side restricted to draft/pending/needs_changes/rejected content, clears old reviewer metadata, and returns the content to pending review.
 - User notification endpoints are user-scoped: authenticated users can list or mark read only their own notifications. Forum, material, wiki, blog, AI draft review, and report result notifications are written in the same database transaction as the protected mutation and operation log.
@@ -18,6 +20,7 @@ The Go API writes `operation_logs` for the current hardening scope:
 - organization create/update/archive: school, college, major
 - user display name, role, and active/frozen status update
 - access grant create/revoke
+- course package create/update/archive and package item bind/unbind
 - course create/update/archive
 - material create/upload/update/status-update/archive
 - material approve/reject review

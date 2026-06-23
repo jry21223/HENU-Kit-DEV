@@ -165,10 +165,33 @@ Implemented package behavior:
 
 - package list/detail endpoints only return `published` course packages
 - package detail returns package items plus published materials included in the package
+- public package detail must filter both `items` and `materials` to published material resources; package items that point at draft, pending, rejected, or archived materials must not appear in the public response, even as raw resource ids
 - a `material_access_grants.package_id` grant unlocks paid package materials on the server side
 - expired package grants do not unlock paid materials
 - `/me/entitlements` returns direct material grants, published package grants, included materials, and summary counts for the current user only
 - expired grants and grants for unpublished packages are excluded from `/me/entitlements`
+
+Implemented admin package-management contract:
+
+- `GET /api/v1/admin/packages?schoolId=&majorId=&courseId=&grade=&status=`
+- `POST /api/v1/admin/packages`
+- `PATCH /api/v1/admin/packages/:id`
+- `DELETE /api/v1/admin/packages/:id`
+- `GET /api/v1/admin/packages/:id/items`
+- `POST /api/v1/admin/packages/:id/items`
+- `DELETE /api/v1/admin/packages/:id/items/:itemId`
+
+Expected boundaries:
+
+- admin package endpoints require an authenticated, non-frozen `admin` or `super_admin` role
+- package statuses are `draft`, `published`, and `archived`; public package APIs expose only `published`
+- prices are stored and accepted as integer cents through `priceFen` / `price_fen`; clients must not send floating-point yuan values
+- package create/update validates organization ids and optional course binding before publication
+- package item binding initially supports `resourceType=material`
+- binding a material to a package does not grant user access by itself; downloads still require direct material grant, package grant, or later paid entitlement
+- duplicate active item bindings return the existing binding with `alreadyExists=true` instead of creating another row
+- unbinding a package item removes only the package-item relation and must not delete or mutate the material
+- course package create/update/archive and package-item bind/unbind mutations should write `operation_logs`
 
 Implemented quiz behavior:
 

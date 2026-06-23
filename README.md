@@ -20,7 +20,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 ## 2. 当前可验证状态
 
 - V2 monorepo 骨架已建立。
-- Go API 已实现 health/version、邮箱验证码登录、JWT cookie/token、角色中间件、学校/课程/资料/课程包接口、组织/课程/资料 admin CRUD、上传防护、资料下载权限、刷题提交、错题记录和基础薄弱点统计。
+- Go API 已实现 health/version、邮箱验证码登录、JWT cookie/token、角色中间件、学校/课程/资料/课程包接口、组织/课程/资料/课程包 admin CRUD、包内资料绑定、上传防护、资料下载权限、刷题提交、错题记录和基础薄弱点统计。
 - 成功资料下载会写入服务端审计日志，失败鉴权、不安全路径和缺失文件不会记为成功下载。
 - PDF 下载会在服务端生成临时轻水印副本，水印包含用户标识、资料 ID 和下载时间；源文件不会被覆盖。非 PDF 文件保持原样下载。
 - 用户可以查看自己的成功下载记录；管理员可以查看全量下载审计日志。
@@ -28,7 +28,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包展示、资料详情、课程刷题、论坛列表/详情、发帖、回复提交、最佳答案操作入口和学生邮箱登录页面。
 - Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，并在 `/me/notifications` 查看审核通知。
-- Vue Admin 已有邮箱登录、路由守卫、仪表盘、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
+- Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
 - 微信支付 Native 是目标支付方案；当前仍是本地 mock 边界，未完成真实商户联调。
 - AI 当前使用 mock LLM；AI 生成内容不会绕过审核自动发布。
@@ -103,6 +103,7 @@ cd ../worker && go test ./...
 - 资料默认 draft 入库、admin 全量可见、公开端只展示 published、非法状态拒绝。
 - Admin material metadata PATCH rejects direct file-field mutation; file replacement remains an upload flow.
 - 课程包授权解锁包内 paid 资料。
+- 后台课程包 CRUD、包内资料绑定/解绑、重复绑定保护，以及公开课程包详情不泄露未发布资料 item。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态。
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
@@ -144,6 +145,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - 生产环境不能使用固定验证码或 mock 支付。
 - paid 资料下载必须经过 Go API 服务端鉴权，不能只靠前端隐藏按钮。
 - 当前 paid 资料支持直接 material grant 和 published 课程包 grant。
+- 公开课程包接口只能返回 `published` 课程包，并且包内 `items` 与 `materials` 都必须过滤到 `published` 资料；即使后台把 draft/pending/archived 资料预先绑定到包里，公开响应也不能泄露这些资料 ID。
 - PDF 水印由 Go API 下载接口动态生成临时文件；如果 PDF 处理失败，下载会返回错误而不是静默直出未水印文件。
 - AI 生成内容必须先进入 draft/review 流程，不能自动发布为正式内容。
 
@@ -164,6 +166,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Vue Admin includes `/downloads` for successful material download audit logs.
 - Vue Admin includes `/users` for admin-only user listing, role updates, and active/frozen status changes. The Go API prevents self role/status changes and restricts `super_admin` edits/grants to `super_admin` users.
 - Vue Admin includes `/access-grants` for admin-only manual material/package access grants used in internal testing or after-sales delivery; it does not create payment orders or mark orders as paid.
+- Vue Admin includes `/packages` for admin-only course package CRUD, integer-cent pricing, `draft/published/archived` status control, and package-material binding without exposing raw file storage keys.
 - Vue Admin includes admin-only all-status course listing and a course edit dialog.
 - Vue Admin includes material status operations for `draft`, `pending`, `published`, `rejected`, and `archived`.
 - Vue Admin includes material metadata editing; the actual storage key remains hidden, and the Go API rejects direct file-field mutation through metadata PATCH.
@@ -179,6 +182,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
 - The user management page reads `GET /api/v1/admin/users` and writes `PATCH /api/v1/admin/users/:id`; it does not edit email, password credentials, membership, or points balance.
 - The access-grants page reads/writes `GET/POST/DELETE /api/v1/admin/access-grants`; manual grants use `manual_admin`, are limited to published paid/member-only materials or published packages, and are revoked server-side.
+- The package-management page reads/writes `GET/POST/PATCH/DELETE /api/v1/admin/packages`, `GET/POST /api/v1/admin/packages/:id/items`, and `DELETE /api/v1/admin/packages/:id/items/:itemId`; item binding supports `resourceType=material`, treats duplicate bindings idempotently, and removes bindings without deleting the underlying material.
 - Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.
 - Admin analytics are based on successful server-side download logs and current report records; denied download attempts, page visits, search intent, and payment conversion are not included yet.
 - Material review is one-way for the MVP: only pending materials can be approved or rejected through reviewer endpoints, rejected materials stay hidden from public pages, and rejection requires a review reason.
@@ -196,7 +200,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Basic report APIs, Web material/forum report buttons, and Vue Admin `/reports` are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
 - Payment and membership notifications remain later work.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
-- Go API writes server-side `operation_logs` for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
+- Go API writes server-side `operation_logs` for user management, access grants, organization, course, course package and package-item binding, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.
 - Real AI publish-to-resource flows remain later work.
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.

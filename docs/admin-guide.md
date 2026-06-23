@@ -7,6 +7,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/dashboard`: module status summary.
 - `/users`: user listing, role update, and active/frozen status management.
 - `/access-grants`: manual material/package access grants for internal testing and after-sales delivery.
+- `/packages`: admin-only course package CRUD and package-material binding page.
 - `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
 - `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
 - `/downloads`: successful material download audit logs.
@@ -59,6 +60,32 @@ Important boundaries:
 - Revoking a grant soft-deletes it. The revoked grant is removed from `/me/entitlements` and no longer unlocks paid downloads.
 - The page does not expose raw file storage keys and does not send PDF files directly.
 - Grant create/revoke operations write `operation_logs`.
+
+## Course Package Management
+
+`/packages` is the admin-side course package maintenance page. It calls:
+
+- `GET /api/v1/admin/packages?schoolId=&majorId=&courseId=&grade=&status=`
+- `POST /api/v1/admin/packages`
+- `PATCH /api/v1/admin/packages/:id`
+- `DELETE /api/v1/admin/packages/:id`
+- `GET /api/v1/admin/packages/:id/items`
+- `POST /api/v1/admin/packages/:id/items`
+- `DELETE /api/v1/admin/packages/:id/items/:itemId`
+
+The page is available only to `admin` and `super_admin` roles. It is separate from `/access-grants`: package management defines the product and its included materials, while access grants deliver permission to a specific user.
+
+Important boundaries:
+
+- Package create/edit operations require server-side admin authorization and should reject reviewer-only users.
+- Valid package statuses are `draft`, `published`, and `archived`.
+- `priceFen` is the source admin field for price and is always integer cents; the UI may display yuan, but the API contract should not use floating-point currency.
+- Publishing a package makes only the package shell visible. Public package detail must still filter included `items` and `materials` to published materials only.
+- Package item binding initially supports `resourceType=material`; binding a material to a package does not change the material status or storage key.
+- Draft, pending, rejected, and archived materials may be staged in admin, but public package APIs must not reveal those item ids or material metadata.
+- Duplicate active material bindings should be idempotent or explicitly rejected without creating duplicate package items.
+- Removing a package item only unbinds the relation. It must not delete the underlying material, revoke existing user grants, or rewrite download logs.
+- Package create/update/archive and package item bind/unbind operations should write `operation_logs` rows server-side.
 
 ## Course Operations
 

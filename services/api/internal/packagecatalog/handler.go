@@ -76,6 +76,7 @@ func (h Handler) Detail(ctx *gin.Context) {
 		}
 	}
 	materials := []model.Material{}
+	publishedItems := []model.CoursePackageItem{}
 	if len(materialIDs) > 0 {
 		if err := h.db.Where("id IN ? AND status = ?", materialIDs, model.StatusPublished).
 			Order("created_at asc").
@@ -83,11 +84,20 @@ func (h Handler) Detail(ctx *gin.Context) {
 			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 			return
 		}
+		publishedMaterialIDs := map[string]bool{}
+		for _, material := range materials {
+			publishedMaterialIDs[material.ID] = true
+		}
+		for _, item := range items {
+			if item.ResourceType == resourceTypeMaterial && publishedMaterialIDs[item.ResourceID] {
+				publishedItems = append(publishedItems, item)
+			}
+		}
 	}
 
 	response.OK(ctx, gin.H{
 		"package":   coursePackage,
-		"items":     items,
+		"items":     publishedItems,
 		"materials": materials,
 	})
 }

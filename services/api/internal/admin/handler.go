@@ -39,6 +39,9 @@ var (
 	errGrantMaterialNotGrantable = errors.New("grant_material_not_grantable")
 	errGrantResourceSelection    = errors.New("grant_resource_selection")
 	errGrantExpirationInPast     = errors.New("grant_expiration_in_past")
+	errPackageReferenceNotFound  = errors.New("package_reference_not_found")
+	errPackageReferenceMismatch  = errors.New("package_reference_mismatch")
+	errPackageItemUnsupported    = errors.New("package_item_unsupported")
 )
 
 var allowedUploadExtensions = map[string]bool{
@@ -106,6 +109,26 @@ type courseRequest struct {
 	Status      string `json:"status"`
 }
 
+type coursePackageRequest struct {
+	SchoolID    string  `json:"schoolId"`
+	CollegeID   string  `json:"collegeId"`
+	MajorID     string  `json:"majorId"`
+	CourseID    *string `json:"courseId"`
+	Grade       string  `json:"grade"`
+	Title       string  `json:"title"`
+	Slug        string  `json:"slug"`
+	Description string  `json:"description"`
+	PriceFen    *int64  `json:"priceFen"`
+	Currency    string  `json:"currency"`
+	Status      string  `json:"status"`
+}
+
+type packageItemRequest struct {
+	ResourceType string `json:"resourceType"`
+	ResourceID   string `json:"resourceId"`
+	SortOrder    int    `json:"sortOrder"`
+}
+
 type materialRequest struct {
 	CourseID       string `json:"courseId"`
 	Title          string `json:"title"`
@@ -146,6 +169,11 @@ type accessGrantRow struct {
 	Material *model.Material           `json:"material,omitempty"`
 	Package  *model.CoursePackage      `json:"package,omitempty"`
 	Active   bool                      `json:"active"`
+}
+
+type packageItemRow struct {
+	Item     model.CoursePackageItem `json:"item"`
+	Material *model.Material         `json:"material,omitempty"`
 }
 
 func (h Handler) ListUsers(ctx *gin.Context) {
@@ -743,6 +771,307 @@ func (h Handler) ArchiveCourse(ctx *gin.Context) {
 	h.archiveByID(ctx, &model.Course{}, "course")
 }
 
+func (h Handler) ListCoursePackages(ctx *gin.Context) {
+	query := h.db.Model(&model.CoursePackage{})
+	if schoolID := strings.TrimSpace(ctx.Query("schoolId")); schoolID != "" {
+		query = query.Where("school_id = ?", schoolID)
+	}
+	if majorID := strings.TrimSpace(ctx.Query("majorId")); majorID != "" {
+		query = query.Where("major_id = ?", majorID)
+	}
+	if courseID := strings.TrimSpace(ctx.Query("courseId")); courseID != "" {
+		query = query.Where("course_id = ?", courseID)
+	}
+	if grade := strings.TrimSpace(ctx.Query("grade")); grade != "" {
+		query = query.Where("grade = ?", grade)
+	}
+	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
+		normalized, ok := normalizeCourseStatus(status, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		query = query.Where("status = ?", normalized)
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 200, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var packages []model.CoursePackage
+	if err := query.Order("updated_at desc").Limit(limit).Find(&packages).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"packages": packages})
+}
+
+func (h Handler) CreateCoursePackage(ctx *gin.Context) {
+	var req coursePackageRequest
+	if !bindJSON(ctx, &req) {
+		return
+	}
+	status, ok := normalizeCourseStatus(req.Status, model.StatusDraft)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
+	priceFen := int64(0)
+	if req.PriceFen != nil {
+		if *req.PriceFen < 0 {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_price", nil)
+			return
+		}
+		priceFen = *req.PriceFen
+	}
+	currency := strings.ToUpper(strings.TrimSpace(req.Currency))
+	if currency == "" {
+		currency = "CNY"
+	}
+	coursePackage := model.CoursePackage{
+		SchoolID:    strings.TrimSpace(req.SchoolID),
+		CollegeID:   strings.TrimSpace(req.CollegeID),
+		MajorID:     strings.TrimSpace(req.MajorID),
+		CourseID:    nullableTrimmedString(req.CourseID),
+		Grade:       required(req.Grade),
+		Title:       required(req.Title),
+		Slug:        required(req.Slug),
+		Description: strings.TrimSpace(req.Description),
+		PriceFen:    priceFen,
+		Currency:    currency,
+		Status:      status,
+	}
+	if coursePackage.SchoolID == "" || coursePackage.CollegeID == "" || coursePackage.MajorID == "" || coursePackage.Grade == "" || coursePackage.Title == "" || coursePackage.Slug == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
+		return
+	}
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := validateCoursePackageReferences(tx, coursePackage); err != nil {
+			return err
+		}
+		if err := tx.Create(&coursePackage).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "course_package.create", "course_package", coursePackage.ID, map[string]interface{}{
+			"schoolId":  coursePackage.SchoolID,
+			"collegeId": coursePackage.CollegeID,
+			"majorId":   coursePackage.MajorID,
+			"courseId":  coursePackage.CourseID,
+			"grade":     coursePackage.Grade,
+			"slug":      coursePackage.Slug,
+			"priceFen":  coursePackage.PriceFen,
+			"status":    coursePackage.Status,
+		})
+	}); err != nil {
+		writeCoursePackageError(ctx, err, "create_failed")
+		return
+	}
+	response.OK(ctx, gin.H{"package": coursePackage})
+}
+
+func (h Handler) UpdateCoursePackage(ctx *gin.Context) {
+	var req coursePackageRequest
+	if !bindJSON(ctx, &req) {
+		return
+	}
+	updates := map[string]interface{}{}
+	applyStringUpdate(updates, "school_id", req.SchoolID)
+	applyStringUpdate(updates, "college_id", req.CollegeID)
+	applyStringUpdate(updates, "major_id", req.MajorID)
+	applyStringUpdate(updates, "grade", req.Grade)
+	applyStringUpdate(updates, "title", req.Title)
+	applyStringUpdate(updates, "slug", req.Slug)
+	applyStringUpdate(updates, "description", req.Description)
+	if req.CourseID != nil {
+		if courseID := strings.TrimSpace(*req.CourseID); courseID != "" {
+			updates["course_id"] = courseID
+		} else {
+			updates["course_id"] = nil
+		}
+	}
+	if req.PriceFen != nil {
+		if *req.PriceFen < 0 {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_price", nil)
+			return
+		}
+		updates["price_fen"] = *req.PriceFen
+	}
+	if currency := strings.ToUpper(strings.TrimSpace(req.Currency)); currency != "" {
+		updates["currency"] = currency
+	}
+	if status := strings.TrimSpace(req.Status); status != "" {
+		normalized, ok := normalizeCourseStatus(status, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		updates["status"] = normalized
+	}
+	if len(updates) == 0 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "empty_update", nil)
+		return
+	}
+
+	targetID := ctx.Param("id")
+	var updated model.CoursePackage
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		var existing model.CoursePackage
+		if err := tx.First(&existing, "id = ?", targetID).Error; err != nil {
+			return err
+		}
+		candidate := existing
+		if value, ok := updates["school_id"].(string); ok {
+			candidate.SchoolID = value
+		}
+		if value, ok := updates["college_id"].(string); ok {
+			candidate.CollegeID = value
+		}
+		if value, ok := updates["major_id"].(string); ok {
+			candidate.MajorID = value
+		}
+		if value, ok := updates["grade"].(string); ok {
+			candidate.Grade = value
+		}
+		if value, ok := updates["course_id"].(string); ok {
+			candidate.CourseID = &value
+		} else if _, ok := updates["course_id"]; ok {
+			candidate.CourseID = nil
+		}
+		if err := validateCoursePackageReferences(tx, candidate); err != nil {
+			return err
+		}
+		if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.First(&updated, "id = ?", existing.ID).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "course_package.update", "course_package", existing.ID, updateMetadata(updates))
+	})
+	if err != nil {
+		writeCoursePackageError(ctx, err, "update_failed")
+		return
+	}
+	response.OK(ctx, gin.H{"package": updated})
+}
+
+func (h Handler) ArchiveCoursePackage(ctx *gin.Context) {
+	h.archiveByID(ctx, &model.CoursePackage{}, "course_package")
+}
+
+func (h Handler) ListCoursePackageItems(ctx *gin.Context) {
+	packageID := ctx.Param("id")
+	var coursePackage model.CoursePackage
+	if err := h.db.First(&coursePackage, "id = ?", packageID).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "package_not_found", nil)
+		return
+	}
+	var items []model.CoursePackageItem
+	if err := h.db.Where("package_id = ?", packageID).Order("sort_order asc, created_at asc").Find(&items).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	rows, err := h.packageItemRows(items)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"package": coursePackage, "items": rows})
+}
+
+func (h Handler) CreateCoursePackageItem(ctx *gin.Context) {
+	var req packageItemRequest
+	if !bindJSON(ctx, &req) {
+		return
+	}
+	resourceType := strings.TrimSpace(req.ResourceType)
+	if resourceType == "" {
+		resourceType = "material"
+	}
+	if resourceType != "material" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsupported_resource_type", nil)
+		return
+	}
+	resourceID := strings.TrimSpace(req.ResourceID)
+	if resourceID == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
+		return
+	}
+	packageID := ctx.Param("id")
+	var item model.CoursePackageItem
+	alreadyExists := false
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		var coursePackage model.CoursePackage
+		if err := tx.First(&coursePackage, "id = ?", packageID).Error; err != nil {
+			return err
+		}
+		var material model.Material
+		if err := tx.First(&material, "id = ?", resourceID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errGrantResourceNotFound
+			}
+			return err
+		}
+		if err := validatePackageMaterialScope(tx, coursePackage, material); err != nil {
+			return err
+		}
+		if err := tx.Where("package_id = ? AND resource_type = ? AND resource_id = ?", packageID, resourceType, resourceID).First(&item).Error; err == nil {
+			alreadyExists = true
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		item = model.CoursePackageItem{
+			PackageID:    packageID,
+			ResourceType: resourceType,
+			ResourceID:   resourceID,
+			SortOrder:    req.SortOrder,
+		}
+		if err := tx.Create(&item).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "course_package_item.create", "course_package_item", item.ID, map[string]interface{}{
+			"packageId":    packageID,
+			"resourceType": resourceType,
+			"resourceId":   resourceID,
+			"sortOrder":    item.SortOrder,
+		})
+	})
+	if err != nil {
+		writeCoursePackageError(ctx, err, "create_failed")
+		return
+	}
+	response.OK(ctx, gin.H{"item": item, "alreadyExists": alreadyExists})
+}
+
+func (h Handler) DeleteCoursePackageItem(ctx *gin.Context) {
+	packageID := ctx.Param("id")
+	itemID := ctx.Param("itemId")
+	var item model.CoursePackageItem
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("package_id = ? AND id = ?", packageID, itemID).First(&item).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Delete(&item).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "course_package_item.delete", "course_package_item", item.ID, map[string]interface{}{
+			"packageId":    packageID,
+			"resourceType": item.ResourceType,
+			"resourceId":   item.ResourceID,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "package_item_not_found", nil)
+			return
+		}
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "delete_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"deleted": true})
+}
+
 func (h Handler) CreateMaterial(ctx *gin.Context) {
 	var req materialRequest
 	if !bindJSON(ctx, &req) {
@@ -1287,6 +1616,30 @@ func (h Handler) adminPackagesByID(ids []string) (map[string]model.CoursePackage
 	return rows, nil
 }
 
+func (h Handler) packageItemRows(items []model.CoursePackageItem) ([]packageItemRow, error) {
+	materialIDs := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.ResourceType == "material" {
+			materialIDs = append(materialIDs, item.ResourceID)
+		}
+	}
+	materials, err := h.adminMaterialsByID(materialIDs)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]packageItemRow, 0, len(items))
+	for _, item := range items {
+		row := packageItemRow{Item: item}
+		if item.ResourceType == "material" {
+			if material, ok := materials[item.ResourceID]; ok {
+				row.Material = &material
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
 func (h Handler) updateByID(ctx *gin.Context, target interface{}, updates map[string]interface{}, name string) {
 	if len(updates) == 0 {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "empty_update", nil)
@@ -1339,6 +1692,84 @@ func (h Handler) archiveByID(ctx *gin.Context, target interface{}, name string) 
 	response.OK(ctx, gin.H{"archived": true})
 }
 
+func validateCoursePackageReferences(tx *gorm.DB, coursePackage model.CoursePackage) error {
+	var school model.School
+	if err := tx.First(&school, "id = ?", coursePackage.SchoolID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errPackageReferenceNotFound
+		}
+		return err
+	}
+	var college model.College
+	if err := tx.First(&college, "id = ?", coursePackage.CollegeID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errPackageReferenceNotFound
+		}
+		return err
+	}
+	if college.SchoolID != coursePackage.SchoolID {
+		return errPackageReferenceMismatch
+	}
+	var major model.Major
+	if err := tx.First(&major, "id = ?", coursePackage.MajorID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errPackageReferenceNotFound
+		}
+		return err
+	}
+	if major.SchoolID != coursePackage.SchoolID || major.CollegeID != coursePackage.CollegeID {
+		return errPackageReferenceMismatch
+	}
+	if coursePackage.CourseID == nil || *coursePackage.CourseID == "" {
+		return nil
+	}
+	var course model.Course
+	if err := tx.First(&course, "id = ?", *coursePackage.CourseID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errPackageReferenceNotFound
+		}
+		return err
+	}
+	if course.SchoolID != coursePackage.SchoolID || course.CollegeID != coursePackage.CollegeID || course.MajorID != coursePackage.MajorID || course.Grade != coursePackage.Grade {
+		return errPackageReferenceMismatch
+	}
+	return nil
+}
+
+func validatePackageMaterialScope(tx *gorm.DB, coursePackage model.CoursePackage, material model.Material) error {
+	if coursePackage.CourseID != nil && *coursePackage.CourseID != "" && material.CourseID != *coursePackage.CourseID {
+		return errPackageReferenceMismatch
+	}
+	var course model.Course
+	if err := tx.First(&course, "id = ?", material.CourseID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errPackageReferenceNotFound
+		}
+		return err
+	}
+	if course.SchoolID != coursePackage.SchoolID || course.CollegeID != coursePackage.CollegeID || course.MajorID != coursePackage.MajorID || course.Grade != coursePackage.Grade {
+		return errPackageReferenceMismatch
+	}
+	return nil
+}
+
+func writeCoursePackageError(ctx *gin.Context, err error, fallback string) {
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "package_not_found", nil)
+	case errors.Is(err, errPackageReferenceNotFound):
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "package_reference_not_found", nil)
+	case errors.Is(err, errPackageReferenceMismatch):
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "package_reference_mismatch", nil)
+	case errors.Is(err, errGrantResourceNotFound):
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "package_item_resource_not_found", nil)
+	case errors.Is(err, errPackageItemUnsupported):
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsupported_resource_type", nil)
+	default:
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, fallback, nil)
+	}
+}
+
 func bindJSON(ctx *gin.Context, target interface{}) bool {
 	if err := ctx.ShouldBindJSON(target); err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
@@ -1388,6 +1819,24 @@ func compactMap(values map[string]interface{}) map[string]interface{} {
 		}
 	}
 	return result
+}
+
+func applyStringUpdate(updates map[string]interface{}, key string, value string) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" {
+		updates[key] = trimmed
+	}
+}
+
+func nullableTrimmedString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
 
 func updateMetadata(updates map[string]interface{}) map[string]interface{} {

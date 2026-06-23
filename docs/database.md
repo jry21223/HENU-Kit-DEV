@@ -33,6 +33,11 @@ Current access-control notes:
 - `materials.reviewer_id`, `materials.reviewed_at`, and `materials.review_reason` record the current material-review decision; public material endpoints still expose only `published` rows.
 - `material_access_grants.material_id` is the active paid-material unlock path in the current foundation.
 - `material_access_grants.package_id` unlocks paid materials included through `course_package_items` when the package is published and the grant has not expired.
+- `course_packages.status` controls public package visibility. Only `published` packages should be returned by public package list/detail APIs; admin package APIs may list `draft`, `published`, and `archived`.
+- `course_packages.price_fen` stores price as an integer number of cents. Application code should avoid floating-point yuan values for order or package pricing.
+- `course_package_items` is the package-to-resource binding table. The current product scope should use `resource_type=material`; future resource types need explicit service-layer allowlists before becoming public.
+- Package-item rows may reference unpublished materials for admin staging, but public package detail must filter both the returned material list and the returned item list to published materials only. Returning a raw item id for a draft/pending/rejected/archived material is treated as metadata leakage.
+- Active duplicate package-item bindings for the same package/resource pair should be prevented by service logic and, where possible, a uniqueness constraint. Removing a package item should remove the relation only and must not delete the material row.
 - Admin-created manual grants use `material_access_grants.source=manual_admin`; duplicate active grants for the same user/resource are not recreated.
 - `/me/entitlements` expands only published direct-granted materials and published package grants, so draft/pending/archived materials are not exposed through the personal entitlement summary.
 - `material_download_logs` records only successful file downloads after permission checks and storage-key validation.

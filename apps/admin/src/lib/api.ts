@@ -91,6 +91,21 @@ export type CoursePackage = {
   status: string;
 };
 
+export type CoursePackageItem = {
+  id: string;
+  packageId: string;
+  resourceType: string;
+  resourceId: string;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CoursePackageItemRow = {
+  item: CoursePackageItem;
+  material?: Material;
+};
+
 export type MaterialAccessGrant = {
   id: string;
   userId: string;
