@@ -122,6 +122,24 @@ test("homepage exposes precision animation markers", async ({ page }) => {
   await expect(page.locator('[data-home-anim="guarantee-seal"]')).toHaveCount(4);
 });
 
+test("homepage preserves precision animation markers in-view rotations", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto(homeUrl, { waitUntil: "networkidle" });
+
+  const firstNote = page.locator('[data-home-anim="community-note"]').first();
+  await firstNote.scrollIntoViewIfNeeded();
+  await expect(firstNote).toBeVisible();
+  await page.waitForTimeout(700);
+
+  const transformSkew = await firstNote.evaluate((element) => {
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
+
+    return Math.abs(matrix.b);
+  });
+
+  expect(transformSkew).toBeGreaterThan(0.03);
+});
+
 test("homepage uses simplified archive on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto(homeUrl, { waitUntil: "networkidle" });

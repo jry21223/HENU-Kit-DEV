@@ -612,18 +612,5 @@
 .mobileCourseBookItem[data-home-anim="mobile-course-book"],
 .salesNote[data-home-anim="sales-note"],
 .guaranteeSeal[data-home-anim="guarantee-seal"] {
-  opacity: 0;
-  will-change: opacity, transform;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .stickyNote[data-home-anim="community-note"],
-  .paperCard[data-home-anim="practice-card"],
-  .ticket[data-home-anim="membership-ticket"],
-  .mobileCourseBookItem[data-home-anim="mobile-course-book"],
-  .salesNote[data-home-anim="sales-note"],
-  .guaranteeSeal[data-home-anim="guarantee-seal"] {
-    opacity: 1 !important;
-    transform: none !important;
-  }
+  will-change: opacity, translate;
 }
