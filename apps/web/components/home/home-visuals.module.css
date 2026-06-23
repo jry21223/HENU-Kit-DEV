@@ -398,53 +398,6 @@
   width: 7px;
 }
 
-.bookStage:not([data-animation-ready="true"]) {
-  min-height: auto;
-}
-
-.bookStage:not([data-animation-ready="true"]) .bookSticky {
-  position: relative;
-}
-
-.bookStage:not([data-animation-ready="true"]) .bookScene {
-  display: block;
-}
-
-.bookStage:not([data-animation-ready="true"]) .bookCopyPanel {
-  position: relative;
-}
-
-.bookStage:not([data-animation-ready="true"]) .bookDock {
-  position: relative;
-  top: auto;
-  left: auto;
-  width: min(1040px, 92vw);
-  margin: 32px auto 0;
-  transform: none;
-}
-
-.bookStage:not([data-animation-ready="true"]) .archiveBook {
-  transform: none;
-}
-
-.bookStage:not([data-animation-ready="true"]) .bookBase,
-.bookStage:not([data-animation-ready="true"]) .bookInside,
-.bookStage:not([data-animation-ready="true"]) .bookPage {
-  opacity: 1;
-  transform: none;
-}
-
-.bookStage:not([data-animation-ready="true"]) .bookCover {
-  opacity: 0;
-  transform: rotateY(-176deg);
-}
-
-.bookStage:not([data-animation-ready="true"]) :global([data-home-anim="archive-open-copy"]),
-.bookStage:not([data-animation-ready="true"]) :global([data-home-anim="archive-closing-copy"]) {
-  opacity: 0;
-  transform: none;
-}
-
 .directoryLine {
   border-bottom: 1px solid rgb(43 33 23 / 0.12);
 }

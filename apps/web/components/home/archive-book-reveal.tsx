@@ -44,18 +44,65 @@ export function ArchiveBookReveal() {
   const introFocusable = fallbackVisible || introReady;
   const introTabIndex = introFocusable ? undefined : -1;
   const introAriaHidden = introFocusable ? undefined : true;
+  const noScriptArchiveFallbackStyles = `
+.${styles.bookStage} {
+  min-height: auto;
+}
+
+.${styles.bookStage} .${styles.bookSticky} {
+  position: relative;
+}
+
+.${styles.bookStage} .${styles.bookScene} {
+  display: block;
+}
+
+.${styles.bookStage} .${styles.bookCopyPanel} {
+  position: relative;
+}
+
+.${styles.bookStage} .${styles.bookDock} {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: min(1040px, 92vw);
+  margin: 32px auto 0;
+  transform: none;
+}
+
+.${styles.bookStage} .${styles.archiveBook} {
+  transform: none;
+}
+
+.${styles.bookStage} .${styles.bookBase},
+.${styles.bookStage} .${styles.bookInside},
+.${styles.bookStage} .${styles.bookPage} {
+  opacity: 1;
+  transform: none;
+}
+
+.${styles.bookStage} .${styles.bookCover} {
+  opacity: 0;
+  transform: rotateY(-176deg);
+}
+
+.${styles.bookStage} [data-home-anim="archive-open-copy"],
+.${styles.bookStage} [data-home-anim="archive-closing-copy"] {
+  opacity: 0;
+  transform: none;
+}
+`;
 
   return (
-    <section
-      ref={ref}
-      className={styles.bookStage}
-      data-animation-ready={clientAnimationReady && !reduceMotion ? "true" : undefined}
-      aria-label="课程资料档案册"
-    >
-      <div className={styles.bookSticky}>
-        <div className={styles.bookScene}>
-          <div className={styles.bookCopy}>
-            <div
+    <>
+      <noscript>
+        <style dangerouslySetInnerHTML={{ __html: noScriptArchiveFallbackStyles }} />
+      </noscript>
+      <section ref={ref} className={styles.bookStage} aria-label="课程资料档案册">
+        <div className={styles.bookSticky}>
+          <div className={styles.bookScene}>
+            <div className={styles.bookCopy}>
+              <div
               className={styles.bookCopyPanel}
               data-testid="archive-copy-intro"
               {...homeAnimAttr("archiveIntroCopy")}
@@ -226,6 +273,7 @@ export function ArchiveBookReveal() {
           </div>
         </div>
       </div>
-    </section>
+      </section>
+    </>
   );
 }

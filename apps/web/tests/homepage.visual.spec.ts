@@ -340,6 +340,39 @@ test("homepage keeps archive content available with reduced motion", async ({ pa
   await expect(archiveBook.getByRole("link", { name: /数据结构/ })).toBeVisible();
 });
 
+test("homepage keeps JS-enabled SSR archive in animation initial layout", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1100 },
+  });
+
+  try {
+    const page = await context.newPage();
+    await page.route(/\.js(\?.*)?$/, (route) => route.abort());
+    await page.goto(homeUrl, { waitUntil: "domcontentloaded" });
+
+    const startBox = await archiveBookBox(page);
+    expect(startBox.width).toBeGreaterThan(1180);
+
+    const visualState = await page.evaluate(() => {
+      const cover = document.querySelector<HTMLElement>('[data-home-anim="archive-cover"]');
+      const firstPage = document.querySelector<HTMLElement>('[data-home-anim="archive-page"]');
+
+      if (!cover || !firstPage) {
+        throw new Error("Archive book elements were not found");
+      }
+
+      return {
+        coverOpacity: Number(getComputedStyle(cover).opacity),
+        pageOpacity: Number(getComputedStyle(firstPage).opacity),
+      };
+    });
+
+    expect(visualState).toEqual({ coverOpacity: 1, pageOpacity: 0 });
+  } finally {
+    await context.close();
+  }
+});
+
 test("homepage keeps archive pages accessible without JavaScript and reduced motion", async ({ browser }) => {
   const context = await browser.newContext({
     javaScriptEnabled: false,
