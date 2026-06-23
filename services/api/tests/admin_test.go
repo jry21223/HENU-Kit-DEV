@@ -25,6 +25,10 @@ func TestAdminCourseCRUDRequiresAdmin(t *testing.T) {
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("expected student admin create 403, got %d: %s", forbidden.Code, forbidden.Body.String())
 	}
+	forbiddenList := performJSON(router, http.MethodGet, "/api/v1/admin/courses", "", studentToken)
+	if forbiddenList.Code != http.StatusForbidden {
+		t.Fatalf("expected student admin course list 403, got %d: %s", forbiddenList.Code, forbiddenList.Body.String())
+	}
 
 	createTestUser(t, db, "admin@stu.henu.edu.cn", model.RoleAdmin)
 	adminToken := loginTestUser(t, router, "admin@stu.henu.edu.cn")
@@ -53,6 +57,37 @@ func TestAdminCourseCRUDRequiresAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	invalidStatusBody := `{"schoolId":"` + school.ID + `","collegeId":"` + college.ID + `","majorId":"` + major.ID + `","grade":"2023","name":"Invalid Status","slug":"invalid-status","status":"pending_review"}`
+	invalidStatusResponse := performJSON(router, http.MethodPost, "/api/v1/admin/courses", invalidStatusBody, adminToken)
+	if invalidStatusResponse.Code != http.StatusBadRequest || !strings.Contains(invalidStatusResponse.Body.String(), "invalid_status") {
+		t.Fatalf("expected invalid course status rejection, got %d: %s", invalidStatusResponse.Code, invalidStatusResponse.Body.String())
+	}
+
+	draftBody := `{"schoolId":"` + school.ID + `","collegeId":"` + college.ID + `","majorId":"` + major.ID + `","grade":"2023","name":"Draft Course","slug":"draft-course","status":"draft"}`
+	draftResponse := performJSON(router, http.MethodPost, "/api/v1/admin/courses", draftBody, adminToken)
+	if draftResponse.Code != http.StatusOK {
+		t.Fatalf("expected draft course create 200, got %d: %s", draftResponse.Code, draftResponse.Body.String())
+	}
+	adminList := performJSON(router, http.MethodGet, "/api/v1/admin/courses", "", adminToken)
+	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), "draft-course") {
+		t.Fatalf("expected admin course list to include draft course, got %d: %s", adminList.Code, adminList.Body.String())
+	}
+	var draftCourse model.Course
+	if err := db.First(&draftCourse, "slug = ?", "draft-course").Error; err != nil {
+		t.Fatal(err)
+	}
+	publicList := performJSON(router, http.MethodGet, "/api/v1/courses", "", "")
+	if publicList.Code != http.StatusOK {
+		t.Fatalf("expected public course list 200, got %d: %s", publicList.Code, publicList.Body.String())
+	}
+	if strings.Contains(publicList.Body.String(), "draft-course") {
+		t.Fatalf("public course list must not include draft courses: %s", publicList.Body.String())
+	}
+	publicDraftDetail := performJSON(router, http.MethodGet, "/api/v1/courses/"+draftCourse.ID, "", "")
+	if publicDraftDetail.Code != http.StatusNotFound {
+		t.Fatalf("public course detail must not expose draft courses, got %d: %s", publicDraftDetail.Code, publicDraftDetail.Body.String())
+	}
+
 	courseBody := `{"schoolId":"` + school.ID + `","collegeId":"` + college.ID + `","majorId":"` + major.ID + `","grade":"2023","name":"Admin Course","slug":"admin-course","status":"published"}`
 	courseResponse := performJSON(router, http.MethodPost, "/api/v1/admin/courses", courseBody, adminToken)
 	if courseResponse.Code != http.StatusOK {
@@ -66,6 +101,10 @@ func TestAdminCourseCRUDRequiresAdmin(t *testing.T) {
 	updateResponse := performJSON(router, http.MethodPatch, "/api/v1/admin/courses/"+course.ID, `{"name":"Updated Course"}`, adminToken)
 	if updateResponse.Code != http.StatusOK {
 		t.Fatalf("expected course update 200, got %d: %s", updateResponse.Code, updateResponse.Body.String())
+	}
+	invalidPatch := performJSON(router, http.MethodPatch, "/api/v1/admin/courses/"+course.ID, `{"status":"pending_review"}`, adminToken)
+	if invalidPatch.Code != http.StatusBadRequest || !strings.Contains(invalidPatch.Body.String(), "invalid_status") {
+		t.Fatalf("expected invalid course status patch rejection, got %d: %s", invalidPatch.Code, invalidPatch.Body.String())
 	}
 
 	archiveResponse := performJSON(router, http.MethodDelete, "/api/v1/admin/courses/"+course.ID, "", adminToken)

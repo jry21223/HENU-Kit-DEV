@@ -57,7 +57,7 @@ func (h Handler) Majors(ctx *gin.Context) {
 }
 
 func (h Handler) Courses(ctx *gin.Context) {
-	query := h.db.Where("status <> ?", model.StatusArchived)
+	query := h.db.Where("status = ?", model.StatusPublished)
 	if schoolID := ctx.Query("schoolId"); schoolID != "" {
 		query = query.Where("school_id = ?", schoolID)
 	}
@@ -77,7 +77,7 @@ func (h Handler) Courses(ctx *gin.Context) {
 
 func (h Handler) Course(ctx *gin.Context) {
 	var course model.Course
-	if err := h.db.First(&course, "id = ? AND status <> ?", ctx.Param("id"), model.StatusArchived).Error; err != nil {
+	if err := h.db.First(&course, "id = ? AND status = ?", ctx.Param("id"), model.StatusPublished).Error; err != nil {
 		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "course_not_found", nil)
 		return
 	}

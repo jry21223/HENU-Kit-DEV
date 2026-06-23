@@ -213,6 +213,11 @@ func (h Handler) CreateCourse(ctx *gin.Context) {
 	if !bindJSON(ctx, &req) {
 		return
 	}
+	status, ok := normalizeCourseStatus(req.Status, model.StatusPublished)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
 	course := model.Course{
 		SchoolID:    strings.TrimSpace(req.SchoolID),
 		CollegeID:   strings.TrimSpace(req.CollegeID),
@@ -222,7 +227,7 @@ func (h Handler) CreateCourse(ctx *gin.Context) {
 		Slug:        required(req.Slug),
 		Description: strings.TrimSpace(req.Description),
 		ExamScope:   strings.TrimSpace(req.ExamScope),
-		Status:      defaultStatus(req.Status),
+		Status:      status,
 	}
 	if course.SchoolID == "" || course.CollegeID == "" || course.MajorID == "" || course.Grade == "" || course.Name == "" || course.Slug == "" {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
@@ -235,10 +240,46 @@ func (h Handler) CreateCourse(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"course": course})
 }
 
+func (h Handler) ListCourses(ctx *gin.Context) {
+	query := h.db.Model(&model.Course{})
+	if schoolID := strings.TrimSpace(ctx.Query("schoolId")); schoolID != "" {
+		query = query.Where("school_id = ?", schoolID)
+	}
+	if majorID := strings.TrimSpace(ctx.Query("majorId")); majorID != "" {
+		query = query.Where("major_id = ?", majorID)
+	}
+	if grade := strings.TrimSpace(ctx.Query("grade")); grade != "" {
+		query = query.Where("grade = ?", grade)
+	}
+	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
+		normalized, ok := normalizeCourseStatus(status, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		query = query.Where("status = ?", normalized)
+	}
+	var courses []model.Course
+	if err := query.Order("updated_at desc").Limit(500).Find(&courses).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"courses": courses})
+}
+
 func (h Handler) UpdateCourse(ctx *gin.Context) {
 	var req courseRequest
 	if !bindJSON(ctx, &req) {
 		return
+	}
+	status := strings.TrimSpace(req.Status)
+	if status != "" {
+		normalized, ok := normalizeCourseStatus(status, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		status = normalized
 	}
 	updates := compactMap(map[string]interface{}{
 		"school_id":   strings.TrimSpace(req.SchoolID),
@@ -249,7 +290,7 @@ func (h Handler) UpdateCourse(ctx *gin.Context) {
 		"slug":        strings.TrimSpace(req.Slug),
 		"description": strings.TrimSpace(req.Description),
 		"exam_scope":  strings.TrimSpace(req.ExamScope),
-		"status":      strings.TrimSpace(req.Status),
+		"status":      status,
 	})
 	h.updateByID(ctx, &model.Course{}, updates, "course")
 }
@@ -548,6 +589,19 @@ func normalizeMaterialStatus(value string, fallback string) (string, bool) {
 	}
 	switch value {
 	case model.StatusDraft, model.StatusPending, model.StatusPublished, model.StatusArchived:
+		return value, true
+	default:
+		return "", false
+	}
+}
+
+func normalizeCourseStatus(value string, fallback string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, true
+	}
+	switch value {
+	case model.StatusDraft, model.StatusPublished, model.StatusArchived:
 		return value, true
 	default:
 		return "", false

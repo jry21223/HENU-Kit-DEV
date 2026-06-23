@@ -18,6 +18,7 @@
 - Web course package cards with price and included material links
 - Web email-code login form
 - Vue admin dashboard, login guard, course management, and material upload pages
+- Vue admin all-status course listing and course edit dialog
 - Vue admin material draft/pending/published/archive status operations
 - Vue admin download audit page
 - Vue admin AI task visibility and draft approve/reject page
@@ -33,7 +34,7 @@
 ## Next Deliverable
 
 - Web profile/session polish and school/major binding UI
-- Admin review comments, reviewer role workflows, and richer edit dialogs
+- Admin review comments, reviewer role workflows, and richer material edit dialogs
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - PDF watermark integration
 - Real LLM/RAG integration and AI draft publish-to-resource flows

@@ -44,6 +44,7 @@ Currently implemented endpoints:
 - `POST /api/v1/admin/majors`
 - `PATCH /api/v1/admin/majors/:id`
 - `DELETE /api/v1/admin/majors/:id`
+- `GET /api/v1/admin/courses?schoolId=&majorId=&grade=&status=`
 - `POST /api/v1/admin/courses`
 - `PATCH /api/v1/admin/courses/:id`
 - `DELETE /api/v1/admin/courses/:id`
@@ -122,6 +123,8 @@ Implemented admin behavior:
 
 - all admin endpoints require an authenticated `admin` or `super_admin` role
 - organization/course/material delete operations archive by setting `status=archived`
+- admin course list returns all course statuses; public course list/detail returns only `published`
+- course create/update accepts only `draft`, `published`, or `archived`
 - admin material list returns all material statuses; public material list/detail returns only `published`
 - material create/upload defaults to `draft` when status is omitted
 - material status updates accept only `draft`, `pending`, `published`, or `archived`

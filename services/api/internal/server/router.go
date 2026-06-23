@@ -112,6 +112,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.POST("/majors", adminHandler.CreateMajor)
 	admin.PATCH("/majors/:id", adminHandler.UpdateMajor)
 	admin.DELETE("/majors/:id", adminHandler.ArchiveMajor)
+	admin.GET("/courses", adminHandler.ListCourses)
 	admin.POST("/courses", adminHandler.CreateCourse)
 	admin.PATCH("/courses/:id", adminHandler.UpdateCourse)
 	admin.DELETE("/courses/:id", adminHandler.ArchiveCourse)

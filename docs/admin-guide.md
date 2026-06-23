@@ -5,11 +5,29 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 ## Current Pages
 
 - `/dashboard`: module status summary.
-- `/courses`: organization-backed course creation and archiving.
+- `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
 - `/materials`: local material upload, all-status material listing, and material status operations.
 - `/downloads`: successful material download audit logs.
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations.
 - `/analytics`: read-only material download and course demand analytics.
+
+## Course Operations
+
+`/courses` calls:
+
+- `GET /api/v1/admin/courses`
+- `POST /api/v1/admin/courses`
+- `PATCH /api/v1/admin/courses/:id`
+- `DELETE /api/v1/admin/courses/:id`
+
+The admin course list returns `draft`, `published`, and `archived` courses. Public course APIs continue to expose only `published` courses.
+
+Important boundaries:
+
+- Course create and edit operations require an authenticated `admin` or `super_admin` role.
+- Valid course statuses are `draft`, `published`, and `archived`.
+- Deleting a course archives it instead of hard-deleting data.
+- The edit dialog updates course organization, grade, slug, description, exam scope, and status through the Go API.
 
 ## Material Operations
 
