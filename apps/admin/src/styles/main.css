@@ -252,6 +252,27 @@ a {
   gap: 6px;
 }
 
+.json-preview {
+  background: #f6f7f4;
+  border: 1px solid var(--fr-border);
+  border-radius: 8px;
+  color: #344054;
+  font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  max-height: 180px;
+  max-width: 100%;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.json-preview.compact {
+  max-height: 120px;
+}
+
 .full-width {
   width: 100%;
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/datatypes"
+
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/internal/server"
 	applogger "final-review-platform/services/api/pkg/logger"
@@ -56,5 +58,84 @@ func TestAITaskCreateQueryAndIsolation(t *testing.T) {
 	adminList := performJSON(router, http.MethodGet, "/api/v1/admin/ai/tasks", "", adminToken)
 	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), task.ID) {
 		t.Fatalf("expected admin AI task list, got %d: %s", adminList.Code, adminList.Body.String())
+	}
+}
+
+func TestAdminAIDraftReviewRequiresAdminAndDoesNotPublish(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	course := createTestCourse(t, db)
+	student := createTestUser(t, db, "student-owner@stu.henu.edu.cn", model.RoleUser)
+
+	task := model.AITask{
+		UserID:   &student.ID,
+		CourseID: &course.ID,
+		Type:     "paper_generation",
+		Status:   model.AITaskCompleted,
+		Input:    datatypes.JSON([]byte(`{"topic":"sets"}`)),
+		Result:   datatypes.JSON([]byte(`{"title":"Mock paper"}`)),
+	}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	draft := model.AIDraft{
+		TaskID:       task.ID,
+		CourseID:     &course.ID,
+		OutputType:   "paper_generation",
+		ReviewFields: model.ReviewFields{Status: model.StatusPending},
+		DraftContent: datatypes.JSON([]byte(`{"title":"AI draft must be reviewed"}`)),
+	}
+	if err := db.Create(&draft).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	studentToken := loginTestUser(t, router, "student-owner@stu.henu.edu.cn")
+	forbiddenList := performJSON(router, http.MethodGet, "/api/v1/admin/ai/drafts", "", studentToken)
+	if forbiddenList.Code != http.StatusForbidden {
+		t.Fatalf("expected student draft list 403, got %d: %s", forbiddenList.Code, forbiddenList.Body.String())
+	}
+	forbiddenApprove := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+draft.ID+"/approve", "", studentToken)
+	if forbiddenApprove.Code != http.StatusForbidden {
+		t.Fatalf("expected student draft approve 403, got %d: %s", forbiddenApprove.Code, forbiddenApprove.Body.String())
+	}
+
+	admin := createTestUser(t, db, "ai-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, "ai-admin@stu.henu.edu.cn")
+	adminList := performJSON(router, http.MethodGet, "/api/v1/admin/ai/drafts", "", adminToken)
+	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), draft.ID) {
+		t.Fatalf("expected admin AI draft list, got %d: %s", adminList.Code, adminList.Body.String())
+	}
+
+	approve := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+draft.ID+"/approve", "", adminToken)
+	if approve.Code != http.StatusOK || !strings.Contains(approve.Body.String(), model.StatusApproved) {
+		t.Fatalf("expected admin draft approve 200, got %d: %s", approve.Code, approve.Body.String())
+	}
+	var approved model.AIDraft
+	if err := db.First(&approved, "id = ?", draft.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if approved.Status != model.StatusApproved {
+		t.Fatalf("expected approved draft, got %s", approved.Status)
+	}
+	if approved.ReviewerID == nil || *approved.ReviewerID != admin.ID {
+		t.Fatalf("expected reviewer id %s, got %#v", admin.ID, approved.ReviewerID)
+	}
+	if approved.PublishedID != nil || approved.Status == model.StatusPublished {
+		t.Fatalf("AI draft review must not auto-publish generated content: %#v", approved)
+	}
+
+	secondDraft := model.AIDraft{
+		TaskID:       task.ID,
+		CourseID:     &course.ID,
+		OutputType:   "targeted_question",
+		ReviewFields: model.ReviewFields{Status: model.StatusPending},
+		DraftContent: datatypes.JSON([]byte(`{"stem":"Mock question"}`)),
+	}
+	if err := db.Create(&secondDraft).Error; err != nil {
+		t.Fatal(err)
+	}
+	reject := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+secondDraft.ID+"/reject", "", adminToken)
+	if reject.Code != http.StatusOK || !strings.Contains(reject.Body.String(), model.StatusRejected) {
+		t.Fatalf("expected admin draft reject 200, got %d: %s", reject.Code, reject.Body.String())
 	}
 }

@@ -137,3 +137,5 @@ Implemented AI behavior:
 - Redis Stream enqueue is best-effort; database task creation remains the source of truth
 - worker mock mode turns pending tasks into pending AI drafts
 - approving a draft marks the draft reviewed but does not publish generated content automatically
+- rejecting a draft marks the draft rejected and does not delete the source task or generated content
+- the Vue admin `/ai/drafts` page is a UI wrapper over these admin-only AI review endpoints

@@ -20,6 +20,7 @@
 - Vue admin dashboard, login guard, course management, and material upload pages
 - Vue admin material draft/pending/published/archive status operations
 - Vue admin download audit page
+- Vue admin AI task visibility and draft approve/reject page
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
 - Demo seed command

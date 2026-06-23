@@ -2,17 +2,17 @@
   <main class="admin-shell">
     <aside class="sidebar">
       <div class="brand">
-        <strong>资料运营工作台</strong>
-        <span class="muted">软件学院课程资料库</span>
+        <strong>{{ copy.brand }}</strong>
+        <span class="muted">{{ copy.subtitle }}</span>
       </div>
-      <nav class="side-nav" aria-label="后台导航">
-        <RouterLink to="/dashboard">运营概览</RouterLink>
-        <RouterLink to="/courses">课程维护</RouterLink>
-        <RouterLink to="/materials">PDF 资料</RouterLink>
-        <RouterLink to="/downloads">下载审计</RouterLink>
-        <span class="nav-section">预留能力</span>
-        <span class="disabled-nav" aria-disabled="true">内容审核</span>
-        <span class="disabled-nav" aria-disabled="true">课程社区</span>
+      <nav class="side-nav" :aria-label="copy.navLabel">
+        <RouterLink to="/dashboard">{{ copy.dashboard }}</RouterLink>
+        <RouterLink to="/courses">{{ copy.courses }}</RouterLink>
+        <RouterLink to="/materials">{{ copy.materials }}</RouterLink>
+        <RouterLink to="/downloads">{{ copy.downloads }}</RouterLink>
+        <span class="nav-section">{{ copy.reviewSection }}</span>
+        <RouterLink to="/ai/drafts">{{ copy.aiDrafts }}</RouterLink>
+        <span class="disabled-nav" aria-disabled="true">{{ copy.community }}</span>
       </nav>
       <div class="sidebar-footer">
         <span>{{ auth.user?.email }}</span>
@@ -30,7 +30,17 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
 const copy = {
-  logout: "退出",
+  brand: "\u8d44\u6599\u8fd0\u8425\u5de5\u4f5c\u53f0",
+  subtitle: "\u8f6f\u4ef6\u5b66\u9662\u8bfe\u7a0b\u8d44\u6599\u5e93",
+  navLabel: "\u540e\u53f0\u5bfc\u822a",
+  dashboard: "\u8fd0\u8425\u6982\u89c8",
+  courses: "\u8bfe\u7a0b\u7ef4\u62a4",
+  materials: "PDF \u8d44\u6599",
+  downloads: "\u4e0b\u8f7d\u5ba1\u8ba1",
+  reviewSection: "\u5ba1\u6838\u6d41\u7a0b",
+  aiDrafts: "AI \u8349\u7a3f",
+  community: "\u8bfe\u7a0b\u793e\u533a",
+  logout: "\u9000\u51fa",
 };
 
 const auth = useAuthStore();

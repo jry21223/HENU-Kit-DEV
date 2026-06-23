@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
 import CoursesView from "../views/CoursesView.vue";
+import AiDraftsView from "../views/AiDraftsView.vue";
 import DashboardView from "../views/DashboardView.vue";
 import DownloadsView from "../views/DownloadsView.vue";
 import LoginView from "../views/LoginView.vue";
@@ -16,6 +17,7 @@ export const router = createRouter({
     { path: "/courses", component: CoursesView },
     { path: "/materials", component: MaterialsView },
     { path: "/downloads", component: DownloadsView },
+    { path: "/ai/drafts", component: AiDraftsView },
   ],
 });
 

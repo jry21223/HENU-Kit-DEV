@@ -77,6 +77,36 @@ export type DownloadRecord = {
   material?: Material;
 };
 
+export type AITask = {
+  id: string;
+  userId?: string;
+  courseId?: string;
+  type: string;
+  status: string;
+  input?: unknown;
+  result?: unknown;
+  error: string;
+  startedAt?: string;
+  endedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AIDraft = {
+  id: string;
+  taskId: string;
+  courseId?: string;
+  outputType: string;
+  status: string;
+  reviewerId?: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  draftContent?: unknown;
+  publishedId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type LoginData = {
   user: User;
   accessToken: string;

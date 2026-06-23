@@ -152,5 +152,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 
 - Vue Admin includes `/downloads` for successful material download audit logs.
 - Vue Admin includes material status operations for `draft`, `pending`, `published`, and `archived`.
+- Vue Admin includes `/ai/drafts` for admin-only AI task visibility and draft approve/reject review.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
 - Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.
+- AI draft review does not publish generated content automatically; real publish-to-resource flows remain later work.
