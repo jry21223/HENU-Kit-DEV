@@ -58,6 +58,8 @@ Currently implemented endpoints:
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/reports`
+- `GET /api/v1/admin/users?email=&role=&status=&limit=`
+- `PATCH /api/v1/admin/users/:id`
 - `POST /api/v1/admin/schools`
 - `PATCH /api/v1/admin/schools/:id`
 - `DELETE /api/v1/admin/schools/:id`
@@ -263,9 +265,16 @@ Implemented wiki behavior:
 
 Implemented admin behavior:
 
-- all admin endpoints require an authenticated `admin` or `super_admin` role
+- admin-only endpoints require an authenticated, non-frozen `admin` or `super_admin` role
+- admin users can list users through `/admin/users`, filtered by email substring, role, status, and limit
+- admin users can update another user's display name, role, and active/frozen status through `PATCH /admin/users/:id`
+- valid user roles are `user`, `creator`, `reviewer`, `operator`, `admin`, and `super_admin`; valid user statuses are `active` and `frozen`
+- admins cannot change their own role or status from this endpoint, which prevents accidental self-lockout
+- only `super_admin` users can edit an existing `super_admin` account or grant the `super_admin` role
+- setting a user back to `active` clears `frozenUntil`; frozen users remain blocked by `RequireNotFrozen` write endpoints
+- user updates write `operation_logs` with previous/current role and status metadata
 - review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, `/api/v1/admin/wiki/entries*`, `/api/v1/admin/wiki/proposals*`, `/api/v1/admin/blog/posts*`, `/api/v1/admin/forum/posts*`, and `/api/v1/admin/forum/replies*` allow `reviewer`, `admin`, or `super_admin`
-- `reviewer` users remain blocked from material CRUD, course CRUD, download audit, analytics, operation logs, and other admin-only APIs
+- `reviewer` users remain blocked from user management, material CRUD, course CRUD, download audit, analytics, operation logs, and other admin-only APIs
 - organization/course/material delete operations archive by setting `status=archived`
 - admin course list returns all course statuses; public course list/detail returns only `published`
 - course create/update accepts only `draft`, `published`, or `archived`

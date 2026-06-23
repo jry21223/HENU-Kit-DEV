@@ -134,10 +134,12 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 
 	admin := v1.Group("/admin")
-	admin.Use(authMiddleware.RequireAuth(), authMiddleware.RequireAdmin())
+	admin.Use(authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireAdmin())
 	admin.GET("/healthz", func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"admin": true})
 	})
+	admin.GET("/users", adminHandler.ListUsers)
+	admin.PATCH("/users/:id", adminHandler.UpdateUser)
 	admin.POST("/schools", adminHandler.CreateSchool)
 	admin.PATCH("/schools/:id", adminHandler.UpdateSchool)
 	admin.DELETE("/schools/:id", adminHandler.ArchiveSchool)

@@ -14,6 +14,7 @@ import MaterialReviewsView from "../views/MaterialReviewsView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
 import OperationLogsView from "../views/OperationLogsView.vue";
 import ReportsView from "../views/ReportsView.vue";
+import UsersView from "../views/UsersView.vue";
 import WikiProposalReviewsView from "../views/WikiProposalReviewsView.vue";
 import WikiReviewsView from "../views/WikiReviewsView.vue";
 
@@ -23,6 +24,7 @@ export const router = createRouter({
     { path: "/", component: DashboardView },
     { path: "/login", component: LoginView, meta: { public: true } },
     { path: "/dashboard", component: DashboardView },
+    { path: "/users", component: UsersView },
     { path: "/courses", component: CoursesView },
     { path: "/materials", component: MaterialsView },
     { path: "/downloads", component: DownloadsView },

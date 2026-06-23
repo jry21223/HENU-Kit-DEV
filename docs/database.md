@@ -26,6 +26,9 @@ Reviewable content includes reviewer and review result fields.
 
 Current access-control notes:
 
+- `users.role` drives role middleware and currently accepts `user`, `creator`, `reviewer`, `operator`, `admin`, and `super_admin`.
+- `users.status` drives account availability and currently accepts `active` or `frozen`; `users.frozen_until` can also block writes while it is in the future.
+- Admin user management updates only `users.name`, `users.role`, and `users.status` in the MVP and records those mutations in `operation_logs`.
 - `materials.storage_key` is internal-only and is not serialized in public API responses.
 - `materials.reviewer_id`, `materials.reviewed_at`, and `materials.review_reason` record the current material-review decision; public material endpoints still expose only `published` rows.
 - `material_access_grants.material_id` is the active paid-material unlock path in the current foundation.

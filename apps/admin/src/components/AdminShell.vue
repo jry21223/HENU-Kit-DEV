@@ -7,6 +7,7 @@
       </div>
       <nav class="side-nav" :aria-label="copy.navLabel">
         <RouterLink v-if="auth.isAdmin" to="/dashboard">{{ copy.dashboard }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/users">{{ copy.users }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/courses">{{ copy.courses }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/materials">{{ copy.materials }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/downloads">{{ copy.downloads }}</RouterLink>
@@ -43,6 +44,7 @@ const copy = {
   subtitle: "\u8f6f\u4ef6\u5b66\u9662\u8bfe\u7a0b\u8d44\u6599\u5e93",
   navLabel: "\u540e\u53f0\u5bfc\u822a",
   dashboard: "\u8fd0\u8425\u6982\u89c8",
+  users: "\u7528\u6237\u7ba1\u7406",
   courses: "\u8bfe\u7a0b\u7ef4\u62a4",
   materials: "PDF \u8d44\u6599",
   downloads: "\u4e0b\u8f7d\u5ba1\u8ba1",

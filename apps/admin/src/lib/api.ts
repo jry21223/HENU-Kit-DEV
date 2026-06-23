@@ -14,7 +14,14 @@ export type User = {
   name: string;
   role: string;
   status: string;
+  schoolId?: string;
+  majorId?: string;
+  grade?: string;
   emailVerified: boolean;
+  frozenUntil?: string;
+  pointsBalance?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type Course = {

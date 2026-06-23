@@ -5,6 +5,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 ## Current Pages
 
 - `/dashboard`: module status summary.
+- `/users`: user listing, role update, and active/frozen status management.
 - `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
 - `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
 - `/downloads`: successful material download audit logs.
@@ -17,6 +18,26 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations with review notes.
 - `/analytics`: read-only material download and course demand analytics.
 - `/operation-logs`: read-only high-risk admin operation logs.
+
+## User Management
+
+`/users` calls:
+
+- `GET /api/v1/admin/users?email=&role=&status=&limit=`
+- `PATCH /api/v1/admin/users/:id`
+
+The page is available only to `admin` and `super_admin` roles. It provides a compact user list with email, display name, role, active/frozen status, profile binding hints, points balance, verification state, and creation time.
+
+Important boundaries:
+
+- Reviewer-only users cannot access the user management page or API.
+- The UI edits only display name, role, and active/frozen status; it does not edit email, points, membership, or password credentials.
+- Valid roles are `user`, `creator`, `reviewer`, `operator`, `admin`, and `super_admin`.
+- Valid statuses are `active` and `frozen`.
+- Admin users cannot change their own role or status through this endpoint.
+- Only `super_admin` users can edit an existing `super_admin` account or grant the `super_admin` role.
+- Freezing a user is enforced by server-side `RequireNotFrozen` checks on protected write endpoints; it is not a frontend-only toggle.
+- User updates write `operation_logs` with previous/current role and status metadata.
 
 ## Course Operations
 
@@ -312,7 +333,6 @@ Important boundaries:
 
 ## Planned Areas
 
-- Users and roles
 - Richer content review
 - Points and memberships
 - Orders

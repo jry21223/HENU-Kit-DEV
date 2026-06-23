@@ -30,6 +30,11 @@ const maxUploadBytes = 20 * 1024 * 1024
 const defaultOperationLogRetentionDays = 180
 const defaultOperationLogExportLimit = 5000
 
+var (
+	errUnsafeSelfUpdate   = errors.New("unsafe_self_update")
+	errSuperAdminRequired = errors.New("super_admin_required")
+)
+
 var allowedUploadExtensions = map[string]bool{
 	".pdf":  true,
 	".txt":  true,
@@ -114,6 +119,133 @@ type materialStatusRequest struct {
 
 type materialReviewRequest struct {
 	ReviewReason string `json:"reviewReason"`
+}
+
+type userUpdateRequest struct {
+	Name   *string `json:"name"`
+	Role   *string `json:"role"`
+	Status *string `json:"status"`
+}
+
+func (h Handler) ListUsers(ctx *gin.Context) {
+	query := h.db.Model(&model.User{})
+	if email := strings.TrimSpace(ctx.Query("email")); email != "" {
+		query = query.Where("email LIKE ?", "%"+email+"%")
+	}
+	if role := strings.TrimSpace(ctx.Query("role")); role != "" {
+		normalized, ok := normalizeUserRole(role, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_role", nil)
+			return
+		}
+		query = query.Where("role = ?", normalized)
+	}
+	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
+		normalized, ok := normalizeUserStatus(status, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		query = query.Where("status = ?", normalized)
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 200, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var users []model.User
+	if err := query.Order("created_at desc").Limit(limit).Find(&users).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"users": users})
+}
+
+func (h Handler) UpdateUser(ctx *gin.Context) {
+	current, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req userUpdateRequest
+	if !bindJSON(ctx, &req) {
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_name", nil)
+			return
+		}
+		updates["name"] = name
+	}
+	if req.Role != nil {
+		role, ok := normalizeUserRole(*req.Role, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_role", nil)
+			return
+		}
+		updates["role"] = role
+	}
+	if req.Status != nil {
+		status, ok := normalizeUserStatus(*req.Status, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		updates["status"] = status
+		if status == "active" {
+			updates["frozen_until"] = nil
+		}
+	}
+	if len(updates) == 0 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "empty_update", nil)
+		return
+	}
+
+	targetID := ctx.Param("id")
+	var updated model.User
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		var target model.User
+		if err := tx.First(&target, "id = ?", targetID).Error; err != nil {
+			return err
+		}
+		if target.ID == current.ID && (req.Role != nil || req.Status != nil) {
+			return errUnsafeSelfUpdate
+		}
+		if (target.Role == model.RoleSuperAdmin || updates["role"] == model.RoleSuperAdmin) && current.Role != model.RoleSuperAdmin {
+			return errSuperAdminRequired
+		}
+		if err := tx.Model(&target).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.First(&updated, "id = ?", target.ID).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "user.update", "user", target.ID, map[string]interface{}{
+			"fields":         sortedKeys(updates),
+			"previousRole":   target.Role,
+			"role":           updated.Role,
+			"previousStatus": target.Status,
+			"status":         updated.Status,
+		})
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "user_not_found", nil)
+		case errors.Is(err, errUnsafeSelfUpdate):
+			response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "unsafe_self_update", nil)
+		case errors.Is(err, errSuperAdminRequired):
+			response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "super_admin_required", nil)
+		default:
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "update_failed", nil)
+		}
+		return
+	}
+	response.OK(ctx, gin.H{"user": updated})
 }
 
 func (h Handler) OperationLogs(ctx *gin.Context) {
@@ -945,11 +1077,7 @@ func updateMetadata(updates map[string]interface{}) map[string]interface{} {
 	if len(updates) == 0 {
 		return nil
 	}
-	fields := make([]string, 0, len(updates))
-	for key := range updates {
-		fields = append(fields, key)
-	}
-	sort.Strings(fields)
+	fields := sortedKeys(updates)
 	metadata := map[string]interface{}{
 		"fields": fields,
 	}
@@ -959,6 +1087,15 @@ func updateMetadata(updates map[string]interface{}) map[string]interface{} {
 		}
 	}
 	return metadata
+}
+
+func sortedKeys(values map[string]interface{}) []string {
+	fields := make([]string, 0, len(values))
+	for key := range values {
+		fields = append(fields, key)
+	}
+	sort.Strings(fields)
+	return fields
 }
 
 func parseLimit(raw string, fallback int, max int) (int, bool) {
@@ -1086,6 +1223,32 @@ func normalizeCourseStatus(value string, fallback string) (string, bool) {
 	}
 	switch value {
 	case model.StatusDraft, model.StatusPublished, model.StatusArchived:
+		return value, true
+	default:
+		return "", false
+	}
+}
+
+func normalizeUserRole(value string, fallback string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, true
+	}
+	switch value {
+	case model.RoleUser, model.RoleCreator, model.RoleReviewer, model.RoleOperator, model.RoleAdmin, model.RoleSuperAdmin:
+		return value, true
+	default:
+		return "", false
+	}
+}
+
+func normalizeUserStatus(value string, fallback string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, true
+	}
+	switch value {
+	case "active", "frozen":
 		return value, true
 	default:
 		return "", false
