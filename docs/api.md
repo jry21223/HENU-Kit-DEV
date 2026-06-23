@@ -49,7 +49,9 @@ Currently implemented endpoints:
 - `GET /api/v1/me/downloads`
 - `GET /api/v1/me/entitlements`
 - `GET /api/v1/me/forum-posts?limit=`
+- `PATCH /api/v1/me/forum-posts/:id`
 - `GET /api/v1/me/forum-replies?limit=`
+- `PATCH /api/v1/me/forum-replies/:id`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/admin/schools`
@@ -188,6 +190,11 @@ Implemented forum behavior:
 - logged-in users can list only their own forum posts through `/me/forum-posts`, including `status` and their own `reviewReason` for rejected/needs-changes content
 - logged-in users can list only their own forum replies through `/me/forum-replies`, including parent post title/status, reply `status`, and their own `reviewReason`
 - `/me/forum-posts` and `/me/forum-replies` do not expose other users' submissions, `reviewerId`, `reviewedAt`, or admin-only review metadata
+- logged-in, non-frozen users can edit and resubmit only their own `draft`, `pending`, `needs_changes`, or `rejected` forum posts through `PATCH /me/forum-posts/:id`; published/archived posts return HTTP 409
+- forum post resubmission updates title/content only, resets status to `pending`, clears old reviewer metadata and review reason, and keeps the post hidden from public endpoints until review
+- rejected/refunded reward posts re-freeze the original `rewardPoints` on resubmission with a `forum_reward_reescrow` points log; insufficient points reject the resubmission and keep the post rejected/refunded
+- logged-in, non-frozen users can edit and resubmit only their own `draft`, `pending`, `needs_changes`, or `rejected` replies through `PATCH /me/forum-replies/:id`; published replies return HTTP 409
+- reply resubmission updates content only, requires the parent post to still be published/public, resets status to `pending`, clears old reviewer metadata and review reason, and remains hidden from public detail until review
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected forum posts through `/admin/forum/posts`
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected forum replies through `/admin/forum/replies`
 - approving a forum post sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/internal/server"
@@ -141,5 +142,203 @@ func TestMyForumSubmissionEndpointsAreUserScoped(t *testing.T) {
 	publicDetailBody := publicDetail.Body.String()
 	if strings.Contains(publicDetailBody, pendingReply.ID) || strings.Contains(publicDetailBody, rejectedReply.ID) || strings.Contains(publicDetailBody, "reviewReason") {
 		t.Fatalf("expected public detail to hide pending/rejected reply and review metadata, got %s", publicDetailBody)
+	}
+}
+
+func TestMyForumResubmitWorkflow(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	board := model.ForumBoard{Name: "Resubmit Discussion", Slug: "resubmit-discussion", Description: "Resubmit review flow", Status: model.StatusPublished}
+	if err := db.Create(&board).Error; err != nil {
+		t.Fatal(err)
+	}
+	owner := createTestUser(t, db, "forum-resubmit-owner@stu.henu.edu.cn", model.RoleUser)
+	other := createTestUser(t, db, "forum-resubmit-other@stu.henu.edu.cn", model.RoleUser)
+	reviewer := createTestUser(t, db, "forum-resubmit-reviewer@stu.henu.edu.cn", model.RoleReviewer)
+	ownerToken := loginTestUser(t, router, owner.Email)
+	otherToken := loginTestUser(t, router, other.Email)
+	reviewerID := reviewer.ID
+	reviewedAt := time.Now().UTC()
+
+	if err := db.Model(&model.User{}).Where("id = ?", owner.ID).Update("points_balance", 70).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rejectedPost := model.ForumPost{
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     owner.ID,
+		BoardID:      board.ID,
+		Title:        "Rejected post",
+		Content:      "Thin post",
+		Type:         "normal",
+		Status:       model.StatusRejected,
+		ReviewerID:   &reviewerID,
+		ReviewedAt:   &reviewedAt,
+		ReviewReason: "missing details",
+	}
+	publishedPost := model.ForumPost{
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     owner.ID,
+		BoardID:      board.ID,
+		Title:        "Published post",
+		Content:      "Already public.",
+		Type:         "normal",
+		Status:       model.StatusPublished,
+	}
+	otherRejectedPost := model.ForumPost{
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     other.ID,
+		BoardID:      board.ID,
+		Title:        "Other rejected post",
+		Content:      "Other user content.",
+		Type:         "normal",
+		Status:       model.StatusRejected,
+	}
+	rewardPost := model.ForumPost{
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     owner.ID,
+		BoardID:      board.ID,
+		Title:        "Rejected reward post",
+		Content:      "Reward content needs detail.",
+		Type:         "reward",
+		RewardPoints: 30,
+		RewardStatus: "refunded",
+		Status:       model.StatusRejected,
+		ReviewerID:   &reviewerID,
+		ReviewedAt:   &reviewedAt,
+		ReviewReason: "unclear reward request",
+	}
+	expensiveRewardPost := model.ForumPost{
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     owner.ID,
+		BoardID:      board.ID,
+		Title:        "Expensive rejected reward post",
+		Content:      "This one costs too much to resubmit.",
+		Type:         "reward",
+		RewardPoints: 100,
+		RewardStatus: "refunded",
+		Status:       model.StatusRejected,
+	}
+	for _, post := range []*model.ForumPost{&rejectedPost, &publishedPost, &otherRejectedPost, &rewardPost, &expensiveRewardPost} {
+		if err := db.Create(post).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rejectedReply := model.ForumReply{
+		AuthorID:     owner.ID,
+		PostID:       publishedPost.ID,
+		Content:      "Rejected reply",
+		Status:       model.StatusRejected,
+		ReviewerID:   &reviewerID,
+		ReviewedAt:   &reviewedAt,
+		ReviewReason: "not constructive",
+	}
+	publishedReply := model.ForumReply{AuthorID: owner.ID, PostID: publishedPost.ID, Content: "Published reply", Status: model.StatusPublished}
+	otherRejectedReply := model.ForumReply{AuthorID: other.ID, PostID: publishedPost.ID, Content: "Other rejected reply", Status: model.StatusRejected}
+	for _, reply := range []*model.ForumReply{&rejectedReply, &publishedReply, &otherRejectedReply} {
+		if err := db.Create(reply).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	unauthPost := performJSON(router, http.MethodPatch, "/api/v1/me/forum-posts/"+rejectedPost.ID, `{"title":"x","content":"y"}`, "")
+	if unauthPost.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated post resubmit 401, got %d: %s", unauthPost.Code, unauthPost.Body.String())
+	}
+	otherPost := performJSON(router, http.MethodPatch, "/api/v1/me/forum-posts/"+rejectedPost.ID, `{"title":"x","content":"y"}`, otherToken)
+	if otherPost.Code != http.StatusNotFound {
+		t.Fatalf("expected other user post resubmit 404, got %d: %s", otherPost.Code, otherPost.Body.String())
+	}
+	invalidPost := performJSON(router, http.MethodPatch, "/api/v1/me/forum-posts/"+rejectedPost.ID, `{"title":" ","content":"More context"}`, ownerToken)
+	if invalidPost.Code != http.StatusBadRequest || !strings.Contains(invalidPost.Body.String(), "missing_required_fields") {
+		t.Fatalf("expected invalid post resubmit rejection, got %d: %s", invalidPost.Code, invalidPost.Body.String())
+	}
+	publishedPostEdit := performJSON(router, http.MethodPatch, "/api/v1/me/forum-posts/"+publishedPost.ID, `{"title":"Edit public","content":"Nope"}`, ownerToken)
+	if publishedPostEdit.Code != http.StatusConflict || !strings.Contains(publishedPostEdit.Body.String(), "forum_post_not_editable") {
+		t.Fatalf("expected published post edit conflict, got %d: %s", publishedPostEdit.Code, publishedPostEdit.Body.String())
+	}
+
+	resubmitPost := performJSON(router, http.MethodPatch, "/api/v1/me/forum-posts/"+rejectedPost.ID, `{"title":"Resubmitted post","content":"I added course, chapter, and the exact stuck point."}`, ownerToken)
+	if resubmitPost.Code != http.StatusOK || !strings.Contains(resubmitPost.Body.String(), `"status":"pending"`) || strings.Contains(resubmitPost.Body.String(), "missing details") {
+		t.Fatalf("expected rejected post to return pending without stale reason, got %d: %s", resubmitPost.Code, resubmitPost.Body.String())
+	}
+	var updatedPost model.ForumPost
+	if err := db.First(&updatedPost, "id = ?", rejectedPost.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if updatedPost.Status != model.StatusPending || updatedPost.Title != "Resubmitted post" || updatedPost.ReviewReason != "" || updatedPost.ReviewerID != nil || updatedPost.ReviewedAt != nil {
+		t.Fatalf("expected post resubmitted pending with cleared review metadata, got %#v", updatedPost)
+	}
+	publicPost := performJSON(router, http.MethodGet, "/api/v1/forum/posts/"+rejectedPost.ID, "", "")
+	if publicPost.Code != http.StatusNotFound {
+		t.Fatalf("expected resubmitted pending post hidden publicly, got %d: %s", publicPost.Code, publicPost.Body.String())
+	}
+
+	resubmitReward := performJSON(router, http.MethodPatch, "/api/v1/me/forum-posts/"+rewardPost.ID, `{"title":"Resubmitted reward post","content":"I clarified the expected proof format and reward conditions."}`, ownerToken)
+	if resubmitReward.Code != http.StatusOK || !strings.Contains(resubmitReward.Body.String(), `"rewardStatus":"escrowed"`) {
+		t.Fatalf("expected reward post re-escrow on resubmit, got %d: %s", resubmitReward.Code, resubmitReward.Body.String())
+	}
+	var ownerAfterReward model.User
+	if err := db.First(&ownerAfterReward, "id = ?", owner.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ownerAfterReward.PointsBalance != 40 {
+		t.Fatalf("expected owner balance 40 after reward re-escrow, got %d", ownerAfterReward.PointsBalance)
+	}
+	var reescrowLogs int64
+	if err := db.Model(&model.PointsLog{}).Where("user_id = ? AND delta = ? AND balance_after = ? AND reason = ? AND reference_type = ? AND reference_id = ?", owner.ID, -30, 40, "forum_reward_reescrow", "forum_post", rewardPost.ID).Count(&reescrowLogs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reescrowLogs != 1 {
+		t.Fatalf("expected one reward re-escrow log, got %d", reescrowLogs)
+	}
+
+	insufficientReward := performJSON(router, http.MethodPatch, "/api/v1/me/forum-posts/"+expensiveRewardPost.ID, `{"title":"Still expensive","content":"More detail but not enough points."}`, ownerToken)
+	if insufficientReward.Code != http.StatusBadRequest || !strings.Contains(insufficientReward.Body.String(), "insufficient_points") {
+		t.Fatalf("expected insufficient points on reward resubmit, got %d: %s", insufficientReward.Code, insufficientReward.Body.String())
+	}
+	var expensiveAfter model.ForumPost
+	if err := db.First(&expensiveAfter, "id = ?", expensiveRewardPost.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if expensiveAfter.Status != model.StatusRejected || expensiveAfter.RewardStatus != "refunded" {
+		t.Fatalf("expected failed reward resubmit to keep rejected/refunded, got %#v", expensiveAfter)
+	}
+
+	unauthReply := performJSON(router, http.MethodPatch, "/api/v1/me/forum-replies/"+rejectedReply.ID, `{"content":"updated"}`, "")
+	if unauthReply.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated reply resubmit 401, got %d: %s", unauthReply.Code, unauthReply.Body.String())
+	}
+	otherReply := performJSON(router, http.MethodPatch, "/api/v1/me/forum-replies/"+rejectedReply.ID, `{"content":"updated"}`, otherToken)
+	if otherReply.Code != http.StatusNotFound {
+		t.Fatalf("expected other user reply resubmit 404, got %d: %s", otherReply.Code, otherReply.Body.String())
+	}
+	publishedReplyEdit := performJSON(router, http.MethodPatch, "/api/v1/me/forum-replies/"+publishedReply.ID, `{"content":"No edit"}`, ownerToken)
+	if publishedReplyEdit.Code != http.StatusConflict || !strings.Contains(publishedReplyEdit.Body.String(), "forum_reply_not_editable") {
+		t.Fatalf("expected published reply edit conflict, got %d: %s", publishedReplyEdit.Code, publishedReplyEdit.Body.String())
+	}
+	resubmitReply := performJSON(router, http.MethodPatch, "/api/v1/me/forum-replies/"+rejectedReply.ID, `{"content":"I rewrote the answer with concrete steps."}`, ownerToken)
+	if resubmitReply.Code != http.StatusOK || !strings.Contains(resubmitReply.Body.String(), `"status":"pending"`) || strings.Contains(resubmitReply.Body.String(), "not constructive") {
+		t.Fatalf("expected rejected reply to return pending without stale reason, got %d: %s", resubmitReply.Code, resubmitReply.Body.String())
+	}
+	var updatedReply model.ForumReply
+	if err := db.First(&updatedReply, "id = ?", rejectedReply.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if updatedReply.Status != model.StatusPending || updatedReply.Content != "I rewrote the answer with concrete steps." || updatedReply.ReviewReason != "" || updatedReply.ReviewerID != nil || updatedReply.ReviewedAt != nil {
+		t.Fatalf("expected reply resubmitted pending with cleared review metadata, got %#v", updatedReply)
+	}
+	publicDetail := performJSON(router, http.MethodGet, "/api/v1/forum/posts/"+publishedPost.ID, "", "")
+	if publicDetail.Code != http.StatusOK || strings.Contains(publicDetail.Body.String(), rejectedReply.ID) {
+		t.Fatalf("expected resubmitted pending reply hidden publicly, got %d: %s", publicDetail.Code, publicDetail.Body.String())
+	}
+
+	if err := db.Model(&model.User{}).Where("id = ?", owner.ID).Update("status", "frozen").Error; err != nil {
+		t.Fatal(err)
+	}
+	frozenResubmit := performJSON(router, http.MethodPatch, "/api/v1/me/forum-posts/"+otherRejectedPost.ID, `{"title":"Frozen","content":"Frozen user cannot edit."}`, ownerToken)
+	if frozenResubmit.Code != http.StatusForbidden || !strings.Contains(frozenResubmit.Body.String(), "user_frozen") {
+		t.Fatalf("expected frozen user resubmit 403, got %d: %s", frozenResubmit.Code, frozenResubmit.Body.String())
 	}
 }

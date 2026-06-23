@@ -119,7 +119,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/me/downloads", authMiddleware.RequireAuth(), downloadLogHandler.MyDownloads)
 	v1.GET("/me/entitlements", authMiddleware.RequireAuth(), entitlementHandler.Me)
 	v1.GET("/me/forum-posts", authMiddleware.RequireAuth(), forumHandler.MyPosts)
+	v1.PATCH("/me/forum-posts/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.ResubmitPost)
 	v1.GET("/me/forum-replies", authMiddleware.RequireAuth(), forumHandler.MyReplies)
+	v1.PATCH("/me/forum-replies/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.ResubmitReply)
 	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 

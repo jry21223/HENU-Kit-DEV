@@ -2,6 +2,7 @@ package forum
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -23,10 +24,12 @@ type Handler struct {
 var (
 	errPostNotReviewable   = errors.New("forum_post_not_reviewable")
 	errReplyNotReviewable  = errors.New("forum_reply_not_reviewable")
+	errPostNotEditable     = errors.New("forum_post_not_editable")
 	errBestAnswerExists    = errors.New("best_answer_already_selected")
 	errRewardNotSettleable = errors.New("reward_not_settleable")
 	errInsufficientPoints  = errors.New("insufficient_points")
 	reviewableStatuses     = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
+	userEditableStatuses   = []string{model.StatusDraft, model.StatusPending, model.StatusNeedsChanges, model.StatusRejected}
 )
 
 func NewHandler(db *gorm.DB) Handler {
@@ -207,6 +210,138 @@ func (h Handler) MyReplies(ctx *gin.Context) {
 		}
 	}
 	response.OK(ctx, gin.H{"replies": myReplies(replies, postsByID)})
+}
+
+func (h Handler) ResubmitPost(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req postRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	content := strings.TrimSpace(req.Content)
+	if err := validatePostTextInput(title, content); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+
+	var post model.ForumPost
+	if err := h.db.First(&post, "id = ? AND author_id = ?", ctx.Param("id"), user.ID).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "post_not_found", nil)
+		return
+	}
+	if !isUserEditableStatus(post.Status) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "forum_post_not_editable", gin.H{"status": post.Status})
+		return
+	}
+
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		updates := map[string]interface{}{
+			"title":         title,
+			"content":       content,
+			"status":        model.StatusPending,
+			"reviewer_id":   nil,
+			"reviewed_at":   nil,
+			"review_reason": "",
+		}
+		if post.Type == "reward" && post.RewardStatus != "escrowed" && post.RewardPoints > 0 {
+			if err := reescrowForumReward(tx, user.ID, post.ID, post.RewardPoints); err != nil {
+				return err
+			}
+			updates["reward_status"] = "escrowed"
+		}
+		result := tx.Model(&model.ForumPost{}).
+			Where("id = ? AND author_id = ? AND status IN ?", post.ID, user.ID, userEditableStatuses).
+			Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errPostNotEditable
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errInsufficientPoints) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "insufficient_points", nil)
+			return
+		}
+		if errors.Is(err, errPostNotEditable) {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "forum_post_not_editable", gin.H{"status": post.Status})
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "resubmit_failed", nil)
+		return
+	}
+	if err := h.db.First(&post, "id = ?", post.ID).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"post": myPosts([]model.ForumPost{post})[0]})
+}
+
+func (h Handler) ResubmitReply(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req replyRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	content := strings.TrimSpace(req.Content)
+	if err := validateReplyInput(content); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+
+	var reply model.ForumReply
+	if err := h.db.First(&reply, "id = ? AND author_id = ?", ctx.Param("id"), user.ID).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "reply_not_found", nil)
+		return
+	}
+	if !isUserEditableStatus(reply.Status) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "forum_reply_not_editable", gin.H{"status": reply.Status})
+		return
+	}
+	var post model.ForumPost
+	if err := h.db.Model(&model.ForumPost{}).
+		Joins("JOIN forum_boards ON forum_boards.id = forum_posts.board_id").
+		Where("forum_posts.id = ? AND forum_posts.status = ? AND forum_posts.visibility = ? AND forum_boards.status = ?", reply.PostID, model.StatusPublished, "public", model.StatusPublished).
+		First(&post).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "post_not_found", nil)
+		return
+	}
+
+	result := h.db.Model(&model.ForumReply{}).
+		Where("id = ? AND author_id = ? AND status IN ?", reply.ID, user.ID, userEditableStatuses).
+		Updates(map[string]interface{}{
+			"content":       content,
+			"status":        model.StatusPending,
+			"reviewer_id":   nil,
+			"reviewed_at":   nil,
+			"review_reason": "",
+		})
+	if result.Error != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "resubmit_failed", nil)
+		return
+	}
+	if result.RowsAffected == 0 {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "forum_reply_not_editable", gin.H{"status": reply.Status})
+		return
+	}
+	if err := h.db.First(&reply, "id = ?", reply.ID).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"reply": myReplies([]model.ForumReply{reply}, map[string]model.ForumPost{post.ID: post})[0]})
 }
 
 func (h Handler) Create(ctx *gin.Context) {
@@ -661,6 +796,10 @@ func escrowForumReward(tx *gorm.DB, userID string, postID string, rewardPoints i
 	if err := tx.Select("points_balance").First(&user, "id = ?", userID).Error; err != nil {
 		return err
 	}
+	idempotencyKey, err := nextPointsLogKey(tx, "forum_reward_escrow", postID)
+	if err != nil {
+		return err
+	}
 	return tx.Create(&model.PointsLog{
 		UserID:         userID,
 		Delta:          -rewardPoints,
@@ -668,7 +807,36 @@ func escrowForumReward(tx *gorm.DB, userID string, postID string, rewardPoints i
 		Reason:         "forum_reward_escrow",
 		ReferenceType:  "forum_post",
 		ReferenceID:    postID,
-		IdempotencyKey: "forum_reward_escrow:" + postID,
+		IdempotencyKey: idempotencyKey,
+	}).Error
+}
+
+func reescrowForumReward(tx *gorm.DB, userID string, postID string, rewardPoints int64) error {
+	result := tx.Model(&model.User{}).
+		Where("id = ? AND points_balance >= ?", userID, rewardPoints).
+		UpdateColumn("points_balance", gorm.Expr("points_balance - ?", rewardPoints))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errInsufficientPoints
+	}
+	var user model.User
+	if err := tx.Select("points_balance").First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+	idempotencyKey, err := nextPointsLogKey(tx, "forum_reward_reescrow", postID)
+	if err != nil {
+		return err
+	}
+	return tx.Create(&model.PointsLog{
+		UserID:         userID,
+		Delta:          -rewardPoints,
+		BalanceAfter:   user.PointsBalance,
+		Reason:         "forum_reward_reescrow",
+		ReferenceType:  "forum_post",
+		ReferenceID:    postID,
+		IdempotencyKey: idempotencyKey,
 	}).Error
 }
 
@@ -682,6 +850,10 @@ func refundForumReward(tx *gorm.DB, userID string, postID string, rewardPoints i
 	if err := tx.Select("points_balance").First(&user, "id = ?", userID).Error; err != nil {
 		return err
 	}
+	idempotencyKey, err := nextPointsLogKey(tx, "forum_reward_refund", postID)
+	if err != nil {
+		return err
+	}
 	return tx.Create(&model.PointsLog{
 		UserID:         userID,
 		Delta:          rewardPoints,
@@ -689,7 +861,7 @@ func refundForumReward(tx *gorm.DB, userID string, postID string, rewardPoints i
 		Reason:         "forum_reward_refund",
 		ReferenceType:  "forum_post",
 		ReferenceID:    postID,
-		IdempotencyKey: "forum_reward_refund:" + postID,
+		IdempotencyKey: idempotencyKey,
 	}).Error
 }
 
@@ -714,15 +886,24 @@ func settleForumReward(tx *gorm.DB, userID string, postID string, replyID string
 	}).Error
 }
 
+func nextPointsLogKey(tx *gorm.DB, prefix string, referenceID string) (string, error) {
+	key := prefix + ":" + referenceID
+	var count int64
+	if err := tx.Model(&model.PointsLog{}).Where("idempotency_key LIKE ?", key+"%").Count(&count).Error; err != nil {
+		return "", err
+	}
+	if count == 0 {
+		return key, nil
+	}
+	return fmt.Sprintf("%s:%d", key, count+1), nil
+}
+
 func validatePostInput(boardID string, title string, content string, postType string, rewardPoints int64) error {
-	if boardID == "" || title == "" || content == "" {
+	if boardID == "" {
 		return errors.New("missing_required_fields")
 	}
-	if len([]rune(title)) > 200 {
-		return errors.New("title_too_long")
-	}
-	if len([]rune(content)) > 20000 {
-		return errors.New("content_too_long")
+	if err := validatePostTextInput(title, content); err != nil {
+		return err
 	}
 	switch postType {
 	case "normal", "question":
@@ -738,6 +919,19 @@ func validatePostInput(boardID string, title string, content string, postType st
 	default:
 		return errors.New("invalid_post_type")
 	}
+}
+
+func validatePostTextInput(title string, content string) error {
+	if title == "" || content == "" {
+		return errors.New("missing_required_fields")
+	}
+	if len([]rune(title)) > 200 {
+		return errors.New("title_too_long")
+	}
+	if len([]rune(content)) > 20000 {
+		return errors.New("content_too_long")
+	}
+	return nil
 }
 
 func validateReplyInput(content string) error {
@@ -844,6 +1038,15 @@ func myReplies(replies []model.ForumReply, postsByID map[string]model.ForumPost)
 
 func isReviewableStatus(status string) bool {
 	for _, item := range reviewableStatuses {
+		if status == item {
+			return true
+		}
+	}
+	return false
+}
+
+func isUserEditableStatus(status string) bool {
+	for _, item := range userEditableStatuses {
 		if status == item {
 			return true
 		}
