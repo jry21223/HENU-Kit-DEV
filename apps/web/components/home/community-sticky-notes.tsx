@@ -1,6 +1,10 @@
-import type { CSSProperties } from "react";
+"use client";
+
+import { type CSSProperties, useRef } from "react";
 import { communityNotes } from "./home-data";
-import { homeAnimAttr } from "./home-animation-selectors";
+import { homeAnimAttr, homeAnimSelector } from "./home-animation-selectors";
+import { useHomeAnimeInView } from "./use-home-anime-in-view";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import styles from "./home-visuals.module.css";
 
 type NoteTiltStyle = CSSProperties & {
@@ -21,8 +25,18 @@ const noteTilt = {
 };
 
 export function CommunityStickyNotes() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useHomeAnimeInView({
+    reduceMotion,
+    rootRef: sectionRef,
+    selector: homeAnimSelector("communityNote"),
+  });
+
   return (
     <section
+      ref={sectionRef}
       id="community"
       aria-labelledby="community-title"
       className="mx-auto min-h-[90dvh] w-[min(1120px,calc(100%-32px))] py-20"

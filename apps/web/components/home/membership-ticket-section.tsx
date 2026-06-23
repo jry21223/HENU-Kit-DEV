@@ -1,10 +1,28 @@
+"use client";
+
+import { useRef } from "react";
 import { membershipFeatures } from "./home-data";
-import { homeAnimAttr } from "./home-animation-selectors";
+import { homeAnimAttr, homeAnimSelector } from "./home-animation-selectors";
+import { useHomeAnimeInView } from "./use-home-anime-in-view";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import styles from "./home-visuals.module.css";
 
 export function MembershipTicketSection() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useHomeAnimeInView({
+    reduceMotion,
+    rootRef: sectionRef,
+    selector: homeAnimSelector("membershipTicket"),
+  });
+
   return (
-    <section aria-labelledby="membership-title" className="mx-auto w-[min(1120px,calc(100%-32px))] py-20">
+    <section
+      ref={sectionRef}
+      aria-labelledby="membership-title"
+      className="mx-auto w-[min(1120px,calc(100%-32px))] py-20"
+    >
       <div className={`${styles.ticket} p-6 lg:p-10`} {...homeAnimAttr("membershipTicket")}>
         <span className={styles.membershipStamp} aria-hidden="true" {...homeAnimAttr("membershipStamp")} />
         <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">

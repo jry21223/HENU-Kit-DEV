@@ -1,11 +1,30 @@
+"use client";
+
+import { useRef } from "react";
 import { salesFeatures } from "./home-data";
-import { homeAnimAttr } from "./home-animation-selectors";
+import { homeAnimAttr, homeAnimSelector } from "./home-animation-selectors";
+import { useHomeAnimeInView } from "./use-home-anime-in-view";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import styles from "./home-visuals.module.css";
 
 export function SalesAssistantNote() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useHomeAnimeInView({
+    reduceMotion,
+    rootRef: sectionRef,
+    selector: homeAnimSelector("salesNote"),
+  });
+
   return (
-    <section aria-labelledby="sales-assistant-title" className="mx-auto w-[min(900px,calc(100%-32px))] py-12">
+    <section
+      ref={sectionRef}
+      aria-labelledby="sales-assistant-title"
+      className="mx-auto w-[min(900px,calc(100%-32px))] py-12"
+    >
       <div
-        className="rotate-[-1deg] rounded-[2rem] border border-[#2b2117]/12 bg-[#d8f1ff] p-6 shadow-[0_22px_64px_rgba(71,49,27,0.12)] md:p-8"
+        className={`${styles.salesNote} rotate-[-1deg] rounded-[2rem] border border-[#2b2117]/12 bg-[#d8f1ff] p-6 shadow-[0_22px_64px_rgba(71,49,27,0.12)] md:p-8`}
         {...homeAnimAttr("salesNote")}
       >
         <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#2a6d88]">LangBot</p>

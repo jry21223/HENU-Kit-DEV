@@ -1,10 +1,25 @@
+"use client";
+
+import { useRef } from "react";
 import { practiceFeatures } from "./home-data";
-import { homeAnimAttr } from "./home-animation-selectors";
+import { homeAnimAttr, homeAnimSelector } from "./home-animation-selectors";
+import { useHomeAnimeInView } from "./use-home-anime-in-view";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import styles from "./home-visuals.module.css";
 
 export function PracticeVisionSection() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useHomeAnimeInView({
+    reduceMotion,
+    rootRef: sectionRef,
+    selector: homeAnimSelector("practiceCard"),
+  });
+
   return (
     <section
+      ref={sectionRef}
       id="practice"
       aria-labelledby="practice-title"
       className="mx-auto grid w-[min(1120px,calc(100%-32px))] gap-8 py-20 lg:grid-cols-[0.8fr_1.2fr]"

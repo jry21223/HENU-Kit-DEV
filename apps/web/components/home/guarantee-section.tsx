@@ -1,10 +1,29 @@
+"use client";
+
+import { useRef } from "react";
 import { guaranteeItems } from "./home-data";
-import { homeAnimAttr } from "./home-animation-selectors";
+import { homeAnimAttr, homeAnimSelector } from "./home-animation-selectors";
+import { useHomeAnimeInView } from "./use-home-anime-in-view";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import styles from "./home-visuals.module.css";
 
 export function GuaranteeSection() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useHomeAnimeInView({
+    reduceMotion,
+    rootRef: sectionRef,
+    selector: homeAnimSelector("guaranteeSeal"),
+  });
+
   return (
-    <section id="guarantee" aria-labelledby="guarantee-title" className="mx-auto w-[min(1120px,calc(100%-32px))] py-20">
+    <section
+      ref={sectionRef}
+      id="guarantee"
+      aria-labelledby="guarantee-title"
+      className="mx-auto w-[min(1120px,calc(100%-32px))] py-20"
+    >
       <div className="rounded-[2rem] border border-[#2b2117]/12 bg-[#f8efe2] p-6 lg:p-10">
         <div className="max-w-2xl">
           <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#b75c32]">Guarantee</p>
