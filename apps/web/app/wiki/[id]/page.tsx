@@ -2,6 +2,7 @@ import { ArrowLeft, BookOpenText, History, Layers3 } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button-link";
+import { ReportButton } from "@/components/report/report-button";
 import { Course, WikiEntry, getApi } from "@/lib/api";
 
 type PageProps = {
@@ -95,6 +96,9 @@ export default async function WikiDetailPage({ params }: PageProps) {
                     {copy.course}
                   </dt>
                   <dd className="mt-1 break-words font-medium">{course?.name ?? copy.noCourse}</dd>
+                </div>
+                <div className="sm:col-span-3 lg:col-span-1">
+                  <ReportButton targetId={entry.id} targetLabel={entry.title} targetType="wiki_entry" />
                 </div>
               </dl>
             </div>

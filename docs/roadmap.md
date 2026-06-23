@@ -47,7 +47,7 @@
 - Forum reward posts with server-side point escrow, review visibility, rejection refunds, and points ledger rows
 - Forum best-answer selection with one-answer-per-post guardrails and escrowed reward settlement to the selected reply author
 - Review notifications for forum post/reply, material, wiki entry/proposal, blog post, and AI draft approve/reject outcomes
-- Basic report submission, Web material/blog/forum report buttons, Vue admin report handling page, operation logs, and reporter result notifications
+- Basic report submission, Web material/wiki/blog/forum report buttons, Vue admin report handling page, operation logs, and reporter result notifications
 - Vue admin read-only analytics page for download trend, course demand, and report distribution
 - Vue admin read-only operation-log browser for high-risk admin mutations
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
