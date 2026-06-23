@@ -194,7 +194,9 @@ Important boundaries:
 - Approving a post sets it to `published`, records reviewer metadata, and makes it visible through public forum endpoints.
 - Rejecting a post requires `reviewReason`, records reviewer metadata, and keeps it hidden from public forum endpoints.
 - Only `draft`, `pending`, and `needs_changes` posts can be reviewed; repeating review on published/rejected posts returns `409 forum_post_not_reviewable`.
-- The MVP supports `normal` and `question` post types. Reward posts, best-answer settlement, and point grants remain later work.
+- The MVP supports `normal`, `question`, and `reward` post types.
+- Reward posts freeze author points when submitted, show reward points/status in the review queue, keep points escrowed after approval, and refund points automatically if rejected.
+- Best-answer settlement and point grants remain later work.
 - Forum approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
 
 ## Forum Reply Review

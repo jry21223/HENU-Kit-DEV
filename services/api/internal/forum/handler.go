@@ -23,6 +23,7 @@ type Handler struct {
 var (
 	errPostNotReviewable  = errors.New("forum_post_not_reviewable")
 	errReplyNotReviewable = errors.New("forum_reply_not_reviewable")
+	errInsufficientPoints = errors.New("insufficient_points")
 	reviewableStatuses    = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
 )
 
@@ -31,10 +32,11 @@ func NewHandler(db *gorm.DB) Handler {
 }
 
 type postRequest struct {
-	BoardID string `json:"boardId"`
-	Title   string `json:"title"`
-	Content string `json:"content"`
-	Type    string `json:"type"`
+	BoardID      string `json:"boardId"`
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	Type         string `json:"type"`
+	RewardPoints int64  `json:"rewardPoints"`
 }
 
 type replyRequest struct {
@@ -52,6 +54,8 @@ type publicPost struct {
 	Title        string `json:"title"`
 	Content      string `json:"content"`
 	Type         string `json:"type"`
+	RewardPoints int64  `json:"rewardPoints"`
+	RewardStatus string `json:"rewardStatus,omitempty"`
 	Visibility   string `json:"visibility"`
 	LikeCount    int64  `json:"likeCount"`
 	CommentCount int64  `json:"commentCount"`
@@ -131,10 +135,11 @@ func (h Handler) Create(ctx *gin.Context) {
 	title := strings.TrimSpace(req.Title)
 	content := strings.TrimSpace(req.Content)
 	postType := strings.TrimSpace(req.Type)
+	rewardPoints := req.RewardPoints
 	if postType == "" {
 		postType = "normal"
 	}
-	if err := validatePostInput(boardID, title, content, postType); err != nil {
+	if err := validatePostInput(boardID, title, content, postType, rewardPoints); err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
 		return
 	}
@@ -150,9 +155,26 @@ func (h Handler) Create(ctx *gin.Context) {
 		Title:        title,
 		Content:      content,
 		Type:         postType,
+		RewardPoints: rewardPoints,
 		Status:       model.StatusPending,
 	}
-	if err := h.db.Create(&post).Error; err != nil {
+	if post.Type == "reward" {
+		post.RewardStatus = "escrowed"
+	}
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&post).Error; err != nil {
+			return err
+		}
+		if post.Type == "reward" {
+			return escrowForumReward(tx, user.ID, post.ID, rewardPoints)
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errInsufficientPoints) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "insufficient_points", nil)
+			return
+		}
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
 		return
 	}
@@ -307,6 +329,7 @@ func (h Handler) reviewPost(ctx *gin.Context, status string) {
 	if status == model.StatusRejected {
 		action = "forum_post.rejected"
 	}
+	auditRewardStatus := post.RewardStatus
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&model.ForumPost{}).
 			Where("id = ? AND status IN ?", post.ID, reviewableStatuses).
@@ -322,12 +345,23 @@ func (h Handler) reviewPost(ctx *gin.Context, status string) {
 		if result.RowsAffected == 0 {
 			return errPostNotReviewable
 		}
+		if status == model.StatusRejected && post.Type == "reward" && post.RewardStatus == "escrowed" && post.RewardPoints > 0 {
+			if err := refundForumReward(tx, post.AuthorID, post.ID, post.RewardPoints); err != nil {
+				return err
+			}
+			if err := tx.Model(&model.ForumPost{}).Where("id = ?", post.ID).Update("reward_status", "refunded").Error; err != nil {
+				return err
+			}
+			auditRewardStatus = "refunded"
+		}
 		return audit.Record(ctx, tx, action, "forum_post", post.ID, map[string]interface{}{
 			"authorId":       post.AuthorID,
 			"boardId":        post.BoardID,
 			"previousStatus": previousStatus,
 			"status":         status,
 			"type":           post.Type,
+			"rewardPoints":   post.RewardPoints,
+			"rewardStatus":   auditRewardStatus,
 			"reviewReason":   reason,
 		})
 	})
@@ -436,7 +470,53 @@ func (h Handler) reviewReply(ctx *gin.Context, status string) {
 	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
 }
 
-func validatePostInput(boardID string, title string, content string, postType string) error {
+func escrowForumReward(tx *gorm.DB, userID string, postID string, rewardPoints int64) error {
+	result := tx.Model(&model.User{}).
+		Where("id = ? AND points_balance >= ?", userID, rewardPoints).
+		UpdateColumn("points_balance", gorm.Expr("points_balance - ?", rewardPoints))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errInsufficientPoints
+	}
+	var user model.User
+	if err := tx.Select("points_balance").First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+	return tx.Create(&model.PointsLog{
+		UserID:         userID,
+		Delta:          -rewardPoints,
+		BalanceAfter:   user.PointsBalance,
+		Reason:         "forum_reward_escrow",
+		ReferenceType:  "forum_post",
+		ReferenceID:    postID,
+		IdempotencyKey: "forum_reward_escrow:" + postID,
+	}).Error
+}
+
+func refundForumReward(tx *gorm.DB, userID string, postID string, rewardPoints int64) error {
+	if err := tx.Model(&model.User{}).
+		Where("id = ?", userID).
+		UpdateColumn("points_balance", gorm.Expr("points_balance + ?", rewardPoints)).Error; err != nil {
+		return err
+	}
+	var user model.User
+	if err := tx.Select("points_balance").First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+	return tx.Create(&model.PointsLog{
+		UserID:         userID,
+		Delta:          rewardPoints,
+		BalanceAfter:   user.PointsBalance,
+		Reason:         "forum_reward_refund",
+		ReferenceType:  "forum_post",
+		ReferenceID:    postID,
+		IdempotencyKey: "forum_reward_refund:" + postID,
+	}).Error
+}
+
+func validatePostInput(boardID string, title string, content string, postType string, rewardPoints int64) error {
 	if boardID == "" || title == "" || content == "" {
 		return errors.New("missing_required_fields")
 	}
@@ -448,6 +528,14 @@ func validatePostInput(boardID string, title string, content string, postType st
 	}
 	switch postType {
 	case "normal", "question":
+		if rewardPoints != 0 {
+			return errors.New("invalid_reward_points")
+		}
+		return nil
+	case "reward":
+		if rewardPoints <= 0 || rewardPoints > 100000 {
+			return errors.New("invalid_reward_points")
+		}
 		return nil
 	default:
 		return errors.New("invalid_post_type")
@@ -480,6 +568,8 @@ func toPublicPost(post model.ForumPost) publicPost {
 		Title:        post.Title,
 		Content:      post.Content,
 		Type:         post.Type,
+		RewardPoints: post.RewardPoints,
+		RewardStatus: post.RewardStatus,
 		Visibility:   post.Visibility,
 		LikeCount:    post.LikeCount,
 		CommentCount: post.CommentCount,

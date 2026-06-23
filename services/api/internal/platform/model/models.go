@@ -354,6 +354,8 @@ type ForumPost struct {
 	Title        string     `json:"title" gorm:"size:200;not null"`
 	Content      string     `json:"content" gorm:"type:text"`
 	Type         string     `json:"type" gorm:"size:40;default:normal;index"`
+	RewardPoints int64      `json:"rewardPoints" gorm:"default:0"`
+	RewardStatus string     `json:"rewardStatus" gorm:"size:32;index"`
 	Status       string     `json:"status" gorm:"size:32;default:published;index"`
 	ReviewerID   *string    `json:"reviewerId,omitempty" gorm:"type:uuid;index"`
 	ReviewedAt   *time.Time `json:"reviewedAt,omitempty"`

@@ -29,13 +29,45 @@ func TestForumSubmissionAndReviewWorkflow(t *testing.T) {
 	}
 
 	studentToken := loginTestUser(t, router, "forum-author@stu.henu.edu.cn")
-	invalidType := performJSON(router, http.MethodPost, "/api/v1/forum/posts", `{"boardId":"`+board.ID+`","title":"Bad type","content":"body","type":"reward"}`, studentToken)
+	invalidType := performJSON(router, http.MethodPost, "/api/v1/forum/posts", `{"boardId":"`+board.ID+`","title":"Bad type","content":"body","type":"poll"}`, studentToken)
 	if invalidType.Code != http.StatusBadRequest || !strings.Contains(invalidType.Body.String(), "invalid_post_type") {
 		t.Fatalf("expected invalid forum post type rejection, got %d: %s", invalidType.Code, invalidType.Body.String())
 	}
 	missingBoard := performJSON(router, http.MethodPost, "/api/v1/forum/posts", `{"boardId":"00000000-0000-0000-0000-000000000000","title":"Missing board","content":"body"}`, studentToken)
 	if missingBoard.Code != http.StatusBadRequest || !strings.Contains(missingBoard.Body.String(), "board_not_found") {
 		t.Fatalf("expected missing board rejection, got %d: %s", missingBoard.Code, missingBoard.Body.String())
+	}
+	insufficientReward := performJSON(router, http.MethodPost, "/api/v1/forum/posts", `{"boardId":"`+board.ID+`","title":"Reward without balance","content":"Need a detailed answer.","type":"reward","rewardPoints":25}`, studentToken)
+	if insufficientReward.Code != http.StatusBadRequest || !strings.Contains(insufficientReward.Body.String(), "insufficient_points") {
+		t.Fatalf("expected insufficient reward points rejection, got %d: %s", insufficientReward.Code, insufficientReward.Body.String())
+	}
+	if err := db.Model(&model.User{}).Where("email = ?", "forum-author@stu.henu.edu.cn").Update("points_balance", 120).Error; err != nil {
+		t.Fatal(err)
+	}
+	rewardCreate := performJSON(router, http.MethodPost, "/api/v1/forum/posts", `{"boardId":"`+board.ID+`","title":"Reward graph proof","content":"Need a complete proof with steps.","type":"reward","rewardPoints":40}`, studentToken)
+	if rewardCreate.Code != http.StatusOK {
+		t.Fatalf("expected reward forum create 200, got %d: %s", rewardCreate.Code, rewardCreate.Body.String())
+	}
+	var rewardPost model.ForumPost
+	if err := db.First(&rewardPost, "title = ?", "Reward graph proof").Error; err != nil {
+		t.Fatal(err)
+	}
+	if rewardPost.Status != model.StatusPending || rewardPost.Type != "reward" || rewardPost.RewardPoints != 40 || rewardPost.RewardStatus != "escrowed" {
+		t.Fatalf("expected pending escrowed reward post, got %#v", rewardPost)
+	}
+	var student model.User
+	if err := db.First(&student, "email = ?", "forum-author@stu.henu.edu.cn").Error; err != nil {
+		t.Fatal(err)
+	}
+	if student.PointsBalance != 80 {
+		t.Fatalf("expected reward escrow to leave 80 points, got %d", student.PointsBalance)
+	}
+	var escrowLogCount int64
+	if err := db.Model(&model.PointsLog{}).Where("user_id = ? AND delta = ? AND balance_after = ? AND reason = ? AND reference_type = ? AND reference_id = ?", student.ID, -40, 80, "forum_reward_escrow", "forum_post", rewardPost.ID).Count(&escrowLogCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if escrowLogCount != 1 {
+		t.Fatalf("expected one reward escrow points log, got %d", escrowLogCount)
 	}
 
 	createBody := `{"boardId":"` + board.ID + `","title":"How to review graph theory","content":"Trees and shortest paths are confusing.","type":"question"}`
@@ -75,9 +107,36 @@ func TestForumSubmissionAndReviewWorkflow(t *testing.T) {
 	if reviewList.Code != http.StatusOK || !strings.Contains(reviewList.Body.String(), post.ID) {
 		t.Fatalf("expected reviewer forum list to include pending post, got %d: %s", reviewList.Code, reviewList.Body.String())
 	}
+	if !strings.Contains(reviewList.Body.String(), rewardPost.ID) || !strings.Contains(reviewList.Body.String(), `"rewardPoints":40`) || !strings.Contains(reviewList.Body.String(), `"rewardStatus":"escrowed"`) {
+		t.Fatalf("expected reviewer forum list to include reward escrow metadata, got %d: %s", reviewList.Code, reviewList.Body.String())
+	}
 	rejectWithoutReason := performJSON(router, http.MethodPost, "/api/v1/admin/forum/posts/"+post.ID+"/reject", "", reviewerToken)
 	if rejectWithoutReason.Code != http.StatusBadRequest || !strings.Contains(rejectWithoutReason.Body.String(), "review_reason_required") {
 		t.Fatalf("expected reject reason required, got %d: %s", rejectWithoutReason.Code, rejectWithoutReason.Body.String())
+	}
+	rewardApprove := performJSON(router, http.MethodPost, "/api/v1/admin/forum/posts/"+rewardPost.ID+"/approve", `{"reviewReason":"valid reward question"}`, reviewerToken)
+	if rewardApprove.Code != http.StatusOK {
+		t.Fatalf("expected reward forum approve 200, got %d: %s", rewardApprove.Code, rewardApprove.Body.String())
+	}
+	var approvedReward model.ForumPost
+	if err := db.First(&approvedReward, "id = ?", rewardPost.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if approvedReward.Status != model.StatusPublished || approvedReward.RewardStatus != "escrowed" {
+		t.Fatalf("expected approved reward post to remain escrowed, got %#v", approvedReward)
+	}
+	if err := db.First(&student, "id = ?", student.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if student.PointsBalance != 80 {
+		t.Fatalf("expected reward approval to keep escrowed balance 80, got %d", student.PointsBalance)
+	}
+	publicReward := performJSON(router, http.MethodGet, "/api/v1/forum/posts/"+rewardPost.ID, "", "")
+	if publicReward.Code != http.StatusOK || !strings.Contains(publicReward.Body.String(), `"rewardPoints":40`) || !strings.Contains(publicReward.Body.String(), `"rewardStatus":"escrowed"`) {
+		t.Fatalf("expected public reward post to expose reward metadata after approval, got %d: %s", publicReward.Code, publicReward.Body.String())
+	}
+	if countOperationLogs(t, db, "forum_post.published", "forum_post", rewardPost.ID, reviewer.ID) != 1 {
+		t.Fatal("expected reward forum approval operation log")
 	}
 
 	approve := performJSON(router, http.MethodPost, "/api/v1/admin/forum/posts/"+post.ID+"/approve", `{"reviewReason":"useful question"}`, reviewerToken)
@@ -141,6 +200,44 @@ func TestForumSubmissionAndReviewWorkflow(t *testing.T) {
 	publicRejected := performJSON(router, http.MethodGet, "/api/v1/forum/posts/"+rejectedPost.ID, "", "")
 	if publicRejected.Code != http.StatusNotFound {
 		t.Fatalf("expected rejected forum post hidden from public detail, got %d: %s", publicRejected.Code, publicRejected.Body.String())
+	}
+	refundRewardCreate := performJSON(router, http.MethodPost, "/api/v1/forum/posts", `{"boardId":"`+board.ID+`","title":"Refund reward","content":"Reward should be refunded if rejected.","type":"reward","rewardPoints":30}`, studentToken)
+	if refundRewardCreate.Code != http.StatusOK {
+		t.Fatalf("expected refund-target reward create 200, got %d: %s", refundRewardCreate.Code, refundRewardCreate.Body.String())
+	}
+	var refundReward model.ForumPost
+	if err := db.First(&refundReward, "title = ?", "Refund reward").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&student, "id = ?", student.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if student.PointsBalance != 50 {
+		t.Fatalf("expected second reward escrow to leave 50 points, got %d", student.PointsBalance)
+	}
+	rejectReward := performJSON(router, http.MethodPost, "/api/v1/admin/forum/posts/"+refundReward.ID+"/reject", `{"reviewReason":"reward request is unclear"}`, adminToken)
+	if rejectReward.Code != http.StatusOK {
+		t.Fatalf("expected reward forum reject 200, got %d: %s", rejectReward.Code, rejectReward.Body.String())
+	}
+	var refundedReward model.ForumPost
+	if err := db.First(&refundedReward, "id = ?", refundReward.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refundedReward.Status != model.StatusRejected || refundedReward.RewardStatus != "refunded" {
+		t.Fatalf("expected rejected reward post to be refunded, got %#v", refundedReward)
+	}
+	if err := db.First(&student, "id = ?", student.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if student.PointsBalance != 80 {
+		t.Fatalf("expected reward rejection to refund balance to 80, got %d", student.PointsBalance)
+	}
+	var refundLogCount int64
+	if err := db.Model(&model.PointsLog{}).Where("user_id = ? AND delta = ? AND balance_after = ? AND reason = ? AND reference_type = ? AND reference_id = ?", student.ID, 30, 80, "forum_reward_refund", "forum_post", refundReward.ID).Count(&refundLogCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refundLogCount != 1 {
+		t.Fatalf("expected one reward refund points log, got %d", refundLogCount)
 	}
 
 	frozenCreate := performJSON(router, http.MethodPost, "/api/v1/forum/posts", `{"boardId":"`+board.ID+`","title":"Frozen target","content":"body"}`, studentToken)

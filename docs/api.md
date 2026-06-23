@@ -179,7 +179,8 @@ Implemented forum behavior:
 - public forum post responses use a public DTO and do not expose `reviewerId` or `reviewReason`
 - logged-in, non-frozen users can submit forum posts; submissions always enter `pending`
 - forum submission validates required board, title, content, and post type
-- supported post types in the MVP are `normal` and `question`; reward posts remain later work
+- supported post types are `normal`, `question`, and `reward`
+- reward posts require a positive `rewardPoints` value, freeze points on submission with a `forum_reward_escrow` points log, and remain hidden while pending review
 - logged-in, non-frozen users can submit replies to published public forum posts; replies always enter `pending`
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected forum posts through `/admin/forum/posts`
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected forum replies through `/admin/forum/replies`
@@ -189,7 +190,8 @@ Implemented forum behavior:
 - approving a forum reply sets `status=published`, records reviewer metadata, increments the parent post `commentCount` once, and makes it visible through public post detail
 - rejecting a forum reply sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public post detail
 - forum reply review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected replies return HTTP 409 with `forum_reply_not_reviewable`
-- reward settlement, best-answer flow, reply editing, and point grants remain later work
+- rejecting a reward post refunds frozen points with a `forum_reward_refund` points log; approving a reward post keeps points escrowed for later best-answer settlement
+- best-answer settlement, reply editing, and point grants remain later work
 
 Implemented wiki behavior:
 

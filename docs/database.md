@@ -34,3 +34,4 @@ Current access-control notes:
 - PDF watermarking is generated at response time from the stored source file; no separate watermarked file record is persisted.
 - `wrong_questions` uses a unique user/question pair so repeated wrong answers increment `wrong_count` instead of creating duplicate rows.
 - `wiki_edit_proposals` stores proposed edits to published wiki entries with `base_version`, review fields, and proposed title/content; approval updates the live entry and writes `wiki_edit_histories` only when the live entry version still matches.
+- `forum_posts.reward_points` and `forum_posts.reward_status` track reward-post escrow state; reward submission and rejection are mirrored by idempotent `points_logs` rows.

@@ -191,6 +191,8 @@ export type ForumPost = {
   title: string;
   content: string;
   type: string;
+  rewardPoints?: number;
+  rewardStatus?: string;
   status: string;
   reviewerId?: string;
   reviewedAt?: string;

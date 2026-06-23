@@ -36,6 +36,9 @@
         <el-table-column :label="copy.type" width="120">
           <template #default="{ row }">
             <el-tag>{{ typeLabel(row.type) }}</el-tag>
+            <p v-if="row.type === 'reward'" class="cell-muted">
+              {{ copy.reward }}: {{ row.rewardPoints ?? 0 }} / {{ rewardStatusLabel(row.rewardStatus) }}
+            </p>
           </template>
         </el-table-column>
         <el-table-column :label="copy.status" width="130">
@@ -84,6 +87,13 @@
     <el-dialog v-model="reviewOpen" :title="reviewDialogTitle" width="min(520px, 92vw)">
       <p class="cell-title">{{ reviewTarget?.title }}</p>
       <p class="cell-muted">{{ copy.reviewHint }}</p>
+      <el-alert
+        v-if="reviewTarget?.type === 'reward'"
+        class="notice"
+        type="warning"
+        :closable="false"
+        :title="copy.rewardReviewHint"
+      />
       <el-form label-position="top" class="mt-4">
         <el-form-item :label="copy.reviewReason">
           <el-input
@@ -132,6 +142,12 @@ const copy = {
   type: "\u7c7b\u578b",
   normal: "\u666e\u901a",
   question: "\u95ee\u9898",
+  rewardType: "\u60ac\u8d4f",
+  reward: "\u60ac\u8d4f\u79ef\u5206",
+  rewardEscrowed: "\u5df2\u51bb\u7ed3",
+  rewardRefunded: "\u5df2\u9000\u56de",
+  rewardSettled: "\u5df2\u7ed3\u7b97",
+  rewardReviewHint: "\u60ac\u8d4f\u5e16\u7684\u79ef\u5206\u5df2\u5728\u63d0\u4ea4\u65f6\u51bb\u7ed3\uff1b\u901a\u8fc7\u540e\u4fdd\u6301\u51bb\u7ed3\u7b49\u5f85\u6700\u4f73\u7b54\u6848\u7ed3\u7b97\uff0c\u9a73\u56de\u4f1a\u7531\u670d\u52a1\u7aef\u9000\u56de\u79ef\u5206\u3002",
   status: "\u72b6\u6001",
   content: "\u5185\u5bb9\u9884\u89c8",
   review: "\u5ba1\u6838\u8bb0\u5f55",
@@ -249,9 +265,17 @@ function statusTag(status: string) {
 }
 
 function typeLabel(value: string) {
+  if (value === "reward") return copy.rewardType;
   if (value === "question") return copy.question;
   if (value === "normal") return copy.normal;
   return value;
+}
+
+function rewardStatusLabel(value?: string) {
+  if (value === "escrowed") return copy.rewardEscrowed;
+  if (value === "refunded") return copy.rewardRefunded;
+  if (value === "settled") return copy.rewardSettled;
+  return value || "-";
 }
 
 function formatDate(value?: string) {
