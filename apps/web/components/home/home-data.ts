@@ -86,8 +86,8 @@ export const recentUpdates: RecentUpdate[] = [
 ];
 
 export const heroLinks = {
-  primary: { label: "进入课程资料", href: "/courses" },
-  secondary: { label: "查看资料保障", href: "#guarantee" },
+  primary: { label: "进入工作区", href: "/workspace" },
+  secondary: { label: "浏览课程资料", href: "/courses" },
 };
 
 export const directoryIcons = {

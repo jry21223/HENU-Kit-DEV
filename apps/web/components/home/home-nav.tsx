@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BookOpen, Download } from "lucide-react";
 
 const links = [
+  { label: "工作区", href: "/workspace" },
   { label: "Wiki", href: "/wiki" },
   { label: "Blog", href: "/blog" },
   { label: "课程资料", href: "/courses" },
