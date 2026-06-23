@@ -50,8 +50,40 @@ async function elementBox(page: Page, testId: string) {
   });
 }
 
-async function expectHomeAnimMarkerInViewport(page: Page, marker: string, expectedCount: number) {
-  const locator = page.locator(`[data-home-anim="${marker}"]`);
+async function sectionBox(page: Page, labelledBy: string) {
+  return page.locator(`section[aria-labelledby="${labelledBy}"]`).evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+
+    return {
+      bottom: rect.bottom,
+      height: rect.height,
+      top: rect.top,
+      width: rect.width,
+      windowHeight: window.innerHeight,
+    };
+  });
+}
+
+async function expectPostBookSectionMarkerInViewport(
+  page: Page,
+  labelledBy: string,
+  marker: string,
+  expectedCount: number,
+  options: { animated?: boolean; minOpacity?: number } = {},
+) {
+  const { animated = true, minOpacity = 0.99 } = options;
+  const section = page.locator(`section[aria-labelledby="${labelledBy}"]`);
+  await expect(section).toHaveCount(1);
+  await section.scrollIntoViewIfNeeded();
+  await expect(section).toBeVisible();
+
+  const visibleSectionBox = await sectionBox(page, labelledBy);
+  expect(visibleSectionBox.width).toBeGreaterThan(320);
+  expect(visibleSectionBox.height).toBeGreaterThan(80);
+  expect(visibleSectionBox.top).toBeLessThan(visibleSectionBox.windowHeight);
+  expect(visibleSectionBox.bottom).toBeGreaterThan(0);
+
+  const locator = section.locator(`[data-home-anim="${marker}"]`);
   await expect(locator).toHaveCount(expectedCount);
 
   const target = locator.first();
@@ -75,6 +107,32 @@ async function expectHomeAnimMarkerInViewport(page: Page, marker: string, expect
   expect(box.top).toBeLessThan(box.windowHeight);
   expect(box.bottom).toBeGreaterThan(0);
   await expect(target).toHaveAttribute("data-home-anim", marker);
+
+  if (animated) {
+    await expect
+      .poll(async () => target.evaluate((element) => Number(getComputedStyle(element).opacity)), { timeout: 7000 })
+      .toBeGreaterThan(minOpacity);
+  } else {
+    const visibleOpacity = await target.evaluate((element) => Number(getComputedStyle(element).opacity));
+    expect(visibleOpacity).toBeGreaterThan(minOpacity);
+  }
+
+  const animationState = await target.evaluate((element) => {
+    const styles = getComputedStyle(element);
+
+    return {
+      computedTranslate: styles.translate,
+      inlineOpacity: element.style.getPropertyValue("opacity"),
+      inlineTranslate: element.style.getPropertyValue("translate"),
+      inlineWillChange: element.style.getPropertyValue("will-change"),
+    };
+  });
+
+  expect(animationState.computedTranslate).not.toBe("0px 18px");
+  expect(animationState.computedTranslate).not.toBe("0 18px");
+  expect(animationState.inlineOpacity).toBe("");
+  expect(animationState.inlineTranslate).toBe("");
+  expect(animationState.inlineWillChange).toBe("");
 }
 
 test("homepage renders product vision on desktop", async ({ page }) => {
@@ -139,12 +197,15 @@ test("homepage reveals post-book product sections while preserving animation mar
   await scrollArchiveTo(page, 0.93);
   await expect(page.getByTestId("archive-copy-closing")).toBeVisible();
 
-  await expectHomeAnimMarkerInViewport(page, "community-note", 4);
-  await expectHomeAnimMarkerInViewport(page, "practice-card", 4);
-  await expectHomeAnimMarkerInViewport(page, "membership-ticket", 1);
-  await expectHomeAnimMarkerInViewport(page, "membership-stamp", 1);
-  await expectHomeAnimMarkerInViewport(page, "sales-note", 1);
-  await expectHomeAnimMarkerInViewport(page, "guarantee-seal", 4);
+  await expectPostBookSectionMarkerInViewport(page, "community-title", "community-note", 4);
+  await expectPostBookSectionMarkerInViewport(page, "practice-title", "practice-card", 4);
+  await expectPostBookSectionMarkerInViewport(page, "membership-title", "membership-ticket", 1);
+  await expectPostBookSectionMarkerInViewport(page, "membership-title", "membership-stamp", 1, {
+    animated: false,
+    minOpacity: 0.7,
+  });
+  await expectPostBookSectionMarkerInViewport(page, "sales-assistant-title", "sales-note", 1);
+  await expectPostBookSectionMarkerInViewport(page, "guarantee-title", "guarantee-seal", 4);
 });
 
 test("homepage exposes precision animation markers", async ({ page }) => {
