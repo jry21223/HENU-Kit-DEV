@@ -157,6 +157,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - 架构设计：`docs/architecture.md`
 - API 文档：`docs/api.md`
 - 数据库说明：`docs/database.md`
+- 阶段总结：`docs/phase-summary-v2-mvp.md`
 - AI 工作流：`docs/ai-workflow.md`
 - 部署说明：`docs/deployment.md`
 - Go API：`services/api/internal`
