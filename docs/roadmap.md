@@ -33,12 +33,13 @@
 - Vue admin forum review queue with reviewer-role access, approve/reject actions, review notes, public-only published forum post APIs, and published-board checks
 - Vue admin forum reply review queue with reviewer-role access, approve/reject actions, review notes, public-only published reply APIs, and once-only comment-count updates
 - Forum reward posts with server-side point escrow, review visibility, rejection refunds, and points ledger rows
+- Forum best-answer selection with one-answer-per-post guardrails and escrowed reward settlement to the selected reply author
 - Vue admin read-only analytics page for download trend and course demand
 - Vue admin read-only operation-log browser for high-risk admin mutations
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
-- Server-side operation logs for organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, and AI draft review mutations
+- Server-side operation logs for organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
@@ -47,7 +48,7 @@
 
 ## Next Deliverable
 
-- Richer content review workflows for forum best-answer settlement and wiki conflict-resolution UX
+- Richer content review workflows for wiki conflict-resolution UX and user-facing best-answer controls
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 

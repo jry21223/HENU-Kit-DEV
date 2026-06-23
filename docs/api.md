@@ -36,6 +36,7 @@ Currently implemented endpoints:
 - `GET /api/v1/forum/posts/:id`
 - `POST /api/v1/forum/posts`
 - `POST /api/v1/forum/posts/:id/replies`
+- `POST /api/v1/forum/replies/:id/mark-best`
 - `GET /api/v1/wiki/entries?courseId=&limit=`
 - `GET /api/v1/wiki/entries/:id`
 - `POST /api/v1/wiki/entries`
@@ -116,7 +117,7 @@ Error envelope:
 }
 ```
 
-Later stages add points, membership, richer wiki conflict resolution, forum reward posts, notification, report, and expanded admin APIs.
+Later stages add membership, richer wiki conflict resolution, notification, report, and expanded admin APIs.
 
 Implemented authentication behavior:
 
@@ -190,8 +191,12 @@ Implemented forum behavior:
 - approving a forum reply sets `status=published`, records reviewer metadata, increments the parent post `commentCount` once, and makes it visible through public post detail
 - rejecting a forum reply sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public post detail
 - forum reply review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected replies return HTTP 409 with `forum_reply_not_reviewable`
-- rejecting a reward post refunds frozen points with a `forum_reward_refund` points log; approving a reward post keeps points escrowed for later best-answer settlement
-- best-answer settlement, reply editing, and point grants remain later work
+- rejecting a reward post refunds frozen points with a `forum_reward_refund` points log; approving a reward post keeps points escrowed until best-answer selection
+- post authors, `admin`, and `super_admin` users can select one published reply as best answer through `POST /api/v1/forum/replies/:id/mark-best`
+- best-answer selection rejects unauthenticated users, unrelated users, unpublished replies, owner self-answers, and repeat selections
+- reward-post best-answer selection requires `rewardStatus=escrowed`, marks the reply `isBest=true`, sets the post `rewardStatus=settled`, grants points to the reply author, and writes a `forum_reward_settlement` points log
+- normal/question best-answer selection marks the reply `isBest=true` without changing points
+- reply editing and UI-level best-answer controls remain later work
 
 Implemented wiki behavior:
 

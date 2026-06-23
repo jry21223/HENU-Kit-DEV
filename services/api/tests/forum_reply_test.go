@@ -191,3 +191,214 @@ func TestForumReplySubmissionAndReviewWorkflow(t *testing.T) {
 		t.Fatal("expected frozen reviewer to avoid forum reply approval logs")
 	}
 }
+
+func TestForumBestAnswerSettlementWorkflow(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	board := model.ForumBoard{Name: "Reward Help", Slug: "reward-help", Description: "Reward discussion", Status: model.StatusPublished}
+	if err := db.Create(&board).Error; err != nil {
+		t.Fatal(err)
+	}
+	owner := createTestUser(t, db, "forum-best-owner@stu.henu.edu.cn", model.RoleUser)
+	if err := db.Model(&model.User{}).Where("id = ?", owner.ID).Update("points_balance", 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	ownerToken := loginTestUser(t, router, owner.Email)
+	answerer := createTestUser(t, db, "forum-best-answerer@stu.henu.edu.cn", model.RoleUser)
+	answererToken := loginTestUser(t, router, answerer.Email)
+	reviewer := createTestUser(t, db, "forum-best-reviewer@stu.henu.edu.cn", model.RoleReviewer)
+	reviewerToken := loginTestUser(t, router, reviewer.Email)
+
+	createPost := performJSON(router, http.MethodPost, "/api/v1/forum/posts", `{"boardId":"`+board.ID+`","title":"Reward answer selection","content":"Need a complete solution with proof steps.","type":"reward","rewardPoints":45}`, ownerToken)
+	if createPost.Code != http.StatusOK {
+		t.Fatalf("expected reward post create 200, got %d: %s", createPost.Code, createPost.Body.String())
+	}
+	var rewardPost model.ForumPost
+	if err := db.First(&rewardPost, "title = ?", "Reward answer selection").Error; err != nil {
+		t.Fatal(err)
+	}
+	if rewardPost.RewardStatus != "escrowed" {
+		t.Fatalf("expected reward post escrowed before settlement, got %#v", rewardPost)
+	}
+	if err := db.First(&owner, "id = ?", owner.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if owner.PointsBalance != 55 {
+		t.Fatalf("expected owner balance 55 after escrow, got %d", owner.PointsBalance)
+	}
+	approvePost := performJSON(router, http.MethodPost, "/api/v1/admin/forum/posts/"+rewardPost.ID+"/approve", `{"reviewReason":"clear reward question"}`, reviewerToken)
+	if approvePost.Code != http.StatusOK {
+		t.Fatalf("expected reward post approve 200, got %d: %s", approvePost.Code, approvePost.Body.String())
+	}
+	createReply := performJSON(router, http.MethodPost, "/api/v1/forum/posts/"+rewardPost.ID+"/replies", `{"content":"Use induction on the number of edges and keep the invariant explicit."}`, answererToken)
+	if createReply.Code != http.StatusOK {
+		t.Fatalf("expected reward reply create 200, got %d: %s", createReply.Code, createReply.Body.String())
+	}
+	var reply model.ForumReply
+	if err := db.First(&reply, "content = ?", "Use induction on the number of edges and keep the invariant explicit.").Error; err != nil {
+		t.Fatal(err)
+	}
+	approveReply := performJSON(router, http.MethodPost, "/api/v1/admin/forum/replies/"+reply.ID+"/approve", `{"reviewReason":"answers the question"}`, reviewerToken)
+	if approveReply.Code != http.StatusOK {
+		t.Fatalf("expected reward reply approve 200, got %d: %s", approveReply.Code, approveReply.Body.String())
+	}
+
+	unauthorized := performJSON(router, http.MethodPost, "/api/v1/forum/replies/"+reply.ID+"/mark-best", `{}`, "")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated mark best 401, got %d: %s", unauthorized.Code, unauthorized.Body.String())
+	}
+	intruderToken := loginTestUser(t, router, "forum-best-intruder@stu.henu.edu.cn")
+	forbidden := performJSON(router, http.MethodPost, "/api/v1/forum/replies/"+reply.ID+"/mark-best", `{}`, intruderToken)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("expected unrelated user mark best 403, got %d: %s", forbidden.Code, forbidden.Body.String())
+	}
+
+	markBest := performJSON(router, http.MethodPost, "/api/v1/forum/replies/"+reply.ID+"/mark-best", `{}`, ownerToken)
+	if markBest.Code != http.StatusOK {
+		t.Fatalf("expected owner mark best 200, got %d: %s", markBest.Code, markBest.Body.String())
+	}
+	if err := db.First(&reply, "id = ?", reply.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !reply.IsBest {
+		t.Fatal("expected reply to be marked best")
+	}
+	if err := db.First(&rewardPost, "id = ?", rewardPost.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rewardPost.RewardStatus != "settled" {
+		t.Fatalf("expected reward status settled, got %s", rewardPost.RewardStatus)
+	}
+	if err := db.First(&answerer, "id = ?", answerer.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if answerer.PointsBalance != 45 {
+		t.Fatalf("expected answerer to receive 45 reward points, got %d", answerer.PointsBalance)
+	}
+	var settlementLogs int64
+	if err := db.Model(&model.PointsLog{}).
+		Where("user_id = ? AND delta = ? AND balance_after = ? AND reason = ? AND reference_type = ? AND reference_id = ?", answerer.ID, 45, 45, "forum_reward_settlement", "forum_reply", reply.ID).
+		Count(&settlementLogs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if settlementLogs != 1 {
+		t.Fatalf("expected one reward settlement log, got %d", settlementLogs)
+	}
+	if countOperationLogs(t, db, "forum_reply.best_selected", "forum_reply", reply.ID, owner.ID) != 1 {
+		t.Fatal("expected best answer selection operation log")
+	}
+	publicDetail := performJSON(router, http.MethodGet, "/api/v1/forum/posts/"+rewardPost.ID, "", "")
+	if publicDetail.Code != http.StatusOK ||
+		!strings.Contains(publicDetail.Body.String(), `"isBest":true`) ||
+		!strings.Contains(publicDetail.Body.String(), `"rewardStatus":"settled"`) {
+		t.Fatalf("expected public detail to expose best answer and settled reward, got %d: %s", publicDetail.Code, publicDetail.Body.String())
+	}
+
+	repeat := performJSON(router, http.MethodPost, "/api/v1/forum/replies/"+reply.ID+"/mark-best", `{}`, ownerToken)
+	if repeat.Code != http.StatusConflict || !strings.Contains(repeat.Body.String(), "best_answer_already_selected") {
+		t.Fatalf("expected repeated mark best conflict, got %d: %s", repeat.Code, repeat.Body.String())
+	}
+	if err := db.Model(&model.PointsLog{}).
+		Where("reason = ? AND reference_type = ? AND reference_id = ?", "forum_reward_settlement", "forum_reply", reply.ID).
+		Count(&settlementLogs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if settlementLogs != 1 {
+		t.Fatalf("expected repeated mark best to avoid duplicate settlement logs, got %d", settlementLogs)
+	}
+	if err := db.First(&answerer, "id = ?", answerer.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if answerer.PointsBalance != 45 {
+		t.Fatalf("expected repeated mark best to avoid duplicate reward points, got %d", answerer.PointsBalance)
+	}
+
+	normalPost := model.ForumPost{
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     owner.ID,
+		BoardID:      board.ID,
+		Title:        "Normal best answer",
+		Content:      "This question has no reward points.",
+		Type:         "question",
+		Status:       model.StatusPublished,
+	}
+	if err := db.Create(&normalPost).Error; err != nil {
+		t.Fatal(err)
+	}
+	normalReply := model.ForumReply{AuthorID: answerer.ID, PostID: normalPost.ID, Content: "A useful normal answer.", Status: model.StatusPublished}
+	if err := db.Create(&normalReply).Error; err != nil {
+		t.Fatal(err)
+	}
+	normalMark := performJSON(router, http.MethodPost, "/api/v1/forum/replies/"+normalReply.ID+"/mark-best", `{}`, ownerToken)
+	if normalMark.Code != http.StatusOK {
+		t.Fatalf("expected normal post mark best 200, got %d: %s", normalMark.Code, normalMark.Body.String())
+	}
+	if err := db.First(&normalReply, "id = ?", normalReply.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !normalReply.IsBest {
+		t.Fatal("expected normal reply to be marked best")
+	}
+	if err := db.First(&answerer, "id = ?", answerer.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if answerer.PointsBalance != 45 {
+		t.Fatalf("expected normal best answer to avoid point changes, got %d", answerer.PointsBalance)
+	}
+	if countOperationLogs(t, db, "forum_reply.best_selected", "forum_reply", normalReply.ID, owner.ID) != 1 {
+		t.Fatal("expected normal best answer operation log")
+	}
+
+	refundedPost := model.ForumPost{
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     owner.ID,
+		BoardID:      board.ID,
+		Title:        "Already refunded reward",
+		Content:      "This reward is no longer settleable.",
+		Type:         "reward",
+		RewardPoints: 30,
+		RewardStatus: "refunded",
+		Status:       model.StatusPublished,
+	}
+	if err := db.Create(&refundedPost).Error; err != nil {
+		t.Fatal(err)
+	}
+	refundedReply := model.ForumReply{AuthorID: answerer.ID, PostID: refundedPost.ID, Content: "Cannot receive refunded reward.", Status: model.StatusPublished}
+	if err := db.Create(&refundedReply).Error; err != nil {
+		t.Fatal(err)
+	}
+	refundedMark := performJSON(router, http.MethodPost, "/api/v1/forum/replies/"+refundedReply.ID+"/mark-best", `{}`, ownerToken)
+	if refundedMark.Code != http.StatusConflict || !strings.Contains(refundedMark.Body.String(), "reward_not_settleable") {
+		t.Fatalf("expected refunded reward mark best conflict, got %d: %s", refundedMark.Code, refundedMark.Body.String())
+	}
+
+	ownPost := model.ForumPost{
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     owner.ID,
+		BoardID:      board.ID,
+		Title:        "Owner answer target",
+		Content:      "Owner should not self-select.",
+		Type:         "question",
+		Status:       model.StatusPublished,
+	}
+	if err := db.Create(&ownPost).Error; err != nil {
+		t.Fatal(err)
+	}
+	ownReply := model.ForumReply{AuthorID: owner.ID, PostID: ownPost.ID, Content: "Owner answer.", Status: model.StatusPublished}
+	if err := db.Create(&ownReply).Error; err != nil {
+		t.Fatal(err)
+	}
+	selfMark := performJSON(router, http.MethodPost, "/api/v1/forum/replies/"+ownReply.ID+"/mark-best", `{}`, ownerToken)
+	if selfMark.Code != http.StatusBadRequest || !strings.Contains(selfMark.Body.String(), "cannot_mark_own_reply") {
+		t.Fatalf("expected owner self-answer rejection, got %d: %s", selfMark.Code, selfMark.Body.String())
+	}
+
+	pendingReply := model.ForumReply{AuthorID: answerer.ID, PostID: ownPost.ID, Content: "Pending answer.", Status: model.StatusPending}
+	if err := db.Create(&pendingReply).Error; err != nil {
+		t.Fatal(err)
+	}
+	pendingMark := performJSON(router, http.MethodPost, "/api/v1/forum/replies/"+pendingReply.ID+"/mark-best", `{}`, ownerToken)
+	if pendingMark.Code != http.StatusNotFound || !strings.Contains(pendingMark.Body.String(), "reply_not_found") {
+		t.Fatalf("expected pending reply hidden from mark best, got %d: %s", pendingMark.Code, pendingMark.Body.String())
+	}
+}

@@ -4,7 +4,7 @@
 - JWT keys, WeChat Pay keys, LLM API keys, and real course files must not be committed.
 - Production must reject mock payment and fixed verification code configuration.
 - AI-generated content must be reviewed before publication.
-- Admin course, organization, material, upload, archive, status-change, material-review, wiki entry/proposal-review, blog-review, forum post/reply review, and AI draft-review operations write server-side operation logs in the same database transaction as the protected mutation.
+- Admin course, organization, material, upload, archive, status-change, material-review, wiki entry/proposal-review, blog-review, forum post/reply review, forum best-answer selection, and AI draft-review operations write server-side operation logs in the same database transaction as the protected mutation.
 - CORS must not use wildcard origins with credentials.
 
 ## Operation Logs
@@ -20,6 +20,7 @@ The Go API writes `operation_logs` for the current hardening scope:
 - blog post approve/reject review
 - forum post approve/reject review
 - forum reply approve/reject review
+- forum best-answer selection and reward settlement
 - AI draft approve/reject review
 
 Log rows include the authenticated operator id, action, target type/id, IP, User-Agent, and minimal metadata. Invalid or rejected requests do not write operation logs. Vue Admin exposes a read-only operation-log browser with time filtering, CSV export, and a retention policy panel; logs cannot be edited or deleted from the admin UI. CSV export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`. Automatic operation-log deletion is not enabled in the MVP.

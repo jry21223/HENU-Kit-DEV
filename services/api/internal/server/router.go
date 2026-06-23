@@ -106,6 +106,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/forum/posts/:id", forumHandler.Detail)
 	v1.POST("/forum/posts", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.Create)
 	v1.POST("/forum/posts/:id/replies", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.CreateReply)
+	v1.POST("/forum/replies/:id/mark-best", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.MarkBestReply)
 	v1.GET("/wiki/entries", wikiHandler.ListPublished)
 	v1.GET("/wiki/entries/:id", wikiHandler.Detail)
 	v1.POST("/wiki/entries", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.Create)

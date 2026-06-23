@@ -21,10 +21,12 @@ type Handler struct {
 }
 
 var (
-	errPostNotReviewable  = errors.New("forum_post_not_reviewable")
-	errReplyNotReviewable = errors.New("forum_reply_not_reviewable")
-	errInsufficientPoints = errors.New("insufficient_points")
-	reviewableStatuses    = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
+	errPostNotReviewable   = errors.New("forum_post_not_reviewable")
+	errReplyNotReviewable  = errors.New("forum_reply_not_reviewable")
+	errBestAnswerExists    = errors.New("best_answer_already_selected")
+	errRewardNotSettleable = errors.New("reward_not_settleable")
+	errInsufficientPoints  = errors.New("insufficient_points")
+	reviewableStatuses     = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
 )
 
 func NewHandler(db *gorm.DB) Handler {
@@ -292,6 +294,94 @@ func (h Handler) RejectReply(ctx *gin.Context) {
 	h.reviewReply(ctx, model.StatusRejected)
 }
 
+func (h Handler) MarkBestReply(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var reply model.ForumReply
+	if err := h.db.First(&reply, "id = ? AND status = ?", ctx.Param("id"), model.StatusPublished).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "reply_not_found", nil)
+		return
+	}
+	var post model.ForumPost
+	if err := h.db.Model(&model.ForumPost{}).
+		Joins("JOIN forum_boards ON forum_boards.id = forum_posts.board_id").
+		Where("forum_posts.id = ? AND forum_posts.status = ? AND forum_posts.visibility = ? AND forum_boards.status = ?", reply.PostID, model.StatusPublished, "public", model.StatusPublished).
+		First(&post).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "post_not_found", nil)
+		return
+	}
+	if !canMarkBestAnswer(user, post) {
+		response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "forbidden", nil)
+		return
+	}
+	if reply.AuthorID == post.AuthorID {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "cannot_mark_own_reply", nil)
+		return
+	}
+
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		var existingBest int64
+		if err := tx.Model(&model.ForumReply{}).Where("post_id = ? AND is_best = ?", post.ID, true).Count(&existingBest).Error; err != nil {
+			return err
+		}
+		if existingBest > 0 {
+			return errBestAnswerExists
+		}
+		if post.Type == "reward" && (post.RewardStatus != "escrowed" || post.RewardPoints <= 0) {
+			return errRewardNotSettleable
+		}
+		result := tx.Model(&model.ForumReply{}).
+			Where("id = ? AND status = ? AND is_best = ?", reply.ID, model.StatusPublished, false).
+			Update("is_best", true)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errBestAnswerExists
+		}
+		rewardStatus := post.RewardStatus
+		if post.Type == "reward" {
+			if err := settleForumReward(tx, reply.AuthorID, post.ID, reply.ID, post.RewardPoints); err != nil {
+				return err
+			}
+			postUpdate := tx.Model(&model.ForumPost{}).
+				Where("id = ? AND reward_status = ?", post.ID, "escrowed").
+				Update("reward_status", "settled")
+			if postUpdate.Error != nil {
+				return postUpdate.Error
+			}
+			if postUpdate.RowsAffected == 0 {
+				return errRewardNotSettleable
+			}
+			rewardStatus = "settled"
+		}
+		return audit.Record(ctx, tx, "forum_reply.best_selected", "forum_reply", reply.ID, map[string]interface{}{
+			"postId":        post.ID,
+			"postAuthorId":  post.AuthorID,
+			"replyAuthorId": reply.AuthorID,
+			"type":          post.Type,
+			"rewardPoints":  post.RewardPoints,
+			"rewardStatus":  rewardStatus,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, errBestAnswerExists) {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "best_answer_already_selected", nil)
+			return
+		}
+		if errors.Is(err, errRewardNotSettleable) {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "reward_not_settleable", gin.H{"rewardStatus": post.RewardStatus})
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "mark_best_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"marked": true, "replyId": reply.ID, "postId": post.ID})
+}
+
 func (h Handler) reviewPost(ctx *gin.Context, status string) {
 	user, ok := auth.CurrentUser(ctx)
 	if !ok {
@@ -516,6 +606,27 @@ func refundForumReward(tx *gorm.DB, userID string, postID string, rewardPoints i
 	}).Error
 }
 
+func settleForumReward(tx *gorm.DB, userID string, postID string, replyID string, rewardPoints int64) error {
+	if err := tx.Model(&model.User{}).
+		Where("id = ?", userID).
+		UpdateColumn("points_balance", gorm.Expr("points_balance + ?", rewardPoints)).Error; err != nil {
+		return err
+	}
+	var user model.User
+	if err := tx.Select("points_balance").First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+	return tx.Create(&model.PointsLog{
+		UserID:         userID,
+		Delta:          rewardPoints,
+		BalanceAfter:   user.PointsBalance,
+		Reason:         "forum_reward_settlement",
+		ReferenceType:  "forum_reply",
+		ReferenceID:    replyID,
+		IdempotencyKey: "forum_reward_settlement:" + postID,
+	}).Error
+}
+
 func validatePostInput(boardID string, title string, content string, postType string, rewardPoints int64) error {
 	if boardID == "" || title == "" || content == "" {
 		return errors.New("missing_required_fields")
@@ -550,6 +661,13 @@ func validateReplyInput(content string) error {
 		return errors.New("content_too_long")
 	}
 	return nil
+}
+
+func canMarkBestAnswer(user *model.User, post model.ForumPost) bool {
+	if user == nil {
+		return false
+	}
+	return user.ID == post.AuthorID || user.Role == model.RoleAdmin || user.Role == model.RoleSuperAdmin
 }
 
 func publicPosts(posts []model.ForumPost) []publicPost {

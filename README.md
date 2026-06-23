@@ -177,10 +177,10 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Wiki edit proposals are review-first for the MVP: creator/admin users can propose edits to published public entries, reviewer queues compare base/current/proposed content, public content stays unchanged until approval, stale base versions return `409 proposal_stale`, and successful approval updates the live entry, increments its version, and writes `wiki_edit_histories`.
 - Blog submission is review-first for the MVP: logged-in users can submit posts, public blog APIs expose only published posts, and rejected posts stay hidden.
 - Forum submission is review-first for the MVP: logged-in users can submit normal/question/reward posts, public forum APIs expose only published public posts under published boards, and rejected posts stay hidden.
-- Forum reward posts now freeze author points at submission, stay hidden until review, keep points escrowed after approval, and refund points automatically on rejection; best-answer settlement is still later work.
+- Forum reward posts now freeze author points at submission, stay hidden until review, keep points escrowed after approval, refund points automatically on rejection, and settle escrowed points to the selected best-answer author through `POST /api/v1/forum/replies/:id/mark-best`.
 - Forum replies are review-first for the MVP: replies can only target published public posts, approved replies increment the parent post comment count once, and rejected replies stay hidden.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
-- Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
+- Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.
 - Real AI publish-to-resource flows remain later work.
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.

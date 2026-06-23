@@ -195,8 +195,7 @@ Important boundaries:
 - Rejecting a post requires `reviewReason`, records reviewer metadata, and keeps it hidden from public forum endpoints.
 - Only `draft`, `pending`, and `needs_changes` posts can be reviewed; repeating review on published/rejected posts returns `409 forum_post_not_reviewable`.
 - The MVP supports `normal`, `question`, and `reward` post types.
-- Reward posts freeze author points when submitted, show reward points/status in the review queue, keep points escrowed after approval, and refund points automatically if rejected.
-- Best-answer settlement and point grants remain later work.
+- Reward posts freeze author points when submitted, show reward points/status in the review queue, keep points escrowed after approval, refund points automatically if rejected, and settle to the selected best-answer author through the public authenticated API.
 - Forum approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
 
 ## Forum Reply Review
@@ -217,8 +216,9 @@ Important boundaries:
 - Approving a reply sets it to `published`, records reviewer metadata, increments the parent post `comment_count` once, and makes it visible through public post detail.
 - Rejecting a reply requires `reviewReason`, records reviewer metadata, and keeps it hidden from public post detail.
 - Only `draft`, `pending`, and `needs_changes` replies can be reviewed; repeating review on published/rejected replies returns `409 forum_reply_not_reviewable`.
-- Best-answer selection, reward settlement, reply editing, and point grants remain later work.
-- Forum reply approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+- Post authors, `admin`, and `super_admin` users can select one published reply as best answer through `POST /api/v1/forum/replies/:id/mark-best`; reward posts settle escrowed points exactly once through a `forum_reward_settlement` points log.
+- The current admin reply review page does not expose a best-answer button yet; reply editing and richer user-facing controls remain later work.
+- Forum reply approve/reject and best-answer selection operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
 
 ## AI Draft Review
 
@@ -251,7 +251,7 @@ Important boundaries:
 - `GET /api/v1/admin/operation-logs/export`
 - `GET /api/v1/admin/operation-logs/retention`
 
-The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki entry/proposal review, blog review, forum post/reply review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
 Filters:
 
