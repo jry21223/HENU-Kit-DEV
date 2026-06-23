@@ -21,6 +21,7 @@
 - Vue admin material draft/pending/published/archive status operations
 - Vue admin download audit page
 - Vue admin AI task visibility and draft approve/reject page
+- Vue admin read-only analytics page for download trend and course demand
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
 - Demo seed command
@@ -33,7 +34,7 @@
 
 - Web profile/session polish and school/major binding UI
 - Admin review comments, reviewer role workflows, and richer edit dialogs
-- Admin analytics UI for download trends and course demand
+- Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - PDF watermark integration
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 

@@ -10,6 +10,7 @@
         <RouterLink to="/courses">{{ copy.courses }}</RouterLink>
         <RouterLink to="/materials">{{ copy.materials }}</RouterLink>
         <RouterLink to="/downloads">{{ copy.downloads }}</RouterLink>
+        <RouterLink to="/analytics">{{ copy.analytics }}</RouterLink>
         <span class="nav-section">{{ copy.reviewSection }}</span>
         <RouterLink to="/ai/drafts">{{ copy.aiDrafts }}</RouterLink>
         <span class="disabled-nav" aria-disabled="true">{{ copy.community }}</span>
@@ -37,6 +38,7 @@ const copy = {
   courses: "\u8bfe\u7a0b\u7ef4\u62a4",
   materials: "PDF \u8d44\u6599",
   downloads: "\u4e0b\u8f7d\u5ba1\u8ba1",
+  analytics: "\u8fd0\u8425\u5206\u6790",
   reviewSection: "\u5ba1\u6838\u6d41\u7a0b",
   aiDrafts: "AI \u8349\u7a3f",
   community: "\u8bfe\u7a0b\u793e\u533a",

@@ -58,6 +58,7 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/ai/drafts`
 - `POST /api/v1/admin/ai/drafts/:id/approve`
 - `POST /api/v1/admin/ai/drafts/:id/reject`
+- `GET /api/v1/admin/analytics/overview`
 
 Response envelope:
 
@@ -128,6 +129,7 @@ Implemented admin behavior:
 - upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with a PDF header
 - upload rejects files larger than 20 MiB
 - manually supplied `storageKey` values with path traversal are rejected
+- admin analytics overview returns read-only totals, 14-day successful-download trend, top materials, course demand, and access-level breakdown
 
 Implemented AI behavior:
 

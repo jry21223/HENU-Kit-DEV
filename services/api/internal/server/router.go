@@ -11,6 +11,7 @@ import (
 
 	"final-review-platform/services/api/internal/admin"
 	"final-review-platform/services/api/internal/ai"
+	"final-review-platform/services/api/internal/analytics"
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/course"
 	"final-review-platform/services/api/internal/downloadlog"
@@ -56,6 +57,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	quizHandler := quiz.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
+	analyticsHandler := analytics.NewHandler(db)
 	router.GET("/healthz", healthHandler.Healthz)
 
 	v1 := router.Group("/api/v1")
@@ -124,6 +126,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.GET("/ai/drafts", aiHandler.AdminDrafts)
 	admin.POST("/ai/drafts/:id/approve", aiHandler.ApproveDraft)
 	admin.POST("/ai/drafts/:id/reject", aiHandler.RejectDraft)
+	admin.GET("/analytics/overview", analyticsHandler.Overview)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})

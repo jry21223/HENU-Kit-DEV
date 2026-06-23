@@ -107,6 +107,38 @@ export type AIDraft = {
   updatedAt: string;
 };
 
+export type AnalyticsOverview = {
+  totals: {
+    users: number;
+    courses: number;
+    materials: number;
+    publishedMaterials: number;
+    pendingMaterials: number;
+    packages: number;
+    downloads: number;
+  };
+  downloadTrend: Array<{ date: string; count: number }>;
+  topMaterials: Array<{
+    materialId: string;
+    title: string;
+    courseId: string;
+    type: string;
+    accessLevel: string;
+    status: string;
+    downloads: number;
+  }>;
+  courseDemand: Array<{
+    courseId: string;
+    courseName: string;
+    grade: string;
+    status: string;
+    materialCount: number;
+    publishedMaterialCount: number;
+    downloadCount: number;
+  }>;
+  accessBreakdown: Array<{ accessLevel: string; downloads: number }>;
+};
+
 export type LoginData = {
   user: User;
   accessToken: string;

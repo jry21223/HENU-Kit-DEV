@@ -202,6 +202,12 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.analytics-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+}
+
 .stat-number {
   display: block;
   font-size: 24px;
@@ -309,6 +315,7 @@ a {
   }
 
   .stat-grid,
+  .analytics-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }

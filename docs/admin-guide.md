@@ -9,6 +9,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/materials`: local material upload, all-status material listing, and material status operations.
 - `/downloads`: successful material download audit logs.
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations.
+- `/analytics`: read-only material download and course demand analytics.
 
 ## Material Operations
 
@@ -71,6 +72,25 @@ Important boundaries:
 - The MVP does not automatically publish AI drafts as materials, questions, wiki entries, or papers.
 - The UI displays task input/result and draft content for review, but it does not call any LLM directly.
 - Real LLM/RAG, reviewer comments, and publish-to-resource flows remain later work.
+
+## Analytics
+
+`/analytics` calls `GET /api/v1/admin/analytics/overview` and requires an authenticated `admin` or `super_admin` role.
+
+The page shows:
+
+- total users, courses, materials, published materials, course packages, and successful downloads
+- 14-day successful material download trend
+- top downloaded materials
+- access-level download breakdown
+- course demand rows sorted by download count and material supply
+
+Important boundaries:
+
+- Analytics are derived from server-side successful download logs and current course/material/package records.
+- Denied downloads are not counted as demand because they are not successful delivery events.
+- The page is read-only and does not grant access, mutate material status, or expose `storage_key`.
+- This MVP analytics view does not yet include page visits, search intent, payment conversion, or course request voting.
 
 ## Planned Areas
 
