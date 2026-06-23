@@ -384,3 +384,49 @@ test("homepage keeps archive pages accessible without JavaScript and reduced mot
     await context.close();
   }
 });
+
+test("homepage keeps archive pages visible without JavaScript", async ({ browser }) => {
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 1440, height: 1100 },
+  });
+
+  try {
+    const page = await context.newPage();
+    await page.goto(homeUrl, { waitUntil: "domcontentloaded" });
+
+    const archivePages = page.locator('[data-home-anim="archive-page"]');
+    await expect(archivePages).toHaveCount(2);
+
+    const pageStates = await archivePages.evaluateAll((elements) =>
+      elements.map((element) => {
+        const styles = getComputedStyle(element);
+
+        return {
+          ariaHidden: element.getAttribute("aria-hidden"),
+          opacity: Number(styles.opacity),
+          visibility: styles.visibility,
+        };
+      }),
+    );
+
+    expect(pageStates).toEqual([
+      { ariaHidden: null, opacity: 1, visibility: "visible" },
+      { ariaHidden: null, opacity: 1, visibility: "visible" },
+    ]);
+
+    const directoryLinkStates = await page.locator('[data-home-anim="archive-directory-line"]').evaluateAll((elements) =>
+      elements.map((element) => ({
+        tabIndex: (element as HTMLElement).tabIndex,
+        tabIndexAttribute: element.getAttribute("tabindex"),
+      })),
+    );
+
+    expect(directoryLinkStates).toHaveLength(6);
+    expect(directoryLinkStates.every((state) => state.tabIndexAttribute !== "-1" && state.tabIndex !== -1)).toBe(true);
+
+    await expect(page.getByTestId("archive-cover")).toHaveCSS("opacity", "0");
+  } finally {
+    await context.close();
+  }
+});

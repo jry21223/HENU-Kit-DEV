@@ -46,7 +46,12 @@ export function ArchiveBookReveal() {
   const introAriaHidden = introFocusable ? undefined : true;
 
   return (
-    <section ref={ref} className={styles.bookStage} aria-label="课程资料档案册">
+    <section
+      ref={ref}
+      className={styles.bookStage}
+      data-animation-ready={clientAnimationReady && !reduceMotion ? "true" : undefined}
+      aria-label="课程资料档案册"
+    >
       <div className={styles.bookSticky}>
         <div className={styles.bookScene}>
           <div className={styles.bookCopy}>
