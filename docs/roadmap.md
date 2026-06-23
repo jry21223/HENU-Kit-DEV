@@ -28,6 +28,7 @@
 - Vue admin AI task visibility and draft approve/reject page with reviewer-role access, review notes, and one-way review state checks
 - Vue admin material review queue with reviewer-role access, approve/reject actions, review notes, and one-way pending review checks
 - Vue admin wiki review queue with reviewer-role access, approve/reject actions, review notes, public-only published wiki APIs, and initial edit-history capture
+- Vue admin wiki edit proposal review queue with reviewer-role access, stale-version protection, live-entry version updates, and edit-history capture
 - Vue admin blog review queue with reviewer-role access, approve/reject actions, review notes, and public-only published blog APIs
 - Vue admin forum review queue with reviewer-role access, approve/reject actions, review notes, public-only published forum post APIs, and published-board checks
 - Vue admin forum reply review queue with reviewer-role access, approve/reject actions, review notes, public-only published reply APIs, and once-only comment-count updates
@@ -36,7 +37,7 @@
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
-- Server-side operation logs for organization, course, material, upload, status/archive, and AI draft review mutations
+- Server-side operation logs for organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
@@ -45,7 +46,7 @@
 
 ## Next Deliverable
 
-- Richer content review workflows for forum reward posts and wiki edit proposals
+- Richer content review workflows for forum reward posts and wiki conflict-resolution UX
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
@@ -53,7 +54,7 @@
 
 - AI Worker flows
 - Points and membership
-- Wiki creator workflow and approved-entry revision proposals
+- Wiki creator workflow refinements and richer revision diff tooling
 - Blog, moments, forum
 - Notifications, reports, leaderboards
 - Production deployment and monitoring

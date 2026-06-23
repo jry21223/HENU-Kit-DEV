@@ -47,6 +47,7 @@
             <el-option label="major" value="major" />
             <el-option label="ai_draft" value="ai_draft" />
             <el-option label="wiki_entry" value="wiki_entry" />
+            <el-option label="wiki_edit_proposal" value="wiki_edit_proposal" />
             <el-option label="blog_post" value="blog_post" />
             <el-option label="forum_post" value="forum_post" />
             <el-option label="forum_reply" value="forum_reply" />

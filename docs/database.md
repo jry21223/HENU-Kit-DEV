@@ -9,7 +9,7 @@ Current model coverage:
 - materials, course packages, package items, material access grants, and download logs
 - orders and payment records
 - quiz questions, attempts, answers, wrong questions, weakness reports
-- wiki, blog, forum, moments, relations
+- wiki entries, edit histories, edit proposals, creator applications, blog, forum, moments, relations
 - points, memberships, AI tasks, notifications, reports, operation logs
 - system configs and leaderboard snapshots
 
@@ -33,3 +33,4 @@ Current access-control notes:
 - `material_download_logs` records only successful file downloads after permission checks and storage-key validation.
 - PDF watermarking is generated at response time from the stored source file; no separate watermarked file record is persisted.
 - `wrong_questions` uses a unique user/question pair so repeated wrong answers increment `wrong_count` instead of creating duplicate rows.
+- `wiki_edit_proposals` stores proposed edits to published wiki entries with `base_version`, review fields, and proposed title/content; approval updates the live entry and writes `wiki_edit_histories` only when the live entry version still matches.

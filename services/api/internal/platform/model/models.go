@@ -300,6 +300,17 @@ type WikiEditHistory struct {
 	Summary  string `json:"summary" gorm:"size:500"`
 }
 
+type WikiEditProposal struct {
+	BaseModel
+	ReviewFields
+	EntryID         string `json:"entryId" gorm:"type:uuid;index;not null"`
+	EditorID        string `json:"editorId" gorm:"type:uuid;index;not null"`
+	BaseVersion     int    `json:"baseVersion" gorm:"not null;index"`
+	ProposedTitle   string `json:"proposedTitle" gorm:"size:200;not null"`
+	ProposedContent string `json:"proposedContent" gorm:"type:text;not null"`
+	Summary         string `json:"summary" gorm:"size:500"`
+}
+
 type WikiCreatorApplication struct {
 	BaseModel
 	ReviewFields
@@ -509,7 +520,7 @@ func AllModels() []interface{} {
 		&Material{}, &CoursePackage{}, &CoursePackageItem{}, &MaterialAccessGrant{}, &MaterialDownloadLog{},
 		&Order{}, &PaymentRecord{},
 		&QuizQuestion{}, &QuizOption{}, &QuizAttempt{}, &QuizAnswer{}, &WrongQuestion{}, &WeaknessReport{},
-		&WikiEntry{}, &WikiEditHistory{}, &WikiCreatorApplication{},
+		&WikiEntry{}, &WikiEditHistory{}, &WikiEditProposal{}, &WikiCreatorApplication{},
 		&BlogPost{}, &BlogComment{},
 		&ForumBoard{}, &ForumPost{}, &ForumReply{},
 		&Moment{}, &MomentComment{},

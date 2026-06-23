@@ -4,7 +4,7 @@
 - JWT keys, WeChat Pay keys, LLM API keys, and real course files must not be committed.
 - Production must reject mock payment and fixed verification code configuration.
 - AI-generated content must be reviewed before publication.
-- Admin course, organization, material, upload, archive, status-change, material-review, wiki-review, blog-review, forum post/reply review, and AI draft-review operations write server-side operation logs in the same database transaction as the protected mutation.
+- Admin course, organization, material, upload, archive, status-change, material-review, wiki entry/proposal-review, blog-review, forum post/reply review, and AI draft-review operations write server-side operation logs in the same database transaction as the protected mutation.
 - CORS must not use wildcard origins with credentials.
 
 ## Operation Logs
@@ -16,6 +16,7 @@ The Go API writes `operation_logs` for the current hardening scope:
 - material create/upload/update/status-update/archive
 - material approve/reject review
 - wiki entry approve/reject review
+- wiki edit proposal approve/reject review
 - blog post approve/reject review
 - forum post approve/reject review
 - forum reply approve/reject review

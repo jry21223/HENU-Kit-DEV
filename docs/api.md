@@ -39,6 +39,7 @@ Currently implemented endpoints:
 - `GET /api/v1/wiki/entries?courseId=&limit=`
 - `GET /api/v1/wiki/entries/:id`
 - `POST /api/v1/wiki/entries`
+- `POST /api/v1/wiki/entries/:id/proposals`
 - `POST /api/v1/quiz/attempts`
 - `GET /api/v1/me/quiz-attempts`
 - `GET /api/v1/me/wrong-questions`
@@ -87,6 +88,9 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/wiki/entries?status=draft|pending|needs_changes|published|rejected&authorId=&courseId=&limit=`
 - `POST /api/v1/admin/wiki/entries/:id/approve`
 - `POST /api/v1/admin/wiki/entries/:id/reject`
+- `GET /api/v1/admin/wiki/proposals?status=draft|pending|needs_changes|published|rejected&entryId=&editorId=&limit=`
+- `POST /api/v1/admin/wiki/proposals/:id/approve`
+- `POST /api/v1/admin/wiki/proposals/:id/reject`
 - `GET /api/v1/admin/analytics/overview`
 - `GET /api/v1/admin/operation-logs?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
 - `GET /api/v1/admin/operation-logs/export?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
@@ -112,7 +116,7 @@ Error envelope:
 }
 ```
 
-Later stages add points, membership, richer wiki version proposals, forum reward posts, notification, report, and expanded admin APIs.
+Later stages add points, membership, richer wiki conflict resolution, forum reward posts, notification, report, and expanded admin APIs.
 
 Implemented authentication behavior:
 
@@ -195,16 +199,22 @@ Implemented wiki behavior:
 - creator/admin users can submit wiki entries; submissions always enter `pending`
 - wiki submission validates required title, lowercase URL slug, content length, and optional published course binding
 - the initial wiki submission creates a `wiki_edit_histories` version-1 row in the same transaction
+- creator/admin users can submit edit proposals for already-published public wiki entries through `POST /api/v1/wiki/entries/:id/proposals`
+- edit proposals capture the published entry `baseVersion` and keep public content unchanged until reviewer approval
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected wiki entries through `/admin/wiki/entries`
+- reviewer/admin users can list draft/pending/needs_changes/published/rejected wiki edit proposals through `/admin/wiki/proposals`
 - approving a wiki entry sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
 - rejecting a wiki entry sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public endpoints
 - wiki review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected entries return HTTP 409 with `entry_not_reviewable`
-- this MVP does not yet implement pending edit proposals for already-published wiki entries; direct edits to live published wiki content remain later work
+- approving a wiki edit proposal requires the live entry version to still match `baseVersion`, updates the public entry, increments `version`, writes a new `wiki_edit_histories` row, and records operation logs in the same transaction
+- stale wiki edit proposals return HTTP 409 with `proposal_stale`; the proposal remains pending and the public entry is not changed
+- rejecting a wiki edit proposal requires `reviewReason`, records reviewer metadata, and does not change the public entry
+- wiki edit proposal review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected proposals return HTTP 409 with `proposal_not_reviewable`
 
 Implemented admin behavior:
 
 - all admin endpoints require an authenticated `admin` or `super_admin` role
-- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, `/api/v1/admin/wiki/entries*`, `/api/v1/admin/blog/posts*`, `/api/v1/admin/forum/posts*`, and `/api/v1/admin/forum/replies*` allow `reviewer`, `admin`, or `super_admin`
+- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, `/api/v1/admin/wiki/entries*`, `/api/v1/admin/wiki/proposals*`, `/api/v1/admin/blog/posts*`, `/api/v1/admin/forum/posts*`, and `/api/v1/admin/forum/replies*` allow `reviewer`, `admin`, or `super_admin`
 - `reviewer` users remain blocked from material CRUD, course CRUD, download audit, analytics, operation logs, and other admin-only APIs
 - organization/course/material delete operations archive by setting `status=archived`
 - admin course list returns all course statuses; public course list/detail returns only `published`

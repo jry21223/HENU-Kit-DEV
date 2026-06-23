@@ -10,6 +10,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/downloads`: successful material download audit logs.
 - `/material-reviews`: reviewer/admin material approve/reject review queue with review notes.
 - `/wiki-reviews`: reviewer/admin wiki entry approve/reject review queue with review notes.
+- `/wiki-proposal-reviews`: reviewer/admin wiki edit proposal approve/reject queue with stale-version protection.
 - `/blog-reviews`: reviewer/admin blog post approve/reject review queue with review notes.
 - `/forum-reviews`: reviewer/admin forum post approve/reject review queue with review notes.
 - `/forum-reply-reviews`: reviewer/admin forum reply approve/reject review queue with review notes.
@@ -150,8 +151,29 @@ Important boundaries:
 - Approving an entry sets it to `published`, records reviewer metadata, and makes it visible through public wiki endpoints.
 - Rejecting an entry requires `reviewReason`, records reviewer metadata, and keeps it hidden from public wiki endpoints.
 - Only `draft`, `pending`, and `needs_changes` entries can be reviewed; repeating review on published/rejected entries returns `409 entry_not_reviewable`.
-- The initial submission writes a `wiki_edit_histories` version-1 row, but reviewable edit proposals for already-published entries remain later work.
+- The initial submission writes a `wiki_edit_histories` version-1 row.
 - Wiki approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+
+## Wiki Proposal Review
+
+`/wiki-proposal-reviews` calls:
+
+- `GET /api/v1/admin/wiki/proposals?status=`
+- `POST /api/v1/admin/wiki/proposals/:id/approve`
+- `POST /api/v1/admin/wiki/proposals/:id/reject`
+
+The page is available to `reviewer`, `admin`, and `super_admin` roles. It lists proposed edits to already-published wiki entries and does not expose direct live-content editing controls.
+
+Important boundaries:
+
+- Creator/admin users submit proposals through `POST /api/v1/wiki/entries/:id/proposals`.
+- Proposals can target only published public wiki entries, and public wiki content stays unchanged while a proposal is pending.
+- Each proposal stores the live entry `baseVersion` at submission time.
+- Approving a proposal requires the live entry version to still match `baseVersion`; approval updates the live entry, increments its version, writes a new `wiki_edit_histories` row, and records reviewer metadata in one transaction.
+- If the live entry changed after proposal creation, approval returns `409 proposal_stale`, leaves the proposal pending, and does not update public content.
+- Rejecting a proposal requires `reviewReason`, records reviewer metadata, and does not mutate the live entry.
+- Only `draft`, `pending`, and `needs_changes` proposals can be reviewed; repeating review on published/rejected proposals returns `409 proposal_not_reviewable`.
+- Wiki proposal approve/reject operations write `operation_logs` rows with target type `wiki_edit_proposal`; stale or rejected repeat-review attempts do not write extra log rows.
 
 ## Forum Review
 
@@ -209,7 +231,7 @@ The page shows recent AI tasks and reviewable AI drafts created by the worker.
 Important boundaries:
 
 - AI review endpoints require an authenticated `reviewer`, `admin`, or `super_admin` role.
-- `reviewer` users can access `/ai/drafts`, `/material-reviews`, `/wiki-reviews`, `/blog-reviews`, `/forum-reviews`, and `/forum-reply-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
+- `reviewer` users can access `/ai/drafts`, `/material-reviews`, `/wiki-reviews`, `/wiki-proposal-reviews`, `/blog-reviews`, `/forum-reviews`, and `/forum-reply-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
 - Approving a draft can include an optional review note; rejecting a draft requires a review reason.
 - Approving or rejecting a draft only changes the draft review status and review metadata.
 - Only `draft`, `pending`, and `needs_changes` drafts can be reviewed; repeating review on `approved` or `rejected` drafts returns `409 draft_not_reviewable`.
@@ -226,7 +248,7 @@ Important boundaries:
 - `GET /api/v1/admin/operation-logs/export`
 - `GET /api/v1/admin/operation-logs/retention`
 
-The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki review, blog review, forum post/reply review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki entry/proposal review, blog review, forum post/reply review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
 Filters:
 

@@ -21,8 +21,10 @@ type Handler struct {
 }
 
 var (
-	errEntryNotReviewable = errors.New("entry_not_reviewable")
-	reviewableStatuses    = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
+	errEntryNotReviewable    = errors.New("entry_not_reviewable")
+	errProposalNotReviewable = errors.New("proposal_not_reviewable")
+	errProposalStale         = errors.New("proposal_stale")
+	reviewableStatuses       = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
 )
 
 func NewHandler(db *gorm.DB) Handler {
@@ -39,6 +41,12 @@ type entryRequest struct {
 
 type reviewRequest struct {
 	ReviewReason string `json:"reviewReason"`
+}
+
+type proposalRequest struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+	Summary string `json:"summary"`
 }
 
 type publicEntry struct {
@@ -151,6 +159,52 @@ func (h Handler) Create(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"entry": entry})
 }
 
+func (h Handler) CreateProposal(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req proposalRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	content := strings.TrimSpace(req.Content)
+	summary := strings.TrimSpace(req.Summary)
+	if err := validateProposalInput(title, content, summary); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+	var entry model.WikiEntry
+	if err := h.db.Model(&model.WikiEntry{}).
+		Joins("LEFT JOIN courses ON courses.id = wiki_entries.course_id").
+		Where("wiki_entries.id = ? AND wiki_entries.status = ? AND wiki_entries.visibility = ? AND (wiki_entries.course_id IS NULL OR courses.status = ?)", ctx.Param("id"), model.StatusPublished, "public", model.StatusPublished).
+		First(&entry).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "entry_not_found", nil)
+		return
+	}
+	if title == entry.Title && content == entry.Content {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "proposal_unchanged", nil)
+		return
+	}
+	proposal := model.WikiEditProposal{
+		ReviewFields:    model.ReviewFields{Status: model.StatusPending},
+		EntryID:         entry.ID,
+		EditorID:        user.ID,
+		BaseVersion:     entry.Version,
+		ProposedTitle:   title,
+		ProposedContent: content,
+		Summary:         summary,
+	}
+	if err := h.db.Create(&proposal).Error; err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"proposal": proposal})
+}
+
 func (h Handler) AdminEntries(ctx *gin.Context) {
 	status := strings.TrimSpace(ctx.Query("status"))
 	if status == "" {
@@ -180,12 +234,49 @@ func (h Handler) AdminEntries(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"entries": entries})
 }
 
+func (h Handler) AdminProposals(ctx *gin.Context) {
+	status := strings.TrimSpace(ctx.Query("status"))
+	if status == "" {
+		status = model.StatusPending
+	}
+	if !isReviewListStatus(status) {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 100, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	query := h.db.Where("status = ?", status)
+	if entryID := strings.TrimSpace(ctx.Query("entryId")); entryID != "" {
+		query = query.Where("entry_id = ?", entryID)
+	}
+	if editorID := strings.TrimSpace(ctx.Query("editorId")); editorID != "" {
+		query = query.Where("editor_id = ?", editorID)
+	}
+	var proposals []model.WikiEditProposal
+	if err := query.Order("updated_at desc").Limit(limit).Find(&proposals).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"proposals": proposals})
+}
+
 func (h Handler) ApproveEntry(ctx *gin.Context) {
 	h.reviewEntry(ctx, model.StatusPublished)
 }
 
 func (h Handler) RejectEntry(ctx *gin.Context) {
 	h.reviewEntry(ctx, model.StatusRejected)
+}
+
+func (h Handler) ApproveProposal(ctx *gin.Context) {
+	h.reviewProposal(ctx, model.StatusPublished)
+}
+
+func (h Handler) RejectProposal(ctx *gin.Context) {
+	h.reviewProposal(ctx, model.StatusRejected)
 }
 
 func (h Handler) reviewEntry(ctx *gin.Context, status string) {
@@ -269,6 +360,124 @@ func (h Handler) reviewEntry(ctx *gin.Context, status string) {
 	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
 }
 
+func (h Handler) reviewProposal(ctx *gin.Context, status string) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req reviewRequest
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+			return
+		}
+	}
+	reason := strings.TrimSpace(req.ReviewReason)
+	if len(reason) > 1000 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_too_long", nil)
+		return
+	}
+	if status == model.StatusRejected && reason == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_required", nil)
+		return
+	}
+
+	var proposal model.WikiEditProposal
+	if err := h.db.First(&proposal, "id = ?", ctx.Param("id")).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "proposal_not_found", nil)
+		return
+	}
+	if !isReviewableStatus(proposal.Status) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "proposal_not_reviewable", gin.H{"status": proposal.Status})
+		return
+	}
+	previousStatus := proposal.Status
+	action := "wiki_proposal.published"
+	if status == model.StatusRejected {
+		action = "wiki_proposal.rejected"
+	}
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.WikiEditProposal{}).
+			Where("id = ? AND status IN ?", proposal.ID, reviewableStatuses).
+			Updates(map[string]interface{}{
+				"status":        status,
+				"reviewer_id":   user.ID,
+				"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+				"review_reason": reason,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errProposalNotReviewable
+		}
+		if status == model.StatusPublished {
+			entryUpdate := tx.Model(&model.WikiEntry{}).
+				Where("id = ? AND status = ? AND version = ?", proposal.EntryID, model.StatusPublished, proposal.BaseVersion).
+				Updates(map[string]interface{}{
+					"title":         proposal.ProposedTitle,
+					"content":       proposal.ProposedContent,
+					"version":       proposal.BaseVersion + 1,
+					"reviewer_id":   user.ID,
+					"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+					"review_reason": reason,
+				})
+			if entryUpdate.Error != nil {
+				return entryUpdate.Error
+			}
+			if entryUpdate.RowsAffected == 0 {
+				return errProposalStale
+			}
+			summary := strings.TrimSpace(proposal.Summary)
+			if summary == "" {
+				summary = "approved edit proposal"
+			}
+			history := model.WikiEditHistory{
+				EntryID:  proposal.EntryID,
+				EditorID: proposal.EditorID,
+				Version:  proposal.BaseVersion + 1,
+				Content:  proposal.ProposedContent,
+				Summary:  summary,
+			}
+			if err := tx.Create(&history).Error; err != nil {
+				return err
+			}
+		}
+		return audit.Record(ctx, tx, action, "wiki_edit_proposal", proposal.ID, map[string]interface{}{
+			"entryId":        proposal.EntryID,
+			"editorId":       proposal.EditorID,
+			"baseVersion":    proposal.BaseVersion,
+			"nextVersion":    proposal.BaseVersion + 1,
+			"previousStatus": previousStatus,
+			"status":         status,
+			"reviewReason":   reason,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, errProposalNotReviewable) {
+			latestStatus := proposal.Status
+			var latest model.WikiEditProposal
+			if queryErr := h.db.Select("status").First(&latest, "id = ?", proposal.ID).Error; queryErr == nil {
+				latestStatus = latest.Status
+			}
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "proposal_not_reviewable", gin.H{"status": latestStatus})
+			return
+		}
+		if errors.Is(err, errProposalStale) {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "proposal_stale", gin.H{"baseVersion": proposal.BaseVersion})
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "proposal_not_found", nil)
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "review_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
+}
+
 func validateEntryInput(title string, slug string, content string, summary string) error {
 	if title == "" || slug == "" || content == "" {
 		return errors.New("missing_required_fields")
@@ -278,6 +487,22 @@ func validateEntryInput(title string, slug string, content string, summary strin
 	}
 	if len(slug) > 220 || !safeSlug(slug) {
 		return errors.New("invalid_slug")
+	}
+	if len([]rune(content)) > 80000 {
+		return errors.New("content_too_long")
+	}
+	if len([]rune(summary)) > 500 {
+		return errors.New("summary_too_long")
+	}
+	return nil
+}
+
+func validateProposalInput(title string, content string, summary string) error {
+	if title == "" || content == "" {
+		return errors.New("missing_required_fields")
+	}
+	if len([]rune(title)) > 200 {
+		return errors.New("title_too_long")
 	}
 	if len([]rune(content)) > 80000 {
 		return errors.New("content_too_long")

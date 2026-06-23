@@ -109,6 +109,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/wiki/entries", wikiHandler.ListPublished)
 	v1.GET("/wiki/entries/:id", wikiHandler.Detail)
 	v1.POST("/wiki/entries", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.Create)
+	v1.POST("/wiki/entries/:id/proposals", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.CreateProposal)
 	v1.POST("/quiz/attempts", authMiddleware.RequireAuth(), quizHandler.CreateAttempt)
 	v1.GET("/me/quiz-attempts", authMiddleware.RequireAuth(), quizHandler.MyAttempts)
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
@@ -170,6 +171,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	review.GET("/wiki/entries", wikiHandler.AdminEntries)
 	review.POST("/wiki/entries/:id/approve", wikiHandler.ApproveEntry)
 	review.POST("/wiki/entries/:id/reject", wikiHandler.RejectEntry)
+	review.GET("/wiki/proposals", wikiHandler.AdminProposals)
+	review.POST("/wiki/proposals/:id/approve", wikiHandler.ApproveProposal)
+	review.POST("/wiki/proposals/:id/reject", wikiHandler.RejectProposal)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})
