@@ -96,6 +96,12 @@ func TestWikiEditProposalWorkflow(t *testing.T) {
 	if reviewList.Code != http.StatusOK || !strings.Contains(reviewList.Body.String(), proposal.ID) {
 		t.Fatalf("expected reviewer proposal list to include pending proposal, got %d: %s", reviewList.Code, reviewList.Body.String())
 	}
+	if !strings.Contains(reviewList.Body.String(), `"baseContent":"Original content"`) ||
+		!strings.Contains(reviewList.Body.String(), `"currentContent":"Original content"`) ||
+		!strings.Contains(reviewList.Body.String(), `"currentVersion":1`) ||
+		!strings.Contains(reviewList.Body.String(), `"isStale":false`) {
+		t.Fatalf("expected proposal list to include base/current comparison context, got %d: %s", reviewList.Code, reviewList.Body.String())
+	}
 	rejectWithoutReason := performJSON(router, http.MethodPost, "/api/v1/admin/wiki/proposals/"+proposal.ID+"/reject", "", reviewerToken)
 	if rejectWithoutReason.Code != http.StatusBadRequest || !strings.Contains(rejectWithoutReason.Body.String(), "review_reason_required") {
 		t.Fatalf("expected proposal reject reason required, got %d: %s", rejectWithoutReason.Code, rejectWithoutReason.Body.String())
@@ -169,6 +175,15 @@ func TestWikiEditProposalWorkflow(t *testing.T) {
 	}
 	if staleAfter.Status != model.StatusPending {
 		t.Fatalf("expected stale proposal review rollback to keep status pending, got %#v", staleAfter)
+	}
+	staleList := performJSON(router, http.MethodGet, "/api/v1/admin/wiki/proposals?entryId="+entry.ID, "", reviewerToken)
+	if staleList.Code != http.StatusOK ||
+		!strings.Contains(staleList.Body.String(), staleProposal.ID) ||
+		!strings.Contains(staleList.Body.String(), `"baseContent":"Updated content"`) ||
+		!strings.Contains(staleList.Body.String(), `"currentContent":"Externally changed"`) ||
+		!strings.Contains(staleList.Body.String(), `"currentVersion":3`) ||
+		!strings.Contains(staleList.Body.String(), `"isStale":true`) {
+		t.Fatalf("expected stale proposal list context to expose version conflict, got %d: %s", staleList.Code, staleList.Body.String())
 	}
 	if countOperationLogs(t, db, "wiki_proposal.published", "wiki_edit_proposal", staleProposal.ID, reviewer.ID) != 0 {
 		t.Fatal("expected stale proposal to avoid approval log")

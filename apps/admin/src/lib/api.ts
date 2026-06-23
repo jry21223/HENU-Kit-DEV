@@ -173,6 +173,13 @@ export type WikiEditProposal = {
   reviewerId?: string;
   reviewedAt?: string;
   reviewReason?: string;
+  currentTitle?: string;
+  currentContent?: string;
+  currentVersion?: number;
+  currentStatus?: string;
+  baseContent?: string;
+  baseSummary?: string;
+  isStale?: boolean;
   createdAt: string;
   updatedAt: string;
 };

@@ -65,6 +65,17 @@ type publicEntry struct {
 	UpdatedAt    string `json:"updatedAt"`
 }
 
+type adminProposal struct {
+	model.WikiEditProposal
+	CurrentTitle   string `json:"currentTitle"`
+	CurrentContent string `json:"currentContent"`
+	CurrentVersion int    `json:"currentVersion"`
+	CurrentStatus  string `json:"currentStatus"`
+	BaseContent    string `json:"baseContent"`
+	BaseSummary    string `json:"baseSummary"`
+	IsStale        bool   `json:"isStale"`
+}
+
 func (h Handler) ListPublished(ctx *gin.Context) {
 	limit, ok := parseLimit(ctx.Query("limit"), 50, 100)
 	if !ok {
@@ -260,7 +271,12 @@ func (h Handler) AdminProposals(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"proposals": proposals})
+	result, err := h.adminProposalsWithContext(proposals)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"proposals": result})
 }
 
 func (h Handler) ApproveEntry(ctx *gin.Context) {
@@ -519,6 +535,56 @@ func publicEntries(entries []model.WikiEntry) []publicEntry {
 		result = append(result, toPublicEntry(entry))
 	}
 	return result
+}
+
+func (h Handler) adminProposalsWithContext(proposals []model.WikiEditProposal) ([]adminProposal, error) {
+	if len(proposals) == 0 {
+		return []adminProposal{}, nil
+	}
+	entryIDSet := make(map[string]struct{}, len(proposals))
+	for _, proposal := range proposals {
+		entryIDSet[proposal.EntryID] = struct{}{}
+	}
+	entryIDs := make([]string, 0, len(entryIDSet))
+	for entryID := range entryIDSet {
+		entryIDs = append(entryIDs, entryID)
+	}
+
+	var entries []model.WikiEntry
+	if err := h.db.Where("id IN ?", entryIDs).Find(&entries).Error; err != nil {
+		return nil, err
+	}
+	entriesByID := make(map[string]model.WikiEntry, len(entries))
+	for _, entry := range entries {
+		entriesByID[entry.ID] = entry
+	}
+
+	var histories []model.WikiEditHistory
+	if err := h.db.Where("entry_id IN ?", entryIDs).Find(&histories).Error; err != nil {
+		return nil, err
+	}
+	historiesByVersion := make(map[string]model.WikiEditHistory, len(histories))
+	for _, history := range histories {
+		historiesByVersion[history.EntryID+"#"+strconv.Itoa(history.Version)] = history
+	}
+
+	result := make([]adminProposal, 0, len(proposals))
+	for _, proposal := range proposals {
+		item := adminProposal{WikiEditProposal: proposal, IsStale: true}
+		if entry, ok := entriesByID[proposal.EntryID]; ok {
+			item.CurrentTitle = entry.Title
+			item.CurrentContent = entry.Content
+			item.CurrentVersion = entry.Version
+			item.CurrentStatus = entry.Status
+			item.IsStale = entry.Version != proposal.BaseVersion
+		}
+		if history, ok := historiesByVersion[proposal.EntryID+"#"+strconv.Itoa(proposal.BaseVersion)]; ok {
+			item.BaseContent = history.Content
+			item.BaseSummary = history.Summary
+		}
+		result = append(result, item)
+	}
+	return result, nil
 }
 
 func toPublicEntry(entry model.WikiEntry) publicEntry {

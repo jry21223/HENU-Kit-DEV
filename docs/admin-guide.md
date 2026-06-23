@@ -169,6 +169,7 @@ Important boundaries:
 - Creator/admin users submit proposals through `POST /api/v1/wiki/entries/:id/proposals`.
 - Proposals can target only published public wiki entries, and public wiki content stays unchanged while a proposal is pending.
 - Each proposal stores the live entry `baseVersion` at submission time.
+- The review queue returns base-version history content, current live entry content/version/status, and an `isStale` flag so reviewers can compare base, current, and proposed content before acting.
 - Approving a proposal requires the live entry version to still match `baseVersion`; approval updates the live entry, increments its version, writes a new `wiki_edit_histories` row, and records reviewer metadata in one transaction.
 - If the live entry changed after proposal creation, approval returns `409 proposal_stale`, leaves the proposal pending, and does not update public content.
 - Rejecting a proposal requires `reviewReason`, records reviewer metadata, and does not mutate the live entry.

@@ -90,22 +90,22 @@
         :closable="false"
         :title="copy.versionMismatch"
       />
-      <el-alert
-        v-if="currentEntryError"
-        class="notice"
-        type="error"
-        :closable="false"
-        :title="currentEntryError"
-      />
-      <div v-loading="currentEntryLoading" class="proposal-compare">
+      <div class="proposal-compare">
+        <section class="compare-panel">
+          <span class="cell-muted">{{ copy.baseEntry }}</span>
+          <strong>{{ copy.proposalBaseVersion }}: v{{ reviewTarget?.baseVersion }}</strong>
+          <p class="cell-muted">{{ reviewTarget?.baseSummary || copy.noSummary }}</p>
+          <p class="content-preview compare-content">{{ reviewTarget?.baseContent || copy.baseContentMissing }}</p>
+        </section>
         <section class="compare-panel">
           <span class="cell-muted">{{ copy.currentEntry }}</span>
-          <strong>{{ currentEntry?.title || copy.currentEntryMissing }}</strong>
+          <strong>{{ reviewTarget?.currentTitle || copy.currentEntryMissing }}</strong>
           <p class="cell-muted">
             {{ copy.currentVersion }}:
-            {{ currentEntry ? `v${currentEntry.version}` : "-" }}
+            {{ reviewTarget?.currentVersion ? `v${reviewTarget.currentVersion}` : "-" }}
+            <span v-if="reviewTarget?.currentStatus">/ {{ statusLabel(reviewTarget.currentStatus) }}</span>
           </p>
-          <p class="content-preview compare-content">{{ currentEntry?.content || copy.currentEntryMissing }}</p>
+          <p class="content-preview compare-content">{{ reviewTarget?.currentContent || copy.currentEntryMissing }}</p>
         </section>
         <section class="compare-panel">
           <span class="cell-muted">{{ copy.proposedEntry }}</span>
@@ -148,7 +148,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AdminShell from "../components/AdminShell.vue";
-import { apiRequest, type WikiEditProposal, type WikiEntry } from "../lib/api";
+import { apiRequest, type WikiEditProposal } from "../lib/api";
 
 const copy = {
   title: "Wiki \u7f16\u8f91\u63d0\u6848\u5ba1\u6838",
@@ -175,12 +175,13 @@ const copy = {
   approvePlaceholder: "\u53ef\u9009\uff1a\u8bb0\u5f55\u901a\u8fc7\u4f9d\u636e\u6216\u540e\u7eed\u5907\u6ce8",
   rejectPlaceholder: "\u5fc5\u586b\uff1a\u8bf4\u660e\u9700\u8981\u4fee\u6539\u7684\u539f\u56e0",
   rejectReasonRequired: "\u8bf7\u586b\u5199\u9a73\u56de\u539f\u56e0\u3002",
+  baseEntry: "\u57fa\u51c6\u7248\u672c\u5185\u5bb9",
   currentEntry: "\u5f53\u524d\u516c\u5f00\u8bcd\u6761",
   proposedEntry: "\u63d0\u6848\u5185\u5bb9",
   currentVersion: "\u5f53\u524d\u7248\u672c",
   proposalBaseVersion: "\u63d0\u6848\u57fa\u51c6\u7248\u672c",
+  baseContentMissing: "\u672a\u627e\u5230\u57fa\u51c6\u7248\u672c\u5386\u53f2\u5185\u5bb9",
   currentEntryMissing: "\u65e0\u6cd5\u8bfb\u53d6\u5f53\u524d\u8bcd\u6761",
-  currentEntryLoadFailed: "\u5f53\u524d Wiki \u8bcd\u6761\u52a0\u8f7d\u5931\u8d25",
   versionMismatch:
     "\u5f53\u524d\u8bcd\u6761\u7248\u672c\u5df2\u53d8\u66f4\uff0c\u670d\u52a1\u7aef\u5c06\u62d2\u7edd\u8fc7\u671f\u63d0\u6848\u901a\u8fc7\u3002",
   loadFailed: "Wiki \u7f16\u8f91\u63d0\u6848\u52a0\u8f7d\u5931\u8d25",
@@ -210,9 +211,6 @@ const reviewing = ref(false);
 const reviewOpen = ref(false);
 const reviewAction = ref<"approve" | "reject">("approve");
 const reviewTarget = ref<WikiEditProposal | null>(null);
-const currentEntry = ref<WikiEntry | null>(null);
-const currentEntryLoading = ref(false);
-const currentEntryError = ref("");
 const reviewReason = ref("");
 const message = ref("");
 const error = ref("");
@@ -223,9 +221,7 @@ const metrics = computed(() => [
 ]);
 
 const reviewDialogTitle = computed(() => (reviewAction.value === "approve" ? copy.approve : copy.reject));
-const versionMismatch = computed(
-  () => Boolean(currentEntry.value && reviewTarget.value && currentEntry.value.version !== reviewTarget.value.baseVersion),
-);
+const versionMismatch = computed(() => Boolean(reviewTarget.value?.isStale));
 
 onMounted(loadProposals);
 
@@ -247,26 +243,10 @@ async function loadProposals() {
 function openReview(proposal: WikiEditProposal, action: "approve" | "reject") {
   reviewTarget.value = proposal;
   reviewAction.value = action;
-  currentEntry.value = null;
-  currentEntryError.value = "";
   reviewReason.value = "";
   message.value = "";
   error.value = "";
   reviewOpen.value = true;
-  void loadCurrentEntry(proposal.entryId);
-}
-
-async function loadCurrentEntry(entryId: string) {
-  currentEntryLoading.value = true;
-  currentEntryError.value = "";
-  try {
-    const response = await apiRequest<{ entry: WikiEntry }>(`/wiki/entries/${entryId}`);
-    currentEntry.value = response.data?.entry ?? null;
-  } catch (err) {
-    currentEntryError.value = err instanceof Error ? err.message : copy.currentEntryLoadFailed;
-  } finally {
-    currentEntryLoading.value = false;
-  }
 }
 
 async function submitReview() {

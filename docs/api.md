@@ -202,7 +202,7 @@ Implemented wiki behavior:
 - creator/admin users can submit edit proposals for already-published public wiki entries through `POST /api/v1/wiki/entries/:id/proposals`
 - edit proposals capture the published entry `baseVersion` and keep public content unchanged until reviewer approval
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected wiki entries through `/admin/wiki/entries`
-- reviewer/admin users can list draft/pending/needs_changes/published/rejected wiki edit proposals through `/admin/wiki/proposals`
+- reviewer/admin users can list draft/pending/needs_changes/published/rejected wiki edit proposals through `/admin/wiki/proposals`; list rows include base-version history content, current live entry content/version/status, and an `isStale` conflict flag
 - approving a wiki entry sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
 - rejecting a wiki entry sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public endpoints
 - wiki review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected entries return HTTP 409 with `entry_not_reviewable`
