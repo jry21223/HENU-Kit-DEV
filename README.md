@@ -155,6 +155,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Vue Admin includes `/downloads` for successful material download audit logs.
 - Vue Admin includes admin-only all-status course listing and a course edit dialog.
 - Vue Admin includes material status operations for `draft`, `pending`, `published`, and `archived`.
+- Vue Admin includes material metadata editing; the actual storage key remains hidden and file replacement still goes through upload.
 - Vue Admin includes `/ai/drafts` for admin-only AI task visibility and draft approve/reject review.
 - Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, and course demand.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.

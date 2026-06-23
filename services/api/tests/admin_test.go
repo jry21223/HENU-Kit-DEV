@@ -172,6 +172,19 @@ func TestAdminMaterialUploadGuards(t *testing.T) {
 		t.Fatal("expected invalid status upload to leave no file on disk")
 	}
 
+	filesBeforeInvalidAccess := countRegularFiles(t, cfg.LocalUploadDir)
+	invalidAccess := performMultipart(router, "/api/v1/admin/materials/upload", adminToken, map[string]string{
+		"courseId":    course.ID,
+		"title":       "Invalid Access",
+		"accessLevel": "internal_only",
+	}, "file", "access.txt", []byte("plain text"))
+	if invalidAccess.Code != http.StatusBadRequest || !strings.Contains(invalidAccess.Body.String(), "invalid_access_level") {
+		t.Fatalf("expected invalid access rejection, got %d: %s", invalidAccess.Code, invalidAccess.Body.String())
+	}
+	if countRegularFiles(t, cfg.LocalUploadDir) != filesBeforeInvalidAccess {
+		t.Fatal("expected invalid access upload to leave no file on disk")
+	}
+
 	upload := performMultipart(router, "/api/v1/admin/materials/upload", adminToken, map[string]string{
 		"courseId":       course.ID,
 		"title":          "Admin Upload",
@@ -235,6 +248,28 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	studentDenied := performJSON(router, http.MethodGet, "/api/v1/admin/materials", "", studentToken)
 	if studentDenied.Code != http.StatusForbidden {
 		t.Fatalf("expected student admin material list 403, got %d: %s", studentDenied.Code, studentDenied.Body.String())
+	}
+
+	invalidAccess := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID, `{"accessLevel":"internal_only"}`, adminToken)
+	if invalidAccess.Code != http.StatusBadRequest || !strings.Contains(invalidAccess.Body.String(), "invalid_access_level") {
+		t.Fatalf("expected invalid access rejection, got %d: %s", invalidAccess.Code, invalidAccess.Body.String())
+	}
+
+	invalidType := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID, `{"type":"leaked_exam"}`, adminToken)
+	if invalidType.Code != http.StatusBadRequest || !strings.Contains(invalidType.Body.String(), "invalid_material_type") {
+		t.Fatalf("expected invalid material type rejection, got %d: %s", invalidType.Code, invalidType.Body.String())
+	}
+
+	updateBody := `{"title":"Edited Material","type":"answer","description":"Edited description","previewContent":"Edited preview","accessLevel":"paid","status":"pending"}`
+	update := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID, updateBody, adminToken)
+	if update.Code != http.StatusOK {
+		t.Fatalf("expected material edit 200, got %d: %s", update.Code, update.Body.String())
+	}
+	if err := db.First(&material, "id = ?", material.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if material.Title != "Edited Material" || material.Type != "answer" || material.Description != "Edited description" || material.PreviewContent != "Edited preview" || material.AccessLevel != model.MaterialAccessPaid || material.Status != model.StatusPending {
+		t.Fatalf("unexpected edited material: %#v", material)
 	}
 
 	invalidStatus := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID+"/status", `{"status":"live"}`, adminToken)

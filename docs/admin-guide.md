@@ -6,7 +6,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 
 - `/dashboard`: module status summary.
 - `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
-- `/materials`: local material upload, all-status material listing, and material status operations.
+- `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
 - `/downloads`: successful material download audit logs.
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations.
 - `/analytics`: read-only material download and course demand analytics.
@@ -31,7 +31,15 @@ Important boundaries:
 
 ## Material Operations
 
-`/materials` calls `GET /api/v1/admin/materials` and requires an authenticated `admin` or `super_admin` role.
+`/materials` calls:
+
+- `GET /api/v1/admin/materials`
+- `POST /api/v1/admin/materials/upload`
+- `PATCH /api/v1/admin/materials/:id`
+- `PATCH /api/v1/admin/materials/:id/status`
+- `DELETE /api/v1/admin/materials/:id`
+
+All material admin endpoints require an authenticated `admin` or `super_admin` role.
 
 Status flow used by the MVP:
 
@@ -43,10 +51,12 @@ Status flow used by the MVP:
 Important boundaries:
 
 - Upload and manual create default to `draft` when no status is provided.
+- The admin UI can edit course binding, title, type, description, preview content, access level, and status.
 - The admin UI can move materials to `pending`, `published`, `draft`, or `archived`.
 - Public APIs only expose `published` materials.
-- Invalid statuses are rejected by the Go API.
+- Invalid statuses, material types, and access levels are rejected by the Go API.
 - The UI does not display `storage_key`; downloads still go through `GET /api/v1/materials/:id/download`.
+- The edit dialog does not expose or mutate `storage_key`; replacing the actual file remains an upload flow.
 
 ## Download Audit
 

@@ -68,6 +68,7 @@
         <el-table-column :label="copy.actions" min-width="280" fixed="right">
           <template #default="{ row }">
             <div class="table-actions">
+              <el-button size="small" @click="openEdit(row)">{{ copy.edit }}</el-button>
               <el-button v-if="row.status !== 'pending'" size="small" @click="setStatus(row.id, 'pending')">{{ copy.markPending }}</el-button>
               <el-button v-if="row.status !== 'published'" size="small" type="success" plain @click="setStatus(row.id, 'published')">
                 {{ copy.publish }}
@@ -79,6 +80,47 @@
         </el-table-column>
       </el-table>
     </el-card>
+
+    <el-dialog v-model="editOpen" :title="copy.editTitle" width="min(760px, 92vw)">
+      <el-form class="form-grid" label-position="top">
+        <el-form-item :label="copy.course">
+          <el-select v-model="editForm.courseId" :placeholder="copy.selectCourse">
+            <el-option v-for="course in courses" :key="course.id" :label="`${course.name} - ${course.grade} - ${statusLabel(course.status)}`" :value="course.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="copy.name">
+          <el-input v-model="editForm.title" />
+        </el-form-item>
+        <el-form-item :label="copy.type">
+          <el-select v-model="editForm.type">
+            <el-option v-for="item in materialTypes" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="copy.access">
+          <el-select v-model="editForm.accessLevel">
+            <el-option v-for="item in accessLevels" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="copy.status">
+          <el-select v-model="editForm.status">
+            <el-option v-for="item in statuses" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item class="wide" :label="copy.descriptionLabel">
+          <el-input v-model="editForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item class="wide" :label="copy.preview">
+          <el-input v-model="editForm.previewContent" type="textarea" :rows="3" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="action-row">
+          <el-button @click="editOpen = false">{{ copy.cancel }}</el-button>
+          <el-button type="primary" :loading="saving" @click="saveMaterial">{{ copy.save }}</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <el-alert v-if="message" class="notice" type="success" :closable="false" :title="message" />
     <el-alert v-if="error" class="notice" type="error" :closable="false" :title="error" />
   </AdminShell>
@@ -88,6 +130,17 @@
 import { onMounted, reactive, ref } from "vue";
 import AdminShell from "../components/AdminShell.vue";
 import { apiRequest, type Course, type Material } from "../lib/api";
+
+type MaterialForm = {
+  id: string;
+  courseId: string;
+  title: string;
+  type: string;
+  description: string;
+  previewContent: string;
+  accessLevel: string;
+  status: string;
+};
 
 const copy = {
   title: "\u0050\u0044\u0046 \u8d44\u6599",
@@ -102,6 +155,7 @@ const copy = {
   access: "\u6743\u9650",
   status: "\u72b6\u6001",
   preview: "\u9884\u89c8\u5185\u5bb9",
+  descriptionLabel: "\u8d44\u6599\u8bf4\u660e",
   file: "\u6587\u4ef6",
   fileHint: "\u4f18\u5148\u4e0a\u4f20 PDF\uff0c\u4ecd\u517c\u5bb9 TXT / MD / DOCX\u3002",
   fileName: "\u6587\u4ef6\u540d",
@@ -109,6 +163,10 @@ const copy = {
   uploadHint: "\u672a\u9009\u72b6\u6001\u65f6\u670d\u52a1\u7aef\u4e5f\u4f1a\u9ed8\u8ba4\u4e3a draft\u3002",
   list: "\u8d44\u6599\u5217\u8868",
   actions: "\u64cd\u4f5c",
+  edit: "\u7f16\u8f91",
+  editTitle: "\u7f16\u8f91\u8d44\u6599",
+  cancel: "\u53d6\u6d88",
+  save: "\u4fdd\u5b58",
   markPending: "\u63d0\u4ea4\u5ba1\u6838",
   publish: "\u53d1\u5e03",
   backToDraft: "\u9000\u56de\u8349\u7a3f",
@@ -117,6 +175,8 @@ const copy = {
   loadFailed: "\u52a0\u8f7d\u5931\u8d25",
   uploadDone: "\u8d44\u6599\u5df2\u4e0a\u4f20\u3002",
   uploadFailed: "\u4e0a\u4f20\u5931\u8d25",
+  updateDone: "\u8d44\u6599\u5df2\u66f4\u65b0\u3002",
+  updateFailed: "\u8d44\u6599\u66f4\u65b0\u5931\u8d25",
   statusUpdated: "\u8d44\u6599\u72b6\u6001\u5df2\u66f4\u65b0\u3002",
   statusFailed: "\u72b6\u6001\u66f4\u65b0\u5931\u8d25",
   archived: "\u8d44\u6599\u5df2\u5f52\u6863\u3002",
@@ -150,6 +210,8 @@ const courses = ref<Course[]>([]);
 const materials = ref<Material[]>([]);
 const file = ref<File | null>(null);
 const loading = ref(false);
+const saving = ref(false);
+const editOpen = ref(false);
 const message = ref("");
 const error = ref("");
 
@@ -161,6 +223,7 @@ const uploadForm = reactive({
   status: "draft",
   previewContent: "",
 });
+const editForm = reactive<MaterialForm>(emptyMaterialForm());
 
 onMounted(loadAll);
 
@@ -169,7 +232,7 @@ async function loadAll() {
   error.value = "";
   try {
     const [courseResponse, materialResponse] = await Promise.all([
-      apiRequest<{ courses: Course[] }>("/courses"),
+      apiRequest<{ courses: Course[] }>("/admin/courses"),
       apiRequest<{ materials: Material[] }>("/admin/materials"),
     ]);
     courses.value = courseResponse.data?.courses ?? [];
@@ -218,6 +281,40 @@ async function uploadMaterial() {
   }
 }
 
+function openEdit(material: Material) {
+  Object.assign(editForm, {
+    id: material.id,
+    courseId: material.courseId,
+    title: material.title,
+    type: material.type,
+    description: material.description,
+    previewContent: material.previewContent,
+    accessLevel: material.accessLevel,
+    status: material.status,
+  });
+  editOpen.value = true;
+}
+
+async function saveMaterial() {
+  if (!editForm.id) return;
+  saving.value = true;
+  error.value = "";
+  message.value = "";
+  try {
+    await apiRequest<{ updated: boolean }>(`/admin/materials/${editForm.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(materialPayload(editForm)),
+    });
+    message.value = copy.updateDone;
+    editOpen.value = false;
+    await loadAll();
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : copy.updateFailed;
+  } finally {
+    saving.value = false;
+  }
+}
+
 async function setStatus(id: string, status: string) {
   error.value = "";
   message.value = "";
@@ -254,5 +351,30 @@ function statusTag(status: string) {
   if (status === "pending") return "warning";
   if (status === "archived") return "info";
   return "";
+}
+
+function materialPayload(source: MaterialForm) {
+  return {
+    courseId: source.courseId,
+    title: source.title,
+    type: source.type,
+    description: source.description,
+    previewContent: source.previewContent,
+    accessLevel: source.accessLevel,
+    status: source.status,
+  };
+}
+
+function emptyMaterialForm(): MaterialForm {
+  return {
+    id: "",
+    courseId: "",
+    title: "",
+    type: "knowledge_note",
+    description: "",
+    previewContent: "",
+    accessLevel: "login_required",
+    status: "draft",
+  };
 }
 </script>

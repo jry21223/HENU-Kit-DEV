@@ -309,16 +309,26 @@ func (h Handler) CreateMaterial(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
 		return
 	}
+	materialType, ok := normalizeMaterialType(req.Type, "other")
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_material_type", nil)
+		return
+	}
+	accessLevel, ok := normalizeAccessLevel(req.AccessLevel, model.MaterialAccessLoginRequired)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_access_level", nil)
+		return
+	}
 	material := model.Material{
 		CourseID:       strings.TrimSpace(req.CourseID),
 		Title:          required(req.Title),
-		Type:           defaultMaterialType(req.Type),
+		Type:           materialType,
 		Description:    strings.TrimSpace(req.Description),
 		StorageKey:     strings.TrimSpace(req.StorageKey),
 		FileName:       strings.TrimSpace(req.FileName),
 		FileSize:       req.FileSize,
 		PreviewContent: strings.TrimSpace(req.PreviewContent),
-		AccessLevel:    defaultAccessLevel(req.AccessLevel),
+		AccessLevel:    accessLevel,
 		Status:         status,
 	}
 	if material.CourseID == "" || material.Title == "" || material.StorageKey == "" {
@@ -370,15 +380,33 @@ func (h Handler) UpdateMaterial(ctx *gin.Context) {
 		}
 		status = normalized
 	}
+	materialType := strings.TrimSpace(req.Type)
+	if materialType != "" {
+		normalized, ok := normalizeMaterialType(materialType, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_material_type", nil)
+			return
+		}
+		materialType = normalized
+	}
+	accessLevel := strings.TrimSpace(req.AccessLevel)
+	if accessLevel != "" {
+		normalized, ok := normalizeAccessLevel(accessLevel, "")
+		if !ok {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_access_level", nil)
+			return
+		}
+		accessLevel = normalized
+	}
 	updates := compactMap(map[string]interface{}{
 		"course_id":       strings.TrimSpace(req.CourseID),
 		"title":           strings.TrimSpace(req.Title),
-		"type":            strings.TrimSpace(req.Type),
+		"type":            materialType,
 		"description":     strings.TrimSpace(req.Description),
 		"storage_key":     strings.TrimSpace(req.StorageKey),
 		"file_name":       strings.TrimSpace(req.FileName),
 		"preview_content": strings.TrimSpace(req.PreviewContent),
-		"access_level":    strings.TrimSpace(req.AccessLevel),
+		"access_level":    accessLevel,
 		"status":          status,
 		"file_size":       req.FileSize,
 	})
@@ -453,6 +481,16 @@ func (h Handler) UploadMaterial(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
 		return
 	}
+	materialType, ok := normalizeMaterialType(ctx.PostForm("type"), "other")
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_material_type", nil)
+		return
+	}
+	accessLevel, ok := normalizeAccessLevel(ctx.PostForm("accessLevel"), model.MaterialAccessLoginRequired)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_access_level", nil)
+		return
+	}
 	storageKey := filepath.ToSlash(filepath.Join("materials", courseID, uuid.NewString()+ext))
 	targetPath := filepath.Join(h.uploadDir, filepath.FromSlash(storageKey))
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
@@ -478,13 +516,13 @@ func (h Handler) UploadMaterial(ctx *gin.Context) {
 	material := model.Material{
 		CourseID:       courseID,
 		Title:          title,
-		Type:           defaultMaterialType(ctx.PostForm("type")),
+		Type:           materialType,
 		Description:    strings.TrimSpace(ctx.PostForm("description")),
 		StorageKey:     storageKey,
 		FileName:       originalName,
 		FileSize:       written,
 		PreviewContent: strings.TrimSpace(ctx.PostForm("previewContent")),
-		AccessLevel:    defaultAccessLevel(ctx.PostForm("accessLevel")),
+		AccessLevel:    accessLevel,
 		Status:         status,
 	}
 	if err := h.db.Create(&material).Error; err != nil {
@@ -566,20 +604,30 @@ func defaultStatus(value string) string {
 	return value
 }
 
-func defaultMaterialType(value string) string {
+func normalizeMaterialType(value string, fallback string) (string, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "other"
+		return fallback, true
 	}
-	return value
+	switch value {
+	case "knowledge_note", "mock_paper", "answer", "quick_review", "past_exam", "other":
+		return value, true
+	default:
+		return "", false
+	}
 }
 
-func defaultAccessLevel(value string) string {
+func normalizeAccessLevel(value string, fallback string) (string, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return model.MaterialAccessLoginRequired
+		return fallback, true
 	}
-	return value
+	switch value {
+	case model.MaterialAccessFree, model.MaterialAccessLoginRequired, model.MaterialAccessPaid, model.MaterialAccessMemberOnly:
+		return value, true
+	default:
+		return "", false
+	}
 }
 
 func normalizeMaterialStatus(value string, fallback string) (string, bool) {
