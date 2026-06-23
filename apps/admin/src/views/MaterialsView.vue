@@ -64,6 +64,12 @@
             <el-tag :type="statusTag(row.status)">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column :label="copy.review" min-width="180">
+          <template #default="{ row }">
+            <p class="cell-title">{{ row.reviewReason || copy.noReviewReason }}</p>
+            <p class="cell-muted">{{ formatDate(row.reviewedAt) }}</p>
+          </template>
+        </el-table-column>
         <el-table-column prop="fileName" :label="copy.fileName" min-width="160" />
         <el-table-column :label="copy.actions" min-width="280" fixed="right">
           <template #default="{ row }">
@@ -159,6 +165,9 @@ const copy = {
   file: "\u6587\u4ef6",
   fileHint: "\u4f18\u5148\u4e0a\u4f20 PDF\uff0c\u4ecd\u517c\u5bb9 TXT / MD / DOCX\u3002",
   fileName: "\u6587\u4ef6\u540d",
+  review: "\u5ba1\u6838\u8bb0\u5f55",
+  noReviewReason: "\u5c1a\u65e0\u5ba1\u6838\u610f\u89c1",
+  notReviewed: "\u672a\u5ba1\u6838",
   uploadAction: "\u4e0a\u4f20\u5e76\u5165\u5e93",
   uploadHint: "\u672a\u9009\u72b6\u6001\u65f6\u670d\u52a1\u7aef\u4e5f\u4f1a\u9ed8\u8ba4\u4e3a draft\u3002",
   list: "\u8d44\u6599\u5217\u8868",
@@ -187,6 +196,7 @@ const statuses = [
   { label: "\u8349\u7a3f", value: "draft" },
   { label: "\u5f85\u5ba1\u6838", value: "pending" },
   { label: "\u5df2\u53d1\u5e03", value: "published" },
+  { label: "\u5df2\u9a73\u56de", value: "rejected" },
   { label: "\u5df2\u5f52\u6863", value: "archived" },
 ];
 
@@ -349,8 +359,16 @@ function statusLabel(status: string) {
 function statusTag(status: string) {
   if (status === "published") return "success";
   if (status === "pending") return "warning";
+  if (status === "rejected") return "danger";
   if (status === "archived") return "info";
   return "";
+}
+
+function formatDate(value?: string) {
+  if (!value) return copy.notReviewed;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN");
 }
 
 function materialPayload(source: MaterialForm) {

@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/audit"
+	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -91,6 +92,10 @@ type materialRequest struct {
 
 type materialStatusRequest struct {
 	Status string `json:"status"`
+}
+
+type materialReviewRequest struct {
+	ReviewReason string `json:"reviewReason"`
 }
 
 func (h Handler) OperationLogs(ctx *gin.Context) {
@@ -446,6 +451,27 @@ func (h Handler) ListMaterials(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"materials": materials})
 }
 
+func (h Handler) ListMaterialReviews(ctx *gin.Context) {
+	status := strings.TrimSpace(ctx.Query("status"))
+	if status == "" {
+		status = model.StatusPending
+	}
+	if !isMaterialReviewListStatus(status) {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
+	query := h.db.Model(&model.Material{}).Where("status = ?", status)
+	if courseID := strings.TrimSpace(ctx.Query("courseId")); courseID != "" {
+		query = query.Where("course_id = ?", courseID)
+	}
+	var materials []model.Material
+	if err := query.Order("updated_at desc").Limit(500).Find(&materials).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"materials": materials})
+}
+
 func (h Handler) UpdateMaterial(ctx *gin.Context) {
 	if !rejectMaterialFileFieldUpdates(ctx) {
 		return
@@ -525,6 +551,80 @@ func (h Handler) UpdateMaterialStatus(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"updated": true, "status": status})
+}
+
+func (h Handler) ApproveMaterial(ctx *gin.Context) {
+	h.reviewMaterial(ctx, model.StatusPublished)
+}
+
+func (h Handler) RejectMaterial(ctx *gin.Context) {
+	h.reviewMaterial(ctx, model.StatusRejected)
+}
+
+func (h Handler) reviewMaterial(ctx *gin.Context, status string) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req materialReviewRequest
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if !bindJSON(ctx, &req) {
+			return
+		}
+	}
+	reason := strings.TrimSpace(req.ReviewReason)
+	if len(reason) > 1000 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_too_long", nil)
+		return
+	}
+	if status == model.StatusRejected && reason == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_required", nil)
+		return
+	}
+	var material model.Material
+	if err := h.db.First(&material, "id = ?", ctx.Param("id")).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "material_not_found", nil)
+		return
+	}
+	if material.Status != model.StatusPending {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "material_not_reviewable", gin.H{"status": material.Status})
+		return
+	}
+	previousStatus := material.Status
+	action := "material.approved"
+	if status == model.StatusRejected {
+		action = "material.rejected"
+	}
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Material{}).Where("id = ?", material.ID).Updates(map[string]interface{}{
+			"status":        status,
+			"reviewer_id":   user.ID,
+			"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+			"review_reason": reason,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return audit.Record(ctx, tx, action, "material", material.ID, map[string]interface{}{
+			"courseId":       material.CourseID,
+			"previousStatus": previousStatus,
+			"status":         status,
+			"reviewReason":   reason,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "material_not_found", nil)
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "review_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
 }
 
 func (h Handler) ArchiveMaterial(ctx *gin.Context) {
@@ -815,10 +915,19 @@ func normalizeMaterialStatus(value string, fallback string) (string, bool) {
 		return fallback, true
 	}
 	switch value {
-	case model.StatusDraft, model.StatusPending, model.StatusPublished, model.StatusArchived:
+	case model.StatusDraft, model.StatusPending, model.StatusPublished, model.StatusRejected, model.StatusArchived:
 		return value, true
 	default:
 		return "", false
+	}
+}
+
+func isMaterialReviewListStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case model.StatusPending, model.StatusPublished, model.StatusRejected:
+		return true
+	default:
+		return false
 	}
 }
 

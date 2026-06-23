@@ -11,6 +11,8 @@ export const useAuthStore = defineStore("auth", {
     isAdmin: (state) => state.user?.role === "admin" || state.user?.role === "super_admin",
     canReviewAI: (state) =>
       state.user?.role === "reviewer" || state.user?.role === "admin" || state.user?.role === "super_admin",
+    canReviewContent: (state) =>
+      state.user?.role === "reviewer" || state.user?.role === "admin" || state.user?.role === "super_admin",
     canAccessAdminConsole: (state) =>
       state.user?.role === "reviewer" || state.user?.role === "admin" || state.user?.role === "super_admin",
   },

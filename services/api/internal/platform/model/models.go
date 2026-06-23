@@ -134,17 +134,20 @@ type Course struct {
 
 type Material struct {
 	BaseModel
-	CourseID       string  `json:"courseId" gorm:"type:uuid;index;not null"`
-	Title          string  `json:"title" gorm:"size:200;not null"`
-	Type           string  `json:"type" gorm:"size:40;index;not null"`
-	Description    string  `json:"description" gorm:"size:1000"`
-	StorageKey     string  `json:"-" gorm:"size:500;not null"`
-	FileName       string  `json:"fileName" gorm:"size:255"`
-	FileSize       int64   `json:"fileSize"`
-	PreviewContent string  `json:"previewContent" gorm:"type:text"`
-	AccessLevel    string  `json:"accessLevel" gorm:"size:32;default:login_required;index"`
-	Status         string  `json:"status" gorm:"size:32;default:draft;index"`
-	CreatedBy      *string `json:"createdBy,omitempty" gorm:"type:uuid;index"`
+	CourseID       string     `json:"courseId" gorm:"type:uuid;index;not null"`
+	Title          string     `json:"title" gorm:"size:200;not null"`
+	Type           string     `json:"type" gorm:"size:40;index;not null"`
+	Description    string     `json:"description" gorm:"size:1000"`
+	StorageKey     string     `json:"-" gorm:"size:500;not null"`
+	FileName       string     `json:"fileName" gorm:"size:255"`
+	FileSize       int64      `json:"fileSize"`
+	PreviewContent string     `json:"previewContent" gorm:"type:text"`
+	AccessLevel    string     `json:"accessLevel" gorm:"size:32;default:login_required;index"`
+	Status         string     `json:"status" gorm:"size:32;default:draft;index"`
+	CreatedBy      *string    `json:"createdBy,omitempty" gorm:"type:uuid;index"`
+	ReviewerID     *string    `json:"reviewerId,omitempty" gorm:"type:uuid;index"`
+	ReviewedAt     *time.Time `json:"reviewedAt,omitempty"`
+	ReviewReason   string     `json:"reviewReason,omitempty" gorm:"size:1000"`
 }
 
 type CoursePackage struct {

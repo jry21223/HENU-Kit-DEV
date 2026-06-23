@@ -202,6 +202,28 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.metric-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.metric-card span {
+  color: var(--fr-muted);
+  display: block;
+  font-size: 13px;
+}
+
+.metric-card strong {
+  display: block;
+  font-size: 24px;
+  margin-top: 6px;
+}
+
+.status-filter {
+  width: 150px;
+}
+
 .analytics-grid {
   display: grid;
   gap: 16px;
@@ -252,6 +274,11 @@ a {
   word-break: break-all;
 }
 
+.cell-title {
+  margin: 0;
+  word-break: break-word;
+}
+
 .table-actions {
   display: flex;
   flex-wrap: wrap;
@@ -287,6 +314,10 @@ a {
   margin-top: 12px;
 }
 
+.mt-4 {
+  margin-top: 16px;
+}
+
 @media (max-width: 860px) {
   .admin-login {
     padding: 16px;
@@ -315,6 +346,7 @@ a {
   }
 
   .stat-grid,
+  .metric-grid,
   .analytics-grid,
   .form-grid {
     grid-template-columns: 1fr;

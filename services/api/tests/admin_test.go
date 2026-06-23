@@ -330,6 +330,108 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	}
 }
 
+func TestMaterialReviewWorkflowRequiresReviewerAndRecordsDecision(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	pendingMaterial := model.Material{
+		CourseID:       course.ID,
+		Title:          "Pending review material",
+		Type:           "knowledge_note",
+		StorageKey:     "materials/pending-review.txt",
+		FileName:       "pending-review.txt",
+		AccessLevel:    model.MaterialAccessFree,
+		PreviewContent: "pending preview",
+		Status:         model.StatusPending,
+	}
+	if err := db.Create(&pendingMaterial).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	studentToken := loginTestUser(t, router, "material-review-student@stu.henu.edu.cn")
+	forbiddenList := performJSON(router, http.MethodGet, "/api/v1/admin/material-reviews", "", studentToken)
+	if forbiddenList.Code != http.StatusForbidden {
+		t.Fatalf("expected student material review list 403, got %d: %s", forbiddenList.Code, forbiddenList.Body.String())
+	}
+	forbiddenApprove := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+pendingMaterial.ID+"/approve", `{"reviewReason":"ok"}`, studentToken)
+	if forbiddenApprove.Code != http.StatusForbidden {
+		t.Fatalf("expected student material approve 403, got %d: %s", forbiddenApprove.Code, forbiddenApprove.Body.String())
+	}
+
+	reviewer := createTestUser(t, db, "material-reviewer@stu.henu.edu.cn", model.RoleReviewer)
+	reviewerToken := loginTestUser(t, router, "material-reviewer@stu.henu.edu.cn")
+	reviewerAdminMaterials := performJSON(router, http.MethodGet, "/api/v1/admin/materials", "", reviewerToken)
+	if reviewerAdminMaterials.Code != http.StatusForbidden {
+		t.Fatalf("expected reviewer to remain blocked from material CRUD list, got %d: %s", reviewerAdminMaterials.Code, reviewerAdminMaterials.Body.String())
+	}
+	reviewList := performJSON(router, http.MethodGet, "/api/v1/admin/material-reviews", "", reviewerToken)
+	if reviewList.Code != http.StatusOK || !strings.Contains(reviewList.Body.String(), pendingMaterial.ID) {
+		t.Fatalf("expected reviewer material review list to include pending material, got %d: %s", reviewList.Code, reviewList.Body.String())
+	}
+
+	rejectWithoutReason := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+pendingMaterial.ID+"/reject", "", reviewerToken)
+	if rejectWithoutReason.Code != http.StatusBadRequest || !strings.Contains(rejectWithoutReason.Body.String(), "review_reason_required") {
+		t.Fatalf("expected reject reason required, got %d: %s", rejectWithoutReason.Code, rejectWithoutReason.Body.String())
+	}
+
+	approve := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+pendingMaterial.ID+"/approve", `{"reviewReason":"checked ok"}`, reviewerToken)
+	if approve.Code != http.StatusOK {
+		t.Fatalf("expected reviewer material approve 200, got %d: %s", approve.Code, approve.Body.String())
+	}
+	var approved model.Material
+	if err := db.First(&approved, "id = ?", pendingMaterial.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if approved.Status != model.StatusPublished || approved.ReviewerID == nil || *approved.ReviewerID != reviewer.ID || approved.ReviewedAt == nil || approved.ReviewReason != "checked ok" {
+		t.Fatalf("expected approved material review metadata, got %#v", approved)
+	}
+	if countOperationLogs(t, db, "material.approved", "material", pendingMaterial.ID, reviewer.ID) != 1 {
+		t.Fatal("expected material approval operation log")
+	}
+	reviewApprovedAgain := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+pendingMaterial.ID+"/reject", `{"reviewReason":"second attempt"}`, reviewerToken)
+	if reviewApprovedAgain.Code != http.StatusConflict || !strings.Contains(reviewApprovedAgain.Body.String(), "material_not_reviewable") {
+		t.Fatalf("expected reviewed material to reject repeat review, got %d: %s", reviewApprovedAgain.Code, reviewApprovedAgain.Body.String())
+	}
+	if countOperationLogs(t, db, "material.rejected", "material", pendingMaterial.ID, reviewer.ID) != 0 {
+		t.Fatal("repeat review must not write rejected operation log")
+	}
+
+	secondMaterial := model.Material{
+		CourseID:       course.ID,
+		Title:          "Rejected review material",
+		Type:           "mock_paper",
+		StorageKey:     "materials/rejected-review.txt",
+		FileName:       "rejected-review.txt",
+		AccessLevel:    model.MaterialAccessPaid,
+		PreviewContent: "needs work",
+		Status:         model.StatusPending,
+	}
+	if err := db.Create(&secondMaterial).Error; err != nil {
+		t.Fatal(err)
+	}
+	admin := createTestUser(t, db, "material-review-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, "material-review-admin@stu.henu.edu.cn")
+	reject := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+secondMaterial.ID+"/reject", `{"reviewReason":"missing answer key"}`, adminToken)
+	if reject.Code != http.StatusOK {
+		t.Fatalf("expected admin material reject 200, got %d: %s", reject.Code, reject.Body.String())
+	}
+	var rejected model.Material
+	if err := db.First(&rejected, "id = ?", secondMaterial.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rejected.Status != model.StatusRejected || rejected.ReviewerID == nil || *rejected.ReviewerID != admin.ID || rejected.ReviewReason != "missing answer key" {
+		t.Fatalf("expected rejected material review metadata, got %#v", rejected)
+	}
+	if countOperationLogs(t, db, "material.rejected", "material", secondMaterial.ID, admin.ID) != 1 {
+		t.Fatal("expected material rejection operation log")
+	}
+	publicRejected := performJSON(router, http.MethodGet, "/api/v1/materials/"+secondMaterial.ID, "", "")
+	if publicRejected.Code != http.StatusNotFound {
+		t.Fatalf("expected rejected material hidden from public detail, got %d: %s", publicRejected.Code, publicRejected.Body.String())
+	}
+}
+
 func TestAdminOperationLogsRequiresAdminAndFilters(t *testing.T) {
 	db := newTestDB(t)
 	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)

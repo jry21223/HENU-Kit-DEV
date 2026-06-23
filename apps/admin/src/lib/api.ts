@@ -64,6 +64,9 @@ export type Material = {
   previewContent: string;
   accessLevel: string;
   status: string;
+  reviewerId?: string;
+  reviewedAt?: string;
+  reviewReason?: string;
 };
 
 export type DownloadRecord = {

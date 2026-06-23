@@ -27,6 +27,7 @@ Reviewable content includes reviewer and review result fields.
 Current access-control notes:
 
 - `materials.storage_key` is internal-only and is not serialized in public API responses.
+- `materials.reviewer_id`, `materials.reviewed_at`, and `materials.review_reason` record the current material-review decision; public material endpoints still expose only `published` rows.
 - `material_access_grants.material_id` is the active paid-material unlock path in the current foundation.
 - `material_access_grants.package_id` unlocks paid materials included through `course_package_items` when the package is published and the grant has not expired.
 - `material_download_logs` records only successful file downloads after permission checks and storage-key validation.

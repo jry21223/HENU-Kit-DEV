@@ -7,6 +7,7 @@ import AiDraftsView from "../views/AiDraftsView.vue";
 import DashboardView from "../views/DashboardView.vue";
 import DownloadsView from "../views/DownloadsView.vue";
 import LoginView from "../views/LoginView.vue";
+import MaterialReviewsView from "../views/MaterialReviewsView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
 import OperationLogsView from "../views/OperationLogsView.vue";
 
@@ -20,6 +21,7 @@ export const router = createRouter({
     { path: "/materials", component: MaterialsView },
     { path: "/downloads", component: DownloadsView },
     { path: "/operation-logs", component: OperationLogsView },
+    { path: "/material-reviews", component: MaterialReviewsView, meta: { reviewer: true } },
     { path: "/ai/drafts", component: AiDraftsView, meta: { reviewer: true } },
     { path: "/analytics", component: AnalyticsView },
   ],
@@ -46,7 +48,7 @@ router.beforeEach(async (to) => {
     return auth.isAdmin ? "/dashboard" : "/ai/drafts";
   }
   if (to.meta.reviewer) {
-    return auth.canReviewAI ? true : "/login";
+    return auth.canReviewContent ? true : "/login";
   }
   if (!auth.isAdmin) {
     return "/login";

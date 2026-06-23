@@ -136,6 +136,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	review.GET("/ai/drafts", aiHandler.AdminDrafts)
 	review.POST("/ai/drafts/:id/approve", aiHandler.ApproveDraft)
 	review.POST("/ai/drafts/:id/reject", aiHandler.RejectDraft)
+	review.GET("/material-reviews", adminHandler.ListMaterialReviews)
+	review.POST("/materials/:id/approve", adminHandler.ApproveMaterial)
+	review.POST("/materials/:id/reject", adminHandler.RejectMaterial)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})

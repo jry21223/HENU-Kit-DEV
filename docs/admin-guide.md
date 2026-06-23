@@ -89,6 +89,24 @@ Important boundaries:
 - PDF watermark failures return an API error instead of falling back to an unwatermarked PDF.
 - `storage_key` is not returned in material JSON and is not displayed in the admin UI.
 
+## Material Review
+
+`/material-reviews` calls:
+
+- `GET /api/v1/admin/material-reviews?status=`
+- `POST /api/v1/admin/materials/:id/approve`
+- `POST /api/v1/admin/materials/:id/reject`
+
+The page is available to `reviewer`, `admin`, and `super_admin` roles. It lists reviewable material records without exposing storage keys or upload/edit/delete controls.
+
+Important boundaries:
+
+- Reviewer users can approve or reject pending materials, but they still cannot access material CRUD, course CRUD, download audit, analytics, or operation logs.
+- Approving a material sets it to `published`, records reviewer metadata, and makes it visible through public material endpoints.
+- Rejecting a material requires `reviewReason`, records reviewer metadata, and keeps it hidden from public material endpoints.
+- Only `pending` materials can be reviewed; repeating review on published/rejected/archived materials returns `409 material_not_reviewable`.
+- Material approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+
 ## AI Draft Review
 
 `/ai/drafts` calls:
@@ -103,7 +121,7 @@ The page shows recent AI tasks and reviewable AI drafts created by the worker.
 Important boundaries:
 
 - AI review endpoints require an authenticated `reviewer`, `admin`, or `super_admin` role.
-- `reviewer` users can access `/ai/drafts`, but they cannot access course, material, download, analytics, or other admin-only pages.
+- `reviewer` users can access `/ai/drafts` and `/material-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
 - Approving a draft can include an optional review note; rejecting a draft requires a review reason.
 - Approving or rejecting a draft only changes the draft review status and review metadata.
 - Only `draft`, `pending`, and `needs_changes` drafts can be reviewed; repeating review on `approved` or `rejected` drafts returns `409 draft_not_reviewable`.
@@ -116,7 +134,7 @@ Important boundaries:
 
 `/operation-logs` calls `GET /api/v1/admin/operation-logs` and requires an authenticated `admin` or `super_admin` role.
 
-The Go API currently writes operation logs for organization, course, material, upload, archive, material status, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
 Filters:
 

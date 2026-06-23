@@ -56,6 +56,9 @@ Currently implemented endpoints:
 - `PATCH /api/v1/admin/materials/:id`
 - `DELETE /api/v1/admin/materials/:id`
 - `POST /api/v1/admin/materials/upload`
+- `GET /api/v1/admin/material-reviews?status=pending|published|rejected&courseId=`
+- `POST /api/v1/admin/materials/:id/approve`
+- `POST /api/v1/admin/materials/:id/reject`
 - `GET /api/v1/admin/downloads?materialId=&userId=`
 - `GET /api/v1/admin/ai/tasks`
 - `GET /api/v1/admin/ai/drafts`
@@ -132,13 +135,17 @@ Implemented quiz behavior:
 Implemented admin behavior:
 
 - all admin endpoints require an authenticated `admin` or `super_admin` role
-- AI review endpoints under `/api/v1/admin/ai/*` are the exception: they allow `reviewer`, `admin`, or `super_admin`, while `reviewer` users remain blocked from material, course, download, analytics, and other admin-only APIs
+- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, and `/api/v1/admin/materials/:id/approve|reject` allow `reviewer`, `admin`, or `super_admin`
+- `reviewer` users remain blocked from material CRUD, course CRUD, download audit, analytics, operation logs, and other admin-only APIs
 - organization/course/material delete operations archive by setting `status=archived`
 - admin course list returns all course statuses; public course list/detail returns only `published`
 - course create/update accepts only `draft`, `published`, or `archived`
 - admin material list returns all material statuses; public material list/detail returns only `published`
 - material create/upload defaults to `draft` when status is omitted
-- material status updates accept only `draft`, `pending`, `published`, or `archived`
+- material status updates accept only `draft`, `pending`, `published`, `rejected`, or `archived`
+- material review approve/reject is only allowed from `pending`; already published/rejected/archived materials return HTTP 409 with `material_not_reviewable`
+- approving a material sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
+- rejecting a material sets `status=rejected`, requires `reviewReason`, and records `reviewerId` and `reviewedAt`
 - material create/update/upload accept only known material types and access levels
 - material metadata update rejects `storageKey`, `storage_key`, `fileName`, `file_name`, `fileSize`, and `file_size`; file replacement must use upload flow
 - material upload uses server-generated storage keys under `materials/{courseId}/`
