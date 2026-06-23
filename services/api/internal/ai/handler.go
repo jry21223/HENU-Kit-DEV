@@ -14,6 +14,7 @@ import (
 
 	"final-review-platform/services/api/internal/audit"
 	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -188,6 +189,22 @@ func (h Handler) reviewDraft(ctx *gin.Context, status string) {
 		}
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
+		}
+		var task model.AITask
+		if err := tx.Select("id", "user_id").First(&task, "id = ?", draft.TaskID).Error; err != nil {
+			return err
+		}
+		if task.UserID != nil {
+			if err := notification.CreateReviewNotification(tx, notification.ReviewNotificationInput{
+				UserID:        *task.UserID,
+				ResourceType:  "ai_draft",
+				ResourceID:    draft.ID,
+				ResourceTitle: draft.OutputType,
+				Status:        status,
+				Reason:        reason,
+			}); err != nil {
+				return err
+			}
 		}
 		return audit.Record(ctx, tx, "ai_draft."+status, "ai_draft", draft.ID, map[string]interface{}{
 			"taskId":         draft.TaskID,

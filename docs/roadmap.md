@@ -38,7 +38,7 @@
 - Vue admin forum reply review queue with reviewer-role access, approve/reject actions, review notes, public-only published reply APIs, and once-only comment-count updates
 - Forum reward posts with server-side point escrow, review visibility, rejection refunds, and points ledger rows
 - Forum best-answer selection with one-answer-per-post guardrails and escrowed reward settlement to the selected reply author
-- Forum review notifications for post/reply approve/reject outcomes
+- Review notifications for forum post/reply, material, wiki entry/proposal, blog post, and AI draft approve/reject outcomes
 - Vue admin read-only analytics page for download trend and course demand
 - Vue admin read-only operation-log browser for high-risk admin mutations
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
@@ -53,7 +53,7 @@
 
 ## Next Deliverable
 
-- Richer content review workflows for wiki conflict-resolution UX and broader notification sources beyond forum review
+- Richer content review workflows for wiki conflict-resolution UX and additional notification sources for payment, membership, and reports
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 

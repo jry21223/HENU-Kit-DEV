@@ -6,7 +6,7 @@
 - AI-generated content must be reviewed before publication.
 - Admin course, organization, material, upload, archive, status-change, material-review, wiki entry/proposal-review, blog-review, forum post/reply review, forum best-answer selection, and AI draft-review operations write server-side operation logs in the same database transaction as the protected mutation.
 - User-scoped forum tracking/resubmission endpoints expose only the authenticated user's own posts/replies and may include that user's review reason, but they do not expose `reviewerId`, `reviewedAt`, or hidden submissions from other users. Resubmission is server-side restricted to draft/pending/needs_changes/rejected content, clears old reviewer metadata, and returns the content to pending review.
-- User notification endpoints are user-scoped: authenticated users can list or mark read only their own notifications. Forum review notifications are written in the same database transaction as the review mutation and operation log.
+- User notification endpoints are user-scoped: authenticated users can list or mark read only their own notifications. Forum, material, wiki, blog, and AI draft review notifications are written in the same database transaction as the review mutation and operation log.
 - CORS must not use wildcard origins with credentials.
 
 ## Operation Logs

@@ -21,6 +21,7 @@ import (
 
 	"final-review-platform/services/api/internal/audit"
 	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -700,6 +701,18 @@ func (h Handler) reviewMaterial(ctx *gin.Context, status string) {
 		}
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
+		}
+		if material.CreatedBy != nil {
+			if err := notification.CreateReviewNotification(tx, notification.ReviewNotificationInput{
+				UserID:        *material.CreatedBy,
+				ResourceType:  "material",
+				ResourceID:    material.ID,
+				ResourceTitle: material.Title,
+				Status:        status,
+				Reason:        reason,
+			}); err != nil {
+				return err
+			}
 		}
 		return audit.Record(ctx, tx, action, "material", material.ID, map[string]interface{}{
 			"courseId":       material.CourseID,

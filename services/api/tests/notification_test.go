@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/datatypes"
+
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/internal/server"
 	applogger "final-review-platform/services/api/pkg/logger"
@@ -133,12 +135,128 @@ func TestForumReviewCreatesAuthorNotifications(t *testing.T) {
 		t.Fatalf("expected author notification list 200, got %d: %s", notificationList.Code, notificationList.Body.String())
 	}
 	body := notificationList.Body.String()
-	for _, expected := range []string{"讨论回复审核未通过", "needs details", `"unreadCount":2`, `"resourceType":"forum_reply"`, `"status":"rejected"`} {
+	for _, expected := range []string{"\u8ba8\u8bba\u56de\u590d\u5ba1\u6838\u672a\u901a\u8fc7", "needs details", `"unreadCount":2`, `"resourceType":"forum_reply"`, `"status":"rejected"`} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("expected notification response to contain %q, got %s", expected, body)
 		}
 	}
 	if strings.Contains(body, reviewer.ID) {
 		t.Fatalf("expected notification response to avoid reviewer id, got %s", body)
+	}
+}
+
+func TestReviewNotificationsForContentAndAIDrafts(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	course := createTestCourse(t, db)
+	author := createTestUser(t, db, "notify-content-author@stu.henu.edu.cn", model.RoleCreator)
+	reviewer := createTestUser(t, db, "notify-content-reviewer@stu.henu.edu.cn", model.RoleReviewer)
+	authorToken := loginTestUser(t, router, author.Email)
+	reviewerToken := loginTestUser(t, router, reviewer.Email)
+
+	createdBy := author.ID
+	material := model.Material{
+		CourseID:       course.ID,
+		Title:          "Notification material",
+		Type:           "knowledge_note",
+		StorageKey:     "materials/notification-material.txt",
+		FileName:       "notification-material.txt",
+		AccessLevel:    model.MaterialAccessFree,
+		PreviewContent: "preview",
+		Status:         model.StatusPending,
+		CreatedBy:      &createdBy,
+	}
+	if err := db.Create(&material).Error; err != nil {
+		t.Fatal(err)
+	}
+	approveMaterial := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+material.ID+"/approve", `{"reviewReason":"ready"}`, reviewerToken)
+	if approveMaterial.Code != http.StatusOK {
+		t.Fatalf("expected material approve 200, got %d: %s", approveMaterial.Code, approveMaterial.Body.String())
+	}
+
+	blogPost := model.BlogPost{
+		ReviewFields: model.ReviewFields{Status: model.StatusPending},
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     author.ID,
+		Title:        "Notification blog",
+		Slug:         "notification-blog",
+		Content:      "This pending blog should notify the author.",
+	}
+	if err := db.Create(&blogPost).Error; err != nil {
+		t.Fatal(err)
+	}
+	rejectBlog := performJSON(router, http.MethodPost, "/api/v1/admin/blog/posts/"+blogPost.ID+"/reject", `{"reviewReason":"needs references"}`, reviewerToken)
+	if rejectBlog.Code != http.StatusOK {
+		t.Fatalf("expected blog reject 200, got %d: %s", rejectBlog.Code, rejectBlog.Body.String())
+	}
+
+	wikiEntry := model.WikiEntry{
+		ReviewFields: model.ReviewFields{Status: model.StatusPending},
+		ContentStats: model.ContentStats{Visibility: "public"},
+		AuthorID:     author.ID,
+		CourseID:     &course.ID,
+		Title:        "Notification wiki",
+		Slug:         "notification-wiki",
+		Content:      "This pending wiki should notify the creator.",
+		Version:      1,
+	}
+	if err := db.Create(&wikiEntry).Error; err != nil {
+		t.Fatal(err)
+	}
+	approveWiki := performJSON(router, http.MethodPost, "/api/v1/admin/wiki/entries/"+wikiEntry.ID+"/approve", `{"reviewReason":"useful"}`, reviewerToken)
+	if approveWiki.Code != http.StatusOK {
+		t.Fatalf("expected wiki approve 200, got %d: %s", approveWiki.Code, approveWiki.Body.String())
+	}
+
+	aiTask := model.AITask{
+		UserID: &createdBy,
+		Type:   "paper_generation",
+		Status: model.AITaskCompleted,
+		Input:  datatypes.JSON([]byte(`{"topic":"logic"}`)),
+		Result: datatypes.JSON([]byte(`{"title":"AI draft"}`)),
+	}
+	if err := db.Create(&aiTask).Error; err != nil {
+		t.Fatal(err)
+	}
+	aiDraft := model.AIDraft{
+		ReviewFields: model.ReviewFields{Status: model.StatusPending},
+		TaskID:       aiTask.ID,
+		CourseID:     &course.ID,
+		OutputType:   "paper_generation",
+		DraftContent: datatypes.JSON([]byte(`{"title":"AI draft"}`)),
+	}
+	if err := db.Create(&aiDraft).Error; err != nil {
+		t.Fatal(err)
+	}
+	rejectDraft := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+aiDraft.ID+"/reject", `{"reviewReason":"answer is incomplete"}`, reviewerToken)
+	if rejectDraft.Code != http.StatusOK {
+		t.Fatalf("expected AI draft reject 200, got %d: %s", rejectDraft.Code, rejectDraft.Body.String())
+	}
+
+	list := performJSON(router, http.MethodGet, "/api/v1/me/notifications", "", authorToken)
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected author notifications 200, got %d: %s", list.Code, list.Body.String())
+	}
+	body := list.Body.String()
+	for _, expected := range []string{
+		`"unreadCount":4`,
+		`"type":"content_review"`,
+		`"resourceType":"material"`,
+		`"resourceType":"blog_post"`,
+		`"resourceType":"wiki_entry"`,
+		`"resourceType":"ai_draft"`,
+		"Notification material",
+		"Notification blog",
+		"Notification wiki",
+		"paper_generation",
+		"needs references",
+		"answer is incomplete",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("expected notification response to contain %q, got %s", expected, body)
+		}
+	}
+	if strings.Contains(body, reviewer.ID) {
+		t.Fatalf("expected content review notifications to avoid reviewer id, got %s", body)
 	}
 }

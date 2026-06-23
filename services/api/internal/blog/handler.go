@@ -12,6 +12,7 @@ import (
 
 	"final-review-platform/services/api/internal/audit"
 	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -180,6 +181,16 @@ func (h Handler) reviewPost(ctx *gin.Context, status string) {
 		}
 		if result.RowsAffected == 0 {
 			return errPostNotReviewable
+		}
+		if err := notification.CreateReviewNotification(tx, notification.ReviewNotificationInput{
+			UserID:        post.AuthorID,
+			ResourceType:  "blog_post",
+			ResourceID:    post.ID,
+			ResourceTitle: post.Title,
+			Status:        status,
+			Reason:        reason,
+		}); err != nil {
+			return err
 		}
 		return audit.Record(ctx, tx, action, "blog_post", post.ID, map[string]interface{}{
 			"authorId":       post.AuthorID,

@@ -220,8 +220,9 @@ Implemented notification behavior:
 - logged-in users can mark their own notification as read through `/me/notifications/:id/read`; reading another user's notification returns HTTP 404
 - logged-in users can mark all of their own unread notifications as read through `/me/notifications/read-all`
 - forum post/reply approve or reject actions create a `forum_review` notification for the content author in the same transaction as the review update and operation log
-- forum review notifications include safe data fields (`resourceType`, `resourceId`, `status`) and do not expose reviewer ids
-- current automatic notification source is forum review only; material, wiki, blog, AI, payment, and membership notifications remain later work
+- material, wiki entry/proposal, blog post, and AI draft approve/reject actions create a `content_review` notification for the original author/editor/task owner in the same transaction as the review update and operation log
+- review notifications include safe data fields (`resourceType`, `resourceId`, `status`) and do not expose reviewer ids
+- payment and membership notifications remain later work
 
 Implemented wiki behavior:
 

@@ -1,7 +1,6 @@
 package forum
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,11 +9,11 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/audit"
 	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -668,7 +667,15 @@ func (h Handler) reviewPost(ctx *gin.Context, status string) {
 			}
 			auditRewardStatus = "refunded"
 		}
-		if err := createForumReviewNotification(tx, "forum_post", post.AuthorID, post.ID, post.Title, status, reason); err != nil {
+		if err := notification.CreateReviewNotification(tx, notification.ReviewNotificationInput{
+			NotificationType: "forum_review",
+			UserID:           post.AuthorID,
+			ResourceType:     "forum_post",
+			ResourceID:       post.ID,
+			ResourceTitle:    post.Title,
+			Status:           status,
+			Reason:           reason,
+		}); err != nil {
 			return err
 		}
 		return audit.Record(ctx, tx, action, "forum_post", post.ID, map[string]interface{}{
@@ -763,7 +770,15 @@ func (h Handler) reviewReply(ctx *gin.Context, status string) {
 		if err := tx.Select("id", "title").First(&post, "id = ?", reply.PostID).Error; err != nil {
 			return err
 		}
-		if err := createForumReviewNotification(tx, "forum_reply", reply.AuthorID, reply.ID, post.Title, status, reason); err != nil {
+		if err := notification.CreateReviewNotification(tx, notification.ReviewNotificationInput{
+			NotificationType: "forum_review",
+			UserID:           reply.AuthorID,
+			ResourceType:     "forum_reply",
+			ResourceID:       reply.ID,
+			ResourceTitle:    post.Title,
+			Status:           status,
+			Reason:           reason,
+		}); err != nil {
 			return err
 		}
 		return audit.Record(ctx, tx, action, "forum_reply", reply.ID, map[string]interface{}{
@@ -895,45 +910,6 @@ func settleForumReward(tx *gorm.DB, userID string, postID string, replyID string
 		ReferenceType:  "forum_reply",
 		ReferenceID:    replyID,
 		IdempotencyKey: "forum_reward_settlement:" + postID,
-	}).Error
-}
-
-func createForumReviewNotification(tx *gorm.DB, resourceType string, userID string, resourceID string, resourceTitle string, status string, reason string) error {
-	title := "讨论内容审核已通过"
-	body := "你的讨论内容已通过审核。"
-	if resourceType == "forum_reply" {
-		title = "讨论回复审核已通过"
-		body = "你在「" + resourceTitle + "」下的回复已通过审核。"
-	} else if resourceTitle != "" {
-		body = "你的帖子「" + resourceTitle + "」已通过审核。"
-	}
-	if status == model.StatusRejected {
-		title = "讨论内容审核未通过"
-		body = "你的讨论内容审核未通过。"
-		if resourceType == "forum_reply" {
-			title = "讨论回复审核未通过"
-			body = "你在「" + resourceTitle + "」下的回复审核未通过。"
-		} else if resourceTitle != "" {
-			body = "你的帖子「" + resourceTitle + "」审核未通过。"
-		}
-		if reason != "" {
-			body += " 原因：" + reason
-		}
-	}
-	data, err := json.Marshal(map[string]string{
-		"resourceType": resourceType,
-		"resourceId":   resourceID,
-		"status":       status,
-	})
-	if err != nil {
-		return err
-	}
-	return tx.Create(&model.Notification{
-		UserID: userID,
-		Type:   "forum_review",
-		Title:  title,
-		Body:   body,
-		Data:   datatypes.JSON(data),
 	}).Error
 }
 

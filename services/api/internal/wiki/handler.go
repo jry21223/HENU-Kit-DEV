@@ -12,6 +12,7 @@ import (
 
 	"final-review-platform/services/api/internal/audit"
 	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -347,6 +348,16 @@ func (h Handler) reviewEntry(ctx *gin.Context, status string) {
 		if result.RowsAffected == 0 {
 			return errEntryNotReviewable
 		}
+		if err := notification.CreateReviewNotification(tx, notification.ReviewNotificationInput{
+			UserID:        entry.AuthorID,
+			ResourceType:  "wiki_entry",
+			ResourceID:    entry.ID,
+			ResourceTitle: entry.Title,
+			Status:        status,
+			Reason:        reason,
+		}); err != nil {
+			return err
+		}
 		return audit.Record(ctx, tx, action, "wiki_entry", entry.ID, map[string]interface{}{
 			"authorId":       entry.AuthorID,
 			"courseId":       entry.CourseID,
@@ -459,6 +470,16 @@ func (h Handler) reviewProposal(ctx *gin.Context, status string) {
 			if err := tx.Create(&history).Error; err != nil {
 				return err
 			}
+		}
+		if err := notification.CreateReviewNotification(tx, notification.ReviewNotificationInput{
+			UserID:        proposal.EditorID,
+			ResourceType:  "wiki_proposal",
+			ResourceID:    proposal.ID,
+			ResourceTitle: proposal.ProposedTitle,
+			Status:        status,
+			Reason:        reason,
+		}); err != nil {
+			return err
 		}
 		return audit.Record(ctx, tx, action, "wiki_edit_proposal", proposal.ID, map[string]interface{}{
 			"entryId":        proposal.EntryID,

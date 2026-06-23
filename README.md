@@ -107,7 +107,7 @@ cd ../worker && go test ./...
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
-- `/me/notifications` 用户隔离、已读幂等、全部已读，以及论坛审核通知生成。
+- `/me/notifications` 用户隔离、已读幂等、全部已读，以及论坛、资料、Wiki、博客、AI 草稿审核通知生成。
 - 不安全 storage key 返回 404。
 - admin-only 组织/课程/资料变更。
 - 上传文件名、后缀、内容和大小限制。
@@ -186,7 +186,9 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - User-scoped forum tracking and resubmission are available through `GET/PATCH /api/v1/me/forum-posts`, `GET/PATCH /api/v1/me/forum-replies`, and Web `/me/forum`; they return only the current user's submissions, do not expose reviewer ids or other users' hidden content, and reset editable submissions back to `pending`.
 - Reward-post resubmission re-freezes the original reward points after a prior rejection/refund; insufficient points keep the post rejected and do not reopen it for review.
 - User notifications are available through `GET /api/v1/me/notifications`, `POST /api/v1/me/notifications/:id/read`, `POST /api/v1/me/notifications/read-all`, and Web `/me/notifications`; users only see/read their own notifications.
-- Forum post/reply review creates a `forum_review` notification for the author in the same transaction as the review update and operation log. Other notification sources remain later work.
+- Forum post/reply review creates a `forum_review` notification for the author in the same transaction as the review update and operation log.
+- Material, wiki entry/proposal, blog post, and AI draft review creates a `content_review` notification for the original author/editor/task owner in the same transaction as the review update and operation log.
+- Payment, membership, and report notifications remain later work.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
 - Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.
