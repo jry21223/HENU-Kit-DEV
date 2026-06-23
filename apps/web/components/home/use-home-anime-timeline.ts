@@ -10,16 +10,17 @@ export const archiveProgress = {
   copyEnd: 0.5,
   openStart: 0.68,
   openEnd: 0.86,
-  closingStart: 0.84,
+  closingStart: 0.76,
 } as const;
 
 type ReadinessSetter = Dispatch<SetStateAction<boolean>>;
 
 type ArchiveReadiness = {
-  setClosingCopyReady: ReadinessSetter;
+  setClosingCopyVisible: ReadinessSetter;
   setContentReady: ReadinessSetter;
   setIntroReady: ReadinessSetter;
   setOpenCopyReady: ReadinessSetter;
+  setPageVisible: ReadinessSetter;
 };
 
 type UseHomeAnimeTimelineOptions = {
@@ -29,6 +30,7 @@ type UseHomeAnimeTimelineOptions = {
 };
 
 const timelineDuration = 1000;
+const pageVisualEnd = 0.9;
 
 function at(progress: number) {
   return progress * timelineDuration;
@@ -51,14 +53,16 @@ function syncReadiness(progress: number, readiness: ArchiveReadiness, reduceMoti
     setReady(readiness.setContentReady, true);
     setReady(readiness.setIntroReady, true);
     setReady(readiness.setOpenCopyReady, false);
-    setReady(readiness.setClosingCopyReady, false);
+    setReady(readiness.setPageVisible, true);
+    setReady(readiness.setClosingCopyVisible, false);
     return;
   }
 
   setReady(readiness.setContentReady, progress >= archiveProgress.openStart && progress <= archiveProgress.openEnd);
   setReady(readiness.setIntroReady, progress < archiveProgress.introEnd);
   setReady(readiness.setOpenCopyReady, progress >= archiveProgress.straightStart && progress <= archiveProgress.copyEnd);
-  setReady(readiness.setClosingCopyReady, progress >= archiveProgress.closingStart);
+  setReady(readiness.setPageVisible, progress >= archiveProgress.openStart && progress <= pageVisualEnd);
+  setReady(readiness.setClosingCopyVisible, progress >= archiveProgress.closingStart);
 }
 
 function getStageScrollProgress(stage: HTMLElement) {

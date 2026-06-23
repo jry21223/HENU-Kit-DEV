@@ -83,6 +83,7 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   await expect(page.getByText("数据结构").first()).toBeVisible();
+  await expect(page.getByTestId("archive-copy-closing")).toBeVisible();
 
   const openBox = await archiveBookBox(page);
   expect(openBox.width).toBeGreaterThan(1180);
@@ -90,6 +91,10 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(Math.abs(openBox.centerX - 720)).toBeLessThan(28);
   const seamBox = await elementBox(page, "archive-seam");
   expect(Math.abs(seamBox.centerX - openBox.centerX)).toBeLessThan(8);
+
+  await scrollArchiveTo(page, 0.88);
+  await expect(page.locator('[data-home-anim="archive-page"]').first()).toBeVisible();
+  await expect(page.locator('[data-home-anim="archive-directory-line"]').first()).toHaveAttribute("tabindex", "-1");
 
   await scrollArchiveTo(page, 0.93);
   await expect(page.getByTestId("archive-copy-closing")).toBeVisible();

@@ -16,13 +16,15 @@ export function ArchiveBookReveal() {
   const [contentReady, setContentReady] = useState(false);
   const [introReady, setIntroReady] = useState(true);
   const [openCopyReady, setOpenCopyReady] = useState(false);
-  const [closingCopyReady, setClosingCopyReady] = useState(false);
+  const [pageVisible, setPageVisible] = useState(false);
+  const [closingCopyVisible, setClosingCopyVisible] = useState(false);
   const readiness = useMemo(
     () => ({
-      setClosingCopyReady,
+      setClosingCopyVisible,
       setContentReady,
       setIntroReady,
       setOpenCopyReady,
+      setPageVisible,
     }),
     [],
   );
@@ -32,6 +34,7 @@ export function ArchiveBookReveal() {
   const contentFocusable = reduceMotion || contentReady;
   const contentTabIndex = contentFocusable ? undefined : -1;
   const contentAriaHidden = contentFocusable ? undefined : true;
+  const pageVisibility = reduceMotion || pageVisible ? "visible" : "hidden";
   const introFocusable = reduceMotion || introReady;
   const introTabIndex = introFocusable ? undefined : -1;
   const introAriaHidden = introFocusable ? undefined : true;
@@ -104,7 +107,7 @@ export function ArchiveBookReveal() {
               {...homeAnimAttr("archiveClosingCopy")}
               style={{
                 pointerEvents: "none",
-                visibility: !reduceMotion && closingCopyReady ? "visible" : "hidden",
+                visibility: !reduceMotion && closingCopyVisible ? "visible" : "hidden",
               }}
               aria-hidden="true"
             >
@@ -136,7 +139,7 @@ export function ArchiveBookReveal() {
                   {...homeAnimAttr("archivePage")}
                   style={{
                     pointerEvents: contentFocusable ? "auto" : "none",
-                    visibility: contentFocusable ? "visible" : "hidden",
+                    visibility: pageVisibility,
                   }}
                 >
                   <span className={styles.pageHighlight} aria-hidden="true" {...homeAnimAttr("archivePageHighlight")} />
@@ -168,7 +171,7 @@ export function ArchiveBookReveal() {
                   {...homeAnimAttr("archivePage")}
                   style={{
                     pointerEvents: contentFocusable ? "auto" : "none",
-                    visibility: contentFocusable ? "visible" : "hidden",
+                    visibility: pageVisibility,
                   }}
                 >
                   <span className={styles.pageHighlight} aria-hidden="true" {...homeAnimAttr("archivePageHighlight")} />
