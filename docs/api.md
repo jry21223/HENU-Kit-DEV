@@ -26,6 +26,9 @@ Currently implemented endpoints:
 - `GET /api/v1/materials/:id/download`
 - `GET /api/v1/packages?courseId=&schoolId=&majorId=&grade=`
 - `GET /api/v1/packages/:id`
+- `POST /api/v1/orders`
+- `GET /api/v1/orders/:id`
+- `GET /api/v1/orders/:id/status`
 - `GET /api/v1/questions/:id`
 - `POST /api/v1/questions/:id/submit`
 - `GET /api/v1/blog/posts?limit=`
@@ -193,6 +196,17 @@ Expected boundaries:
 - duplicate active item bindings return the existing binding with `alreadyExists=true` instead of creating another row
 - unbinding a package item removes only the package-item relation and must not delete or mutate the material
 - course package create/update/archive and package-item bind/unbind mutations should write `operation_logs`
+
+Implemented order foundation:
+
+- `POST /api/v1/orders` currently supports `packageId` for published course packages
+- the server reads price, currency, and title from `course_packages`; client-submitted amount/provider fields are ignored
+- created orders use `productType=course_package`, `paymentProvider=wechat_native`, and `status=pending`
+- repeat order creation for the same user/package reuses the latest pending WeChat Native order instead of creating duplicate rows
+- users who already have an active package grant receive `alreadyOwned=true`; no new order is created
+- `GET /api/v1/orders/:id` and `GET /api/v1/orders/:id/status` are user-scoped; admins may inspect all orders
+- order status is read-only and does not grant entitlement; paid access still requires a package/material grant created by a trusted server-side flow
+- this foundation does not yet create WeChat Native code URLs, process payment notify callbacks, mark orders paid, or issue entitlements
 
 Implemented quiz behavior:
 

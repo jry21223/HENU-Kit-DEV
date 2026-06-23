@@ -148,6 +148,41 @@ export type Entitlements = {
   packageGrants: PackageEntitlement[];
 };
 
+export type Order = {
+  id: string;
+  userId: string;
+  productType: string;
+  productId: string;
+  outTradeNo: string;
+  paymentProvider: string;
+  status: string;
+  amountTotal: number;
+  currency: string;
+  paidAt?: string;
+  riskFlag?: string;
+};
+
+export type OrderCreateResult = {
+  order?: Order;
+  package?: CoursePackage;
+  alreadyOwned: boolean;
+  alreadyPending: boolean;
+  entitlementGranted: boolean;
+};
+
+export type OrderStatus = {
+  orderId: string;
+  status: string;
+  paidAt?: string;
+  entitlementGranted: boolean;
+  paymentProvider: string;
+  productType: string;
+  productId: string;
+  amountTotal: number;
+  currency: string;
+  packageTitle?: string;
+};
+
 export type MaterialDownload = {
   id: string;
   materialId: string;

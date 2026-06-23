@@ -21,6 +21,7 @@ import (
 	"final-review-platform/services/api/internal/health"
 	"final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/notification"
+	"final-review-platform/services/api/internal/order"
 	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/internal/packagecatalog"
 	"final-review-platform/services/api/internal/quiz"
@@ -63,6 +64,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	downloadLogHandler := downloadlog.NewHandler(db)
 	entitlementHandler := entitlement.NewHandler(db)
 	notificationHandler := notification.NewHandler(db)
+	orderHandler := order.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
 	reportHandler := report.NewHandler(db)
@@ -100,6 +102,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/materials/:id/download", authMiddleware.OptionalAuth(), materialHandler.Download)
 	v1.GET("/packages", packageHandler.List)
 	v1.GET("/packages/:id", packageHandler.Detail)
+	v1.POST("/orders", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), orderHandler.Create)
+	v1.GET("/orders/:id", authMiddleware.RequireAuth(), orderHandler.Detail)
+	v1.GET("/orders/:id/status", authMiddleware.RequireAuth(), orderHandler.Status)
 	v1.GET("/questions/:id", quizHandler.Question)
 	v1.POST("/questions/:id/submit", authMiddleware.OptionalAuth(), quizHandler.Submit)
 	v1.GET("/blog/posts", blogHandler.ListPublished)

@@ -22,6 +22,7 @@
 - Web personal notification inbox with user-scoped read/read-all state
 - Web profile entitlement summary for active material/package grants
 - Web course package cards and detail page with price, included material links, and logged-in entitlement status
+- Web course package pending-order creation and read-only order status display
 - Web email-code login form
 - Web profile page with school/major/grade binding
 - Vue admin dashboard, login guard, course management, and material upload pages
@@ -48,6 +49,7 @@
 - Vue admin operation-log filtering, CSV export, and read-only retention policy panel
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog, package-level material grants, and public package-detail filtering that hides unpublished package items as well as unpublished material objects
+- Course package pending-order foundation with server-authoritative package pricing, duplicate pending-order reuse, and user-scoped order status
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton

@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock3, LockKeyhole } from "lucide-react";
-import { apiBaseUrl, type CoursePackage, type Entitlements, type Material, type User } from "@/lib/api";
+import {
+  apiBaseUrl,
+  type CoursePackage,
+  type Entitlements,
+  type Material,
+  type Order,
+  type OrderCreateResult,
+  type OrderStatus,
+  type User,
+} from "@/lib/api";
 
 type Envelope<T> = {
   code: number;
@@ -22,6 +31,13 @@ const copy = {
   lockedBody: "微信 Native 支付仍处于联调准备中，当前内测阶段可由管理员在后台手动授权课程包。",
   paymentPending: "支付联调中",
   paymentBody: "前端只展示状态，不会伪造支付成功；正式解锁必须来自服务端 entitlement。",
+  createOrder: "创建待支付订单",
+  creatingOrder: "创建中...",
+  orderReady: "待支付订单已创建",
+  orderPendingBody: "订单已进入 pending，后续会接入微信 Native 二维码和服务端支付回调。",
+  orderNo: "订单号",
+  orderStatus: "订单状态",
+  refreshStatus: "刷新状态",
   ownedMaterials: "已解锁资料",
   viewMaterial: "查看资料",
   packageGrants: "课程包授权",
@@ -31,8 +47,12 @@ const copy = {
 export function PackageEntitlementPanel({ coursePackage, materials }: { coursePackage: CoursePackage; materials: Material[] }) {
   const [user, setUser] = useState<User | null>(null);
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<Order | null>(null);
+  const [pendingOrderStatus, setPendingOrderStatus] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ordering, setOrdering] = useState(false);
   const [error, setError] = useState("");
+  const [orderMessage, setOrderMessage] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -64,6 +84,40 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
   const ownedPackage = useMemo(() => {
     return entitlements?.packageGrants.find((row) => row.package?.id === coursePackage.id || row.grant.packageId === coursePackage.id);
   }, [coursePackage.id, entitlements]);
+
+  async function createOrder() {
+    setOrdering(true);
+    setError("");
+    setOrderMessage("");
+    try {
+      const response = await request<OrderCreateResult>("/orders", {
+        method: "POST",
+        body: JSON.stringify({ packageId: coursePackage.id }),
+      });
+      if (response.data?.alreadyOwned || response.data?.entitlementGranted) {
+        setOrderMessage(copy.unlocked);
+        const entitlementResponse = await request<Entitlements>("/me/entitlements");
+        setEntitlements(entitlementResponse.data ?? null);
+        return;
+      }
+      const nextOrder = response.data?.order ?? null;
+      setPendingOrder(nextOrder);
+      setOrderMessage(response.data?.alreadyPending ? copy.orderReady : copy.orderReady);
+      if (nextOrder) {
+        await refreshOrderStatus(nextOrder.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : copy.failed);
+    } finally {
+      setOrdering(false);
+    }
+  }
+
+  async function refreshOrderStatus(orderId = pendingOrder?.id) {
+    if (!orderId) return;
+    const response = await request<OrderStatus>(`/orders/${orderId}/status`);
+    setPendingOrderStatus(response.data ?? null);
+  }
 
   if (loading) {
     return (
@@ -129,6 +183,31 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
         <p className="font-medium text-foreground">{copy.paymentPending}</p>
         <p className="mt-1 leading-6">{copy.paymentBody}</p>
       </div>
+      {pendingOrder ? (
+        <div className="mt-3 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">{copy.orderReady}</p>
+          <p className="mt-1 leading-6">{copy.orderPendingBody}</p>
+          <p className="mt-2 break-all text-xs">
+            {copy.orderNo}: {pendingOrder.outTradeNo}
+          </p>
+          <p className="mt-1 text-xs">
+            {copy.orderStatus}: {pendingOrderStatus?.status ?? pendingOrder.status}
+          </p>
+          <button className="mt-3 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted" onClick={() => void refreshOrderStatus()} type="button">
+            {copy.refreshStatus}
+          </button>
+        </div>
+      ) : null}
+      <button
+        className="mt-4 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-[#254d42] disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={ordering}
+        onClick={createOrder}
+        type="button"
+      >
+        {ordering ? copy.creatingOrder : copy.createOrder}
+      </button>
+      {orderMessage && !pendingOrder ? <p className="mt-3 text-sm text-muted-foreground">{orderMessage}</p> : null}
+      {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
       <p className="mt-3 text-xs text-muted-foreground">
         {copy.packageGrants}: {entitlements?.summary.packageGrants ?? 0}
       </p>
@@ -136,10 +215,14 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
   );
 }
 
-async function request<T>(path: string): Promise<Envelope<T>> {
+async function request<T>(path: string, init: RequestInit = {}): Promise<Envelope<T>> {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
+    ...init,
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...init.headers,
+    },
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
