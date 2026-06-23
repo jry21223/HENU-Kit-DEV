@@ -14,8 +14,22 @@ async function scrollArchiveTo(page: Page, progress: number) {
 
     const stageTop = window.scrollY + archive.getBoundingClientRect().top;
     const scrollableDistance = Math.max(archive.offsetHeight - window.innerHeight, 1);
+    const previousRootScrollBehavior = document.documentElement.style.scrollBehavior;
+    const previousBodyScrollBehavior = document.body.style.scrollBehavior;
+
+    document.documentElement.style.scrollBehavior = "auto";
+    document.body.style.scrollBehavior = "auto";
     window.scrollTo(0, stageTop + scrollableDistance * nextProgress);
+    document.documentElement.style.scrollBehavior = previousRootScrollBehavior;
+    document.body.style.scrollBehavior = previousBodyScrollBehavior;
   }, progress);
+
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
 }
 
 async function archiveBookBox(page: Page) {
@@ -46,6 +60,35 @@ async function elementBox(page: Page, testId: string) {
       right: rect.right,
       top: rect.top,
       width: rect.width,
+    };
+  });
+}
+
+async function archiveVisualState(page: Page) {
+  return page.evaluate(() => {
+    const cover = document.querySelector<HTMLElement>('[data-testid="archive-cover"]');
+    const coverShadow = document.querySelector<HTMLElement>('[data-home-anim="archive-cover-shadow"]');
+    const closingCopy = document.querySelector<HTMLElement>('[data-testid="archive-copy-closing"]');
+    const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-home-anim="archive-page"]'));
+    const spineShadow = document.querySelector<HTMLElement>('[data-home-anim="archive-spine-shadow"]');
+
+    if (!cover || !coverShadow || !closingCopy || pages.length === 0 || !spineShadow) {
+      throw new Error("Archive visual nodes were not found");
+    }
+
+    const coverRect = cover.getBoundingClientRect();
+    const closingRect = closingCopy.getBoundingClientRect();
+    const pageOpacities = pages.map((archivePage) => Number(getComputedStyle(archivePage).opacity));
+
+    return {
+      closingCopyOpacity: Number(getComputedStyle(closingCopy).opacity),
+      closingCopyRight: closingRect.right,
+      coverLeft: coverRect.left,
+      coverOpacity: Number(getComputedStyle(cover).opacity),
+      coverShadowOpacity: Number(getComputedStyle(coverShadow).opacity),
+      maxPageOpacity: Math.max(...pageOpacities),
+      minPageOpacity: Math.min(...pageOpacities),
+      spineShadowOpacity: Number(getComputedStyle(spineShadow).opacity),
     };
   });
 }
@@ -173,6 +216,7 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(startCoverBox.bottom).toBeGreaterThan(1100);
 
   await expect(page.getByTestId("archive-copy-intro")).toBeVisible();
+  await expect(page.locator('[data-home-anim="archive-open-copy"]')).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "打开你的期末复习资料册" })).toBeVisible();
   await expect(page.getByRole("link", { name: /进入工作区/ })).toHaveAttribute("href", "/workspace");
   await expect(page.getByRole("link", { name: /浏览课程资料/ })).toHaveAttribute("href", "/courses");
@@ -180,11 +224,14 @@ test("homepage renders product vision on desktop", async ({ page }) => {
 
   await scrollArchiveTo(page, 0.6);
   await expect(page.getByTestId("archive-copy-intro")).toBeHidden();
-  await expect(page.getByTestId("archive-copy-open")).toBeHidden();
+  await expect(page.locator('[data-home-anim="archive-open-copy"]')).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
   await expect(page.getByTestId("archive-cover")).toBeVisible();
 
   const closedCoverBox = await elementBox(page, "archive-cover");
+  const liftingVisualState = await archiveVisualState(page);
+  expect(liftingVisualState.coverShadowOpacity).toBeGreaterThan(0.12);
+  expect(liftingVisualState.spineShadowOpacity).toBeGreaterThan(0.18);
   expect(closedCoverBox.centerX).toBeGreaterThan(1440 * 0.68);
   expect(closedCoverBox.centerX).toBeLessThan(1440 * 0.86);
   expect(closedCoverBox.width / closedCoverBox.height).toBeLessThan(0.86);
@@ -193,7 +240,11 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   await expect(page.getByText("数据结构").first()).toBeVisible();
-  await expect(page.getByTestId("archive-copy-closing")).toBeVisible();
+  await expect(page.getByTestId("archive-copy-closing")).toBeHidden();
+
+  const openVisualState = await archiveVisualState(page);
+  expect(openVisualState.minPageOpacity).toBeGreaterThan(0.95);
+  expect(openVisualState.coverOpacity).toBeLessThan(0.18);
 
   const openBox = await archiveBookBox(page);
   expect(openBox.width).toBeGreaterThan(1180);
@@ -207,19 +258,66 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await expect(page.locator('[data-home-anim="archive-directory-line"]').first()).toHaveAttribute("tabindex", "-1");
 
   await scrollArchiveTo(page, 0.93);
+  await expect(page.getByTestId("archive-copy-closing")).toBeHidden();
+  const preClosingVisualState = await archiveVisualState(page);
+  expect(preClosingVisualState.closingCopyOpacity).toBeLessThan(0.05);
+
+  await scrollArchiveTo(page, 0.98);
   await expect(page.getByTestId("archive-copy-closing")).toBeVisible();
   await expect(page.getByTestId("archive-copy-closing").getByText("资料合上以后，还会继续生长")).toBeVisible();
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
 
+  const closingVisualState = await archiveVisualState(page);
+  expect(closingVisualState.closingCopyOpacity).toBeGreaterThan(0.7);
+  expect(closingVisualState.maxPageOpacity).toBeLessThan(0.12);
+  expect(closingVisualState.coverOpacity).toBeGreaterThan(0.55);
+  expect(closingVisualState.closingCopyRight).toBeLessThan(closingVisualState.coverLeft - 32);
+
   const closedAgainBox = await archiveBookBox(page);
   expect(Math.abs(closedAgainBox.centerX - openBox.centerX)).toBeLessThan(120);
+});
+
+test("homepage keeps archive narration clear of the open pages", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto(homeUrl, { waitUntil: "networkidle" });
+
+  await scrollArchiveTo(page, 0.8);
+  await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
+  await expect(page.getByTestId("archive-copy-intro")).toBeHidden();
+  await expect(page.locator('[data-home-anim="archive-open-copy"]')).toHaveCount(0);
+  await expect(page.getByTestId("archive-copy-closing")).toBeHidden();
+
+  const openVisualState = await archiveVisualState(page);
+  expect(openVisualState.minPageOpacity).toBeGreaterThan(0.95);
+  expect(openVisualState.coverOpacity).toBeLessThan(0.18);
+});
+
+test("homepage gives post-book cards tactile hover motion", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto(homeUrl, { waitUntil: "networkidle" });
+
+  for (const marker of ["community-note", "practice-card", "membership-ticket", "sales-note"]) {
+    const target = page.locator(`[data-home-anim="${marker}"]`).first();
+    await target.scrollIntoViewIfNeeded();
+    await expect(target).toBeVisible();
+    await page.waitForTimeout(700);
+
+    const before = await target.evaluate((element) => getComputedStyle(element).transform);
+    await target.hover();
+    await page.waitForTimeout(280);
+    const after = await target.evaluate((element) => getComputedStyle(element).transform);
+
+    expect(after).not.toBe(before);
+    expect(after).not.toBe("none");
+  }
 });
 
 test("homepage reveals post-book product sections while preserving animation markers", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto(homeUrl, { waitUntil: "networkidle" });
 
-  await scrollArchiveTo(page, 0.93);
+  await scrollArchiveTo(page, 0.98);
   await expect(page.getByTestId("archive-copy-closing")).toBeVisible();
 
   await expectPostBookSectionMarkerInViewport(page, "community-title", "community-note", 4);
@@ -239,6 +337,8 @@ test("homepage exposes precision animation markers", async ({ page }) => {
 
   await expect(page.locator('[data-home-anim="archive-book"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-cover"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="archive-cover-shadow"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="archive-spine-shadow"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-directory-scan"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-directory-line"]')).toHaveCount(6);
   await expect(page.locator('[data-home-anim="course-book"]')).toHaveCount(6);

@@ -40,7 +40,7 @@ export function GuaranteeSection() {
             const Icon = item.icon;
 
             return (
-              <article key={item.title} className="relative overflow-hidden rounded-3xl border border-[#2b2117]/10 bg-white/70 p-5">
+              <article key={item.title} className={`${styles.guaranteeCard} relative overflow-hidden rounded-3xl border border-[#2b2117]/10 bg-white/70 p-5`}>
                 <span className={styles.guaranteeSeal} aria-hidden="true" {...homeAnimAttr("guaranteeSeal")} />
                 <Icon className="size-6 text-[#2f6b58]" aria-hidden={true} />
                 <h3 className="mt-4 text-lg font-black tracking-tight text-[#2b2117]">{item.title}</h3>

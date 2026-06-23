@@ -43,7 +43,7 @@ export function MembershipTicketSection() {
               const Icon = feature.icon;
 
               return (
-                <article key={feature.title} className="rounded-3xl border border-[#2b2117]/10 bg-white/70 p-5">
+                <article key={feature.title} className={`${styles.membershipFeature} rounded-3xl border border-[#2b2117]/10 bg-white/70 p-5`}>
                   <Icon className="size-6 text-[#b75c32]" aria-hidden={true} />
                   <h3 className="mt-4 text-lg font-black tracking-tight text-[#2b2117]">{feature.title}</h3>
                   <p className="mt-3 text-sm leading-7 text-[#6f604f]">{feature.body}</p>

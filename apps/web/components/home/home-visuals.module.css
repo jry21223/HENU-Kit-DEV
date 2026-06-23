@@ -14,15 +14,21 @@
     0 22px 48px rgb(71 49 27 / 0.16);
   transform: rotate(var(--book-tilt, -2deg));
   transition:
-    transform 220ms ease,
-    box-shadow 220ms ease;
+    filter 260ms ease,
+    transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .courseBook:hover {
-  transform: translateY(-6px) rotate(var(--book-tilt, -2deg));
+  filter: saturate(1.06);
+  transform: translateY(-8px) scale(1.018) rotate(var(--book-tilt, -2deg));
   box-shadow:
     10px 14px 0 rgb(43 33 23 / 0.14),
     0 30px 68px rgb(71 49 27 / 0.2);
+}
+
+.courseBook:active {
+  transform: translateY(-3px) scale(0.992) rotate(var(--book-tilt, -2deg));
 }
 
 .courseBookCompact {
@@ -86,6 +92,21 @@
   padding: 28px 24px;
   box-shadow: 0 24px 54px rgb(71 49 27 / 0.16);
   transform: rotate(var(--note-tilt, 0deg));
+  transition:
+    filter 260ms ease,
+    transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: 50% 72%;
+}
+
+.stickyNote:hover {
+  filter: saturate(1.05);
+  transform: translateY(-10px) scale(1.024) rotate(var(--note-tilt, 0deg));
+  box-shadow: 0 34px 78px rgb(71 49 27 / 0.2);
+}
+
+.stickyNote:active {
+  transform: translateY(-4px) scale(0.995) rotate(var(--note-tilt, 0deg));
 }
 
 .stickyNote::before {
@@ -124,6 +145,21 @@
     #fffaf2;
   background-size: 100% 30px;
   box-shadow: 0 20px 58px rgb(71 49 27 / 0.12);
+  transform: translateZ(0);
+  transition:
+    border-color 260ms ease,
+    transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.paperCard:hover {
+  border-color: rgb(47 107 88 / 0.22);
+  transform: translateY(-8px) scale(1.018);
+  box-shadow: 0 30px 76px rgb(71 49 27 / 0.16);
+}
+
+.paperCard:active {
+  transform: translateY(-3px) scale(0.995);
 }
 
 .practiceMark {
@@ -144,6 +180,21 @@
   border-radius: 28px;
   background: #fff7df;
   box-shadow: 0 22px 64px rgb(71 49 27 / 0.13);
+  transform: translateZ(0);
+  transition:
+    border-color 260ms ease,
+    transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ticket:hover {
+  border-color: rgb(183 92 50 / 0.24);
+  transform: translateY(-8px) scale(1.01);
+  box-shadow: 0 34px 84px rgb(71 49 27 / 0.17);
+}
+
+.ticket:active {
+  transform: translateY(-3px) scale(0.995);
 }
 
 .ticket::before,
@@ -193,6 +244,50 @@
   color: rgb(183 92 50 / 0.62);
 }
 
+.membershipFeature,
+.salesFeature,
+.guaranteeCard {
+  transform: translateZ(0);
+  transition:
+    border-color 260ms ease,
+    background-color 260ms ease,
+    transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.membershipFeature:hover,
+.salesFeature:hover,
+.guaranteeCard:hover {
+  border-color: rgb(47 107 88 / 0.18);
+  background-color: rgb(255 255 255 / 0.86);
+  transform: translateY(-7px) scale(1.016);
+  box-shadow: 0 24px 58px rgb(71 49 27 / 0.12);
+}
+
+.membershipFeature:active,
+.salesFeature:active,
+.guaranteeCard:active {
+  transform: translateY(-2px) scale(0.996);
+}
+
+.salesNote {
+  transform: rotate(-1deg);
+  transition:
+    border-color 260ms ease,
+    transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.salesNote:hover {
+  border-color: rgb(42 109 136 / 0.24);
+  transform: translateY(-8px) scale(1.012) rotate(-1deg);
+  box-shadow: 0 34px 84px rgb(71 49 27 / 0.16);
+}
+
+.salesNote:active {
+  transform: translateY(-3px) scale(0.996) rotate(-1deg);
+}
+
 .guaranteeSeal {
   position: absolute;
   top: 14px;
@@ -210,7 +305,28 @@
 @media (prefers-reduced-motion: reduce) {
   .courseBook,
   .courseBook:hover,
-  .stickyNote {
+  .courseBook:active,
+  .stickyNote,
+  .stickyNote:hover,
+  .stickyNote:active,
+  .paperCard,
+  .paperCard:hover,
+  .paperCard:active,
+  .ticket,
+  .ticket:hover,
+  .ticket:active,
+  .membershipFeature,
+  .membershipFeature:hover,
+  .membershipFeature:active,
+  .salesFeature,
+  .salesFeature:hover,
+  .salesFeature:active,
+  .salesNote,
+  .salesNote:hover,
+  .salesNote:active,
+  .guaranteeCard,
+  .guaranteeCard:hover,
+  .guaranteeCard:active {
     transform: none;
     transition: none;
   }
@@ -256,7 +372,6 @@
   opacity: 1;
 }
 
-.bookStage :global([data-home-anim="archive-open-copy"]),
 .bookStage :global([data-home-anim="archive-closing-copy"]) {
   opacity: 0;
   transform: translateY(18px);
@@ -292,6 +407,9 @@
 .bookBase,
 .bookInside,
 .bookPage,
+.coverFront,
+.bookCoverShadow,
+.bookSpineShadow,
 .pageHighlight,
 .directoryLine,
 .courseBook {
@@ -300,6 +418,38 @@
 
 .bookCover {
   will-change: opacity, transform;
+}
+
+.bookCoverShadow {
+  position: absolute;
+  z-index: 4;
+  inset: 22px auto 22px calc(50% - 18px);
+  width: 122px;
+  opacity: 0;
+  transform: translateX(0) scaleX(0.7);
+  transform-origin: center;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent, rgb(54 32 18 / 0.42) 42%, rgb(255 241 212 / 0.18) 52%, transparent 76%),
+    radial-gradient(ellipse at center, rgb(54 32 18 / 0.2), transparent 68%);
+  filter: blur(13px);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.bookSpineShadow {
+  position: absolute;
+  z-index: 5;
+  inset: 8px auto 8px 50%;
+  width: 36px;
+  opacity: 0;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at center, rgb(58 35 18 / 0.34), rgb(58 35 18 / 0.16) 38%, transparent 72%),
+    linear-gradient(90deg, transparent, rgb(255 243 218 / 0.22), transparent);
+  filter: blur(9px);
+  pointer-events: none;
 }
 
 .bookBase {
@@ -320,6 +470,7 @@
   opacity: 1;
   transform-origin: left center;
   transform: rotateY(0deg);
+  transform-style: preserve-3d;
   border-radius: 30px 36px 36px 30px;
   border: 2px solid rgb(43 33 23 / 0.16);
   background:
@@ -330,8 +481,33 @@
     inset 0 0 0 2px rgb(255 255 255 / 0.18),
     inset 0 -18px 30px rgb(80 50 25 / 0.12),
     0 28px 72px rgb(70 45 22 / 0.26);
-  backface-visibility: hidden;
   pointer-events: none;
+}
+
+.coverFront,
+.coverBack {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  backface-visibility: hidden;
+}
+
+.coverFront {
+  z-index: 2;
+  transform: translateZ(2px);
+}
+
+.coverBack {
+  z-index: 1;
+  transform: rotateY(180deg) translateZ(2px);
+  border: 2px solid rgb(43 33 23 / 0.12);
+  background:
+    radial-gradient(circle at 76% 24%, rgb(255 255 255 / 0.18), transparent 28%),
+    linear-gradient(90deg, rgb(80 50 25 / 0.18), transparent 14%, transparent),
+    linear-gradient(135deg, #ca8f58 0%, #a76d40 100%);
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.12),
+    inset 18px 0 26px rgb(80 50 25 / 0.12);
 }
 
 .bookInside {
@@ -572,9 +748,16 @@
 
   .bookBase,
   .bookInside,
-  .bookPage {
+  .bookPage,
+  .bookCoverShadow,
+  .bookSpineShadow {
     opacity: 1;
     transform: none;
+  }
+
+  .bookCoverShadow,
+  .bookSpineShadow {
+    opacity: 0;
   }
 
   .bookCover {
@@ -582,7 +765,6 @@
     transform: rotateY(-176deg);
   }
 
-  .bookStage :global([data-home-anim="archive-open-copy"]),
   .bookStage :global([data-home-anim="archive-closing-copy"]) {
     opacity: 0;
     transform: none;

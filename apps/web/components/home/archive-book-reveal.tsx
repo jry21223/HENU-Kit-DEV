@@ -16,7 +16,6 @@ export function ArchiveBookReveal() {
   const [clientAnimationReady, setClientAnimationReady] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const [introReady, setIntroReady] = useState(true);
-  const [openCopyReady, setOpenCopyReady] = useState(false);
   const [pageVisible, setPageVisible] = useState(false);
   const [closingCopyVisible, setClosingCopyVisible] = useState(false);
   const readiness = useMemo(
@@ -24,7 +23,6 @@ export function ArchiveBookReveal() {
       setClosingCopyVisible,
       setContentReady,
       setIntroReady,
-      setOpenCopyReady,
       setPageVisible,
     }),
     [],
@@ -86,7 +84,12 @@ export function ArchiveBookReveal() {
   transform: rotateY(-176deg);
 }
 
-.${styles.bookStage} [data-home-anim="archive-open-copy"],
+.${styles.bookStage} .${styles.bookCoverShadow},
+.${styles.bookStage} .${styles.bookSpineShadow} {
+  opacity: 0;
+  transform: none;
+}
+
 .${styles.bookStage} [data-home-anim="archive-closing-copy"] {
   opacity: 0;
   transform: none;
@@ -142,25 +145,6 @@ export function ArchiveBookReveal() {
 
             <div
               className={styles.bookCopyPanel}
-              data-testid="archive-copy-open"
-              {...homeAnimAttr("archiveOpenCopy")}
-              style={{
-                pointerEvents: "none",
-                visibility: clientAnimationReady && !reduceMotion && openCopyReady ? "visible" : "hidden",
-              }}
-              aria-hidden="true"
-            >
-              <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#b75c32]">Archive Map</p>
-              <h2 className="mt-4 text-4xl font-black leading-[1] tracking-tight text-[#2b2117] xl:text-6xl">
-                先把资料夹摆正
-              </h2>
-              <p className="mt-5 max-w-md text-base leading-7 text-[#685b4b]">
-                这一段先不打开，只把竖版资料夹对齐到右侧。继续往下滚，封面才会沿着中缝翻开。
-              </p>
-            </div>
-
-            <div
-              className={styles.bookCopyPanel}
               data-testid="archive-copy-closing"
               {...homeAnimAttr("archiveClosingCopy")}
               style={{
@@ -189,6 +173,16 @@ export function ArchiveBookReveal() {
                 className={styles.bookBase}
                 aria-hidden="true"
                 {...homeAnimAttr("archiveBase")}
+              />
+              <span
+                className={styles.bookSpineShadow}
+                aria-hidden="true"
+                {...homeAnimAttr("archiveSpineShadow")}
+              />
+              <span
+                className={styles.bookCoverShadow}
+                aria-hidden="true"
+                {...homeAnimAttr("archiveCoverShadow")}
               />
               <div className={styles.bookInside} {...homeAnimAttr("archiveInside")}>
                 <div
@@ -249,20 +243,23 @@ export function ArchiveBookReveal() {
                 aria-hidden="true"
                 {...homeAnimAttr("archiveCover")}
               >
-                <div className="flex h-full flex-col justify-between p-7 xl:p-8">
-                  <div>
-                    <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#593a24]/70 xl:text-sm">软件学院</p>
-                    <h2 className="mt-4 max-w-none text-3xl font-black leading-[0.98] tracking-tight text-[#2b2117] xl:text-4xl">
-                      软件学院资料库
-                    </h2>
+                <span className={styles.coverBack} aria-hidden="true" />
+                <div className={styles.coverFront} {...homeAnimAttr("archiveCoverFront")}>
+                  <div className="flex h-full flex-col justify-between p-7 xl:p-8">
+                    <div>
+                      <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#593a24]/70 xl:text-sm">软件学院</p>
+                      <h2 className="mt-4 max-w-none text-3xl font-black leading-[0.98] tracking-tight text-[#2b2117] xl:text-4xl">
+                        软件学院资料库
+                      </h2>
+                    </div>
+                    <p className="max-w-xs text-sm leading-6 text-[#593a24]/76">
+                      课程资料、真题、刷题、共创和资料保障，从这一册开始展开。
+                    </p>
                   </div>
-                  <p className="max-w-xs text-sm leading-6 text-[#593a24]/76">
-                    课程资料、真题、刷题、共创和资料保障，从这一册开始展开。
-                  </p>
+                  <span className={styles.coverLabel} aria-hidden="true">
+                    A4 ARCHIVE
+                  </span>
                 </div>
-                <span className={styles.coverLabel} aria-hidden="true">
-                  A4 ARCHIVE
-                </span>
               </div>
               <div className={styles.bookSpine} data-testid="archive-seam" aria-hidden="true" {...homeAnimAttr("archiveSpine")} />
               <div className={styles.bookPencil} aria-hidden="true">

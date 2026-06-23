@@ -24,7 +24,7 @@ export function SalesAssistantNote() {
       className="mx-auto w-[min(900px,calc(100%-32px))] py-12"
     >
       <div
-        className={`${styles.salesNote} rotate-[-1deg] rounded-[2rem] border border-[#2b2117]/12 bg-[#d8f1ff] p-6 shadow-[0_22px_64px_rgba(71,49,27,0.12)] md:p-8`}
+        className={`${styles.salesNote} rounded-[2rem] border border-[#2b2117]/12 bg-[#d8f1ff] p-6 shadow-[0_22px_64px_rgba(71,49,27,0.12)] md:p-8`}
         {...homeAnimAttr("salesNote")}
       >
         <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#2a6d88]">LangBot</p>
@@ -40,7 +40,7 @@ export function SalesAssistantNote() {
             const Icon = feature.icon;
 
             return (
-              <article key={feature.title} className="rounded-2xl bg-white/72 p-4">
+              <article key={feature.title} className={`${styles.salesFeature} rounded-2xl border border-transparent bg-white/72 p-4`}>
                 <Icon className="size-5 text-[#2a6d88]" aria-hidden={true} />
                 <h3 className="mt-3 text-lg font-black text-[#2b2117]">{feature.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-[#5b4f44]">{feature.body}</p>
