@@ -9,6 +9,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
 - `/downloads`: successful material download audit logs.
 - `/material-reviews`: reviewer/admin material approve/reject review queue with review notes.
+- `/wiki-reviews`: reviewer/admin wiki entry approve/reject review queue with review notes.
 - `/blog-reviews`: reviewer/admin blog post approve/reject review queue with review notes.
 - `/ai/drafts`: AI task visibility and AI draft approve/reject review operations with review notes.
 - `/analytics`: read-only material download and course demand analytics.
@@ -129,6 +130,27 @@ Important boundaries:
 - Only `draft`, `pending`, and `needs_changes` posts can be reviewed; repeating review on published/rejected posts returns `409 post_not_reviewable`.
 - Blog approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
 
+## Wiki Review
+
+`/wiki-reviews` calls:
+
+- `GET /api/v1/admin/wiki/entries?status=`
+- `POST /api/v1/admin/wiki/entries/:id/approve`
+- `POST /api/v1/admin/wiki/entries/:id/reject`
+
+The page is available to `reviewer`, `admin`, and `super_admin` roles. It lists creator-submitted wiki entries by review status and does not provide edit/delete controls.
+
+Important boundaries:
+
+- Creator/admin users submit wiki entries through `POST /api/v1/wiki/entries`; entries always enter `pending`.
+- Public wiki list/detail endpoints only expose `published` entries with `visibility=public`.
+- Public wiki responses use a public DTO and do not expose review metadata.
+- Approving an entry sets it to `published`, records reviewer metadata, and makes it visible through public wiki endpoints.
+- Rejecting an entry requires `reviewReason`, records reviewer metadata, and keeps it hidden from public wiki endpoints.
+- Only `draft`, `pending`, and `needs_changes` entries can be reviewed; repeating review on published/rejected entries returns `409 entry_not_reviewable`.
+- The initial submission writes a `wiki_edit_histories` version-1 row, but reviewable edit proposals for already-published entries remain later work.
+- Wiki approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+
 ## AI Draft Review
 
 `/ai/drafts` calls:
@@ -143,7 +165,7 @@ The page shows recent AI tasks and reviewable AI drafts created by the worker.
 Important boundaries:
 
 - AI review endpoints require an authenticated `reviewer`, `admin`, or `super_admin` role.
-- `reviewer` users can access `/ai/drafts`, `/material-reviews`, and `/blog-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
+- `reviewer` users can access `/ai/drafts`, `/material-reviews`, `/wiki-reviews`, and `/blog-reviews`, but they cannot access course, material CRUD, download, analytics, operation logs, or other admin-only pages.
 - Approving a draft can include an optional review note; rejecting a draft requires a review reason.
 - Approving or rejecting a draft only changes the draft review status and review metadata.
 - Only `draft`, `pending`, and `needs_changes` drafts can be reviewed; repeating review on `approved` or `rejected` drafts returns `409 draft_not_reviewable`.
@@ -160,7 +182,7 @@ Important boundaries:
 - `GET /api/v1/admin/operation-logs/export`
 - `GET /api/v1/admin/operation-logs/retention`
 
-The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, blog review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki review, blog review, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
 Filters:
 

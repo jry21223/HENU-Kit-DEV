@@ -22,6 +22,7 @@ import (
 	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/internal/packagecatalog"
 	"final-review-platform/services/api/internal/quiz"
+	"final-review-platform/services/api/internal/wiki"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/middleware"
 	"final-review-platform/services/api/pkg/response"
@@ -59,6 +60,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	entitlementHandler := entitlement.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
+	wikiHandler := wiki.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
 	analyticsHandler := analytics.NewHandler(db)
@@ -97,6 +99,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/blog/posts", blogHandler.ListPublished)
 	v1.GET("/blog/posts/:id", blogHandler.Detail)
 	v1.POST("/blog/posts", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), blogHandler.Create)
+	v1.GET("/wiki/entries", wikiHandler.ListPublished)
+	v1.GET("/wiki/entries/:id", wikiHandler.Detail)
+	v1.POST("/wiki/entries", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.Create)
 	v1.POST("/quiz/attempts", authMiddleware.RequireAuth(), quizHandler.CreateAttempt)
 	v1.GET("/me/quiz-attempts", authMiddleware.RequireAuth(), quizHandler.MyAttempts)
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
@@ -149,6 +154,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	review.GET("/blog/posts", blogHandler.AdminPosts)
 	review.POST("/blog/posts/:id/approve", blogHandler.ApprovePost)
 	review.POST("/blog/posts/:id/reject", blogHandler.RejectPost)
+	review.GET("/wiki/entries", wikiHandler.AdminEntries)
+	review.POST("/wiki/entries/:id/approve", wikiHandler.ApproveEntry)
+	review.POST("/wiki/entries/:id/reject", wikiHandler.RejectEntry)
 
 	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"ok": true})

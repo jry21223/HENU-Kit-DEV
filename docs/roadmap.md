@@ -27,6 +27,7 @@
 - Vue admin download audit page
 - Vue admin AI task visibility and draft approve/reject page with reviewer-role access, review notes, and one-way review state checks
 - Vue admin material review queue with reviewer-role access, approve/reject actions, review notes, and one-way pending review checks
+- Vue admin wiki review queue with reviewer-role access, approve/reject actions, review notes, public-only published wiki APIs, and initial edit-history capture
 - Vue admin blog review queue with reviewer-role access, approve/reject actions, review notes, and public-only published blog APIs
 - Vue admin read-only analytics page for download trend and course demand
 - Vue admin read-only operation-log browser for high-risk admin mutations
@@ -42,7 +43,7 @@
 
 ## Next Deliverable
 
-- Richer content review workflows for wiki/forum submissions
+- Richer content review workflows for forum submissions and wiki edit proposals
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
@@ -50,7 +51,7 @@
 
 - AI Worker flows
 - Points and membership
-- Wiki creator workflow
+- Wiki creator workflow and approved-entry revision proposals
 - Blog, moments, forum
 - Notifications, reports, leaderboards
 - Production deployment and monitoring

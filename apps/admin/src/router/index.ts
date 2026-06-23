@@ -11,6 +11,7 @@ import LoginView from "../views/LoginView.vue";
 import MaterialReviewsView from "../views/MaterialReviewsView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
 import OperationLogsView from "../views/OperationLogsView.vue";
+import WikiReviewsView from "../views/WikiReviewsView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -23,6 +24,7 @@ export const router = createRouter({
     { path: "/downloads", component: DownloadsView },
     { path: "/operation-logs", component: OperationLogsView },
     { path: "/material-reviews", component: MaterialReviewsView, meta: { reviewer: true } },
+    { path: "/wiki-reviews", component: WikiReviewsView, meta: { reviewer: true } },
     { path: "/blog-reviews", component: BlogReviewsView, meta: { reviewer: true } },
     { path: "/ai/drafts", component: AiDraftsView, meta: { reviewer: true } },
     { path: "/analytics", component: AnalyticsView },

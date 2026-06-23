@@ -46,6 +46,7 @@
             <el-option label="college" value="college" />
             <el-option label="major" value="major" />
             <el-option label="ai_draft" value="ai_draft" />
+            <el-option label="wiki_entry" value="wiki_entry" />
             <el-option label="blog_post" value="blog_post" />
           </el-select>
         </el-form-item>

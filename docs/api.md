@@ -31,6 +31,9 @@ Currently implemented endpoints:
 - `GET /api/v1/blog/posts?limit=`
 - `GET /api/v1/blog/posts/:id`
 - `POST /api/v1/blog/posts`
+- `GET /api/v1/wiki/entries?courseId=&limit=`
+- `GET /api/v1/wiki/entries/:id`
+- `POST /api/v1/wiki/entries`
 - `POST /api/v1/quiz/attempts`
 - `GET /api/v1/me/quiz-attempts`
 - `GET /api/v1/me/wrong-questions`
@@ -67,9 +70,12 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/ai/drafts`
 - `POST /api/v1/admin/ai/drafts/:id/approve`
 - `POST /api/v1/admin/ai/drafts/:id/reject`
-- `GET /api/v1/admin/blog/posts?status=pending|published|rejected&authorId=&limit=`
+- `GET /api/v1/admin/blog/posts?status=draft|pending|needs_changes|published|rejected&authorId=&limit=`
 - `POST /api/v1/admin/blog/posts/:id/approve`
 - `POST /api/v1/admin/blog/posts/:id/reject`
+- `GET /api/v1/admin/wiki/entries?status=draft|pending|needs_changes|published|rejected&authorId=&courseId=&limit=`
+- `POST /api/v1/admin/wiki/entries/:id/approve`
+- `POST /api/v1/admin/wiki/entries/:id/reject`
 - `GET /api/v1/admin/analytics/overview`
 - `GET /api/v1/admin/operation-logs?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
 - `GET /api/v1/admin/operation-logs/export?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
@@ -95,7 +101,7 @@ Error envelope:
 }
 ```
 
-Later stages add full organization, course, material, quiz, AI, points, membership, wiki, social, notification, report, and admin APIs.
+Later stages add points, membership, richer wiki version proposals, social, notification, report, and expanded admin APIs.
 
 Implemented authentication behavior:
 
@@ -151,10 +157,24 @@ Implemented blog behavior:
 - rejecting a blog post sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public endpoints
 - blog review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected posts return HTTP 409 with `post_not_reviewable`
 
+Implemented wiki behavior:
+
+- public wiki list/detail endpoints only return `published` and `visibility=public` entries
+- public wiki endpoints use a public DTO and do not expose `reviewerId` or `reviewReason`
+- wiki entries bound to an unpublished course are hidden from public wiki endpoints
+- creator/admin users can submit wiki entries; submissions always enter `pending`
+- wiki submission validates required title, lowercase URL slug, content length, and optional published course binding
+- the initial wiki submission creates a `wiki_edit_histories` version-1 row in the same transaction
+- reviewer/admin users can list draft/pending/needs_changes/published/rejected wiki entries through `/admin/wiki/entries`
+- approving a wiki entry sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
+- rejecting a wiki entry sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public endpoints
+- wiki review is only allowed from `draft`, `pending`, or `needs_changes`; already published/rejected entries return HTTP 409 with `entry_not_reviewable`
+- this MVP does not yet implement pending edit proposals for already-published wiki entries; direct edits to live published wiki content remain later work
+
 Implemented admin behavior:
 
 - all admin endpoints require an authenticated `admin` or `super_admin` role
-- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, and `/api/v1/admin/blog/posts*` allow `reviewer`, `admin`, or `super_admin`
+- review endpoints under `/api/v1/admin/ai/*`, `/api/v1/admin/material-reviews`, `/api/v1/admin/materials/:id/approve|reject`, `/api/v1/admin/wiki/entries*`, and `/api/v1/admin/blog/posts*` allow `reviewer`, `admin`, or `super_admin`
 - `reviewer` users remain blocked from material CRUD, course CRUD, download audit, analytics, operation logs, and other admin-only APIs
 - organization/course/material delete operations archive by setting `status=archived`
 - admin course list returns all course statuses; public course list/detail returns only `published`
