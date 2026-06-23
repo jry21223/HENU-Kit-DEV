@@ -24,7 +24,7 @@ const tilt: Record<CourseBook["tone"], string> = {
 };
 
 export function PdfCourseBook({
-  animationMarked,
+  animationMarked = false,
   compact = false,
   course,
   tabIndex,
@@ -34,25 +34,23 @@ export function PdfCourseBook({
   course: CourseBook;
   tabIndex?: number;
 }) {
-  const shouldMarkAnimation = animationMarked ?? compact;
-
   return (
     <Link
       className={`${styles.courseBook} ${compact ? styles.courseBookCompact : ""} ${toneClass[course.tone]}`}
       href={course.href}
       style={{ "--book-tilt": tilt[course.tone] } as CSSProperties}
       tabIndex={tabIndex}
-      {...(shouldMarkAnimation ? homeAnimAttr("courseBook") : {})}
+      {...(animationMarked ? homeAnimAttr("courseBook") : {})}
     >
       <span
         className={styles.courseBookSpine}
         aria-hidden="true"
-        {...(shouldMarkAnimation ? homeAnimAttr("courseBookSpine") : {})}
+        {...(animationMarked ? homeAnimAttr("courseBookSpine") : {})}
       />
       <span
         className={styles.courseBookGloss}
         aria-hidden="true"
-        {...(shouldMarkAnimation ? homeAnimAttr("courseBookGloss") : {})}
+        {...(animationMarked ? homeAnimAttr("courseBookGloss") : {})}
       />
       <span className="relative z-10 flex items-center justify-between gap-3 font-mono text-xs font-semibold text-[#2b2117]/78">
         <span>{course.code}</span>

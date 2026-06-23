@@ -221,7 +221,7 @@ export function ArchiveBookReveal() {
                   <h2 className="mt-2 text-2xl font-black tracking-tight text-[#2b2117] xl:text-3xl">课程入口</h2>
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     {courseBooks.map((course) => (
-                      <PdfCourseBook key={course.label} compact course={course} tabIndex={contentTabIndex} />
+                      <PdfCourseBook key={course.label} animationMarked compact course={course} tabIndex={contentTabIndex} />
                     ))}
                   </div>
                 </motion.div>
