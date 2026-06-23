@@ -165,6 +165,15 @@ func (h Handler) reviewDraft(ctx *gin.Context, status string) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_required", nil)
 		return
 	}
+	var draft model.AIDraft
+	if err := h.db.First(&draft, "id = ?", ctx.Param("id")).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "draft_not_found", nil)
+		return
+	}
+	if !isReviewableDraftStatus(draft.Status) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "draft_not_reviewable", gin.H{"status": draft.Status})
+		return
+	}
 	result := h.db.Model(&model.AIDraft{}).Where("id = ?", ctx.Param("id")).Updates(map[string]interface{}{
 		"status":        status,
 		"reviewer_id":   user.ID,
@@ -180,6 +189,15 @@ func (h Handler) reviewDraft(ctx *gin.Context, status string) {
 		return
 	}
 	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
+}
+
+func isReviewableDraftStatus(status string) bool {
+	switch status {
+	case model.StatusDraft, model.StatusPending, model.StatusNeedsChanges:
+		return true
+	default:
+		return false
+	}
 }
 
 func (h Handler) enqueue(ctx context.Context, task model.AITask) bool {

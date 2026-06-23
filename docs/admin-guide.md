@@ -103,6 +103,7 @@ Important boundaries:
 - `reviewer` users can access `/ai/drafts`, but they cannot access course, material, download, analytics, or other admin-only pages.
 - Approving a draft can include an optional review note; rejecting a draft requires a review reason.
 - Approving or rejecting a draft only changes the draft review status and review metadata.
+- Only `draft`, `pending`, and `needs_changes` drafts can be reviewed; repeating review on `approved` or `rejected` drafts returns `409 draft_not_reviewable`.
 - The MVP does not automatically publish AI drafts as materials, questions, wiki entries, or papers.
 - The UI displays task input/result and draft content for review, but it does not call any LLM directly.
 - Real LLM/RAG and publish-to-resource flows remain later work.

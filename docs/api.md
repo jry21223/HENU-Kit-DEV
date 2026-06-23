@@ -152,4 +152,5 @@ Implemented AI behavior:
 - worker mock mode turns pending tasks into pending AI drafts
 - approving a draft accepts optional `reviewReason`, marks the draft reviewed, and does not publish generated content automatically
 - rejecting a draft requires `reviewReason`, marks the draft rejected, and does not delete the source task or generated content
+- AI draft review is only allowed from `draft`, `pending`, or `needs_changes`; already reviewed drafts return HTTP 409 with `draft_not_reviewable`
 - the Vue admin `/ai/drafts` page is a UI wrapper over these reviewer-capable AI review endpoints

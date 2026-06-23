@@ -145,6 +145,17 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 	if approved.PublishedID != nil || approved.Status == model.StatusPublished {
 		t.Fatalf("AI draft review must not auto-publish generated content: %#v", approved)
 	}
+	reviewApprovedAgain := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+draft.ID+"/reject", `{"reviewReason":"overwrite attempt"}`, adminToken)
+	if reviewApprovedAgain.Code != http.StatusConflict || !strings.Contains(reviewApprovedAgain.Body.String(), "draft_not_reviewable") {
+		t.Fatalf("expected approved draft repeat review 409, got %d: %s", reviewApprovedAgain.Code, reviewApprovedAgain.Body.String())
+	}
+	var stillApproved model.AIDraft
+	if err := db.First(&stillApproved, "id = ?", draft.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stillApproved.Status != model.StatusApproved || stillApproved.ReviewReason != "checked ok" || stillApproved.ReviewerID == nil || *stillApproved.ReviewerID != reviewer.ID {
+		t.Fatalf("repeat review mutated approved draft: %#v", stillApproved)
+	}
 
 	secondDraft := model.AIDraft{
 		TaskID:       task.ID,
@@ -170,5 +181,16 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 	}
 	if rejected.ReviewReason != "answer is incomplete" {
 		t.Fatalf("expected reject reason to persist, got %q", rejected.ReviewReason)
+	}
+	reviewRejectedAgain := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+secondDraft.ID+"/approve", `{"reviewReason":"second attempt"}`, reviewerToken)
+	if reviewRejectedAgain.Code != http.StatusConflict || !strings.Contains(reviewRejectedAgain.Body.String(), "draft_not_reviewable") {
+		t.Fatalf("expected rejected draft repeat review 409, got %d: %s", reviewRejectedAgain.Code, reviewRejectedAgain.Body.String())
+	}
+	var stillRejected model.AIDraft
+	if err := db.First(&stillRejected, "id = ?", secondDraft.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stillRejected.Status != model.StatusRejected || stillRejected.ReviewReason != "answer is incomplete" {
+		t.Fatalf("repeat review mutated rejected draft: %#v", stillRejected)
 	}
 }

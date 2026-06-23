@@ -20,4 +20,5 @@ Rules:
 - Mock LLM output is for local workflow testing only.
 - Admin or reviewer approval is required before generated content can become official product content.
 - Approval can include an optional note; rejection requires a review reason for traceability.
+- Review transitions are one-way for the MVP: only `draft`, `pending`, and `needs_changes` drafts can be reviewed, and terminal review records cannot be overwritten by repeat API calls.
 - The current approve/reject endpoints do not publish drafts into official resources. Publish-to-resource flows are a later implementation step.

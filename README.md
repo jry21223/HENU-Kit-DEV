@@ -165,5 +165,6 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
 - Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.
 - Admin analytics are based on successful server-side download logs; denied download attempts, page visits, search intent, and payment conversion are not included yet.
-- AI draft review does not publish generated content automatically; real publish-to-resource flows remain later work.
+- AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
+- Real AI publish-to-resource flows remain later work.
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.

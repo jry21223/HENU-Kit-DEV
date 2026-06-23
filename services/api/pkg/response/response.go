@@ -19,6 +19,7 @@ const (
 	CodeUnauthorized   = 40001
 	CodeForbidden      = 40003
 	CodeNotFound       = 40004
+	CodeConflict       = 40009
 	CodeInternalServer = 50000
 )
 
