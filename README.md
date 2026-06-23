@@ -105,6 +105,7 @@ cd ../worker && go test ./...
 - 课程包授权解锁包内 paid 资料。
 - 后台课程包 CRUD、包内资料绑定/解绑、重复绑定保护，以及公开课程包详情不泄露未发布资料 item。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建不发放权益的 pending 课程包订单。Vue Admin `/orders` 可以只读查询订单状态，不能标记支付成功或发放权益。
+- Web `/wiki` and `/wiki/[id]` expose only published public Wiki entries through the Go API; draft, pending, rejected, and private review metadata stay hidden.
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。

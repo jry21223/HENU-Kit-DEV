@@ -242,6 +242,22 @@ export type ForumReply = {
   updatedAt: string;
 };
 
+export type WikiEntry = {
+  id: string;
+  authorId: string;
+  courseId?: string;
+  title: string;
+  slug: string;
+  content: string;
+  version: number;
+  visibility: string;
+  likeCount: number;
+  commentCount: number;
+  collectCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type MyForumPost = {
   id: string;
   boardId: string;
