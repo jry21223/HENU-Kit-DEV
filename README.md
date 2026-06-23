@@ -108,7 +108,7 @@ cd ../worker && go test ./...
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
 - `/me/notifications` 用户隔离、已读幂等、全部已读，以及论坛、资料、Wiki、博客、AI 草稿审核通知生成。
-- 举报 API 支持登录用户提交公开内容/用户举报、reviewer/admin 处理举报、处理结果通知举报人。
+- 举报 API 和 Vue Admin `/reports` 支持登录用户提交公开内容/用户举报、reviewer/admin 处理举报、处理结果通知举报人。
 - 不安全 storage key 返回 404。
 - admin-only 组织/课程/资料变更。
 - 上传文件名、后缀、内容和大小限制。
@@ -189,7 +189,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - User notifications are available through `GET /api/v1/me/notifications`, `POST /api/v1/me/notifications/:id/read`, `POST /api/v1/me/notifications/read-all`, and Web `/me/notifications`; users only see/read their own notifications.
 - Forum post/reply review creates a `forum_review` notification for the author in the same transaction as the review update and operation log.
 - Material, wiki entry/proposal, blog post, and AI draft review creates a `content_review` notification for the original author/editor/task owner in the same transaction as the review update and operation log.
-- Basic report APIs are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
+- Basic report APIs and Vue Admin `/reports` are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
 - Payment and membership notifications remain later work.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
 - Go API writes server-side `operation_logs` for organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.

@@ -128,7 +128,7 @@ Error envelope:
 }
 ```
 
-Later stages add membership, richer wiki conflict resolution, report, expanded admin APIs, and more notification sources.
+Later stages add membership, richer wiki conflict resolution, expanded admin APIs, and more notification sources.
 
 Implemented authentication behavior:
 

@@ -20,6 +20,7 @@
         <RouterLink v-if="auth.canReviewContent" to="/forum-reviews">{{ copy.forumReviews }}</RouterLink>
         <RouterLink v-if="auth.canReviewContent" to="/forum-reply-reviews">{{ copy.forumReplyReviews }}</RouterLink>
         <RouterLink v-if="auth.canReviewAI" to="/ai/drafts">{{ copy.aiDrafts }}</RouterLink>
+        <RouterLink v-if="auth.canReviewContent" to="/reports">{{ copy.reports }}</RouterLink>
         <span v-if="auth.isAdmin" class="disabled-nav" aria-disabled="true">{{ copy.community }}</span>
       </nav>
       <div class="sidebar-footer">
@@ -55,6 +56,7 @@ const copy = {
   forumReviews: "\u5e16\u5b50\u5ba1\u6838",
   forumReplyReviews: "\u56de\u590d\u5ba1\u6838",
   aiDrafts: "AI \u8349\u7a3f",
+  reports: "\u4e3e\u62a5\u5904\u7406",
   community: "\u8bfe\u7a0b\u793e\u533a",
   logout: "\u9000\u51fa",
 };

@@ -13,6 +13,7 @@ import LoginView from "../views/LoginView.vue";
 import MaterialReviewsView from "../views/MaterialReviewsView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
 import OperationLogsView from "../views/OperationLogsView.vue";
+import ReportsView from "../views/ReportsView.vue";
 import WikiProposalReviewsView from "../views/WikiProposalReviewsView.vue";
 import WikiReviewsView from "../views/WikiReviewsView.vue";
 
@@ -33,6 +34,7 @@ export const router = createRouter({
     { path: "/forum-reviews", component: ForumReviewsView, meta: { reviewer: true } },
     { path: "/forum-reply-reviews", component: ForumReplyReviewsView, meta: { reviewer: true } },
     { path: "/ai/drafts", component: AiDraftsView, meta: { reviewer: true } },
+    { path: "/reports", component: ReportsView, meta: { reviewer: true } },
     { path: "/analytics", component: AnalyticsView },
   ],
 });

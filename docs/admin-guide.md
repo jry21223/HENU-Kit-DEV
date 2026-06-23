@@ -291,12 +291,29 @@ Important boundaries:
 - The page is read-only and does not grant access, mutate material status, or expose `storage_key`.
 - This MVP analytics view does not yet include page visits, search intent, payment conversion, or course request voting.
 
+## Reports
+
+`/reports` calls `GET /api/v1/admin/reports` and requires an authenticated `reviewer`, `admin`, or `super_admin` role.
+
+The page supports:
+
+- filtering reports by status and target type
+- listing reporter id, target id/type, report reason, and processing record
+- resolving pending reports through `POST /api/v1/admin/reports/:id/resolve`
+- rejecting pending reports through `POST /api/v1/admin/reports/:id/reject`
+
+Important boundaries:
+
+- Rejection requires a review reason.
+- Already handled reports cannot be overwritten from the UI because the server returns `409 report_not_reviewable`.
+- Report handling writes operation logs and sends reporter notifications server-side.
+- The page does not expose hidden target content or make moderation decisions without the reviewer action.
+
 ## Planned Areas
 
 - Users and roles
 - Richer content review
 - Points and memberships
 - Orders
-- Reports UI; the Go API already supports reviewer/admin report listing and resolve/reject actions
 - System config
 - Automatic operation-log retention cleanup after a production-safe archival flow exists

@@ -219,6 +219,21 @@ export type ForumReply = {
   updatedAt: string;
 };
 
+export type Report = {
+  id: string;
+  reporterId: string;
+  targetType: string;
+  targetId: string;
+  reason: string;
+  description: string;
+  status: string;
+  reviewerId?: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AnalyticsOverview = {
   totals: {
     users: number;

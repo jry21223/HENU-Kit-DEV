@@ -51,6 +51,7 @@
             <el-option label="blog_post" value="blog_post" />
             <el-option label="forum_post" value="forum_post" />
             <el-option label="forum_reply" value="forum_reply" />
+            <el-option label="report" value="report" />
           </el-select>
         </el-form-item>
         <el-form-item :label="copy.targetId">
