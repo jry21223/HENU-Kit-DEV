@@ -8,7 +8,7 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
 - `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
 - `/downloads`: successful material download audit logs.
-- `/ai/drafts`: AI task visibility and AI draft approve/reject review operations.
+- `/ai/drafts`: AI task visibility and AI draft approve/reject review operations with review notes.
 - `/analytics`: read-only material download and course demand analytics.
 
 ## Course Operations
@@ -97,10 +97,11 @@ Important boundaries:
 
 - AI review endpoints require an authenticated `reviewer`, `admin`, or `super_admin` role.
 - `reviewer` users can access `/ai/drafts`, but they cannot access course, material, download, analytics, or other admin-only pages.
-- Approving or rejecting a draft only changes the draft review status.
+- Approving a draft can include an optional review note; rejecting a draft requires a review reason.
+- Approving or rejecting a draft only changes the draft review status and review metadata.
 - The MVP does not automatically publish AI drafts as materials, questions, wiki entries, or papers.
 - The UI displays task input/result and draft content for review, but it does not call any LLM directly.
-- Real LLM/RAG, reviewer comments, and publish-to-resource flows remain later work.
+- Real LLM/RAG and publish-to-resource flows remain later work.
 
 ## Analytics
 

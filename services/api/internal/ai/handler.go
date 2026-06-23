@@ -2,6 +2,8 @@ package ai
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -40,6 +42,10 @@ type createTaskRequest struct {
 	CourseID string         `json:"courseId"`
 	Type     string         `json:"type"`
 	Input    datatypes.JSON `json:"input"`
+}
+
+type reviewDraftRequest struct {
+	ReviewReason string `json:"reviewReason"`
 }
 
 func (h Handler) CreateTask(ctx *gin.Context) {
@@ -143,10 +149,27 @@ func (h Handler) reviewDraft(ctx *gin.Context, status string) {
 		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
 		return
 	}
+	var req reviewDraftRequest
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+			return
+		}
+	}
+	reason := strings.TrimSpace(req.ReviewReason)
+	if len(reason) > 1000 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_too_long", nil)
+		return
+	}
+	if status == model.StatusRejected && reason == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_required", nil)
+		return
+	}
 	result := h.db.Model(&model.AIDraft{}).Where("id = ?", ctx.Param("id")).Updates(map[string]interface{}{
-		"status":      status,
-		"reviewer_id": user.ID,
-		"reviewed_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		"status":        status,
+		"reviewer_id":   user.ID,
+		"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+		"review_reason": reason,
 	})
 	if result.Error != nil {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "review_failed", nil)
@@ -156,7 +179,7 @@ func (h Handler) reviewDraft(ctx *gin.Context, status string) {
 		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "draft_not_found", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"reviewed": true, "status": status})
+	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
 }
 
 func (h Handler) enqueue(ctx context.Context, task model.AITask) bool {

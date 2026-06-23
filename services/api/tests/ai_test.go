@@ -125,7 +125,7 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 		t.Fatalf("expected admin AI draft list, got %d: %s", adminList.Code, adminList.Body.String())
 	}
 
-	approve := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+draft.ID+"/approve", "", reviewerToken)
+	approve := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+draft.ID+"/approve", `{"reviewReason":"checked ok"}`, reviewerToken)
 	if approve.Code != http.StatusOK || !strings.Contains(approve.Body.String(), model.StatusApproved) {
 		t.Fatalf("expected reviewer draft approve 200, got %d: %s", approve.Code, approve.Body.String())
 	}
@@ -138,6 +138,9 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 	}
 	if approved.ReviewerID == nil || *approved.ReviewerID != reviewer.ID {
 		t.Fatalf("expected reviewer id %s, got %#v", reviewer.ID, approved.ReviewerID)
+	}
+	if approved.ReviewReason != "checked ok" {
+		t.Fatalf("expected review reason to persist, got %q", approved.ReviewReason)
 	}
 	if approved.PublishedID != nil || approved.Status == model.StatusPublished {
 		t.Fatalf("AI draft review must not auto-publish generated content: %#v", approved)
@@ -153,8 +156,19 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 	if err := db.Create(&secondDraft).Error; err != nil {
 		t.Fatal(err)
 	}
-	reject := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+secondDraft.ID+"/reject", "", adminToken)
+	rejectWithoutReason := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+secondDraft.ID+"/reject", "", adminToken)
+	if rejectWithoutReason.Code != http.StatusBadRequest || !strings.Contains(rejectWithoutReason.Body.String(), "review_reason_required") {
+		t.Fatalf("expected reject without reason 400, got %d: %s", rejectWithoutReason.Code, rejectWithoutReason.Body.String())
+	}
+	reject := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+secondDraft.ID+"/reject", `{"reviewReason":"answer is incomplete"}`, adminToken)
 	if reject.Code != http.StatusOK || !strings.Contains(reject.Body.String(), model.StatusRejected) {
 		t.Fatalf("expected admin draft reject 200, got %d: %s", reject.Code, reject.Body.String())
+	}
+	var rejected model.AIDraft
+	if err := db.First(&rejected, "id = ?", secondDraft.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rejected.ReviewReason != "answer is incomplete" {
+		t.Fatalf("expected reject reason to persist, got %q", rejected.ReviewReason)
 	}
 }

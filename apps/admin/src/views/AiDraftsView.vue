@@ -43,6 +43,7 @@
             <span v-if="row.reviewedAt">{{ formatDate(row.reviewedAt) }}</span>
             <span v-else class="muted">{{ copy.notReviewed }}</span>
             <p v-if="row.reviewerId" class="cell-muted">{{ row.reviewerId }}</p>
+            <p v-if="row.reviewReason" class="cell-muted">{{ copy.reason }}: {{ row.reviewReason }}</p>
           </template>
         </el-table-column>
         <el-table-column :label="copy.actions" min-width="190" fixed="right">
@@ -54,7 +55,7 @@
                 plain
                 :disabled="!canReview(row.status)"
                 :loading="reviewingId === row.id"
-                @click="reviewDraft(row.id, 'approve')"
+                @click="openReviewDialog(row, 'approve')"
               >
                 {{ copy.approve }}
               </el-button>
@@ -64,7 +65,7 @@
                 plain
                 :disabled="!canReview(row.status)"
                 :loading="reviewingId === row.id"
-                @click="reviewDraft(row.id, 'reject')"
+                @click="openReviewDialog(row, 'reject')"
               >
                 {{ copy.reject }}
               </el-button>
@@ -73,6 +74,32 @@
         </el-table-column>
       </el-table>
     </el-card>
+
+    <el-dialog v-model="reviewDialogVisible" :title="reviewDialogTitle" width="min(520px, 92vw)">
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item :label="copy.reviewReason">
+          <el-input
+            v-model="reviewReason"
+            type="textarea"
+            :rows="4"
+            maxlength="1000"
+            show-word-limit
+            :placeholder="reviewAction === 'reject' ? copy.rejectReasonPlaceholder : copy.approveReasonPlaceholder"
+          />
+        </el-form-item>
+        <p class="cell-muted">{{ reviewAction === "reject" ? copy.rejectReasonRequired : copy.approveReasonOptional }}</p>
+      </el-form>
+      <template #footer>
+        <el-button @click="reviewDialogVisible = false">{{ copy.cancel }}</el-button>
+        <el-button
+          :type="reviewAction === 'approve' ? 'success' : 'danger'"
+          :loading="Boolean(reviewingId)"
+          @click="submitReview"
+        >
+          {{ reviewAction === "approve" ? copy.approve : copy.reject }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-card class="section-card" shadow="never">
       <template #header>
@@ -131,9 +158,17 @@ const copy = {
   status: "\u72b6\u6001",
   content: "\u5185\u5bb9\u9884\u89c8",
   review: "\u5ba1\u6838\u8bb0\u5f55",
+  reason: "\u610f\u89c1",
   actions: "\u64cd\u4f5c",
   approve: "\u901a\u8fc7",
   reject: "\u9a73\u56de",
+  cancel: "\u53d6\u6d88",
+  reviewReason: "\u5ba1\u6838\u610f\u89c1",
+  approveReasonOptional: "\u901a\u8fc7\u53ef\u586b\u5199\u5907\u6ce8\uff0c\u4f8b\u5982\u4fdd\u7559\u9700\u540e\u7eed\u53d1\u5e03\u5230\u54ea\u7c7b\u6b63\u5f0f\u8d44\u6e90\u3002",
+  rejectReasonRequired: "\u9a73\u56de\u5fc5\u987b\u5199\u660e\u539f\u56e0\uff0c\u65b9\u4fbf\u540e\u7eed\u8ffd\u6eaf\u548c\u4fee\u6539\u3002",
+  approveReasonPlaceholder: "\u53ef\u9009\uff1a\u5199\u4e0b\u5ba1\u6838\u5907\u6ce8",
+  rejectReasonPlaceholder: "\u5fc5\u586b\uff1a\u8bf4\u660e\u9a73\u56de\u539f\u56e0",
+  reviewReasonRequired: "\u8bf7\u586b\u5199\u9a73\u56de\u539f\u56e0\u3002",
   notReviewed: "\u672a\u5ba1\u6838",
   tasks: "\u4efb\u52a1\u6d41\u6c34",
   owner: "\u6240\u6709\u8005",
@@ -154,6 +189,10 @@ const tasks = ref<AITask[]>([]);
 const drafts = ref<AIDraft[]>([]);
 const loading = ref(false);
 const reviewingId = ref("");
+const reviewDialogVisible = ref(false);
+const reviewAction = ref<"approve" | "reject">("approve");
+const reviewTargetId = ref("");
+const reviewReason = ref("");
 const message = ref("");
 const error = ref("");
 
@@ -162,6 +201,7 @@ const stats = computed(() => [
   { label: copy.approvedDrafts, value: drafts.value.filter((item) => item.status === "approved").length },
   { label: copy.totalTasks, value: tasks.value.length },
 ]);
+const reviewDialogTitle = computed(() => (reviewAction.value === "approve" ? copy.approve : copy.reject));
 
 onMounted(loadAll);
 
@@ -182,13 +222,31 @@ async function loadAll() {
   }
 }
 
-async function reviewDraft(id: string, action: "approve" | "reject") {
+function openReviewDialog(row: AIDraft, action: "approve" | "reject") {
+  reviewTargetId.value = row.id;
+  reviewAction.value = action;
+  reviewReason.value = "";
+  message.value = "";
+  error.value = "";
+  reviewDialogVisible.value = true;
+}
+
+async function submitReview() {
+  const reason = reviewReason.value.trim();
+  if (reviewAction.value === "reject" && !reason) {
+    error.value = copy.reviewReasonRequired;
+    return;
+  }
   error.value = "";
   message.value = "";
-  reviewingId.value = id;
+  reviewingId.value = reviewTargetId.value;
   try {
-    await apiRequest<{ reviewed: boolean; status: string }>(`/admin/ai/drafts/${id}/${action}`, { method: "POST" });
+    await apiRequest<{ reviewed: boolean; status: string; reviewReason: string }>(
+      `/admin/ai/drafts/${reviewTargetId.value}/${reviewAction.value}`,
+      { method: "POST", body: JSON.stringify({ reviewReason: reason }) },
+    );
     message.value = copy.reviewDone;
+    reviewDialogVisible.value = false;
     await loadAll();
   } catch (err) {
     error.value = err instanceof Error ? err.message : copy.reviewFailed;
