@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { archiveDirectory, courseBooks, heroLinks } from "./home-data";
 import { homeAnimAttr } from "./home-animation-selectors";
 import { PdfCourseBook } from "./pdf-course-book";
@@ -13,6 +13,7 @@ import styles from "./home-visuals.module.css";
 export function ArchiveBookReveal() {
   const ref = useRef<HTMLElement>(null);
   const reduceMotion = usePrefersReducedMotion();
+  const [clientAnimationReady, setClientAnimationReady] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const [introReady, setIntroReady] = useState(true);
   const [openCopyReady, setOpenCopyReady] = useState(false);
@@ -29,13 +30,18 @@ export function ArchiveBookReveal() {
     [],
   );
 
-  useHomeAnimeTimeline({ readiness, reduceMotion, stageRef: ref });
+  useEffect(() => {
+    setClientAnimationReady(!window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, [reduceMotion]);
 
-  const contentFocusable = reduceMotion || contentReady;
+  useHomeAnimeTimeline({ readiness, reduceMotion: reduceMotion || !clientAnimationReady, stageRef: ref });
+
+  const fallbackVisible = !clientAnimationReady || reduceMotion;
+  const contentFocusable = fallbackVisible || contentReady;
   const contentTabIndex = contentFocusable ? undefined : -1;
   const contentAriaHidden = contentFocusable ? undefined : true;
-  const pageVisibility = reduceMotion || pageVisible ? "visible" : "hidden";
-  const introFocusable = reduceMotion || introReady;
+  const pageVisibility = fallbackVisible || pageVisible ? "visible" : "hidden";
+  const introFocusable = fallbackVisible || introReady;
   const introTabIndex = introFocusable ? undefined : -1;
   const introAriaHidden = introFocusable ? undefined : true;
 
@@ -88,7 +94,7 @@ export function ArchiveBookReveal() {
               {...homeAnimAttr("archiveOpenCopy")}
               style={{
                 pointerEvents: "none",
-                visibility: !reduceMotion && openCopyReady ? "visible" : "hidden",
+                visibility: clientAnimationReady && !reduceMotion && openCopyReady ? "visible" : "hidden",
               }}
               aria-hidden="true"
             >
@@ -107,7 +113,7 @@ export function ArchiveBookReveal() {
               {...homeAnimAttr("archiveClosingCopy")}
               style={{
                 pointerEvents: "none",
-                visibility: !reduceMotion && closingCopyVisible ? "visible" : "hidden",
+                visibility: clientAnimationReady && !reduceMotion && closingCopyVisible ? "visible" : "hidden",
               }}
               aria-hidden="true"
             >
