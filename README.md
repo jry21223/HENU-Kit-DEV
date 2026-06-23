@@ -30,7 +30,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
-- 微信支付 Native 是目标支付方案；当前支持开发/测试环境 mock Native codeUrl，生产环境禁止 mock，真实商户下单和回调仍未完成。
+- 微信支付 Native 是目标支付方案；当前支持开发/测试环境 mock Native codeUrl 和带 HMAC 的 mock notify 闭环，生产环境禁止 mock，真实商户下单、微信验签和回调解密仍未完成。
 - AI 当前使用 mock LLM；AI 生成内容不会绕过审核自动发布。
 - 当前没有生产数据迁移要求。
 
@@ -104,7 +104,7 @@ cd ../worker && go test ./...
 - Admin material metadata PATCH rejects direct file-field mutation; file replacement remains an upload flow.
 - 课程包授权解锁包内 paid 资料。
 - 后台课程包 CRUD、包内资料绑定/解绑、重复绑定保护，以及公开课程包详情不泄露未发布资料 item。
-- Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages` 展示已发布课程包列表，`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建不发放权益的 pending 课程包订单。Go API 可在开发/测试环境为订单生成 mock WeChat Native codeUrl 并把订单置为 `paying`，Web 会把 codeUrl 渲染成本地二维码；该动作不能标记支付成功或发放权益。Vue Admin `/orders` 可以只读查询订单状态，不能标记支付成功或发放权益。
+- Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages` 展示已发布课程包列表，`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建 pending 课程包订单。Go API 可在开发/测试环境为订单生成 mock WeChat Native codeUrl 并把订单置为 `paying`，Web 会把 codeUrl 渲染成本地二维码；开发/测试环境可用带 HMAC 的 mock notify 把订单置为 `paid` 并幂等发放课程包 entitlement。真实生产支付仍必须等待微信官方验签、回调解密和金额校验接通。Vue Admin `/orders` 只读查询订单状态，不能标记支付成功或发放权益。
 - Web `/wiki` and `/wiki/[id]` expose only published public Wiki entries through the Go API; draft, pending, rejected, and private review metadata stay hidden.
 - Web `/blog` and `/blog/[id]` expose only published public Blog posts through the Go API; public responses use a DTO that hides review metadata, and the detail page can submit a `blog_post` report.
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。

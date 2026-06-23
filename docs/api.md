@@ -30,6 +30,7 @@ Currently implemented endpoints:
 - `GET /api/v1/orders/:id`
 - `GET /api/v1/orders/:id/status`
 - `POST /api/v1/payments/wechat/native`
+- `POST /api/v1/payments/wechat/notify`
 - `GET /api/v1/questions/:id`
 - `POST /api/v1/questions/:id/submit`
 - `GET /api/v1/blog/posts?limit=`
@@ -216,10 +217,13 @@ Implemented WeChat Native payment boundary:
 - `POST /api/v1/payments/wechat/native` accepts `orderId` and requires the logged-in, non-frozen order owner
 - only `pending` or `paying` `wechat_native` orders with positive integer-cent amounts can create a Native payment request
 - development/test `WECHAT_PAY_MODE=mock` returns a mock `weixin://wxpay/mock/...` `codeUrl`, stores transient Native metadata, and moves the local order to `status=paying`
+- development/test `POST /api/v1/payments/wechat/notify` accepts mock callback JSON signed with `X-WeChat-Mock-Signature = hmac_sha256(WECHAT_PAY_API_V3_KEY, raw_body)`; this is only a local test harness, not the real WeChat callback verifier
+- mock notify rejects missing/invalid signatures, missing mock secret, unknown orders, and amount mismatches without granting entitlement
+- a successful mock notify changes the matching order to `paid`, records a `payment_records` row, and creates one idempotent package grant with `source=order`
 - production rejects `WECHAT_PAY_MODE=mock` with `wechat_mock_forbidden_in_production`
 - `WECHAT_PAY_MODE=live` validates required merchant configuration before use, but real WeChat API calls are not implemented yet and return `wechat_live_not_implemented`
 - Native code URL creation never marks an order paid, never grants entitlement, and never changes paid material access; Web QR rendering is only a display layer over the server-returned `codeUrl`
-- WeChat notify signature verification, resource decryption, idempotent paid transition, and automatic entitlement issuance remain later work
+- real WeChat notify signature verification, resource decryption, appid/mchid checks, and live entitlement issuance remain later work
 
 Implemented quiz behavior:
 

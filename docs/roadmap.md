@@ -58,6 +58,7 @@
 - Course package pending-order foundation with server-authoritative package pricing, duplicate pending-order reuse, and user-scoped order status
 - WeChat Native mock payment request endpoint for development/test, with production mock guard and no entitlement side effects
 - Web package detail renders server-returned WeChat Native code URLs as local QR codes and polls read-only order status
+- Development/test signed mock WeChat notify can mark an order paid and idempotently issue a package entitlement after signature and amount checks
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton
@@ -69,7 +70,7 @@
 
 - Richer content review workflows for wiki conflict-resolution UX and additional notification sources for payment and membership
 - Admin analytics expansion for page visits, search intent, course request voting, payment, and membership conversion metrics
-- Real WeChat Native API client, notify verification/decryption, and entitlement issuance after verified payment
+- Real WeChat Native API client, official notify signature verification/decryption, appid/mchid validation, and production entitlement issuance after verified payment
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables

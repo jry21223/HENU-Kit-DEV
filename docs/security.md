@@ -10,7 +10,8 @@
 - Public package detail must filter both `materials` and package `items` to published materials. It is not enough to hide unpublished material objects while still returning item resource ids for draft/pending/rejected/archived materials.
 - Web package detail can show entitlement state from `/me/entitlements`, but that display does not grant access; paid downloads still require the Go API material download permission check.
 - Frozen users cannot download `login_required`, `paid`, or `member_only` materials even when they have an active grant. Free materials remain publicly downloadable.
-- Course package orders are server-priced pending/paying records only. Creating an order or generating a WeChat Native mock code URL does not mark payment success, create entitlement, or bypass paid download checks.
+- Course package orders are server-priced records. Creating an order or generating a WeChat Native mock code URL does not mark payment success, create entitlement, or bypass paid download checks.
+- Development/test mock WeChat notify requires an HMAC header derived from `WECHAT_PAY_API_V3_KEY`, verifies order number and amount, and grants package entitlement idempotently only after a signed `SUCCESS` payload. This is a local test harness; production still requires real WeChat signature verification and resource decryption before enabling paid delivery.
 - `WECHAT_PAY_MODE=mock` is allowed only outside production; production mock configuration is rejected by the API payment boundary.
 - The admin order browser is read-only. It can inspect order status and whether an entitlement already exists, but it cannot mark orders paid or issue grants.
 - Manual access grants are server-side restricted to admin users, use `manual_admin` source, cannot create or mark payment orders, and can target only published paid/member-only materials or published course packages. Revoked grants are soft-deleted and no longer unlock paid downloads.

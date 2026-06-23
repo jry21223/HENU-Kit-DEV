@@ -1,6 +1,9 @@
 package payment
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +35,7 @@ var (
 	ErrWeChatMockForbiddenProduction = errors.New("wechat_mock_forbidden_in_production")
 	ErrWeChatLiveConfigMissing       = errors.New("wechat_live_config_missing")
 	ErrWeChatLiveNotImplemented      = errors.New("wechat_live_not_implemented")
+	ErrWeChatMockNotifySecretMissing = errors.New("wechat_mock_notify_secret_missing")
 )
 
 type Handler struct {
@@ -52,6 +56,13 @@ type nativeResponse struct {
 	Currency    string    `json:"currency"`
 	Title       string    `json:"title"`
 	Mock        bool      `json:"mock"`
+}
+
+type mockNotifyPayload struct {
+	OutTradeNo    string `json:"outTradeNo"`
+	TransactionID string `json:"transactionId"`
+	TradeState    string `json:"tradeState"`
+	AmountTotal   int64  `json:"amountTotal"`
 }
 
 func NewHandler(db *gorm.DB, cfg config.Config) Handler {
@@ -131,6 +142,44 @@ func (h Handler) WeChatNative(ctx *gin.Context) {
 	})
 }
 
+func (h Handler) WeChatNotify(ctx *gin.Context) {
+	payCfg := normalizedWeChatConfig(h.cfg.WeChatPay)
+	if err := ValidateWeChatNativeConfig(h.cfg.Environment, payCfg); err != nil {
+		wechatNotifyFailure(ctx, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if payCfg.Mode == wechatModeLive {
+		wechatNotifyFailure(ctx, ErrWeChatLiveNotImplemented.Error(), http.StatusNotImplemented)
+		return
+	}
+	if payCfg.APIV3Key == "" {
+		wechatNotifyFailure(ctx, ErrWeChatMockNotifySecretMissing.Error(), http.StatusBadRequest)
+		return
+	}
+
+	body, err := ctx.GetRawData()
+	if err != nil || len(body) == 0 {
+		wechatNotifyFailure(ctx, "invalid_request", http.StatusBadRequest)
+		return
+	}
+	if !validMockNotifySignature(body, ctx.GetHeader("X-WeChat-Mock-Signature"), payCfg.APIV3Key) {
+		wechatNotifyFailure(ctx, "invalid_signature", http.StatusBadRequest)
+		return
+	}
+
+	var payload mockNotifyPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		wechatNotifyFailure(ctx, "invalid_request", http.StatusBadRequest)
+		return
+	}
+	result, err := h.processMockNotify(payload, datatypes.JSON(body))
+	if err != nil {
+		wechatNotifyFailure(ctx, err.Error(), http.StatusBadRequest)
+		return
+	}
+	wechatNotifySuccess(ctx, result)
+}
+
 func ValidateWeChatNativeConfig(environment string, cfg config.WeChatPayConfig) error {
 	cfg = normalizedWeChatConfig(cfg)
 	switch cfg.Mode {
@@ -171,6 +220,17 @@ func normalizedWeChatConfig(cfg config.WeChatPayConfig) config.WeChatPayConfig {
 	return cfg
 }
 
+func validMockNotifySignature(body []byte, signature string, secret string) bool {
+	signature = strings.TrimSpace(signature)
+	if signature == "" || secret == "" {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(expected), []byte(strings.ToLower(signature)))
+}
+
 func (h Handler) coursePackageForOrder(ctx *gin.Context, order model.Order) (model.CoursePackage, bool) {
 	if order.ProductType != productTypeCoursePackage {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsupported_product_type", nil)
@@ -205,4 +265,124 @@ func (h Handler) markOrderPaying(orderID string, codeURL string, expiresAt time.
 
 func mockNativeCodeURL(outTradeNo string) string {
 	return fmt.Sprintf("weixin://wxpay/mock/%s", url.PathEscape(outTradeNo))
+}
+
+func (h Handler) processMockNotify(payload mockNotifyPayload, raw datatypes.JSON) (gin.H, error) {
+	payload.OutTradeNo = strings.TrimSpace(payload.OutTradeNo)
+	payload.TransactionID = strings.TrimSpace(payload.TransactionID)
+	payload.TradeState = strings.ToUpper(strings.TrimSpace(payload.TradeState))
+	if payload.OutTradeNo == "" || payload.TransactionID == "" || payload.TradeState == "" {
+		return nil, errors.New("invalid_notify_payload")
+	}
+
+	var order model.Order
+	if err := h.db.First(&order, "out_trade_no = ? AND payment_provider = ?", payload.OutTradeNo, providerWeChatNative).Error; err != nil {
+		return nil, errors.New("order_not_found")
+	}
+	if payload.AmountTotal != order.AmountTotal {
+		_ = h.db.Model(&model.Order{}).Where("id = ?", order.ID).Update("risk_flag", "wechat_amount_mismatch").Error
+		return nil, errors.New("amount_mismatch")
+	}
+	if payload.TradeState == "SUCCESS" && order.Status != model.OrderPending && order.Status != model.OrderPaying && order.Status != model.OrderPaid {
+		return nil, errors.New("order_not_payable")
+	}
+
+	if payload.TradeState != "SUCCESS" {
+		if err := h.recordPaymentNotify(order, payload, raw, nil); err != nil {
+			return nil, err
+		}
+		return gin.H{"processed": true, "paid": false, "tradeState": payload.TradeState}, nil
+	}
+
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		now := time.Now().UTC()
+		if err := tx.First(&order, "id = ?", order.ID).Error; err != nil {
+			return err
+		}
+		if err := h.recordPaymentNotifyTx(tx, order, payload, raw, &now); err != nil {
+			return err
+		}
+		if order.Status != model.OrderPaid {
+			if err := tx.Model(&model.Order{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
+				"status":    model.OrderPaid,
+				"paid_at":   &now,
+				"risk_flag": "",
+			}).Error; err != nil {
+				return err
+			}
+		}
+		if order.ProductType != productTypeCoursePackage {
+			return errors.New("unsupported_product_type")
+		}
+		var coursePackage model.CoursePackage
+		if err := tx.First(&coursePackage, "id = ? AND status = ?", order.ProductID, model.StatusPublished).Error; err != nil {
+			return errors.New("package_not_found")
+		}
+		return ensurePackageGrantTx(tx, order)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return gin.H{"processed": true, "paid": true}, nil
+}
+
+func (h Handler) recordPaymentNotify(order model.Order, payload mockNotifyPayload, raw datatypes.JSON, processedAt *time.Time) error {
+	return h.db.Transaction(func(tx *gorm.DB) error {
+		return h.recordPaymentNotifyTx(tx, order, payload, raw, processedAt)
+	})
+}
+
+func (h Handler) recordPaymentNotifyTx(tx *gorm.DB, order model.Order, payload mockNotifyPayload, raw datatypes.JSON, processedAt *time.Time) error {
+	record := model.PaymentRecord{
+		OrderID:        order.ID,
+		Provider:       providerWeChatNative,
+		TransactionID:  payload.TransactionID,
+		TradeState:     payload.TradeState,
+		AmountTotal:    payload.AmountTotal,
+		RawNotify:      raw,
+		IdempotencyKey: providerWeChatNative + ":" + payload.TransactionID,
+		ProcessedAt:    processedAt,
+	}
+	var existing model.PaymentRecord
+	err := tx.First(&existing, "idempotency_key = ?", record.IdempotencyKey).Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return tx.Create(&record).Error
+}
+
+func ensurePackageGrantTx(tx *gorm.DB, order model.Order) error {
+	var existing model.MaterialAccessGrant
+	err := tx.First(&existing, "user_id = ? AND package_id = ? AND order_id = ? AND source = ?", order.UserID, order.ProductID, order.ID, "order").Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	grant := model.MaterialAccessGrant{
+		UserID:    order.UserID,
+		PackageID: &order.ProductID,
+		Source:    "order",
+		OrderID:   &order.ID,
+	}
+	return tx.Create(&grant).Error
+}
+
+func wechatNotifySuccess(ctx *gin.Context, data gin.H) {
+	ctx.JSON(http.StatusOK, gin.H{
+		"code":    "SUCCESS",
+		"message": "成功",
+		"data":    data,
+	})
+}
+
+func wechatNotifyFailure(ctx *gin.Context, message string, status int) {
+	ctx.JSON(status, gin.H{
+		"code":    "FAIL",
+		"message": message,
+	})
 }
