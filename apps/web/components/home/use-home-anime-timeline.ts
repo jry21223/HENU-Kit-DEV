@@ -10,7 +10,7 @@ export const archiveProgress = {
   copyEnd: 0.5,
   openStart: 0.68,
   openEnd: 0.86,
-  closingStart: 0.76,
+  closingStart: 0.84,
 } as const;
 
 type ReadinessSetter = Dispatch<SetStateAction<boolean>>;
@@ -31,6 +31,7 @@ type UseHomeAnimeTimelineOptions = {
 
 const timelineDuration = 1000;
 const pageVisualEnd = 0.9;
+const closingVisualStart = 0.76;
 
 function at(progress: number) {
   return progress * timelineDuration;
@@ -62,7 +63,7 @@ function syncReadiness(progress: number, readiness: ArchiveReadiness, reduceMoti
   setReady(readiness.setIntroReady, progress < archiveProgress.introEnd);
   setReady(readiness.setOpenCopyReady, progress >= archiveProgress.straightStart && progress <= archiveProgress.copyEnd);
   setReady(readiness.setPageVisible, progress >= archiveProgress.openStart && progress <= pageVisualEnd);
-  setReady(readiness.setClosingCopyVisible, progress >= archiveProgress.closingStart);
+  setReady(readiness.setClosingCopyVisible, progress >= closingVisualStart);
 }
 
 function getStageScrollProgress(stage: HTMLElement) {
@@ -225,11 +226,11 @@ function createArchiveTimeline(stage: HTMLElement) {
     timeline.add(
       closingCopy,
       {
-        duration: durationBetween(0.76, 0.9),
+        duration: durationBetween(closingVisualStart, 0.9),
         opacity: [0, 1],
         y: [18, 0],
       },
-      at(0.76),
+      at(closingVisualStart),
     );
   }
 
