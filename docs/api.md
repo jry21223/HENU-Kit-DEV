@@ -294,7 +294,8 @@ Implemented wiki behavior:
 
 - public wiki list/detail endpoints only return `published` and `visibility=public` entries
 - public wiki endpoints use a public DTO and do not expose `reviewerId` or `reviewReason`
-- Web `/wiki` and `/wiki/[id]` consume those public endpoints as read-only student-facing pages; they do not submit entries, submit edit proposals, or expose review metadata
+- Web `/wiki` and `/wiki/[id]` consume those public endpoints as student-facing pages; public responses still hide review metadata
+- Web `/wiki/[id]` includes a creator/admin-only edit-proposal form that submits to `POST /api/v1/wiki/entries/:id/proposals`; normal users see the review boundary instead of the editable form
 - wiki entries bound to an unpublished course are hidden from public wiki endpoints
 - creator/admin users can submit wiki entries; submissions always enter `pending`
 - wiki submission validates required title, lowercase URL slug, content length, and optional published course binding

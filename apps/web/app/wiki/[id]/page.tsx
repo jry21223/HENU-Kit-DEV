@@ -3,6 +3,7 @@ import { SiteShell } from "@/components/layout/site-shell";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button-link";
 import { ReportButton } from "@/components/report/report-button";
+import { WikiProposalForm } from "@/components/wiki/wiki-proposal-form";
 import { Course, WikiEntry, getApi } from "@/lib/api";
 
 type PageProps = {
@@ -109,6 +110,8 @@ export default async function WikiDetailPage({ params }: PageProps) {
               {entry.content}
             </div>
           </article>
+
+          <WikiProposalForm entry={entry} />
         </>
       ) : null}
     </SiteShell>

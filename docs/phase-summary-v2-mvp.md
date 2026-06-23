@@ -37,6 +37,13 @@ Recent pushed commits:
   - Blocks stale proposal approval in the UI.
   - Keeps the Go API as the final enforcement layer for stale-version rejection.
 
+Additional implementation after the listed commits:
+
+- Web `/wiki/[id]` now includes a creator/admin-only edit proposal form.
+- The form submits to `POST /api/v1/wiki/entries/:id/proposals`.
+- Normal users and guests see the review boundary instead of the editable form.
+- Submitted proposals remain pending until reviewer/admin approval; public Wiki content is not changed by the frontend.
+
 ## Verification Run For Latest Work
 
 Commands run successfully during the latest implementation sequence:
@@ -82,7 +89,7 @@ Legend:
 | Stage 6: AI infrastructure and worker | Redis Streams worker, mock/real LLM, AI tasks, draft review | Partial | Mock AI task flow, worker completion, usage logs, draft creation, and Admin draft review exist. Real LLM, RAG, and publish-to-resource flows remain incomplete. |
 | Stage 7: points and membership | Points logs/rules, memberships, redemption, member benefits | Partial | Model and some points ledger behavior exist, especially forum reward escrow/settlement. Full member purchase/redeem UX and benefits enforcement are not complete. |
 | Stage 8: payment system | Original V2 text said Yipay; later direction changed to WeChat Native | Partial / direction changed | Pending course-package orders exist with server-side pricing. Real WeChat Native code URL, notify verification, payment status update, and automatic entitlement issuance are not complete. Yipay is not the target path after product direction changed. |
-| Stage 9: Wiki co-creation | Creator application, entries, proposals, history, review | Partial / strong MVP | Public Wiki read pages, creator/admin submission, edit proposals, review queues, history writes, stale-version protection, and stale UI guard exist. Creator application flow and frontend proposal form remain incomplete. |
+| Stage 9: Wiki co-creation | Creator application, entries, proposals, history, review | Partial / strong MVP | Public Wiki read pages, creator/admin submission, Web edit proposal form, review queues, history writes, stale-version protection, and stale UI guard exist. Creator application flow remains incomplete. |
 | Stage 10: blog, moments, forum, relations | Blog, dynamic moments, forum, follow/block | Partial | Blog public pages and review flow exist. Forum list/detail/create/reply/resubmission/reward best-answer basics exist. Moments and user relation features are not implemented. |
 | Stage 11: notifications, reports, search, leaderboards | Notifications, reports, search, leaderboards | Partial | User notification inbox, review notifications, report API, Web report buttons, Admin report handling, and report analytics exist. Search and leaderboards are not implemented. |
 | Stage 12: Next.js main site | Main user-facing pages | Partial | Core pages exist: home, login, courses, materials, quiz, packages, Wiki, Blog, forum, profile, downloads, notifications, wrong questions. AI, papers, memberships, points, moments, leaderboards, and user profile pages remain incomplete. |
@@ -102,7 +109,7 @@ Legend:
 - Course package catalog, package grants, public package list/detail pages, and pending-order creation.
 - Question listing/detail without answer leakage.
 - Quiz submission, wrong-question recording, current-user wrong-question page, and basic weakness totals.
-- Wiki public list/detail, review-first creation, edit proposals, review queue, history writes, stale protection.
+- Wiki public list/detail, review-first creation, Web edit proposal form, review queue, history writes, stale protection.
 - Blog public list/detail and review-first backend flow.
 - Forum public list/detail, post/reply submission, current-user resubmission, reward escrow/refund/settlement, best-answer action.
 - User notifications for review/report outcomes.
@@ -120,10 +127,6 @@ High-priority gaps:
   - no signed/decrypted notify callback,
   - no paid status transition from payment provider,
   - no automatic entitlement issuance from successful callback.
-
-- Frontend Wiki edit proposal form:
-  - backend and Admin review exist,
-  - public Web still lacks the creator-facing proposal submission UI.
 
 - Full membership and points product:
   - points ledger is used in some forum reward flows,
@@ -161,24 +164,21 @@ High-priority gaps:
 
 ## Recommended Next Steps
 
-1. Add Web Wiki edit proposal form.
-   - Uses existing `POST /api/v1/wiki/entries/:id/proposals`.
-   - Keeps public Wiki unchanged until reviewer approval.
-
-2. Continue payment hardening around WeChat Native.
+1. Continue payment hardening around WeChat Native.
    - Implement config validation first.
    - Then Native order creation.
    - Then notify verification/decryption/idempotency.
    - Only after that grant entitlement.
 
-3. Add E2E smoke tests for:
+2. Add E2E smoke tests for:
    - login,
    - course package browsing,
    - quiz submission and wrong-question creation,
    - report submission,
    - admin review.
 
+3. Add creator application flow for Wiki contributors.
+
 4. Build the missing membership/points UI only after payment direction is stable.
 
 5. Keep README and docs as real-state documents, not marketing claims.
-

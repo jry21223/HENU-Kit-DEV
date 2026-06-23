@@ -274,6 +274,22 @@ export type WikiEntry = {
   updatedAt: string;
 };
 
+export type WikiEditProposal = {
+  id: string;
+  entryId: string;
+  editorId: string;
+  baseVersion: number;
+  proposedTitle: string;
+  proposedContent: string;
+  summary: string;
+  status: string;
+  reviewerId?: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type BlogPost = {
   id: string;
   authorId: string;
