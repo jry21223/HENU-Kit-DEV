@@ -74,6 +74,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.POST("/auth/refresh", authHandler.Refresh)
 	v1.POST("/auth/logout", authHandler.Logout)
 	v1.GET("/auth/me", authMiddleware.RequireAuth(), authHandler.Me)
+	v1.PATCH("/auth/me", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authHandler.UpdateMe)
 	v1.GET("/schools", orgHandler.Schools)
 	v1.GET("/colleges", orgHandler.Colleges)
 	v1.GET("/majors", orgHandler.Majors)

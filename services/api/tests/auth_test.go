@@ -54,6 +54,70 @@ func TestSendCodeRejectsUnknownDomain(t *testing.T) {
 	}
 }
 
+func TestUpdateMeProfileBinding(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	course := createTestCourse(t, db)
+
+	unauthorized := performJSON(router, http.MethodPatch, "/api/v1/auth/me", `{"grade":"2024"}`, "")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated profile update 401, got %d: %s", unauthorized.Code, unauthorized.Body.String())
+	}
+
+	token := loginTestUser(t, router, "profile@stu.henu.edu.cn")
+	updateBody := `{"name":"Profile Student","schoolId":"` + course.SchoolID + `","majorId":"` + course.MajorID + `","grade":"2024级"}`
+	updateResponse := performJSON(router, http.MethodPatch, "/api/v1/auth/me", updateBody, token)
+	if updateResponse.Code != http.StatusOK {
+		t.Fatalf("expected profile update 200, got %d: %s", updateResponse.Code, updateResponse.Body.String())
+	}
+
+	var payload struct {
+		Data struct {
+			Name     string  `json:"name"`
+			SchoolID *string `json:"schoolId"`
+			MajorID  *string `json:"majorId"`
+			Grade    string  `json:"grade"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(updateResponse.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.Name != "Profile Student" || payload.Data.Grade != "2024级" {
+		t.Fatalf("unexpected updated profile: %#v", payload.Data)
+	}
+	if payload.Data.SchoolID == nil || *payload.Data.SchoolID != course.SchoolID || payload.Data.MajorID == nil || *payload.Data.MajorID != course.MajorID {
+		t.Fatalf("expected profile school/major binding, got %#v", payload.Data)
+	}
+
+	var otherSchool model.School
+	otherSchool = model.School{Name: "Other School", Slug: "other-school", EmailDomains: "other.edu.cn", Status: model.StatusPublished}
+	if err := db.Create(&otherSchool).Error; err != nil {
+		t.Fatal(err)
+	}
+	mismatch := performJSON(router, http.MethodPatch, "/api/v1/auth/me", `{"schoolId":"`+otherSchool.ID+`","majorId":"`+course.MajorID+`"}`, token)
+	if mismatch.Code != http.StatusBadRequest {
+		t.Fatalf("expected mismatched school/major 400, got %d: %s", mismatch.Code, mismatch.Body.String())
+	}
+
+	clearSchoolUseMajor := performJSON(router, http.MethodPatch, "/api/v1/auth/me", `{"majorId":"`+course.MajorID+`","grade":"2023级"}`, token)
+	if clearSchoolUseMajor.Code != http.StatusOK {
+		t.Fatalf("expected major-only update 200, got %d: %s", clearSchoolUseMajor.Code, clearSchoolUseMajor.Body.String())
+	}
+	var inferred struct {
+		Data struct {
+			SchoolID *string `json:"schoolId"`
+			MajorID  *string `json:"majorId"`
+			Grade    string  `json:"grade"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(clearSchoolUseMajor.Body.Bytes(), &inferred); err != nil {
+		t.Fatal(err)
+	}
+	if inferred.Data.SchoolID == nil || *inferred.Data.SchoolID != course.SchoolID || inferred.Data.MajorID == nil || *inferred.Data.MajorID != course.MajorID {
+		t.Fatalf("expected major-only update to infer school, got %#v", inferred.Data)
+	}
+}
+
 func newTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

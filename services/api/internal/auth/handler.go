@@ -42,6 +42,13 @@ type loginRequest struct {
 	Grade    string `json:"grade"`
 }
 
+type updateMeRequest struct {
+	Name     string `json:"name"`
+	SchoolID string `json:"schoolId"`
+	MajorID  string `json:"majorId"`
+	Grade    string `json:"grade"`
+}
+
 func (h Handler) SendCode(ctx *gin.Context) {
 	var req sendCodeRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -187,6 +194,49 @@ func (h Handler) Me(ctx *gin.Context) {
 	response.OK(ctx, publicUser(*user))
 }
 
+func (h Handler) UpdateMe(ctx *gin.Context) {
+	user, ok := CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	if user.Status != "active" {
+		response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "user_frozen", nil)
+		return
+	}
+
+	var req updateMeRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+
+	schoolID, majorID, valid := h.validateProfileBinding(ctx, req.SchoolID, req.MajorID)
+	if !valid {
+		return
+	}
+
+	updates := map[string]interface{}{
+		"school_id": schoolID,
+		"major_id":  majorID,
+		"grade":     strings.TrimSpace(req.Grade),
+	}
+	if name := strings.TrimSpace(req.Name); name != "" {
+		updates["name"] = name
+	}
+
+	if err := h.db.Model(&model.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "update_failed", nil)
+		return
+	}
+	var updated model.User
+	if err := h.db.First(&updated, "id = ?", user.ID).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, publicUser(updated))
+}
+
 func (h Handler) issueSession(ctx *gin.Context, user model.User) {
 	accessToken, accessExpiresAt, err := h.tokens.Issue(user.ID, user.Email, user.Role, TokenTypeAccess)
 	if err != nil {
@@ -265,6 +315,48 @@ func nullableUUID(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func (h Handler) validateProfileBinding(ctx *gin.Context, rawSchoolID string, rawMajorID string) (*string, *string, bool) {
+	var schoolID *string
+	var majorID *string
+
+	if strings.TrimSpace(rawSchoolID) != "" {
+		parsed := nullableUUID(rawSchoolID)
+		if parsed == nil {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_school_id", nil)
+			return nil, nil, false
+		}
+		var school model.School
+		if err := h.db.First(&school, "id = ? AND status <> ?", *parsed, model.StatusArchived).Error; err != nil {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "school_not_found", nil)
+			return nil, nil, false
+		}
+		schoolID = parsed
+	}
+
+	if strings.TrimSpace(rawMajorID) != "" {
+		parsed := nullableUUID(rawMajorID)
+		if parsed == nil {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_major_id", nil)
+			return nil, nil, false
+		}
+		var major model.Major
+		if err := h.db.First(&major, "id = ? AND status <> ?", *parsed, model.StatusArchived).Error; err != nil {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "major_not_found", nil)
+			return nil, nil, false
+		}
+		if schoolID == nil {
+			majorSchoolID := major.SchoolID
+			schoolID = &majorSchoolID
+		} else if *schoolID != major.SchoolID {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "major_school_mismatch", nil)
+			return nil, nil, false
+		}
+		majorID = parsed
+	}
+
+	return schoolID, majorID, true
 }
 
 func publicUser(user model.User) gin.H {

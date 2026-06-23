@@ -45,6 +45,34 @@ export type Course = {
   status: string;
 };
 
+export type User = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  schoolId?: string | null;
+  majorId?: string | null;
+  grade: string;
+  emailVerified: boolean;
+};
+
+export type School = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+};
+
+export type Major = {
+  id: string;
+  schoolId: string;
+  collegeId: string;
+  name: string;
+  slug: string;
+  status: string;
+};
+
 export type Material = {
   id: string;
   courseId: string;

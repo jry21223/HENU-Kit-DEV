@@ -26,6 +26,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包展示、资料详情、课程刷题和学生邮箱登录页面。
+- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、课程管理、资料上传、资料状态流转、下载审计页面。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
 - 微信支付 Native 是目标支付方案；当前仍是本地 mock 边界，未完成真实商户联调。
@@ -96,6 +97,7 @@ cd ../worker && go test ./...
 - free/login_required/paid 资料下载权限。
 - 成功下载审计日志，以及拒绝下载不产生日志。
 - `/me/downloads` 用户隔离和 `/admin/downloads` 管理员权限。
+- `/auth/me` 个人资料更新、学校/专业绑定校验和专业-学校匹配校验。
 - 资料默认 draft 入库、admin 全量可见、公开端只展示 published、非法状态拒绝。
 - 课程包授权解锁包内 paid 资料。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态。
@@ -159,3 +161,4 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Admin material and download pages do not grant paid access, mutate download logs, or expose material `storage_key`.
 - Admin analytics are based on successful server-side download logs; denied download attempts, page visits, search intent, and payment conversion are not included yet.
 - AI draft review does not publish generated content automatically; real publish-to-resource flows remain later work.
+- Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.

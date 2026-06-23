@@ -12,6 +12,7 @@ Currently implemented endpoints:
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/me`
+- `PATCH /api/v1/auth/me`
 - `GET /api/v1/schools`
 - `GET /api/v1/colleges?schoolId=`
 - `GET /api/v1/majors?schoolId=&collegeId=`
@@ -90,6 +91,8 @@ Implemented authentication behavior:
 - Production does not return codes in API responses.
 - JWT uses RS256. Production must provide a private key through environment or a mounted file.
 - `access_token` and `refresh_token` are issued as httpOnly cookies; the access token is also returned for API clients.
+- logged-in users can update their own display name, school, major, and grade through `PATCH /auth/me`
+- profile binding validates that the selected school and major exist and that the major belongs to the selected school
 
 Implemented material behavior:
 
