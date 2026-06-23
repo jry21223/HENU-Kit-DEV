@@ -118,7 +118,7 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 		t.Fatalf("expected reviewer analytics 403, got %d: %s", reviewerAnalytics.Code, reviewerAnalytics.Body.String())
 	}
 
-	createTestUser(t, db, "ai-admin@stu.henu.edu.cn", model.RoleAdmin)
+	admin := createTestUser(t, db, "ai-admin@stu.henu.edu.cn", model.RoleAdmin)
 	adminToken := loginTestUser(t, router, "ai-admin@stu.henu.edu.cn")
 	adminList := performJSON(router, http.MethodGet, "/api/v1/admin/ai/drafts", "", adminToken)
 	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), draft.ID) {
@@ -145,9 +145,15 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 	if approved.PublishedID != nil || approved.Status == model.StatusPublished {
 		t.Fatalf("AI draft review must not auto-publish generated content: %#v", approved)
 	}
+	if countOperationLogs(t, db, "ai_draft.approved", "ai_draft", draft.ID, reviewer.ID) != 1 {
+		t.Fatal("expected AI draft approve operation log")
+	}
 	reviewApprovedAgain := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+draft.ID+"/reject", `{"reviewReason":"overwrite attempt"}`, adminToken)
 	if reviewApprovedAgain.Code != http.StatusConflict || !strings.Contains(reviewApprovedAgain.Body.String(), "draft_not_reviewable") {
 		t.Fatalf("expected approved draft repeat review 409, got %d: %s", reviewApprovedAgain.Code, reviewApprovedAgain.Body.String())
+	}
+	if countOperationLogs(t, db, "ai_draft.rejected", "ai_draft", draft.ID, admin.ID) != 0 {
+		t.Fatal("repeat review on approved draft must not write reject operation log")
 	}
 	var stillApproved model.AIDraft
 	if err := db.First(&stillApproved, "id = ?", draft.ID).Error; err != nil {
@@ -182,9 +188,15 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 	if rejected.ReviewReason != "answer is incomplete" {
 		t.Fatalf("expected reject reason to persist, got %q", rejected.ReviewReason)
 	}
+	if countOperationLogs(t, db, "ai_draft.rejected", "ai_draft", secondDraft.ID, admin.ID) != 1 {
+		t.Fatal("expected AI draft reject operation log")
+	}
 	reviewRejectedAgain := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+secondDraft.ID+"/approve", `{"reviewReason":"second attempt"}`, reviewerToken)
 	if reviewRejectedAgain.Code != http.StatusConflict || !strings.Contains(reviewRejectedAgain.Body.String(), "draft_not_reviewable") {
 		t.Fatalf("expected rejected draft repeat review 409, got %d: %s", reviewRejectedAgain.Code, reviewRejectedAgain.Body.String())
+	}
+	if countOperationLogs(t, db, "ai_draft.approved", "ai_draft", secondDraft.ID, reviewer.ID) != 0 {
+		t.Fatal("repeat review on rejected draft must not write approve operation log")
 	}
 	var stillRejected model.AIDraft
 	if err := db.First(&stillRejected, "id = ?", secondDraft.ID).Error; err != nil {

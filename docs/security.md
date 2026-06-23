@@ -4,8 +4,19 @@
 - JWT keys, WeChat Pay keys, LLM API keys, and real course files must not be committed.
 - Production must reject mock payment and fixed verification code configuration.
 - AI-generated content must be reviewed before publication.
-- Admin operations must write operation logs.
+- Admin course, organization, material, upload, archive, status-change, and AI draft-review operations write server-side operation logs in the same database transaction as the protected mutation.
 - CORS must not use wildcard origins with credentials.
+
+## Operation Logs
+
+The Go API writes `operation_logs` for the current hardening scope:
+
+- organization create/update/archive: school, college, major
+- course create/update/archive
+- material create/upload/update/status-update/archive
+- AI draft approve/reject review
+
+Log rows include the authenticated operator id, action, target type/id, IP, User-Agent, and minimal metadata. Invalid or rejected requests do not write operation logs. The Vue Admin operation-log browser is still planned work.
 
 ## Dependency Checks
 

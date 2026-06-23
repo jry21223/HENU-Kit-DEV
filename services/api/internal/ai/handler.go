@@ -12,6 +12,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"final-review-platform/services/api/internal/audit"
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
@@ -174,18 +175,34 @@ func (h Handler) reviewDraft(ctx *gin.Context, status string) {
 		response.Error(ctx, http.StatusConflict, response.CodeConflict, "draft_not_reviewable", gin.H{"status": draft.Status})
 		return
 	}
-	result := h.db.Model(&model.AIDraft{}).Where("id = ?", ctx.Param("id")).Updates(map[string]interface{}{
-		"status":        status,
-		"reviewer_id":   user.ID,
-		"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
-		"review_reason": reason,
+	previousStatus := draft.Status
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.AIDraft{}).Where("id = ?", ctx.Param("id")).Updates(map[string]interface{}{
+			"status":        status,
+			"reviewer_id":   user.ID,
+			"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+			"review_reason": reason,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return audit.Record(ctx, tx, "ai_draft."+status, "ai_draft", draft.ID, map[string]interface{}{
+			"taskId":         draft.TaskID,
+			"outputType":     draft.OutputType,
+			"previousStatus": previousStatus,
+			"status":         status,
+			"reviewReason":   reason,
+		})
 	})
-	if result.Error != nil {
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "draft_not_found", nil)
+			return
+		}
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "review_failed", nil)
-		return
-	}
-	if result.RowsAffected == 0 {
-		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "draft_not_found", nil)
 		return
 	}
 	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})

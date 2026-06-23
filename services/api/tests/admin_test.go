@@ -30,7 +30,7 @@ func TestAdminCourseCRUDRequiresAdmin(t *testing.T) {
 		t.Fatalf("expected student admin course list 403, got %d: %s", forbiddenList.Code, forbiddenList.Body.String())
 	}
 
-	createTestUser(t, db, "admin@stu.henu.edu.cn", model.RoleAdmin)
+	admin := createTestUser(t, db, "admin@stu.henu.edu.cn", model.RoleAdmin)
 	adminToken := loginTestUser(t, router, "admin@stu.henu.edu.cn")
 
 	var school model.School
@@ -97,19 +97,31 @@ func TestAdminCourseCRUDRequiresAdmin(t *testing.T) {
 	if err := db.First(&course, "slug = ?", "admin-course").Error; err != nil {
 		t.Fatal(err)
 	}
+	if countOperationLogs(t, db, "course.create", "course", course.ID, admin.ID) != 1 {
+		t.Fatal("expected course create operation log")
+	}
 
 	updateResponse := performJSON(router, http.MethodPatch, "/api/v1/admin/courses/"+course.ID, `{"name":"Updated Course"}`, adminToken)
 	if updateResponse.Code != http.StatusOK {
 		t.Fatalf("expected course update 200, got %d: %s", updateResponse.Code, updateResponse.Body.String())
 	}
+	if countOperationLogs(t, db, "course.update", "course", course.ID, admin.ID) != 1 {
+		t.Fatal("expected course update operation log")
+	}
 	invalidPatch := performJSON(router, http.MethodPatch, "/api/v1/admin/courses/"+course.ID, `{"status":"pending_review"}`, adminToken)
 	if invalidPatch.Code != http.StatusBadRequest || !strings.Contains(invalidPatch.Body.String(), "invalid_status") {
 		t.Fatalf("expected invalid course status patch rejection, got %d: %s", invalidPatch.Code, invalidPatch.Body.String())
+	}
+	if countOperationLogs(t, db, "course.update", "course", course.ID, admin.ID) != 1 {
+		t.Fatal("invalid course update must not write an operation log")
 	}
 
 	archiveResponse := performJSON(router, http.MethodDelete, "/api/v1/admin/courses/"+course.ID, "", adminToken)
 	if archiveResponse.Code != http.StatusOK {
 		t.Fatalf("expected course archive 200, got %d: %s", archiveResponse.Code, archiveResponse.Body.String())
+	}
+	if countOperationLogs(t, db, "course.archive", "course", course.ID, admin.ID) != 1 {
+		t.Fatal("expected course archive operation log")
 	}
 	var archived model.Course
 	if err := db.First(&archived, "id = ?", course.ID).Error; err != nil {
@@ -127,7 +139,7 @@ func TestAdminMaterialUploadGuards(t *testing.T) {
 	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
 
 	course := createTestCourse(t, db)
-	createTestUser(t, db, "admin@stu.henu.edu.cn", model.RoleAdmin)
+	admin := createTestUser(t, db, "admin@stu.henu.edu.cn", model.RoleAdmin)
 	adminToken := loginTestUser(t, router, "admin@stu.henu.edu.cn")
 
 	unsafeStorage := performJSON(router, http.MethodPost, "/api/v1/admin/materials", `{"courseId":"`+course.ID+`","title":"Unsafe","storageKey":"../secret.pdf"}`, adminToken)
@@ -207,6 +219,9 @@ func TestAdminMaterialUploadGuards(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cfg.LocalUploadDir, filepath.FromSlash(material.StorageKey))); err != nil {
 		t.Fatalf("expected uploaded file on disk: %v", err)
 	}
+	if countOperationLogs(t, db, "material.upload", "material", material.ID, admin.ID) != 1 {
+		t.Fatal("expected material upload operation log")
+	}
 }
 
 func TestAdminMaterialStatusFlow(t *testing.T) {
@@ -214,7 +229,7 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
 
 	course := createTestCourse(t, db)
-	createTestUser(t, db, "material-admin@stu.henu.edu.cn", model.RoleAdmin)
+	admin := createTestUser(t, db, "material-admin@stu.henu.edu.cn", model.RoleAdmin)
 	adminToken := loginTestUser(t, router, "material-admin@stu.henu.edu.cn")
 	studentToken := loginTestUser(t, router, "material-student@stu.henu.edu.cn")
 
@@ -230,6 +245,9 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	}
 	if material.Status != model.StatusDraft {
 		t.Fatalf("expected missing status to default to draft, got %s", material.Status)
+	}
+	if countOperationLogs(t, db, "material.create", "material", material.ID, admin.ID) != 1 {
+		t.Fatal("expected material create operation log")
 	}
 
 	publicList := performJSON(router, http.MethodGet, "/api/v1/materials", "", "")
@@ -275,11 +293,17 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	if material.StorageKey != originalStorageKey || material.FileName != "" || material.FileSize != 0 {
 		t.Fatalf("material file fields changed through metadata update: %#v", material)
 	}
+	if countOperationLogs(t, db, "material.update", "material", material.ID, admin.ID) != 0 {
+		t.Fatal("blocked material file update must not write an operation log")
+	}
 
 	updateBody := `{"title":"Edited Material","type":"answer","description":"Edited description","previewContent":"Edited preview","accessLevel":"paid","status":"pending"}`
 	update := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID, updateBody, adminToken)
 	if update.Code != http.StatusOK {
 		t.Fatalf("expected material edit 200, got %d: %s", update.Code, update.Body.String())
+	}
+	if countOperationLogs(t, db, "material.update", "material", material.ID, admin.ID) != 1 {
+		t.Fatal("expected material update operation log")
 	}
 	if err := db.First(&material, "id = ?", material.ID).Error; err != nil {
 		t.Fatal(err)
@@ -296,6 +320,9 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	publish := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID+"/status", `{"status":"published"}`, adminToken)
 	if publish.Code != http.StatusOK {
 		t.Fatalf("expected publish status update 200, got %d: %s", publish.Code, publish.Body.String())
+	}
+	if countOperationLogs(t, db, "material.status_update", "material", material.ID, admin.ID) != 1 {
+		t.Fatal("expected material status operation log")
 	}
 	publicListAfterPublish := performJSON(router, http.MethodGet, "/api/v1/materials", "", "")
 	if publicListAfterPublish.Code != http.StatusOK || !strings.Contains(publicListAfterPublish.Body.String(), material.ID) {

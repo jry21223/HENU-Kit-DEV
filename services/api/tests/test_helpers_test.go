@@ -86,3 +86,16 @@ func loginTestUser(t *testing.T, router http.Handler, email string) string {
 	}
 	return extractAccessToken(t, loginResponse.Body.Bytes())
 }
+
+func countOperationLogs(t *testing.T, db *gorm.DB, action string, targetType string, targetID string, operatorID string) int64 {
+	t.Helper()
+	query := db.Model(&model.OperationLog{}).Where("action = ? AND target_type = ? AND target_id = ?", action, targetType, targetID)
+	if operatorID != "" {
+		query = query.Where("operator_id = ?", operatorID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	return count
+}

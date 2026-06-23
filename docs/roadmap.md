@@ -28,6 +28,7 @@
 - Vue admin read-only analytics page for download trend and course demand
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog and package-level material grants
+- Server-side operation logs for organization, course, material, upload, status/archive, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton
 - Next.js Web shell
@@ -39,7 +40,7 @@
 - Web session polish for richer account status and entitlement summaries
 - Richer content review workflows beyond AI drafts
 - Admin analytics expansion for page visits, search intent, course request voting, and conversion metrics
-- Operation logs for high-risk admin actions
+- Vue Admin operation-log browser UI and filters
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables

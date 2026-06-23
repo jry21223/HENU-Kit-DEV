@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"final-review-platform/services/api/internal/audit"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -105,7 +107,15 @@ func (h Handler) CreateSchool(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
 		return
 	}
-	if err := h.db.Create(&school).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&school).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "school.create", "school", school.ID, map[string]interface{}{
+			"slug":   school.Slug,
+			"status": school.Status,
+		})
+	}); err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
 		return
 	}
@@ -144,7 +154,15 @@ func (h Handler) CreateCollege(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
 		return
 	}
-	if err := h.db.Create(&college).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&college).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "college.create", "college", college.ID, map[string]interface{}{
+			"schoolId": college.SchoolID,
+			"status":   college.Status,
+		})
+	}); err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
 		return
 	}
@@ -184,7 +202,17 @@ func (h Handler) CreateMajor(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
 		return
 	}
-	if err := h.db.Create(&major).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&major).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "major.create", "major", major.ID, map[string]interface{}{
+			"schoolId":  major.SchoolID,
+			"collegeId": major.CollegeID,
+			"slug":      major.Slug,
+			"status":    major.Status,
+		})
+	}); err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
 		return
 	}
@@ -235,7 +263,19 @@ func (h Handler) CreateCourse(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_required_fields", nil)
 		return
 	}
-	if err := h.db.Create(&course).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&course).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "course.create", "course", course.ID, map[string]interface{}{
+			"schoolId":  course.SchoolID,
+			"collegeId": course.CollegeID,
+			"majorId":   course.MajorID,
+			"grade":     course.Grade,
+			"slug":      course.Slug,
+			"status":    course.Status,
+		})
+	}); err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
 		return
 	}
@@ -341,7 +381,17 @@ func (h Handler) CreateMaterial(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsafe_storage_key", nil)
 		return
 	}
-	if err := h.db.Create(&material).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&material).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "material.create", "material", material.ID, map[string]interface{}{
+			"courseId":    material.CourseID,
+			"type":        material.Type,
+			"accessLevel": material.AccessLevel,
+			"status":      material.Status,
+		})
+	}); err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
 		return
 	}
@@ -425,13 +475,25 @@ func (h Handler) UpdateMaterialStatus(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
 		return
 	}
-	result := h.db.Model(&model.Material{}).Where("id = ?", ctx.Param("id")).Update("status", status)
-	if result.Error != nil {
+	materialID := ctx.Param("id")
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Material{}).Where("id = ?", materialID).Update("status", status)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return audit.Record(ctx, tx, "material.status_update", "material", materialID, map[string]interface{}{
+			"status": status,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "material_not_found", nil)
+			return
+		}
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "update_failed", nil)
-		return
-	}
-	if result.RowsAffected == 0 {
-		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "material_not_found", nil)
 		return
 	}
 	response.OK(ctx, gin.H{"updated": true, "status": status})
@@ -523,7 +585,19 @@ func (h Handler) UploadMaterial(ctx *gin.Context) {
 		AccessLevel:    accessLevel,
 		Status:         status,
 	}
-	if err := h.db.Create(&material).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&material).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "material.upload", "material", material.ID, map[string]interface{}{
+			"courseId":    material.CourseID,
+			"type":        material.Type,
+			"accessLevel": material.AccessLevel,
+			"status":      material.Status,
+			"fileName":    material.FileName,
+			"fileSize":    material.FileSize,
+		})
+	}); err != nil {
 		_ = os.Remove(targetPath)
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
 		return
@@ -536,26 +610,48 @@ func (h Handler) updateByID(ctx *gin.Context, target interface{}, updates map[st
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "empty_update", nil)
 		return
 	}
-	result := h.db.Model(target).Where("id = ?", ctx.Param("id")).Updates(updates)
-	if result.Error != nil {
+	targetID := ctx.Param("id")
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(target).Where("id = ?", targetID).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return audit.Record(ctx, tx, name+".update", name, targetID, updateMetadata(updates))
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, name+"_not_found", nil)
+			return
+		}
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "update_failed", nil)
-		return
-	}
-	if result.RowsAffected == 0 {
-		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, name+"_not_found", nil)
 		return
 	}
 	response.OK(ctx, gin.H{"updated": true})
 }
 
 func (h Handler) archiveByID(ctx *gin.Context, target interface{}, name string) {
-	result := h.db.Model(target).Where("id = ?", ctx.Param("id")).Update("status", model.StatusArchived)
-	if result.Error != nil {
+	targetID := ctx.Param("id")
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(target).Where("id = ?", targetID).Update("status", model.StatusArchived)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return audit.Record(ctx, tx, name+".archive", name, targetID, map[string]interface{}{
+			"status": model.StatusArchived,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, name+"_not_found", nil)
+			return
+		}
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "archive_failed", nil)
-		return
-	}
-	if result.RowsAffected == 0 {
-		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, name+"_not_found", nil)
 		return
 	}
 	response.OK(ctx, gin.H{"archived": true})
@@ -610,6 +706,26 @@ func compactMap(values map[string]interface{}) map[string]interface{} {
 		}
 	}
 	return result
+}
+
+func updateMetadata(updates map[string]interface{}) map[string]interface{} {
+	if len(updates) == 0 {
+		return nil
+	}
+	fields := make([]string, 0, len(updates))
+	for key := range updates {
+		fields = append(fields, key)
+	}
+	sort.Strings(fields)
+	metadata := map[string]interface{}{
+		"fields": fields,
+	}
+	for _, key := range []string{"status", "access_level", "type"} {
+		if value, ok := updates[key]; ok {
+			metadata[key] = value
+		}
+	}
+	return metadata
 }
 
 func required(value string) string {

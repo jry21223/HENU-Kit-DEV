@@ -28,6 +28,7 @@ Important boundaries:
 - Valid course statuses are `draft`, `published`, and `archived`.
 - Deleting a course archives it instead of hard-deleting data.
 - The edit dialog updates course organization, grade, slug, description, exam scope, and status through the Go API.
+- Course create/update/archive operations write `operation_logs` rows server-side.
 
 ## Material Operations
 
@@ -58,6 +59,7 @@ Important boundaries:
 - The UI does not display `storage_key`; downloads still go through `GET /api/v1/materials/:id/download`.
 - The edit dialog does not expose or mutate `storage_key`; the Go API also rejects metadata PATCH attempts that include `storageKey`, `fileName`, or `fileSize`.
 - Replacing the actual file remains an upload flow.
+- Material create/upload/update/status-update/archive operations write `operation_logs` rows server-side.
 
 ## Download Audit
 
@@ -107,6 +109,13 @@ Important boundaries:
 - The MVP does not automatically publish AI drafts as materials, questions, wiki entries, or papers.
 - The UI displays task input/result and draft content for review, but it does not call any LLM directly.
 - Real LLM/RAG and publish-to-resource flows remain later work.
+- AI draft approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+
+## Operation Logs
+
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+
+Current limitation: Vue Admin does not yet expose an operation-log search page. Logs are queryable from the database and covered by API tests.
 
 ## Analytics
 
@@ -135,4 +144,4 @@ Important boundaries:
 - Orders
 - Reports
 - System config
-- Operation logs
+- Operation log browser UI
