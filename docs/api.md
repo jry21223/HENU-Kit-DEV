@@ -223,6 +223,8 @@ Implemented quiz behavior:
 Implemented blog behavior:
 
 - public blog list/detail endpoints only return `published` posts
+- public blog endpoints use a public DTO and do not expose `reviewerId`, `reviewReason`, or internal `status`
+- Web `/blog` and `/blog/[id]` consume those public endpoints as read-only student-facing pages; they do not submit posts or expose review metadata
 - logged-in, non-frozen users can submit blog posts; submissions always enter `pending`
 - blog submission validates required title, lowercase URL slug, and content length
 - reviewer/admin users can list pending/published/rejected blog posts through `/admin/blog/posts`
@@ -279,7 +281,7 @@ Implemented notification behavior:
 Implemented report behavior:
 
 - logged-in, non-frozen users can submit reports through `POST /api/v1/reports`
-- Web report buttons are currently wired on material detail pages, forum posts, and forum replies
+- Web report buttons are currently wired on material detail pages, blog posts, forum posts, and forum replies
 - reportable targets are `material`, `wiki_entry`, `blog_post`, `forum_post`, `forum_reply`, and `user`
 - content targets must be public/published where applicable; hidden draft/pending/rejected content returns HTTP 404
 - duplicate pending reports from the same reporter for the same target return the existing pending report instead of creating another row

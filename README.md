@@ -26,7 +26,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - 用户可以查看自己的成功下载记录；管理员可以查看全量下载审计日志。
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
-- Next.js Web 已有首页、课程列表、课程详情、课程包详情与解锁状态展示、资料详情、课程刷题、论坛列表/详情、发帖、回复提交、最佳答案操作入口和学生邮箱登录页面。
+- Next.js Web 已有首页、课程列表、课程详情、课程包详情与解锁状态展示、资料详情、课程刷题、Wiki 只读列表/详情、Blog 只读列表/详情、论坛列表/详情、发帖、回复提交、最佳答案操作入口和学生邮箱登录页面。
 - Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
@@ -106,6 +106,7 @@ cd ../worker && go test ./...
 - 后台课程包 CRUD、包内资料绑定/解绑、重复绑定保护，以及公开课程包详情不泄露未发布资料 item。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建不发放权益的 pending 课程包订单。Vue Admin `/orders` 可以只读查询订单状态，不能标记支付成功或发放权益。
 - Web `/wiki` and `/wiki/[id]` expose only published public Wiki entries through the Go API; draft, pending, rejected, and private review metadata stay hidden.
+- Web `/blog` and `/blog/[id]` expose only published public Blog posts through the Go API; public responses use a DTO that hides review metadata, and the detail page can submit a `blog_post` report.
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
@@ -190,7 +191,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - Material review is one-way for the MVP: only pending materials can be approved or rejected through reviewer endpoints, rejected materials stay hidden from public pages, and rejection requires a review reason.
 - Wiki submission is review-first for the MVP: creator/admin users can submit entries, public wiki APIs expose only published public entries, public responses hide review metadata, and rejected entries stay hidden.
 - Wiki edit proposals are review-first for the MVP: creator/admin users can propose edits to published public entries, reviewer queues compare base/current/proposed content, public content stays unchanged until approval, stale base versions return `409 proposal_stale`, and successful approval updates the live entry, increments its version, and writes `wiki_edit_histories`.
-- Blog submission is review-first for the MVP: logged-in users can submit posts, public blog APIs expose only published posts, and rejected posts stay hidden.
+- Blog submission is review-first for the MVP: logged-in users can submit posts, public blog APIs expose only published posts through a public DTO, and rejected posts stay hidden.
 - Forum submission is review-first for the MVP: logged-in users can submit normal/question/reward posts, public forum APIs expose only published public posts under published boards, and rejected posts stay hidden.
 - Forum reward posts now freeze author points at submission, stay hidden until review, keep points escrowed after approval, refund points automatically on rejection, and settle escrowed points to the selected best-answer author through `POST /api/v1/forum/replies/:id/mark-best`.
 - Forum replies are review-first for the MVP: replies can only target published public posts, approved replies increment the parent post comment count once, and rejected replies stay hidden.
@@ -199,7 +200,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 - User notifications are available through `GET /api/v1/me/notifications`, `POST /api/v1/me/notifications/:id/read`, `POST /api/v1/me/notifications/read-all`, and Web `/me/notifications`; users only see/read their own notifications.
 - Forum post/reply review creates a `forum_review` notification for the author in the same transaction as the review update and operation log.
 - Material, wiki entry/proposal, blog post, and AI draft review creates a `content_review` notification for the original author/editor/task owner in the same transaction as the review update and operation log.
-- Basic report APIs, Web material/forum report buttons, and Vue Admin `/reports` are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
+- Basic report APIs, Web material/blog/forum report buttons, and Vue Admin `/reports` are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
 - Payment and membership notifications remain later work.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
 - Go API writes server-side `operation_logs` for user management, access grants, organization, course, course package and package-item binding, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.

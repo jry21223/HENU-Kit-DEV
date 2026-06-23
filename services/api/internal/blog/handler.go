@@ -40,6 +40,20 @@ type reviewRequest struct {
 	ReviewReason string `json:"reviewReason"`
 }
 
+type publicPost struct {
+	ID           string `json:"id"`
+	AuthorID     string `json:"authorId"`
+	Title        string `json:"title"`
+	Slug         string `json:"slug"`
+	Content      string `json:"content"`
+	Visibility   string `json:"visibility"`
+	LikeCount    int64  `json:"likeCount"`
+	CommentCount int64  `json:"commentCount"`
+	CollectCount int64  `json:"collectCount"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
 func (h Handler) ListPublished(ctx *gin.Context) {
 	limit, ok := parseLimit(ctx.Query("limit"), 50, 100)
 	if !ok {
@@ -51,7 +65,7 @@ func (h Handler) ListPublished(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"posts": posts})
+	response.OK(ctx, gin.H{"posts": publicPosts(posts)})
 }
 
 func (h Handler) Detail(ctx *gin.Context) {
@@ -60,7 +74,7 @@ func (h Handler) Detail(ctx *gin.Context) {
 		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "post_not_found", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"post": post})
+	response.OK(ctx, gin.H{"post": toPublicPost(post)})
 }
 
 func (h Handler) Create(ctx *gin.Context) {
@@ -263,6 +277,30 @@ func isReviewListStatus(status string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func publicPosts(posts []model.BlogPost) []publicPost {
+	result := make([]publicPost, 0, len(posts))
+	for _, post := range posts {
+		result = append(result, toPublicPost(post))
+	}
+	return result
+}
+
+func toPublicPost(post model.BlogPost) publicPost {
+	return publicPost{
+		ID:           post.ID,
+		AuthorID:     post.AuthorID,
+		Title:        post.Title,
+		Slug:         post.Slug,
+		Content:      post.Content,
+		Visibility:   post.Visibility,
+		LikeCount:    post.LikeCount,
+		CommentCount: post.CommentCount,
+		CollectCount: post.CollectCount,
+		CreatedAt:    post.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:    post.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 

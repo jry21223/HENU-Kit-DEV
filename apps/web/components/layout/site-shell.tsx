@@ -7,6 +7,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
     brand: "\u8f6f\u4ef6\u5b66\u9662\u8d44\u6599\u5e93",
     courses: "\u8bfe\u7a0b\u8d44\u6599",
     wiki: "Wiki",
+    blog: "Blog",
     forum: "\u8ba8\u8bba",
     guarantee: "\u8d44\u6599\u4fdd\u969c",
     me: "\u4e2a\u4eba\u4e2d\u5fc3",
@@ -25,12 +26,15 @@ export function SiteShell({ children }: { children: ReactNode }) {
               </span>
               <span className="min-w-0 truncate">{copy.brand}</span>
             </Link>
-            <div className="grid w-full min-w-0 grid-cols-6 gap-1.5 text-sm text-muted-foreground sm:flex sm:w-auto sm:items-center sm:justify-end sm:gap-2">
+            <div className="grid w-full min-w-0 grid-cols-7 gap-1.5 text-sm text-muted-foreground sm:flex sm:w-auto sm:items-center sm:justify-end sm:gap-2">
               <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/courses">
                 {copy.courses}
               </Link>
               <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/wiki">
                 {copy.wiki}
+              </Link>
+              <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/blog">
+                {copy.blog}
               </Link>
               <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/forum">
                 {copy.forum}

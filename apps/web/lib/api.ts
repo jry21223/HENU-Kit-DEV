@@ -258,6 +258,20 @@ export type WikiEntry = {
   updatedAt: string;
 };
 
+export type BlogPost = {
+  id: string;
+  authorId: string;
+  title: string;
+  slug: string;
+  content: string;
+  visibility: string;
+  likeCount: number;
+  commentCount: number;
+  collectCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type MyForumPost = {
   id: string;
   boardId: string;

@@ -12,7 +12,7 @@ type Envelope<T> = {
 };
 
 type ReportButtonProps = {
-  targetType: "material" | "forum_post" | "forum_reply";
+  targetType: "material" | "wiki_entry" | "blog_post" | "forum_post" | "forum_reply";
   targetId: string;
   targetLabel: string;
   compact?: boolean;

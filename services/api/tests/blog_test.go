@@ -86,6 +86,20 @@ func TestBlogSubmissionAndReviewWorkflow(t *testing.T) {
 	if publicListAfterApprove.Code != http.StatusOK || !strings.Contains(publicListAfterApprove.Body.String(), post.ID) {
 		t.Fatalf("expected approved blog in public list, got %d: %s", publicListAfterApprove.Code, publicListAfterApprove.Body.String())
 	}
+	for _, hiddenField := range []string{"reviewerId", "reviewReason", `"status"`} {
+		if strings.Contains(publicListAfterApprove.Body.String(), hiddenField) {
+			t.Fatalf("public blog list leaked %q: %s", hiddenField, publicListAfterApprove.Body.String())
+		}
+	}
+	publicApprovedDetail := performJSON(router, http.MethodGet, "/api/v1/blog/posts/"+post.ID, "", "")
+	if publicApprovedDetail.Code != http.StatusOK || !strings.Contains(publicApprovedDetail.Body.String(), post.ID) {
+		t.Fatalf("expected approved blog public detail 200, got %d: %s", publicApprovedDetail.Code, publicApprovedDetail.Body.String())
+	}
+	for _, hiddenField := range []string{"reviewerId", "reviewReason", `"status"`} {
+		if strings.Contains(publicApprovedDetail.Body.String(), hiddenField) {
+			t.Fatalf("public blog detail leaked %q: %s", hiddenField, publicApprovedDetail.Body.String())
+		}
+	}
 	reviewAgain := performJSON(router, http.MethodPost, "/api/v1/admin/blog/posts/"+post.ID+"/reject", `{"reviewReason":"overwrite"}`, reviewerToken)
 	if reviewAgain.Code != http.StatusConflict || !strings.Contains(reviewAgain.Body.String(), "post_not_reviewable") {
 		t.Fatalf("expected reviewed blog conflict, got %d: %s", reviewAgain.Code, reviewAgain.Body.String())
