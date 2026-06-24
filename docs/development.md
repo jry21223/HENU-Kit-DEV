@@ -98,3 +98,12 @@ npm --workspace @final-review/web run test:e2e:delivery
 ```
 
 This Playwright smoke opens the real Web and Admin frontends, keeps student/admin sessions in separate browser contexts, checks paid download denial before entitlement, creates an admin-only package grant, and verifies the student can download after the grant. It is opt-in because it mutates access grants and should use a fresh student test account.
+
+Mobile public-page smoke:
+
+```bash
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+npm --workspace @final-review/web run test:e2e:mobile
+```
+
+This Playwright smoke uses a 390px mobile viewport and checks the public Web entry points for HTTP 5xx failures, document-level horizontal overflow, visible required content, and basic mobile control target sizes. It does not log in, create orders, grant access, or mutate server state.
