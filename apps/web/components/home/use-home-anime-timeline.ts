@@ -28,10 +28,10 @@ type UseHomeAnimeTimelineOptions = {
 };
 
 const timelineDuration = 1000;
-const insideRevealStart = 0.78;
-const insideRevealEnd = 0.82;
-const pageRevealStart = 0.78;
-const pageRevealEnd = 0.82;
+const insideRevealStart = 0.58;
+const insideRevealEnd = 0.76;
+const pageInteractionStart = 0.78;
+const pageVisibilityStart = archiveProgress.openStart;
 const pageVisualEnd = 0.96;
 const closingVisualStart = 0.97;
 
@@ -60,9 +60,9 @@ function syncReadiness(progress: number, readiness: ArchiveReadiness, reduceMoti
     return;
   }
 
-  setReady(readiness.setContentReady, progress >= pageRevealStart && progress <= archiveProgress.openEnd);
+  setReady(readiness.setContentReady, progress >= pageInteractionStart && progress <= archiveProgress.openEnd);
   setReady(readiness.setIntroReady, progress < archiveProgress.introEnd);
-  setReady(readiness.setPageVisible, progress >= pageRevealStart && progress <= pageVisualEnd);
+  setReady(readiness.setPageVisible, progress >= pageVisibilityStart && progress <= pageVisualEnd);
   setReady(readiness.setClosingCopyVisible, progress >= closingVisualStart);
 }
 
@@ -80,8 +80,9 @@ function createArchiveTimeline(stage: HTMLElement) {
   const cover = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCover"));
   const coverFront = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCoverFront"));
   const coverShadow = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCoverShadow"));
+  const leftPanel = stage.querySelector<HTMLElement>(homeAnimSelector("archiveLeftPanel"));
+  const rightPanel = stage.querySelector<HTMLElement>(homeAnimSelector("archiveRightPanel"));
   const spineShadow = stage.querySelector<HTMLElement>(homeAnimSelector("archiveSpineShadow"));
-  const pages = Array.from(stage.querySelectorAll<HTMLElement>(homeAnimSelector("archivePage")));
   const introCopy = stage.querySelector<HTMLElement>(homeAnimSelector("archiveIntroCopy"));
   const closingCopy = stage.querySelector<HTMLElement>(homeAnimSelector("archiveClosingCopy"));
   const timeline = createTimeline({ autoplay: false, defaults: { ease: "linear" } });
@@ -127,9 +128,9 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         cover,
         {
-          duration: durationBetween(0.62, 0.78),
-          ease: "outCubic",
-          opacity: [1, 0.34],
+          duration: durationBetween(0.62, 0.86),
+          ease: "inOutSine",
+          opacity: [1, 0.26],
           rotateY: [-10, -146],
           scaleX: [0.99, 0.92],
           x: [0, -22],
@@ -140,15 +141,15 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         cover,
         {
-          duration: durationBetween(0.78, archiveProgress.openEnd),
+          duration: durationBetween(0.86, archiveProgress.openEnd),
           ease: "outCubic",
-          opacity: [0.34, 0],
+          opacity: [0.26, 0],
           rotateY: [-146, -178],
           scaleX: [0.92, 1],
           x: [-22, -10],
           z: [24, 0],
         },
-        at(0.78),
+        at(0.86),
       )
       .add(
         cover,
@@ -253,9 +254,8 @@ function createArchiveTimeline(stage: HTMLElement) {
         {
           duration: durationBetween(insideRevealStart, insideRevealEnd),
           ease: "outCubic",
-          opacity: [0, 1],
-          scaleX: [0.97, 1],
-          y: [10, 0],
+          opacity: [0, 0.22],
+          scaleX: [0.985, 1],
         },
         at(insideRevealStart),
       )
@@ -278,8 +278,7 @@ function createArchiveTimeline(stage: HTMLElement) {
           duration: durationBetween(insideRevealStart, insideRevealEnd),
           ease: "outCubic",
           opacity: [0, 1],
-          scaleX: [0.97, 1],
-          y: [10, 0],
+          scaleX: [0.985, 1],
         },
         at(insideRevealStart),
       )
@@ -294,26 +293,56 @@ function createArchiveTimeline(stage: HTMLElement) {
       );
   }
 
-  if (pages.length > 0) {
+  if (leftPanel) {
     timeline
       .add(
-        pages,
+        leftPanel,
         {
-          duration: durationBetween(pageRevealStart, pageRevealEnd),
-          ease: "outCubic",
+          duration: durationBetween(insideRevealStart, 0.9),
+          ease: "outSine",
           opacity: [0, 1],
-          rotateX: [7, 0],
-          scale: [0.985, 1],
-          y: [12, 0],
+          rotateY: [64, 0],
+          scaleX: [0.9, 1],
+          x: [34, 0],
+          z: [-28, 0],
         },
-        at(pageRevealStart),
+        at(insideRevealStart),
       )
       .add(
-        pages,
+        leftPanel,
         {
           duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
           ease: "inCubic",
           opacity: [1, 0],
+          rotateY: [0, 8],
+          y: [0, 12],
+        },
+        at(archiveProgress.openEnd),
+      );
+  }
+
+  if (rightPanel) {
+    timeline
+      .add(
+        rightPanel,
+        {
+          duration: durationBetween(insideRevealStart, 0.9),
+          ease: "outSine",
+          opacity: [0, 1],
+          rotateY: [-22, 0],
+          scaleX: [0.96, 1],
+          x: [-12, 0],
+          z: [-18, 0],
+        },
+        at(insideRevealStart),
+      )
+      .add(
+        rightPanel,
+        {
+          duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
+          ease: "inCubic",
+          opacity: [1, 0],
+          rotateY: [0, -5],
           y: [0, 12],
         },
         at(archiveProgress.openEnd),

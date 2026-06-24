@@ -71,16 +71,29 @@ async function archiveVisualState(page: Page) {
     const base = document.querySelector<HTMLElement>('[data-home-anim="archive-base"]');
     const closingCopy = document.querySelector<HTMLElement>('[data-testid="archive-copy-closing"]');
     const inside = document.querySelector<HTMLElement>('[data-home-anim="archive-inside"]');
+    const panels = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[data-home-anim="archive-left-panel"], [data-home-anim="archive-right-panel"]',
+      ),
+    );
     const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-home-anim="archive-page"]'));
     const spineShadow = document.querySelector<HTMLElement>('[data-home-anim="archive-spine-shadow"]');
 
-    if (!base || !cover || !coverShadow || !closingCopy || !inside || pages.length === 0 || !spineShadow) {
+    if (!base || !cover || !coverShadow || !closingCopy || !inside || panels.length !== 2 || pages.length === 0 || !spineShadow) {
       throw new Error("Archive visual nodes were not found");
     }
 
     const coverRect = cover.getBoundingClientRect();
     const closingRect = closingCopy.getBoundingClientRect();
-    const pageOpacities = pages.map((archivePage) => Number(getComputedStyle(archivePage).opacity));
+    const insideOpacity = Number(getComputedStyle(inside).opacity);
+    const panelOpacities = panels.map((panel) => Number(getComputedStyle(panel).opacity));
+    const pageOpacities = pages.map((archivePage) => {
+      const panel = archivePage.closest<HTMLElement>(
+        '[data-home-anim="archive-left-panel"], [data-home-anim="archive-right-panel"]',
+      );
+
+      return Number(getComputedStyle(archivePage).opacity) * insideOpacity * (panel ? Number(getComputedStyle(panel).opacity) : 1);
+    });
 
     return {
       baseOpacity: Number(getComputedStyle(base).opacity),
@@ -89,9 +102,11 @@ async function archiveVisualState(page: Page) {
       coverLeft: coverRect.left,
       coverOpacity: Number(getComputedStyle(cover).opacity),
       coverShadowOpacity: Number(getComputedStyle(coverShadow).opacity),
-      insideOpacity: Number(getComputedStyle(inside).opacity),
+      insideOpacity,
       maxPageOpacity: Math.max(...pageOpacities),
+      maxPanelOpacity: Math.max(...panelOpacities),
       minPageOpacity: Math.min(...pageOpacities),
+      minPanelOpacity: Math.min(...panelOpacities),
       spineShadowOpacity: Number(getComputedStyle(spineShadow).opacity),
     };
   });
@@ -229,16 +244,17 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await scrollArchiveTo(page, 0.66);
   await expect(page.getByTestId("archive-copy-intro")).toBeHidden();
   await expect(page.locator('[data-home-anim="archive-open-copy"]')).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
+  await expect(page.locator('[data-home-anim="archive-page"]').first().getByText("资料目录")).toBeVisible();
   await expect(page.getByTestId("archive-cover")).toBeVisible();
 
   const openingCoverBox = await elementBox(page, "archive-cover");
   const liftingVisualState = await archiveVisualState(page);
   expect(liftingVisualState.coverShadowOpacity).toBeGreaterThan(0.12);
   expect(liftingVisualState.spineShadowOpacity).toBeGreaterThan(0.18);
-  expect(liftingVisualState.baseOpacity).toBeLessThan(0.16);
-  expect(liftingVisualState.insideOpacity).toBeLessThan(0.16);
-  expect(liftingVisualState.maxPageOpacity).toBeLessThan(0.05);
+  expect(liftingVisualState.baseOpacity).toBeLessThan(0.3);
+  expect(liftingVisualState.insideOpacity).toBeGreaterThan(0.7);
+  expect(liftingVisualState.minPanelOpacity).toBeGreaterThan(0.2);
+  expect(liftingVisualState.maxPageOpacity).toBeGreaterThan(0.2);
   expect(openingCoverBox.centerX).toBeGreaterThan(1440 * 0.45);
   expect(openingCoverBox.centerX).toBeLessThan(1440 * 0.86);
   expect(openingCoverBox.width / openingCoverBox.height).toBeLessThan(0.86);
@@ -308,6 +324,41 @@ test("homepage keeps archive narration clear of the open pages", async ({ page }
   expect(openVisualState.coverOpacity).toBeLessThan(0.18);
 });
 
+test("homepage binds archive pages to hinged book panels", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto(homeUrl, { waitUntil: "networkidle" });
+
+  const structure = await page.evaluate(() => {
+    const leftPanel = document.querySelector<HTMLElement>('[data-home-anim="archive-left-panel"]');
+    const rightPanel = document.querySelector<HTMLElement>('[data-home-anim="archive-right-panel"]');
+    const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-home-anim="archive-page"]'));
+
+    const leftOriginX = leftPanel ? Number.parseFloat(getComputedStyle(leftPanel).transformOrigin) : Number.NaN;
+    const rightOriginX = rightPanel ? Number.parseFloat(getComputedStyle(rightPanel).transformOrigin) : Number.NaN;
+
+    return {
+      hasLeftPanel: Boolean(leftPanel),
+      hasRightPanel: Boolean(rightPanel),
+      leftContainsDirectoryPage: Boolean(leftPanel && pages[0] && leftPanel.contains(pages[0])),
+      leftOriginX,
+      leftWidth: leftPanel?.offsetWidth ?? 0,
+      pageCount: pages.length,
+      rightContainsCoursePage: Boolean(rightPanel && pages[1] && rightPanel.contains(pages[1])),
+      rightOriginX,
+    };
+  });
+
+  expect(structure).toMatchObject({
+    hasLeftPanel: true,
+    hasRightPanel: true,
+    leftContainsDirectoryPage: true,
+    pageCount: 2,
+    rightContainsCoursePage: true,
+  });
+  expect(structure.leftOriginX).toBeGreaterThan(structure.leftWidth - 4);
+  expect(structure.rightOriginX).toBeLessThan(4);
+});
+
 test("homepage gives post-book cards tactile hover motion", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto(homeUrl, { waitUntil: "networkidle" });
@@ -354,6 +405,8 @@ test("homepage exposes precision animation markers", async ({ page }) => {
   await expect(page.locator('[data-home-anim="archive-cover"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-cover-shadow"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-spine-shadow"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="archive-left-panel"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="archive-right-panel"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-directory-scan"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-directory-line"]')).toHaveCount(6);
   await expect(page.locator('[data-home-anim="course-book"]')).toHaveCount(6);
@@ -470,19 +523,23 @@ test("homepage keeps JS-enabled SSR archive in animation initial layout", async 
 
     const visualState = await page.evaluate(() => {
       const cover = document.querySelector<HTMLElement>('[data-home-anim="archive-cover"]');
+      const inside = document.querySelector<HTMLElement>('[data-home-anim="archive-inside"]');
+      const leftPanel = document.querySelector<HTMLElement>('[data-home-anim="archive-left-panel"]');
       const firstPage = document.querySelector<HTMLElement>('[data-home-anim="archive-page"]');
 
-      if (!cover || !firstPage) {
+      if (!cover || !inside || !leftPanel || !firstPage) {
         throw new Error("Archive book elements were not found");
       }
 
       return {
         coverOpacity: Number(getComputedStyle(cover).opacity),
+        insideOpacity: Number(getComputedStyle(inside).opacity),
+        leftPanelOpacity: Number(getComputedStyle(leftPanel).opacity),
         pageOpacity: Number(getComputedStyle(firstPage).opacity),
       };
     });
 
-    expect(visualState).toEqual({ coverOpacity: 1, pageOpacity: 0 });
+    expect(visualState).toEqual({ coverOpacity: 1, insideOpacity: 0, leftPanelOpacity: 0, pageOpacity: 1 });
   } finally {
     await context.close();
   }
