@@ -132,6 +132,8 @@ func reviewResourceKind(resourceType string) string {
 		return "Wiki \u8bcd\u6761"
 	case "wiki_proposal":
 		return "Wiki \u7f16\u8f91\u63d0\u6848"
+	case "wiki_creator_application":
+		return "Wiki \u521b\u4f5c\u8005\u7533\u8bf7"
 	case "blog_post":
 		return "\u535a\u5ba2"
 	case "ai_draft":

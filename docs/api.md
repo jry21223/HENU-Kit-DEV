@@ -64,6 +64,7 @@ Currently implemented endpoints:
 - `DELETE /api/v1/moments/comments/:id`
 - `GET /api/v1/wiki/entries?courseId=&limit=`
 - `GET /api/v1/wiki/entries/:id`
+- `POST /api/v1/wiki/creator-applications`
 - `POST /api/v1/wiki/entries`
 - `POST /api/v1/wiki/entries/:id/proposals`
 - `POST /api/v1/quiz/attempts`
@@ -154,6 +155,9 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/wiki/entries?status=draft|pending|needs_changes|published|rejected&authorId=&courseId=&limit=`
 - `POST /api/v1/admin/wiki/entries/:id/approve`
 - `POST /api/v1/admin/wiki/entries/:id/reject`
+- `GET /api/v1/admin/wiki/creator-applications?status=draft|pending|needs_changes|approved|published|rejected&userId=&limit=`
+- `POST /api/v1/admin/wiki/creator-applications/:id/approve`
+- `POST /api/v1/admin/wiki/creator-applications/:id/reject`
 - `GET /api/v1/admin/wiki/proposals?status=draft|pending|needs_changes|published|rejected&entryId=&editorId=&limit=`
 - `POST /api/v1/admin/wiki/proposals/:id/approve`
 - `POST /api/v1/admin/wiki/proposals/:id/reject`
@@ -432,6 +436,8 @@ Implemented wiki behavior:
 - public wiki endpoints use a public DTO and do not expose `reviewerId` or `reviewReason`
 - Web `/wiki` and `/wiki/[id]` consume those public endpoints as student-facing pages; public responses still hide review metadata
 - Web `/wiki/[id]` includes a creator/admin-only edit-proposal form that submits to `POST /api/v1/wiki/entries/:id/proposals`; normal users see the review boundary instead of the editable form
+- logged-in active normal users can submit creator applications through `POST /api/v1/wiki/creator-applications`; users who are already creator/admin/super_admin are rejected with `already_creator`, and other elevated single-role users are not converted implicitly
+- users can have only one pending/draft/needs_changes creator application at a time
 - wiki entries bound to an unpublished course are hidden from public wiki endpoints
 - creator/admin users can submit wiki entries; submissions always enter `pending`
 - wiki submission validates required title, lowercase URL slug, content length, and optional published course binding
@@ -439,6 +445,7 @@ Implemented wiki behavior:
 - creator/admin users can submit edit proposals for already-published public wiki entries through `POST /api/v1/wiki/entries/:id/proposals`
 - edit proposals capture the published entry `baseVersion` and keep public content unchanged until reviewer approval
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected wiki entries through `/admin/wiki/entries`
+- reviewer/admin users can list and review creator applications through `/admin/wiki/creator-applications`; approval sets application status to `approved` and promotes a normal user to `creator`
 - reviewer/admin users can list draft/pending/needs_changes/published/rejected wiki edit proposals through `/admin/wiki/proposals`; list rows include base-version history content, current live entry content/version/status, and an `isStale` conflict flag
 - approving a wiki entry sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
 - rejecting a wiki entry sets `status=rejected`, requires `reviewReason`, records reviewer metadata, and keeps it hidden from public endpoints

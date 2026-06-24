@@ -24,6 +24,7 @@
         <span v-if="auth.canReviewContent" class="nav-section">{{ copy.reviewSection }}</span>
         <RouterLink v-if="auth.canReviewContent" to="/material-reviews">{{ copy.materialReviews }}</RouterLink>
         <RouterLink v-if="auth.canReviewContent" to="/wiki-reviews">{{ copy.wikiReviews }}</RouterLink>
+        <RouterLink v-if="auth.canReviewContent" to="/wiki-creator-applications">{{ copy.wikiCreatorApplications }}</RouterLink>
         <RouterLink v-if="auth.canReviewContent" to="/wiki-proposal-reviews">{{ copy.wikiProposalReviews }}</RouterLink>
         <RouterLink v-if="auth.canReviewContent" to="/blog-reviews">{{ copy.blogReviews }}</RouterLink>
         <RouterLink v-if="auth.canReviewContent" to="/forum-reviews">{{ copy.forumReviews }}</RouterLink>
@@ -69,6 +70,7 @@ const copy = {
   reviewSection: "\u5ba1\u6838\u6d41\u7a0b",
   materialReviews: "\u8d44\u6599\u5ba1\u6838",
   wikiReviews: "Wiki \u5ba1\u6838",
+  wikiCreatorApplications: "Wiki \u521b\u4f5c\u8005\u7533\u8bf7",
   wikiProposalReviews: "Wiki \u63d0\u6848\u5ba1\u6838",
   blogReviews: "\u535a\u5ba2\u5ba1\u6838",
   forumReviews: "\u5e16\u5b50\u5ba1\u6838",

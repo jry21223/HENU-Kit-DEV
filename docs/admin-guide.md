@@ -299,6 +299,25 @@ Important boundaries:
 - The initial submission writes a `wiki_edit_histories` version-1 row.
 - Wiki approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
 
+## Wiki Creator Application Review
+
+`/wiki-creator-applications` calls:
+
+- `GET /api/v1/admin/wiki/creator-applications?status=`
+- `POST /api/v1/admin/wiki/creator-applications/:id/approve`
+- `POST /api/v1/admin/wiki/creator-applications/:id/reject`
+
+The page is available to `reviewer`, `admin`, and `super_admin` roles. It lists normal-user creator applications with reason and sample draft content.
+
+Important boundaries:
+
+- Logged-in, non-frozen normal users submit creator applications through `POST /api/v1/wiki/creator-applications`.
+- A user can have only one `draft`, `pending`, or `needs_changes` creator application at a time.
+- Existing `creator`, `admin`, and `super_admin` users cannot submit creator applications; reviewer/operator roles are not converted implicitly.
+- Approving an application sets it to `approved`, records reviewer metadata, promotes a normal applicant to `creator`, creates a notification, and writes an `operation_logs` row.
+- Rejecting an application requires `reviewReason`, records reviewer metadata, creates a notification, and does not change the applicant role.
+- Only `draft`, `pending`, and `needs_changes` applications can be reviewed; repeating review on approved/rejected applications returns `409 creator_application_not_reviewable`.
+
 ## Wiki Proposal Review
 
 `/wiki-proposal-reviews` calls:

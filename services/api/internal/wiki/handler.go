@@ -22,10 +22,11 @@ type Handler struct {
 }
 
 var (
-	errEntryNotReviewable    = errors.New("entry_not_reviewable")
-	errProposalNotReviewable = errors.New("proposal_not_reviewable")
-	errProposalStale         = errors.New("proposal_stale")
-	reviewableStatuses       = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
+	errEntryNotReviewable              = errors.New("entry_not_reviewable")
+	errProposalNotReviewable           = errors.New("proposal_not_reviewable")
+	errProposalStale                   = errors.New("proposal_stale")
+	errCreatorApplicationNotReviewable = errors.New("creator_application_not_reviewable")
+	reviewableStatuses                 = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
 )
 
 func NewHandler(db *gorm.DB) Handler {
@@ -48,6 +49,12 @@ type proposalRequest struct {
 	Title   string `json:"title"`
 	Content string `json:"content"`
 	Summary string `json:"summary"`
+}
+
+type creatorApplicationRequest struct {
+	Reason      string `json:"reason"`
+	SampleTitle string `json:"sampleTitle"`
+	SampleBody  string `json:"sampleBody"`
 }
 
 type publicEntry struct {
@@ -217,6 +224,60 @@ func (h Handler) CreateProposal(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"proposal": proposal})
 }
 
+func (h Handler) CreateCreatorApplication(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	if isCreatorCapableRole(user.Role) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "already_creator", nil)
+		return
+	}
+	if user.Role != model.RoleUser {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "creator_application_role_not_supported", nil)
+		return
+	}
+
+	var req creatorApplicationRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	sampleTitle := strings.TrimSpace(req.SampleTitle)
+	sampleBody := strings.TrimSpace(req.SampleBody)
+	if err := validateCreatorApplicationInput(reason, sampleTitle, sampleBody); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+
+	var pendingCount int64
+	if err := h.db.Model(&model.WikiCreatorApplication{}).
+		Where("user_id = ? AND status IN ?", user.ID, []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}).
+		Count(&pendingCount).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	if pendingCount > 0 {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "creator_application_pending", nil)
+		return
+	}
+
+	application := model.WikiCreatorApplication{
+		ReviewFields: model.ReviewFields{Status: model.StatusPending},
+		UserID:       user.ID,
+		Reason:       reason,
+		SampleTitle:  sampleTitle,
+		SampleBody:   sampleBody,
+	}
+	if err := h.db.Create(&application).Error; err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"application": application})
+}
+
 func (h Handler) AdminEntries(ctx *gin.Context) {
 	status := strings.TrimSpace(ctx.Query("status"))
 	if status == "" {
@@ -280,6 +341,32 @@ func (h Handler) AdminProposals(ctx *gin.Context) {
 	response.OK(ctx, gin.H{"proposals": result})
 }
 
+func (h Handler) AdminCreatorApplications(ctx *gin.Context) {
+	status := strings.TrimSpace(ctx.Query("status"))
+	if status == "" {
+		status = model.StatusPending
+	}
+	if !isReviewListStatus(status) {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 100, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	query := h.db.Where("status = ?", status)
+	if userID := strings.TrimSpace(ctx.Query("userId")); userID != "" {
+		query = query.Where("user_id = ?", userID)
+	}
+	var applications []model.WikiCreatorApplication
+	if err := query.Order("updated_at desc").Limit(limit).Find(&applications).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"applications": applications})
+}
+
 func (h Handler) ApproveEntry(ctx *gin.Context) {
 	h.reviewEntry(ctx, model.StatusPublished)
 }
@@ -294,6 +381,14 @@ func (h Handler) ApproveProposal(ctx *gin.Context) {
 
 func (h Handler) RejectProposal(ctx *gin.Context) {
 	h.reviewProposal(ctx, model.StatusRejected)
+}
+
+func (h Handler) ApproveCreatorApplication(ctx *gin.Context) {
+	h.reviewCreatorApplication(ctx, model.StatusApproved)
+}
+
+func (h Handler) RejectCreatorApplication(ctx *gin.Context) {
+	h.reviewCreatorApplication(ctx, model.StatusRejected)
 }
 
 func (h Handler) reviewEntry(ctx *gin.Context, status string) {
@@ -515,6 +610,107 @@ func (h Handler) reviewProposal(ctx *gin.Context, status string) {
 	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
 }
 
+func (h Handler) reviewCreatorApplication(ctx *gin.Context, status string) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req reviewRequest
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+			return
+		}
+	}
+	reason := strings.TrimSpace(req.ReviewReason)
+	if len(reason) > 1000 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_too_long", nil)
+		return
+	}
+	if status == model.StatusRejected && reason == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "review_reason_required", nil)
+		return
+	}
+
+	var application model.WikiCreatorApplication
+	if err := h.db.First(&application, "id = ?", ctx.Param("id")).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "creator_application_not_found", nil)
+		return
+	}
+	if !isReviewableStatus(application.Status) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "creator_application_not_reviewable", gin.H{"status": application.Status})
+		return
+	}
+	previousStatus := application.Status
+	action := "wiki_creator_application.approved"
+	if status == model.StatusRejected {
+		action = "wiki_creator_application.rejected"
+	}
+
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.WikiCreatorApplication{}).
+			Where("id = ? AND status IN ?", application.ID, reviewableStatuses).
+			Updates(map[string]interface{}{
+				"status":        status,
+				"reviewer_id":   user.ID,
+				"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+				"review_reason": reason,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errCreatorApplicationNotReviewable
+		}
+		if status == model.StatusApproved {
+			var applicant model.User
+			if err := tx.First(&applicant, "id = ?", application.UserID).Error; err != nil {
+				return err
+			}
+			if applicant.Role == model.RoleUser {
+				if err := tx.Model(&model.User{}).Where("id = ?", applicant.ID).Update("role", model.RoleCreator).Error; err != nil {
+					return err
+				}
+			}
+		}
+		if err := notification.CreateReviewNotification(tx, notification.ReviewNotificationInput{
+			UserID:        application.UserID,
+			ResourceType:  "wiki_creator_application",
+			ResourceID:    application.ID,
+			ResourceTitle: application.SampleTitle,
+			Status:        status,
+			Reason:        reason,
+		}); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, action, "wiki_creator_application", application.ID, map[string]interface{}{
+			"userId":         application.UserID,
+			"previousStatus": previousStatus,
+			"status":         status,
+			"reviewReason":   reason,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, errCreatorApplicationNotReviewable) {
+			latestStatus := application.Status
+			var latest model.WikiCreatorApplication
+			if queryErr := h.db.Select("status").First(&latest, "id = ?", application.ID).Error; queryErr == nil {
+				latestStatus = latest.Status
+			}
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "creator_application_not_reviewable", gin.H{"status": latestStatus})
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "creator_application_not_found", nil)
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "review_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
+}
+
 func validateEntryInput(title string, slug string, content string, summary string) error {
 	if title == "" || slug == "" || content == "" {
 		return errors.New("missing_required_fields")
@@ -530,6 +726,22 @@ func validateEntryInput(title string, slug string, content string, summary strin
 	}
 	if len([]rune(summary)) > 500 {
 		return errors.New("summary_too_long")
+	}
+	return nil
+}
+
+func validateCreatorApplicationInput(reason string, sampleTitle string, sampleBody string) error {
+	if reason == "" || sampleTitle == "" || sampleBody == "" {
+		return errors.New("missing_required_fields")
+	}
+	if len([]rune(reason)) > 1000 {
+		return errors.New("reason_too_long")
+	}
+	if len([]rune(sampleTitle)) > 200 {
+		return errors.New("sample_title_too_long")
+	}
+	if len([]rune(sampleBody)) > 20000 {
+		return errors.New("sample_body_too_long")
 	}
 	return nil
 }
@@ -654,7 +866,16 @@ func isReviewableStatus(status string) bool {
 
 func isReviewListStatus(status string) bool {
 	switch status {
-	case model.StatusDraft, model.StatusPending, model.StatusNeedsChanges, model.StatusPublished, model.StatusRejected:
+	case model.StatusDraft, model.StatusPending, model.StatusNeedsChanges, model.StatusApproved, model.StatusPublished, model.StatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+func isCreatorCapableRole(role string) bool {
+	switch role {
+	case model.RoleCreator, model.RoleAdmin, model.RoleSuperAdmin:
 		return true
 	default:
 		return false

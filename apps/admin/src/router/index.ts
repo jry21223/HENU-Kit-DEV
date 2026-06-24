@@ -23,6 +23,7 @@ import MembershipsView from "../views/MembershipsView.vue";
 import PointsView from "../views/PointsView.vue";
 import ReportsView from "../views/ReportsView.vue";
 import UsersView from "../views/UsersView.vue";
+import WikiCreatorApplicationsView from "../views/WikiCreatorApplicationsView.vue";
 import WikiProposalReviewsView from "../views/WikiProposalReviewsView.vue";
 import WikiReviewsView from "../views/WikiReviewsView.vue";
 
@@ -47,6 +48,7 @@ export const router = createRouter({
     { path: "/operation-logs", component: OperationLogsView },
     { path: "/material-reviews", component: MaterialReviewsView, meta: { reviewer: true } },
     { path: "/wiki-reviews", component: WikiReviewsView, meta: { reviewer: true } },
+    { path: "/wiki-creator-applications", component: WikiCreatorApplicationsView, meta: { reviewer: true } },
     { path: "/wiki-proposal-reviews", component: WikiProposalReviewsView, meta: { reviewer: true } },
     { path: "/blog-reviews", component: BlogReviewsView, meta: { reviewer: true } },
     { path: "/forum-reviews", component: ForumReviewsView, meta: { reviewer: true } },
