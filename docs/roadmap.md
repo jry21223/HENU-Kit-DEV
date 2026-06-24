@@ -64,6 +64,7 @@
 - Opt-in browser admin Material review smoke for pending content hidden-before-review, Vue Admin approval, public API/Web visibility after approval, and public response metadata redaction
 - Opt-in browser admin Blog review smoke for pending content hidden-before-review, Vue Admin approval, and public Web visibility after approval
 - Opt-in browser admin Wiki review smoke for pending content hidden-before-review, Vue Admin approval, and public API/Web visibility after approval
+- Opt-in browser admin Wiki proposal review smoke for published-content unchanged-before-review, Vue Admin proposal approval, public API/Web content update after approval, and public response metadata redaction
 - Opt-in browser admin Forum post review smoke for pending content hidden-before-review, Vue Admin approval, and public API/Web visibility after approval
 - Opt-in browser admin Forum reply review smoke for pending replies hidden-before-review, Vue Admin approval, and public API/Web visibility after approval
 - Vue admin read-only analytics page for download trend, course demand, and report distribution

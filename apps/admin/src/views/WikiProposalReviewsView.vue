@@ -64,6 +64,7 @@
                 type="success"
                 plain
                 :disabled="!canApprove(row)"
+                :data-testid="`wiki-proposal-review-approve-${row.id}`"
                 @click="openReview(row, 'approve')"
               >
                 {{ copy.approve }}
@@ -73,6 +74,7 @@
                 type="danger"
                 plain
                 :disabled="!canReview(row.status)"
+                :data-testid="`wiki-proposal-review-reject-${row.id}`"
                 @click="openReview(row, 'reject')"
               >
                 {{ copy.reject }}
@@ -135,6 +137,7 @@
           <el-button
             :type="reviewAction === 'approve' ? 'success' : 'danger'"
             :loading="reviewing"
+            data-testid="wiki-proposal-review-submit"
             @click="submitReview"
           >
             {{ reviewAction === "approve" ? copy.approve : copy.reject }}

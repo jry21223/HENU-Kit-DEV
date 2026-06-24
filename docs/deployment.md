@@ -156,6 +156,7 @@ Before opening paid sales, verify all items below:
 - admin material-review smoke `npm --workspace @final-review/web run test:e2e:material-review` passes against Web/Admin/API with an admin reviewer account
 - admin blog-review smoke `npm --workspace @final-review/web run test:e2e:review` passes against Web/Admin/API with fresh author/admin test accounts
 - admin wiki-review smoke `npm --workspace @final-review/web run test:e2e:wiki-review` passes against Web/Admin/API with a creator/admin author account and admin reviewer account
+- admin wiki-proposal-review smoke `npm --workspace @final-review/web run test:e2e:wiki-proposal-review` passes against Web/Admin/API with a creator/admin author account and admin reviewer account
 - admin forum-review smoke `npm --workspace @final-review/web run test:e2e:forum-review` passes against Web/Admin/API with fresh author/admin test accounts
 - admin forum-reply-review smoke `npm --workspace @final-review/web run test:e2e:forum-reply-review` passes against Web/Admin/API with fresh author/admin test accounts
 - mobile public-page smoke `npm --workspace @final-review/web run test:e2e:mobile` passes against the deployed Web origin at a 390px viewport

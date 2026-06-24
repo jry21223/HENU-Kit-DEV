@@ -157,6 +157,24 @@ npm --workspace @final-review/web run test:e2e:wiki-review
 
 This smoke creates a unique pending Wiki entry through the Go API using a creator/admin account, proves the public detail endpoint returns 404 before review, opens Vue Admin `/wiki-reviews`, approves the entry through the Admin UI, and verifies the public API and Web Wiki detail page render it after approval. It is opt-in because it mutates Wiki rows, edit history, notifications, and operation logs. The author account must already have `creator`, `admin`, or `super_admin` privileges.
 
+## Admin Wiki-Proposal-Review Browser Smoke
+
+After Web, Admin, and API are reachable, run the admin wiki-proposal-review smoke from the repository root:
+
+```bash
+$env:E2E_WIKI_PROPOSAL_REVIEW_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_WIKI_PROPOSAL_REVIEW_AUTHOR_EMAIL="creator@example.com"
+$env:E2E_WIKI_PROPOSAL_REVIEW_AUTHOR_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+npm --workspace @final-review/web run test:e2e:wiki-proposal-review
+```
+
+This smoke creates and approves a baseline Wiki entry through the Go API, submits an edit proposal as a creator, proves the public Wiki detail still shows the original content before review, opens Vue Admin `/wiki-proposal-reviews`, approves the proposal through the Admin UI, and verifies the public API and Web Wiki detail page render the proposed content only after approval. It also checks the public wiki detail response hides review metadata. It is opt-in because it mutates Wiki rows, edit history, notifications, and operation logs. The author account must already have `creator`, `admin`, or `super_admin` privileges.
+
 ## Admin Forum-Review Browser Smoke
 
 After Web, Admin, and API are reachable, run the admin forum-review smoke from the repository root:
@@ -212,6 +230,7 @@ This smoke creates a unique pending Forum post, approves that setup post through
 - Optional admin material-review browser smoke: validates pending Material content remains hidden until approval, becomes public after Admin UI review, and public material responses hide storage/review metadata
 - Optional admin review browser smoke: validates pending Blog content remains hidden until approval and becomes public after Admin UI review
 - Optional admin wiki-review browser smoke: validates pending Wiki content remains hidden until approval and becomes public after Admin UI review
+- Optional admin wiki-proposal-review browser smoke: validates published Wiki content remains unchanged while an edit proposal is pending, then updates only after Admin UI proposal approval
 - Optional admin forum-review browser smoke: validates pending Forum content remains hidden until approval and becomes public after Admin UI review
 - Optional admin forum-reply-review browser smoke: validates pending Forum replies remain hidden until approval and become public after Admin UI review
 
@@ -271,6 +290,9 @@ E2E_REVIEW_AUTHOR_CODE=123456
 E2E_WIKI_REVIEW_SMOKE=0
 E2E_WIKI_REVIEW_AUTHOR_EMAIL=creator@example.com
 E2E_WIKI_REVIEW_AUTHOR_CODE=123456
+E2E_WIKI_PROPOSAL_REVIEW_SMOKE=0
+E2E_WIKI_PROPOSAL_REVIEW_AUTHOR_EMAIL=creator@example.com
+E2E_WIKI_PROPOSAL_REVIEW_AUTHOR_CODE=123456
 E2E_FORUM_REVIEW_SMOKE=0
 E2E_FORUM_REVIEW_AUTHOR_EMAIL=smoke-forum-author@stu.henu.edu.cn
 E2E_FORUM_REVIEW_AUTHOR_CODE=123456
@@ -386,19 +408,25 @@ E2E_FORUM_BOARD_ID=
    npm --workspace @final-review/web run test:e2e:wiki-review
    ```
 
-15. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+15. Run admin wiki-proposal-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
+
+   ```bash
+   npm --workspace @final-review/web run test:e2e:wiki-proposal-review
+   ```
+
+16. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:forum-review
    ```
 
-16. Run admin forum-reply-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+17. Run admin forum-reply-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:forum-reply-review
    ```
 
-17. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
+18. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
 
 ## Failure Handling
 
@@ -421,6 +449,9 @@ E2E_FORUM_BOARD_ID=
 - Review smoke opens but skips: set `E2E_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Blog post.
 - Wiki review smoke opens but skips: set `E2E_WIKI_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Wiki entry.
 - Wiki review smoke fails with 403 during entry creation: use an author account with `creator`, `admin`, or `super_admin` role, such as the seeded `creator@example.com`, or configure `E2E_WIKI_REVIEW_AUTHOR_EMAIL`.
+- Wiki proposal review smoke opens but skips: set `E2E_WIKI_PROPOSAL_REVIEW_SMOKE=1`. It is opt-in because it creates a Wiki entry, approves it, submits an edit proposal, and approves the proposal.
+- Wiki proposal review smoke fails with 403 during proposal creation: use an author account with `creator`, `admin`, or `super_admin` role, such as the seeded `creator@example.com`, or configure `E2E_WIKI_PROPOSAL_REVIEW_AUTHOR_EMAIL`.
+- Wiki proposal review smoke sees proposed content before approval: treat this as a review-boundary regression; public Wiki detail must stay on the base version until reviewer approval.
 - Forum review smoke opens but skips: set `E2E_FORUM_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Forum post.
 - Forum reply review smoke opens but skips: set `E2E_FORUM_REPLY_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Forum post/reply pair.
 - Forum reply review smoke cannot create a reply: confirm the setup post was approved, the selected board is published, and the author account is not frozen.
