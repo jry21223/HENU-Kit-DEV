@@ -8,8 +8,8 @@ export const archiveProgress = {
   introEnd: 0.42,
   straightStart: 0.44,
   openStart: 0.52,
-  openEnd: 0.86,
-  closingStart: 0.84,
+  openEnd: 0.93,
+  closingStart: 0.93,
 } as const;
 
 type ReadinessSetter = Dispatch<SetStateAction<boolean>>;
@@ -28,9 +28,12 @@ type UseHomeAnimeTimelineOptions = {
 };
 
 const timelineDuration = 1000;
-const pageRevealStart = 0.7;
-const pageVisualEnd = 0.9;
-const closingVisualStart = 0.96;
+const insideRevealStart = archiveProgress.openStart;
+const insideRevealEnd = 0.58;
+const pageInteractionStart = 0.78;
+const pageVisibilityStart = archiveProgress.openStart;
+const pageVisualEnd = 0.96;
+const closingVisualStart = 0.97;
 
 function at(progress: number) {
   return progress * timelineDuration;
@@ -57,9 +60,9 @@ function syncReadiness(progress: number, readiness: ArchiveReadiness, reduceMoti
     return;
   }
 
-  setReady(readiness.setContentReady, progress >= pageRevealStart && progress <= archiveProgress.openEnd);
+  setReady(readiness.setContentReady, progress >= pageInteractionStart && progress <= archiveProgress.openEnd);
   setReady(readiness.setIntroReady, progress < archiveProgress.introEnd);
-  setReady(readiness.setPageVisible, progress >= pageRevealStart && progress <= pageVisualEnd);
+  setReady(readiness.setPageVisible, progress >= pageVisibilityStart && progress <= pageVisualEnd);
   setReady(readiness.setClosingCopyVisible, progress >= closingVisualStart);
 }
 
@@ -77,8 +80,8 @@ function createArchiveTimeline(stage: HTMLElement) {
   const cover = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCover"));
   const coverFront = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCoverFront"));
   const coverShadow = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCoverShadow"));
+  const rightPanel = stage.querySelector<HTMLElement>(homeAnimSelector("archiveRightPanel"));
   const spineShadow = stage.querySelector<HTMLElement>(homeAnimSelector("archiveSpineShadow"));
-  const pages = Array.from(stage.querySelectorAll<HTMLElement>(homeAnimSelector("archivePage")));
   const introCopy = stage.querySelector<HTMLElement>(homeAnimSelector("archiveIntroCopy"));
   const closingCopy = stage.querySelector<HTMLElement>(homeAnimSelector("archiveClosingCopy"));
   const timeline = createTimeline({ autoplay: false, defaults: { ease: "linear" } });
@@ -114,45 +117,40 @@ function createArchiveTimeline(stage: HTMLElement) {
         cover,
         {
           duration: durationBetween(archiveProgress.openStart, 0.62),
-          ease: "inCubic",
-          rotateY: [0, -10],
-          scaleX: [1, 0.99],
-          z: [0, 34],
+          ease: "outCubic",
+          rotateY: [0, -28],
+          x: [0, -2],
+          z: [0, 42],
         },
         at(archiveProgress.openStart),
       )
       .add(
         cover,
         {
-          duration: durationBetween(0.62, 0.78),
-          ease: "outCubic",
-          opacity: [1, 0.34],
-          rotateY: [-10, -146],
-          scaleX: [0.99, 0.92],
-          x: [0, -22],
-          z: [34, 24],
+          duration: durationBetween(0.62, 0.82),
+          ease: "inOutSine",
+          rotateY: [-28, -136],
+          x: [-2, -8],
+          z: [42, 28],
         },
         at(0.62),
       )
       .add(
         cover,
         {
-          duration: durationBetween(0.78, archiveProgress.openEnd),
+          duration: durationBetween(0.82, archiveProgress.openEnd),
           ease: "outCubic",
-          opacity: [0.34, 0],
-          rotateY: [-146, -178],
-          scaleX: [0.92, 1],
-          x: [-22, -10],
-          z: [24, 0],
+          rotateY: [-136, -178],
+          x: [-8, -10],
+          z: [28, 0],
         },
-        at(0.78),
+        at(0.82),
       )
       .add(
         cover,
         {
           duration: durationBetween(0.94, 1),
           ease: "inOutSine",
-          opacity: [0, 1],
           rotateY: [-178, 0],
           x: [-10, 0],
           z: [0, 0],
@@ -166,7 +164,7 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         coverFront,
         {
-          duration: durationBetween(0.58, 0.68),
+          duration: durationBetween(0.58, 0.76),
           ease: "inCubic",
           opacity: [1, 0],
         },
@@ -190,9 +188,9 @@ function createArchiveTimeline(stage: HTMLElement) {
         {
           duration: durationBetween(archiveProgress.openStart, 0.66),
           ease: "outCubic",
-          opacity: [0, 0.36],
-          scaleX: [0.7, 1.08],
-          x: [0, -24],
+          opacity: [0, 0.24],
+          scaleX: [0.58, 0.9],
+          x: [0, -12],
         },
         at(archiveProgress.openStart),
       )
@@ -201,9 +199,9 @@ function createArchiveTimeline(stage: HTMLElement) {
         {
           duration: durationBetween(0.66, archiveProgress.openEnd),
           ease: "inCubic",
-          opacity: [0.36, 0],
-          scaleX: [1.08, 0.52],
-          x: [-24, -58],
+          opacity: [0.24, 0.08],
+          scaleX: [0.9, 0.42],
+          x: [-12, -36],
         },
         at(0.66),
       );
@@ -248,16 +246,17 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         base,
         {
-          duration: durationBetween(0.6, 0.72),
+          duration: durationBetween(insideRevealStart, insideRevealEnd),
           ease: "outCubic",
-          opacity: [0, 1],
+          opacity: [0, 0.22],
+          scaleX: [0.985, 1],
         },
-        at(0.6),
+        at(insideRevealStart),
       )
       .add(
         base,
         {
-          duration: durationBetween(archiveProgress.openEnd, 0.94),
+          duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
           ease: "inCubic",
           opacity: [1, 0],
         },
@@ -270,16 +269,17 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         inside,
         {
-          duration: durationBetween(0.6, 0.72),
+          duration: durationBetween(insideRevealStart, insideRevealEnd),
           ease: "outCubic",
           opacity: [0, 1],
+          scaleX: [0.985, 1],
         },
-        at(0.6),
+        at(insideRevealStart),
       )
       .add(
         inside,
         {
-          duration: durationBetween(archiveProgress.openEnd, 0.94),
+          duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
           ease: "inCubic",
           opacity: [1, 0],
         },
@@ -287,24 +287,28 @@ function createArchiveTimeline(stage: HTMLElement) {
       );
   }
 
-  if (pages.length > 0) {
+  if (rightPanel) {
     timeline
       .add(
-        pages,
+        rightPanel,
         {
-          duration: durationBetween(pageRevealStart, 0.8),
-          ease: "outCubic",
+          duration: durationBetween(insideRevealStart, insideRevealEnd),
+          ease: "outSine",
           opacity: [0, 1],
-          y: [28, 0],
+          rotateY: [0, 0],
+          scaleX: [1, 1],
+          x: [0, 0],
+          z: [-6, 0],
         },
-        at(pageRevealStart),
+        at(insideRevealStart),
       )
       .add(
-        pages,
+        rightPanel,
         {
           duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
           ease: "inCubic",
           opacity: [1, 0],
+          rotateY: [0, -5],
           y: [0, 12],
         },
         at(archiveProgress.openEnd),

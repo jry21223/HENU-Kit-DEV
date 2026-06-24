@@ -64,6 +64,7 @@ type CourseModule = {
   files: number;
   code: string;
   icon: LucideIcon;
+  tone: "blue" | "orange" | "green";
 };
 
 type DocumentRow = {
@@ -152,6 +153,7 @@ const courseModules: CourseModule[] = [
     files: 142,
     code: "CS201",
     icon: Database,
+    tone: "blue",
   },
   {
     title: "操作系统",
@@ -159,6 +161,7 @@ const courseModules: CourseModule[] = [
     files: 89,
     code: "CS301",
     icon: Cpu,
+    tone: "orange",
   },
   {
     title: "计算机网络",
@@ -166,6 +169,7 @@ const courseModules: CourseModule[] = [
     files: 115,
     code: "CS302",
     icon: Network,
+    tone: "green",
   },
 ];
 
@@ -209,10 +213,16 @@ const sidebarQuickLinks = [
   { label: "账号设置", href: "/login", icon: Settings, detail: "登录与通知" },
 ];
 
+const courseToneClass: Record<CourseModule["tone"], string> = {
+  blue: "bg-[#5ca2ee] text-[#172130] shadow-[0_18px_40px_rgba(69,124,190,0.22)]",
+  orange: "bg-[#f4a14f] text-[#24170f] shadow-[0_18px_40px_rgba(185,106,38,0.2)]",
+  green: "bg-[#74c782] text-[#102116] shadow-[0_18px_40px_rgba(75,143,86,0.2)]",
+};
+
 function IconBlock({ icon: Icon, className = "" }: { icon: LucideIcon; className?: string }) {
   return (
     <span
-      className={`grid size-8 shrink-0 place-items-center rounded-md border border-border bg-secondary text-primary ${className}`}
+      className={`grid size-8 shrink-0 place-items-center rounded-lg border border-[#5b4128]/12 bg-white/52 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] ${className}`}
     >
       <Icon className="size-4" aria-hidden="true" />
     </span>
@@ -229,14 +239,14 @@ function Sidebar({
   return (
     <aside
       className={[
-        "relative hidden min-h-[100dvh] border-r border-border bg-card/70 backdrop-blur-md transition-[width] duration-200 lg:flex lg:flex-col",
+        "relative hidden min-h-[100dvh] border-r border-[#5b4128]/12 bg-[#fff6e8]/82 backdrop-blur-md transition-[width] duration-200 lg:flex lg:flex-col",
         collapsed ? "w-[76px]" : "w-64",
       ].join(" ")}
     >
-      <div className="border-b border-border p-3">
+      <div className="border-b border-[#5b4128]/12 p-3">
         <div
           className={[
-            "archive-panel-soft flex items-center rounded-xl p-1.5",
+            "workspace-rail-card flex items-center rounded-2xl p-1.5",
             collapsed ? "justify-center" : "gap-2",
           ].join(" ")}
         >
@@ -254,7 +264,7 @@ function Sidebar({
             {!collapsed ? (
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold leading-none">软件学院资料库</span>
-                <span className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">SE Material Library</span>
+                <span className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">Archive Workspace</span>
               </span>
             ) : null}
           </Link>
@@ -273,7 +283,7 @@ function Sidebar({
 
       <button
         aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
-        className="archive-panel absolute -right-3 top-[74px] z-10 grid size-6 place-items-center rounded-full text-muted-foreground transition hover:border-primary hover:text-primary"
+        className="workspace-paper-panel absolute -right-3 top-[74px] z-10 grid size-6 place-items-center rounded-full text-muted-foreground transition hover:border-primary hover:text-primary"
         onClick={onToggle}
         type="button"
       >
@@ -281,6 +291,13 @@ function Sidebar({
       </button>
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-4">
+        {!collapsed ? (
+          <div className="mb-4 px-2">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a85f35]">档案索引</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">按课程、资料类型和维护状态快速定位。</p>
+          </div>
+        ) : null}
+
         {navSections.map((section) => (
           <section key={section.title} className={collapsed ? "mb-5" : "mb-6"}>
             {!collapsed ? (
@@ -296,11 +313,11 @@ function Sidebar({
                   <Link
                     key={`${section.title}-${item.label}`}
                     className={[
-                      "group relative flex min-h-9 items-center rounded px-2.5 py-2 text-sm transition",
+                      "group relative flex min-h-9 items-center rounded-xl px-2.5 py-2 text-sm transition duration-200 active:scale-[0.98]",
                       collapsed ? "justify-center px-0" : "gap-3",
                       item.active
-                        ? "bg-primary/10 font-semibold text-primary"
-                        : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                        ? "bg-primary/10 font-semibold text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]"
+                        : "text-muted-foreground hover:-translate-y-0.5 hover:bg-white/62 hover:text-foreground",
                     ].join(" ")}
                     href={item.href}
                     title={collapsed ? item.label : undefined}
@@ -341,7 +358,7 @@ function Sidebar({
                 return (
                   <Link
                     key={item.label}
-                    className="group flex min-h-10 items-center gap-3 rounded px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                    className="group flex min-h-10 items-center gap-3 rounded-xl px-2.5 py-2 text-sm text-muted-foreground transition duration-200 hover:-translate-y-0.5 hover:bg-white/62 hover:text-foreground active:scale-[0.98]"
                     href={item.href}
                   >
                     <Icon className="size-4 shrink-0" aria-hidden="true" />
@@ -358,9 +375,9 @@ function Sidebar({
         ) : null}
       </nav>
 
-      <div className="border-t border-border p-2">
+      <div className="border-t border-[#5b4128]/12 p-2">
         {!collapsed ? (
-          <div className="archive-panel-soft rounded-xl p-2">
+          <div className="workspace-rail-card rounded-2xl p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-xs font-semibold">资料保障</span>
               <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">online</span>
@@ -370,7 +387,7 @@ function Sidebar({
         ) : null}
         <Link
           className={[
-            "archive-panel-soft mt-2 flex items-center rounded-xl text-muted-foreground transition hover:border-primary hover:text-primary",
+            "workspace-rail-card mt-2 flex items-center rounded-2xl text-muted-foreground transition duration-200 hover:-translate-y-0.5 hover:border-primary hover:text-primary active:scale-[0.98]",
             collapsed ? "justify-center p-2" : "gap-3 p-2",
           ].join(" ")}
           href="/login"
@@ -394,14 +411,14 @@ function Sidebar({
 
 function DesktopTopBar() {
   return (
-    <header className="sticky top-0 z-20 hidden h-[64px] items-center justify-between border-b border-border bg-card/70 px-6 backdrop-blur-md lg:flex">
+    <header className="sticky top-0 z-20 hidden h-[64px] items-center justify-between border-b border-[#5b4128]/12 bg-[#fff6e8]/78 px-6 backdrop-blur-md lg:flex">
       <div className="relative w-full max-w-md">
         <label className="sr-only" htmlFor="workspace-desktop-search">
           搜索课程、讲义、真题、实验资料
         </label>
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <input
-          className="h-9 w-full rounded-lg border border-input bg-card/70 px-9 font-mono text-[12px] text-foreground shadow-[0_10px_30px_hsl(58_12%_44%/0.06)] outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+          className="h-9 w-full rounded-xl border border-[#5b4128]/12 bg-white/58 px-9 font-mono text-[12px] text-foreground shadow-[0_10px_30px_hsl(58_12%_44%/0.06)] outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
           id="workspace-desktop-search"
           name="q"
           placeholder="搜索课程、讲义、真题、实验资料..."
@@ -458,7 +475,7 @@ function DesktopTopBar() {
 
 function MobileHeader() {
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-card/75 px-4 py-3 backdrop-blur-md lg:hidden">
+    <header className="sticky top-0 z-30 border-b border-[#5b4128]/12 bg-[#fff6e8]/88 px-4 py-3 backdrop-blur-md lg:hidden">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -470,7 +487,7 @@ function MobileHeader() {
             <Menu className="size-4" aria-hidden="true" />
           </button>
           <div className="min-w-0">
-            <p className="truncate font-heading text-lg font-semibold leading-none">软件学院资料库</p>
+            <p className="truncate font-heading text-lg font-semibold leading-none">资料册工作台</p>
             <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">SE Material Library</p>
           </div>
         </div>
@@ -517,17 +534,50 @@ function Breadcrumb() {
   );
 }
 
+function WorkspaceHero() {
+  return (
+    <section className="workspace-hero overflow-hidden rounded-[28px] p-5 sm:p-6 lg:p-7">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
+        <div className="max-w-3xl">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a85f35]">
+            A4 Archive Desk
+          </p>
+          <h1 className="mt-3 max-w-2xl text-balance font-heading text-[42px] font-semibold leading-[0.98] tracking-tight text-[#241b12] sm:text-6xl">
+            资料册工作台
+          </h1>
+          <p className="mt-4 max-w-2xl text-pretty text-sm leading-7 text-[#6f604f] sm:text-base">
+            从首页打开资料册后，课程入口、最近资料、下载状态和归档清单都在这里继续整理。先保证资料可找、可读、可下载，再逐步接入共创和勘误。
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          {[
+            ["24", "核心课程"],
+            ["312", "可用资料"],
+            ["06", "本周更新"],
+          ].map(([value, label]) => (
+            <div key={label} className="workspace-stat rounded-2xl px-4 py-3">
+              <p className="font-mono text-2xl font-semibold tabular-nums text-[#241b12]">{value}</p>
+              <p className="mt-1 text-xs text-[#6f604f]">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function TodayMaterials() {
   return (
-    <section className="archive-panel overflow-hidden rounded-xl lg:col-span-8">
-      <div className="flex items-center justify-between border-b border-border bg-secondary/70 px-4 py-3">
-        <h1 className="flex items-center gap-2 font-heading text-2xl font-semibold tracking-tight sm:text-[28px]">
-          <span className="grid size-7 place-items-center rounded bg-primary/10 text-primary">
+    <section className="workspace-paper-panel overflow-hidden rounded-2xl lg:col-span-8">
+      <div className="flex items-center justify-between border-b border-[#5b4128]/10 bg-[#fff8ec]/74 px-4 py-3">
+        <h2 className="flex items-center gap-2 font-heading text-2xl font-semibold tracking-tight sm:text-[28px]">
+          <span className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary">
             <Library className="size-4" aria-hidden="true" />
           </span>
-          今日可用资料
-        </h1>
-        <span className="hidden rounded-lg border border-border bg-card/80 px-2 py-1 text-xs text-muted-foreground sm:inline-flex">
+          今日打开的资料
+        </h2>
+        <span className="hidden rounded-lg border border-[#5b4128]/12 bg-white/65 px-2 py-1 text-xs text-[#6f604f] sm:inline-flex">
           最近访问
         </span>
       </div>
@@ -544,7 +594,7 @@ function TodayMaterials() {
           return (
             <Link
               key={material.title}
-              className="group flex min-w-0 items-start gap-3 rounded border border-transparent p-2 transition hover:border-border hover:bg-secondary"
+              className="group flex min-w-0 items-start gap-3 rounded-xl border border-transparent bg-white/36 p-3 transition duration-200 hover:-translate-y-0.5 hover:border-[#5b4128]/12 hover:bg-white/72 hover:shadow-[0_16px_36px_rgba(78,55,32,0.11)] active:translate-y-0"
               href="/courses"
             >
               <Icon className={`mt-0.5 size-4 shrink-0 ${iconTone}`} aria-hidden="true" />
@@ -568,7 +618,7 @@ function StatusPanels() {
         const Marker = panel.marker;
 
         return (
-          <div key={panel.title} className="archive-panel flex items-center justify-between rounded-xl p-3">
+          <div key={panel.title} className="workspace-paper-panel flex items-center justify-between rounded-2xl p-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_70px_rgba(78,55,32,0.15)]">
             <div className="flex min-w-0 items-center gap-3">
               <IconBlock icon={Icon} />
               <div className="min-w-0">
@@ -588,7 +638,7 @@ function CourseGrid() {
   return (
     <section className="mt-2 lg:col-span-12">
       <div className="mb-2 flex items-center justify-between px-1">
-        <h2 className="text-xs font-semibold text-muted-foreground">核心课程</h2>
+        <h2 className="text-xs font-semibold text-muted-foreground">彩色 PDF 课程入口</h2>
         <Link className="text-xs font-medium text-primary hover:underline" href="/courses">
           查看全部
         </Link>
@@ -600,21 +650,21 @@ function CourseGrid() {
           return (
             <Link
               key={course.title}
-              className="archive-panel group overflow-hidden rounded-xl transition hover:-translate-y-px hover:border-primary"
+              className={`workspace-pdf-card group overflow-hidden rounded-2xl transition duration-300 hover:-translate-y-1 hover:scale-[1.015] hover:shadow-[0_26px_80px_rgba(78,55,32,0.18)] active:translate-y-0 active:scale-[0.99] ${courseToneClass[course.tone]}`}
               href="/courses"
+              data-workspace-card="course-pdf"
             >
-              <div className="flex items-start justify-between border-b border-border bg-secondary/70 p-4">
+              <div className="flex items-start justify-between p-4">
                 <div>
-                  <h3 className="font-heading text-[22px] font-semibold leading-tight group-hover:text-primary">{course.title}</h3>
-                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">{course.subtitle}</p>
+                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] opacity-75">{course.code}</p>
+                  <h3 className="mt-2 font-heading text-[24px] font-semibold leading-tight">{course.title}</h3>
+                  <p className="mt-2 font-mono text-[11px] opacity-75">{course.subtitle}</p>
                 </div>
-                <Icon className="size-5 text-muted-foreground group-hover:text-primary" aria-hidden="true" />
+                <span className="rounded-md bg-white/28 px-1.5 py-0.5 font-mono text-[10px] font-semibold">PDF</span>
               </div>
-              <div className="flex items-center justify-between p-3">
-                <span className="rounded-lg border border-border bg-secondary/70 px-2 py-1 font-mono text-[11px] text-muted-foreground">
-                  {course.code}
-                </span>
-                <span className="rounded-lg border border-border bg-secondary/70 px-2 py-1 font-mono text-[11px] text-foreground">
+              <div className="flex items-center justify-between px-4 pb-4">
+                <Icon className="size-5 opacity-72 transition group-hover:translate-x-0.5" aria-hidden="true" />
+                <span className="rounded-lg bg-white/30 px-2 py-1 font-mono text-[11px] font-semibold">
                   {course.files} Files
                 </span>
               </div>
@@ -639,11 +689,11 @@ function Tag({ value }: { value: DocumentRow["tags"][number] }) {
 
 function DocumentRepository() {
   return (
-    <section id="documents" className="archive-panel overflow-hidden rounded-xl lg:col-span-12">
-      <div className="flex items-center justify-between border-b border-border bg-secondary/70 px-4 py-3">
+    <section id="documents" className="workspace-paper-panel overflow-hidden rounded-2xl lg:col-span-12">
+      <div className="flex items-center justify-between border-b border-[#5b4128]/10 bg-[#fff8ec]/74 px-4 py-3">
         <h2 className="text-xs font-semibold text-foreground">资料归档</h2>
         <button
-          className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-card/80 px-2 text-xs text-muted-foreground opacity-60"
+          className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-lg border border-[#5b4128]/12 bg-white/62 px-2 text-xs text-muted-foreground opacity-60"
           aria-label="筛选暂未开放"
           disabled
           type="button"
@@ -656,7 +706,7 @@ function DocumentRepository() {
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[820px] border-collapse text-left text-sm">
           <thead>
-            <tr className="border-b border-border bg-secondary/70 text-xs text-muted-foreground">
+            <tr className="border-b border-[#5b4128]/10 bg-[#f5eadb]/72 text-xs text-muted-foreground">
               <th className="w-12 px-4 py-2 font-medium">类型</th>
               <th className="px-4 py-2 font-medium">资料标题</th>
               <th className="px-4 py-2 font-medium">课程</th>
@@ -666,9 +716,9 @@ function DocumentRepository() {
               <th className="px-4 py-2 text-right font-medium">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-[#5b4128]/10">
             {documentRows.map((document) => (
-              <tr key={`${document.course}-${document.title}`} className="group transition hover:bg-secondary">
+              <tr key={`${document.course}-${document.title}`} className="group transition duration-200 hover:bg-white/58">
                 <td className="px-4 py-3">
                   <FileText className="size-4 text-[#a85f55]" aria-hidden="true" />
                 </td>
@@ -696,7 +746,7 @@ function DocumentRepository() {
 
       <div className="grid gap-1 p-2 md:hidden">
         {documentRows.map((document) => (
-          <Link key={`${document.course}-${document.title}`} className="rounded border border-transparent p-2 transition hover:border-border hover:bg-secondary" href="/courses">
+          <Link key={`${document.course}-${document.title}`} className="rounded-xl border border-transparent bg-white/36 p-3 transition hover:border-[#5b4128]/12 hover:bg-white/72" href="/courses">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="flex min-w-0 gap-3">
                 <FileText className="mt-1 size-4 shrink-0 text-[#a85f55]" aria-hidden="true" />
@@ -736,7 +786,7 @@ function MobileCategories() {
                 "flex h-10 shrink-0 items-center gap-2 rounded-full border px-3 text-sm",
                 category.active
                   ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-card/70 text-muted-foreground",
+                  : "border-[#5b4128]/12 bg-white/58 text-muted-foreground",
               ].join(" ")}
               href={category.href}
             >
@@ -754,7 +804,7 @@ export default function HomePage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
-    <main className="min-h-[100dvh] overflow-x-hidden bg-background text-foreground">
+    <main className="workspace-book-desk min-h-[100dvh] overflow-x-hidden bg-background text-foreground" data-workspace-style="book-desk">
       <MobileHeader />
 
       <div
@@ -769,6 +819,7 @@ export default function HomePage() {
           <DesktopTopBar />
           <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-5 lg:px-6 lg:py-7">
             <Breadcrumb />
+            <WorkspaceHero />
             <MobileCategories />
 
             <section className="grid grid-cols-1 gap-5 lg:grid-cols-12">
@@ -779,17 +830,17 @@ export default function HomePage() {
             </section>
 
             <section className="grid gap-4 pb-6 md:grid-cols-3">
-              <div className="archive-panel rounded-xl p-4">
+              <div className="workspace-paper-panel rounded-2xl p-4 transition duration-200 hover:-translate-y-0.5">
                 <IconBlock icon={ShieldCheck} />
                 <h2 className="mt-4 font-heading text-xl font-semibold">资料保障在线</h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">PDF 入口保持清晰，下载前统一加轻水印，重点资料优先维护。</p>
               </div>
-              <div className="archive-panel rounded-xl p-4">
+              <div className="workspace-paper-panel rounded-2xl p-4 transition duration-200 hover:-translate-y-0.5">
                 <IconBlock icon={BookOpen} />
                 <h2 className="mt-4 font-heading text-xl font-semibold">按课程组织</h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">首页只做入口和更新概览，课程页承接讲义、真题、答案解析和实验包。</p>
               </div>
-              <div className="archive-panel rounded-xl p-4">
+              <div className="workspace-paper-panel rounded-2xl p-4 transition duration-200 hover:-translate-y-0.5">
                 <IconBlock icon={UsersRound} />
                 <h2 className="mt-4 font-heading text-xl font-semibold">社区功能预留</h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">后续讨论围绕资料补充、勘误和课程经验展开，不抢占当前下载主流程。</p>

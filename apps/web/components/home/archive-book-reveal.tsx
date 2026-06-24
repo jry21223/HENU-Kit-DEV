@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { archiveDirectory, courseBooks, heroLinks } from "./home-data";
+import { courseBooks, heroLinks } from "./home-data";
 import { homeAnimAttr } from "./home-animation-selectors";
 import { PdfCourseBook } from "./pdf-course-book";
 import { useHomeAnimeTimeline } from "./use-home-anime-timeline";
@@ -74,6 +74,7 @@ export function ArchiveBookReveal() {
 
 .${styles.bookStage} .${styles.bookBase},
 .${styles.bookStage} .${styles.bookInside},
+.${styles.bookStage} .${styles.bookPanel},
 .${styles.bookStage} .${styles.bookPage} {
   opacity: 1;
   transform: none;
@@ -186,46 +187,24 @@ export function ArchiveBookReveal() {
               />
               <div className={styles.bookInside} {...homeAnimAttr("archiveInside")}>
                 <div
-                  className={`${styles.bookPage} ${styles.directoryPage} p-4 xl:p-5`}
-                  aria-hidden={contentAriaHidden}
-                  {...homeAnimAttr("archivePage")}
-                  style={{
-                    pointerEvents: contentFocusable ? "auto" : "none",
-                    visibility: pageVisibility,
-                  }}
-                >
-                  <span className={styles.pageHighlight} aria-hidden="true" {...homeAnimAttr("archivePageHighlight")} />
-                  <span className={styles.directoryScan} aria-hidden="true" {...homeAnimAttr("archiveDirectoryScan")} />
-                  <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#b75c32]">资料档案</p>
-                  <h2 className="mt-2 text-2xl font-black tracking-tight text-[#2b2117] xl:text-3xl">资料目录</h2>
-                  <div className="mt-3 grid gap-0.5">
-                    {archiveDirectory.slice(0, 6).map((item) => (
-                      <Link
-                        key={item.label}
-                        className={`${styles.directoryLine} group block py-1.5`}
-                        href={item.href}
-                        tabIndex={contentTabIndex}
-                        {...homeAnimAttr("archiveDirectoryLine")}
-                      >
-                        <span className="flex items-baseline justify-between gap-3">
-                          <span className="text-sm font-bold text-[#2b2117] group-hover:text-[#2f6b58] xl:text-base">{item.label}</span>
-                          <span className="font-mono text-xs text-[#a26b43]">打开</span>
-                        </span>
-                        <span className="mt-0.5 block text-xs leading-5 text-[#756653]">{item.description}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
+                  className={`${styles.bookPanel} ${styles.leftBookPanel}`}
+                  aria-hidden="true"
+                  {...homeAnimAttr("archiveLeftPanel")}
+                />
 
                 <div
-                  className={`${styles.bookPage} ${styles.coursePage} p-4`}
-                  aria-hidden={contentAriaHidden}
-                  {...homeAnimAttr("archivePage")}
-                  style={{
-                    pointerEvents: contentFocusable ? "auto" : "none",
-                    visibility: pageVisibility,
-                  }}
+                  className={`${styles.bookPanel} ${styles.rightBookPanel}`}
+                  {...homeAnimAttr("archiveRightPanel")}
                 >
+                  <div
+                    className={`${styles.bookPage} ${styles.coursePage} p-4`}
+                    aria-hidden={contentAriaHidden}
+                    {...homeAnimAttr("archivePage")}
+                    style={{
+                      pointerEvents: contentFocusable ? "auto" : "none",
+                      visibility: pageVisibility,
+                    }}
+                  >
                   <span className={styles.pageHighlight} aria-hidden="true" {...homeAnimAttr("archivePageHighlight")} />
                   <p className="font-mono text-xs font-semibold tracking-[0.18em] text-[#b75c32]">课程 PDF</p>
                   <h2 className="mt-2 text-2xl font-black tracking-tight text-[#2b2117] xl:text-3xl">课程入口</h2>
@@ -234,6 +213,7 @@ export function ArchiveBookReveal() {
                       <PdfCourseBook key={course.label} animationMarked compact course={course} tabIndex={contentTabIndex} />
                     ))}
                   </div>
+                </div>
                 </div>
               </div>
 

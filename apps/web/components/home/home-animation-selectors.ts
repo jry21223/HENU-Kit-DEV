@@ -4,6 +4,8 @@ export const homeAnim = {
   archiveCoverFront: "archive-cover-front",
   archiveCoverShadow: "archive-cover-shadow",
   archiveInside: "archive-inside",
+  archiveLeftPanel: "archive-left-panel",
+  archiveRightPanel: "archive-right-panel",
   archiveBase: "archive-base",
   archiveSpine: "archive-spine",
   archiveSpineShadow: "archive-spine-shadow",
