@@ -151,6 +151,69 @@ export type OrderRow = {
   entitlementGranted: boolean;
 };
 
+export type PaymentIncident = {
+  id: string;
+  orderId?: string;
+  provider: string;
+  incidentType: string;
+  severity: string;
+  status: string;
+  outTradeNo: string;
+  transactionId: string;
+  tradeState: string;
+  expectedAmount: number;
+  actualAmount: number;
+  message: string;
+  rawNotify?: unknown;
+  idempotencyKey: string;
+  handledBy?: string;
+  handledAt?: string;
+  handleNote?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PaymentIncidentListResponse = {
+  incidents: PaymentIncident[];
+  total: number;
+};
+
+export type PaymentReconciliationIssue = {
+  issueType: string;
+  severity: string;
+  message: string;
+  orderId?: string;
+  outTradeNo?: string;
+  orderStatus?: string;
+  paymentProvider?: string;
+  amountTotal?: number;
+  riskFlag?: string;
+  userId?: string;
+  userEmail?: string;
+  packageId?: string;
+  packageTitle?: string;
+  paymentRecordId?: string;
+  transactionId?: string;
+  grantId?: string;
+  incidentId?: string;
+  createdAt?: string;
+};
+
+export type PaymentReconciliationSummary = {
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  types: Record<string, number>;
+};
+
+export type PaymentReconciliationResponse = {
+  issues: PaymentReconciliationIssue[];
+  total: number;
+  summary: PaymentReconciliationSummary;
+};
+
 export type DownloadRecord = {
   id: string;
   userId?: string;
@@ -160,6 +223,36 @@ export type DownloadRecord = {
   userAgent?: string;
   downloadedAt: string;
   material?: Material;
+};
+
+export type MediaAsset = {
+  id: string;
+  ownerId: string;
+  usage: string;
+  fileName: string;
+  fileSize: number;
+  contentType: string;
+  status: string;
+  momentId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MediaAssetRow = {
+  asset: MediaAsset;
+  owner?: User;
+  hasFile: boolean;
+};
+
+export type MediaCleanupSummary = {
+  dryRun: boolean;
+  olderThanHours: number;
+  cutoff: string;
+  candidates: number;
+  deletedFiles: number;
+  missingFiles: number;
+  archivedRows: number;
+  assets: MediaAssetRow[];
 };
 
 export type OperationLog = {
@@ -173,6 +266,58 @@ export type OperationLog = {
   metadata?: unknown;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PointsLog = {
+  id: string;
+  userId: string;
+  delta: number;
+  balanceAfter: number;
+  reason: string;
+  referenceType: string;
+  referenceId: string;
+  idempotencyKey: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PointsRule = {
+  id: string;
+  code: string;
+  description: string;
+  delta: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipPlan = {
+  id: string;
+  code: string;
+  name: string;
+  priceFen: number;
+  benefits?: unknown;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Membership = {
+  id: string;
+  userId: string;
+  planCode: string;
+  status: string;
+  source: string;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipRow = {
+  membership: Membership;
+  user?: User;
+  plan?: MembershipPlan;
+  active: boolean;
 };
 
 export type AITask = {

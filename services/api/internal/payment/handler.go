@@ -1,12 +1,14 @@
 package payment
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,6 +39,7 @@ var (
 	ErrWeChatLiveConfigMissing       = errors.New("wechat_live_config_missing")
 	ErrWeChatLiveNotImplemented      = errors.New("wechat_live_not_implemented")
 	ErrWeChatMockNotifySecretMissing = errors.New("wechat_mock_notify_secret_missing")
+	ErrPaymentRecordConflict         = errors.New("payment_record_conflict")
 )
 
 type Handler struct {
@@ -408,10 +411,29 @@ func (h Handler) processMockNotify(payload mockNotifyPayload, raw datatypes.JSON
 
 	var order model.Order
 	if err := h.db.First(&order, "out_trade_no = ? AND payment_provider = ?", payload.OutTradeNo, providerWeChatNative).Error; err != nil {
+		_ = h.recordPaymentIncident(paymentIncidentInput{
+			IncidentType:  "order_not_found",
+			Severity:      "high",
+			Message:       "payment notify references an unknown out_trade_no",
+			Payload:       payload,
+			Raw:           raw,
+			ExpectedTotal: 0,
+			ActualTotal:   payload.AmountTotal,
+		})
 		return nil, errors.New("order_not_found")
 	}
 	if payload.AmountTotal != order.AmountTotal {
 		_ = h.db.Model(&model.Order{}).Where("id = ?", order.ID).Update("risk_flag", "wechat_amount_mismatch").Error
+		_ = h.recordPaymentIncident(paymentIncidentInput{
+			Order:         &order,
+			IncidentType:  "amount_mismatch",
+			Severity:      "critical",
+			Message:       "payment notify amount does not match local order amount",
+			Payload:       payload,
+			Raw:           raw,
+			ExpectedTotal: order.AmountTotal,
+			ActualTotal:   payload.AmountTotal,
+		})
 		return nil, errors.New("amount_mismatch")
 	}
 	if payload.TradeState == "SUCCESS" && order.Status != model.OrderPending && order.Status != model.OrderPaying && order.Status != model.OrderPaid {
@@ -452,6 +474,19 @@ func (h Handler) processMockNotify(payload mockNotifyPayload, raw datatypes.JSON
 		return ensurePackageGrantTx(tx, order)
 	})
 	if err != nil {
+		if errors.Is(err, ErrPaymentRecordConflict) {
+			_ = h.db.Model(&model.Order{}).Where("id = ?", order.ID).Update("risk_flag", "wechat_transaction_conflict").Error
+			_ = h.recordPaymentIncident(paymentIncidentInput{
+				Order:         &order,
+				IncidentType:  "transaction_conflict",
+				Severity:      "critical",
+				Message:       "payment transaction id is already linked to a different order",
+				Payload:       payload,
+				Raw:           raw,
+				ExpectedTotal: order.AmountTotal,
+				ActualTotal:   payload.AmountTotal,
+			})
+		}
 		return nil, err
 	}
 	return gin.H{"processed": true, "paid": true}, nil
@@ -461,6 +496,173 @@ func (h Handler) recordPaymentNotify(order model.Order, payload mockNotifyPayloa
 	return h.db.Transaction(func(tx *gorm.DB) error {
 		return h.recordPaymentNotifyTx(tx, order, payload, raw, processedAt)
 	})
+}
+
+type paymentIncidentInput struct {
+	Order         *model.Order
+	IncidentType  string
+	Severity      string
+	Message       string
+	Payload       mockNotifyPayload
+	Raw           datatypes.JSON
+	ExpectedTotal int64
+	ActualTotal   int64
+}
+
+type paymentIncidentAlertPayload struct {
+	Event       string                       `json:"event"`
+	Provider    string                       `json:"provider"`
+	Environment string                       `json:"environment"`
+	Incident    paymentIncidentAlertIncident `json:"incident"`
+}
+
+type paymentIncidentAlertIncident struct {
+	ID             string    `json:"id"`
+	OrderID        *string   `json:"orderId,omitempty"`
+	IncidentType   string    `json:"incidentType"`
+	Severity       string    `json:"severity"`
+	Status         string    `json:"status"`
+	OutTradeNo     string    `json:"outTradeNo"`
+	TransactionID  string    `json:"transactionId"`
+	TradeState     string    `json:"tradeState"`
+	ExpectedAmount int64     `json:"expectedAmount"`
+	ActualAmount   int64     `json:"actualAmount"`
+	Message        string    `json:"message"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+func (h Handler) recordPaymentIncident(input paymentIncidentInput) error {
+	incidentType := strings.TrimSpace(input.IncidentType)
+	if incidentType == "" {
+		incidentType = "payment_notify_exception"
+	}
+	severity := strings.TrimSpace(input.Severity)
+	if severity == "" {
+		severity = "high"
+	}
+	var orderID *string
+	if input.Order != nil {
+		orderID = &input.Order.ID
+	}
+	key := paymentIncidentKey(input)
+	var existing model.PaymentIncident
+	err := h.db.First(&existing, "idempotency_key = ?", key).Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	incident := model.PaymentIncident{
+		OrderID:        orderID,
+		Provider:       providerWeChatNative,
+		IncidentType:   incidentType,
+		Severity:       severity,
+		Status:         model.PaymentIncidentOpen,
+		OutTradeNo:     input.Payload.OutTradeNo,
+		TransactionID:  input.Payload.TransactionID,
+		TradeState:     input.Payload.TradeState,
+		ExpectedAmount: input.ExpectedTotal,
+		ActualAmount:   input.ActualTotal,
+		Message:        strings.TrimSpace(input.Message),
+		RawNotify:      input.Raw,
+		IdempotencyKey: key,
+	}
+	if err := h.db.Create(&incident).Error; err != nil {
+		return err
+	}
+	h.notifyPaymentIncidentOpened(incident)
+	return nil
+}
+
+func (h Handler) notifyPaymentIncidentOpened(incident model.PaymentIncident) {
+	alertCfg := h.cfg.PaymentIncidentAlerts
+	endpoint := strings.TrimSpace(alertCfg.WebhookURL)
+	if endpoint == "" {
+		return
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return
+	}
+	timeoutSeconds := alertCfg.TimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 3
+	}
+	if timeoutSeconds > 10 {
+		timeoutSeconds = 10
+	}
+	payload := paymentIncidentAlertPayload{
+		Event:       "payment_incident.opened",
+		Provider:    providerWeChatNative,
+		Environment: strings.TrimSpace(h.cfg.Environment),
+		Incident: paymentIncidentAlertIncident{
+			ID:             incident.ID,
+			OrderID:        incident.OrderID,
+			IncidentType:   incident.IncidentType,
+			Severity:       incident.Severity,
+			Status:         incident.Status,
+			OutTradeNo:     incident.OutTradeNo,
+			TransactionID:  incident.TransactionID,
+			TradeState:     incident.TradeState,
+			ExpectedAmount: incident.ExpectedAmount,
+			ActualAmount:   incident.ActualAmount,
+			Message:        incident.Message,
+			CreatedAt:      incident.CreatedAt,
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	request, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	timestamp := fmt.Sprintf("%d", time.Now().UTC().Unix())
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("User-Agent", "final-review-platform-payment-alert/1.0")
+	request.Header.Set("X-Final-Review-Event", payload.Event)
+	request.Header.Set("X-Final-Review-Incident-Id", incident.ID)
+	request.Header.Set("X-Final-Review-Timestamp", timestamp)
+	if secret := strings.TrimSpace(alertCfg.WebhookSecret); secret != "" {
+		request.Header.Set("X-Final-Review-Signature", paymentIncidentAlertSignature(secret, timestamp, body))
+	}
+	client := http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		return
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+}
+
+func paymentIncidentAlertSignature(secret string, timestamp string, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp))
+	mac.Write([]byte("."))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func paymentIncidentKey(input paymentIncidentInput) string {
+	orderID := ""
+	if input.Order != nil {
+		orderID = input.Order.ID
+	}
+	rawHash := sha256.Sum256([]byte(input.Raw))
+	parts := []string{
+		providerWeChatNative,
+		strings.TrimSpace(input.IncidentType),
+		orderID,
+		strings.TrimSpace(input.Payload.OutTradeNo),
+		strings.TrimSpace(input.Payload.TransactionID),
+		strings.TrimSpace(input.Payload.TradeState),
+		fmt.Sprintf("%d", input.ExpectedTotal),
+		fmt.Sprintf("%d", input.ActualTotal),
+		hex.EncodeToString(rawHash[:])[:16],
+	}
+	return strings.Join(parts, ":")
 }
 
 func (h Handler) recordPaymentNotifyTx(tx *gorm.DB, order model.Order, payload mockNotifyPayload, raw datatypes.JSON, processedAt *time.Time) error {
@@ -478,7 +680,7 @@ func (h Handler) recordPaymentNotifyTx(tx *gorm.DB, order model.Order, payload m
 	err := tx.First(&existing, "idempotency_key = ?", record.IdempotencyKey).Error
 	if err == nil {
 		if existing.OrderID != order.ID {
-			return errors.New("payment_record_conflict")
+			return ErrPaymentRecordConflict
 		}
 		return nil
 	}

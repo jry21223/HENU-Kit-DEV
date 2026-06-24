@@ -14,6 +14,7 @@ type Config struct {
 	RedisDB       int
 	LLMMode       string
 	TaskStream    string
+	HealthPort    string
 }
 
 func Load() Config {
@@ -25,6 +26,7 @@ func Load() Config {
 		RedisDB:       intEnv("REDIS_DB", 0),
 		LLMMode:       env("LLM_MODE", "mock"),
 		TaskStream:    env("AI_TASK_STREAM", "ai_tasks"),
+		HealthPort:    env("WORKER_HEALTH_PORT", "9090"),
 	}
 }
 

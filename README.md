@@ -27,7 +27,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包列表/详情与解锁状态展示、资料详情、课程刷题、Wiki 列表/详情与创作者修订提案、Blog 只读列表/详情、论坛列表/详情、发帖、回复提交、最佳答案操作入口和学生邮箱登录页面。
-- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，并在 `/me/notifications` 查看审核通知。
+- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，在 `/moments` 查看/发布带图片的学习动态，在 `/users/[id]` 查看公开用户主页，在 `/me/relations` 管理关注/粉丝/互关好友，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
 - 微信支付 Native 是目标支付方案；当前支持开发/测试环境 mock Native codeUrl、订单过期收敛和带 HMAC 的 mock notify 闭环，生产环境禁止 mock；live Native 下单已接入签名请求和微信响应验签，live notify handler 已实现官方回调验签、resource 解密、appid/mchid/金额校验和幂等授权代码路径，但真实商户环境端到端联调仍未完成。
@@ -70,7 +70,8 @@ docker compose -f docker-compose.dev.yml up --build
 
 - Web: `http://localhost:3000`
 - Admin: `http://localhost:5173`
-- API: `http://localhost:8080/api/v1/healthz`
+- API liveness: `http://localhost:8080/api/v1/healthz`
+- API readiness: `http://localhost:8080/api/v1/readyz`
 
 ## 6. 本地检查
 
@@ -80,6 +81,21 @@ npm install
 npm run build
 npm audit --audit-level=low
 ```
+
+Production-like deployment examples are provided but still require operator review:
+
+```bash
+cp .env.production.example .env.production
+docker compose --env-file .env.production -f docker-compose.prod.example.yml config --quiet
+cd services/api && go run ./cmd/preflight -env-file ../../.env.production
+```
+
+See `docs/deployment.md` before using this for any paid internal test. The example expects secrets and certificates to be mounted from ignored `secrets/` and `certs/` directories.
+- Production preflight is a deploy gate, not a substitute for merchant or browser smoke tests. It verifies dangerous configuration before the stack is opened to paid traffic.
+- Internal smoke runbook: `docs/internal-smoke.md`
+- Browser delivery smoke: `npm --workspace @final-review/web run test:e2e:delivery` with `E2E_DELIVERY_SMOKE=1` opens Web/Admin, verifies paid denial before entitlement, creates an admin package grant, and verifies paid download after the grant.
+- Quiz wrong-question smoke: `npm --workspace @final-review/web run test:e2e:quiz` with `E2E_QUIZ_SMOKE=1` logs in through Web, submits an intentionally wrong answer, verifies Go API wrong-question persistence, and checks `/me/wrong-questions`.
+- Mobile public-page smoke: `npm --workspace @final-review/web run test:e2e:mobile` checks core public pages at a 390px viewport for 5xx failures, document-level horizontal overflow, and basic mobile control target sizes.
 
 如果本机已安装 Go：
 
@@ -109,7 +125,13 @@ cd ../worker && go test ./...
 - Web `/blog` and `/blog/[id]` expose only published public Blog posts through the Go API; public responses use a DTO that hides review metadata, and the detail page can submit a `blog_post` report.
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
+- Web `/moments` 展示公开与互关可见学习动态；登录用户可发布 500 字以内动态、上传最多 9 张受控图片、设置公开/互关可见、点赞、评论、关注或屏蔽动态作者。动态图片通过 Go API 按关联动态可见性读取；视频、云存储和更细粒度媒体审计仍是后续工作。
+- Web `/users/[id]` 展示公开用户主页，聚合当前访问者可见的动态、已发布 Blog、已发布论坛帖子和已发布论坛回复；Go API 不返回邮箱、审核字段或隐藏内容，互关动态和屏蔽关系由服务端判断。
+- Web `/me/relations` 展示当前登录用户自己的关注、粉丝和互关好友列表，支持从服务端执行关注、取消关注和屏蔽；关系列表响应不返回邮箱。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
+- Web `/search` 和 Go API `/api/v1/search` 已提供基础公开搜索，覆盖课程、资料、课程包、Wiki、Blog 和论坛帖子。
+- Web `/me/points` 和 `/me/membership` 已展示当前用户积分、积分流水、有效会员和公开会员套餐；Go API 已支持 admin 查询积分流水、维护积分规则、手动赠送/撤销会员并写操作日志。
+- Vue Admin 已新增 `/points` 和 `/memberships`，用于积分流水查询、积分规则维护、会员手动发放和撤销。
 - `/me/notifications` 用户隔离、已读幂等、全部已读，以及论坛、资料、Wiki、博客、AI 草稿审核通知生成。
 - 举报 API、Web 资料/Wiki/博客/论坛举报入口和 Vue Admin `/reports` 支持登录用户提交公开内容举报、reviewer/admin 处理举报、处理结果通知举报人。
 - 不安全 storage key 返回 404。
@@ -147,6 +169,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 
 ```bash
 cd services/api
+go run ./cmd/import-materials -dry-run ../../data/material-manifest.example.json
 go run ./cmd/import-materials ../../data/material-manifest.example.json
 ```
 
@@ -156,8 +179,13 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - 文件必须真实存在，并且必须位于 `LOCAL_UPLOAD_DIR` 内。
 - 危险路径如 `../../secret.pdf` 会被拒绝。
 - 重复导入会更新已有资料并复用课程包绑定，不重复创建 material 或 package item。
+- UTF-8 JSON manifests with a BOM are accepted, so Windows-generated manifest files should not fail solely because of byte-order marks.
 - Automated smoke coverage exists in `TestMaterialManifestImportSmokeCoversPaidDownloadDelivery`: it imports mounted files through the manifest importer, verifies public package detail does not expose storage keys, checks free/login_required/paid download rules, grants the imported package, and verifies paid download audit logging.
-- This smoke test uses temporary fixture files only. Real course-file acceptance still requires running the import command against mounted internal materials in the target environment.
+- The import JSON includes a `report` block. Before importing real internal files, check `report.filesChecked`, `report.totalFileBytes`, `report.accessLevels`, `report.statuses`, `report.types`, `report.paidMaterials`, `report.packageItemLinks`, `report.packages`, and `report.duplicateFiles`.
+- `-dry-run` uses the same validation/upsert/bind path inside a rolled-back transaction, so its `report` is the safest preflight acceptance artifact.
+- `go run ./cmd/smoke ... -grant-package-access` can verify the internal manual-delivery path after import: paid download is denied before entitlement, an admin-only package grant is created, and paid download succeeds for the same test user.
+- `npm --workspace @final-review/web run test:e2e:delivery` can verify the same manual-delivery path through real Web/Admin browser sessions when `E2E_DELIVERY_SMOKE=1` and fresh student/admin test accounts are configured.
+- These smoke checks use fixture or operator-provided files only. Real course-file acceptance still requires running the import command against mounted internal materials in the target environment, then running the smoke with fresh student/admin test accounts.
 
 ## 9. 安全边界
 
@@ -169,6 +197,8 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - 公开课程包接口只能返回 `published` 课程包，并且包内 `items` 与 `materials` 都必须过滤到 `published` 资料；即使后台把 draft/pending/archived 资料预先绑定到包里，公开响应也不能泄露这些资料 ID。
 - PDF 水印由 Go API 下载接口动态生成临时文件；如果 PDF 处理失败，下载会返回错误而不是静默直出未水印文件。
 - AI 生成内容必须先进入 draft/review 流程，不能自动发布为正式内容。
+
+- Go API sets baseline security headers on all responses and refuses unsafe CORS configuration: wildcard origins are rejected, and production requires exact HTTPS origins.
 
 ## 10. 开发入口
 
@@ -190,6 +220,8 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Vue Admin includes `/users` for admin-only user listing, role updates, and active/frozen status changes. The Go API prevents self role/status changes and restricts `super_admin` edits/grants to `super_admin` users.
 - Vue Admin includes `/access-grants` for admin-only manual material/package access grants used in internal testing or after-sales delivery; it does not create payment orders or mark orders as paid.
 - Vue Admin includes `/orders` for admin-only, read-only order inspection with buyer, package, amount, provider, status, and entitlement visibility.
+- Vue Admin includes `/payment-reconciliation` for admin-only, read-only local checks across orders, payment records, order-source entitlements, risk flags, and open payment incidents. It is not a live WeChat merchant settlement reconciler and cannot mark orders paid or grant entitlement.
+- Vue Admin includes `/payment-incidents` for admin-only WeChat callback anomaly triage, and `/dashboard` surfaces the current open-incident count. New incidents can optionally post a signed best-effort webhook through `PAYMENT_INCIDENT_WEBHOOK_URL`. Resolving or ignoring an incident records an operation note only; it does not mark orders paid or grant entitlement.
 - Vue Admin includes `/packages` for admin-only course package CRUD, integer-cent pricing, `draft/published/archived` status control, and package-material binding without exposing raw file storage keys.
 - Vue Admin includes admin-only all-status course listing and a course edit dialog.
 - Vue Admin includes material status operations for `draft`, `pending`, `published`, `rejected`, and `archived`.
@@ -202,6 +234,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Vue Admin includes `/forum-reply-reviews` for reviewer/admin forum reply approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility, draft approve/reject review, and review reason capture.
 - Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, course demand, and report handling distribution.
+- Vue Admin includes `/media-assets` for admin-only moment image asset audit and stale unattached upload cleanup. Cleanup defaults to dry-run, never touches attached moment images, and writes an operation log.
 - Vue Admin includes operation-log time filtering, CSV export, and a read-only retention policy panel.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
 - The user management page reads `GET /api/v1/admin/users` and writes `PATCH /api/v1/admin/users/:id`; it does not edit email, password credentials, membership, or points balance.

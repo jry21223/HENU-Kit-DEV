@@ -20,13 +20,19 @@ import (
 	"final-review-platform/services/api/internal/forum"
 	"final-review-platform/services/api/internal/health"
 	"final-review-platform/services/api/internal/material"
+	"final-review-platform/services/api/internal/member"
+	"final-review-platform/services/api/internal/moment"
 	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/order"
 	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/internal/packagecatalog"
 	"final-review-platform/services/api/internal/payment"
+	"final-review-platform/services/api/internal/points"
 	"final-review-platform/services/api/internal/quiz"
+	"final-review-platform/services/api/internal/relation"
 	"final-review-platform/services/api/internal/report"
+	"final-review-platform/services/api/internal/search"
+	"final-review-platform/services/api/internal/user"
 	"final-review-platform/services/api/internal/wiki"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/middleware"
@@ -34,11 +40,15 @@ import (
 )
 
 func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib.Client) *gin.Engine {
+	if err := config.ValidateHTTPConfig(cfg); err != nil {
+		panic(err)
+	}
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.New()
+	router.Use(middleware.SecurityHeaders(cfg.Environment))
 	router.Use(middleware.RequestLogger(log))
 	router.Use(middleware.Recover(log))
 	router.Use(middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst))
@@ -62,22 +72,29 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	orgHandler := org.NewHandler(db)
 	courseHandler := course.NewHandler(db)
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
+	memberHandler := member.NewHandler(db)
+	momentHandler := moment.NewHandler(db, cfg.LocalUploadDir)
 	downloadLogHandler := downloadlog.NewHandler(db)
 	entitlementHandler := entitlement.NewHandler(db)
 	notificationHandler := notification.NewHandler(db)
 	orderHandler := order.NewHandler(db)
 	paymentHandler := payment.NewHandler(db, cfg)
+	pointsHandler := points.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
+	relationHandler := relation.NewHandler(db)
 	reportHandler := report.NewHandler(db)
+	searchHandler := search.NewHandler(db)
 	wikiHandler := wiki.NewHandler(db)
+	userHandler := user.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
 	analyticsHandler := analytics.NewHandler(db)
 	router.GET("/healthz", healthHandler.Healthz)
-
+	router.GET("/readyz", healthHandler.Readyz)
 	v1 := router.Group("/api/v1")
 	v1.GET("/healthz", healthHandler.Healthz)
+	v1.GET("/readyz", healthHandler.Readyz)
 	v1.GET("/version", func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{
 			"service":     "final-review-api",
@@ -85,6 +102,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 			"environment": cfg.Environment,
 		})
 	})
+	v1.GET("/search", searchHandler.Query)
 	v1.POST("/auth/send-code", authHandler.SendCode)
 	v1.POST("/auth/login", authHandler.Login)
 	v1.POST("/auth/refresh", authHandler.Refresh)
@@ -104,6 +122,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/materials/:id/download", authMiddleware.OptionalAuth(), materialHandler.Download)
 	v1.GET("/packages", packageHandler.List)
 	v1.GET("/packages/:id", packageHandler.Detail)
+	v1.GET("/membership/plans", memberHandler.Plans)
 	v1.POST("/orders", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), orderHandler.Create)
 	v1.GET("/orders/:id", authMiddleware.RequireAuth(), orderHandler.Detail)
 	v1.GET("/orders/:id/status", authMiddleware.RequireAuth(), orderHandler.Status)
@@ -121,6 +140,14 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.POST("/forum/posts", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.Create)
 	v1.POST("/forum/posts/:id/replies", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.CreateReply)
 	v1.POST("/forum/replies/:id/mark-best", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.MarkBestReply)
+	v1.GET("/moments", authMiddleware.OptionalAuth(), momentHandler.List)
+	v1.POST("/moments", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Create)
+	v1.POST("/moments/images", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.UploadImage)
+	v1.GET("/moments/images/:id", authMiddleware.OptionalAuth(), momentHandler.ServeImage)
+	v1.DELETE("/moments/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Delete)
+	v1.POST("/moments/:id/like", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Like)
+	v1.POST("/moments/:id/comments", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.CreateComment)
+	v1.DELETE("/moments/comments/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.DeleteComment)
 	v1.GET("/wiki/entries", wikiHandler.ListPublished)
 	v1.GET("/wiki/entries/:id", wikiHandler.Detail)
 	v1.POST("/wiki/entries", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.Create)
@@ -131,6 +158,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
 	v1.DELETE("/me/wrong-questions/:id", authMiddleware.RequireAuth(), quizHandler.DeleteWrongQuestion)
 	v1.GET("/me/weakness-report", authMiddleware.RequireAuth(), quizHandler.WeaknessReport)
+	v1.GET("/me/points", authMiddleware.RequireAuth(), pointsHandler.Me)
+	v1.GET("/me/points/logs", authMiddleware.RequireAuth(), pointsHandler.MyLogs)
+	v1.GET("/me/membership", authMiddleware.RequireAuth(), memberHandler.Me)
 	v1.GET("/me/downloads", authMiddleware.RequireAuth(), downloadLogHandler.MyDownloads)
 	v1.GET("/me/entitlements", authMiddleware.RequireAuth(), entitlementHandler.Me)
 	v1.GET("/me/forum-posts", authMiddleware.RequireAuth(), forumHandler.MyPosts)
@@ -140,6 +170,14 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/me/notifications", authMiddleware.RequireAuth(), notificationHandler.MyNotifications)
 	v1.POST("/me/notifications/:id/read", authMiddleware.RequireAuth(), notificationHandler.MarkRead)
 	v1.POST("/me/notifications/read-all", authMiddleware.RequireAuth(), notificationHandler.MarkAllRead)
+	v1.GET("/me/following", authMiddleware.RequireAuth(), relationHandler.Following)
+	v1.GET("/me/followers", authMiddleware.RequireAuth(), relationHandler.Followers)
+	v1.GET("/me/friends", authMiddleware.RequireAuth(), relationHandler.Friends)
+	v1.POST("/users/:id/follow", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Follow)
+	v1.POST("/users/:id/unfollow", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Unfollow)
+	v1.POST("/users/:id/block", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Block)
+	v1.POST("/users/:id/unblock", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Unblock)
+	v1.GET("/users/:id", authMiddleware.OptionalAuth(), userHandler.Profile)
 	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 
@@ -150,10 +188,22 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	})
 	admin.GET("/users", adminHandler.ListUsers)
 	admin.PATCH("/users/:id", adminHandler.UpdateUser)
+	admin.GET("/media-assets", adminHandler.ListMediaAssets)
+	admin.POST("/media-assets/cleanup", adminHandler.CleanupMediaAssets)
+	admin.GET("/points/logs", pointsHandler.AdminLogs)
+	admin.GET("/points/rules", pointsHandler.AdminRules)
+	admin.POST("/points/rules", pointsHandler.CreateRule)
+	admin.PATCH("/points/rules/:id", pointsHandler.UpdateRule)
+	admin.GET("/memberships", memberHandler.AdminMemberships)
+	admin.POST("/memberships/grant", memberHandler.Grant)
+	admin.POST("/memberships/:id/revoke", memberHandler.Revoke)
 	admin.GET("/access-grants", adminHandler.ListAccessGrants)
 	admin.POST("/access-grants", adminHandler.CreateAccessGrant)
 	admin.DELETE("/access-grants/:id", adminHandler.RevokeAccessGrant)
 	admin.GET("/orders", adminHandler.ListOrders)
+	admin.GET("/payment-reconciliation", adminHandler.ListPaymentReconciliation)
+	admin.GET("/payment-incidents", adminHandler.ListPaymentIncidents)
+	admin.POST("/payment-incidents/:id/resolve", adminHandler.ResolvePaymentIncident)
 	admin.POST("/schools", adminHandler.CreateSchool)
 	admin.PATCH("/schools/:id", adminHandler.UpdateSchool)
 	admin.DELETE("/schools/:id", adminHandler.ArchiveSchool)

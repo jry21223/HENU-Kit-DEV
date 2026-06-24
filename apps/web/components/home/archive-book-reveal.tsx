@@ -123,7 +123,7 @@ export function ArchiveBookReveal() {
               <p className="mt-6 max-w-lg text-base leading-7 text-[#685b4b] sm:text-lg">
                 按课程找到讲义、真题、实验资料和复习包，围绕资料继续刷题、讨论和共创。
               </p>
-              <form action="/courses" className="mt-7 flex max-w-lg items-center rounded-2xl border border-[#2b2117]/14 bg-white/86 p-2 shadow-[0_20px_60px_rgba(71,49,27,0.11)]" method="get">
+              <form action="/search" className="mt-7 flex max-w-lg items-center rounded-2xl border border-[#2b2117]/14 bg-white/86 p-2 shadow-[0_20px_60px_rgba(71,49,27,0.11)]" method="get">
                 <label className="sr-only" htmlFor="archive-search">
                   搜索课程、讲义、真题、实验资料
                 </label>

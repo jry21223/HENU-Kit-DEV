@@ -21,7 +21,8 @@ The seed does not create or commit real course files. Material `storage_key` val
 Prepared real course materials can be imported after files are mounted under `LOCAL_UPLOAD_DIR`:
 
 ```bash
+go run ./cmd/import-materials -dry-run ../../data/material-manifest.example.json
 go run ./cmd/import-materials ../../data/material-manifest.example.json
 ```
 
-The manifest importer rejects missing files and path traversal, and repeated imports update existing rows without duplicating materials or package-item bindings.
+The manifest importer rejects missing files and path traversal, and repeated imports update existing rows without duplicating materials or package-item bindings. Use `-dry-run` first to validate mounted files and see planned changes without writing rows.

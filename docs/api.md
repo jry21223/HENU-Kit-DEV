@@ -2,11 +2,19 @@
 
 Base path: `/api/v1`
 
+Health semantics:
+
+- `GET /healthz` and `GET /api/v1/healthz` are liveness endpoints. They return HTTP 200 with dependency status details even when a dependency is not ready.
+- `GET /readyz` and `GET /api/v1/readyz` are readiness endpoints. They return HTTP 200 only when PostgreSQL and Redis are reachable; otherwise they return HTTP 503 with `not_ready`.
+
 Currently implemented endpoints:
 
 - `GET /healthz`
+- `GET /readyz`
 - `GET /api/v1/healthz`
+- `GET /api/v1/readyz`
 - `GET /api/v1/version`
+- `GET /api/v1/search?q=&limit=`
 - `POST /api/v1/auth/send-code`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
@@ -26,6 +34,7 @@ Currently implemented endpoints:
 - `GET /api/v1/materials/:id/download`
 - `GET /api/v1/packages?courseId=&schoolId=&majorId=&grade=`
 - `GET /api/v1/packages/:id`
+- `GET /api/v1/membership/plans`
 - `POST /api/v1/orders`
 - `GET /api/v1/orders/:id`
 - `GET /api/v1/orders/:id/status`
@@ -43,6 +52,13 @@ Currently implemented endpoints:
 - `POST /api/v1/forum/posts`
 - `POST /api/v1/forum/posts/:id/replies`
 - `POST /api/v1/forum/replies/:id/mark-best`
+- `GET /api/v1/moments?limit=`
+- `POST /api/v1/moments`
+- `POST /api/v1/moments/images`
+- `DELETE /api/v1/moments/:id`
+- `POST /api/v1/moments/:id/like`
+- `POST /api/v1/moments/:id/comments`
+- `DELETE /api/v1/moments/comments/:id`
 - `GET /api/v1/wiki/entries?courseId=&limit=`
 - `GET /api/v1/wiki/entries/:id`
 - `POST /api/v1/wiki/entries`
@@ -52,6 +68,9 @@ Currently implemented endpoints:
 - `GET /api/v1/me/wrong-questions`
 - `DELETE /api/v1/me/wrong-questions/:id`
 - `GET /api/v1/me/weakness-report`
+- `GET /api/v1/me/points`
+- `GET /api/v1/me/points/logs?limit=`
+- `GET /api/v1/me/membership`
 - `GET /api/v1/me/downloads`
 - `GET /api/v1/me/entitlements`
 - `GET /api/v1/me/forum-posts?limit=`
@@ -61,15 +80,35 @@ Currently implemented endpoints:
 - `GET /api/v1/me/notifications?limit=&unread=true`
 - `POST /api/v1/me/notifications/:id/read`
 - `POST /api/v1/me/notifications/read-all`
+- `GET /api/v1/me/following?limit=`
+- `GET /api/v1/me/followers?limit=`
+- `GET /api/v1/me/friends?limit=`
+- `POST /api/v1/users/:id/follow`
+- `POST /api/v1/users/:id/unfollow`
+- `POST /api/v1/users/:id/block`
+- `POST /api/v1/users/:id/unblock`
+- `GET /api/v1/users/:id`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/reports`
 - `GET /api/v1/admin/users?email=&role=&status=&limit=`
 - `PATCH /api/v1/admin/users/:id`
+- `GET /api/v1/admin/media-assets?usage=&status=&ownerEmail=&momentId=&limit=`
+- `POST /api/v1/admin/media-assets/cleanup`
+- `GET /api/v1/admin/points/logs?userId=&reason=&limit=`
+- `GET /api/v1/admin/points/rules`
+- `POST /api/v1/admin/points/rules`
+- `PATCH /api/v1/admin/points/rules/:id`
+- `GET /api/v1/admin/memberships?userId=&planCode=&status=&limit=`
+- `POST /api/v1/admin/memberships/grant`
+- `POST /api/v1/admin/memberships/:id/revoke`
 - `GET /api/v1/admin/access-grants?userId=&materialId=&packageId=&source=&active=&limit=`
 - `POST /api/v1/admin/access-grants`
 - `DELETE /api/v1/admin/access-grants/:id`
 - `GET /api/v1/admin/orders?status=&userEmail=&outTradeNo=&packageId=&paymentProvider=&productType=&riskFlag=&riskOnly=&limit=`
+- `GET /api/v1/admin/payment-reconciliation?issueType=&severity=&limit=`
+- `GET /api/v1/admin/payment-incidents?status=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
+- `POST /api/v1/admin/payment-incidents/:id/resolve`
 - `POST /api/v1/admin/schools`
 - `PATCH /api/v1/admin/schools/:id`
 - `DELETE /api/v1/admin/schools/:id`
@@ -120,6 +159,15 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/operation-logs/export?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
 - `GET /api/v1/admin/operation-logs/retention`
 
+Search:
+
+- `GET /api/v1/search?q=&limit=` performs a conservative public search across currently implemented content types.
+- `q` is trimmed and limited to 80 characters.
+- `limit` defaults to 8 and is capped at 30 per group.
+- Results are grouped into `courses`, `materials`, `packages`, `wiki`, `blog`, and `forum`.
+- Only public/published content is returned. Draft, pending, rejected, archived, and private content is excluded.
+- Material search responses do not expose `storageKey`.
+
 Response envelope:
 
 ```json
@@ -140,7 +188,7 @@ Error envelope:
 }
 ```
 
-Later stages add membership, richer wiki conflict resolution, expanded admin APIs, and more notification sources.
+Later stages add membership purchase/redeem, richer wiki conflict resolution, expanded admin APIs, and more notification sources.
 
 Implemented authentication behavior:
 
@@ -179,6 +227,8 @@ Implemented package behavior:
 - expired package grants do not unlock paid materials
 - `/me/entitlements` returns direct material grants, published package grants, included materials, and summary counts for the current user only
 - expired grants and grants for unpublished packages are excluded from `/me/entitlements`
+- manifest import supports `-dry-run`, which executes the same validation/upsert/package-bind/report path in a rolled-back transaction and reports planned counts without writing rows
+- manifest import responses include `report.filesChecked`, `report.totalFileBytes`, `report.accessLevels`, `report.statuses`, `report.types`, `report.paidMaterials`, `report.packageItemLinks`, per-package summaries, and `report.duplicateFiles` for preflight acceptance
 - manifest-delivery smoke coverage imports temporary mounted files, verifies public package detail hides storage keys, checks free/login_required/paid download behavior, grants the imported package, and verifies paid download audit logging
 
 Implemented admin package-management contract:
@@ -215,6 +265,14 @@ Implemented order foundation:
 - order status is read-only and does not grant entitlement; paid access still requires a package/material grant created by a trusted server-side flow
 - admins can inspect orders through `/admin/orders` with status, buyer email, package, provider, product type, and out-trade-number filters; this endpoint is read-only
 - admin order inspection can filter `riskOnly=true` or partial `riskFlag`; this exposes existing payment risk markers for triage but does not auto-resolve payment exceptions
+- `GET /api/v1/admin/payment-reconciliation` is admin-only and read-only. It cross-checks local orders, payment records, order-source grants, risk flags, and open payment incidents for anomalies such as paid orders missing payment records, paid orders missing entitlements, non-paid orders with order entitlements, duplicate transaction ids, mismatched record amounts, risk flags, and open incident rows.
+- the reconciliation report returns `issues`, `total`, and a `summary` grouped by severity and issue type. It never marks orders paid, inserts trusted payment records, resolves incidents, or grants entitlement.
+- WeChat callback anomalies are also captured in `payment_incidents` for manual triage; current incident types include `order_not_found`, `amount_mismatch`, and `transaction_conflict`
+- `GET /api/v1/admin/payment-incidents` is admin-only, defaults to `status=open`, and can filter by incident type, order id, out-trade number, transaction id, and limit
+- the payment incident list response includes `incidents` and `total`; Vue Admin uses `total` to surface open payment incident alerts on the dashboard
+- when `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly created incident rows post a best-effort `payment_incident.opened` JSON webhook with an optional `X-Final-Review-Signature` HMAC header; duplicate idempotent incidents do not re-alert
+- `POST /api/v1/admin/payment-incidents/:id/resolve` marks an open incident as `resolved` or `ignored`, records the handling admin and note, and writes an operation log
+- resolving or ignoring a payment incident is deliberately non-financial: it does not mark an order paid, does not create a payment record, and does not grant entitlement
 
 Implemented WeChat Native payment boundary:
 
@@ -289,6 +347,36 @@ Implemented forum behavior:
 - normal/question best-answer selection marks the reply `isBest=true` without changing points
 - reply editing and UI-level best-answer controls remain later work
 
+Implemented moment and relation behavior:
+
+- `GET /api/v1/moments` is public with optional auth; anonymous users see only `published` moments with `visibility=public`.
+- authenticated users still cannot see moments from users who blocked them or whom they blocked.
+- `visibility=mutual_friends` moments are visible only to the author and users where both sides follow each other.
+- logged-in, non-frozen users can create moments with up to 500 characters, up to 9 uploaded image URLs, and `visibility=public|mutual_friends`.
+- accepted image URLs must come from `POST /api/v1/moments/images`; arbitrary external URLs, another user's uploaded image URL, duplicate images, already-attached images, and traversal-style local paths are rejected.
+- moment likes are idempotent per user/moment and increment `likeCount` only once.
+- logged-in users can comment on visible moments; comment counts update on create and delete.
+- comment deletion is allowed for the comment author, the moment author, admin, or super_admin.
+- users can follow/unfollow/block/unblock other users; self-follow/self-block is rejected.
+- blocking a user removes follow edges between the two users and prevents future follow until unblocked.
+- `/me/following`, `/me/followers`, and `/me/friends` are user-scoped and hide blocked relationships.
+- relation-list responses contain only public user summaries (`id`, `name`, `role`) and do not expose email addresses.
+- `POST /api/v1/moments/images` accepts authenticated image uploads only. It creates a `media_assets` row, stores generated files under `LOCAL_UPLOAD_DIR/moments/{userId}/`, allows JPG/PNG/WEBP/GIF, caps each file at 5MB, checks image magic bytes, and returns `/api/v1/moments/images/{mediaId}`.
+- `GET /api/v1/moments/images/:id` serves the image through the Go API. Unattached uploads are visible only to the owner; attached public-moment images are publicly readable; attached mutual-friends images reuse the moment visibility and block checks.
+- `POST /api/v1/moments` accepts only existing uploaded image URLs owned by the current user, then binds each media asset to the created moment. Frontend-supplied storage keys are never accepted.
+- Admin-only `GET /api/v1/admin/media-assets` lists moment media assets by usage, status, owner email, moment id, and limit. Responses include owner metadata and `hasFile`, but do not serialize raw storage keys.
+- Admin-only `POST /api/v1/admin/media-assets/cleanup` defaults to dry-run mode. It can archive old unattached `moment_image` uploads and remove their local files after an explicit `{"dryRun": false}` request. It refuses unsafe storage keys, records a `media_asset.cleanup` operation log, and never touches attached moment images.
+- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments with local image upload and preview. Vue Admin `/media-assets` exposes the asset audit and stale-unattached-upload cleanup workflow. Video media and cloud object storage remain future work.
+
+Implemented public user profile behavior:
+
+- `GET /api/v1/users/:id` is public with optional auth.
+- responses never include user email, verification code data, review metadata, or hidden draft/pending/rejected content.
+- anonymous users see active public profile metadata, published public moments, published public blog posts, published public forum posts, and published replies under published public forum posts.
+- authenticated users can additionally see mutual-friends moments when both users follow each other.
+- if either side has blocked the other, authenticated profile lookup returns `404 user_not_found`.
+- relation state fields include `followingByMe`, `followsMe`, `mutualFriend`, `blockedByMe`, and `blockedMe`.
+
 Implemented notification behavior:
 
 - logged-in users can list only their own notifications through `/me/notifications`
@@ -301,6 +389,18 @@ Implemented notification behavior:
 - review notifications include safe data fields (`resourceType`, `resourceId`, `status`) and do not expose reviewer ids
 - report result notifications include safe data fields (`reportId`, `targetType`, `targetId`, `status`) and do not expose reviewer ids
 - payment and membership notifications remain later work
+
+Points and membership:
+
+- `GET /me/points` returns only the authenticated user's current `pointsBalance`.
+- `GET /me/points/logs` returns only the authenticated user's points ledger rows.
+- Admin points log listing supports `userId` and `reason` filters; ordinary users cannot access it.
+- Admin points rules can be created and updated; those operations write operation logs.
+- Public membership plans return only `published` plans.
+- `GET /me/membership` returns only active, non-expired memberships for the authenticated user and a best-effort `current` membership.
+- Admin membership grant requires an existing user and a published plan. Re-granting the same active manual membership updates it instead of creating unlimited duplicates.
+- Admin membership revoke marks the membership `revoked`, expires it immediately, and writes an operation log.
+- Membership purchase, payment activation, point redemption, and AI quota spending remain later work.
 
 Implemented report behavior:
 

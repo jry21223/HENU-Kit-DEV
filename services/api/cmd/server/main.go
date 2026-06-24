@@ -20,6 +20,10 @@ import (
 func main() {
 	cfg := config.Load()
 	log := applogger.New(cfg.Environment)
+	if err := config.ValidateHTTPConfig(cfg); err != nil {
+		log.Error("http configuration failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	db, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {

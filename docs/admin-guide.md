@@ -4,9 +4,13 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 
 ## Current Pages
 
-- `/dashboard`: module status summary.
+- `/dashboard`: module status summary plus open payment-incident alert count.
 - `/users`: user listing, role update, and active/frozen status management.
+- `/points`: points ledger query and points-rule maintenance.
+- `/memberships`: published membership-plan reference plus manual membership grant/revoke operations.
 - `/access-grants`: manual material/package access grants for internal testing and after-sales delivery.
+- `/orders`: read-only course-package payment order browser.
+- `/payment-incidents`: WeChat payment callback anomaly ledger for manual triage.
 - `/packages`: admin-only course package CRUD and package-material binding page.
 - `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
 - `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
@@ -41,6 +45,41 @@ Important boundaries:
 - Freezing a user is enforced by server-side `RequireNotFrozen` checks on protected write endpoints; it is not a frontend-only toggle.
 - User updates write `operation_logs` with previous/current role and status metadata.
 
+## Points And Memberships
+
+`/points` calls:
+
+- `GET /api/v1/admin/points/logs?userId=&reason=&limit=`
+- `GET /api/v1/admin/points/rules`
+- `POST /api/v1/admin/points/rules`
+- `PATCH /api/v1/admin/points/rules/:id`
+
+The points page is available only to `admin` and `super_admin` roles. It lists points ledger rows and maintains points rules.
+
+Important boundaries:
+
+- The page does not directly edit a user's `points_balance`.
+- Every actual point balance change must still be produced by server-side business logic that writes `points_logs`.
+- Creating or updating a points rule writes `operation_logs`.
+- Reviewer-only users cannot access points administration.
+
+`/memberships` calls:
+
+- `GET /api/v1/admin/memberships?userId=&planCode=&status=&limit=`
+- `POST /api/v1/admin/memberships/grant`
+- `POST /api/v1/admin/memberships/:id/revoke`
+- `GET /api/v1/membership/plans`
+
+The memberships page is available only to `admin` and `super_admin` roles. It supports manual grants during internal testing or after-sales operations and lists published membership plans for reference.
+
+Important boundaries:
+
+- Manual membership grant does not create an order, does not mark payment success, and does not replace WeChat notify confirmation.
+- Grants require an existing user and a published membership plan.
+- Re-granting the same active manual membership updates the existing record instead of creating unlimited duplicates.
+- Revoking a membership marks it `revoked`, expires it immediately, and writes an operation log.
+- User self-service purchase, renewal, point redemption, and AI quota spending are not implemented yet.
+
 ## Access Grants
 
 `/access-grants` calls:
@@ -60,6 +99,43 @@ Important boundaries:
 - Revoking a grant soft-deletes it. The revoked grant is removed from `/me/entitlements` and no longer unlocks paid downloads.
 - The page does not expose raw file storage keys and does not send PDF files directly.
 - Grant create/revoke operations write `operation_logs`.
+
+## Order And Payment Incident Triage
+
+`/orders` calls:
+
+- `GET /api/v1/admin/orders?status=&userEmail=&outTradeNo=&packageId=&paymentProvider=&productType=&riskFlag=&riskOnly=&limit=`
+
+The order page is read-only. It shows order status, buyer, package, integer-cent amount, payment provider, risk flag, and whether an entitlement already exists.
+
+`/payment-reconciliation` calls:
+
+- `GET /api/v1/admin/payment-reconciliation?issueType=&severity=&limit=`
+
+The reconciliation page is read-only. It compares local orders, payment records, order-source entitlements, risk flags, and open payment incidents. It highlights paid orders without payment records, paid package orders without order entitlements, non-paid orders with active order entitlements, duplicate transaction ids, amount mismatches between paid orders and payment records, existing order risk flags, and open incident rows. It does not repair data, mark payments successful, resolve incidents, or grant access.
+
+`/payment-incidents` calls:
+
+- `GET /api/v1/admin/payment-incidents?status=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
+- `POST /api/v1/admin/payment-incidents/:id/resolve`
+
+The incident page is available only to `admin` and `super_admin` roles. It is for payment operations triage after WeChat callback trust checks reject or quarantine a callback.
+
+Current incident sources:
+
+- `order_not_found`: callback `out_trade_no` did not match a local order.
+- `amount_mismatch`: callback amount did not match the local server-priced order.
+- `transaction_conflict`: a WeChat transaction id was already recorded for another order.
+
+Important boundaries:
+
+- Incident rows are idempotent for repeated identical callbacks.
+- The list response includes `total`; `/dashboard` uses it to show whether open payment incidents need attention.
+- If `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly opened incidents also emit a best-effort signed webhook for external operator alerts.
+- Open incidents can be marked `resolved` or `ignored` with an optional handling note.
+- Handling an incident records `handledBy`, `handledAt`, `handleNote`, and an `operation_logs` row.
+- Handling an incident never changes order status, never inserts a trusted payment success record, and never grants entitlement.
+- If a customer must be delivered content after manual verification, use `/access-grants`; do not modify payment records by hand.
 
 ## Course Package Management
 
@@ -382,8 +458,10 @@ Important boundaries:
 ## Planned Areas
 
 - Richer content review
-- Points and memberships
+- Membership purchase/redeem and AI quota spending
 - Orders
 - Order risk flags are visible and filterable for payment triage. This is read-only visibility; admins still cannot mark payment success or grant entitlements from the order browser.
+- Payment reconciliation
+- Local read-only reconciliation exists for order/payment/grant/incident consistency checks. It is not a live merchant settlement system and still requires WeChat merchant dashboard verification before production sales.
 - System config
 - Automatic operation-log retention cleanup after a production-safe archival flow exists

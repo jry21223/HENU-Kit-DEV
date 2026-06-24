@@ -40,6 +40,7 @@ func (r Runner) Run(ctx context.Context) error {
 	if err := client.Ping(ctx).Err(); err != nil {
 		return err
 	}
+	StartProbeServer(ctx, r.cfg, r.log, db, client)
 
 	processor := Processor{db: db, log: r.log, llmMode: r.cfg.LLMMode}
 	r.log.Info("worker started", slog.String("environment", r.cfg.Environment), slog.String("llm_mode", r.cfg.LLMMode))

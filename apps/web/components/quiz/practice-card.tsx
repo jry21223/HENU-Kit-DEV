@@ -30,7 +30,7 @@ export function PracticeCard({ question }: { question: QuizQuestion }) {
   }
 
   return (
-    <div className="rounded-lg border border-line bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-line bg-white p-5 shadow-sm" data-question-id={question.id} data-testid="practice-card">
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <span className="rounded-md bg-paper px-2 py-1">{question.type}</span>
         <span className="rounded-md bg-paper px-2 py-1">难度 {question.difficulty}</span>
@@ -42,6 +42,7 @@ export function PracticeCard({ question }: { question: QuizQuestion }) {
           {question.options.map((option) => (
             <button
               className={`rounded-md border px-3 py-2 text-left text-sm ${answer === option.label ? "border-sage bg-paper" : "border-line bg-white"}`}
+              data-testid={`quiz-option-${option.label}`}
               key={option.id}
               onClick={() => setAnswer(option.label)}
               type="button"
@@ -62,6 +63,7 @@ export function PracticeCard({ question }: { question: QuizQuestion }) {
       <div className="mt-4 flex items-center gap-3">
         <button
           className="rounded-md bg-sage px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          data-testid="quiz-submit"
           disabled={submitting || !answer}
           onClick={submitAnswer}
           type="button"

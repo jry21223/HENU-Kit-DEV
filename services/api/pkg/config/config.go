@@ -1,9 +1,18 @@
 package config
 
 import (
+	"errors"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
+)
+
+var (
+	ErrCORSWildcardWithCredentials = errors.New("cors wildcard origin is not allowed with credentials")
+	ErrProductionCORSRequired      = errors.New("production CORS_ALLOWED_ORIGINS must not be empty")
+	ErrProductionCORSHTTPSRequired = errors.New("production CORS_ALLOWED_ORIGINS must use https origins")
+	ErrInvalidCORSOrigin           = errors.New("invalid CORS origin")
 )
 
 type RedisConfig struct {
@@ -29,6 +38,7 @@ type Config struct {
 	OperationLogExportLimit   int
 	JWT                       JWTConfig
 	WeChatPay                 WeChatPayConfig
+	PaymentIncidentAlerts     PaymentIncidentAlertConfig
 }
 
 type JWTConfig struct {
@@ -55,9 +65,16 @@ type WeChatPayConfig struct {
 	NativeExpireMinutes    int
 }
 
+type PaymentIncidentAlertConfig struct {
+	WebhookURL     string
+	WebhookSecret  string
+	TimeoutSeconds int
+}
+
 func Load() Config {
+	environment := env("APP_ENV", "development")
 	return Config{
-		Environment:               env("APP_ENV", "development"),
+		Environment:               environment,
 		Port:                      env("API_PORT", "8080"),
 		Version:                   env("APP_VERSION", "0.1.0"),
 		DatabaseURL:               env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
@@ -66,7 +83,7 @@ func Load() Config {
 		RateLimitRPS:              floatEnv("RATE_LIMIT_RPS", 20),
 		RateLimitBurst:            intEnv("RATE_LIMIT_BURST", 40),
 		AutoMigrate:               boolEnv("AUTO_MIGRATE", true),
-		DevFixedCode:              env("DEV_FIXED_VERIFICATION_CODE", "123456"),
+		DevFixedCode:              devFixedCode(environment),
 		LocalUploadDir:            env("LOCAL_UPLOAD_DIR", "uploads"),
 		AITaskStream:              env("AI_TASK_STREAM", "ai_tasks"),
 		OperationLogRetentionDays: intEnv("OPERATION_LOG_RETENTION_DAYS", 180),
@@ -93,7 +110,37 @@ func Load() Config {
 			NotifyURL:              env("WECHAT_PAY_NOTIFY_URL", "http://localhost:8080/api/v1/payments/wechat/notify"),
 			NativeExpireMinutes:    intEnv("WECHAT_PAY_NATIVE_EXPIRE_MINUTES", 15),
 		},
+		PaymentIncidentAlerts: PaymentIncidentAlertConfig{
+			WebhookURL:     env("PAYMENT_INCIDENT_WEBHOOK_URL", ""),
+			WebhookSecret:  env("PAYMENT_INCIDENT_WEBHOOK_SECRET", ""),
+			TimeoutSeconds: intEnv("PAYMENT_INCIDENT_WEBHOOK_TIMEOUT_SECONDS", 3),
+		},
 	}
+}
+
+func ValidateHTTPConfig(cfg Config) error {
+	validOrigins := 0
+	for _, origin := range cfg.CORSAllowedOrigins {
+		trimmed := strings.TrimSpace(origin)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed == "*" {
+			return ErrCORSWildcardWithCredentials
+		}
+		parsed, err := url.Parse(trimmed)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return ErrInvalidCORSOrigin
+		}
+		if strings.EqualFold(cfg.Environment, "production") && parsed.Scheme != "https" {
+			return ErrProductionCORSHTTPSRequired
+		}
+		validOrigins++
+	}
+	if validOrigins == 0 && strings.EqualFold(cfg.Environment, "production") {
+		return ErrProductionCORSRequired
+	}
+	return nil
 }
 
 func loadRedisConfig() RedisConfig {
@@ -112,13 +159,29 @@ func env(key string, fallback string) string {
 	return value
 }
 
+func envAllowEmpty(key string, fallback string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	return strings.TrimSpace(value)
+}
+
+func devFixedCode(environment string) string {
+	fallback := "123456"
+	if strings.EqualFold(strings.TrimSpace(environment), "production") {
+		fallback = ""
+	}
+	return envAllowEmpty("DEV_FIXED_VERIFICATION_CODE", fallback)
+}
+
 func csvEnv(key string, fallback string) []string {
 	raw := env(key, fallback)
 	parts := strings.Split(raw, ",")
 	values := make([]string, 0, len(parts))
 	for _, part := range parts {
 		value := strings.TrimSpace(part)
-		if value != "" && value != "*" {
+		if value != "" {
 			values = append(values, value)
 		}
 	}

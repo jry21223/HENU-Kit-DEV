@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Download, MessageSquareText, TriangleAlert } from "lucide-react";
+import { Bell, CreditCard, Download, MessageSquareText, Sparkles, TriangleAlert, UsersRound } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
 import { ProfileForm } from "@/components/profile/profile-form";
 
@@ -13,9 +13,12 @@ const copy = {
 
 const shortcuts = [
   { href: "/me/wrong-questions", label: "\u9519\u9898\u672c", description: "\u67e5\u770b\u9519\u9898\u548c\u8584\u5f31\u8bfe\u7a0b", icon: TriangleAlert },
+  { href: "/me/points", label: "\u79ef\u5206", description: "\u67e5\u770b\u4f59\u989d\u548c\u79ef\u5206\u6d41\u6c34", icon: Sparkles },
+  { href: "/me/membership", label: "\u4f1a\u5458", description: "\u67e5\u770b\u4f1a\u5458\u6743\u76ca\u548c\u5230\u671f\u65f6\u95f4", icon: CreditCard },
   { href: "/me/downloads", label: "\u4e0b\u8f7d\u8bb0\u5f55", description: "\u67e5\u770b\u5df2\u6210\u529f\u4e0b\u8f7d\u7684\u8d44\u6599", icon: Download },
   { href: "/me/notifications", label: "\u901a\u77e5", description: "\u5ba1\u6838\u7ed3\u679c\u548c\u7cfb\u7edf\u6d88\u606f", icon: Bell },
   { href: "/me/forum", label: "\u6211\u7684\u8ba8\u8bba", description: "\u8ffd\u8e2a\u5e16\u5b50\u548c\u56de\u590d\u5ba1\u6838", icon: MessageSquareText },
+  { href: "/me/relations", label: "\u5173\u7cfb\u7ba1\u7406", description: "\u67e5\u770b\u5173\u6ce8\u3001\u7c89\u4e1d\u548c\u4e92\u5173\u597d\u53cb", icon: UsersRound },
 ];
 
 export default function MePage() {
@@ -28,7 +31,7 @@ export default function MePage() {
       </section>
       <section className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
         <h2 className="text-lg font-semibold tracking-tight">{copy.shortcuts}</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {shortcuts.map((item) => {
             const Icon = item.icon;
             return (

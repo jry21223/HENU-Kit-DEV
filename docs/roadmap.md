@@ -3,7 +3,9 @@
 ## First Deliverable
 
 - V2 monorepo skeleton
-- Go API health/version endpoints
+- Go API health/version endpoints with separate liveness `/healthz` and dependency readiness `/readyz`
+- Go API baseline security headers and production CORS exact-HTTPS-origin validation
+- Go API production preflight command for APP_ENV, CORS, auto-migrate, fixed verification code, JWT keys, WeChat Pay live config, mounted cert/key paths, and upload directory checks
 - Go API email-code auth and role middleware
 - GORM model coverage for the V2 table set
 - Material download permission checks
@@ -20,8 +22,17 @@
 - Web wiki detail edit-proposal form for creator/admin users, with review-first submission
 - Web blog list/detail read-only pages backed by published public blog APIs
 - Web forum list/detail pages with post creation, reply submission, and best-answer action entry
+- Go API moments foundation with public/mutual-friends visibility, comments, idempotent likes, and block-aware feed filtering
+- Web `/moments` foundation with a mobile-aware feed, composer, likes, comments, follow/block actions, and smoke coverage
+- Moment image upload foundation with authenticated local uploads, JPG/PNG/WEBP/GIF validation, 5MB per-image limit, media-asset records, visibility-checked image serving, and Web image previews
+- Admin media asset audit and cleanup API for stale unattached moment images, with dry-run mode, file deletion, archived-row status updates, and operation logs
+- Vue admin media asset page for listing moment image assets and running stale-unattached-upload dry-run/cleanup operations
+- Go API relation foundation with follow, unfollow, block, unblock, following, followers, and mutual-friend lists
+- Public user profile aggregation API and Web `/users/[id]` page with visible moments, blog posts, forum posts, and forum replies
+- Web `/me/relations` page for current-user following, followers, mutual-friend lists, follow/unfollow, and block actions
 - Web personal download-history page
 - Web personal wrong-question book with per-course weakness totals and current-user delete action
+- Opt-in browser quiz wrong-question smoke for Web login, quiz submission, Go API wrong-question persistence, and `/me/wrong-questions` rendering
 - Web personal forum submission tracking page for current user's posts/replies and review status
 - Web personal forum edit/resubmit flow for draft/pending/needs_changes/rejected posts and replies
 - Web personal notification inbox with user-scoped read/read-all state
@@ -56,7 +67,7 @@
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog, Web package list/detail pages, package-level material grants, and public package-detail filtering that hides unpublished package items as well as unpublished material objects
 - Course package pending-order foundation with server-authoritative package pricing, duplicate pending-order reuse, and user-scoped order status
-- Material manifest import command with example manifest, existing-file checks, path traversal rejection, idempotent material upsert, idempotent course-package item binding, and automated manifest-to-paid-download smoke coverage
+- Material manifest import command with example manifest, dry-run preflight report, existing-file checks, path traversal rejection, idempotent material upsert, idempotent course-package item binding, duplicate-file visibility, and automated manifest-to-paid-download smoke coverage
 - WeChat Native mock payment request endpoint for development/test, with production mock guard and no entitlement side effects
 - Web package detail renders server-returned WeChat Native code URLs as local QR codes and polls read-only order status
 - Development/test signed mock WeChat notify can mark an order paid and idempotently issue a package entitlement after signature and amount checks
@@ -66,6 +77,10 @@
 - WeChat Native close-order endpoint for pending/paying orders, with owner/admin authorization and local `closed` status handling
 - Server-side WeChat Native expiry convergence for stale pending/paying orders, preventing expired QR orders from payment creation or duplicate-order reuse
 - Admin order risk-flag visibility and filtering for payment triage
+- Payment incident ledger for rejected WeChat callback anomalies, with admin-only resolve/ignore handling and no entitlement side effects
+- Vue admin dashboard open-incident alert count backed by the payment incident list total
+- Optional signed best-effort webhook for newly opened payment incidents, without raw notify payloads or entitlement side effects
+- Admin-only, read-only local payment reconciliation report for order/payment-record/order-grant/risk-flag/open-incident inconsistencies
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton
@@ -77,8 +92,9 @@
 
 - Richer content review workflows for wiki conflict-resolution UX and additional notification sources for payment and membership
 - Admin analytics expansion for page visits, search intent, course request voting, payment, and membership conversion metrics
-- Real internal material import dry run with mounted course files, package binding audit, and paid-download smoke verification in the target environment
+- Real internal material import dry run with mounted course files, package binding audit, target-environment API/browser manual-grant smoke, and paid-download smoke verification against fresh test accounts
 - Real WeChat merchant end-to-end payment and close-order verification, certificate rotation handling, refund handling, and payment operation alerts
+- Live WeChat merchant settlement reconciliation and production-ready alert routing/escalation beyond the basic incident webhook and local read-only report
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables
@@ -86,6 +102,6 @@
 - AI Worker flows
 - Points and membership
 - Wiki creator workflow refinements and richer revision diff tooling
-- Blog, moments, forum
+- Richer social relationship UX, advanced relation filters, video media, cloud object storage, and production media lifecycle policies
 - Notifications, richer reports, leaderboards
 - Production deployment and monitoring

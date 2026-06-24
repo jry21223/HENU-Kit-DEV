@@ -6,7 +6,11 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:delivery": "playwright test tests/internal-delivery.smoke.spec.ts",
+    "test:e2e:mobile": "playwright test tests/mobile-public.smoke.spec.ts",
+    "test:e2e:quiz": "playwright test tests/quiz-wrong-question.smoke.spec.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.0",

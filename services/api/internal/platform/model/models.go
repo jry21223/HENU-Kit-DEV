@@ -33,6 +33,10 @@ const (
 	OrderCancelled = "cancelled"
 	OrderRefunded  = "refunded"
 
+	PaymentIncidentOpen     = "open"
+	PaymentIncidentResolved = "resolved"
+	PaymentIncidentIgnored  = "ignored"
+
 	MaterialAccessFree          = "free"
 	MaterialAccessLoginRequired = "login_required"
 	MaterialAccessPaid          = "paid"
@@ -224,6 +228,26 @@ type PaymentRecord struct {
 	ProcessedAt    *time.Time     `json:"processedAt,omitempty"`
 }
 
+type PaymentIncident struct {
+	BaseModel
+	OrderID        *string        `json:"orderId,omitempty" gorm:"type:uuid;index"`
+	Provider       string         `json:"provider" gorm:"size:40;index;not null"`
+	IncidentType   string         `json:"incidentType" gorm:"size:80;index;not null"`
+	Severity       string         `json:"severity" gorm:"size:32;default:high;index"`
+	Status         string         `json:"status" gorm:"size:32;default:open;index"`
+	OutTradeNo     string         `json:"outTradeNo" gorm:"size:80;index"`
+	TransactionID  string         `json:"transactionId" gorm:"size:120;index"`
+	TradeState     string         `json:"tradeState" gorm:"size:40;index"`
+	ExpectedAmount int64          `json:"expectedAmount"`
+	ActualAmount   int64          `json:"actualAmount"`
+	Message        string         `json:"message" gorm:"size:500"`
+	RawNotify      datatypes.JSON `json:"rawNotify,omitempty"`
+	IdempotencyKey string         `json:"idempotencyKey" gorm:"size:200;uniqueIndex"`
+	HandledBy      *string        `json:"handledBy,omitempty" gorm:"type:uuid;index"`
+	HandledAt      *time.Time     `json:"handledAt,omitempty"`
+	HandleNote     string         `json:"handleNote,omitempty" gorm:"size:1000"`
+}
+
 type QuizQuestion struct {
 	BaseModel
 	CourseID         string  `json:"courseId" gorm:"type:uuid;index;not null"`
@@ -387,6 +411,18 @@ type Moment struct {
 	Status   string         `json:"status" gorm:"size:32;default:published;index"`
 }
 
+type MediaAsset struct {
+	BaseModel
+	OwnerID     string  `json:"ownerId" gorm:"type:uuid;index;not null"`
+	Usage       string  `json:"usage" gorm:"size:40;index;not null"`
+	StorageKey  string  `json:"-" gorm:"size:500;not null;uniqueIndex"`
+	FileName    string  `json:"fileName" gorm:"size:255"`
+	FileSize    int64   `json:"fileSize"`
+	ContentType string  `json:"contentType" gorm:"size:120;index"`
+	Status      string  `json:"status" gorm:"size:32;default:uploaded;index"`
+	MomentID    *string `json:"momentId,omitempty" gorm:"type:uuid;index"`
+}
+
 type MomentComment struct {
 	BaseModel
 	AuthorID string `json:"authorId" gorm:"type:uuid;index;not null"`
@@ -524,12 +560,12 @@ func AllModels() []interface{} {
 		&User{}, &EmailVerificationCode{},
 		&School{}, &College{}, &Major{}, &Course{},
 		&Material{}, &CoursePackage{}, &CoursePackageItem{}, &MaterialAccessGrant{}, &MaterialDownloadLog{},
-		&Order{}, &PaymentRecord{},
+		&Order{}, &PaymentRecord{}, &PaymentIncident{},
 		&QuizQuestion{}, &QuizOption{}, &QuizAttempt{}, &QuizAnswer{}, &WrongQuestion{}, &WeaknessReport{},
 		&WikiEntry{}, &WikiEditHistory{}, &WikiEditProposal{}, &WikiCreatorApplication{},
 		&BlogPost{}, &BlogComment{},
 		&ForumBoard{}, &ForumPost{}, &ForumReply{},
-		&Moment{}, &MomentComment{},
+		&Moment{}, &MediaAsset{}, &MomentComment{},
 		&UserRelation{},
 		&PointsLog{}, &PointsRule{},
 		&Membership{}, &MembershipPlan{},

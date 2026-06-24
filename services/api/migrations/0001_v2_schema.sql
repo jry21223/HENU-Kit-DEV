@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- quiz_options, quiz_attempts, quiz_answers, wrong_questions,
 -- weakness_reports, wiki_entries, wiki_edit_histories,
 -- wiki_creator_applications, blog_posts, blog_comments, forum_boards,
--- forum_posts, forum_replies, moments, moment_comments, user_relations,
+-- forum_posts, forum_replies, moments, media_assets, moment_comments, user_relations,
 -- points_logs, points_rules, memberships, membership_plans, ai_tasks,
 -- ai_drafts, ai_usage_logs, notifications, reports, operation_logs,
 -- leaderboard_snapshots, system_configs.

@@ -23,6 +23,7 @@ export async function postApi<T>(path: string, body: unknown): Promise<ApiEnvelo
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -315,6 +316,137 @@ export type BlogPost = {
   collectCount: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type UserSummary = {
+  id: string;
+  name: string;
+  role: string;
+};
+
+export type MomentComment = {
+  id: string;
+  authorId: string;
+  momentId: string;
+  content: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  author: UserSummary;
+};
+
+export type Moment = {
+  id: string;
+  authorId: string;
+  content: string;
+  images: string[];
+  status: string;
+  visibility: "public" | "mutual_friends";
+  likeCount: number;
+  commentCount: number;
+  collectCount: number;
+  createdAt: string;
+  updatedAt: string;
+  author: UserSummary;
+  likedByMe: boolean;
+  recentComments?: MomentComment[];
+};
+
+export type PublicUserProfile = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  schoolId?: string;
+  majorId?: string;
+  grade?: string;
+  createdAt: string;
+  followingByMe: boolean;
+  followsMe: boolean;
+  mutualFriend: boolean;
+  blockedByMe: boolean;
+  blockedMe: boolean;
+  followingCount: number;
+  followersCount: number;
+  momentsCount: number;
+  blogPostsCount: number;
+  forumPostsCount: number;
+  forumRepliesCount: number;
+};
+
+export type UserProfileForumReply = ForumReply & {
+  postTitle: string;
+};
+
+export type UserProfileResponse = {
+  profile: PublicUserProfile;
+  moments: Moment[];
+  blogPosts: BlogPost[];
+  forumPosts: ForumPost[];
+  forumReplies: UserProfileForumReply[];
+};
+
+export type SearchResult = {
+  id: string;
+  type: "course" | "material" | "package" | "wiki" | "blog" | "forum";
+  title: string;
+  description?: string;
+  url: string;
+  meta?: string;
+  updatedAt?: string;
+};
+
+export type SearchResults = {
+  courses: SearchResult[];
+  materials: SearchResult[];
+  packages: SearchResult[];
+  wiki: SearchResult[];
+  blog: SearchResult[];
+  forum: SearchResult[];
+};
+
+export type SearchResponse = {
+  query: string;
+  results: SearchResults;
+  total: number;
+};
+
+export type PointsLog = {
+  id: string;
+  userId: string;
+  delta: number;
+  balanceAfter: number;
+  reason: string;
+  referenceType: string;
+  referenceId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipPlan = {
+  id: string;
+  code: string;
+  name: string;
+  priceFen: number;
+  benefits?: Record<string, unknown>;
+  status: string;
+};
+
+export type Membership = {
+  id: string;
+  userId: string;
+  planCode: string;
+  status: string;
+  source: string;
+  expiresAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipRow = {
+  membership: Membership;
+  plan?: MembershipPlan;
+  active: boolean;
 };
 
 export type MyForumPost = {

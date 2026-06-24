@@ -1,6 +1,7 @@
 package materialimport
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +25,7 @@ var (
 	ErrUnsafeFilePath     = errors.New("unsafe_manifest_file_path")
 	ErrPackageScope       = errors.New("package_scope_mismatch")
 	ErrUnsupportedVersion = errors.New("unsupported_manifest")
+	errDryRunRollback     = errors.New("material_import_dry_run_rollback")
 )
 
 type ManifestEntry struct {
@@ -57,17 +59,51 @@ type ManifestMaterial struct {
 }
 
 type Result struct {
-	Entries           int `json:"entries"`
-	SchoolsCreated    int `json:"schoolsCreated"`
-	CollegesCreated   int `json:"collegesCreated"`
-	MajorsCreated     int `json:"majorsCreated"`
-	CoursesCreated    int `json:"coursesCreated"`
-	PackagesCreated   int `json:"packagesCreated"`
-	PackagesUpdated   int `json:"packagesUpdated"`
-	MaterialsCreated  int `json:"materialsCreated"`
-	MaterialsUpdated  int `json:"materialsUpdated"`
-	PackageItemsAdded int `json:"packageItemsAdded"`
-	PackageItemsKept  int `json:"packageItemsKept"`
+	DryRun            bool         `json:"dryRun"`
+	Entries           int          `json:"entries"`
+	SchoolsCreated    int          `json:"schoolsCreated"`
+	CollegesCreated   int          `json:"collegesCreated"`
+	MajorsCreated     int          `json:"majorsCreated"`
+	CoursesCreated    int          `json:"coursesCreated"`
+	PackagesCreated   int          `json:"packagesCreated"`
+	PackagesUpdated   int          `json:"packagesUpdated"`
+	MaterialsCreated  int          `json:"materialsCreated"`
+	MaterialsUpdated  int          `json:"materialsUpdated"`
+	PackageItemsAdded int          `json:"packageItemsAdded"`
+	PackageItemsKept  int          `json:"packageItemsKept"`
+	Report            ImportReport `json:"report"`
+}
+
+type ImportReport struct {
+	ManifestMaterials  int                   `json:"manifestMaterials"`
+	FilesChecked       int                   `json:"filesChecked"`
+	TotalFileBytes     int64                 `json:"totalFileBytes"`
+	PublishedMaterials int                   `json:"publishedMaterials"`
+	PaidMaterials      int                   `json:"paidMaterials"`
+	PackageItemLinks   int                   `json:"packageItemLinks"`
+	AccessLevels       map[string]int        `json:"accessLevels"`
+	Statuses           map[string]int        `json:"statuses"`
+	Types              map[string]int        `json:"types"`
+	Packages           []ImportPackageReport `json:"packages"`
+	PackageIndex       map[string]int        `json:"-"`
+	StorageKeys        map[string]struct{}   `json:"-"`
+	DuplicateFiles     []string              `json:"duplicateFiles,omitempty"`
+}
+
+type ImportPackageReport struct {
+	PackageSlug        string `json:"packageSlug"`
+	PackageTitle       string `json:"packageTitle"`
+	CourseSlug         string `json:"courseSlug"`
+	CourseName         string `json:"courseName"`
+	Grade              string `json:"grade"`
+	Materials          int    `json:"materials"`
+	PublishedMaterials int    `json:"publishedMaterials"`
+	PaidMaterials      int    `json:"paidMaterials"`
+	LoginRequired      int    `json:"loginRequired"`
+	FreeMaterials      int    `json:"freeMaterials"`
+	MemberOnly         int    `json:"memberOnly"`
+	PackageItemLinks   int    `json:"packageItemLinks"`
+	TotalFileBytes     int64  `json:"totalFileBytes"`
 }
 
 type Importer struct {
@@ -83,22 +119,39 @@ func New(db *gorm.DB, uploadDir string) Importer {
 }
 
 func (i Importer) ImportFile(path string) (Result, error) {
+	return i.importFile(path, false)
+}
+
+func (i Importer) ImportFileDryRun(path string) (Result, error) {
+	return i.importFile(path, true)
+}
+
+func (i Importer) importFile(path string, dryRun bool) (Result, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Result{}, err
 	}
 	var manifest []ManifestEntry
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return Result{}, err
 	}
-	return i.Import(manifest)
+	return i.importManifest(manifest, dryRun)
 }
 
 func (i Importer) Import(manifest []ManifestEntry) (Result, error) {
+	return i.importManifest(manifest, false)
+}
+
+func (i Importer) ImportDryRun(manifest []ManifestEntry) (Result, error) {
+	return i.importManifest(manifest, true)
+}
+
+func (i Importer) importManifest(manifest []ManifestEntry, dryRun bool) (Result, error) {
 	if len(manifest) == 0 {
 		return Result{}, ErrEmptyManifest
 	}
-	var result Result
+	result := newResult(dryRun)
 	err := i.db.Transaction(func(tx *gorm.DB) error {
 		worker := Importer{db: tx, uploadDir: i.uploadDir}
 		for index := range manifest {
@@ -106,9 +159,28 @@ func (i Importer) Import(manifest []ManifestEntry) (Result, error) {
 				return err
 			}
 		}
+		if dryRun {
+			return errDryRunRollback
+		}
 		return nil
 	})
+	if dryRun && errors.Is(err, errDryRunRollback) {
+		return result, nil
+	}
 	return result, err
+}
+
+func newResult(dryRun bool) Result {
+	return Result{
+		DryRun: dryRun,
+		Report: ImportReport{
+			AccessLevels: map[string]int{},
+			Statuses:     map[string]int{},
+			Types:        map[string]int{},
+			PackageIndex: map[string]int{},
+			StorageKeys:  map[string]struct{}{},
+		},
+	}
 }
 
 func (i Importer) importEntry(result *Result, entry ManifestEntry) error {
@@ -185,6 +257,7 @@ func (i Importer) importEntry(result *Result, entry ManifestEntry) error {
 		} else {
 			result.PackageItemsKept++
 		}
+		result.addMaterialReport(entry, coursePackage, material)
 	}
 	return nil
 }
@@ -457,6 +530,85 @@ func (i Importer) ensurePackageItem(coursePackage model.CoursePackage, material 
 		return false, err
 	}
 	return true, nil
+}
+
+func (r *Result) addMaterialReport(entry ManifestEntry, coursePackage model.CoursePackage, material model.Material) {
+	if r.Report.AccessLevels == nil {
+		r.Report.AccessLevels = map[string]int{}
+	}
+	if r.Report.Statuses == nil {
+		r.Report.Statuses = map[string]int{}
+	}
+	if r.Report.Types == nil {
+		r.Report.Types = map[string]int{}
+	}
+	if r.Report.PackageIndex == nil {
+		r.Report.PackageIndex = map[string]int{}
+	}
+	if r.Report.StorageKeys == nil {
+		r.Report.StorageKeys = map[string]struct{}{}
+	}
+	r.Report.ManifestMaterials++
+	r.Report.FilesChecked++
+	r.Report.TotalFileBytes += material.FileSize
+	r.Report.PackageItemLinks++
+	r.Report.AccessLevels[material.AccessLevel]++
+	r.Report.Statuses[material.Status]++
+	r.Report.Types[material.Type]++
+	if material.Status == model.StatusPublished {
+		r.Report.PublishedMaterials++
+	}
+	if material.AccessLevel == model.MaterialAccessPaid {
+		r.Report.PaidMaterials++
+	}
+	if _, seen := r.Report.StorageKeys[material.StorageKey]; seen {
+		r.Report.DuplicateFiles = appendUnique(r.Report.DuplicateFiles, material.StorageKey)
+	} else {
+		r.Report.StorageKeys[material.StorageKey] = struct{}{}
+	}
+
+	index, ok := r.Report.PackageIndex[coursePackage.Slug]
+	if !ok {
+		title := strings.TrimSpace(coursePackage.Title)
+		if title == "" {
+			title = strings.TrimSpace(entry.PackageTitle)
+		}
+		r.Report.Packages = append(r.Report.Packages, ImportPackageReport{
+			PackageSlug:  coursePackage.Slug,
+			PackageTitle: title,
+			CourseSlug:   strings.TrimSpace(entry.CourseSlug),
+			CourseName:   strings.TrimSpace(entry.CourseName),
+			Grade:        strings.TrimSpace(entry.Grade),
+		})
+		index = len(r.Report.Packages) - 1
+		r.Report.PackageIndex[coursePackage.Slug] = index
+	}
+	pkg := &r.Report.Packages[index]
+	pkg.Materials++
+	pkg.PackageItemLinks++
+	pkg.TotalFileBytes += material.FileSize
+	if material.Status == model.StatusPublished {
+		pkg.PublishedMaterials++
+	}
+	switch material.AccessLevel {
+	case model.MaterialAccessPaid:
+		pkg.PaidMaterials++
+	case model.MaterialAccessLoginRequired:
+		pkg.LoginRequired++
+	case model.MaterialAccessFree:
+		pkg.FreeMaterials++
+	case model.MaterialAccessMemberOnly:
+		pkg.MemberOnly++
+	}
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func (i Importer) storageKeyForManifestPath(rawPath string) (string, int64, error) {
