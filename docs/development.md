@@ -62,3 +62,14 @@ Material import delivery smoke:
 - `TestMaterialManifestImportSmokeCoversPaidDownloadDelivery` imports temporary fixture files through the manifest importer, then exercises the public package detail API and material download API.
 - The smoke verifies free downloads, login-required downloads, paid denial without entitlement, package-grant unlock, and successful paid download audit logging.
 - This is automated safety coverage, not proof that real internal course files have been imported. For an internal release, mount the real `uploads/materials/...` directory, run `go run ./cmd/import-materials -dry-run <manifest.json>`, then run the real import and perform the same paid-download smoke with a test account.
+
+## Internal API Smoke
+
+After starting the API and importing/seeded package data, run:
+
+```bash
+cd services/api
+go run ./cmd/smoke -base-url http://localhost:8080/api/v1 -email smoke@stu.henu.edu.cn -code 123456 -create-order
+```
+
+This checks readiness, public catalog/package safety, login, paid-download denial before entitlement, and optional pending-order creation. See `docs/internal-smoke.md` for production/internal-test usage.

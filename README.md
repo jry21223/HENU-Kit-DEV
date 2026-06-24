@@ -90,6 +90,7 @@ docker compose --env-file .env.production -f docker-compose.prod.example.yml con
 ```
 
 See `docs/deployment.md` before using this for any paid internal test. The example expects secrets and certificates to be mounted from ignored `secrets/` and `certs/` directories.
+- Internal smoke runbook: `docs/internal-smoke.md`
 
 如果本机已安装 Go：
 

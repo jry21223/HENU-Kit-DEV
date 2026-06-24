@@ -119,6 +119,7 @@ Before opening paid sales, verify all items below:
 - `npm run build --workspace @final-review/admin`
 - production `.env.production` has `APP_ENV=production`, `WECHAT_PAY_MODE=live`, `AUTO_MIGRATE=false`, and an empty `DEV_FIXED_VERIFICATION_CODE`
 - `CORS_ALLOWED_ORIGINS` lists exact HTTPS origins and does not use `*`
+- API smoke in `docs/internal-smoke.md` passes with a fresh student test email
 - WeChat Pay Native live order and notify have been tested with the real merchant dashboard
 - material import dry-run report has been reviewed against mounted real files
 - paid material download is denied before entitlement and allowed after a verified paid order
