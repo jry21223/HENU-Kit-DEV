@@ -71,22 +71,22 @@ async function archiveVisualState(page: Page) {
     const base = document.querySelector<HTMLElement>('[data-home-anim="archive-base"]');
     const closingCopy = document.querySelector<HTMLElement>('[data-testid="archive-copy-closing"]');
     const inside = document.querySelector<HTMLElement>('[data-home-anim="archive-inside"]');
-    const panels = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        '[data-home-anim="archive-left-panel"], [data-home-anim="archive-right-panel"]',
-      ),
-    );
+    const leftPanel = document.querySelector<HTMLElement>('[data-home-anim="archive-left-panel"]');
+    const rightPanel = document.querySelector<HTMLElement>('[data-home-anim="archive-right-panel"]');
     const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-home-anim="archive-page"]'));
     const spineShadow = document.querySelector<HTMLElement>('[data-home-anim="archive-spine-shadow"]');
 
-    if (!base || !cover || !coverShadow || !closingCopy || !inside || panels.length !== 2 || pages.length === 0 || !spineShadow) {
+    if (!base || !cover || !coverShadow || !closingCopy || !inside || !leftPanel || !rightPanel || pages.length === 0 || !spineShadow) {
       throw new Error("Archive visual nodes were not found");
     }
 
+    const baseRect = base.getBoundingClientRect();
     const coverRect = cover.getBoundingClientRect();
     const closingRect = closingCopy.getBoundingClientRect();
+    const insideRect = inside.getBoundingClientRect();
     const insideOpacity = Number(getComputedStyle(inside).opacity);
-    const panelOpacities = panels.map((panel) => Number(getComputedStyle(panel).opacity));
+    const leftPanelOpacity = Number(getComputedStyle(leftPanel).opacity);
+    const rightPanelOpacity = Number(getComputedStyle(rightPanel).opacity);
     const pageOpacities = pages.map((archivePage) => {
       const panel = archivePage.closest<HTMLElement>(
         '[data-home-anim="archive-left-panel"], [data-home-anim="archive-right-panel"]',
@@ -97,16 +97,18 @@ async function archiveVisualState(page: Page) {
 
     return {
       baseOpacity: Number(getComputedStyle(base).opacity),
+      baseLeft: baseRect.left,
       closingCopyOpacity: Number(getComputedStyle(closingCopy).opacity),
       closingCopyRight: closingRect.right,
       coverLeft: coverRect.left,
       coverOpacity: Number(getComputedStyle(cover).opacity),
       coverShadowOpacity: Number(getComputedStyle(coverShadow).opacity),
       insideOpacity,
+      insideCenterX: insideRect.left + insideRect.width / 2,
+      leftPanelOpacity,
       maxPageOpacity: Math.max(...pageOpacities),
-      maxPanelOpacity: Math.max(...panelOpacities),
       minPageOpacity: Math.min(...pageOpacities),
-      minPanelOpacity: Math.min(...panelOpacities),
+      rightPanelOpacity,
       spineShadowOpacity: Number(getComputedStyle(spineShadow).opacity),
     };
   });
@@ -253,8 +255,10 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(liftingVisualState.coverShadowOpacity).toBeGreaterThan(0.12);
   expect(liftingVisualState.spineShadowOpacity).toBeGreaterThan(0.18);
   expect(liftingVisualState.baseOpacity).toBeLessThan(0.3);
+  expect(liftingVisualState.baseLeft).toBeGreaterThanOrEqual(liftingVisualState.insideCenterX - 8);
   expect(liftingVisualState.insideOpacity).toBeGreaterThan(0.7);
-  expect(liftingVisualState.minPanelOpacity).toBeGreaterThan(0.7);
+  expect(liftingVisualState.leftPanelOpacity).toBeLessThan(0.05);
+  expect(liftingVisualState.rightPanelOpacity).toBeGreaterThan(0.7);
   expect(liftingVisualState.maxPageOpacity).toBeGreaterThan(0.7);
   expect(openingCoverBox.centerX).toBeGreaterThan(1440 * 0.45);
   expect(openingCoverBox.centerX).toBeLessThan(1440 * 0.86);
@@ -264,6 +268,8 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   const lateTurningVisualState = await archiveVisualState(page);
   expect(lateTurningVisualState.insideOpacity).toBeGreaterThan(0.55);
+  expect(lateTurningVisualState.leftPanelOpacity).toBeLessThan(0.05);
+  expect(lateTurningVisualState.rightPanelOpacity).toBeGreaterThan(0.55);
   expect(lateTurningVisualState.minPageOpacity).toBeGreaterThan(0.55);
   expect(lateTurningVisualState.maxPageOpacity).toBeGreaterThan(0.55);
   expect(lateTurningVisualState.coverOpacity).toBeGreaterThan(0.9);
@@ -274,6 +280,8 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await expect(page.getByTestId("archive-copy-closing")).toBeHidden();
 
   const openVisualState = await archiveVisualState(page);
+  expect(openVisualState.leftPanelOpacity).toBeLessThan(0.05);
+  expect(openVisualState.rightPanelOpacity).toBeGreaterThan(0.95);
   expect(openVisualState.minPageOpacity).toBeGreaterThan(0.95);
   expect(openVisualState.coverOpacity).toBeGreaterThan(0.9);
 
@@ -340,12 +348,16 @@ test("homepage binds the right page under a left-hinged cover", async ({ page })
 
     const leftOriginX = leftPanel ? Number.parseFloat(getComputedStyle(leftPanel).transformOrigin) : Number.NaN;
     const rightOriginX = rightPanel ? Number.parseFloat(getComputedStyle(rightPanel).transformOrigin) : Number.NaN;
+    const leftPanelStyle = leftPanel ? getComputedStyle(leftPanel) : null;
 
     return {
       hasLeftPanel: Boolean(leftPanel),
       hasRightPanel: Boolean(rightPanel),
       leftAriaHidden: leftPanel?.getAttribute("aria-hidden"),
+      leftBackground: leftPanelStyle?.backgroundColor,
+      leftChildCount: leftPanel?.children.length ?? 0,
       leftContainsPage: Boolean(leftPanel && pages.some((archivePage) => leftPanel.contains(archivePage))),
+      leftOpacity: leftPanelStyle ? Number(leftPanelStyle.opacity) : Number.NaN,
       leftOriginX,
       leftWidth: leftPanel?.offsetWidth ?? 0,
       pageCount: pages.length,
@@ -358,7 +370,10 @@ test("homepage binds the right page under a left-hinged cover", async ({ page })
     hasLeftPanel: true,
     hasRightPanel: true,
     leftAriaHidden: "true",
+    leftBackground: "rgba(0, 0, 0, 0)",
+    leftChildCount: 0,
     leftContainsPage: false,
+    leftOpacity: 0,
     pageCount: 1,
     rightContainsCoursePage: true,
   });

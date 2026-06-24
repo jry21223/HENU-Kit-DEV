@@ -190,9 +190,7 @@ export function ArchiveBookReveal() {
                   className={`${styles.bookPanel} ${styles.leftBookPanel}`}
                   aria-hidden="true"
                   {...homeAnimAttr("archiveLeftPanel")}
-                >
-                  <span className={styles.leftCoverGrain} aria-hidden="true" />
-                </div>
+                />
 
                 <div
                   className={`${styles.bookPanel} ${styles.rightBookPanel}`}

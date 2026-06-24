@@ -80,7 +80,6 @@ function createArchiveTimeline(stage: HTMLElement) {
   const cover = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCover"));
   const coverFront = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCoverFront"));
   const coverShadow = stage.querySelector<HTMLElement>(homeAnimSelector("archiveCoverShadow"));
-  const leftPanel = stage.querySelector<HTMLElement>(homeAnimSelector("archiveLeftPanel"));
   const rightPanel = stage.querySelector<HTMLElement>(homeAnimSelector("archiveRightPanel"));
   const spineShadow = stage.querySelector<HTMLElement>(homeAnimSelector("archiveSpineShadow"));
   const introCopy = stage.querySelector<HTMLElement>(homeAnimSelector("archiveIntroCopy"));
@@ -283,34 +282,6 @@ function createArchiveTimeline(stage: HTMLElement) {
           duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
           ease: "inCubic",
           opacity: [1, 0],
-        },
-        at(archiveProgress.openEnd),
-      );
-  }
-
-  if (leftPanel) {
-    timeline
-      .add(
-        leftPanel,
-        {
-          duration: durationBetween(insideRevealStart, insideRevealEnd),
-          ease: "outSine",
-          opacity: [0, 1],
-          rotateY: [8, 0],
-          scaleX: [0.98, 1],
-          x: [14, 0],
-          z: [-8, 0],
-        },
-        at(insideRevealStart),
-      )
-      .add(
-        leftPanel,
-        {
-          duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
-          ease: "inCubic",
-          opacity: [1, 0],
-          rotateY: [0, 8],
-          y: [0, 12],
         },
         at(archiveProgress.openEnd),
       );
