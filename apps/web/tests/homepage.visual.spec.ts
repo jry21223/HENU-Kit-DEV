@@ -244,7 +244,8 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await scrollArchiveTo(page, 0.66);
   await expect(page.getByTestId("archive-copy-intro")).toBeHidden();
   await expect(page.locator('[data-home-anim="archive-open-copy"]')).toHaveCount(0);
-  await expect(page.locator('[data-home-anim="archive-page"]').first().getByText("资料目录")).toBeVisible();
+  await expect(page.locator('[data-home-anim="archive-page"]').first().getByText("课程入口")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "资料目录" })).toHaveCount(0);
   await expect(page.getByTestId("archive-cover")).toBeVisible();
 
   const openingCoverBox = await elementBox(page, "archive-cover");
@@ -253,32 +254,28 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(liftingVisualState.spineShadowOpacity).toBeGreaterThan(0.18);
   expect(liftingVisualState.baseOpacity).toBeLessThan(0.3);
   expect(liftingVisualState.insideOpacity).toBeGreaterThan(0.7);
-  expect(liftingVisualState.minPanelOpacity).toBeGreaterThan(0.2);
-  expect(liftingVisualState.maxPageOpacity).toBeGreaterThan(0.2);
+  expect(liftingVisualState.minPanelOpacity).toBeGreaterThan(0.7);
+  expect(liftingVisualState.maxPageOpacity).toBeGreaterThan(0.7);
   expect(openingCoverBox.centerX).toBeGreaterThan(1440 * 0.45);
   expect(openingCoverBox.centerX).toBeLessThan(1440 * 0.86);
   expect(openingCoverBox.width / openingCoverBox.height).toBeLessThan(0.86);
 
   await scrollArchiveTo(page, 0.8);
-  await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   const lateTurningVisualState = await archiveVisualState(page);
   expect(lateTurningVisualState.insideOpacity).toBeGreaterThan(0.55);
   expect(lateTurningVisualState.minPageOpacity).toBeGreaterThan(0.55);
   expect(lateTurningVisualState.maxPageOpacity).toBeGreaterThan(0.55);
-  const midTurnBookBox = await archiveBookBox(page);
-  const midTurnCoverBox = await elementBox(page, "archive-cover");
-  expect(midTurnCoverBox.width / midTurnBookBox.width).toBeLessThan(0.18);
+  expect(lateTurningVisualState.coverOpacity).toBeGreaterThan(0.9);
 
   await scrollArchiveTo(page, 0.92);
-  await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   await expect(page.getByText("数据结构").first()).toBeVisible();
   await expect(page.getByTestId("archive-copy-closing")).toBeHidden();
 
   const openVisualState = await archiveVisualState(page);
   expect(openVisualState.minPageOpacity).toBeGreaterThan(0.95);
-  expect(openVisualState.coverOpacity).toBeLessThan(0.18);
+  expect(openVisualState.coverOpacity).toBeGreaterThan(0.9);
 
   const openBox = await archiveBookBox(page);
   expect(openBox.width).toBeGreaterThan(1180);
@@ -286,10 +283,12 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(Math.abs(openBox.centerX - 720)).toBeLessThan(28);
   const seamBox = await elementBox(page, "archive-seam");
   expect(Math.abs(seamBox.centerX - openBox.centerX)).toBeLessThan(8);
+  const openedCoverBox = await elementBox(page, "archive-cover");
+  expect(openedCoverBox.centerX).toBeLessThan(seamBox.centerX);
 
   await scrollArchiveTo(page, 0.94);
   await expect(page.locator('[data-home-anim="archive-page"]').first()).toBeVisible();
-  await expect(page.locator('[data-home-anim="archive-directory-line"]').first()).toHaveAttribute("tabindex", "-1");
+  await expect(page.locator('[data-home-anim="course-book"]').first()).toHaveAttribute("tabindex", "-1");
 
   await scrollArchiveTo(page, 0.95);
   await expect(page.getByTestId("archive-copy-closing")).toBeHidden();
@@ -299,7 +298,7 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await scrollArchiveTo(page, 0.98);
   await expect(page.getByTestId("archive-copy-closing")).toBeVisible();
   await expect(page.getByTestId("archive-copy-closing").getByText("资料合上以后，还会继续生长")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "课程入口" })).toBeHidden();
 
   const closingVisualState = await archiveVisualState(page);
   expect(closingVisualState.closingCopyOpacity).toBeGreaterThan(0.7);
@@ -319,18 +318,18 @@ test("homepage keeps archive narration clear of the open pages", async ({ page }
   await page.goto(homeUrl, { waitUntil: "networkidle" });
 
   await scrollArchiveTo(page, 0.92);
-  await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "资料目录" })).toHaveCount(0);
   await expect(page.getByTestId("archive-copy-intro")).toBeHidden();
   await expect(page.locator('[data-home-anim="archive-open-copy"]')).toHaveCount(0);
   await expect(page.getByTestId("archive-copy-closing")).toBeHidden();
 
   const openVisualState = await archiveVisualState(page);
   expect(openVisualState.minPageOpacity).toBeGreaterThan(0.95);
-  expect(openVisualState.coverOpacity).toBeLessThan(0.18);
+  expect(openVisualState.coverOpacity).toBeGreaterThan(0.9);
 });
 
-test("homepage binds archive pages to hinged book panels", async ({ page }) => {
+test("homepage binds the right page under a left-hinged cover", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto(homeUrl, { waitUntil: "networkidle" });
 
@@ -345,11 +344,12 @@ test("homepage binds archive pages to hinged book panels", async ({ page }) => {
     return {
       hasLeftPanel: Boolean(leftPanel),
       hasRightPanel: Boolean(rightPanel),
-      leftContainsDirectoryPage: Boolean(leftPanel && pages[0] && leftPanel.contains(pages[0])),
+      leftAriaHidden: leftPanel?.getAttribute("aria-hidden"),
+      leftContainsPage: Boolean(leftPanel && pages.some((archivePage) => leftPanel.contains(archivePage))),
       leftOriginX,
       leftWidth: leftPanel?.offsetWidth ?? 0,
       pageCount: pages.length,
-      rightContainsCoursePage: Boolean(rightPanel && pages[1] && rightPanel.contains(pages[1])),
+      rightContainsCoursePage: Boolean(rightPanel && pages[0] && rightPanel.contains(pages[0])),
       rightOriginX,
     };
   });
@@ -357,8 +357,9 @@ test("homepage binds archive pages to hinged book panels", async ({ page }) => {
   expect(structure).toMatchObject({
     hasLeftPanel: true,
     hasRightPanel: true,
-    leftContainsDirectoryPage: true,
-    pageCount: 2,
+    leftAriaHidden: "true",
+    leftContainsPage: false,
+    pageCount: 1,
     rightContainsCoursePage: true,
   });
   expect(structure.leftOriginX).toBeGreaterThan(structure.leftWidth - 4);
@@ -413,8 +414,9 @@ test("homepage exposes precision animation markers", async ({ page }) => {
   await expect(page.locator('[data-home-anim="archive-spine-shadow"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-left-panel"]')).toHaveCount(1);
   await expect(page.locator('[data-home-anim="archive-right-panel"]')).toHaveCount(1);
-  await expect(page.locator('[data-home-anim="archive-directory-scan"]')).toHaveCount(1);
-  await expect(page.locator('[data-home-anim="archive-directory-line"]')).toHaveCount(6);
+  await expect(page.locator('[data-home-anim="archive-page"]')).toHaveCount(1);
+  await expect(page.locator('[data-home-anim="archive-directory-scan"]')).toHaveCount(0);
+  await expect(page.locator('[data-home-anim="archive-directory-line"]')).toHaveCount(0);
   await expect(page.locator('[data-home-anim="course-book"]')).toHaveCount(6);
   await expect(page.locator('[data-home-anim="mobile-course-book"]')).toHaveCount(6);
   await expect(page.locator('[data-home-anim="community-note"]')).toHaveCount(4);
@@ -509,8 +511,8 @@ test("homepage keeps archive content available with reduced motion", async ({ pa
   await page.locator('[aria-label="课程资料档案册"]').scrollIntoViewIfNeeded();
   const archiveBook = page.locator('[aria-label="课程资料档案册"]');
 
-  await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "资料目录" })).toHaveCount(0);
   await expect(archiveBook.getByRole("link", { name: /数据结构/ })).toBeVisible();
 });
 
@@ -563,7 +565,7 @@ test("homepage keeps archive pages accessible without JavaScript and reduced mot
     await page.goto(homeUrl, { waitUntil: "domcontentloaded" });
 
     const archivePages = page.locator('[data-home-anim="archive-page"]');
-    await expect(archivePages).toHaveCount(2);
+    await expect(archivePages).toHaveCount(1);
 
     const pageStates = await archivePages.evaluateAll((elements) =>
       elements.map((element) => {
@@ -577,10 +579,7 @@ test("homepage keeps archive pages accessible without JavaScript and reduced mot
       }),
     );
 
-    expect(pageStates).toEqual([
-      { ariaHidden: null, computedVisibility: "visible", inlineVisibility: "visible" },
-      { ariaHidden: null, computedVisibility: "visible", inlineVisibility: "visible" },
-    ]);
+    expect(pageStates).toEqual([{ ariaHidden: null, computedVisibility: "visible", inlineVisibility: "visible" }]);
 
     const directoryLinkStates = await page.locator('[data-home-anim="archive-directory-line"]').evaluateAll((elements) =>
       elements.map((element) => ({
@@ -589,8 +588,7 @@ test("homepage keeps archive pages accessible without JavaScript and reduced mot
       })),
     );
 
-    expect(directoryLinkStates).toHaveLength(6);
-    expect(directoryLinkStates.every((state) => state.tabIndexAttribute !== "-1" && state.tabIndex !== -1)).toBe(true);
+    expect(directoryLinkStates).toHaveLength(0);
   } finally {
     await context.close();
   }
@@ -607,7 +605,7 @@ test("homepage keeps archive pages visible without JavaScript", async ({ browser
     await page.goto(homeUrl, { waitUntil: "domcontentloaded" });
 
     const archivePages = page.locator('[data-home-anim="archive-page"]');
-    await expect(archivePages).toHaveCount(2);
+    await expect(archivePages).toHaveCount(1);
 
     const pageStates = await archivePages.evaluateAll((elements) =>
       elements.map((element) => {
@@ -621,10 +619,7 @@ test("homepage keeps archive pages visible without JavaScript", async ({ browser
       }),
     );
 
-    expect(pageStates).toEqual([
-      { ariaHidden: null, opacity: 1, visibility: "visible" },
-      { ariaHidden: null, opacity: 1, visibility: "visible" },
-    ]);
+    expect(pageStates).toEqual([{ ariaHidden: null, opacity: 1, visibility: "visible" }]);
 
     const directoryLinkStates = await page.locator('[data-home-anim="archive-directory-line"]').evaluateAll((elements) =>
       elements.map((element) => ({
@@ -633,8 +628,7 @@ test("homepage keeps archive pages visible without JavaScript", async ({ browser
       })),
     );
 
-    expect(directoryLinkStates).toHaveLength(6);
-    expect(directoryLinkStates.every((state) => state.tabIndexAttribute !== "-1" && state.tabIndex !== -1)).toBe(true);
+    expect(directoryLinkStates).toHaveLength(0);
 
     await expect(page.getByTestId("archive-cover")).toHaveCSS("opacity", "0");
   } finally {

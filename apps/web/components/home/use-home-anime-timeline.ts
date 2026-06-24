@@ -28,8 +28,8 @@ type UseHomeAnimeTimelineOptions = {
 };
 
 const timelineDuration = 1000;
-const insideRevealStart = 0.58;
-const insideRevealEnd = 0.76;
+const insideRevealStart = archiveProgress.openStart;
+const insideRevealEnd = 0.58;
 const pageInteractionStart = 0.78;
 const pageVisibilityStart = archiveProgress.openStart;
 const pageVisualEnd = 0.96;
@@ -118,62 +118,42 @@ function createArchiveTimeline(stage: HTMLElement) {
         cover,
         {
           duration: durationBetween(archiveProgress.openStart, 0.62),
-          ease: "inCubic",
-          rotateY: [0, -8],
-          scaleX: [1, 0.96],
+          ease: "outCubic",
+          rotateY: [0, -28],
           x: [0, -2],
-          z: [0, 28],
+          z: [0, 42],
         },
         at(archiveProgress.openStart),
       )
       .add(
         cover,
         {
-          duration: durationBetween(0.62, 0.78),
+          duration: durationBetween(0.62, 0.82),
           ease: "inOutSine",
-          opacity: [1, 0.18],
-          rotateY: [-8, -96],
-          scaleX: [0.96, 0.24],
-          x: [-2, -10],
-          z: [28, 24],
+          rotateY: [-28, -136],
+          x: [-2, -8],
+          z: [42, 28],
         },
         at(0.62),
       )
       .add(
         cover,
         {
-          duration: durationBetween(0.78, 0.9),
+          duration: durationBetween(0.82, archiveProgress.openEnd),
           ease: "outCubic",
-          opacity: [0.18, 0.015],
-          rotateY: [-96, -164],
-          scaleX: [0.24, 0.1],
-          x: [-10, -18],
-          z: [24, 10],
+          rotateY: [-136, -178],
+          x: [-8, -10],
+          z: [28, 0],
         },
-        at(0.78),
-      )
-      .add(
-        cover,
-        {
-          duration: durationBetween(0.9, archiveProgress.openEnd),
-          ease: "outCubic",
-          opacity: [0.015, 0],
-          rotateY: [-164, -178],
-          scaleX: [0.1, 0.08],
-          x: [-18, -18],
-          z: [10, 0],
-        },
-        at(0.9),
+        at(0.82),
       )
       .add(
         cover,
         {
           duration: durationBetween(0.94, 1),
           ease: "inOutSine",
-          opacity: [0, 1],
           rotateY: [-178, 0],
-          scaleX: [0.08, 1],
-          x: [-18, 0],
+          x: [-10, 0],
           z: [0, 0],
         },
         at(0.94),
@@ -185,7 +165,7 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         coverFront,
         {
-          duration: durationBetween(0.58, 0.68),
+          duration: durationBetween(0.58, 0.76),
           ease: "inCubic",
           opacity: [1, 0],
         },
@@ -209,9 +189,9 @@ function createArchiveTimeline(stage: HTMLElement) {
         {
           duration: durationBetween(archiveProgress.openStart, 0.66),
           ease: "outCubic",
-          opacity: [0, 0.28],
-          scaleX: [0.58, 0.84],
-          x: [0, -18],
+          opacity: [0, 0.24],
+          scaleX: [0.58, 0.9],
+          x: [0, -12],
         },
         at(archiveProgress.openStart),
       )
@@ -220,9 +200,9 @@ function createArchiveTimeline(stage: HTMLElement) {
         {
           duration: durationBetween(0.66, archiveProgress.openEnd),
           ease: "inCubic",
-          opacity: [0.28, 0],
-          scaleX: [0.84, 0.28],
-          x: [-18, -96],
+          opacity: [0.24, 0.08],
+          scaleX: [0.9, 0.42],
+          x: [-12, -36],
         },
         at(0.66),
       );
@@ -313,13 +293,13 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         leftPanel,
         {
-          duration: durationBetween(insideRevealStart, 0.9),
+          duration: durationBetween(insideRevealStart, insideRevealEnd),
           ease: "outSine",
           opacity: [0, 1],
-          rotateY: [64, 0],
-          scaleX: [0.9, 1],
-          x: [34, 0],
-          z: [-28, 0],
+          rotateY: [8, 0],
+          scaleX: [0.98, 1],
+          x: [14, 0],
+          z: [-8, 0],
         },
         at(insideRevealStart),
       )
@@ -341,13 +321,13 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         rightPanel,
         {
-          duration: durationBetween(insideRevealStart, 0.9),
+          duration: durationBetween(insideRevealStart, insideRevealEnd),
           ease: "outSine",
           opacity: [0, 1],
-          rotateY: [-22, 0],
-          scaleX: [0.96, 1],
-          x: [-12, 0],
-          z: [-18, 0],
+          rotateY: [0, 0],
+          scaleX: [1, 1],
+          x: [0, 0],
+          z: [-6, 0],
         },
         at(insideRevealStart),
       )
