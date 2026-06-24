@@ -81,7 +81,7 @@
 
 - Richer content review workflows for wiki conflict-resolution UX and additional notification sources for payment and membership
 - Admin analytics expansion for page visits, search intent, course request voting, payment, and membership conversion metrics
-- Real internal material import dry run with mounted course files, package binding audit, target-environment manual-grant smoke, and paid-download smoke verification against fresh test accounts
+- Real internal material import dry run with mounted course files, package binding audit, target-environment API/browser manual-grant smoke, and paid-download smoke verification against fresh test accounts
 - Real WeChat merchant end-to-end payment and close-order verification, certificate rotation handling, refund handling, and payment operation alerts
 - Live WeChat merchant settlement reconciliation and production-ready alert routing/escalation beyond the basic incident webhook and local read-only report
 - Real LLM/RAG integration and AI draft publish-to-resource flows

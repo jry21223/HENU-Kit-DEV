@@ -123,6 +123,7 @@ Before opening paid sales, verify all items below:
 - WeChat Pay Native live order and notify have been tested with the real merchant dashboard
 - material import dry-run report has been reviewed against mounted real files
 - manual-grant smoke in `docs/internal-smoke.md` passes with fresh student/admin test accounts after importing real mounted files
+- browser delivery smoke `npm --workspace @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
 - paid material download is denied before entitlement and allowed after a verified paid order
 - `scripts/ops/backup-postgres.sh` produces a restorable dump in a staging environment
 - Nginx TLS certs, HSTS, and security headers are active

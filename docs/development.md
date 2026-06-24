@@ -82,3 +82,19 @@ go run ./cmd/smoke -base-url http://localhost:8080/api/v1 -email smoke-manual@st
 ```
 
 This first checks that the paid package material is denied before entitlement, then uses the admin-only access-grant API, then verifies the paid download succeeds. It is an internal delivery smoke only; real paid orders must still be unlocked by the trusted WeChat notify/payment confirmation path.
+
+Browser delivery smoke:
+
+```bash
+$env:E2E_DELIVERY_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_STUDENT_EMAIL="smoke-browser@stu.henu.edu.cn"
+$env:E2E_STUDENT_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+npm --workspace @final-review/web run test:e2e:delivery
+```
+
+This Playwright smoke opens the real Web and Admin frontends, keeps student/admin sessions in separate browser contexts, checks paid download denial before entitlement, creates an admin-only package grant, and verifies the student can download after the grant. It is opt-in because it mutates access grants and should use a fresh student test account.

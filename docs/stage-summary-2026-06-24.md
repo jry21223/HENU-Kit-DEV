@@ -80,6 +80,7 @@
   - 通过 HTTP API 验证公开课程包详情不泄露 storage key。
   - 验证 free、login_required、paid 未授权拒绝、课程包授权解锁 paid 和下载日志。
   - 外部 `cmd/smoke` 支持 `-grant-package-access`，可在目标环境用 fresh student/admin 测试账号验证“未授权 paid 403 -> admin 手动课程包授权 -> paid 下载 200”的内测交付链路。
+  - Web workspace 新增 Playwright browser delivery smoke，可打开真实 Web/Admin 会话验证同一条手动交付路径。
   - 真实内测资料仍需要在目标环境挂载后单独跑导入和下载验收。
 
 ### 2.6 微信 Native 支付硬化
@@ -158,7 +159,7 @@
 | Stage 1：Go API 基础框架 | Gin、配置、PostgreSQL、Redis、GORM、中间件、Health | 完成 | API 服务骨架和基础接口已实现。 |
 | Stage 2：全新数据库 Schema | V2 schema、migration、seed | 部分完成 | migration/model/seed 已有；部分领域业务仍未填满。 |
 | Stage 3：认证与权限 | 邮箱验证码、JWT RS256、角色、冻结、管理/审核/创作者权限 | 部分完成 | 登录、JWT、角色和冻结边界已有；真实邮件发送和生产密钥配置仍是部署工作。 |
-| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest dry-run 预检、manifest 导入、manifest-to-paid-download 测试和目标环境 manual-grant smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
+| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest dry-run 预检、manifest 导入、manifest-to-paid-download 测试、API manual-grant smoke 和浏览器 delivery smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、薄弱点已有；复杂评分和练习 session 需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock worker/draft review 已有；真实 LLM/RAG 未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、admin 手动赠送/撤销会员已做；购买、兑换、AI 权益扣减仍未完整闭环。 |

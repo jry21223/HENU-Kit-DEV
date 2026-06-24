@@ -34,6 +34,26 @@ go run ./cmd/smoke \
 
 This path first proves the selected paid material is denied before entitlement, then calls the admin-only access-grant API, then verifies the same student can download the paid material. It is for internal manual delivery and after-sales validation only; it is not a substitute for WeChat notify confirmation in the real payment flow.
 
+## Browser Delivery Smoke
+
+After Web, Admin, and API are all reachable, run the browser smoke from the repository root:
+
+```bash
+$env:E2E_DELIVERY_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_STUDENT_EMAIL="smoke-browser@stu.henu.edu.cn"
+$env:E2E_STUDENT_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+npm --workspace @final-review/web run test:e2e:delivery
+```
+
+The browser smoke uses separate student/admin browser contexts. It opens the real Web package/material pages, logs in as the student through the Web login page, confirms paid download is denied before entitlement, logs in as admin through the Vue Admin login page, creates an admin-only package grant through the API, then confirms the same student can download the paid material and sees the package as unlocked.
+
+Use a fresh student account for each run. If the student already owns the package, the pre-grant denial check should fail and the test is not proving the paid boundary.
+
 ## What It Checks
 
 - API readiness: `GET /readyz`
@@ -46,6 +66,7 @@ This path first proves the selected paid material is denied before entitlement, 
 - Paid material download is denied before entitlement
 - Optional `-create-order`: creates/reuses a local pending package order and reads its status
 - Optional `-grant-package-access`: logs in as admin, grants the selected published package to the smoke user, and verifies paid download succeeds after the server-side grant
+- Optional browser smoke: validates the Web/Admin UI path around the same server-side paid boundary
 
 ## Important Flags
 
@@ -76,6 +97,15 @@ SMOKE_GRANT_PACKAGE_ACCESS=false
 SMOKE_SKIP_LOGIN=false
 SMOKE_EXPECT_PAID_DENIED=true
 SMOKE_TIMEOUT_SECONDS=15
+E2E_DELIVERY_SMOKE=0
+E2E_WEB_BASE_URL=http://127.0.0.1:3000
+E2E_ADMIN_BASE_URL=http://127.0.0.1:5173
+E2E_API_BASE_URL=http://127.0.0.1:8080/api/v1
+E2E_STUDENT_EMAIL=smoke-browser@stu.henu.edu.cn
+E2E_STUDENT_CODE=123456
+E2E_ADMIN_EMAIL=admin@example.com
+E2E_ADMIN_CODE=123456
+E2E_PACKAGE_ID=
 ```
 
 ## Internal-Test Sequence
@@ -132,7 +162,13 @@ SMOKE_TIMEOUT_SECONDS=15
    - `/access-grants`
    - `/downloads`
 
-8. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling or manual access-grant smoke.
+8. Run browser delivery smoke with Web/Admin/API base URLs and fresh test accounts:
+
+   ```bash
+   npm --workspace @final-review/web run test:e2e:delivery
+   ```
+
+9. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling or manual access-grant smoke.
 
 ## Failure Handling
 
@@ -144,3 +180,5 @@ SMOKE_TIMEOUT_SECONDS=15
 - `create order` reports already owned: use a fresh smoke email.
 - `manual package grant` fails with 401/403: confirm the admin account exists, is active, and has `admin` or `super_admin` role.
 - `paid download after grant` fails: inspect `/access-grants`, `/packages/:id`, and package item bindings; the selected package must be published and contain the paid material returned by package detail.
+- Browser smoke opens but skips: set `E2E_DELIVERY_SMOKE=1`. It is opt-in because it creates or reuses an access grant.
+- Browser smoke cannot log in: development can use `DEV_FIXED_VERIFICATION_CODE`; staging/production needs a real test inbox or manually supplied current code.
