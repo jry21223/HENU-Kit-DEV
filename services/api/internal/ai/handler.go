@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -161,6 +162,106 @@ func (h Handler) RejectDraft(ctx *gin.Context) {
 	h.reviewDraft(ctx, model.StatusRejected)
 }
 
+func (h Handler) PublishDraft(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var draft model.AIDraft
+	if err := h.db.First(&draft, "id = ?", ctx.Param("id")).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "draft_not_found", nil)
+		return
+	}
+	if draft.PublishedID != nil {
+		var question model.QuizQuestion
+		if err := h.db.First(&question, "id = ?", *draft.PublishedID).Error; err != nil {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "published_resource_missing", nil)
+			return
+		}
+		response.OK(ctx, gin.H{"published": true, "alreadyPublished": true, "resourceType": "quiz_question", "question": question})
+		return
+	}
+	if draft.Status != model.StatusApproved {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "draft_not_publishable", gin.H{"status": draft.Status})
+		return
+	}
+	if draft.OutputType != "targeted_question" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsupported_publish_target", gin.H{"outputType": draft.OutputType})
+		return
+	}
+	if draft.CourseID == nil || strings.TrimSpace(*draft.CourseID) == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "course_required", nil)
+		return
+	}
+
+	questionDraft, err := parseQuestionDraft(draft.DraftContent)
+	if err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+
+	var question model.QuizQuestion
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		var course model.Course
+		if err := tx.First(&course, "id = ? AND status = ?", *draft.CourseID, model.StatusPublished).Error; err != nil {
+			return errString("course_not_found")
+		}
+		question = model.QuizQuestion{
+			CourseID:    course.ID,
+			Type:        questionDraft.Type,
+			Stem:        questionDraft.Stem,
+			Answer:      questionDraft.Answer,
+			Explanation: questionDraft.Explanation,
+			Difficulty:  questionDraft.Difficulty,
+			Status:      model.StatusPublished,
+			AuthorID:    &user.ID,
+		}
+		if err := tx.Create(&question).Error; err != nil {
+			return err
+		}
+		for index, option := range questionDraft.Options {
+			item := model.QuizOption{
+				QuestionID: question.ID,
+				Label:      option.Label,
+				Content:    option.Content,
+				SortOrder:  index + 1,
+			}
+			if err := tx.Create(&item).Error; err != nil {
+				return err
+			}
+		}
+		update := tx.Model(&model.AIDraft{}).
+			Where("id = ? AND published_id IS NULL AND status = ?", draft.ID, model.StatusApproved).
+			Updates(map[string]interface{}{"status": model.StatusPublished, "published_id": question.ID})
+		if update.Error != nil {
+			return update.Error
+		}
+		if update.RowsAffected == 0 {
+			return errString("draft_already_published")
+		}
+		return audit.Record(ctx, tx, "ai_draft.published", "ai_draft", draft.ID, map[string]interface{}{
+			"outputType":   draft.OutputType,
+			"resourceType": "quiz_question",
+			"resourceId":   question.ID,
+			"operatorId":   user.ID,
+		})
+	})
+	if err != nil {
+		if err.Error() == "course_not_found" {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "course_not_found", nil)
+			return
+		}
+		if err.Error() == "draft_already_published" {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "draft_already_published", nil)
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "publish_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"published": true, "alreadyPublished": false, "resourceType": "quiz_question", "question": question})
+}
+
 func (h Handler) reviewDraft(ctx *gin.Context, status string) {
 	user, ok := auth.CurrentUser(ctx)
 	if !ok {
@@ -239,6 +340,84 @@ func (h Handler) reviewDraft(ctx *gin.Context, status string) {
 		return
 	}
 	response.OK(ctx, gin.H{"reviewed": true, "status": status, "reviewReason": reason})
+}
+
+type questionDraftPayload struct {
+	Type         string                `json:"type"`
+	QuestionType string                `json:"questionType"`
+	Stem         string                `json:"stem"`
+	Title        string                `json:"title"`
+	Summary      string                `json:"summary"`
+	Answer       string                `json:"answer"`
+	Explanation  string                `json:"explanation"`
+	Difficulty   int                   `json:"difficulty"`
+	Options      []questionOptionDraft `json:"options"`
+}
+
+type questionOptionDraft struct {
+	Label   string `json:"label"`
+	Content string `json:"content"`
+}
+
+func parseQuestionDraft(content datatypes.JSON) (questionDraftPayload, error) {
+	var payload questionDraftPayload
+	if len(content) == 0 {
+		return payload, errString("draft_content_required")
+	}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return payload, errString("invalid_draft_content")
+	}
+	payload.Type = strings.TrimSpace(payload.Type)
+	if payload.Type == "" {
+		payload.Type = strings.TrimSpace(payload.QuestionType)
+	}
+	if payload.Type == "" {
+		payload.Type = "single_choice"
+	}
+	if !isSupportedPublishQuestionType(payload.Type) {
+		return payload, errString("unsupported_question_type")
+	}
+	payload.Stem = strings.TrimSpace(payload.Stem)
+	if payload.Stem == "" {
+		payload.Stem = strings.TrimSpace(payload.Title)
+	}
+	if payload.Stem == "" {
+		payload.Stem = strings.TrimSpace(payload.Summary)
+	}
+	payload.Answer = strings.TrimSpace(payload.Answer)
+	payload.Explanation = strings.TrimSpace(payload.Explanation)
+	if payload.Stem == "" || payload.Answer == "" {
+		return payload, errString("question_stem_and_answer_required")
+	}
+	if payload.Difficulty <= 0 {
+		payload.Difficulty = 1
+	}
+	if payload.Difficulty > 5 {
+		payload.Difficulty = 5
+	}
+	cleanOptions := make([]questionOptionDraft, 0, len(payload.Options))
+	for _, option := range payload.Options {
+		option.Label = strings.TrimSpace(option.Label)
+		option.Content = strings.TrimSpace(option.Content)
+		if option.Label == "" || option.Content == "" {
+			return payload, errString("invalid_question_options")
+		}
+		cleanOptions = append(cleanOptions, option)
+	}
+	payload.Options = cleanOptions
+	if (payload.Type == "single_choice" || payload.Type == "multiple_choice") && len(payload.Options) < 2 {
+		return payload, errString("choice_options_required")
+	}
+	return payload, nil
+}
+
+func isSupportedPublishQuestionType(value string) bool {
+	switch value {
+	case "single_choice", "multiple_choice", "true_false", "fill_blank", "short_answer":
+		return true
+	default:
+		return false
+	}
 }
 
 func isReviewableDraftStatus(status string) bool {

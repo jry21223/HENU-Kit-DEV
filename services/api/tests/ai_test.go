@@ -303,3 +303,144 @@ func TestAIDraftReviewRequiresReviewerRoleAndDoesNotPublish(t *testing.T) {
 		t.Fatalf("repeat review mutated rejected draft: %#v", stillRejected)
 	}
 }
+
+func TestApprovedAIDraftCanPublishTargetedQuestion(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	course := createTestCourse(t, db)
+	student := createTestUser(t, db, "ai-publish-student@stu.henu.edu.cn", model.RoleUser)
+	reviewer := createTestUser(t, db, "ai-publish-reviewer@stu.henu.edu.cn", model.RoleReviewer)
+	reviewerToken := loginTestUser(t, router, reviewer.Email)
+
+	task := model.AITask{
+		UserID:   &student.ID,
+		CourseID: &course.ID,
+		Type:     "targeted_question",
+		Status:   model.AITaskCompleted,
+		Input:    datatypes.JSON([]byte(`{"topic":"sets"}`)),
+		Result:   datatypes.JSON([]byte(`{"stem":"Which option is a set?","answer":"A"}`)),
+	}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	pendingDraft := model.AIDraft{
+		TaskID:       task.ID,
+		CourseID:     &course.ID,
+		OutputType:   "targeted_question",
+		ReviewFields: model.ReviewFields{Status: model.StatusPending},
+		DraftContent: datatypes.JSON([]byte(`{"type":"single_choice","stem":"Which option is a set?","options":[{"label":"A","content":"{1,2}"},{"label":"B","content":"1+2"}],"answer":"A","explanation":"Sets are enclosed in braces.","difficulty":2}`)),
+	}
+	if err := db.Create(&pendingDraft).Error; err != nil {
+		t.Fatal(err)
+	}
+	publishPending := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+pendingDraft.ID+"/publish", "", reviewerToken)
+	if publishPending.Code != http.StatusConflict || !strings.Contains(publishPending.Body.String(), "draft_not_publishable") {
+		t.Fatalf("expected pending draft publish rejection, got %d: %s", publishPending.Code, publishPending.Body.String())
+	}
+
+	approve := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+pendingDraft.ID+"/approve", `{"reviewReason":"publish as quiz question"}`, reviewerToken)
+	if approve.Code != http.StatusOK {
+		t.Fatalf("expected draft approval before publish, got %d: %s", approve.Code, approve.Body.String())
+	}
+	publish := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+pendingDraft.ID+"/publish", "", reviewerToken)
+	if publish.Code != http.StatusOK || !strings.Contains(publish.Body.String(), `"resourceType":"quiz_question"`) || !strings.Contains(publish.Body.String(), `"alreadyPublished":false`) {
+		t.Fatalf("expected approved draft publish to question, got %d: %s", publish.Code, publish.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			Question model.QuizQuestion `json:"question"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(publish.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.Question.CourseID != course.ID || payload.Data.Question.Type != "single_choice" || payload.Data.Question.Answer != "" || payload.Data.Question.Status != model.StatusPublished || payload.Data.Question.AuthorID == nil || *payload.Data.Question.AuthorID != reviewer.ID {
+		t.Fatalf("unexpected published question payload: %#v", payload.Data.Question)
+	}
+	var storedQuestion model.QuizQuestion
+	if err := db.First(&storedQuestion, "id = ?", payload.Data.Question.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if storedQuestion.Answer != "A" || storedQuestion.Explanation != "Sets are enclosed in braces." || storedQuestion.Difficulty != 2 {
+		t.Fatalf("unexpected stored question: %#v", storedQuestion)
+	}
+	var options int64
+	if err := db.Model(&model.QuizOption{}).Where("question_id = ?", storedQuestion.ID).Count(&options).Error; err != nil {
+		t.Fatal(err)
+	}
+	if options != 2 {
+		t.Fatalf("expected two published question options, got %d", options)
+	}
+	var publishedDraft model.AIDraft
+	if err := db.First(&publishedDraft, "id = ?", pendingDraft.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if publishedDraft.Status != model.StatusPublished || publishedDraft.PublishedID == nil || *publishedDraft.PublishedID != storedQuestion.ID {
+		t.Fatalf("expected draft to link published question, got %#v", publishedDraft)
+	}
+	if countOperationLogs(t, db, "ai_draft.published", "ai_draft", pendingDraft.ID, reviewer.ID) != 1 {
+		t.Fatal("expected AI draft publish operation log")
+	}
+	publicQuestions := performJSON(router, http.MethodGet, "/api/v1/courses/"+course.ID+"/questions", "", "")
+	if publicQuestions.Code != http.StatusOK || !strings.Contains(publicQuestions.Body.String(), storedQuestion.ID) || strings.Contains(publicQuestions.Body.String(), `"answer":"A"`) {
+		t.Fatalf("expected public question list without answer leakage, got %d: %s", publicQuestions.Code, publicQuestions.Body.String())
+	}
+	repeat := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+pendingDraft.ID+"/publish", "", reviewerToken)
+	if repeat.Code != http.StatusOK || !strings.Contains(repeat.Body.String(), `"alreadyPublished":true`) {
+		t.Fatalf("expected repeated publish to be idempotent, got %d: %s", repeat.Code, repeat.Body.String())
+	}
+	var questionCount int64
+	if err := db.Model(&model.QuizQuestion{}).Where("stem = ?", "Which option is a set?").Count(&questionCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if questionCount != 1 {
+		t.Fatalf("expected repeated publish not to duplicate question, got %d", questionCount)
+	}
+}
+
+func TestAIDraftPublishRejectsInvalidTargets(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	course := createTestCourse(t, db)
+	reviewer := createTestUser(t, db, "ai-invalid-publish-reviewer@stu.henu.edu.cn", model.RoleReviewer)
+	reviewerToken := loginTestUser(t, router, reviewer.Email)
+	task := model.AITask{CourseID: &course.ID, Type: "paper_generation", Status: model.AITaskCompleted, Input: datatypes.JSON([]byte(`{}`))}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	unsupported := model.AIDraft{
+		TaskID:       task.ID,
+		CourseID:     &course.ID,
+		OutputType:   "paper_generation",
+		ReviewFields: model.ReviewFields{Status: model.StatusApproved},
+		DraftContent: datatypes.JSON([]byte(`{"title":"mock paper"}`)),
+	}
+	invalidQuestion := model.AIDraft{
+		TaskID:       task.ID,
+		CourseID:     &course.ID,
+		OutputType:   "targeted_question",
+		ReviewFields: model.ReviewFields{Status: model.StatusApproved},
+		DraftContent: datatypes.JSON([]byte(`{"type":"single_choice","stem":"Missing answer","options":[{"label":"A","content":"A"},{"label":"B","content":"B"}]}`)),
+	}
+	if err := db.Create(&unsupported).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&invalidQuestion).Error; err != nil {
+		t.Fatal(err)
+	}
+	unsupportedPublish := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+unsupported.ID+"/publish", "", reviewerToken)
+	if unsupportedPublish.Code != http.StatusBadRequest || !strings.Contains(unsupportedPublish.Body.String(), "unsupported_publish_target") {
+		t.Fatalf("expected unsupported publish target rejection, got %d: %s", unsupportedPublish.Code, unsupportedPublish.Body.String())
+	}
+	invalidPublish := performJSON(router, http.MethodPost, "/api/v1/admin/ai/drafts/"+invalidQuestion.ID+"/publish", "", reviewerToken)
+	if invalidPublish.Code != http.StatusBadRequest || !strings.Contains(invalidPublish.Body.String(), "question_stem_and_answer_required") {
+		t.Fatalf("expected invalid question draft rejection, got %d: %s", invalidPublish.Code, invalidPublish.Body.String())
+	}
+	var questionCount int64
+	if err := db.Model(&model.QuizQuestion{}).Count(&questionCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if questionCount != 0 {
+		t.Fatalf("invalid draft publish must not create questions, got %d", questionCount)
+	}
+}

@@ -108,7 +108,7 @@
 - Real internal material import dry run with mounted course files, package binding audit, target-environment API/browser manual-grant smoke, and paid-download smoke verification against fresh test accounts
 - Real WeChat merchant end-to-end payment and close-order verification, certificate rotation handling, refund handling, and payment operation alerts
 - Live WeChat merchant settlement reconciliation and production-ready alert routing/escalation beyond the basic incident webhook and local read-only report
-- Real LLM/RAG integration and AI draft publish-to-resource flows
+- Real LLM/RAG integration and broader AI draft publish-to-resource flows beyond targeted questions
 
 ## Later Deliverables
 

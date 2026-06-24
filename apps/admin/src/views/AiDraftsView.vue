@@ -71,6 +71,17 @@
               >
                 {{ copy.reject }}
               </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :disabled="!canPublish(row)"
+                :loading="publishingId === row.id"
+                :data-testid="`ai-draft-publish-${row.id}`"
+                @click="publishDraft(row)"
+              >
+                {{ row.publishedId ? copy.published : copy.publish }}
+              </el-button>
             </div>
           </template>
         </el-table-column>
@@ -165,6 +176,8 @@ const copy = {
   actions: "\u64cd\u4f5c",
   approve: "\u901a\u8fc7",
   reject: "\u9a73\u56de",
+  publish: "\u53d1\u5e03\u5230\u9898\u5e93",
+  published: "\u5df2\u53d1\u5e03",
   cancel: "\u53d6\u6d88",
   reviewReason: "\u5ba1\u6838\u610f\u89c1",
   approveReasonOptional: "\u901a\u8fc7\u53ef\u586b\u5199\u5907\u6ce8\uff0c\u4f8b\u5982\u4fdd\u7559\u9700\u540e\u7eed\u53d1\u5e03\u5230\u54ea\u7c7b\u6b63\u5f0f\u8d44\u6e90\u3002",
@@ -186,12 +199,15 @@ const copy = {
   loadFailed: "\u0041\u0049 \u5ba1\u6838\u6570\u636e\u52a0\u8f7d\u5931\u8d25",
   reviewDone: "\u8349\u7a3f\u5ba1\u6838\u72b6\u6001\u5df2\u66f4\u65b0\u3002",
   reviewFailed: "\u8349\u7a3f\u5ba1\u6838\u5931\u8d25",
+  publishDone: "\u8349\u7a3f\u5df2\u53d1\u5e03\u5230\u9898\u5e93\u3002",
+  publishFailed: "\u8349\u7a3f\u53d1\u5e03\u5931\u8d25",
 };
 
 const tasks = ref<AITask[]>([]);
 const drafts = ref<AIDraft[]>([]);
 const loading = ref(false);
 const reviewingId = ref("");
+const publishingId = ref("");
 const reviewDialogVisible = ref(false);
 const reviewAction = ref<"approve" | "reject">("approve");
 const reviewTargetId = ref("");
@@ -258,8 +274,29 @@ async function submitReview() {
   }
 }
 
+async function publishDraft(row: AIDraft) {
+  message.value = "";
+  error.value = "";
+  publishingId.value = row.id;
+  try {
+    await apiRequest<{ published: boolean; resourceType: string; question: unknown }>(`/admin/ai/drafts/${row.id}/publish`, {
+      method: "POST",
+    });
+    message.value = copy.publishDone;
+    await loadAll();
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : copy.publishFailed;
+  } finally {
+    publishingId.value = "";
+  }
+}
+
 function canReview(status: string) {
   return status === "pending" || status === "draft" || status === "needs_changes";
+}
+
+function canPublish(row: AIDraft) {
+  return row.status === "approved" && row.outputType === "targeted_question" && !row.publishedId;
 }
 
 function statusLabel(status: string) {

@@ -246,7 +246,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Vue Admin includes `/blog-reviews` for reviewer/admin blog post approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/forum-reviews` for reviewer/admin forum post approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/forum-reply-reviews` for reviewer/admin forum reply approve/reject review, review reason capture, and one-way review checks.
-- Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility, draft approve/reject review, and review reason capture.
+- Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility, draft approve/reject review, review reason capture, and explicit publish of approved `targeted_question` drafts to the question bank.
 - Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, course demand, and report handling distribution.
 - Vue Admin includes `/media-assets` for admin-only moment image asset audit and stale unattached upload cleanup. Cleanup defaults to dry-run, never touches attached moment images, and writes an operation log.
 - Vue Admin includes operation-log time filtering, CSV export, and a read-only retention policy panel.
@@ -271,10 +271,10 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Vue Admin Wiki proposal review marks stale proposals and blocks stale approval in the UI; the Go API still enforces the final stale-version rejection.
 - Basic report APIs, Web material/wiki/blog/forum report buttons, and Vue Admin `/reports` are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
 - Payment-driven membership purchase, membership expiry reminders, real model-token billing, and richer AI quota packages remain later work.
-- AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
-- Go API writes server-side `operation_logs` for user management, access grants, organization, course, course package and package-item binding, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
+- AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically. Approved `targeted_question` drafts can be explicitly published to the question bank by reviewer/admin users.
+- Go API writes server-side `operation_logs` for user management, access grants, organization, course, course package and package-item binding, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review/publish mutations; Vue Admin includes a read-only operation-log browser.
 - Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.
-- Real AI publish-to-resource flows remain later work.
+- Broader AI publish-to-resource flows for materials, Wiki, papers, and richer question types remain later work.
 - Web `/me` updates profile binding through `PATCH /api/v1/auth/me`; school and major ids are validated by the Go API.
 - Web `/me` also reads `GET /api/v1/me/entitlements` to show active direct material grants, published course package grants, and unlocked material counts for the current user.
 - Web `/me/forum` reads and patches `GET/PATCH /api/v1/me/forum-posts` and `GET/PATCH /api/v1/me/forum-replies` with httpOnly-cookie credentials to show and resubmit the current user's discussion review state.

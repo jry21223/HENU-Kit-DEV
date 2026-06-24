@@ -392,6 +392,7 @@ Important boundaries:
 - `GET /api/v1/admin/ai/drafts`
 - `POST /api/v1/admin/ai/drafts/:id/approve`
 - `POST /api/v1/admin/ai/drafts/:id/reject`
+- `POST /api/v1/admin/ai/drafts/:id/publish`
 
 The page shows recent AI tasks and reviewable AI drafts created by the worker.
 
@@ -403,9 +404,11 @@ Important boundaries:
 - Approving or rejecting a draft only changes the draft review status and review metadata.
 - Only `draft`, `pending`, and `needs_changes` drafts can be reviewed; repeating review on `approved` or `rejected` drafts returns `409 draft_not_reviewable`.
 - The MVP does not automatically publish AI drafts as materials, questions, wiki entries, or papers.
+- Approved `targeted_question` drafts can be explicitly published to the question bank from `/ai/drafts`. The server creates the quiz question, writes `publishedId`, and repeated publish attempts are idempotent.
 - The UI displays task input/result and draft content for review, but it does not call any LLM directly.
-- Real LLM/RAG and publish-to-resource flows remain later work.
+- Real LLM/RAG plus material, Wiki, paper, and richer publish targets remain later work.
 - AI draft approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.
+- AI draft publish operations also write `operation_logs` rows server-side.
 
 ## Operation Logs
 
@@ -415,7 +418,7 @@ Important boundaries:
 - `GET /api/v1/admin/operation-logs/export`
 - `GET /api/v1/admin/operation-logs/retention`
 
-The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
+The Go API currently writes operation logs for organization, course, material, upload, archive, material status, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review/publish mutations. Each log records the authenticated operator, action, target type/id, IP, User-Agent, and minimal metadata.
 
 Filters:
 

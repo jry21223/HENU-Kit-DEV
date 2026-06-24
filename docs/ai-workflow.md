@@ -11,7 +11,8 @@ Implemented flow:
 5. The worker reads Redis stream events and also scans pending database tasks.
 6. In mock mode, the worker marks the task `completed`, writes a result payload, records model usage, and creates an `ai_drafts` row with `status=pending`.
 7. Reviewer, admin, and super-admin users can review drafts with approve/reject endpoints and persist review notes.
-8. The Vue admin console exposes the review surface at `/ai/drafts`.
+8. After approval, a reviewer/admin can explicitly publish supported drafts. The current implemented publish target is `targeted_question` -> `quiz_questions`.
+9. The Vue admin console exposes the review and targeted-question publish surface at `/ai/drafts`.
 
 Rules:
 
@@ -26,4 +27,6 @@ Rules:
 - Admin or reviewer approval is required before generated content can become official product content.
 - Approval can include an optional note; rejection requires a review reason for traceability.
 - Review transitions are one-way for the MVP: only `draft`, `pending`, and `needs_changes` drafts can be reviewed, and terminal review records cannot be overwritten by repeat API calls.
-- The current approve/reject endpoints do not publish drafts into official resources. Publish-to-resource flows are a later implementation step.
+- Approve/reject endpoints do not publish drafts automatically.
+- `POST /api/v1/admin/ai/drafts/:id/publish` currently publishes only approved `targeted_question` drafts with a valid course id, stem, answer, and any required choice options. It creates a published question and writes `ai_drafts.published_id`.
+- Material, Wiki, paper, and broader AI publish targets remain later work.

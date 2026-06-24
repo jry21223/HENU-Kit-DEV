@@ -254,6 +254,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	review.GET("/ai/drafts", aiHandler.AdminDrafts)
 	review.POST("/ai/drafts/:id/approve", aiHandler.ApproveDraft)
 	review.POST("/ai/drafts/:id/reject", aiHandler.RejectDraft)
+	review.POST("/ai/drafts/:id/publish", aiHandler.PublishDraft)
 	review.GET("/material-reviews", adminHandler.ListMaterialReviews)
 	review.POST("/materials/:id/approve", adminHandler.ApproveMaterial)
 	review.POST("/materials/:id/reject", adminHandler.RejectMaterial)

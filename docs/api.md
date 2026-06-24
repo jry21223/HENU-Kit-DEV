@@ -146,6 +146,7 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/ai/drafts`
 - `POST /api/v1/admin/ai/drafts/:id/approve`
 - `POST /api/v1/admin/ai/drafts/:id/reject`
+- `POST /api/v1/admin/ai/drafts/:id/publish`
 - `GET /api/v1/admin/blog/posts?status=draft|pending|needs_changes|published|rejected&authorId=&limit=`
 - `POST /api/v1/admin/blog/posts/:id/approve`
 - `POST /api/v1/admin/blog/posts/:id/reject`
@@ -522,4 +523,6 @@ Implemented AI behavior:
 - approving a draft accepts optional `reviewReason`, marks the draft reviewed, and does not publish generated content automatically
 - rejecting a draft requires `reviewReason`, marks the draft rejected, and does not delete the source task or generated content
 - AI draft review is only allowed from `draft`, `pending`, or `needs_changes`; already reviewed drafts return HTTP 409 with `draft_not_reviewable`
+- publishing is an explicit reviewer/admin action after approval, not part of approve itself
+- the current publish path supports only `approved` `targeted_question` drafts with a valid course and question payload; it creates a published `quiz_questions` row plus options, stores the new question id in `ai_drafts.published_id`, and repeated publish calls return the existing question without duplication
 - the Vue admin `/ai/drafts` page is a UI wrapper over these reviewer-capable AI review endpoints
