@@ -12,6 +12,7 @@
     "test:e2e:mobile": "playwright test tests/mobile-public.smoke.spec.ts",
     "test:e2e:quiz": "playwright test tests/quiz-wrong-question.smoke.spec.ts",
     "test:e2e:review": "playwright test tests/admin-blog-review.smoke.spec.ts",
+    "test:e2e:forum-review": "playwright test tests/admin-forum-review.smoke.spec.ts",
     "test:e2e:mock-payment": "playwright test tests/mock-wechat-payment.smoke.spec.ts"
   },
   "dependencies": {
