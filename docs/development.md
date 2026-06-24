@@ -87,6 +87,15 @@ go run ./cmd/smoke -base-url http://localhost:8080/api/v1 -email smoke-pay@stu.h
 
 The API process must also run with `WECHAT_PAY_MODE=mock` and the same local fake `WECHAT_PAY_API_V3_KEY`. This smoke signs a mock notify, verifies the backend payment path marks the order `paid`, grants entitlement once, and unlocks paid download. It is not a real merchant payment check and must not be used as proof that live WeChat collection is ready.
 
+Live/staging WeChat Native order-and-close smoke:
+
+```bash
+cd services/api
+go run ./cmd/smoke -base-url https://review.example.com/api/v1 -email smoke-live@stu.henu.edu.cn -code <email-code> -package-id <positive-price-package-id> -wechat-live-native
+```
+
+The target API must run with `WECHAT_PAY_MODE=live` and valid merchant configuration. This smoke creates a positive-price package order, calls live Native ordering, requires `mock=false`, immediately closes the order, and verifies the closed order did not grant entitlement. Do not scan or pay the QR code during this smoke. It does not replace a successful-payment notify E2E.
+
 To verify manual internal delivery after importing mounted course files, run the smoke with admin access-grant verification:
 
 ```bash

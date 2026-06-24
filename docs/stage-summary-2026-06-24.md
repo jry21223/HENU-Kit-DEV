@@ -100,6 +100,7 @@
 - 开发/测试环境 mock notify 必须带 HMAC 头，且校验订单号和金额。
 - mock notify 成功后会把订单置为 `paid`，写入 `payment_records`，并幂等发放一次课程包 entitlement。
 - `cmd/smoke` 已新增开发/测试专用 `-mock-wechat-pay` 验收链路，可创建/复用订单、请求 mock Native codeUrl、发送签名 mock notify、验证订单 `paid`、验证 entitlement 和 paid 下载。
+- `cmd/smoke` 已新增 `-wechat-live-native` 验收链路，可在 staging/live API 上创建正价测试订单、请求非 mock Native `codeUrl`、立即关单，并确认未发放 entitlement；该 smoke 不扫码、不模拟 notify、不代表支付成功验收。
 - Web workspace 新增 opt-in browser mock-payment smoke，可验证真实 Web 课程包页二维码展示、后端签名 mock notify、订单 paid、entitlement 和 paid 下载；它只适用于 development/test，不替代真实商户 E2E。
 - live Native 下单会使用商户私钥签名请求，并在保存 `code_url` 前校验微信响应签名。
 - 已实现微信支付 API v3 密码学基础件：请求签名、Authorization header、平台证书/公钥解析、notify 原文验签、AES-256-GCM resource 解密。
@@ -118,7 +119,7 @@
 仍未完成：
 
 - 真实微信商户参数环境端到端联调。
-- 真实微信商户环境下的关单端到端验证。
+- 在目标真实微信商户环境实际运行 `-wechat-live-native` 下单关单 smoke。
 - 退款流程。
 - 证书轮换自动化。
 - 支付运营告警、异常人工处理台账。
@@ -170,7 +171,7 @@
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、薄弱点已有；复杂评分和练习 session 需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock worker/draft review、AI task 积分/会员额度扣减、approved targeted_question 草稿显式发布到题库已有；真实 LLM/RAG 和资料/Wiki/套卷发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、用户积分兑换会员、AI task 会员/积分权益扣减、admin 手动赠送/撤销会员已做；支付购买、升级/降级策略和真实模型成本核算仍未完整闭环。 |
-| Stage 8：支付系统 | 原 plan 写易支付 | 方向调整 / 部分完成 | 已改为微信 Native；mock 下单、mock notify、live 下单、live notify、基础关单、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒已有；真实商户 E2E、退款、证书轮换和自动对账未完成。 |
+| Stage 8：支付系统 | 原 plan 写易支付 | 方向调整 / 部分完成 | 已改为微信 Native；mock 下单、mock notify、live 下单、live notify、live order-and-close smoke、基础关单、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒已有；真实商户成功付款 E2E、退款、证书轮换和自动对账未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 | Wiki 公开页、创作者新建词条页、我的 Wiki 投稿页、修订提案、审核、历史和 stale 防护已有；创作者申请 API、学生端申请/状态 UI、Admin 审核闭环和可选浏览器 smoke 已补；富文本编辑和更完整差异查看仍未完成。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog/Forum 基础和审核已有；Moment 与关系系统 Go API 基础已补，Web `/moments` 基础动态流、图片上传/预览、动态图片服务端可见性鉴权、`/users/[id]` 公开用户主页聚合和 `/me/relations` 关系管理已补；视频和云存储仍未完成。 |
 | Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已有；基础公开搜索 API 和 Web 搜索页已做；排行榜未做。 |
@@ -228,10 +229,10 @@ git diff --check
 
 ## 8. 下一阶段最小任务
 
-1. 用真实微信商户参数联调 Native 下单、notify 回调和关单。
+1. 用真实微信商户参数运行 `-wechat-live-native` 下单关单 smoke，并继续联调真实付款 notify 回调。
 2. 增加真正的支付异常分级升级路由、自动对账和支付运维说明；人工处理台账、Dashboard 数量提醒与 webhook 基础提醒已有。
 3. 用真实内测资料跑一次 manifest 导入到本地/测试库，确认包绑定和 paid 下载权限；自动化 smoke 已覆盖测试夹具链路，但不能替代真实资料验收。
-4. 继续补 E2E smoke：当前已有 delivery、quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin report-review、admin ai-draft-review、mock-payment 和 mobile public-page；下一步补更多刷题题型、排行榜/搜索路径和真实 AI/支付联调 smoke。
+4. 继续补 E2E smoke：当前已有 delivery、quiz wrong-question、quiz multi-type、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin report-review、admin ai-draft-review、mock-payment、live Native order-close 和 mobile public-page；下一步补更多排行榜/搜索路径和真实 AI/成功付款 notify 联调 smoke。
 5. 做移动端截图回归，优先覆盖 390px 宽度。
 
 ## 9. 结论

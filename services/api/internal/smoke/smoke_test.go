@@ -344,6 +344,215 @@ func TestRunnerCanCompleteMockWeChatPaymentFlow(t *testing.T) {
 	}
 }
 
+func TestRunnerCanCheckLiveNativeAndCloseWithoutEntitlement(t *testing.T) {
+	nativeCreated := false
+	closed := false
+	notifyCalled := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"ready": true})
+	})
+	mux.HandleFunc("/schools", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"schools": []map[string]string{{"id": "school_1", "name": "HENU"}}})
+	})
+	mux.HandleFunc("/packages", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"packages": []map[string]interface{}{{"id": "pkg_1", "title": "Discrete Math", "status": "published", "priceFen": 1990}},
+		})
+	})
+	mux.HandleFunc("/packages/pkg_1", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"package": map[string]interface{}{"id": "pkg_1", "title": "Discrete Math", "status": "published", "priceFen": 1990},
+			"materials": []map[string]interface{}{
+				{"id": "mat_paid", "title": "Mock Paper", "accessLevel": "paid", "status": "published"},
+			},
+		})
+	})
+	mux.HandleFunc("/auth/send-code", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"devCode": "123456"})
+	})
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"accessToken": "student_token"})
+	})
+	mux.HandleFunc("/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer student_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusUnauthorized, 40001, "unauthorized", nil)
+			return
+		}
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"id": "user_1", "email": "smoke-live@stu.henu.edu.cn", "role": "user"})
+	})
+	mux.HandleFunc("/materials/mat_paid/download", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelopeWithMessage(t, w, http.StatusForbidden, 40003, "entitlement_required", nil)
+	})
+	mux.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer student_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusUnauthorized, 40001, "unauthorized", nil)
+			return
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := body["amount"]; ok {
+			t.Fatal("smoke order request must not send amount")
+		}
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"order": map[string]interface{}{"id": "ord_live_1", "outTradeNo": "FR_LIVE_SMOKE_001", "status": "pending", "amountTotal": 1990, "currency": "CNY"},
+		})
+	})
+	mux.HandleFunc("/orders/ord_live_1/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer student_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusUnauthorized, 40001, "unauthorized", nil)
+			return
+		}
+		status := "pending"
+		if nativeCreated {
+			status = "paying"
+		}
+		if closed {
+			status = "closed"
+		}
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"orderId": "ord_live_1", "status": status, "entitlementGranted": false})
+	})
+	mux.HandleFunc("/payments/wechat/native", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer student_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusUnauthorized, 40001, "unauthorized", nil)
+			return
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["orderId"] != "ord_live_1" {
+			t.Fatalf("unexpected native body: %#v", body)
+		}
+		nativeCreated = true
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"orderId":     "ord_live_1",
+			"codeUrl":     "weixin://wxpay/bizpayurl?pr=liveSmoke",
+			"status":      "paying",
+			"amountTotal": 1990,
+			"mock":        false,
+		})
+	})
+	mux.HandleFunc("/payments/wechat/close", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer student_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusUnauthorized, 40001, "unauthorized", nil)
+			return
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["orderId"] != "ord_live_1" {
+			t.Fatalf("unexpected close body: %#v", body)
+		}
+		closed = true
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"orderId": "ord_live_1", "status": "closed", "closed": true, "mock": false})
+	})
+	mux.HandleFunc("/payments/wechat/notify", func(w http.ResponseWriter, r *http.Request) {
+		notifyCalled = true
+		writeEnvelopeWithMessage(t, w, http.StatusBadRequest, 40000, "notify_not_expected", nil)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	runner, err := NewRunner(Config{
+		BaseURL:          server.URL,
+		Email:            "smoke-live@stu.henu.edu.cn",
+		ExpectPaidDenied: true,
+		WeChatLiveNative: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runner.Run(context.Background())
+	if !result.Passed {
+		t.Fatalf("expected live native smoke pass, got %#v", result)
+	}
+	if !nativeCreated || !closed {
+		t.Fatalf("expected live native and close calls, native=%v closed=%v", nativeCreated, closed)
+	}
+	if notifyCalled {
+		t.Fatal("live native smoke must not call notify or simulate payment success")
+	}
+	for _, want := range []string{"wechat live native", "wechat live close", "wechat live closed order status"} {
+		if !hasPassedCheck(result, want) {
+			t.Fatalf("expected passed check %q in %#v", want, result.Checks)
+		}
+	}
+}
+
+func TestRunnerRejectsConflictingWeChatSmokeModes(t *testing.T) {
+	_, err := NewRunner(Config{BaseURL: "http://example.test/api/v1", MockWeChatPay: true, WeChatLiveNative: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot be enabled together") {
+		t.Fatalf("expected conflicting smoke mode error, got %v", err)
+	}
+}
+
+func TestRunnerRejectsMockNativeWhenLiveSmokeRequested(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"ready": true})
+	})
+	mux.HandleFunc("/schools", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"schools": []map[string]string{{"id": "school_1", "name": "HENU"}}})
+	})
+	mux.HandleFunc("/packages", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"packages": []map[string]interface{}{{"id": "pkg_1", "title": "Discrete Math", "status": "published", "priceFen": 1990}}})
+	})
+	mux.HandleFunc("/packages/pkg_1", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"package":   map[string]interface{}{"id": "pkg_1", "title": "Discrete Math", "status": "published", "priceFen": 1990},
+			"materials": []map[string]interface{}{{"id": "mat_paid", "title": "Mock Paper", "accessLevel": "paid", "status": "published"}},
+		})
+	})
+	mux.HandleFunc("/auth/send-code", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"devCode": "123456"})
+	})
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"accessToken": "student_token"})
+	})
+	mux.HandleFunc("/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"id": "user_1", "email": "smoke-live@stu.henu.edu.cn", "role": "user"})
+	})
+	mux.HandleFunc("/materials/mat_paid/download", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelopeWithMessage(t, w, http.StatusForbidden, 40003, "entitlement_required", nil)
+	})
+	mux.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"order": map[string]interface{}{"id": "ord_mock_1", "outTradeNo": "FR_MOCK_SMOKE_001", "status": "pending", "amountTotal": 1990, "currency": "CNY"},
+		})
+	})
+	mux.HandleFunc("/orders/ord_mock_1/status", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"orderId": "ord_mock_1", "status": "pending", "entitlementGranted": false})
+	})
+	mux.HandleFunc("/payments/wechat/native", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"orderId":     "ord_mock_1",
+			"codeUrl":     "weixin://wxpay/mock/FR_MOCK_SMOKE_001",
+			"status":      "paying",
+			"amountTotal": 1990,
+			"mock":        true,
+		})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	runner, err := NewRunner(Config{BaseURL: server.URL, Email: "smoke-live@stu.henu.edu.cn", WeChatLiveNative: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runner.Run(context.Background())
+	if result.Passed {
+		t.Fatalf("expected live smoke to reject mock native response, got %#v", result)
+	}
+	last := result.Checks[len(result.Checks)-1]
+	if last.Name != "wechat live native" || !strings.Contains(last.Detail, "mock=true") {
+		t.Fatalf("expected mock=true live native failure, got %#v", last)
+	}
+}
+
 func TestRunnerRequiresMockWeChatSecret(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {

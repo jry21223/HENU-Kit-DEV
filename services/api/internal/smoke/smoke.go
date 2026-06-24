@@ -29,6 +29,7 @@ type Config struct {
 	CreateOrder        bool
 	MockWeChatPay      bool
 	MockWeChatSecret   string
+	WeChatLiveNative   bool
 	ExpectPaidDenied   bool
 	GrantPackageAccess bool
 	Timeout            time.Duration
@@ -124,6 +125,13 @@ type nativePaymentData struct {
 	Mock        bool   `json:"mock"`
 }
 
+type closePaymentData struct {
+	OrderID string `json:"orderId"`
+	Status  string `json:"status"`
+	Closed  bool   `json:"closed"`
+	Mock    bool   `json:"mock"`
+}
+
 func NewRunner(cfg Config) (Runner, error) {
 	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	if cfg.BaseURL == "" {
@@ -140,6 +148,9 @@ func NewRunner(cfg Config) (Runner, error) {
 	}
 	if cfg.AdminName == "" {
 		cfg.AdminName = "Smoke Admin"
+	}
+	if cfg.MockWeChatPay && cfg.WeChatLiveNative {
+		return Runner{}, errors.New("mock-wechat-pay and wechat-live-native cannot be enabled together")
 	}
 	return Runner{cfg: cfg, client: &http.Client{Timeout: cfg.Timeout}}, nil
 }
@@ -246,9 +257,9 @@ func (r Runner) Run(ctx context.Context) Result {
 		result.add("paid download denied before entitlement", "passed", status, "paid asset denied without entitlement")
 	}
 
-	if r.cfg.CreateOrder || r.cfg.MockWeChatPay {
+	if r.cfg.CreateOrder || r.cfg.MockWeChatPay || r.cfg.WeChatLiveNative {
 		if token == "" {
-			return fail("create order", 0, errors.New("create-order requires login"))
+			return fail("create order", 0, errors.New("order checks require login"))
 		}
 		createdOrder, status, err := r.createOrder(ctx, packageID, token)
 		if err != nil {
@@ -269,6 +280,9 @@ func (r Runner) Run(ctx context.Context) Result {
 			if err != nil {
 				return fail("mock wechat native", status, err)
 			}
+			if !native.Mock {
+				return fail("mock wechat native", status, errors.New("mock-wechat-pay expected mock native response; refuse to treat live payment as mock smoke"))
+			}
 			result.add("mock wechat native", "passed", status, native.CodeURL)
 			status, err = r.mockWeChatNotify(ctx, createdOrder, r.cfg.MockWeChatSecret)
 			if err != nil {
@@ -288,6 +302,38 @@ func (r Runner) Run(ctx context.Context) Result {
 				return fail("paid download after mock payment", status, err)
 			}
 			result.add("paid download after mock payment", "passed", status, fmt.Sprintf("%d byte(s)", bodySize))
+		}
+		if r.cfg.WeChatLiveNative {
+			if createdOrder.AmountTotal <= 0 {
+				return fail("wechat live native amount", 0, errors.New("wechat-live-native requires a package order with positive amountTotal"))
+			}
+			native, status, err := r.createNativePayment(ctx, createdOrder.ID, token)
+			if err != nil {
+				return fail("wechat live native", status, err)
+			}
+			if native.Mock {
+				return fail("wechat live native", status, errors.New("wechat-live-native expected live native response; API returned mock=true"))
+			}
+			if !strings.HasPrefix(native.CodeURL, "weixin://") {
+				return fail("wechat live native", status, errors.New("wechat live native codeUrl did not use weixin:// scheme"))
+			}
+			result.add("wechat live native", "passed", status, native.CodeURL)
+			closed, status, err := r.closeWeChatOrder(ctx, createdOrder.ID, token)
+			if err != nil {
+				return fail("wechat live close", status, err)
+			}
+			if closed.Mock {
+				return fail("wechat live close", status, errors.New("wechat-live-native close expected live mode; API returned mock=true"))
+			}
+			result.add("wechat live close", "passed", status, "order closed without payment")
+			status, closedStatus, err := r.orderStatusDetail(ctx, createdOrder.ID, token)
+			if err != nil {
+				return fail("wechat live closed order status", status, err)
+			}
+			if closedStatus.Status != "closed" || closedStatus.EntitlementGranted {
+				return fail("wechat live closed order status", status, fmt.Errorf("expected closed without entitlement, got status=%s entitlement=%v", closedStatus.Status, closedStatus.EntitlementGranted))
+			}
+			result.add("wechat live closed order status", "passed", status, "closed without entitlement")
 		}
 	}
 
@@ -458,8 +504,27 @@ func (r Runner) createNativePayment(ctx context.Context, orderID string, token s
 	if data.Status != "paying" {
 		return nativePaymentData{}, status, fmt.Errorf("expected native payment status paying, got %s", data.Status)
 	}
-	if !data.Mock {
-		return nativePaymentData{}, status, errors.New("mock-wechat-pay expected mock native response; refuse to treat live payment as smoke")
+	return data, status, nil
+}
+
+func (r Runner) closeWeChatOrder(ctx context.Context, orderID string, token string) (closePaymentData, int, error) {
+	body := map[string]string{"orderId": orderID}
+	status, raw, err := r.request(ctx, http.MethodPost, "/payments/wechat/close", body, token)
+	if err != nil || status != http.StatusOK {
+		if err == nil {
+			err = fmt.Errorf("unexpected wechat close status %d: %s", status, raw.Message)
+		}
+		return closePaymentData{}, status, err
+	}
+	var data closePaymentData
+	if err := json.Unmarshal(raw.Data, &data); err != nil {
+		return closePaymentData{}, status, err
+	}
+	if data.OrderID != orderID {
+		return closePaymentData{}, status, errors.New("wechat close response returned different order id")
+	}
+	if data.Status != "closed" || !data.Closed {
+		return closePaymentData{}, status, fmt.Errorf("expected closed order response, got status=%s closed=%v", data.Status, data.Closed)
 	}
 	return data, status, nil
 }

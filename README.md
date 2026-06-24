@@ -30,7 +30,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，在 `/moments` 查看/发布带图片的学习动态，在 `/users/[id]` 查看公开用户主页，在 `/me/relations` 管理关注/粉丝/互关好友，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
-- 微信支付 Native 是目标支付方案；当前支持开发/测试环境 mock Native codeUrl、订单过期收敛和带 HMAC 的 mock notify 闭环，生产环境禁止 mock；live Native 下单已接入签名请求和微信响应验签，live notify handler 已实现官方回调验签、resource 解密、appid/mchid/金额校验和幂等授权代码路径，但真实商户环境端到端联调仍未完成。
+- 微信支付 Native 是目标支付方案；当前支持开发/测试环境 mock Native codeUrl、订单过期收敛和带 HMAC 的 mock notify 闭环，生产环境禁止 mock；live Native 下单已接入签名请求和微信响应验签，并提供 live order-and-close smoke；live notify handler 已实现官方回调验签、resource 解密、appid/mchid/金额校验和幂等授权代码路径，但真实商户成功付款端到端联调仍未完成。
 - AI 当前使用 mock LLM；AI 生成内容不会绕过审核自动发布。
 - 当前没有生产数据迁移要求。
 
@@ -94,6 +94,7 @@ See `docs/deployment.md` before using this for any paid internal test. The examp
 - Production preflight is a deploy gate, not a substitute for merchant or browser smoke tests. It verifies dangerous configuration before the stack is opened to paid traffic.
 - Internal smoke runbook: `docs/internal-smoke.md`
 - Mock WeChat payment smoke: `go run ./cmd/smoke -mock-wechat-pay -mock-wechat-secret <local-fake-secret>` in development/test only; the API must run with `WECHAT_PAY_MODE=mock` and the same fake `WECHAT_PAY_API_V3_KEY`. It signs a mock notify, verifies backend `paid` status, entitlement, and paid download. It is not a real merchant E2E check.
+- WeChat live Native smoke: `go run ./cmd/smoke -wechat-live-native -email <fresh-student-email> -code <code>` against a staging/live API running `WECHAT_PAY_MODE=live`. It creates a positive-price package order, requests a non-mock `codeUrl`, immediately closes the order, and verifies no entitlement was granted. Do not scan/pay this QR during the smoke.
 - Browser mock-payment smoke: `npm --workspace @final-review/web run test:e2e:mock-payment` with `E2E_MOCK_PAYMENT_SMOKE=1` verifies the Web package QR flow and signed backend mock notify unlock path in development/test only.
 - Browser delivery smoke: `npm --workspace @final-review/web run test:e2e:delivery` with `E2E_DELIVERY_SMOKE=1` opens Web/Admin, verifies paid denial before entitlement, creates an admin package grant, and verifies paid download after the grant.
 - Leaderboards smoke: `npm --workspace @final-review/web run test:e2e:leaderboards` with `E2E_LEADERBOARDS_SMOKE=1` verifies public leaderboard APIs and Web `/leaderboards` without mutating data.
@@ -224,6 +225,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - 阶段总结：`docs/phase-summary-v2-mvp.md`
 - 当前阶段对照总结：`docs/stage-summary-2026-06-24.md`
 - AI 工作流：`docs/ai-workflow.md`
+- 微信 Native 支付：`docs/WECHAT_PAY_NATIVE.md`
 - 部署说明：`docs/deployment.md`
 - Go API：`services/api/internal`
 - Worker：`services/worker`

@@ -122,6 +122,7 @@
   - 成功 mock notify 会把订单置为 `paid`，写入 `payment_records`，并幂等发放一次课程包 entitlement。
   - 这只是本地联调 harness，不能代替生产微信官方回调。
 - `cmd/smoke` 已支持开发/测试专用 `-mock-wechat-pay`，可验证订单创建、mock Native codeUrl、签名 mock notify、订单 paid、entitlement 和 paid 下载整条非生产链路。
+- `cmd/smoke` 已支持 `-wechat-live-native`，可在 staging/live API 上创建正价测试订单、请求非 mock Native `codeUrl`、立即关单，并确认未发放 entitlement；该 smoke 不扫码、不模拟 notify、不代表支付成功验收。
 - Web workspace 已支持 opt-in browser mock-payment smoke，覆盖真实 Web 购买页二维码展示、后端签名 mock notify、只读状态刷新、entitlement 和 paid 下载。
 - 已实现并单测微信支付 API v3 live 所需密码学基础件：
   - RSA 请求签名。
@@ -147,7 +148,7 @@
   - 用户只能关闭自己的订单，admin/super_admin 可以关闭任意 pending/paying 订单。
   - paid/closed 订单不能关闭。
   - closed 订单不会被后续课程包下单复用。
-  - live paying 订单会先调用微信关单接口，再更新本地状态；真实商户环境仍未做端到端验证。
+  - live paying 订单会先调用微信关单接口，再更新本地状态；已补 `-wechat-live-native` smoke 用于目标环境验证，但真实目标环境仍需实际执行。
 - 微信 Native 订单过期收敛已接入：
   - Native 下单会写入 `orders.expires_at`。
   - 状态查询、重复下单复用、Native 支付创建和 admin 订单列表会先把过期 pending/paying 订单置为 `expired`。
@@ -239,12 +240,12 @@ Admin 页面不会直接授予支付成功，也不会绕过 Go API 权限。
 
 ### 3.1 真实微信 Native 支付仍未完成生产联调
 
-目前已有 mock Native codeUrl、前端二维码展示、开发/测试环境带 HMAC 的 mock notify 闭环、带响应验签的 live Native 下单代码路径，以及 live 官方 notify 验签、解密、金额校验和幂等授权代码路径。
+目前已有 mock Native codeUrl、前端二维码展示、开发/测试环境带 HMAC 的 mock notify 闭环、带响应验签的 live Native 下单代码路径、live order-and-close smoke，以及 live 官方 notify 验签、解密、金额校验和幂等授权代码路径。
 
 还没有完成：
 
 - 真实微信商户参数环境端到端联调。
-- 真实微信商户环境下的关单端到端验证。
+- 在目标真实微信商户环境实际运行 `-wechat-live-native` 下单关单 smoke。
 - 退款流程。
 - 证书轮换自动化。
 - 支付异常告警和人工处理台账。
@@ -317,7 +318,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、Web 错题本存在；练习 session、复杂评分仍需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review、AI task 积分/会员额度扣减、approved targeted_question 草稿显式发布到题库已做；真实 LLM、RAG、资料/Wiki/套卷发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、用户积分兑换会员、AI task 会员/积分权益扣减、admin 手动赠送/撤销会员已做；支付购买、升级/降级策略和真实模型成本核算仍未完整闭环。 |
-| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、API smoke CLI 非生产 mock 支付闭环验收、带请求签名/响应验签的 live Native 下单代码路径、live 官方 notify 验签/解密/金额校验/幂等授权代码路径、基础关单接口、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒；真实微信商户端到端联调、退款、证书轮换和自动对账未完成。 |
+| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、API smoke CLI 非生产 mock 支付闭环验收、live order-and-close smoke、带请求签名/响应验签的 live Native 下单代码路径、live 官方 notify 验签/解密/金额校验/幂等授权代码路径、基础关单接口、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒；真实微信商户成功付款端到端联调、退款、证书轮换和自动对账未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 / 强 MVP | Wiki 公开页、创作者新建词条页、我的 Wiki 投稿页、修订提案、审核、历史、stale 防护已做；创作者申请 API、学生端申请/状态 UI、Admin 审核闭环和可选浏览器 smoke 已补；富文本编辑和更完整差异查看仍未完成。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog、Forum 基础和审核已做；Moment、关系系统 Go API 基础已补，Web `/moments` 基础动态流、图片上传/预览、动态图片服务端可见性鉴权、`/users/[id]` 公开用户主页聚合和 `/me/relations` 关系管理已做；视频和云存储仍未做。 |
 | Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已做；基础公开搜索 API 和 Web 搜索页已做；排行榜未做。 |
@@ -469,10 +470,10 @@ git diff --check
 
 1. 继续微信 Native 支付硬化：
    - live 配置校验；
+   - 在目标环境运行 `-wechat-live-native` 下单关单 smoke；
    - 真实商户参数联调 Native 下单；
    - 真实商户端到端 notify 联调；
    - appid/mchid 校验；
-   - 真实商户环境关单验证；
    - live 支付链路端到端测试。
 
 2. 补一组 E2E smoke：
