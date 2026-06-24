@@ -366,7 +366,7 @@ Implemented moment and relation behavior:
 - `POST /api/v1/moments` accepts only existing uploaded image URLs owned by the current user, then binds each media asset to the created moment. Frontend-supplied storage keys are never accepted.
 - Admin-only `GET /api/v1/admin/media-assets` lists moment media assets by usage, status, owner email, moment id, and limit. Responses include owner metadata and `hasFile`, but do not serialize raw storage keys.
 - Admin-only `POST /api/v1/admin/media-assets/cleanup` defaults to dry-run mode. It can archive old unattached `moment_image` uploads and remove their local files after an explicit `{"dryRun": false}` request. It refuses unsafe storage keys, records a `media_asset.cleanup` operation log, and never touches attached moment images.
-- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments with local image upload and preview. Video media, cloud object storage, and a Vue Admin media asset page remain future work.
+- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments with local image upload and preview. Vue Admin `/media-assets` exposes the asset audit and stale-unattached-upload cleanup workflow. Video media and cloud object storage remain future work.
 
 Implemented public user profile behavior:
 

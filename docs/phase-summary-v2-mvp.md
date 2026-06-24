@@ -385,7 +385,7 @@ git diff --check
 
 - Stale unattached moment-image cleanup now has an admin-only Go API.
 - Cleanup defaults to dry-run, removes local files only after safe-path checks, archives matching `media_assets` rows, and writes `media_asset.cleanup` operation logs.
-- The Vue Admin media asset page, cloud object storage lifecycle policy, and production media retention operations are still not implemented.
+- Vue Admin `/media-assets` now exposes this audit and cleanup workflow. Cloud object storage lifecycle policy and production media retention operations are still not implemented.
 
 ## 8. 下一阶段建议
 

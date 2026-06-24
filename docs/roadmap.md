@@ -24,6 +24,7 @@
 - Web `/moments` foundation with a mobile-aware feed, composer, likes, comments, follow/block actions, and smoke coverage
 - Moment image upload foundation with authenticated local uploads, JPG/PNG/WEBP/GIF validation, 5MB per-image limit, media-asset records, visibility-checked image serving, and Web image previews
 - Admin media asset audit and cleanup API for stale unattached moment images, with dry-run mode, file deletion, archived-row status updates, and operation logs
+- Vue admin media asset page for listing moment image assets and running stale-unattached-upload dry-run/cleanup operations
 - Go API relation foundation with follow, unfollow, block, unblock, following, followers, and mutual-friend lists
 - Public user profile aggregation API and Web `/users/[id]` page with visible moments, blog posts, forum posts, and forum replies
 - Web `/me/relations` page for current-user following, followers, mutual-friend lists, follow/unfollow, and block actions
@@ -98,6 +99,6 @@
 - AI Worker flows
 - Points and membership
 - Wiki creator workflow refinements and richer revision diff tooling
-- Richer social relationship UX, advanced relation filters, video media, cloud object storage, and a Vue Admin media asset audit page for moments
+- Richer social relationship UX, advanced relation filters, video media, cloud object storage, and production media lifecycle policies
 - Notifications, richer reports, leaderboards
 - Production deployment and monitoring

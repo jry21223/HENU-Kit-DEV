@@ -13,6 +13,7 @@ import ForumReviewsView from "../views/ForumReviewsView.vue";
 import LoginView from "../views/LoginView.vue";
 import MaterialReviewsView from "../views/MaterialReviewsView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
+import MediaAssetsView from "../views/MediaAssetsView.vue";
 import OperationLogsView from "../views/OperationLogsView.vue";
 import OrdersView from "../views/OrdersView.vue";
 import PackagesView from "../views/PackagesView.vue";
@@ -41,6 +42,7 @@ export const router = createRouter({
     { path: "/packages", component: PackagesView },
     { path: "/courses", component: CoursesView },
     { path: "/materials", component: MaterialsView },
+    { path: "/media-assets", component: MediaAssetsView },
     { path: "/downloads", component: DownloadsView },
     { path: "/operation-logs", component: OperationLogsView },
     { path: "/material-reviews", component: MaterialReviewsView, meta: { reviewer: true } },

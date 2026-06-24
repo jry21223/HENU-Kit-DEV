@@ -17,6 +17,7 @@
         <RouterLink v-if="auth.isAdmin" to="/packages">{{ copy.packages }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/courses">{{ copy.courses }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/materials">{{ copy.materials }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/media-assets">{{ copy.mediaAssets }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/downloads">{{ copy.downloads }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/analytics">{{ copy.analytics }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/operation-logs">{{ copy.operationLogs }}</RouterLink>
@@ -61,6 +62,7 @@ const copy = {
   packages: "\u8bfe\u7a0b\u5305",
   courses: "\u8bfe\u7a0b\u7ef4\u62a4",
   materials: "PDF \u8d44\u6599",
+  mediaAssets: "\u5a92\u4f53\u8d44\u4ea7",
   downloads: "\u4e0b\u8f7d\u5ba1\u8ba1",
   analytics: "\u8fd0\u8425\u5206\u6790",
   operationLogs: "\u64cd\u4f5c\u65e5\u5fd7",

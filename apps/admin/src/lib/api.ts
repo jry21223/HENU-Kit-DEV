@@ -225,6 +225,36 @@ export type DownloadRecord = {
   material?: Material;
 };
 
+export type MediaAsset = {
+  id: string;
+  ownerId: string;
+  usage: string;
+  fileName: string;
+  fileSize: number;
+  contentType: string;
+  status: string;
+  momentId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MediaAssetRow = {
+  asset: MediaAsset;
+  owner?: User;
+  hasFile: boolean;
+};
+
+export type MediaCleanupSummary = {
+  dryRun: boolean;
+  olderThanHours: number;
+  cutoff: string;
+  candidates: number;
+  deletedFiles: number;
+  missingFiles: number;
+  archivedRows: number;
+  assets: MediaAssetRow[];
+};
+
 export type OperationLog = {
   id: string;
   operatorId: string;
