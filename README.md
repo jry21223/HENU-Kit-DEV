@@ -94,6 +94,7 @@ See `docs/deployment.md` before using this for any paid internal test. The examp
 - Production preflight is a deploy gate, not a substitute for merchant or browser smoke tests. It verifies dangerous configuration before the stack is opened to paid traffic.
 - Internal smoke runbook: `docs/internal-smoke.md`
 - Browser delivery smoke: `npm --workspace @final-review/web run test:e2e:delivery` with `E2E_DELIVERY_SMOKE=1` opens Web/Admin, verifies paid denial before entitlement, creates an admin package grant, and verifies paid download after the grant.
+- Quiz wrong-question smoke: `npm --workspace @final-review/web run test:e2e:quiz` with `E2E_QUIZ_SMOKE=1` logs in through Web, submits an intentionally wrong answer, verifies Go API wrong-question persistence, and checks `/me/wrong-questions`.
 - Mobile public-page smoke: `npm --workspace @final-review/web run test:e2e:mobile` checks core public pages at a 390px viewport for 5xx failures, document-level horizontal overflow, and basic mobile control target sizes.
 
 如果本机已安装 Go：

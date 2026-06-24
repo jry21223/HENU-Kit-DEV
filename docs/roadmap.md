@@ -32,6 +32,7 @@
 - Web `/me/relations` page for current-user following, followers, mutual-friend lists, follow/unfollow, and block actions
 - Web personal download-history page
 - Web personal wrong-question book with per-course weakness totals and current-user delete action
+- Opt-in browser quiz wrong-question smoke for Web login, quiz submission, Go API wrong-question persistence, and `/me/wrong-questions` rendering
 - Web personal forum submission tracking page for current user's posts/replies and review status
 - Web personal forum edit/resubmit flow for draft/pending/needs_changes/rejected posts and replies
 - Web personal notification inbox with user-scoped read/read-all state

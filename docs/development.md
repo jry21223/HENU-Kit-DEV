@@ -99,6 +99,19 @@ npm --workspace @final-review/web run test:e2e:delivery
 
 This Playwright smoke opens the real Web and Admin frontends, keeps student/admin sessions in separate browser contexts, checks paid download denial before entitlement, creates an admin-only package grant, and verifies the student can download after the grant. It is opt-in because it mutates access grants and should use a fresh student test account.
 
+Quiz wrong-question smoke:
+
+```bash
+$env:E2E_QUIZ_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_STUDENT_EMAIL="smoke-quiz@stu.henu.edu.cn"
+$env:E2E_STUDENT_CODE="123456"
+npm --workspace @final-review/web run test:e2e:quiz
+```
+
+This Playwright smoke logs in as a student, finds a published choice question, probes an anonymous wrong option, submits that wrong answer through the real Web quiz page, verifies the authenticated wrong-question count increases through the Go API, and then checks `/me/wrong-questions` renders the question. It is opt-in because it mutates the student's wrong-question book. Set `E2E_QUIZ_COURSE_ID`, `E2E_QUIZ_QUESTION_ID`, or `E2E_QUIZ_WRONG_ANSWER` when the target environment does not use seed data.
+
 Mobile public-page smoke:
 
 ```bash

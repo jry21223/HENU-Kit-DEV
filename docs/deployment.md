@@ -152,6 +152,7 @@ Before opening paid sales, verify all items below:
 - material import dry-run report has been reviewed against mounted real files
 - manual-grant smoke in `docs/internal-smoke.md` passes with fresh student/admin test accounts after importing real mounted files
 - browser delivery smoke `npm --workspace @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
+- quiz wrong-question smoke `npm --workspace @final-review/web run test:e2e:quiz` passes against Web/API with a fresh student test account
 - mobile public-page smoke `npm --workspace @final-review/web run test:e2e:mobile` passes against the deployed Web origin at a 390px viewport
 - paid material download is denied before entitlement and allowed after a verified paid order
 - `scripts/ops/backup-postgres.sh` produces a restorable dump in a staging environment

@@ -23,6 +23,7 @@ export async function postApi<T>(path: string, body: unknown): Promise<ApiEnvelo
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    credentials: "include",
   });
 
   if (!response.ok) {
