@@ -20,7 +20,7 @@
 - Web course list/detail, material detail, and quiz practice pages
 - Web wiki list/detail read-only pages backed by published public wiki APIs
 - Web wiki detail edit-proposal form for creator/admin users, with review-first submission
-- Wiki creator application API, student-facing application/status UI, reviewer/admin approval flow, and user role promotion on approval
+- Wiki creator application API, student-facing application/status UI, creator/admin entry submission page, reviewer/admin approval flow, and user role promotion on approval
 - Web blog list/detail read-only pages backed by published public blog APIs
 - Web forum list/detail pages with post creation, reply submission, and best-answer action entry
 - Go API moments foundation with public/mutual-friends visibility, comments, idempotent likes, and block-aware feed filtering
@@ -114,7 +114,7 @@
 
 - AI Worker flows
 - Points and membership
-- Wiki creator workflow refinements and richer revision diff tooling
+- Wiki "my submissions" workspace, creator workflow refinements, rich text editing, and richer revision diff tooling
 - Richer social relationship UX, advanced relation filters, video media, cloud object storage, and production media lifecycle policies
 - Notifications, richer reports, leaderboards
 - Production deployment and monitoring

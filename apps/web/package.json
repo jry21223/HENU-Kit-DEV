@@ -17,6 +17,7 @@
     "test:e2e:material-review": "playwright test tests/admin-material-review.smoke.spec.ts",
     "test:e2e:wiki-review": "playwright test tests/admin-wiki-review.smoke.spec.ts",
     "test:e2e:wiki-creator-application": "playwright test tests/wiki-creator-application.smoke.spec.ts",
+    "test:e2e:wiki-entry-submission": "playwright test tests/wiki-entry-submission.smoke.spec.ts",
     "test:e2e:wiki-proposal-review": "playwright test tests/admin-wiki-proposal-review.smoke.spec.ts",
     "test:e2e:forum-review": "playwright test tests/admin-forum-review.smoke.spec.ts",
     "test:e2e:forum-reply-review": "playwright test tests/admin-forum-reply-review.smoke.spec.ts",

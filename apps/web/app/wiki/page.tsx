@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BookOpenText, History, Layers3 } from "lucide-react";
+import { ArrowRight, BookOpenText, History, Layers3, PenLine } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
 import { Badge } from "@/components/ui/badge";
 import { WikiCreatorApplicationPanel } from "@/components/wiki/wiki-creator-application-panel";
@@ -17,6 +17,7 @@ const copy = {
   entries: "词条",
   version: "版本",
   updatedAt: "更新",
+  createEntry: "\u65b0\u5efa\u8bcd\u6761",
   empty: "暂无已发布 Wiki 词条。",
 };
 
@@ -55,9 +56,18 @@ export default async function WikiPage({ searchParams }: PageProps) {
             <h1 className="mt-2 break-words text-3xl font-semibold tracking-tight sm:text-4xl">{copy.title}</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{copy.intro}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
-            <BookOpenText className="size-4 text-primary" aria-hidden="true" />
-            {entries.length} {copy.entries}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+              <BookOpenText className="size-4 text-primary" aria-hidden="true" />
+              {entries.length} {copy.entries}
+            </div>
+            <Link
+              className="inline-flex items-center rounded-2xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-[#254d42]"
+              href="/wiki/new"
+            >
+              <PenLine className="mr-2 size-4" aria-hidden="true" />
+              {copy.createEntry}
+            </Link>
           </div>
         </div>
       </section>

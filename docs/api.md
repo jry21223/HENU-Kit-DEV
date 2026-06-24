@@ -437,6 +437,7 @@ Implemented wiki behavior:
 - public wiki endpoints use a public DTO and do not expose `reviewerId` or `reviewReason`
 - Web `/wiki` and `/wiki/[id]` consume those public endpoints as student-facing pages; public responses still hide review metadata
 - Web `/wiki` includes the student creator-application panel; logged-in users can view their own application status through `GET /api/v1/wiki/creator-applications/me`, which returns a self DTO without reviewer ids
+- Web `/wiki/new` provides a creator/admin-only entry submission form that calls `POST /api/v1/wiki/entries`; submitted entries stay pending until reviewer/admin approval
 - Web `/wiki/[id]` includes a creator/admin-only edit-proposal form that submits to `POST /api/v1/wiki/entries/:id/proposals`; normal users see the review boundary instead of the editable form
 - logged-in active normal users can submit creator applications through `POST /api/v1/wiki/creator-applications`; users who are already creator/admin/super_admin are rejected with `already_creator`, and other elevated single-role users are not converted implicitly
 - users can have only one pending/draft/needs_changes creator application at a time
