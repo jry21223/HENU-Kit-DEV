@@ -62,6 +62,7 @@
 - Review notifications for forum post/reply, material, wiki entry/proposal, blog post, and AI draft approve/reject outcomes
 - Basic report submission, Web material/wiki/blog/forum report buttons, Vue admin report handling page, operation logs, and reporter result notifications
 - Opt-in browser admin Blog review smoke for pending content hidden-before-review, Vue Admin approval, and public Web visibility after approval
+- Opt-in browser admin Wiki review smoke for pending content hidden-before-review, Vue Admin approval, and public API/Web visibility after approval
 - Opt-in browser admin Forum post review smoke for pending content hidden-before-review, Vue Admin approval, and public API/Web visibility after approval
 - Vue admin read-only analytics page for download trend, course demand, and report distribution
 - Vue admin read-only operation-log browser for high-risk admin mutations

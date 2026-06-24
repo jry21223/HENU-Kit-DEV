@@ -123,6 +123,24 @@ npm --workspace @final-review/web run test:e2e:review
 
 This smoke creates a unique pending blog post through the Go API, proves the public detail endpoint returns 404 before review, opens Vue Admin `/blog-reviews`, approves the post through the Admin UI, and verifies the public Web blog detail page renders the approved post. It is opt-in because it mutates blog rows, notifications, and operation logs.
 
+## Admin Wiki-Review Browser Smoke
+
+After Web, Admin, and API are reachable, run the admin wiki-review smoke from the repository root:
+
+```bash
+$env:E2E_WIKI_REVIEW_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_WIKI_REVIEW_AUTHOR_EMAIL="creator@example.com"
+$env:E2E_WIKI_REVIEW_AUTHOR_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+npm --workspace @final-review/web run test:e2e:wiki-review
+```
+
+This smoke creates a unique pending Wiki entry through the Go API using a creator/admin account, proves the public detail endpoint returns 404 before review, opens Vue Admin `/wiki-reviews`, approves the entry through the Admin UI, and verifies the public API and Web Wiki detail page render it after approval. It is opt-in because it mutates Wiki rows, edit history, notifications, and operation logs. The author account must already have `creator`, `admin`, or `super_admin` privileges.
+
 ## Admin Forum-Review Browser Smoke
 
 After Web, Admin, and API are reachable, run the admin forum-review smoke from the repository root:
@@ -158,6 +176,7 @@ This smoke creates a unique pending forum post through the Go API, proves the pu
 - Optional browser mock-payment smoke: validates the Web QR path plus signed backend mock notify, paid status, entitlement, and paid download in development/test
 - Optional quiz browser smoke: validates the authenticated quiz submission to wrong-question-book path
 - Optional admin review browser smoke: validates pending Blog content remains hidden until approval and becomes public after Admin UI review
+- Optional admin wiki-review browser smoke: validates pending Wiki content remains hidden until approval and becomes public after Admin UI review
 - Optional admin forum-review browser smoke: validates pending Forum content remains hidden until approval and becomes public after Admin UI review
 
 ## Important Flags
@@ -211,6 +230,9 @@ E2E_QUIZ_WRONG_ANSWER=
 E2E_REVIEW_SMOKE=0
 E2E_REVIEW_AUTHOR_EMAIL=smoke-review-author@stu.henu.edu.cn
 E2E_REVIEW_AUTHOR_CODE=123456
+E2E_WIKI_REVIEW_SMOKE=0
+E2E_WIKI_REVIEW_AUTHOR_EMAIL=creator@example.com
+E2E_WIKI_REVIEW_AUTHOR_CODE=123456
 E2E_FORUM_REVIEW_SMOKE=0
 E2E_FORUM_REVIEW_AUTHOR_EMAIL=smoke-forum-author@stu.henu.edu.cn
 E2E_FORUM_REVIEW_AUTHOR_CODE=123456
@@ -311,13 +333,19 @@ E2E_FORUM_BOARD_ID=
    npm --workspace @final-review/web run test:e2e:review
    ```
 
-13. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+13. Run admin wiki-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
+
+   ```bash
+   npm --workspace @final-review/web run test:e2e:wiki-review
+   ```
+
+14. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:forum-review
    ```
 
-14. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
+15. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
 
 ## Failure Handling
 
@@ -336,5 +364,7 @@ E2E_FORUM_BOARD_ID=
 - Browser smoke opens but skips: set `E2E_DELIVERY_SMOKE=1`. It is opt-in because it creates or reuses an access grant.
 - Quiz smoke opens but skips: set `E2E_QUIZ_SMOKE=1`. It is opt-in because it writes wrong-question records.
 - Review smoke opens but skips: set `E2E_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Blog post.
+- Wiki review smoke opens but skips: set `E2E_WIKI_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Wiki entry.
+- Wiki review smoke fails with 403 during entry creation: use an author account with `creator`, `admin`, or `super_admin` role, such as the seeded `creator@example.com`, or configure `E2E_WIKI_REVIEW_AUTHOR_EMAIL`.
 - Forum review smoke opens but skips: set `E2E_FORUM_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Forum post.
 - Browser smoke cannot log in: development can use `DEV_FIXED_VERIFICATION_CODE`; staging/production needs a real test inbox or manually supplied current code.

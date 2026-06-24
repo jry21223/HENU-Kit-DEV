@@ -152,6 +152,22 @@ npm --workspace @final-review/web run test:e2e:review
 
 This Playwright smoke creates a unique pending blog post through the Go API, verifies the public detail endpoint rejects it before review, opens Vue Admin `/blog-reviews`, approves the post through the Admin UI, and verifies the post is then visible on the public Web blog detail page. It is opt-in because it mutates review content and operation logs.
 
+Admin wiki-review smoke:
+
+```bash
+$env:E2E_WIKI_REVIEW_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_WIKI_REVIEW_AUTHOR_EMAIL="creator@example.com"
+$env:E2E_WIKI_REVIEW_AUTHOR_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+npm --workspace @final-review/web run test:e2e:wiki-review
+```
+
+This Playwright smoke creates a unique pending Wiki entry through the Go API using a creator/admin account, verifies the public detail endpoint rejects it before review, opens Vue Admin `/wiki-reviews`, approves the entry through the Admin UI, and verifies the entry is then visible on the public Web Wiki detail page. It is opt-in because it mutates Wiki rows, edit history, notifications, and operation logs.
+
 Admin forum-review smoke:
 
 ```bash
