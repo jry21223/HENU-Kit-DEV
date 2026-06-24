@@ -1,7 +1,10 @@
 package tests
 
 import (
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,7 +15,9 @@ import (
 
 func TestMomentAndRelationWorkflow(t *testing.T) {
 	db := newTestDB(t)
-	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	cfg := testConfig()
+	cfg.LocalUploadDir = t.TempDir()
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
 
 	aliceToken := loginTestUser(t, router, "moment-alice@stu.henu.edu.cn")
 	bobToken := loginTestUser(t, router, "moment-bob@stu.henu.edu.cn")
@@ -36,7 +41,66 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 		t.Fatalf("expected invalid image rejection, got %d: %s", invalidImage.Code, invalidImage.Body.String())
 	}
 
-	publicCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"Public review note","images":["/uploads/moments/public.png"]}`, aliceToken)
+	unauthorizedUpload := performMultipart(router, "/api/v1/moments/images", "", nil, "file", "progress.png", validPNGBytes())
+	if unauthorizedUpload.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated image upload 401, got %d: %s", unauthorizedUpload.Code, unauthorizedUpload.Body.String())
+	}
+	unsupportedUpload := performMultipart(router, "/api/v1/moments/images", aliceToken, nil, "file", "note.txt", []byte("plain text"))
+	if unsupportedUpload.Code != http.StatusBadRequest || !strings.Contains(unsupportedUpload.Body.String(), "unsupported_image_type") {
+		t.Fatalf("expected unsupported image upload rejection, got %d: %s", unsupportedUpload.Code, unsupportedUpload.Body.String())
+	}
+	invalidContentUpload := performMultipart(router, "/api/v1/moments/images", aliceToken, nil, "file", "fake.png", []byte("not actually png"))
+	if invalidContentUpload.Code != http.StatusBadRequest || !strings.Contains(invalidContentUpload.Body.String(), "invalid_image_content") {
+		t.Fatalf("expected invalid image content rejection, got %d: %s", invalidContentUpload.Code, invalidContentUpload.Body.String())
+	}
+	largeImage := append(validPNGBytes(), make([]byte, 5*1024*1024+1)...)
+	tooLargeUpload := performMultipart(router, "/api/v1/moments/images", aliceToken, nil, "file", "large.png", largeImage)
+	if tooLargeUpload.Code != http.StatusBadRequest || !strings.Contains(tooLargeUpload.Body.String(), "file_too_large") {
+		t.Fatalf("expected oversized image upload rejection, got %d: %s", tooLargeUpload.Code, tooLargeUpload.Body.String())
+	}
+	imageUpload := performMultipart(router, "/api/v1/moments/images", aliceToken, nil, "file", "progress.png", validPNGBytes())
+	if imageUpload.Code != http.StatusOK {
+		t.Fatalf("expected image upload 200, got %d: %s", imageUpload.Code, imageUpload.Body.String())
+	}
+	var imagePayload struct {
+		Data struct {
+			Image struct {
+				URL         string `json:"url"`
+				FileName    string `json:"fileName"`
+				FileSize    int64  `json:"fileSize"`
+				ContentType string `json:"contentType"`
+			} `json:"image"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(imageUpload.Body.Bytes(), &imagePayload); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(imagePayload.Data.Image.URL, "/uploads/moments/"+alice.ID+"/") || strings.Contains(imagePayload.Data.Image.URL, "progress.png") {
+		t.Fatalf("expected generated user-scoped upload URL, got %#v", imagePayload.Data.Image)
+	}
+	if imagePayload.Data.Image.FileName != "progress.png" || imagePayload.Data.Image.ContentType != "image/png" || imagePayload.Data.Image.FileSize <= 0 {
+		t.Fatalf("unexpected upload metadata: %#v", imagePayload.Data.Image)
+	}
+	uploadedPath := filepath.Join(cfg.LocalUploadDir, filepath.FromSlash(strings.TrimPrefix(imagePayload.Data.Image.URL, "/uploads/")))
+	if _, err := os.Stat(uploadedPath); err != nil {
+		t.Fatalf("expected uploaded image on disk: %v", err)
+	}
+	servedImage := performJSON(router, http.MethodGet, imagePayload.Data.Image.URL, "", "")
+	if servedImage.Code != http.StatusOK {
+		t.Fatalf("expected uploaded image to be served, got %d: %s", servedImage.Code, servedImage.Body.String())
+	}
+	otherUserImage := strings.Replace(imagePayload.Data.Image.URL, alice.ID, bob.ID, 1)
+	foreignImageCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"foreign image","images":["`+otherUserImage+`"]}`, aliceToken)
+	if foreignImageCreate.Code != http.StatusBadRequest || !strings.Contains(foreignImageCreate.Body.String(), "invalid_image_url") {
+		t.Fatalf("expected foreign image URL rejection, got %d: %s", foreignImageCreate.Code, foreignImageCreate.Body.String())
+	}
+	traversalImage := "/uploads/moments/" + alice.ID + "/../secret.png"
+	traversalImageCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"traversal image","images":["`+traversalImage+`"]}`, aliceToken)
+	if traversalImageCreate.Code != http.StatusBadRequest || !strings.Contains(traversalImageCreate.Body.String(), "invalid_image_url") {
+		t.Fatalf("expected traversal image URL rejection, got %d: %s", traversalImageCreate.Code, traversalImageCreate.Body.String())
+	}
+
+	publicCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"Public review note","images":["`+imagePayload.Data.Image.URL+`"]}`, aliceToken)
 	if publicCreate.Code != http.StatusOK {
 		t.Fatalf("expected public moment create 200, got %d: %s", publicCreate.Code, publicCreate.Body.String())
 	}
@@ -167,4 +231,8 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	if selfFollow.Code != http.StatusBadRequest || !strings.Contains(selfFollow.Body.String(), "invalid_target") {
 		t.Fatalf("expected self-follow rejection, got %d: %s", selfFollow.Code, selfFollow.Body.String())
 	}
+}
+
+func validPNGBytes() []byte {
+	return []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}
 }

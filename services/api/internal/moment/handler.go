@@ -1,13 +1,19 @@
 package moment
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -22,14 +28,20 @@ const (
 	relationFollow          = "follow"
 	relationBlock           = "block"
 	relationMomentLike      = "moment_like"
+	maxMomentImageBytes     = 5 * 1024 * 1024
 )
 
 type Handler struct {
-	db *gorm.DB
+	db        *gorm.DB
+	uploadDir string
 }
 
-func NewHandler(db *gorm.DB) Handler {
-	return Handler{db: db}
+func NewHandler(db *gorm.DB, uploadDirs ...string) Handler {
+	uploadDir := "uploads"
+	if len(uploadDirs) > 0 && strings.TrimSpace(uploadDirs[0]) != "" {
+		uploadDir = strings.TrimSpace(uploadDirs[0])
+	}
+	return Handler{db: db, uploadDir: uploadDir}
 }
 
 type createMomentRequest struct {
@@ -53,6 +65,13 @@ type momentDTO struct {
 type momentCommentDTO struct {
 	model.MomentComment
 	Author userSummary `json:"author"`
+}
+
+type momentImageDTO struct {
+	URL         string `json:"url"`
+	FileName    string `json:"fileName"`
+	FileSize    int64  `json:"fileSize"`
+	ContentType string `json:"contentType"`
 }
 
 type userSummary struct {
@@ -114,7 +133,7 @@ func (h Handler) Create(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "too_many_images", nil)
 		return
 	}
-	images, err := validateImages(req.Images)
+	images, err := h.validateImages(req.Images, user.ID)
 	if err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
 		return
@@ -131,6 +150,95 @@ func (h Handler) Create(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"moment": h.momentDTO(user, moment)})
+}
+
+func (h Handler) UploadImage(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxMomentImageBytes+1024)
+	file, header, err := ctx.Request.FormFile("file")
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "too large") {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "file_too_large", nil)
+			return
+		}
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_file", nil)
+		return
+	}
+	defer file.Close()
+
+	if header.Size <= 0 || header.Size > maxMomentImageBytes {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "file_too_large", nil)
+		return
+	}
+	originalName, ext, err := safeMomentImageFileName(header)
+	if err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+	contentType, err := validateMomentImageContent(file, ext)
+	if err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+
+	storageKey := filepath.ToSlash(filepath.Join("moments", user.ID, uuid.NewString()+ext))
+	targetPath, err := safeUploadPath(h.uploadDir, storageKey)
+	if err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsafe_image_path", nil)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "upload_failed", nil)
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "upload_failed", nil)
+		return
+	}
+	target, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "upload_failed", nil)
+		return
+	}
+	defer target.Close()
+	written, err := io.Copy(target, io.LimitReader(file, maxMomentImageBytes+1))
+	if err != nil || written > maxMomentImageBytes {
+		_ = os.Remove(targetPath)
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "upload_failed", nil)
+		return
+	}
+
+	response.OK(ctx, gin.H{"image": momentImageDTO{
+		URL:         "/uploads/" + storageKey,
+		FileName:    originalName,
+		FileSize:    written,
+		ContentType: contentType,
+	}})
+}
+
+func (h Handler) ServeImage(ctx *gin.Context) {
+	relativePath := strings.TrimPrefix(ctx.Param("filepath"), "/")
+	targetPath, err := safeUploadPath(h.uploadDir, filepath.ToSlash(filepath.Join("moments", relativePath)))
+	if err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "image_not_found", nil)
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(targetPath))
+	if _, ok := momentImageContentTypes[ext]; !ok {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "image_not_found", nil)
+		return
+	}
+	info, err := os.Stat(targetPath)
+	if err != nil || info.IsDir() {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "image_not_found", nil)
+		return
+	}
+	ctx.Header("Cache-Control", "public, max-age=31536000, immutable")
+	ctx.File(targetPath)
 }
 
 func (h Handler) Delete(ctx *gin.Context) {
@@ -341,8 +449,9 @@ func (h Handler) hasBlockEitherDirection(leftID string, rightID string) bool {
 	return count > 0
 }
 
-func validateImages(values []string) (datatypes.JSON, error) {
+func (h Handler) validateImages(values []string, userID string) (datatypes.JSON, error) {
 	cleaned := make([]string, 0, len(values))
+	prefix := "/uploads/moments/" + userID + "/"
 	for _, value := range values {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
@@ -351,8 +460,17 @@ func validateImages(values []string) (datatypes.JSON, error) {
 		if len([]rune(trimmed)) > 500 {
 			return nil, errors.New("image_url_too_long")
 		}
-		if !(strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") || strings.HasPrefix(trimmed, "/uploads/")) {
+		if !strings.HasPrefix(trimmed, prefix) {
 			return nil, errors.New("invalid_image_url")
+		}
+		storageKey := strings.TrimPrefix(trimmed, "/uploads/")
+		path, err := safeUploadPath(h.uploadDir, storageKey)
+		if err != nil {
+			return nil, errors.New("invalid_image_url")
+		}
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			return nil, errors.New("image_not_found")
 		}
 		cleaned = append(cleaned, trimmed)
 	}
@@ -384,4 +502,81 @@ func parseLimit(value string, fallback int, max int) (int, error) {
 		return 0, errors.New("invalid_limit")
 	}
 	return limit, nil
+}
+
+var momentImageContentTypes = map[string]string{
+	".gif":  "image/gif",
+	".jpeg": "image/jpeg",
+	".jpg":  "image/jpeg",
+	".png":  "image/png",
+	".webp": "image/webp",
+}
+
+func safeMomentImageFileName(header *multipart.FileHeader) (string, string, error) {
+	name := strings.TrimSpace(header.Filename)
+	if name == "" || strings.ContainsAny(name, `/\`) || name != filepath.Base(name) {
+		return "", "", errors.New("unsafe_file_name")
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	if _, ok := momentImageContentTypes[ext]; !ok {
+		return "", "", errors.New("unsupported_image_type")
+	}
+	return name, ext, nil
+}
+
+func validateMomentImageContent(file multipart.File, ext string) (string, error) {
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		return "", errors.New("invalid_image_content")
+	}
+	content := buffer[:n]
+	contentType := detectMomentImageContentType(content)
+	if contentType == "" || contentType != momentImageContentTypes[ext] {
+		return "", errors.New("invalid_image_content")
+	}
+	return contentType, nil
+}
+
+func detectMomentImageContentType(content []byte) string {
+	switch {
+	case len(content) >= 3 && content[0] == 0xff && content[1] == 0xd8 && content[2] == 0xff:
+		return "image/jpeg"
+	case len(content) >= 8 && bytes.Equal(content[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}):
+		return "image/png"
+	case len(content) >= 6 && (bytes.Equal(content[:6], []byte("GIF87a")) || bytes.Equal(content[:6], []byte("GIF89a"))):
+		return "image/gif"
+	case len(content) >= 12 && bytes.Equal(content[:4], []byte("RIFF")) && bytes.Equal(content[8:12], []byte("WEBP")):
+		return "image/webp"
+	default:
+		return ""
+	}
+}
+
+func safeUploadPath(uploadDir string, storageKey string) (string, error) {
+	normalizedKey := filepath.ToSlash(strings.TrimSpace(storageKey))
+	if normalizedKey == "" || strings.Contains(normalizedKey, `\`) {
+		return "", errors.New("unsafe_path")
+	}
+	for _, part := range strings.Split(normalizedKey, "/") {
+		if part == "" || part == "." || part == ".." {
+			return "", errors.New("unsafe_path")
+		}
+	}
+	cleanKey := filepath.Clean(filepath.FromSlash(normalizedKey))
+	if cleanKey == "" || cleanKey == "." || cleanKey == ".." || filepath.IsAbs(cleanKey) || strings.HasPrefix(cleanKey, ".."+string(filepath.Separator)) {
+		return "", errors.New("unsafe_path")
+	}
+	root, err := filepath.Abs(uploadDir)
+	if err != nil {
+		return "", err
+	}
+	target, err := filepath.Abs(filepath.Join(root, cleanKey))
+	if err != nil {
+		return "", err
+	}
+	if target != root && !strings.HasPrefix(target, root+string(filepath.Separator)) {
+		return "", errors.New("unsafe_path")
+	}
+	return target, nil
 }

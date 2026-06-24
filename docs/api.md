@@ -54,6 +54,7 @@ Currently implemented endpoints:
 - `POST /api/v1/forum/replies/:id/mark-best`
 - `GET /api/v1/moments?limit=`
 - `POST /api/v1/moments`
+- `POST /api/v1/moments/images`
 - `DELETE /api/v1/moments/:id`
 - `POST /api/v1/moments/:id/like`
 - `POST /api/v1/moments/:id/comments`
@@ -358,7 +359,9 @@ Implemented moment and relation behavior:
 - blocking a user removes follow edges between the two users and prevents future follow until unblocked.
 - `/me/following`, `/me/followers`, and `/me/friends` are user-scoped and hide blocked relationships.
 - relation-list responses contain only public user summaries (`id`, `name`, `role`) and do not expose email addresses.
-- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments; richer media upload remains future work.
+- `POST /api/v1/moments/images` accepts authenticated image uploads only. It stores generated files under `LOCAL_UPLOAD_DIR/moments/{userId}/`, allows JPG/PNG/WEBP/GIF, caps each file at 5MB, checks image magic bytes, and returns a user-scoped `/uploads/moments/...` URL.
+- `POST /api/v1/moments` accepts only existing uploaded image URLs owned by the current user; arbitrary external image URLs and another user's uploaded image URLs are rejected.
+- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments with local image upload and preview. Video, private media authorization beyond unguessable user-scoped URLs, and cloud object storage remain future work.
 
 Implemented public user profile behavior:
 
