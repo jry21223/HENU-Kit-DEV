@@ -144,7 +144,7 @@
   - 状态查询、重复下单复用、Native 支付创建和 admin 订单列表会先把过期 pending/paying 订单置为 `expired`。
   - expired 订单不能继续拉起二维码，不能通过 close 接口关闭，也不会被新课程包订单复用。
 - Admin 订单查询可展示并筛选 `risk_flag`，用于支付异常排查；当前还不是自动告警或自动对账系统。
-- Payment incident ledger has been added for rejected WeChat callback anomalies (`order_not_found`, `amount_mismatch`, `transaction_conflict`). Admins can mark incidents `resolved` or `ignored`; this writes operation logs only and never marks orders paid or grants entitlement.
+- Payment incident ledger has been added for rejected WeChat callback anomalies (`order_not_found`, `amount_mismatch`, `transaction_conflict`). Admins can mark incidents `resolved` or `ignored`; this writes operation logs only and never marks orders paid or grants entitlement. Vue Admin Dashboard now surfaces the open incident count as a basic operator prompt.
 - Web 课程包详情页现在可以：
   - 创建或复用待支付课程包订单。
   - 调用 Native 下单接口获取服务端返回的 `codeUrl`。
@@ -307,7 +307,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、Web 错题本存在；练习 session、复杂评分仍需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review 存在；真实 LLM、RAG、发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在论坛悬赏等场景已使用；会员产品和兑换链路未完整闭环。 |
-| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、带请求签名/响应验签的 live Native 下单代码路径、live 官方 notify 验签/解密/金额校验/幂等授权代码路径、基础关单接口、订单过期收敛、risk_flag 可见性和 payment incident 人工处理台账；真实微信商户端到端联调、退款、证书轮换和自动告警未完成。 |
+| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、带请求签名/响应验签的 live Native 下单代码路径、live 官方 notify 验签/解密/金额校验/幂等授权代码路径、基础关单接口、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账和 Dashboard 未处理数量提醒；真实微信商户端到端联调、退款、证书轮换、外部告警和自动对账未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 / 强 MVP | Wiki 公开页、修订提案、审核、历史、stale 防护已做；创作者申请流未完整完成。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog、Forum 基础和审核已做；Moment、关系系统、用户主页未做。 |
 | Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已做；搜索和排行榜未做。 |

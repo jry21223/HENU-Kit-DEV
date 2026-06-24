@@ -37,7 +37,7 @@
 
     <el-card class="section-card" shadow="never">
       <template #header>
-        <strong>{{ copy.incidents }}</strong>
+        <strong>{{ copy.incidents }}{{ total !== null ? ` (${total})` : "" }}</strong>
       </template>
       <el-table v-loading="loading" :data="incidents" empty-text="No payment incidents" style="width: 100%">
         <el-table-column :label="copy.type" min-width="210">
@@ -127,7 +127,7 @@
 import { ElMessageBox } from "element-plus";
 import { onMounted, reactive, ref } from "vue";
 import AdminShell from "../components/AdminShell.vue";
-import { apiRequest, type PaymentIncident } from "../lib/api";
+import { apiRequest, type PaymentIncident, type PaymentIncidentListResponse } from "../lib/api";
 
 const copy = {
   title: "\u652f\u4ed8\u5f02\u5e38\u53f0\u8d26",
@@ -171,6 +171,7 @@ const statuses = [
 ];
 
 const incidents = ref<PaymentIncident[]>([]);
+const total = ref<number | null>(null);
 const loading = ref(false);
 const handlingId = ref("");
 const message = ref("");
@@ -194,10 +195,9 @@ async function loadIncidents() {
     if (filters.outTradeNo.trim()) params.set("outTradeNo", filters.outTradeNo.trim());
     if (filters.transactionId.trim()) params.set("transactionId", filters.transactionId.trim());
     const query = params.toString();
-    const response = await apiRequest<{ incidents: PaymentIncident[] }>(
-      `/admin/payment-incidents${query ? `?${query}` : ""}`,
-    );
+    const response = await apiRequest<PaymentIncidentListResponse>(`/admin/payment-incidents${query ? `?${query}` : ""}`);
     incidents.value = response.data?.incidents ?? [];
+    total.value = response.data?.total ?? incidents.value.length;
   } catch (err) {
     error.value = err instanceof Error ? err.message : copy.loadFailed;
   } finally {

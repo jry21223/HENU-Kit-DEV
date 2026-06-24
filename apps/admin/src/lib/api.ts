@@ -173,6 +173,11 @@ export type PaymentIncident = {
   updatedAt: string;
 };
 
+export type PaymentIncidentListResponse = {
+  incidents: PaymentIncident[];
+  total: number;
+};
+
 export type DownloadRecord = {
   id: string;
   userId?: string;

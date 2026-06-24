@@ -67,7 +67,7 @@ func TestPaymentIncidentCreatedForAmountMismatchAndResolvedByAdmin(t *testing.T)
 		t.Fatalf("expected user incident list 403, got %d: %s", forbidden.Code, forbidden.Body.String())
 	}
 	list := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents?incidentType=amount_mismatch&outTradeNo=INCIDENTORDER", "", adminToken)
-	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), incident.ID) || !strings.Contains(list.Body.String(), `"status":"open"`) {
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), incident.ID) || !strings.Contains(list.Body.String(), `"status":"open"`) || !strings.Contains(list.Body.String(), `"total":1`) {
 		t.Fatalf("expected admin incident list to include open incident, got %d: %s", list.Code, list.Body.String())
 	}
 
@@ -91,6 +91,10 @@ func TestPaymentIncidentCreatedForAmountMismatchAndResolvedByAdmin(t *testing.T)
 	}
 	if countPackageGrants(t, db, user.ID, coursePackage.ID, order.ID) != 0 {
 		t.Fatal("incident handling must not grant package entitlement")
+	}
+	openAfterResolve := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents?status=open", "", adminToken)
+	if openAfterResolve.Code != http.StatusOK || !strings.Contains(openAfterResolve.Body.String(), `"total":0`) {
+		t.Fatalf("expected no open incidents after handling, got %d: %s", openAfterResolve.Code, openAfterResolve.Body.String())
 	}
 
 	repeatResolve := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/resolve", `{"status":"resolved"}`, adminToken)

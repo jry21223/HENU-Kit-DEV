@@ -543,12 +543,17 @@ func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
 	if transactionID := strings.TrimSpace(ctx.Query("transactionId")); transactionID != "" {
 		query = query.Where("transaction_id LIKE ?", "%"+transactionID+"%")
 	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
 	var incidents []model.PaymentIncident
 	if err := query.Order("created_at desc").Limit(limit).Find(&incidents).Error; err != nil {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"incidents": incidents})
+	response.OK(ctx, gin.H{"incidents": incidents, "total": total})
 }
 
 func (h Handler) ResolvePaymentIncident(ctx *gin.Context) {

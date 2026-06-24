@@ -219,6 +219,7 @@ Implemented order foundation:
 - admin order inspection can filter `riskOnly=true` or partial `riskFlag`; this exposes existing payment risk markers for triage but does not auto-resolve payment exceptions
 - WeChat callback anomalies are also captured in `payment_incidents` for manual triage; current incident types include `order_not_found`, `amount_mismatch`, and `transaction_conflict`
 - `GET /api/v1/admin/payment-incidents` is admin-only, defaults to `status=open`, and can filter by incident type, order id, out-trade number, transaction id, and limit
+- the payment incident list response includes `incidents` and `total`; Vue Admin uses `total` to surface open payment incident alerts on the dashboard
 - `POST /api/v1/admin/payment-incidents/:id/resolve` marks an open incident as `resolved` or `ignored`, records the handling admin and note, and writes an operation log
 - resolving or ignoring a payment incident is deliberately non-financial: it does not mark an order paid, does not create a payment record, and does not grant entitlement
 
