@@ -86,6 +86,7 @@ Currently implemented endpoints:
 - `POST /api/v1/users/:id/unfollow`
 - `POST /api/v1/users/:id/block`
 - `POST /api/v1/users/:id/unblock`
+- `GET /api/v1/users/:id`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/reports`
@@ -356,7 +357,16 @@ Implemented moment and relation behavior:
 - users can follow/unfollow/block/unblock other users; self-follow/self-block is rejected.
 - blocking a user removes follow edges between the two users and prevents future follow until unblocked.
 - `/me/following`, `/me/followers`, and `/me/friends` are user-scoped and hide blocked relationships.
-- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments; user profile aggregation and richer media upload remain future work.
+- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments; richer media upload remains future work.
+
+Implemented public user profile behavior:
+
+- `GET /api/v1/users/:id` is public with optional auth.
+- responses never include user email, verification code data, review metadata, or hidden draft/pending/rejected content.
+- anonymous users see active public profile metadata, published public moments, published public blog posts, published public forum posts, and published replies under published public forum posts.
+- authenticated users can additionally see mutual-friends moments when both users follow each other.
+- if either side has blocked the other, authenticated profile lookup returns `404 user_not_found`.
+- relation state fields include `followingByMe`, `followsMe`, `mutualFriend`, `blockedByMe`, and `blockedMe`.
 
 Implemented notification behavior:
 

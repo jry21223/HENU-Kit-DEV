@@ -32,6 +32,7 @@ import (
 	"final-review-platform/services/api/internal/relation"
 	"final-review-platform/services/api/internal/report"
 	"final-review-platform/services/api/internal/search"
+	"final-review-platform/services/api/internal/user"
 	"final-review-platform/services/api/internal/wiki"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/middleware"
@@ -81,6 +82,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	reportHandler := report.NewHandler(db)
 	searchHandler := search.NewHandler(db)
 	wikiHandler := wiki.NewHandler(db)
+	userHandler := user.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
 	analyticsHandler := analytics.NewHandler(db)
@@ -170,6 +172,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.POST("/users/:id/unfollow", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Unfollow)
 	v1.POST("/users/:id/block", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Block)
 	v1.POST("/users/:id/unblock", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Unblock)
+	v1.GET("/users/:id", authMiddleware.OptionalAuth(), userHandler.Profile)
 	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 

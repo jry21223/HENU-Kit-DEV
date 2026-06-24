@@ -351,6 +351,40 @@ export type Moment = {
   recentComments?: MomentComment[];
 };
 
+export type PublicUserProfile = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  schoolId?: string;
+  majorId?: string;
+  grade?: string;
+  createdAt: string;
+  followingByMe: boolean;
+  followsMe: boolean;
+  mutualFriend: boolean;
+  blockedByMe: boolean;
+  blockedMe: boolean;
+  followingCount: number;
+  followersCount: number;
+  momentsCount: number;
+  blogPostsCount: number;
+  forumPostsCount: number;
+  forumRepliesCount: number;
+};
+
+export type UserProfileForumReply = ForumReply & {
+  postTitle: string;
+};
+
+export type UserProfileResponse = {
+  profile: PublicUserProfile;
+  moments: Moment[];
+  blogPosts: BlogPost[];
+  forumPosts: ForumPost[];
+  forumReplies: UserProfileForumReply[];
+};
+
 export type SearchResult = {
   id: string;
   type: "course" | "material" | "package" | "wiki" | "blog" | "forum";

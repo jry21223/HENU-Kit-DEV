@@ -246,7 +246,9 @@ export function MomentFeed({ initialMoments }: { initialMoments: Moment[] }) {
             <article className="rounded-3xl border border-border bg-card p-5 shadow-sm" key={moment.id}>
               <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="break-words font-semibold">{moment.author.name || "\u533f\u540d\u540c\u5b66"}</p>
+                  <Link className="break-words font-semibold hover:text-primary" href={`/users/${moment.author.id}`}>
+                    {moment.author.name || "\u533f\u540d\u540c\u5b66"}
+                  </Link>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {visibilityLabel(moment.visibility)} / {formatDate(moment.createdAt)}
                   </p>
