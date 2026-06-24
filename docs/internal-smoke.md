@@ -69,6 +69,24 @@ npm --workspace @final-review/web run test:e2e:quiz
 
 This smoke logs in as a student through the real Web login page, opens a real course quiz page, submits an intentionally wrong choice answer, checks the authenticated Go API wrong-question count, and confirms `/me/wrong-questions` renders the question. Use a fresh student account when possible because the test increments wrong-question counters. Set `E2E_QUIZ_COURSE_ID`, `E2E_QUIZ_QUESTION_ID`, or `E2E_QUIZ_WRONG_ANSWER` when the target environment does not use seed data.
 
+## Admin Blog-Review Browser Smoke
+
+After Web, Admin, and API are reachable, run the admin review smoke from the repository root:
+
+```bash
+$env:E2E_REVIEW_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_REVIEW_AUTHOR_EMAIL="smoke-review-author@stu.henu.edu.cn"
+$env:E2E_REVIEW_AUTHOR_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+npm --workspace @final-review/web run test:e2e:review
+```
+
+This smoke creates a unique pending blog post through the Go API, proves the public detail endpoint returns 404 before review, opens Vue Admin `/blog-reviews`, approves the post through the Admin UI, and verifies the public Web blog detail page renders the approved post. It is opt-in because it mutates blog rows, notifications, and operation logs.
+
 ## What It Checks
 
 - API readiness: `GET /readyz`
@@ -83,6 +101,7 @@ This smoke logs in as a student through the real Web login page, opens a real co
 - Optional `-grant-package-access`: logs in as admin, grants the selected published package to the smoke user, and verifies paid download succeeds after the server-side grant
 - Optional browser smoke: validates the Web/Admin UI path around the same server-side paid boundary
 - Optional quiz browser smoke: validates the authenticated quiz submission to wrong-question-book path
+- Optional admin review browser smoke: validates pending Blog content remains hidden until approval and becomes public after Admin UI review
 
 ## Important Flags
 
@@ -126,6 +145,9 @@ E2E_QUIZ_SMOKE=0
 E2E_QUIZ_COURSE_ID=
 E2E_QUIZ_QUESTION_ID=
 E2E_QUIZ_WRONG_ANSWER=
+E2E_REVIEW_SMOKE=0
+E2E_REVIEW_AUTHOR_EMAIL=smoke-review-author@stu.henu.edu.cn
+E2E_REVIEW_AUTHOR_CODE=123456
 ```
 
 ## Internal-Test Sequence
@@ -196,7 +218,13 @@ E2E_QUIZ_WRONG_ANSWER=
    npm --workspace @final-review/web run test:e2e:quiz
    ```
 
-10. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling or manual access-grant smoke.
+10. Run admin blog-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+
+   ```bash
+   npm --workspace @final-review/web run test:e2e:review
+   ```
+
+11. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling or manual access-grant smoke.
 
 ## Failure Handling
 
@@ -210,4 +238,5 @@ E2E_QUIZ_WRONG_ANSWER=
 - `paid download after grant` fails: inspect `/access-grants`, `/packages/:id`, and package item bindings; the selected package must be published and contain the paid material returned by package detail.
 - Browser smoke opens but skips: set `E2E_DELIVERY_SMOKE=1`. It is opt-in because it creates or reuses an access grant.
 - Quiz smoke opens but skips: set `E2E_QUIZ_SMOKE=1`. It is opt-in because it writes wrong-question records.
+- Review smoke opens but skips: set `E2E_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Blog post.
 - Browser smoke cannot log in: development can use `DEV_FIXED_VERIFICATION_CODE`; staging/production needs a real test inbox or manually supplied current code.

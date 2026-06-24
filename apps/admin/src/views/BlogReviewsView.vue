@@ -57,6 +57,7 @@
                 type="success"
                 plain
                 :disabled="!canReview(row.status)"
+                :data-testid="`blog-review-approve-${row.id}`"
                 @click="openReview(row, 'approve')"
               >
                 {{ copy.approve }}
@@ -66,6 +67,7 @@
                 type="danger"
                 plain
                 :disabled="!canReview(row.status)"
+                :data-testid="`blog-review-reject-${row.id}`"
                 @click="openReview(row, 'reject')"
               >
                 {{ copy.reject }}
@@ -97,6 +99,7 @@
           <el-button
             :type="reviewAction === 'approve' ? 'success' : 'danger'"
             :loading="reviewing"
+            data-testid="blog-review-submit"
             @click="submitReview"
           >
             {{ reviewAction === "approve" ? copy.approve : copy.reject }}
