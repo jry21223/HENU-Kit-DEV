@@ -229,6 +229,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Vue Admin includes `/forum-reply-reviews` for reviewer/admin forum reply approve/reject review, review reason capture, and one-way review checks.
 - Vue Admin includes `/ai/drafts` for reviewer/admin AI task visibility, draft approve/reject review, and review reason capture.
 - Vue Admin includes `/analytics` for read-only successful-download trends, top materials, access breakdown, course demand, and report handling distribution.
+- Go API includes admin-only `GET /api/v1/admin/media-assets` and `POST /api/v1/admin/media-assets/cleanup` for moment image asset audit and stale unattached upload cleanup. Cleanup defaults to dry-run, never touches attached moment images, and writes an operation log; Vue Admin does not yet include a media asset page.
 - Vue Admin includes operation-log time filtering, CSV export, and a read-only retention policy panel.
 - The download audit page reads `GET /api/v1/admin/downloads` and still depends on Go API server-side admin authorization.
 - The user management page reads `GET /api/v1/admin/users` and writes `PATCH /api/v1/admin/users/:id`; it does not edit email, password credentials, membership, or points balance.

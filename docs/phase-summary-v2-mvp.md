@@ -381,6 +381,12 @@ git diff --check
 - 缺少浏览器级 E2E 与移动端截图回归。
 - 生产部署还缺 HTTPS、反代、安全 headers、日志/监控、备份策略。
 
+### 7.1 2026-06-24 Media Asset Cleanup Update
+
+- Stale unattached moment-image cleanup now has an admin-only Go API.
+- Cleanup defaults to dry-run, removes local files only after safe-path checks, archives matching `media_assets` rows, and writes `media_asset.cleanup` operation logs.
+- The Vue Admin media asset page, cloud object storage lifecycle policy, and production media retention operations are still not implemented.
+
 ## 8. 下一阶段建议
 
 最小下一步建议按这个顺序推进：

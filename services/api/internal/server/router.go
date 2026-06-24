@@ -184,6 +184,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	})
 	admin.GET("/users", adminHandler.ListUsers)
 	admin.PATCH("/users/:id", adminHandler.UpdateUser)
+	admin.GET("/media-assets", adminHandler.ListMediaAssets)
+	admin.POST("/media-assets/cleanup", adminHandler.CleanupMediaAssets)
 	admin.GET("/points/logs", pointsHandler.AdminLogs)
 	admin.GET("/points/rules", pointsHandler.AdminRules)
 	admin.POST("/points/rules", pointsHandler.CreateRule)

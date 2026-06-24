@@ -169,6 +169,12 @@ type resolvePaymentIncidentRequest struct {
 	HandleNote string `json:"handleNote"`
 }
 
+type cleanupMediaAssetsRequest struct {
+	OlderThanHours *int  `json:"olderThanHours"`
+	DryRun         *bool `json:"dryRun"`
+	Limit          *int  `json:"limit"`
+}
+
 type accessGrantRow struct {
 	Grant    model.MaterialAccessGrant `json:"grant"`
 	User     *model.User               `json:"user,omitempty"`
@@ -212,6 +218,23 @@ type paymentReconciliationSummary struct {
 	Medium   int            `json:"medium"`
 	Low      int            `json:"low"`
 	Types    map[string]int `json:"types"`
+}
+
+type mediaAssetRow struct {
+	Asset   model.MediaAsset `json:"asset"`
+	Owner   *model.User      `json:"owner,omitempty"`
+	HasFile bool             `json:"hasFile"`
+}
+
+type mediaCleanupSummary struct {
+	DryRun         bool            `json:"dryRun"`
+	OlderThanHours int             `json:"olderThanHours"`
+	Cutoff         string          `json:"cutoff"`
+	Candidates     int             `json:"candidates"`
+	DeletedFiles   int             `json:"deletedFiles"`
+	MissingFiles   int             `json:"missingFiles"`
+	ArchivedRows   int64           `json:"archivedRows"`
+	Assets         []mediaAssetRow `json:"assets"`
 }
 
 type packageItemRow struct {
@@ -338,6 +361,156 @@ func (h Handler) UpdateUser(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"user": updated})
+}
+
+func (h Handler) ListMediaAssets(ctx *gin.Context) {
+	query := h.db.Model(&model.MediaAsset{})
+	if usage := strings.TrimSpace(ctx.Query("usage")); usage != "" {
+		if usage != "moment_image" {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_usage", nil)
+			return
+		}
+		query = query.Where("usage = ?", usage)
+	}
+	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
+		if !validMediaAssetStatus(status) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+			return
+		}
+		query = query.Where("status = ?", status)
+	}
+	if ownerEmail := strings.TrimSpace(ctx.Query("ownerEmail")); ownerEmail != "" {
+		var owners []model.User
+		if err := h.db.Where("email LIKE ?", "%"+ownerEmail+"%").Limit(200).Find(&owners).Error; err != nil {
+			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+			return
+		}
+		ownerIDs := make([]string, 0, len(owners))
+		for _, owner := range owners {
+			ownerIDs = append(ownerIDs, owner.ID)
+		}
+		if len(ownerIDs) == 0 {
+			response.OK(ctx, gin.H{"assets": []mediaAssetRow{}})
+			return
+		}
+		query = query.Where("owner_id IN ?", ownerIDs)
+	}
+	if momentID := strings.TrimSpace(ctx.Query("momentId")); momentID != "" {
+		query = query.Where("moment_id = ?", momentID)
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 200, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var assets []model.MediaAsset
+	if err := query.Order("created_at desc").Limit(limit).Find(&assets).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	rows, err := h.mediaAssetRows(assets)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"assets": rows})
+}
+
+func (h Handler) CleanupMediaAssets(ctx *gin.Context) {
+	current, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req cleanupMediaAssetsRequest
+	if !bindJSON(ctx, &req) {
+		return
+	}
+	olderThanHours := 24
+	if req.OlderThanHours != nil {
+		olderThanHours = *req.OlderThanHours
+	}
+	if olderThanHours <= 0 || olderThanHours > 24*30 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_older_than_hours", nil)
+		return
+	}
+	dryRun := true
+	if req.DryRun != nil {
+		dryRun = *req.DryRun
+	}
+	limit := 200
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	if limit <= 0 || limit > 500 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	cutoff := time.Now().Add(-time.Duration(olderThanHours) * time.Hour)
+	var assets []model.MediaAsset
+	if err := h.db.
+		Where("usage = ? AND status = ? AND moment_id IS NULL AND created_at < ?", "moment_image", "uploaded", cutoff).
+		Order("created_at asc").
+		Limit(limit).
+		Find(&assets).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	rows, err := h.mediaAssetRows(assets)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	summary := mediaCleanupSummary{
+		DryRun:         dryRun,
+		OlderThanHours: olderThanHours,
+		Cutoff:         cutoff.UTC().Format(time.RFC3339),
+		Candidates:     len(assets),
+		Assets:         rows,
+	}
+	if dryRun || len(assets) == 0 {
+		response.OK(ctx, gin.H{"cleanup": summary})
+		return
+	}
+	ids := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		ids = append(ids, asset.ID)
+		path, err := adminSafeStoragePath(h.uploadDir, asset.StorageKey)
+		if err != nil {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsafe_storage_key", nil)
+			return
+		}
+		if err := os.Remove(path); err == nil {
+			summary.DeletedFiles++
+		} else if errors.Is(err, os.ErrNotExist) {
+			summary.MissingFiles++
+		} else {
+			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "cleanup_failed", nil)
+			return
+		}
+	}
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		update := tx.Model(&model.MediaAsset{}).
+			Where("id IN ? AND status = ? AND moment_id IS NULL", ids, "uploaded").
+			Update("status", model.StatusArchived)
+		if update.Error != nil {
+			return update.Error
+		}
+		summary.ArchivedRows = update.RowsAffected
+		return audit.Record(ctx, tx, "media_asset.cleanup", "media_asset", "", map[string]interface{}{
+			"operatorId":     current.ID,
+			"olderThanHours": olderThanHours,
+			"candidateCount": len(assets),
+			"deletedFiles":   summary.DeletedFiles,
+			"missingFiles":   summary.MissingFiles,
+			"archivedRows":   summary.ArchivedRows,
+			"limit":          limit,
+		})
+	}); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "cleanup_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"cleanup": summary})
 }
 
 func (h Handler) ListAccessGrants(ctx *gin.Context) {
@@ -2610,6 +2783,64 @@ func parseGrantExpiresAt(raw string) (*time.Time, bool) {
 		return &endOfDay, true
 	}
 	return nil, false
+}
+
+func validMediaAssetStatus(value string) bool {
+	switch value {
+	case "uploaded", "attached", model.StatusArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+func (h Handler) mediaAssetRows(assets []model.MediaAsset) ([]mediaAssetRow, error) {
+	ownerIDs := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		ownerIDs = append(ownerIDs, asset.OwnerID)
+	}
+	owners, err := h.usersByID(ownerIDs)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]mediaAssetRow, 0, len(assets))
+	for _, asset := range assets {
+		row := mediaAssetRow{Asset: asset}
+		if owner, ok := owners[asset.OwnerID]; ok {
+			row.Owner = &owner
+		}
+		if path, err := adminSafeStoragePath(h.uploadDir, asset.StorageKey); err == nil {
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				row.HasFile = true
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func adminSafeStoragePath(uploadDir string, storageKey string) (string, error) {
+	normalizedKey := filepath.ToSlash(strings.TrimSpace(storageKey))
+	if normalizedKey == "" || strings.Contains(normalizedKey, `\`) {
+		return "", errors.New("unsafe_path")
+	}
+	for _, part := range strings.Split(normalizedKey, "/") {
+		if part == "" || part == "." || part == ".." {
+			return "", errors.New("unsafe_path")
+		}
+	}
+	root, err := filepath.Abs(uploadDir)
+	if err != nil {
+		return "", err
+	}
+	target, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(normalizedKey)))
+	if err != nil {
+		return "", err
+	}
+	if target != root && !strings.HasPrefix(target, root+string(filepath.Separator)) {
+		return "", errors.New("unsafe_path")
+	}
+	return target, nil
 }
 
 func jsonString(value interface{}) string {

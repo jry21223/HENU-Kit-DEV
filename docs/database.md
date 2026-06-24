@@ -52,3 +52,4 @@ Current access-control notes:
 - `forum_replies.is_best` marks the selected best answer; application logic allows only one best answer per published post.
 - `media_assets` stores uploaded dynamic images with owner, usage, storage key, file metadata, status, and optional `moment_id`. Moment image URLs expose only `/api/v1/moments/images/{mediaId}`; raw storage keys are not serialized.
 - Unattached `media_assets` are owner-only previews. After a moment is created, the API binds uploaded assets to the moment and image reads reuse the same public/mutual-friends/block visibility checks as the moment itself.
+- Admin cleanup archives stale unattached `moment_image` rows by setting `status=archived` after local file removal or missing-file confirmation. Attached rows with `moment_id` are excluded from cleanup, and `storage_key` remains internal-only.

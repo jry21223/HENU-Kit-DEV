@@ -93,6 +93,8 @@ Currently implemented endpoints:
 - `POST /api/v1/reports`
 - `GET /api/v1/admin/users?email=&role=&status=&limit=`
 - `PATCH /api/v1/admin/users/:id`
+- `GET /api/v1/admin/media-assets?usage=&status=&ownerEmail=&momentId=&limit=`
+- `POST /api/v1/admin/media-assets/cleanup`
 - `GET /api/v1/admin/points/logs?userId=&reason=&limit=`
 - `GET /api/v1/admin/points/rules`
 - `POST /api/v1/admin/points/rules`
@@ -362,7 +364,9 @@ Implemented moment and relation behavior:
 - `POST /api/v1/moments/images` accepts authenticated image uploads only. It creates a `media_assets` row, stores generated files under `LOCAL_UPLOAD_DIR/moments/{userId}/`, allows JPG/PNG/WEBP/GIF, caps each file at 5MB, checks image magic bytes, and returns `/api/v1/moments/images/{mediaId}`.
 - `GET /api/v1/moments/images/:id` serves the image through the Go API. Unattached uploads are visible only to the owner; attached public-moment images are publicly readable; attached mutual-friends images reuse the moment visibility and block checks.
 - `POST /api/v1/moments` accepts only existing uploaded image URLs owned by the current user, then binds each media asset to the created moment. Frontend-supplied storage keys are never accepted.
-- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments with local image upload and preview. Video media, cloud object storage, and richer media audit tooling remain future work.
+- Admin-only `GET /api/v1/admin/media-assets` lists moment media assets by usage, status, owner email, moment id, and limit. Responses include owner metadata and `hasFile`, but do not serialize raw storage keys.
+- Admin-only `POST /api/v1/admin/media-assets/cleanup` defaults to dry-run mode. It can archive old unattached `moment_image` uploads and remove their local files after an explicit `{"dryRun": false}` request. It refuses unsafe storage keys, records a `media_asset.cleanup` operation log, and never touches attached moment images.
+- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments with local image upload and preview. Video media, cloud object storage, and a Vue Admin media asset page remain future work.
 
 Implemented public user profile behavior:
 
