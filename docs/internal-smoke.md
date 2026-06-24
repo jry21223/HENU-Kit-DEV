@@ -34,6 +34,24 @@ go run ./cmd/smoke \
 
 This path first proves the selected paid material is denied before entitlement, then calls the admin-only access-grant API, then verifies the same student can download the paid material. It is for internal manual delivery and after-sales validation only; it is not a substitute for WeChat notify confirmation in the real payment flow.
 
+## Mock WeChat Payment Smoke
+
+For development/test environments only, the API smoke can exercise the full mock WeChat Native handoff:
+
+```bash
+cd services/api
+go run ./cmd/smoke \
+  -base-url http://localhost:8080/api/v1 \
+  -email smoke-pay@stu.henu.edu.cn \
+  -code 123456 \
+  -mock-wechat-pay \
+  -mock-wechat-secret mock-notify-secret
+```
+
+The API process must run with `WECHAT_PAY_MODE=mock` and `WECHAT_PAY_API_V3_KEY` set to the same local fake secret passed as `-mock-wechat-secret`. The smoke creates or reuses a package order, calls `POST /payments/wechat/native`, sends a signed mock notify to `POST /payments/wechat/notify`, verifies the order becomes `paid`, verifies the entitlement is granted, and then confirms the paid material can be downloaded.
+
+This is a local integration harness. It does not replace real WeChat merchant E2E, official callback verification in live mode, close-order verification, refund testing, certificate rotation, or payment operations alerts. Production must run `WECHAT_PAY_MODE=live`; `-mock-wechat-pay` should not be used against production.
+
 ## Browser Delivery Smoke
 
 After Web, Admin, and API are all reachable, run the browser smoke from the repository root:
@@ -98,6 +116,7 @@ This smoke creates a unique pending blog post through the Go API, proves the pub
 - `GET /auth/me` works with the returned bearer token
 - Paid material download is denied before entitlement
 - Optional `-create-order`: creates/reuses a local pending package order and reads its status
+- Optional `-mock-wechat-pay`: development/test only; creates/reuses an order, requests mock Native payment, sends signed mock notify, verifies `paid` order status, entitlement, and paid download
 - Optional `-grant-package-access`: logs in as admin, grants the selected published package to the smoke user, and verifies paid download succeeds after the server-side grant
 - Optional browser smoke: validates the Web/Admin UI path around the same server-side paid boundary
 - Optional quiz browser smoke: validates the authenticated quiz submission to wrong-question-book path
@@ -111,6 +130,8 @@ This smoke creates a unique pending blog post through the Go API, proves the pub
 - `-package-id`: package id to test; defaults to the first published package
 - `-skip-login`: only checks public endpoints and package safety
 - `-create-order`: mutates data by creating or reusing a pending order; it does not mark payment success
+- `-mock-wechat-pay`: mutates data by creating/reusing an order, sending a signed mock WeChat notify, and granting package entitlement through the backend payment path; development/test only
+- `-mock-wechat-secret`: HMAC secret for signed mock notify; must match the API process `WECHAT_PAY_API_V3_KEY`
 - `-admin-email`: admin test account email used only with `-grant-package-access`
 - `-admin-code`: admin verification code used only with `-grant-package-access`
 - `-grant-package-access`: mutates data by creating/reusing a manual admin package grant; it does not create a payment order or mark an order paid
@@ -128,6 +149,8 @@ SMOKE_ADMIN_EMAIL=admin@example.com
 SMOKE_ADMIN_CODE=123456
 SMOKE_PACKAGE_ID=
 SMOKE_CREATE_ORDER=false
+SMOKE_MOCK_WECHAT_PAY=false
+SMOKE_MOCK_WECHAT_SECRET=
 SMOKE_GRANT_PACKAGE_ACCESS=false
 SMOKE_SKIP_LOGIN=false
 SMOKE_EXPECT_PAID_DENIED=true
@@ -185,7 +208,21 @@ E2E_REVIEW_AUTHOR_CODE=123456
    go run ./cmd/smoke -base-url https://review.example.com/api/v1 -email smoke@stu.henu.edu.cn -create-order
    ```
 
-6. For manual-delivery internal testing, run the access-grant smoke with a fresh student test email and an admin email:
+6. In development/test only, verify the mock WeChat payment handoff against a non-production API running `WECHAT_PAY_MODE=mock`:
+
+   ```bash
+   cd services/api
+   go run ./cmd/smoke \
+     -base-url http://localhost:8080/api/v1 \
+     -email smoke-pay@stu.henu.edu.cn \
+     -code 123456 \
+     -mock-wechat-pay \
+     -mock-wechat-secret mock-notify-secret
+   ```
+
+   This step is intentionally not a production release gate. Production payment acceptance still requires real merchant Native order, official notify, close-order, and reconciliation checks.
+
+7. For manual-delivery internal testing, run the access-grant smoke with a fresh student test email and an admin email:
 
    ```bash
    cd services/api
@@ -198,7 +235,7 @@ E2E_REVIEW_AUTHOR_CODE=123456
 
    Use the real email codes in non-development environments. This should pass only after paid download is denied before the grant and allowed after the admin package grant.
 
-7. In Vue Admin, inspect:
+8. In Vue Admin, inspect:
 
    - `/orders`
    - `/payment-reconciliation`
@@ -206,25 +243,25 @@ E2E_REVIEW_AUTHOR_CODE=123456
    - `/access-grants`
    - `/downloads`
 
-8. Run browser delivery smoke with Web/Admin/API base URLs and fresh test accounts:
+9. Run browser delivery smoke with Web/Admin/API base URLs and fresh test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:delivery
    ```
 
-9. Run quiz wrong-question smoke with Web/API base URLs and a fresh test account:
+10. Run quiz wrong-question smoke with Web/API base URLs and a fresh test account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:quiz
    ```
 
-10. Run admin blog-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+11. Run admin blog-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:review
    ```
 
-11. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling or manual access-grant smoke.
+12. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
 
 ## Failure Handling
 
@@ -234,6 +271,8 @@ E2E_REVIEW_AUTHOR_CODE=123456
 - `paid material presence` fails: the selected package is not suitable for paid delivery smoke.
 - `paid download denied before entitlement` fails with HTTP 200: use a fresh smoke email or investigate paid access leakage.
 - `create order` reports already owned: use a fresh smoke email.
+- `mock wechat notify` fails with missing secret: pass `-mock-wechat-secret` or set `SMOKE_MOCK_WECHAT_SECRET`; the value must match `WECHAT_PAY_API_V3_KEY` on the API process.
+- `mock wechat native` fails outside development/test: confirm the target is not production and the API is intentionally running `WECHAT_PAY_MODE=mock`.
 - `manual package grant` fails with 401/403: confirm the admin account exists, is active, and has `admin` or `super_admin` role.
 - `paid download after grant` fails: inspect `/access-grants`, `/packages/:id`, and package item bindings; the selected package must be published and contain the paid material returned by package detail.
 - Browser smoke opens but skips: set `E2E_DELIVERY_SMOKE=1`. It is opt-in because it creates or reuses an access grant.

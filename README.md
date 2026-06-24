@@ -93,6 +93,7 @@ cd services/api && go run ./cmd/preflight -env-file ../../.env.production
 See `docs/deployment.md` before using this for any paid internal test. The example expects secrets and certificates to be mounted from ignored `secrets/` and `certs/` directories.
 - Production preflight is a deploy gate, not a substitute for merchant or browser smoke tests. It verifies dangerous configuration before the stack is opened to paid traffic.
 - Internal smoke runbook: `docs/internal-smoke.md`
+- Mock WeChat payment smoke: `go run ./cmd/smoke -mock-wechat-pay -mock-wechat-secret <local-fake-secret>` in development/test only; the API must run with `WECHAT_PAY_MODE=mock` and the same fake `WECHAT_PAY_API_V3_KEY`. It signs a mock notify, verifies backend `paid` status, entitlement, and paid download. It is not a real merchant E2E check.
 - Browser delivery smoke: `npm --workspace @final-review/web run test:e2e:delivery` with `E2E_DELIVERY_SMOKE=1` opens Web/Admin, verifies paid denial before entitlement, creates an admin package grant, and verifies paid download after the grant.
 - Quiz wrong-question smoke: `npm --workspace @final-review/web run test:e2e:quiz` with `E2E_QUIZ_SMOKE=1` logs in through Web, submits an intentionally wrong answer, verifies Go API wrong-question persistence, and checks `/me/wrong-questions`.
 - Admin review smoke: `npm --workspace @final-review/web run test:e2e:review` with `E2E_REVIEW_SMOKE=1` creates a pending Blog post, approves it through Vue Admin, and verifies it becomes public on Web.

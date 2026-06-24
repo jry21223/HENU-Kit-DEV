@@ -3,6 +3,9 @@ package smoke
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +27,8 @@ type Config struct {
 	PackageID          string
 	SkipLogin          bool
 	CreateOrder        bool
+	MockWeChatPay      bool
+	MockWeChatSecret   string
 	ExpectPaidDenied   bool
 	GrantPackageAccess bool
 	Timeout            time.Duration
@@ -99,6 +104,7 @@ type orderData struct {
 
 type order struct {
 	ID          string `json:"id"`
+	OutTradeNo  string `json:"outTradeNo"`
 	Status      string `json:"status"`
 	AmountTotal int64  `json:"amountTotal"`
 	Currency    string `json:"currency"`
@@ -108,6 +114,14 @@ type orderStatusData struct {
 	OrderID            string `json:"orderId"`
 	Status             string `json:"status"`
 	EntitlementGranted bool   `json:"entitlementGranted"`
+}
+
+type nativePaymentData struct {
+	OrderID     string `json:"orderId"`
+	CodeURL     string `json:"codeUrl"`
+	Status      string `json:"status"`
+	AmountTotal int64  `json:"amountTotal"`
+	Mock        bool   `json:"mock"`
 }
 
 func NewRunner(cfg Config) (Runner, error) {
@@ -232,20 +246,49 @@ func (r Runner) Run(ctx context.Context) Result {
 		result.add("paid download denied before entitlement", "passed", status, "paid asset denied without entitlement")
 	}
 
-	if r.cfg.CreateOrder {
+	if r.cfg.CreateOrder || r.cfg.MockWeChatPay {
 		if token == "" {
 			return fail("create order", 0, errors.New("create-order requires login"))
 		}
-		orderID, status, err := r.createOrder(ctx, packageID, token)
+		createdOrder, status, err := r.createOrder(ctx, packageID, token)
 		if err != nil {
 			return fail("create order", status, err)
 		}
-		result.add("create order", "passed", status, orderID)
-		status, orderStatus, err := r.orderStatus(ctx, orderID, token)
+		result.add("create order", "passed", status, createdOrder.ID)
+		status, orderStatus, err := r.orderStatus(ctx, createdOrder.ID, token)
 		if err != nil {
 			return fail("order status", status, err)
 		}
 		result.add("order status", "passed", status, orderStatus)
+
+		if r.cfg.MockWeChatPay {
+			if strings.TrimSpace(r.cfg.MockWeChatSecret) == "" {
+				return fail("mock wechat notify", 0, errors.New("mock-wechat-secret is required for -mock-wechat-pay"))
+			}
+			native, status, err := r.createNativePayment(ctx, createdOrder.ID, token)
+			if err != nil {
+				return fail("mock wechat native", status, err)
+			}
+			result.add("mock wechat native", "passed", status, native.CodeURL)
+			status, err = r.mockWeChatNotify(ctx, createdOrder, r.cfg.MockWeChatSecret)
+			if err != nil {
+				return fail("mock wechat notify", status, err)
+			}
+			result.add("mock wechat notify", "passed", status, "signed SUCCESS callback accepted")
+			status, paidStatus, err := r.orderStatusDetail(ctx, createdOrder.ID, token)
+			if err != nil {
+				return fail("paid order status", status, err)
+			}
+			if paidStatus.Status != "paid" || !paidStatus.EntitlementGranted {
+				return fail("paid order status", status, fmt.Errorf("expected paid with entitlement, got status=%s entitlement=%v", paidStatus.Status, paidStatus.EntitlementGranted))
+			}
+			result.add("paid order status", "passed", status, "paid with entitlement")
+			status, bodySize, err := r.download(ctx, paidMaterialID, token)
+			if err != nil {
+				return fail("paid download after mock payment", status, err)
+			}
+			result.add("paid download after mock payment", "passed", status, fmt.Sprintf("%d byte(s)", bodySize))
+		}
 	}
 
 	if r.cfg.GrantPackageAccess {
@@ -336,50 +379,116 @@ func (r Runner) currentUser(ctx context.Context, token string) (userData, int, e
 	return user, status, nil
 }
 
-func (r Runner) createOrder(ctx context.Context, packageID string, token string) (string, int, error) {
+func (r Runner) createOrder(ctx context.Context, packageID string, token string) (order, int, error) {
 	body := map[string]string{"packageId": packageID}
 	status, raw, err := r.request(ctx, http.MethodPost, "/orders", body, token)
 	if err != nil || status != http.StatusOK {
 		if err == nil {
 			err = fmt.Errorf("unexpected create order status %d: %s", status, raw.Message)
 		}
-		return "", status, err
+		return order{}, status, err
 	}
 	var data orderData
 	if err := json.Unmarshal(raw.Data, &data); err != nil {
-		return "", status, err
+		return order{}, status, err
 	}
 	if data.AlreadyOwned {
-		return "", status, errors.New("user already owns selected package; use a fresh smoke email")
+		return order{}, status, errors.New("user already owns selected package; use a fresh smoke email")
 	}
 	if data.Order == nil || data.Order.ID == "" {
-		return "", status, errors.New("create order response did not include order.id")
+		return order{}, status, errors.New("create order response did not include order.id")
 	}
 	if data.Order.AmountTotal < 0 {
-		return "", status, errors.New("order amount was negative")
+		return order{}, status, errors.New("order amount was negative")
 	}
-	return data.Order.ID, status, nil
+	if data.Order.OutTradeNo == "" && r.cfg.MockWeChatPay {
+		return order{}, status, errors.New("mock wechat payment requires order.outTradeNo")
+	}
+	return *data.Order, status, nil
 }
 
 func (r Runner) orderStatus(ctx context.Context, orderID string, token string) (int, string, error) {
+	status, data, err := r.orderStatusDetail(ctx, orderID, token)
+	if err != nil {
+		return status, "", err
+	}
+	return status, data.Status, nil
+}
+
+func (r Runner) orderStatusDetail(ctx context.Context, orderID string, token string) (int, orderStatusData, error) {
 	status, raw, err := r.request(ctx, http.MethodGet, "/orders/"+orderID+"/status", nil, token)
 	if err != nil || status != http.StatusOK {
 		if err == nil {
 			err = fmt.Errorf("unexpected order status code %d: %s", status, raw.Message)
 		}
-		return status, "", err
+		return status, orderStatusData{}, err
 	}
 	var data orderStatusData
 	if err := json.Unmarshal(raw.Data, &data); err != nil {
-		return status, "", err
+		return status, orderStatusData{}, err
 	}
 	if data.OrderID != orderID {
-		return status, "", errors.New("order status returned different order id")
+		return status, orderStatusData{}, errors.New("order status returned different order id")
 	}
 	if data.Status == "" {
-		return status, "", errors.New("order status response missing status")
+		return status, orderStatusData{}, errors.New("order status response missing status")
 	}
-	return status, data.Status, nil
+	return status, data, nil
+}
+
+func (r Runner) createNativePayment(ctx context.Context, orderID string, token string) (nativePaymentData, int, error) {
+	body := map[string]string{"orderId": orderID}
+	status, raw, err := r.request(ctx, http.MethodPost, "/payments/wechat/native", body, token)
+	if err != nil || status != http.StatusOK {
+		if err == nil {
+			err = fmt.Errorf("unexpected wechat native status %d: %s", status, raw.Message)
+		}
+		return nativePaymentData{}, status, err
+	}
+	var data nativePaymentData
+	if err := json.Unmarshal(raw.Data, &data); err != nil {
+		return nativePaymentData{}, status, err
+	}
+	if data.OrderID != orderID {
+		return nativePaymentData{}, status, errors.New("wechat native response returned different order id")
+	}
+	if data.CodeURL == "" {
+		return nativePaymentData{}, status, errors.New("wechat native response missing codeUrl")
+	}
+	if data.Status != "paying" {
+		return nativePaymentData{}, status, fmt.Errorf("expected native payment status paying, got %s", data.Status)
+	}
+	if !data.Mock {
+		return nativePaymentData{}, status, errors.New("mock-wechat-pay expected mock native response; refuse to treat live payment as smoke")
+	}
+	return data, status, nil
+}
+
+func (r Runner) mockWeChatNotify(ctx context.Context, order order, secret string) (int, error) {
+	transactionID := fmt.Sprintf("SMOKE_%d", time.Now().UTC().UnixNano())
+	body := []byte(fmt.Sprintf(`{"outTradeNo":"%s","transactionId":"%s","tradeState":"SUCCESS","amountTotal":%d}`, order.OutTradeNo, transactionID, order.AmountTotal))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.cfg.BaseURL+"/payments/wechat/notify", bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-WeChat-Mock-Signature", mockNotifySignature(body, secret))
+	res, err := r.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Body.Close()
+	rawBody, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
+	if err != nil {
+		return res.StatusCode, err
+	}
+	if res.StatusCode != http.StatusOK {
+		return res.StatusCode, fmt.Errorf("unexpected mock notify status %d: %s", res.StatusCode, strings.TrimSpace(string(rawBody)))
+	}
+	if !bytes.Contains(rawBody, []byte(`"code":"SUCCESS"`)) {
+		return res.StatusCode, fmt.Errorf("mock notify response did not report SUCCESS: %s", strings.TrimSpace(string(rawBody)))
+	}
+	return res.StatusCode, nil
 }
 
 func (r Runner) grantPackageAccess(ctx context.Context, userID string, packageID string, adminToken string) (int, error) {
@@ -476,4 +585,10 @@ func firstPaidMaterialID(materials []material) string {
 		}
 	}
 	return ""
+}
+
+func mockNotifySignature(body []byte, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	return hex.EncodeToString(mac.Sum(nil))
 }

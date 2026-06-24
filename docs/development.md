@@ -74,6 +74,16 @@ go run ./cmd/smoke -base-url http://localhost:8080/api/v1 -email smoke@stu.henu.
 
 This checks readiness, public catalog/package safety, login, paid-download denial before entitlement, and optional pending-order creation. See `docs/internal-smoke.md` for production/internal-test usage.
 
+Development/test mock WeChat payment smoke:
+
+```bash
+$env:WECHAT_PAY_API_V3_KEY="mock-notify-secret"
+cd services/api
+go run ./cmd/smoke -base-url http://localhost:8080/api/v1 -email smoke-pay@stu.henu.edu.cn -code 123456 -mock-wechat-pay -mock-wechat-secret mock-notify-secret
+```
+
+The API process must also run with `WECHAT_PAY_MODE=mock` and the same local fake `WECHAT_PAY_API_V3_KEY`. This smoke signs a mock notify, verifies the backend payment path marks the order `paid`, grants entitlement once, and unlocks paid download. It is not a real merchant payment check and must not be used as proof that live WeChat collection is ready.
+
 To verify manual internal delivery after importing mounted course files, run the smoke with admin access-grant verification:
 
 ```bash

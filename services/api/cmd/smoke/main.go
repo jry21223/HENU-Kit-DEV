@@ -24,6 +24,8 @@ func main() {
 	flag.StringVar(&cfg.PackageID, "package-id", env("SMOKE_PACKAGE_ID", ""), "course package id to test; defaults to first published package")
 	flag.BoolVar(&cfg.SkipLogin, "skip-login", boolEnv("SMOKE_SKIP_LOGIN", false), "skip login, paid-download, and order checks")
 	flag.BoolVar(&cfg.CreateOrder, "create-order", boolEnv("SMOKE_CREATE_ORDER", false), "create a pending order and read its status")
+	flag.BoolVar(&cfg.MockWeChatPay, "mock-wechat-pay", boolEnv("SMOKE_MOCK_WECHAT_PAY", false), "development/test only: create an order, request mock WeChat Native payment, send signed mock notify, and verify entitlement")
+	flag.StringVar(&cfg.MockWeChatSecret, "mock-wechat-secret", env("SMOKE_MOCK_WECHAT_SECRET", env("WECHAT_PAY_API_V3_KEY", "")), "mock WeChat notify HMAC secret; must match WECHAT_PAY_API_V3_KEY on the API")
 	flag.BoolVar(&cfg.ExpectPaidDenied, "expect-paid-denied", boolEnv("SMOKE_EXPECT_PAID_DENIED", true), "expect paid package material download to be denied before entitlement")
 	flag.BoolVar(&cfg.GrantPackageAccess, "grant-package-access", boolEnv("SMOKE_GRANT_PACKAGE_ACCESS", false), "login as admin, manually grant the selected package to the smoke user, then verify paid download succeeds")
 	flag.IntVar(&timeoutSeconds, "timeout-seconds", intEnv("SMOKE_TIMEOUT_SECONDS", 15), "HTTP client timeout in seconds")
