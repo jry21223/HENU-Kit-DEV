@@ -306,6 +306,9 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(closingVisualState.maxPageOpacity).toBeLessThan(0.12);
   expect(closingVisualState.coverOpacity).toBeGreaterThan(0.55);
   expect(closingVisualState.closingCopyRight).toBeLessThan(closingVisualState.coverLeft - 32);
+  const closingCoverBox = await elementBox(page, "archive-cover");
+  const closingBookBox = await archiveBookBox(page);
+  expect(closingCoverBox.width / closingBookBox.width).toBeGreaterThan(0.16);
 
   const closedAgainBox = await archiveBookBox(page);
   expect(Math.abs(closedAgainBox.centerX - openBox.centerX)).toBeLessThan(120);

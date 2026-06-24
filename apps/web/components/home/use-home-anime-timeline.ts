@@ -172,6 +172,7 @@ function createArchiveTimeline(stage: HTMLElement) {
           ease: "inOutSine",
           opacity: [0, 1],
           rotateY: [-178, 0],
+          scaleX: [0.08, 1],
           x: [-18, 0],
           z: [0, 0],
         },
