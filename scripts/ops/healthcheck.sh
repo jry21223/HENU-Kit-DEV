@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-API_HEALTH_URL="${API_HEALTH_URL:-http://localhost:8080/healthz}"
+API_HEALTH_URL="${API_HEALTH_URL:-http://localhost:8080/readyz}"
+WORKER_READY_URL="${WORKER_READY_URL:-}"
 WEB_URL="${WEB_URL:-http://localhost:3000/health}"
 ADMIN_URL="${ADMIN_URL:-http://localhost:5173}"
 
@@ -21,5 +22,8 @@ check_url() {
 }
 
 check_url "api" "$API_HEALTH_URL"
+if [ -n "$WORKER_READY_URL" ]; then
+  check_url "worker" "$WORKER_READY_URL"
+fi
 check_url "web" "$WEB_URL"
 check_url "admin" "$ADMIN_URL"

@@ -2,10 +2,17 @@
 
 Base path: `/api/v1`
 
+Health semantics:
+
+- `GET /healthz` and `GET /api/v1/healthz` are liveness endpoints. They return HTTP 200 with dependency status details even when a dependency is not ready.
+- `GET /readyz` and `GET /api/v1/readyz` are readiness endpoints. They return HTTP 200 only when PostgreSQL and Redis are reachable; otherwise they return HTTP 503 with `not_ready`.
+
 Currently implemented endpoints:
 
 - `GET /healthz`
+- `GET /readyz`
 - `GET /api/v1/healthz`
+- `GET /api/v1/readyz`
 - `GET /api/v1/version`
 - `POST /api/v1/auth/send-code`
 - `POST /api/v1/auth/login`

@@ -75,9 +75,11 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
 	analyticsHandler := analytics.NewHandler(db)
 	router.GET("/healthz", healthHandler.Healthz)
+	router.GET("/readyz", healthHandler.Readyz)
 
 	v1 := router.Group("/api/v1")
 	v1.GET("/healthz", healthHandler.Healthz)
+	v1.GET("/readyz", healthHandler.Readyz)
 	v1.GET("/version", func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{
 			"service":     "final-review-api",

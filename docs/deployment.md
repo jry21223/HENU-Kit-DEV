@@ -18,7 +18,7 @@ This project is still in internal-test hardening. The production files in this r
 - `infra/nginx/final-review.conf.example`: two-domain HTTPS reverse-proxy template.
 - `scripts/ops/backup-postgres.sh`: creates a custom-format PostgreSQL dump.
 - `scripts/ops/restore-postgres.sh`: restores a dump, guarded by `CONFIRM_RESTORE=yes`.
-- `scripts/ops/healthcheck.sh`: checks API, Web, and Admin endpoints.
+- `scripts/ops/healthcheck.sh`: checks API readiness plus Web and Admin endpoints; optionally checks Worker readiness when `WORKER_READY_URL` is set.
 
 ## Required Secret Layout
 
@@ -82,11 +82,13 @@ docker compose --env-file .env.production -f docker-compose.prod.example.yml log
 Public endpoints:
 
 ```bash
-API_HEALTH_URL=https://review.example.com/healthz \
+API_HEALTH_URL=https://review.example.com/readyz \
 WEB_URL=https://review.example.com/health \
 ADMIN_URL=https://admin.review.example.com \
 scripts/ops/healthcheck.sh
 ```
+
+`/healthz` is liveness and can remain HTTP 200 while a dependency is down. `/readyz` is readiness and must be used before routing traffic. Worker readiness is checked by Docker healthcheck inside the private Compose network; set `WORKER_READY_URL` only if you deliberately expose or port-forward the worker probe endpoint.
 
 ## Backups
 
@@ -110,6 +112,7 @@ Backups must be copied off the server and encrypted by the deployment operator. 
 Before opening paid sales, verify all items below:
 
 - `docker compose --env-file .env.production -f docker-compose.prod.example.yml config --quiet`
+- API `/readyz` returns HTTP 200, and `docker compose ps` shows API and Worker as healthy
 - `go test ./...` in `services/api`
 - `go test ./...` in `services/worker`
 - `npm run build --workspace @final-review/web`

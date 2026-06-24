@@ -3,7 +3,7 @@
 ## First Deliverable
 
 - V2 monorepo skeleton
-- Go API health/version endpoints
+- Go API health/version endpoints with separate liveness `/healthz` and dependency readiness `/readyz`
 - Go API email-code auth and role middleware
 - GORM model coverage for the V2 table set
 - Material download permission checks

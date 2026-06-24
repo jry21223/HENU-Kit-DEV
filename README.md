@@ -70,7 +70,8 @@ docker compose -f docker-compose.dev.yml up --build
 
 - Web: `http://localhost:3000`
 - Admin: `http://localhost:5173`
-- API: `http://localhost:8080/api/v1/healthz`
+- API liveness: `http://localhost:8080/api/v1/healthz`
+- API readiness: `http://localhost:8080/api/v1/readyz`
 
 ## 6. 本地检查
 

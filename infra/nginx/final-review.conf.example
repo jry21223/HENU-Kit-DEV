@@ -64,6 +64,12 @@ server {
         proxy_set_header X-Forwarded-Proto https;
     }
 
+    location /readyz {
+        proxy_pass http://final_review_api/readyz;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
     location / {
         proxy_pass http://final_review_web;
         proxy_http_version 1.1;

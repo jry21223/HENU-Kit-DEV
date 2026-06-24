@@ -8,4 +8,5 @@ RUN go build -o /bin/final-review-worker ./cmd/worker
 FROM alpine:3.21
 WORKDIR /app
 COPY --from=builder /bin/final-review-worker /usr/local/bin/final-review-worker
+EXPOSE 9090
 CMD ["final-review-worker"]
