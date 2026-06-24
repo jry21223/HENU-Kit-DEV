@@ -146,6 +146,7 @@
   - expired 订单不能继续拉起二维码，不能通过 close 接口关闭，也不会被新课程包订单复用。
 - Admin 订单查询可展示并筛选 `risk_flag`，用于支付异常排查；当前还不是自动告警或自动对账系统。
 - Payment incident ledger has been added for rejected WeChat callback anomalies (`order_not_found`, `amount_mismatch`, `transaction_conflict`). Admins can mark incidents `resolved` or `ignored`; this writes operation logs only and never marks orders paid or grants entitlement. Vue Admin Dashboard now surfaces the open incident count as a basic operator prompt, and newly opened incidents can optionally emit a signed best-effort webhook without raw notify payloads.
+- Payment reconciliation now has an admin-only, read-only local report for order/payment-record/order-grant/risk-flag/open-incident consistency issues. It is not a live WeChat merchant settlement reconciler and does not mutate orders, incidents, payment records, or entitlements.
 - Web 课程包详情页现在可以：
   - 创建或复用待支付课程包订单。
   - 调用 Native 下单接口获取服务端返回的 `codeUrl`。

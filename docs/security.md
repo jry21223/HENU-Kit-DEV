@@ -19,6 +19,7 @@
 - `WECHAT_PAY_MODE=mock` is allowed only outside production; production mock configuration is rejected by the API payment boundary.
 - The admin order browser is read-only. It can inspect order status and whether an entitlement already exists, but it cannot mark orders paid or issue grants.
 - The admin order browser can display and filter `risk_flag` values for payment triage, but risk visibility is not an automated alerting or settlement system.
+- The admin payment reconciliation report is read-only. It can flag local inconsistencies across orders, payment records, order-source grants, risk flags, and open incidents, but it cannot repair payment data, mark orders paid, resolve incidents, or grant entitlement.
 - WeChat callback anomalies that fail trust checks are recorded as `payment_incidents` for manual triage. Unknown orders, amount mismatches, and transaction-id conflicts do not update orders or grant entitlement.
 - The payment-incident admin page can only mark incidents `resolved` or `ignored`. It writes operation logs but deliberately cannot mark payment success, insert trusted payment records, or issue package/material grants.
 - Payment incident webhooks are best-effort operator alerts only. They exclude raw WeChat notify bodies, can be signed with `PAYMENT_INCIDENT_WEBHOOK_SECRET`, and must never be treated by receivers as proof of payment.

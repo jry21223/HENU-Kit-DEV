@@ -184,6 +184,36 @@ type orderRow struct {
 	EntitlementGranted bool                 `json:"entitlementGranted"`
 }
 
+type paymentReconciliationIssue struct {
+	IssueType       string `json:"issueType"`
+	Severity        string `json:"severity"`
+	Message         string `json:"message"`
+	OrderID         string `json:"orderId,omitempty"`
+	OutTradeNo      string `json:"outTradeNo,omitempty"`
+	OrderStatus     string `json:"orderStatus,omitempty"`
+	PaymentProvider string `json:"paymentProvider,omitempty"`
+	AmountTotal     int64  `json:"amountTotal,omitempty"`
+	RiskFlag        string `json:"riskFlag,omitempty"`
+	UserID          string `json:"userId,omitempty"`
+	UserEmail       string `json:"userEmail,omitempty"`
+	PackageID       string `json:"packageId,omitempty"`
+	PackageTitle    string `json:"packageTitle,omitempty"`
+	PaymentRecordID string `json:"paymentRecordId,omitempty"`
+	TransactionID   string `json:"transactionId,omitempty"`
+	GrantID         string `json:"grantId,omitempty"`
+	IncidentID      string `json:"incidentId,omitempty"`
+	CreatedAt       string `json:"createdAt,omitempty"`
+}
+
+type paymentReconciliationSummary struct {
+	Total    int            `json:"total"`
+	Critical int            `json:"critical"`
+	High     int            `json:"high"`
+	Medium   int            `json:"medium"`
+	Low      int            `json:"low"`
+	Types    map[string]int `json:"types"`
+}
+
 type packageItemRow struct {
 	Item     model.CoursePackageItem `json:"item"`
 	Material *model.Material         `json:"material,omitempty"`
@@ -554,6 +584,56 @@ func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"incidents": incidents, "total": total})
+}
+
+func (h Handler) ListPaymentReconciliation(ctx *gin.Context) {
+	if err := orderstate.ExpireAllStale(h.db, time.Now()); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 200, 1000)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	issueType := strings.TrimSpace(ctx.Query("issueType"))
+	if len(issueType) > 80 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_issue_type", nil)
+		return
+	}
+	severity := strings.TrimSpace(ctx.Query("severity"))
+	if severity != "" && !validPaymentReconciliationSeverity(severity) {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_severity", nil)
+		return
+	}
+	issues, err := h.paymentReconciliationIssues(time.Now().UTC())
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	filtered := make([]paymentReconciliationIssue, 0, len(issues))
+	for _, issue := range issues {
+		if issueType != "" && issue.IssueType != issueType {
+			continue
+		}
+		if severity != "" && issue.Severity != severity {
+			continue
+		}
+		filtered = append(filtered, issue)
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return paymentIssueRank(filtered[i]) < paymentIssueRank(filtered[j])
+	})
+	total := len(filtered)
+	summary := paymentReconciliationSummaryFor(filtered)
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	response.OK(ctx, gin.H{
+		"issues":  filtered,
+		"total":   total,
+		"summary": summary,
+	})
 }
 
 func (h Handler) ResolvePaymentIncident(ctx *gin.Context) {
@@ -1852,6 +1932,346 @@ func (h Handler) activePackageGrantsForOrders(orders []model.Order, now time.Tim
 	return result, nil
 }
 
+func (h Handler) paymentReconciliationIssues(now time.Time) ([]paymentReconciliationIssue, error) {
+	var orders []model.Order
+	if err := h.db.Order("created_at desc").Limit(2000).Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	orderIDs := make([]string, 0, len(orders))
+	userIDs := make([]string, 0, len(orders))
+	packageIDs := make([]string, 0, len(orders))
+	ordersByID := map[string]model.Order{}
+	for _, order := range orders {
+		orderIDs = append(orderIDs, order.ID)
+		userIDs = append(userIDs, order.UserID)
+		ordersByID[order.ID] = order
+		if order.ProductType == "course_package" {
+			packageIDs = append(packageIDs, order.ProductID)
+		}
+	}
+
+	var records []model.PaymentRecord
+	if len(orderIDs) > 0 {
+		if err := h.db.Where("order_id IN ?", orderIDs).Order("created_at desc").Find(&records).Error; err != nil {
+			return nil, err
+		}
+	}
+	var transactionRecords []model.PaymentRecord
+	if err := h.db.Where("transaction_id <> ''").Order("created_at desc").Limit(5000).Find(&transactionRecords).Error; err != nil {
+		return nil, err
+	}
+	records = mergePaymentRecords(records, transactionRecords)
+	recordsByOrder := map[string][]model.PaymentRecord{}
+	recordsByTransaction := map[string][]model.PaymentRecord{}
+	for _, record := range records {
+		recordsByOrder[record.OrderID] = append(recordsByOrder[record.OrderID], record)
+		if strings.TrimSpace(record.TransactionID) != "" {
+			recordsByTransaction[record.TransactionID] = append(recordsByTransaction[record.TransactionID], record)
+		}
+	}
+
+	var grants []model.MaterialAccessGrant
+	if err := h.db.Where("source = ? AND order_id IS NOT NULL", "order").Order("created_at desc").Limit(5000).Find(&grants).Error; err != nil {
+		return nil, err
+	}
+	grantsByOrder := map[string][]model.MaterialAccessGrant{}
+	for _, grant := range grants {
+		if grant.OrderID == nil {
+			continue
+		}
+		grantsByOrder[*grant.OrderID] = append(grantsByOrder[*grant.OrderID], grant)
+		userIDs = append(userIDs, grant.UserID)
+		if grant.PackageID != nil {
+			packageIDs = append(packageIDs, *grant.PackageID)
+		}
+	}
+
+	var incidents []model.PaymentIncident
+	if err := h.db.Where("status = ?", model.PaymentIncidentOpen).Order("created_at desc").Limit(1000).Find(&incidents).Error; err != nil {
+		return nil, err
+	}
+	for _, incident := range incidents {
+		if incident.OrderID != nil {
+			if order, ok := ordersByID[*incident.OrderID]; ok {
+				userIDs = append(userIDs, order.UserID)
+				if order.ProductType == "course_package" {
+					packageIDs = append(packageIDs, order.ProductID)
+				}
+			}
+		}
+	}
+
+	users, err := h.usersByID(uniqueStrings(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	packages, err := h.adminPackagesByID(uniqueStrings(packageIDs))
+	if err != nil {
+		return nil, err
+	}
+
+	issues := make([]paymentReconciliationIssue, 0)
+	for _, order := range orders {
+		if strings.TrimSpace(order.RiskFlag) != "" {
+			issues = append(issues, h.orderPaymentIssue("order_risk_flag", "high", "order carries a payment risk flag", order, users, packages, nil, nil, nil))
+		}
+		if order.Status != model.OrderPaid {
+			continue
+		}
+		orderRecords := recordsByOrder[order.ID]
+		if len(orderRecords) == 0 {
+			issues = append(issues, h.orderPaymentIssue("paid_order_missing_payment_record", "critical", "paid order has no payment record", order, users, packages, nil, nil, nil))
+		}
+		for _, record := range orderRecords {
+			if record.AmountTotal != 0 && record.AmountTotal != order.AmountTotal {
+				recordCopy := record
+				issues = append(issues, h.orderPaymentIssue("paid_order_amount_record_mismatch", "critical", "paid order amount does not match payment record amount", order, users, packages, &recordCopy, nil, nil))
+			}
+		}
+		if order.ProductType == "course_package" && !hasActivePackageOrderGrant(grantsByOrder[order.ID], order, now) {
+			issues = append(issues, h.orderPaymentIssue("paid_order_missing_entitlement", "critical", "paid course package order has no active order entitlement", order, users, packages, nil, nil, nil))
+		}
+	}
+
+	for _, grant := range grants {
+		if grant.OrderID == nil || !grantActive(grant, now) {
+			continue
+		}
+		order, ok := ordersByID[*grant.OrderID]
+		grantCopy := grant
+		if !ok {
+			issues = append(issues, h.grantPaymentIssue("order_entitlement_missing_order", "critical", "active order entitlement references a missing order", grantCopy, users, packages))
+			continue
+		}
+		if order.Status != model.OrderPaid {
+			issues = append(issues, h.orderPaymentIssue("unpaid_order_has_entitlement", "critical", "non-paid order has an active order entitlement", order, users, packages, nil, &grantCopy, nil))
+		}
+	}
+
+	for transactionID, rows := range recordsByTransaction {
+		orderSet := map[string]bool{}
+		for _, row := range rows {
+			orderSet[row.OrderID] = true
+		}
+		if len(orderSet) <= 1 {
+			continue
+		}
+		first := rows[0]
+		issue := paymentReconciliationIssue{
+			IssueType:       "duplicate_transaction_id",
+			Severity:        "critical",
+			Message:         "same payment transaction id is attached to multiple orders",
+			PaymentRecordID: first.ID,
+			TransactionID:   transactionID,
+			CreatedAt:       first.CreatedAt.Format(time.RFC3339),
+		}
+		if order, ok := ordersByID[first.OrderID]; ok {
+			issue = h.orderPaymentIssue(issue.IssueType, issue.Severity, issue.Message, order, users, packages, &first, nil, nil)
+		}
+		issues = append(issues, issue)
+	}
+
+	for _, incident := range incidents {
+		incidentCopy := incident
+		issue := paymentReconciliationIssue{
+			IssueType:       "open_payment_incident",
+			Severity:        incident.Severity,
+			Message:         incident.Message,
+			IncidentID:      incident.ID,
+			OutTradeNo:      incident.OutTradeNo,
+			TransactionID:   incident.TransactionID,
+			AmountTotal:     incident.ActualAmount,
+			CreatedAt:       incident.CreatedAt.Format(time.RFC3339),
+			PaymentProvider: incident.Provider,
+		}
+		if issue.Severity == "" {
+			issue.Severity = "high"
+		}
+		if incident.OrderID != nil {
+			if order, ok := ordersByID[*incident.OrderID]; ok {
+				issue = h.orderPaymentIssue(issue.IssueType, issue.Severity, issue.Message, order, users, packages, nil, nil, &incidentCopy)
+			} else {
+				issue.OrderID = *incident.OrderID
+			}
+		}
+		issues = append(issues, issue)
+	}
+
+	return issues, nil
+}
+
+func (h Handler) orderPaymentIssue(issueType string, severity string, message string, order model.Order, users map[string]model.User, packages map[string]model.CoursePackage, record *model.PaymentRecord, grant *model.MaterialAccessGrant, incident *model.PaymentIncident) paymentReconciliationIssue {
+	issue := paymentReconciliationIssue{
+		IssueType:       issueType,
+		Severity:        severity,
+		Message:         message,
+		OrderID:         order.ID,
+		OutTradeNo:      order.OutTradeNo,
+		OrderStatus:     order.Status,
+		PaymentProvider: order.PaymentProvider,
+		AmountTotal:     order.AmountTotal,
+		RiskFlag:        order.RiskFlag,
+		UserID:          order.UserID,
+		CreatedAt:       order.CreatedAt.Format(time.RFC3339),
+	}
+	if user, ok := users[order.UserID]; ok {
+		issue.UserEmail = user.Email
+	}
+	if order.ProductType == "course_package" {
+		issue.PackageID = order.ProductID
+		if coursePackage, ok := packages[order.ProductID]; ok {
+			issue.PackageTitle = coursePackage.Title
+		}
+	}
+	if record != nil {
+		issue.PaymentRecordID = record.ID
+		issue.TransactionID = record.TransactionID
+		if record.AmountTotal != 0 {
+			issue.AmountTotal = record.AmountTotal
+		}
+		if record.CreatedAt.After(order.CreatedAt) {
+			issue.CreatedAt = record.CreatedAt.Format(time.RFC3339)
+		}
+	}
+	if grant != nil {
+		issue.GrantID = grant.ID
+		if grant.CreatedAt.After(order.CreatedAt) {
+			issue.CreatedAt = grant.CreatedAt.Format(time.RFC3339)
+		}
+	}
+	if incident != nil {
+		issue.IncidentID = incident.ID
+		if incident.TransactionID != "" {
+			issue.TransactionID = incident.TransactionID
+		}
+		if incident.ActualAmount != 0 {
+			issue.AmountTotal = incident.ActualAmount
+		}
+		if incident.CreatedAt.After(order.CreatedAt) {
+			issue.CreatedAt = incident.CreatedAt.Format(time.RFC3339)
+		}
+	}
+	return issue
+}
+
+func (h Handler) grantPaymentIssue(issueType string, severity string, message string, grant model.MaterialAccessGrant, users map[string]model.User, packages map[string]model.CoursePackage) paymentReconciliationIssue {
+	issue := paymentReconciliationIssue{
+		IssueType: issueType,
+		Severity:  severity,
+		Message:   message,
+		GrantID:   grant.ID,
+		UserID:    grant.UserID,
+		CreatedAt: grant.CreatedAt.Format(time.RFC3339),
+	}
+	if grant.OrderID != nil {
+		issue.OrderID = *grant.OrderID
+	}
+	if user, ok := users[grant.UserID]; ok {
+		issue.UserEmail = user.Email
+	}
+	if grant.PackageID != nil {
+		issue.PackageID = *grant.PackageID
+		if coursePackage, ok := packages[*grant.PackageID]; ok {
+			issue.PackageTitle = coursePackage.Title
+		}
+	}
+	return issue
+}
+
+func hasActivePackageOrderGrant(grants []model.MaterialAccessGrant, order model.Order, now time.Time) bool {
+	for _, grant := range grants {
+		if grant.PackageID == nil || *grant.PackageID != order.ProductID || !grantActive(grant, now) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func grantActive(grant model.MaterialAccessGrant, now time.Time) bool {
+	return grant.ExpiresAt == nil || grant.ExpiresAt.After(now)
+}
+
+func mergePaymentRecords(primary []model.PaymentRecord, extra []model.PaymentRecord) []model.PaymentRecord {
+	seen := map[string]bool{}
+	merged := make([]model.PaymentRecord, 0, len(primary)+len(extra))
+	for _, record := range primary {
+		seen[record.ID] = true
+		merged = append(merged, record)
+	}
+	for _, record := range extra {
+		if seen[record.ID] {
+			continue
+		}
+		merged = append(merged, record)
+	}
+	return merged
+}
+
+func paymentReconciliationSummaryFor(issues []paymentReconciliationIssue) paymentReconciliationSummary {
+	summary := paymentReconciliationSummary{Total: len(issues), Types: map[string]int{}}
+	for _, issue := range issues {
+		summary.Types[issue.IssueType]++
+		switch issue.Severity {
+		case "critical":
+			summary.Critical++
+		case "high":
+			summary.High++
+		case "medium":
+			summary.Medium++
+		case "low":
+			summary.Low++
+		}
+	}
+	return summary
+}
+
+func paymentIssueRank(issue paymentReconciliationIssue) int {
+	severityRank := map[string]int{"critical": 0, "high": 1, "medium": 2, "low": 3}
+	rank, ok := severityRank[issue.Severity]
+	if !ok {
+		rank = 4
+	}
+	return rank*100 + paymentIssueTypeRank(issue.IssueType)
+}
+
+func paymentIssueTypeRank(issueType string) int {
+	switch issueType {
+	case "paid_order_missing_payment_record":
+		return 1
+	case "paid_order_missing_entitlement":
+		return 2
+	case "unpaid_order_has_entitlement":
+		return 3
+	case "order_entitlement_missing_order":
+		return 4
+	case "paid_order_amount_record_mismatch":
+		return 5
+	case "duplicate_transaction_id":
+		return 6
+	case "open_payment_incident":
+		return 7
+	case "order_risk_flag":
+		return 8
+	default:
+		return 99
+	}
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
+}
+
 func (h Handler) usersByID(ids []string) (map[string]model.User, error) {
 	rows := map[string]model.User{}
 	if len(ids) == 0 {
@@ -2303,6 +2723,15 @@ func validOrderStatus(value string) bool {
 func validPaymentIncidentStatus(value string) bool {
 	switch strings.TrimSpace(value) {
 	case model.PaymentIncidentOpen, model.PaymentIncidentResolved, model.PaymentIncidentIgnored:
+		return true
+	default:
+		return false
+	}
+}
+
+func validPaymentReconciliationSeverity(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "critical", "high", "medium", "low":
 		return true
 	default:
 		return false

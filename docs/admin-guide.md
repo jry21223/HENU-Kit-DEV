@@ -71,6 +71,12 @@ Important boundaries:
 
 The order page is read-only. It shows order status, buyer, package, integer-cent amount, payment provider, risk flag, and whether an entitlement already exists.
 
+`/payment-reconciliation` calls:
+
+- `GET /api/v1/admin/payment-reconciliation?issueType=&severity=&limit=`
+
+The reconciliation page is read-only. It compares local orders, payment records, order-source entitlements, risk flags, and open payment incidents. It highlights paid orders without payment records, paid package orders without order entitlements, non-paid orders with active order entitlements, duplicate transaction ids, amount mismatches between paid orders and payment records, existing order risk flags, and open incident rows. It does not repair data, mark payments successful, resolve incidents, or grant access.
+
 `/payment-incidents` calls:
 
 - `GET /api/v1/admin/payment-incidents?status=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
@@ -418,5 +424,7 @@ Important boundaries:
 - Points and memberships
 - Orders
 - Order risk flags are visible and filterable for payment triage. This is read-only visibility; admins still cannot mark payment success or grant entitlements from the order browser.
+- Payment reconciliation
+- Local read-only reconciliation exists for order/payment/grant/incident consistency checks. It is not a live merchant settlement system and still requires WeChat merchant dashboard verification before production sales.
 - System config
 - Automatic operation-log retention cleanup after a production-safe archival flow exists

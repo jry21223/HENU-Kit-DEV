@@ -178,6 +178,42 @@ export type PaymentIncidentListResponse = {
   total: number;
 };
 
+export type PaymentReconciliationIssue = {
+  issueType: string;
+  severity: string;
+  message: string;
+  orderId?: string;
+  outTradeNo?: string;
+  orderStatus?: string;
+  paymentProvider?: string;
+  amountTotal?: number;
+  riskFlag?: string;
+  userId?: string;
+  userEmail?: string;
+  packageId?: string;
+  packageTitle?: string;
+  paymentRecordId?: string;
+  transactionId?: string;
+  grantId?: string;
+  incidentId?: string;
+  createdAt?: string;
+};
+
+export type PaymentReconciliationSummary = {
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  types: Record<string, number>;
+};
+
+export type PaymentReconciliationResponse = {
+  issues: PaymentReconciliationIssue[];
+  total: number;
+  summary: PaymentReconciliationSummary;
+};
+
 export type DownloadRecord = {
   id: string;
   userId?: string;
