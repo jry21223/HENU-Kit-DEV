@@ -119,37 +119,51 @@ function createArchiveTimeline(stage: HTMLElement) {
         {
           duration: durationBetween(archiveProgress.openStart, 0.62),
           ease: "inCubic",
-          rotateY: [0, -10],
-          scaleX: [1, 0.99],
-          z: [0, 34],
+          rotateY: [0, -8],
+          scaleX: [1, 0.96],
+          x: [0, -2],
+          z: [0, 28],
         },
         at(archiveProgress.openStart),
       )
       .add(
         cover,
         {
-          duration: durationBetween(0.62, 0.86),
+          duration: durationBetween(0.62, 0.78),
           ease: "inOutSine",
-          opacity: [1, 0.26],
-          rotateY: [-10, -146],
-          scaleX: [0.99, 0.92],
-          x: [0, -22],
-          z: [34, 24],
+          opacity: [1, 0.18],
+          rotateY: [-8, -96],
+          scaleX: [0.96, 0.24],
+          x: [-2, -10],
+          z: [28, 24],
         },
         at(0.62),
       )
       .add(
         cover,
         {
-          duration: durationBetween(0.86, archiveProgress.openEnd),
+          duration: durationBetween(0.78, 0.9),
           ease: "outCubic",
-          opacity: [0.26, 0],
-          rotateY: [-146, -178],
-          scaleX: [0.92, 1],
-          x: [-22, -10],
-          z: [24, 0],
+          opacity: [0.18, 0.015],
+          rotateY: [-96, -164],
+          scaleX: [0.24, 0.1],
+          x: [-10, -18],
+          z: [24, 10],
         },
-        at(0.86),
+        at(0.78),
+      )
+      .add(
+        cover,
+        {
+          duration: durationBetween(0.9, archiveProgress.openEnd),
+          ease: "outCubic",
+          opacity: [0.015, 0],
+          rotateY: [-164, -178],
+          scaleX: [0.1, 0.08],
+          x: [-18, -18],
+          z: [10, 0],
+        },
+        at(0.9),
       )
       .add(
         cover,
@@ -158,7 +172,7 @@ function createArchiveTimeline(stage: HTMLElement) {
           ease: "inOutSine",
           opacity: [0, 1],
           rotateY: [-178, 0],
-          x: [-10, 0],
+          x: [-18, 0],
           z: [0, 0],
         },
         at(0.94),
@@ -194,9 +208,9 @@ function createArchiveTimeline(stage: HTMLElement) {
         {
           duration: durationBetween(archiveProgress.openStart, 0.66),
           ease: "outCubic",
-          opacity: [0, 0.36],
-          scaleX: [0.7, 1.08],
-          x: [0, -24],
+          opacity: [0, 0.28],
+          scaleX: [0.58, 0.84],
+          x: [0, -18],
         },
         at(archiveProgress.openStart),
       )
@@ -205,9 +219,9 @@ function createArchiveTimeline(stage: HTMLElement) {
         {
           duration: durationBetween(0.66, archiveProgress.openEnd),
           ease: "inCubic",
-          opacity: [0.36, 0],
-          scaleX: [1.08, 0.52],
-          x: [-24, -58],
+          opacity: [0.28, 0],
+          scaleX: [0.84, 0.28],
+          x: [-18, -96],
         },
         at(0.66),
       );

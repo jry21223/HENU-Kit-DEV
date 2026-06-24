@@ -266,6 +266,9 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(lateTurningVisualState.insideOpacity).toBeGreaterThan(0.55);
   expect(lateTurningVisualState.minPageOpacity).toBeGreaterThan(0.55);
   expect(lateTurningVisualState.maxPageOpacity).toBeGreaterThan(0.55);
+  const midTurnBookBox = await archiveBookBox(page);
+  const midTurnCoverBox = await elementBox(page, "archive-cover");
+  expect(midTurnCoverBox.width / midTurnBookBox.width).toBeLessThan(0.18);
 
   await scrollArchiveTo(page, 0.92);
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
