@@ -81,6 +81,15 @@ npm run build
 npm audit --audit-level=low
 ```
 
+Production-like deployment examples are provided but still require operator review:
+
+```bash
+cp .env.production.example .env.production
+docker compose --env-file .env.production -f docker-compose.prod.example.yml config --quiet
+```
+
+See `docs/deployment.md` before using this for any paid internal test. The example expects secrets and certificates to be mounted from ignored `secrets/` and `certs/` directories.
+
 如果本机已安装 Go：
 
 ```bash
