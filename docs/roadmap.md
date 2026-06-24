@@ -67,6 +67,7 @@
 - Opt-in browser admin Wiki proposal review smoke for published-content unchanged-before-review, Vue Admin proposal approval, public API/Web content update after approval, and public response metadata redaction
 - Opt-in browser admin Forum post review smoke for pending content hidden-before-review, Vue Admin approval, and public API/Web visibility after approval
 - Opt-in browser admin Forum reply review smoke for pending replies hidden-before-review, Vue Admin approval, and public API/Web visibility after approval
+- Opt-in browser admin Report review smoke for public-target report submission, Vue Admin resolution, reporter notification, and no direct target-content mutation during report handling
 - Opt-in browser admin AI draft review smoke for AI task creation, worker-produced pending draft visibility, Vue Admin approval, and no automatic publish on review
 - Vue admin read-only analytics page for download trend, course demand, and report distribution
 - Vue admin read-only operation-log browser for high-risk admin mutations

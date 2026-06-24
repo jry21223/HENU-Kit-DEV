@@ -211,6 +211,26 @@ npm --workspace @final-review/web run test:e2e:forum-reply-review
 
 This smoke creates a unique pending Forum post, approves that setup post through the Go API, creates a pending reply, proves the public Forum detail omits the reply before review, opens Vue Admin `/forum-reply-reviews`, approves the reply through the Admin UI, and verifies the public API and Web Forum detail page render it after approval. It is opt-in because it mutates forum post/reply rows, notifications, and operation logs. Set `E2E_FORUM_BOARD_ID` when the target environment has multiple boards and you need a specific published board.
 
+## Admin Report-Review Browser Smoke
+
+After Web, Admin, and API are reachable, run the admin report-review smoke from the repository root:
+
+```bash
+$env:E2E_REPORT_REVIEW_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_REPORT_REVIEW_AUTHOR_EMAIL="smoke-report-author@stu.henu.edu.cn"
+$env:E2E_REPORT_REVIEW_AUTHOR_CODE="123456"
+$env:E2E_REPORT_REVIEW_REPORTER_EMAIL="smoke-report-reporter@stu.henu.edu.cn"
+$env:E2E_REPORT_REVIEW_REPORTER_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+npm --workspace @final-review/web run test:e2e:report-review
+```
+
+This smoke creates and approves a public Blog target, submits a report from a separate reporter account, opens Vue Admin `/reports`, resolves the report through the Admin UI, verifies the reporter receives a `report_result` notification without reviewer identity leakage, and confirms the public Blog content remains unchanged. It is opt-in because it mutates Blog, report, notification, and operation-log rows.
+
 ## Admin AI Draft-Review Browser Smoke
 
 After API, Worker, Admin, Postgres, and Redis are reachable, run the admin AI draft-review smoke from the repository root:
@@ -251,6 +271,7 @@ This smoke creates a real AI task through the Go API, waits for the worker to pr
 - Optional admin wiki-proposal-review browser smoke: validates published Wiki content remains unchanged while an edit proposal is pending, then updates only after Admin UI proposal approval
 - Optional admin forum-review browser smoke: validates pending Forum content remains hidden until approval and becomes public after Admin UI review
 - Optional admin forum-reply-review browser smoke: validates pending Forum replies remain hidden until approval and become public after Admin UI review
+- Optional admin report-review browser smoke: validates public-target report submission, Admin UI resolution, reporter notification, and no direct target-content mutation during report handling
 - Optional admin AI draft-review browser smoke: validates AI task creation, worker-produced pending draft visibility, Admin UI approval, and no automatic publish on review
 
 ## Important Flags
@@ -319,6 +340,11 @@ E2E_FORUM_REPLY_REVIEW_SMOKE=0
 E2E_FORUM_REPLY_REVIEW_AUTHOR_EMAIL=smoke-forum-reply-author@stu.henu.edu.cn
 E2E_FORUM_REPLY_REVIEW_AUTHOR_CODE=123456
 E2E_FORUM_BOARD_ID=
+E2E_REPORT_REVIEW_SMOKE=0
+E2E_REPORT_REVIEW_AUTHOR_EMAIL=smoke-report-author@stu.henu.edu.cn
+E2E_REPORT_REVIEW_AUTHOR_CODE=123456
+E2E_REPORT_REVIEW_REPORTER_EMAIL=smoke-report-reporter@stu.henu.edu.cn
+E2E_REPORT_REVIEW_REPORTER_CODE=123456
 E2E_AI_DRAFT_REVIEW_SMOKE=0
 E2E_AI_DRAFT_REVIEW_STUDENT_EMAIL=smoke-ai@stu.henu.edu.cn
 E2E_AI_DRAFT_REVIEW_STUDENT_CODE=123456
@@ -449,13 +475,19 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
    npm --workspace @final-review/web run test:e2e:forum-reply-review
    ```
 
-18. Run admin AI draft-review smoke with API/Admin/Worker reachable, mock LLM mode, and fresh student/admin test accounts:
+18. Run admin report-review smoke with Web/Admin/API base URLs and fresh author/reporter/admin test accounts:
+
+   ```bash
+   npm --workspace @final-review/web run test:e2e:report-review
+   ```
+
+19. Run admin AI draft-review smoke with API/Admin/Worker reachable, mock LLM mode, and fresh student/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:ai-draft-review
    ```
 
-19. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
+20. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
 
 ## Failure Handling
 
@@ -484,6 +516,10 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
 - Forum review smoke opens but skips: set `E2E_FORUM_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Forum post.
 - Forum reply review smoke opens but skips: set `E2E_FORUM_REPLY_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Forum post/reply pair.
 - Forum reply review smoke cannot create a reply: confirm the setup post was approved, the selected board is published, and the author account is not frozen.
+- Report review smoke opens but skips: set `E2E_REPORT_REVIEW_SMOKE=1`. It is opt-in because it creates a Blog target, submits a report, and resolves it through Admin.
+- Report review smoke cannot create the report: confirm the target Blog post was approved, the reporter account is active, and the target is still visible through the public API.
+- Report review smoke finds no reporter notification: inspect `/me/notifications` for the reporter and the report review transaction; report resolution must create a `report_result` notification.
+- Report review smoke sees target content changed after handling: treat this as a governance-boundary regression; resolving a report must not rewrite the reported resource.
 - AI draft review smoke opens but skips: set `E2E_AI_DRAFT_REVIEW_SMOKE=1`. It is opt-in because it creates an AI task and approves the worker-generated draft.
 - AI draft review smoke times out waiting for a draft: confirm the worker is running, Redis is reachable, `AI_TASK_STREAM` matches between API and worker, and `LLM_MODE=mock` is configured for the internal smoke.
 - AI draft review smoke finds `publishedId` after approval: treat this as a review-boundary regression; draft review must not auto-publish generated content.

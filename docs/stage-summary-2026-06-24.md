@@ -154,7 +154,7 @@
 - 会员套餐购买、积分兑换 AI 次数、会员权益中间件完整闭环。
 - Moment 动态与关注 / 互关好友 / 屏蔽的 Go API 基础已补；Web `/moments` 基础动态流、发布、图片上传/预览、点赞、评论、关注和屏蔽入口已补；动态图片读取已通过 Go API 复用动态可见性和屏蔽规则；公开用户主页聚合 API 和 Web `/users/[id]` 已补；视频和云存储仍未完成。
 - 搜索、排行榜、通知扩展和更完整的运营统计。
-- 完整 E2E、移动端截图回归、浏览器自动化验收；当前已有 delivery、quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin ai-draft-review 和 mobile public-page 多条 opt-in/target smoke，但还不是完整回归套件。
+- 完整 E2E、移动端截图回归、浏览器自动化验收；当前已有 delivery、quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin report-review、admin ai-draft-review 和 mobile public-page 多条 opt-in/target smoke，但还不是完整回归套件。
 - 生产部署硬化：HTTPS、反代、日志、监控、备份、密钥轮换。
 
 ## 4. 与原始 plan 对照
@@ -177,7 +177,7 @@
 | Stage 13：Vue 3 管理后台 | 完整运营后台 | 部分完成 | 用户、课程、资料、课程包、订单、支付异常台账、积分管理、会员管理、审核、举报、日志、AI draft 已有；系统配置、兑换、支付驱动会员运营仍不足。 |
 | Stage 14：Docker Compose | 本地一键启动 | 部分完成 | Compose 配置存在；全链路仍依赖本地 env、seed 和文件挂载。 |
 | Stage 15：Seed 数据与演示账号 | 演示组织、课程、资料、题目、内容、账号 | 部分完成 | Seed 覆盖核心演示数据；manifest 导入示例和命令已完成；真实资料文件不提交。 |
-| Stage 16：测试与质量 | 后端、前端、Docker、支付、审核等测试 | 部分完成 | Go tests 和部分 build/lint 已持续运行；已补 delivery、quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin ai-draft-review、mobile public-page browser smoke；仍缺完整 E2E 和截图回归。 |
+| Stage 16：测试与质量 | 后端、前端、Docker、支付、审核等测试 | 部分完成 | Go tests 和部分 build/lint 已持续运行；已补 delivery、quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin report-review、admin ai-draft-review、mobile public-page browser smoke；仍缺完整 E2E 和截图回归。 |
 | Stage 17：文档 | 架构、API、数据库、开发、部署、安全文档 | 部分完成 | 核心文档存在；仍需随实现持续更新。 |
 
 ## 5. 本阶段新增/修改的关键文件
@@ -223,14 +223,14 @@ git diff --check
 - 自动证书轮换、支付异常分级升级路由和支付对账未做，生产运维风险仍高。
 - 真实课程资料不应提交到 Git，需要通过部署挂载、后台上传或 manifest 导入命令入库。
 - AI 仍是 mock 为主，不能宣传为真实智能学习闭环。
-- 缺少完整 E2E 和移动端截图回归，界面体验风险仍需单独验收；quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review 和 admin ai-draft-review smoke 只能覆盖关键单路径，不等于完整刷题/审核/AI 回归。
+- 缺少完整 E2E 和移动端截图回归，界面体验风险仍需单独验收；quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin report-review 和 admin ai-draft-review smoke 只能覆盖关键单路径，不等于完整刷题/审核/AI 回归。
 
 ## 8. 下一阶段最小任务
 
 1. 用真实微信商户参数联调 Native 下单、notify 回调和关单。
 2. 增加真正的支付异常分级升级路由、自动对账和支付运维说明；人工处理台账、Dashboard 数量提醒与 webhook 基础提醒已有。
 3. 用真实内测资料跑一次 manifest 导入到本地/测试库，确认包绑定和 paid 下载权限；自动化 smoke 已覆盖测试夹具链路，但不能替代真实资料验收。
-4. 继续补 E2E smoke：当前已有 delivery、quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin ai-draft-review、mock-payment 和 mobile public-page；下一步补举报处理、更多刷题题型和真实 AI/支付联调 smoke。
+4. 继续补 E2E smoke：当前已有 delivery、quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin wiki-proposal-review、admin forum-review、admin forum-reply-review、admin report-review、admin ai-draft-review、mock-payment 和 mobile public-page；下一步补更多刷题题型、排行榜/搜索路径和真实 AI/支付联调 smoke。
 5. 做移动端截图回归，优先覆盖 390px 宽度。
 
 ## 9. 结论

@@ -17,6 +17,7 @@
     "test:e2e:wiki-proposal-review": "playwright test tests/admin-wiki-proposal-review.smoke.spec.ts",
     "test:e2e:forum-review": "playwright test tests/admin-forum-review.smoke.spec.ts",
     "test:e2e:forum-reply-review": "playwright test tests/admin-forum-reply-review.smoke.spec.ts",
+    "test:e2e:report-review": "playwright test tests/admin-report-review.smoke.spec.ts",
     "test:e2e:ai-draft-review": "playwright test tests/admin-ai-draft-review.smoke.spec.ts",
     "test:e2e:mock-payment": "playwright test tests/mock-wechat-payment.smoke.spec.ts"
   },

@@ -61,6 +61,7 @@
                 type="success"
                 plain
                 :disabled="row.status !== 'pending'"
+                :data-testid="`report-review-resolve-${row.id}`"
                 @click="openReview(row, 'resolve')"
               >
                 {{ copy.resolve }}
@@ -70,6 +71,7 @@
                 type="danger"
                 plain
                 :disabled="row.status !== 'pending'"
+                :data-testid="`report-review-reject-${row.id}`"
                 @click="openReview(row, 'reject')"
               >
                 {{ copy.reject }}
@@ -103,6 +105,7 @@
           <el-button
             :type="reviewAction === 'resolve' ? 'success' : 'danger'"
             :loading="reviewing"
+            data-testid="report-review-submit"
             @click="submitReview"
           >
             {{ reviewAction === "resolve" ? copy.resolve : copy.reject }}
