@@ -104,7 +104,7 @@ cd ../worker && go test ./...
 - Admin material metadata PATCH rejects direct file-field mutation; file replacement remains an upload flow.
 - 课程包授权解锁包内 paid 资料。
 - 后台课程包 CRUD、包内资料绑定/解绑、重复绑定保护，以及公开课程包详情不泄露未发布资料 item。
-- Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages` 展示已发布课程包列表，`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建 pending 课程包订单。Go API 可在开发/测试环境为订单生成 mock WeChat Native codeUrl 并把订单置为 `paying`，Web 会把 codeUrl 渲染成本地二维码；开发/测试环境可用带 HMAC 的 mock notify 把订单置为 `paid` 并幂等发放课程包 entitlement。live Native 下单会用商户私钥签名并校验微信响应签名，live notify handler 会验签、解密、校验 appid/mchid/金额并幂等发放 entitlement；生产开放仍需要真实商户环境端到端联调、证书轮换和运营告警。Vue Admin `/orders` 只读查询订单状态，不能标记支付成功或发放权益。
+- Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages` 展示已发布课程包列表，`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建 pending 课程包订单。Go API 可在开发/测试环境为订单生成 mock WeChat Native codeUrl 并把订单置为 `paying`，Web 会把 codeUrl 渲染成本地二维码；开发/测试环境可用带 HMAC 的 mock notify 把订单置为 `paid` 并幂等发放课程包 entitlement。Go API 支持关闭 pending/paying 微信 Native 订单，closed 订单不会被新下单复用。live Native 下单会用商户私钥签名并校验微信响应签名，live notify handler 会验签、解密、校验 appid/mchid/金额并幂等发放 entitlement；生产开放仍需要真实商户环境端到端联调、证书轮换和运营告警。Vue Admin `/orders` 只读查询订单状态，不能标记支付成功或发放权益。
 - Web `/wiki` and `/wiki/[id]` expose only published public Wiki entries through the Go API; draft, pending, rejected, and private review metadata stay hidden.
 - Web `/blog` and `/blog/[id]` expose only published public Blog posts through the Go API; public responses use a DTO that hides review metadata, and the detail page can submit a `blog_post` report.
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。

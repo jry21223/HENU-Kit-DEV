@@ -47,6 +47,10 @@ type nativeRequest struct {
 	OrderID string `json:"orderId"`
 }
 
+type closeRequest struct {
+	OrderID string `json:"orderId"`
+}
+
 type nativeResponse struct {
 	OrderID     string    `json:"orderId"`
 	CodeURL     string    `json:"codeUrl"`
@@ -56,6 +60,13 @@ type nativeResponse struct {
 	Currency    string    `json:"currency"`
 	Title       string    `json:"title"`
 	Mock        bool      `json:"mock"`
+}
+
+type closeResponse struct {
+	OrderID string `json:"orderId"`
+	Status  string `json:"status"`
+	Closed  bool   `json:"closed"`
+	Mock    bool   `json:"mock"`
 }
 
 type mockNotifyPayload struct {
@@ -157,6 +168,69 @@ func (h Handler) WeChatNative(ctx *gin.Context) {
 		Currency:    order.Currency,
 		Title:       coursePackage.Title,
 		Mock:        true,
+	})
+}
+
+func (h Handler) WeChatClose(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req closeRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	orderID := strings.TrimSpace(req.OrderID)
+	if orderID == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "missing_order_id", nil)
+		return
+	}
+
+	var order model.Order
+	if err := h.db.First(&order, "id = ?", orderID).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "order_not_found", nil)
+		return
+	}
+	if order.UserID != user.ID && user.Role != model.RoleAdmin && user.Role != model.RoleSuperAdmin {
+		response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "forbidden", nil)
+		return
+	}
+	if order.PaymentProvider != providerWeChatNative {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsupported_payment_provider", nil)
+		return
+	}
+	if order.Status != model.OrderPending && order.Status != model.OrderPaying {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "order_not_closable", gin.H{"status": order.Status})
+		return
+	}
+
+	payCfg := normalizedWeChatConfig(h.cfg.WeChatPay)
+	if err := ValidateWeChatNativeConfig(h.cfg.Environment, payCfg); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, err.Error(), nil)
+		return
+	}
+	if payCfg.Mode == wechatModeLive && order.Status == model.OrderPaying {
+		if err := closeLiveNativeOrder(ctx.Request.Context(), payCfg, order); err != nil {
+			response.Error(ctx, http.StatusBadGateway, response.CodeInternalServer, err.Error(), nil)
+			return
+		}
+	}
+	closed, err := h.markOrderClosed(order.ID)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "close_failed", nil)
+		return
+	}
+	if !closed {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "order_not_closable", gin.H{"status": order.Status})
+		return
+	}
+	response.OK(ctx, closeResponse{
+		OrderID: order.ID,
+		Status:  model.OrderClosed,
+		Closed:  true,
+		Mock:    payCfg.Mode == wechatModeMock,
 	})
 }
 
@@ -272,7 +346,7 @@ func (h Handler) coursePackageForOrder(ctx *gin.Context, order model.Order) (mod
 func (h Handler) markOrderPaying(orderID string, codeURL string, expiresAt time.Time) error {
 	metadata, err := json.Marshal(map[string]interface{}{
 		"wechatNative": map[string]interface{}{
-			"mode":      wechatModeMock,
+			"mode":      normalizedWeChatConfig(h.cfg.WeChatPay).Mode,
 			"codeUrl":   codeURL,
 			"expiresAt": expiresAt.Format(time.RFC3339),
 		},
@@ -286,6 +360,28 @@ func (h Handler) markOrderPaying(orderID string, codeURL string, expiresAt time.
 			"status":   model.OrderPaying,
 			"metadata": datatypes.JSON(metadata),
 		}).Error
+}
+
+func (h Handler) markOrderClosed(orderID string) (bool, error) {
+	metadata, err := json.Marshal(map[string]interface{}{
+		"wechatClose": map[string]interface{}{
+			"closedAt": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		return false, err
+	}
+	result := h.db.Model(&model.Order{}).
+		Where("id = ? AND status IN ?", orderID, []string{model.OrderPending, model.OrderPaying}).
+		Updates(map[string]interface{}{
+			"status":    model.OrderClosed,
+			"risk_flag": "",
+			"metadata":  datatypes.JSON(metadata),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 func mockNativeCodeURL(outTradeNo string) string {

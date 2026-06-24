@@ -108,6 +108,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/orders/:id", authMiddleware.RequireAuth(), orderHandler.Detail)
 	v1.GET("/orders/:id/status", authMiddleware.RequireAuth(), orderHandler.Status)
 	v1.POST("/payments/wechat/native", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), paymentHandler.WeChatNative)
+	v1.POST("/payments/wechat/close", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), paymentHandler.WeChatClose)
 	v1.POST("/payments/wechat/notify", paymentHandler.WeChatNotify)
 	v1.GET("/questions/:id", quizHandler.Question)
 	v1.POST("/questions/:id/submit", authMiddleware.OptionalAuth(), quizHandler.Submit)

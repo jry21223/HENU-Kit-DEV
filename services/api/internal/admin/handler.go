@@ -2152,7 +2152,7 @@ func normalizeCourseStatus(value string, fallback string) (string, bool) {
 
 func validOrderStatus(value string) bool {
 	switch strings.TrimSpace(value) {
-	case model.OrderPending, model.OrderPaying, model.OrderPaid, model.OrderFailed, model.OrderCancelled, model.OrderRefunded:
+	case model.OrderPending, model.OrderPaying, model.OrderPaid, model.OrderClosed, model.OrderExpired, model.OrderFailed, model.OrderCancelled, model.OrderRefunded:
 		return true
 	default:
 		return false

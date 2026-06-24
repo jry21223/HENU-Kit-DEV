@@ -27,6 +27,8 @@ const (
 	OrderPending   = "pending"
 	OrderPaying    = "paying"
 	OrderPaid      = "paid"
+	OrderClosed    = "closed"
+	OrderExpired   = "expired"
 	OrderFailed    = "failed"
 	OrderCancelled = "cancelled"
 	OrderRefunded  = "refunded"

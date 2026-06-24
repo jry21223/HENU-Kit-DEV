@@ -150,6 +150,146 @@ func TestWeChatNativeRejectsUnpayableOrders(t *testing.T) {
 	}
 }
 
+func TestWeChatCloseClosesOwnPendingOrPayingOrder(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	coursePackage := createTestPackage(t, db, course, "wechat-close-package", model.StatusPublished)
+	if err := db.Model(&coursePackage).Updates(map[string]interface{}{"price_fen": int64(1990), "currency": "CNY"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	user := createTestUser(t, db, "wechat-close-buyer@stu.henu.edu.cn", model.RoleUser)
+	other := createTestUser(t, db, "wechat-close-other@stu.henu.edu.cn", model.RoleUser)
+	admin := createTestUser(t, db, "wechat-close-admin@stu.henu.edu.cn", model.RoleAdmin)
+	userToken := loginTestUser(t, router, user.Email)
+	otherToken := loginTestUser(t, router, other.Email)
+	adminToken := loginTestUser(t, router, admin.Email)
+
+	created := performJSON(router, http.MethodPost, "/api/v1/orders", `{"packageId":"`+coursePackage.ID+`"}`, userToken)
+	if created.Code != http.StatusOK {
+		t.Fatalf("expected order create 200, got %d: %s", created.Code, created.Body.String())
+	}
+	var orderPayload struct {
+		Data struct {
+			Order model.Order `json:"order"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &orderPayload); err != nil {
+		t.Fatal(err)
+	}
+	order := orderPayload.Data.Order
+
+	unauthorized := performJSON(router, http.MethodPost, "/api/v1/payments/wechat/close", `{"orderId":"`+order.ID+`"}`, "")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated close 401, got %d: %s", unauthorized.Code, unauthorized.Body.String())
+	}
+	otherDenied := performJSON(router, http.MethodPost, "/api/v1/payments/wechat/close", `{"orderId":"`+order.ID+`"}`, otherToken)
+	if otherDenied.Code != http.StatusForbidden {
+		t.Fatalf("expected other user close 403, got %d: %s", otherDenied.Code, otherDenied.Body.String())
+	}
+	closePending := performJSON(router, http.MethodPost, "/api/v1/payments/wechat/close", `{"orderId":"`+order.ID+`"}`, userToken)
+	if closePending.Code != http.StatusOK || !strings.Contains(closePending.Body.String(), `"status":"closed"`) {
+		t.Fatalf("expected pending close success, got %d: %s", closePending.Code, closePending.Body.String())
+	}
+	var stored model.Order
+	if err := db.First(&stored, "id = ?", order.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != model.OrderClosed || stored.PaidAt != nil {
+		t.Fatalf("expected closed unpaid order, got status=%s paidAt=%v", stored.Status, stored.PaidAt)
+	}
+	if countOrders(t, db, user.ID, coursePackage.ID) != 1 {
+		t.Fatal("expected one closed order before new order")
+	}
+	recreated := performJSON(router, http.MethodPost, "/api/v1/orders", `{"packageId":"`+coursePackage.ID+`"}`, userToken)
+	if recreated.Code != http.StatusOK || strings.Contains(recreated.Body.String(), `"alreadyPending":true`) || strings.Contains(recreated.Body.String(), order.ID) {
+		t.Fatalf("expected new order after close, got %d: %s", recreated.Code, recreated.Body.String())
+	}
+	if countOrders(t, db, user.ID, coursePackage.ID) != 2 {
+		t.Fatal("expected closed order not to be reused")
+	}
+
+	adminOrder := model.Order{
+		UserID:          other.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "ADMINCLOSE001",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPaying,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+	}
+	if err := db.Create(&adminOrder).Error; err != nil {
+		t.Fatal(err)
+	}
+	adminClose := performJSON(router, http.MethodPost, "/api/v1/payments/wechat/close", `{"orderId":"`+adminOrder.ID+`"}`, adminToken)
+	if adminClose.Code != http.StatusOK {
+		t.Fatalf("expected admin close 200, got %d: %s", adminClose.Code, adminClose.Body.String())
+	}
+	var closedByAdmin model.Order
+	if err := db.First(&closedByAdmin, "id = ?", adminOrder.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if closedByAdmin.Status != model.OrderClosed {
+		t.Fatalf("expected admin to close paying order, got %s", closedByAdmin.Status)
+	}
+}
+
+func TestWeChatCloseRejectsPaidAndClosedOrders(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	coursePackage := createTestPackage(t, db, course, "wechat-close-paid-package", model.StatusPublished)
+	user := createTestUser(t, db, "wechat-close-paid@stu.henu.edu.cn", model.RoleUser)
+	token := loginTestUser(t, router, user.Email)
+	paidAt := time.Now().UTC()
+	paidOrder := model.Order{
+		UserID:          user.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "CLOSEPAID001",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPaid,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+		PaidAt:          &paidAt,
+	}
+	if err := db.Create(&paidOrder).Error; err != nil {
+		t.Fatal(err)
+	}
+	paidClose := performJSON(router, http.MethodPost, "/api/v1/payments/wechat/close", `{"orderId":"`+paidOrder.ID+`"}`, token)
+	if paidClose.Code != http.StatusConflict || !strings.Contains(paidClose.Body.String(), "order_not_closable") {
+		t.Fatalf("expected paid close rejection, got %d: %s", paidClose.Code, paidClose.Body.String())
+	}
+	var stillPaid model.Order
+	if err := db.First(&stillPaid, "id = ?", paidOrder.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stillPaid.Status != model.OrderPaid || stillPaid.PaidAt == nil {
+		t.Fatalf("paid order must remain paid, got status=%s paidAt=%v", stillPaid.Status, stillPaid.PaidAt)
+	}
+
+	closedOrder := model.Order{
+		UserID:          user.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "CLOSECLOSED001",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderClosed,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+	}
+	if err := db.Create(&closedOrder).Error; err != nil {
+		t.Fatal(err)
+	}
+	repeated := performJSON(router, http.MethodPost, "/api/v1/payments/wechat/close", `{"orderId":"`+closedOrder.ID+`"}`, token)
+	if repeated.Code != http.StatusConflict || !strings.Contains(repeated.Body.String(), "order_not_closable") {
+		t.Fatalf("expected repeated close rejection, got %d: %s", repeated.Code, repeated.Body.String())
+	}
+}
+
 func TestWeChatNativeConfigValidation(t *testing.T) {
 	if err := payment.ValidateWeChatNativeConfig("test", config.WeChatPayConfig{Mode: "mock"}); err != nil {
 		t.Fatalf("expected test mock config to pass, got %v", err)

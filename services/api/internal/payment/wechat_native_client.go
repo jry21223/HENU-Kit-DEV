@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,6 +23,7 @@ const wechatNativePath = "/v3/pay/transactions/native"
 
 var (
 	ErrWeChatNativeRequestFailed = errors.New("wechat_native_request_failed")
+	ErrWeChatCloseRequestFailed  = errors.New("wechat_close_request_failed")
 	ErrWeChatResponseInvalid     = errors.New("wechat_response_invalid")
 )
 
@@ -42,6 +44,10 @@ type weChatNativeRequest struct {
 type weChatNativeAmount struct {
 	Total    int64  `json:"total"`
 	Currency string `json:"currency,omitempty"`
+}
+
+type weChatCloseRequest struct {
+	MchID string `json:"mchid"`
 }
 
 type weChatNativeResponse struct {
@@ -128,6 +134,68 @@ func createLiveNativePayment(ctx context.Context, payCfg config.WeChatPayConfig,
 		CodeURL:   nativeResponse.CodeURL,
 		ExpiresAt: now.Add(time.Duration(payCfg.NativeExpireMinutes) * time.Minute),
 	}, nil
+}
+
+func closeLiveNativeOrder(ctx context.Context, payCfg config.WeChatPayConfig, order model.Order) error {
+	payCfg = normalizedWeChatConfig(payCfg)
+	privateKey, err := LoadMerchantPrivateKey(payCfg)
+	if err != nil {
+		return err
+	}
+	path := "/v3/pay/transactions/out-trade-no/" + url.PathEscape(order.OutTradeNo) + "/close"
+	requestBody, err := json.Marshal(weChatCloseRequest{MchID: payCfg.MchID})
+	if err != nil {
+		return err
+	}
+	nonce, err := randomHex(16)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	authHeader, err := BuildSignedWeChatAuthorizationHeader(
+		http.MethodPost,
+		path,
+		string(requestBody),
+		now.Unix(),
+		nonce,
+		payCfg.MchID,
+		payCfg.MerchantSerialNo,
+		privateKey,
+	)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, payCfg.APIBaseURL+path, bytes.NewReader(requestBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "final-review-platform/0.1 wechat-pay-native")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("%w: status=%d body=%s", ErrWeChatCloseRequestFailed, resp.StatusCode, string(responseBody))
+	}
+	if len(responseBody) > 0 {
+		if err := verifyWeChatHTTPResponse(payCfg.PlatformCertsDir, resp.Header, responseBody); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func verifyWeChatHTTPResponse(platformCertsDir string, headers http.Header, body []byte) error {

@@ -125,7 +125,10 @@ const copy = {
 
 const statuses = [
   { label: "Pending", value: "pending" },
+  { label: "Paying", value: "paying" },
   { label: "Paid", value: "paid" },
+  { label: "Closed", value: "closed" },
+  { label: "Expired", value: "expired" },
   { label: "Failed", value: "failed" },
   { label: "Cancelled", value: "cancelled" },
   { label: "Refunded", value: "refunded" },
@@ -181,7 +184,7 @@ function statusLabel(status: string) {
 function statusTag(status: string) {
   if (status === "paid") return "success";
   if (status === "failed" || status === "cancelled") return "danger";
-  if (status === "refunded") return "warning";
+  if (status === "refunded" || status === "expired") return "warning";
   return "info";
 }
 
