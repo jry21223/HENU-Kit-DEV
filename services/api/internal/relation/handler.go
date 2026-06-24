@@ -28,10 +28,9 @@ func NewHandler(db *gorm.DB) Handler {
 }
 
 type userSummary struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
 }
 
 func (h Handler) Follow(ctx *gin.Context) {
@@ -207,7 +206,7 @@ func (h Handler) usersByID(ids []string) []userSummary {
 	summaries := make([]userSummary, 0, len(ids))
 	for _, id := range ids {
 		if user, ok := byID[id]; ok {
-			summaries = append(summaries, userSummary{ID: user.ID, Name: user.Name, Email: user.Email, Role: user.Role})
+			summaries = append(summaries, userSummary{ID: user.ID, Name: user.Name, Role: user.Role})
 		}
 	}
 	return summaries

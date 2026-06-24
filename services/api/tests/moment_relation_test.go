@@ -90,15 +90,15 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	}
 
 	aliceFriends := performJSON(router, http.MethodGet, "/api/v1/me/friends", "", aliceToken)
-	if aliceFriends.Code != http.StatusOK || !strings.Contains(aliceFriends.Body.String(), bob.ID) {
+	if aliceFriends.Code != http.StatusOK || !strings.Contains(aliceFriends.Body.String(), bob.ID) || strings.Contains(aliceFriends.Body.String(), "moment-bob@") {
 		t.Fatalf("expected bob in alice friends, got %d: %s", aliceFriends.Code, aliceFriends.Body.String())
 	}
 	bobFollowing := performJSON(router, http.MethodGet, "/api/v1/me/following", "", bobToken)
-	if bobFollowing.Code != http.StatusOK || !strings.Contains(bobFollowing.Body.String(), alice.ID) {
+	if bobFollowing.Code != http.StatusOK || !strings.Contains(bobFollowing.Body.String(), alice.ID) || strings.Contains(bobFollowing.Body.String(), "moment-alice@") {
 		t.Fatalf("expected alice in bob following, got %d: %s", bobFollowing.Code, bobFollowing.Body.String())
 	}
 	aliceFollowers := performJSON(router, http.MethodGet, "/api/v1/me/followers", "", aliceToken)
-	if aliceFollowers.Code != http.StatusOK || !strings.Contains(aliceFollowers.Body.String(), bob.ID) {
+	if aliceFollowers.Code != http.StatusOK || !strings.Contains(aliceFollowers.Body.String(), bob.ID) || strings.Contains(aliceFollowers.Body.String(), "moment-bob@") {
 		t.Fatalf("expected bob in alice followers, got %d: %s", aliceFollowers.Code, aliceFollowers.Body.String())
 	}
 

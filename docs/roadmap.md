@@ -24,6 +24,7 @@
 - Web `/moments` foundation with a mobile-aware feed, composer, likes, comments, follow/block actions, and smoke coverage
 - Go API relation foundation with follow, unfollow, block, unblock, following, followers, and mutual-friend lists
 - Public user profile aggregation API and Web `/users/[id]` page with visible moments, blog posts, forum posts, and forum replies
+- Web `/me/relations` page for current-user following, followers, mutual-friend lists, follow/unfollow, and block actions
 - Web personal download-history page
 - Web personal wrong-question book with per-course weakness totals and current-user delete action
 - Web personal forum submission tracking page for current user's posts/replies and review status
@@ -95,6 +96,6 @@
 - AI Worker flows
 - Points and membership
 - Wiki creator workflow refinements and richer revision diff tooling
-- Richer social relationship UX, dedicated relation management pages, and real media upload for moments
+- Richer social relationship UX, advanced relation filters, and real media upload for moments
 - Notifications, richer reports, leaderboards
 - Production deployment and monitoring

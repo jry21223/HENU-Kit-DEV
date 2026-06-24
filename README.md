@@ -27,7 +27,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
 - Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包列表/详情与解锁状态展示、资料详情、课程刷题、Wiki 列表/详情与创作者修订提案、Blog 只读列表/详情、论坛列表/详情、发帖、回复提交、最佳答案操作入口和学生邮箱登录页面。
-- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，在 `/moments` 查看/发布学习动态，在 `/users/[id]` 查看公开用户主页，并在 `/me/notifications` 查看审核通知。
+- Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，在 `/moments` 查看/发布学习动态，在 `/users/[id]` 查看公开用户主页，在 `/me/relations` 管理关注/粉丝/互关好友，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
 - 目标运行栈为 Go API、Go Worker、Next.js Web、Vue Admin、PostgreSQL 和 Redis。
 - 微信支付 Native 是目标支付方案；当前支持开发/测试环境 mock Native codeUrl、订单过期收敛和带 HMAC 的 mock notify 闭环，生产环境禁止 mock；live Native 下单已接入签名请求和微信响应验签，live notify handler 已实现官方回调验签、resource 解密、appid/mchid/金额校验和幂等授权代码路径，但真实商户环境端到端联调仍未完成。
@@ -124,6 +124,7 @@ cd ../worker && go test ./...
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
 - Web `/moments` 展示公开与互关可见学习动态；登录用户可发布 500 字以内动态、设置公开/互关可见、点赞、评论、关注或屏蔽动态作者。真实媒体上传仍是后续工作。
 - Web `/users/[id]` 展示公开用户主页，聚合当前访问者可见的动态、已发布 Blog、已发布论坛帖子和已发布论坛回复；Go API 不返回邮箱、审核字段或隐藏内容，互关动态和屏蔽关系由服务端判断。
+- Web `/me/relations` 展示当前登录用户自己的关注、粉丝和互关好友列表，支持从服务端执行关注、取消关注和屏蔽；关系列表响应不返回邮箱。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
 - Web `/search` 和 Go API `/api/v1/search` 已提供基础公开搜索，覆盖课程、资料、课程包、Wiki、Blog 和论坛帖子。
 - Web `/me/points` 和 `/me/membership` 已展示当前用户积分、积分流水、有效会员和公开会员套餐；Go API 已支持 admin 查询积分流水、维护积分规则、手动赠送/撤销会员并写操作日志。

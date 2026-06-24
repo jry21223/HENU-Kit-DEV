@@ -20,6 +20,7 @@ const publicRoutes = [
   { path: "/moments", requiredSelector: 'a[href="/moments"]', shell: true },
   { path: "/search", requiredSelector: 'form[action="/search"] input[name="q"]', shell: true },
   { path: "/me", requiredSelector: 'a[href="/me/wrong-questions"]', shell: true },
+  { path: "/me/relations", requiredSelector: 'a[href="/login"]', shell: true },
 ] as const;
 
 test.describe("mobile public pages", () => {

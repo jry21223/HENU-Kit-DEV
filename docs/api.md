@@ -357,6 +357,7 @@ Implemented moment and relation behavior:
 - users can follow/unfollow/block/unblock other users; self-follow/self-block is rejected.
 - blocking a user removes follow edges between the two users and prevents future follow until unblocked.
 - `/me/following`, `/me/followers`, and `/me/friends` are user-scoped and hide blocked relationships.
+- relation-list responses contain only public user summaries (`id`, `name`, `role`) and do not expose email addresses.
 - Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments; richer media upload remains future work.
 
 Implemented public user profile behavior:
