@@ -158,6 +158,8 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - 危险路径如 `../../secret.pdf` 会被拒绝。
 - 重复导入会更新已有资料并复用课程包绑定，不重复创建 material 或 package item。
 - Automated smoke coverage exists in `TestMaterialManifestImportSmokeCoversPaidDownloadDelivery`: it imports mounted files through the manifest importer, verifies public package detail does not expose storage keys, checks free/login_required/paid download rules, grants the imported package, and verifies paid download audit logging.
+- The import JSON includes a `report` block. Before importing real internal files, check `report.filesChecked`, `report.totalFileBytes`, `report.accessLevels`, `report.statuses`, `report.types`, `report.paidMaterials`, `report.packageItemLinks`, `report.packages`, and `report.duplicateFiles`.
+- `-dry-run` uses the same validation/upsert/bind path inside a rolled-back transaction, so its `report` is the safest preflight acceptance artifact.
 - This smoke test uses temporary fixture files only. Real course-file acceptance still requires running the import command against mounted internal materials in the target environment.
 
 ## 9. 安全边界

@@ -56,7 +56,7 @@
 - Mock AI task API, worker completion, usage log, and reviewable draft creation
 - Course package catalog, Web package list/detail pages, package-level material grants, and public package-detail filtering that hides unpublished package items as well as unpublished material objects
 - Course package pending-order foundation with server-authoritative package pricing, duplicate pending-order reuse, and user-scoped order status
-- Material manifest import command with example manifest, dry-run preflight, existing-file checks, path traversal rejection, idempotent material upsert, idempotent course-package item binding, and automated manifest-to-paid-download smoke coverage
+- Material manifest import command with example manifest, dry-run preflight report, existing-file checks, path traversal rejection, idempotent material upsert, idempotent course-package item binding, duplicate-file visibility, and automated manifest-to-paid-download smoke coverage
 - WeChat Native mock payment request endpoint for development/test, with production mock guard and no entitlement side effects
 - Web package detail renders server-returned WeChat Native code URLs as local QR codes and polls read-only order status
 - Development/test signed mock WeChat notify can mark an order paid and idempotently issue a package entitlement after signature and amount checks

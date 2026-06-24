@@ -182,7 +182,8 @@ Implemented package behavior:
 - expired package grants do not unlock paid materials
 - `/me/entitlements` returns direct material grants, published package grants, included materials, and summary counts for the current user only
 - expired grants and grants for unpublished packages are excluded from `/me/entitlements`
-- manifest import supports `-dry-run`, which executes the same validation/upsert path in a rolled-back transaction and reports planned counts without writing rows
+- manifest import supports `-dry-run`, which executes the same validation/upsert/package-bind/report path in a rolled-back transaction and reports planned counts without writing rows
+- manifest import responses include `report.filesChecked`, `report.totalFileBytes`, `report.accessLevels`, `report.statuses`, `report.types`, `report.paidMaterials`, `report.packageItemLinks`, per-package summaries, and `report.duplicateFiles` for preflight acceptance
 - manifest-delivery smoke coverage imports temporary mounted files, verifies public package detail hides storage keys, checks free/login_required/paid download behavior, grants the imported package, and verifies paid download audit logging
 
 Implemented admin package-management contract:

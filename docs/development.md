@@ -47,7 +47,15 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 
 The importer is safe to run repeatedly. It upserts schools, colleges, majors, courses, packages, and materials, then idempotently binds imported materials to the course package. File paths in the manifest must resolve inside `LOCAL_UPLOAD_DIR`; missing files and traversal attempts fail the import transaction.
 
-Use `-dry-run` before importing real internal materials. Dry-run mode executes the same validation and upsert path inside a rolled-back transaction, returns `"dryRun": true`, and reports the planned create/update/bind counts without persisting rows.
+Use `-dry-run` before importing real internal materials. Dry-run mode executes the same validation, upsert, package-bind, and report path inside a rolled-back transaction, returns `"dryRun": true`, and reports the planned create/update/bind counts without persisting rows.
+
+The import JSON includes a `report` block for acceptance checks:
+
+- `filesChecked` and `totalFileBytes` confirm the mounted files resolved under `LOCAL_UPLOAD_DIR`.
+- `accessLevels`, `statuses`, and `types` summarize what will be exposed as free/login-required/paid/member-only and draft/published/etc.
+- `paidMaterials`, `publishedMaterials`, and `packageItemLinks` show whether paid assets are represented and bound to course packages.
+- `packages` gives per-package material, paid material, access-level, item-link, and byte totals.
+- `duplicateFiles` flags multiple manifest materials that point at the same storage file; this is allowed but should be manually reviewed before an internal release.
 
 Material import delivery smoke:
 

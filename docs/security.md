@@ -10,7 +10,7 @@
 - Public package detail must filter both `materials` and package `items` to published materials. It is not enough to hide unpublished material objects while still returning item resource ids for draft/pending/rejected/archived materials.
 - Web package detail can show entitlement state from `/me/entitlements`, but that display does not grant access; paid downloads still require the Go API material download permission check.
 - Frozen users cannot download `login_required`, `paid`, or `member_only` materials even when they have an active grant. Free materials remain publicly downloadable.
-- Material manifest import accepts only files that already exist under `LOCAL_UPLOAD_DIR`; traversal paths and missing files fail the transaction, and real course files remain ignored by Git.
+- Material manifest import accepts only files that already exist under `LOCAL_UPLOAD_DIR`; traversal paths and missing files fail the transaction, dry-run/import responses include an acceptance `report`, and real course files remain ignored by Git.
 - Course package orders are server-priced records. Creating an order or generating a WeChat Native mock code URL does not mark payment success, create entitlement, or bypass paid download checks.
 - WeChat Native order expiry is enforced server-side: stale pending/paying orders with `expires_at <= now` become `expired`, cannot continue creating code URLs, and are not reused by new package order creation.
 - WeChat Native close-order handling is server-side only: users can close only their own pending/paying orders, admins can close any pending/paying order, and paid/closed orders cannot be closed or used to revoke entitlement.

@@ -70,6 +70,15 @@ func TestMaterialManifestImportCreatesPackageMaterialsAndIsIdempotent(t *testing
 	if result.CoursesCreated != 1 || result.PackagesCreated != 1 || result.MaterialsCreated != 2 || result.PackageItemsAdded != 2 {
 		t.Fatalf("unexpected first import result: %#v", result)
 	}
+	if result.Report.ManifestMaterials != 2 || result.Report.FilesChecked != 2 || result.Report.TotalFileBytes != int64(len("knowledge")+len("mock")) {
+		t.Fatalf("unexpected first import report file summary: %#v", result.Report)
+	}
+	if result.Report.PaidMaterials != 1 || result.Report.PublishedMaterials != 2 || result.Report.AccessLevels[model.MaterialAccessPaid] != 1 || result.Report.AccessLevels[model.MaterialAccessLoginRequired] != 1 {
+		t.Fatalf("unexpected first import report policy summary: %#v", result.Report)
+	}
+	if len(result.Report.Packages) != 1 || result.Report.Packages[0].PackageSlug != "henu-software-2023-discrete-math-final" || result.Report.Packages[0].Materials != 2 || result.Report.Packages[0].PaidMaterials != 1 || result.Report.Packages[0].PackageItemLinks != 2 {
+		t.Fatalf("unexpected first import package report: %#v", result.Report.Packages)
+	}
 	assertMaterialImportCounts(t, db, 2, 1, 2)
 
 	var material model.Material
@@ -105,6 +114,9 @@ func TestMaterialManifestImportDryRunReportsWithoutPersisting(t *testing.T) {
 	}
 	if !result.DryRun || result.Entries != 1 || result.CoursesCreated != 1 || result.PackagesCreated != 1 || result.MaterialsCreated != 1 || result.PackageItemsAdded != 1 {
 		t.Fatalf("unexpected dry-run result: %#v", result)
+	}
+	if result.Report.ManifestMaterials != 1 || result.Report.FilesChecked != 1 || result.Report.PackageItemLinks != 1 || result.Report.TotalFileBytes != int64(len("dry run outline")) {
+		t.Fatalf("unexpected dry-run import report: %#v", result.Report)
 	}
 	assertMaterialImportCounts(t, db, 0, 0, 0)
 
@@ -142,6 +154,54 @@ func TestMaterialManifestImportRejectsUnsafeAndMissingFiles(t *testing.T) {
 		}
 		assertMaterialImportCounts(t, db, 0, 0, 0)
 	})
+}
+
+func TestMaterialManifestImportReportDetectsDuplicateFileReferences(t *testing.T) {
+	db := newTestDB(t)
+	uploadDir := t.TempDir()
+	writeUploadFile(t, uploadDir, "materials/report/shared.pdf", "shared material")
+	manifest := []materialimport.ManifestEntry{
+		{
+			School:        "Henan Test University",
+			College:       "Software College",
+			Major:         "Network Engineering",
+			MajorSlug:     "network-engineering",
+			Grade:         "2023",
+			CourseSlug:    "report-course",
+			CourseName:    "Report Course",
+			PackageSlug:   "report-final-package",
+			PackageTitle:  "Report Final Package",
+			PackageStatus: model.StatusPublished,
+			Materials: []materialimport.ManifestMaterial{
+				{
+					Title:       "Report Shared Note",
+					Type:        "knowledge_note",
+					FilePath:    "uploads/materials/report/shared.pdf",
+					AccessLevel: model.MaterialAccessLoginRequired,
+					Status:      model.StatusPublished,
+				},
+				{
+					Title:       "Report Shared Answer",
+					Type:        "answer",
+					FilePath:    "uploads/materials/report/shared.pdf",
+					AccessLevel: model.MaterialAccessPaid,
+					Status:      model.StatusPublished,
+				},
+			},
+		},
+	}
+
+	result, err := materialimport.New(db, uploadDir).ImportDryRun(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Report.DuplicateFiles) != 1 || result.Report.DuplicateFiles[0] != "materials/report/shared.pdf" {
+		t.Fatalf("expected duplicate file reference in report, got %#v", result.Report)
+	}
+	if result.Report.PaidMaterials != 1 || result.Report.AccessLevels[model.MaterialAccessPaid] != 1 || result.Report.Types["answer"] != 1 {
+		t.Fatalf("expected paid answer material summary in duplicate report, got %#v", result.Report)
+	}
+	assertMaterialImportCounts(t, db, 0, 0, 0)
 }
 
 func TestMaterialManifestImportSmokeCoversPaidDownloadDelivery(t *testing.T) {
@@ -191,8 +251,15 @@ func TestMaterialManifestImportSmokeCoversPaidDownloadDelivery(t *testing.T) {
 			},
 		},
 	}
-	if _, err := materialimport.New(db, uploadDir).Import(manifest); err != nil {
+	result, err := materialimport.New(db, uploadDir).Import(manifest)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if result.Report.PaidMaterials != 1 || result.Report.AccessLevels[model.MaterialAccessFree] != 1 || result.Report.AccessLevels[model.MaterialAccessLoginRequired] != 1 || result.Report.AccessLevels[model.MaterialAccessPaid] != 1 {
+		t.Fatalf("unexpected import smoke access summary: %#v", result.Report)
+	}
+	if len(result.Report.Packages) != 1 || result.Report.Packages[0].PackageItemLinks != 3 || result.Report.Packages[0].PaidMaterials != 1 {
+		t.Fatalf("unexpected import smoke package report: %#v", result.Report.Packages)
 	}
 
 	cfg := testConfig()
