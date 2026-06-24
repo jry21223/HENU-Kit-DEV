@@ -28,8 +28,11 @@ type UseHomeAnimeTimelineOptions = {
 };
 
 const timelineDuration = 1000;
-const pageRevealStart = 0.7;
-const pageVisualEnd = 0.9;
+const insideRevealStart = 0.7;
+const insideRevealEnd = 0.8;
+const pageRevealStart = 0.76;
+const pageRevealEnd = 0.81;
+const pageVisualEnd = 0.92;
 const closingVisualStart = 0.96;
 
 function at(progress: number) {
@@ -248,11 +251,13 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         base,
         {
-          duration: durationBetween(0.6, 0.72),
+          duration: durationBetween(insideRevealStart, insideRevealEnd),
           ease: "outCubic",
           opacity: [0, 1],
+          scaleX: [0.97, 1],
+          y: [10, 0],
         },
-        at(0.6),
+        at(insideRevealStart),
       )
       .add(
         base,
@@ -270,11 +275,13 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         inside,
         {
-          duration: durationBetween(0.6, 0.72),
+          duration: durationBetween(insideRevealStart, insideRevealEnd),
           ease: "outCubic",
           opacity: [0, 1],
+          scaleX: [0.97, 1],
+          y: [10, 0],
         },
-        at(0.6),
+        at(insideRevealStart),
       )
       .add(
         inside,
@@ -292,10 +299,12 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         pages,
         {
-          duration: durationBetween(pageRevealStart, 0.8),
+          duration: durationBetween(pageRevealStart, pageRevealEnd),
           ease: "outCubic",
           opacity: [0, 1],
-          y: [28, 0],
+          rotateX: [7, 0],
+          scale: [0.985, 1],
+          y: [12, 0],
         },
         at(pageRevealStart),
       )

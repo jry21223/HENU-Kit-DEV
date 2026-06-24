@@ -68,11 +68,13 @@ async function archiveVisualState(page: Page) {
   return page.evaluate(() => {
     const cover = document.querySelector<HTMLElement>('[data-testid="archive-cover"]');
     const coverShadow = document.querySelector<HTMLElement>('[data-home-anim="archive-cover-shadow"]');
+    const base = document.querySelector<HTMLElement>('[data-home-anim="archive-base"]');
     const closingCopy = document.querySelector<HTMLElement>('[data-testid="archive-copy-closing"]');
+    const inside = document.querySelector<HTMLElement>('[data-home-anim="archive-inside"]');
     const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-home-anim="archive-page"]'));
     const spineShadow = document.querySelector<HTMLElement>('[data-home-anim="archive-spine-shadow"]');
 
-    if (!cover || !coverShadow || !closingCopy || pages.length === 0 || !spineShadow) {
+    if (!base || !cover || !coverShadow || !closingCopy || !inside || pages.length === 0 || !spineShadow) {
       throw new Error("Archive visual nodes were not found");
     }
 
@@ -81,11 +83,13 @@ async function archiveVisualState(page: Page) {
     const pageOpacities = pages.map((archivePage) => Number(getComputedStyle(archivePage).opacity));
 
     return {
+      baseOpacity: Number(getComputedStyle(base).opacity),
       closingCopyOpacity: Number(getComputedStyle(closingCopy).opacity),
       closingCopyRight: closingRect.right,
       coverLeft: coverRect.left,
       coverOpacity: Number(getComputedStyle(cover).opacity),
       coverShadowOpacity: Number(getComputedStyle(coverShadow).opacity),
+      insideOpacity: Number(getComputedStyle(inside).opacity),
       maxPageOpacity: Math.max(...pageOpacities),
       minPageOpacity: Math.min(...pageOpacities),
       spineShadowOpacity: Number(getComputedStyle(spineShadow).opacity),
@@ -168,7 +172,7 @@ async function expectPostBookSectionMarkerInViewport(
               inlineTranslate,
               inlineWillChange,
               opacityReady: computedOpacity > expectedOpacity,
-              translateRestored: computedTranslate !== "0px 18px" && computedTranslate !== "0 18px",
+              translateRestored: computedTranslate !== "0px 12px" && computedTranslate !== "0 12px",
             };
           }, minOpacity),
         { timeout: 7000 },
@@ -196,8 +200,8 @@ async function expectPostBookSectionMarkerInViewport(
   });
 
   expect(nonAnimatedState.computedOpacity).toBeGreaterThan(minOpacity);
-  expect(nonAnimatedState.computedTranslate).not.toBe("0px 18px");
-  expect(nonAnimatedState.computedTranslate).not.toBe("0 18px");
+  expect(nonAnimatedState.computedTranslate).not.toBe("0px 12px");
+  expect(nonAnimatedState.computedTranslate).not.toBe("0 12px");
   expect(nonAnimatedState.inlineOpacity).toBe("");
   expect(nonAnimatedState.inlineTranslate).toBe("");
   expect(nonAnimatedState.inlineWillChange).toBe("");
@@ -222,19 +226,22 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   await expect(page.getByRole("link", { name: /浏览课程资料/ })).toHaveAttribute("href", "/courses");
   await expect(page.getByText("软件学院资料库").first()).toBeVisible();
 
-  await scrollArchiveTo(page, 0.6);
+  await scrollArchiveTo(page, 0.66);
   await expect(page.getByTestId("archive-copy-intro")).toBeHidden();
   await expect(page.locator('[data-home-anim="archive-open-copy"]')).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
   await expect(page.getByTestId("archive-cover")).toBeVisible();
 
-  const closedCoverBox = await elementBox(page, "archive-cover");
+  const openingCoverBox = await elementBox(page, "archive-cover");
   const liftingVisualState = await archiveVisualState(page);
   expect(liftingVisualState.coverShadowOpacity).toBeGreaterThan(0.12);
   expect(liftingVisualState.spineShadowOpacity).toBeGreaterThan(0.18);
-  expect(closedCoverBox.centerX).toBeGreaterThan(1440 * 0.68);
-  expect(closedCoverBox.centerX).toBeLessThan(1440 * 0.86);
-  expect(closedCoverBox.width / closedCoverBox.height).toBeLessThan(0.86);
+  expect(liftingVisualState.baseOpacity).toBeLessThan(0.16);
+  expect(liftingVisualState.insideOpacity).toBeLessThan(0.16);
+  expect(liftingVisualState.maxPageOpacity).toBeLessThan(0.05);
+  expect(openingCoverBox.centerX).toBeGreaterThan(1440 * 0.45);
+  expect(openingCoverBox.centerX).toBeLessThan(1440 * 0.86);
+  expect(openingCoverBox.width / openingCoverBox.height).toBeLessThan(0.86);
 
   await scrollArchiveTo(page, 0.8);
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
@@ -382,7 +389,7 @@ test("homepage keeps precision animation markers unprepared with reduced motion"
 
       if (
         (propertyName === "opacity" && stringValue === "0") ||
-        (propertyName === "translate" && stringValue === "0 18px") ||
+        (propertyName === "translate" && stringValue === "0 12px") ||
         (propertyName === "will-change" && stringValue === "opacity, translate")
       ) {
         pageWindow.__homeInViewPrepWrites?.push({ propertyName, value: stringValue });

@@ -528,7 +528,7 @@
   opacity: 0;
   border: 1px solid rgb(43 33 23 / 0.12);
   border-radius: 26px;
-  transform: translateY(18px);
+  transform: translateY(12px);
   background: #fffaf2;
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.62),

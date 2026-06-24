@@ -1,7 +1,7 @@
 "use client";
 
 import { animate, stagger } from "animejs";
-import { type RefObject, useEffect } from "react";
+import { type RefObject, useLayoutEffect } from "react";
 
 type InlineStyles = {
   opacity: string;
@@ -54,7 +54,7 @@ export function useHomeAnimeInView({
   rootRef: RefObject<HTMLElement | null>;
   selector: string;
 }) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = rootRef.current;
 
     if (!root || reduceMotion || prefersReducedMotion()) {
@@ -79,7 +79,7 @@ export function useHomeAnimeInView({
 
     for (const target of targets) {
       target.style.setProperty("opacity", "0");
-      target.style.setProperty("translate", "0 18px");
+      target.style.setProperty("translate", "0 12px");
       target.style.setProperty("will-change", "opacity, translate");
     }
 
@@ -92,9 +92,9 @@ export function useHomeAnimeInView({
 
           animation = animate(targets, {
             opacity: [0, 1],
-            translate: ["0 18px", "0 0"],
-            delay: stagger(70),
-            duration: 560,
+            translate: ["0 12px", "0 0"],
+            delay: stagger(55),
+            duration: 520,
             ease: "outCubic",
             onComplete: () => {
               restoreTargets(animationTargets);
