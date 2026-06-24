@@ -184,6 +184,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 ```bash
 cd services/api
 go run ./cmd/import-materials -dry-run ../../data/material-manifest.example.json
+go run ./cmd/import-materials -dry-run -check-release ../../data/material-manifest.example.json
 go run ./cmd/import-materials ../../data/material-manifest.example.json
 ```
 
@@ -197,6 +198,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Automated smoke coverage exists in `TestMaterialManifestImportSmokeCoversPaidDownloadDelivery`: it imports mounted files through the manifest importer, verifies public package detail does not expose storage keys, checks free/login_required/paid download rules, grants the imported package, and verifies paid download audit logging.
 - The import JSON includes a `report` block. Before importing real internal files, check `report.filesChecked`, `report.totalFileBytes`, `report.accessLevels`, `report.statuses`, `report.types`, `report.paidMaterials`, `report.packageItemLinks`, `report.packages`, and `report.duplicateFiles`.
 - `-dry-run` uses the same validation/upsert/bind path inside a rolled-back transaction, so its `report` is the safest preflight acceptance artifact.
+- `-check-release` adds a machine-readable release gate to the import report and exits non-zero if an internal package is not ready: empty manifests/files, duplicate file references, unpublished package/materials, missing paid materials, missing package item links, zero-byte totals, or a paid package with `priceFen <= 0`.
 - `go run ./cmd/smoke ... -grant-package-access` can verify the internal manual-delivery path after import: paid download is denied before entitlement, an admin-only package grant is created, and paid download succeeds for the same test user.
 - `npm --workspace @final-review/web run test:e2e:delivery` can verify the same manual-delivery path through real Web/Admin browser sessions when `E2E_DELIVERY_SMOKE=1` and fresh student/admin test accounts are configured.
 - These smoke checks use fixture or operator-provided files only. Real course-file acceptance still requires running the import command against mounted internal materials in the target environment, then running the smoke with fresh student/admin test accounts.

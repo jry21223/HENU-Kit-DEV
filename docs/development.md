@@ -42,12 +42,15 @@ Prepared course files can be imported through a manifest after the files are mou
 ```bash
 cd services/api
 go run ./cmd/import-materials -dry-run ../../data/material-manifest.example.json
+go run ./cmd/import-materials -dry-run -check-release ../../data/material-manifest.example.json
 go run ./cmd/import-materials ../../data/material-manifest.example.json
 ```
 
 The importer is safe to run repeatedly. It upserts schools, colleges, majors, courses, packages, and materials, then idempotently binds imported materials to the course package. File paths in the manifest must resolve inside `LOCAL_UPLOAD_DIR`; missing files and traversal attempts fail the import transaction. UTF-8 JSON manifests with a byte-order mark are accepted because Windows tooling may write BOM-prefixed files.
 
 Use `-dry-run` before importing real internal materials. Dry-run mode executes the same validation, upsert, package-bind, and report path inside a rolled-back transaction, returns `"dryRun": true`, and reports the planned create/update/bind counts without persisting rows.
+
+Use `-dry-run -check-release` for the internal-release gate. It appends a `releaseCheck` block to the JSON output and exits with a non-zero status when a package is not ready for internal delivery: no materials, unresolved files, duplicate file references, unpublished package/materials, missing paid materials, missing package bindings, zero-byte totals, or paid materials in a package whose `priceFen` is not positive.
 
 The import JSON includes a `report` block for acceptance checks:
 
@@ -61,7 +64,7 @@ Material import delivery smoke:
 
 - `TestMaterialManifestImportSmokeCoversPaidDownloadDelivery` imports temporary fixture files through the manifest importer, then exercises the public package detail API and material download API.
 - The smoke verifies free downloads, login-required downloads, paid denial without entitlement, package-grant unlock, and successful paid download audit logging.
-- This is automated safety coverage, not proof that real internal course files have been imported. For an internal release, mount the real `uploads/materials/...` directory, run `go run ./cmd/import-materials -dry-run <manifest.json>`, then run the real import and perform the same paid-download smoke with a test account.
+- This is automated safety coverage, not proof that real internal course files have been imported. For an internal release, mount the real `uploads/materials/...` directory, run `go run ./cmd/import-materials -dry-run -check-release <manifest.json>`, then run the real import and perform the same paid-download smoke with a test account.
 
 ## Internal API Smoke
 

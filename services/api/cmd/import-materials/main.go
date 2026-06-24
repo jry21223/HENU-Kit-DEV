@@ -14,12 +14,18 @@ import (
 
 func main() {
 	dryRun := flag.Bool("dry-run", false, "validate and report planned changes without writing to the database")
+	checkRelease := flag.Bool("check-release", false, "run internal-release acceptance checks against the import report and exit non-zero if any check fails")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: go run ./cmd/import-materials [-dry-run] <manifest.json>")
+		fmt.Fprintln(os.Stderr, "usage: go run ./cmd/import-materials [-dry-run] [-check-release] <manifest.json>")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 	if flag.NArg() != 1 {
+		flag.Usage()
+		os.Exit(2)
+	}
+	if *checkRelease && !*dryRun {
+		fmt.Fprintln(os.Stderr, "-check-release must be used with -dry-run so a failed release gate cannot persist partial rollout data")
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -46,9 +52,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if *checkRelease {
+		releaseCheck := materialimport.CheckReleaseReadiness(result)
+		result.ReleaseCheck = &releaseCheck
+	}
 	output, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println(string(output))
+	if result.ReleaseCheck != nil && !result.ReleaseCheck.Passed {
+		os.Exit(1)
+	}
 }

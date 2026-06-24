@@ -59,19 +59,20 @@ type ManifestMaterial struct {
 }
 
 type Result struct {
-	DryRun            bool         `json:"dryRun"`
-	Entries           int          `json:"entries"`
-	SchoolsCreated    int          `json:"schoolsCreated"`
-	CollegesCreated   int          `json:"collegesCreated"`
-	MajorsCreated     int          `json:"majorsCreated"`
-	CoursesCreated    int          `json:"coursesCreated"`
-	PackagesCreated   int          `json:"packagesCreated"`
-	PackagesUpdated   int          `json:"packagesUpdated"`
-	MaterialsCreated  int          `json:"materialsCreated"`
-	MaterialsUpdated  int          `json:"materialsUpdated"`
-	PackageItemsAdded int          `json:"packageItemsAdded"`
-	PackageItemsKept  int          `json:"packageItemsKept"`
-	Report            ImportReport `json:"report"`
+	DryRun            bool                `json:"dryRun"`
+	Entries           int                 `json:"entries"`
+	SchoolsCreated    int                 `json:"schoolsCreated"`
+	CollegesCreated   int                 `json:"collegesCreated"`
+	MajorsCreated     int                 `json:"majorsCreated"`
+	CoursesCreated    int                 `json:"coursesCreated"`
+	PackagesCreated   int                 `json:"packagesCreated"`
+	PackagesUpdated   int                 `json:"packagesUpdated"`
+	MaterialsCreated  int                 `json:"materialsCreated"`
+	MaterialsUpdated  int                 `json:"materialsUpdated"`
+	PackageItemsAdded int                 `json:"packageItemsAdded"`
+	PackageItemsKept  int                 `json:"packageItemsKept"`
+	Report            ImportReport        `json:"report"`
+	ReleaseCheck      *ReleaseCheckReport `json:"releaseCheck,omitempty"`
 }
 
 type ImportReport struct {
@@ -93,6 +94,9 @@ type ImportReport struct {
 type ImportPackageReport struct {
 	PackageSlug        string `json:"packageSlug"`
 	PackageTitle       string `json:"packageTitle"`
+	PackageStatus      string `json:"packageStatus"`
+	PriceFen           int64  `json:"priceFen"`
+	Currency           string `json:"currency"`
 	CourseSlug         string `json:"courseSlug"`
 	CourseName         string `json:"courseName"`
 	Grade              string `json:"grade"`
@@ -104,6 +108,18 @@ type ImportPackageReport struct {
 	MemberOnly         int    `json:"memberOnly"`
 	PackageItemLinks   int    `json:"packageItemLinks"`
 	TotalFileBytes     int64  `json:"totalFileBytes"`
+}
+
+type ReleaseCheckReport struct {
+	Passed          bool                `json:"passed"`
+	Issues          []ReleaseCheckIssue `json:"issues"`
+	CheckedPackages int                 `json:"checkedPackages"`
+}
+
+type ReleaseCheckIssue struct {
+	Code        string `json:"code"`
+	Message     string `json:"message"`
+	PackageSlug string `json:"packageSlug,omitempty"`
 }
 
 type Importer struct {
@@ -574,11 +590,14 @@ func (r *Result) addMaterialReport(entry ManifestEntry, coursePackage model.Cour
 			title = strings.TrimSpace(entry.PackageTitle)
 		}
 		r.Report.Packages = append(r.Report.Packages, ImportPackageReport{
-			PackageSlug:  coursePackage.Slug,
-			PackageTitle: title,
-			CourseSlug:   strings.TrimSpace(entry.CourseSlug),
-			CourseName:   strings.TrimSpace(entry.CourseName),
-			Grade:        strings.TrimSpace(entry.Grade),
+			PackageSlug:   coursePackage.Slug,
+			PackageTitle:  title,
+			PackageStatus: coursePackage.Status,
+			PriceFen:      coursePackage.PriceFen,
+			Currency:      coursePackage.Currency,
+			CourseSlug:    strings.TrimSpace(entry.CourseSlug),
+			CourseName:    strings.TrimSpace(entry.CourseName),
+			Grade:         strings.TrimSpace(entry.Grade),
 		})
 		index = len(r.Report.Packages) - 1
 		r.Report.PackageIndex[coursePackage.Slug] = index
@@ -609,6 +628,65 @@ func appendUnique(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
+}
+
+func CheckReleaseReadiness(result Result) ReleaseCheckReport {
+	report := ReleaseCheckReport{
+		Passed:          true,
+		CheckedPackages: len(result.Report.Packages),
+	}
+	addIssue := func(code string, message string, packageSlug string) {
+		report.Passed = false
+		report.Issues = append(report.Issues, ReleaseCheckIssue{Code: code, Message: message, PackageSlug: packageSlug})
+	}
+	if result.Entries == 0 {
+		addIssue("manifest_empty", "manifest must include at least one course package entry", "")
+	}
+	if result.Report.ManifestMaterials == 0 {
+		addIssue("materials_empty", "manifest must include at least one material", "")
+	}
+	if result.Report.FilesChecked != result.Report.ManifestMaterials {
+		addIssue("files_not_checked", "every manifest material must resolve to a checked file", "")
+	}
+	if result.Report.PackageItemLinks != result.Report.ManifestMaterials {
+		addIssue("materials_not_bound", "every manifest material must be bound to a course package item", "")
+	}
+	if result.Report.TotalFileBytes <= 0 {
+		addIssue("empty_file_bytes", "checked materials must have a non-zero total file size", "")
+	}
+	if result.Report.PaidMaterials == 0 {
+		addIssue("paid_material_missing", "release manifest must include at least one paid material", "")
+	}
+	for _, duplicate := range result.Report.DuplicateFiles {
+		addIssue("duplicate_file_reference", "multiple materials reference the same storage file: "+duplicate, "")
+	}
+	for _, pkg := range result.Report.Packages {
+		if strings.TrimSpace(pkg.PackageSlug) == "" {
+			addIssue("package_slug_missing", "package slug is required for release checks", "")
+		}
+		if pkg.PackageStatus != model.StatusPublished {
+			addIssue("package_not_published", "release package must be published", pkg.PackageSlug)
+		}
+		if pkg.Materials == 0 {
+			addIssue("package_materials_empty", "release package must include materials", pkg.PackageSlug)
+		}
+		if pkg.PackageItemLinks != pkg.Materials {
+			addIssue("package_materials_not_bound", "all package materials must be linked as package items", pkg.PackageSlug)
+		}
+		if pkg.PublishedMaterials != pkg.Materials {
+			addIssue("package_contains_unpublished_materials", "release package must not include draft, pending, rejected, or archived materials", pkg.PackageSlug)
+		}
+		if pkg.PaidMaterials == 0 {
+			addIssue("package_paid_material_missing", "release package must include at least one paid material", pkg.PackageSlug)
+		}
+		if pkg.PaidMaterials > 0 && pkg.PriceFen <= 0 {
+			addIssue("package_price_missing", "release package with paid materials must have a positive priceFen", pkg.PackageSlug)
+		}
+		if pkg.TotalFileBytes <= 0 {
+			addIssue("package_empty_file_bytes", "release package files must have a non-zero total byte size", pkg.PackageSlug)
+		}
+	}
+	return report
 }
 
 func (i Importer) storageKeyForManifestPath(rawPath string) (string, int64, error) {

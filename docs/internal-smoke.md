@@ -403,16 +403,16 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
    scripts/ops/healthcheck.sh
    ```
 
-3. Run material import dry-run against mounted real files and review the `report` block:
+3. Run material import dry-run against mounted real files and require the internal-release gate to pass:
 
    ```bash
    cd services/api
-   go run ./cmd/import-materials -dry-run ../../data/material-manifest.example.json
+   go run ./cmd/import-materials -dry-run -check-release ../../data/material-manifest.example.json
    ```
 
-   UTF-8 manifests with a BOM are accepted, so JSON files saved by Windows tooling should not fail solely because of byte-order marks.
+   The command prints the normal `report` plus a `releaseCheck` block and exits non-zero if the manifest has unresolved files, duplicate file references, unpublished package/materials, missing paid materials, missing package bindings, zero-byte totals, or paid materials in a package with a non-positive `priceFen`. UTF-8 manifests with a BOM are accepted, so JSON files saved by Windows tooling should not fail solely because of byte-order marks.
 
-4. Run real material import only after the report matches expected package/material counts.
+4. Run real material import only after `releaseCheck.passed` is true and the report matches expected package/material counts.
 
 5. Run API smoke with a fresh student test email:
 

@@ -72,6 +72,7 @@
 - 已实现资料 manifest 导入基础版：
   - `data/material-manifest.example.json` 提供示例。
   - `go run ./cmd/import-materials -dry-run <manifest.json>` 可预检已经准备好的课程资料，不写入数据库。
+  - `go run ./cmd/import-materials -dry-run -check-release <manifest.json>` 可执行内测资料发布门禁；存在未解析文件、重复文件引用、未发布包/资料、缺少 paid 资料、缺少包绑定、零字节文件或 paid 包价格不为正时会非零退出。
   - `go run ./cmd/import-materials <manifest.json>` 可导入已经准备好的课程资料。
   - 导入会 upsert 学校、学院、专业、课程、课程包和资料。
   - 导入会幂等绑定课程包资料 item。
@@ -165,7 +166,7 @@
 | Stage 1：Go API 基础框架 | Gin、配置、PostgreSQL、Redis、GORM、中间件、Health | 完成 | API 服务骨架和基础接口已实现。 |
 | Stage 2：全新数据库 Schema | V2 schema、migration、seed | 部分完成 | migration/model/seed 已有；部分领域业务仍未填满。 |
 | Stage 3：认证与权限 | 邮箱验证码、JWT RS256、角色、冻结、管理/审核/创作者权限 | 部分完成 | 登录、JWT、角色和冻结边界已有；真实邮件发送和生产密钥配置仍是部署工作。 |
-| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest dry-run 预检、manifest 导入、manifest-to-paid-download 测试、API manual-grant smoke 和浏览器 delivery smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
+| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest dry-run 预检、内测发布门禁 `-check-release`、manifest 导入、manifest-to-paid-download 测试、API manual-grant smoke 和浏览器 delivery smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、薄弱点已有；复杂评分和练习 session 需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock worker/draft review、AI task 积分/会员额度扣减、approved targeted_question 草稿显式发布到题库已有；真实 LLM/RAG 和资料/Wiki/套卷发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、用户积分兑换会员、AI task 会员/积分权益扣减、admin 手动赠送/撤销会员已做；支付购买、升级/降级策略和真实模型成本核算仍未完整闭环。 |

@@ -230,6 +230,112 @@ func TestMaterialManifestImportReportDetectsDuplicateFileReferences(t *testing.T
 	assertMaterialImportCounts(t, db, 0, 0, 0)
 }
 
+func TestMaterialManifestReleaseCheckPassesForPublishedPaidPackage(t *testing.T) {
+	db := newTestDB(t)
+	uploadDir := t.TempDir()
+	writeUploadFile(t, uploadDir, "materials/release/notes.pdf", "release notes")
+	writeUploadFile(t, uploadDir, "materials/release/mock.pdf", "release mock")
+
+	priceFen := int64(1990)
+	manifest := []materialimport.ManifestEntry{
+		{
+			School:        "Henan Test University",
+			College:       "Software College",
+			Major:         "Network Engineering",
+			MajorSlug:     "network-engineering",
+			Grade:         "2023",
+			CourseSlug:    "release-course",
+			CourseName:    "Release Course",
+			PackageSlug:   "release-final-package",
+			PackageTitle:  "Release Final Package",
+			PackageStatus: model.StatusPublished,
+			PriceFen:      &priceFen,
+			Currency:      "CNY",
+			Materials: []materialimport.ManifestMaterial{
+				{
+					Title:       "Release Notes",
+					Type:        "knowledge_note",
+					FilePath:    "uploads/materials/release/notes.pdf",
+					AccessLevel: model.MaterialAccessLoginRequired,
+					Status:      model.StatusPublished,
+				},
+				{
+					Title:       "Release Mock",
+					Type:        "mock_paper",
+					FilePath:    "uploads/materials/release/mock.pdf",
+					AccessLevel: model.MaterialAccessPaid,
+					Status:      model.StatusPublished,
+				},
+			},
+		},
+	}
+
+	result, err := materialimport.New(db, uploadDir).ImportDryRun(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := materialimport.CheckReleaseReadiness(result)
+	if !check.Passed || len(check.Issues) != 0 || check.CheckedPackages != 1 {
+		t.Fatalf("expected release check to pass, got %#v", check)
+	}
+	if len(result.Report.Packages) != 1 || result.Report.Packages[0].PackageStatus != model.StatusPublished || result.Report.Packages[0].PriceFen != priceFen {
+		t.Fatalf("expected package release metadata in report, got %#v", result.Report.Packages)
+	}
+	assertMaterialImportCounts(t, db, 0, 0, 0)
+}
+
+func TestMaterialManifestReleaseCheckRejectsUnsafeReleasePackage(t *testing.T) {
+	db := newTestDB(t)
+	uploadDir := t.TempDir()
+	writeUploadFile(t, uploadDir, "materials/release-risk/shared.pdf", "shared release file")
+
+	manifest := []materialimport.ManifestEntry{
+		{
+			School:        "Henan Test University",
+			College:       "Software College",
+			Major:         "Network Engineering",
+			MajorSlug:     "network-engineering",
+			Grade:         "2023",
+			CourseSlug:    "release-risk-course",
+			CourseName:    "Release Risk Course",
+			PackageSlug:   "release-risk-final-package",
+			PackageTitle:  "Release Risk Final Package",
+			PackageStatus: model.StatusDraft,
+			Materials: []materialimport.ManifestMaterial{
+				{
+					Title:       "Release Risk Notes",
+					Type:        "knowledge_note",
+					FilePath:    "uploads/materials/release-risk/shared.pdf",
+					AccessLevel: model.MaterialAccessLoginRequired,
+					Status:      model.StatusPublished,
+				},
+				{
+					Title:       "Release Risk Paid Draft",
+					Type:        "mock_paper",
+					FilePath:    "uploads/materials/release-risk/shared.pdf",
+					AccessLevel: model.MaterialAccessPaid,
+					Status:      model.StatusDraft,
+				},
+			},
+		},
+	}
+
+	result, err := materialimport.New(db, uploadDir).ImportDryRun(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := materialimport.CheckReleaseReadiness(result)
+	if check.Passed {
+		t.Fatalf("expected release check to fail, got %#v", check)
+	}
+	for _, code := range []string{"duplicate_file_reference", "package_not_published", "package_contains_unpublished_materials", "package_price_missing"} {
+		if !releaseCheckHasIssue(check, code) {
+			t.Fatalf("expected release issue %s, got %#v", code, check.Issues)
+		}
+	}
+	assertMaterialImportCounts(t, db, 0, 0, 0)
+}
+
 func TestMaterialManifestImportSmokeCoversPaidDownloadDelivery(t *testing.T) {
 	db := newTestDB(t)
 	uploadDir := t.TempDir()
@@ -352,6 +458,15 @@ func TestMaterialManifestImportSmokeCoversPaidDownloadDelivery(t *testing.T) {
 	if countDownloadLogs(t, db, paidMaterial.ID, user.ID) != 1 {
 		t.Fatal("expected imported paid download to create one audit log after grant")
 	}
+}
+
+func releaseCheckHasIssue(check materialimport.ReleaseCheckReport, code string) bool {
+	for _, issue := range check.Issues {
+		if issue.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func manifestEntryWithFile(filePath string) materialimport.ManifestEntry {
