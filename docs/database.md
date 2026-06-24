@@ -9,7 +9,7 @@ Current model coverage:
 - materials, course packages, package items, material access grants, and download logs
 - orders, payment records, and payment incidents
 - quiz questions, attempts, answers, wrong questions, weakness reports
-- wiki entries, edit histories, edit proposals, creator applications, blog, forum, moments, relations
+- wiki entries, edit histories, edit proposals, creator applications, blog, forum, moments, media assets, relations
 - points, memberships, AI tasks, notifications, reports, operation logs
 - system configs and leaderboard snapshots
 
@@ -50,3 +50,5 @@ Current access-control notes:
 - `wiki_edit_proposals` stores proposed edits to published wiki entries with `base_version`, review fields, and proposed title/content; approval updates the live entry and writes `wiki_edit_histories` only when the live entry version still matches.
 - `forum_posts.reward_points` and `forum_posts.reward_status` track reward-post escrow and settlement state; reward submission, rejection, and best-answer settlement are mirrored by idempotent `points_logs` rows.
 - `forum_replies.is_best` marks the selected best answer; application logic allows only one best answer per published post.
+- `media_assets` stores uploaded dynamic images with owner, usage, storage key, file metadata, status, and optional `moment_id`. Moment image URLs expose only `/api/v1/moments/images/{mediaId}`; raw storage keys are not serialized.
+- Unattached `media_assets` are owner-only previews. After a moment is created, the API binds uploaded assets to the moment and image reads reuse the same public/mutual-friends/block visibility checks as the moment itself.

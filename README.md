@@ -122,7 +122,7 @@ cd ../worker && go test ./...
 - Web `/blog` and `/blog/[id]` expose only published public Blog posts through the Go API; public responses use a DTO that hides review metadata, and the detail page can submit a `blog_post` report.
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
-- Web `/moments` 展示公开与互关可见学习动态；登录用户可发布 500 字以内动态、上传最多 9 张受控图片、设置公开/互关可见、点赞、评论、关注或屏蔽动态作者。当前媒体能力限于本地图片上传与公开文件读取，更严格的私有媒体鉴权、视频和云存储仍是后续工作。
+- Web `/moments` 展示公开与互关可见学习动态；登录用户可发布 500 字以内动态、上传最多 9 张受控图片、设置公开/互关可见、点赞、评论、关注或屏蔽动态作者。动态图片通过 Go API 按关联动态可见性读取；视频、云存储和更细粒度媒体审计仍是后续工作。
 - Web `/users/[id]` 展示公开用户主页，聚合当前访问者可见的动态、已发布 Blog、已发布论坛帖子和已发布论坛回复；Go API 不返回邮箱、审核字段或隐藏内容，互关动态和屏蔽关系由服务端判断。
 - Web `/me/relations` 展示当前登录用户自己的关注、粉丝和互关好友列表，支持从服务端执行关注、取消关注和屏蔽；关系列表响应不返回邮箱。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。

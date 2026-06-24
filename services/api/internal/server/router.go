@@ -88,8 +88,6 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	analyticsHandler := analytics.NewHandler(db)
 	router.GET("/healthz", healthHandler.Healthz)
 	router.GET("/readyz", healthHandler.Readyz)
-	router.GET("/uploads/moments/*filepath", momentHandler.ServeImage)
-
 	v1 := router.Group("/api/v1")
 	v1.GET("/healthz", healthHandler.Healthz)
 	v1.GET("/readyz", healthHandler.Readyz)
@@ -141,6 +139,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/moments", authMiddleware.OptionalAuth(), momentHandler.List)
 	v1.POST("/moments", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Create)
 	v1.POST("/moments/images", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.UploadImage)
+	v1.GET("/moments/images/:id", authMiddleware.OptionalAuth(), momentHandler.ServeImage)
 	v1.DELETE("/moments/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Delete)
 	v1.POST("/moments/:id/like", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Like)
 	v1.POST("/moments/:id/comments", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.CreateComment)

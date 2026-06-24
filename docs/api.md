@@ -350,8 +350,8 @@ Implemented moment and relation behavior:
 - `GET /api/v1/moments` is public with optional auth; anonymous users see only `published` moments with `visibility=public`.
 - authenticated users still cannot see moments from users who blocked them or whom they blocked.
 - `visibility=mutual_friends` moments are visible only to the author and users where both sides follow each other.
-- logged-in, non-frozen users can create moments with up to 500 characters, up to 9 image URLs, and `visibility=public|mutual_friends`.
-- accepted image URLs must be `http://`, `https://`, or `/uploads/...`; traversal-style local paths are rejected.
+- logged-in, non-frozen users can create moments with up to 500 characters, up to 9 uploaded image URLs, and `visibility=public|mutual_friends`.
+- accepted image URLs must come from `POST /api/v1/moments/images`; arbitrary external URLs, another user's uploaded image URL, duplicate images, already-attached images, and traversal-style local paths are rejected.
 - moment likes are idempotent per user/moment and increment `likeCount` only once.
 - logged-in users can comment on visible moments; comment counts update on create and delete.
 - comment deletion is allowed for the comment author, the moment author, admin, or super_admin.
@@ -359,9 +359,10 @@ Implemented moment and relation behavior:
 - blocking a user removes follow edges between the two users and prevents future follow until unblocked.
 - `/me/following`, `/me/followers`, and `/me/friends` are user-scoped and hide blocked relationships.
 - relation-list responses contain only public user summaries (`id`, `name`, `role`) and do not expose email addresses.
-- `POST /api/v1/moments/images` accepts authenticated image uploads only. It stores generated files under `LOCAL_UPLOAD_DIR/moments/{userId}/`, allows JPG/PNG/WEBP/GIF, caps each file at 5MB, checks image magic bytes, and returns a user-scoped `/uploads/moments/...` URL.
-- `POST /api/v1/moments` accepts only existing uploaded image URLs owned by the current user; arbitrary external image URLs and another user's uploaded image URLs are rejected.
-- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments with local image upload and preview. Video, private media authorization beyond unguessable user-scoped URLs, and cloud object storage remain future work.
+- `POST /api/v1/moments/images` accepts authenticated image uploads only. It creates a `media_assets` row, stores generated files under `LOCAL_UPLOAD_DIR/moments/{userId}/`, allows JPG/PNG/WEBP/GIF, caps each file at 5MB, checks image magic bytes, and returns `/api/v1/moments/images/{mediaId}`.
+- `GET /api/v1/moments/images/:id` serves the image through the Go API. Unattached uploads are visible only to the owner; attached public-moment images are publicly readable; attached mutual-friends images reuse the moment visibility and block checks.
+- `POST /api/v1/moments` accepts only existing uploaded image URLs owned by the current user, then binds each media asset to the created moment. Frontend-supplied storage keys are never accepted.
+- Web `/moments` now exposes a basic feed/composer for public and mutual-friends moments with local image upload and preview. Video media, cloud object storage, and richer media audit tooling remain future work.
 
 Implemented public user profile behavior:
 

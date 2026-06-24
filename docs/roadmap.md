@@ -22,7 +22,7 @@
 - Web forum list/detail pages with post creation, reply submission, and best-answer action entry
 - Go API moments foundation with public/mutual-friends visibility, comments, idempotent likes, and block-aware feed filtering
 - Web `/moments` foundation with a mobile-aware feed, composer, likes, comments, follow/block actions, and smoke coverage
-- Moment image upload foundation with authenticated local uploads, JPG/PNG/WEBP/GIF validation, 5MB per-image limit, generated user-scoped URLs, and Web image previews
+- Moment image upload foundation with authenticated local uploads, JPG/PNG/WEBP/GIF validation, 5MB per-image limit, media-asset records, visibility-checked image serving, and Web image previews
 - Go API relation foundation with follow, unfollow, block, unblock, following, followers, and mutual-friend lists
 - Public user profile aggregation API and Web `/users/[id]` page with visible moments, blog posts, forum posts, and forum replies
 - Web `/me/relations` page for current-user following, followers, mutual-friend lists, follow/unfollow, and block actions
@@ -97,6 +97,6 @@
 - AI Worker flows
 - Points and membership
 - Wiki creator workflow refinements and richer revision diff tooling
-- Richer social relationship UX, advanced relation filters, private media authorization, video media, and cloud object storage for moments
+- Richer social relationship UX, advanced relation filters, video media, cloud object storage, and richer media audit tooling for moments
 - Notifications, richer reports, leaderboards
 - Production deployment and monitoring

@@ -464,7 +464,7 @@ function visibilityLabel(value: string) {
 
 function mediaUrl(value: string) {
   if (value.startsWith("http://") || value.startsWith("https://")) return value;
-  if (value.startsWith("/uploads/")) return `${apiOrigin()}${value}`;
+  if (value.startsWith("/uploads/") || value.startsWith("/api/")) return `${apiOrigin()}${value}`;
   return value;
 }
 

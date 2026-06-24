@@ -411,6 +411,18 @@ type Moment struct {
 	Status   string         `json:"status" gorm:"size:32;default:published;index"`
 }
 
+type MediaAsset struct {
+	BaseModel
+	OwnerID     string  `json:"ownerId" gorm:"type:uuid;index;not null"`
+	Usage       string  `json:"usage" gorm:"size:40;index;not null"`
+	StorageKey  string  `json:"-" gorm:"size:500;not null;uniqueIndex"`
+	FileName    string  `json:"fileName" gorm:"size:255"`
+	FileSize    int64   `json:"fileSize"`
+	ContentType string  `json:"contentType" gorm:"size:120;index"`
+	Status      string  `json:"status" gorm:"size:32;default:uploaded;index"`
+	MomentID    *string `json:"momentId,omitempty" gorm:"type:uuid;index"`
+}
+
 type MomentComment struct {
 	BaseModel
 	AuthorID string `json:"authorId" gorm:"type:uuid;index;not null"`
@@ -553,7 +565,7 @@ func AllModels() []interface{} {
 		&WikiEntry{}, &WikiEditHistory{}, &WikiEditProposal{}, &WikiCreatorApplication{},
 		&BlogPost{}, &BlogComment{},
 		&ForumBoard{}, &ForumPost{}, &ForumReply{},
-		&Moment{}, &MomentComment{},
+		&Moment{}, &MediaAsset{}, &MomentComment{},
 		&UserRelation{},
 		&PointsLog{}, &PointsRule{},
 		&Membership{}, &MembershipPlan{},

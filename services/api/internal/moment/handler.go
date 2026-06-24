@@ -29,6 +29,9 @@ const (
 	relationBlock           = "block"
 	relationMomentLike      = "moment_like"
 	maxMomentImageBytes     = 5 * 1024 * 1024
+	mediaUsageMomentImage   = "moment_image"
+	mediaStatusUploaded     = "uploaded"
+	mediaStatusAttached     = "attached"
 )
 
 type Handler struct {
@@ -68,6 +71,7 @@ type momentCommentDTO struct {
 }
 
 type momentImageDTO struct {
+	ID          string `json:"id"`
 	URL         string `json:"url"`
 	FileName    string `json:"fileName"`
 	FileSize    int64  `json:"fileSize"`
@@ -133,7 +137,7 @@ func (h Handler) Create(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "too_many_images", nil)
 		return
 	}
-	images, err := h.validateImages(req.Images, user.ID)
+	imageAssets, images, err := h.validateImages(req.Images, user.ID)
 	if err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
 		return
@@ -145,7 +149,27 @@ func (h Handler) Create(ctx *gin.Context) {
 		Status:   model.StatusPublished,
 	}
 	moment.Visibility = visibility
-	if err := h.db.Create(&moment).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&moment).Error; err != nil {
+			return err
+		}
+		for _, asset := range imageAssets {
+			update := tx.Model(&model.MediaAsset{}).
+				Where("id = ? AND owner_id = ? AND usage = ? AND status = ? AND moment_id IS NULL", asset.ID, user.ID, mediaUsageMomentImage, mediaStatusUploaded).
+				Updates(map[string]interface{}{"moment_id": moment.ID, "status": mediaStatusAttached})
+			if update.Error != nil {
+				return update.Error
+			}
+			if update.RowsAffected != 1 {
+				return errors.New("image_already_used")
+			}
+		}
+		return nil
+	}); err != nil {
+		if err.Error() == "image_already_used" {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+			return
+		}
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "create_failed", nil)
 		return
 	}
@@ -204,16 +228,32 @@ func (h Handler) UploadImage(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "upload_failed", nil)
 		return
 	}
-	defer target.Close()
 	written, err := io.Copy(target, io.LimitReader(file, maxMomentImageBytes+1))
-	if err != nil || written > maxMomentImageBytes {
+	closeErr := target.Close()
+	if err != nil || closeErr != nil || written > maxMomentImageBytes {
+		_ = os.Remove(targetPath)
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "upload_failed", nil)
+		return
+	}
+
+	asset := model.MediaAsset{
+		OwnerID:     user.ID,
+		Usage:       mediaUsageMomentImage,
+		StorageKey:  storageKey,
+		FileName:    originalName,
+		FileSize:    written,
+		ContentType: contentType,
+		Status:      mediaStatusUploaded,
+	}
+	if err := h.db.Create(&asset).Error; err != nil {
 		_ = os.Remove(targetPath)
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "upload_failed", nil)
 		return
 	}
 
 	response.OK(ctx, gin.H{"image": momentImageDTO{
-		URL:         "/uploads/" + storageKey,
+		ID:          asset.ID,
+		URL:         momentImageURL(asset.ID),
 		FileName:    originalName,
 		FileSize:    written,
 		ContentType: contentType,
@@ -221,14 +261,18 @@ func (h Handler) UploadImage(ctx *gin.Context) {
 }
 
 func (h Handler) ServeImage(ctx *gin.Context) {
-	relativePath := strings.TrimPrefix(ctx.Param("filepath"), "/")
-	targetPath, err := safeUploadPath(h.uploadDir, filepath.ToSlash(filepath.Join("moments", relativePath)))
-	if err != nil {
+	currentUser, _ := auth.CurrentUser(ctx)
+	var asset model.MediaAsset
+	if err := h.db.First(&asset, "id = ? AND usage = ?", ctx.Param("id"), mediaUsageMomentImage).Error; err != nil {
 		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "image_not_found", nil)
 		return
 	}
-	ext := strings.ToLower(filepath.Ext(targetPath))
-	if _, ok := momentImageContentTypes[ext]; !ok {
+	if !h.canViewMediaAsset(currentUser, asset) {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "image_not_found", nil)
+		return
+	}
+	targetPath, err := safeUploadPath(h.uploadDir, asset.StorageKey)
+	if err != nil {
 		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "image_not_found", nil)
 		return
 	}
@@ -237,7 +281,10 @@ func (h Handler) ServeImage(ctx *gin.Context) {
 		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "image_not_found", nil)
 		return
 	}
-	ctx.Header("Cache-Control", "public, max-age=31536000, immutable")
+	ctx.Header("Cache-Control", "private, max-age=60")
+	if asset.ContentType != "" {
+		ctx.Header("Content-Type", asset.ContentType)
+	}
 	ctx.File(targetPath)
 }
 
@@ -449,36 +496,63 @@ func (h Handler) hasBlockEitherDirection(leftID string, rightID string) bool {
 	return count > 0
 }
 
-func (h Handler) validateImages(values []string, userID string) (datatypes.JSON, error) {
+func (h Handler) canViewMediaAsset(currentUser *model.User, asset model.MediaAsset) bool {
+	if currentUser != nil && currentUser.ID == asset.OwnerID {
+		return true
+	}
+	if asset.Status != mediaStatusAttached || asset.MomentID == nil || *asset.MomentID == "" {
+		return false
+	}
+	var item model.Moment
+	if err := h.db.First(&item, "id = ?", *asset.MomentID).Error; err != nil {
+		return false
+	}
+	return h.canViewMoment(currentUser, item)
+}
+
+func (h Handler) validateImages(values []string, userID string) ([]model.MediaAsset, datatypes.JSON, error) {
 	cleaned := make([]string, 0, len(values))
-	prefix := "/uploads/moments/" + userID + "/"
+	assets := make([]model.MediaAsset, 0, len(values))
+	seen := map[string]struct{}{}
 	for _, value := range values {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
 			continue
 		}
 		if len([]rune(trimmed)) > 500 {
-			return nil, errors.New("image_url_too_long")
+			return nil, nil, errors.New("image_url_too_long")
 		}
-		if !strings.HasPrefix(trimmed, prefix) {
-			return nil, errors.New("invalid_image_url")
+		mediaID, ok := mediaIDFromURL(trimmed)
+		if !ok {
+			return nil, nil, errors.New("invalid_image_url")
 		}
-		storageKey := strings.TrimPrefix(trimmed, "/uploads/")
-		path, err := safeUploadPath(h.uploadDir, storageKey)
+		if _, ok := seen[mediaID]; ok {
+			return nil, nil, errors.New("duplicate_image")
+		}
+		seen[mediaID] = struct{}{}
+		var asset model.MediaAsset
+		if err := h.db.First(&asset, "id = ? AND owner_id = ? AND usage = ? AND status = ? AND moment_id IS NULL", mediaID, userID, mediaUsageMomentImage, mediaStatusUploaded).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, nil, errors.New("image_not_found")
+			}
+			return nil, nil, err
+		}
+		path, err := safeUploadPath(h.uploadDir, asset.StorageKey)
 		if err != nil {
-			return nil, errors.New("invalid_image_url")
+			return nil, nil, errors.New("invalid_image_url")
 		}
 		info, err := os.Stat(path)
 		if err != nil || info.IsDir() {
-			return nil, errors.New("image_not_found")
+			return nil, nil, errors.New("image_not_found")
 		}
-		cleaned = append(cleaned, trimmed)
+		assets = append(assets, asset)
+		cleaned = append(cleaned, momentImageURL(asset.ID))
 	}
 	raw, err := json.Marshal(cleaned)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return datatypes.JSON(raw), nil
+	return assets, datatypes.JSON(raw), nil
 }
 
 func decodeImages(raw datatypes.JSON) []string {
@@ -502,6 +576,18 @@ func parseLimit(value string, fallback int, max int) (int, error) {
 		return 0, errors.New("invalid_limit")
 	}
 	return limit, nil
+}
+
+func momentImageURL(id string) string {
+	return "/api/v1/moments/images/" + id
+}
+
+func mediaIDFromURL(value string) (string, bool) {
+	id := strings.TrimPrefix(strings.TrimSpace(value), "/api/v1/moments/images/")
+	if id == value || id == "" || strings.Contains(id, "/") || strings.Contains(id, `\`) {
+		return "", false
+	}
+	return id, true
 }
 
 var momentImageContentTypes = map[string]string{

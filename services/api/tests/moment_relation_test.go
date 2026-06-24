@@ -65,6 +65,7 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	var imagePayload struct {
 		Data struct {
 			Image struct {
+				ID          string `json:"id"`
 				URL         string `json:"url"`
 				FileName    string `json:"fileName"`
 				FileSize    int64  `json:"fileSize"`
@@ -75,26 +76,50 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	if err := json.Unmarshal(imageUpload.Body.Bytes(), &imagePayload); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(imagePayload.Data.Image.URL, "/uploads/moments/"+alice.ID+"/") || strings.Contains(imagePayload.Data.Image.URL, "progress.png") {
+	if imagePayload.Data.Image.ID == "" || imagePayload.Data.Image.URL != "/api/v1/moments/images/"+imagePayload.Data.Image.ID {
 		t.Fatalf("expected generated user-scoped upload URL, got %#v", imagePayload.Data.Image)
 	}
 	if imagePayload.Data.Image.FileName != "progress.png" || imagePayload.Data.Image.ContentType != "image/png" || imagePayload.Data.Image.FileSize <= 0 {
 		t.Fatalf("unexpected upload metadata: %#v", imagePayload.Data.Image)
 	}
-	uploadedPath := filepath.Join(cfg.LocalUploadDir, filepath.FromSlash(strings.TrimPrefix(imagePayload.Data.Image.URL, "/uploads/")))
+	var uploadedAsset model.MediaAsset
+	if err := db.First(&uploadedAsset, "id = ?", imagePayload.Data.Image.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if uploadedAsset.OwnerID != alice.ID || uploadedAsset.Status != "uploaded" || uploadedAsset.MomentID != nil {
+		t.Fatalf("unexpected uploaded media asset: %#v", uploadedAsset)
+	}
+	uploadedPath := filepath.Join(cfg.LocalUploadDir, filepath.FromSlash(uploadedAsset.StorageKey))
 	if _, err := os.Stat(uploadedPath); err != nil {
 		t.Fatalf("expected uploaded image on disk: %v", err)
 	}
-	servedImage := performJSON(router, http.MethodGet, imagePayload.Data.Image.URL, "", "")
-	if servedImage.Code != http.StatusOK {
-		t.Fatalf("expected uploaded image to be served, got %d: %s", servedImage.Code, servedImage.Body.String())
+	ownerPreview := performJSON(router, http.MethodGet, imagePayload.Data.Image.URL, "", aliceToken)
+	if ownerPreview.Code != http.StatusOK {
+		t.Fatalf("expected owner to preview unattached image, got %d: %s", ownerPreview.Code, ownerPreview.Body.String())
 	}
-	otherUserImage := strings.Replace(imagePayload.Data.Image.URL, alice.ID, bob.ID, 1)
-	foreignImageCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"foreign image","images":["`+otherUserImage+`"]}`, aliceToken)
-	if foreignImageCreate.Code != http.StatusBadRequest || !strings.Contains(foreignImageCreate.Body.String(), "invalid_image_url") {
+	anonymousPreview := performJSON(router, http.MethodGet, imagePayload.Data.Image.URL, "", "")
+	if anonymousPreview.Code != http.StatusNotFound {
+		t.Fatalf("expected anonymous preview of unattached image to be denied, got %d: %s", anonymousPreview.Code, anonymousPreview.Body.String())
+	}
+	bobImageUpload := performMultipart(router, "/api/v1/moments/images", bobToken, nil, "file", "bob.png", validPNGBytes())
+	if bobImageUpload.Code != http.StatusOK {
+		t.Fatalf("expected bob image upload 200, got %d: %s", bobImageUpload.Code, bobImageUpload.Body.String())
+	}
+	var bobImagePayload struct {
+		Data struct {
+			Image struct {
+				URL string `json:"url"`
+			} `json:"image"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(bobImageUpload.Body.Bytes(), &bobImagePayload); err != nil {
+		t.Fatal(err)
+	}
+	foreignImageCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"foreign image","images":["`+bobImagePayload.Data.Image.URL+`"]}`, aliceToken)
+	if foreignImageCreate.Code != http.StatusBadRequest || !strings.Contains(foreignImageCreate.Body.String(), "image_not_found") {
 		t.Fatalf("expected foreign image URL rejection, got %d: %s", foreignImageCreate.Code, foreignImageCreate.Body.String())
 	}
-	traversalImage := "/uploads/moments/" + alice.ID + "/../secret.png"
+	traversalImage := "/api/v1/moments/images/" + imagePayload.Data.Image.ID + "/../secret"
 	traversalImageCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"traversal image","images":["`+traversalImage+`"]}`, aliceToken)
 	if traversalImageCreate.Code != http.StatusBadRequest || !strings.Contains(traversalImageCreate.Body.String(), "invalid_image_url") {
 		t.Fatalf("expected traversal image URL rejection, got %d: %s", traversalImageCreate.Code, traversalImageCreate.Body.String())
@@ -111,13 +136,41 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	if publicMoment.Visibility != "public" || publicMoment.Status != model.StatusPublished {
 		t.Fatalf("expected published public moment, got %#v", publicMoment)
 	}
+	if err := db.First(&uploadedAsset, "id = ?", uploadedAsset.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if uploadedAsset.MomentID == nil || *uploadedAsset.MomentID != publicMoment.ID || uploadedAsset.Status != "attached" {
+		t.Fatalf("expected image to be attached to public moment, got %#v", uploadedAsset)
+	}
+	anonymousPublicImage := performJSON(router, http.MethodGet, imagePayload.Data.Image.URL, "", "")
+	if anonymousPublicImage.Code != http.StatusOK {
+		t.Fatalf("expected anonymous to read public moment image, got %d: %s", anonymousPublicImage.Code, anonymousPublicImage.Body.String())
+	}
+	reuseImage := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"reuse image","images":["`+imagePayload.Data.Image.URL+`"]}`, aliceToken)
+	if reuseImage.Code != http.StatusBadRequest || !strings.Contains(reuseImage.Body.String(), "image_not_found") {
+		t.Fatalf("expected already attached image to be rejected, got %d: %s", reuseImage.Code, reuseImage.Body.String())
+	}
 
 	publicList := performJSON(router, http.MethodGet, "/api/v1/moments", "", "")
 	if publicList.Code != http.StatusOK || !strings.Contains(publicList.Body.String(), publicMoment.ID) || strings.Contains(publicList.Body.String(), "moment-alice@") {
 		t.Fatalf("expected anonymous public moment list without author email, got %d: %s", publicList.Code, publicList.Body.String())
 	}
 
-	mutualCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"Mutual friends only note","visibility":"mutual_friends"}`, aliceToken)
+	mutualImageUpload := performMultipart(router, "/api/v1/moments/images", aliceToken, nil, "file", "mutual.png", validPNGBytes())
+	if mutualImageUpload.Code != http.StatusOK {
+		t.Fatalf("expected mutual image upload 200, got %d: %s", mutualImageUpload.Code, mutualImageUpload.Body.String())
+	}
+	var mutualImagePayload struct {
+		Data struct {
+			Image struct {
+				URL string `json:"url"`
+			} `json:"image"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(mutualImageUpload.Body.Bytes(), &mutualImagePayload); err != nil {
+		t.Fatal(err)
+	}
+	mutualCreate := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"Mutual friends only note","visibility":"mutual_friends","images":["`+mutualImagePayload.Data.Image.URL+`"]}`, aliceToken)
 	if mutualCreate.Code != http.StatusOK {
 		t.Fatalf("expected mutual-friends moment create 200, got %d: %s", mutualCreate.Code, mutualCreate.Body.String())
 	}
@@ -130,9 +183,17 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	if anonymousList.Code != http.StatusOK || strings.Contains(anonymousList.Body.String(), mutualMoment.ID) {
 		t.Fatalf("expected anonymous list to hide mutual-friends moment, got %d: %s", anonymousList.Code, anonymousList.Body.String())
 	}
+	anonymousMutualImage := performJSON(router, http.MethodGet, mutualImagePayload.Data.Image.URL, "", "")
+	if anonymousMutualImage.Code != http.StatusNotFound {
+		t.Fatalf("expected anonymous mutual image read denial, got %d: %s", anonymousMutualImage.Code, anonymousMutualImage.Body.String())
+	}
 	bobBeforeFollow := performJSON(router, http.MethodGet, "/api/v1/moments", "", bobToken)
 	if bobBeforeFollow.Code != http.StatusOK || strings.Contains(bobBeforeFollow.Body.String(), mutualMoment.ID) {
 		t.Fatalf("expected one-way non-friend to miss mutual-friends moment, got %d: %s", bobBeforeFollow.Code, bobBeforeFollow.Body.String())
+	}
+	bobBeforeFollowImage := performJSON(router, http.MethodGet, mutualImagePayload.Data.Image.URL, "", bobToken)
+	if bobBeforeFollowImage.Code != http.StatusNotFound {
+		t.Fatalf("expected one-way non-friend image read denial, got %d: %s", bobBeforeFollowImage.Code, bobBeforeFollowImage.Body.String())
 	}
 
 	bobFollowsAlice := performJSON(router, http.MethodPost, "/api/v1/users/"+alice.ID+"/follow", "", bobToken)
@@ -151,6 +212,10 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	bobAsFriend := performJSON(router, http.MethodGet, "/api/v1/moments", "", bobToken)
 	if bobAsFriend.Code != http.StatusOK || !strings.Contains(bobAsFriend.Body.String(), mutualMoment.ID) {
 		t.Fatalf("expected mutual friend to see mutual-friends moment, got %d: %s", bobAsFriend.Code, bobAsFriend.Body.String())
+	}
+	bobAsFriendImage := performJSON(router, http.MethodGet, mutualImagePayload.Data.Image.URL, "", bobToken)
+	if bobAsFriendImage.Code != http.StatusOK {
+		t.Fatalf("expected mutual friend to read mutual-friends image, got %d: %s", bobAsFriendImage.Code, bobAsFriendImage.Body.String())
 	}
 
 	aliceFriends := performJSON(router, http.MethodGet, "/api/v1/me/friends", "", aliceToken)
@@ -217,6 +282,10 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	bobAfterBlock := performJSON(router, http.MethodGet, "/api/v1/moments", "", bobToken)
 	if bobAfterBlock.Code != http.StatusOK || strings.Contains(bobAfterBlock.Body.String(), publicMoment.ID) || strings.Contains(bobAfterBlock.Body.String(), mutualMoment.ID) {
 		t.Fatalf("expected block to hide alice moments from bob, got %d: %s", bobAfterBlock.Code, bobAfterBlock.Body.String())
+	}
+	bobImageAfterBlock := performJSON(router, http.MethodGet, mutualImagePayload.Data.Image.URL, "", bobToken)
+	if bobImageAfterBlock.Code != http.StatusNotFound {
+		t.Fatalf("expected block to deny mutual image read, got %d: %s", bobImageAfterBlock.Code, bobImageAfterBlock.Body.String())
 	}
 	aliceFriendsAfterBlock := performJSON(router, http.MethodGet, "/api/v1/me/friends", "", aliceToken)
 	if aliceFriendsAfterBlock.Code != http.StatusOK || strings.Contains(aliceFriendsAfterBlock.Body.String(), bob.ID) {
