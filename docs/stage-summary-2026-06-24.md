@@ -98,6 +98,7 @@
 - 开发/测试环境 mock notify 必须带 HMAC 头，且校验订单号和金额。
 - mock notify 成功后会把订单置为 `paid`，写入 `payment_records`，并幂等发放一次课程包 entitlement。
 - `cmd/smoke` 已新增开发/测试专用 `-mock-wechat-pay` 验收链路，可创建/复用订单、请求 mock Native codeUrl、发送签名 mock notify、验证订单 `paid`、验证 entitlement 和 paid 下载。
+- Web workspace 新增 opt-in browser mock-payment smoke，可验证真实 Web 课程包页二维码展示、后端签名 mock notify、订单 paid、entitlement 和 paid 下载；它只适用于 development/test，不替代真实商户 E2E。
 - live Native 下单会使用商户私钥签名请求，并在保存 `code_url` 前校验微信响应签名。
 - 已实现微信支付 API v3 密码学基础件：请求签名、Authorization header、平台证书/公钥解析、notify 原文验签、AES-256-GCM resource 解密。
 - 本阶段新增 live notify handler：

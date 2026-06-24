@@ -183,7 +183,7 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
   if (ownedPackage) {
     const unlockedMaterials = ownedPackage.materials.length > 0 ? ownedPackage.materials : materials;
     return (
-      <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+      <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm" data-testid="package-unlocked-panel">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="size-5 text-emerald-700" aria-hidden="true" />
           <h2 className="text-lg font-semibold tracking-tight text-emerald-900">{copy.unlocked}</h2>
@@ -223,7 +223,7 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
   }
 
   return (
-    <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+    <section className="rounded-3xl border border-border bg-card p-5 shadow-sm" data-testid="package-payment-panel">
       <div className="flex items-center gap-2">
         <LockKeyhole className="size-5 text-primary" aria-hidden="true" />
         <h2 className="text-lg font-semibold tracking-tight">{copy.locked}</h2>
@@ -238,14 +238,19 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
         <div className="mt-3 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">{copy.orderReady}</p>
           <p className="mt-1 leading-6">{copy.orderPendingBody}</p>
-          <p className="mt-2 break-all text-xs">
+          <p className="mt-2 break-all text-xs" data-testid="package-order-out-trade-no">
             {copy.orderNo}: {pendingOrder.outTradeNo}
           </p>
-          <p className="mt-1 text-xs">
+          <p className="mt-1 text-xs" data-testid="package-order-status">
             {copy.orderStatus}: {pendingOrderStatus?.status ?? pendingOrder.status}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted" onClick={() => void refreshOrderStatus()} type="button">
+            <button
+              className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+              data-testid="package-refresh-order"
+              onClick={() => void refreshOrderStatus()}
+              type="button"
+            >
               {copy.refreshStatus}
             </button>
             {!nativePayment ? (
@@ -263,7 +268,7 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
       ) : null}
 
       {nativePayment ? (
-        <div className="mt-3 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
+        <div className="mt-3 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground" data-testid="package-wechat-qr">
           <div className="flex flex-col items-center gap-3 text-center">
             <p className="font-medium text-foreground">{copy.qrTitle}</p>
             <div className="rounded-2xl border border-border bg-white p-3">
@@ -271,7 +276,7 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
             </div>
             <p className="max-w-xs text-xs leading-5">{copy.qrHint}</p>
             <div className="grid w-full gap-1 text-left text-xs">
-              <p>
+              <p data-testid="package-native-status">
                 {copy.orderStatus}: {nativePayment.status}
               </p>
               <p>
@@ -285,6 +290,7 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
 
       <button
         className="mt-4 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-[#254d42] disabled:cursor-not-allowed disabled:opacity-60"
+        data-testid="package-create-order"
         disabled={ordering || creatingNative}
         onClick={createOrder}
         type="button"

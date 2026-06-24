@@ -73,6 +73,7 @@
 - Web package detail renders server-returned WeChat Native code URLs as local QR codes and polls read-only order status
 - Development/test signed mock WeChat notify can mark an order paid and idempotently issue a package entitlement after signature and amount checks
 - API smoke CLI can run the development/test mock WeChat Native handoff end to end: order creation, mock Native code URL, signed mock notify, paid status, entitlement, and paid download
+- Opt-in browser mock-payment smoke covers the Web package QR flow plus signed backend mock notify, paid status, entitlement, and paid material download in development/test
 - Tested WeChat Pay API v3 crypto helpers for RSA request signing, Authorization header construction, RSA notify verification, private/public key parsing, and AES-256-GCM resource decryption
 - Live WeChat Native order creation signs the request with the merchant private key and verifies the signed WeChat response before storing `code_url`
 - Live WeChat official notify handler verifies callback signatures, decrypts AES-256-GCM resources, validates appid/mchid and amount, marks successful orders paid, and idempotently grants package entitlements

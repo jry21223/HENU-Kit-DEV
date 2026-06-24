@@ -120,6 +120,7 @@
   - 成功 mock notify 会把订单置为 `paid`，写入 `payment_records`，并幂等发放一次课程包 entitlement。
   - 这只是本地联调 harness，不能代替生产微信官方回调。
 - `cmd/smoke` 已支持开发/测试专用 `-mock-wechat-pay`，可验证订单创建、mock Native codeUrl、签名 mock notify、订单 paid、entitlement 和 paid 下载整条非生产链路。
+- Web workspace 已支持 opt-in browser mock-payment smoke，覆盖真实 Web 购买页二维码展示、后端签名 mock notify、只读状态刷新、entitlement 和 paid 下载。
 - 已实现并单测微信支付 API v3 live 所需密码学基础件：
   - RSA 请求签名。
   - Authorization header 组装。

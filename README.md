@@ -94,6 +94,7 @@ See `docs/deployment.md` before using this for any paid internal test. The examp
 - Production preflight is a deploy gate, not a substitute for merchant or browser smoke tests. It verifies dangerous configuration before the stack is opened to paid traffic.
 - Internal smoke runbook: `docs/internal-smoke.md`
 - Mock WeChat payment smoke: `go run ./cmd/smoke -mock-wechat-pay -mock-wechat-secret <local-fake-secret>` in development/test only; the API must run with `WECHAT_PAY_MODE=mock` and the same fake `WECHAT_PAY_API_V3_KEY`. It signs a mock notify, verifies backend `paid` status, entitlement, and paid download. It is not a real merchant E2E check.
+- Browser mock-payment smoke: `npm --workspace @final-review/web run test:e2e:mock-payment` with `E2E_MOCK_PAYMENT_SMOKE=1` verifies the Web package QR flow and signed backend mock notify unlock path in development/test only.
 - Browser delivery smoke: `npm --workspace @final-review/web run test:e2e:delivery` with `E2E_DELIVERY_SMOKE=1` opens Web/Admin, verifies paid denial before entitlement, creates an admin package grant, and verifies paid download after the grant.
 - Quiz wrong-question smoke: `npm --workspace @final-review/web run test:e2e:quiz` with `E2E_QUIZ_SMOKE=1` logs in through Web, submits an intentionally wrong answer, verifies Go API wrong-question persistence, and checks `/me/wrong-questions`.
 - Admin review smoke: `npm --workspace @final-review/web run test:e2e:review` with `E2E_REVIEW_SMOKE=1` creates a pending Blog post, approves it through Vue Admin, and verifies it becomes public on Web.
@@ -123,6 +124,7 @@ cd ../worker && go test ./...
 - 课程包授权解锁包内 paid 资料。
 - 后台课程包 CRUD、包内资料绑定/解绑、重复绑定保护，以及公开课程包详情不泄露未发布资料 item。
 - Web 课程详情页展示课程包价格、包含资料和支付联调状态；`/packages` 展示已发布课程包列表，`/packages/[id]` 展示课程包详情、包内 published 资料、当前账号 entitlement 状态，并可创建 pending 课程包订单。Go API 可在开发/测试环境为订单生成 mock WeChat Native codeUrl 并把订单置为 `paying`，同时写入 `expiresAt`；过期的 pending/paying 微信订单会被服务端收敛为 `expired`，不能继续拉起支付或被新下单复用。Web 会把 codeUrl 渲染成本地二维码；开发/测试环境可用带 HMAC 的 mock notify 把订单置为 `paid` 并幂等发放课程包 entitlement。Go API 支持关闭 pending/paying 微信 Native 订单，closed 订单不会被新下单复用。live Native 下单会用商户私钥签名并校验微信响应签名，live notify handler 会验签、解密、校验 appid/mchid/金额并幂等发放 entitlement；生产开放仍需要真实商户环境端到端联调、证书轮换和运营告警。Vue Admin `/orders` 只读查询订单状态，不能标记支付成功或发放权益。
+- Browser mock-payment smoke 覆盖 Web 购买页二维码展示、签名 mock notify、订单 paid 状态、entitlement 和 paid 下载；它只能用于开发/测试，不替代真实微信商户端到端联调。
 - Web `/wiki` and `/wiki/[id]` expose only published public Wiki entries through the Go API; draft, pending, rejected, and private review metadata stay hidden.
 - Web `/blog` and `/blog/[id]` expose only published public Blog posts through the Go API; public responses use a DTO that hides review metadata, and the detail page can submit a `blog_post` report.
 - Web 论坛页展示已发布公开帖子，支持登录用户提交待审核普通/问答/悬赏帖；详情页支持登录用户提交待审核回复，并允许楼主/admin 触发服务端最佳答案选择。
