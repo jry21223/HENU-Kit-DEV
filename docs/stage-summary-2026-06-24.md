@@ -164,7 +164,7 @@
 | Stage 8：支付系统 | 原 plan 写易支付 | 方向调整 / 部分完成 | 已改为微信 Native；mock 下单、mock notify、live 下单、live notify、基础关单、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒已有；真实商户 E2E、退款、证书轮换和自动对账未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 | Wiki 公开页、修订提案、审核、历史和 stale 防护已有；创作者申请流不完整。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog/Forum 基础和审核已有；Moment 与关系系统未做。 |
-| Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已有；搜索和排行榜未做。 |
+| Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已有；基础公开搜索 API 和 Web 搜索页已做；排行榜未做。 |
 | Stage 12：Next.js 主站 | 主站完整页面 | 部分完成 | 课程、资料、课程包、Wiki、Blog、Forum、错题、通知等核心页已有；AI/会员/积分/动态/排行榜不足。 |
 | Stage 13：Vue 3 管理后台 | 完整运营后台 | 部分完成 | 用户、课程、资料、课程包、订单、支付异常台账、审核、举报、日志、AI draft 已有；会员/积分/系统配置不足。 |
 | Stage 14：Docker Compose | 本地一键启动 | 部分完成 | Compose 配置存在；全链路仍依赖本地 env、seed 和文件挂载。 |

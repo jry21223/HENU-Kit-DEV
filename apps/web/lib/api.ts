@@ -317,6 +317,31 @@ export type BlogPost = {
   updatedAt: string;
 };
 
+export type SearchResult = {
+  id: string;
+  type: "course" | "material" | "package" | "wiki" | "blog" | "forum";
+  title: string;
+  description?: string;
+  url: string;
+  meta?: string;
+  updatedAt?: string;
+};
+
+export type SearchResults = {
+  courses: SearchResult[];
+  materials: SearchResult[];
+  packages: SearchResult[];
+  wiki: SearchResult[];
+  blog: SearchResult[];
+  forum: SearchResult[];
+};
+
+export type SearchResponse = {
+  query: string;
+  results: SearchResults;
+  total: number;
+};
+
 export type MyForumPost = {
   id: string;
   boardId: string;

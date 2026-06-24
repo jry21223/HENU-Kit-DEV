@@ -14,6 +14,7 @@ Currently implemented endpoints:
 - `GET /api/v1/healthz`
 - `GET /api/v1/readyz`
 - `GET /api/v1/version`
+- `GET /api/v1/search?q=&limit=`
 - `POST /api/v1/auth/send-code`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
@@ -129,6 +130,15 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/operation-logs?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
 - `GET /api/v1/admin/operation-logs/export?operatorId=&action=&targetType=&targetId=&createdFrom=&createdTo=&limit=`
 - `GET /api/v1/admin/operation-logs/retention`
+
+Search:
+
+- `GET /api/v1/search?q=&limit=` performs a conservative public search across currently implemented content types.
+- `q` is trimmed and limited to 80 characters.
+- `limit` defaults to 8 and is capped at 30 per group.
+- Results are grouped into `courses`, `materials`, `packages`, `wiki`, `blog`, and `forum`.
+- Only public/published content is returned. Draft, pending, rejected, archived, and private content is excluded.
+- Material search responses do not expose `storageKey`.
 
 Response envelope:
 

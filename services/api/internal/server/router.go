@@ -27,6 +27,7 @@ import (
 	"final-review-platform/services/api/internal/payment"
 	"final-review-platform/services/api/internal/quiz"
 	"final-review-platform/services/api/internal/report"
+	"final-review-platform/services/api/internal/search"
 	"final-review-platform/services/api/internal/wiki"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/middleware"
@@ -70,6 +71,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
 	reportHandler := report.NewHandler(db)
+	searchHandler := search.NewHandler(db)
 	wikiHandler := wiki.NewHandler(db)
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
@@ -87,6 +89,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 			"environment": cfg.Environment,
 		})
 	})
+	v1.GET("/search", searchHandler.Query)
 	v1.POST("/auth/send-code", authHandler.SendCode)
 	v1.POST("/auth/login", authHandler.Login)
 	v1.POST("/auth/refresh", authHandler.Refresh)
