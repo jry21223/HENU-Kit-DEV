@@ -28,10 +28,10 @@ type UseHomeAnimeTimelineOptions = {
 };
 
 const timelineDuration = 1000;
-const insideRevealStart = 0.82;
-const insideRevealEnd = 0.9;
-const pageRevealStart = 0.88;
-const pageRevealEnd = 0.92;
+const insideRevealStart = 0.78;
+const insideRevealEnd = 0.82;
+const pageRevealStart = 0.78;
+const pageRevealEnd = 0.82;
 const pageVisualEnd = 0.96;
 const closingVisualStart = 0.97;
 

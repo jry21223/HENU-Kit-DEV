@@ -244,12 +244,12 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(openingCoverBox.width / openingCoverBox.height).toBeLessThan(0.86);
 
   await scrollArchiveTo(page, 0.8);
-  await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
-  await expect(page.getByRole("heading", { name: "课程入口" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   const lateTurningVisualState = await archiveVisualState(page);
-  expect(lateTurningVisualState.baseOpacity).toBeLessThan(0.18);
-  expect(lateTurningVisualState.insideOpacity).toBeLessThan(0.18);
-  expect(lateTurningVisualState.maxPageOpacity).toBeLessThan(0.05);
+  expect(lateTurningVisualState.insideOpacity).toBeGreaterThan(0.55);
+  expect(lateTurningVisualState.minPageOpacity).toBeGreaterThan(0.55);
+  expect(lateTurningVisualState.maxPageOpacity).toBeGreaterThan(0.55);
 
   await scrollArchiveTo(page, 0.92);
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
