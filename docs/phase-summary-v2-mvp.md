@@ -408,6 +408,12 @@ git diff --check
 - `npm --workspace @final-review/web run test:e2e:quiz` adds an opt-in Playwright smoke for login, real quiz submission, wrong-question persistence, and `/me/wrong-questions` rendering.
 - The smoke mutates the student's wrong-question book and should use `E2E_QUIZ_SMOKE=1` plus a fresh student account. It is not a full quiz regression suite.
 
+### 7.4a 2026-06-24 Quiz Multi-Type Smoke Update
+
+- Web quiz cards now support multiple-choice answer sets, true/false buttons, and free-text fill-blank/short-answer input with stable browser test hooks.
+- `npm --workspace @final-review/web run test:e2e:quiz-multi-type` adds an opt-in Playwright smoke for multiple-choice and fill-blank browser submissions.
+- The smoke resolves correct answers through the submit API and does not require login, so it should not persist wrong-question records. It is still a targeted smoke, not a complete quiz regression suite.
+
 ### 7.5 2026-06-24 Admin Blog Review Smoke Update
 
 - Vue Admin Blog review actions now expose stable test ids for approve/reject and review submission buttons.

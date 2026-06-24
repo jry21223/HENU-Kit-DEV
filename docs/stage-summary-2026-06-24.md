@@ -238,3 +238,9 @@ git diff --check
 V2 已从纯骨架推进到可本地验证的强 MVP：课程资料、下载权限、课程包、刷题、审核、通知、举报、Admin、Worker 和微信 Native 支付代码链路都有基础实现。
 
 但它仍是内测准备状态，不是正式上线状态。最优先的上线前缺口是微信真实商户 E2E、支付运维硬化、真实资料导入验收、完整 E2E 和生产部署安全边界。
+
+## Addendum: 2026-06-24 Quiz Multi-Type Smoke
+
+- Added browser-level coverage for multiple-choice answer sets and fill-blank free-text submissions through `npm --workspace @final-review/web run test:e2e:quiz-multi-type`.
+- Updated the Web quiz card so multiple-choice can keep multiple selected labels, true/false questions render buttons, and fill-blank/short-answer questions expose a stable free-text input hook.
+- This closes the immediate "more quiz types need smoke coverage" gap, but it is still not a complete quiz regression suite; exercise sessions, weakness reporting, short-answer grading, and mobile screenshot regression remain separate hardening work.

@@ -153,6 +153,7 @@ Before opening paid sales, verify all items below:
 - manual-grant smoke in `docs/internal-smoke.md` passes with fresh student/admin test accounts after importing real mounted files
 - browser delivery smoke `npm --workspace @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
 - quiz wrong-question smoke `npm --workspace @final-review/web run test:e2e:quiz` passes against Web/API with a fresh student test account
+- quiz multi-type smoke `npm --workspace @final-review/web run test:e2e:quiz-multi-type` passes against Web/API with seed data or explicit question/answer overrides
 - admin material-review smoke `npm --workspace @final-review/web run test:e2e:material-review` passes against Web/Admin/API with an admin reviewer account
 - admin blog-review smoke `npm --workspace @final-review/web run test:e2e:review` passes against Web/Admin/API with fresh author/admin test accounts
 - admin wiki-review smoke `npm --workspace @final-review/web run test:e2e:wiki-review` passes against Web/Admin/API with a creator/admin author account and admin reviewer account

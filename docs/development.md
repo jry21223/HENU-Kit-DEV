@@ -136,6 +136,17 @@ npm --workspace @final-review/web run test:e2e:quiz
 
 This Playwright smoke logs in as a student, finds a published choice question, probes an anonymous wrong option, submits that wrong answer through the real Web quiz page, verifies the authenticated wrong-question count increases through the Go API, and then checks `/me/wrong-questions` renders the question. It is opt-in because it mutates the student's wrong-question book. Set `E2E_QUIZ_COURSE_ID`, `E2E_QUIZ_QUESTION_ID`, or `E2E_QUIZ_WRONG_ANSWER` when the target environment does not use seed data.
 
+Quiz multi-type smoke:
+
+```bash
+$env:E2E_QUIZ_MULTI_TYPE_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+npm --workspace @final-review/web run test:e2e:quiz-multi-type
+```
+
+This Playwright smoke finds a published multiple-choice question and a fill-blank question, probes correct answers through the submit API, then verifies the real Web quiz page can submit an answer set and a free-text answer. It does not require login and should not persist wrong-question records. Set `E2E_QUIZ_MULTI_TYPE_COURSE_ID`, `E2E_QUIZ_MULTI_CHOICE_QUESTION_ID`, `E2E_QUIZ_MULTI_CHOICE_ANSWER`, `E2E_QUIZ_FREE_TEXT_QUESTION_ID`, or `E2E_QUIZ_FREE_TEXT_ANSWER` when the target environment does not use seed data.
+
 Admin material-review smoke:
 
 ```bash

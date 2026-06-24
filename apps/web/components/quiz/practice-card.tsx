@@ -9,11 +9,29 @@ type SubmitResult = {
   explanation: string;
 };
 
+type RenderOption = {
+  id: string;
+  label: string;
+  content: string;
+};
+
+const questionTypeLabels: Record<string, string> = {
+  fill_blank: "填空题",
+  multiple_choice: "多选题",
+  short_answer: "简答题",
+  single_choice: "单选题",
+  true_false: "判断题",
+};
+
 export function PracticeCard({ question }: { question: QuizQuestion }) {
   const [answer, setAnswer] = useState("");
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const isMultipleChoice = question.type === "multiple_choice";
+  const renderOptions = buildRenderOptions(question);
+  const selectedLabels = answer ? answer.split(",").filter(Boolean) : [];
 
   async function submitAnswer() {
     setSubmitting(true);
@@ -29,32 +47,61 @@ export function PracticeCard({ question }: { question: QuizQuestion }) {
     }
   }
 
+  function selectOption(label: string) {
+    setResult(null);
+    setError("");
+    if (!isMultipleChoice) {
+      setAnswer(label);
+      return;
+    }
+
+    const next = new Set(selectedLabels);
+    if (next.has(label)) {
+      next.delete(label);
+    } else {
+      next.add(label);
+    }
+    const ordered = renderOptions.map((option) => option.label).filter((optionLabel) => next.has(optionLabel));
+    setAnswer(ordered.join(","));
+  }
+
+  function updateFreeAnswer(value: string) {
+    setResult(null);
+    setError("");
+    setAnswer(value);
+  }
+
   return (
     <div className="rounded-lg border border-line bg-white p-5 shadow-sm" data-question-id={question.id} data-testid="practice-card">
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-        <span className="rounded-md bg-paper px-2 py-1">{question.type}</span>
+        <span className="rounded-md bg-paper px-2 py-1">{questionTypeLabels[question.type] ?? question.type}</span>
         <span className="rounded-md bg-paper px-2 py-1">难度 {question.difficulty}</span>
       </div>
       <h2 className="mt-4 text-base font-semibold leading-7">{question.stem}</h2>
 
-      {question.options?.length ? (
+      {renderOptions.length ? (
         <div className="mt-4 grid gap-2">
-          {question.options.map((option) => (
-            <button
-              className={`rounded-md border px-3 py-2 text-left text-sm ${answer === option.label ? "border-sage bg-paper" : "border-line bg-white"}`}
-              data-testid={`quiz-option-${option.label}`}
-              key={option.id}
-              onClick={() => setAnswer(option.label)}
-              type="button"
-            >
-              <span className="font-semibold">{option.label}.</span> {option.content}
-            </button>
-          ))}
+          {renderOptions.map((option) => {
+            const selected = selectedLabels.includes(option.label);
+            return (
+              <button
+                aria-pressed={selected}
+                className={`rounded-md border px-3 py-2 text-left text-sm ${selected ? "border-sage bg-paper" : "border-line bg-white"}`}
+                data-testid={`quiz-option-${option.label}`}
+                key={option.id}
+                onClick={() => selectOption(option.label)}
+                type="button"
+              >
+                <span className="font-semibold">{option.label}.</span> {option.content}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <textarea
           className="mt-4 min-h-24 w-full rounded-md border border-line px-3 py-2 text-sm"
-          onChange={(event) => setAnswer(event.target.value)}
+          data-testid="quiz-free-answer"
+          onChange={(event) => updateFreeAnswer(event.target.value)}
           placeholder="输入答案"
           value={answer}
         />
@@ -70,7 +117,11 @@ export function PracticeCard({ question }: { question: QuizQuestion }) {
         >
           {submitting ? "提交中" : "提交答案"}
         </button>
-        {result ? <span className={`text-sm font-medium ${result.isCorrect ? "text-green-700" : "text-red-700"}`}>{result.isCorrect ? "回答正确" : "回答错误"}</span> : null}
+        {result ? (
+          <span className={`text-sm font-medium ${result.isCorrect ? "text-green-700" : "text-red-700"}`} data-testid="quiz-result">
+            {result.isCorrect ? "回答正确" : "回答错误"}
+          </span>
+        ) : null}
       </div>
 
       {result ? (
@@ -82,4 +133,23 @@ export function PracticeCard({ question }: { question: QuizQuestion }) {
       {error ? <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
     </div>
   );
+}
+
+function buildRenderOptions(question: QuizQuestion): RenderOption[] {
+  if (question.options?.length) {
+    return question.options.map((option) => ({
+      id: option.id,
+      label: option.label,
+      content: option.content,
+    }));
+  }
+
+  if (question.type === "true_false") {
+    return [
+      { id: `${question.id}-true`, label: "true", content: "正确" },
+      { id: `${question.id}-false`, label: "false", content: "错误" },
+    ];
+  }
+
+  return [];
 }

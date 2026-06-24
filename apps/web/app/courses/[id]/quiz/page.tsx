@@ -56,7 +56,9 @@ export default async function CourseQuizPage({ params }: PageProps) {
           ))}
         </div>
 
-        {!error && questions.length === 0 ? <p className="mt-6 rounded-md border border-line bg-white p-4 text-sm text-slate-600">暂无已发布题目。</p> : null}
+        {!error && questions.length === 0 ? (
+          <p className="mt-6 rounded-md border border-line bg-white p-4 text-sm text-slate-600">暂无已发布题目。</p>
+        ) : null}
       </section>
     </main>
   );
