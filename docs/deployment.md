@@ -154,6 +154,9 @@ Before opening paid sales, verify all items below:
 - browser delivery smoke `npm --workspace @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
 - quiz wrong-question smoke `npm --workspace @final-review/web run test:e2e:quiz` passes against Web/API with a fresh student test account
 - admin blog-review smoke `npm --workspace @final-review/web run test:e2e:review` passes against Web/Admin/API with fresh author/admin test accounts
+- admin wiki-review smoke `npm --workspace @final-review/web run test:e2e:wiki-review` passes against Web/Admin/API with a creator/admin author account and admin reviewer account
+- admin forum-review smoke `npm --workspace @final-review/web run test:e2e:forum-review` passes against Web/Admin/API with fresh author/admin test accounts
+- admin forum-reply-review smoke `npm --workspace @final-review/web run test:e2e:forum-reply-review` passes against Web/Admin/API with fresh author/admin test accounts
 - mobile public-page smoke `npm --workspace @final-review/web run test:e2e:mobile` passes against the deployed Web origin at a 390px viewport
 - paid material download is denied before entitlement and allowed after a verified paid order
 - `scripts/ops/backup-postgres.sh` produces a restorable dump in a staging environment

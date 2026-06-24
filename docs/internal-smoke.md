@@ -159,6 +159,24 @@ npm --workspace @final-review/web run test:e2e:forum-review
 
 This smoke creates a unique pending forum post through the Go API, proves the public detail endpoint returns 404 before review, opens Vue Admin `/forum-reviews`, approves the post through the Admin UI, and verifies the public API and Web forum detail page render it after approval. It is opt-in because it mutates forum rows, notifications, and operation logs. Set `E2E_FORUM_BOARD_ID` when the target environment has multiple boards and you need a specific published board.
 
+## Admin Forum-Reply-Review Browser Smoke
+
+After Web, Admin, and API are reachable, run the admin forum-reply-review smoke from the repository root:
+
+```bash
+$env:E2E_FORUM_REPLY_REVIEW_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_FORUM_REPLY_REVIEW_AUTHOR_EMAIL="smoke-forum-reply-author@stu.henu.edu.cn"
+$env:E2E_FORUM_REPLY_REVIEW_AUTHOR_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+npm --workspace @final-review/web run test:e2e:forum-reply-review
+```
+
+This smoke creates a unique pending Forum post, approves that setup post through the Go API, creates a pending reply, proves the public Forum detail omits the reply before review, opens Vue Admin `/forum-reply-reviews`, approves the reply through the Admin UI, and verifies the public API and Web Forum detail page render it after approval. It is opt-in because it mutates forum post/reply rows, notifications, and operation logs. Set `E2E_FORUM_BOARD_ID` when the target environment has multiple boards and you need a specific published board.
+
 ## What It Checks
 
 - API readiness: `GET /readyz`
@@ -178,6 +196,7 @@ This smoke creates a unique pending forum post through the Go API, proves the pu
 - Optional admin review browser smoke: validates pending Blog content remains hidden until approval and becomes public after Admin UI review
 - Optional admin wiki-review browser smoke: validates pending Wiki content remains hidden until approval and becomes public after Admin UI review
 - Optional admin forum-review browser smoke: validates pending Forum content remains hidden until approval and becomes public after Admin UI review
+- Optional admin forum-reply-review browser smoke: validates pending Forum replies remain hidden until approval and become public after Admin UI review
 
 ## Important Flags
 
@@ -236,6 +255,9 @@ E2E_WIKI_REVIEW_AUTHOR_CODE=123456
 E2E_FORUM_REVIEW_SMOKE=0
 E2E_FORUM_REVIEW_AUTHOR_EMAIL=smoke-forum-author@stu.henu.edu.cn
 E2E_FORUM_REVIEW_AUTHOR_CODE=123456
+E2E_FORUM_REPLY_REVIEW_SMOKE=0
+E2E_FORUM_REPLY_REVIEW_AUTHOR_EMAIL=smoke-forum-reply-author@stu.henu.edu.cn
+E2E_FORUM_REPLY_REVIEW_AUTHOR_CODE=123456
 E2E_FORUM_BOARD_ID=
 ```
 
@@ -345,7 +367,13 @@ E2E_FORUM_BOARD_ID=
    npm --workspace @final-review/web run test:e2e:forum-review
    ```
 
-15. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
+15. Run admin forum-reply-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+
+   ```bash
+   npm --workspace @final-review/web run test:e2e:forum-reply-review
+   ```
+
+16. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
 
 ## Failure Handling
 
@@ -367,4 +395,6 @@ E2E_FORUM_BOARD_ID=
 - Wiki review smoke opens but skips: set `E2E_WIKI_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Wiki entry.
 - Wiki review smoke fails with 403 during entry creation: use an author account with `creator`, `admin`, or `super_admin` role, such as the seeded `creator@example.com`, or configure `E2E_WIKI_REVIEW_AUTHOR_EMAIL`.
 - Forum review smoke opens but skips: set `E2E_FORUM_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Forum post.
+- Forum reply review smoke opens but skips: set `E2E_FORUM_REPLY_REVIEW_SMOKE=1`. It is opt-in because it creates and approves a Forum post/reply pair.
+- Forum reply review smoke cannot create a reply: confirm the setup post was approved, the selected board is published, and the author account is not frozen.
 - Browser smoke cannot log in: development can use `DEV_FIXED_VERIFICATION_CODE`; staging/production needs a real test inbox or manually supplied current code.
