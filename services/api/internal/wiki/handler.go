@@ -84,6 +84,18 @@ type adminProposal struct {
 	IsStale        bool   `json:"isStale"`
 }
 
+type creatorApplicationSelf struct {
+	ID           string `json:"id"`
+	Reason       string `json:"reason"`
+	SampleTitle  string `json:"sampleTitle"`
+	SampleBody   string `json:"sampleBody"`
+	Status       string `json:"status"`
+	ReviewedAt   string `json:"reviewedAt,omitempty"`
+	ReviewReason string `json:"reviewReason,omitempty"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
 func (h Handler) ListPublished(ctx *gin.Context) {
 	limit, ok := parseLimit(ctx.Query("limit"), 50, 100)
 	if !ok {
@@ -222,6 +234,29 @@ func (h Handler) CreateProposal(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"proposal": proposal})
+}
+
+func (h Handler) MyCreatorApplications(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 20, 100)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var applications []model.WikiCreatorApplication
+	if err := h.db.
+		Where("user_id = ?", user.ID).
+		Order("updated_at desc").
+		Limit(limit).
+		Find(&applications).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"applications": creatorApplicationsForSelf(applications)})
 }
 
 func (h Handler) CreateCreatorApplication(ctx *gin.Context) {
@@ -766,6 +801,28 @@ func publicEntries(entries []model.WikiEntry) []publicEntry {
 	result := make([]publicEntry, 0, len(entries))
 	for _, entry := range entries {
 		result = append(result, toPublicEntry(entry))
+	}
+	return result
+}
+
+func creatorApplicationsForSelf(applications []model.WikiCreatorApplication) []creatorApplicationSelf {
+	result := make([]creatorApplicationSelf, 0, len(applications))
+	for _, application := range applications {
+		var reviewedAt string
+		if application.ReviewedAt != nil {
+			reviewedAt = application.ReviewedAt.Format("2006-01-02T15:04:05Z07:00")
+		}
+		result = append(result, creatorApplicationSelf{
+			ID:           application.ID,
+			Reason:       application.Reason,
+			SampleTitle:  application.SampleTitle,
+			SampleBody:   application.SampleBody,
+			Status:       application.Status,
+			ReviewedAt:   reviewedAt,
+			ReviewReason: application.ReviewReason,
+			CreatedAt:    application.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:    application.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
 	}
 	return result
 }

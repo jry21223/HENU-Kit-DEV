@@ -304,6 +304,18 @@ export type WikiEditProposal = {
   updatedAt: string;
 };
 
+export type WikiCreatorApplication = {
+  id: string;
+  reason: string;
+  sampleTitle: string;
+  sampleBody: string;
+  status: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type BlogPost = {
   id: string;
   authorId: string;

@@ -317,7 +317,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review 存在；真实 LLM、RAG、发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、admin 手动赠送/撤销会员已做；购买、兑换、AI 权益扣减仍未完整闭环。 |
 | Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、API smoke CLI 非生产 mock 支付闭环验收、带请求签名/响应验签的 live Native 下单代码路径、live 官方 notify 验签/解密/金额校验/幂等授权代码路径、基础关单接口、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒；真实微信商户端到端联调、退款、证书轮换和自动对账未完成。 |
-| Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 / 强 MVP | Wiki 公开页、修订提案、审核、历史、stale 防护已做；创作者申请 API 与 Admin 审核闭环已补，学生端申请状态 UI 和浏览器烟测仍未完成。 |
+| Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 / 强 MVP | Wiki 公开页、修订提案、审核、历史、stale 防护已做；创作者申请 API、学生端申请/状态 UI、Admin 审核闭环和可选浏览器 smoke 已补，词条新建的学生端编辑体验仍较基础。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog、Forum 基础和审核已做；Moment、关系系统 Go API 基础已补，Web `/moments` 基础动态流、图片上传/预览、动态图片服务端可见性鉴权、`/users/[id]` 公开用户主页聚合和 `/me/relations` 关系管理已做；视频和云存储仍未做。 |
 | Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已做；基础公开搜索 API 和 Web 搜索页已做；排行榜未做。 |
 | Stage 12：Next.js 主站 | 主站完整页面 | 部分完成 | 课程、资料、课程包、Wiki、Blog、Forum、动态、用户主页、错题、通知等核心页存在；AI、会员、积分、排行榜等页不足。 |
@@ -509,4 +509,6 @@ git diff --check
 - Implemented logged-in normal-user creator applications through `POST /api/v1/wiki/creator-applications`.
 - Implemented reviewer/admin list, approve, and reject APIs under `/api/v1/admin/wiki/creator-applications`.
 - Approval promotes a normal `user` to `creator`; rejection requires a reason and does not change user role.
-- Notifications and operation logs are recorded for review results. Remaining work: student-facing status UI, browser smoke coverage, and richer applicant context in the admin queue.
+- Web `/wiki` now exposes a student-facing creator-application panel backed by `GET /api/v1/wiki/creator-applications/me` and `POST /api/v1/wiki/creator-applications`.
+- `npm --workspace @final-review/web run test:e2e:wiki-creator-application` adds an opt-in Playwright smoke for the student application panel and self-status API.
+- Notifications and operation logs are recorded for review results. Remaining work: richer applicant context in the admin queue and a fuller creator workspace for new wiki entries.

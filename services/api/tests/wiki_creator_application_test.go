@@ -21,6 +21,10 @@ func TestWikiCreatorApplicationWorkflow(t *testing.T) {
 
 	applicant := createTestUser(t, db, "creator-apply@stu.henu.edu.cn", model.RoleUser)
 	applicantToken := loginTestUser(t, router, applicant.Email)
+	emptyMine := performJSON(router, http.MethodGet, "/api/v1/wiki/creator-applications/me", "", applicantToken)
+	if emptyMine.Code != http.StatusOK || !strings.Contains(emptyMine.Body.String(), `"applications":[]`) {
+		t.Fatalf("expected empty creator application self list, got %d: %s", emptyMine.Code, emptyMine.Body.String())
+	}
 	invalid := performJSON(router, http.MethodPost, "/api/v1/wiki/creator-applications", `{"reason":"","sampleTitle":"Sample","sampleBody":"Body"}`, applicantToken)
 	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "missing_required_fields") {
 		t.Fatalf("expected invalid creator application rejection, got %d: %s", invalid.Code, invalid.Body.String())
@@ -36,6 +40,16 @@ func TestWikiCreatorApplicationWorkflow(t *testing.T) {
 	}
 	if application.Status != model.StatusPending || application.SampleTitle != "Logic summary" {
 		t.Fatalf("expected pending creator application, got %#v", application)
+	}
+	mine := performJSON(router, http.MethodGet, "/api/v1/wiki/creator-applications/me", "", applicantToken)
+	if mine.Code != http.StatusOK || !strings.Contains(mine.Body.String(), application.ID) || strings.Contains(mine.Body.String(), "reviewerId") {
+		t.Fatalf("expected self list with redacted creator application, got %d: %s", mine.Code, mine.Body.String())
+	}
+	otherUser := createTestUser(t, db, "creator-apply-other@stu.henu.edu.cn", model.RoleUser)
+	otherToken := loginTestUser(t, router, otherUser.Email)
+	otherMine := performJSON(router, http.MethodGet, "/api/v1/wiki/creator-applications/me", "", otherToken)
+	if otherMine.Code != http.StatusOK || strings.Contains(otherMine.Body.String(), application.ID) {
+		t.Fatalf("expected other user self list not to include applicant application, got %d: %s", otherMine.Code, otherMine.Body.String())
 	}
 
 	duplicate := performJSON(router, http.MethodPost, "/api/v1/wiki/creator-applications", `{"reason":"Again","sampleTitle":"Another","sampleBody":"Another body"}`, applicantToken)
@@ -99,6 +113,10 @@ func TestWikiCreatorApplicationWorkflow(t *testing.T) {
 	if notificationCount != 1 {
 		t.Fatalf("expected one creator application notification, got %d", notificationCount)
 	}
+	approvedMine := performJSON(router, http.MethodGet, "/api/v1/wiki/creator-applications/me", "", applicantToken)
+	if approvedMine.Code != http.StatusOK || !strings.Contains(approvedMine.Body.String(), model.StatusApproved) || !strings.Contains(approvedMine.Body.String(), "sample is useful") || strings.Contains(approvedMine.Body.String(), "reviewerId") {
+		t.Fatalf("expected approved application self status without reviewer id, got %d: %s", approvedMine.Code, approvedMine.Body.String())
+	}
 	reviewAgain := performJSON(router, http.MethodPost, "/api/v1/admin/wiki/creator-applications/"+application.ID+"/reject", `{"reviewReason":"late"}`, reviewerToken)
 	if reviewAgain.Code != http.StatusConflict || !strings.Contains(reviewAgain.Body.String(), "creator_application_not_reviewable") {
 		t.Fatalf("expected reviewed application conflict, got %d: %s", reviewAgain.Code, reviewAgain.Body.String())
@@ -138,6 +156,10 @@ func TestWikiCreatorApplicationRejectAndFrozenBoundary(t *testing.T) {
 	}
 	if countOperationLogs(t, db, "wiki_creator_application.rejected", "wiki_creator_application", application.ID, admin.ID) != 1 {
 		t.Fatal("expected creator application rejection operation log")
+	}
+	rejectedMine := performJSON(router, http.MethodGet, "/api/v1/wiki/creator-applications/me", "", rejectedToken)
+	if rejectedMine.Code != http.StatusOK || !strings.Contains(rejectedMine.Body.String(), model.StatusRejected) || !strings.Contains(rejectedMine.Body.String(), "sample needs more structure") {
+		t.Fatalf("expected rejected application self status, got %d: %s", rejectedMine.Code, rejectedMine.Body.String())
 	}
 
 	frozenUser := createTestUser(t, db, "creator-frozen@stu.henu.edu.cn", model.RoleUser)

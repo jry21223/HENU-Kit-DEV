@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, BookOpenText, History, Layers3 } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
 import { Badge } from "@/components/ui/badge";
+import { WikiCreatorApplicationPanel } from "@/components/wiki/wiki-creator-application-panel";
 import { Course, WikiEntry, getApi } from "@/lib/api";
 
 type PageProps = {
@@ -62,6 +63,8 @@ export default async function WikiPage({ searchParams }: PageProps) {
       </section>
 
       {error ? <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">{error}</p> : null}
+
+      <WikiCreatorApplicationPanel />
 
       <nav className="flex gap-2 overflow-x-auto pb-1">
         <Link

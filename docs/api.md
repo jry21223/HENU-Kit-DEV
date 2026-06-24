@@ -64,6 +64,7 @@ Currently implemented endpoints:
 - `DELETE /api/v1/moments/comments/:id`
 - `GET /api/v1/wiki/entries?courseId=&limit=`
 - `GET /api/v1/wiki/entries/:id`
+- `GET /api/v1/wiki/creator-applications/me?limit=`
 - `POST /api/v1/wiki/creator-applications`
 - `POST /api/v1/wiki/entries`
 - `POST /api/v1/wiki/entries/:id/proposals`
@@ -435,6 +436,7 @@ Implemented wiki behavior:
 - public wiki list/detail endpoints only return `published` and `visibility=public` entries
 - public wiki endpoints use a public DTO and do not expose `reviewerId` or `reviewReason`
 - Web `/wiki` and `/wiki/[id]` consume those public endpoints as student-facing pages; public responses still hide review metadata
+- Web `/wiki` includes the student creator-application panel; logged-in users can view their own application status through `GET /api/v1/wiki/creator-applications/me`, which returns a self DTO without reviewer ids
 - Web `/wiki/[id]` includes a creator/admin-only edit-proposal form that submits to `POST /api/v1/wiki/entries/:id/proposals`; normal users see the review boundary instead of the editable form
 - logged-in active normal users can submit creator applications through `POST /api/v1/wiki/creator-applications`; users who are already creator/admin/super_admin are rejected with `already_creator`, and other elevated single-role users are not converted implicitly
 - users can have only one pending/draft/needs_changes creator application at a time

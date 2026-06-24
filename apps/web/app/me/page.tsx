@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, CreditCard, Download, MessageSquareText, Sparkles, TriangleAlert, UsersRound } from "lucide-react";
+import { Bell, CreditCard, Download, MessageSquareText, PenLine, Sparkles, TriangleAlert, UsersRound } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
 import { ProfileForm } from "@/components/profile/profile-form";
 
@@ -19,6 +19,7 @@ const shortcuts = [
   { href: "/me/notifications", label: "\u901a\u77e5", description: "\u5ba1\u6838\u7ed3\u679c\u548c\u7cfb\u7edf\u6d88\u606f", icon: Bell },
   { href: "/me/forum", label: "\u6211\u7684\u8ba8\u8bba", description: "\u8ffd\u8e2a\u5e16\u5b50\u548c\u56de\u590d\u5ba1\u6838", icon: MessageSquareText },
   { href: "/me/relations", label: "\u5173\u7cfb\u7ba1\u7406", description: "\u67e5\u770b\u5173\u6ce8\u3001\u7c89\u4e1d\u548c\u4e92\u5173\u597d\u53cb", icon: UsersRound },
+  { href: "/wiki", label: "Wiki \u521b\u4f5c\u8005\u7533\u8bf7", description: "\u63d0\u4ea4\u8bd5\u7a3f\u5e76\u67e5\u770b\u5ba1\u6838\u72b6\u6001", icon: PenLine },
 ];
 
 export default function MePage() {

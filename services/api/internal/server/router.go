@@ -155,6 +155,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.DELETE("/moments/comments/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.DeleteComment)
 	v1.GET("/wiki/entries", wikiHandler.ListPublished)
 	v1.GET("/wiki/entries/:id", wikiHandler.Detail)
+	v1.GET("/wiki/creator-applications/me", authMiddleware.RequireAuth(), wikiHandler.MyCreatorApplications)
 	v1.POST("/wiki/creator-applications", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), wikiHandler.CreateCreatorApplication)
 	v1.POST("/wiki/entries", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.Create)
 	v1.POST("/wiki/entries/:id/proposals", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.CreateProposal)
