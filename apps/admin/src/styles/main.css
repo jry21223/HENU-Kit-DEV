@@ -196,6 +196,13 @@ a {
   margin-top: 16px;
 }
 
+.card-header-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
 .stat-grid {
   display: grid;
   gap: 16px;

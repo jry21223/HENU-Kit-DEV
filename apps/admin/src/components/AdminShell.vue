@@ -8,6 +8,8 @@
       <nav class="side-nav" :aria-label="copy.navLabel">
         <RouterLink v-if="auth.isAdmin" to="/dashboard">{{ copy.dashboard }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/users">{{ copy.users }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/points">{{ copy.points }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/memberships">{{ copy.memberships }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/access-grants">{{ copy.accessGrants }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/orders">{{ copy.orders }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/payment-reconciliation">{{ copy.paymentReconciliation }}</RouterLink>
@@ -50,6 +52,8 @@ const copy = {
   navLabel: "\u540e\u53f0\u5bfc\u822a",
   dashboard: "\u8fd0\u8425\u6982\u89c8",
   users: "\u7528\u6237\u7ba1\u7406",
+  points: "\u79ef\u5206\u7ba1\u7406",
+  memberships: "\u4f1a\u5458\u7ba1\u7406",
   accessGrants: "\u6743\u76ca\u6388\u6743",
   orders: "\u8ba2\u5355\u67e5\u8be2",
   paymentReconciliation: "\u652f\u4ed8\u5bf9\u8d26",

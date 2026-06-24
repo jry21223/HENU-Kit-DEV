@@ -6,6 +6,8 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 
 - `/dashboard`: module status summary plus open payment-incident alert count.
 - `/users`: user listing, role update, and active/frozen status management.
+- `/points`: points ledger query and points-rule maintenance.
+- `/memberships`: published membership-plan reference plus manual membership grant/revoke operations.
 - `/access-grants`: manual material/package access grants for internal testing and after-sales delivery.
 - `/orders`: read-only course-package payment order browser.
 - `/payment-incidents`: WeChat payment callback anomaly ledger for manual triage.
@@ -42,6 +44,41 @@ Important boundaries:
 - Only `super_admin` users can edit an existing `super_admin` account or grant the `super_admin` role.
 - Freezing a user is enforced by server-side `RequireNotFrozen` checks on protected write endpoints; it is not a frontend-only toggle.
 - User updates write `operation_logs` with previous/current role and status metadata.
+
+## Points And Memberships
+
+`/points` calls:
+
+- `GET /api/v1/admin/points/logs?userId=&reason=&limit=`
+- `GET /api/v1/admin/points/rules`
+- `POST /api/v1/admin/points/rules`
+- `PATCH /api/v1/admin/points/rules/:id`
+
+The points page is available only to `admin` and `super_admin` roles. It lists points ledger rows and maintains points rules.
+
+Important boundaries:
+
+- The page does not directly edit a user's `points_balance`.
+- Every actual point balance change must still be produced by server-side business logic that writes `points_logs`.
+- Creating or updating a points rule writes `operation_logs`.
+- Reviewer-only users cannot access points administration.
+
+`/memberships` calls:
+
+- `GET /api/v1/admin/memberships?userId=&planCode=&status=&limit=`
+- `POST /api/v1/admin/memberships/grant`
+- `POST /api/v1/admin/memberships/:id/revoke`
+- `GET /api/v1/membership/plans`
+
+The memberships page is available only to `admin` and `super_admin` roles. It supports manual grants during internal testing or after-sales operations and lists published membership plans for reference.
+
+Important boundaries:
+
+- Manual membership grant does not create an order, does not mark payment success, and does not replace WeChat notify confirmation.
+- Grants require an existing user and a published membership plan.
+- Re-granting the same active manual membership updates the existing record instead of creating unlimited duplicates.
+- Revoking a membership marks it `revoked`, expires it immediately, and writes an operation log.
+- User self-service purchase, renewal, point redemption, and AI quota spending are not implemented yet.
 
 ## Access Grants
 
@@ -421,7 +458,7 @@ Important boundaries:
 ## Planned Areas
 
 - Richer content review
-- Points and memberships
+- Membership purchase/redeem and AI quota spending
 - Orders
 - Order risk flags are visible and filterable for payment triage. This is read-only visibility; admins still cannot mark payment success or grant entitlements from the order browser.
 - Payment reconciliation

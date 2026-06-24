@@ -238,6 +238,58 @@ export type OperationLog = {
   updatedAt: string;
 };
 
+export type PointsLog = {
+  id: string;
+  userId: string;
+  delta: number;
+  balanceAfter: number;
+  reason: string;
+  referenceType: string;
+  referenceId: string;
+  idempotencyKey: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PointsRule = {
+  id: string;
+  code: string;
+  description: string;
+  delta: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipPlan = {
+  id: string;
+  code: string;
+  name: string;
+  priceFen: number;
+  benefits?: unknown;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Membership = {
+  id: string;
+  userId: string;
+  planCode: string;
+  status: string;
+  source: string;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipRow = {
+  membership: Membership;
+  user?: User;
+  plan?: MembershipPlan;
+  active: boolean;
+};
+
 export type AITask = {
   id: string;
   userId?: string;

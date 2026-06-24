@@ -18,6 +18,8 @@ import OrdersView from "../views/OrdersView.vue";
 import PackagesView from "../views/PackagesView.vue";
 import PaymentIncidentsView from "../views/PaymentIncidentsView.vue";
 import PaymentReconciliationView from "../views/PaymentReconciliationView.vue";
+import MembershipsView from "../views/MembershipsView.vue";
+import PointsView from "../views/PointsView.vue";
 import ReportsView from "../views/ReportsView.vue";
 import UsersView from "../views/UsersView.vue";
 import WikiProposalReviewsView from "../views/WikiProposalReviewsView.vue";
@@ -30,6 +32,8 @@ export const router = createRouter({
     { path: "/login", component: LoginView, meta: { public: true } },
     { path: "/dashboard", component: DashboardView },
     { path: "/users", component: UsersView },
+    { path: "/points", component: PointsView },
+    { path: "/memberships", component: MembershipsView },
     { path: "/access-grants", component: AccessGrantsView },
     { path: "/orders", component: OrdersView },
     { path: "/payment-reconciliation", component: PaymentReconciliationView },
