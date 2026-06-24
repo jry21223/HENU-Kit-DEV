@@ -20,6 +20,8 @@
 - Web wiki detail edit-proposal form for creator/admin users, with review-first submission
 - Web blog list/detail read-only pages backed by published public blog APIs
 - Web forum list/detail pages with post creation, reply submission, and best-answer action entry
+- Go API moments foundation with public/mutual-friends visibility, comments, idempotent likes, and block-aware feed filtering
+- Go API relation foundation with follow, unfollow, block, unblock, following, followers, and mutual-friend lists
 - Web personal download-history page
 - Web personal wrong-question book with per-course weakness totals and current-user delete action
 - Web personal forum submission tracking page for current user's posts/replies and review status
@@ -91,6 +93,6 @@
 - AI Worker flows
 - Points and membership
 - Wiki creator workflow refinements and richer revision diff tooling
-- Blog, moments, forum
+- Web moments feed, user profile aggregation, and richer social relationship UX
 - Notifications, richer reports, leaderboards
 - Production deployment and monitoring

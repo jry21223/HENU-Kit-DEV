@@ -21,6 +21,7 @@ import (
 	"final-review-platform/services/api/internal/health"
 	"final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/member"
+	"final-review-platform/services/api/internal/moment"
 	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/order"
 	"final-review-platform/services/api/internal/org"
@@ -28,6 +29,7 @@ import (
 	"final-review-platform/services/api/internal/payment"
 	"final-review-platform/services/api/internal/points"
 	"final-review-platform/services/api/internal/quiz"
+	"final-review-platform/services/api/internal/relation"
 	"final-review-platform/services/api/internal/report"
 	"final-review-platform/services/api/internal/search"
 	"final-review-platform/services/api/internal/wiki"
@@ -66,6 +68,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	courseHandler := course.NewHandler(db)
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
 	memberHandler := member.NewHandler(db)
+	momentHandler := moment.NewHandler(db)
 	downloadLogHandler := downloadlog.NewHandler(db)
 	entitlementHandler := entitlement.NewHandler(db)
 	notificationHandler := notification.NewHandler(db)
@@ -74,6 +77,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	pointsHandler := points.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
+	relationHandler := relation.NewHandler(db)
 	reportHandler := report.NewHandler(db)
 	searchHandler := search.NewHandler(db)
 	wikiHandler := wiki.NewHandler(db)
@@ -131,6 +135,12 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.POST("/forum/posts", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.Create)
 	v1.POST("/forum/posts/:id/replies", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.CreateReply)
 	v1.POST("/forum/replies/:id/mark-best", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.MarkBestReply)
+	v1.GET("/moments", authMiddleware.OptionalAuth(), momentHandler.List)
+	v1.POST("/moments", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Create)
+	v1.DELETE("/moments/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Delete)
+	v1.POST("/moments/:id/like", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.Like)
+	v1.POST("/moments/:id/comments", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.CreateComment)
+	v1.DELETE("/moments/comments/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), momentHandler.DeleteComment)
 	v1.GET("/wiki/entries", wikiHandler.ListPublished)
 	v1.GET("/wiki/entries/:id", wikiHandler.Detail)
 	v1.POST("/wiki/entries", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authMiddleware.RequireCreator(), wikiHandler.Create)
@@ -153,6 +163,13 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/me/notifications", authMiddleware.RequireAuth(), notificationHandler.MyNotifications)
 	v1.POST("/me/notifications/:id/read", authMiddleware.RequireAuth(), notificationHandler.MarkRead)
 	v1.POST("/me/notifications/read-all", authMiddleware.RequireAuth(), notificationHandler.MarkAllRead)
+	v1.GET("/me/following", authMiddleware.RequireAuth(), relationHandler.Following)
+	v1.GET("/me/followers", authMiddleware.RequireAuth(), relationHandler.Followers)
+	v1.GET("/me/friends", authMiddleware.RequireAuth(), relationHandler.Friends)
+	v1.POST("/users/:id/follow", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Follow)
+	v1.POST("/users/:id/unfollow", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Unfollow)
+	v1.POST("/users/:id/block", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Block)
+	v1.POST("/users/:id/unblock", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Unblock)
 	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 

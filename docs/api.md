@@ -52,6 +52,12 @@ Currently implemented endpoints:
 - `POST /api/v1/forum/posts`
 - `POST /api/v1/forum/posts/:id/replies`
 - `POST /api/v1/forum/replies/:id/mark-best`
+- `GET /api/v1/moments?limit=`
+- `POST /api/v1/moments`
+- `DELETE /api/v1/moments/:id`
+- `POST /api/v1/moments/:id/like`
+- `POST /api/v1/moments/:id/comments`
+- `DELETE /api/v1/moments/comments/:id`
 - `GET /api/v1/wiki/entries?courseId=&limit=`
 - `GET /api/v1/wiki/entries/:id`
 - `POST /api/v1/wiki/entries`
@@ -73,6 +79,13 @@ Currently implemented endpoints:
 - `GET /api/v1/me/notifications?limit=&unread=true`
 - `POST /api/v1/me/notifications/:id/read`
 - `POST /api/v1/me/notifications/read-all`
+- `GET /api/v1/me/following?limit=`
+- `GET /api/v1/me/followers?limit=`
+- `GET /api/v1/me/friends?limit=`
+- `POST /api/v1/users/:id/follow`
+- `POST /api/v1/users/:id/unfollow`
+- `POST /api/v1/users/:id/block`
+- `POST /api/v1/users/:id/unblock`
 - `POST /api/v1/ai/tasks`
 - `GET /api/v1/ai/tasks/:id`
 - `POST /api/v1/reports`
@@ -329,6 +342,21 @@ Implemented forum behavior:
 - reward-post best-answer selection requires `rewardStatus=escrowed`, marks the reply `isBest=true`, sets the post `rewardStatus=settled`, grants points to the reply author, and writes a `forum_reward_settlement` points log
 - normal/question best-answer selection marks the reply `isBest=true` without changing points
 - reply editing and UI-level best-answer controls remain later work
+
+Implemented moment and relation behavior:
+
+- `GET /api/v1/moments` is public with optional auth; anonymous users see only `published` moments with `visibility=public`.
+- authenticated users still cannot see moments from users who blocked them or whom they blocked.
+- `visibility=mutual_friends` moments are visible only to the author and users where both sides follow each other.
+- logged-in, non-frozen users can create moments with up to 500 characters, up to 9 image URLs, and `visibility=public|mutual_friends`.
+- accepted image URLs must be `http://`, `https://`, or `/uploads/...`; traversal-style local paths are rejected.
+- moment likes are idempotent per user/moment and increment `likeCount` only once.
+- logged-in users can comment on visible moments; comment counts update on create and delete.
+- comment deletion is allowed for the comment author, the moment author, admin, or super_admin.
+- users can follow/unfollow/block/unblock other users; self-follow/self-block is rejected.
+- blocking a user removes follow edges between the two users and prevents future follow until unblocked.
+- `/me/following`, `/me/followers`, and `/me/friends` are user-scoped and hide blocked relationships.
+- the current implementation is an API foundation; Web moment feed, user profile aggregation, and richer media upload remain future work.
 
 Implemented notification behavior:
 
