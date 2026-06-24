@@ -25,7 +25,7 @@
 ### 2.2 Go API 与数据库
 
 - Gin/GORM API 服务骨架已经可运行。
-- 已实现配置读取、PostgreSQL/GORM、Redis 基础连接、统一响应、统一错误、中间件、CORS、Recover、请求日志和基础限流。
+- 已实现配置读取、PostgreSQL/GORM、Redis 基础连接、统一响应、统一错误、中间件、CORS、Recover、请求日志、基础限流、安全响应头和生产 CORS 配置校验。
 - 已实现 health/version 接口。
 - 已建立 V2 SQL migration 与 GORM model 基础。
 - Seed 可以生成演示学校、学院、专业、课程、资料、课程包、题目、社区内容、AI mock task 和演示账号。
@@ -151,7 +151,7 @@
 - Moment 动态与关注 / 互关好友 / 屏蔽的 Go API 基础已补；Web `/moments` 基础动态流、发布、图片上传/预览、点赞、评论、关注和屏蔽入口已补；动态图片读取已通过 Go API 复用动态可见性和屏蔽规则；公开用户主页聚合 API 和 Web `/users/[id]` 已补；视频和云存储仍未完成。
 - 搜索、排行榜、通知扩展和更完整的运营统计。
 - 完整 E2E、移动端截图回归、浏览器自动化验收。
-- 生产部署硬化：HTTPS、反代、安全 headers、日志、监控、备份、密钥轮换。
+- 生产部署硬化：HTTPS、反代、日志、监控、备份、密钥轮换。
 
 ## 4. 与原始 plan 对照
 

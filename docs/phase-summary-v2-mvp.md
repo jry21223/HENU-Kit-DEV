@@ -292,7 +292,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 - Admin 审核流 E2E。
 - 移动端截图回归。
 - Docker 全链路 smoke。
-- 生产部署脚本、备份、监控、HTTPS、反向代理、安全 headers。
+- 生产部署脚本、备份、监控、HTTPS、反向代理、密钥轮换。
 
 ## 4. 原始 Plan 对照
 
@@ -379,13 +379,19 @@ git diff --check
 - 当前真实 PDF 挂载、导入后验收和运营交接仍需部署流程配合。
 - 真实 AI 成本、内容质量、审核发布链路都未硬化。
 - 缺少浏览器级 E2E 与移动端截图回归。
-- 生产部署还缺 HTTPS、反代、安全 headers、日志/监控、备份策略。
+- 生产部署还缺 HTTPS、反代、日志/监控、备份策略和密钥轮换。
 
 ### 7.1 2026-06-24 Media Asset Cleanup Update
 
 - Stale unattached moment-image cleanup now has an admin-only Go API.
 - Cleanup defaults to dry-run, removes local files only after safe-path checks, archives matching `media_assets` rows, and writes `media_asset.cleanup` operation logs.
 - Vue Admin `/media-assets` now exposes this audit and cleanup workflow. Cloud object storage lifecycle policy and production media retention operations are still not implemented.
+
+### 7.2 2026-06-24 API Security Header and CORS Update
+
+- Go API now adds baseline security headers to every response and HSTS in production.
+- `CORS_ALLOWED_ORIGINS=*` is rejected, and production startup now requires exact HTTPS origins.
+- TLS termination, reverse-proxy deployment, monitoring, and backup operations are still deployment work and remain release-gate items.
 
 ## 8. 下一阶段建议
 

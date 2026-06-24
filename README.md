@@ -195,6 +195,8 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - PDF 水印由 Go API 下载接口动态生成临时文件；如果 PDF 处理失败，下载会返回错误而不是静默直出未水印文件。
 - AI 生成内容必须先进入 draft/review 流程，不能自动发布为正式内容。
 
+- Go API sets baseline security headers on all responses and refuses unsafe CORS configuration: wildcard origins are rejected, and production requires exact HTTPS origins.
+
 ## 10. 开发入口
 
 - 架构设计：`docs/architecture.md`

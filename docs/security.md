@@ -26,7 +26,8 @@
 - Manual access grants are server-side restricted to admin users, use `manual_admin` source, cannot create or mark payment orders, and can target only published paid/member-only materials or published course packages. Revoked grants are soft-deleted and no longer unlock paid downloads.
 - User-scoped forum tracking/resubmission endpoints expose only the authenticated user's own posts/replies and may include that user's review reason, but they do not expose `reviewerId`, `reviewedAt`, or hidden submissions from other users. Resubmission is server-side restricted to draft/pending/needs_changes/rejected content, clears old reviewer metadata, and returns the content to pending review.
 - User notification endpoints are user-scoped: authenticated users can list or mark read only their own notifications. Forum, material, wiki, blog, AI draft review, and report result notifications are written in the same database transaction as the protected mutation and operation log.
-- CORS must not use wildcard origins with credentials.
+- The Go API sets baseline security headers on every response: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`, and a restrictive API CSP. Production responses also include HSTS.
+- CORS must not use wildcard origins with credentials. The API rejects wildcard origins in all environments and refuses to start in production unless `CORS_ALLOWED_ORIGINS` contains exact HTTPS origins.
 
 ## Edge and Backup Controls
 

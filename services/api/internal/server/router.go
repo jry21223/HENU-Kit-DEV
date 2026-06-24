@@ -40,11 +40,15 @@ import (
 )
 
 func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib.Client) *gin.Engine {
+	if err := config.ValidateHTTPConfig(cfg); err != nil {
+		panic(err)
+	}
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.New()
+	router.Use(middleware.SecurityHeaders(cfg.Environment))
 	router.Use(middleware.RequestLogger(log))
 	router.Use(middleware.Recover(log))
 	router.Use(middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst))

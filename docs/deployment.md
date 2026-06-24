@@ -142,7 +142,7 @@ Before opening paid sales, verify all items below:
 - `npm run build --workspace @final-review/web`
 - `npm run build --workspace @final-review/admin`
 - production `.env.production` has `APP_ENV=production`, `WECHAT_PAY_MODE=live`, `AUTO_MIGRATE=false`, and an empty `DEV_FIXED_VERIFICATION_CODE`
-- `CORS_ALLOWED_ORIGINS` lists exact HTTPS origins and does not use `*`
+- `CORS_ALLOWED_ORIGINS` lists exact HTTPS origins and does not use `*`; the API rejects wildcard origins and refuses production startup without exact HTTPS origins
 - `docker compose --env-file .env.production -f docker-compose.prod.example.yml run --rm nginx nginx -t`
 - API smoke in `docs/internal-smoke.md` passes with a fresh student test email
 - WeChat Pay Native live order and notify have been tested with the real merchant dashboard

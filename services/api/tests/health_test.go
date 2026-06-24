@@ -29,6 +29,18 @@ func TestVersionEndpoint(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", response.Code)
 	}
+	if response.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("expected X-Content-Type-Options nosniff, got %q", response.Header().Get("X-Content-Type-Options"))
+	}
+	if response.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("expected X-Frame-Options DENY, got %q", response.Header().Get("X-Frame-Options"))
+	}
+	if !strings.Contains(response.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+		t.Fatalf("expected restrictive CSP, got %q", response.Header().Get("Content-Security-Policy"))
+	}
+	if response.Header().Get("Strict-Transport-Security") != "" {
+		t.Fatalf("did not expect HSTS outside production, got %q", response.Header().Get("Strict-Transport-Security"))
+	}
 }
 
 func TestHealthzAndReadyzHaveSeparateSemantics(t *testing.T) {

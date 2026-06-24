@@ -1,9 +1,18 @@
 package config
 
 import (
+	"errors"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
+)
+
+var (
+	ErrCORSWildcardWithCredentials = errors.New("cors wildcard origin is not allowed with credentials")
+	ErrProductionCORSRequired      = errors.New("production CORS_ALLOWED_ORIGINS must not be empty")
+	ErrProductionCORSHTTPSRequired = errors.New("production CORS_ALLOWED_ORIGINS must use https origins")
+	ErrInvalidCORSOrigin           = errors.New("invalid CORS origin")
 )
 
 type RedisConfig struct {
@@ -108,6 +117,31 @@ func Load() Config {
 	}
 }
 
+func ValidateHTTPConfig(cfg Config) error {
+	validOrigins := 0
+	for _, origin := range cfg.CORSAllowedOrigins {
+		trimmed := strings.TrimSpace(origin)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed == "*" {
+			return ErrCORSWildcardWithCredentials
+		}
+		parsed, err := url.Parse(trimmed)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return ErrInvalidCORSOrigin
+		}
+		if strings.EqualFold(cfg.Environment, "production") && parsed.Scheme != "https" {
+			return ErrProductionCORSHTTPSRequired
+		}
+		validOrigins++
+	}
+	if validOrigins == 0 && strings.EqualFold(cfg.Environment, "production") {
+		return ErrProductionCORSRequired
+	}
+	return nil
+}
+
 func loadRedisConfig() RedisConfig {
 	return RedisConfig{
 		Addr:     env("REDIS_ADDR", "localhost:6379"),
@@ -130,7 +164,7 @@ func csvEnv(key string, fallback string) []string {
 	values := make([]string, 0, len(parts))
 	for _, part := range parts {
 		value := strings.TrimSpace(part)
-		if value != "" && value != "*" {
+		if value != "" {
 			values = append(values, value)
 		}
 	}
