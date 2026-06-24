@@ -179,6 +179,7 @@ Implemented package behavior:
 - expired package grants do not unlock paid materials
 - `/me/entitlements` returns direct material grants, published package grants, included materials, and summary counts for the current user only
 - expired grants and grants for unpublished packages are excluded from `/me/entitlements`
+- manifest-delivery smoke coverage imports temporary mounted files, verifies public package detail hides storage keys, checks free/login_required/paid download behavior, grants the imported package, and verifies paid download audit logging
 
 Implemented admin package-management contract:
 

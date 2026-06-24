@@ -156,6 +156,8 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - 文件必须真实存在，并且必须位于 `LOCAL_UPLOAD_DIR` 内。
 - 危险路径如 `../../secret.pdf` 会被拒绝。
 - 重复导入会更新已有资料并复用课程包绑定，不重复创建 material 或 package item。
+- Automated smoke coverage exists in `TestMaterialManifestImportSmokeCoversPaidDownloadDelivery`: it imports mounted files through the manifest importer, verifies public package detail does not expose storage keys, checks free/login_required/paid download rules, grants the imported package, and verifies paid download audit logging.
+- This smoke test uses temporary fixture files only. Real course-file acceptance still requires running the import command against mounted internal materials in the target environment.
 
 ## 9. 安全边界
 

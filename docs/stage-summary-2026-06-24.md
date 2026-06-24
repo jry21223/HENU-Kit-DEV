@@ -72,6 +72,11 @@
   - 导入会幂等绑定课程包资料 item。
   - 文件必须真实存在并位于 `LOCAL_UPLOAD_DIR` 内。
   - 路径穿越和缺失文件会拒绝并回滚事务。
+- 已补自动化 manifest delivery smoke：
+  - 测试夹具通过 importer 导入临时挂载文件。
+  - 通过 HTTP API 验证公开课程包详情不泄露 storage key。
+  - 验证 free、login_required、paid 未授权拒绝、课程包授权解锁 paid 和下载日志。
+  - 真实内测资料仍需要在目标环境挂载后单独跑导入和下载验收。
 
 ### 2.6 微信 Native 支付硬化
 
@@ -149,7 +154,7 @@
 | Stage 1：Go API 基础框架 | Gin、配置、PostgreSQL、Redis、GORM、中间件、Health | 完成 | API 服务骨架和基础接口已实现。 |
 | Stage 2：全新数据库 Schema | V2 schema、migration、seed | 部分完成 | migration/model/seed 已有；部分领域业务仍未填满。 |
 | Stage 3：认证与权限 | 邮箱验证码、JWT RS256、角色、冻结、管理/审核/创作者权限 | 部分完成 | 登录、JWT、角色和冻结边界已有；真实邮件发送和生产密钥配置仍是部署工作。 |
-| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest 导入基础版已完成；OSS/S3 与完整运营流程未完成。 |
+| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest 导入和 manifest-to-paid-download smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、薄弱点已有；复杂评分和练习 session 需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock worker/draft review 已有；真实 LLM/RAG 未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在部分场景使用；会员产品和兑换链路未完整闭环。 |
@@ -213,7 +218,7 @@ git diff --check
 
 1. 用真实微信商户参数联调 Native 下单、notify 回调和关单。
 2. 增加真正的支付异常告警、人工处理台账和支付运维说明。
-3. 用真实内测资料跑一次 manifest 导入到本地/测试库，确认包绑定和 paid 下载权限。
+3. 用真实内测资料跑一次 manifest 导入到本地/测试库，确认包绑定和 paid 下载权限；自动化 smoke 已覆盖测试夹具链路，但不能替代真实资料验收。
 4. 补 E2E smoke：登录、课程包、订单、授权、paid 下载、刷题错题、Admin 审核。
 5. 做移动端截图回归，优先覆盖 390px 宽度。
 
