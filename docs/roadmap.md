@@ -68,6 +68,7 @@
 - Admin order risk-flag visibility and filtering for payment triage
 - Payment incident ledger for rejected WeChat callback anomalies, with admin-only resolve/ignore handling and no entitlement side effects
 - Vue admin dashboard open-incident alert count backed by the payment incident list total
+- Optional signed best-effort webhook for newly opened payment incidents, without raw notify payloads or entitlement side effects
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton
@@ -81,7 +82,7 @@
 - Admin analytics expansion for page visits, search intent, course request voting, payment, and membership conversion metrics
 - Real internal material import dry run with mounted course files, package binding audit, and paid-download smoke verification in the target environment
 - Real WeChat merchant end-to-end payment and close-order verification, certificate rotation handling, refund handling, and payment operation alerts
-- Payment reconciliation and external alerting that can notify operators outside the admin dashboard about newly opened `payment_incidents`
+- Payment reconciliation and production-ready alert routing/escalation beyond the basic incident webhook
 - Real LLM/RAG integration and AI draft publish-to-resource flows
 
 ## Later Deliverables

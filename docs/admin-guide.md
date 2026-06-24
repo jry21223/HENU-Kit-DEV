@@ -88,6 +88,7 @@ Important boundaries:
 
 - Incident rows are idempotent for repeated identical callbacks.
 - The list response includes `total`; `/dashboard` uses it to show whether open payment incidents need attention.
+- If `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly opened incidents also emit a best-effort signed webhook for external operator alerts.
 - Open incidents can be marked `resolved` or `ignored` with an optional handling note.
 - Handling an incident records `handledBy`, `handledAt`, `handleNote`, and an `operation_logs` row.
 - Handling an incident never changes order status, never inserts a trusted payment success record, and never grants entitlement.

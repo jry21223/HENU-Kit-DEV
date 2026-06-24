@@ -1,8 +1,11 @@
 package tests
 
 import (
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"gorm.io/gorm"
@@ -16,6 +19,24 @@ func TestPaymentIncidentCreatedForAmountMismatchAndResolvedByAdmin(t *testing.T)
 	db := newTestDB(t)
 	cfg := testConfig()
 	cfg.WeChatPay.APIV3Key = "mock-notify-secret"
+	var alertMu sync.Mutex
+	var alertBodies []string
+	var alertSignature string
+	alertServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		alertMu.Lock()
+		defer alertMu.Unlock()
+		alertBodies = append(alertBodies, string(body))
+		alertSignature = r.Header.Get("X-Final-Review-Signature")
+		if r.Header.Get("X-Final-Review-Event") != "payment_incident.opened" {
+			t.Errorf("unexpected alert event header: %s", r.Header.Get("X-Final-Review-Event"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer alertServer.Close()
+	cfg.PaymentIncidentAlerts.WebhookURL = alertServer.URL
+	cfg.PaymentIncidentAlerts.WebhookSecret = "incident-alert-secret"
+	cfg.PaymentIncidentAlerts.TimeoutSeconds = 2
 	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
 
 	course := createTestCourse(t, db)
@@ -49,6 +70,25 @@ func TestPaymentIncidentCreatedForAmountMismatchAndResolvedByAdmin(t *testing.T)
 	}
 	if countPaymentIncidents(t, db, "amount_mismatch") != 1 {
 		t.Fatalf("expected idempotent amount mismatch incident, got %d", countPaymentIncidents(t, db, "amount_mismatch"))
+	}
+	alertMu.Lock()
+	alertCount := len(alertBodies)
+	alertBody := ""
+	if alertCount > 0 {
+		alertBody = alertBodies[0]
+	}
+	signature := alertSignature
+	alertMu.Unlock()
+	if alertCount != 1 {
+		t.Fatalf("expected one webhook alert for idempotent incident creation, got %d", alertCount)
+	}
+	for _, expected := range []string{`"event":"payment_incident.opened"`, `"incidentType":"amount_mismatch"`, `"expectedAmount":1990`, `"actualAmount":1`} {
+		if !strings.Contains(alertBody, expected) {
+			t.Fatalf("expected alert body to contain %s, got %s", expected, alertBody)
+		}
+	}
+	if strings.Contains(alertBody, "rawNotify") || signature == "" || !strings.HasPrefix(signature, "sha256=") {
+		t.Fatalf("unexpected alert safety fields body=%s signature=%q", alertBody, signature)
 	}
 	var incident model.PaymentIncident
 	if err := db.First(&incident, "incident_type = ?", "amount_mismatch").Error; err != nil {

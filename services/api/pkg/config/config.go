@@ -29,6 +29,7 @@ type Config struct {
 	OperationLogExportLimit   int
 	JWT                       JWTConfig
 	WeChatPay                 WeChatPayConfig
+	PaymentIncidentAlerts     PaymentIncidentAlertConfig
 }
 
 type JWTConfig struct {
@@ -53,6 +54,12 @@ type WeChatPayConfig struct {
 	PlatformCertsDir       string
 	NotifyURL              string
 	NativeExpireMinutes    int
+}
+
+type PaymentIncidentAlertConfig struct {
+	WebhookURL     string
+	WebhookSecret  string
+	TimeoutSeconds int
 }
 
 func Load() Config {
@@ -92,6 +99,11 @@ func Load() Config {
 			PlatformCertsDir:       env("WECHAT_PAY_PLATFORM_CERTS_DIR", ""),
 			NotifyURL:              env("WECHAT_PAY_NOTIFY_URL", "http://localhost:8080/api/v1/payments/wechat/notify"),
 			NativeExpireMinutes:    intEnv("WECHAT_PAY_NATIVE_EXPIRE_MINUTES", 15),
+		},
+		PaymentIncidentAlerts: PaymentIncidentAlertConfig{
+			WebhookURL:     env("PAYMENT_INCIDENT_WEBHOOK_URL", ""),
+			WebhookSecret:  env("PAYMENT_INCIDENT_WEBHOOK_SECRET", ""),
+			TimeoutSeconds: intEnv("PAYMENT_INCIDENT_WEBHOOK_TIMEOUT_SECONDS", 3),
 		},
 	}
 }

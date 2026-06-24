@@ -220,6 +220,7 @@ Implemented order foundation:
 - WeChat callback anomalies are also captured in `payment_incidents` for manual triage; current incident types include `order_not_found`, `amount_mismatch`, and `transaction_conflict`
 - `GET /api/v1/admin/payment-incidents` is admin-only, defaults to `status=open`, and can filter by incident type, order id, out-trade number, transaction id, and limit
 - the payment incident list response includes `incidents` and `total`; Vue Admin uses `total` to surface open payment incident alerts on the dashboard
+- when `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly created incident rows post a best-effort `payment_incident.opened` JSON webhook with an optional `X-Final-Review-Signature` HMAC header; duplicate idempotent incidents do not re-alert
 - `POST /api/v1/admin/payment-incidents/:id/resolve` marks an open incident as `resolved` or `ignored`, records the handling admin and note, and writes an operation log
 - resolving or ignoring a payment incident is deliberately non-financial: it does not mark an order paid, does not create a payment record, and does not grant entitlement
 
