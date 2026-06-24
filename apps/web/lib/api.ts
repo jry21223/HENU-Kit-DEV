@@ -317,6 +317,40 @@ export type BlogPost = {
   updatedAt: string;
 };
 
+export type UserSummary = {
+  id: string;
+  name: string;
+  role: string;
+};
+
+export type MomentComment = {
+  id: string;
+  authorId: string;
+  momentId: string;
+  content: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  author: UserSummary;
+};
+
+export type Moment = {
+  id: string;
+  authorId: string;
+  content: string;
+  images: string[];
+  status: string;
+  visibility: "public" | "mutual_friends";
+  likeCount: number;
+  commentCount: number;
+  collectCount: number;
+  createdAt: string;
+  updatedAt: string;
+  author: UserSummary;
+  likedByMe: boolean;
+  recentComments?: MomentComment[];
+};
+
 export type SearchResult = {
   id: string;
   type: "course" | "material" | "package" | "wiki" | "blog" | "forum";

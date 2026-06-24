@@ -21,6 +21,7 @@
 - Web blog list/detail read-only pages backed by published public blog APIs
 - Web forum list/detail pages with post creation, reply submission, and best-answer action entry
 - Go API moments foundation with public/mutual-friends visibility, comments, idempotent likes, and block-aware feed filtering
+- Web `/moments` foundation with a mobile-aware feed, composer, likes, comments, follow/block actions, and smoke coverage
 - Go API relation foundation with follow, unfollow, block, unblock, following, followers, and mutual-friend lists
 - Web personal download-history page
 - Web personal wrong-question book with per-course weakness totals and current-user delete action
@@ -93,6 +94,6 @@
 - AI Worker flows
 - Points and membership
 - Wiki creator workflow refinements and richer revision diff tooling
-- Web moments feed, user profile aggregation, and richer social relationship UX
+- User profile aggregation, richer social relationship UX, and real media upload for moments
 - Notifications, richer reports, leaderboards
 - Production deployment and monitoring

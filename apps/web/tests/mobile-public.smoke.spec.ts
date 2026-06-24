@@ -17,6 +17,7 @@ const publicRoutes = [
   { path: "/wiki", requiredSelector: 'a[href="/wiki"]', shell: true },
   { path: "/blog", requiredSelector: 'a[href="/blog"]', shell: true },
   { path: "/forum", requiredSelector: 'a[href="/forum"]', shell: true },
+  { path: "/moments", requiredSelector: 'a[href="/moments"]', shell: true },
   { path: "/search", requiredSelector: 'form[action="/search"] input[name="q"]', shell: true },
   { path: "/me", requiredSelector: 'a[href="/me/wrong-questions"]', shell: true },
 ] as const;

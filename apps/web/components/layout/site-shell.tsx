@@ -10,6 +10,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
     wiki: "Wiki",
     blog: "Blog",
     forum: "\u8ba8\u8bba",
+    moments: "\u52a8\u6001",
     guarantee: "\u8d44\u6599\u4fdd\u969c",
     me: "\u4e2a\u4eba\u4e2d\u5fc3",
     login: "\u767b\u5f55",
@@ -42,6 +43,9 @@ export function SiteShell({ children }: { children: ReactNode }) {
               </Link>
               <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/forum">
                 {copy.forum}
+              </Link>
+              <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/moments">
+                {copy.moments}
               </Link>
               <a className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/#guarantee">
                 {copy.guarantee}
