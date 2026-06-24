@@ -164,6 +164,11 @@ type accessGrantRequest struct {
 	ExpiresAt  string `json:"expiresAt"`
 }
 
+type resolvePaymentIncidentRequest struct {
+	Status     string `json:"status"`
+	HandleNote string `json:"handleNote"`
+}
+
 type accessGrantRow struct {
 	Grant    model.MaterialAccessGrant `json:"grant"`
 	User     *model.User               `json:"user,omitempty"`
@@ -498,6 +503,122 @@ func (h Handler) ListOrders(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"orders": rows})
+}
+
+func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
+	status := strings.TrimSpace(ctx.Query("status"))
+	if status == "" {
+		status = model.PaymentIncidentOpen
+	}
+	if status != "all" && !validPaymentIncidentStatus(status) {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 100, 500)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	query := h.db.Model(&model.PaymentIncident{})
+	if status != "all" {
+		query = query.Where("status = ?", status)
+	}
+	if incidentType := strings.TrimSpace(ctx.Query("incidentType")); incidentType != "" {
+		if len(incidentType) > 80 {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_incident_type", nil)
+			return
+		}
+		query = query.Where("incident_type = ?", incidentType)
+	}
+	if orderID := strings.TrimSpace(ctx.Query("orderId")); orderID != "" {
+		if _, err := uuid.Parse(orderID); err != nil {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_order_id", nil)
+			return
+		}
+		query = query.Where("order_id = ?", orderID)
+	}
+	if outTradeNo := strings.TrimSpace(ctx.Query("outTradeNo")); outTradeNo != "" {
+		query = query.Where("out_trade_no LIKE ?", "%"+outTradeNo+"%")
+	}
+	if transactionID := strings.TrimSpace(ctx.Query("transactionId")); transactionID != "" {
+		query = query.Where("transaction_id LIKE ?", "%"+transactionID+"%")
+	}
+	var incidents []model.PaymentIncident
+	if err := query.Order("created_at desc").Limit(limit).Find(&incidents).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"incidents": incidents})
+}
+
+func (h Handler) ResolvePaymentIncident(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req resolvePaymentIncidentRequest
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+			return
+		}
+	}
+	status := strings.TrimSpace(req.Status)
+	if status == "" {
+		status = model.PaymentIncidentResolved
+	}
+	if status != model.PaymentIncidentResolved && status != model.PaymentIncidentIgnored {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_status", nil)
+		return
+	}
+	note := strings.TrimSpace(req.HandleNote)
+	if len([]rune(note)) > 1000 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "handle_note_too_long", nil)
+		return
+	}
+
+	var incident model.PaymentIncident
+	if err := h.db.First(&incident, "id = ?", ctx.Param("id")).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "payment_incident_not_found", nil)
+		return
+	}
+	if incident.Status != model.PaymentIncidentOpen {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "payment_incident_not_open", gin.H{"status": incident.Status})
+		return
+	}
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.PaymentIncident{}).
+			Where("id = ? AND status = ?", incident.ID, model.PaymentIncidentOpen).
+			Updates(map[string]interface{}{
+				"status":      status,
+				"handled_by":  user.ID,
+				"handled_at":  gorm.Expr("CURRENT_TIMESTAMP"),
+				"handle_note": note,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errors.New("payment_incident_not_open")
+		}
+		return audit.Record(ctx, tx, "payment_incident."+status, "payment_incident", incident.ID, map[string]interface{}{
+			"orderId":       incident.OrderID,
+			"incidentType":  incident.IncidentType,
+			"outTradeNo":    incident.OutTradeNo,
+			"transactionId": incident.TransactionID,
+			"status":        status,
+		})
+	})
+	if err != nil {
+		if err.Error() == "payment_incident_not_open" {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "payment_incident_not_open", nil)
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "payment_incident_update_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"handled": true, "status": status})
 }
 
 func (h Handler) OperationLogs(ctx *gin.Context) {
@@ -2168,6 +2289,15 @@ func normalizeCourseStatus(value string, fallback string) (string, bool) {
 func validOrderStatus(value string) bool {
 	switch strings.TrimSpace(value) {
 	case model.OrderPending, model.OrderPaying, model.OrderPaid, model.OrderClosed, model.OrderExpired, model.OrderFailed, model.OrderCancelled, model.OrderRefunded:
+		return true
+	default:
+		return false
+	}
+}
+
+func validPaymentIncidentStatus(value string) bool {
+	switch strings.TrimSpace(value) {
+	case model.PaymentIncidentOpen, model.PaymentIncidentResolved, model.PaymentIncidentIgnored:
 		return true
 	default:
 		return false

@@ -33,6 +33,10 @@ const (
 	OrderCancelled = "cancelled"
 	OrderRefunded  = "refunded"
 
+	PaymentIncidentOpen     = "open"
+	PaymentIncidentResolved = "resolved"
+	PaymentIncidentIgnored  = "ignored"
+
 	MaterialAccessFree          = "free"
 	MaterialAccessLoginRequired = "login_required"
 	MaterialAccessPaid          = "paid"
@@ -222,6 +226,26 @@ type PaymentRecord struct {
 	RawNotify      datatypes.JSON `json:"rawNotify,omitempty"`
 	IdempotencyKey string         `json:"idempotencyKey" gorm:"size:160;uniqueIndex"`
 	ProcessedAt    *time.Time     `json:"processedAt,omitempty"`
+}
+
+type PaymentIncident struct {
+	BaseModel
+	OrderID        *string        `json:"orderId,omitempty" gorm:"type:uuid;index"`
+	Provider       string         `json:"provider" gorm:"size:40;index;not null"`
+	IncidentType   string         `json:"incidentType" gorm:"size:80;index;not null"`
+	Severity       string         `json:"severity" gorm:"size:32;default:high;index"`
+	Status         string         `json:"status" gorm:"size:32;default:open;index"`
+	OutTradeNo     string         `json:"outTradeNo" gorm:"size:80;index"`
+	TransactionID  string         `json:"transactionId" gorm:"size:120;index"`
+	TradeState     string         `json:"tradeState" gorm:"size:40;index"`
+	ExpectedAmount int64          `json:"expectedAmount"`
+	ActualAmount   int64          `json:"actualAmount"`
+	Message        string         `json:"message" gorm:"size:500"`
+	RawNotify      datatypes.JSON `json:"rawNotify,omitempty"`
+	IdempotencyKey string         `json:"idempotencyKey" gorm:"size:200;uniqueIndex"`
+	HandledBy      *string        `json:"handledBy,omitempty" gorm:"type:uuid;index"`
+	HandledAt      *time.Time     `json:"handledAt,omitempty"`
+	HandleNote     string         `json:"handleNote,omitempty" gorm:"size:1000"`
 }
 
 type QuizQuestion struct {
@@ -524,7 +548,7 @@ func AllModels() []interface{} {
 		&User{}, &EmailVerificationCode{},
 		&School{}, &College{}, &Major{}, &Course{},
 		&Material{}, &CoursePackage{}, &CoursePackageItem{}, &MaterialAccessGrant{}, &MaterialDownloadLog{},
-		&Order{}, &PaymentRecord{},
+		&Order{}, &PaymentRecord{}, &PaymentIncident{},
 		&QuizQuestion{}, &QuizOption{}, &QuizAttempt{}, &QuizAnswer{}, &WrongQuestion{}, &WeaknessReport{},
 		&WikiEntry{}, &WikiEditHistory{}, &WikiEditProposal{}, &WikiCreatorApplication{},
 		&BlogPost{}, &BlogComment{},

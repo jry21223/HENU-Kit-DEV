@@ -7,6 +7,8 @@ The Vue admin console is intentionally narrow during the V2 MVP. It only exposes
 - `/dashboard`: module status summary.
 - `/users`: user listing, role update, and active/frozen status management.
 - `/access-grants`: manual material/package access grants for internal testing and after-sales delivery.
+- `/orders`: read-only course-package payment order browser.
+- `/payment-incidents`: WeChat payment callback anomaly ledger for manual triage.
 - `/packages`: admin-only course package CRUD and package-material binding page.
 - `/courses`: organization-backed course creation, all-status listing, editing, and archiving.
 - `/materials`: local material upload, all-status material listing, metadata editing, and material status operations.
@@ -60,6 +62,35 @@ Important boundaries:
 - Revoking a grant soft-deletes it. The revoked grant is removed from `/me/entitlements` and no longer unlocks paid downloads.
 - The page does not expose raw file storage keys and does not send PDF files directly.
 - Grant create/revoke operations write `operation_logs`.
+
+## Order And Payment Incident Triage
+
+`/orders` calls:
+
+- `GET /api/v1/admin/orders?status=&userEmail=&outTradeNo=&packageId=&paymentProvider=&productType=&riskFlag=&riskOnly=&limit=`
+
+The order page is read-only. It shows order status, buyer, package, integer-cent amount, payment provider, risk flag, and whether an entitlement already exists.
+
+`/payment-incidents` calls:
+
+- `GET /api/v1/admin/payment-incidents?status=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
+- `POST /api/v1/admin/payment-incidents/:id/resolve`
+
+The incident page is available only to `admin` and `super_admin` roles. It is for payment operations triage after WeChat callback trust checks reject or quarantine a callback.
+
+Current incident sources:
+
+- `order_not_found`: callback `out_trade_no` did not match a local order.
+- `amount_mismatch`: callback amount did not match the local server-priced order.
+- `transaction_conflict`: a WeChat transaction id was already recorded for another order.
+
+Important boundaries:
+
+- Incident rows are idempotent for repeated identical callbacks.
+- Open incidents can be marked `resolved` or `ignored` with an optional handling note.
+- Handling an incident records `handledBy`, `handledAt`, `handleNote`, and an `operation_logs` row.
+- Handling an incident never changes order status, never inserts a trusted payment success record, and never grants entitlement.
+- If a customer must be delivered content after manual verification, use `/access-grants`; do not modify payment records by hand.
 
 ## Course Package Management
 

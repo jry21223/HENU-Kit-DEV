@@ -151,6 +151,28 @@ export type OrderRow = {
   entitlementGranted: boolean;
 };
 
+export type PaymentIncident = {
+  id: string;
+  orderId?: string;
+  provider: string;
+  incidentType: string;
+  severity: string;
+  status: string;
+  outTradeNo: string;
+  transactionId: string;
+  tradeState: string;
+  expectedAmount: number;
+  actualAmount: number;
+  message: string;
+  rawNotify?: unknown;
+  idempotencyKey: string;
+  handledBy?: string;
+  handledAt?: string;
+  handleNote?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DownloadRecord = {
   id: string;
   userId?: string;

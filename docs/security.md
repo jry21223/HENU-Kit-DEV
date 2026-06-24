@@ -19,6 +19,8 @@
 - `WECHAT_PAY_MODE=mock` is allowed only outside production; production mock configuration is rejected by the API payment boundary.
 - The admin order browser is read-only. It can inspect order status and whether an entitlement already exists, but it cannot mark orders paid or issue grants.
 - The admin order browser can display and filter `risk_flag` values for payment triage, but risk visibility is not an automated alerting or settlement system.
+- WeChat callback anomalies that fail trust checks are recorded as `payment_incidents` for manual triage. Unknown orders, amount mismatches, and transaction-id conflicts do not update orders or grant entitlement.
+- The payment-incident admin page can only mark incidents `resolved` or `ignored`. It writes operation logs but deliberately cannot mark payment success, insert trusted payment records, or issue package/material grants.
 - Manual access grants are server-side restricted to admin users, use `manual_admin` source, cannot create or mark payment orders, and can target only published paid/member-only materials or published course packages. Revoked grants are soft-deleted and no longer unlock paid downloads.
 - User-scoped forum tracking/resubmission endpoints expose only the authenticated user's own posts/replies and may include that user's review reason, but they do not expose `reviewerId`, `reviewedAt`, or hidden submissions from other users. Resubmission is server-side restricted to draft/pending/needs_changes/rejected content, clears old reviewer metadata, and returns the content to pending review.
 - User notification endpoints are user-scoped: authenticated users can list or mark read only their own notifications. Forum, material, wiki, blog, AI draft review, and report result notifications are written in the same database transaction as the protected mutation and operation log.
@@ -43,6 +45,7 @@ The Go API writes `operation_logs` for the current hardening scope:
 - forum best-answer selection and reward settlement
 - AI draft approve/reject review
 - report resolve/reject handling
+- payment incident resolve/ignore handling
 
 Log rows include the authenticated operator id, action, target type/id, IP, User-Agent, and minimal metadata. Invalid or rejected requests do not write operation logs. Vue Admin exposes a read-only operation-log browser with time filtering, CSV export, and a retention policy panel; logs cannot be edited or deleted from the admin UI. CSV export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`. Automatic operation-log deletion is not enabled in the MVP.
 

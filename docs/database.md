@@ -7,7 +7,7 @@ Current model coverage:
 - users and email verification codes
 - schools, colleges, majors, courses
 - materials, course packages, package items, material access grants, and download logs
-- orders and payment records
+- orders, payment records, and payment incidents
 - quiz questions, attempts, answers, wrong questions, weakness reports
 - wiki entries, edit histories, edit proposals, creator applications, blog, forum, moments, relations
 - points, memberships, AI tasks, notifications, reports, operation logs
@@ -36,6 +36,9 @@ Current access-control notes:
 - `course_packages.status` controls public package visibility. Only `published` packages should be returned by public package list/detail APIs; admin package APIs may list `draft`, `published`, and `archived`.
 - `course_packages.price_fen` stores price as an integer number of cents. Application code should avoid floating-point yuan values for order or package pricing.
 - `orders.expires_at` stores the current WeChat Native QR/order expiry boundary. The API marks stale pending/paying WeChat orders as `expired` before reuse, status, payment-create, and admin-order reads.
+- `payment_records.idempotency_key` keeps trusted payment callback processing idempotent; the same transaction id cannot be reused to pay a different order.
+- `payment_incidents` stores rejected/quarantined WeChat callback anomalies such as unknown orders, amount mismatches, and transaction-id conflicts. Its `idempotency_key` deduplicates repeated identical anomaly callbacks.
+- Resolving or ignoring a `payment_incidents` row is an operations note only. It does not mutate `orders.status`, insert a trusted `payment_records` success, or create `material_access_grants`.
 - `course_package_items` is the package-to-resource binding table. The current product scope should use `resource_type=material`; future resource types need explicit service-layer allowlists before becoming public.
 - Package-item rows may reference unpublished materials for admin staging, but public package detail must filter both the returned material list and the returned item list to published materials only. Returning a raw item id for a draft/pending/rejected/archived material is treated as metadata leakage.
 - Active duplicate package-item bindings for the same package/resource pair should be prevented by service logic and, where possible, a uniqueness constraint. Removing a package item should remove the relation only and must not delete the material row.

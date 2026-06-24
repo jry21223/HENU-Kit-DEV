@@ -37,6 +37,7 @@ var (
 	ErrWeChatLiveConfigMissing       = errors.New("wechat_live_config_missing")
 	ErrWeChatLiveNotImplemented      = errors.New("wechat_live_not_implemented")
 	ErrWeChatMockNotifySecretMissing = errors.New("wechat_mock_notify_secret_missing")
+	ErrPaymentRecordConflict         = errors.New("payment_record_conflict")
 )
 
 type Handler struct {
@@ -408,10 +409,29 @@ func (h Handler) processMockNotify(payload mockNotifyPayload, raw datatypes.JSON
 
 	var order model.Order
 	if err := h.db.First(&order, "out_trade_no = ? AND payment_provider = ?", payload.OutTradeNo, providerWeChatNative).Error; err != nil {
+		_ = h.recordPaymentIncident(paymentIncidentInput{
+			IncidentType:  "order_not_found",
+			Severity:      "high",
+			Message:       "payment notify references an unknown out_trade_no",
+			Payload:       payload,
+			Raw:           raw,
+			ExpectedTotal: 0,
+			ActualTotal:   payload.AmountTotal,
+		})
 		return nil, errors.New("order_not_found")
 	}
 	if payload.AmountTotal != order.AmountTotal {
 		_ = h.db.Model(&model.Order{}).Where("id = ?", order.ID).Update("risk_flag", "wechat_amount_mismatch").Error
+		_ = h.recordPaymentIncident(paymentIncidentInput{
+			Order:         &order,
+			IncidentType:  "amount_mismatch",
+			Severity:      "critical",
+			Message:       "payment notify amount does not match local order amount",
+			Payload:       payload,
+			Raw:           raw,
+			ExpectedTotal: order.AmountTotal,
+			ActualTotal:   payload.AmountTotal,
+		})
 		return nil, errors.New("amount_mismatch")
 	}
 	if payload.TradeState == "SUCCESS" && order.Status != model.OrderPending && order.Status != model.OrderPaying && order.Status != model.OrderPaid {
@@ -452,6 +472,19 @@ func (h Handler) processMockNotify(payload mockNotifyPayload, raw datatypes.JSON
 		return ensurePackageGrantTx(tx, order)
 	})
 	if err != nil {
+		if errors.Is(err, ErrPaymentRecordConflict) {
+			_ = h.db.Model(&model.Order{}).Where("id = ?", order.ID).Update("risk_flag", "wechat_transaction_conflict").Error
+			_ = h.recordPaymentIncident(paymentIncidentInput{
+				Order:         &order,
+				IncidentType:  "transaction_conflict",
+				Severity:      "critical",
+				Message:       "payment transaction id is already linked to a different order",
+				Payload:       payload,
+				Raw:           raw,
+				ExpectedTotal: order.AmountTotal,
+				ActualTotal:   payload.AmountTotal,
+			})
+		}
 		return nil, err
 	}
 	return gin.H{"processed": true, "paid": true}, nil
@@ -461,6 +494,77 @@ func (h Handler) recordPaymentNotify(order model.Order, payload mockNotifyPayloa
 	return h.db.Transaction(func(tx *gorm.DB) error {
 		return h.recordPaymentNotifyTx(tx, order, payload, raw, processedAt)
 	})
+}
+
+type paymentIncidentInput struct {
+	Order         *model.Order
+	IncidentType  string
+	Severity      string
+	Message       string
+	Payload       mockNotifyPayload
+	Raw           datatypes.JSON
+	ExpectedTotal int64
+	ActualTotal   int64
+}
+
+func (h Handler) recordPaymentIncident(input paymentIncidentInput) error {
+	incidentType := strings.TrimSpace(input.IncidentType)
+	if incidentType == "" {
+		incidentType = "payment_notify_exception"
+	}
+	severity := strings.TrimSpace(input.Severity)
+	if severity == "" {
+		severity = "high"
+	}
+	var orderID *string
+	if input.Order != nil {
+		orderID = &input.Order.ID
+	}
+	key := paymentIncidentKey(input)
+	var existing model.PaymentIncident
+	err := h.db.First(&existing, "idempotency_key = ?", key).Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	incident := model.PaymentIncident{
+		OrderID:        orderID,
+		Provider:       providerWeChatNative,
+		IncidentType:   incidentType,
+		Severity:       severity,
+		Status:         model.PaymentIncidentOpen,
+		OutTradeNo:     input.Payload.OutTradeNo,
+		TransactionID:  input.Payload.TransactionID,
+		TradeState:     input.Payload.TradeState,
+		ExpectedAmount: input.ExpectedTotal,
+		ActualAmount:   input.ActualTotal,
+		Message:        strings.TrimSpace(input.Message),
+		RawNotify:      input.Raw,
+		IdempotencyKey: key,
+	}
+	return h.db.Create(&incident).Error
+}
+
+func paymentIncidentKey(input paymentIncidentInput) string {
+	orderID := ""
+	if input.Order != nil {
+		orderID = input.Order.ID
+	}
+	rawHash := sha256.Sum256([]byte(input.Raw))
+	parts := []string{
+		providerWeChatNative,
+		strings.TrimSpace(input.IncidentType),
+		orderID,
+		strings.TrimSpace(input.Payload.OutTradeNo),
+		strings.TrimSpace(input.Payload.TransactionID),
+		strings.TrimSpace(input.Payload.TradeState),
+		fmt.Sprintf("%d", input.ExpectedTotal),
+		fmt.Sprintf("%d", input.ActualTotal),
+		hex.EncodeToString(rawHash[:])[:16],
+	}
+	return strings.Join(parts, ":")
 }
 
 func (h Handler) recordPaymentNotifyTx(tx *gorm.DB, order model.Order, payload mockNotifyPayload, raw datatypes.JSON, processedAt *time.Time) error {
@@ -478,7 +582,7 @@ func (h Handler) recordPaymentNotifyTx(tx *gorm.DB, order model.Order, payload m
 	err := tx.First(&existing, "idempotency_key = ?", record.IdempotencyKey).Error
 	if err == nil {
 		if existing.OrderID != order.ID {
-			return errors.New("payment_record_conflict")
+			return ErrPaymentRecordConflict
 		}
 		return nil
 	}
