@@ -69,7 +69,7 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/access-grants?userId=&materialId=&packageId=&source=&active=&limit=`
 - `POST /api/v1/admin/access-grants`
 - `DELETE /api/v1/admin/access-grants/:id`
-- `GET /api/v1/admin/orders?status=&userEmail=&outTradeNo=&packageId=&paymentProvider=&productType=&limit=`
+- `GET /api/v1/admin/orders?status=&userEmail=&outTradeNo=&packageId=&paymentProvider=&productType=&riskFlag=&riskOnly=&limit=`
 - `POST /api/v1/admin/schools`
 - `PATCH /api/v1/admin/schools/:id`
 - `DELETE /api/v1/admin/schools/:id`
@@ -213,6 +213,7 @@ Implemented order foundation:
 - `GET /api/v1/orders/:id` and `GET /api/v1/orders/:id/status` are user-scoped; admins may inspect all orders
 - order status is read-only and does not grant entitlement; paid access still requires a package/material grant created by a trusted server-side flow
 - admins can inspect orders through `/admin/orders` with status, buyer email, package, provider, product type, and out-trade-number filters; this endpoint is read-only
+- admin order inspection can filter `riskOnly=true` or partial `riskFlag`; this exposes existing payment risk markers for triage but does not auto-resolve payment exceptions
 
 Implemented WeChat Native payment boundary:
 

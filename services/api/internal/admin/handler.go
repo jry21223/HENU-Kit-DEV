@@ -456,6 +456,16 @@ func (h Handler) ListOrders(ctx *gin.Context) {
 	if outTradeNo := strings.TrimSpace(ctx.Query("outTradeNo")); outTradeNo != "" {
 		query = query.Where("out_trade_no LIKE ?", "%"+outTradeNo+"%")
 	}
+	if riskFlag := strings.TrimSpace(ctx.Query("riskFlag")); riskFlag != "" {
+		if len(riskFlag) > 120 {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_risk_flag", nil)
+			return
+		}
+		query = query.Where("risk_flag LIKE ?", "%"+riskFlag+"%")
+	}
+	if strings.EqualFold(strings.TrimSpace(ctx.Query("riskOnly")), "true") {
+		query = query.Where("risk_flag <> ''")
+	}
 	if userEmail := strings.TrimSpace(ctx.Query("userEmail")); userEmail != "" {
 		var users []model.User
 		if err := h.db.Where("email LIKE ?", "%"+userEmail+"%").Limit(200).Find(&users).Error; err != nil {

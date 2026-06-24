@@ -28,6 +28,15 @@
         <el-form-item :label="copy.packageId">
           <el-input v-model="filters.packageId" clearable placeholder="package id" />
         </el-form-item>
+        <el-form-item :label="copy.riskFlag">
+          <el-input v-model="filters.riskFlag" clearable placeholder="wechat_amount_mismatch" />
+        </el-form-item>
+        <el-form-item :label="copy.riskOnly">
+          <el-select v-model="filters.riskOnly">
+            <el-option :label="copy.no" value="" />
+            <el-option :label="copy.yes" value="true" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <div class="action-row">
         <el-button type="primary" :loading="loading" @click="loadOrders">{{ copy.apply }}</el-button>
@@ -73,6 +82,12 @@
             {{ row.order.paymentProvider }}
           </template>
         </el-table-column>
+        <el-table-column :label="copy.riskFlag" min-width="180">
+          <template #default="{ row }">
+            <el-tag v-if="row.order.riskFlag" type="danger">{{ row.order.riskFlag }}</el-tag>
+            <span v-else class="cell-muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="copy.entitlement" width="150">
           <template #default="{ row }">
             <el-tag :type="row.entitlementGranted ? 'success' : 'info'">
@@ -113,6 +128,10 @@ const copy = {
   userEmail: "\u4e70\u5bb6\u90ae\u7bb1",
   outTradeNo: "\u5546\u6237\u8ba2\u5355\u53f7",
   packageId: "\u8bfe\u7a0b\u5305 ID",
+  riskFlag: "\u98ce\u9669\u6807\u8bb0",
+  riskOnly: "\u4ec5\u98ce\u9669\u8ba2\u5355",
+  yes: "\u662f",
+  no: "\u5426",
   apply: "\u5e94\u7528\u7b5b\u9009",
   reset: "\u91cd\u7f6e",
   orders: "\u8ba2\u5355\u5217\u8868",
@@ -148,6 +167,8 @@ const filters = reactive({
   userEmail: "",
   outTradeNo: "",
   packageId: "",
+  riskFlag: "",
+  riskOnly: "",
 });
 
 onMounted(loadOrders);
@@ -161,6 +182,8 @@ async function loadOrders() {
     if (filters.userEmail.trim()) params.set("userEmail", filters.userEmail.trim());
     if (filters.outTradeNo.trim()) params.set("outTradeNo", filters.outTradeNo.trim());
     if (filters.packageId.trim()) params.set("packageId", filters.packageId.trim());
+    if (filters.riskFlag.trim()) params.set("riskFlag", filters.riskFlag.trim());
+    if (filters.riskOnly) params.set("riskOnly", filters.riskOnly);
     const query = params.toString();
     const response = await apiRequest<{ orders: OrderRow[] }>(`/admin/orders${query ? `?${query}` : ""}`);
     orders.value = response.data?.orders ?? [];
@@ -176,6 +199,8 @@ function resetFilters() {
   filters.userEmail = "";
   filters.outTradeNo = "";
   filters.packageId = "";
+  filters.riskFlag = "";
+  filters.riskOnly = "";
   void loadOrders();
 }
 

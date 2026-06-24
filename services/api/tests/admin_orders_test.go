@@ -30,8 +30,22 @@ func TestAdminOrdersListIsAdminOnlyAndFilterable(t *testing.T) {
 		Status:          model.OrderPending,
 		AmountTotal:     1990,
 		Currency:        "CNY",
+		RiskFlag:        "wechat_amount_mismatch",
 	}
 	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	cleanOrder := model.Order{
+		UserID:          user.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "FRADMINORDER_CLEAN",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPending,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+	}
+	if err := db.Create(&cleanOrder).Error; err != nil {
 		t.Fatal(err)
 	}
 	grant := model.MaterialAccessGrant{UserID: user.ID, PackageID: &coursePackage.ID, Source: "manual_test", OrderID: &order.ID}
@@ -59,6 +73,7 @@ func TestAdminOrdersListIsAdminOnlyAndFilterable(t *testing.T) {
 	for _, expected := range []string{
 		order.ID,
 		"FRADMINORDER001",
+		"wechat_amount_mismatch",
 		user.Email,
 		coursePackage.ID,
 		`"paymentProvider":"wechat_native"`,
@@ -67,6 +82,19 @@ func TestAdminOrdersListIsAdminOnlyAndFilterable(t *testing.T) {
 		if !strings.Contains(list.Body.String(), expected) {
 			t.Fatalf("expected admin order list to contain %q, got %s", expected, list.Body.String())
 		}
+	}
+
+	riskOnly := performJSON(router, http.MethodGet, "/api/v1/admin/orders?riskOnly=true&riskFlag=amount_mismatch", "", adminToken)
+	if riskOnly.Code != http.StatusOK {
+		t.Fatalf("expected risk order list 200, got %d: %s", riskOnly.Code, riskOnly.Body.String())
+	}
+	if !strings.Contains(riskOnly.Body.String(), order.ID) || strings.Contains(riskOnly.Body.String(), cleanOrder.ID) {
+		t.Fatalf("expected risk filter to include risky order and exclude clean order, got %s", riskOnly.Body.String())
+	}
+	invalidRiskFlag := strings.Repeat("x", 121)
+	invalidRisk := performJSON(router, http.MethodGet, "/api/v1/admin/orders?riskFlag="+invalidRiskFlag, "", adminToken)
+	if invalidRisk.Code != http.StatusBadRequest || !strings.Contains(invalidRisk.Body.String(), "invalid_risk_flag") {
+		t.Fatalf("expected invalid risk flag rejection, got %d: %s", invalidRisk.Code, invalidRisk.Body.String())
 	}
 
 	noMatch := performJSON(router, http.MethodGet, "/api/v1/admin/orders?userEmail=missing-order-user", "", adminToken)

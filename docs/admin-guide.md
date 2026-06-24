@@ -384,5 +384,6 @@ Important boundaries:
 - Richer content review
 - Points and memberships
 - Orders
+- Order risk flags are visible and filterable for payment triage. This is read-only visibility; admins still cannot mark payment success or grant entitlements from the order browser.
 - System config
 - Automatic operation-log retention cleanup after a production-safe archival flow exists

@@ -64,6 +64,7 @@
   - Native 下单会写入 `orders.expires_at`。
   - 状态查询、重复下单复用、Native 支付创建和 admin 订单列表会先把过期 pending/paying 订单置为 `expired`。
   - expired 订单不能继续拉起二维码，不能通过 close 接口关闭，也不会被新课程包订单复用。
+- Admin 订单查询可展示并筛选 `risk_flag`，用于支付异常排查；当前还不是自动告警或自动对账系统。
 - 已实现资料 manifest 导入基础版：
   - `data/material-manifest.example.json` 提供示例。
   - `go run ./cmd/import-materials <manifest.json>` 可导入已经准备好的课程资料。
@@ -152,7 +153,7 @@
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、薄弱点已有；复杂评分和练习 session 需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock worker/draft review 已有；真实 LLM/RAG 未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在部分场景使用；会员产品和兑换链路未完整闭环。 |
-| Stage 8：支付系统 | 原 plan 写易支付 | 方向调整 / 部分完成 | 已改为微信 Native；mock 下单、mock notify、live 下单、live notify、基础关单和订单过期收敛代码链路已有；真实商户 E2E、退款、证书轮换和告警未完成。 |
+| Stage 8：支付系统 | 原 plan 写易支付 | 方向调整 / 部分完成 | 已改为微信 Native；mock 下单、mock notify、live 下单、live notify、基础关单、订单过期收敛和 risk_flag 可见性代码链路已有；真实商户 E2E、退款、证书轮换和告警未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 | Wiki 公开页、修订提案、审核、历史和 stale 防护已有；创作者申请流不完整。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog/Forum 基础和审核已有；Moment 与关系系统未做。 |
 | Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已有；搜索和排行榜未做。 |
@@ -196,6 +197,7 @@ git diff --check
 - live notify 官方签名校验、resource 解密、appid/mchid/金额校验、支付成功和幂等授权。
 - 微信 Native 关单权限、状态流转和 closed 订单不复用。
 - 微信 Native 过期订单状态收敛、expired 订单不可继续支付/关单且不可被新下单复用。
+- Admin 订单风险筛选和 risk_flag 展示。
 - 签名错误、解密失败、appid 不匹配、金额不匹配、transaction id 冲突不会发放权益。
 
 ## 7. 当前风险
@@ -210,7 +212,7 @@ git diff --check
 ## 8. 下一阶段最小任务
 
 1. 用真实微信商户参数联调 Native 下单、notify 回调和关单。
-2. 增加支付异常告警和支付运维说明。
+2. 增加真正的支付异常告警、人工处理台账和支付运维说明。
 3. 用真实内测资料跑一次 manifest 导入到本地/测试库，确认包绑定和 paid 下载权限。
 4. 补 E2E smoke：登录、课程包、订单、授权、paid 下载、刷题错题、Admin 审核。
 5. 做移动端截图回归，优先覆盖 390px 宽度。
