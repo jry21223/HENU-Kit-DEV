@@ -170,6 +170,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/me/membership", authMiddleware.RequireAuth(), memberHandler.Me)
 	v1.GET("/me/downloads", authMiddleware.RequireAuth(), downloadLogHandler.MyDownloads)
 	v1.GET("/me/entitlements", authMiddleware.RequireAuth(), entitlementHandler.Me)
+	v1.GET("/me/wiki-entries", authMiddleware.RequireAuth(), wikiHandler.MyEntries)
+	v1.GET("/me/wiki-proposals", authMiddleware.RequireAuth(), wikiHandler.MyProposals)
 	v1.GET("/me/forum-posts", authMiddleware.RequireAuth(), forumHandler.MyPosts)
 	v1.PATCH("/me/forum-posts/:id", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), forumHandler.ResubmitPost)
 	v1.GET("/me/forum-replies", authMiddleware.RequireAuth(), forumHandler.MyReplies)

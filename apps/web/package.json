@@ -11,6 +11,7 @@
     "test:e2e:delivery": "playwright test tests/internal-delivery.smoke.spec.ts",
     "test:e2e:leaderboards": "playwright test tests/leaderboards.smoke.spec.ts",
     "test:e2e:mobile": "playwright test tests/mobile-public.smoke.spec.ts",
+    "test:e2e:my-wiki": "playwright test tests/my-wiki.smoke.spec.ts",
     "test:e2e:quiz": "playwright test tests/quiz-wrong-question.smoke.spec.ts",
     "test:e2e:quiz-multi-type": "playwright test tests/quiz-multi-type.smoke.spec.ts",
     "test:e2e:review": "playwright test tests/admin-blog-review.smoke.spec.ts",

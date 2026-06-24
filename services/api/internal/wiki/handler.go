@@ -96,6 +96,37 @@ type creatorApplicationSelf struct {
 	UpdatedAt    string `json:"updatedAt"`
 }
 
+type myEntry struct {
+	ID           string `json:"id"`
+	CourseID     string `json:"courseId,omitempty"`
+	Title        string `json:"title"`
+	Slug         string `json:"slug"`
+	Content      string `json:"content"`
+	Version      int    `json:"version"`
+	Status       string `json:"status"`
+	Visibility   string `json:"visibility"`
+	ReviewedAt   string `json:"reviewedAt,omitempty"`
+	ReviewReason string `json:"reviewReason,omitempty"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
+type myProposal struct {
+	ID              string `json:"id"`
+	EntryID         string `json:"entryId"`
+	EntryTitle      string `json:"entryTitle"`
+	EntryStatus     string `json:"entryStatus"`
+	BaseVersion     int    `json:"baseVersion"`
+	ProposedTitle   string `json:"proposedTitle"`
+	ProposedContent string `json:"proposedContent"`
+	Summary         string `json:"summary"`
+	Status          string `json:"status"`
+	ReviewedAt      string `json:"reviewedAt,omitempty"`
+	ReviewReason    string `json:"reviewReason,omitempty"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
+}
+
 func (h Handler) ListPublished(ctx *gin.Context) {
 	limit, ok := parseLimit(ctx.Query("limit"), 50, 100)
 	if !ok {
@@ -126,6 +157,49 @@ func (h Handler) Detail(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"entry": toPublicEntry(entry)})
+}
+
+func (h Handler) MyEntries(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 50, 100)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var entries []model.WikiEntry
+	if err := h.db.Where("author_id = ?", user.ID).Order("updated_at desc").Limit(limit).Find(&entries).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"entries": myEntries(entries)})
+}
+
+func (h Handler) MyProposals(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	limit, ok := parseLimit(ctx.Query("limit"), 50, 100)
+	if !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
+		return
+	}
+	var proposals []model.WikiEditProposal
+	if err := h.db.Where("editor_id = ?", user.ID).Order("updated_at desc").Limit(limit).Find(&proposals).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	entriesByID, err := h.entriesByProposalEntryID(proposals)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"proposals": myProposals(proposals, entriesByID)})
 }
 
 func (h Handler) Create(ctx *gin.Context) {
@@ -805,6 +879,62 @@ func publicEntries(entries []model.WikiEntry) []publicEntry {
 	return result
 }
 
+func myEntries(entries []model.WikiEntry) []myEntry {
+	result := make([]myEntry, 0, len(entries))
+	for _, entry := range entries {
+		var courseID string
+		if entry.CourseID != nil {
+			courseID = *entry.CourseID
+		}
+		var reviewedAt string
+		if entry.ReviewedAt != nil {
+			reviewedAt = entry.ReviewedAt.Format("2006-01-02T15:04:05Z07:00")
+		}
+		result = append(result, myEntry{
+			ID:           entry.ID,
+			CourseID:     courseID,
+			Title:        entry.Title,
+			Slug:         entry.Slug,
+			Content:      entry.Content,
+			Version:      entry.Version,
+			Status:       entry.Status,
+			Visibility:   entry.Visibility,
+			ReviewedAt:   reviewedAt,
+			ReviewReason: entry.ReviewReason,
+			CreatedAt:    entry.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:    entry.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+	return result
+}
+
+func myProposals(proposals []model.WikiEditProposal, entriesByID map[string]model.WikiEntry) []myProposal {
+	result := make([]myProposal, 0, len(proposals))
+	for _, proposal := range proposals {
+		var reviewedAt string
+		if proposal.ReviewedAt != nil {
+			reviewedAt = proposal.ReviewedAt.Format("2006-01-02T15:04:05Z07:00")
+		}
+		entry := entriesByID[proposal.EntryID]
+		result = append(result, myProposal{
+			ID:              proposal.ID,
+			EntryID:         proposal.EntryID,
+			EntryTitle:      entry.Title,
+			EntryStatus:     entry.Status,
+			BaseVersion:     proposal.BaseVersion,
+			ProposedTitle:   proposal.ProposedTitle,
+			ProposedContent: proposal.ProposedContent,
+			Summary:         proposal.Summary,
+			Status:          proposal.Status,
+			ReviewedAt:      reviewedAt,
+			ReviewReason:    proposal.ReviewReason,
+			CreatedAt:       proposal.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:       proposal.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+	return result
+}
+
 func creatorApplicationsForSelf(applications []model.WikiCreatorApplication) []creatorApplicationSelf {
 	result := make([]creatorApplicationSelf, 0, len(applications))
 	for _, application := range applications {
@@ -825,6 +955,29 @@ func creatorApplicationsForSelf(applications []model.WikiCreatorApplication) []c
 		})
 	}
 	return result
+}
+
+func (h Handler) entriesByProposalEntryID(proposals []model.WikiEditProposal) (map[string]model.WikiEntry, error) {
+	if len(proposals) == 0 {
+		return map[string]model.WikiEntry{}, nil
+	}
+	entryIDSet := make(map[string]struct{}, len(proposals))
+	for _, proposal := range proposals {
+		entryIDSet[proposal.EntryID] = struct{}{}
+	}
+	entryIDs := make([]string, 0, len(entryIDSet))
+	for entryID := range entryIDSet {
+		entryIDs = append(entryIDs, entryID)
+	}
+	var entries []model.WikiEntry
+	if err := h.db.Where("id IN ?", entryIDs).Find(&entries).Error; err != nil {
+		return nil, err
+	}
+	entriesByID := make(map[string]model.WikiEntry, len(entries))
+	for _, entry := range entries {
+		entriesByID[entry.ID] = entry
+	}
+	return entriesByID, nil
 }
 
 func (h Handler) adminProposalsWithContext(proposals []model.WikiEditProposal) ([]adminProposal, error) {

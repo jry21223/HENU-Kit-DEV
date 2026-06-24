@@ -316,6 +316,37 @@ export type WikiCreatorApplication = {
   updatedAt: string;
 };
 
+export type MyWikiEntry = {
+  id: string;
+  courseId?: string;
+  title: string;
+  slug: string;
+  content: string;
+  version: number;
+  status: string;
+  visibility: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MyWikiProposal = {
+  id: string;
+  entryId: string;
+  entryTitle: string;
+  entryStatus: string;
+  baseVersion: number;
+  proposedTitle: string;
+  proposedContent: string;
+  summary: string;
+  status: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type BlogPost = {
   id: string;
   authorId: string;

@@ -78,6 +78,8 @@ Currently implemented endpoints:
 - `GET /api/v1/me/membership`
 - `GET /api/v1/me/downloads`
 - `GET /api/v1/me/entitlements`
+- `GET /api/v1/me/wiki-entries?limit=`
+- `GET /api/v1/me/wiki-proposals?limit=`
 - `GET /api/v1/me/forum-posts?limit=`
 - `PATCH /api/v1/me/forum-posts/:id`
 - `GET /api/v1/me/forum-replies?limit=`
@@ -438,6 +440,9 @@ Implemented wiki behavior:
 - Web `/wiki` and `/wiki/[id]` consume those public endpoints as student-facing pages; public responses still hide review metadata
 - Web `/wiki` includes the student creator-application panel; logged-in users can view their own application status through `GET /api/v1/wiki/creator-applications/me`, which returns a self DTO without reviewer ids
 - Web `/wiki/new` provides a creator/admin-only entry submission form that calls `POST /api/v1/wiki/entries`; submitted entries stay pending until reviewer/admin approval
+- logged-in users can list only their own Wiki entries through `/me/wiki-entries`, including `status` and their own `reviewReason` for rejected/needs-changes content
+- logged-in users can list only their own Wiki edit proposals through `/me/wiki-proposals`, including the target entry title/status and their own `reviewReason`
+- `/me/wiki-entries` and `/me/wiki-proposals` do not expose other users' submissions, `reviewerId`, or admin-only review metadata; Web `/me/wiki` consumes these endpoints
 - Web `/wiki/[id]` includes a creator/admin-only edit-proposal form that submits to `POST /api/v1/wiki/entries/:id/proposals`; normal users see the review boundary instead of the editable form
 - logged-in active normal users can submit creator applications through `POST /api/v1/wiki/creator-applications`; users who are already creator/admin/super_admin are rejected with `already_creator`, and other elevated single-role users are not converted implicitly
 - users can have only one pending/draft/needs_changes creator application at a time
