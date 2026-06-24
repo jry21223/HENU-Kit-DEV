@@ -284,7 +284,7 @@ $env:E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS="60"
 npm --workspace @final-review/web run test:e2e:ai-draft-review
 ```
 
-This Playwright smoke requires the API and worker to be running. It creates a real AI task through the Go API, waits for the worker to create a pending AI draft, opens Vue Admin `/ai/drafts`, approves the draft through the Admin UI, and verifies the draft becomes `approved` without a `publishedId`. It is opt-in because it mutates AI task/draft rows, notifications, AI usage logs, and operation logs. Use `LLM_MODE=mock` for this smoke until real LLM credentials are configured.
+This Playwright smoke requires the API and worker to be running. It logs in an admin, grants the smoke student a temporary `tier2` membership for AI quota, creates a real AI task through the Go API, waits for the worker to create a pending AI draft, opens Vue Admin `/ai/drafts`, approves the draft through the Admin UI, and verifies the draft becomes `approved` without a `publishedId`. It is opt-in because it mutates membership, AI task/draft, notification, AI usage log, and operation log rows. Use `LLM_MODE=mock` for this smoke until real LLM credentials are configured.
 
 Mobile public-page smoke:
 

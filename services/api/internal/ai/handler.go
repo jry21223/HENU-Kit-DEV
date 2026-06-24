@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	redislib "github.com/redis/go-redis/v9"
@@ -25,6 +26,14 @@ var allowedTaskTypes = map[string]struct{}{
 	"targeted_question":       {},
 	"paper_generation":        {},
 	"draft_review":            {},
+}
+
+var baseTaskPointCosts = map[string]int64{
+	"chat":                    2,
+	"wrong_question_analysis": 5,
+	"targeted_question":       10,
+	"paper_generation":        30,
+	"draft_review":            15,
 }
 
 type Handler struct {
@@ -92,13 +101,20 @@ func (h Handler) CreateTask(ctx *gin.Context) {
 		Status:   model.AITaskPending,
 		Input:    input,
 	}
-	if err := h.db.Create(&task).Error; err != nil {
-		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "create_failed", nil)
+	quota, err := h.createTaskWithQuota(ctx, user, &task)
+	if err != nil {
+		status := http.StatusBadRequest
+		code := response.CodeBadRequest
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			status = http.StatusNotFound
+			code = response.CodeNotFound
+		}
+		response.Error(ctx, status, code, err.Error(), nil)
 		return
 	}
 
 	enqueued := h.enqueue(ctx.Request.Context(), task)
-	response.OK(ctx, gin.H{"task": task, "enqueued": enqueued})
+	response.OK(ctx, gin.H{"task": task, "enqueued": enqueued, "quota": quota})
 }
 
 func (h Handler) Task(ctx *gin.Context) {
@@ -232,6 +248,149 @@ func isReviewableDraftStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+type quotaResult struct {
+	Source         string `json:"source"`
+	PlanCode       string `json:"planCode,omitempty"`
+	BaseCost       int64  `json:"baseCost"`
+	PointsCost     int64  `json:"pointsCost"`
+	BalanceAfter   int64  `json:"balanceAfter"`
+	MembershipFree bool   `json:"membershipFree"`
+}
+
+func (h Handler) createTaskWithQuota(ctx *gin.Context, user *model.User, task *model.AITask) (quotaResult, error) {
+	var quota quotaResult
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(task).Error; err != nil {
+			return errString("create_failed")
+		}
+		var err error
+		quota, err = consumeQuota(ctx, tx, user, *task)
+		return err
+	})
+	return quota, err
+}
+
+func consumeQuota(ctx *gin.Context, tx *gorm.DB, user *model.User, task model.AITask) (quotaResult, error) {
+	baseCost := baseTaskPointCosts[task.Type]
+	quota := quotaResult{Source: "points", BaseCost: baseCost, PointsCost: baseCost}
+	if isRoleExempt(user.Role) {
+		quota.Source = "role_exempt"
+		quota.PointsCost = 0
+		return quota, createAIUsageLog(tx, user.ID, task.ID, quota)
+	}
+
+	planCode, err := currentPlanCode(tx, user.ID)
+	if err != nil {
+		return quota, err
+	}
+	quota.PlanCode = planCode
+	switch planCode {
+	case "tier2":
+		quota.Source = "membership_tier2"
+		quota.PointsCost = 0
+		quota.MembershipFree = true
+	case "tier1":
+		if task.Type == "wrong_question_analysis" {
+			quota.Source = "membership_tier1"
+			quota.PointsCost = 0
+			quota.MembershipFree = true
+		} else {
+			quota.Source = "membership_tier1_discount"
+			quota.PointsCost = discountedCost(baseCost)
+		}
+	}
+
+	if quota.PointsCost <= 0 {
+		return quota, createAIUsageLog(tx, user.ID, task.ID, quota)
+	}
+	deduct := tx.Model(&model.User{}).
+		Where("id = ? AND points_balance >= ?", user.ID, quota.PointsCost).
+		UpdateColumn("points_balance", gorm.Expr("points_balance - ?", quota.PointsCost))
+	if deduct.Error != nil {
+		return quota, deduct.Error
+	}
+	if deduct.RowsAffected == 0 {
+		return quota, errString("insufficient_ai_points")
+	}
+	var refreshed model.User
+	if err := tx.Select("points_balance").First(&refreshed, "id = ?", user.ID).Error; err != nil {
+		return quota, err
+	}
+	quota.BalanceAfter = refreshed.PointsBalance
+	if err := tx.Create(&model.PointsLog{
+		UserID:         user.ID,
+		Delta:          -quota.PointsCost,
+		BalanceAfter:   quota.BalanceAfter,
+		Reason:         "ai_task_usage",
+		ReferenceType:  "ai_task",
+		ReferenceID:    task.ID,
+		IdempotencyKey: "ai_task_usage:" + task.ID,
+	}).Error; err != nil {
+		return quota, err
+	}
+	return quota, createAIUsageLog(tx, user.ID, task.ID, quota)
+}
+
+func currentPlanCode(tx *gorm.DB, userID string) (string, error) {
+	now := time.Now()
+	var memberships []model.Membership
+	if err := tx.Where("user_id = ? AND status = ? AND (expires_at IS NULL OR expires_at > ?)", userID, "active", now).
+		Order("created_at desc").
+		Find(&memberships).Error; err != nil {
+		return "", err
+	}
+	best := ""
+	for _, membership := range memberships {
+		if membershipPlanRank(membership.PlanCode) > membershipPlanRank(best) {
+			best = membership.PlanCode
+		}
+	}
+	return best, nil
+}
+
+func createAIUsageLog(tx *gorm.DB, userID string, taskID string, quota quotaResult) error {
+	return tx.Create(&model.AIUsageLog{
+		UserID:     &userID,
+		TaskID:     &taskID,
+		Model:      "quota",
+		PointsCost: quota.PointsCost,
+		Source:     quota.Source,
+	}).Error
+}
+
+func discountedCost(cost int64) int64 {
+	if cost <= 1 {
+		return cost
+	}
+	return (cost + 1) / 2
+}
+
+func membershipPlanRank(code string) int {
+	switch code {
+	case "tier2":
+		return 2
+	case "tier1":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func isRoleExempt(role string) bool {
+	switch role {
+	case model.RoleReviewer, model.RoleOperator, model.RoleAdmin, model.RoleSuperAdmin:
+		return true
+	default:
+		return false
+	}
+}
+
+type errString string
+
+func (e errString) Error() string {
+	return string(e)
 }
 
 func (h Handler) enqueue(ctx context.Context, task model.AITask) bool {

@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/datatypes"
 
@@ -27,6 +29,9 @@ func TestAITaskCreateQueryAndIsolation(t *testing.T) {
 	if invalidTypeResponse.Code != http.StatusBadRequest {
 		t.Fatalf("expected unsupported AI task type 400, got %d: %s", invalidTypeResponse.Code, invalidTypeResponse.Body.String())
 	}
+	if err := db.Model(&model.User{}).Where("email = ?", "student@stu.henu.edu.cn").Update("points_balance", 20).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	createBody := `{"courseId":"` + course.ID + `","type":"wrong_question_analysis","input":{"wrongQuestionCount":2}}`
 	createResponse := performJSON(router, http.MethodPost, "/api/v1/ai/tasks", createBody, studentToken)
@@ -36,10 +41,34 @@ func TestAITaskCreateQueryAndIsolation(t *testing.T) {
 	if !strings.Contains(createResponse.Body.String(), `"status":"pending"`) {
 		t.Fatalf("expected pending task, got %s", createResponse.Body.String())
 	}
+	if !strings.Contains(createResponse.Body.String(), `"pointsCost":5`) || !strings.Contains(createResponse.Body.String(), `"balanceAfter":15`) {
+		t.Fatalf("expected AI task to deduct points, got %s", createResponse.Body.String())
+	}
 
 	var task model.AITask
 	if err := db.First(&task, "type = ?", "wrong_question_analysis").Error; err != nil {
 		t.Fatal(err)
+	}
+	var student model.User
+	if err := db.First(&student, "email = ?", "student@stu.henu.edu.cn").Error; err != nil {
+		t.Fatal(err)
+	}
+	if student.PointsBalance != 15 {
+		t.Fatalf("expected AI task to leave 15 points, got %d", student.PointsBalance)
+	}
+	var usage model.AIUsageLog
+	if err := db.First(&usage, "task_id = ? AND model = ?", task.ID, "quota").Error; err != nil {
+		t.Fatal(err)
+	}
+	if usage.Source != "points" || usage.PointsCost != 5 {
+		t.Fatalf("unexpected AI quota usage log: %#v", usage)
+	}
+	var pointsLogCount int64
+	if err := db.Model(&model.PointsLog{}).Where("user_id = ? AND reason = ? AND reference_type = ? AND reference_id = ? AND delta = ?", student.ID, "ai_task_usage", "ai_task", task.ID, -5).Count(&pointsLogCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if pointsLogCount != 1 {
+		t.Fatalf("expected one AI points deduction log, got %d", pointsLogCount)
 	}
 
 	queryResponse := performJSON(router, http.MethodGet, "/api/v1/ai/tasks/"+task.ID, "", studentToken)
@@ -58,6 +87,74 @@ func TestAITaskCreateQueryAndIsolation(t *testing.T) {
 	adminList := performJSON(router, http.MethodGet, "/api/v1/admin/ai/tasks", "", adminToken)
 	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), task.ID) {
 		t.Fatalf("expected admin AI task list, got %d: %s", adminList.Code, adminList.Body.String())
+	}
+}
+
+func TestAITaskQuotaMembershipAndPoints(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+
+	noPointsToken := loginTestUser(t, router, "ai-no-points@stu.henu.edu.cn")
+	insufficient := performJSON(router, http.MethodPost, "/api/v1/ai/tasks", `{"type":"paper_generation","input":{"topic":"graphs"}}`, noPointsToken)
+	if insufficient.Code != http.StatusBadRequest || !strings.Contains(insufficient.Body.String(), "insufficient_ai_points") {
+		t.Fatalf("expected insufficient points for paper generation, got %d: %s", insufficient.Code, insufficient.Body.String())
+	}
+	var taskCount int64
+	if err := db.Model(&model.AITask{}).Where("type = ?", "paper_generation").Count(&taskCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if taskCount != 0 {
+		t.Fatalf("insufficient points must rollback AI task creation, got %d tasks", taskCount)
+	}
+
+	tier2User := createTestUser(t, db, "ai-tier2@stu.henu.edu.cn", model.RoleUser)
+	expiresAt := time.Now().Add(24 * time.Hour)
+	if err := db.Create(&model.Membership{UserID: tier2User.ID, PlanCode: "tier2", Status: "active", Source: "test", ExpiresAt: &expiresAt}).Error; err != nil {
+		t.Fatal(err)
+	}
+	tier2Token := loginTestUser(t, router, tier2User.Email)
+	tier2Create := performJSON(router, http.MethodPost, "/api/v1/ai/tasks", `{"type":"paper_generation","input":{"topic":"sets"}}`, tier2Token)
+	if tier2Create.Code != http.StatusOK || !strings.Contains(tier2Create.Body.String(), `"source":"membership_tier2"`) || !strings.Contains(tier2Create.Body.String(), `"pointsCost":0`) {
+		t.Fatalf("expected tier2 membership to create paper task without points, got %d: %s", tier2Create.Code, tier2Create.Body.String())
+	}
+	var tier2Payload struct {
+		Data struct {
+			Task model.AITask `json:"task"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(tier2Create.Body.Bytes(), &tier2Payload); err != nil {
+		t.Fatal(err)
+	}
+	var tier2Usage model.AIUsageLog
+	if err := db.First(&tier2Usage, "task_id = ? AND source = ?", tier2Payload.Data.Task.ID, "membership_tier2").Error; err != nil {
+		t.Fatal(err)
+	}
+	if tier2Usage.PointsCost != 0 {
+		t.Fatalf("expected free tier2 usage, got %#v", tier2Usage)
+	}
+
+	tier1User := createTestUser(t, db, "ai-tier1@stu.henu.edu.cn", model.RoleUser)
+	if err := db.Model(&model.User{}).Where("id = ?", tier1User.ID).Update("points_balance", 20).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Membership{UserID: tier1User.ID, PlanCode: "tier1", Status: "active", Source: "test", ExpiresAt: &expiresAt}).Error; err != nil {
+		t.Fatal(err)
+	}
+	tier1Token := loginTestUser(t, router, tier1User.Email)
+	wrongAnalysis := performJSON(router, http.MethodPost, "/api/v1/ai/tasks", `{"type":"wrong_question_analysis","input":{"count":1}}`, tier1Token)
+	if wrongAnalysis.Code != http.StatusOK || !strings.Contains(wrongAnalysis.Body.String(), `"source":"membership_tier1"`) || !strings.Contains(wrongAnalysis.Body.String(), `"pointsCost":0`) {
+		t.Fatalf("expected tier1 wrong-question analysis to be free, got %d: %s", wrongAnalysis.Code, wrongAnalysis.Body.String())
+	}
+	paper := performJSON(router, http.MethodPost, "/api/v1/ai/tasks", `{"type":"paper_generation","input":{"topic":"relations"}}`, tier1Token)
+	if paper.Code != http.StatusOK || !strings.Contains(paper.Body.String(), `"source":"membership_tier1_discount"`) || !strings.Contains(paper.Body.String(), `"pointsCost":15`) || !strings.Contains(paper.Body.String(), `"balanceAfter":5`) {
+		t.Fatalf("expected tier1 paper generation discount, got %d: %s", paper.Code, paper.Body.String())
+	}
+
+	admin := createTestUser(t, db, "ai-role-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, admin.Email)
+	adminCreate := performJSON(router, http.MethodPost, "/api/v1/ai/tasks", `{"type":"paper_generation","input":{"topic":"admin"}}`, adminToken)
+	if adminCreate.Code != http.StatusOK || !strings.Contains(adminCreate.Body.String(), `"source":"role_exempt"`) || !strings.Contains(adminCreate.Body.String(), `"pointsCost":0`) {
+		t.Fatalf("expected admin AI task quota exemption, got %d: %s", adminCreate.Code, adminCreate.Body.String())
 	}
 }
 

@@ -424,7 +424,7 @@ Points and membership:
 - `POST /membership/redeem` requires an authenticated non-frozen user, a published plan with positive `pointsCost` and `durationDays`, and a client `requestId`; it deducts points, creates a `membership_redeem` points log, grants or extends a `points_redeem` membership, and treats duplicate `requestId` values as idempotent.
 - Admin membership grant requires an existing user and a published plan. Re-granting the same active manual membership updates it instead of creating unlimited duplicates.
 - Admin membership revoke marks the membership `revoked`, expires it immediately, and writes an operation log.
-- Payment-backed membership purchase, membership expiry notifications, and AI quota spending remain later work.
+- Payment-backed membership purchase, membership expiry notifications, real model-token billing, and richer AI quota packages remain later work.
 
 Implemented report behavior:
 
@@ -512,6 +512,10 @@ Implemented AI behavior:
 
 - logged-in users can create AI tasks and query only their own tasks
 - supported task types are `chat`, `wrong_question_analysis`, `targeted_question`, `paper_generation`, and `draft_review`
+- creating an AI task requires a non-frozen user and passes through server-side quota accounting before the task is persisted
+- free users pay points by task type; `tier1` makes wrong-question analysis free and discounts other AI task costs; `tier2` makes supported AI tasks free
+- insufficient points returns `400 insufficient_ai_points` and rolls back task creation
+- task creation writes `ai_usage_logs`; point-paid tasks also write `points_logs.reason=ai_task_usage`
 - reviewer, admin, and super_admin users can list AI tasks and AI drafts
 - Redis Stream enqueue is best-effort; database task creation remains the source of truth
 - worker mock mode turns pending tasks into pending AI drafts

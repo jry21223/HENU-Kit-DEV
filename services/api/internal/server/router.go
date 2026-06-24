@@ -190,7 +190,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.POST("/users/:id/block", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Block)
 	v1.POST("/users/:id/unblock", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), relationHandler.Unblock)
 	v1.GET("/users/:id", authMiddleware.OptionalAuth(), userHandler.Profile)
-	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), aiHandler.CreateTask)
+	v1.POST("/ai/tasks", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), aiHandler.CreateTask)
 	v1.GET("/ai/tasks/:id", authMiddleware.RequireAuth(), aiHandler.Task)
 
 	admin := v1.Group("/admin")

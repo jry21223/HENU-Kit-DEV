@@ -502,12 +502,14 @@ type AIDraft struct {
 
 type AIUsageLog struct {
 	BaseModel
-	UserID    *string `json:"userId,omitempty" gorm:"type:uuid;index"`
-	TaskID    *string `json:"taskId,omitempty" gorm:"type:uuid;index"`
-	Model     string  `json:"model" gorm:"size:120"`
-	TokensIn  int64   `json:"tokensIn"`
-	TokensOut int64   `json:"tokensOut"`
-	CostFen   int64   `json:"costFen"`
+	UserID     *string `json:"userId,omitempty" gorm:"type:uuid;index"`
+	TaskID     *string `json:"taskId,omitempty" gorm:"type:uuid;index"`
+	Model      string  `json:"model" gorm:"size:120"`
+	TokensIn   int64   `json:"tokensIn"`
+	TokensOut  int64   `json:"tokensOut"`
+	CostFen    int64   `json:"costFen"`
+	PointsCost int64   `json:"pointsCost"`
+	Source     string  `json:"source" gorm:"size:60;index"`
 }
 
 type Notification struct {

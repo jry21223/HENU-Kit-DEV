@@ -255,7 +255,7 @@ Admin 页面不会直接授予支付成功，也不会绕过 Go API 权限。
 已有积分 ledger 和论坛悬赏相关积分行为，但还没有形成完整商业产品：
 
 - 会员积分兑换基础闭环已补；真实支付购买、升级/降级策略仍未完成。
-- AI 权益扣减/折扣中间件未完整贯通。
+- AI task 创建时的会员/积分扣减基础闭环已补；真实模型 token 计费和更细 AI 套餐仍未完成。
 - 积分兑换 AI 次数、兑换套卷权限未完整实现。
 - 会员到期通知、会员权益统计仍待补。
 
@@ -314,8 +314,8 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 3：认证与权限 | 邮箱验证码、JWT RS256、角色、冻结、管理员/审核/创作者权限 | 部分完成 | 登录、JWT、角色和冻结边界存在；真实邮件发送和生产密钥配置仍是部署工作。 |
 | Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 组织、课程、资料、上传、下载权限、水印、审计、manifest dry-run 预检、manifest 导入、manifest-to-paid-download 测试、API manual-grant smoke 和浏览器 delivery smoke 已实现；真实内测资料导入验收和 OSS/S3 等生产存储仍未完成。 |
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、Web 错题本存在；练习 session、复杂评分仍需增强。 |
-| Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review 存在；真实 LLM、RAG、发布流未完成。 |
-| Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、用户积分兑换会员、admin 手动赠送/撤销会员已做；支付购买、升级/降级策略和 AI 权益扣减仍未完整闭环。 |
+| Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review、AI task 积分/会员额度扣减已做；真实 LLM、RAG、发布流未完成。 |
+| Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、用户积分兑换会员、AI task 会员/积分权益扣减、admin 手动赠送/撤销会员已做；支付购买、升级/降级策略和真实模型成本核算仍未完整闭环。 |
 | Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、API smoke CLI 非生产 mock 支付闭环验收、带请求签名/响应验签的 live Native 下单代码路径、live 官方 notify 验签/解密/金额校验/幂等授权代码路径、基础关单接口、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒；真实微信商户端到端联调、退款、证书轮换和自动对账未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 / 强 MVP | Wiki 公开页、创作者新建词条页、我的 Wiki 投稿页、修订提案、审核、历史、stale 防护已做；创作者申请 API、学生端申请/状态 UI、Admin 审核闭环和可选浏览器 smoke 已补；富文本编辑和更完整差异查看仍未完成。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog、Forum 基础和审核已做；Moment、关系系统 Go API 基础已补，Web `/moments` 基础动态流、图片上传/预览、动态图片服务端可见性鉴权、`/users/[id]` 公开用户主页聚合和 `/me/relations` 关系管理已做；视频和云存储仍未做。 |
@@ -454,7 +454,7 @@ git diff --check
 
 - Vue Admin AI draft review actions now expose stable test ids for approve/reject and review submission buttons.
 - `npm --workspace @final-review/web run test:e2e:ai-draft-review` adds an opt-in Playwright smoke that creates a real AI task, waits for the worker to generate a pending AI draft, approves it through Vue Admin `/ai/drafts`, and verifies the reviewed draft has no `publishedId`.
-- The smoke mutates AI task/draft rows, AI usage logs, notifications, and operation logs. It covers the mock-worker draft review boundary only; real LLM/RAG, quota accounting, publish-to-resource flows, and richer AI quality checks remain later work.
+- The smoke grants a temporary tier2 membership for AI quota, then mutates AI task/draft rows, AI usage logs, notifications, and operation logs. It covers the mock-worker draft review boundary only; real LLM/RAG, real model-token billing, publish-to-resource flows, and richer AI quality checks remain later work.
 
 ### 7.12 2026-06-24 Admin Report Review Smoke Update
 
@@ -496,7 +496,7 @@ git diff --check
 
 当前仓库已经不是纯骨架，V2 MVP 的核心技术路径已经形成：Go API 作为唯一业务后端，Web/Admin 作为前端入口，Worker 处理异步任务，课程资料、刷题、审核、举报、通知、课程包和支付 mock 联调边界都已有可验证基础。
 
-但当前仍不能声明为生产可上线版本。最大缺口是微信 Native 真实商户端到端联调、关单验证、退款/告警等支付运维硬化，其次是完整 E2E、会员权益/AI 配额、真实 AI、搜索增强和生产部署硬化。
+但当前仍不能声明为生产可上线版本。最大缺口是微信 Native 真实商户端到端联调、关单验证、退款/告警等支付运维硬化，其次是完整 E2E、真实 AI/RAG、真实模型成本核算、搜索增强和生产部署硬化。
 ## Addendum: 2026-06-24 Leaderboards MVP
 
 - Implemented public all-time leaderboards for Wiki contribution, quiz practice, and overall learning score.

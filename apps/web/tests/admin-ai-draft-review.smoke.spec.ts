@@ -59,6 +59,7 @@ test.describe("admin AI draft-review browser smoke", () => {
     try {
       const student = await loginByAPI(context.request, cfg.apiBaseURL, cfg.studentEmail, cfg.studentCode, "Smoke AI Student");
       const admin = await loginByAPI(context.request, cfg.apiBaseURL, cfg.adminEmail, cfg.adminCode, "Smoke Admin");
+      await grantAITestMembership(context.request, cfg.apiBaseURL, admin.accessToken, student.user.id);
       const stamp = Date.now();
       const task = await createAITask(context.request, cfg.apiBaseURL, student.accessToken, {
         type: "paper_generation",
@@ -140,6 +141,17 @@ async function createAITask(
   const payload = (await response.json()) as Envelope<{ task: AITask; enqueued: boolean }>;
   expect(payload.code).toBe(0);
   return payload.data.task;
+}
+
+async function grantAITestMembership(request: APIRequestContext, apiBaseURL: string, adminToken: string, userId: string) {
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const response = await request.post(joinURL(apiBaseURL, "/admin/memberships/grant"), {
+    data: { userId, planCode: "tier2", expiresAt, source: "ai_smoke", note: "temporary AI smoke quota" },
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  expect(response.status()).toBe(200);
+  const payload = (await response.json()) as Envelope<{ created: boolean }>;
+  expect(payload.code).toBe(0);
 }
 
 async function waitForDraft(

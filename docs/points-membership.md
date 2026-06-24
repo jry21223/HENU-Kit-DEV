@@ -52,12 +52,18 @@ This module is now a basic service-side foundation, not a full commercial loop.
 - Re-granting the same active manual membership updates the existing record instead of creating unlimited duplicates.
 - Revoked memberships are immediately expired and hidden from `/me/membership`.
 - Memberships can unlock `member_only` material downloads through the existing material download permission check.
+- AI task quota currently reuses memberships and points:
+  - free users pay server-defined point costs by task type
+  - `tier1` makes wrong-question analysis free and discounts other AI tasks
+  - `tier2` makes supported AI tasks free
+  - every non-free AI task writes `points_logs.reason=ai_task_usage`
+  - every AI task creation writes an `ai_usage_logs` quota row with `source` and `pointsCost`
 
 ## Not Implemented Yet
 
 - Payment-backed membership purchase.
-- Points redemption for AI usage, generated papers, or course-package privileges.
+- Dedicated AI quota packages, generated-paper packages, or course-package privilege redemption.
 - Membership upgrade/downgrade policy beyond same-plan points extension.
 - Payment-driven automatic membership activation.
 - Membership notifications such as grant, revoke, or expiry reminders.
-- Reusable AI quota/membership entitlement middleware.
+- Real model-token billing and quota package accounting.

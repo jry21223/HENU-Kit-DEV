@@ -273,7 +273,7 @@ $env:E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS="60"
 npm --workspace @final-review/web run test:e2e:ai-draft-review
 ```
 
-This smoke creates a real AI task through the Go API, waits for the worker to produce a pending draft, opens Vue Admin `/ai/drafts`, approves that draft through the Admin UI, and verifies the draft becomes `approved` without a `publishedId`. It is opt-in because it mutates AI task/draft rows, AI usage logs, notifications, and operation logs. It should run with `LLM_MODE=mock` until real LLM credentials and cost controls are configured.
+This smoke logs in an admin, grants the smoke student a temporary `tier2` membership for AI quota, creates a real AI task through the Go API, waits for the worker to produce a pending draft, opens Vue Admin `/ai/drafts`, approves that draft through the Admin UI, and verifies the draft becomes `approved` without a `publishedId`. It is opt-in because it mutates membership, AI task/draft, AI usage log, notification, and operation log rows. It should run with `LLM_MODE=mock` until real LLM credentials and quality controls are configured.
 
 ## What It Checks
 

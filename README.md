@@ -25,7 +25,7 @@ V2 是绿地重构版本。旧版 Next.js + Prisma 实现已归档到 `legacy/v1
 - PDF 下载会在服务端生成临时轻水印副本，水印包含用户标识、资料 ID 和下载时间；源文件不会被覆盖。非 PDF 文件保持原样下载。
 - 用户可以查看自己的成功下载记录；管理员可以查看全量下载审计日志。
 - 课程包 catalog API 已实现，`material_access_grants.package_id` 可以在服务端解锁 published 课程包内的 paid 资料。
-- Go API 与 Worker 已实现 mock AI task 流：用户创建任务，worker 完成 pending task，并把生成结果保存为待审核 draft。
+- Go API 与 Worker 已实现 mock AI task 流：用户创建任务前会经过服务端积分/会员额度检查，worker 完成 pending task，并把生成结果保存为待审核 draft。
 - Next.js Web 已有首页、课程列表、课程详情、课程包列表/详情与解锁状态展示、资料详情、课程刷题、Wiki 列表/详情与创作者修订提案、Blog 只读列表/详情、论坛列表/详情、发帖、回复提交、最佳答案操作入口和学生邮箱登录页面。
 - Next.js Web 已有个人中心 `/me`，登录用户可以维护学校、专业和年级绑定，在 `/me/wrong-questions` 查看错题与薄弱课程，在 `/me/forum` 追踪、修改和重新提交自己的论坛帖子/回复，在 `/moments` 查看/发布带图片的学习动态，在 `/users/[id]` 查看公开用户主页，在 `/me/relations` 管理关注/粉丝/互关好友，并在 `/me/notifications` 查看审核通知。
 - Vue Admin 已有邮箱登录、路由守卫、仪表盘、用户管理、权益授权、课程包管理、课程管理、资料上传、资料状态流转、下载审计页面和 reviewer 可访问的 AI 草稿审核页；AI 草稿通过/驳回会记录审核意见。
@@ -155,6 +155,7 @@ cd ../worker && go test ./...
 - 刷题提交、错题用户隔离和 quiz attempt。
 - Web `/me/wrong-questions` 展示当前用户自己的错题、薄弱课程统计和移出错题本操作；题目详情使用不含答案的公开 question DTO。
 - AI task 所有权、reviewer/admin 可见性、AI 草稿审核权限边界、审核意见持久化和 worker draft 生成幂等。
+- AI task 创建成本控制：普通用户按任务类型扣积分，`tier1` 对错题分析免费且其他 AI 任务折扣扣分，`tier2` 免费，扣分会写 `points_logs` 和 `ai_usage_logs`；管理员/审核员/运营角色用于内容审核与运维时豁免。
 
 ## 7. Seed 数据
 
@@ -269,7 +270,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Material, wiki entry/proposal, blog post, and AI draft review creates a `content_review` notification for the original author/editor/task owner in the same transaction as the review update and operation log.
 - Vue Admin Wiki proposal review marks stale proposals and blocks stale approval in the UI; the Go API still enforces the final stale-version rejection.
 - Basic report APIs, Web material/wiki/blog/forum report buttons, and Vue Admin `/reports` are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
-- Payment-driven membership purchase, membership expiry reminders, and AI quota spending remain later work.
+- Payment-driven membership purchase, membership expiry reminders, real model-token billing, and richer AI quota packages remain later work.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
 - Go API writes server-side `operation_logs` for user management, access grants, organization, course, course package and package-item binding, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.
