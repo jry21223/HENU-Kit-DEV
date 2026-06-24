@@ -122,6 +122,7 @@ cd ../worker && go test ./...
 - Web `/me/forum` 展示当前用户自己的论坛帖子和回复，包括待审、已发布、已驳回状态以及自己的审核说明；可修改 draft/pending/needs_changes/rejected 内容并重新提交审核，公开论坛页仍只展示 published 内容。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
 - Web `/search` 和 Go API `/api/v1/search` 已提供基础公开搜索，覆盖课程、资料、课程包、Wiki、Blog 和论坛帖子。
+- Web `/me/points` 和 `/me/membership` 已展示当前用户积分、积分流水、有效会员和公开会员套餐；Go API 已支持 admin 查询积分流水、维护积分规则、手动赠送/撤销会员并写操作日志。
 - `/me/notifications` 用户隔离、已读幂等、全部已读，以及论坛、资料、Wiki、博客、AI 草稿审核通知生成。
 - 举报 API、Web 资料/Wiki/博客/论坛举报入口和 Vue Admin `/reports` 支持登录用户提交公开内容举报、reviewer/admin 处理举报、处理结果通知举报人。
 - 不安全 storage key 返回 404。

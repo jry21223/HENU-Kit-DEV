@@ -20,11 +20,13 @@ import (
 	"final-review-platform/services/api/internal/forum"
 	"final-review-platform/services/api/internal/health"
 	"final-review-platform/services/api/internal/material"
+	"final-review-platform/services/api/internal/member"
 	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/order"
 	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/internal/packagecatalog"
 	"final-review-platform/services/api/internal/payment"
+	"final-review-platform/services/api/internal/points"
 	"final-review-platform/services/api/internal/quiz"
 	"final-review-platform/services/api/internal/report"
 	"final-review-platform/services/api/internal/search"
@@ -63,11 +65,13 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	orgHandler := org.NewHandler(db)
 	courseHandler := course.NewHandler(db)
 	materialHandler := material.NewHandler(db, cfg.LocalUploadDir)
+	memberHandler := member.NewHandler(db)
 	downloadLogHandler := downloadlog.NewHandler(db)
 	entitlementHandler := entitlement.NewHandler(db)
 	notificationHandler := notification.NewHandler(db)
 	orderHandler := order.NewHandler(db)
 	paymentHandler := payment.NewHandler(db, cfg)
+	pointsHandler := points.NewHandler(db)
 	packageHandler := packagecatalog.NewHandler(db)
 	quizHandler := quiz.NewHandler(db)
 	reportHandler := report.NewHandler(db)
@@ -109,6 +113,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/materials/:id/download", authMiddleware.OptionalAuth(), materialHandler.Download)
 	v1.GET("/packages", packageHandler.List)
 	v1.GET("/packages/:id", packageHandler.Detail)
+	v1.GET("/membership/plans", memberHandler.Plans)
 	v1.POST("/orders", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), orderHandler.Create)
 	v1.GET("/orders/:id", authMiddleware.RequireAuth(), orderHandler.Detail)
 	v1.GET("/orders/:id/status", authMiddleware.RequireAuth(), orderHandler.Status)
@@ -136,6 +141,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/me/wrong-questions", authMiddleware.RequireAuth(), quizHandler.WrongQuestions)
 	v1.DELETE("/me/wrong-questions/:id", authMiddleware.RequireAuth(), quizHandler.DeleteWrongQuestion)
 	v1.GET("/me/weakness-report", authMiddleware.RequireAuth(), quizHandler.WeaknessReport)
+	v1.GET("/me/points", authMiddleware.RequireAuth(), pointsHandler.Me)
+	v1.GET("/me/points/logs", authMiddleware.RequireAuth(), pointsHandler.MyLogs)
+	v1.GET("/me/membership", authMiddleware.RequireAuth(), memberHandler.Me)
 	v1.GET("/me/downloads", authMiddleware.RequireAuth(), downloadLogHandler.MyDownloads)
 	v1.GET("/me/entitlements", authMiddleware.RequireAuth(), entitlementHandler.Me)
 	v1.GET("/me/forum-posts", authMiddleware.RequireAuth(), forumHandler.MyPosts)
@@ -155,6 +163,13 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	})
 	admin.GET("/users", adminHandler.ListUsers)
 	admin.PATCH("/users/:id", adminHandler.UpdateUser)
+	admin.GET("/points/logs", pointsHandler.AdminLogs)
+	admin.GET("/points/rules", pointsHandler.AdminRules)
+	admin.POST("/points/rules", pointsHandler.CreateRule)
+	admin.PATCH("/points/rules/:id", pointsHandler.UpdateRule)
+	admin.GET("/memberships", memberHandler.AdminMemberships)
+	admin.POST("/memberships/grant", memberHandler.Grant)
+	admin.POST("/memberships/:id/revoke", memberHandler.Revoke)
 	admin.GET("/access-grants", adminHandler.ListAccessGrants)
 	admin.POST("/access-grants", adminHandler.CreateAccessGrant)
 	admin.DELETE("/access-grants/:id", adminHandler.RevokeAccessGrant)

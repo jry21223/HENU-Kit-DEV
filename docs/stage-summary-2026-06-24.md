@@ -160,7 +160,7 @@
 | Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest dry-run 预检、manifest 导入和 manifest-to-paid-download smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、薄弱点已有；复杂评分和练习 session 需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock worker/draft review 已有；真实 LLM/RAG 未完成。 |
-| Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在部分场景使用；会员产品和兑换链路未完整闭环。 |
+| Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、admin 手动赠送/撤销会员已做；购买、兑换、AI 权益扣减仍未完整闭环。 |
 | Stage 8：支付系统 | 原 plan 写易支付 | 方向调整 / 部分完成 | 已改为微信 Native；mock 下单、mock notify、live 下单、live notify、基础关单、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒已有；真实商户 E2E、退款、证书轮换和自动对账未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 | Wiki 公开页、修订提案、审核、历史和 stale 防护已有；创作者申请流不完整。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog/Forum 基础和审核已有；Moment 与关系系统未做。 |

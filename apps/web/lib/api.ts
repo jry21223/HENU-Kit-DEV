@@ -342,6 +342,44 @@ export type SearchResponse = {
   total: number;
 };
 
+export type PointsLog = {
+  id: string;
+  userId: string;
+  delta: number;
+  balanceAfter: number;
+  reason: string;
+  referenceType: string;
+  referenceId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipPlan = {
+  id: string;
+  code: string;
+  name: string;
+  priceFen: number;
+  benefits?: Record<string, unknown>;
+  status: string;
+};
+
+export type Membership = {
+  id: string;
+  userId: string;
+  planCode: string;
+  status: string;
+  source: string;
+  expiresAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipRow = {
+  membership: Membership;
+  plan?: MembershipPlan;
+  active: boolean;
+};
+
 export type MyForumPost = {
   id: string;
   boardId: string;
