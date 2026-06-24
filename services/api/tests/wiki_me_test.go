@@ -65,6 +65,24 @@ func TestMyWikiEntriesAndProposals(t *testing.T) {
 	if otherEntries.Code != http.StatusOK || strings.Contains(otherEntries.Body.String(), ownerEntry.ID) || !strings.Contains(otherEntries.Body.String(), otherEntry.ID) {
 		t.Fatalf("expected other wiki entries to be scoped, got %d: %s", otherEntries.Code, otherEntries.Body.String())
 	}
+	otherResubmitEntry := performJSON(router, http.MethodPatch, "/api/v1/me/wiki-entries/"+ownerEntry.ID, `{"title":"Hijack","slug":"hijack","content":"hijack"}`, otherToken)
+	if otherResubmitEntry.Code != http.StatusNotFound {
+		t.Fatalf("expected other user wiki entry resubmit 404, got %d: %s", otherResubmitEntry.Code, otherResubmitEntry.Body.String())
+	}
+	resubmitEntry := performJSON(router, http.MethodPatch, "/api/v1/me/wiki-entries/"+ownerEntry.ID, `{"courseId":"`+course.ID+`","title":"Owner Resubmitted Wiki","slug":"owner-resubmitted-wiki","content":"clearer owner content","summary":"resubmit after rejection"}`, ownerToken)
+	if resubmitEntry.Code != http.StatusOK {
+		t.Fatalf("expected owner wiki entry resubmit 200, got %d: %s", resubmitEntry.Code, resubmitEntry.Body.String())
+	}
+	if !strings.Contains(resubmitEntry.Body.String(), model.StatusPending) || strings.Contains(resubmitEntry.Body.String(), "needs clearer structure") || strings.Contains(resubmitEntry.Body.String(), "reviewerId") {
+		t.Fatalf("expected resubmitted wiki entry pending with cleared review metadata, got %d: %s", resubmitEntry.Code, resubmitEntry.Body.String())
+	}
+	var resubmittedEntry model.WikiEntry
+	if err := db.First(&resubmittedEntry, "id = ?", ownerEntry.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if resubmittedEntry.Status != model.StatusPending || resubmittedEntry.Title != "Owner Resubmitted Wiki" || resubmittedEntry.ReviewReason != "" || resubmittedEntry.ReviewerID != nil || resubmittedEntry.ReviewedAt != nil {
+		t.Fatalf("expected resubmitted entry to be pending and clear review metadata, got %#v", resubmittedEntry)
+	}
 
 	publicEntry := model.WikiEntry{
 		ReviewFields: model.ReviewFields{Status: model.StatusPublished},
@@ -107,5 +125,23 @@ func TestMyWikiEntriesAndProposals(t *testing.T) {
 	otherProposals := performJSON(router, http.MethodGet, "/api/v1/me/wiki-proposals", "", otherToken)
 	if otherProposals.Code != http.StatusOK || strings.Contains(otherProposals.Body.String(), proposal.ID) {
 		t.Fatalf("expected other wiki proposals not to include owner proposal, got %d: %s", otherProposals.Code, otherProposals.Body.String())
+	}
+	otherResubmitProposal := performJSON(router, http.MethodPatch, "/api/v1/me/wiki-proposals/"+proposal.ID, `{"title":"Hijack Proposal","content":"hijack"}`, otherToken)
+	if otherResubmitProposal.Code != http.StatusNotFound {
+		t.Fatalf("expected other user wiki proposal resubmit 404, got %d: %s", otherResubmitProposal.Code, otherResubmitProposal.Body.String())
+	}
+	resubmitProposal := performJSON(router, http.MethodPatch, "/api/v1/me/wiki-proposals/"+proposal.ID, `{"title":"Owner Proposal Resubmitted","content":"owner proposed content with more context","summary":"revised"}`, ownerToken)
+	if resubmitProposal.Code != http.StatusOK {
+		t.Fatalf("expected owner wiki proposal resubmit 200, got %d: %s", resubmitProposal.Code, resubmitProposal.Body.String())
+	}
+	if !strings.Contains(resubmitProposal.Body.String(), model.StatusPending) || strings.Contains(resubmitProposal.Body.String(), "keep original wording") || strings.Contains(resubmitProposal.Body.String(), "reviewerId") {
+		t.Fatalf("expected resubmitted proposal pending with cleared review metadata, got %d: %s", resubmitProposal.Code, resubmitProposal.Body.String())
+	}
+	var resubmittedProposal model.WikiEditProposal
+	if err := db.First(&resubmittedProposal, "id = ?", proposal.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if resubmittedProposal.Status != model.StatusPending || resubmittedProposal.ProposedTitle != "Owner Proposal Resubmitted" || resubmittedProposal.BaseVersion != publicEntry.Version || resubmittedProposal.ReviewReason != "" || resubmittedProposal.ReviewerID != nil || resubmittedProposal.ReviewedAt != nil {
+		t.Fatalf("expected resubmitted proposal to be pending and clear review metadata, got %#v", resubmittedProposal)
 	}
 }

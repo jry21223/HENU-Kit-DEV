@@ -24,9 +24,12 @@ type Handler struct {
 var (
 	errEntryNotReviewable              = errors.New("entry_not_reviewable")
 	errProposalNotReviewable           = errors.New("proposal_not_reviewable")
+	errEntryNotEditable                = errors.New("entry_not_editable")
+	errProposalNotEditable             = errors.New("proposal_not_editable")
 	errProposalStale                   = errors.New("proposal_stale")
 	errCreatorApplicationNotReviewable = errors.New("creator_application_not_reviewable")
 	reviewableStatuses                 = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}
+	userEditableStatuses               = []string{model.StatusDraft, model.StatusPending, model.StatusNeedsChanges, model.StatusRejected}
 )
 
 func NewHandler(db *gorm.DB) Handler {
@@ -200,6 +203,155 @@ func (h Handler) MyProposals(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"proposals": myProposals(proposals, entriesByID)})
+}
+
+func (h Handler) ResubmitEntry(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req entryRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	slug := strings.TrimSpace(req.Slug)
+	content := strings.TrimSpace(req.Content)
+	summary := strings.TrimSpace(req.Summary)
+	courseID := strings.TrimSpace(req.CourseID)
+	if err := validateEntryInput(title, slug, content, summary); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+
+	var entry model.WikiEntry
+	if err := h.db.First(&entry, "id = ? AND author_id = ?", ctx.Param("id"), user.ID).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "entry_not_found", nil)
+		return
+	}
+	if !isUserEditableStatus(entry.Status) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "entry_not_editable", gin.H{"status": entry.Status})
+		return
+	}
+	var courseIDPtr *string
+	if courseID != "" {
+		var course model.Course
+		if err := h.db.First(&course, "id = ? AND status = ?", courseID, model.StatusPublished).Error; err != nil {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "course_not_found", nil)
+			return
+		}
+		courseIDPtr = &course.ID
+	}
+
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.WikiEntry{}).
+			Where("id = ? AND author_id = ? AND status IN ?", entry.ID, user.ID, userEditableStatuses).
+			Updates(map[string]interface{}{
+				"course_id":     courseIDPtr,
+				"title":         title,
+				"slug":          slug,
+				"content":       content,
+				"status":        model.StatusPending,
+				"reviewer_id":   nil,
+				"reviewed_at":   nil,
+				"review_reason": "",
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errEntryNotEditable
+		}
+		if summary == "" {
+			summary = "resubmitted draft"
+		}
+		return tx.Model(&model.WikiEditHistory{}).
+			Where("entry_id = ? AND version = ?", entry.ID, entry.Version).
+			Updates(map[string]interface{}{"content": content, "summary": summary}).Error
+	})
+	if err != nil {
+		if errors.Is(err, errEntryNotEditable) {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "entry_not_editable", gin.H{"status": entry.Status})
+			return
+		}
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "resubmit_failed", nil)
+		return
+	}
+	if err := h.db.First(&entry, "id = ?", entry.ID).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"entry": myEntries([]model.WikiEntry{entry})[0]})
+}
+
+func (h Handler) ResubmitProposal(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req proposalRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	content := strings.TrimSpace(req.Content)
+	summary := strings.TrimSpace(req.Summary)
+	if err := validateProposalInput(title, content, summary); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+
+	var proposal model.WikiEditProposal
+	if err := h.db.First(&proposal, "id = ? AND editor_id = ?", ctx.Param("id"), user.ID).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "proposal_not_found", nil)
+		return
+	}
+	if !isUserEditableStatus(proposal.Status) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "proposal_not_editable", gin.H{"status": proposal.Status})
+		return
+	}
+	var entry model.WikiEntry
+	if err := h.db.Model(&model.WikiEntry{}).
+		Joins("LEFT JOIN courses ON courses.id = wiki_entries.course_id").
+		Where("wiki_entries.id = ? AND wiki_entries.status = ? AND wiki_entries.visibility = ? AND (wiki_entries.course_id IS NULL OR courses.status = ?)", proposal.EntryID, model.StatusPublished, "public", model.StatusPublished).
+		First(&entry).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "entry_not_found", nil)
+		return
+	}
+	if title == entry.Title && content == entry.Content {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "proposal_unchanged", nil)
+		return
+	}
+
+	result := h.db.Model(&model.WikiEditProposal{}).
+		Where("id = ? AND editor_id = ? AND status IN ?", proposal.ID, user.ID, userEditableStatuses).
+		Updates(map[string]interface{}{
+			"base_version":     entry.Version,
+			"proposed_title":   title,
+			"proposed_content": content,
+			"summary":          summary,
+			"status":           model.StatusPending,
+			"reviewer_id":      nil,
+			"reviewed_at":      nil,
+			"review_reason":    "",
+		})
+	if result.Error != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "resubmit_failed", nil)
+		return
+	}
+	if result.RowsAffected == 0 {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "proposal_not_editable", gin.H{"status": proposal.Status})
+		return
+	}
+	if err := h.db.First(&proposal, "id = ?", proposal.ID).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"proposal": myProposals([]model.WikiEditProposal{proposal}, map[string]model.WikiEntry{entry.ID: entry})[0]})
 }
 
 func (h Handler) Create(ctx *gin.Context) {
@@ -1067,6 +1219,15 @@ func safeSlug(value string) bool {
 
 func isReviewableStatus(status string) bool {
 	for _, item := range reviewableStatuses {
+		if status == item {
+			return true
+		}
+	}
+	return false
+}
+
+func isUserEditableStatus(status string) bool {
+	for _, item := range userEditableStatuses {
 		if status == item {
 			return true
 		}

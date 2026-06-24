@@ -261,5 +261,6 @@ V2 已从纯骨架推进到可本地验证的强 MVP：课程资料、下载权�
 - Web `/wiki/new` now exposes a creator/admin entry-submission form backed by `POST /api/v1/wiki/entries`; new entries remain pending and hidden from public detail until approval.
 - `npm --workspace @final-review/web run test:e2e:wiki-entry-submission` adds an opt-in Playwright smoke for creator submission and pending-public-hidden behavior.
 - `GET /api/v1/me/wiki-entries` and `GET /api/v1/me/wiki-proposals` plus Web `/me/wiki` now let users track their own Wiki submissions and review reasons without exposing reviewer ids.
+- `PATCH /api/v1/me/wiki-entries/:id` and `PATCH /api/v1/me/wiki-proposals/:id` now let users revise only their own editable Wiki submissions from Web `/me/wiki`; resubmitted content returns to pending review and clears old reviewer metadata.
 - `npm --workspace @final-review/web run test:e2e:my-wiki` adds an opt-in Playwright smoke for the user-scoped Wiki submission tracker.
 - Notifications and operation logs are recorded for review results. Remaining work: richer applicant context in the admin queue, rich text editing, and fuller diff tooling.

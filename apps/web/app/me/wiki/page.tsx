@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { ArrowRight, FileText, GitPullRequestDraft } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,23 @@ type Envelope<T> = {
   message: string;
   data?: T;
 };
+
+type EditingTarget =
+  | {
+      kind: "entry";
+      id: string;
+      courseId?: string;
+      title: string;
+      slug: string;
+      content: string;
+    }
+  | {
+      kind: "proposal";
+      id: string;
+      title: string;
+      content: string;
+      summary: string;
+    };
 
 const copy = {
   back: "\u8fd4\u56de\u4e2a\u4eba\u4e2d\u5fc3",
@@ -33,6 +50,16 @@ const copy = {
   baseVersion: "\u57fa\u51c6\u7248\u672c",
   updatedAt: "\u66f4\u65b0",
   fallbackError: "Wiki \u6295\u7a3f\u8bb0\u5f55\u6682\u65f6\u4e0d\u53ef\u7528",
+  edit: "\u4fee\u6539\u5e76\u91cd\u65b0\u63d0\u4ea4",
+  cancel: "\u53d6\u6d88",
+  save: "\u4fdd\u5b58\u91cd\u63d0",
+  saving: "\u63d0\u4ea4\u4e2d...",
+  resubmitted: "\u5df2\u91cd\u65b0\u63d0\u4ea4\u5ba1\u6838\u3002",
+  titleLabel: "\u6807\u9898",
+  slugLabel: "URL Slug",
+  contentLabel: "\u5185\u5bb9",
+  summaryLabel: "\u4fee\u8ba2\u6458\u8981",
+  editHint: "\u4fee\u6539\u540e\u4f1a\u56de\u5230\u5f85\u5ba1\u72b6\u6001\uff0c\u65e7\u5ba1\u6838\u8bf4\u660e\u4f1a\u88ab\u6e05\u7a7a\u3002",
 };
 
 const statusLabels: Record<string, string> = {
@@ -50,27 +77,68 @@ export default function MyWikiPage() {
   const [proposals, setProposals] = useState<MyWikiProposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [editing, setEditing] = useState<EditingTarget | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function loadWikiSubmissions() {
+    setLoading(true);
+    setError("");
+    try {
+      const [entriesResponse, proposalsResponse] = await Promise.all([
+        request<{ entries: MyWikiEntry[] }>("/me/wiki-entries"),
+        request<{ proposals: MyWikiProposal[] }>("/me/wiki-proposals"),
+      ]);
+      setEntries(entriesResponse.data?.entries ?? []);
+      setProposals(proposalsResponse.data?.proposals ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : copy.fallbackError);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function loadWikiSubmissions() {
-      setLoading(true);
-      setError("");
-      try {
-        const [entriesResponse, proposalsResponse] = await Promise.all([
-          request<{ entries: MyWikiEntry[] }>("/me/wiki-entries"),
-          request<{ proposals: MyWikiProposal[] }>("/me/wiki-proposals"),
-        ]);
-        setEntries(entriesResponse.data?.entries ?? []);
-        setProposals(proposalsResponse.data?.proposals ?? []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : copy.fallbackError);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     void loadWikiSubmissions();
   }, []);
+
+  async function resubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    setSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      if (editing.kind === "entry") {
+        await request<{ entry: MyWikiEntry }>(`/me/wiki-entries/${editing.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            courseId: editing.courseId ?? "",
+            title: editing.title.trim(),
+            slug: editing.slug.trim(),
+            content: editing.content.trim(),
+            summary: "resubmitted from my wiki page",
+          }),
+        });
+      } else {
+        await request<{ proposal: MyWikiProposal }>(`/me/wiki-proposals/${editing.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            title: editing.title.trim(),
+            content: editing.content.trim(),
+            summary: editing.summary.trim(),
+          }),
+        });
+      }
+      setEditing(null);
+      setMessage(copy.resubmitted);
+      await loadWikiSubmissions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : copy.fallbackError);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <SiteShell>
@@ -98,6 +166,7 @@ export default function MyWikiPage() {
           </Link>
         </div>
       ) : null}
+      {message ? <p className="rounded-2xl border border-border bg-card p-4 text-sm text-foreground">{message}</p> : null}
 
       {!loading && !error ? (
         <div className="grid gap-5 lg:grid-cols-2">
@@ -115,6 +184,23 @@ export default function MyWikiPage() {
                   <h2 className="mt-3 break-words font-semibold">{entry.title}</h2>
                   <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-muted-foreground">{entry.content}</p>
                   <ReviewReason value={entry.reviewReason} />
+                  {editing?.kind === "entry" && editing.id === entry.id ? (
+                    <EntryEditForm editing={editing} onCancel={() => setEditing(null)} onChange={setEditing} onSubmit={resubmit} saving={saving} />
+                  ) : (
+                    <ResubmitAction
+                      canEdit={canEditStatus(entry.status)}
+                      onClick={() =>
+                        setEditing({
+                          kind: "entry",
+                          id: entry.id,
+                          courseId: entry.courseId,
+                          title: entry.title,
+                          slug: entry.slug,
+                          content: entry.content,
+                        })
+                      }
+                    />
+                  )}
                   <SubmissionFooter href={entry.status === "published" ? `/wiki/${entry.id}` : ""} updatedAt={entry.updatedAt} />
                 </article>
               ))}
@@ -139,6 +225,22 @@ export default function MyWikiPage() {
                   <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-muted-foreground">{proposal.proposedContent}</p>
                   {proposal.summary ? <p className="mt-2 text-xs text-muted-foreground">{proposal.summary}</p> : null}
                   <ReviewReason value={proposal.reviewReason} />
+                  {editing?.kind === "proposal" && editing.id === proposal.id ? (
+                    <ProposalEditForm editing={editing} onCancel={() => setEditing(null)} onChange={setEditing} onSubmit={resubmit} saving={saving} />
+                  ) : (
+                    <ResubmitAction
+                      canEdit={canEditStatus(proposal.status)}
+                      onClick={() =>
+                        setEditing({
+                          kind: "proposal",
+                          id: proposal.id,
+                          title: proposal.proposedTitle,
+                          content: proposal.proposedContent,
+                          summary: proposal.summary,
+                        })
+                      }
+                    />
+                  )}
                   <SubmissionFooter href={proposal.entryStatus === "published" ? `/wiki/${proposal.entryId}` : ""} updatedAt={proposal.updatedAt} />
                 </article>
               ))}
@@ -148,6 +250,94 @@ export default function MyWikiPage() {
         </div>
       ) : null}
     </SiteShell>
+  );
+}
+
+function ResubmitAction({ canEdit, onClick }: { canEdit: boolean; onClick: () => void }) {
+  if (!canEdit) return null;
+  return (
+    <button className="mt-3 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted" onClick={onClick} type="button">
+      {copy.edit}
+    </button>
+  );
+}
+
+function EntryEditForm({
+  editing,
+  onCancel,
+  onChange,
+  onSubmit,
+  saving,
+}: {
+  editing: Extract<EditingTarget, { kind: "entry" }>;
+  onCancel: () => void;
+  onChange: (next: EditingTarget) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  saving: boolean;
+}) {
+  return (
+    <form className="mt-4 grid gap-3 rounded-2xl border border-border bg-card p-3" onSubmit={onSubmit}>
+      <p className="text-xs text-muted-foreground">{copy.editHint}</p>
+      <label className="grid gap-1 text-sm font-medium">
+        {copy.titleLabel}
+        <input className="rounded-xl border border-border bg-background px-3 py-2 text-sm" maxLength={200} onChange={(event) => onChange({ ...editing, title: event.target.value })} required value={editing.title} />
+      </label>
+      <label className="grid gap-1 text-sm font-medium">
+        {copy.slugLabel}
+        <input className="rounded-xl border border-border bg-background px-3 py-2 text-sm" maxLength={220} onChange={(event) => onChange({ ...editing, slug: event.target.value })} required value={editing.slug} />
+      </label>
+      <label className="grid gap-1 text-sm font-medium">
+        {copy.contentLabel}
+        <textarea className="min-h-32 rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6" maxLength={80000} onChange={(event) => onChange({ ...editing, content: event.target.value })} required value={editing.content} />
+      </label>
+      <FormActions onCancel={onCancel} saving={saving} />
+    </form>
+  );
+}
+
+function ProposalEditForm({
+  editing,
+  onCancel,
+  onChange,
+  onSubmit,
+  saving,
+}: {
+  editing: Extract<EditingTarget, { kind: "proposal" }>;
+  onCancel: () => void;
+  onChange: (next: EditingTarget) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  saving: boolean;
+}) {
+  return (
+    <form className="mt-4 grid gap-3 rounded-2xl border border-border bg-card p-3" onSubmit={onSubmit}>
+      <p className="text-xs text-muted-foreground">{copy.editHint}</p>
+      <label className="grid gap-1 text-sm font-medium">
+        {copy.titleLabel}
+        <input className="rounded-xl border border-border bg-background px-3 py-2 text-sm" maxLength={200} onChange={(event) => onChange({ ...editing, title: event.target.value })} required value={editing.title} />
+      </label>
+      <label className="grid gap-1 text-sm font-medium">
+        {copy.contentLabel}
+        <textarea className="min-h-32 rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6" maxLength={80000} onChange={(event) => onChange({ ...editing, content: event.target.value })} required value={editing.content} />
+      </label>
+      <label className="grid gap-1 text-sm font-medium">
+        {copy.summaryLabel}
+        <textarea className="min-h-20 rounded-xl border border-border bg-background px-3 py-2 text-sm leading-6" maxLength={500} onChange={(event) => onChange({ ...editing, summary: event.target.value })} value={editing.summary} />
+      </label>
+      <FormActions onCancel={onCancel} saving={saving} />
+    </form>
+  );
+}
+
+function FormActions({ onCancel, saving }: { onCancel: () => void; saving: boolean }) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+      <button className="rounded-xl border border-border px-3 py-2 text-sm font-medium hover:bg-muted" disabled={saving} onClick={onCancel} type="button">
+        {copy.cancel}
+      </button>
+      <button className="rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={saving} type="submit">
+        {saving ? copy.saving : copy.save}
+      </button>
+    </div>
   );
 }
 
@@ -207,14 +397,24 @@ function statusLabel(status: string) {
   return statusLabels[status] ?? status;
 }
 
+function canEditStatus(status: string) {
+  return status === "draft" || status === "pending" || status === "needs_changes" || status === "rejected";
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
-async function request<T>(path: string): Promise<Envelope<T>> {
+async function request<T>(path: string, init: RequestInit = {}): Promise<Envelope<T>> {
+  const headers = new Headers(init.headers);
+  if (init.body && !(init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${apiBaseUrl()}${path}`, {
+    ...init,
+    headers,
     credentials: "include",
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
