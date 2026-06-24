@@ -24,6 +24,7 @@ var (
 	ErrUnsafeFilePath     = errors.New("unsafe_manifest_file_path")
 	ErrPackageScope       = errors.New("package_scope_mismatch")
 	ErrUnsupportedVersion = errors.New("unsupported_manifest")
+	errDryRunRollback     = errors.New("material_import_dry_run_rollback")
 )
 
 type ManifestEntry struct {
@@ -57,17 +58,18 @@ type ManifestMaterial struct {
 }
 
 type Result struct {
-	Entries           int `json:"entries"`
-	SchoolsCreated    int `json:"schoolsCreated"`
-	CollegesCreated   int `json:"collegesCreated"`
-	MajorsCreated     int `json:"majorsCreated"`
-	CoursesCreated    int `json:"coursesCreated"`
-	PackagesCreated   int `json:"packagesCreated"`
-	PackagesUpdated   int `json:"packagesUpdated"`
-	MaterialsCreated  int `json:"materialsCreated"`
-	MaterialsUpdated  int `json:"materialsUpdated"`
-	PackageItemsAdded int `json:"packageItemsAdded"`
-	PackageItemsKept  int `json:"packageItemsKept"`
+	DryRun            bool `json:"dryRun"`
+	Entries           int  `json:"entries"`
+	SchoolsCreated    int  `json:"schoolsCreated"`
+	CollegesCreated   int  `json:"collegesCreated"`
+	MajorsCreated     int  `json:"majorsCreated"`
+	CoursesCreated    int  `json:"coursesCreated"`
+	PackagesCreated   int  `json:"packagesCreated"`
+	PackagesUpdated   int  `json:"packagesUpdated"`
+	MaterialsCreated  int  `json:"materialsCreated"`
+	MaterialsUpdated  int  `json:"materialsUpdated"`
+	PackageItemsAdded int  `json:"packageItemsAdded"`
+	PackageItemsKept  int  `json:"packageItemsKept"`
 }
 
 type Importer struct {
@@ -83,6 +85,14 @@ func New(db *gorm.DB, uploadDir string) Importer {
 }
 
 func (i Importer) ImportFile(path string) (Result, error) {
+	return i.importFile(path, false)
+}
+
+func (i Importer) ImportFileDryRun(path string) (Result, error) {
+	return i.importFile(path, true)
+}
+
+func (i Importer) importFile(path string, dryRun bool) (Result, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Result{}, err
@@ -91,14 +101,22 @@ func (i Importer) ImportFile(path string) (Result, error) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return Result{}, err
 	}
-	return i.Import(manifest)
+	return i.importManifest(manifest, dryRun)
 }
 
 func (i Importer) Import(manifest []ManifestEntry) (Result, error) {
+	return i.importManifest(manifest, false)
+}
+
+func (i Importer) ImportDryRun(manifest []ManifestEntry) (Result, error) {
+	return i.importManifest(manifest, true)
+}
+
+func (i Importer) importManifest(manifest []ManifestEntry, dryRun bool) (Result, error) {
 	if len(manifest) == 0 {
 		return Result{}, ErrEmptyManifest
 	}
-	var result Result
+	result := Result{DryRun: dryRun}
 	err := i.db.Transaction(func(tx *gorm.DB) error {
 		worker := Importer{db: tx, uploadDir: i.uploadDir}
 		for index := range manifest {
@@ -106,8 +124,14 @@ func (i Importer) Import(manifest []ManifestEntry) (Result, error) {
 				return err
 			}
 		}
+		if dryRun {
+			return errDryRunRollback
+		}
 		return nil
 	})
+	if dryRun && errors.Is(err, errDryRunRollback) {
+		return result, nil
+	}
 	return result, err
 }
 

@@ -68,6 +68,7 @@
 - Payment incident ledger has been added for rejected WeChat callback anomalies (`order_not_found`, `amount_mismatch`, `transaction_conflict`). Admins can mark incidents `resolved` or `ignored`; this writes operation logs only and never marks orders paid or grants entitlement. Vue Admin Dashboard now surfaces the open incident count as a basic operator prompt, and newly opened incidents can optionally emit a signed best-effort webhook without raw notify payloads.
 - 已实现资料 manifest 导入基础版：
   - `data/material-manifest.example.json` 提供示例。
+  - `go run ./cmd/import-materials -dry-run <manifest.json>` 可预检已经准备好的课程资料，不写入数据库。
   - `go run ./cmd/import-materials <manifest.json>` 可导入已经准备好的课程资料。
   - 导入会 upsert 学校、学院、专业、课程、课程包和资料。
   - 导入会幂等绑定课程包资料 item。
@@ -155,7 +156,7 @@
 | Stage 1：Go API 基础框架 | Gin、配置、PostgreSQL、Redis、GORM、中间件、Health | 完成 | API 服务骨架和基础接口已实现。 |
 | Stage 2：全新数据库 Schema | V2 schema、migration、seed | 部分完成 | migration/model/seed 已有；部分领域业务仍未填满。 |
 | Stage 3：认证与权限 | 邮箱验证码、JWT RS256、角色、冻结、管理/审核/创作者权限 | 部分完成 | 登录、JWT、角色和冻结边界已有；真实邮件发送和生产密钥配置仍是部署工作。 |
-| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest 导入和 manifest-to-paid-download smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
+| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest dry-run 预检、manifest 导入和 manifest-to-paid-download smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、薄弱点已有；复杂评分和练习 session 需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock worker/draft review 已有；真实 LLM/RAG 未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在部分场景使用；会员产品和兑换链路未完整闭环。 |

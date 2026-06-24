@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -12,8 +13,14 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: go run ./cmd/import-materials <manifest.json>")
+	dryRun := flag.Bool("dry-run", false, "validate and report planned changes without writing to the database")
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: go run ./cmd/import-materials [-dry-run] <manifest.json>")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+	if flag.NArg() != 1 {
+		flag.Usage()
 		os.Exit(2)
 	}
 	cfg := config.Load()
@@ -29,7 +36,13 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	result, err := materialimport.New(db, cfg.LocalUploadDir).ImportFile(os.Args[1])
+	importer := materialimport.New(db, cfg.LocalUploadDir)
+	var result materialimport.Result
+	if *dryRun {
+		result, err = importer.ImportFileDryRun(flag.Arg(0))
+	} else {
+		result, err = importer.ImportFile(flag.Arg(0))
+	}
 	if err != nil {
 		log.Fatal(err)
 	}

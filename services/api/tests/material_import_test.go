@@ -93,6 +93,31 @@ func TestMaterialManifestImportCreatesPackageMaterialsAndIsIdempotent(t *testing
 	assertMaterialImportCounts(t, db, 2, 1, 2)
 }
 
+func TestMaterialManifestImportDryRunReportsWithoutPersisting(t *testing.T) {
+	db := newTestDB(t)
+	uploadDir := t.TempDir()
+	writeUploadFile(t, uploadDir, "materials/dry-run/outline.pdf", "dry run outline")
+	manifest := []materialimport.ManifestEntry{manifestEntryWithFile("uploads/materials/dry-run/outline.pdf")}
+
+	result, err := materialimport.New(db, uploadDir).ImportDryRun(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.DryRun || result.Entries != 1 || result.CoursesCreated != 1 || result.PackagesCreated != 1 || result.MaterialsCreated != 1 || result.PackageItemsAdded != 1 {
+		t.Fatalf("unexpected dry-run result: %#v", result)
+	}
+	assertMaterialImportCounts(t, db, 0, 0, 0)
+
+	realResult, err := materialimport.New(db, uploadDir).Import(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if realResult.DryRun || realResult.MaterialsCreated != 1 || realResult.PackageItemsAdded != 1 {
+		t.Fatalf("expected real import after dry-run to create records, got %#v", realResult)
+	}
+	assertMaterialImportCounts(t, db, 1, 1, 1)
+}
+
 func TestMaterialManifestImportRejectsUnsafeAndMissingFiles(t *testing.T) {
 	t.Run("unsafe path rolls back", func(t *testing.T) {
 		db := newTestDB(t)

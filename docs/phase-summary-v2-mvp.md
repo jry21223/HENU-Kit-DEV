@@ -86,6 +86,7 @@
 - 公开课程包详情只返回 published 包与 published 资料，不能泄露 draft / pending / rejected / archived 资料 item。
 - 实现资料 manifest 导入基础版：
   - `data/material-manifest.example.json` 提供示例。
+  - `go run ./cmd/import-materials -dry-run <manifest.json>` 可预检已经准备好的课程资料，不写入数据库。
   - `go run ./cmd/import-materials <manifest.json>` 可导入已经准备好的课程资料。
   - 导入会 upsert 学校、学院、专业、课程、课程包和资料。
   - 导入会幂等绑定课程包资料 item。
@@ -303,7 +304,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 1：Go API 基础框架 | Gin、配置、PostgreSQL、Redis、GORM、中间件、Health | 完成 | API 服务骨架和基础接口已实现，Go tests 可运行。 |
 | Stage 2：全新数据库 Schema | V2 schema、migration、seed | 部分完成 | 迁移、models、seed 已有；部分领域表已有但业务行为仍未全部填满。 |
 | Stage 3：认证与权限 | 邮箱验证码、JWT RS256、角色、冻结、管理员/审核/创作者权限 | 部分完成 | 登录、JWT、角色和冻结边界存在；真实邮件发送和生产密钥配置仍是部署工作。 |
-| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 组织、课程、资料、上传、下载权限、水印、审计、manifest 导入和 manifest-to-paid-download smoke 已实现；真实内测资料导入验收和 OSS/S3 等生产存储仍未完成。 |
+| Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 组织、课程、资料、上传、下载权限、水印、审计、manifest dry-run 预检、manifest 导入和 manifest-to-paid-download smoke 已实现；真实内测资料导入验收和 OSS/S3 等生产存储仍未完成。 |
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、Web 错题本存在；练习 session、复杂评分仍需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review 存在；真实 LLM、RAG、发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在论坛悬赏等场景已使用；会员产品和兑换链路未完整闭环。 |

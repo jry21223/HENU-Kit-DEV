@@ -147,6 +147,7 @@ seed 资料记录使用 `uploads/materials/...` 本地 storage key。真实 PDF 
 
 ```bash
 cd services/api
+go run ./cmd/import-materials -dry-run ../../data/material-manifest.example.json
 go run ./cmd/import-materials ../../data/material-manifest.example.json
 ```
 
