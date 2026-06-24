@@ -296,6 +296,8 @@ export type MembershipPlan = {
   code: string;
   name: string;
   priceFen: number;
+  pointsCost: number;
+  durationDays: number;
   benefits?: unknown;
   status: string;
   createdAt: string;

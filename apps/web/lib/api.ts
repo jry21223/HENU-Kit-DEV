@@ -487,6 +487,8 @@ export type MembershipPlan = {
   code: string;
   name: string;
   priceFen: number;
+  pointsCost: number;
+  durationDays: number;
   benefits?: Record<string, unknown>;
   status: string;
 };

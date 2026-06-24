@@ -143,7 +143,7 @@ cd ../worker && go test ./...
 - Web `/me/relations` 展示当前登录用户自己的关注、粉丝和互关好友列表，支持从服务端执行关注、取消关注和屏蔽；关系列表响应不返回邮箱。
 - Web `/me/notifications` 展示当前用户自己的通知、未读数、逐条已读和全部已读操作。
 - Web `/search` 和 Go API `/api/v1/search` 已提供基础公开搜索，覆盖课程、资料、课程包、Wiki、Blog 和论坛帖子。
-- Web `/me/points` 和 `/me/membership` 已展示当前用户积分、积分流水、有效会员和公开会员套餐；Go API 已支持 admin 查询积分流水、维护积分规则、手动赠送/撤销会员并写操作日志。
+- Web `/me/points` 和 `/me/membership` 已展示当前用户积分、积分流水、有效会员和公开会员套餐；用户可用积分兑换配置了 `pointsCost`/`durationDays` 的会员套餐，服务端会事务性扣分、写积分流水并发放会员；Go API 已支持 admin 查询积分流水、维护积分规则、手动赠送/撤销会员并写操作日志。
 - Vue Admin 已新增 `/points` 和 `/memberships`，用于积分流水查询、积分规则维护、会员手动发放和撤销。
 - `/me/notifications` 用户隔离、已读幂等、全部已读，以及论坛、资料、Wiki、博客、AI 草稿审核通知生成。
 - 举报 API、Web 资料/Wiki/博客/论坛举报入口和 Vue Admin `/reports` 支持登录用户提交公开内容举报、reviewer/admin 处理举报、处理结果通知举报人。
@@ -269,7 +269,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Material, wiki entry/proposal, blog post, and AI draft review creates a `content_review` notification for the original author/editor/task owner in the same transaction as the review update and operation log.
 - Vue Admin Wiki proposal review marks stale proposals and blocks stale approval in the UI; the Go API still enforces the final stale-version rejection.
 - Basic report APIs, Web material/wiki/blog/forum report buttons, and Vue Admin `/reports` are available through `POST /api/v1/reports`, `GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, and `POST /api/v1/admin/reports/:id/reject`; duplicate pending reports are de-duplicated per reporter/target, and handled reports notify the reporter with `report_result`.
-- Payment and membership notifications remain later work.
+- Payment-driven membership purchase, membership expiry reminders, and AI quota spending remain later work.
 - AI draft review is one-way for the MVP: repeat review of approved/rejected drafts is rejected, and review does not publish generated content automatically.
 - Go API writes server-side `operation_logs` for user management, access grants, organization, course, course package and package-item binding, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations; Vue Admin includes a read-only operation-log browser.
 - Operation log export is admin-only, filter-aware, and capped by `OPERATION_LOG_EXPORT_LIMIT`; automatic operation-log deletion is not enabled in the MVP.

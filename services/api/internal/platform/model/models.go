@@ -468,11 +468,13 @@ type Membership struct {
 
 type MembershipPlan struct {
 	BaseModel
-	Code     string         `json:"code" gorm:"size:60;uniqueIndex;not null"`
-	Name     string         `json:"name" gorm:"size:120;not null"`
-	PriceFen int64          `json:"priceFen"`
-	Benefits datatypes.JSON `json:"benefits,omitempty"`
-	Status   string         `json:"status" gorm:"size:32;default:published;index"`
+	Code         string         `json:"code" gorm:"size:60;uniqueIndex;not null"`
+	Name         string         `json:"name" gorm:"size:120;not null"`
+	PriceFen     int64          `json:"priceFen"`
+	PointsCost   int64          `json:"pointsCost" gorm:"default:0"`
+	DurationDays int            `json:"durationDays" gorm:"default:0"`
+	Benefits     datatypes.JSON `json:"benefits,omitempty"`
+	Status       string         `json:"status" gorm:"size:32;default:published;index"`
 }
 
 type AITask struct {

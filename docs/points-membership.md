@@ -18,6 +18,8 @@ This module is now a basic service-side foundation, not a full commercial loop.
   - public, published membership plans only.
 - `GET /api/v1/me/membership`
   - authenticated user's active, non-expired memberships plus a best-effort current plan.
+- `POST /api/v1/membership/redeem`
+  - authenticated, non-frozen users can redeem a published membership plan with positive `pointsCost` and `durationDays`; the request must include a client `requestId` for idempotency.
 - `GET /api/v1/admin/memberships`
 - `POST /api/v1/admin/memberships/grant`
 - `POST /api/v1/admin/memberships/:id/revoke`
@@ -38,6 +40,11 @@ This module is now a basic service-side foundation, not a full commercial loop.
 ## Membership Rules
 
 - Published plans are visible to users.
+- Points redemption is server-side only:
+  - plan must be published and explicitly redeemable with `pointsCost > 0` and `durationDays > 0`
+  - user balance is deducted in the same transaction as membership grant/extension
+  - a `membership_redeem` points log records the deduction, final balance, and membership reference
+  - duplicate `requestId` values return the existing result without charging again
 - Manual admin grant requires:
   - existing user
   - published plan
@@ -48,10 +55,9 @@ This module is now a basic service-side foundation, not a full commercial loop.
 
 ## Not Implemented Yet
 
-- User self-service membership purchase.
+- Payment-backed membership purchase.
 - Points redemption for AI usage, generated papers, or course-package privileges.
-- Membership renewal and upgrade/downgrade logic.
+- Membership upgrade/downgrade policy beyond same-plan points extension.
 - Payment-driven automatic membership activation.
-- Admin UI for points rules and memberships.
 - Membership notifications such as grant, revoke, or expiry reminders.
 - Reusable AI quota/membership entitlement middleware.

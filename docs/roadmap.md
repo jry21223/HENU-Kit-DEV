@@ -113,7 +113,7 @@
 ## Later Deliverables
 
 - AI Worker flows
-- Points and membership
+- Points and membership, including self-service points redemption for redeemable membership plans
 - Wiki creator workflow refinements, rich text editing, and richer revision diff tooling
 - Richer social relationship UX, advanced relation filters, video media, cloud object storage, and production media lifecycle policies
 - Notifications, richer reports, leaderboards

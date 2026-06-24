@@ -17,9 +17,11 @@ import (
 )
 
 const (
-	statusActive  = "active"
-	statusRevoked = "revoked"
-	sourceAdmin   = "manual_admin"
+	statusActive       = "active"
+	statusRevoked      = "revoked"
+	sourceAdmin        = "manual_admin"
+	sourcePointsRedeem = "points_redeem"
+	redeemReason       = "membership_redeem"
 )
 
 type Handler struct {
@@ -40,6 +42,11 @@ type grantRequest struct {
 
 type revokeRequest struct {
 	Reason string `json:"reason"`
+}
+
+type redeemRequest struct {
+	PlanCode  string `json:"planCode"`
+	RequestID string `json:"requestId"`
 }
 
 type membershipRow struct {
@@ -79,6 +86,146 @@ func (h Handler) Me(ctx *gin.Context) {
 	}
 	rows := membershipRows(memberships, nil, plansByCode)
 	response.OK(ctx, gin.H{"memberships": rows, "current": currentMembership(rows)})
+}
+
+func (h Handler) Redeem(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+		return
+	}
+	var req redeemRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_request", nil)
+		return
+	}
+	planCode := strings.TrimSpace(req.PlanCode)
+	requestID := strings.TrimSpace(req.RequestID)
+	if planCode == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "plan_required", nil)
+		return
+	}
+	if requestID == "" {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "request_id_required", nil)
+		return
+	}
+	if len([]rune(requestID)) > 120 {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "request_id_too_long", nil)
+		return
+	}
+
+	idempotencyKey := "membership_redeem:" + user.ID + ":" + requestID
+	var membership model.Membership
+	var plan model.MembershipPlan
+	var pointsBalance int64
+	alreadyRedeemed := false
+
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		var existingLog model.PointsLog
+		err := tx.First(&existingLog, "idempotency_key = ?", idempotencyKey).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil {
+			alreadyRedeemed = true
+			if err := tx.First(&membership, "id = ? AND user_id = ?", existingLog.ReferenceID, user.ID).Error; err != nil {
+				return errString("membership_not_found")
+			}
+			if err := tx.First(&plan, "code = ?", membership.PlanCode).Error; err != nil {
+				return err
+			}
+			pointsBalance = existingLog.BalanceAfter
+			return nil
+		}
+
+		if err := tx.First(&plan, "code = ? AND status = ?", planCode, model.StatusPublished).Error; err != nil {
+			return errString("plan_not_found")
+		}
+		if plan.PointsCost <= 0 || plan.DurationDays <= 0 {
+			return errString("plan_not_redeemable")
+		}
+
+		deduct := tx.Model(&model.User{}).
+			Where("id = ? AND points_balance >= ?", user.ID, plan.PointsCost).
+			UpdateColumn("points_balance", gorm.Expr("points_balance - ?", plan.PointsCost))
+		if deduct.Error != nil {
+			return deduct.Error
+		}
+		if deduct.RowsAffected == 0 {
+			return errString("insufficient_points")
+		}
+
+		var refreshed model.User
+		if err := tx.Select("points_balance").First(&refreshed, "id = ?", user.ID).Error; err != nil {
+			return err
+		}
+		pointsBalance = refreshed.PointsBalance
+
+		now := time.Now()
+		expiresAt := now.AddDate(0, 0, plan.DurationDays)
+		err = tx.Where("user_id = ? AND plan_code = ? AND source = ? AND status = ? AND (expires_at IS NULL OR expires_at > ?)", user.ID, plan.Code, sourcePointsRedeem, statusActive, now).
+			Order("created_at desc").
+			First(&membership).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil {
+			start := now
+			if membership.ExpiresAt != nil && membership.ExpiresAt.After(now) {
+				start = *membership.ExpiresAt
+			}
+			nextExpiresAt := start.AddDate(0, 0, plan.DurationDays)
+			if err := tx.Model(&model.Membership{}).Where("id = ?", membership.ID).Updates(map[string]interface{}{
+				"status":     statusActive,
+				"expires_at": nextExpiresAt,
+			}).Error; err != nil {
+				return err
+			}
+		} else {
+			membership = model.Membership{
+				UserID:    user.ID,
+				PlanCode:  plan.Code,
+				Status:    statusActive,
+				Source:    sourcePointsRedeem,
+				ExpiresAt: &expiresAt,
+			}
+			if err := tx.Create(&membership).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.First(&membership, "id = ?", membership.ID).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&model.PointsLog{
+			UserID:         user.ID,
+			Delta:          -plan.PointsCost,
+			BalanceAfter:   pointsBalance,
+			Reason:         redeemReason,
+			ReferenceType:  "membership",
+			ReferenceID:    membership.ID,
+			IdempotencyKey: idempotencyKey,
+		}).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, "membership.redeemed", "membership", membership.ID, map[string]interface{}{
+			"userId":       user.ID,
+			"planCode":     plan.Code,
+			"pointsCost":   plan.PointsCost,
+			"durationDays": plan.DurationDays,
+			"requestId":    requestID,
+			"expiresAt":    membership.ExpiresAt,
+		})
+	}); err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+
+	response.OK(ctx, gin.H{
+		"membership":      membership,
+		"plan":            plan,
+		"pointsBalance":   pointsBalance,
+		"alreadyRedeemed": alreadyRedeemed,
+	})
 }
 
 func (h Handler) AdminMemberships(ctx *gin.Context) {

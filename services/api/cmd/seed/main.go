@@ -310,8 +310,8 @@ func seedPointsAndMembership(db *gorm.DB, users map[string]model.User) {
 	firstOrCreate(db, &pointsLog, "idempotency_key = ?", pointsLog.IdempotencyKey)
 
 	plans := []model.MembershipPlan{
-		{Code: "tier1", Name: "基础会员", PriceFen: 990, Benefits: jsonData(`{"ai_wrong_analysis":true,"ai_discount":0.8}`), Status: model.StatusPublished},
-		{Code: "tier2", Name: "高级会员", PriceFen: 1990, Benefits: jsonData(`{"ai_chat":true,"ai_papers":true,"ai_wrong_analysis":true}`), Status: model.StatusPublished},
+		{Code: "tier1", Name: "基础会员", PriceFen: 990, PointsCost: 300, DurationDays: 30, Benefits: jsonData(`{"ai_wrong_analysis":true,"ai_discount":0.8}`), Status: model.StatusPublished},
+		{Code: "tier2", Name: "高级会员", PriceFen: 1990, PointsCost: 600, DurationDays: 30, Benefits: jsonData(`{"ai_chat":true,"ai_papers":true,"ai_wrong_analysis":true}`), Status: model.StatusPublished},
 	}
 	for index := range plans {
 		firstOrCreate(db, &plans[index], "code = ?", plans[index].Code)

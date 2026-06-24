@@ -10,7 +10,7 @@
 
 本阶段不是继续大范围扩功能，而是把已经形成的 V2 monorepo、Go API、Web、Admin、Worker、课程资料、课程包、支付权限边界和文档状态收敛清楚。旧版 Next.js + Prisma 只保留在 `legacy/v1-next-prisma` 作为参考，不再作为运行依赖。
 
-当前项目还不能声明为生产上线版本。主要原因是：真实微信商户环境尚未端到端联调，完整 E2E / 移动端截图回归 / 生产部署硬化仍不足，会员积分、真实 AI、搜索排行榜和社交关系模块仍未完全闭环。
+当前项目还不能声明为生产上线版本。主要原因是：真实微信商户环境尚未端到端联调，完整 E2E / 移动端截图回归 / 生产部署硬化仍不足，会员权益/AI 配额、真实 AI 和搜索增强仍未完全闭环。
 
 ## 2. 本阶段完成了什么
 
@@ -135,7 +135,7 @@
 
 - 已有登录、路由守卫、Dashboard、用户管理、积分管理、会员管理、权益授权、课程管理、资料上传、资料状态流转、课程包管理、订单只读查询、下载审计、内容审核、AI draft 审核、举报处理、Analytics 和 Operation logs。
 - 高风险操作由 Go API 服务端鉴权，并写 operation logs。
-- 会员/积分已有基础后台；系统配置、兑换和支付驱动的会员运营后台仍不完整。
+- 会员/积分已有基础后台和用户积分兑换；系统配置、支付驱动的会员运营后台和 AI 配额仍不完整。
 
 ### 2.9 刷题、错题、AI 与内容社区
 
@@ -168,7 +168,7 @@
 | Stage 4：组织架构与课程资料 | 组织/课程 CRUD、资料上传下载、水印、权限 | 部分完成 / 强 MVP | 核心资料链路已可验证；manifest dry-run 预检、manifest 导入、manifest-to-paid-download 测试、API manual-grant smoke 和浏览器 delivery smoke 已完成；真实内测资料导入验收、OSS/S3 与完整运营流程未完成。 |
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、薄弱点已有；复杂评分和练习 session 需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock worker/draft review 已有；真实 LLM/RAG 未完成。 |
-| Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、admin 手动赠送/撤销会员已做；购买、兑换、AI 权益扣减仍未完整闭环。 |
+| Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分流水、用户积分页、admin 积分规则维护、公开会员套餐、用户会员页、用户积分兑换会员、admin 手动赠送/撤销会员已做；支付购买、升级/降级策略和 AI 权益扣减仍未完整闭环。 |
 | Stage 8：支付系统 | 原 plan 写易支付 | 方向调整 / 部分完成 | 已改为微信 Native；mock 下单、mock notify、live 下单、live notify、基础关单、订单过期收敛、risk_flag 可见性、payment incident 人工处理台账、Dashboard 未处理数量提醒和可选 webhook 提醒已有；真实商户 E2E、退款、证书轮换和自动对账未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 | Wiki 公开页、创作者新建词条页、我的 Wiki 投稿页、修订提案、审核、历史和 stale 防护已有；创作者申请 API、学生端申请/状态 UI、Admin 审核闭环和可选浏览器 smoke 已补；富文本编辑和更完整差异查看仍未完成。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog/Forum 基础和审核已有；Moment 与关系系统 Go API 基础已补，Web `/moments` 基础动态流、图片上传/预览、动态图片服务端可见性鉴权、`/users/[id]` 公开用户主页聚合和 `/me/relations` 关系管理已补；视频和云存储仍未完成。 |

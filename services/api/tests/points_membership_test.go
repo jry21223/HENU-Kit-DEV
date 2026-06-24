@@ -89,8 +89,8 @@ func TestMembershipGrantRevokeAndVisibility(t *testing.T) {
 	user := createTestUser(t, db, "member-user@stu.henu.edu.cn", model.RoleUser)
 	admin := createTestUser(t, db, "member-admin@stu.henu.edu.cn", model.RoleAdmin)
 	plans := []model.MembershipPlan{
-		{Code: "tier1", Name: "Tier 1", PriceFen: 990, Benefits: datatypes.JSON([]byte(`{"aiDiscount":true}`)), Status: model.StatusPublished},
-		{Code: "tier2", Name: "Tier 2", PriceFen: 1990, Benefits: datatypes.JSON([]byte(`{"aiFree":true}`)), Status: model.StatusDraft},
+		{Code: "tier1", Name: "Tier 1", PriceFen: 990, PointsCost: 300, DurationDays: 30, Benefits: datatypes.JSON([]byte(`{"aiDiscount":true}`)), Status: model.StatusPublished},
+		{Code: "tier2", Name: "Tier 2", PriceFen: 1990, PointsCost: 600, DurationDays: 30, Benefits: datatypes.JSON([]byte(`{"aiFree":true}`)), Status: model.StatusDraft},
 	}
 	if err := db.Create(&plans).Error; err != nil {
 		t.Fatal(err)
@@ -166,5 +166,144 @@ func TestMembershipGrantRevokeAndVisibility(t *testing.T) {
 	unpublishedPlan := performJSON(router, http.MethodPost, "/api/v1/admin/memberships/grant", `{"userId":"`+user.ID+`","planCode":"tier2"}`, adminToken)
 	if unpublishedPlan.Code != http.StatusBadRequest || !strings.Contains(unpublishedPlan.Body.String(), "plan_not_found") {
 		t.Fatalf("expected unpublished plan rejection, got %d: %s", unpublishedPlan.Code, unpublishedPlan.Body.String())
+	}
+}
+
+func TestMembershipRedeemWithPoints(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	user := createTestUser(t, db, "member-redeem@stu.henu.edu.cn", model.RoleUser)
+	poorUser := createTestUser(t, db, "member-redeem-poor@stu.henu.edu.cn", model.RoleUser)
+	frozenUser := createTestUser(t, db, "member-redeem-frozen@stu.henu.edu.cn", model.RoleUser)
+	plans := []model.MembershipPlan{
+		{Code: "tier1", Name: "Tier 1", PriceFen: 990, PointsCost: 100, DurationDays: 30, Benefits: datatypes.JSON([]byte(`{"aiDiscount":true}`)), Status: model.StatusPublished},
+		{Code: "cash_only", Name: "Cash Only", PriceFen: 1990, PointsCost: 0, DurationDays: 30, Benefits: datatypes.JSON([]byte(`{"aiFree":true}`)), Status: model.StatusPublished},
+		{Code: "draft_plan", Name: "Draft", PriceFen: 1990, PointsCost: 50, DurationDays: 30, Status: model.StatusDraft},
+	}
+	if err := db.Create(&plans).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.User{}).Where("id = ?", user.ID).Update("points_balance", 150).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.User{}).Where("id = ?", poorUser.ID).Update("points_balance", 20).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.User{}).Where("id = ?", frozenUser.ID).Updates(map[string]interface{}{"points_balance": 200, "status": "frozen"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	unauthorized := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"tier1","requestId":"redeem-1"}`, "")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated redeem 401, got %d: %s", unauthorized.Code, unauthorized.Body.String())
+	}
+
+	userToken := loginTestUser(t, router, user.Email)
+	missingRequestID := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"tier1"}`, userToken)
+	if missingRequestID.Code != http.StatusBadRequest || !strings.Contains(missingRequestID.Body.String(), "request_id_required") {
+		t.Fatalf("expected request id required, got %d: %s", missingRequestID.Code, missingRequestID.Body.String())
+	}
+	cashOnly := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"cash_only","requestId":"cash-only"}`, userToken)
+	if cashOnly.Code != http.StatusBadRequest || !strings.Contains(cashOnly.Body.String(), "plan_not_redeemable") {
+		t.Fatalf("expected cash-only plan not redeemable, got %d: %s", cashOnly.Code, cashOnly.Body.String())
+	}
+	draftPlan := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"draft_plan","requestId":"draft"}`, userToken)
+	if draftPlan.Code != http.StatusBadRequest || !strings.Contains(draftPlan.Body.String(), "plan_not_found") {
+		t.Fatalf("expected draft plan not found, got %d: %s", draftPlan.Code, draftPlan.Body.String())
+	}
+
+	poorToken := loginTestUser(t, router, poorUser.Email)
+	insufficient := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"tier1","requestId":"poor"}`, poorToken)
+	if insufficient.Code != http.StatusBadRequest || !strings.Contains(insufficient.Body.String(), "insufficient_points") {
+		t.Fatalf("expected insufficient points, got %d: %s", insufficient.Code, insufficient.Body.String())
+	}
+
+	frozenToken := loginTestUser(t, router, frozenUser.Email)
+	frozen := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"tier1","requestId":"frozen"}`, frozenToken)
+	if frozen.Code != http.StatusForbidden || !strings.Contains(frozen.Body.String(), "user_frozen") {
+		t.Fatalf("expected frozen user redeem 403, got %d: %s", frozen.Code, frozen.Body.String())
+	}
+
+	redeem := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"tier1","requestId":"redeem-1"}`, userToken)
+	if redeem.Code != http.StatusOK {
+		t.Fatalf("expected points redeem 200, got %d: %s", redeem.Code, redeem.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			Membership      model.Membership     `json:"membership"`
+			Plan            model.MembershipPlan `json:"plan"`
+			PointsBalance   int64                `json:"pointsBalance"`
+			AlreadyRedeemed bool                 `json:"alreadyRedeemed"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(redeem.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.AlreadyRedeemed || payload.Data.PointsBalance != 50 || payload.Data.Membership.UserID != user.ID || payload.Data.Membership.PlanCode != "tier1" || payload.Data.Membership.Source != "points_redeem" || payload.Data.Membership.ExpiresAt == nil {
+		t.Fatalf("unexpected redeem payload: %#v", payload.Data)
+	}
+	var refreshed model.User
+	if err := db.First(&refreshed, "id = ?", user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.PointsBalance != 50 {
+		t.Fatalf("expected points balance 50 after redeem, got %d", refreshed.PointsBalance)
+	}
+	var logCount int64
+	if err := db.Model(&model.PointsLog{}).Where("user_id = ? AND delta = ? AND balance_after = ? AND reason = ? AND reference_type = ? AND reference_id = ?", user.ID, -100, 50, "membership_redeem", "membership", payload.Data.Membership.ID).Count(&logCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if logCount != 1 {
+		t.Fatalf("expected one membership redeem points log, got %d", logCount)
+	}
+	if countOperationLogs(t, db, "membership.redeemed", "membership", payload.Data.Membership.ID, user.ID) != 1 {
+		t.Fatal("expected membership redeem audit log")
+	}
+	me := performJSON(router, http.MethodGet, "/api/v1/me/membership", "", userToken)
+	if me.Code != http.StatusOK || !strings.Contains(me.Body.String(), payload.Data.Membership.ID) || !strings.Contains(me.Body.String(), `"current"`) {
+		t.Fatalf("expected redeemed membership in user view, got %d: %s", me.Code, me.Body.String())
+	}
+
+	duplicate := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"tier1","requestId":"redeem-1"}`, userToken)
+	if duplicate.Code != http.StatusOK || !strings.Contains(duplicate.Body.String(), `"alreadyRedeemed":true`) || !strings.Contains(duplicate.Body.String(), `"pointsBalance":50`) {
+		t.Fatalf("expected duplicate request id to be idempotent, got %d: %s", duplicate.Code, duplicate.Body.String())
+	}
+	var duplicateLogCount int64
+	if err := db.Model(&model.PointsLog{}).Where("user_id = ? AND reason = ? AND reference_id = ?", user.ID, "membership_redeem", payload.Data.Membership.ID).Count(&duplicateLogCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if duplicateLogCount != 1 {
+		t.Fatalf("expected duplicate redeem not to create another points log, got %d", duplicateLogCount)
+	}
+
+	firstExpiresAt := payload.Data.Membership.ExpiresAt
+	if firstExpiresAt == nil {
+		t.Fatal("expected first redeemed membership to have an expiry")
+	}
+	if err := db.Model(&model.User{}).Where("id = ?", user.ID).Update("points_balance", 150).Error; err != nil {
+		t.Fatal(err)
+	}
+	secondRedeem := performJSON(router, http.MethodPost, "/api/v1/membership/redeem", `{"planCode":"tier1","requestId":"redeem-2"}`, userToken)
+	if secondRedeem.Code != http.StatusOK {
+		t.Fatalf("expected second redeem to extend membership, got %d: %s", secondRedeem.Code, secondRedeem.Body.String())
+	}
+	var secondPayload struct {
+		Data struct {
+			Membership    model.Membership `json:"membership"`
+			PointsBalance int64            `json:"pointsBalance"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(secondRedeem.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatal(err)
+	}
+	if secondPayload.Data.Membership.ID != payload.Data.Membership.ID || secondPayload.Data.PointsBalance != 50 || secondPayload.Data.Membership.ExpiresAt == nil || !secondPayload.Data.Membership.ExpiresAt.After(*firstExpiresAt) {
+		t.Fatalf("expected second redeem to extend same membership and deduct points, got %#v", secondPayload.Data)
+	}
+	var finalLogCount int64
+	if err := db.Model(&model.PointsLog{}).Where("user_id = ? AND reason = ? AND reference_id = ?", user.ID, "membership_redeem", payload.Data.Membership.ID).Count(&finalLogCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if finalLogCount != 2 {
+		t.Fatalf("expected second redeem to create one more points log, got %d", finalLogCount)
 	}
 }

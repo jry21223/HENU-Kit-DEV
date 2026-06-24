@@ -49,6 +49,8 @@ Current access-control notes:
 - `wrong_questions` uses a unique user/question pair so repeated wrong answers increment `wrong_count` instead of creating duplicate rows.
 - `wiki_edit_proposals` stores proposed edits to published wiki entries with `base_version`, review fields, and proposed title/content; approval updates the live entry and writes `wiki_edit_histories` only when the live entry version still matches.
 - `forum_posts.reward_points` and `forum_posts.reward_status` track reward-post escrow and settlement state; reward submission, rejection, and best-answer settlement are mirrored by idempotent `points_logs` rows.
+- `membership_plans.points_cost` and `membership_plans.duration_days` define whether a published plan is redeemable with points. Plans with zero values are visible but cannot be redeemed through `/membership/redeem`.
+- Points-based membership redemption deducts `users.points_balance`, creates a `points_logs` row with `reason=membership_redeem`, and creates or extends a `memberships.source=points_redeem` row in one transaction. The points-log idempotency key is built from the user id and client `requestId`.
 - `forum_replies.is_best` marks the selected best answer; application logic allows only one best answer per published post.
 - `media_assets` stores uploaded dynamic images with owner, usage, storage key, file metadata, status, and optional `moment_id`. Moment image URLs expose only `/api/v1/moments/images/{mediaId}`; raw storage keys are not serialized.
 - Unattached `media_assets` are owner-only previews. After a moment is created, the API binds uploaded assets to the moment and image reads reuse the same public/mutual-friends/block visibility checks as the moment itself.

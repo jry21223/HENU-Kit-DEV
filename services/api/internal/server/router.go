@@ -128,6 +128,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/packages", packageHandler.List)
 	v1.GET("/packages/:id", packageHandler.Detail)
 	v1.GET("/membership/plans", memberHandler.Plans)
+	v1.POST("/membership/redeem", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), memberHandler.Redeem)
 	v1.POST("/orders", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), orderHandler.Create)
 	v1.GET("/orders/:id", authMiddleware.RequireAuth(), orderHandler.Detail)
 	v1.GET("/orders/:id/status", authMiddleware.RequireAuth(), orderHandler.Status)

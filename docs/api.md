@@ -38,6 +38,7 @@ Currently implemented endpoints:
 - `GET /api/v1/packages?courseId=&schoolId=&majorId=&grade=`
 - `GET /api/v1/packages/:id`
 - `GET /api/v1/membership/plans`
+- `POST /api/v1/membership/redeem`
 - `POST /api/v1/orders`
 - `GET /api/v1/orders/:id`
 - `GET /api/v1/orders/:id/status`
@@ -209,7 +210,7 @@ Error envelope:
 }
 ```
 
-Later stages add membership purchase/redeem, richer wiki conflict resolution, expanded admin APIs, and more notification sources.
+Later stages add payment-backed membership purchase, richer wiki conflict resolution, expanded admin APIs, and more notification sources.
 
 Implemented authentication behavior:
 
@@ -420,9 +421,10 @@ Points and membership:
 - Admin points rules can be created and updated; those operations write operation logs.
 - Public membership plans return only `published` plans.
 - `GET /me/membership` returns only active, non-expired memberships for the authenticated user and a best-effort `current` membership.
+- `POST /membership/redeem` requires an authenticated non-frozen user, a published plan with positive `pointsCost` and `durationDays`, and a client `requestId`; it deducts points, creates a `membership_redeem` points log, grants or extends a `points_redeem` membership, and treats duplicate `requestId` values as idempotent.
 - Admin membership grant requires an existing user and a published plan. Re-granting the same active manual membership updates it instead of creating unlimited duplicates.
 - Admin membership revoke marks the membership `revoked`, expires it immediately, and writes an operation log.
-- Membership purchase, payment activation, point redemption, and AI quota spending remain later work.
+- Payment-backed membership purchase, membership expiry notifications, and AI quota spending remain later work.
 
 Implemented report behavior:
 

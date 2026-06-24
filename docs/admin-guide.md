@@ -78,7 +78,7 @@ Important boundaries:
 - Grants require an existing user and a published membership plan.
 - Re-granting the same active manual membership updates the existing record instead of creating unlimited duplicates.
 - Revoking a membership marks it `revoked`, expires it immediately, and writes an operation log.
-- User self-service purchase, renewal, point redemption, and AI quota spending are not implemented yet.
+- User self-service points redemption is implemented through `/api/v1/membership/redeem`; payment-backed purchase, upgrade/downgrade policy, expiry notifications, and AI quota spending are not implemented yet.
 
 ## Access Grants
 
@@ -477,7 +477,7 @@ Important boundaries:
 ## Planned Areas
 
 - Richer content review
-- Membership purchase/redeem and AI quota spending
+- Payment-backed membership purchase, expiry notifications, and AI quota spending
 - Orders
 - Order risk flags are visible and filterable for payment triage. This is read-only visibility; admins still cannot mark payment success or grant entitlements from the order browser.
 - Payment reconciliation
