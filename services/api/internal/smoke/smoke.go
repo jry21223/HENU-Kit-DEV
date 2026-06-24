@@ -14,15 +14,19 @@ import (
 )
 
 type Config struct {
-	BaseURL          string
-	Email            string
-	Code             string
-	Name             string
-	PackageID        string
-	SkipLogin        bool
-	CreateOrder      bool
-	ExpectPaidDenied bool
-	Timeout          time.Duration
+	BaseURL            string
+	Email              string
+	Code               string
+	Name               string
+	AdminEmail         string
+	AdminCode          string
+	AdminName          string
+	PackageID          string
+	SkipLogin          bool
+	CreateOrder        bool
+	ExpectPaidDenied   bool
+	GrantPackageAccess bool
+	Timeout            time.Duration
 }
 
 type Result struct {
@@ -82,6 +86,12 @@ type loginData struct {
 	AccessToken string `json:"accessToken"`
 }
 
+type userData struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
 type orderData struct {
 	Order        *order `json:"order"`
 	AlreadyOwned bool   `json:"alreadyOwned"`
@@ -113,6 +123,9 @@ func NewRunner(cfg Config) (Runner, error) {
 	}
 	if cfg.Name == "" {
 		cfg.Name = "Smoke Tester"
+	}
+	if cfg.AdminName == "" {
+		cfg.AdminName = "Smoke Admin"
 	}
 	return Runner{cfg: cfg, client: &http.Client{Timeout: cfg.Timeout}}, nil
 }
@@ -189,19 +202,18 @@ func (r Runner) Run(ctx context.Context) Result {
 	result.add("paid material presence", "passed", status, paidMaterialID)
 
 	token := ""
+	userID := ""
 	if !r.cfg.SkipLogin {
-		token, err = r.login(ctx)
+		token, err = r.login(ctx, r.cfg.Email, r.cfg.Code, r.cfg.Name)
 		if err != nil {
 			return fail("email login", 0, err)
 		}
 		result.add("email login", "passed", http.StatusOK, r.cfg.Email)
-		status, _, err = r.request(ctx, http.MethodGet, "/auth/me", nil, token)
-		if err != nil || status != http.StatusOK {
-			if err == nil {
-				err = fmt.Errorf("unexpected auth/me status %d", status)
-			}
+		user, status, err := r.currentUser(ctx, token)
+		if err != nil {
 			return fail("auth me", status, err)
 		}
+		userID = user.ID
 		result.add("auth me", "passed", status, "current user returned")
 	}
 
@@ -236,12 +248,36 @@ func (r Runner) Run(ctx context.Context) Result {
 		result.add("order status", "passed", status, orderStatus)
 	}
 
+	if r.cfg.GrantPackageAccess {
+		if token == "" || userID == "" {
+			return fail("manual package grant", 0, errors.New("grant-package-access requires smoke user login"))
+		}
+		if strings.TrimSpace(r.cfg.AdminEmail) == "" {
+			return fail("manual package grant", 0, errors.New("admin email is required for grant-package-access"))
+		}
+		adminToken, err := r.login(ctx, r.cfg.AdminEmail, r.cfg.AdminCode, r.cfg.AdminName)
+		if err != nil {
+			return fail("admin login", 0, err)
+		}
+		result.add("admin login", "passed", http.StatusOK, r.cfg.AdminEmail)
+		status, err := r.grantPackageAccess(ctx, userID, packageID, adminToken)
+		if err != nil {
+			return fail("manual package grant", status, err)
+		}
+		result.add("manual package grant", "passed", status, "admin granted selected package to smoke user")
+		status, bodySize, err := r.download(ctx, paidMaterialID, token)
+		if err != nil {
+			return fail("paid download after grant", status, err)
+		}
+		result.add("paid download after grant", "passed", status, fmt.Sprintf("%d byte(s)", bodySize))
+	}
+
 	result.DurationMillis = time.Since(started).Milliseconds()
 	return result
 }
 
-func (r Runner) login(ctx context.Context) (string, error) {
-	email := strings.TrimSpace(r.cfg.Email)
+func (r Runner) login(ctx context.Context, email string, code string, name string) (string, error) {
+	email = strings.TrimSpace(email)
 	if email == "" {
 		return "", errors.New("email is required unless -skip-login is set")
 	}
@@ -253,7 +289,7 @@ func (r Runner) login(ctx context.Context) (string, error) {
 		}
 		return "", err
 	}
-	code := strings.TrimSpace(r.cfg.Code)
+	code = strings.TrimSpace(code)
 	if code == "" {
 		var sendData struct {
 			DevCode string `json:"devCode"`
@@ -264,7 +300,7 @@ func (r Runner) login(ctx context.Context) (string, error) {
 	if code == "" {
 		return "", errors.New("verification code is required; pass -code for non-development environments")
 	}
-	loginBody := map[string]string{"email": email, "code": code, "name": r.cfg.Name}
+	loginBody := map[string]string{"email": email, "code": code, "name": name}
 	status, loginRaw, err := r.request(ctx, http.MethodPost, "/auth/login", loginBody, "")
 	if err != nil || status != http.StatusOK {
 		if err == nil {
@@ -280,6 +316,24 @@ func (r Runner) login(ctx context.Context) (string, error) {
 		return "", errors.New("login response did not include accessToken")
 	}
 	return login.AccessToken, nil
+}
+
+func (r Runner) currentUser(ctx context.Context, token string) (userData, int, error) {
+	status, raw, err := r.request(ctx, http.MethodGet, "/auth/me", nil, token)
+	if err != nil || status != http.StatusOK {
+		if err == nil {
+			err = fmt.Errorf("unexpected auth/me status %d: %s", status, raw.Message)
+		}
+		return userData{}, status, err
+	}
+	var user userData
+	if err := json.Unmarshal(raw.Data, &user); err != nil {
+		return userData{}, status, err
+	}
+	if strings.TrimSpace(user.ID) == "" {
+		return userData{}, status, errors.New("auth/me response did not include user id")
+	}
+	return user, status, nil
 }
 
 func (r Runner) createOrder(ctx context.Context, packageID string, token string) (string, int, error) {
@@ -326,6 +380,44 @@ func (r Runner) orderStatus(ctx context.Context, orderID string, token string) (
 		return status, "", errors.New("order status response missing status")
 	}
 	return status, data.Status, nil
+}
+
+func (r Runner) grantPackageAccess(ctx context.Context, userID string, packageID string, adminToken string) (int, error) {
+	body := map[string]string{"userId": userID, "packageId": packageID}
+	status, raw, err := r.request(ctx, http.MethodPost, "/admin/access-grants", body, adminToken)
+	if err != nil || status != http.StatusOK {
+		if err == nil {
+			err = fmt.Errorf("unexpected access grant status %d: %s", status, raw.Message)
+		}
+		return status, err
+	}
+	return status, nil
+}
+
+func (r Runner) download(ctx context.Context, materialID string, token string) (int, int64, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.cfg.BaseURL+"/materials/"+materialID+"/download", nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := r.client.Do(req)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer res.Body.Close()
+	bodySize, err := io.Copy(io.Discard, io.LimitReader(res.Body, 20<<20))
+	if err != nil {
+		return res.StatusCode, bodySize, err
+	}
+	if res.StatusCode != http.StatusOK {
+		return res.StatusCode, bodySize, fmt.Errorf("expected paid download 200 after grant, got %d", res.StatusCode)
+	}
+	if bodySize <= 0 {
+		return res.StatusCode, bodySize, errors.New("download response was empty")
+	}
+	return res.StatusCode, bodySize, nil
 }
 
 func (r Runner) request(ctx context.Context, method string, path string, body interface{}, token string) (int, envelope, error) {

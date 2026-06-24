@@ -73,3 +73,12 @@ go run ./cmd/smoke -base-url http://localhost:8080/api/v1 -email smoke@stu.henu.
 ```
 
 This checks readiness, public catalog/package safety, login, paid-download denial before entitlement, and optional pending-order creation. See `docs/internal-smoke.md` for production/internal-test usage.
+
+To verify manual internal delivery after importing mounted course files, run the smoke with admin access-grant verification:
+
+```bash
+cd services/api
+go run ./cmd/smoke -base-url http://localhost:8080/api/v1 -email smoke-manual@stu.henu.edu.cn -code 123456 -admin-email admin@example.com -admin-code 123456 -grant-package-access
+```
+
+This first checks that the paid package material is denied before entitlement, then uses the admin-only access-grant API, then verifies the paid download succeeds. It is an internal delivery smoke only; real paid orders must still be unlocked by the trusted WeChat notify/payment confirmation path.
