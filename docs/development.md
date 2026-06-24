@@ -230,6 +230,22 @@ npm --workspace @final-review/web run test:e2e:forum-reply-review
 
 This Playwright smoke creates a unique pending Forum post, approves that setup post through the Go API, creates a pending reply, verifies the public Forum detail omits the reply before review, opens Vue Admin `/forum-reply-reviews`, approves the reply through the Admin UI, and verifies the reply is then visible on the public API and Web Forum detail page. It is opt-in because it mutates forum post/reply rows, notifications, and operation logs. Set `E2E_FORUM_BOARD_ID` when the target environment has multiple boards and you need a specific published board.
 
+Admin AI draft-review smoke:
+
+```bash
+$env:E2E_AI_DRAFT_REVIEW_SMOKE="1"
+$env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+$env:E2E_AI_DRAFT_REVIEW_STUDENT_EMAIL="smoke-ai@stu.henu.edu.cn"
+$env:E2E_AI_DRAFT_REVIEW_STUDENT_CODE="123456"
+$env:E2E_ADMIN_EMAIL="admin@example.com"
+$env:E2E_ADMIN_CODE="123456"
+$env:E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS="60"
+npm --workspace @final-review/web run test:e2e:ai-draft-review
+```
+
+This Playwright smoke requires the API and worker to be running. It creates a real AI task through the Go API, waits for the worker to create a pending AI draft, opens Vue Admin `/ai/drafts`, approves the draft through the Admin UI, and verifies the draft becomes `approved` without a `publishedId`. It is opt-in because it mutates AI task/draft rows, notifications, AI usage logs, and operation logs. Use `LLM_MODE=mock` for this smoke until real LLM credentials are configured.
+
 Mobile public-page smoke:
 
 ```bash

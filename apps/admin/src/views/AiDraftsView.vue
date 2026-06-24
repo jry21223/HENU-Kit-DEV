@@ -55,6 +55,7 @@
                 plain
                 :disabled="!canReview(row.status)"
                 :loading="reviewingId === row.id"
+                :data-testid="`ai-draft-review-approve-${row.id}`"
                 @click="openReviewDialog(row, 'approve')"
               >
                 {{ copy.approve }}
@@ -65,6 +66,7 @@
                 plain
                 :disabled="!canReview(row.status)"
                 :loading="reviewingId === row.id"
+                :data-testid="`ai-draft-review-reject-${row.id}`"
                 @click="openReviewDialog(row, 'reject')"
               >
                 {{ copy.reject }}
@@ -94,6 +96,7 @@
         <el-button
           :type="reviewAction === 'approve' ? 'success' : 'danger'"
           :loading="Boolean(reviewingId)"
+          data-testid="ai-draft-review-submit"
           @click="submitReview"
         >
           {{ reviewAction === "approve" ? copy.approve : copy.reject }}
