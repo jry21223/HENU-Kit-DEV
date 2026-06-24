@@ -123,6 +123,17 @@ npm --workspace @final-review/web run test:e2e:mock-payment
 
 The API process must run with `WECHAT_PAY_MODE=mock` and the same fake `WECHAT_PAY_API_V3_KEY`. This smoke opens the real Web package page, creates a pending order, verifies the QR panel, sends a signed mock notify through the backend payment endpoint, refreshes the read-only order status, and confirms the paid material download is unlocked. It is not a live merchant E2E check.
 
+Leaderboards smoke:
+
+```bash
+$env:E2E_LEADERBOARDS_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+npm --workspace @final-review/web run test:e2e:leaderboards
+```
+
+This read-only Playwright smoke checks the public leaderboard APIs, verifies response bodies do not contain email addresses, and opens the Web `/leaderboards` page.
+
 Quiz wrong-question smoke:
 
 ```bash

@@ -7,6 +7,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
     brand: "\u8f6f\u4ef6\u5b66\u9662\u8d44\u6599\u5e93",
     courses: "\u8bfe\u7a0b\u8d44\u6599",
     search: "\u641c\u7d22",
+    leaderboards: "\u699c\u5355",
     wiki: "Wiki",
     blog: "Blog",
     forum: "\u8ba8\u8bba",
@@ -34,6 +35,9 @@ export function SiteShell({ children }: { children: ReactNode }) {
               </Link>
               <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/search">
                 {copy.search}
+              </Link>
+              <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/leaderboards">
+                {copy.leaderboards}
               </Link>
               <Link className="min-w-0 rounded-lg px-1.5 py-2 text-center hover:bg-muted hover:text-foreground sm:px-3" href="/wiki">
                 {copy.wiki}

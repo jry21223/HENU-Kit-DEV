@@ -15,6 +15,9 @@ Currently implemented endpoints:
 - `GET /api/v1/readyz`
 - `GET /api/v1/version`
 - `GET /api/v1/search?q=&limit=`
+- `GET /api/v1/leaderboards/wiki?limit=`
+- `GET /api/v1/leaderboards/quiz?limit=`
+- `GET /api/v1/leaderboards/overall?limit=`
 - `POST /api/v1/auth/send-code`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
@@ -167,6 +170,15 @@ Search:
 - Results are grouped into `courses`, `materials`, `packages`, `wiki`, `blog`, and `forum`.
 - Only public/published content is returned. Draft, pending, rejected, archived, and private content is excluded.
 - Material search responses do not expose `storageKey`.
+
+Leaderboards:
+
+- `GET /api/v1/leaderboards/wiki?limit=` returns all-time public Wiki contribution rankings.
+- `GET /api/v1/leaderboards/quiz?limit=` returns all-time quiz practice rankings based on submitted answer score and correctness aggregates.
+- `GET /api/v1/leaderboards/overall?limit=` returns a conservative all-time score from points, published Wiki contributions, and correct quiz answers.
+- `limit` defaults to 10 and is capped at 50.
+- Responses include only `userId`, display `name`, `role`, `score`, rank, and aggregate metrics. They do not expose email, answers, review fields, or internal content.
+- The first version uses live aggregates. Scheduled `leaderboard_snapshots`, weekly periods, and anti-gaming controls remain future hardening work.
 
 Response envelope:
 

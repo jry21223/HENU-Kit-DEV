@@ -244,3 +244,9 @@ V2 已从纯骨架推进到可本地验证的强 MVP：课程资料、下载权�
 - Added browser-level coverage for multiple-choice answer sets and fill-blank free-text submissions through `npm --workspace @final-review/web run test:e2e:quiz-multi-type`.
 - Updated the Web quiz card so multiple-choice can keep multiple selected labels, true/false questions render buttons, and fill-blank/short-answer questions expose a stable free-text input hook.
 - This closes the immediate "more quiz types need smoke coverage" gap, but it is still not a complete quiz regression suite; exercise sessions, weakness reporting, short-answer grading, and mobile screenshot regression remain separate hardening work.
+## Addendum: 2026-06-24 Leaderboards MVP
+
+- Implemented public all-time leaderboards for Wiki contribution, quiz practice, and overall learning score.
+- Added Web `/leaderboards` and API endpoints `GET /api/v1/leaderboards/wiki`, `GET /api/v1/leaderboards/quiz`, and `GET /api/v1/leaderboards/overall`.
+- The implementation returns only public aggregate user display data and does not expose emails, answers, review fields, or internal content.
+- Remaining leaderboard work: scheduled `leaderboard_snapshots`, weekly/monthly periods, anti-gaming controls, richer admin operations, and browser smoke coverage.

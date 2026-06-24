@@ -90,6 +90,19 @@ The API must run with `WECHAT_PAY_MODE=mock` and `WECHAT_PAY_API_V3_KEY` equal t
 
 Do not run this against production. It is a browser-level development/test harness for the backend payment boundary and is not proof that live WeChat merchant collection is ready.
 
+## Leaderboards Browser Smoke
+
+After Web and API are reachable, run the read-only leaderboards smoke from the repository root:
+
+```bash
+$env:E2E_LEADERBOARDS_SMOKE="1"
+$env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
+$env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
+npm --workspace @final-review/web run test:e2e:leaderboards
+```
+
+This smoke checks the public Wiki, quiz, and overall leaderboard APIs, verifies the API response body does not contain email addresses, and opens the real Web `/leaderboards` page. It is read-only and should be safe for internal staging checks.
+
 ## Quiz Wrong-Question Browser Smoke
 
 After Web and API are reachable, run the quiz smoke from the repository root:
@@ -276,6 +289,7 @@ This smoke creates a real AI task through the Go API, waits for the worker to pr
 - Optional `-mock-wechat-pay`: development/test only; creates/reuses an order, requests mock Native payment, sends signed mock notify, verifies `paid` order status, entitlement, and paid download
 - Optional `-grant-package-access`: logs in as admin, grants the selected published package to the smoke user, and verifies paid download succeeds after the server-side grant
 - Optional browser smoke: validates the Web/Admin UI path around the same server-side paid boundary
+- Optional leaderboards browser smoke: validates public leaderboard APIs and Web page without mutating data
 - Optional browser mock-payment smoke: validates the Web QR path plus signed backend mock notify, paid status, entitlement, and paid download in development/test
 - Optional quiz browser smoke: validates the authenticated quiz submission to wrong-question-book path
 - Optional quiz multi-type browser smoke: validates multiple-choice answer sets and fill-blank free-text submission through the Web quiz page
@@ -322,6 +336,7 @@ SMOKE_SKIP_LOGIN=false
 SMOKE_EXPECT_PAID_DENIED=true
 SMOKE_TIMEOUT_SECONDS=15
 E2E_DELIVERY_SMOKE=0
+E2E_LEADERBOARDS_SMOKE=0
 E2E_MOCK_PAYMENT_SMOKE=0
 E2E_MOCK_PAYMENT_SECRET=
 E2E_WEB_BASE_URL=http://127.0.0.1:3000
@@ -453,67 +468,73 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
    npm --workspace @final-review/web run test:e2e:mock-payment
    ```
 
-11. Run quiz wrong-question smoke with Web/API base URLs and a fresh test account:
+11. Run leaderboards smoke with Web/API base URLs:
+
+   ```bash
+   npm --workspace @final-review/web run test:e2e:leaderboards
+   ```
+
+12. Run quiz wrong-question smoke with Web/API base URLs and a fresh test account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:quiz
    ```
 
-12. Run quiz multi-type smoke with Web/API base URLs and seed data or explicit question/answer overrides:
+13. Run quiz multi-type smoke with Web/API base URLs and seed data or explicit question/answer overrides:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:quiz-multi-type
    ```
 
-13. Run admin material-review smoke with Web/Admin/API base URLs and an admin reviewer account:
+14. Run admin material-review smoke with Web/Admin/API base URLs and an admin reviewer account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:material-review
    ```
 
-14. Run admin blog-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+15. Run admin blog-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:review
    ```
 
-15. Run admin wiki-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
+16. Run admin wiki-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:wiki-review
    ```
 
-16. Run admin wiki-proposal-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
+17. Run admin wiki-proposal-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:wiki-proposal-review
    ```
 
-17. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+18. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:forum-review
    ```
 
-18. Run admin forum-reply-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+19. Run admin forum-reply-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:forum-reply-review
    ```
 
-19. Run admin report-review smoke with Web/Admin/API base URLs and fresh author/reporter/admin test accounts:
+20. Run admin report-review smoke with Web/Admin/API base URLs and fresh author/reporter/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:report-review
    ```
 
-20. Run admin AI draft-review smoke with API/Admin/Worker reachable, mock LLM mode, and fresh student/admin test accounts:
+21. Run admin AI draft-review smoke with API/Admin/Worker reachable, mock LLM mode, and fresh student/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:ai-draft-review
    ```
 
-21. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
+22. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
 
 ## Failure Handling
 
@@ -530,6 +551,7 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
 - `manual package grant` fails with 401/403: confirm the admin account exists, is active, and has `admin` or `super_admin` role.
 - `paid download after grant` fails: inspect `/access-grants`, `/packages/:id`, and package item bindings; the selected package must be published and contain the paid material returned by package detail.
 - Browser smoke opens but skips: set `E2E_DELIVERY_SMOKE=1`. It is opt-in because it creates or reuses an access grant.
+- Leaderboards smoke opens but skips: set `E2E_LEADERBOARDS_SMOKE=1`. It is read-only and should not mutate data.
 - Quiz smoke opens but skips: set `E2E_QUIZ_SMOKE=1`. It is opt-in because it writes wrong-question records.
 - Quiz multi-type smoke opens but skips: set `E2E_QUIZ_MULTI_TYPE_SMOKE=1`. If the environment does not use seed data, set the explicit multi-choice/fill-blank question IDs and answers.
 - Quiz multi-type smoke cannot resolve a fill-blank answer: set `E2E_QUIZ_FREE_TEXT_ANSWER` for the target question; the smoke intentionally does not read hidden answers from public question APIs.

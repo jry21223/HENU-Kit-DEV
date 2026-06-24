@@ -411,6 +411,22 @@ export type SearchResponse = {
   total: number;
 };
 
+export type LeaderboardEntry = {
+  rank: number;
+  userId: string;
+  name: string;
+  role: string;
+  score: number;
+  metrics: Record<string, number | string | undefined>;
+};
+
+export type LeaderboardResponse = {
+  type: "wiki" | "quiz" | "overall";
+  period: string;
+  generatedAt: string;
+  entries: LeaderboardEntry[];
+};
+
 export type PointsLog = {
   id: string;
   userId: string;

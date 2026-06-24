@@ -497,3 +497,9 @@ git diff --check
 当前仓库已经不是纯骨架，V2 MVP 的核心技术路径已经形成：Go API 作为唯一业务后端，Web/Admin 作为前端入口，Worker 处理异步任务，课程资料、刷题、审核、举报、通知、课程包和支付 mock 联调边界都已有可验证基础。
 
 但当前仍不能声明为生产可上线版本。最大缺口是微信 Native 真实商户端到端联调、关单验证、退款/告警等支付运维硬化，其次是完整 E2E、会员/积分、真实 AI、搜索/排行榜/社交关系和生产部署硬化。
+## Addendum: 2026-06-24 Leaderboards MVP
+
+- Implemented public all-time leaderboards for Wiki contribution, quiz practice, and overall learning score.
+- Added Web `/leaderboards` and API endpoints `GET /api/v1/leaderboards/wiki`, `GET /api/v1/leaderboards/quiz`, and `GET /api/v1/leaderboards/overall`.
+- The implementation returns only public aggregate user display data and does not expose emails, answers, review fields, or internal content.
+- Remaining leaderboard work: scheduled `leaderboard_snapshots`, weekly/monthly periods, anti-gaming controls, richer admin operations, and browser smoke coverage.

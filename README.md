@@ -96,6 +96,7 @@ See `docs/deployment.md` before using this for any paid internal test. The examp
 - Mock WeChat payment smoke: `go run ./cmd/smoke -mock-wechat-pay -mock-wechat-secret <local-fake-secret>` in development/test only; the API must run with `WECHAT_PAY_MODE=mock` and the same fake `WECHAT_PAY_API_V3_KEY`. It signs a mock notify, verifies backend `paid` status, entitlement, and paid download. It is not a real merchant E2E check.
 - Browser mock-payment smoke: `npm --workspace @final-review/web run test:e2e:mock-payment` with `E2E_MOCK_PAYMENT_SMOKE=1` verifies the Web package QR flow and signed backend mock notify unlock path in development/test only.
 - Browser delivery smoke: `npm --workspace @final-review/web run test:e2e:delivery` with `E2E_DELIVERY_SMOKE=1` opens Web/Admin, verifies paid denial before entitlement, creates an admin package grant, and verifies paid download after the grant.
+- Leaderboards smoke: `npm --workspace @final-review/web run test:e2e:leaderboards` with `E2E_LEADERBOARDS_SMOKE=1` verifies public leaderboard APIs and Web `/leaderboards` without mutating data.
 - Quiz wrong-question smoke: `npm --workspace @final-review/web run test:e2e:quiz` with `E2E_QUIZ_SMOKE=1` logs in through Web, submits an intentionally wrong answer, verifies Go API wrong-question persistence, and checks `/me/wrong-questions`.
 - Quiz multi-type smoke: `npm --workspace @final-review/web run test:e2e:quiz-multi-type` with `E2E_QUIZ_MULTI_TYPE_SMOKE=1` verifies browser submission for multiple-choice answer sets and fill-blank free-text answers without exposing answers through public question APIs.
 - Admin material-review smoke: `npm --workspace @final-review/web run test:e2e:material-review` with `E2E_MATERIAL_REVIEW_SMOKE=1` creates a pending material, approves it through Vue Admin, verifies public API/Web visibility only after review, and checks public material responses hide storage/review metadata.
@@ -277,3 +278,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Web `/me` also reads `GET /api/v1/me/entitlements` to show active direct material grants, published course package grants, and unlocked material counts for the current user.
 - Web `/me/forum` reads and patches `GET/PATCH /api/v1/me/forum-posts` and `GET/PATCH /api/v1/me/forum-replies` with httpOnly-cookie credentials to show and resubmit the current user's discussion review state.
 - Web `/me/notifications` reads and patches notification read state with httpOnly-cookie credentials.
+## Addendum: Leaderboards MVP
+
+- Public `/leaderboards` and `GET /api/v1/leaderboards/{wiki,quiz,overall}` are implemented as live aggregate MVP leaderboards.
+- Scheduled snapshots, weekly periods, and anti-gaming controls are still future hardening work.

@@ -19,6 +19,7 @@ import (
 	"final-review-platform/services/api/internal/entitlement"
 	"final-review-platform/services/api/internal/forum"
 	"final-review-platform/services/api/internal/health"
+	"final-review-platform/services/api/internal/leaderboard"
 	"final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/member"
 	"final-review-platform/services/api/internal/moment"
@@ -61,6 +62,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	}))
 
 	healthHandler := health.NewHandler(cfg, db, cache)
+	leaderboardHandler := leaderboard.NewHandler(db)
 	tokenManager, err := auth.NewTokenManager(cfg)
 	if err != nil {
 		panic(err)
@@ -103,6 +105,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 		})
 	})
 	v1.GET("/search", searchHandler.Query)
+	v1.GET("/leaderboards/wiki", leaderboardHandler.Wiki)
+	v1.GET("/leaderboards/quiz", leaderboardHandler.Quiz)
+	v1.GET("/leaderboards/overall", leaderboardHandler.Overall)
 	v1.POST("/auth/send-code", authHandler.SendCode)
 	v1.POST("/auth/login", authHandler.Login)
 	v1.POST("/auth/refresh", authHandler.Refresh)
