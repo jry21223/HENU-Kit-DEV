@@ -75,12 +75,14 @@
   - 导入会幂等绑定课程包资料 item。
   - 文件必须真实存在并位于 `LOCAL_UPLOAD_DIR` 内。
   - 路径穿越和缺失文件会拒绝并回滚事务。
+  - UTF-8 BOM manifest 可以正常导入，避免 Windows 工具写出的 JSON 被误拒。
 - 已补自动化 manifest delivery smoke：
   - 测试夹具通过 importer 导入临时挂载文件。
   - 通过 HTTP API 验证公开课程包详情不泄露 storage key。
   - 验证 free、login_required、paid 未授权拒绝、课程包授权解锁 paid 和下载日志。
   - 外部 `cmd/smoke` 支持 `-grant-package-access`，可在目标环境用 fresh student/admin 测试账号验证“未授权 paid 403 -> admin 手动课程包授权 -> paid 下载 200”的内测交付链路。
   - Web workspace 新增 Playwright browser delivery smoke，可打开真实 Web/Admin 会话验证同一条手动交付路径。
+  - 已用本地临时 Postgres、临时 `LOCAL_UPLOAD_DIR` 和临时 paid `.txt` 课程包跑通一次 browser delivery smoke；这证明测试脚本和服务链路可执行，但不替代真实 PDF 内测资料验收。
   - 真实内测资料仍需要在目标环境挂载后单独跑导入和下载验收。
 
 ### 2.6 微信 Native 支付硬化

@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -128,6 +129,31 @@ func TestMaterialManifestImportDryRunReportsWithoutPersisting(t *testing.T) {
 		t.Fatalf("expected real import after dry-run to create records, got %#v", realResult)
 	}
 	assertMaterialImportCounts(t, db, 1, 1, 1)
+}
+
+func TestMaterialManifestImportFileAcceptsUTF8BOM(t *testing.T) {
+	db := newTestDB(t)
+	uploadDir := t.TempDir()
+	writeUploadFile(t, uploadDir, "materials/bom/outline.txt", "bom outline")
+	manifest := []materialimport.ManifestEntry{manifestEntryWithFile("uploads/materials/bom/outline.txt")}
+	payload, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	payload = append([]byte{0xEF, 0xBB, 0xBF}, payload...)
+	if err := os.WriteFile(manifestPath, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := materialimport.New(db, uploadDir).ImportFileDryRun(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.DryRun || result.Report.FilesChecked != 1 || result.MaterialsCreated != 1 {
+		t.Fatalf("unexpected UTF-8 BOM dry-run result: %#v", result)
+	}
+	assertMaterialImportCounts(t, db, 0, 0, 0)
 }
 
 func TestMaterialManifestImportRejectsUnsafeAndMissingFiles(t *testing.T) {

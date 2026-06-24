@@ -1,6 +1,7 @@
 package materialimport
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -131,6 +132,7 @@ func (i Importer) importFile(path string, dryRun bool) (Result, error) {
 		return Result{}, err
 	}
 	var manifest []ManifestEntry
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return Result{}, err
 	}

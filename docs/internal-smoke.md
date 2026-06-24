@@ -132,6 +132,8 @@ E2E_PACKAGE_ID=
    go run ./cmd/import-materials -dry-run ../../data/material-manifest.example.json
    ```
 
+   UTF-8 manifests with a BOM are accepted, so JSON files saved by Windows tooling should not fail solely because of byte-order marks.
+
 4. Run real material import only after the report matches expected package/material counts.
 
 5. Run API smoke with a fresh student test email:

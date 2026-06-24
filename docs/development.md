@@ -45,7 +45,7 @@ go run ./cmd/import-materials -dry-run ../../data/material-manifest.example.json
 go run ./cmd/import-materials ../../data/material-manifest.example.json
 ```
 
-The importer is safe to run repeatedly. It upserts schools, colleges, majors, courses, packages, and materials, then idempotently binds imported materials to the course package. File paths in the manifest must resolve inside `LOCAL_UPLOAD_DIR`; missing files and traversal attempts fail the import transaction.
+The importer is safe to run repeatedly. It upserts schools, colleges, majors, courses, packages, and materials, then idempotently binds imported materials to the course package. File paths in the manifest must resolve inside `LOCAL_UPLOAD_DIR`; missing files and traversal attempts fail the import transaction. UTF-8 JSON manifests with a byte-order mark are accepted because Windows tooling may write BOM-prefixed files.
 
 Use `-dry-run` before importing real internal materials. Dry-run mode executes the same validation, upsert, package-bind, and report path inside a rolled-back transaction, returns `"dryRun": true`, and reports the planned create/update/bind counts without persisting rows.
 
