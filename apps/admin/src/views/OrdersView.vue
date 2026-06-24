@@ -80,6 +80,11 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column :label="copy.expiresAt" min-width="180">
+          <template #default="{ row }">
+            {{ row.order.expiresAt ? formatDate(row.order.expiresAt) : "-" }}
+          </template>
+        </el-table-column>
         <el-table-column :label="copy.createdAt" min-width="180">
           <template #default="{ row }">
             {{ formatDate(row.order.createdAt) }}
@@ -119,6 +124,7 @@ const copy = {
   entitlement: "\u6743\u76ca",
   granted: "\u5df2\u6709\u6743\u76ca",
   notGranted: "\u672a\u53d1\u653e",
+  expiresAt: "\u8fc7\u671f\u65f6\u95f4",
   createdAt: "\u521b\u5efa\u65f6\u95f4",
   loadFailed: "\u8ba2\u5355\u52a0\u8f7d\u5931\u8d25",
 };

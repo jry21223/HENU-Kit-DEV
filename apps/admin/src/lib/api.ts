@@ -137,6 +137,7 @@ export type Order = {
   amountTotal: number;
   currency: string;
   paidAt?: string;
+  expiresAt?: string;
   riskFlag?: string;
   metadata?: unknown;
   createdAt: string;

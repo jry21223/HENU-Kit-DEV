@@ -64,6 +64,7 @@
 - Live WeChat Native order creation signs the request with the merchant private key and verifies the signed WeChat response before storing `code_url`
 - Live WeChat official notify handler verifies callback signatures, decrypts AES-256-GCM resources, validates appid/mchid and amount, marks successful orders paid, and idempotently grants package entitlements
 - WeChat Native close-order endpoint for pending/paying orders, with owner/admin authorization and local `closed` status handling
+- Server-side WeChat Native expiry convergence for stale pending/paying orders, preventing expired QR orders from payment creation or duplicate-order reuse
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations
 - Demo seed command
 - Go Worker skeleton

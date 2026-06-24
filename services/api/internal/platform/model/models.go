@@ -207,6 +207,7 @@ type Order struct {
 	AmountTotal     int64          `json:"amountTotal" gorm:"not null"`
 	Currency        string         `json:"currency" gorm:"size:8;default:CNY"`
 	PaidAt          *time.Time     `json:"paidAt,omitempty"`
+	ExpiresAt       *time.Time     `json:"expiresAt,omitempty" gorm:"index"`
 	RiskFlag        string         `json:"riskFlag" gorm:"size:120"`
 	Metadata        datatypes.JSON `json:"metadata,omitempty"`
 }

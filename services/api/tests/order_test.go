@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -124,6 +125,57 @@ func TestCoursePackageOrderRejectsDraftAndSkipsOwnedPackage(t *testing.T) {
 	}
 	if countOrders(t, db, user.ID, publishedPackage.ID) != 0 {
 		t.Fatal("expected already-owned package not to create an order")
+	}
+}
+
+func TestCoursePackageOrderExpiresStaleOrderBeforeStatusAndReuse(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	coursePackage := createTestPackage(t, db, course, "expired-order-package", model.StatusPublished)
+	user := createTestUser(t, db, "expired-order-buyer@stu.henu.edu.cn", model.RoleUser)
+	token := loginTestUser(t, router, user.Email)
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	staleOrder := model.Order{
+		UserID:          user.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "STALEORDER001",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPaying,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+		ExpiresAt:       &expiredAt,
+	}
+	if err := db.Create(&staleOrder).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	status := performJSON(router, http.MethodGet, "/api/v1/orders/"+staleOrder.ID+"/status", "", token)
+	if status.Code != http.StatusOK {
+		t.Fatalf("expected stale order status 200, got %d: %s", status.Code, status.Body.String())
+	}
+	if !strings.Contains(status.Body.String(), `"status":"expired"`) || !strings.Contains(status.Body.String(), `"expiresAt"`) {
+		t.Fatalf("expected status query to expire stale order, got %s", status.Body.String())
+	}
+	var stored model.Order
+	if err := db.First(&stored, "id = ?", staleOrder.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != model.OrderExpired {
+		t.Fatalf("expected stored order expired after status query, got %s", stored.Status)
+	}
+
+	created := performJSON(router, http.MethodPost, "/api/v1/orders", `{"packageId":"`+coursePackage.ID+`"}`, token)
+	if created.Code != http.StatusOK {
+		t.Fatalf("expected new order after stale expiry 200, got %d: %s", created.Code, created.Body.String())
+	}
+	if strings.Contains(created.Body.String(), `"alreadyPending":true`) || strings.Contains(created.Body.String(), staleOrder.ID) {
+		t.Fatalf("expected stale expired order not to be reused, got %s", created.Body.String())
+	}
+	if countOrders(t, db, user.ID, coursePackage.ID) != 2 {
+		t.Fatal("expected new order row after stale order expired")
 	}
 }
 

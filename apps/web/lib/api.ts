@@ -159,6 +159,7 @@ export type Order = {
   amountTotal: number;
   currency: string;
   paidAt?: string;
+  expiresAt?: string;
   riskFlag?: string;
 };
 
@@ -180,6 +181,7 @@ export type OrderStatus = {
   productId: string;
   amountTotal: number;
   currency: string;
+  expiresAt?: string;
   packageTitle?: string;
 };
 

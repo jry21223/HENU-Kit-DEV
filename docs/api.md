@@ -207,7 +207,8 @@ Implemented order foundation:
 - `POST /api/v1/orders` currently supports `packageId` for published course packages
 - the server reads price, currency, and title from `course_packages`; client-submitted amount/provider fields are ignored
 - created orders use `productType=course_package`, `paymentProvider=wechat_native`, and `status=pending`
-- repeat order creation for the same user/package reuses the latest pending WeChat Native order instead of creating duplicate rows
+- repeat order creation for the same user/package reuses the latest unexpired pending/paying WeChat Native order instead of creating duplicate rows
+- stale pending/paying WeChat Native orders with `expires_at <= now` are marked `expired` before status reads, duplicate-order reuse checks, Native payment creation, and admin order listing
 - users who already have an active package grant receive `alreadyOwned=true`; no new order is created
 - `GET /api/v1/orders/:id` and `GET /api/v1/orders/:id/status` are user-scoped; admins may inspect all orders
 - order status is read-only and does not grant entitlement; paid access still requires a package/material grant created by a trusted server-side flow
@@ -217,12 +218,13 @@ Implemented WeChat Native payment boundary:
 
 - `POST /api/v1/payments/wechat/native` accepts `orderId` and requires the logged-in, non-frozen order owner
 - only `pending` or `paying` `wechat_native` orders with positive integer-cent amounts can create a Native payment request
-- development/test `WECHAT_PAY_MODE=mock` returns a mock `weixin://wxpay/mock/...` `codeUrl`, stores transient Native metadata, and moves the local order to `status=paying`
+- development/test `WECHAT_PAY_MODE=mock` returns a mock `weixin://wxpay/mock/...` `codeUrl`, stores transient Native metadata plus `orders.expires_at`, and moves the local order to `status=paying`
 - development/test `POST /api/v1/payments/wechat/notify` accepts mock callback JSON signed with `X-WeChat-Mock-Signature = hmac_sha256(WECHAT_PAY_API_V3_KEY, raw_body)`; this is only a local test harness, not the real WeChat callback verifier
 - mock notify rejects missing/invalid signatures, missing mock secret, unknown orders, and amount mismatches without granting entitlement
 - a successful mock notify changes the matching order to `paid`, records a `payment_records` row, and creates one idempotent package grant with `source=order`
 - live mode builds a signed WeChat Native `POST /v3/pay/transactions/native` request using the merchant private key, sends integer-cent server-side package pricing, requires a matching platform certificate/public key for response signature verification, and stores the returned `code_url` only after the signed response verifies
 - `POST /api/v1/payments/wechat/close` accepts `orderId`, requires the logged-in non-frozen order owner or an admin/super_admin, closes only `pending`/`paying` WeChat Native orders, and updates local status to `closed`; closed orders are not reused by new package order creation
+- expired WeChat Native orders cannot create another code URL or be closed through the user close endpoint; users should create a new order for a fresh QR code
 - live close for `paying` orders calls WeChat Pay `POST /v3/pay/transactions/out-trade-no/{out_trade_no}/close` before changing the local status
 - live `POST /api/v1/payments/wechat/notify` verifies the WeChat callback signature against the configured platform certificate/public key, decrypts the AES-256-GCM `resource`, checks appid/mchid, validates `out_trade_no` and integer-cent amount against the local order, records a payment record, and idempotently grants the package entitlement on `SUCCESS`
 - production rejects `WECHAT_PAY_MODE=mock` with `wechat_mock_forbidden_in_production`

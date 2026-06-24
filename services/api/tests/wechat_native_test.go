@@ -90,6 +90,9 @@ func TestWeChatNativeMockCreatesPayingOrder(t *testing.T) {
 	if stored.PaidAt != nil {
 		t.Fatal("native code URL creation must not mark order paid")
 	}
+	if stored.ExpiresAt == nil || !stored.ExpiresAt.After(time.Now().UTC()) {
+		t.Fatalf("expected native payment to persist a future expiresAt, got %v", stored.ExpiresAt)
+	}
 	if stored.Metadata == nil || !strings.Contains(string(stored.Metadata), "wechatNative") {
 		t.Fatalf("expected native metadata to be persisted, got %s", string(stored.Metadata))
 	}
@@ -147,6 +150,48 @@ func TestWeChatNativeRejectsUnpayableOrders(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), "order_not_payable") {
 		t.Fatalf("expected order_not_payable, got %s", response.Body.String())
+	}
+}
+
+func TestWeChatNativeRejectsAndExpiresStalePayingOrder(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	coursePackage := createTestPackage(t, db, course, "wechat-expired-package", model.StatusPublished)
+	user := createTestUser(t, db, "wechat-expired-buyer@stu.henu.edu.cn", model.RoleUser)
+	token := loginTestUser(t, router, user.Email)
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	order := model.Order{
+		UserID:          user.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "EXPIREDPAY001",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPaying,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+		ExpiresAt:       &expiredAt,
+	}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	response := performJSON(router, http.MethodPost, "/api/v1/payments/wechat/native", `{"orderId":"`+order.ID+`"}`, token)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "order_not_payable") || !strings.Contains(response.Body.String(), `"status":"expired"`) {
+		t.Fatalf("expected expired order native create rejection, got %d: %s", response.Code, response.Body.String())
+	}
+	var stored model.Order
+	if err := db.First(&stored, "id = ?", order.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != model.OrderExpired || stored.PaidAt != nil {
+		t.Fatalf("expected stale order to be marked expired without payment, got status=%s paidAt=%v", stored.Status, stored.PaidAt)
+	}
+
+	closeResponse := performJSON(router, http.MethodPost, "/api/v1/payments/wechat/close", `{"orderId":"`+order.ID+`"}`, token)
+	if closeResponse.Code != http.StatusConflict || !strings.Contains(closeResponse.Body.String(), "order_not_closable") || !strings.Contains(closeResponse.Body.String(), `"status":"expired"`) {
+		t.Fatalf("expected expired order close rejection, got %d: %s", closeResponse.Code, closeResponse.Body.String())
 	}
 }
 

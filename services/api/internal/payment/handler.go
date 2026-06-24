@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/orderstate"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/response"
@@ -110,6 +111,10 @@ func (h Handler) WeChatNative(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsupported_payment_provider", nil)
 		return
 	}
+	if _, err := orderstate.ExpireOrderIfNeeded(h.db, &order, time.Now()); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
 	if order.Status != model.OrderPending && order.Status != model.OrderPaying {
 		response.Error(ctx, http.StatusConflict, response.CodeConflict, "order_not_payable", gin.H{"status": order.Status})
 		return
@@ -199,6 +204,10 @@ func (h Handler) WeChatClose(ctx *gin.Context) {
 	}
 	if order.PaymentProvider != providerWeChatNative {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsupported_payment_provider", nil)
+		return
+	}
+	if _, err := orderstate.ExpireOrderIfNeeded(h.db, &order, time.Now()); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
 	if order.Status != model.OrderPending && order.Status != model.OrderPaying {
@@ -357,8 +366,9 @@ func (h Handler) markOrderPaying(orderID string, codeURL string, expiresAt time.
 	return h.db.Model(&model.Order{}).
 		Where("id = ? AND status IN ?", orderID, []string{model.OrderPending, model.OrderPaying}).
 		Updates(map[string]interface{}{
-			"status":   model.OrderPaying,
-			"metadata": datatypes.JSON(metadata),
+			"status":     model.OrderPaying,
+			"expires_at": expiresAt.UTC(),
+			"metadata":   datatypes.JSON(metadata),
 		}).Error
 }
 

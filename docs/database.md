@@ -35,6 +35,7 @@ Current access-control notes:
 - `material_access_grants.package_id` unlocks paid materials included through `course_package_items` when the package is published and the grant has not expired.
 - `course_packages.status` controls public package visibility. Only `published` packages should be returned by public package list/detail APIs; admin package APIs may list `draft`, `published`, and `archived`.
 - `course_packages.price_fen` stores price as an integer number of cents. Application code should avoid floating-point yuan values for order or package pricing.
+- `orders.expires_at` stores the current WeChat Native QR/order expiry boundary. The API marks stale pending/paying WeChat orders as `expired` before reuse, status, payment-create, and admin-order reads.
 - `course_package_items` is the package-to-resource binding table. The current product scope should use `resource_type=material`; future resource types need explicit service-layer allowlists before becoming public.
 - Package-item rows may reference unpublished materials for admin staging, but public package detail must filter both the returned material list and the returned item list to published materials only. Returning a raw item id for a draft/pending/rejected/archived material is treated as metadata leakage.
 - Active duplicate package-item bindings for the same package/resource pair should be prevented by service logic and, where possible, a uniqueness constraint. Removing a package item should remove the relation only and must not delete the material row.

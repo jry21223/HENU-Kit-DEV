@@ -134,6 +134,10 @@
   - paid/closed 订单不能关闭。
   - closed 订单不会被后续课程包下单复用。
   - live paying 订单会先调用微信关单接口，再更新本地状态；真实商户环境仍未做端到端验证。
+- 微信 Native 订单过期收敛已接入：
+  - Native 下单会写入 `orders.expires_at`。
+  - 状态查询、重复下单复用、Native 支付创建和 admin 订单列表会先把过期 pending/paying 订单置为 `expired`。
+  - expired 订单不能继续拉起二维码，不能通过 close 接口关闭，也不会被新课程包订单复用。
 - Web 课程包详情页现在可以：
   - 创建或复用待支付课程包订单。
   - 调用 Native 下单接口获取服务端返回的 `codeUrl`。
@@ -296,7 +300,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 5：刷题系统 | 多题型、提交、错题本、薄弱点 | 部分完成 | 基础题型、提交、错题、Web 错题本存在；练习 session、复杂评分仍需增强。 |
 | Stage 6：AI 基础设施与 Worker | Redis Streams、LLM、AI task、draft review | 部分完成 | mock task、worker、draft review 存在；真实 LLM、RAG、发布流未完成。 |
 | Stage 7：积分与会员 | 积分流水、规则、会员、兑换、权益 | 部分完成 | 积分在论坛悬赏等场景已使用；会员产品和兑换链路未完整闭环。 |
-| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、带请求签名/响应验签的 live Native 下单代码路径、live 官方 notify 验签/解密/金额校验/幂等授权代码路径，以及基础关单接口；真实微信商户端到端联调、退款、证书轮换和支付告警未完成。 |
+| Stage 8：支付系统 | 原文为易支付，后续改为微信 Native | 方向调整 / 部分完成 | 易支付不是当前目标。已做微信 Native mock 下单、Web 二维码、只读轮询、开发/测试 mock notify 支付成功、幂等授权闭环、带请求签名/响应验签的 live Native 下单代码路径、live 官方 notify 验签/解密/金额校验/幂等授权代码路径、基础关单接口和订单过期收敛；真实微信商户端到端联调、退款、证书轮换和支付告警未完成。 |
 | Stage 9：Wiki 共创体系 | 创作者申请、Wiki、协作编辑、历史、审核 | 部分完成 / 强 MVP | Wiki 公开页、修订提案、审核、历史、stale 防护已做；创作者申请流未完整完成。 |
 | Stage 10：博客、动态、帖子区 | Blog、Moment、Forum、关系系统 | 部分完成 | Blog、Forum 基础和审核已做；Moment、关系系统、用户主页未做。 |
 | Stage 11：通知、举报、搜索、排行榜 | 通知、举报、搜索、排行榜 | 部分完成 | 通知、举报、Admin 处理已做；搜索和排行榜未做。 |
@@ -326,6 +330,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 - AI 生成内容只进入 draft/review，不自动发布。
 - 微信 Native mock 下单不会发放权益；只有带 HMAC 的开发/测试 mock notify 可以把订单置为 paid 并幂等发放课程包 entitlement。
 - 微信 Native 关单只允许 pending/paying -> closed，不能关闭 paid 订单或撤销已发放权益。
+- 微信 Native 过期 pending/paying 订单会被服务端置为 expired，不能继续拉起支付、不能关闭、不能被重复下单复用。
 - Web 二维码只是展示层，支付成功和解锁必须以后端为准。
 
 ## 6. 本阶段验证命令

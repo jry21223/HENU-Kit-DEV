@@ -22,6 +22,7 @@ import (
 	"final-review-platform/services/api/internal/audit"
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/notification"
+	"final-review-platform/services/api/internal/orderstate"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -428,6 +429,10 @@ func (h Handler) RevokeAccessGrant(ctx *gin.Context) {
 }
 
 func (h Handler) ListOrders(ctx *gin.Context) {
+	if err := orderstate.ExpireAllStale(h.db, time.Now()); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
 	query := h.db.Model(&model.Order{})
 	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
 		if !validOrderStatus(status) {

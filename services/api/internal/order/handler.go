@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/auth"
+	"final-review-platform/services/api/internal/orderstate"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -51,6 +52,7 @@ type orderStatus struct {
 	ProductID          string     `json:"productId"`
 	AmountTotal        int64      `json:"amountTotal"`
 	Currency           string     `json:"currency"`
+	ExpiresAt          *time.Time `json:"expiresAt,omitempty"`
 	PackageTitle       string     `json:"packageTitle,omitempty"`
 }
 
@@ -83,6 +85,10 @@ func (h Handler) Create(ctx *gin.Context) {
 			"entitlementGranted": true,
 			"package":            coursePackage,
 		})
+		return
+	}
+	if err := orderstate.ExpireStalePackageOrders(h.db, user.ID, productTypeCoursePackage, coursePackage.ID, paymentProviderWechat, time.Now().UTC()); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
 	if existing, ok, err := h.latestPendingOrder(user.ID, coursePackage.ID); err != nil {
@@ -158,6 +164,7 @@ func (h Handler) Status(ctx *gin.Context) {
 		ProductID:          order.ProductID,
 		AmountTotal:        order.AmountTotal,
 		Currency:           order.Currency,
+		ExpiresAt:          order.ExpiresAt,
 	}
 	if coursePackage != nil {
 		status.PackageTitle = coursePackage.Title
@@ -175,6 +182,10 @@ func (h Handler) readOrderForUser(ctx *gin.Context, user *model.User) (model.Ord
 		response.Error(ctx, http.StatusForbidden, response.CodeForbidden, "forbidden", nil)
 		return model.Order{}, nil, false
 	}
+	if _, err := orderstate.ExpireOrderIfNeeded(h.db, &order, time.Now().UTC()); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return model.Order{}, nil, false
+	}
 	var coursePackage *model.CoursePackage
 	if order.ProductType == productTypeCoursePackage {
 		var row model.CoursePackage
@@ -188,6 +199,7 @@ func (h Handler) readOrderForUser(ctx *gin.Context, user *model.User) (model.Ord
 func (h Handler) latestPendingOrder(userID string, packageID string) (model.Order, bool, error) {
 	var existing model.Order
 	err := h.db.Where("user_id = ? AND product_type = ? AND product_id = ? AND payment_provider = ? AND status IN ?", userID, productTypeCoursePackage, packageID, paymentProviderWechat, []string{model.OrderPending, model.OrderPaying}).
+		Where("expires_at IS NULL OR expires_at > ?", time.Now().UTC()).
 		Order("created_at desc").
 		First(&existing).Error
 	if err == nil {
