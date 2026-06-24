@@ -393,6 +393,12 @@ git diff --check
 - `CORS_ALLOWED_ORIGINS=*` is rejected, and production startup now requires exact HTTPS origins.
 - TLS termination, reverse-proxy deployment, monitoring, and backup operations are still deployment work and remain release-gate items.
 
+### 7.3 2026-06-24 Production Preflight Update
+
+- Go API now includes `go run ./cmd/preflight -env-file ../../.env.production` as a production configuration release gate.
+- The preflight checks `APP_ENV=production`, safe CORS origins, `AUTO_MIGRATE=false`, empty fixed verification code, non-placeholder database/Redis values, parseable JWT keys, WeChat Native live config, HTTPS notify URL, mounted platform certs/key paths, and upload directory availability.
+- The command is a configuration guard only; it does not replace real WeChat merchant E2E, real material import acceptance, browser delivery smoke, or infrastructure monitoring.
+
 ## 8. 下一阶段建议
 
 最小下一步建议按这个顺序推进：

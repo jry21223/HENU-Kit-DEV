@@ -26,6 +26,7 @@
 
 - Gin/GORM API 服务骨架已经可运行。
 - 已实现配置读取、PostgreSQL/GORM、Redis 基础连接、统一响应、统一错误、中间件、CORS、Recover、请求日志、基础限流、安全响应头和生产 CORS 配置校验。
+- 新增 `go run ./cmd/preflight -env-file ../../.env.production` 生产配置预检，用于上线前检查 `APP_ENV`、CORS、自动迁移、固定验证码、数据库/Redis 占位符、JWT key、微信 Native live 配置、notify URL、证书/私钥路径和上传目录。
 - 已实现 health/version 接口。
 - 已建立 V2 SQL migration 与 GORM model 基础。
 - Seed 可以生成演示学校、学院、专业、课程、资料、课程包、题目、社区内容、AI mock task 和演示账号。

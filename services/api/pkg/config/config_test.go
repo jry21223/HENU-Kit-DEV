@@ -49,3 +49,22 @@ func TestValidateHTTPConfigAcceptsExactProductionHTTPSOrigins(t *testing.T) {
 		t.Fatalf("expected valid production CORS origins, got %v", err)
 	}
 }
+
+func TestLoadAllowsEmptyProductionFixedVerificationCode(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DEV_FIXED_VERIFICATION_CODE", "")
+
+	cfg := Load()
+	if cfg.DevFixedCode != "" {
+		t.Fatalf("expected empty fixed code in production, got %q", cfg.DevFixedCode)
+	}
+}
+
+func TestLoadDefaultsDevelopmentFixedVerificationCode(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+
+	cfg := Load()
+	if cfg.DevFixedCode != "123456" {
+		t.Fatalf("expected development fixed code fallback, got %q", cfg.DevFixedCode)
+	}
+}

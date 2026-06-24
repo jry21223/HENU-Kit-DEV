@@ -16,6 +16,7 @@ This project is still in internal-test hardening. The production files in this r
 - `docker-compose.prod.example.yml`: production-like Compose stack without real secrets.
 - `.env.production.example`: copy to `.env.production` and replace every placeholder.
 - `infra/nginx/final-review.conf.example`: two-domain HTTPS reverse-proxy template.
+- `services/api/cmd/preflight`: production configuration preflight for API, JWT, CORS, WeChat Pay, and mounted secret/file paths.
 - `scripts/ops/backup-postgres.sh`: creates a custom-format PostgreSQL dump.
 - `scripts/ops/restore-postgres.sh`: restores a dump, guarded by `CONFIRM_RESTORE=yes`.
 - `scripts/ops/healthcheck.sh`: checks API readiness plus Web and Admin endpoints; optionally checks Worker readiness when `WORKER_READY_URL` is set.
@@ -62,6 +63,7 @@ cp .env.production.example .env.production
 # edit .env.production and replace every example domain/password/key value
 
 docker compose --env-file .env.production -f docker-compose.prod.example.yml config --quiet
+cd services/api && go run ./cmd/preflight -env-file ../../.env.production
 docker compose --env-file .env.production -f docker-compose.prod.example.yml build
 docker compose --env-file .env.production -f docker-compose.prod.example.yml up -d
 ```
@@ -136,6 +138,7 @@ The template currently sets HTTPS redirect, HSTS, CSP, frame denial, content-typ
 Before opening paid sales, verify all items below:
 
 - `docker compose --env-file .env.production -f docker-compose.prod.example.yml config --quiet`
+- `cd services/api && go run ./cmd/preflight -env-file ../../.env.production` passes against the real mounted production paths
 - API `/readyz` returns HTTP 200, and `docker compose ps` shows API and Worker as healthy
 - `go test ./...` in `services/api`
 - `go test ./...` in `services/worker`

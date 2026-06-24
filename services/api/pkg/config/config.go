@@ -72,8 +72,9 @@ type PaymentIncidentAlertConfig struct {
 }
 
 func Load() Config {
+	environment := env("APP_ENV", "development")
 	return Config{
-		Environment:               env("APP_ENV", "development"),
+		Environment:               environment,
 		Port:                      env("API_PORT", "8080"),
 		Version:                   env("APP_VERSION", "0.1.0"),
 		DatabaseURL:               env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
@@ -82,7 +83,7 @@ func Load() Config {
 		RateLimitRPS:              floatEnv("RATE_LIMIT_RPS", 20),
 		RateLimitBurst:            intEnv("RATE_LIMIT_BURST", 40),
 		AutoMigrate:               boolEnv("AUTO_MIGRATE", true),
-		DevFixedCode:              env("DEV_FIXED_VERIFICATION_CODE", "123456"),
+		DevFixedCode:              devFixedCode(environment),
 		LocalUploadDir:            env("LOCAL_UPLOAD_DIR", "uploads"),
 		AITaskStream:              env("AI_TASK_STREAM", "ai_tasks"),
 		OperationLogRetentionDays: intEnv("OPERATION_LOG_RETENTION_DAYS", 180),
@@ -156,6 +157,22 @@ func env(key string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func envAllowEmpty(key string, fallback string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	return strings.TrimSpace(value)
+}
+
+func devFixedCode(environment string) string {
+	fallback := "123456"
+	if strings.EqualFold(strings.TrimSpace(environment), "production") {
+		fallback = ""
+	}
+	return envAllowEmpty("DEV_FIXED_VERIFICATION_CODE", fallback)
 }
 
 func csvEnv(key string, fallback string) []string {

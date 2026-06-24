@@ -87,9 +87,11 @@ Production-like deployment examples are provided but still require operator revi
 ```bash
 cp .env.production.example .env.production
 docker compose --env-file .env.production -f docker-compose.prod.example.yml config --quiet
+cd services/api && go run ./cmd/preflight -env-file ../../.env.production
 ```
 
 See `docs/deployment.md` before using this for any paid internal test. The example expects secrets and certificates to be mounted from ignored `secrets/` and `certs/` directories.
+- Production preflight is a deploy gate, not a substitute for merchant or browser smoke tests. It verifies dangerous configuration before the stack is opened to paid traffic.
 - Internal smoke runbook: `docs/internal-smoke.md`
 - Browser delivery smoke: `npm --workspace @final-review/web run test:e2e:delivery` with `E2E_DELIVERY_SMOKE=1` opens Web/Admin, verifies paid denial before entitlement, creates an admin package grant, and verifies paid download after the grant.
 - Mobile public-page smoke: `npm --workspace @final-review/web run test:e2e:mobile` checks core public pages at a 390px viewport for 5xx failures, document-level horizontal overflow, and basic mobile control target sizes.
