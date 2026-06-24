@@ -244,6 +244,14 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   expect(openingCoverBox.width / openingCoverBox.height).toBeLessThan(0.86);
 
   await scrollArchiveTo(page, 0.8);
+  await expect(page.getByRole("heading", { name: "资料目录" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "课程入口" })).toBeHidden();
+  const lateTurningVisualState = await archiveVisualState(page);
+  expect(lateTurningVisualState.baseOpacity).toBeLessThan(0.18);
+  expect(lateTurningVisualState.insideOpacity).toBeLessThan(0.18);
+  expect(lateTurningVisualState.maxPageOpacity).toBeLessThan(0.05);
+
+  await scrollArchiveTo(page, 0.92);
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   await expect(page.getByText("数据结构").first()).toBeVisible();
@@ -260,11 +268,11 @@ test("homepage renders product vision on desktop", async ({ page }) => {
   const seamBox = await elementBox(page, "archive-seam");
   expect(Math.abs(seamBox.centerX - openBox.centerX)).toBeLessThan(8);
 
-  await scrollArchiveTo(page, 0.88);
+  await scrollArchiveTo(page, 0.94);
   await expect(page.locator('[data-home-anim="archive-page"]').first()).toBeVisible();
   await expect(page.locator('[data-home-anim="archive-directory-line"]').first()).toHaveAttribute("tabindex", "-1");
 
-  await scrollArchiveTo(page, 0.93);
+  await scrollArchiveTo(page, 0.95);
   await expect(page.getByTestId("archive-copy-closing")).toBeHidden();
   const preClosingVisualState = await archiveVisualState(page);
   expect(preClosingVisualState.closingCopyOpacity).toBeLessThan(0.05);
@@ -288,7 +296,7 @@ test("homepage keeps archive narration clear of the open pages", async ({ page }
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto(homeUrl, { waitUntil: "networkidle" });
 
-  await scrollArchiveTo(page, 0.8);
+  await scrollArchiveTo(page, 0.92);
   await expect(page.getByRole("heading", { name: "资料目录" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "课程入口" })).toBeVisible();
   await expect(page.getByTestId("archive-copy-intro")).toBeHidden();

@@ -8,8 +8,8 @@ export const archiveProgress = {
   introEnd: 0.42,
   straightStart: 0.44,
   openStart: 0.52,
-  openEnd: 0.86,
-  closingStart: 0.84,
+  openEnd: 0.93,
+  closingStart: 0.93,
 } as const;
 
 type ReadinessSetter = Dispatch<SetStateAction<boolean>>;
@@ -28,12 +28,12 @@ type UseHomeAnimeTimelineOptions = {
 };
 
 const timelineDuration = 1000;
-const insideRevealStart = 0.7;
-const insideRevealEnd = 0.8;
-const pageRevealStart = 0.76;
-const pageRevealEnd = 0.81;
-const pageVisualEnd = 0.92;
-const closingVisualStart = 0.96;
+const insideRevealStart = 0.82;
+const insideRevealEnd = 0.9;
+const pageRevealStart = 0.88;
+const pageRevealEnd = 0.92;
+const pageVisualEnd = 0.96;
+const closingVisualStart = 0.97;
 
 function at(progress: number) {
   return progress * timelineDuration;
@@ -262,7 +262,7 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         base,
         {
-          duration: durationBetween(archiveProgress.openEnd, 0.94),
+          duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
           ease: "inCubic",
           opacity: [1, 0],
         },
@@ -286,7 +286,7 @@ function createArchiveTimeline(stage: HTMLElement) {
       .add(
         inside,
         {
-          duration: durationBetween(archiveProgress.openEnd, 0.94),
+          duration: durationBetween(archiveProgress.openEnd, pageVisualEnd),
           ease: "inCubic",
           opacity: [1, 0],
         },
