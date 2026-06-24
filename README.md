@@ -97,6 +97,7 @@ See `docs/deployment.md` before using this for any paid internal test. The examp
 - Browser mock-payment smoke: `npm --workspace @final-review/web run test:e2e:mock-payment` with `E2E_MOCK_PAYMENT_SMOKE=1` verifies the Web package QR flow and signed backend mock notify unlock path in development/test only.
 - Browser delivery smoke: `npm --workspace @final-review/web run test:e2e:delivery` with `E2E_DELIVERY_SMOKE=1` opens Web/Admin, verifies paid denial before entitlement, creates an admin package grant, and verifies paid download after the grant.
 - Quiz wrong-question smoke: `npm --workspace @final-review/web run test:e2e:quiz` with `E2E_QUIZ_SMOKE=1` logs in through Web, submits an intentionally wrong answer, verifies Go API wrong-question persistence, and checks `/me/wrong-questions`.
+- Admin material-review smoke: `npm --workspace @final-review/web run test:e2e:material-review` with `E2E_MATERIAL_REVIEW_SMOKE=1` creates a pending material, approves it through Vue Admin, verifies public API/Web visibility only after review, and checks public material responses hide storage/review metadata.
 - Admin review smoke: `npm --workspace @final-review/web run test:e2e:review` with `E2E_REVIEW_SMOKE=1` creates a pending Blog post, approves it through Vue Admin, and verifies it becomes public on Web.
 - Admin wiki-review smoke: `npm --workspace @final-review/web run test:e2e:wiki-review` with `E2E_WIKI_REVIEW_SMOKE=1` creates a pending Wiki entry as a creator, approves it through Vue Admin, and verifies public API/Web visibility only after review.
 - Admin forum-review smoke: `npm --workspace @final-review/web run test:e2e:forum-review` with `E2E_FORUM_REVIEW_SMOKE=1` creates a pending Forum post, approves it through Vue Admin, and verifies it becomes public only after review.
@@ -116,7 +117,7 @@ cd ../worker && go test ./...
 
 - 邮箱验证码登录和角色拒绝。
 - Web 登录表单 build/type 覆盖。
-- 资料详情不泄露 `storage_key`。
+- 公开资料详情不泄露 `storage_key`、`createdBy` 或审核人/审核意见字段。
 - free/login_required/paid 资料下载权限。
 - 成功下载审计日志，以及拒绝下载不产生日志。
 - PDF 动态轻水印、非 PDF 原样下载、原 PDF 文件不被覆盖。

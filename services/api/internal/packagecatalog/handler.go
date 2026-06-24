@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	materialview "final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -98,6 +99,6 @@ func (h Handler) Detail(ctx *gin.Context) {
 	response.OK(ctx, gin.H{
 		"package":   coursePackage,
 		"items":     publishedItems,
-		"materials": materials,
+		"materials": materialview.ToPublicList(materials),
 	})
 }

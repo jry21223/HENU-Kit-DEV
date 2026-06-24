@@ -84,6 +84,7 @@
 - 非 PDF 文件保持原样下载。
 - 实现课程包 catalog、课程包详情、包内资料绑定、包级授权解锁。
 - 公开课程包详情只返回 published 包与 published 资料，不能泄露 draft / pending / rejected / archived 资料 item。
+- 公开资料列表/详情、课程资料列表和课程包内资料使用脱敏 DTO，不暴露 storage key、创建人或审核元数据。
 - 实现资料 manifest 导入基础版：
   - `data/material-manifest.example.json` 提供示例。
   - `go run ./cmd/import-materials -dry-run <manifest.json>` 可预检已经准备好的课程资料，不写入数据库。
@@ -291,7 +292,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 
 - 登录 -> 浏览课程包 -> 创建订单 -> 管理授权 -> 下载 paid 资料已有 opt-in browser delivery smoke。
 - 登录 -> 刷题答错 -> Go API 错题记录 -> `/me/wrong-questions` 展示已有 opt-in quiz wrong-question smoke；更多题型和薄弱点仍需扩展。
-- Admin Blog、Wiki entry、Forum post 与 Forum reply 审核已有 opt-in browser review smoke；资料、Wiki proposal、AI 审核 E2E 仍需扩展。
+- Admin Material、Blog、Wiki entry、Forum post 与 Forum reply 审核已有 opt-in browser review smoke；Wiki proposal、AI 审核 E2E 仍需扩展。
 - 移动端截图回归。
 - Docker 全链路 smoke。
 - 生产部署脚本、备份、监控、HTTPS、反向代理、密钥轮换。
@@ -323,7 +324,7 @@ AI 内容不自动发布，这是安全边界，不是缺陷。
 | Stage 13：Vue 3 管理后台 | 管理员后台完整运营能力 | 部分完成 | 用户、课程、资料、课程包、订单、支付异常台账、积分管理、会员管理、审核、举报、日志、AI draft 等已做；系统配置、兑换、支付驱动会员运营仍不足。 |
 | Stage 14：Docker Compose | 本地一键启动 | 部分完成 / 可用基础 | Compose 配置存在并可校验；全链路启动仍依赖本地 env、seed、文件挂载。 |
 | Stage 15：Seed 数据与演示账号 | 演示组织、课程、资料、题目、内容、账号 | 部分完成 | Seed command 存在并覆盖核心演示数据；manifest 导入示例和命令已完成；真实资料文件不提交，需要部署挂载、后台上传或 manifest 导入。 |
-| Stage 16：测试与质量 | 后端、前端、Docker、支付、审核等测试 | 部分完成 | Go tests、Web/Admin lint/build 已持续运行；已有 delivery、quiz wrong-question、admin blog-review、admin wiki-review、admin forum-review、admin forum-reply-review 和 mobile public-page browser smoke；缺少完整 E2E 和浏览器截图回归。 |
+| Stage 16：测试与质量 | 后端、前端、Docker、支付、审核等测试 | 部分完成 | Go tests、Web/Admin lint/build 已持续运行；已有 delivery、quiz wrong-question、admin material-review、admin blog-review、admin wiki-review、admin forum-review、admin forum-reply-review 和 mobile public-page browser smoke；缺少完整 E2E 和浏览器截图回归。 |
 | Stage 17：文档 | 架构、API、数据库、开发、部署、安全文档 | 部分完成 | 核心文档存在；支付、部署、会员、AI 等需随着实现继续更新。 |
 
 ## 5. 当前可验证能力清单
@@ -411,21 +412,28 @@ git diff --check
 
 - Vue Admin Blog review actions now expose stable test ids for approve/reject and review submission buttons.
 - `npm --workspace @final-review/web run test:e2e:review` adds an opt-in Playwright smoke that creates a pending Blog post, verifies it is hidden from public detail before review, approves it through Vue Admin `/blog-reviews`, and verifies the Web Blog detail page renders it after approval.
-- The smoke mutates Blog rows, notifications, and operation logs. It is a first review-flow probe, not full coverage for material, Wiki, forum, report, or AI review queues.
+- The smoke mutates Blog rows, notifications, and operation logs. It covers the Blog review path only; Wiki proposal, report, and AI review queues still need their own browser probes.
 
-### 7.6 2026-06-24 Admin Wiki Review Smoke Update
+### 7.6 2026-06-24 Admin Material Review Smoke Update
+
+- Public material list/detail, course material list, and public package material responses now use a redacted DTO that hides storage keys, creator ids, reviewer ids, reviewed timestamps, and review reasons.
+- Vue Admin Material review actions now expose stable test ids for approve/reject and review submission buttons.
+- `npm --workspace @final-review/web run test:e2e:material-review` adds an opt-in Playwright smoke that creates a pending Material row, verifies it is hidden from public detail before review, approves it through Vue Admin `/material-reviews`, and verifies the public API plus Web Material detail page render it after approval without leaking storage/review metadata.
+- The smoke mutates Material rows, notifications, and operation logs. It does not download files; delivery/payment smoke still covers download permissions.
+
+### 7.7 2026-06-24 Admin Wiki Review Smoke Update
 
 - Vue Admin Wiki review actions now expose stable test ids for approve/reject and review submission buttons.
 - `npm --workspace @final-review/web run test:e2e:wiki-review` adds an opt-in Playwright smoke that creates a pending Wiki entry with a creator/admin author account, verifies it is hidden from public detail before review, approves it through Vue Admin `/wiki-reviews`, and verifies the public API plus Web Wiki detail page render it after approval.
 - The smoke mutates Wiki rows, edit history, notifications, and operation logs. It covers the Wiki entry review path only; Wiki proposal conflict-resolution UX, material, report, and AI review queues still need their own browser probes.
 
-### 7.7 2026-06-24 Admin Forum Review Smoke Update
+### 7.8 2026-06-24 Admin Forum Review Smoke Update
 
 - Vue Admin Forum post review actions now expose stable test ids for approve/reject and review submission buttons.
 - `npm --workspace @final-review/web run test:e2e:forum-review` adds an opt-in Playwright smoke that creates a pending Forum post, verifies it is hidden from public detail before review, approves it through Vue Admin `/forum-reviews`, and verifies the public API plus Web Forum detail page render it after approval.
 - The smoke mutates Forum rows, notifications, and operation logs. It covers the Forum post review path only; material, Wiki proposal, report, and AI review queues still need their own browser probes.
 
-### 7.8 2026-06-24 Admin Forum Reply Review Smoke Update
+### 7.9 2026-06-24 Admin Forum Reply Review Smoke Update
 
 - Vue Admin Forum reply review actions now expose stable test ids for approve/reject and review submission buttons.
 - `npm --workspace @final-review/web run test:e2e:forum-reply-review` adds an opt-in Playwright smoke that creates a pending Forum post, approves that setup post through the Go API, creates a pending reply, verifies the public Forum detail omits it before review, approves it through Vue Admin `/forum-reply-reviews`, and verifies the public API plus Web Forum detail page render it after approval.

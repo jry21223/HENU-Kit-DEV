@@ -48,6 +48,7 @@
                 type="success"
                 plain
                 :disabled="row.status !== 'pending'"
+                :data-testid="`material-review-approve-${row.id}`"
                 @click="openReview(row, 'approve')"
               >
                 {{ copy.approve }}
@@ -57,6 +58,7 @@
                 type="danger"
                 plain
                 :disabled="row.status !== 'pending'"
+                :data-testid="`material-review-reject-${row.id}`"
                 @click="openReview(row, 'reject')"
               >
                 {{ copy.reject }}
@@ -88,6 +90,7 @@
           <el-button
             :type="reviewAction === 'approve' ? 'success' : 'danger'"
             :loading="reviewing"
+            data-testid="material-review-submit"
             @click="submitReview"
           >
             {{ reviewAction === "approve" ? copy.approve : copy.reject }}

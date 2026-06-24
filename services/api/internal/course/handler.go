@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	materialview "final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -26,5 +27,5 @@ func (h Handler) CourseMaterials(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"materials": materials})
+	response.OK(ctx, gin.H{"materials": materialview.ToPublicList(materials)})
 }

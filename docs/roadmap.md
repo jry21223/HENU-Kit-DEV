@@ -61,6 +61,7 @@
 - Forum best-answer selection with one-answer-per-post guardrails and escrowed reward settlement to the selected reply author
 - Review notifications for forum post/reply, material, wiki entry/proposal, blog post, and AI draft approve/reject outcomes
 - Basic report submission, Web material/wiki/blog/forum report buttons, Vue admin report handling page, operation logs, and reporter result notifications
+- Opt-in browser admin Material review smoke for pending content hidden-before-review, Vue Admin approval, public API/Web visibility after approval, and public response metadata redaction
 - Opt-in browser admin Blog review smoke for pending content hidden-before-review, Vue Admin approval, and public Web visibility after approval
 - Opt-in browser admin Wiki review smoke for pending content hidden-before-review, Vue Admin approval, and public API/Web visibility after approval
 - Opt-in browser admin Forum post review smoke for pending content hidden-before-review, Vue Admin approval, and public API/Web visibility after approval

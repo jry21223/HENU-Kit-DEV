@@ -391,6 +391,15 @@ func TestMaterialReviewWorkflowRequiresReviewerAndRecordsDecision(t *testing.T) 
 	if countOperationLogs(t, db, "material.approved", "material", pendingMaterial.ID, reviewer.ID) != 1 {
 		t.Fatal("expected material approval operation log")
 	}
+	publicApproved := performJSON(router, http.MethodGet, "/api/v1/materials/"+pendingMaterial.ID, "", "")
+	if publicApproved.Code != http.StatusOK {
+		t.Fatalf("expected approved material public detail 200, got %d: %s", publicApproved.Code, publicApproved.Body.String())
+	}
+	for _, hiddenField := range []string{"reviewerId", "reviewedAt", "reviewReason", "createdBy", "storageKey"} {
+		if strings.Contains(publicApproved.Body.String(), hiddenField) {
+			t.Fatalf("public material detail leaked %s: %s", hiddenField, publicApproved.Body.String())
+		}
+	}
 	reviewApprovedAgain := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+pendingMaterial.ID+"/reject", `{"reviewReason":"second attempt"}`, reviewerToken)
 	if reviewApprovedAgain.Code != http.StatusConflict || !strings.Contains(reviewApprovedAgain.Body.String(), "material_not_reviewable") {
 		t.Fatalf("expected reviewed material to reject repeat review, got %d: %s", reviewApprovedAgain.Code, reviewApprovedAgain.Body.String())

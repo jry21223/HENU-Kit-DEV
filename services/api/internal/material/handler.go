@@ -40,7 +40,7 @@ func (h Handler) List(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"materials": materials})
+	response.OK(ctx, gin.H{"materials": ToPublicList(materials)})
 }
 
 func (h Handler) Detail(ctx *gin.Context) {
@@ -48,7 +48,7 @@ func (h Handler) Detail(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	response.OK(ctx, gin.H{"material": material})
+	response.OK(ctx, gin.H{"material": ToPublic(material)})
 }
 
 func (h Handler) Download(ctx *gin.Context) {

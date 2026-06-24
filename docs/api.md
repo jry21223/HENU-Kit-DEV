@@ -207,6 +207,7 @@ Implemented material behavior:
 - `login_required` materials require an authenticated, email-verified user
 - `paid` materials require an authenticated, email-verified user and either a valid material grant or a valid package grant containing that material
 - frozen users cannot download `login_required`, `paid`, or `member_only` materials even when they already have a grant
+- public material responses from `/materials`, `/materials/:id`, `/courses/:id/materials`, and `/packages/:id` use a redacted material DTO. They include public display and permission fields such as `id`, `courseId`, `title`, `type`, `description`, `fileName`, `fileSize`, `previewContent`, `accessLevel`, `status`, `createdAt`, and `updatedAt`, but must not expose `storageKey`, `createdBy`, `reviewerId`, `reviewedAt`, or `reviewReason`.
 - successful downloads create `material_download_logs` records with material, optional user, access level, IP, user agent, and download time
 - denied downloads, unsafe storage keys, and missing files are not recorded as successful downloads
 - PDF downloads generate a temporary watermarked copy and return `X-Watermark-Applied: true`; the original stored file is not modified
