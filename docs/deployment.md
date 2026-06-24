@@ -88,6 +88,16 @@ ADMIN_URL=https://admin.review.example.com \
 scripts/ops/healthcheck.sh
 ```
 
+After TLS is active, require edge security headers as part of the same check:
+
+```bash
+CHECK_SECURITY_HEADERS=true \
+API_HEALTH_URL=https://review.example.com/readyz \
+WEB_URL=https://review.example.com/health \
+ADMIN_URL=https://admin.review.example.com \
+scripts/ops/healthcheck.sh
+```
+
 `/healthz` is liveness and can remain HTTP 200 while a dependency is down. `/readyz` is readiness and must be used before routing traffic. Worker readiness is checked by Docker healthcheck inside the private Compose network; set `WORKER_READY_URL` only if you deliberately expose or port-forward the worker probe endpoint.
 
 ## Backups
@@ -98,6 +108,8 @@ Create a PostgreSQL dump:
 ENV_FILE=.env.production COMPOSE_FILE=docker-compose.prod.example.yml scripts/ops/backup-postgres.sh
 ```
 
+The backup script writes the dump with `umask 077`, uses a temporary file before the final rename, and writes a `.sha256` sidecar when `sha256sum` is available.
+
 Restore requires an explicit confirmation flag:
 
 ```bash
@@ -106,6 +118,18 @@ CONFIRM_RESTORE=yes ENV_FILE=.env.production COMPOSE_FILE=docker-compose.prod.ex
 ```
 
 Backups must be copied off the server and encrypted by the deployment operator. The repository ignores dump files.
+
+If a `.sha256` sidecar is present beside the dump, the restore script verifies it before calling `pg_restore`.
+
+## Nginx Config Check
+
+After replacing domains and mounting TLS certificates, validate the edge config before routing traffic:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.example.yml run --rm nginx nginx -t
+```
+
+The template currently sets HTTPS redirect, HSTS, CSP, frame denial, content-type sniffing protection, referrer policy, permissions policy, `Secure`/`HttpOnly`/`SameSite=Lax` cookie flags, API proxy timeouts, a 25 MB request body limit, and hidden-dotfile denial.
 
 ## Release Gate
 
@@ -119,6 +143,7 @@ Before opening paid sales, verify all items below:
 - `npm run build --workspace @final-review/admin`
 - production `.env.production` has `APP_ENV=production`, `WECHAT_PAY_MODE=live`, `AUTO_MIGRATE=false`, and an empty `DEV_FIXED_VERIFICATION_CODE`
 - `CORS_ALLOWED_ORIGINS` lists exact HTTPS origins and does not use `*`
+- `docker compose --env-file .env.production -f docker-compose.prod.example.yml run --rm nginx nginx -t`
 - API smoke in `docs/internal-smoke.md` passes with a fresh student test email
 - WeChat Pay Native live order and notify have been tested with the real merchant dashboard
 - material import dry-run report has been reviewed against mounted real files
@@ -126,7 +151,7 @@ Before opening paid sales, verify all items below:
 - browser delivery smoke `npm --workspace @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
 - paid material download is denied before entitlement and allowed after a verified paid order
 - `scripts/ops/backup-postgres.sh` produces a restorable dump in a staging environment
-- Nginx TLS certs, HSTS, and security headers are active
+- Nginx TLS certs, HSTS, CSP, secure cookie flags, and security headers are active; `CHECK_SECURITY_HEADERS=true scripts/ops/healthcheck.sh` passes against the public Web/Admin origins
 
 ## Current Limits
 

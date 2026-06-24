@@ -28,6 +28,14 @@
 - User notification endpoints are user-scoped: authenticated users can list or mark read only their own notifications. Forum, material, wiki, blog, AI draft review, and report result notifications are written in the same database transaction as the protected mutation and operation log.
 - CORS must not use wildcard origins with credentials.
 
+## Edge and Backup Controls
+
+- Production Nginx must be validated with `nginx -t` after replacing domains and mounting TLS certificates.
+- The Nginx template sets HTTPS redirects, HSTS, CSP, frame denial, content-type sniffing protection, referrer policy, permissions policy, cross-origin opener policy, secure API cookie flags, proxy timeouts, a 25 MB request body limit, and hidden-dotfile denial.
+- After TLS is active, `CHECK_SECURITY_HEADERS=true scripts/ops/healthcheck.sh` should pass against both public Web/Admin origins.
+- PostgreSQL backups are written with `umask 077` through a temporary file before final rename. When `sha256sum` is available, backups get a `.sha256` sidecar, and restore verifies that sidecar before `pg_restore`.
+- Backup files must still be copied off-server and encrypted by the deployment operator; the repository script only creates and verifies local dumps.
+
 ## Operation Logs
 
 The Go API writes `operation_logs` for the current hardening scope:

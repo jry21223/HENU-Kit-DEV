@@ -20,5 +20,13 @@ if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
   exit 2
 fi
 
+checksum_file="$BACKUP_FILE.sha256"
+if [ -f "$checksum_file" ] && command -v sha256sum >/dev/null 2>&1; then
+  (
+    cd "$(dirname "$BACKUP_FILE")"
+    sha256sum -c "$(basename "$checksum_file")"
+  )
+fi
+
 cat "$BACKUP_FILE" | docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres \
   sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-acl'
