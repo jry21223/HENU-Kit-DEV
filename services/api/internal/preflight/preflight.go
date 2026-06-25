@@ -44,6 +44,8 @@ func Run(cfg config.Config, opts Options) []Check {
 	checks = append(checks, check("wechat_api_v3_key", validAPIV3Key(cfg.WeChatPay), "WECHAT_PAY_API_V3_KEY must be exactly 32 characters in live mode"))
 	checks = append(checks, check("wechat_notify_url", validHTTPSURL(cfg.WeChatPay.NotifyURL), "WECHAT_PAY_NOTIFY_URL must be an exact HTTPS URL"))
 	checks = append(checks, check("wechat_notify_not_placeholder", !hasPlaceholder(cfg.WeChatPay.NotifyURL), "WECHAT_PAY_NOTIFY_URL must not use example.com or change-me placeholders"))
+	checks = append(checks, check("payment_incident_webhook_url", validOptionalHTTPSURL(cfg.PaymentIncidentAlerts.WebhookURL), "PAYMENT_INCIDENT_WEBHOOK_URL must be empty or an exact HTTPS URL"))
+	checks = append(checks, check("payment_incident_webhook_secret", validOptionalWebhookSecret(cfg.PaymentIncidentAlerts), "PAYMENT_INCIDENT_WEBHOOK_SECRET must be set and non-placeholder when PAYMENT_INCIDENT_WEBHOOK_URL is configured"))
 
 	checks = append(checks, check("upload_dir", strings.TrimSpace(cfg.LocalUploadDir) != "", "LOCAL_UPLOAD_DIR must be set"))
 	if opts.CheckFiles {
@@ -100,6 +102,22 @@ func validHTTPSURL(raw string) bool {
 		return false
 	}
 	return parsed.Scheme == "https" && parsed.Host != "" && parsed.Path != ""
+}
+
+func validOptionalHTTPSURL(raw string) bool {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return true
+	}
+	return validHTTPSURL(value)
+}
+
+func validOptionalWebhookSecret(cfg config.PaymentIncidentAlertConfig) bool {
+	if strings.TrimSpace(cfg.WebhookURL) == "" {
+		return true
+	}
+	secret := strings.TrimSpace(cfg.WebhookSecret)
+	return secret != "" && !hasPlaceholder(secret)
 }
 
 func hasPlaceholder(value string) bool {

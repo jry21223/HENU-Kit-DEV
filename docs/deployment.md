@@ -51,9 +51,13 @@ JWT_PUBLIC_KEY_PATH=/run/secrets/final-review/jwt_public.pem
 WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH=/run/secrets/final-review/wechat/apiclient_key.pem
 WECHAT_PAY_PLATFORM_CERTS_DIR=/run/certs/final-review/wechat
 WECHAT_PAY_PLATFORM_CERT_MIN_VALID_DAYS=7
+PAYMENT_INCIDENT_WEBHOOK_URL=https://alerts.henu.local/final-review/payment-incidents
+PAYMENT_INCIDENT_WEBHOOK_SECRET=replace-with-random-secret
+PAYMENT_INCIDENT_OVERDUE_MINUTES=30
 ```
 
 `WECHAT_PAY_PLATFORM_CERTS_DIR` must contain parseable WeChat platform certificates (`.pem`, `.crt`, or `.cer`). Public-key-only PEM files are not enough for production preflight because the preflight checks certificate expiry before paid traffic is opened.
+If `PAYMENT_INCIDENT_WEBHOOK_URL` is set, it must be HTTPS and signed with `PAYMENT_INCIDENT_WEBHOOK_SECRET`; leave the URL empty rather than configuring an unsigned or HTTP alert receiver.
 
 ## Build-Time Frontend Variables
 

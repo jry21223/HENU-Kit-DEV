@@ -66,6 +66,28 @@ func TestRunRejectsIncompleteLiveWeChatConfig(t *testing.T) {
 	}
 }
 
+func TestRunRejectsUnsafePaymentIncidentWebhookConfig(t *testing.T) {
+	cfg := validProductionConfig(t)
+	cfg.PaymentIncidentAlerts.WebhookURL = "http://alerts.example.com/payment-incidents"
+	cfg.PaymentIncidentAlerts.WebhookSecret = ""
+
+	failed := failedNames(Run(cfg, Options{CheckFiles: false}))
+	if !failed["payment_incident_webhook_url"] || !failed["payment_incident_webhook_secret"] {
+		t.Fatalf("expected unsafe payment incident webhook config to fail, got %#v", failed)
+	}
+}
+
+func TestRunAcceptsSignedHTTPSPaymentIncidentWebhookConfig(t *testing.T) {
+	cfg := validProductionConfig(t)
+	cfg.PaymentIncidentAlerts.WebhookURL = "https://alerts.henu.local/payment-incidents"
+	cfg.PaymentIncidentAlerts.WebhookSecret = "strong-incident-alert-secret"
+
+	checks := Run(cfg, Options{CheckFiles: false})
+	if !Passed(checks) {
+		t.Fatalf("expected signed HTTPS payment incident webhook config to pass, failed: %#v", FailedChecks(checks))
+	}
+}
+
 func TestRunRejectsExpiringWeChatPlatformCertificate(t *testing.T) {
 	cfg := validProductionConfig(t)
 	certsDir := t.TempDir()
