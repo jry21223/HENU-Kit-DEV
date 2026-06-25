@@ -1,14 +1,13 @@
 package payment
 
 import (
-	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -20,6 +19,7 @@ import (
 
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/orderstate"
+	"final-review-platform/services/api/internal/paymentincident"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/response"
@@ -509,28 +509,6 @@ type paymentIncidentInput struct {
 	ActualTotal   int64
 }
 
-type paymentIncidentAlertPayload struct {
-	Event       string                       `json:"event"`
-	Provider    string                       `json:"provider"`
-	Environment string                       `json:"environment"`
-	Incident    paymentIncidentAlertIncident `json:"incident"`
-}
-
-type paymentIncidentAlertIncident struct {
-	ID             string    `json:"id"`
-	OrderID        *string   `json:"orderId,omitempty"`
-	IncidentType   string    `json:"incidentType"`
-	Severity       string    `json:"severity"`
-	Status         string    `json:"status"`
-	OutTradeNo     string    `json:"outTradeNo"`
-	TransactionID  string    `json:"transactionId"`
-	TradeState     string    `json:"tradeState"`
-	ExpectedAmount int64     `json:"expectedAmount"`
-	ActualAmount   int64     `json:"actualAmount"`
-	Message        string    `json:"message"`
-	CreatedAt      time.Time `json:"createdAt"`
-}
-
 func (h Handler) recordPaymentIncident(input paymentIncidentInput) error {
 	incidentType := strings.TrimSpace(input.IncidentType)
 	if incidentType == "" {
@@ -571,78 +549,8 @@ func (h Handler) recordPaymentIncident(input paymentIncidentInput) error {
 	if err := h.db.Create(&incident).Error; err != nil {
 		return err
 	}
-	h.notifyPaymentIncidentOpened(incident)
+	_, _ = paymentincident.SendAlert(context.Background(), h.cfg.PaymentIncidentAlerts, h.cfg.Environment, paymentincident.EventOpened, incident)
 	return nil
-}
-
-func (h Handler) notifyPaymentIncidentOpened(incident model.PaymentIncident) {
-	alertCfg := h.cfg.PaymentIncidentAlerts
-	endpoint := strings.TrimSpace(alertCfg.WebhookURL)
-	if endpoint == "" {
-		return
-	}
-	parsed, err := url.Parse(endpoint)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return
-	}
-	timeoutSeconds := alertCfg.TimeoutSeconds
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = 3
-	}
-	if timeoutSeconds > 10 {
-		timeoutSeconds = 10
-	}
-	payload := paymentIncidentAlertPayload{
-		Event:       "payment_incident.opened",
-		Provider:    providerWeChatNative,
-		Environment: strings.TrimSpace(h.cfg.Environment),
-		Incident: paymentIncidentAlertIncident{
-			ID:             incident.ID,
-			OrderID:        incident.OrderID,
-			IncidentType:   incident.IncidentType,
-			Severity:       incident.Severity,
-			Status:         incident.Status,
-			OutTradeNo:     incident.OutTradeNo,
-			TransactionID:  incident.TransactionID,
-			TradeState:     incident.TradeState,
-			ExpectedAmount: incident.ExpectedAmount,
-			ActualAmount:   incident.ActualAmount,
-			Message:        incident.Message,
-			CreatedAt:      incident.CreatedAt,
-		},
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return
-	}
-	request, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return
-	}
-	timestamp := fmt.Sprintf("%d", time.Now().UTC().Unix())
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("User-Agent", "final-review-platform-payment-alert/1.0")
-	request.Header.Set("X-Final-Review-Event", payload.Event)
-	request.Header.Set("X-Final-Review-Incident-Id", incident.ID)
-	request.Header.Set("X-Final-Review-Timestamp", timestamp)
-	if secret := strings.TrimSpace(alertCfg.WebhookSecret); secret != "" {
-		request.Header.Set("X-Final-Review-Signature", paymentIncidentAlertSignature(secret, timestamp, body))
-	}
-	client := http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second}
-	response, err := client.Do(request)
-	if err != nil {
-		return
-	}
-	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, response.Body)
-}
-
-func paymentIncidentAlertSignature(secret string, timestamp string, body []byte) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(timestamp))
-	mac.Write([]byte("."))
-	mac.Write(body)
-	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func paymentIncidentKey(input paymentIncidentInput) string {

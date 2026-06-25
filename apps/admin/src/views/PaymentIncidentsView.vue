@@ -91,9 +91,18 @@
             <p v-if="row.handledBy" class="cell-muted">{{ row.handledBy }}</p>
           </template>
         </el-table-column>
-        <el-table-column :label="copy.actions" fixed="right" width="180">
+        <el-table-column :label="copy.actions" fixed="right" width="240">
           <template #default="{ row }">
             <div class="table-actions">
+              <el-button
+                v-if="row.status === 'open'"
+                size="small"
+                type="warning"
+                :loading="handlingId === row.id"
+                @click="alertIncident(row)"
+              >
+                {{ copy.realert }}
+              </el-button>
               <el-button
                 v-if="row.status === 'open'"
                 size="small"
@@ -155,10 +164,13 @@ const copy = {
   actions: "\u64cd\u4f5c",
   resolve: "\u6807\u8bb0\u5df2\u5904\u7406",
   ignore: "\u5ffd\u7565",
+  realert: "\u91cd\u53d1\u544a\u8b66",
   handled: "\u5df2\u7ed3\u675f",
   empty: "-",
   loadFailed: "\u652f\u4ed8\u5f02\u5e38\u52a0\u8f7d\u5931\u8d25",
   handleSuccess: "\u652f\u4ed8\u5f02\u5e38\u5df2\u66f4\u65b0",
+  alertSuccess: "\u652f\u4ed8\u5f02\u5e38\u544a\u8b66\u5df2\u91cd\u53d1",
+  alertConfirm: "\u786e\u8ba4\u5411\u5df2\u914d\u7f6e\u7684\u652f\u4ed8\u5f02\u5e38 webhook \u91cd\u53d1\u8fd9\u6761\u544a\u8b66\uff1f\u8be5\u64cd\u4f5c\u4e0d\u4f1a\u4fee\u6539\u8ba2\u5355\u72b6\u6001\u6216\u53d1\u653e\u6743\u76ca\u3002",
   notePrompt: "\u586b\u5199\u4eba\u5de5\u5904\u7406\u5907\u6ce8",
   notePlaceholder: "\u4f8b\uff1a\u5df2\u6838\u5bf9\u5fae\u4fe1\u540e\u53f0\uff0c\u672a\u6536\u6b3e\uff1b\u4fdd\u6301\u4e0d\u53d1\u6743\u76ca\u3002",
 };
@@ -230,6 +242,28 @@ async function handleIncident(row: PaymentIncident, status: "resolved" | "ignore
     });
     message.value = copy.handleSuccess;
     await loadIncidents();
+  } catch (err) {
+    if (isMessageBoxCancel(err)) return;
+    error.value = err instanceof Error ? err.message : copy.loadFailed;
+  } finally {
+    handlingId.value = "";
+  }
+}
+
+async function alertIncident(row: PaymentIncident) {
+  message.value = "";
+  error.value = "";
+  try {
+    await ElMessageBox.confirm(copy.alertConfirm, copy.realert, {
+      confirmButtonText: copy.realert,
+      cancelButtonText: "\u53d6\u6d88",
+      type: "warning",
+    });
+    handlingId.value = row.id;
+    await apiRequest<{ alertSent: boolean; statusCode: number }>(`/admin/payment-incidents/${row.id}/alert`, {
+      method: "POST",
+    });
+    message.value = copy.alertSuccess;
   } catch (err) {
     if (isMessageBoxCancel(err)) return;
     error.value = err instanceof Error ? err.message : copy.loadFailed;

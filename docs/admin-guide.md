@@ -133,9 +133,10 @@ Important boundaries:
 - The summary response includes open count, high-risk count, top incident type, and `overdueOpen`; `/dashboard` uses it to show whether open payment incidents need attention.
 - `PAYMENT_INCIDENT_OVERDUE_MINUTES` controls when an open incident is treated as overdue for dashboard triage. This is an operator reminder only; it does not auto-resolve incidents or change payment state.
 - If `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly opened incidents also emit a best-effort signed webhook for external operator alerts.
+- Open incidents can be manually re-alerted from the incident page. This sends a signed `payment_incident.realerted` webhook and writes an operation log only after delivery succeeds.
 - Open incidents can be marked `resolved` or `ignored` with an optional handling note.
 - Handling an incident records `handledBy`, `handledAt`, `handleNote`, and an `operation_logs` row.
-- Handling an incident never changes order status, never inserts a trusted payment success record, and never grants entitlement.
+- Re-alerting, resolving, or ignoring an incident never changes order status, never inserts a trusted payment success record, and never grants entitlement.
 - If a customer must be delivered content after manual verification, use `/access-grants`; do not modify payment records by hand.
 
 ## Course Package Management

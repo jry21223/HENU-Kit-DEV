@@ -23,7 +23,9 @@ import (
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/notification"
 	"final-review-platform/services/api/internal/orderstate"
+	"final-review-platform/services/api/internal/paymentincident"
 	"final-review-platform/services/api/internal/platform/model"
+	"final-review-platform/services/api/pkg/config"
 	"final-review-platform/services/api/pkg/response"
 )
 
@@ -58,9 +60,11 @@ type Handler struct {
 	operationLogRetentionDays     int
 	operationLogExportLimit       int
 	paymentIncidentOverdueMinutes int
+	paymentIncidentAlerts         config.PaymentIncidentAlertConfig
+	paymentIncidentEnvironment    string
 }
 
-func NewHandler(db *gorm.DB, uploadDir string, operationLogRetentionDays int, operationLogExportLimit int, paymentIncidentOverdueMinutes int) Handler {
+func NewHandler(db *gorm.DB, uploadDir string, operationLogRetentionDays int, operationLogExportLimit int, paymentIncidentAlerts config.PaymentIncidentAlertConfig, environment string) Handler {
 	if strings.TrimSpace(uploadDir) == "" {
 		uploadDir = "uploads"
 	}
@@ -70,6 +74,7 @@ func NewHandler(db *gorm.DB, uploadDir string, operationLogRetentionDays int, op
 	if operationLogExportLimit <= 0 {
 		operationLogExportLimit = defaultOperationLogExportLimit
 	}
+	paymentIncidentOverdueMinutes := paymentIncidentAlerts.OverdueMinutes
 	if paymentIncidentOverdueMinutes <= 0 {
 		paymentIncidentOverdueMinutes = 30
 	}
@@ -79,6 +84,8 @@ func NewHandler(db *gorm.DB, uploadDir string, operationLogRetentionDays int, op
 		operationLogRetentionDays:     operationLogRetentionDays,
 		operationLogExportLimit:       operationLogExportLimit,
 		paymentIncidentOverdueMinutes: paymentIncidentOverdueMinutes,
+		paymentIncidentAlerts:         paymentIncidentAlerts,
+		paymentIncidentEnvironment:    strings.TrimSpace(environment),
 	}
 }
 
@@ -924,6 +931,42 @@ func (h Handler) ListPaymentReconciliation(ctx *gin.Context) {
 		"total":   total,
 		"summary": summary,
 	})
+}
+
+func (h Handler) AlertPaymentIncident(ctx *gin.Context) {
+	var incident model.PaymentIncident
+	if err := h.db.First(&incident, "id = ?", ctx.Param("id")).Error; err != nil {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "payment_incident_not_found", nil)
+		return
+	}
+	if incident.Status != model.PaymentIncidentOpen {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "payment_incident_not_open", gin.H{"status": incident.Status})
+		return
+	}
+	result, err := paymentincident.SendAlert(ctx.Request.Context(), h.paymentIncidentAlerts, h.paymentIncidentEnvironment, paymentincident.EventRealerted, incident)
+	if err != nil {
+		if errors.Is(err, paymentincident.ErrWebhookNotConfigured) {
+			response.Error(ctx, http.StatusConflict, response.CodeConflict, "payment_incident_webhook_not_configured", nil)
+			return
+		}
+		if errors.Is(err, paymentincident.ErrInvalidWebhookURL) {
+			response.Error(ctx, http.StatusBadGateway, response.CodeInternalServer, "payment_incident_webhook_invalid_url", nil)
+			return
+		}
+		response.Error(ctx, http.StatusBadGateway, response.CodeInternalServer, "payment_incident_webhook_failed", gin.H{"statusCode": result.StatusCode})
+		return
+	}
+	if err := audit.Record(ctx, h.db, "payment_incident.alert", "payment_incident", incident.ID, map[string]interface{}{
+		"incidentType":  incident.IncidentType,
+		"severity":      incident.Severity,
+		"outTradeNo":    incident.OutTradeNo,
+		"transactionId": incident.TransactionID,
+		"statusCode":    result.StatusCode,
+	}); err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "payment_incident_alert_audit_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"alertSent": result.Sent, "statusCode": result.StatusCode})
 }
 
 func (h Handler) ResolvePaymentIncident(ctx *gin.Context) {

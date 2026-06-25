@@ -237,6 +237,178 @@ func TestPaymentIncidentCreatedForTransactionConflict(t *testing.T) {
 	}
 }
 
+func TestPaymentIncidentManualAlertIsAdminOnlyAndNonFinancial(t *testing.T) {
+	db := newTestDB(t)
+	cfg := testConfig()
+	cfg.PaymentIncidentAlerts.WebhookSecret = "incident-alert-secret"
+	cfg.PaymentIncidentAlerts.TimeoutSeconds = 2
+	var alertMu sync.Mutex
+	var alertBodies []string
+	var alertEvents []string
+	var alertSignatures []string
+	alertServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		alertMu.Lock()
+		defer alertMu.Unlock()
+		alertBodies = append(alertBodies, string(body))
+		alertEvents = append(alertEvents, r.Header.Get("X-Final-Review-Event"))
+		alertSignatures = append(alertSignatures, r.Header.Get("X-Final-Review-Signature"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer alertServer.Close()
+	cfg.PaymentIncidentAlerts.WebhookURL = alertServer.URL
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
+
+	course := createTestCourse(t, db)
+	coursePackage := createTestPackage(t, db, course, "incident-alert-package", model.StatusPublished)
+	buyer := createTestUser(t, db, "incident-alert-buyer@stu.henu.edu.cn", model.RoleUser)
+	admin := createTestUser(t, db, "incident-alert-admin@stu.henu.edu.cn", model.RoleAdmin)
+	regular := createTestUser(t, db, "incident-alert-user@stu.henu.edu.cn", model.RoleUser)
+	adminToken := loginTestUser(t, router, admin.Email)
+	userToken := loginTestUser(t, router, regular.Email)
+	order := model.Order{
+		UserID:          buyer.ID,
+		ProductType:     "course_package",
+		ProductID:       coursePackage.ID,
+		OutTradeNo:      "INCIDENTALERT001",
+		PaymentProvider: "wechat_native",
+		Status:          model.OrderPaying,
+		AmountTotal:     1990,
+		Currency:        "CNY",
+		RiskFlag:        "wechat_amount_mismatch",
+	}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	incident := model.PaymentIncident{
+		OrderID:        &order.ID,
+		Provider:       "wechat_native",
+		IncidentType:   "amount_mismatch",
+		Severity:       "critical",
+		Status:         model.PaymentIncidentOpen,
+		OutTradeNo:     order.OutTradeNo,
+		TransactionID:  "TX_INCIDENT_ALERT",
+		TradeState:     "SUCCESS",
+		ExpectedAmount: 1990,
+		ActualAmount:   1,
+		Message:        "amount mismatch",
+		IdempotencyKey: "incident-alert-open",
+	}
+	if err := db.Create(&incident).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	unauthenticated := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/alert", "", "")
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated alert 401, got %d: %s", unauthenticated.Code, unauthenticated.Body.String())
+	}
+	forbidden := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/alert", "", userToken)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("expected regular user alert 403, got %d: %s", forbidden.Code, forbidden.Body.String())
+	}
+	alert := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/alert", "", adminToken)
+	if alert.Code != http.StatusOK || !strings.Contains(alert.Body.String(), `"alertSent":true`) || !strings.Contains(alert.Body.String(), `"statusCode":204`) {
+		t.Fatalf("expected admin alert success, got %d: %s", alert.Code, alert.Body.String())
+	}
+
+	alertMu.Lock()
+	alertCount := len(alertBodies)
+	alertBody := ""
+	alertEvent := ""
+	alertSignature := ""
+	if alertCount > 0 {
+		alertBody = alertBodies[0]
+		alertEvent = alertEvents[0]
+		alertSignature = alertSignatures[0]
+	}
+	alertMu.Unlock()
+	if alertCount != 1 || alertEvent != "payment_incident.realerted" {
+		t.Fatalf("expected one realert webhook, count=%d event=%s body=%s", alertCount, alertEvent, alertBody)
+	}
+	for _, expected := range []string{`"event":"payment_incident.realerted"`, `"incidentType":"amount_mismatch"`, `"status":"open"`, `"expectedAmount":1990`, `"actualAmount":1`} {
+		if !strings.Contains(alertBody, expected) {
+			t.Fatalf("expected alert body to contain %s, got %s", expected, alertBody)
+		}
+	}
+	if strings.Contains(alertBody, "rawNotify") || alertSignature == "" || !strings.HasPrefix(alertSignature, "sha256=") {
+		t.Fatalf("unexpected alert safety fields body=%s signature=%q", alertBody, alertSignature)
+	}
+
+	var storedIncident model.PaymentIncident
+	if err := db.First(&storedIncident, "id = ?", incident.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if storedIncident.Status != model.PaymentIncidentOpen || storedIncident.HandledAt != nil || storedIncident.HandledBy != nil {
+		t.Fatalf("manual alert must not handle incident, got %#v", storedIncident)
+	}
+	var storedOrder model.Order
+	if err := db.First(&storedOrder, "id = ?", order.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if storedOrder.Status != model.OrderPaying || storedOrder.PaidAt != nil || storedOrder.RiskFlag != "wechat_amount_mismatch" {
+		t.Fatalf("manual alert must not mark order paid or clear risk, got status=%s paidAt=%v risk=%s", storedOrder.Status, storedOrder.PaidAt, storedOrder.RiskFlag)
+	}
+	if countPackageGrants(t, db, buyer.ID, coursePackage.ID, order.ID) != 0 {
+		t.Fatal("manual alert must not grant package entitlement")
+	}
+	var auditCount int64
+	if err := db.Model(&model.OperationLog{}).Where("target_type = ? AND target_id = ? AND action = ?", "payment_incident", incident.ID, "payment_incident.alert").Count(&auditCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 {
+		t.Fatalf("expected one manual alert operation log, got %d", auditCount)
+	}
+
+	resolve := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/resolve", `{"status":"ignored"}`, adminToken)
+	if resolve.Code != http.StatusOK {
+		t.Fatalf("expected resolve before closed alert check, got %d: %s", resolve.Code, resolve.Body.String())
+	}
+	closedAlert := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/alert", "", adminToken)
+	if closedAlert.Code != http.StatusConflict || !strings.Contains(closedAlert.Body.String(), "payment_incident_not_open") {
+		t.Fatalf("expected handled incident alert conflict, got %d: %s", closedAlert.Code, closedAlert.Body.String())
+	}
+	alertMu.Lock()
+	alertCount = len(alertBodies)
+	alertMu.Unlock()
+	if alertCount != 1 {
+		t.Fatalf("handled incident alert must not send another webhook, got %d", alertCount)
+	}
+}
+
+func TestPaymentIncidentManualAlertRequiresConfiguredWebhook(t *testing.T) {
+	db := newTestDB(t)
+	cfg := testConfig()
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
+
+	admin := createTestUser(t, db, "incident-alert-config-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, admin.Email)
+	incident := model.PaymentIncident{
+		Provider:       "wechat_native",
+		IncidentType:   "order_not_found",
+		Severity:       "high",
+		Status:         model.PaymentIncidentOpen,
+		OutTradeNo:     "INCIDENT_ALERT_NO_WEBHOOK",
+		ActualAmount:   1990,
+		Message:        "missing local order",
+		IdempotencyKey: "incident-alert-no-webhook",
+	}
+	if err := db.Create(&incident).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	alert := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/alert", "", adminToken)
+	if alert.Code != http.StatusConflict || !strings.Contains(alert.Body.String(), "payment_incident_webhook_not_configured") {
+		t.Fatalf("expected missing webhook conflict, got %d: %s", alert.Code, alert.Body.String())
+	}
+	var auditCount int64
+	if err := db.Model(&model.OperationLog{}).Where("target_type = ? AND target_id = ? AND action = ?", "payment_incident", incident.ID, "payment_incident.alert").Count(&auditCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 0 {
+		t.Fatalf("failed alert must not write successful operation log, got %d", auditCount)
+	}
+}
+
 func TestPaymentIncidentSummaryIsAdminOnlyAndReadOnly(t *testing.T) {
 	db := newTestDB(t)
 	cfg := testConfig()

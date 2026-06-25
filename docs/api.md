@@ -119,6 +119,7 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/payment-reconciliation?issueType=&severity=&limit=`
 - `GET /api/v1/admin/payment-incidents/summary`
 - `GET /api/v1/admin/payment-incidents?status=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
+- `POST /api/v1/admin/payment-incidents/:id/alert`
 - `POST /api/v1/admin/payment-incidents/:id/resolve`
 - `POST /api/v1/admin/schools`
 - `PATCH /api/v1/admin/schools/:id`
@@ -297,6 +298,7 @@ Implemented order foundation:
 - `GET /api/v1/admin/payment-incidents` is admin-only, defaults to `status=open`, and can filter by incident type, order id, out-trade number, transaction id, and limit
 - the payment incident list response includes `incidents` and `total`; Vue Admin uses the summary endpoint to surface open payment incident alerts and high-risk distribution on the dashboard
 - when `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly created incident rows post a best-effort `payment_incident.opened` JSON webhook with an `X-Final-Review-Signature` HMAC header; production preflight rejects configured HTTP or unsigned webhook targets, and duplicate idempotent incidents do not re-alert
+- `POST /api/v1/admin/payment-incidents/:id/alert` re-sends a signed `payment_incident.realerted` webhook for an open incident only; it writes an operation log on successful delivery and never changes order status, payment records, incident status, or entitlements
 - `POST /api/v1/admin/payment-incidents/:id/resolve` marks an open incident as `resolved` or `ignored`, records the handling admin and note, and writes an operation log
 - resolving or ignoring a payment incident is deliberately non-financial: it does not mark an order paid, does not create a payment record, and does not grant entitlement
 
