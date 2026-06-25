@@ -50,7 +50,10 @@ JWT_PRIVATE_KEY_PATH=/run/secrets/final-review/jwt_private.pem
 JWT_PUBLIC_KEY_PATH=/run/secrets/final-review/jwt_public.pem
 WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH=/run/secrets/final-review/wechat/apiclient_key.pem
 WECHAT_PAY_PLATFORM_CERTS_DIR=/run/certs/final-review/wechat
+WECHAT_PAY_PLATFORM_CERT_MIN_VALID_DAYS=7
 ```
+
+`WECHAT_PAY_PLATFORM_CERTS_DIR` must contain parseable WeChat platform certificates (`.pem`, `.crt`, or `.cer`). Public-key-only PEM files are not enough for production preflight because the preflight checks certificate expiry before paid traffic is opened.
 
 ## Build-Time Frontend Variables
 
@@ -138,7 +141,7 @@ The template currently sets HTTPS redirect, HSTS, CSP, frame denial, content-typ
 Before opening paid sales, verify all items below:
 
 - `docker compose --env-file .env.production -f docker-compose.prod.example.yml config --quiet`
-- `cd services/api && go run ./cmd/preflight -env-file ../../.env.production` passes against the real mounted production paths
+- `cd services/api && go run ./cmd/preflight -env-file ../../.env.production` passes against the real mounted production paths, including parseable WeChat platform certificates that are not near expiry
 - API `/readyz` returns HTTP 200, and `docker compose ps` shows API and Worker as healthy
 - `go test ./...` in `services/api`
 - `go test ./...` in `services/worker`

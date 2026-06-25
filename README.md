@@ -91,7 +91,7 @@ cd services/api && go run ./cmd/preflight -env-file ../../.env.production
 ```
 
 See `docs/deployment.md` before using this for any paid internal test. The example expects secrets and certificates to be mounted from ignored `secrets/` and `certs/` directories.
-- Production preflight is a deploy gate, not a substitute for merchant or browser smoke tests. It verifies dangerous configuration before the stack is opened to paid traffic.
+- Production preflight is a deploy gate, not a substitute for merchant or browser smoke tests. It verifies dangerous configuration, mounted secret paths, and WeChat platform certificate expiry before the stack is opened to paid traffic.
 - Internal smoke runbook: `docs/internal-smoke.md`
 - Mock WeChat payment smoke: `go run ./cmd/smoke -mock-wechat-pay -mock-wechat-secret <local-fake-secret>` in development/test only; the API must run with `WECHAT_PAY_MODE=mock` and the same fake `WECHAT_PAY_API_V3_KEY`. It signs a mock notify, verifies backend `paid` status, entitlement, and paid download. It is not a real merchant E2E check.
 - WeChat live Native smoke: `go run ./cmd/smoke -wechat-live-native -email <fresh-student-email> -code <code>` against a staging/live API running `WECHAT_PAY_MODE=live`. It creates a positive-price package order, requests a non-mock `codeUrl`, immediately closes the order, and verifies no entitlement was granted. Do not scan/pay this QR during the smoke.

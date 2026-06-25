@@ -4,11 +4,14 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"final-review-platform/services/api/pkg/config"
 )
@@ -63,6 +66,46 @@ func TestRunRejectsIncompleteLiveWeChatConfig(t *testing.T) {
 	}
 }
 
+func TestRunRejectsExpiringWeChatPlatformCertificate(t *testing.T) {
+	cfg := validProductionConfig(t)
+	certsDir := t.TempDir()
+	writeTestPlatformCertificate(t, certsDir, "wechatpay_expiring.pem", 24*time.Hour)
+	cfg.WeChatPay.PlatformCertsDir = certsDir
+	cfg.WeChatPay.PlatformCertMinValidDays = 7
+
+	failed := failedNames(Run(cfg, Options{CheckFiles: true}))
+	if !failed["wechat_platform_cert_validity"] {
+		t.Fatalf("expected expiring WeChat platform certificate to fail, got %#v", failed)
+	}
+}
+
+func TestRunAcceptsDERWechatPlatformCertificate(t *testing.T) {
+	cfg := validProductionConfig(t)
+	certsDir := t.TempDir()
+	writeTestPlatformCertificateDER(t, certsDir, "wechatpay_platform.cer", 30*24*time.Hour)
+	cfg.WeChatPay.PlatformCertsDir = certsDir
+
+	checks := Run(cfg, Options{CheckFiles: true})
+	if !Passed(checks) {
+		t.Fatalf("expected DER platform certificate to pass, failed: %#v", FailedChecks(checks))
+	}
+}
+
+func TestRunRejectsPublicKeyOnlyWechatPlatformCertDirectory(t *testing.T) {
+	cfg := validProductionConfig(t)
+	_, publicPEM := testRSAKeyPairPEM(t)
+	certsDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(certsDir, "wechatpay_platform.pem"), []byte(publicPEM), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.WeChatPay.PlatformCertsDir = certsDir
+
+	failed := failedNames(Run(cfg, Options{CheckFiles: true}))
+	if !failed["wechat_platform_cert_validity"] {
+		t.Fatalf("expected public-key-only WeChat platform directory to fail, got %#v", failed)
+	}
+}
+
 func TestLoadEnvFile(t *testing.T) {
 	t.Setenv("PREFLIGHT_TEST_APP_ENV", "")
 	t.Setenv("PREFLIGHT_TEST_ORIGINS", "")
@@ -102,9 +145,7 @@ func validProductionConfig(t *testing.T) config.Config {
 	t.Helper()
 	privatePEM, publicPEM := testRSAKeyPairPEM(t)
 	certsDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(certsDir, "wechatpay_platform.pem"), []byte(publicPEM), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeTestPlatformCertificate(t, certsDir, "wechatpay_platform.pem", 30*24*time.Hour)
 	uploadDir := t.TempDir()
 	return config.Config{
 		Environment:        "production",
@@ -149,6 +190,43 @@ func testRSAKeyPairPEM(t *testing.T) (string, string) {
 	}
 	publicPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicBytes})
 	return string(privatePEM), string(publicPEM)
+}
+
+func writeTestPlatformCertificate(t *testing.T, dir string, name string, validFor time.Duration) {
+	t.Helper()
+	der := testPlatformCertificateDER(t, validFor)
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	if err := os.WriteFile(filepath.Join(dir, name), certPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestPlatformCertificateDER(t *testing.T, dir string, name string, validFor time.Duration) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), testPlatformCertificateDER(t, validFor), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testPlatformCertificateDER(t *testing.T, validFor time.Duration) []byte {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(now.UnixNano()),
+		Subject:      pkix.Name{CommonName: "test-wechat-platform"},
+		NotBefore:    now.Add(-time.Hour),
+		NotAfter:     now.Add(validFor),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
 }
 
 func failedNames(checks []Check) map[string]bool {

@@ -314,7 +314,7 @@ Implemented WeChat Native payment boundary:
 - live close for `paying` orders calls WeChat Pay `POST /v3/pay/transactions/out-trade-no/{out_trade_no}/close` before changing the local status
 - live `POST /api/v1/payments/wechat/notify` verifies the WeChat callback signature against the configured platform certificate/public key, decrypts the AES-256-GCM `resource`, checks appid/mchid, validates `out_trade_no` and integer-cent amount against the local order, records a payment record, and idempotently grants the package entitlement on `SUCCESS`
 - production rejects `WECHAT_PAY_MODE=mock` with `wechat_mock_forbidden_in_production`
-- `WECHAT_PAY_MODE=live` requires `WECHAT_PAY_API_BASE_URL`, appid, mchid, API v3 key, merchant serial number, merchant private key or key path, platform certs dir, and notify URL before use
+- `WECHAT_PAY_MODE=live` requires `WECHAT_PAY_API_BASE_URL`, appid, mchid, API v3 key, merchant serial number, merchant private key or key path, platform certs dir, and notify URL before use; production preflight additionally requires a parseable platform certificate that is not near expiry
 - Native code URL creation never marks an order paid, never grants entitlement, and never changes paid material access; Web QR rendering is only a display layer over the server-returned `codeUrl`
 - real merchant end-to-end payment and close-order verification, certificate rotation automation, refund handling, and operational alerting remain later work
 

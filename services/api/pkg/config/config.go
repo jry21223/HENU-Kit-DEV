@@ -52,17 +52,18 @@ type JWTConfig struct {
 }
 
 type WeChatPayConfig struct {
-	Mode                   string
-	APIBaseURL             string
-	AppID                  string
-	MchID                  string
-	APIV3Key               string
-	MerchantSerialNo       string
-	MerchantPrivateKey     string
-	MerchantPrivateKeyPath string
-	PlatformCertsDir       string
-	NotifyURL              string
-	NativeExpireMinutes    int
+	Mode                     string
+	APIBaseURL               string
+	AppID                    string
+	MchID                    string
+	APIV3Key                 string
+	MerchantSerialNo         string
+	MerchantPrivateKey       string
+	MerchantPrivateKeyPath   string
+	PlatformCertsDir         string
+	PlatformCertMinValidDays int
+	NotifyURL                string
+	NativeExpireMinutes      int
 }
 
 type PaymentIncidentAlertConfig struct {
@@ -99,17 +100,18 @@ func Load() Config {
 			PublicKeyPath:    env("JWT_PUBLIC_KEY_PATH", ""),
 		},
 		WeChatPay: WeChatPayConfig{
-			Mode:                   env("WECHAT_PAY_MODE", "mock"),
-			APIBaseURL:             env("WECHAT_PAY_API_BASE_URL", "https://api.mch.weixin.qq.com"),
-			AppID:                  env("WECHAT_PAY_APPID", ""),
-			MchID:                  env("WECHAT_PAY_MCH_ID", ""),
-			APIV3Key:               env("WECHAT_PAY_API_V3_KEY", ""),
-			MerchantSerialNo:       env("WECHAT_PAY_MERCHANT_SERIAL_NO", ""),
-			MerchantPrivateKey:     env("WECHAT_PAY_MERCHANT_PRIVATE_KEY", ""),
-			MerchantPrivateKeyPath: env("WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH", ""),
-			PlatformCertsDir:       env("WECHAT_PAY_PLATFORM_CERTS_DIR", ""),
-			NotifyURL:              env("WECHAT_PAY_NOTIFY_URL", "http://localhost:8080/api/v1/payments/wechat/notify"),
-			NativeExpireMinutes:    intEnv("WECHAT_PAY_NATIVE_EXPIRE_MINUTES", 15),
+			Mode:                     env("WECHAT_PAY_MODE", "mock"),
+			APIBaseURL:               env("WECHAT_PAY_API_BASE_URL", "https://api.mch.weixin.qq.com"),
+			AppID:                    env("WECHAT_PAY_APPID", ""),
+			MchID:                    env("WECHAT_PAY_MCH_ID", ""),
+			APIV3Key:                 env("WECHAT_PAY_API_V3_KEY", ""),
+			MerchantSerialNo:         env("WECHAT_PAY_MERCHANT_SERIAL_NO", ""),
+			MerchantPrivateKey:       env("WECHAT_PAY_MERCHANT_PRIVATE_KEY", ""),
+			MerchantPrivateKeyPath:   env("WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH", ""),
+			PlatformCertsDir:         env("WECHAT_PAY_PLATFORM_CERTS_DIR", ""),
+			PlatformCertMinValidDays: intEnv("WECHAT_PAY_PLATFORM_CERT_MIN_VALID_DAYS", 7),
+			NotifyURL:                env("WECHAT_PAY_NOTIFY_URL", "http://localhost:8080/api/v1/payments/wechat/notify"),
+			NativeExpireMinutes:      intEnv("WECHAT_PAY_NATIVE_EXPIRE_MINUTES", 15),
 		},
 		PaymentIncidentAlerts: PaymentIncidentAlertConfig{
 			WebhookURL:     env("PAYMENT_INCIDENT_WEBHOOK_URL", ""),

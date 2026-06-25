@@ -24,11 +24,12 @@ WECHAT_PAY_API_V3_KEY=
 WECHAT_PAY_MERCHANT_SERIAL_NO=
 WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH=
 WECHAT_PAY_PLATFORM_CERTS_DIR=
+WECHAT_PAY_PLATFORM_CERT_MIN_VALID_DAYS=7
 WECHAT_PAY_NOTIFY_URL=
 WECHAT_PAY_NATIVE_EXPIRE_MINUTES=15
 ```
 
-`WECHAT_PAY_API_V3_KEY` must be exactly 32 characters. Merchant private keys and platform certificates must be mounted through ignored `secrets/` and `certs/` directories, never committed.
+`WECHAT_PAY_API_V3_KEY` must be exactly 32 characters. Merchant private keys and platform certificates must be mounted through ignored `secrets/` and `certs/` directories, never committed. Production preflight requires at least one parseable WeChat platform certificate in `WECHAT_PAY_PLATFORM_CERTS_DIR`; public-key-only PEM files are rejected because they do not expose certificate expiry metadata. `WECHAT_PAY_PLATFORM_CERT_MIN_VALID_DAYS` controls how much validity must remain before paid traffic is allowed.
 
 Run production config preflight before exposing paid traffic:
 
@@ -135,6 +136,6 @@ This smoke reads `GET /orders/:id/status`, requires `status=paid`, requires `ent
 
 - Real merchant successful-payment E2E is not complete.
 - Refund flow is not implemented.
-- Automatic platform certificate rotation is not implemented.
+- Automatic platform certificate download/rotation is not implemented; production preflight only rejects missing, public-key-only, expired, or near-expiry mounted platform certificates.
 - Live merchant settlement reconciliation is not implemented.
 - Payment incident routing is still basic: incidents can be recorded, summarized on the admin dashboard with an overdue threshold, and handled manually, but there is no full operations escalation workflow yet.

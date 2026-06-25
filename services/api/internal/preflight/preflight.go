@@ -1,10 +1,14 @@
 package preflight
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/payment"
@@ -136,6 +140,7 @@ func fileChecks(cfg config.Config) []Check {
 	checks = append(checks, checkPathFile("jwt_public_key_path", cfg.JWT.PublicKeyPEM, cfg.JWT.PublicKeyPath, "JWT_PUBLIC_KEY_PATH must point to a readable file when JWT_PUBLIC_KEY is not set"))
 	checks = append(checks, checkPathFile("wechat_private_key_path", cfg.WeChatPay.MerchantPrivateKey, cfg.WeChatPay.MerchantPrivateKeyPath, "WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH must point to a readable file when WECHAT_PAY_MERCHANT_PRIVATE_KEY is not set"))
 	checks = append(checks, checkDirHasFiles("wechat_platform_certs_dir", cfg.WeChatPay.PlatformCertsDir, "WECHAT_PAY_PLATFORM_CERTS_DIR must contain at least one certificate file"))
+	checks = append(checks, checkWechatPlatformCertValidity(cfg.WeChatPay.PlatformCertsDir, cfg.WeChatPay.PlatformCertMinValidDays))
 	checks = append(checks, checkDir("local_upload_dir", cfg.LocalUploadDir, "LOCAL_UPLOAD_DIR must be an existing directory"))
 	return checks
 }
@@ -179,6 +184,91 @@ func checkDirHasFiles(name string, path string, message string) Check {
 		}
 	}
 	return Check{Name: name, Passed: false, Message: message}
+}
+
+func checkWechatPlatformCertValidity(path string, minValidDays int) Check {
+	if minValidDays <= 0 {
+		minValidDays = 7
+	}
+	certs, err := readWechatPlatformCertificates(path)
+	if err != nil {
+		return Check{Name: "wechat_platform_cert_validity", Passed: false, Message: err.Error()}
+	}
+	if len(certs) == 0 {
+		return Check{
+			Name:    "wechat_platform_cert_validity",
+			Passed:  false,
+			Message: "WECHAT_PAY_PLATFORM_CERTS_DIR must contain at least one parseable WeChat platform certificate, not just a public key",
+		}
+	}
+	now := time.Now().UTC()
+	minValidUntil := now.Add(time.Duration(minValidDays) * 24 * time.Hour)
+	for _, cert := range certs {
+		if (cert.NotBefore.IsZero() || !now.Before(cert.NotBefore)) && cert.NotAfter.After(minValidUntil) {
+			return Check{Name: "wechat_platform_cert_validity", Passed: true, Message: "ok"}
+		}
+	}
+	return Check{
+		Name:    "wechat_platform_cert_validity",
+		Passed:  false,
+		Message: fmt.Sprintf("WECHAT_PAY_PLATFORM_CERTS_DIR must contain a platform certificate valid for at least %d more day(s)", minValidDays),
+	}
+}
+
+func readWechatPlatformCertificates(path string) ([]*x509.Certificate, error) {
+	cleaned := strings.TrimSpace(path)
+	info, err := os.Stat(cleaned)
+	if err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("WECHAT_PAY_PLATFORM_CERTS_DIR must be an existing directory")
+	}
+	entries, err := os.ReadDir(cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("WECHAT_PAY_PLATFORM_CERTS_DIR must be readable")
+	}
+	certs := []*x509.Certificate{}
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".pem" && ext != ".crt" && ext != ".cer" {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(cleaned, entry.Name()))
+		if err != nil {
+			return nil, fmt.Errorf("WECHAT_PAY_PLATFORM_CERTS_DIR contains unreadable certificate file")
+		}
+		certs = append(certs, parseCertificates(content)...)
+	}
+	return certs, nil
+}
+
+func parseCertificates(content []byte) []*x509.Certificate {
+	certs := []*x509.Certificate{}
+	rest := content
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			continue
+		}
+		certs = append(certs, cert)
+	}
+	if len(certs) == 0 {
+		cert, err := x509.ParseCertificate(content)
+		if err != nil {
+			return certs
+		}
+		certs = append(certs, cert)
+	}
+	return certs
 }
 
 func FailedChecks(checks []Check) []Check {
