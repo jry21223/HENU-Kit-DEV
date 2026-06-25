@@ -164,8 +164,6 @@ export type PaymentIncident = {
   expectedAmount: number;
   actualAmount: number;
   message: string;
-  rawNotify?: unknown;
-  idempotencyKey: string;
   handledBy?: string;
   handledAt?: string;
   handleNote?: string;

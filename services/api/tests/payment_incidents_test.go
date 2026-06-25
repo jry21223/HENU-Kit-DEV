@@ -111,6 +111,9 @@ func TestPaymentIncidentCreatedForAmountMismatchAndResolvedByAdmin(t *testing.T)
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), incident.ID) || !strings.Contains(list.Body.String(), `"status":"open"`) || !strings.Contains(list.Body.String(), `"total":1`) {
 		t.Fatalf("expected admin incident list to include open incident, got %d: %s", list.Code, list.Body.String())
 	}
+	if strings.Contains(list.Body.String(), "rawNotify") || strings.Contains(list.Body.String(), "idempotencyKey") {
+		t.Fatalf("admin incident list must not expose raw notify or idempotency key, got %s", list.Body.String())
+	}
 
 	resolve := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/resolve", `{"status":"ignored","handleNote":"duplicate test mismatch"}`, adminToken)
 	if resolve.Code != http.StatusOK || !strings.Contains(resolve.Body.String(), `"status":"ignored"`) {

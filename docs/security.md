@@ -22,6 +22,7 @@
 - The admin order browser can display and filter `risk_flag` values for payment triage, but risk visibility is not an automated alerting or settlement system.
 - The admin payment reconciliation report is read-only. It can flag local inconsistencies across orders, payment records, order-source grants, risk flags, and open incidents, but it cannot repair payment data, mark orders paid, resolve incidents, or grant entitlement.
 - WeChat callback anomalies that fail trust checks are recorded as `payment_incidents` for manual triage. Unknown orders, amount mismatches, and transaction-id conflicts do not update orders or grant entitlement.
+- Admin payment incident list responses are DTOs and omit raw WeChat notify payloads plus incident idempotency keys.
 - The payment-incident admin page can only mark incidents `resolved` or `ignored`. It writes operation logs but deliberately cannot mark payment success, insert trusted payment records, or issue package/material grants.
 - The payment-incident admin page can also manually re-alert an open incident. A successful re-alert writes `payment_incident.alert` to operation logs, but still cannot mark payment success, insert payment records, resolve the incident, or issue grants.
 - Payment incident webhooks are operator alerts only. They exclude raw WeChat notify bodies and must never be treated by receivers as proof of payment. Production preflight requires any configured `PAYMENT_INCIDENT_WEBHOOK_URL` to use HTTPS and have a non-placeholder `PAYMENT_INCIDENT_WEBHOOK_SECRET`.

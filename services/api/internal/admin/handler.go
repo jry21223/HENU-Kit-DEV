@@ -249,6 +249,26 @@ type paymentIncidentSummary struct {
 	OldestOpenAgeMinutes    int64            `json:"oldestOpenAgeMinutes,omitempty"`
 }
 
+type paymentIncidentRow struct {
+	ID             string     `json:"id"`
+	OrderID        *string    `json:"orderId,omitempty"`
+	Provider       string     `json:"provider"`
+	IncidentType   string     `json:"incidentType"`
+	Severity       string     `json:"severity"`
+	Status         string     `json:"status"`
+	OutTradeNo     string     `json:"outTradeNo"`
+	TransactionID  string     `json:"transactionId"`
+	TradeState     string     `json:"tradeState"`
+	ExpectedAmount int64      `json:"expectedAmount"`
+	ActualAmount   int64      `json:"actualAmount"`
+	Message        string     `json:"message"`
+	HandledBy      *string    `json:"handledBy,omitempty"`
+	HandledAt      *time.Time `json:"handledAt,omitempty"`
+	HandleNote     string     `json:"handleNote,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+}
+
 type mediaAssetRow struct {
 	Asset   model.MediaAsset `json:"asset"`
 	Owner   *model.User      `json:"owner,omitempty"`
@@ -807,7 +827,7 @@ func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"incidents": incidents, "total": total})
+	response.OK(ctx, gin.H{"incidents": paymentIncidentRows(incidents), "total": total})
 }
 
 func (h Handler) PaymentIncidentSummary(ctx *gin.Context) {
@@ -2453,6 +2473,32 @@ func (h Handler) paymentReconciliationIssues(now time.Time) ([]paymentReconcilia
 	}
 
 	return issues, nil
+}
+
+func paymentIncidentRows(incidents []model.PaymentIncident) []paymentIncidentRow {
+	rows := make([]paymentIncidentRow, 0, len(incidents))
+	for _, incident := range incidents {
+		rows = append(rows, paymentIncidentRow{
+			ID:             incident.ID,
+			OrderID:        incident.OrderID,
+			Provider:       incident.Provider,
+			IncidentType:   incident.IncidentType,
+			Severity:       incident.Severity,
+			Status:         incident.Status,
+			OutTradeNo:     incident.OutTradeNo,
+			TransactionID:  incident.TransactionID,
+			TradeState:     incident.TradeState,
+			ExpectedAmount: incident.ExpectedAmount,
+			ActualAmount:   incident.ActualAmount,
+			Message:        incident.Message,
+			HandledBy:      incident.HandledBy,
+			HandledAt:      incident.HandledAt,
+			HandleNote:     incident.HandleNote,
+			CreatedAt:      incident.CreatedAt,
+			UpdatedAt:      incident.UpdatedAt,
+		})
+	}
+	return rows
 }
 
 func (h Handler) orderPaymentIssue(issueType string, severity string, message string, order model.Order, users map[string]model.User, packages map[string]model.CoursePackage, record *model.PaymentRecord, grant *model.MaterialAccessGrant, incident *model.PaymentIncident) paymentReconciliationIssue {
