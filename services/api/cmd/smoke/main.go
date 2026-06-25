@@ -31,6 +31,7 @@ func main() {
 	flag.BoolVar(&cfg.VerifyPaidOrder, "verify-paid-order", boolEnv("SMOKE_VERIFY_PAID_ORDER", false), "verify an existing paid order after real notify: checks paid status, entitlement, package material, and paid download without changing payment state")
 	flag.BoolVar(&cfg.ExpectPaidDenied, "expect-paid-denied", boolEnv("SMOKE_EXPECT_PAID_DENIED", true), "expect paid package material download to be denied before entitlement")
 	flag.BoolVar(&cfg.GrantPackageAccess, "grant-package-access", boolEnv("SMOKE_GRANT_PACKAGE_ACCESS", false), "login as admin, manually grant the selected package to the smoke user, then verify paid download succeeds")
+	flag.BoolVar(&cfg.PaymentOpsReadiness, "payment-ops-readiness", boolEnv("SMOKE_PAYMENT_OPS_READINESS", false), "login as admin and fail if payment reconciliation or incident summaries contain critical/high/overdue open risks")
 	flag.IntVar(&timeoutSeconds, "timeout-seconds", intEnv("SMOKE_TIMEOUT_SECONDS", 15), "HTTP client timeout in seconds")
 	flag.Parse()
 

@@ -86,6 +86,27 @@ go run ./cmd/smoke \
 
 This smoke reads the existing order status, requires `paid`, requires `entitlementGranted=true`, derives the course package from the order `productId`, verifies public package detail still hides storage keys, and downloads one paid package material. It does not call `POST /payments/wechat/notify`, does not create or close an order, and does not create an admin grant.
 
+## Payment Ops Readiness Smoke
+
+Before opening paid internal traffic after a deploy or payment incident fix, run the read-only payment operations gate:
+
+```bash
+cd services/api
+go run ./cmd/smoke \
+  -base-url https://review.example.com/api/v1 \
+  -skip-login \
+  -admin-email admin@example.com \
+  -admin-code <email-code> \
+  -payment-ops-readiness
+```
+
+This smoke logs in as an admin and reads:
+
+- `GET /admin/payment-reconciliation?limit=1000`
+- `GET /admin/payment-incidents/summary`
+
+It fails if reconciliation reports any `critical` or `high` issues, or if the incident summary reports `openCritical > 0`, `openHigh > 0`, or `overdueOpen > 0`. It does not create orders, call WeChat, close orders, mark orders paid, grant entitlement, resolve incidents, or mutate any payment data.
+
 ## Browser Delivery Smoke
 
 After Web, Admin, and API are all reachable, run the browser smoke from the repository root:
@@ -324,6 +345,7 @@ This smoke logs in an admin, grants the smoke student a temporary `tier2` member
 - Optional `-wechat-live-native`: staging/live only; creates/reuses an order, requests a non-mock Native `codeUrl`, closes the order, and verifies no entitlement was granted
 - Optional `-verify-paid-order`: after a real internal payment only; verifies an existing order is paid, entitlement is granted, and paid material download works without changing payment state
 - Optional `-grant-package-access`: logs in as admin, grants the selected published package to the smoke user, and verifies paid download succeeds after the server-side grant
+- Optional `-payment-ops-readiness`: logs in as admin and fails on critical/high payment reconciliation issues or critical/high/overdue open payment incidents without mutating payment data
 - Optional browser smoke: validates the Web/Admin UI path around the same server-side paid boundary
 - Optional leaderboards browser smoke: validates public leaderboard APIs and Web page without mutating data
 - Optional browser mock-payment smoke: validates the Web QR path plus signed backend mock notify, paid status, entitlement, and paid download in development/test
@@ -348,9 +370,10 @@ This smoke logs in an admin, grants the smoke student a temporary `tier2` member
 - `-create-order`: mutates data by creating or reusing a pending order; it does not mark payment success
 - `-mock-wechat-pay`: mutates data by creating/reusing an order, sending a signed mock WeChat notify, and granting package entitlement through the backend payment path; development/test only
 - `-mock-wechat-secret`: HMAC secret for signed mock notify; must match the API process `WECHAT_PAY_API_V3_KEY`
-- `-admin-email`: admin test account email used only with `-grant-package-access`
-- `-admin-code`: admin verification code used only with `-grant-package-access`
+- `-admin-email`: admin test account email used with admin-only smoke modes
+- `-admin-code`: admin verification code used with admin-only smoke modes
 - `-grant-package-access`: mutates data by creating/reusing a manual admin package grant; it does not create a payment order or mark an order paid
+- `-payment-ops-readiness`: read-only admin gate for payment reconciliation and payment incident summaries
 - `-expect-paid-denied=false`: use only if the smoke account already has entitlement and you deliberately cannot test unpaid denial
 
 ## Environment Variables
@@ -368,6 +391,7 @@ SMOKE_CREATE_ORDER=false
 SMOKE_MOCK_WECHAT_PAY=false
 SMOKE_MOCK_WECHAT_SECRET=
 SMOKE_GRANT_PACKAGE_ACCESS=false
+SMOKE_PAYMENT_OPS_READINESS=false
 SMOKE_SKIP_LOGIN=false
 SMOKE_EXPECT_PAID_DENIED=true
 SMOKE_TIMEOUT_SECONDS=15
@@ -499,7 +523,7 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
 
    This must pass before any paid sales launch claim. It proves the backend sees the order as `paid`, entitlement exists, and paid package material can be downloaded by the buyer. It does not prove refunds, settlement reconciliation, or certificate rotation.
 
-7. For manual-delivery internal testing, run the access-grant smoke with a fresh student test email and an admin email:
+9. For manual-delivery internal testing, run the access-grant smoke with a fresh student test email and an admin email:
 
    ```bash
    cd services/api
@@ -512,7 +536,21 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
 
    Use the real email codes in non-development environments. This should pass only after paid download is denied before the grant and allowed after the admin package grant.
 
-8. In Vue Admin, inspect:
+10. Before opening paid internal traffic, run the read-only payment ops readiness gate:
+
+   ```bash
+   cd services/api
+   go run ./cmd/smoke \
+     -base-url https://review.example.com/api/v1 \
+     -skip-login \
+     -admin-email admin@example.com \
+     -admin-code <email-code> \
+     -payment-ops-readiness
+   ```
+
+   This should pass only when local reconciliation has no critical/high issues and payment incidents have no critical, high, or overdue open items.
+
+11. In Vue Admin, inspect:
 
    - `/orders`
    - `/payment-reconciliation`
@@ -520,85 +558,85 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
    - `/access-grants`
    - `/downloads`
 
-9. Run browser delivery smoke with Web/Admin/API base URLs and fresh test accounts:
+12. Run browser delivery smoke with Web/Admin/API base URLs and fresh test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:delivery
    ```
 
-10. In development/test mock payment mode, run browser mock-payment smoke with Web/API base URLs, a fresh test account, and a fake secret matching `WECHAT_PAY_API_V3_KEY`:
+13. In development/test mock payment mode, run browser mock-payment smoke with Web/API base URLs, a fresh test account, and a fake secret matching `WECHAT_PAY_API_V3_KEY`:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:mock-payment
    ```
 
-11. Run leaderboards smoke with Web/API base URLs:
+14. Run leaderboards smoke with Web/API base URLs:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:leaderboards
    ```
 
-12. Run quiz wrong-question smoke with Web/API base URLs and a fresh test account:
+15. Run quiz wrong-question smoke with Web/API base URLs and a fresh test account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:quiz
    ```
 
-13. Run quiz multi-type smoke with Web/API base URLs and seed data or explicit question/answer overrides:
+16. Run quiz multi-type smoke with Web/API base URLs and seed data or explicit question/answer overrides:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:quiz-multi-type
    ```
 
-14. Run admin material-review smoke with Web/Admin/API base URLs and an admin reviewer account:
+17. Run admin material-review smoke with Web/Admin/API base URLs and an admin reviewer account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:material-review
    ```
 
-15. Run admin blog-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+18. Run admin blog-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:review
    ```
 
-16. Run admin wiki-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
+19. Run admin wiki-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:wiki-review
    ```
 
-17. Run admin wiki-proposal-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
+20. Run admin wiki-proposal-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:wiki-proposal-review
    ```
 
-18. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+21. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:forum-review
    ```
 
-19. Run admin forum-reply-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
+22. Run admin forum-reply-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:forum-reply-review
    ```
 
-20. Run admin report-review smoke with Web/Admin/API base URLs and fresh author/reporter/admin test accounts:
+23. Run admin report-review smoke with Web/Admin/API base URLs and fresh author/reporter/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:report-review
    ```
 
-21. Run admin AI draft-review smoke with API/Admin/Worker reachable, mock LLM mode, and fresh student/admin test accounts:
+24. Run admin AI draft-review smoke with API/Admin/Worker reachable, mock LLM mode, and fresh student/admin test accounts:
 
    ```bash
    npm --workspace @final-review/web run test:e2e:ai-draft-review
    ```
 
-22. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
+25. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.
 
 ## Failure Handling
 

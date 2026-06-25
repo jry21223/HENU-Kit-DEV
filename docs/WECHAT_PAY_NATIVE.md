@@ -138,4 +138,4 @@ This smoke reads `GET /orders/:id/status`, requires `status=paid`, requires `ent
 - Refund flow is not implemented.
 - Automatic platform certificate download/rotation is not implemented; production preflight only rejects missing, public-key-only, expired, or near-expiry mounted platform certificates.
 - Live merchant settlement reconciliation is not implemented.
-- Payment incident routing is still basic: incidents can be recorded, summarized on the admin dashboard with an overdue threshold, and handled manually, but there is no full operations escalation workflow yet.
+- Payment incident routing is still basic: incidents can be recorded, summarized on the admin dashboard with an overdue threshold, handled manually, and checked with the read-only `-payment-ops-readiness` smoke, but there is no full operations escalation workflow yet.

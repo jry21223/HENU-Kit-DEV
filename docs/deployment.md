@@ -155,6 +155,7 @@ Before opening paid sales, verify all items below:
 - `CORS_ALLOWED_ORIGINS` lists exact HTTPS origins and does not use `*`; the API rejects wildcard origins and refuses production startup without exact HTTPS origins
 - `docker compose --env-file .env.production -f docker-compose.prod.example.yml run --rm nginx nginx -t`
 - API smoke in `docs/internal-smoke.md` passes with a fresh student test email
+- payment ops readiness smoke passes with `go run ./cmd/smoke -skip-login -admin-email <admin-email> -payment-ops-readiness`, proving local reconciliation has no critical/high issues and payment incidents have no critical, high, or overdue open items
 - WeChat Pay Native live order-and-close smoke has passed with `go run ./cmd/smoke -wechat-live-native` against a positive-price test package
 - WeChat Pay Native successful payment notify has been tested with the real merchant dashboard and a real internal paid order
 - WeChat paid-order verification smoke has passed with `go run ./cmd/smoke -verify-paid-order -order-id <paid-order-id>` for that real internal paid order

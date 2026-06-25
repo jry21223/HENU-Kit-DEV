@@ -813,6 +813,157 @@ func TestRunnerFailsWhenPackageDetailLeaksStorageKey(t *testing.T) {
 	}
 }
 
+func TestRunnerPaymentOpsReadinessPassesWhenNoHighRiskIssues(t *testing.T) {
+	server := newPaymentOpsReadinessServer(t, paymentReconciliationSummary{
+		Total:  2,
+		Medium: 1,
+		Low:    1,
+		Types:  map[string]int{"medium_manual_review": 1, "low_note": 1},
+	}, paymentIncidentSummaryData{
+		Open:                    2,
+		OpenMedium:              1,
+		OpenLow:                 1,
+		OverdueThresholdMinutes: 30,
+		OpenBySeverity:          map[string]int64{"medium": 1, "low": 1},
+		OpenByType:              map[string]int64{"payment_notify_retry": 1},
+	})
+	defer server.Close()
+
+	runner, err := NewRunner(Config{
+		BaseURL:             server.URL,
+		SkipLogin:           true,
+		AdminEmail:          "admin@example.com",
+		PaymentOpsReadiness: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runner.Run(context.Background())
+	if !result.Passed {
+		t.Fatalf("expected payment ops readiness to pass, got %#v", result)
+	}
+	for _, want := range []string{"admin login", "payment reconciliation readiness", "payment incident readiness"} {
+		if !hasPassedCheck(result, want) {
+			t.Fatalf("expected passed check %q in %#v", want, result.Checks)
+		}
+	}
+}
+
+func TestRunnerPaymentOpsReadinessFailsOnBlockingRisks(t *testing.T) {
+	cases := []struct {
+		name        string
+		recon       paymentReconciliationSummary
+		incidents   paymentIncidentSummaryData
+		wantCheck   string
+		wantMessage string
+	}{
+		{
+			name: "critical reconciliation",
+			recon: paymentReconciliationSummary{
+				Total:    1,
+				Critical: 1,
+				Types:    map[string]int{"paid_without_entitlement": 1},
+			},
+			incidents:   paymentIncidentSummaryData{},
+			wantCheck:   "payment reconciliation readiness",
+			wantMessage: "critical=1",
+		},
+		{
+			name:  "overdue incident",
+			recon: paymentReconciliationSummary{},
+			incidents: paymentIncidentSummaryData{
+				Open:        1,
+				OverdueOpen: 1,
+			},
+			wantCheck:   "payment incident readiness",
+			wantMessage: "overdueOpen=1",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newPaymentOpsReadinessServer(t, tc.recon, tc.incidents)
+			defer server.Close()
+
+			runner, err := NewRunner(Config{
+				BaseURL:             server.URL,
+				SkipLogin:           true,
+				AdminEmail:          "admin@example.com",
+				PaymentOpsReadiness: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := runner.Run(context.Background())
+			if result.Passed {
+				t.Fatalf("expected payment ops readiness to fail, got %#v", result)
+			}
+			last := result.Checks[len(result.Checks)-1]
+			if last.Name != tc.wantCheck || !strings.Contains(last.Detail, tc.wantMessage) {
+				t.Fatalf("expected failure %q containing %q, got %#v", tc.wantCheck, tc.wantMessage, last)
+			}
+		})
+	}
+}
+
+func newPaymentOpsReadinessServer(t *testing.T, recon paymentReconciliationSummary, incidents paymentIncidentSummaryData) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"ready": true})
+	})
+	mux.HandleFunc("/schools", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"schools": []map[string]string{{"id": "school_1", "name": "HENU"}}})
+	})
+	mux.HandleFunc("/packages", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"packages": []map[string]interface{}{{"id": "pkg_1", "title": "Discrete Math", "status": "published", "priceFen": 1990}},
+		})
+	})
+	mux.HandleFunc("/packages/pkg_1", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"package": map[string]interface{}{"id": "pkg_1", "title": "Discrete Math", "status": "published", "priceFen": 1990},
+			"materials": []map[string]interface{}{
+				{"id": "mat_paid", "title": "Mock Paper", "accessLevel": "paid", "status": "published"},
+			},
+		})
+	})
+	mux.HandleFunc("/auth/send-code", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"devCode": "123456"})
+	})
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["email"] != "admin@example.com" {
+			t.Fatalf("payment ops readiness should only log in configured admin, got %#v", body)
+		}
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"accessToken": "admin_token"})
+	})
+	mux.HandleFunc("/admin/payment-reconciliation", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer admin_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusForbidden, 40003, "forbidden", nil)
+			return
+		}
+		if r.URL.Query().Get("limit") != "1000" {
+			t.Fatalf("expected reconciliation limit=1000, got %q", r.URL.RawQuery)
+		}
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"issues":  []map[string]interface{}{},
+			"total":   recon.Total,
+			"summary": recon,
+		})
+	})
+	mux.HandleFunc("/admin/payment-incidents/summary", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer admin_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusForbidden, 40003, "forbidden", nil)
+			return
+		}
+		writeEnvelope(t, w, http.StatusOK, incidents)
+	})
+	return httptest.NewServer(mux)
+}
+
 func hasPassedCheck(result Result, name string) bool {
 	for _, check := range result.Checks {
 		if check.Name == name && check.Status == "passed" {

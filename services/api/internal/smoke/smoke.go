@@ -17,24 +17,25 @@ import (
 )
 
 type Config struct {
-	BaseURL            string
-	Email              string
-	Code               string
-	Name               string
-	AdminEmail         string
-	AdminCode          string
-	AdminName          string
-	PackageID          string
-	OrderID            string
-	SkipLogin          bool
-	CreateOrder        bool
-	MockWeChatPay      bool
-	MockWeChatSecret   string
-	WeChatLiveNative   bool
-	VerifyPaidOrder    bool
-	ExpectPaidDenied   bool
-	GrantPackageAccess bool
-	Timeout            time.Duration
+	BaseURL             string
+	Email               string
+	Code                string
+	Name                string
+	AdminEmail          string
+	AdminCode           string
+	AdminName           string
+	PackageID           string
+	OrderID             string
+	SkipLogin           bool
+	CreateOrder         bool
+	MockWeChatPay       bool
+	MockWeChatSecret    string
+	WeChatLiveNative    bool
+	VerifyPaidOrder     bool
+	ExpectPaidDenied    bool
+	GrantPackageAccess  bool
+	PaymentOpsReadiness bool
+	Timeout             time.Duration
 }
 
 type Result struct {
@@ -139,6 +140,38 @@ type closePaymentData struct {
 	Mock    bool   `json:"mock"`
 }
 
+type paymentReconciliationData struct {
+	Issues  []map[string]interface{}     `json:"issues"`
+	Total   int                          `json:"total"`
+	Summary paymentReconciliationSummary `json:"summary"`
+}
+
+type paymentReconciliationSummary struct {
+	Total    int            `json:"total"`
+	Critical int            `json:"critical"`
+	High     int            `json:"high"`
+	Medium   int            `json:"medium"`
+	Low      int            `json:"low"`
+	Types    map[string]int `json:"types"`
+}
+
+type paymentIncidentSummaryData struct {
+	Total                   int64            `json:"total"`
+	Open                    int64            `json:"open"`
+	Resolved                int64            `json:"resolved"`
+	Ignored                 int64            `json:"ignored"`
+	OverdueOpen             int64            `json:"overdueOpen"`
+	OverdueThresholdMinutes int64            `json:"overdueThresholdMinutes"`
+	OpenCritical            int64            `json:"openCritical"`
+	OpenHigh                int64            `json:"openHigh"`
+	OpenMedium              int64            `json:"openMedium"`
+	OpenLow                 int64            `json:"openLow"`
+	OpenBySeverity          map[string]int64 `json:"openBySeverity"`
+	OpenByType              map[string]int64 `json:"openByType"`
+	OldestOpenAt            string           `json:"oldestOpenAt"`
+	OldestOpenAgeMinutes    int64            `json:"oldestOpenAgeMinutes"`
+}
+
 func NewRunner(cfg Config) (Runner, error) {
 	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	if cfg.BaseURL == "" {
@@ -229,6 +262,27 @@ func (r Runner) Run(ctx context.Context) Result {
 		}
 		userID = user.ID
 		result.add("auth me", "passed", status, "current user returned")
+	}
+
+	if r.cfg.PaymentOpsReadiness {
+		if strings.TrimSpace(r.cfg.AdminEmail) == "" {
+			return fail("admin login", 0, errors.New("admin email is required for payment-ops-readiness"))
+		}
+		adminToken, err := r.login(ctx, r.cfg.AdminEmail, r.cfg.AdminCode, r.cfg.AdminName)
+		if err != nil {
+			return fail("admin login", 0, err)
+		}
+		result.add("admin login", "passed", http.StatusOK, r.cfg.AdminEmail)
+		status, detail, err := r.paymentReconciliationReadiness(ctx, adminToken)
+		if err != nil {
+			return fail("payment reconciliation readiness", status, err)
+		}
+		result.add("payment reconciliation readiness", "passed", status, detail)
+		status, detail, err = r.paymentIncidentReadiness(ctx, adminToken)
+		if err != nil {
+			return fail("payment incident readiness", status, err)
+		}
+		result.add("payment incident readiness", "passed", status, detail)
 	}
 
 	packageID := strings.TrimSpace(r.cfg.PackageID)
@@ -610,6 +664,42 @@ func (r Runner) grantPackageAccess(ctx context.Context, userID string, packageID
 		return status, err
 	}
 	return status, nil
+}
+
+func (r Runner) paymentReconciliationReadiness(ctx context.Context, adminToken string) (int, string, error) {
+	status, raw, err := r.request(ctx, http.MethodGet, "/admin/payment-reconciliation?limit=1000", nil, adminToken)
+	if err != nil || status != http.StatusOK {
+		if err == nil {
+			err = fmt.Errorf("unexpected payment reconciliation status %d: %s", status, raw.Message)
+		}
+		return status, "", err
+	}
+	var data paymentReconciliationData
+	if err := json.Unmarshal(raw.Data, &data); err != nil {
+		return status, "", err
+	}
+	if data.Summary.Critical > 0 || data.Summary.High > 0 {
+		return status, "", fmt.Errorf("payment reconciliation has critical=%d high=%d issue(s)", data.Summary.Critical, data.Summary.High)
+	}
+	return status, fmt.Sprintf("critical=0 high=0 total=%d medium=%d low=%d", data.Summary.Total, data.Summary.Medium, data.Summary.Low), nil
+}
+
+func (r Runner) paymentIncidentReadiness(ctx context.Context, adminToken string) (int, string, error) {
+	status, raw, err := r.request(ctx, http.MethodGet, "/admin/payment-incidents/summary", nil, adminToken)
+	if err != nil || status != http.StatusOK {
+		if err == nil {
+			err = fmt.Errorf("unexpected payment incident summary status %d: %s", status, raw.Message)
+		}
+		return status, "", err
+	}
+	var data paymentIncidentSummaryData
+	if err := json.Unmarshal(raw.Data, &data); err != nil {
+		return status, "", err
+	}
+	if data.OpenCritical > 0 || data.OpenHigh > 0 || data.OverdueOpen > 0 {
+		return status, "", fmt.Errorf("payment incidents have openCritical=%d openHigh=%d overdueOpen=%d", data.OpenCritical, data.OpenHigh, data.OverdueOpen)
+	}
+	return status, fmt.Sprintf("openCritical=0 openHigh=0 overdueOpen=0 open=%d", data.Open), nil
 }
 
 func (r Runner) download(ctx context.Context, materialID string, token string) (int, int64, error) {
