@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/auth"
+	materialview "final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -21,14 +22,14 @@ func NewHandler(db *gorm.DB) Handler {
 }
 
 type downloadRecord struct {
-	ID           string          `json:"id"`
-	UserID       *string         `json:"userId,omitempty"`
-	MaterialID   string          `json:"materialId"`
-	AccessLevel  string          `json:"accessLevel"`
-	IP           string          `json:"ip,omitempty"`
-	UserAgent    string          `json:"userAgent,omitempty"`
-	DownloadedAt time.Time       `json:"downloadedAt"`
-	Material     *model.Material `json:"material,omitempty"`
+	ID           string                       `json:"id"`
+	UserID       *string                      `json:"userId,omitempty"`
+	MaterialID   string                       `json:"materialId"`
+	AccessLevel  string                       `json:"accessLevel"`
+	IP           string                       `json:"ip,omitempty"`
+	UserAgent    string                       `json:"userAgent,omitempty"`
+	DownloadedAt time.Time                    `json:"downloadedAt"`
+	Material     *materialview.PublicMaterial `json:"material,omitempty"`
 }
 
 func (h Handler) MyDownloads(ctx *gin.Context) {
@@ -109,7 +110,8 @@ func (h Handler) withMaterials(logs []model.MaterialDownloadLog, includeRequestM
 			record.UserAgent = log.UserAgent
 		}
 		if material, ok := materialsByID[log.MaterialID]; ok {
-			record.Material = &material
+			publicMaterial := materialview.ToPublic(material)
+			record.Material = &publicMaterial
 		}
 		records = append(records, record)
 	}

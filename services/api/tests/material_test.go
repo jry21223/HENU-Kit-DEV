@@ -88,6 +88,13 @@ func TestMaterialDownloadPermissions(t *testing.T) {
 	if err := db.Create(&grant).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Model(&paidMaterial).Updates(map[string]interface{}{
+		"created_by":    user.ID,
+		"reviewer_id":   user.ID,
+		"review_reason": "internal download audit note",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	paidAllowed := performJSON(router, http.MethodGet, "/api/v1/materials/"+paidMaterial.ID+"/download", "", token)
 	if paidAllowed.Code != http.StatusOK {
@@ -118,6 +125,11 @@ func TestMaterialDownloadPermissions(t *testing.T) {
 	myDownloads := performJSON(router, http.MethodGet, "/api/v1/me/downloads", "", token)
 	if myDownloads.Code != http.StatusOK || !strings.Contains(myDownloads.Body.String(), paidMaterial.ID) || strings.Contains(myDownloads.Body.String(), freeMaterial.ID) {
 		t.Fatalf("expected my downloads to include only authenticated user logs, got %d: %s", myDownloads.Code, myDownloads.Body.String())
+	}
+	for _, hiddenField := range []string{paidMaterial.StorageKey, "createdBy", "reviewerId", "reviewReason", "internal download audit note"} {
+		if strings.Contains(myDownloads.Body.String(), hiddenField) {
+			t.Fatalf("my downloads leaked internal material field %q: %s", hiddenField, myDownloads.Body.String())
+		}
 	}
 
 	createTestUser(t, db, "download-admin@stu.henu.edu.cn", model.RoleAdmin)

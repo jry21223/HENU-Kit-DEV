@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/auth"
+	materialview "final-review-platform/services/api/internal/material"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -21,14 +22,14 @@ func NewHandler(db *gorm.DB) Handler {
 }
 
 type materialEntitlement struct {
-	Grant    model.MaterialAccessGrant `json:"grant"`
-	Material *model.Material           `json:"material,omitempty"`
+	Grant    model.MaterialAccessGrant       `json:"grant"`
+	Material *materialview.PublicMaterial    `json:"material,omitempty"`
 }
 
 type packageEntitlement struct {
-	Grant     model.MaterialAccessGrant `json:"grant"`
-	Package   *model.CoursePackage      `json:"package,omitempty"`
-	Materials []model.Material          `json:"materials"`
+	Grant     model.MaterialAccessGrant     `json:"grant"`
+	Package   *model.CoursePackage          `json:"package,omitempty"`
+	Materials []materialview.PublicMaterial `json:"materials"`
 }
 
 type entitlementSummary struct {
@@ -106,7 +107,7 @@ func (h Handler) expandGrants(grants []model.MaterialAccessGrant) ([]materialEnt
 	for _, grant := range grants {
 		if grant.MaterialID != nil && *grant.MaterialID != "" {
 			if row, ok := materialsByID[*grant.MaterialID]; ok {
-				material := row
+				material := materialview.ToPublic(row)
 				materialRows = append(materialRows, materialEntitlement{Grant: grant, Material: &material})
 			}
 			continue
@@ -156,8 +157,8 @@ func (h Handler) publishedPackagesByID(ids []string) (map[string]model.CoursePac
 	return rows, nil
 }
 
-func (h Handler) packageMaterials(packageIDs []string) (map[string][]model.Material, error) {
-	rows := map[string][]model.Material{}
+func (h Handler) packageMaterials(packageIDs []string) (map[string][]materialview.PublicMaterial, error) {
+	rows := map[string][]materialview.PublicMaterial{}
 	if len(packageIDs) == 0 {
 		return rows, nil
 	}
@@ -177,7 +178,7 @@ func (h Handler) packageMaterials(packageIDs []string) (map[string][]model.Mater
 	}
 	for _, item := range items {
 		if material, ok := materialsByID[item.ResourceID]; ok {
-			rows[item.PackageID] = append(rows[item.PackageID], material)
+			rows[item.PackageID] = append(rows[item.PackageID], materialview.ToPublic(material))
 		}
 	}
 	return rows, nil

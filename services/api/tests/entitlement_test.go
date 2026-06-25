@@ -46,6 +46,15 @@ func TestMyEntitlementsRequireLoginAndSummarizeActiveGrants(t *testing.T) {
 	if err := db.First(&user, "email = ?", "entitled@stu.henu.edu.cn").Error; err != nil {
 		t.Fatal(err)
 	}
+	for _, material := range []model.Material{directMaterial, packageMaterial} {
+		if err := db.Model(&material).Updates(map[string]interface{}{
+			"created_by":    user.ID,
+			"reviewer_id":   user.ID,
+			"review_reason": "internal entitlement review note",
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	expiredAt := time.Now().Add(-time.Hour)
 	grants := []model.MaterialAccessGrant{
@@ -72,6 +81,11 @@ func TestMyEntitlementsRequireLoginAndSummarizeActiveGrants(t *testing.T) {
 	for _, unexpected := range []string{expiredMaterial.ID, draftDirectMaterial.ID, draftPackage.ID, draftPackageMaterial.ID} {
 		if strings.Contains(body, unexpected) {
 			t.Fatalf("entitlement response exposed inactive grant %q: %s", unexpected, body)
+		}
+	}
+	for _, hiddenField := range []string{directMaterial.StorageKey, packageMaterial.StorageKey, "createdBy", "reviewerId", "reviewReason", "internal entitlement review note"} {
+		if strings.Contains(body, hiddenField) {
+			t.Fatalf("entitlement response leaked internal material field %q: %s", hiddenField, body)
 		}
 	}
 }
