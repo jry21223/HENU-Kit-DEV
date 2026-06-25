@@ -409,6 +409,101 @@ func TestPaymentIncidentManualAlertRequiresConfiguredWebhook(t *testing.T) {
 	}
 }
 
+func TestPaymentIncidentListFiltersSeverityAndOverdueReadOnly(t *testing.T) {
+	db := newTestDB(t)
+	cfg := testConfig()
+	cfg.PaymentIncidentAlerts.OverdueMinutes = 30
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
+
+	admin := createTestUser(t, db, "incident-filter-admin@stu.henu.edu.cn", model.RoleAdmin)
+	adminToken := loginTestUser(t, router, admin.Email)
+	incidents := []model.PaymentIncident{
+		{
+			BaseModel:      model.BaseModel{CreatedAt: time.Now().Add(-2 * time.Hour)},
+			Provider:       "wechat_native",
+			IncidentType:   "amount_mismatch",
+			Severity:       "high",
+			Status:         model.PaymentIncidentOpen,
+			OutTradeNo:     "FILTER_OVERDUE_HIGH",
+			Message:        "overdue high",
+			IdempotencyKey: "filter-overdue-high",
+		},
+		{
+			Provider:       "wechat_native",
+			IncidentType:   "transaction_conflict",
+			Severity:       "high",
+			Status:         model.PaymentIncidentOpen,
+			OutTradeNo:     "FILTER_FRESH_HIGH",
+			Message:        "fresh high",
+			IdempotencyKey: "filter-fresh-high",
+		},
+		{
+			BaseModel:      model.BaseModel{CreatedAt: time.Now().Add(-2 * time.Hour)},
+			Provider:       "wechat_native",
+			IncidentType:   "order_not_found",
+			Severity:       "low",
+			Status:         model.PaymentIncidentOpen,
+			OutTradeNo:     "FILTER_OVERDUE_LOW",
+			Message:        "overdue low",
+			IdempotencyKey: "filter-overdue-low",
+		},
+		{
+			BaseModel:      model.BaseModel{CreatedAt: time.Now().Add(-2 * time.Hour)},
+			Provider:       "wechat_native",
+			IncidentType:   "amount_mismatch",
+			Severity:       "high",
+			Status:         model.PaymentIncidentResolved,
+			OutTradeNo:     "FILTER_RESOLVED_HIGH",
+			Message:        "resolved high",
+			IdempotencyKey: "filter-resolved-high",
+		},
+	}
+	if err := db.Create(&incidents).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.PaymentIncident{}).
+		Where("out_trade_no IN ?", []string{"FILTER_OVERDUE_HIGH", "FILTER_OVERDUE_LOW", "FILTER_RESOLVED_HIGH"}).
+		Update("created_at", time.Now().UTC().Add(-2*time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	filtered := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents?status=all&severity=high&overdue=true", "", adminToken)
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("expected filtered incident list 200, got %d: %s", filtered.Code, filtered.Body.String())
+	}
+	body := filtered.Body.String()
+	for _, expected := range []string{`"total":1`, "FILTER_OVERDUE_HIGH"} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("expected filtered body to contain %s, got %s", expected, body)
+		}
+	}
+	for _, unexpected := range []string{"FILTER_FRESH_HIGH", "FILTER_OVERDUE_LOW", "FILTER_RESOLVED_HIGH"} {
+		if strings.Contains(body, unexpected) {
+			t.Fatalf("filtered body should not contain %s, got %s", unexpected, body)
+		}
+	}
+
+	invalidSeverity := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents?severity=urgent", "", adminToken)
+	if invalidSeverity.Code != http.StatusBadRequest || !strings.Contains(invalidSeverity.Body.String(), "invalid_severity") {
+		t.Fatalf("expected invalid severity rejection, got %d: %s", invalidSeverity.Code, invalidSeverity.Body.String())
+	}
+	invalidOverdue := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents?overdue=maybe", "", adminToken)
+	if invalidOverdue.Code != http.StatusBadRequest || !strings.Contains(invalidOverdue.Body.String(), "invalid_overdue") {
+		t.Fatalf("expected invalid overdue rejection, got %d: %s", invalidOverdue.Code, invalidOverdue.Body.String())
+	}
+	invalidStatus := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents?status=resolved&overdue=true", "", adminToken)
+	if invalidStatus.Code != http.StatusBadRequest || !strings.Contains(invalidStatus.Body.String(), "invalid_overdue_status") {
+		t.Fatalf("expected invalid overdue status rejection, got %d: %s", invalidStatus.Code, invalidStatus.Body.String())
+	}
+	var storedCount int64
+	if err := db.Model(&model.PaymentIncident{}).Count(&storedCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if storedCount != int64(len(incidents)) {
+		t.Fatalf("filter endpoint must be read-only, expected %d incidents, got %d", len(incidents), storedCount)
+	}
+}
+
 func TestPaymentIncidentSummaryIsAdminOnlyAndReadOnly(t *testing.T) {
 	db := newTestDB(t)
 	cfg := testConfig()

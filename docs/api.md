@@ -118,7 +118,7 @@ Currently implemented endpoints:
 - `GET /api/v1/admin/orders?status=&userEmail=&outTradeNo=&packageId=&paymentProvider=&productType=&riskFlag=&riskOnly=&limit=`
 - `GET /api/v1/admin/payment-reconciliation?issueType=&severity=&limit=`
 - `GET /api/v1/admin/payment-incidents/summary`
-- `GET /api/v1/admin/payment-incidents?status=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
+- `GET /api/v1/admin/payment-incidents?status=&severity=&overdue=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
 - `POST /api/v1/admin/payment-incidents/:id/alert`
 - `POST /api/v1/admin/payment-incidents/:id/resolve`
 - `POST /api/v1/admin/schools`
@@ -295,7 +295,7 @@ Implemented order foundation:
 - the reconciliation report returns `issues`, `total`, and a `summary` grouped by severity and issue type. It never marks orders paid, inserts trusted payment records, resolves incidents, or grants entitlement.
 - WeChat callback anomalies are also captured in `payment_incidents` for manual triage; current incident types include `order_not_found`, `amount_mismatch`, and `transaction_conflict`
 - `GET /api/v1/admin/payment-incidents/summary` is admin-only and read-only. It returns total/open/resolved/ignored counts, open severity counts, open incident counts by type, oldest-open incident age, and `overdueOpen` based on `PAYMENT_INCIDENT_OVERDUE_MINUTES` for dashboard triage.
-- `GET /api/v1/admin/payment-incidents` is admin-only, defaults to `status=open`, and can filter by incident type, order id, out-trade number, transaction id, and limit
+- `GET /api/v1/admin/payment-incidents` is admin-only, defaults to `status=open`, and can filter by severity, `overdue=true`, incident type, order id, out-trade number, transaction id, and limit. `overdue=true` applies only to open incidents and uses `PAYMENT_INCIDENT_OVERDUE_MINUTES`
 - the payment incident list response includes `incidents` and `total`; Vue Admin uses the summary endpoint to surface open payment incident alerts and high-risk distribution on the dashboard
 - when `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly created incident rows post a best-effort `payment_incident.opened` JSON webhook with an `X-Final-Review-Signature` HMAC header; production preflight rejects configured HTTP or unsigned webhook targets, and duplicate idempotent incidents do not re-alert
 - `POST /api/v1/admin/payment-incidents/:id/alert` re-sends a signed `payment_incident.realerted` webhook for an open incident only; it writes an operation log on successful delivery and never changes order status, payment records, incident status, or entitlements

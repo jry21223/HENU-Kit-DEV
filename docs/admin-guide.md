@@ -116,7 +116,8 @@ The reconciliation page is read-only. It compares local orders, payment records,
 
 `/payment-incidents` calls:
 
-- `GET /api/v1/admin/payment-incidents?status=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
+- `GET /api/v1/admin/payment-incidents?status=&severity=&overdue=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
+- `POST /api/v1/admin/payment-incidents/:id/alert`
 - `POST /api/v1/admin/payment-incidents/:id/resolve`
 
 The incident page is available only to `admin` and `super_admin` roles. It is for payment operations triage after WeChat callback trust checks reject or quarantine a callback.
@@ -132,6 +133,7 @@ Important boundaries:
 - Incident rows are idempotent for repeated identical callbacks.
 - The summary response includes open count, high-risk count, top incident type, and `overdueOpen`; `/dashboard` uses it to show whether open payment incidents need attention.
 - `PAYMENT_INCIDENT_OVERDUE_MINUTES` controls when an open incident is treated as overdue for dashboard triage. This is an operator reminder only; it does not auto-resolve incidents or change payment state.
+- The incident page can filter by severity and `overdue=true`; overdue filtering only returns open incidents past the same threshold.
 - If `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly opened incidents also emit a best-effort signed webhook for external operator alerts.
 - Open incidents can be manually re-alerted from the incident page. This sends a signed `payment_incident.realerted` webhook and writes an operation log only after delivery succeeds.
 - Open incidents can be marked `resolved` or `ignored` with an optional handling note.

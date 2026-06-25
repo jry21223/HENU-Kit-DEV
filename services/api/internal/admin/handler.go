@@ -762,6 +762,28 @@ func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
 		}
 		query = query.Where("incident_type = ?", incidentType)
 	}
+	if severity := strings.TrimSpace(ctx.Query("severity")); severity != "" {
+		if !validPaymentReconciliationSeverity(severity) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_severity", nil)
+			return
+		}
+		query = query.Where("severity = ?", severity)
+	}
+	if overdueOnly, ok := parseOptionalBool(ctx.Query("overdue")); !ok {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_overdue", nil)
+		return
+	} else if overdueOnly {
+		if status != model.PaymentIncidentOpen && status != "all" {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_overdue_status", nil)
+			return
+		}
+		overdueMinutes := h.paymentIncidentOverdueMinutes
+		if overdueMinutes <= 0 {
+			overdueMinutes = 30
+		}
+		overdueCutoff := time.Now().UTC().Add(-time.Duration(overdueMinutes) * time.Minute)
+		query = query.Where("status = ? AND created_at <= ?", model.PaymentIncidentOpen, overdueCutoff)
+	}
 	if orderID := strings.TrimSpace(ctx.Query("orderId")); orderID != "" {
 		if _, err := uuid.Parse(orderID); err != nil {
 			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_order_id", nil)
@@ -2911,6 +2933,21 @@ func parseLimit(raw string, fallback int, max int) (int, bool) {
 		return max, true
 	}
 	return limit, true
+}
+
+func parseOptionalBool(raw string) (bool, bool) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return false, true
+	}
+	switch value {
+	case "1", "true", "yes", "on":
+		return true, true
+	case "0", "false", "no", "off":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func parseLogTime(raw string, endOfDay bool) (time.Time, bool) {

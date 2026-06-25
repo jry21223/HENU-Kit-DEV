@@ -19,6 +19,14 @@
             <el-option v-for="item in statuses" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
+        <el-form-item :label="copy.severity">
+          <el-select v-model="filters.severity" clearable>
+            <el-option v-for="item in severities" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="copy.overdueOnly">
+          <el-switch v-model="filters.overdueOnly" />
+        </el-form-item>
         <el-form-item :label="copy.incidentType">
           <el-input v-model="filters.incidentType" clearable placeholder="amount_mismatch" />
         </el-form-item>
@@ -145,6 +153,7 @@ const copy = {
   refresh: "\u5237\u65b0",
   filters: "\u7b5b\u9009",
   status: "\u5904\u7406\u72b6\u6001",
+  overdueOnly: "\u53ea\u770b\u8d85\u65f6\u672a\u5904\u7406",
   incidentType: "\u5f02\u5e38\u7c7b\u578b",
   outTradeNo: "\u5546\u6237\u8ba2\u5355\u53f7",
   transactionId: "\u5fae\u4fe1\u4ea4\u6613\u53f7",
@@ -182,6 +191,13 @@ const statuses = [
   { label: "All", value: "all" },
 ];
 
+const severities = [
+  { label: "Critical", value: "critical" },
+  { label: "High", value: "high" },
+  { label: "Medium", value: "medium" },
+  { label: "Low", value: "low" },
+];
+
 const incidents = ref<PaymentIncident[]>([]);
 const total = ref<number | null>(null);
 const loading = ref(false);
@@ -190,6 +206,8 @@ const message = ref("");
 const error = ref("");
 const filters = reactive({
   status: "open",
+  severity: "",
+  overdueOnly: false,
   incidentType: "",
   outTradeNo: "",
   transactionId: "",
@@ -203,6 +221,8 @@ async function loadIncidents() {
   try {
     const params = new URLSearchParams();
     if (filters.status) params.set("status", filters.status);
+    if (filters.severity) params.set("severity", filters.severity);
+    if (filters.overdueOnly) params.set("overdue", "true");
     if (filters.incidentType.trim()) params.set("incidentType", filters.incidentType.trim());
     if (filters.outTradeNo.trim()) params.set("outTradeNo", filters.outTradeNo.trim());
     if (filters.transactionId.trim()) params.set("transactionId", filters.transactionId.trim());
@@ -219,6 +239,8 @@ async function loadIncidents() {
 
 function resetFilters() {
   filters.status = "open";
+  filters.severity = "";
+  filters.overdueOnly = false;
   filters.incidentType = "";
   filters.outTradeNo = "";
   filters.transactionId = "";
