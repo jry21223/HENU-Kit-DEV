@@ -287,19 +287,23 @@ export function MomentFeed({ initialMoments }: { initialMoments: Moment[] }) {
                   </div>
                   {form.images.length > 0 ? (
                     <div className="mt-3 grid grid-cols-3 gap-2">
-                      {form.images.map((image) => (
-                        <div className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-muted" key={image.url}>
-                          <img alt="" className="size-full object-cover" src={mediaUrl(image.url)} />
-                          <button
-                            aria-label={copy.removeImage}
-                            className="absolute right-1 top-1 inline-flex size-7 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm"
-                            onClick={() => removeUploadedImage(image.url)}
-                            type="button"
-                          >
-                            <X className="size-4" aria-hidden="true" />
-                          </button>
-                        </div>
-                      ))}
+                      {form.images.map((image) => {
+                        const imageUrl = apiMediaUrl(image.url);
+                        if (!imageUrl) return null;
+                        return (
+                          <div className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-muted" key={image.url}>
+                            <img alt="" className="size-full object-cover" src={imageUrl} />
+                            <button
+                              aria-label={copy.removeImage}
+                              className="absolute right-1 top-1 inline-flex size-7 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm"
+                              onClick={() => removeUploadedImage(image.url)}
+                              type="button"
+                            >
+                              <X className="size-4" aria-hidden="true" />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>
@@ -322,6 +326,7 @@ export function MomentFeed({ initialMoments }: { initialMoments: Moment[] }) {
       <section className="space-y-4">
         {moments.map((moment) => {
           const canActOnAuthor = Boolean(user && user.id !== moment.author.id);
+          const imageUrls = moment.images.map(apiMediaUrl).filter((value): value is string => Boolean(value)).slice(0, 4);
           return (
             <article className="rounded-3xl border border-border bg-card p-5 shadow-sm" key={moment.id}>
               <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -347,11 +352,11 @@ export function MomentFeed({ initialMoments }: { initialMoments: Moment[] }) {
                 ) : null}
               </div>
               <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7">{moment.content}</p>
-              {moment.images.length > 0 ? (
+              {imageUrls.length > 0 ? (
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  {moment.images.slice(0, 4).map((image) => (
-                    <a className="block aspect-square overflow-hidden rounded-2xl border border-border bg-background" href={mediaUrl(image)} key={image} rel="noreferrer" target="_blank">
-                      <img alt="" className="size-full object-cover transition duration-150 hover:scale-[1.02]" src={mediaUrl(image)} />
+                  {imageUrls.map((imageUrl) => (
+                    <a className="block aspect-square overflow-hidden rounded-2xl border border-border bg-background" href={imageUrl} key={imageUrl} rel="noreferrer" target="_blank">
+                      <img alt="" className="size-full object-cover transition duration-150 hover:scale-[1.02]" src={imageUrl} />
                     </a>
                   ))}
                 </div>
@@ -462,10 +467,9 @@ function visibilityLabel(value: string) {
   return value === "mutual_friends" ? copy.mutual : copy.public;
 }
 
-function mediaUrl(value: string) {
-  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+function apiMediaUrl(value: string) {
   if (value.startsWith("/api/v1/moments/images/")) return `${apiOrigin()}${value}`;
-  return value;
+  return null;
 }
 
 function apiOrigin() {

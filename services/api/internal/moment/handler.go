@@ -563,7 +563,14 @@ func decodeImages(raw datatypes.JSON) []string {
 	if err := json.Unmarshal(raw, &images); err != nil {
 		return []string{}
 	}
-	return images
+	safeImages := make([]string, 0, len(images))
+	for _, image := range images {
+		trimmed := strings.TrimSpace(image)
+		if _, ok := mediaIDFromURL(trimmed); ok {
+			safeImages = append(safeImages, trimmed)
+		}
+	}
+	return safeImages
 }
 
 func parseLimit(value string, fallback int, max int) (int, error) {

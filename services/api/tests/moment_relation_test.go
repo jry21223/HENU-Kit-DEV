@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/datatypes"
+
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/internal/server"
 	applogger "final-review-platform/services/api/pkg/logger"
@@ -299,6 +301,41 @@ func TestMomentAndRelationWorkflow(t *testing.T) {
 	selfFollow := performJSON(router, http.MethodPost, "/api/v1/users/"+alice.ID+"/follow", "", aliceToken)
 	if selfFollow.Code != http.StatusBadRequest || !strings.Contains(selfFollow.Body.String(), "invalid_target") {
 		t.Fatalf("expected self-follow rejection, got %d: %s", selfFollow.Code, selfFollow.Body.String())
+	}
+}
+
+func TestMomentListFiltersUnsafeStoredImageURLs(t *testing.T) {
+	db := newTestDB(t)
+	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	author := createTestUser(t, db, "moment-dirty-images@stu.henu.edu.cn", model.RoleUser)
+	moment := model.Moment{
+		AuthorID: author.ID,
+		Content:  "Dirty image URLs should not leak to clients.",
+		Images: datatypes.JSON([]byte(`[
+			"/api/v1/moments/images/safe-image-id",
+			"/uploads/moments/private.png",
+			"javascript:alert(1)",
+			"https://tracker.example/pixel.png",
+			"/api/v1/moments/images/safe-image-id/../secret"
+		]`)),
+		Status: model.StatusPublished,
+	}
+	if err := db.Create(&moment).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	list := performJSON(router, http.MethodGet, "/api/v1/moments", "", "")
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected moment list 200, got %d: %s", list.Code, list.Body.String())
+	}
+	body := list.Body.String()
+	if !strings.Contains(body, "/api/v1/moments/images/safe-image-id") {
+		t.Fatalf("expected safe API image URL to remain, got %s", body)
+	}
+	for _, unsafe := range []string{"/uploads/moments/private.png", "javascript:alert(1)", "https://tracker.example/pixel.png", "../secret"} {
+		if strings.Contains(body, unsafe) {
+			t.Fatalf("unsafe stored image URL %q leaked in response: %s", unsafe, body)
+		}
 	}
 }
 
