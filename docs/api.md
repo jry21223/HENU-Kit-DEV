@@ -508,7 +508,7 @@ Implemented admin behavior:
 - material upload uses server-generated storage keys under `materials/{courseId}/`
 - upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with `%PDF`, text/Markdown files cannot contain NUL bytes, and DOCX files must have a ZIP header
 - upload rejects files larger than 20 MiB
-- manually supplied `storageKey` values with path traversal are rejected
+- manually supplied `storageKey` values must resolve inside `LOCAL_UPLOAD_DIR`, point to an existing non-directory file, use an allowed extension, and pass the same lightweight content checks before a material row is created. Manual `fileName` values must be plain filenames and match the storage extension; `fileSize` is derived from disk rather than trusted from the request
 - admin analytics overview returns read-only totals, 14-day successful-download trend, top materials, course demand, access-level breakdown, and report target/status breakdown
 - admin operation logs support filtering by operator, action, target, created time range, and limit
 - operation log CSV export reuses the same filters, requires admin role, and caps output by `OPERATION_LOG_EXPORT_LIMIT`

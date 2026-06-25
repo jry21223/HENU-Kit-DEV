@@ -1787,6 +1787,13 @@ func (h Handler) CreateMaterial(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "unsafe_storage_key", nil)
 		return
 	}
+	fileName, fileSize, err := h.validateMaterialStorageReference(material.StorageKey, material.FileName)
+	if err != nil {
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		return
+	}
+	material.FileName = fileName
+	material.FileSize = fileSize
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&material).Error; err != nil {
 			return err
@@ -3333,6 +3340,46 @@ func validateUploadContent(file multipart.File, ext string) error {
 		return errors.New("invalid_file_content")
 	}
 	return nil
+}
+
+func (h Handler) validateMaterialStorageReference(storageKey string, displayName string) (string, int64, error) {
+	path, err := adminSafeStoragePath(h.uploadDir, storageKey)
+	if err != nil {
+		return "", 0, errors.New("unsafe_storage_key")
+	}
+	ext := strings.ToLower(filepath.Ext(storageKey))
+	if !allowedUploadExtensions[ext] {
+		return "", 0, errors.New("unsupported_file_type")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", 0, errors.New("file_not_found")
+		}
+		return "", 0, err
+	}
+	if info.IsDir() {
+		return "", 0, errors.New("file_not_found")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+	if err := validateUploadContent(file, ext); err != nil {
+		return "", 0, err
+	}
+	fileName := strings.TrimSpace(displayName)
+	if fileName == "" {
+		fileName = filepath.Base(storageKey)
+	}
+	if fileName == "" || strings.ContainsAny(fileName, `/\`) || fileName != filepath.Base(fileName) {
+		return "", 0, errors.New("unsafe_file_name")
+	}
+	if strings.ToLower(filepath.Ext(fileName)) != ext {
+		return "", 0, errors.New("unsupported_file_type")
+	}
+	return fileName, info.Size(), nil
 }
 
 func hasUnsafePath(value string) bool {

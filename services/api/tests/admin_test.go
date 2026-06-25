@@ -149,6 +149,29 @@ func TestAdminMaterialUploadGuards(t *testing.T) {
 		t.Fatalf("expected unsafe storage key rejection, got %d: %s", unsafeStorage.Code, unsafeStorage.Body.String())
 	}
 
+	missingStorage := performJSON(router, http.MethodPost, "/api/v1/admin/materials", `{"courseId":"`+course.ID+`","title":"Missing","storageKey":"materials/missing.pdf"}`, adminToken)
+	if missingStorage.Code != http.StatusBadRequest || !strings.Contains(missingStorage.Body.String(), "file_not_found") {
+		t.Fatalf("expected missing storage file rejection, got %d: %s", missingStorage.Code, missingStorage.Body.String())
+	}
+
+	writeUploadFile(t, cfg.LocalUploadDir, "materials/manual/run.exe", "MZ")
+	unsupportedStorage := performJSON(router, http.MethodPost, "/api/v1/admin/materials", `{"courseId":"`+course.ID+`","title":"Executable","storageKey":"materials/manual/run.exe"}`, adminToken)
+	if unsupportedStorage.Code != http.StatusBadRequest || !strings.Contains(unsupportedStorage.Body.String(), "unsupported_file_type") {
+		t.Fatalf("expected unsupported manual storage type rejection, got %d: %s", unsupportedStorage.Code, unsupportedStorage.Body.String())
+	}
+
+	writeUploadFile(t, cfg.LocalUploadDir, "materials/manual/bad.pdf", "not a pdf")
+	invalidStorageContent := performJSON(router, http.MethodPost, "/api/v1/admin/materials", `{"courseId":"`+course.ID+`","title":"Bad PDF","storageKey":"materials/manual/bad.pdf"}`, adminToken)
+	if invalidStorageContent.Code != http.StatusBadRequest || !strings.Contains(invalidStorageContent.Body.String(), "invalid_file_content") {
+		t.Fatalf("expected invalid manual storage content rejection, got %d: %s", invalidStorageContent.Code, invalidStorageContent.Body.String())
+	}
+
+	writeUploadFile(t, cfg.LocalUploadDir, "materials/manual/safe.txt", "plain text")
+	unsafeManualFileName := performJSON(router, http.MethodPost, "/api/v1/admin/materials", `{"courseId":"`+course.ID+`","title":"Unsafe Name","storageKey":"materials/manual/safe.txt","fileName":"../safe.txt"}`, adminToken)
+	if unsafeManualFileName.Code != http.StatusBadRequest || !strings.Contains(unsafeManualFileName.Body.String(), "unsafe_file_name") {
+		t.Fatalf("expected unsafe manual fileName rejection, got %d: %s", unsafeManualFileName.Code, unsafeManualFileName.Body.String())
+	}
+
 	unsupported := performMultipart(router, "/api/v1/admin/materials/upload", adminToken, map[string]string{
 		"courseId": course.ID,
 		"title":    "Unsupported",
@@ -244,13 +267,16 @@ func TestAdminMaterialUploadGuards(t *testing.T) {
 
 func TestAdminMaterialStatusFlow(t *testing.T) {
 	db := newTestDB(t)
-	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	cfg := testConfig()
+	cfg.LocalUploadDir = t.TempDir()
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
 
 	course := createTestCourse(t, db)
 	admin := createTestUser(t, db, "material-admin@stu.henu.edu.cn", model.RoleAdmin)
 	adminToken := loginTestUser(t, router, "material-admin@stu.henu.edu.cn")
 	studentToken := loginTestUser(t, router, "material-student@stu.henu.edu.cn")
 
+	writeUploadFile(t, cfg.LocalUploadDir, "materials/draft-material.txt", "draft content")
 	createBody := `{"courseId":"` + course.ID + `","title":"Draft Material","storageKey":"materials/draft-material.txt","accessLevel":"free"}`
 	createResponse := performJSON(router, http.MethodPost, "/api/v1/admin/materials", createBody, adminToken)
 	if createResponse.Code != http.StatusOK {
@@ -263,6 +289,9 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	}
 	if material.Status != model.StatusDraft {
 		t.Fatalf("expected missing status to default to draft, got %s", material.Status)
+	}
+	if material.FileName != "draft-material.txt" || material.FileSize != int64(len("draft content")) {
+		t.Fatalf("expected file metadata derived from storage reference, got fileName=%q fileSize=%d", material.FileName, material.FileSize)
 	}
 	if countOperationLogs(t, db, "material.create", "material", material.ID, admin.ID) != 1 {
 		t.Fatal("expected material create operation log")
@@ -308,7 +337,7 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 	if err := db.First(&material, "id = ?", material.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if material.StorageKey != originalStorageKey || material.FileName != "" || material.FileSize != 0 {
+	if material.StorageKey != originalStorageKey || material.FileName != "draft-material.txt" || material.FileSize != int64(len("draft content")) {
 		t.Fatalf("material file fields changed through metadata update: %#v", material)
 	}
 	if countOperationLogs(t, db, "material.update", "material", material.ID, admin.ID) != 0 {
