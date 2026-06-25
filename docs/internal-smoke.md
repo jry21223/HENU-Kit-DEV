@@ -470,7 +470,7 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
    go run ./cmd/import-materials -dry-run -check-release ../../data/material-manifest.example.json
    ```
 
-   The command prints the normal `report` plus a `releaseCheck` block and exits non-zero if the manifest has unresolved files, duplicate file references, unpublished package/materials, missing paid materials, missing package bindings, zero-byte totals, or paid materials in a package with a non-positive `priceFen`. UTF-8 manifests with a BOM are accepted, so JSON files saved by Windows tooling should not fail solely because of byte-order marks.
+   The dry-run fails before writing rows if the manifest has unresolved files, unsupported material extensions, or unsafe display filenames. When validation succeeds, the command prints the normal `report` plus a `releaseCheck` block and exits non-zero if the package is not release-ready because of duplicate file references, unpublished package/materials, missing paid materials, missing package bindings, zero-byte totals, or paid materials in a package with a non-positive `priceFen`. UTF-8 manifests with a BOM are accepted, so JSON files saved by Windows tooling should not fail solely because of byte-order marks.
 
 4. Run real material import only after `releaseCheck.passed` is true and the report matches expected package/material counts.
 

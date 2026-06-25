@@ -18,15 +18,23 @@ import (
 )
 
 var (
-	ErrEmptyManifest      = errors.New("empty_manifest")
-	ErrMissingRequired    = errors.New("missing_required_field")
-	ErrInvalidMaterial    = errors.New("invalid_material")
-	ErrMissingFile        = errors.New("manifest_file_missing")
-	ErrUnsafeFilePath     = errors.New("unsafe_manifest_file_path")
-	ErrPackageScope       = errors.New("package_scope_mismatch")
-	ErrUnsupportedVersion = errors.New("unsupported_manifest")
-	errDryRunRollback     = errors.New("material_import_dry_run_rollback")
+	ErrEmptyManifest       = errors.New("empty_manifest")
+	ErrMissingRequired     = errors.New("missing_required_field")
+	ErrInvalidMaterial     = errors.New("invalid_material")
+	ErrMissingFile         = errors.New("manifest_file_missing")
+	ErrUnsafeFilePath      = errors.New("unsafe_manifest_file_path")
+	ErrUnsupportedFileType = errors.New("unsupported_manifest_file_type")
+	ErrPackageScope        = errors.New("package_scope_mismatch")
+	ErrUnsupportedVersion  = errors.New("unsupported_manifest")
+	errDryRunRollback      = errors.New("material_import_dry_run_rollback")
 )
+
+var allowedManifestFileExtensions = map[string]bool{
+	".pdf":  true,
+	".txt":  true,
+	".md":   true,
+	".docx": true,
+}
 
 type ManifestEntry struct {
 	School             string             `json:"school"`
@@ -477,6 +485,11 @@ func (i Importer) upsertMaterial(course model.Course, manifestMaterial ManifestM
 	fileName := strings.TrimSpace(manifestMaterial.FileName)
 	if fileName == "" {
 		fileName = filepath.Base(storageKey)
+	} else {
+		fileName, err = safeManifestFileName(fileName)
+		if err != nil {
+			return model.Material{}, false, err
+		}
 	}
 
 	material := model.Material{}
@@ -719,6 +732,9 @@ func (i Importer) storageKeyForManifestPath(rawPath string) (string, int64, erro
 	if rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
 		return "", 0, ErrUnsafeFilePath
 	}
+	if !allowedManifestFileExtensions[strings.ToLower(filepath.Ext(rel))] {
+		return "", 0, ErrUnsupportedFileType
+	}
 	info, err := os.Stat(absPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -730,6 +746,14 @@ func (i Importer) storageKeyForManifestPath(rawPath string) (string, int64, erro
 		return "", 0, ErrMissingFile
 	}
 	return filepath.ToSlash(rel), info.Size(), nil
+}
+
+func safeManifestFileName(value string) (string, error) {
+	name := strings.TrimSpace(value)
+	if name == "" || strings.ContainsAny(name, `/\`) || name != filepath.Base(name) {
+		return "", ErrUnsafeFilePath
+	}
+	return name, nil
 }
 
 func splitPath(path string) []string {

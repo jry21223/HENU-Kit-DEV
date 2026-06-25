@@ -171,6 +171,30 @@ func TestMaterialManifestImportRejectsUnsafeAndMissingFiles(t *testing.T) {
 		assertMaterialImportCounts(t, db, 0, 0, 0)
 	})
 
+	t.Run("unsupported file type rolls back", func(t *testing.T) {
+		db := newTestDB(t)
+		uploadDir := t.TempDir()
+		writeUploadFile(t, uploadDir, "materials/unsafe/run.exe", "MZ")
+		_, err := materialimport.New(db, uploadDir).Import([]materialimport.ManifestEntry{manifestEntryWithFile("uploads/materials/unsafe/run.exe")})
+		if !errors.Is(err, materialimport.ErrUnsupportedFileType) {
+			t.Fatalf("expected unsupported file type error, got %v", err)
+		}
+		assertMaterialImportCounts(t, db, 0, 0, 0)
+	})
+
+	t.Run("unsafe display file name rolls back", func(t *testing.T) {
+		db := newTestDB(t)
+		uploadDir := t.TempDir()
+		writeUploadFile(t, uploadDir, "materials/unsafe-name/outline.pdf", "outline")
+		manifest := manifestEntryWithFile("uploads/materials/unsafe-name/outline.pdf")
+		manifest.Materials[0].FileName = "../outline.pdf"
+		_, err := materialimport.New(db, uploadDir).Import([]materialimport.ManifestEntry{manifest})
+		if !errors.Is(err, materialimport.ErrUnsafeFilePath) {
+			t.Fatalf("expected unsafe display file name error, got %v", err)
+		}
+		assertMaterialImportCounts(t, db, 0, 0, 0)
+	})
+
 	t.Run("missing file rolls back", func(t *testing.T) {
 		db := newTestDB(t)
 		uploadDir := t.TempDir()
