@@ -165,6 +165,22 @@ func TestAdminMaterialUploadGuards(t *testing.T) {
 		t.Fatalf("expected invalid pdf rejection, got %d: %s", invalidPDF.Code, invalidPDF.Body.String())
 	}
 
+	invalidText := performMultipart(router, "/api/v1/admin/materials/upload", adminToken, map[string]string{
+		"courseId": course.ID,
+		"title":    "Invalid Text",
+	}, "file", "binary.txt", []byte{'o', 'k', 0, 'x'})
+	if invalidText.Code != http.StatusBadRequest || !strings.Contains(invalidText.Body.String(), "invalid_file_content") {
+		t.Fatalf("expected invalid text rejection, got %d: %s", invalidText.Code, invalidText.Body.String())
+	}
+
+	invalidDOCX := performMultipart(router, "/api/v1/admin/materials/upload", adminToken, map[string]string{
+		"courseId": course.ID,
+		"title":    "Invalid DOCX",
+	}, "file", "bad.docx", []byte("not a zip"))
+	if invalidDOCX.Code != http.StatusBadRequest || !strings.Contains(invalidDOCX.Body.String(), "invalid_file_content") {
+		t.Fatalf("expected invalid docx rejection, got %d: %s", invalidDOCX.Code, invalidDOCX.Body.String())
+	}
+
 	tooLarge := performMultipart(router, "/api/v1/admin/materials/upload", adminToken, map[string]string{
 		"courseId": course.ID,
 		"title":    "Too Large",

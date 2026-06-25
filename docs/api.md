@@ -506,7 +506,7 @@ Implemented admin behavior:
 - material create/update/upload accept only known material types and access levels
 - material metadata update rejects `storageKey`, `storage_key`, `fileName`, `file_name`, `fileSize`, and `file_size`; file replacement must use upload flow
 - material upload uses server-generated storage keys under `materials/{courseId}/`
-- upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with a PDF header
+- upload accepts only `.pdf`, `.txt`, `.md`, and `.docx`; PDFs must start with `%PDF`, text/Markdown files cannot contain NUL bytes, and DOCX files must have a ZIP header
 - upload rejects files larger than 20 MiB
 - manually supplied `storageKey` values with path traversal are rejected
 - admin analytics overview returns read-only totals, 14-day successful-download trend, top materials, course demand, access-level breakdown, and report target/status breakdown

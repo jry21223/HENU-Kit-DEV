@@ -3318,13 +3318,19 @@ func validateUploadContent(file multipart.File, ext string) error {
 		return errors.New("invalid_file")
 	}
 	content := buffer[:n]
-	if ext == ".pdf" && !strings.HasPrefix(string(content), "%PDF") {
+	if ext == ".pdf" && !bytes.HasPrefix(content, []byte("%PDF")) {
 		return errors.New("invalid_file_content")
 	}
 	if ext == ".txt" || ext == ".md" {
-		if strings.Contains(string(content), "\x00") {
+		if bytes.Contains(content, []byte{0}) {
 			return errors.New("invalid_file_content")
 		}
+	}
+	if ext == ".docx" &&
+		!bytes.HasPrefix(content, []byte("PK\x03\x04")) &&
+		!bytes.HasPrefix(content, []byte("PK\x05\x06")) &&
+		!bytes.HasPrefix(content, []byte("PK\x07\x08")) {
+		return errors.New("invalid_file_content")
 	}
 	return nil
 }
