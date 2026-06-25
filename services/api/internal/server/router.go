@@ -214,6 +214,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.DELETE("/access-grants/:id", adminHandler.RevokeAccessGrant)
 	admin.GET("/orders", adminHandler.ListOrders)
 	admin.GET("/payment-reconciliation", adminHandler.ListPaymentReconciliation)
+	admin.GET("/payment-incidents/summary", adminHandler.PaymentIncidentSummary)
 	admin.GET("/payment-incidents", adminHandler.ListPaymentIncidents)
 	admin.POST("/payment-incidents/:id/resolve", adminHandler.ResolvePaymentIncident)
 	admin.POST("/schools", adminHandler.CreateSchool)

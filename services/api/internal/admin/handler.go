@@ -220,6 +220,21 @@ type paymentReconciliationSummary struct {
 	Types    map[string]int `json:"types"`
 }
 
+type paymentIncidentSummary struct {
+	Total                int64            `json:"total"`
+	Open                 int64            `json:"open"`
+	Resolved             int64            `json:"resolved"`
+	Ignored              int64            `json:"ignored"`
+	OpenCritical         int64            `json:"openCritical"`
+	OpenHigh             int64            `json:"openHigh"`
+	OpenMedium           int64            `json:"openMedium"`
+	OpenLow              int64            `json:"openLow"`
+	OpenBySeverity       map[string]int64 `json:"openBySeverity"`
+	OpenByType           map[string]int64 `json:"openByType"`
+	OldestOpenAt         string           `json:"oldestOpenAt,omitempty"`
+	OldestOpenAgeMinutes int64            `json:"oldestOpenAgeMinutes,omitempty"`
+}
+
 type mediaAssetRow struct {
 	Asset   model.MediaAsset `json:"asset"`
 	Owner   *model.User      `json:"owner,omitempty"`
@@ -757,6 +772,91 @@ func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
 		return
 	}
 	response.OK(ctx, gin.H{"incidents": incidents, "total": total})
+}
+
+func (h Handler) PaymentIncidentSummary(ctx *gin.Context) {
+	summary := paymentIncidentSummary{
+		OpenBySeverity: map[string]int64{},
+		OpenByType:     map[string]int64{},
+	}
+	var statusRows []struct {
+		Status string
+		Count  int64
+	}
+	if err := h.db.Model(&model.PaymentIncident{}).
+		Select("status, count(*) as count").
+		Group("status").
+		Scan(&statusRows).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	for _, row := range statusRows {
+		summary.Total += row.Count
+		switch row.Status {
+		case model.PaymentIncidentOpen:
+			summary.Open = row.Count
+		case model.PaymentIncidentResolved:
+			summary.Resolved = row.Count
+		case model.PaymentIncidentIgnored:
+			summary.Ignored = row.Count
+		}
+	}
+
+	var severityRows []struct {
+		Severity string
+		Count    int64
+	}
+	if err := h.db.Model(&model.PaymentIncident{}).
+		Select("severity, count(*) as count").
+		Where("status = ?", model.PaymentIncidentOpen).
+		Group("severity").
+		Scan(&severityRows).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	for _, row := range severityRows {
+		summary.OpenBySeverity[row.Severity] = row.Count
+		switch row.Severity {
+		case "critical":
+			summary.OpenCritical = row.Count
+		case "high":
+			summary.OpenHigh = row.Count
+		case "medium":
+			summary.OpenMedium = row.Count
+		case "low":
+			summary.OpenLow = row.Count
+		}
+	}
+
+	var typeRows []struct {
+		IncidentType string
+		Count        int64
+	}
+	if err := h.db.Model(&model.PaymentIncident{}).
+		Select("incident_type, count(*) as count").
+		Where("status = ?", model.PaymentIncidentOpen).
+		Group("incident_type").
+		Scan(&typeRows).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	for _, row := range typeRows {
+		summary.OpenByType[row.IncidentType] = row.Count
+	}
+
+	var oldest model.PaymentIncident
+	if err := h.db.Where("status = ?", model.PaymentIncidentOpen).Order("created_at asc").First(&oldest).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+			return
+		}
+	} else {
+		oldestAt := oldest.CreatedAt.UTC()
+		summary.OldestOpenAt = oldestAt.Format(time.RFC3339)
+		summary.OldestOpenAgeMinutes = int64(time.Since(oldestAt).Minutes())
+	}
+
+	response.OK(ctx, summary)
 }
 
 func (h Handler) ListPaymentReconciliation(ctx *gin.Context) {

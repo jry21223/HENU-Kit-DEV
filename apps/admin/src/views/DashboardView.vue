@@ -22,6 +22,9 @@
       <p class="muted">
         {{ copy.paymentIncidentAlertBody.replace("{count}", String(openPaymentIncidentCount)) }}
       </p>
+      <p v-if="paymentIncidentSummaryText" class="muted incident-alert-meta">
+        {{ paymentIncidentSummaryText }}
+      </p>
       <div class="action-row incident-alert-actions">
         <RouterLink to="/payment-incidents">
           <el-button type="warning">{{ copy.viewPaymentIncidents }}</el-button>
@@ -46,7 +49,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AdminShell from "../components/AdminShell.vue";
-import { apiRequest, type PaymentIncidentListResponse } from "../lib/api";
+import { apiRequest, type PaymentIncidentSummaryResponse } from "../lib/api";
 
 const copy = {
   title: "\u8d44\u6599\u8fd0\u8425\u4eea\u8868\u76d8",
@@ -66,6 +69,9 @@ const copy = {
 };
 
 const openPaymentIncidentCount = ref(0);
+const openPaymentIncidentCriticalCount = ref(0);
+const openPaymentIncidentHighCount = ref(0);
+const topPaymentIncidentType = ref("");
 const loadingIncidents = ref(false);
 
 const stats = computed(() => [
@@ -74,9 +80,21 @@ const stats = computed(() => [
   { label: "AI \u5ba1\u6838", value: "\u8349\u7a3f\u5148\u884c" },
   {
     label: copy.paymentIncidents,
-    value: loadingIncidents.value ? copy.loading : `${openPaymentIncidentCount.value} \u6761\u672a\u5904\u7406`,
+    value: loadingIncidents.value
+      ? copy.loading
+      : `${openPaymentIncidentCount.value} \u6761\u672a\u5904\u7406 / ${openPaymentIncidentCriticalCount.value + openPaymentIncidentHighCount.value} \u6761\u9ad8\u98ce\u9669`,
   },
 ]);
+
+const paymentIncidentSummaryText = computed(() => {
+  if (openPaymentIncidentCount.value <= 0) return "";
+  const riskCount = openPaymentIncidentCriticalCount.value + openPaymentIncidentHighCount.value;
+  const pieces = [`Critical/High: ${riskCount}`];
+  if (topPaymentIncidentType.value) {
+    pieces.push(`Top type: ${topPaymentIncidentType.value}`);
+  }
+  return pieces.join(" / ");
+});
 
 const rows = [
   {
@@ -106,10 +124,18 @@ onMounted(loadPaymentIncidentAlerts);
 async function loadPaymentIncidentAlerts() {
   loadingIncidents.value = true;
   try {
-    const response = await apiRequest<PaymentIncidentListResponse>("/admin/payment-incidents?status=open&limit=1");
-    openPaymentIncidentCount.value = response.data?.total ?? 0;
+    const response = await apiRequest<PaymentIncidentSummaryResponse>("/admin/payment-incidents/summary");
+    const summary = response.data;
+    openPaymentIncidentCount.value = summary?.open ?? 0;
+    openPaymentIncidentCriticalCount.value = summary?.openCritical ?? 0;
+    openPaymentIncidentHighCount.value = summary?.openHigh ?? 0;
+    const topType = Object.entries(summary?.openByType ?? {}).sort((left, right) => right[1] - left[1])[0];
+    topPaymentIncidentType.value = topType ? `${topType[0]} (${topType[1]})` : "";
   } catch {
     openPaymentIncidentCount.value = 0;
+    openPaymentIncidentCriticalCount.value = 0;
+    openPaymentIncidentHighCount.value = 0;
+    topPaymentIncidentType.value = "";
   } finally {
     loadingIncidents.value = false;
   }

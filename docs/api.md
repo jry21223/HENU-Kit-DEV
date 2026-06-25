@@ -117,6 +117,7 @@ Currently implemented endpoints:
 - `DELETE /api/v1/admin/access-grants/:id`
 - `GET /api/v1/admin/orders?status=&userEmail=&outTradeNo=&packageId=&paymentProvider=&productType=&riskFlag=&riskOnly=&limit=`
 - `GET /api/v1/admin/payment-reconciliation?issueType=&severity=&limit=`
+- `GET /api/v1/admin/payment-incidents/summary`
 - `GET /api/v1/admin/payment-incidents?status=&incidentType=&orderId=&outTradeNo=&transactionId=&limit=`
 - `POST /api/v1/admin/payment-incidents/:id/resolve`
 - `POST /api/v1/admin/schools`
@@ -292,8 +293,9 @@ Implemented order foundation:
 - `GET /api/v1/admin/payment-reconciliation` is admin-only and read-only. It cross-checks local orders, payment records, order-source grants, risk flags, and open payment incidents for anomalies such as paid orders missing payment records, paid orders missing entitlements, non-paid orders with order entitlements, duplicate transaction ids, mismatched record amounts, risk flags, and open incident rows.
 - the reconciliation report returns `issues`, `total`, and a `summary` grouped by severity and issue type. It never marks orders paid, inserts trusted payment records, resolves incidents, or grants entitlement.
 - WeChat callback anomalies are also captured in `payment_incidents` for manual triage; current incident types include `order_not_found`, `amount_mismatch`, and `transaction_conflict`
+- `GET /api/v1/admin/payment-incidents/summary` is admin-only and read-only. It returns total/open/resolved/ignored counts, open severity counts, open incident counts by type, and oldest-open incident age for dashboard triage.
 - `GET /api/v1/admin/payment-incidents` is admin-only, defaults to `status=open`, and can filter by incident type, order id, out-trade number, transaction id, and limit
-- the payment incident list response includes `incidents` and `total`; Vue Admin uses `total` to surface open payment incident alerts on the dashboard
+- the payment incident list response includes `incidents` and `total`; Vue Admin uses the summary endpoint to surface open payment incident alerts and high-risk distribution on the dashboard
 - when `PAYMENT_INCIDENT_WEBHOOK_URL` is configured, newly created incident rows post a best-effort `payment_incident.opened` JSON webhook with an optional `X-Final-Review-Signature` HMAC header; duplicate idempotent incidents do not re-alert
 - `POST /api/v1/admin/payment-incidents/:id/resolve` marks an open incident as `resolved` or `ignored`, records the handling admin and note, and writes an operation log
 - resolving or ignoring a payment incident is deliberately non-financial: it does not mark an order paid, does not create a payment record, and does not grant entitlement

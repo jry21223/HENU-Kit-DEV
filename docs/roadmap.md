@@ -91,7 +91,7 @@
 - Server-side WeChat Native expiry convergence for stale pending/paying orders, preventing expired QR orders from payment creation or duplicate-order reuse
 - Admin order risk-flag visibility and filtering for payment triage
 - Payment incident ledger for rejected WeChat callback anomalies, with admin-only resolve/ignore handling and no entitlement side effects
-- Vue admin dashboard open-incident alert count backed by the payment incident list total
+- Vue admin dashboard open-incident alert summary backed by the read-only payment incident summary endpoint
 - Optional signed best-effort webhook for newly opened payment incidents, without raw notify payloads or entitlement side effects
 - Admin-only, read-only local payment reconciliation report for order/payment-record/order-grant/risk-flag/open-incident inconsistencies
 - Server-side operation logs for user management, access grants, organization, course, material, upload/status/archive, material review, wiki entry/proposal review, blog review, forum post/reply review, forum best-answer selection, and AI draft review mutations

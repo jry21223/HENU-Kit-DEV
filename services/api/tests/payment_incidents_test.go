@@ -236,6 +236,109 @@ func TestPaymentIncidentCreatedForTransactionConflict(t *testing.T) {
 	}
 }
 
+func TestPaymentIncidentSummaryIsAdminOnlyAndReadOnly(t *testing.T) {
+	db := newTestDB(t)
+	cfg := testConfig()
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
+
+	admin := createTestUser(t, db, "incident-summary-admin@stu.henu.edu.cn", model.RoleAdmin)
+	user := createTestUser(t, db, "incident-summary-user@stu.henu.edu.cn", model.RoleUser)
+	adminToken := loginTestUser(t, router, admin.Email)
+	userToken := loginTestUser(t, router, user.Email)
+
+	incidents := []model.PaymentIncident{
+		{
+			Provider:       "wechat_native",
+			IncidentType:   "amount_mismatch",
+			Severity:       "critical",
+			Status:         model.PaymentIncidentOpen,
+			OutTradeNo:     "SUMMARY_OPEN_CRITICAL",
+			ExpectedAmount: 1990,
+			ActualAmount:   1,
+			Message:        "amount mismatch",
+			IdempotencyKey: "summary-open-critical",
+		},
+		{
+			Provider:       "wechat_native",
+			IncidentType:   "transaction_conflict",
+			Severity:       "high",
+			Status:         model.PaymentIncidentOpen,
+			OutTradeNo:     "SUMMARY_OPEN_HIGH",
+			TransactionID:  "TX_SUMMARY_CONFLICT",
+			ExpectedAmount: 1990,
+			ActualAmount:   1990,
+			Message:        "transaction conflict",
+			IdempotencyKey: "summary-open-high",
+		},
+		{
+			Provider:       "wechat_native",
+			IncidentType:   "amount_mismatch",
+			Severity:       "high",
+			Status:         model.PaymentIncidentResolved,
+			OutTradeNo:     "SUMMARY_RESOLVED",
+			ExpectedAmount: 1990,
+			ActualAmount:   1,
+			Message:        "resolved mismatch",
+			IdempotencyKey: "summary-resolved",
+		},
+		{
+			Provider:       "wechat_native",
+			IncidentType:   "order_not_found",
+			Severity:       "medium",
+			Status:         model.PaymentIncidentIgnored,
+			OutTradeNo:     "SUMMARY_IGNORED",
+			ExpectedAmount: 0,
+			ActualAmount:   1990,
+			Message:        "ignored missing order",
+			IdempotencyKey: "summary-ignored",
+		},
+	}
+	if err := db.Create(&incidents).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	unauthenticated := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents/summary", "", "")
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated incident summary 401, got %d: %s", unauthenticated.Code, unauthenticated.Body.String())
+	}
+	forbidden := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents/summary", "", userToken)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("expected user incident summary 403, got %d: %s", forbidden.Code, forbidden.Body.String())
+	}
+
+	summary := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents/summary", "", adminToken)
+	body := summary.Body.String()
+	if summary.Code != http.StatusOK {
+		t.Fatalf("expected admin incident summary 200, got %d: %s", summary.Code, body)
+	}
+	for _, expected := range []string{
+		`"total":4`,
+		`"open":2`,
+		`"resolved":1`,
+		`"ignored":1`,
+		`"openCritical":1`,
+		`"openHigh":1`,
+		`"amount_mismatch":1`,
+		`"transaction_conflict":1`,
+		`"oldestOpenAt"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("expected summary body to contain %s, got %s", expected, body)
+		}
+	}
+	if strings.Contains(body, `"order_not_found":1`) {
+		t.Fatalf("ignored incidents must not be counted in openByType, got %s", body)
+	}
+
+	var storedCount int64
+	if err := db.Model(&model.PaymentIncident{}).Count(&storedCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if storedCount != int64(len(incidents)) {
+		t.Fatalf("summary endpoint must be read-only, expected %d incidents, got %d", len(incidents), storedCount)
+	}
+}
+
 func countPaymentIncidents(t *testing.T, db *gorm.DB, incidentType string) int64 {
 	t.Helper()
 	var count int64

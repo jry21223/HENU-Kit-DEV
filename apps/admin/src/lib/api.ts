@@ -178,6 +178,21 @@ export type PaymentIncidentListResponse = {
   total: number;
 };
 
+export type PaymentIncidentSummaryResponse = {
+  total: number;
+  open: number;
+  resolved: number;
+  ignored: number;
+  openCritical: number;
+  openHigh: number;
+  openMedium: number;
+  openLow: number;
+  openBySeverity: Record<string, number>;
+  openByType: Record<string, number>;
+  oldestOpenAt?: string;
+  oldestOpenAgeMinutes?: number;
+};
+
 export type PaymentReconciliationIssue = {
   issueType: string;
   severity: string;
