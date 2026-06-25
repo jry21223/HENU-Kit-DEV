@@ -483,6 +483,178 @@ func TestRunnerCanCheckLiveNativeAndCloseWithoutEntitlement(t *testing.T) {
 	}
 }
 
+func TestRunnerCanVerifyPaidOrderAfterOfficialNotify(t *testing.T) {
+	downloaded := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"ready": true})
+	})
+	mux.HandleFunc("/schools", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"schools": []map[string]string{{"id": "school_1", "name": "HENU"}}})
+	})
+	mux.HandleFunc("/packages", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"packages": []map[string]interface{}{
+				{"id": "pkg_other", "title": "Other Package", "status": "published", "priceFen": 990},
+				{"id": "pkg_paid", "title": "Paid Package", "status": "published", "priceFen": 1990},
+			},
+		})
+	})
+	mux.HandleFunc("/packages/pkg_paid", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"package": map[string]interface{}{"id": "pkg_paid", "title": "Paid Package", "status": "published", "priceFen": 1990},
+			"materials": []map[string]interface{}{
+				{"id": "mat_paid", "title": "Paid Paper", "accessLevel": "paid", "status": "published"},
+			},
+		})
+	})
+	mux.HandleFunc("/auth/send-code", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"devCode": "123456"})
+	})
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"accessToken": "student_token"})
+	})
+	mux.HandleFunc("/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer student_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusUnauthorized, 40001, "unauthorized", nil)
+			return
+		}
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"id": "user_paid", "email": "smoke-paid@stu.henu.edu.cn", "role": "user"})
+	})
+	mux.HandleFunc("/orders/ord_paid/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer student_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusUnauthorized, 40001, "unauthorized", nil)
+			return
+		}
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"orderId":            "ord_paid",
+			"status":             "paid",
+			"entitlementGranted": true,
+			"paymentProvider":    "wechat_native",
+			"productType":        "course_package",
+			"productId":          "pkg_paid",
+			"amountTotal":        1990,
+			"currency":           "CNY",
+		})
+	})
+	mux.HandleFunc("/materials/mat_paid/download", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer student_token" {
+			writeEnvelopeWithMessage(t, w, http.StatusUnauthorized, 40001, "unauthorized", nil)
+			return
+		}
+		downloaded = true
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("paid package content")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	runner, err := NewRunner(Config{
+		BaseURL:         server.URL,
+		Email:           "smoke-paid@stu.henu.edu.cn",
+		OrderID:         "ord_paid",
+		VerifyPaidOrder: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runner.Run(context.Background())
+	if !result.Passed {
+		t.Fatalf("expected paid order verification to pass, got %#v", result)
+	}
+	if result.PackageID != "pkg_paid" || result.PaidMaterialID != "mat_paid" || !downloaded {
+		t.Fatalf("expected derived package and paid download, got result=%#v downloaded=%v", result, downloaded)
+	}
+	for _, want := range []string{"verify paid order status", "package detail", "paid download after verified order"} {
+		if !hasPassedCheck(result, want) {
+			t.Fatalf("expected passed check %q in %#v", want, result.Checks)
+		}
+	}
+	if hasPassedCheck(result, "paid download denied before entitlement") {
+		t.Fatalf("verify-paid-order should not run unpaid denial check, got %#v", result.Checks)
+	}
+}
+
+func TestRunnerRejectsUnpaidOrderDuringPaidVerification(t *testing.T) {
+	downloadCalled := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"ready": true})
+	})
+	mux.HandleFunc("/schools", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"schools": []map[string]string{{"id": "school_1", "name": "HENU"}}})
+	})
+	mux.HandleFunc("/packages", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"packages": []map[string]interface{}{{"id": "pkg_paid", "title": "Paid Package", "status": "published", "priceFen": 1990}}})
+	})
+	mux.HandleFunc("/auth/send-code", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"devCode": "123456"})
+	})
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"accessToken": "student_token"})
+	})
+	mux.HandleFunc("/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{"id": "user_unpaid", "email": "smoke-unpaid@stu.henu.edu.cn", "role": "user"})
+	})
+	mux.HandleFunc("/orders/ord_unpaid/status", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"orderId":            "ord_unpaid",
+			"status":             "paying",
+			"entitlementGranted": false,
+			"paymentProvider":    "wechat_native",
+			"productType":        "course_package",
+			"productId":          "pkg_paid",
+			"amountTotal":        1990,
+			"currency":           "CNY",
+		})
+	})
+	mux.HandleFunc("/packages/pkg_paid", func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(t, w, http.StatusOK, map[string]interface{}{
+			"package":   map[string]interface{}{"id": "pkg_paid", "title": "Paid Package", "status": "published", "priceFen": 1990},
+			"materials": []map[string]interface{}{{"id": "mat_paid", "title": "Paid Paper", "accessLevel": "paid", "status": "published"}},
+		})
+	})
+	mux.HandleFunc("/materials/mat_paid/download", func(w http.ResponseWriter, r *http.Request) {
+		downloadCalled = true
+		writeEnvelopeWithMessage(t, w, http.StatusForbidden, 40003, "entitlement_required", nil)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	runner, err := NewRunner(Config{BaseURL: server.URL, Email: "smoke-unpaid@stu.henu.edu.cn", OrderID: "ord_unpaid", VerifyPaidOrder: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runner.Run(context.Background())
+	if result.Passed {
+		t.Fatalf("expected unpaid order verification to fail, got %#v", result)
+	}
+	if downloadCalled {
+		t.Fatal("verify-paid-order must not attempt download before paid entitlement status is proven")
+	}
+	last := result.Checks[len(result.Checks)-1]
+	if last.Name != "verify paid order status" || !strings.Contains(last.Detail, "expected paid") {
+		t.Fatalf("expected paid order status failure, got %#v", last)
+	}
+}
+
+func TestRunnerRejectsConflictingPaidOrderVerificationModes(t *testing.T) {
+	cases := []Config{
+		{BaseURL: "http://example.test/api/v1", OrderID: "ord_1", VerifyPaidOrder: true, CreateOrder: true},
+		{BaseURL: "http://example.test/api/v1", OrderID: "ord_1", VerifyPaidOrder: true, MockWeChatPay: true},
+		{BaseURL: "http://example.test/api/v1", OrderID: "ord_1", VerifyPaidOrder: true, WeChatLiveNative: true},
+		{BaseURL: "http://example.test/api/v1", OrderID: "ord_1", VerifyPaidOrder: true, GrantPackageAccess: true},
+		{BaseURL: "http://example.test/api/v1", VerifyPaidOrder: true},
+	}
+	for _, cfg := range cases {
+		if _, err := NewRunner(cfg); err == nil {
+			t.Fatalf("expected verify-paid-order config rejection for %#v", cfg)
+		}
+	}
+}
+
 func TestRunnerRejectsConflictingWeChatSmokeModes(t *testing.T) {
 	_, err := NewRunner(Config{BaseURL: "http://example.test/api/v1", MockWeChatPay: true, WeChatLiveNative: true})
 	if err == nil || !strings.Contains(err.Error(), "cannot be enabled together") {

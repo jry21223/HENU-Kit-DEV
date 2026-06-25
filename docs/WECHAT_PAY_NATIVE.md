@@ -107,6 +107,20 @@ A real payment acceptance test still requires:
 - exactly one order-source package entitlement;
 - paid material download succeeding only after the notify path grants entitlement.
 
+After the real internal payment completes, verify the resulting paid order without mutating payment state:
+
+```bash
+cd services/api
+go run ./cmd/smoke \
+  -base-url https://review.example.com/api/v1 \
+  -email smoke-live@stu.henu.edu.cn \
+  -code <email-code> \
+  -order-id <paid-order-id> \
+  -verify-paid-order
+```
+
+This smoke reads `GET /orders/:id/status`, requires `status=paid`, requires `entitlementGranted=true`, derives the package from `productId`, checks package detail metadata, and downloads a paid package material. It does not call Native ordering, close-order, notify, admin grants, or any endpoint that marks an order paid.
+
 ## Close Order
 
 `POST /api/v1/payments/wechat/close`:

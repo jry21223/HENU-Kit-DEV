@@ -96,6 +96,15 @@ go run ./cmd/smoke -base-url https://review.example.com/api/v1 -email smoke-live
 
 The target API must run with `WECHAT_PAY_MODE=live` and valid merchant configuration. This smoke creates a positive-price package order, calls live Native ordering, requires `mock=false`, immediately closes the order, and verifies the closed order did not grant entitlement. Do not scan or pay the QR code during this smoke. It does not replace a successful-payment notify E2E.
 
+Paid-order verification after a real internal payment:
+
+```bash
+cd services/api
+go run ./cmd/smoke -base-url https://review.example.com/api/v1 -email smoke-live@stu.henu.edu.cn -code <email-code> -order-id <paid-order-id> -verify-paid-order
+```
+
+Use this only after the buyer has actually paid and WeChat official notify should already have been processed. The smoke does not call notify, does not close the order, does not grant access manually, and does not mark anything paid. It verifies `paid`, `entitlementGranted`, the package detail, and paid material download.
+
 To verify manual internal delivery after importing mounted course files, run the smoke with admin access-grant verification:
 
 ```bash

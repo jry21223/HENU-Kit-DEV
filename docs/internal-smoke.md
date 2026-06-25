@@ -70,6 +70,22 @@ This smoke creates a package order, calls `POST /payments/wechat/native`, requir
 
 Do not scan or pay the generated QR code during this smoke. This proves live Native ordering and close-order wiring, not successful payment acceptance. A real paid internal order is still required to verify official notify delivery and entitlement issuance.
 
+## Paid Order Verification Smoke
+
+After a real internal tester scans and pays a WeChat Native QR code, verify the backend state without mutating payment data:
+
+```bash
+cd services/api
+go run ./cmd/smoke \
+  -base-url https://review.example.com/api/v1 \
+  -email smoke-live@stu.henu.edu.cn \
+  -code <email-code> \
+  -order-id <paid-order-id> \
+  -verify-paid-order
+```
+
+This smoke reads the existing order status, requires `paid`, requires `entitlementGranted=true`, derives the course package from the order `productId`, verifies public package detail still hides storage keys, and downloads one paid package material. It does not call `POST /payments/wechat/notify`, does not create or close an order, and does not create an admin grant.
+
 ## Browser Delivery Smoke
 
 After Web, Admin, and API are all reachable, run the browser smoke from the repository root:
@@ -306,6 +322,7 @@ This smoke logs in an admin, grants the smoke student a temporary `tier2` member
 - Optional `-create-order`: creates/reuses a local pending package order and reads its status
 - Optional `-mock-wechat-pay`: development/test only; creates/reuses an order, requests mock Native payment, sends signed mock notify, verifies `paid` order status, entitlement, and paid download
 - Optional `-wechat-live-native`: staging/live only; creates/reuses an order, requests a non-mock Native `codeUrl`, closes the order, and verifies no entitlement was granted
+- Optional `-verify-paid-order`: after a real internal payment only; verifies an existing order is paid, entitlement is granted, and paid material download works without changing payment state
 - Optional `-grant-package-access`: logs in as admin, grants the selected published package to the smoke user, and verifies paid download succeeds after the server-side grant
 - Optional browser smoke: validates the Web/Admin UI path around the same server-side paid boundary
 - Optional leaderboards browser smoke: validates public leaderboard APIs and Web page without mutating data
@@ -467,6 +484,20 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
    ```
 
    Do not scan the QR code. This step must produce a non-mock `codeUrl`, close the order, and leave `entitlementGranted=false`. Successful payment acceptance still requires a separate real internal paid order and official notify verification.
+
+8. After a real internal paid order is created and paid through WeChat, verify official notify-driven delivery:
+
+   ```bash
+   cd services/api
+   go run ./cmd/smoke \
+     -base-url https://review.example.com/api/v1 \
+     -email smoke-live@stu.henu.edu.cn \
+     -code <email-code> \
+     -order-id <paid-order-id> \
+     -verify-paid-order
+   ```
+
+   This must pass before any paid sales launch claim. It proves the backend sees the order as `paid`, entitlement exists, and paid package material can be downloaded by the buyer. It does not prove refunds, settlement reconciliation, or certificate rotation.
 
 7. For manual-delivery internal testing, run the access-grant smoke with a fresh student test email and an admin email:
 

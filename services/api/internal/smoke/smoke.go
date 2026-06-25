@@ -25,11 +25,13 @@ type Config struct {
 	AdminCode          string
 	AdminName          string
 	PackageID          string
+	OrderID            string
 	SkipLogin          bool
 	CreateOrder        bool
 	MockWeChatPay      bool
 	MockWeChatSecret   string
 	WeChatLiveNative   bool
+	VerifyPaidOrder    bool
 	ExpectPaidDenied   bool
 	GrantPackageAccess bool
 	Timeout            time.Duration
@@ -115,6 +117,11 @@ type orderStatusData struct {
 	OrderID            string `json:"orderId"`
 	Status             string `json:"status"`
 	EntitlementGranted bool   `json:"entitlementGranted"`
+	PaymentProvider    string `json:"paymentProvider"`
+	ProductType        string `json:"productType"`
+	ProductID          string `json:"productId"`
+	AmountTotal        int64  `json:"amountTotal"`
+	Currency           string `json:"currency"`
 }
 
 type nativePaymentData struct {
@@ -151,6 +158,17 @@ func NewRunner(cfg Config) (Runner, error) {
 	}
 	if cfg.MockWeChatPay && cfg.WeChatLiveNative {
 		return Runner{}, errors.New("mock-wechat-pay and wechat-live-native cannot be enabled together")
+	}
+	if cfg.VerifyPaidOrder {
+		if strings.TrimSpace(cfg.OrderID) == "" {
+			return Runner{}, errors.New("verify-paid-order requires order-id")
+		}
+		if cfg.SkipLogin {
+			return Runner{}, errors.New("verify-paid-order requires login")
+		}
+		if cfg.CreateOrder || cfg.MockWeChatPay || cfg.WeChatLiveNative || cfg.GrantPackageAccess {
+			return Runner{}, errors.New("verify-paid-order cannot be combined with order creation, mock payment, live native, or manual grant smoke modes")
+		}
 	}
 	return Runner{cfg: cfg, client: &http.Client{Timeout: cfg.Timeout}}, nil
 }
@@ -197,7 +215,41 @@ func (r Runner) Run(ctx context.Context) Result {
 	}
 	result.add("public packages", "passed", status, fmt.Sprintf("%d published package(s)", len(packages.Packages)))
 
+	token := ""
+	userID := ""
+	if !r.cfg.SkipLogin {
+		token, err = r.login(ctx, r.cfg.Email, r.cfg.Code, r.cfg.Name)
+		if err != nil {
+			return fail("email login", 0, err)
+		}
+		result.add("email login", "passed", http.StatusOK, r.cfg.Email)
+		user, status, err := r.currentUser(ctx, token)
+		if err != nil {
+			return fail("auth me", status, err)
+		}
+		userID = user.ID
+		result.add("auth me", "passed", status, "current user returned")
+	}
+
 	packageID := strings.TrimSpace(r.cfg.PackageID)
+	var paidOrderStatus orderStatusData
+	if r.cfg.VerifyPaidOrder {
+		status, paidOrderStatus, err = r.orderStatusDetail(ctx, strings.TrimSpace(r.cfg.OrderID), token)
+		if err != nil {
+			return fail("verify paid order status", status, err)
+		}
+		if paidOrderStatus.Status != "paid" || !paidOrderStatus.EntitlementGranted {
+			return fail("verify paid order status", status, fmt.Errorf("expected paid with entitlement, got status=%s entitlement=%v", paidOrderStatus.Status, paidOrderStatus.EntitlementGranted))
+		}
+		if paidOrderStatus.ProductType != "course_package" || strings.TrimSpace(paidOrderStatus.ProductID) == "" {
+			return fail("verify paid order status", status, fmt.Errorf("expected course_package product with productId, got type=%s productId=%s", paidOrderStatus.ProductType, paidOrderStatus.ProductID))
+		}
+		if packageID != "" && packageID != paidOrderStatus.ProductID {
+			return fail("verify paid order status", status, fmt.Errorf("order productId %s does not match requested package-id %s", paidOrderStatus.ProductID, packageID))
+		}
+		packageID = paidOrderStatus.ProductID
+		result.add("verify paid order status", "passed", status, "paid with entitlement")
+	}
 	if packageID == "" {
 		packageID = packages.Packages[0].ID
 	}
@@ -226,23 +278,7 @@ func (r Runner) Run(ctx context.Context) Result {
 	result.PaidMaterialID = paidMaterialID
 	result.add("paid material presence", "passed", status, paidMaterialID)
 
-	token := ""
-	userID := ""
-	if !r.cfg.SkipLogin {
-		token, err = r.login(ctx, r.cfg.Email, r.cfg.Code, r.cfg.Name)
-		if err != nil {
-			return fail("email login", 0, err)
-		}
-		result.add("email login", "passed", http.StatusOK, r.cfg.Email)
-		user, status, err := r.currentUser(ctx, token)
-		if err != nil {
-			return fail("auth me", status, err)
-		}
-		userID = user.ID
-		result.add("auth me", "passed", status, "current user returned")
-	}
-
-	if r.cfg.ExpectPaidDenied && token != "" {
+	if r.cfg.ExpectPaidDenied && token != "" && !r.cfg.VerifyPaidOrder {
 		status, raw, err := r.request(ctx, http.MethodGet, "/materials/"+paidMaterialID+"/download", nil, token)
 		if err != nil && status == 0 {
 			return fail("paid download denied before entitlement", status, err)
@@ -255,6 +291,14 @@ func (r Runner) Run(ctx context.Context) Result {
 			return fail("paid download denied before entitlement", status, errors.New(detail))
 		}
 		result.add("paid download denied before entitlement", "passed", status, "paid asset denied without entitlement")
+	}
+
+	if r.cfg.VerifyPaidOrder {
+		status, bodySize, err := r.download(ctx, paidMaterialID, token)
+		if err != nil {
+			return fail("paid download after verified order", status, err)
+		}
+		result.add("paid download after verified order", "passed", status, fmt.Sprintf("%d byte(s)", bodySize))
 	}
 
 	if r.cfg.CreateOrder || r.cfg.MockWeChatPay || r.cfg.WeChatLiveNative {
@@ -586,7 +630,7 @@ func (r Runner) download(ctx context.Context, materialID string, token string) (
 		return res.StatusCode, bodySize, err
 	}
 	if res.StatusCode != http.StatusOK {
-		return res.StatusCode, bodySize, fmt.Errorf("expected paid download 200 after grant, got %d", res.StatusCode)
+		return res.StatusCode, bodySize, fmt.Errorf("expected paid download 200 after entitlement, got %d", res.StatusCode)
 	}
 	if bodySize <= 0 {
 		return res.StatusCode, bodySize, errors.New("download response was empty")
