@@ -25,5 +25,9 @@ Current hardening in the template:
 - `proxy_cookie_flags` to mark API cookies `Secure`, `HttpOnly`, and `SameSite=Lax` at the edge.
 - 25 MB request body limit and explicit proxy timeouts for API/Web/Admin traffic.
 - hidden dotfile requests are denied except `/.well-known`.
+- `/uploads/` requests return 404 on both public domains. Runtime upload
+  volumes must not be mounted into Nginx/Web/Admin as static files; materials
+  and moment images are served through Go API endpoints so permission and
+  visibility checks always run.
 
 After editing the template, run an `nginx -t` check with real or temporary certificates before deployment. The release checklist in `docs/deployment.md` includes a Docker-based example.

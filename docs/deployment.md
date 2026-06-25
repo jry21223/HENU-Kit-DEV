@@ -10,6 +10,10 @@ This project is still in internal-test hardening. The production files in this r
 - Go API and Worker run as private containers.
 - PostgreSQL, Redis, and local uploads are private Docker volumes.
 - JWT keys, WeChat Pay merchant keys, WeChat platform certs, and TLS certs are mounted from ignored `secrets/` and `certs/` directories.
+- The upload volume is intentionally not mounted into Nginx, Web, or Admin.
+  `/uploads/` must not be exposed as static files; Nginx returns 404 for that
+  prefix and all material downloads must go through the Go API permission
+  checks.
 
 ## Files
 

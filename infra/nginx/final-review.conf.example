@@ -57,6 +57,12 @@ server {
         deny all;
     }
 
+    # Runtime uploads are private platform assets. Materials and moment images
+    # must be served only through Go API endpoints that apply permission checks.
+    location ^~ /uploads/ {
+        return 404;
+    }
+
     location /api/ {
         proxy_pass http://final_review_api;
         proxy_http_version 1.1;
@@ -126,6 +132,12 @@ server {
 
     location ~ /\.(?!well-known) {
         deny all;
+    }
+
+    # Runtime uploads are private platform assets. Materials and moment images
+    # must be served only through Go API endpoints that apply permission checks.
+    location ^~ /uploads/ {
+        return 404;
     }
 
     location /api/ {
