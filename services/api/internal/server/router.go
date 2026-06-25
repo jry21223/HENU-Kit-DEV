@@ -89,7 +89,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	searchHandler := search.NewHandler(db)
 	wikiHandler := wiki.NewHandler(db)
 	userHandler := user.NewHandler(db)
-	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit)
+	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit, cfg.PaymentIncidentAlerts.OverdueMinutes)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
 	analyticsHandler := analytics.NewHandler(db)
 	router.GET("/healthz", healthHandler.Healthz)

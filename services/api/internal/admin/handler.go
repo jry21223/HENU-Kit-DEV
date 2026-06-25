@@ -53,13 +53,14 @@ var allowedUploadExtensions = map[string]bool{
 }
 
 type Handler struct {
-	db                        *gorm.DB
-	uploadDir                 string
-	operationLogRetentionDays int
-	operationLogExportLimit   int
+	db                            *gorm.DB
+	uploadDir                     string
+	operationLogRetentionDays     int
+	operationLogExportLimit       int
+	paymentIncidentOverdueMinutes int
 }
 
-func NewHandler(db *gorm.DB, uploadDir string, operationLogRetentionDays int, operationLogExportLimit int) Handler {
+func NewHandler(db *gorm.DB, uploadDir string, operationLogRetentionDays int, operationLogExportLimit int, paymentIncidentOverdueMinutes int) Handler {
 	if strings.TrimSpace(uploadDir) == "" {
 		uploadDir = "uploads"
 	}
@@ -69,11 +70,15 @@ func NewHandler(db *gorm.DB, uploadDir string, operationLogRetentionDays int, op
 	if operationLogExportLimit <= 0 {
 		operationLogExportLimit = defaultOperationLogExportLimit
 	}
+	if paymentIncidentOverdueMinutes <= 0 {
+		paymentIncidentOverdueMinutes = 30
+	}
 	return Handler{
-		db:                        db,
-		uploadDir:                 uploadDir,
-		operationLogRetentionDays: operationLogRetentionDays,
-		operationLogExportLimit:   operationLogExportLimit,
+		db:                            db,
+		uploadDir:                     uploadDir,
+		operationLogRetentionDays:     operationLogRetentionDays,
+		operationLogExportLimit:       operationLogExportLimit,
+		paymentIncidentOverdueMinutes: paymentIncidentOverdueMinutes,
 	}
 }
 
@@ -221,18 +226,20 @@ type paymentReconciliationSummary struct {
 }
 
 type paymentIncidentSummary struct {
-	Total                int64            `json:"total"`
-	Open                 int64            `json:"open"`
-	Resolved             int64            `json:"resolved"`
-	Ignored              int64            `json:"ignored"`
-	OpenCritical         int64            `json:"openCritical"`
-	OpenHigh             int64            `json:"openHigh"`
-	OpenMedium           int64            `json:"openMedium"`
-	OpenLow              int64            `json:"openLow"`
-	OpenBySeverity       map[string]int64 `json:"openBySeverity"`
-	OpenByType           map[string]int64 `json:"openByType"`
-	OldestOpenAt         string           `json:"oldestOpenAt,omitempty"`
-	OldestOpenAgeMinutes int64            `json:"oldestOpenAgeMinutes,omitempty"`
+	Total                   int64            `json:"total"`
+	Open                    int64            `json:"open"`
+	Resolved                int64            `json:"resolved"`
+	Ignored                 int64            `json:"ignored"`
+	OverdueOpen             int64            `json:"overdueOpen"`
+	OverdueThresholdMinutes int              `json:"overdueThresholdMinutes"`
+	OpenCritical            int64            `json:"openCritical"`
+	OpenHigh                int64            `json:"openHigh"`
+	OpenMedium              int64            `json:"openMedium"`
+	OpenLow                 int64            `json:"openLow"`
+	OpenBySeverity          map[string]int64 `json:"openBySeverity"`
+	OpenByType              map[string]int64 `json:"openByType"`
+	OldestOpenAt            string           `json:"oldestOpenAt,omitempty"`
+	OldestOpenAgeMinutes    int64            `json:"oldestOpenAgeMinutes,omitempty"`
 }
 
 type mediaAssetRow struct {
@@ -775,9 +782,14 @@ func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
 }
 
 func (h Handler) PaymentIncidentSummary(ctx *gin.Context) {
+	overdueMinutes := h.paymentIncidentOverdueMinutes
+	if overdueMinutes <= 0 {
+		overdueMinutes = 30
+	}
 	summary := paymentIncidentSummary{
-		OpenBySeverity: map[string]int64{},
-		OpenByType:     map[string]int64{},
+		OverdueThresholdMinutes: overdueMinutes,
+		OpenBySeverity:          map[string]int64{},
+		OpenByType:              map[string]int64{},
 	}
 	var statusRows []struct {
 		Status string
@@ -844,14 +856,19 @@ func (h Handler) PaymentIncidentSummary(ctx *gin.Context) {
 		summary.OpenByType[row.IncidentType] = row.Count
 	}
 
-	var oldest model.PaymentIncident
-	if err := h.db.Where("status = ?", model.PaymentIncidentOpen).Order("created_at asc").First(&oldest).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
-			return
+	overdueCutoff := time.Now().UTC().Add(-time.Duration(overdueMinutes) * time.Minute)
+	var openIncidents []model.PaymentIncident
+	if err := h.db.Where("status = ?", model.PaymentIncidentOpen).Order("created_at asc").Find(&openIncidents).Error; err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	for _, incident := range openIncidents {
+		if !incident.CreatedAt.UTC().After(overdueCutoff) {
+			summary.OverdueOpen++
 		}
-	} else {
-		oldestAt := oldest.CreatedAt.UTC()
+	}
+	if len(openIncidents) > 0 {
+		oldestAt := openIncidents[0].CreatedAt.UTC()
 		summary.OldestOpenAt = oldestAt.Format(time.RFC3339)
 		summary.OldestOpenAgeMinutes = int64(time.Since(oldestAt).Minutes())
 	}

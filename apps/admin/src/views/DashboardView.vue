@@ -71,6 +71,8 @@ const copy = {
 const openPaymentIncidentCount = ref(0);
 const openPaymentIncidentCriticalCount = ref(0);
 const openPaymentIncidentHighCount = ref(0);
+const overduePaymentIncidentCount = ref(0);
+const overduePaymentIncidentThresholdMinutes = ref(30);
 const topPaymentIncidentType = ref("");
 const loadingIncidents = ref(false);
 
@@ -82,7 +84,7 @@ const stats = computed(() => [
     label: copy.paymentIncidents,
     value: loadingIncidents.value
       ? copy.loading
-      : `${openPaymentIncidentCount.value} \u6761\u672a\u5904\u7406 / ${openPaymentIncidentCriticalCount.value + openPaymentIncidentHighCount.value} \u6761\u9ad8\u98ce\u9669`,
+      : `${openPaymentIncidentCount.value} \u6761\u672a\u5904\u7406 / ${overduePaymentIncidentCount.value} \u6761\u8d85\u65f6`,
   },
 ]);
 
@@ -90,6 +92,9 @@ const paymentIncidentSummaryText = computed(() => {
   if (openPaymentIncidentCount.value <= 0) return "";
   const riskCount = openPaymentIncidentCriticalCount.value + openPaymentIncidentHighCount.value;
   const pieces = [`Critical/High: ${riskCount}`];
+  if (overduePaymentIncidentCount.value > 0) {
+    pieces.push(`Overdue ${overduePaymentIncidentThresholdMinutes.value}m: ${overduePaymentIncidentCount.value}`);
+  }
   if (topPaymentIncidentType.value) {
     pieces.push(`Top type: ${topPaymentIncidentType.value}`);
   }
@@ -129,12 +134,16 @@ async function loadPaymentIncidentAlerts() {
     openPaymentIncidentCount.value = summary?.open ?? 0;
     openPaymentIncidentCriticalCount.value = summary?.openCritical ?? 0;
     openPaymentIncidentHighCount.value = summary?.openHigh ?? 0;
+    overduePaymentIncidentCount.value = summary?.overdueOpen ?? 0;
+    overduePaymentIncidentThresholdMinutes.value = summary?.overdueThresholdMinutes ?? 30;
     const topType = Object.entries(summary?.openByType ?? {}).sort((left, right) => right[1] - left[1])[0];
     topPaymentIncidentType.value = topType ? `${topType[0]} (${topType[1]})` : "";
   } catch {
     openPaymentIncidentCount.value = 0;
     openPaymentIncidentCriticalCount.value = 0;
     openPaymentIncidentHighCount.value = 0;
+    overduePaymentIncidentCount.value = 0;
+    overduePaymentIncidentThresholdMinutes.value = 30;
     topPaymentIncidentType.value = "";
   } finally {
     loadingIncidents.value = false;

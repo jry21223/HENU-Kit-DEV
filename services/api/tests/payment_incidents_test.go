@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -239,6 +240,7 @@ func TestPaymentIncidentCreatedForTransactionConflict(t *testing.T) {
 func TestPaymentIncidentSummaryIsAdminOnlyAndReadOnly(t *testing.T) {
 	db := newTestDB(t)
 	cfg := testConfig()
+	cfg.PaymentIncidentAlerts.OverdueMinutes = 60
 	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
 
 	admin := createTestUser(t, db, "incident-summary-admin@stu.henu.edu.cn", model.RoleAdmin)
@@ -248,6 +250,7 @@ func TestPaymentIncidentSummaryIsAdminOnlyAndReadOnly(t *testing.T) {
 
 	incidents := []model.PaymentIncident{
 		{
+			BaseModel:      model.BaseModel{CreatedAt: time.Now().Add(-2 * time.Hour)},
 			Provider:       "wechat_native",
 			IncidentType:   "amount_mismatch",
 			Severity:       "critical",
@@ -271,6 +274,7 @@ func TestPaymentIncidentSummaryIsAdminOnlyAndReadOnly(t *testing.T) {
 			IdempotencyKey: "summary-open-high",
 		},
 		{
+			BaseModel:      model.BaseModel{CreatedAt: time.Now().Add(-2 * time.Hour)},
 			Provider:       "wechat_native",
 			IncidentType:   "amount_mismatch",
 			Severity:       "high",
@@ -316,6 +320,8 @@ func TestPaymentIncidentSummaryIsAdminOnlyAndReadOnly(t *testing.T) {
 		`"open":2`,
 		`"resolved":1`,
 		`"ignored":1`,
+		`"overdueOpen":1`,
+		`"overdueThresholdMinutes":60`,
 		`"openCritical":1`,
 		`"openHigh":1`,
 		`"amount_mismatch":1`,

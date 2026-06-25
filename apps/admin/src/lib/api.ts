@@ -183,6 +183,8 @@ export type PaymentIncidentSummaryResponse = {
   open: number;
   resolved: number;
   ignored: number;
+  overdueOpen: number;
+  overdueThresholdMinutes: number;
   openCritical: number;
   openHigh: number;
   openMedium: number;

@@ -69,6 +69,7 @@ type PaymentIncidentAlertConfig struct {
 	WebhookURL     string
 	WebhookSecret  string
 	TimeoutSeconds int
+	OverdueMinutes int
 }
 
 func Load() Config {
@@ -114,6 +115,7 @@ func Load() Config {
 			WebhookURL:     env("PAYMENT_INCIDENT_WEBHOOK_URL", ""),
 			WebhookSecret:  env("PAYMENT_INCIDENT_WEBHOOK_SECRET", ""),
 			TimeoutSeconds: intEnv("PAYMENT_INCIDENT_WEBHOOK_TIMEOUT_SECONDS", 3),
+			OverdueMinutes: intEnv("PAYMENT_INCIDENT_OVERDUE_MINUTES", 30),
 		},
 	}
 }
