@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/datatypes"
+
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/internal/server"
 	applogger "final-review-platform/services/api/pkg/logger"
@@ -29,6 +31,19 @@ func TestPublicUserProfileAggregation(t *testing.T) {
 	publicMoment := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"Profile public moment"}`, aliceToken)
 	if publicMoment.Code != http.StatusOK {
 		t.Fatalf("expected public moment create, got %d: %s", publicMoment.Code, publicMoment.Body.String())
+	}
+	var savedPublicMoment model.Moment
+	if err := db.First(&savedPublicMoment, "author_id = ? AND content = ?", alice.ID, "Profile public moment").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&savedPublicMoment).Update("images", datatypes.JSON([]byte(`[
+		"/api/v1/moments/images/profile-safe-image",
+		"/uploads/moments/private.png",
+		"javascript:alert(1)",
+		"https://tracker.example/pixel.png",
+		"/api/v1/moments/images/profile-safe-image/../secret"
+	]`))).Error; err != nil {
+		t.Fatal(err)
 	}
 	mutualMoment := performJSON(router, http.MethodPost, "/api/v1/moments", `{"content":"Profile mutual moment","visibility":"mutual_friends"}`, aliceToken)
 	if mutualMoment.Code != http.StatusOK {
@@ -101,7 +116,10 @@ func TestPublicUserProfileAggregation(t *testing.T) {
 			t.Fatalf("expected anonymous profile to include %q, got %s", expected, anonymousBody)
 		}
 	}
-	for _, forbidden := range []string{"profile-alice@", "Profile mutual moment", "Hidden profile blog", "hidden reason", "Hidden profile forum", "hidden forum reason", "reviewerId", "reviewedAt"} {
+	if !strings.Contains(anonymousBody, "/api/v1/moments/images/profile-safe-image") {
+		t.Fatalf("expected profile to keep safe moment image URL, got %s", anonymousBody)
+	}
+	for _, forbidden := range []string{"profile-alice@", "Profile mutual moment", "Hidden profile blog", "hidden reason", "Hidden profile forum", "hidden forum reason", "reviewerId", "reviewedAt", "/uploads/moments/private.png", "javascript:alert(1)", "https://tracker.example/pixel.png", "../secret"} {
 		if strings.Contains(anonymousBody, forbidden) {
 			t.Fatalf("profile leaked forbidden value %q: %s", forbidden, anonymousBody)
 		}

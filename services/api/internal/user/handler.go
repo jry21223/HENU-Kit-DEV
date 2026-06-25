@@ -486,7 +486,20 @@ func decodeImages(raw datatypes.JSON) []string {
 	if err := json.Unmarshal(raw, &images); err != nil {
 		return []string{}
 	}
-	return images
+	safeImages := make([]string, 0, len(images))
+	for _, image := range images {
+		trimmed := strings.TrimSpace(image)
+		if isMomentImageURL(trimmed) {
+			safeImages = append(safeImages, trimmed)
+		}
+	}
+	return safeImages
+}
+
+func isMomentImageURL(value string) bool {
+	const prefix = "/api/v1/moments/images/"
+	id := strings.TrimPrefix(strings.TrimSpace(value), prefix)
+	return id != value && id != "" && !strings.Contains(id, "/") && !strings.Contains(id, `\`)
 }
 
 func parseLimit(value string, fallback int, max int) (int, bool) {
