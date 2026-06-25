@@ -9,6 +9,7 @@ import (
 
 	"final-review-platform/services/api/internal/auth"
 	materialview "final-review-platform/services/api/internal/material"
+	packageview "final-review-platform/services/api/internal/packagecatalog"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/response"
 )
@@ -22,14 +23,21 @@ func NewHandler(db *gorm.DB) Handler {
 }
 
 type materialEntitlement struct {
-	Grant    model.MaterialAccessGrant       `json:"grant"`
+	Grant    publicGrant                     `json:"grant"`
 	Material *materialview.PublicMaterial    `json:"material,omitempty"`
 }
 
 type packageEntitlement struct {
-	Grant     model.MaterialAccessGrant     `json:"grant"`
-	Package   *model.CoursePackage          `json:"package,omitempty"`
+	Grant     publicGrant                   `json:"grant"`
+	Package   *packageview.PublicPackage    `json:"package,omitempty"`
 	Materials []materialview.PublicMaterial `json:"materials"`
+}
+
+type publicGrant struct {
+	ID         string     `json:"id"`
+	MaterialID *string    `json:"materialId,omitempty"`
+	PackageID  *string    `json:"packageId,omitempty"`
+	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
 }
 
 type entitlementSummary struct {
@@ -108,7 +116,7 @@ func (h Handler) expandGrants(grants []model.MaterialAccessGrant) ([]materialEnt
 		if grant.MaterialID != nil && *grant.MaterialID != "" {
 			if row, ok := materialsByID[*grant.MaterialID]; ok {
 				material := materialview.ToPublic(row)
-				materialRows = append(materialRows, materialEntitlement{Grant: grant, Material: &material})
+				materialRows = append(materialRows, materialEntitlement{Grant: toPublicGrant(grant), Material: &material})
 			}
 			continue
 		}
@@ -117,14 +125,24 @@ func (h Handler) expandGrants(grants []model.MaterialAccessGrant) ([]materialEnt
 			if !ok {
 				continue
 			}
+			publicPackage := packageview.ToPublicPackage(pkg)
 			packageRows = append(packageRows, packageEntitlement{
-				Grant:     grant,
-				Package:   &pkg,
+				Grant:     toPublicGrant(grant),
+				Package:   &publicPackage,
 				Materials: packageMaterials[*grant.PackageID],
 			})
 		}
 	}
 	return materialRows, packageRows, nil
+}
+
+func toPublicGrant(grant model.MaterialAccessGrant) publicGrant {
+	return publicGrant{
+		ID:         grant.ID,
+		MaterialID: grant.MaterialID,
+		PackageID:  grant.PackageID,
+		ExpiresAt:  grant.ExpiresAt,
+	}
 }
 
 func (h Handler) publishedMaterialsByID(ids []string) (map[string]model.Material, error) {

@@ -41,7 +41,7 @@ func (h Handler) List(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"packages": packages})
+	response.OK(ctx, gin.H{"packages": ToPublicPackages(packages)})
 }
 
 func (h Handler) CoursePackages(ctx *gin.Context) {
@@ -52,7 +52,7 @@ func (h Handler) CoursePackages(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"packages": packages})
+	response.OK(ctx, gin.H{"packages": ToPublicPackages(packages)})
 }
 
 func (h Handler) Detail(ctx *gin.Context) {
@@ -97,8 +97,8 @@ func (h Handler) Detail(ctx *gin.Context) {
 	}
 
 	response.OK(ctx, gin.H{
-		"package":   coursePackage,
-		"items":     publishedItems,
+		"package":   ToPublicPackage(coursePackage),
+		"items":     ToPublicPackageItems(publishedItems),
 		"materials": materialview.ToPublicList(materials),
 	})
 }

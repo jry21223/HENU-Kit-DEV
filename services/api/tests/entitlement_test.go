@@ -83,7 +83,17 @@ func TestMyEntitlementsRequireLoginAndSummarizeActiveGrants(t *testing.T) {
 			t.Fatalf("entitlement response exposed inactive grant %q: %s", unexpected, body)
 		}
 	}
-	for _, hiddenField := range []string{directMaterial.StorageKey, packageMaterial.StorageKey, "createdBy", "reviewerId", "reviewReason", "internal entitlement review note"} {
+	for _, hiddenField := range []string{
+		directMaterial.StorageKey,
+		packageMaterial.StorageKey,
+		"createdBy",
+		"reviewerId",
+		"reviewReason",
+		"internal entitlement review note",
+		`"userId":"` + user.ID + `"`,
+		`"source":`,
+		`"orderId":`,
+	} {
 		if strings.Contains(body, hiddenField) {
 			t.Fatalf("entitlement response leaked internal material field %q: %s", hiddenField, body)
 		}
