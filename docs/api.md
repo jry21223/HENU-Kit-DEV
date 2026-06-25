@@ -500,8 +500,9 @@ Implemented admin behavior:
 - admin material list returns all material statuses; public material list/detail returns only `published`
 - material create/upload defaults to `draft` when status is omitted
 - material status updates accept only `draft`, `pending`, `published`, `rejected`, or `archived`
+- material status updates that publish a material re-check the referenced local file before changing `status` to `published`
 - material review approve/reject is only allowed from `pending`; already published/rejected/archived materials return HTTP 409 with `material_not_reviewable`
-- approving a material sets `status=published` and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
+- approving a material re-checks the referenced local file, sets `status=published`, and records `reviewerId`, `reviewedAt`, and optional `reviewReason`
 - rejecting a material sets `status=rejected`, requires `reviewReason`, and records `reviewerId` and `reviewedAt`
 - material create/update/upload accept only known material types and access levels
 - material metadata update rejects `storageKey`, `storage_key`, `fileName`, `file_name`, `fileSize`, and `file_size`; file replacement must use upload flow

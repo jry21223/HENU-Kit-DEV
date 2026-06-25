@@ -215,6 +215,7 @@ Important boundaries:
 - The admin UI can move materials to `pending`, `published`, `rejected`, `draft`, or `archived`.
 - Public APIs only expose `published` materials.
 - Invalid statuses, material types, and access levels are rejected by the Go API.
+- Moving a material to `published` re-validates that the referenced file still exists under `LOCAL_UPLOAD_DIR` and passes the same lightweight content checks used by upload/import.
 - The UI does not display `storage_key`; downloads still go through `GET /api/v1/materials/:id/download`.
 - The edit dialog does not expose or mutate `storage_key`; the Go API also rejects metadata PATCH attempts that include `storageKey`, `fileName`, or `fileSize`.
 - Replacing the actual file remains an upload flow.
@@ -260,7 +261,7 @@ The page is available to `reviewer`, `admin`, and `super_admin` roles. It lists 
 Important boundaries:
 
 - Reviewer users can approve or reject pending materials, but they still cannot access material CRUD, course CRUD, download audit, analytics, or operation logs.
-- Approving a material sets it to `published`, records reviewer metadata, and makes it visible through public material endpoints.
+- Approving a material re-validates the referenced file, sets it to `published`, records reviewer metadata, and makes it visible through public material endpoints.
 - Rejecting a material requires `reviewReason`, records reviewer metadata, and keeps it hidden from public material endpoints.
 - Only `pending` materials can be reviewed; repeating review on published/rejected/archived materials returns `409 material_not_reviewable`.
 - Material approve/reject operations write `operation_logs` rows server-side; rejected repeat-review attempts do not write extra log rows.

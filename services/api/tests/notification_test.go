@@ -147,7 +147,9 @@ func TestForumReviewCreatesAuthorNotifications(t *testing.T) {
 
 func TestReviewNotificationsForContentAndAIDrafts(t *testing.T) {
 	db := newTestDB(t)
-	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	cfg := testConfig()
+	cfg.LocalUploadDir = t.TempDir()
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
 	course := createTestCourse(t, db)
 	author := createTestUser(t, db, "notify-content-author@stu.henu.edu.cn", model.RoleCreator)
 	reviewer := createTestUser(t, db, "notify-content-reviewer@stu.henu.edu.cn", model.RoleReviewer)
@@ -155,6 +157,7 @@ func TestReviewNotificationsForContentAndAIDrafts(t *testing.T) {
 	reviewerToken := loginTestUser(t, router, reviewer.Email)
 
 	createdBy := author.ID
+	writeUploadFile(t, cfg.LocalUploadDir, "materials/notification-material.txt", "notification material content")
 	material := model.Material{
 		CourseID:       course.ID,
 		Title:          "Notification material",

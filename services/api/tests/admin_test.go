@@ -364,6 +364,17 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 		t.Fatalf("expected invalid status rejection, got %d: %s", invalidStatus.Code, invalidStatus.Body.String())
 	}
 
+	if err := os.Remove(filepath.Join(cfg.LocalUploadDir, filepath.FromSlash(material.StorageKey))); err != nil {
+		t.Fatal(err)
+	}
+	missingFilePublish := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID+"/status", `{"status":"published"}`, adminToken)
+	if missingFilePublish.Code != http.StatusBadRequest || !strings.Contains(missingFilePublish.Body.String(), "file_not_found") {
+		t.Fatalf("expected missing file publish rejection, got %d: %s", missingFilePublish.Code, missingFilePublish.Body.String())
+	}
+	if countOperationLogs(t, db, "material.status_update", "material", material.ID, admin.ID) != 0 {
+		t.Fatal("failed publish must not write material status operation log")
+	}
+	writeUploadFile(t, cfg.LocalUploadDir, material.StorageKey, "draft content restored")
 	publish := performJSON(router, http.MethodPatch, "/api/v1/admin/materials/"+material.ID+"/status", `{"status":"published"}`, adminToken)
 	if publish.Code != http.StatusOK {
 		t.Fatalf("expected publish status update 200, got %d: %s", publish.Code, publish.Body.String())
@@ -379,9 +390,12 @@ func TestAdminMaterialStatusFlow(t *testing.T) {
 
 func TestMaterialReviewWorkflowRequiresReviewerAndRecordsDecision(t *testing.T) {
 	db := newTestDB(t)
-	router := server.NewRouter(testConfig(), applogger.New("test"), db, nil)
+	cfg := testConfig()
+	cfg.LocalUploadDir = t.TempDir()
+	router := server.NewRouter(cfg, applogger.New("test"), db, nil)
 
 	course := createTestCourse(t, db)
+	writeUploadFile(t, cfg.LocalUploadDir, "materials/pending-review.txt", "pending review content")
 	pendingMaterial := model.Material{
 		CourseID:       course.ID,
 		Title:          "Pending review material",
@@ -415,6 +429,26 @@ func TestMaterialReviewWorkflowRequiresReviewerAndRecordsDecision(t *testing.T) 
 	reviewList := performJSON(router, http.MethodGet, "/api/v1/admin/material-reviews", "", reviewerToken)
 	if reviewList.Code != http.StatusOK || !strings.Contains(reviewList.Body.String(), pendingMaterial.ID) {
 		t.Fatalf("expected reviewer material review list to include pending material, got %d: %s", reviewList.Code, reviewList.Body.String())
+	}
+
+	missingFileMaterial := model.Material{
+		CourseID:    course.ID,
+		Title:       "Missing file review material",
+		Type:        "knowledge_note",
+		StorageKey:  "materials/missing-review.txt",
+		FileName:    "missing-review.txt",
+		AccessLevel: model.MaterialAccessFree,
+		Status:      model.StatusPending,
+	}
+	if err := db.Create(&missingFileMaterial).Error; err != nil {
+		t.Fatal(err)
+	}
+	missingApprove := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+missingFileMaterial.ID+"/approve", `{"reviewReason":"checked"}`, reviewerToken)
+	if missingApprove.Code != http.StatusBadRequest || !strings.Contains(missingApprove.Body.String(), "file_not_found") {
+		t.Fatalf("expected missing file approve rejection, got %d: %s", missingApprove.Code, missingApprove.Body.String())
+	}
+	if countOperationLogs(t, db, "material.approved", "material", missingFileMaterial.ID, reviewer.ID) != 0 {
+		t.Fatal("failed material approval must not write operation log")
 	}
 
 	rejectWithoutReason := performJSON(router, http.MethodPost, "/api/v1/admin/materials/"+pendingMaterial.ID+"/reject", "", reviewerToken)

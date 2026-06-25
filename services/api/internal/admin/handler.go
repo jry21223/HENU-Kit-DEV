@@ -1896,6 +1896,15 @@ func (h Handler) UpdateMaterial(ctx *gin.Context) {
 		"access_level":    accessLevel,
 		"status":          status,
 	})
+	if status == model.StatusPublished {
+		fileName, fileSize, err := h.materialPublicationFileMetadata(ctx.Param("id"))
+		if err != nil {
+			writeMaterialFileValidationError(ctx, err, "update_failed")
+			return
+		}
+		updates["file_name"] = fileName
+		updates["file_size"] = fileSize
+	}
 	h.updateByID(ctx, &model.Material{}, updates, "material")
 }
 
@@ -1911,7 +1920,20 @@ func (h Handler) UpdateMaterialStatus(ctx *gin.Context) {
 	}
 	materialID := ctx.Param("id")
 	err := h.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&model.Material{}).Where("id = ?", materialID).Update("status", status)
+		var material model.Material
+		if err := tx.First(&material, "id = ?", materialID).Error; err != nil {
+			return err
+		}
+		updates := map[string]interface{}{"status": status}
+		if status == model.StatusPublished {
+			fileName, fileSize, err := h.validateMaterialStorageReference(material.StorageKey, material.FileName)
+			if err != nil {
+				return err
+			}
+			updates["file_name"] = fileName
+			updates["file_size"] = fileSize
+		}
+		result := tx.Model(&model.Material{}).Where("id = ?", materialID).Updates(updates)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -1927,7 +1949,7 @@ func (h Handler) UpdateMaterialStatus(ctx *gin.Context) {
 			response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "material_not_found", nil)
 			return
 		}
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "update_failed", nil)
+		writeMaterialFileValidationError(ctx, err, "update_failed")
 		return
 	}
 	response.OK(ctx, gin.H{"updated": true, "status": status})
@@ -1976,13 +1998,23 @@ func (h Handler) reviewMaterial(ctx *gin.Context, status string) {
 	if status == model.StatusRejected {
 		action = "material.rejected"
 	}
+	updates := map[string]interface{}{
+		"status":        status,
+		"reviewer_id":   user.ID,
+		"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+		"review_reason": reason,
+	}
+	if status == model.StatusPublished {
+		fileName, fileSize, err := h.validateMaterialStorageReference(material.StorageKey, material.FileName)
+		if err != nil {
+			writeMaterialFileValidationError(ctx, err, "review_failed")
+			return
+		}
+		updates["file_name"] = fileName
+		updates["file_size"] = fileSize
+	}
 	err := h.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&model.Material{}).Where("id = ?", material.ID).Updates(map[string]interface{}{
-			"status":        status,
-			"reviewer_id":   user.ID,
-			"reviewed_at":   gorm.Expr("CURRENT_TIMESTAMP"),
-			"review_reason": reason,
-		})
+		result := tx.Model(&model.Material{}).Where("id = ?", material.ID).Updates(updates)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -3380,6 +3412,27 @@ func (h Handler) validateMaterialStorageReference(storageKey string, displayName
 		return "", 0, errors.New("unsupported_file_type")
 	}
 	return fileName, info.Size(), nil
+}
+
+func (h Handler) materialPublicationFileMetadata(materialID string) (string, int64, error) {
+	var material model.Material
+	if err := h.db.First(&material, "id = ?", materialID).Error; err != nil {
+		return "", 0, err
+	}
+	return h.validateMaterialStorageReference(material.StorageKey, material.FileName)
+}
+
+func writeMaterialFileValidationError(ctx *gin.Context, err error, fallback string) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "material_not_found", nil)
+		return
+	}
+	switch err.Error() {
+	case "unsafe_storage_key", "unsupported_file_type", "file_not_found", "invalid_file", "invalid_file_content", "unsafe_file_name":
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+	default:
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, fallback, nil)
+	}
 }
 
 func hasUnsafePath(value string) bool {
