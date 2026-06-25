@@ -195,7 +195,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 
 - manifest 中的 `uploads/materials/...` 会转换为内部 `storage_key=materials/...`。
 - 文件必须真实存在，并且必须位于 `LOCAL_UPLOAD_DIR` 内。
-- material file paths currently accept only `.pdf`, `.txt`, `.md`, and `.docx`; executable or web-script-like files are rejected before import.
+- material file paths currently accept only `.pdf`, `.txt`, `.md`, and `.docx`; executable or web-script-like files are rejected before import. Import validation also checks content: PDFs must start with `%PDF`, text/Markdown files cannot contain NUL bytes, and DOCX files must have a ZIP header.
 - 危险路径如 `../../secret.pdf` 会被拒绝。
 - optional manifest `fileName` values must be plain filenames without `/` or `\`; otherwise the import transaction fails before committing rows.
 - 重复导入会更新已有资料并复用课程包绑定，不重复创建 material 或 package item。
@@ -203,7 +203,7 @@ go run ./cmd/import-materials ../../data/material-manifest.example.json
 - Automated smoke coverage exists in `TestMaterialManifestImportSmokeCoversPaidDownloadDelivery`: it imports mounted files through the manifest importer, verifies public package detail does not expose storage keys, checks free/login_required/paid download rules, grants the imported package, and verifies paid download audit logging.
 - The import JSON includes a `report` block. Before importing real internal files, check `report.filesChecked`, `report.totalFileBytes`, `report.accessLevels`, `report.statuses`, `report.types`, `report.paidMaterials`, `report.packageItemLinks`, `report.packages`, and `report.duplicateFiles`.
 - `-dry-run` uses the same validation/upsert/bind path inside a rolled-back transaction, so its `report` is the safest preflight acceptance artifact.
-- `-check-release` adds a machine-readable release gate to the import report. Unsupported file extensions and unsafe display filenames fail during import validation before rows are committed; after validation succeeds, the release gate exits non-zero for empty manifests/files, duplicate file references, unpublished package/materials, missing paid materials, missing package item links, zero-byte totals, or a paid package with `priceFen <= 0`.
+- `-check-release` adds a machine-readable release gate to the import report. Unsupported file extensions, invalid file content, and unsafe display filenames fail during import validation before rows are committed; after validation succeeds, the release gate exits non-zero for empty manifests/files, duplicate file references, unpublished package/materials, missing paid materials, missing package item links, zero-byte totals, or a paid package with `priceFen <= 0`.
 - `go run ./cmd/smoke ... -grant-package-access` can verify the internal manual-delivery path after import: paid download is denied before entitlement, an admin-only package grant is created, and paid download succeeds for the same test user.
 - `npm --workspace @final-review/web run test:e2e:delivery` can verify the same manual-delivery path through real Web/Admin browser sessions when `E2E_DELIVERY_SMOKE=1` and fresh student/admin test accounts are configured.
 - These smoke checks use fixture or operator-provided files only. Real course-file acceptance still requires running the import command against mounted internal materials in the target environment, then running the smoke with fresh student/admin test accounts.

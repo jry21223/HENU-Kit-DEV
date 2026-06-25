@@ -46,11 +46,11 @@ go run ./cmd/import-materials -dry-run -check-release ../../data/material-manife
 go run ./cmd/import-materials ../../data/material-manifest.example.json
 ```
 
-The importer is safe to run repeatedly. It upserts schools, colleges, majors, courses, packages, and materials, then idempotently binds imported materials to the course package. File paths in the manifest must resolve inside `LOCAL_UPLOAD_DIR`; missing files, traversal attempts, unsupported material extensions, and unsafe display `fileName` values fail the import transaction. Accepted material extensions are `.pdf`, `.txt`, `.md`, and `.docx`. UTF-8 JSON manifests with a byte-order mark are accepted because Windows tooling may write BOM-prefixed files.
+The importer is safe to run repeatedly. It upserts schools, colleges, majors, courses, packages, and materials, then idempotently binds imported materials to the course package. File paths in the manifest must resolve inside `LOCAL_UPLOAD_DIR`; missing files, traversal attempts, unsupported material extensions, unsafe display `fileName` values, and invalid file content fail the import transaction. Accepted material extensions are `.pdf`, `.txt`, `.md`, and `.docx`. PDFs must start with `%PDF`, text/Markdown files cannot contain NUL bytes, and DOCX files must have a ZIP header. UTF-8 JSON manifests with a byte-order mark are accepted because Windows tooling may write BOM-prefixed files.
 
 Use `-dry-run` before importing real internal materials. Dry-run mode executes the same validation, upsert, package-bind, and report path inside a rolled-back transaction, returns `"dryRun": true`, and reports the planned create/update/bind counts without persisting rows.
 
-Use `-dry-run -check-release` for the internal-release gate. It appends a `releaseCheck` block to the JSON output and exits with a non-zero status when a package is not ready for internal delivery: no materials, unresolved files, duplicate file references, unpublished package/materials, missing paid materials, missing package bindings, zero-byte totals, or paid materials in a package whose `priceFen` is not positive.
+Use `-dry-run -check-release` for the internal-release gate. Import validation fails first for unresolved files, unsupported extensions, invalid file content, and unsafe display filenames. When validation succeeds, the command appends a `releaseCheck` block to the JSON output and exits with a non-zero status when a package is not ready for internal delivery: no materials, duplicate file references, unpublished package/materials, missing paid materials, missing package bindings, zero-byte totals, or paid materials in a package whose `priceFen` is not positive.
 
 The import JSON includes a `report` block for acceptance checks:
 

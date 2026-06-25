@@ -20,8 +20,8 @@ import (
 func TestMaterialManifestImportCreatesPackageMaterialsAndIsIdempotent(t *testing.T) {
 	db := newTestDB(t)
 	uploadDir := t.TempDir()
-	writeUploadFile(t, uploadDir, "materials/discrete-math/knowledge-note.pdf", "knowledge")
-	writeUploadFile(t, uploadDir, "materials/discrete-math/mock-1.pdf", "mock")
+	writeUploadFile(t, uploadDir, "materials/discrete-math/knowledge-note.pdf", "%PDF knowledge")
+	writeUploadFile(t, uploadDir, "materials/discrete-math/mock-1.pdf", "%PDF mock")
 
 	priceFen := int64(1990)
 	manifest := []materialimport.ManifestEntry{
@@ -71,7 +71,7 @@ func TestMaterialManifestImportCreatesPackageMaterialsAndIsIdempotent(t *testing
 	if result.CoursesCreated != 1 || result.PackagesCreated != 1 || result.MaterialsCreated != 2 || result.PackageItemsAdded != 2 {
 		t.Fatalf("unexpected first import result: %#v", result)
 	}
-	if result.Report.ManifestMaterials != 2 || result.Report.FilesChecked != 2 || result.Report.TotalFileBytes != int64(len("knowledge")+len("mock")) {
+	if result.Report.ManifestMaterials != 2 || result.Report.FilesChecked != 2 || result.Report.TotalFileBytes != int64(len("%PDF knowledge")+len("%PDF mock")) {
 		t.Fatalf("unexpected first import report file summary: %#v", result.Report)
 	}
 	if result.Report.PaidMaterials != 1 || result.Report.PublishedMaterials != 2 || result.Report.AccessLevels[model.MaterialAccessPaid] != 1 || result.Report.AccessLevels[model.MaterialAccessLoginRequired] != 1 {
@@ -86,7 +86,7 @@ func TestMaterialManifestImportCreatesPackageMaterialsAndIsIdempotent(t *testing
 	if err := db.First(&material, "title = ?", "离散数学重点知识点讲义").Error; err != nil {
 		t.Fatal(err)
 	}
-	if material.StorageKey != "materials/discrete-math/knowledge-note.pdf" || material.FileSize != int64(len("knowledge")) {
+	if material.StorageKey != "materials/discrete-math/knowledge-note.pdf" || material.FileSize != int64(len("%PDF knowledge")) {
 		t.Fatalf("unexpected imported material file metadata: storage=%s size=%d", material.StorageKey, material.FileSize)
 	}
 	if material.AccessLevel != model.MaterialAccessLoginRequired || material.Status != model.StatusPublished {
@@ -106,7 +106,7 @@ func TestMaterialManifestImportCreatesPackageMaterialsAndIsIdempotent(t *testing
 func TestMaterialManifestImportDryRunReportsWithoutPersisting(t *testing.T) {
 	db := newTestDB(t)
 	uploadDir := t.TempDir()
-	writeUploadFile(t, uploadDir, "materials/dry-run/outline.pdf", "dry run outline")
+	writeUploadFile(t, uploadDir, "materials/dry-run/outline.pdf", "%PDF dry run outline")
 	manifest := []materialimport.ManifestEntry{manifestEntryWithFile("uploads/materials/dry-run/outline.pdf")}
 
 	result, err := materialimport.New(db, uploadDir).ImportDryRun(manifest)
@@ -116,7 +116,7 @@ func TestMaterialManifestImportDryRunReportsWithoutPersisting(t *testing.T) {
 	if !result.DryRun || result.Entries != 1 || result.CoursesCreated != 1 || result.PackagesCreated != 1 || result.MaterialsCreated != 1 || result.PackageItemsAdded != 1 {
 		t.Fatalf("unexpected dry-run result: %#v", result)
 	}
-	if result.Report.ManifestMaterials != 1 || result.Report.FilesChecked != 1 || result.Report.PackageItemLinks != 1 || result.Report.TotalFileBytes != int64(len("dry run outline")) {
+	if result.Report.ManifestMaterials != 1 || result.Report.FilesChecked != 1 || result.Report.PackageItemLinks != 1 || result.Report.TotalFileBytes != int64(len("%PDF dry run outline")) {
 		t.Fatalf("unexpected dry-run import report: %#v", result.Report)
 	}
 	assertMaterialImportCounts(t, db, 0, 0, 0)
@@ -185,12 +185,45 @@ func TestMaterialManifestImportRejectsUnsafeAndMissingFiles(t *testing.T) {
 	t.Run("unsafe display file name rolls back", func(t *testing.T) {
 		db := newTestDB(t)
 		uploadDir := t.TempDir()
-		writeUploadFile(t, uploadDir, "materials/unsafe-name/outline.pdf", "outline")
+		writeUploadFile(t, uploadDir, "materials/unsafe-name/outline.pdf", "%PDF outline")
 		manifest := manifestEntryWithFile("uploads/materials/unsafe-name/outline.pdf")
 		manifest.Materials[0].FileName = "../outline.pdf"
 		_, err := materialimport.New(db, uploadDir).Import([]materialimport.ManifestEntry{manifest})
 		if !errors.Is(err, materialimport.ErrUnsafeFilePath) {
 			t.Fatalf("expected unsafe display file name error, got %v", err)
+		}
+		assertMaterialImportCounts(t, db, 0, 0, 0)
+	})
+
+	t.Run("invalid pdf content rolls back", func(t *testing.T) {
+		db := newTestDB(t)
+		uploadDir := t.TempDir()
+		writeUploadFile(t, uploadDir, "materials/invalid-content/not-a-pdf.pdf", "not a pdf")
+		_, err := materialimport.New(db, uploadDir).Import([]materialimport.ManifestEntry{manifestEntryWithFile("uploads/materials/invalid-content/not-a-pdf.pdf")})
+		if !errors.Is(err, materialimport.ErrInvalidFileContent) {
+			t.Fatalf("expected invalid file content error, got %v", err)
+		}
+		assertMaterialImportCounts(t, db, 0, 0, 0)
+	})
+
+	t.Run("text with null byte rolls back", func(t *testing.T) {
+		db := newTestDB(t)
+		uploadDir := t.TempDir()
+		writeUploadBytes(t, uploadDir, "materials/invalid-content/binary.txt", []byte{'o', 'k', 0, 'x'})
+		_, err := materialimport.New(db, uploadDir).Import([]materialimport.ManifestEntry{manifestEntryWithFile("uploads/materials/invalid-content/binary.txt")})
+		if !errors.Is(err, materialimport.ErrInvalidFileContent) {
+			t.Fatalf("expected invalid text content error, got %v", err)
+		}
+		assertMaterialImportCounts(t, db, 0, 0, 0)
+	})
+
+	t.Run("invalid docx content rolls back", func(t *testing.T) {
+		db := newTestDB(t)
+		uploadDir := t.TempDir()
+		writeUploadFile(t, uploadDir, "materials/invalid-content/not-a-docx.docx", "not a zip")
+		_, err := materialimport.New(db, uploadDir).Import([]materialimport.ManifestEntry{manifestEntryWithFile("uploads/materials/invalid-content/not-a-docx.docx")})
+		if !errors.Is(err, materialimport.ErrInvalidFileContent) {
+			t.Fatalf("expected invalid docx content error, got %v", err)
 		}
 		assertMaterialImportCounts(t, db, 0, 0, 0)
 	})
@@ -209,7 +242,7 @@ func TestMaterialManifestImportRejectsUnsafeAndMissingFiles(t *testing.T) {
 func TestMaterialManifestImportReportDetectsDuplicateFileReferences(t *testing.T) {
 	db := newTestDB(t)
 	uploadDir := t.TempDir()
-	writeUploadFile(t, uploadDir, "materials/report/shared.pdf", "shared material")
+	writeUploadFile(t, uploadDir, "materials/report/shared.pdf", "%PDF shared material")
 	manifest := []materialimport.ManifestEntry{
 		{
 			School:        "Henan Test University",
@@ -257,8 +290,8 @@ func TestMaterialManifestImportReportDetectsDuplicateFileReferences(t *testing.T
 func TestMaterialManifestReleaseCheckPassesForPublishedPaidPackage(t *testing.T) {
 	db := newTestDB(t)
 	uploadDir := t.TempDir()
-	writeUploadFile(t, uploadDir, "materials/release/notes.pdf", "release notes")
-	writeUploadFile(t, uploadDir, "materials/release/mock.pdf", "release mock")
+	writeUploadFile(t, uploadDir, "materials/release/notes.pdf", "%PDF release notes")
+	writeUploadFile(t, uploadDir, "materials/release/mock.pdf", "%PDF release mock")
 
 	priceFen := int64(1990)
 	manifest := []materialimport.ManifestEntry{
@@ -311,7 +344,7 @@ func TestMaterialManifestReleaseCheckPassesForPublishedPaidPackage(t *testing.T)
 func TestMaterialManifestReleaseCheckRejectsUnsafeReleasePackage(t *testing.T) {
 	db := newTestDB(t)
 	uploadDir := t.TempDir()
-	writeUploadFile(t, uploadDir, "materials/release-risk/shared.pdf", "shared release file")
+	writeUploadFile(t, uploadDir, "materials/release-risk/shared.pdf", "%PDF shared release file")
 
 	manifest := []materialimport.ManifestEntry{
 		{

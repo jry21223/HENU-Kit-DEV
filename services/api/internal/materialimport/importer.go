@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,6 +25,7 @@ var (
 	ErrMissingFile         = errors.New("manifest_file_missing")
 	ErrUnsafeFilePath      = errors.New("unsafe_manifest_file_path")
 	ErrUnsupportedFileType = errors.New("unsupported_manifest_file_type")
+	ErrInvalidFileContent  = errors.New("invalid_manifest_file_content")
 	ErrPackageScope        = errors.New("package_scope_mismatch")
 	ErrUnsupportedVersion  = errors.New("unsupported_manifest")
 	errDryRunRollback      = errors.New("material_import_dry_run_rollback")
@@ -732,7 +734,8 @@ func (i Importer) storageKeyForManifestPath(rawPath string) (string, int64, erro
 	if rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
 		return "", 0, ErrUnsafeFilePath
 	}
-	if !allowedManifestFileExtensions[strings.ToLower(filepath.Ext(rel))] {
+	ext := strings.ToLower(filepath.Ext(rel))
+	if !allowedManifestFileExtensions[ext] {
 		return "", 0, ErrUnsupportedFileType
 	}
 	info, err := os.Stat(absPath)
@@ -745,7 +748,41 @@ func (i Importer) storageKeyForManifestPath(rawPath string) (string, int64, erro
 	if info.IsDir() {
 		return "", 0, ErrMissingFile
 	}
+	if err := validateManifestFileContent(absPath, ext); err != nil {
+		return "", 0, err
+	}
 	return filepath.ToSlash(rel), info.Size(), nil
+}
+
+func validateManifestFileContent(path string, ext string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	content := buffer[:n]
+	switch ext {
+	case ".pdf":
+		if !bytes.HasPrefix(content, []byte("%PDF")) {
+			return ErrInvalidFileContent
+		}
+	case ".txt", ".md":
+		if bytes.Contains(content, []byte{0}) {
+			return ErrInvalidFileContent
+		}
+	case ".docx":
+		if !bytes.HasPrefix(content, []byte("PK\x03\x04")) &&
+			!bytes.HasPrefix(content, []byte("PK\x05\x06")) &&
+			!bytes.HasPrefix(content, []byte("PK\x07\x08")) {
+			return ErrInvalidFileContent
+		}
+	}
+	return nil
 }
 
 func safeManifestFileName(value string) (string, error) {
