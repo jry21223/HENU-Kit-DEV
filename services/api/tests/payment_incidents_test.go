@@ -361,6 +361,18 @@ func TestPaymentIncidentManualAlertIsAdminOnlyAndNonFinancial(t *testing.T) {
 	if auditCount != 1 {
 		t.Fatalf("expected one manual alert operation log, got %d", auditCount)
 	}
+	listAfterAlert := performJSON(router, http.MethodGet, "/api/v1/admin/payment-incidents?outTradeNo=INCIDENTALERT001", "", adminToken)
+	if listAfterAlert.Code != http.StatusOK {
+		t.Fatalf("expected incident list after alert 200, got %d: %s", listAfterAlert.Code, listAfterAlert.Body.String())
+	}
+	for _, expected := range []string{`"alertCount":1`, `"lastAlertedAt"`, `"lastAlertedBy":"` + admin.ID + `"`} {
+		if !strings.Contains(listAfterAlert.Body.String(), expected) {
+			t.Fatalf("expected alert summary field %s, got %s", expected, listAfterAlert.Body.String())
+		}
+	}
+	if strings.Contains(listAfterAlert.Body.String(), "rawNotify") || strings.Contains(listAfterAlert.Body.String(), "idempotencyKey") {
+		t.Fatalf("incident list with alert summary must not expose internals, got %s", listAfterAlert.Body.String())
+	}
 
 	resolve := performJSON(router, http.MethodPost, "/api/v1/admin/payment-incidents/"+incident.ID+"/resolve", `{"status":"ignored"}`, adminToken)
 	if resolve.Code != http.StatusOK {

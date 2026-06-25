@@ -167,6 +167,9 @@ export type PaymentIncident = {
   handledBy?: string;
   handledAt?: string;
   handleNote?: string;
+  alertCount: number;
+  lastAlertedAt?: string;
+  lastAlertedBy?: string;
   createdAt: string;
   updatedAt: string;
 };

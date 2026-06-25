@@ -265,8 +265,17 @@ type paymentIncidentRow struct {
 	HandledBy      *string    `json:"handledBy,omitempty"`
 	HandledAt      *time.Time `json:"handledAt,omitempty"`
 	HandleNote     string     `json:"handleNote,omitempty"`
+	AlertCount     int        `json:"alertCount"`
+	LastAlertedAt  *time.Time `json:"lastAlertedAt,omitempty"`
+	LastAlertedBy  *string    `json:"lastAlertedBy,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
+}
+
+type paymentIncidentAlertSummary struct {
+	AlertCount    int
+	LastAlertedAt *time.Time
+	LastAlertedBy *string
 }
 
 type mediaAssetRow struct {
@@ -827,7 +836,12 @@ func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 		return
 	}
-	response.OK(ctx, gin.H{"incidents": paymentIncidentRows(incidents), "total": total})
+	alerts, err := h.paymentIncidentAlertSummaries(incidents)
+	if err != nil {
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
+		return
+	}
+	response.OK(ctx, gin.H{"incidents": paymentIncidentRows(incidents, alerts), "total": total})
 }
 
 func (h Handler) PaymentIncidentSummary(ctx *gin.Context) {
@@ -2475,9 +2489,44 @@ func (h Handler) paymentReconciliationIssues(now time.Time) ([]paymentReconcilia
 	return issues, nil
 }
 
-func paymentIncidentRows(incidents []model.PaymentIncident) []paymentIncidentRow {
+func (h Handler) paymentIncidentAlertSummaries(incidents []model.PaymentIncident) (map[string]paymentIncidentAlertSummary, error) {
+	ids := make([]string, 0, len(incidents))
+	for _, incident := range incidents {
+		if strings.TrimSpace(incident.ID) != "" {
+			ids = append(ids, incident.ID)
+		}
+	}
+	summaries := map[string]paymentIncidentAlertSummary{}
+	if len(ids) == 0 {
+		return summaries, nil
+	}
+	var logs []model.OperationLog
+	if err := h.db.
+		Where("target_type = ? AND action = ? AND target_id IN ?", "payment_incident", "payment_incident.alert", ids).
+		Order("created_at desc").
+		Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	for _, log := range logs {
+		summary := summaries[log.TargetID]
+		summary.AlertCount++
+		if summary.LastAlertedAt == nil {
+			alertedAt := log.CreatedAt
+			summary.LastAlertedAt = &alertedAt
+			if strings.TrimSpace(log.OperatorID) != "" {
+				operatorID := log.OperatorID
+				summary.LastAlertedBy = &operatorID
+			}
+		}
+		summaries[log.TargetID] = summary
+	}
+	return summaries, nil
+}
+
+func paymentIncidentRows(incidents []model.PaymentIncident, alerts map[string]paymentIncidentAlertSummary) []paymentIncidentRow {
 	rows := make([]paymentIncidentRow, 0, len(incidents))
 	for _, incident := range incidents {
+		alert := alerts[incident.ID]
 		rows = append(rows, paymentIncidentRow{
 			ID:             incident.ID,
 			OrderID:        incident.OrderID,
@@ -2494,6 +2543,9 @@ func paymentIncidentRows(incidents []model.PaymentIncident) []paymentIncidentRow
 			HandledBy:      incident.HandledBy,
 			HandledAt:      incident.HandledAt,
 			HandleNote:     incident.HandleNote,
+			AlertCount:     alert.AlertCount,
+			LastAlertedAt:  alert.LastAlertedAt,
+			LastAlertedBy:  alert.LastAlertedBy,
 			CreatedAt:      incident.CreatedAt,
 			UpdatedAt:      incident.UpdatedAt,
 		})

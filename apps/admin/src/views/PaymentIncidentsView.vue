@@ -99,6 +99,13 @@
             <p v-if="row.handledBy" class="cell-muted">{{ row.handledBy }}</p>
           </template>
         </el-table-column>
+        <el-table-column :label="copy.alertHistory" min-width="180">
+          <template #default="{ row }">
+            <strong>{{ row.alertCount || 0 }}</strong>
+            <p v-if="row.lastAlertedAt" class="cell-muted">{{ formatDate(row.lastAlertedAt) }}</p>
+            <p v-if="row.lastAlertedBy" class="cell-muted">{{ row.lastAlertedBy }}</p>
+          </template>
+        </el-table-column>
         <el-table-column :label="copy.actions" fixed="right" width="240">
           <template #default="{ row }">
             <div class="table-actions">
@@ -170,6 +177,7 @@ const copy = {
   handleNote: "\u5904\u7406\u5907\u6ce8",
   createdAt: "\u521b\u5efa\u65f6\u95f4",
   handledAt: "\u5904\u7406\u65f6\u95f4",
+  alertHistory: "\u544a\u8b66\u8bb0\u5f55",
   actions: "\u64cd\u4f5c",
   resolve: "\u6807\u8bb0\u5df2\u5904\u7406",
   ignore: "\u5ffd\u7565",

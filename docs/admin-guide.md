@@ -132,6 +132,7 @@ Important boundaries:
 
 - Incident rows are idempotent for repeated identical callbacks.
 - The incident list returns triage metadata only and does not expose raw WeChat notify payloads or incident idempotency keys.
+- The incident list also shows re-alert count, last re-alert time, and last re-alert operator derived from `payment_incident.alert` operation logs. It does not expose operation-log IP, User-Agent, or metadata on the incident table.
 - The summary response includes open count, high-risk count, top incident type, and `overdueOpen`; `/dashboard` uses it to show whether open payment incidents need attention.
 - `PAYMENT_INCIDENT_OVERDUE_MINUTES` controls when an open incident is treated as overdue for dashboard triage. This is an operator reminder only; it does not auto-resolve incidents or change payment state.
 - The incident page can filter by severity and `overdue=true`; overdue filtering only returns open incidents past the same threshold.
