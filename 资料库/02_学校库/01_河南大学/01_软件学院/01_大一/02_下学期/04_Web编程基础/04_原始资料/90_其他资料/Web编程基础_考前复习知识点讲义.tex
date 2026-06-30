@@ -1,0 +1,413 @@
+
+\documentclass[UTF8,zihao=-4]{ctexart}
+\usepackage[a4paper,margin=2.15cm]{geometry}
+\usepackage{amsmath,amssymb,bm,mathtools}
+\usepackage{esint}
+\usepackage{booktabs,longtable,tabularx,array,multicol}
+\usepackage[most]{tcolorbox}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{lastpage}
+\usepackage{fvextra}
+\usepackage{tikz}
+\usepackage{eso-pic}
+\usepackage{fontspec}
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black,citecolor=blue!55!black,pdftitle={Web 编程基础考前复习知识点讲义},pdfauthor={Jerry}}
+\definecolor{mainblue}{HTML}{1F4E79}
+\definecolor{lightblue}{HTML}{EAF3FF}
+\definecolor{warnred}{HTML}{B3261E}
+\definecolor{lightred}{HTML}{FFF1F1}
+\definecolor{darkgreen}{HTML}{1B6B3A}
+\definecolor{lightgreen}{HTML}{EEF9F0}
+\definecolor{orange}{HTML}{B26A00}
+\definecolor{lightorange}{HTML}{FFF7E8}
+\definecolor{softgray}{HTML}{777777}
+\ctexset{section={format=\Large\bfseries\sffamily\color{mainblue}},subsection={format=\large\bfseries\sffamily\color{mainblue!85!black}},subsubsection={format=\normalsize\bfseries\sffamily\color{mainblue!75!black}}}
+\titleformat{\paragraph}[runin]{\bfseries\sffamily\color{mainblue!75!black}}{}{0pt}{}[\quad]
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Web 编程基础考前复习知识点讲义}
+\rhead{\leftmark}
+\cfoot{\thepage/\pageref{LastPage}}
+\setlength{\headheight}{15pt}
+\setlist[itemize]{leftmargin=2em,itemsep=0.25em,topsep=0.25em}
+\setlist[enumerate]{leftmargin=2em,itemsep=0.25em,topsep=0.25em}
+\renewcommand{\arraystretch}{1.32}
+\allowdisplaybreaks
+\newcommand{\dd}{\,\mathrm d}
+\newcommand{\ee}{\mathrm e}
+\newcommand{\ii}{\mathrm i}
+\newcommand{\ve}[1]{\bm{#1}}
+\newcommand{\grad}{\nabla}
+\newcommand{\epsz}{\varepsilon_0}
+\newcommand{\muz}{\mu_0}
+\newtcolorbox{keybox}[1][]{breakable,colback=lightblue,colframe=mainblue,arc=2mm,title=\textbf{#1},fonttitle=\bfseries\sffamily,coltitle=white}
+\newtcolorbox{warnbox}[1][]{breakable,colback=lightred,colframe=warnred,arc=2mm,title=\textbf{#1},fonttitle=\bfseries\sffamily,coltitle=white}
+\newtcolorbox{examplebox}[1][]{breakable,colback=lightgreen,colframe=darkgreen,arc=2mm,title=\textbf{#1},fonttitle=\bfseries\sffamily,coltitle=white}
+\newtcolorbox{methodbox}[1][]{breakable,colback=lightorange,colframe=orange,arc=2mm,title=\textbf{#1},fonttitle=\bfseries\sffamily,coltitle=white}
+\DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\small,breaklines,breakanywhere,frame=single,framesep=2mm}
+\definecolor{watermarkgray}{HTML}{777777}
+\AddToShipoutPictureBG{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[rotate=35,scale=1.35,text=watermarkgray,opacity=0.14] at (current page.center) {Jerry 制作｜仅供个人复习使用｜禁止盗印与商用传播};
+  \end{tikzpicture}%
+}
+
+\begin{document}
+\begin{titlepage}
+\centering
+\vspace*{2.3cm}
+{\Huge\bfseries\sffamily Web 编程基础考前复习知识点讲义\par}
+\vspace{0.75cm}
+{\Large 按两套模拟卷补配的考试导向版\par}
+\vspace{0.45cm}
+{\large HTML - CSS - JavaScript - DOM 事件 - 综合页面应用\par}
+\vfill
+\begin{tcolorbox}[colback=lightblue,colframe=mainblue,width=0.86\textwidth,arc=2mm]
+\textbf{使用定位：}这份讲义按已出模拟卷的题型、分值与考点重新整理，重点放在高频结论、题型识别、固定步骤和易错点，不按教材逐段搬运。\par
+\textbf{复习方法：}先看题型结构和优先级，再按模块刷小题和大题，最后用公式速查表与最后 30 分钟清单做查漏。
+\end{tcolorbox}
+\vfill
+{\large 资料整理：Jerry\par}
+{\large 版本：V1.1\par}
+{\large \today\par}
+\end{titlepage}
+\tableofcontents
+\newpage
+
+\section{考试结构与复习策略}
+
+\begin{longtable}{p{0.18\textwidth}p{0.15\textwidth}p{0.15\textwidth}p{0.14\textwidth}p{0.28\textwidth}}
+\toprule
+\textbf{题型} & \textbf{题量} & \textbf{单题分值} & \textbf{总分} & \textbf{主要考法} \\
+\midrule
+单选题 & 10 & 2 分 & 20 & HTML/CSS/JS 基础概念和代码判断 \\
+填空题 & 5 & 2 分 & 10 & 标签属性、DOM 方法、关键字、布局属性 \\
+判断题 & 10 & 1 分 & 10 & 概念正误、浏览器行为、语法细节 \\
+阅读理解题 & 4 & 5 分 & 20 & 表格、CSS 优先级、JS 输出、事件处理 \\
+简述题 & 4 & 5 分 & 20 & 路径、盒模型、事件、表单、响应式、存储 \\
+综合应用题 & 4 小问 & 5 分 & 20 & 页面结构、样式、DOM 操作、本地存储 \\
+\bottomrule
+\end{longtable}
+
+\begin{keybox}[复习定位]
+本课程不是只背标签。小题考语法和概念，大题考“看代码说结果”和“能写出页面实现思路”。最后综合题通常围绕一个小型交互页面：表单、列表、按钮、事件、渲染和 localStorage。
+\end{keybox}
+
+\section{考点优先级}
+
+\begin{longtable}{p{0.16\textwidth}p{0.23\textwidth}p{0.27\textwidth}p{0.24\textwidth}}
+\toprule
+\textbf{优先级} & \textbf{模块} & \textbf{常见题型} & \textbf{复习要求} \\
+\midrule
+必考核心 & HTML 标签与表单 & 单选、填空、阅读、综合 & 会写页面骨架、表单控件、表格、图片链接 \\
+必考核心 & CSS 选择器与盒模型 & 单选、判断、阅读、简述 & 会算优先级、会区分 margin/padding/border/content \\
+必考核心 & JavaScript 基础 & 单选、阅读 & 会判断变量、运算符、作用域、数组方法和输出 \\
+必考核心 & DOM 与事件 & 阅读、简述、综合 & 会选择元素、绑定事件、处理 target、修改 class/style/content \\
+高频重点 & 布局与响应式 & 单选、简述、综合 & 会说明 Flex/Grid、媒体查询、居中方式 \\
+高频重点 & localStorage 与 JSON & 判断、简述、综合 & 会保存对象数组、刷新恢复数据 \\
+可能考点 & fetch、Promise、表单提交 & 单选、简述 & 会解释返回 Promise、GET/POST、preventDefault \\
+了解即可 & BOM 与浏览器默认样式 & 判断题 & 能识别基本概念，不深挖高级 API \\
+\bottomrule
+\end{longtable}
+
+\section{模块一：HTML 基础与表单}
+
+\subsection{页面骨架与常用标签}
+\begin{keybox}[必须会写的骨架]
+\begin{Code}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>页面标题</title>
+</head>
+<body>
+  <h1>标题</h1>
+  <p>段落</p>
+</body>
+</html>
+\end{Code}
+\end{keybox}
+
+\begin{longtable}{p{0.22\textwidth}p{0.34\textwidth}p{0.34\textwidth}}
+\toprule
+\textbf{标签/属性} & \textbf{作用} & \textbf{常考点} \\
+\midrule
+\texttt{meta charset} & 设置字符编码 & UTF-8 写法 \\
+\texttt{a href} & 超链接 & 链接地址写在 href，不是 src \\
+\texttt{img src alt} & 图片与替代文本 & src 是图片路径，alt 是替代文本 \\
+\texttt{table/tr/td/th} & 表格、行、单元格、表头 & rowspan 与 colspan 判断表格结构 \\
+\texttt{form/input/select/textarea/button} & 表单结构 & name 决定字段能否随表单提交 \\
+\texttt{label for} & 标签关联控件 & 提升可访问性，点击 label 可聚焦控件 \\
+\bottomrule
+\end{longtable}
+
+\begin{methodbox}[表格阅读题模板]
+\begin{enumerate}
+  \item 先按 \texttt{tr} 分行。
+  \item 再看每行 \texttt{td/th} 个数。
+  \item 遇到 \texttt{rowspan} 向下占行，遇到 \texttt{colspan} 向右占列。
+  \item 最后画成矩阵，不要只数标签。
+\end{enumerate}
+\end{methodbox}
+
+\begin{methodbox}[表单提交题模板]
+\begin{enumerate}
+  \item 有 \texttt{name} 的控件才会形成提交字段。
+  \item \texttt{required} 表示提交前必须填写。
+  \item \texttt{type="email"} 会进行基础邮箱格式提示。
+  \item submit 事件中用 \texttt{preventDefault()} 阻止默认提交。
+\end{enumerate}
+\end{methodbox}
+
+\section{模块二：CSS 选择器、盒模型与布局}
+
+\subsection{选择器与优先级}
+\begin{keybox}[选择器速查]
+\begin{itemize}
+  \item 标签选择器：\texttt{p}、\texttt{div}。
+  \item 类选择器：\texttt{.note}。
+  \item ID 选择器：\texttt{\#intro}。
+  \item 后代选择器：\texttt{div span}；直接子元素：\texttt{div > span}。
+  \item 属性选择器：\texttt{input[type="text"]}。
+\end{itemize}
+优先级通常为：内联样式 $>$ ID $>$ 类/属性/伪类 $>$ 标签。相同优先级后写覆盖先写。
+\end{keybox}
+
+\begin{methodbox}[CSS 阅读题模板]
+\begin{enumerate}
+  \item 找目标元素的标签名、id、class 和内联 style。
+  \item 列出所有匹配规则。
+  \item 比较优先级；优先级相同看书写顺序。
+  \item 分属性判断：颜色和字号可能来自不同规则。
+\end{enumerate}
+\end{methodbox}
+
+\subsection{盒模型与常见样式}
+\begin{keybox}[盒模型]
+标准盒模型由
+\[
+\text{content} + \text{padding} + \text{border} + \text{margin}
+\]
+组成。\texttt{display:none} 不显示且不占位；\texttt{visibility:hidden} 不显示但占位；\texttt{opacity:0} 透明但仍占位且通常仍可触发事件。
+\end{keybox}
+
+\begin{longtable}{p{0.25\textwidth}p{0.65\textwidth}}
+\toprule
+\textbf{需求} & \textbf{常用写法} \\
+\midrule
+文本水平居中 & \texttt{text-align:center;} \\
+块级元素自身居中 & 固定宽度后 \texttt{margin:0 auto;} \\
+圆角 & \texttt{border-radius} \\
+阴影 & \texttt{box-shadow} \\
+定位叠放顺序 & 定位元素配合 \texttt{z-index} \\
+Flex 容器 & \texttt{display:flex;}，换行 \texttt{flex-wrap:wrap;} \\
+Grid 容器 & \texttt{display:grid;} \\
+响应式 & \texttt{@media} 媒体查询 \\
+\bottomrule
+\end{longtable}
+
+\section{模块三：JavaScript 基础}
+
+\subsection{变量、作用域与运算}
+\begin{keybox}[变量声明]
+\begin{itemize}
+  \item \texttt{var}：函数作用域，有变量提升。
+  \item \texttt{let}：块级作用域，可重新赋值。
+  \item \texttt{const}：块级作用域，声明后绑定不能重新赋值；若是对象，对象属性仍可能被修改。
+\end{itemize}
+JavaScript 是动态类型语言，声明变量时不指定数据类型。
+\end{keybox}
+
+\begin{methodbox}[输出结果题模板]
+\begin{enumerate}
+  \item 先看变量声明位置，区分全局、函数、块级作用域。
+  \item 再看自增自减：\texttt{++a} 先加后用，\texttt{a++} 先用后加。
+  \item 数组题看方法是否返回新数组：\texttt{filter()}、\texttt{map()} 返回新数组。
+  \item 字符串拼接时，\texttt{+} 遇到字符串会拼接。
+\end{enumerate}
+\end{methodbox}
+
+\subsection{常用对象与数组方法}
+\begin{longtable}{p{0.26\textwidth}p{0.64\textwidth}}
+\toprule
+\textbf{方法/对象} & \textbf{作用} \\
+\midrule
+\texttt{Math.random()} & 返回 $[0,1)$ 的伪随机数 \\
+\texttt{Array.filter()} & 筛选满足条件的元素，返回新数组 \\
+\texttt{Array.map()} & 映射生成新数组 \\
+\texttt{join()} & 用指定分隔符拼接数组元素 \\
+\texttt{JSON.stringify()} & 对象转 JSON 字符串 \\
+\texttt{JSON.parse()} & JSON 字符串转对象 \\
+\bottomrule
+\end{longtable}
+
+\section{模块四：DOM、事件、存储与网络请求}
+
+\subsection{DOM 选择与修改}
+\begin{keybox}[DOM 方法]
+\begin{itemize}
+  \item \texttt{document.getElementById('box')}：按 id 获取单个元素。
+  \item \texttt{document.querySelector('\#box')}：获取第一个匹配元素。
+  \item \texttt{document.querySelectorAll('li')}：获取所有匹配元素集合。
+  \item 修改内容：\texttt{textContent}、\texttt{innerText}、\texttt{innerHTML}。
+  \item 修改类名：\texttt{classList.add/remove/toggle()}。
+\end{itemize}
+\end{keybox}
+
+\subsection{事件与事件委托}
+\begin{methodbox}[事件题模板]
+\begin{enumerate}
+  \item 事件绑定：\texttt{element.addEventListener('click', function(e)\{...\})}。
+  \item \texttt{event.target} 是真正触发事件的元素。
+  \item \texttt{event.currentTarget} 或函数中的 \texttt{this} 通常是绑定监听器的元素。
+  \item 事件委托：把监听器绑在父元素上，利用冒泡处理子元素事件。
+\end{enumerate}
+\end{methodbox}
+
+\begin{keybox}[常见鼠标事件]
+\texttt{click} 单击；\texttt{dblclick} 双击；\texttt{mouseover} 鼠标移入；\texttt{mouseout} 鼠标移出；\texttt{mousedown} 按下；\texttt{mouseup} 松开；\texttt{mousemove} 移动。
+\end{keybox}
+
+\subsection{localStorage、JSON 与 fetch}
+\begin{keybox}[本地存储]
+\texttt{localStorage} 以字符串形式保存数据，关闭页面后通常仍保留。保存对象或数组时通常：
+\begin{Code}
+localStorage.setItem('records', JSON.stringify(records));
+const records = JSON.parse(localStorage.getItem('records') || '[]');
+\end{Code}
+\texttt{fetch()} 通常返回 Promise；解析 JSON 响应常写 \texttt{response.json()}。
+\end{keybox}
+
+\section{模块五：综合应用题写法}
+
+\begin{methodbox}[综合题四步模板]
+\begin{enumerate}
+  \item \textbf{HTML：}写容器、标题、输入框/表单控件、按钮、列表或结果区域。
+  \item \textbf{CSS：}写居中卡片、间距、按钮状态、列表项、响应式宽度。
+  \item \textbf{JS：}获取元素，绑定事件，读取输入，校验，创建数据，渲染页面。
+  \item \textbf{存储：}数据数组转 JSON 保存，页面加载时读取并重新渲染。
+\end{enumerate}
+\end{methodbox}
+
+\begin{examplebox}[待办事项核心代码]
+\begin{Code}
+const input = document.querySelector('#todo');
+const btn = document.querySelector('#add');
+const list = document.querySelector('#list');
+
+btn.addEventListener('click', function () {
+  const text = input.value.trim();
+  if (!text) return;
+  const li = document.createElement('li');
+  li.textContent = text;
+  list.appendChild(li);
+  input.value = '';
+});
+
+list.addEventListener('click', function (e) {
+  if (e.target.matches('li')) {
+    e.target.classList.toggle('done');
+  }
+});
+\end{Code}
+\end{examplebox}
+
+\section{高频题型方法模板}
+
+\begin{methodbox}[题型一：HTML/CSS 阅读]
+\textbf{识别特征：}题干给表格、表单或一段 CSS，要求说明最终结构/样式。\par
+\textbf{固定步骤：}标签结构先画图，CSS 规则逐条匹配，最后按优先级和书写顺序确定答案。\par
+\textbf{易错点：}内联样式只影响写了的属性；ID 颜色高于类颜色，但字号可能来自另一个规则。
+\end{methodbox}
+
+\begin{methodbox}[题型二：JavaScript 输出]
+\textbf{识别特征：}给变量、循环、函数或数组链式调用。\par
+\textbf{固定步骤：}按执行顺序列变量值；遇到函数看局部/全局；遇到数组方法看是否返回新数组。\par
+\textbf{易错点：}\texttt{getElementById()} 返回单个元素或 null，不是集合。
+\end{methodbox}
+
+\begin{methodbox}[题型三：综合页面设计]
+\textbf{识别特征：}题目要求设计待办、问卷、评价、列表管理等小页面。\par
+\textbf{固定步骤：}先写 HTML 结构，再写 CSS 分区样式，最后写 JS 的数据流：读取 - 校验 - 保存 - 渲染。\par
+\textbf{易错点：}保存对象数组时必须先 JSON 序列化；按钮在表单中默认可能触发表单提交。
+\end{methodbox}
+
+\section{易错点清单}
+\begin{warnbox}[常见扣分点]
+\begin{enumerate}
+  \item 超链接地址写在 \texttt{href}，图片地址写在 \texttt{src}。
+  \item 表单控件没有 \texttt{name} 时通常不会形成提交字段。
+  \item \texttt{id} 在同一页面中应唯一。
+  \item \texttt{display:none} 与 \texttt{visibility:hidden} 的占位不同。
+  \item \texttt{const} 对象不能重新绑定，但属性通常可修改。
+  \item \texttt{innerHTML} 会解析 HTML，\texttt{innerText/textContent} 更适合普通文本。
+  \item \texttt{event.target} 与 \texttt{this/currentTarget} 不一定相同。
+  \item localStorage 只能直接保存字符串。
+\end{enumerate}
+\end{warnbox}
+
+\section{速查表}
+\begin{longtable}{p{0.24\textwidth}p{0.34\textwidth}p{0.32\textwidth}}
+\toprule
+\textbf{模块} & \textbf{关键写法} & \textbf{使用场景} \\
+\midrule
+HTML 编码 & \texttt{<meta charset="UTF-8">} & 页面中文不乱码 \\
+链接图片 & \texttt{<a href="url"><img src="pic"></a>} & 点击图片跳转 \\
+表单必填 & \texttt{required} & 提交前校验 \\
+盒模型 & content/padding/border/margin & 尺寸与间距判断 \\
+选择器 & \texttt{\#id}、\texttt{.class}、\texttt{div > span} & 样式匹配 \\
+DOM 选择 & \texttt{querySelector/querySelectorAll} & 获取页面元素 \\
+事件 & \texttt{addEventListener} & 绑定交互 \\
+类名切换 & \texttt{classList.toggle()} & 完成/选中状态 \\
+存储 & \texttt{JSON.stringify/parse} & localStorage 保存对象 \\
+网络 & \texttt{fetch()} 返回 Promise & 请求数据 \\
+\bottomrule
+\end{longtable}
+
+\section{考前 3～7 天复习计划}
+\begin{methodbox}[7 天版]
+\begin{enumerate}
+  \item Day 1：HTML 骨架、链接、图片、表格、表单。
+  \item Day 2：CSS 选择器、优先级、盒模型、定位和显示隐藏。
+  \item Day 3：Flex/Grid、响应式、常见居中与卡片样式。
+  \item Day 4：JS 变量、作用域、运算符、数组和字符串。
+  \item Day 5：DOM、事件、事件委托、表单阻止默认提交。
+  \item Day 6：localStorage、JSON、fetch，并写一个小综合页面。
+  \item Day 7：做模拟卷，整理错题，背速查表。
+\end{enumerate}
+\end{methodbox}
+
+\begin{methodbox}[3 天版]
+\begin{enumerate}
+  \item Day 1：背 HTML/CSS 小题知识点，刷单选填空判断。
+  \item Day 2：练 CSS 阅读和 JS 输出题。
+  \item Day 3：默写一个综合页面的 HTML/CSS/JS 框架。
+\end{enumerate}
+\end{methodbox}
+
+\section{考前最后 30 分钟速记清单}
+\begin{keybox}[只看这些]
+\begin{enumerate}
+  \item \texttt{href} 用于链接，\texttt{src} 用于资源路径，\texttt{alt} 是图片替代文本。
+  \item 表格：\texttt{tr} 行，\texttt{td} 单元格，\texttt{rowspan/colspan} 跨行跨列。
+  \item CSS 优先级：内联 $>$ ID $>$ 类/属性 $>$ 标签；同级后写覆盖。
+  \item 盒模型：content、padding、border、margin。
+  \item \texttt{display:none} 不占位；\texttt{visibility:hidden} 占位。
+  \item \texttt{event.target} 是真正点击元素；\texttt{currentTarget} 是绑定监听器元素。
+  \item localStorage 保存对象：先 \texttt{JSON.stringify}，取出后 \texttt{JSON.parse}。
+  \item 综合题必须写出：结构、样式、事件、数据保存/渲染。
+\end{enumerate}
+\end{keybox}
+
+\end{document}

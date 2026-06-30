@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://final-review.example.com/schemas/course.schema.json",
+  "title": "Course YAML Schema",
+  "description": "Schema for course.yaml files in the material library.",
+  "type": "object",
+  "required": ["school", "college", "stage", "semester", "course_name"],
+  "properties": {
+    "school": {
+      "type": "string",
+      "description": "学校名称",
+      "examples": ["河南大学"]
+    },
+    "college": {
+      "type": "string",
+      "description": "学院名称",
+      "examples": ["软件学院"]
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["大一", "大二", "大三", "大四"],
+      "description": "培养方案阶段，非入学级"
+    },
+    "semester": {
+      "type": "string",
+      "enum": ["上学期", "下学期"],
+      "description": "学期"
+    },
+    "course_name": {
+      "type": "string",
+      "description": "课程名称"
+    },
+    "course_aliases": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "课程别名",
+      "default": []
+    },
+    "applicable_majors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "适用专业列表",
+      "default": ["软件工程", "网络工程"]
+    },
+    "teacher": {
+      "type": "string",
+      "description": "授课教师",
+      "default": ""
+    },
+    "exam_type": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "常见考试题型",
+      "default": []
+    },
+    "status": {
+      "type": "string",
+      "enum": ["collecting", "active", "complete", "archived"],
+      "description": "课程资料整理状态",
+      "default": "collecting"
+    },
+    "maintainer": {
+      "type": "string",
+      "description": "维护人",
+      "default": ""
+    },
+    "notes": {
+      "type": "string",
+      "description": "备注说明",
+      "default": ""
+    }
+  }
+}

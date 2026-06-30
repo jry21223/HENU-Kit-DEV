@@ -1,0 +1,1165 @@
+\documentclass[UTF8,zihao=-4]{ctexart}
+
+\usepackage[a4paper,margin=2.15cm]{geometry}
+\usepackage{amsmath,amssymb,bm,mathtools}
+\usepackage{esint}
+\usepackage{booktabs,longtable,tabularx,array,multicol}
+\usepackage[most]{tcolorbox}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{eso-pic}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{lastpage}
+\usepackage{siunitx}
+
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black,
+  citecolor=blue!55!black,
+  pdftitle={大学物理电磁学期末复习笔记},
+  pdfauthor={ChatGPT}
+}
+
+\definecolor{mainblue}{HTML}{1F4E79}
+\definecolor{lightblue}{HTML}{EAF3FF}
+\definecolor{warnred}{HTML}{B3261E}
+\definecolor{lightred}{HTML}{FFF1F1}
+\definecolor{darkgreen}{HTML}{1B6B3A}
+\definecolor{lightgreen}{HTML}{EEF9F0}
+\definecolor{orange}{HTML}{B26A00}
+\definecolor{lightorange}{HTML}{FFF7E8}
+
+\ctexset{
+  section={format=\Large\bfseries\sffamily\color{mainblue}},
+  subsection={format=\large\bfseries\sffamily\color{mainblue!85!black}},
+  subsubsection={format=\normalsize\bfseries\sffamily\color{mainblue!75!black}}
+}
+\titleformat{\paragraph}[runin]{\bfseries\sffamily\color{mainblue!75!black}}{}{0pt}{}[\quad]
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{大学物理电磁学期末复习笔记}
+\rhead{\leftmark}
+\cfoot{\thepage/\pageref{LastPage}}
+\setlength{\headheight}{15pt}
+
+\setlist[itemize]{leftmargin=2em,itemsep=0.25em,topsep=0.25em}
+\setlist[enumerate]{leftmargin=2em,itemsep=0.25em,topsep=0.25em}
+\renewcommand{\arraystretch}{1.35}
+\allowdisplaybreaks
+
+\newcommand{\dd}{\,\mathrm d}
+\newcommand{\ii}{\mathrm i}
+\newcommand{\ee}{\mathrm e}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\epsz}{\varepsilon_0}
+\newcommand{\muz}{\mu_0}
+\newcommand{\mur}{\mu_r}
+\newcommand{\ve}[1]{\bm{#1}}
+\newcommand{\E}{\ve E}
+\newcommand{\B}{\ve B}
+\newcommand{\D}{\ve D}
+\newcommand{\Hf}{\ve H}
+\newcommand{\J}{\ve j}
+\newcommand{\dl}{\dd\ve l}
+\newcommand{\dS}{\dd\ve S}
+\newcommand{\dV}{\dd V}
+\newcommand{\grad}{\nabla}
+
+\newtcolorbox{keybox}[1][]{
+  breakable, colback=lightblue, colframe=mainblue, arc=2mm,
+  title=\textbf{#1}, fonttitle=\bfseries\sffamily, coltitle=white
+}
+\newtcolorbox{warnbox}[1][]{
+  breakable, colback=lightred, colframe=warnred, arc=2mm,
+  title=\textbf{#1}, fonttitle=\bfseries\sffamily, coltitle=white
+}
+\newtcolorbox{examplebox}[1][]{
+  breakable, colback=lightgreen, colframe=darkgreen, arc=2mm,
+  title=\textbf{#1}, fonttitle=\bfseries\sffamily, coltitle=white
+}
+\newtcolorbox{methodbox}[1][]{
+  breakable, colback=lightorange, colframe=orange, arc=2mm,
+  title=\textbf{#1}, fonttitle=\bfseries\sffamily, coltitle=white
+}
+
+
+\definecolor{watermarkgray}{HTML}{777777}
+\newcommand{\WatermarkText}{Jerry 制作｜仅供个人复习使用｜禁止盗印与商用传播}
+\AddToShipoutPictureBG{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[rotate=35,scale=1.35,text=watermarkgray,opacity=0.14] at (current page.center) {Jerry 制作｜仅供个人复习使用｜禁止盗印与商用传播};
+  \end{tikzpicture}%
+}
+
+
+\begin{document}
+
+\begin{titlepage}
+\centering
+\vspace*{2.5cm}
+{\Huge\bfseries\sffamily 大学物理电磁学期末复习笔记\par}
+\vspace{0.8cm}
+{\Large 按大学物理教材默认顺序重排\par}
+\vspace{0.5cm}
+{\large 静电场 - 导体与电介质 - 电容 - 磁场 - 电磁感应 - 麦克斯韦方程组\par}
+\vfill
+\begin{tcolorbox}[colback=lightblue,colframe=mainblue,width=0.86\textwidth,arc=2mm]
+\textbf{使用定位：}这份笔记不是逐张截图摘抄，而是把截图内容按期末复习需要重新组织。重点放在公式、适用条件、典型题型和易错判断。\par
+\textbf{复习建议：}先背每章的“核心公式”，再看“适用条件”和“易错点”。考试题通常不是难在公式本身，而是难在选错高斯面/安培环路、忽略符号方向、把场强和通量混为一谈。
+\end{tcolorbox}
+\vfill
+{\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{考试结构与查缺补漏导航}
+
+\begin{longtable}{p{0.20\textwidth}p{0.15\textwidth}p{0.16\textwidth}p{0.14\textwidth}p{0.25\textwidth}}
+\toprule
+\textbf{题型} & \textbf{题量} & \textbf{单题分值} & \textbf{总分} & \textbf{主要考法} \\
+\midrule
+选择题 & 10 & 3 分 & 30 & 概念判断、典型模型公式、方向判断 \\
+填空题 & 10 空 & 2 分 & 20 & 高斯定理、电容、磁场、感应电动势短算 \\
+简答题 & 2 & 5 分 & 10 & 静电屏蔽、场的环路/通量性质、模型条件 \\
+计算题 & 4 & 10 分 & 40 & 高斯定理、导体球壳、安培环路、动生/感生电动势 \\
+\bottomrule
+\end{longtable}
+
+\begin{keybox}[按模拟卷补强的重点]
+\begin{enumerate}
+  \item 电容器必须区分“接电源”和“断开电源”：接电源时 $U$ 不变，断开时 $Q$ 不变。
+  \item 高斯面通量只看内部净电荷，但高斯面上某点的场强受全部电荷影响。
+  \item 安培环路定理的环流只看穿过环路的净电流，但环路上 $B$ 的分布仍可能受外部电流影响。
+  \item 感生电场即使没有导体回路也存在；感应电动势可理解为非静电场沿闭合路径的环量。
+  \item 霍尔效应、自感、电磁感应方向属于选择填空的高频概念，不宜只背计算题。
+\end{enumerate}
+\end{keybox}
+
+\begin{longtable}{p{0.16\textwidth}p{0.24\textwidth}p{0.26\textwidth}p{0.24\textwidth}}
+\toprule
+\textbf{优先级} & \textbf{模块} & \textbf{题型位置} & \textbf{复习要求} \\
+\midrule
+必考核心 & 静电场与高斯定理 & 选择、填空、计算 & 会选高斯面，会区分通量与场强 \\
+必考核心 & 导体、电容、电介质 & 选择、填空、计算 & 会判断感应电荷、电势、电容变化 \\
+必考核心 & 恒定磁场与安培环路 & 选择、填空、计算 & 会求长直导线、圆柱导体、螺线管磁场 \\
+必考核心 & 电磁感应 & 选择、填空、计算 & 会判楞次方向、动生/感生电动势 \\
+高频重点 & 电势与电势能 & 选择、计算 & 会用 $W=q(V_P-V_Q)$ 与叠加原理 \\
+可能考点 & 霍尔效应、自感、磁介质 & 选择、填空 & 掌握结论和正负方向 \\
+\bottomrule
+\end{longtable}
+
+\section{总览：电磁学的主线}
+
+大学物理电磁学可以按以下逻辑理解：
+\[
+\text{电荷} \to \text{电场} \to \text{电势/电势能} \to \text{导体、电容、电介质}
+\]
+\[
+\text{电流} \to \text{磁场} \to \text{磁通量} \to \text{电磁感应} \to \text{麦克斯韦方程组}
+\]
+
+\begin{keybox}[四条最终主线]
+\begin{align*}
+&\text{电场高斯定理：} &&\oiint_S \D\cdot\dS=q_{\mathrm{free,\ in}} \\
+&\text{磁场高斯定理：} &&\oiint_S \B\cdot\dS=0 \\
+&\text{安培-麦克斯韦环路定理：} &&\oint_L \Hf\cdot\dl=I_{\mathrm{free}}+\frac{\dd}{\dd t}\iint_S \D\cdot\dS \\
+&\text{法拉第电磁感应定律：} &&\oint_L \E\cdot\dl=-\frac{\dd}{\dd t}\iint_S \B\cdot\dS
+\end{align*}
+真空中有
+\[
+\D=\epsz \E,\qquad \Hf=\frac{\B}{\muz}.
+\]
+\end{keybox}
+
+\begin{warnbox}[最容易混淆的两组概念]
+\begin{enumerate}
+  \item \textbf{场强/场本身}与\textbf{通量/环量}不同。通量、环量是积分量；某一点的场强还可能受到高斯面外电荷或安培环路外电流影响。
+  \item \textbf{电场强度}\(\E\)与\textbf{电势}\(V\)不同。一般不能由“\(E\)大”直接判断“\(V\)大”。真正关系是
+  \[
+  \E=-\grad V.
+  \]
+\end{enumerate}
+\end{warnbox}
+
+\section{静电场基础}
+
+\subsection{库仑定律与电场强度}
+
+点电荷\(q\)在真空中产生的电场为
+\begin{equation}
+\E=\frac{1}{4\pi\epsz}\frac{q}{r^2}\hat{\ve r}.
+\end{equation}
+其中\(\hat{\ve r}\)从源电荷指向场点。若\(q>0\)，电场向外；若\(q<0\)，电场向内。
+
+电场强度定义为单位正试探电荷受力：
+\begin{equation}
+\E=\frac{\ve F}{q_0}.
+\end{equation}
+多个电荷产生的电场满足叠加原理：
+\begin{equation}
+\E=\sum_i \E_i,\qquad \E=\int \dd\E.
+\end{equation}
+
+\subsection{连续带电体求电场}
+
+连续分布电荷常用三类密度：
+\[
+\lambda=\frac{\dd q}{\dd l},\qquad
+\sigma=\frac{\dd q}{\dd S},\qquad
+\rho=\frac{\dd q}{\dd V}.
+\]
+对应线、面、体元：
+\[
+\dd q=\lambda\dd l,\qquad \dd q=\sigma\dd S,\qquad \dd q=\rho\dd V.
+\]
+由点电荷场强积分得
+\begin{equation}
+\dd\E=\frac{1}{4\pi\epsz}\frac{\dd q}{r^2}\hat{\ve r},\qquad
+\E=\int \frac{1}{4\pi\epsz}\frac{\dd q}{r^2}\hat{\ve r}.
+\end{equation}
+
+\begin{methodbox}[连续带电体积分法套路]
+\begin{enumerate}
+  \item 选电荷元\(\dd q\)，写出\(\dd\E\)。
+  \item 分析对称性，抵消垂直分量，只保留有效分量。
+  \item 把\(\dd q\)、距离\(r\)、角度投影全部写成同一个积分变量。
+  \item 积分后判断方向。
+\end{enumerate}
+\end{methodbox}
+
+\subsection{常用电场强度结论}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.28\textwidth}>{\raggedright\arraybackslash}p{0.62\textwidth}}
+\toprule
+\textbf{模型} & \textbf{电场强度} \\
+\midrule
+点电荷 & \(\displaystyle E=\frac{1}{4\pi\epsz}\frac{|q|}{r^2}\) \\
+无限长均匀带电直线 & \(\displaystyle E=\frac{\lambda}{2\pi\epsz r}\)，方向沿径向 \\
+无限大均匀带电平面 & \(\displaystyle E=\frac{\sigma}{2\epsz}\)，两侧大小相等、方向背离正面电荷 \\
+导体表面附近 & \(\displaystyle E=\frac{\sigma}{\epsz}\)，方向垂直导体表面 \\
+均匀带电圆环轴线上 & \(\displaystyle E_x=\frac{1}{4\pi\epsz}\frac{q x}{(R^2+x^2)^{3/2}}\) \\
+均匀带电圆盘轴线上 & \(\displaystyle E_x=\frac{\sigma}{2\epsz}\left(1-\frac{x}{\sqrt{R^2+x^2}}\right)\) \\
+无限长均匀带电圆柱面或导体柱外 & \(\displaystyle E=\frac{\lambda}{2\pi\epsz r}\quad(r>R)\) \\
+均匀带电实心长圆柱内 & \(\displaystyle E=\frac{\lambda r}{2\pi\epsz R^2}\quad(r<R)\) \\
+导体球或均匀带电球壳 & \(\displaystyle E=0\quad(r<R),\qquad E=\frac{1}{4\pi\epsz}\frac{q}{r^2}\quad(r>R)\) \\
+均匀带电实心球 & \(\displaystyle E=\frac{1}{4\pi\epsz}\frac{qr}{R^3}\quad(r<R),\qquad E=\frac{1}{4\pi\epsz}\frac{q}{r^2}\quad(r>R)\) \\
+\bottomrule
+\end{longtable}
+
+\begin{warnbox}[结论公式必须看适用条件]
+\begin{itemize}
+  \item \(E=\sigma/(2\epsz)\)是\textbf{无限大均匀带电平面}附近场强。
+  \item \(E=\sigma/\epsz\)常用于\textbf{静电平衡导体表面外侧附近}。
+  \item 球壳内部\(E=0\)不代表球壳内部任意点电势为零，只代表电势处处相等。
+\end{itemize}
+\end{warnbox}
+
+\section{真空中的高斯定理}
+
+\subsection{电场通量}
+
+电场强度通量定义为
+\begin{equation}
+\Phi_e=\iint_S \E\cdot\dS.
+\end{equation}
+若\(\E\)均匀，平面面积为\(S\)，法线与电场夹角为\(\theta\)，则
+\begin{equation}
+\Phi_e=ES\cos\theta.
+\end{equation}
+闭合曲面约定：\(\dS\)方向取外法线方向。
+
+\subsection{高斯定理}
+
+真空中的静电场高斯定理为
+\begin{equation}
+\boxed{\oiint_S \E\cdot\dS=\frac{q_{\mathrm{in}}}{\epsz}}
+\end{equation}
+其中\(q_{\mathrm{in}}\)是高斯面内部包围的\textbf{净电荷代数和}。
+
+\begin{keybox}[高斯定理的判断题核心]
+\begin{enumerate}
+  \item 电通量只与\textbf{高斯面内部净电荷}有关，和内部电荷位置无关。
+  \item 高斯面外的电荷对\textbf{总通量}无贡献，但可以影响高斯面上某点的\(\E\)。
+  \item 若\(q_{\mathrm{in}}=0\)，则\(\oiint \E\cdot\dS=0\)，但不能推出曲面上处处\(E=0\)。
+  \item 高斯定理永远成立，但只有在高度对称时才方便用来求\(E\)。
+\end{enumerate}
+\end{keybox}
+
+\subsection{用高斯定理求电场的条件}
+
+高斯定理最适合三类对称：
+\begin{itemize}
+  \item 球对称：点电荷、均匀球壳、均匀实心球、导体球；
+  \item 柱对称：无限长带电直线、圆柱面、圆柱体；
+  \item 平面对称：无限大均匀带电平面。
+\end{itemize}
+
+\begin{methodbox}[高斯定理求场强步骤]
+\begin{enumerate}
+  \item 判断电场方向和大小是否由对称性确定。
+  \item 选高斯面：球面对球对称，柱面对柱对称，柱形盒面对平面对称。
+  \item 写出\(\oiint \E\cdot\dS\)，把\(E\)提出积分号。
+  \item 写出包围电荷\(q_{\mathrm{in}}\)，代入求\(E\)。
+\end{enumerate}
+\end{methodbox}
+
+\begin{examplebox}[典型判断：多个点电荷与闭合曲面]
+若\(q_1,q_2,q_3\)在闭合曲面内，\(q_4,q_5\)在曲面外，则
+\[
+\Phi_e=\oiint_S\E\cdot\dS=\frac{q_1+q_2+q_3}{\epsz}.
+\]
+外部电荷\(q_4,q_5\)不进入通量公式，但会改变曲面上局部的\(\E\)。
+\end{examplebox}
+
+\section{电势与电场的关系}
+
+\subsection{静电场是保守场}
+
+静电力做功与路径无关，因此静电场是保守场：
+\begin{equation}
+\oint_L \E\cdot\dl=0.
+\end{equation}
+电势能和电势定义为
+\begin{equation}
+V=\frac{W}{q_0}.
+\end{equation}
+若取无穷远处为电势零点，则点\(P\)处电势为
+\begin{equation}
+V(P)=\int_P^{\infty}\E\cdot\dl.
+\end{equation}
+点电荷电势为
+\begin{equation}
+\boxed{V=\frac{1}{4\pi\epsz}\frac{q}{r}}.
+\end{equation}
+
+\subsection{求电势的三种方法}
+
+\begin{keybox}[求电势三种类型]
+\begin{enumerate}
+  \item \textbf{离散型：}
+  \[
+  V=\sum_i \frac{1}{4\pi\epsz}\frac{q_i}{r_i}.
+  \]
+  \item \textbf{连续型：}
+  \[
+  \dd V=\frac{1}{4\pi\epsz}\frac{\dd q}{r},\qquad
+  V=\int \frac{1}{4\pi\epsz}\frac{\dd q}{r}.
+  \]
+  \item \textbf{已知场强型：}
+  \[
+  V(P)-V(O)=\int_P^O \E\cdot\dl.
+  \]
+  若\(O\)为电势零点，则\(V(P)=\int_P^O\E\cdot\dl\)。
+\end{enumerate}
+\end{keybox}
+
+\subsection{连续带电半圆环中心电势}
+
+半径为\(R\)的均匀带电半圆环，总电量为\(Q\)。在环心\(O\)，所有电荷元到\(O\)距离均为\(R\)，故
+\[
+\dd V=\frac{1}{4\pi\epsz}\frac{\dd q}{R}.
+\]
+积分得
+\begin{equation}
+V_O=\int \dd V=\frac{1}{4\pi\epsz R}\int\dd q
+=\boxed{\frac{Q}{4\pi\epsz R}}.
+\end{equation}
+注意：这里不需要分解方向，因为电势是标量。
+
+\subsection{电势与电场强度的微分关系}
+
+电势差满足
+\begin{equation}
+\dd V=-\E\cdot\dl.
+\end{equation}
+因此
+\begin{equation}
+\boxed{\E=-\grad V=-\left(\frac{\partial V}{\partial x},\frac{\partial V}{\partial y},\frac{\partial V}{\partial z}\right)}.
+\end{equation}
+
+\begin{warnbox}[电势易错点]
+\begin{enumerate}
+  \item \(E=0\)不等于\(V=0\)。\(E=0\)只说明该区域\(V\)为常数。
+  \item \(V=0\)不等于\(E=0\)。例如某点电势可因正负电荷抵消为零，但电场不一定为零。
+  \item \(E\)大小不等于\(V\)大小。场强由电势的空间变化率决定，而不是由电势数值本身决定。
+  \item 电场线越密，场强越大。
+  \item 电势沿电场线方向降低。
+  \item 某点电势会随电势零点选择不同而不同；但电势差与电势零点无关。
+\end{enumerate}
+\end{warnbox}
+
+\section{静电平衡中的导体}
+
+\subsection{静电平衡基本性质}
+
+导体达到静电平衡后：
+\begin{enumerate}
+  \item 导体内部电场强度处处为零：\(\E_{\mathrm{in}}=0\)。
+  \item 导体是等势体，导体表面是等势面。
+  \item 净电荷只能分布在导体表面。
+  \item 导体表面外侧电场方向垂直表面，切向分量为零。
+  \item 导体表面外侧场强大小为
+  \[
+  E=\frac{\sigma}{\epsz}.
+  \]
+\end{enumerate}
+
+\begin{warnbox}[静电平衡判断]
+\begin{itemize}
+  \item 导体内部\(E=0\)，但导体内部电势不一定为零，而是处处相等。
+  \item 导体表面电势处处相等，但表面场强大小不一定处处相等。
+  \item 表面曲率越大，特别是尖端处，面电荷密度通常越大，附近场强也越大。
+\end{itemize}
+\end{warnbox}
+
+\subsection{导体壳包围带电体的电荷分布}
+
+若金属球\(B\)带电\(+3\,\mathrm C\)，被同心金属球壳\(A\)包围，球壳\(A\)总电荷为\(+5\,\mathrm C\)。静电平衡时，导体壳金属内部电场为零，因此在壳的内表面必须感应出
+\[
+q_{A,\mathrm{in}}=-3\,\mathrm C.
+\]
+又因球壳总电荷为\(+5\,\mathrm C\)，所以外表面电荷为
+\[
+q_{A,\mathrm{out}}=+5\,\mathrm C-(-3\,\mathrm C)=+8\,\mathrm C.
+\]
+
+\begin{keybox}[导体壳题型口诀]
+空腔内有电荷\(q\)时，导体壳内表面电荷为\(-q\)。导体壳外表面电荷由“导体壳总电荷守恒”决定。
+\end{keybox}
+
+\section{电容器}
+
+\subsection{电容定义}
+
+电容定义为
+\begin{equation}
+\boxed{C=\frac{q}{U}}
+\end{equation}
+其中\(q\)取某一极板所带电荷量的正值，\(U\)为两极板间电势差大小。单位为法拉：
+\[
+1\,\mu\mathrm F=10^{-6}\,\mathrm F,
+\qquad
+1\,\mathrm{pF}=10^{-12}\,\mathrm F.
+\]
+
+\subsection{平行板电容器推导}
+
+面积为\(S\)、板间距为\(d\)的真空平行板电容器：
+\[
+q=\sigma S,
+\qquad
+E=\frac{\sigma}{\epsz},
+\qquad
+U=Ed=\frac{\sigma d}{\epsz}.
+\]
+所以
+\begin{equation}
+C=\frac{q}{U}=\frac{\sigma S}{\sigma d/\epsz}=\boxed{\frac{\epsz S}{d}}.
+\end{equation}
+
+若板间充满相对介电常量为\(\eps_r\)的均匀电介质，则
+\begin{equation}
+\boxed{C=\eps_r C_0=\frac{\epsz\eps_r S}{d}},
+\qquad
+\boxed{E=\frac{E_0}{\eps_r}},
+\qquad
+\boxed{\eps=\epsz\eps_r}.
+\end{equation}
+
+\subsection{常见电容公式}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.28\textwidth}>{\raggedright\arraybackslash}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.30\textwidth}}
+\toprule
+\textbf{电容器模型} & \textbf{真空中} & \textbf{充满均匀电介质} \\
+\midrule
+平行板电容器 & \(\displaystyle C=\frac{\epsz S}{d}\) & \(\displaystyle C=\frac{\epsz\eps_r S}{d}\) \\
+同轴圆柱形电容器 & \(\displaystyle C=\frac{2\pi\epsz l}{\ln(R_B/R_A)}\) & \(\displaystyle C=\frac{2\pi\epsz\eps_r l}{\ln(R_B/R_A)}\) \\
+球形电容器 & \(\displaystyle C=4\pi\epsz\frac{R_A R_B}{R_B-R_A}\) & \(\displaystyle C=4\pi\epsz\eps_r\frac{R_A R_B}{R_B-R_A}\) \\
+孤立导体球 & \(\displaystyle C=4\pi\epsz R_A\) & \(\displaystyle C=4\pi\epsz\eps_r R_A\) \\
+\bottomrule
+\end{longtable}
+
+\subsection{电容串联、并联与能量}
+
+串联：
+\begin{equation}
+\frac{1}{C}=\frac{1}{C_1}+\frac{1}{C_2}+\cdots.
+\end{equation}
+并联：
+\begin{equation}
+C=C_1+C_2+\cdots.
+\end{equation}
+电容器储能：
+\begin{equation}
+W_e=\frac12 CU^2=\frac{q^2}{2C}=\frac12 qU.
+\end{equation}
+真空中电场能量密度：
+\begin{equation}
+w_e=\frac12\epsz E^2.
+\end{equation}
+线性介质中常写作
+\begin{equation}
+w_e=\frac12 \E\cdot\D=\frac12\eps E^2.
+\end{equation}
+
+\begin{warnbox}[平行板电容器的力]
+两极板间相互作用力常写为
+\[
+F=\frac12 E q.
+\]
+这里的\(E\)可理解为两板间合场，因单个极板不对自身电荷施力，故出现\(1/2\)因子。考试中若用能量法更稳。
+\end{warnbox}
+
+\section{电介质与电位移矢量}
+
+\subsection{电介质极化}
+
+电介质放入外电场后会极化，产生束缚电荷。对平行板电容器，若无介质时板间电场为\(E_0\)，充满介质后：
+\begin{equation}
+E=E_0-E'=\frac{E_0}{\eps_r}.
+\end{equation}
+对应束缚面电荷密度常写为
+\begin{equation}
+\sigma'=\left(1-\frac{1}{\eps_r}\right)\sigma_0.
+\end{equation}
+
+\subsection{电位移矢量与介质中的高斯定理}
+
+定义电位移矢量
+\begin{equation}
+\boxed{\D=\epsz\eps_r\E=\eps\E}.
+\end{equation}
+介质中的高斯定理为
+\begin{equation}
+\boxed{\oiint_S \D\cdot\dS=\sum q_{\mathrm{free,in}}}.
+\end{equation}
+这里右端只计算\textbf{自由电荷}，不需要把束缚电荷单独算入。
+
+真空中\(\eps_r=1\)，\(\D=\epsz\E\)，故
+\begin{equation}
+\oiint_S \E\cdot\dS=\frac{q_{\mathrm{in}}}{\epsz}.
+\end{equation}
+
+\begin{keybox}[何时用\(\D\)，何时用\(\E\)]
+\begin{itemize}
+  \item 介质问题，尤其给定自由电荷时，用\(\D\)的高斯定理更干净。
+  \item 真空或空气近似真空时，直接用\(\E\)的高斯定理。
+  \item 已求出\(\D\)后，再由\(\E=\D/\eps\)求电场。
+\end{itemize}
+\end{keybox}
+
+\section{稳恒磁场基础}
+
+\subsection{磁通量与磁场高斯定理}
+
+磁通量定义为
+\begin{equation}
+\Phi_m=\iint_S \B\cdot\dS.
+\end{equation}
+若磁场均匀，平面面积为\(S\)，法线与\(\B\)夹角为\(\theta\)，则
+\begin{equation}
+\Phi_m=BS\cos\theta.
+\end{equation}
+单位为韦伯：\(\mathrm{Wb}\)。对曲面，有
+\begin{equation}
+\dd\Phi_m=\B\cdot\dS,
+\qquad
+\Phi_m=\iint_S\B\cdot\dS.
+\end{equation}
+
+磁场中的高斯定理为
+\begin{equation}
+\boxed{\oiint_S\B\cdot\dS=0}.
+\end{equation}
+这说明磁场是\textbf{无源场}，磁感线总是闭合的，不存在孤立磁单极。
+
+\begin{warnbox}[磁场高斯定理的含义]
+\(\oiint_S\B\cdot\dS=0\)不表示\(\B=0\)，而是表示任意闭合曲面中磁感线“穿入等于穿出”。
+\end{warnbox}
+
+\subsection{毕奥-萨伐尔定律}
+
+电流元\(I\dd\ve l\)在场点产生的磁场为
+\begin{equation}
+\boxed{\dd\B=\frac{\muz}{4\pi}\frac{I\dd\ve l\times \hat{\ve r}}{r^2}}.
+\end{equation}
+大小为
+\begin{equation}
+\dd B=\frac{\muz}{4\pi}\frac{I\dd l\sin\theta}{r^2}.
+\end{equation}
+方向由右手螺旋定则判断。
+
+\subsection{常见磁场公式}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.35\textwidth}>{\raggedright\arraybackslash}p{0.55\textwidth}}
+\toprule
+\textbf{载流导线模型} & \textbf{磁感应强度} \\
+\midrule
+有限长直导线，点到导线垂距为\(a\) & \(\displaystyle B=\frac{\muz I}{4\pi a}(\cos\theta_1-\cos\theta_2)\)。角度定义不同，等价式可能写为\(\displaystyle \frac{\muz I}{4\pi a}(\sin\alpha_1+\sin\alpha_2)\)。 \\
+无限长直导线 & \(\displaystyle B=\frac{\muz I}{2\pi a}\) \\
+半无限长直导线端点旁 & \(\displaystyle B=\frac{\muz I}{4\pi a}\) \\
+半径\(R\)、圆心角\(\varphi\)的圆弧电流，在圆心 & \(\displaystyle B=\frac{\muz I}{4\pi R}\varphi\)，\(\varphi\)用弧度 \\
+半径\(R\)的圆形线圈，在圆心 & \(\displaystyle B=\frac{\muz I}{2R}\) \\
+密绕螺线管，单位长度\(n\)匝 & \(\displaystyle B=\muz nI=\frac{\muz NI}{L}\) \\
+环形螺线管，平均半径\(R\)，总匝数\(N\) & \(\displaystyle B=\muz nI=\frac{\muz NI}{2\pi R}\) \\
+无限大面电流，面电流密度\(K\) & \(\displaystyle B=\frac12\muz K\)，两侧方向相反 \\
+\bottomrule
+\end{longtable}
+
+\begin{methodbox}[磁场方向判断]
+\begin{itemize}
+  \item 直导线：右手拇指指向电流，四指环绕方向即\(\B\)方向。
+  \item 圆电流：四指沿电流方向弯曲，拇指方向为圆心处\(\B\)方向。
+  \item 矢量叉乘：\(\dd\ve l\times \hat{\ve r}\)决定\(\dd\B\)方向。
+\end{itemize}
+\end{methodbox}
+
+\section{安培环路定理}
+
+\subsection{真空中的安培环路定理}
+
+稳恒磁场中，真空安培环路定理为
+\begin{equation}
+\boxed{\oint_L \B\cdot\dl=\muz\sum I_{\mathrm{in}}}.
+\end{equation}
+\(\sum I_{\mathrm{in}}\)是闭合环路\(L\)所围曲面内穿过的电流代数和，方向由右手定则确定。
+
+\begin{keybox}[安培环路定理的判断题核心]
+\begin{enumerate}
+  \item \(\oint_L\B\cdot\dl\)只与环路所围电流的代数和有关。
+  \item 电流在环路内的位置不影响环量。
+  \item 环路外电流不影响环量，但可以影响环路上某点的\(\B\)。
+  \item \(\oint_L\B\cdot\dl=0\)不能推出环路上处处\(B=0\)。
+\end{enumerate}
+\end{keybox}
+
+\begin{examplebox}[环路内无穿过电流但\(B\neq 0\)]
+若选取的闭合环路没有被电流穿过，则
+\[
+\oint_L\B\cdot\dl=0.
+\]
+但这不代表环路上任一点\(B=0\)，因为附近或环路外电流仍可在该点产生磁场。
+\end{examplebox}
+
+\subsection{用安培环路定理求磁场}
+
+安培定理最适合高对称电流分布：
+\begin{itemize}
+  \item 无限长直电流；
+  \item 无限大面电流；
+  \item 长直螺线管；
+  \item 环形螺线管。
+\end{itemize}
+
+以无限长直导线为例，取半径\(r\)的同心圆为安培环路：
+\[
+\oint\B\cdot\dl=B(2\pi r)=\muz I,
+\]
+故
+\begin{equation}
+B=\frac{\muz I}{2\pi r}.
+\end{equation}
+
+\section{磁矩与磁力矩}
+
+\subsection{磁矩}
+
+面积为\(S\)的平面线圈通有电流\(I\)，其磁矩为
+\begin{equation}
+\boxed{\ve p_m=I S\,\ve n}
+\end{equation}
+大小为
+\begin{equation}
+ p_m=IS.
+\end{equation}
+单位为\(\mathrm{A\cdot m^2}\)。方向由右手定则确定：四指沿电流方向，拇指指向磁矩方向。
+
+圆形线圈半径为\(R\)时，
+\begin{equation}
+ p_m=I\pi R^2.
+\end{equation}
+例如\(R=0.10\,\mathrm m\)，\(I=10\,\mathrm A\)，则
+\[
+ p_m=10\times\pi\times(0.10)^2=0.1\pi\ \mathrm{A\cdot m^2}\approx0.314\ \mathrm{A\cdot m^2}.
+\]
+
+\subsection{磁力矩}
+
+磁矩在匀强磁场中受到磁力矩：
+\begin{equation}
+\boxed{\ve M=\ve p_m\times\B}
+\end{equation}
+大小为
+\begin{equation}
+M=Bp_m\sin\theta=BIS\sin\theta,
+\end{equation}
+其中\(\theta\)为\(\B\)与\(\ve p_m\)夹角。
+
+\[
+\theta=\frac{\pi}{2}\Rightarrow M_{\max}=BIS,
+\qquad
+\theta=0\Rightarrow M_{\min}=0.
+\]
+
+\section{磁介质中的磁场}
+
+\subsection{磁导率与磁场强度}
+
+磁介质中定义
+\begin{equation}
+\mu=\muz\mur,
+\end{equation}
+其中\(\mu\)为磁导率，\(\muz\)为真空磁导率，\(\mur\)为相对磁导率。线性各向同性介质中
+\begin{equation}
+\boxed{\B=\mu\Hf=\muz\mur\Hf}.
+\end{equation}
+磁场强度为
+\begin{equation}
+H=\frac{B}{\muz\mur}.
+\end{equation}
+更一般地，磁化强度\(\ve M\)满足
+\begin{equation}
+\B=\muz(\Hf+\ve M).
+\end{equation}
+
+相对磁导率可理解为
+\begin{equation}
+\mur=\frac{B}{B_0}
+\end{equation}
+在同样自由电流条件下，介质中磁场与真空磁场的比值。
+
+\subsection{磁介质中的安培环路定理}
+
+介质中的安培环路定理为
+\begin{equation}
+\boxed{\oint_L\Hf\cdot\dl=\sum I_{\mathrm{free,in}}}.
+\end{equation}
+右端只计算自由电流，不需要单独计算磁化电流。真空中\(\mur=1\)，\(\Hf=\B/\muz\)，所以恢复为
+\begin{equation}
+\oint_L\B\cdot\dl=\muz\sum I_{\mathrm{in}}.
+\end{equation}
+
+\subsection{磁介质分类}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{类型} & \textbf{相对磁导率} & \textbf{特点} \\
+\midrule
+顺磁质 & \(\mur>1\) & 略微增强外磁场 \\
+抗磁质 & \(\mur<1\) & 略微削弱外磁场 \\
+铁磁质 & \(\mur\gg 1\) & 强烈增强磁场，常有非线性和磁滞 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{电磁感应}
+
+\subsection{法拉第电磁感应定律}
+
+穿过闭合回路的磁通量为\(\Phi\)。感应电动势为
+\begin{equation}
+\boxed{\eps_i=-\frac{\dd\Phi}{\dd t}}.
+\end{equation}
+若有\(N\)匝线圈，则
+\begin{equation}
+\eps_i=-N\frac{\dd\Phi}{\dd t}.
+\end{equation}
+负号体现楞次定律。
+
+\subsection{楞次定律}
+
+\begin{keybox}[楞次定律]
+感应电流产生的磁场总是阻碍原磁通量的变化。
+\end{keybox}
+
+“阻碍变化”不是简单地“阻碍运动”：
+\begin{itemize}
+  \item 若原磁通量增加，感应磁场方向与原磁场方向相反；
+  \item 若原磁通量减小，感应磁场方向与原磁场方向相同。
+\end{itemize}
+判断步骤：
+\begin{enumerate}
+  \item 确定原磁场方向。
+  \item 判断磁通量\(\Phi=BS\cos\theta\)是增加还是减小。
+  \item 由“阻碍变化”确定感应磁场\(\B'\)方向。
+  \item 由右手定则确定感应电流方向。
+\end{enumerate}
+
+\subsection{感生电动势与动生电动势}
+
+磁通量变化常见有两类：
+\begin{align*}
+&\text{磁场变化、面积不变：} &&\eps_i=-\frac{\dd\Phi}{\dd t}=\oint_L \E_k\cdot\dl=-\iint_S\frac{\partial\B}{\partial t}\cdot\dS, \\
+&\text{磁场不变、面积变化：} &&\eps_i=-\frac{\dd\Phi}{\dd t},\qquad \eps=\int(\ve v\times\B)\cdot\dl.
+\end{align*}
+第一类通常称为\textbf{感生电动势}，由感生电场产生；第二类通常称为\textbf{动生电动势}，由洛伦兹力的磁场部分推动电荷分离。
+
+\subsection{感生电场}
+
+变化的磁场会产生感生电场。其环量为
+\begin{equation}
+\boxed{\oint_L \E_k\cdot\dl=-\frac{\dd\Phi}{\dd t}=-\iint_S\frac{\partial\B}{\partial t}\cdot\dS}.
+\end{equation}
+
+\begin{warnbox}[静电场与感生电场的区别]
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{比较项} & \textbf{静电场} & \textbf{感生电场} \\
+\midrule
+环量 & \(\oint\E\cdot\dl=0\) & \(\oint\E_k\cdot\dl=-\dd\Phi/\dd t\) \\
+是否保守 & 保守场 & 非保守场 \\
+场线 & 一般不闭合，起于正电荷、止于负电荷 & 闭合曲线 \\
+是否可定义单值电势 & 可以 & 一般不能 \\
+来源 & 电荷 & 变化的磁场 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{warnbox}
+
+若对称性保证闭合圆环上感生电场大小处处相等，则可用
+\[
+E_k(2\pi r)=\left|\frac{\dd\Phi}{\dd t}\right|
+\]
+求其大小，方向再由楞次定律判断。
+
+\subsection{动生电动势}
+
+一般公式：
+\begin{equation}
+\boxed{\eps=\int_L(\ve v\times\B)\cdot\dl}.
+\end{equation}
+若长为\(l\)的导体棒在匀强磁场中以速度\(v\)垂直切割磁感线，则
+\begin{equation}
+\boxed{\eps=Blv}.
+\end{equation}
+
+\subsection{旋转金属棒的动生电动势}
+
+长为\(L\)的金属棒绕一端\(O\)以角速度\(\omega\)转动，匀强磁场\(B\)垂直纸面。距转轴\(r\)处线元\(\dd r\)的速度为
+\[
+ v=\omega r.
+\]
+线元产生的电动势大小
+\[
+ \dd\eps=Bv\dd r=B\omega r\dd r.
+\]
+积分得
+\begin{equation}
+\boxed{\eps=\int_0^L B\omega r\dd r=\frac12 B\omega L^2}.
+\end{equation}
+若磁场垂直纸面向里、金属棒逆时针旋转，则正电荷受\(\ve v\times\B\)作用趋向转轴，\(O\)端电势较高。
+
+\subsection{同磁通变化率下的感应电动势与感应电流}
+
+若铁环与铜环尺寸相同，并包围相同变化率的磁通量，不计自感，则
+\begin{equation}
+\eps=-\frac{\dd\Phi}{\dd t}
+\end{equation}
+相同，所以感应电动势相同。但感应电流
+\begin{equation}
+I=\frac{\eps}{R}
+\end{equation}
+与电阻有关，铁和铜电阻率不同，因此感应电流一般不同。
+
+\section{自感、互感与磁场能量}
+
+\subsection{自感}
+
+线圈中电流变化会引起穿过自身的磁通量变化，从而产生自感电动势。自感系数定义为
+\begin{equation}
+\boxed{L=\frac{\Phi}{I}}
+\end{equation}
+更严格地，若\(N\)匝线圈，总磁链为\(\Psi=N\Phi\)，则
+\begin{equation}
+L=\frac{\Psi}{I}.
+\end{equation}
+自感电动势为
+\begin{equation}
+\boxed{\eps_L=-L\frac{\dd I}{\dd t}}
+\end{equation}
+大小为\(|\eps_L|=L|\dd I/\dd t|\)。
+
+\begin{keybox}[自感系数由什么决定]
+在线性、无铁磁性物质情况下，自感系数\(L\)由线圈几何形状、大小、匝数和周围磁介质决定，与电流大小无关。
+\end{keybox}
+
+\subsection{互感}
+
+一个线圈中的电流变化会在另一个线圈中产生感应电动势，这称为互感。互感系数定义为
+\begin{equation}
+\boxed{M=\frac{\Phi_{21}}{I_1}=\frac{\Phi_{12}}{I_2}}.
+\end{equation}
+对应感应电动势大小为
+\begin{equation}
+|\eps_2|=M\left|\frac{\dd I_1}{\dd t}\right|.
+\end{equation}
+
+\subsection{正方形线圈与长直导线的互感例题}
+
+边长为\(a\)的正方形线圈与长直导线共面，近边距导线为\(a\)，远边距导线为\(2a\)。长直导线电流为\(I\)。距导线\(x\)处磁场为
+\[
+B=\frac{\muz I}{2\pi x}.
+\]
+取宽为\(\dd x\)的窄条，面积为\(a\dd x\)，磁通量
+\[
+\dd\Phi=B\dd S=\frac{\muz I}{2\pi x}a\dd x.
+\]
+积分得
+\[
+\Phi=\int_a^{2a}\frac{\muz I a}{2\pi x}\dd x
+=\frac{\muz I a}{2\pi}\ln 2.
+\]
+故互感系数
+\begin{equation}
+\boxed{M=\frac{\Phi}{I}=\frac{\muz a}{2\pi}\ln2}.
+\end{equation}
+
+\subsection{磁场能量}
+
+电感储能为
+\begin{equation}
+\boxed{W_m=\frac12 LI^2}.
+\end{equation}
+真空中磁场能量密度为
+\begin{equation}
+\boxed{w_m=\frac{B^2}{2\muz}}.
+\end{equation}
+线性介质中可写为
+\begin{equation}
+ w_m=\frac12\B\cdot\Hf=\frac{B^2}{2\mu}.
+\end{equation}
+
+\begin{examplebox}[长直密绕螺线管内的磁能密度]
+长直密绕螺线管单位长度\(n\)匝，通电流\(I\)，真空中
+\[
+B=\muz nI.
+\]
+所以
+\[
+w_m=\frac{B^2}{2\muz}=\frac{\muz^2n^2I^2}{2\muz}=\boxed{\frac12\muz n^2I^2}.
+\]
+\end{examplebox}
+
+\begin{examplebox}[长直导线周围某点磁能密度]
+无限长直导线电流为\(I\)，距导线\(a\)处
+\[
+B=\frac{\muz I}{2\pi a}.
+\]
+真空磁能密度为
+\[
+w_m=\frac{1}{2\muz}\left(\frac{\muz I}{2\pi a}\right)^2.
+\]
+\end{examplebox}
+
+\section{麦克斯韦方程组}
+
+\subsection{积分形式}
+
+\begin{keybox}[麦克斯韦方程组：积分形式]
+\begin{align}
+\oiint_S \D\cdot\dS&=\sum q_{\mathrm{free,in}}, &&\text{电场有源，电荷伴随电场}, \\
+\oiint_S \B\cdot\dS&=0, &&\text{磁场无源，磁感线闭合}, \\
+\oint_L \Hf\cdot\dl&=I_{\mathrm{free}}+\iint_S\frac{\partial\D}{\partial t}\cdot\dS,
+&&\text{变化的电场产生磁场}, \\
+\oint_L \E\cdot\dl&=-\iint_S\frac{\partial\B}{\partial t}\cdot\dS,
+&&\text{变化的磁场产生电场}.
+\end{align}
+\end{keybox}
+
+第三式也称全电流安培环路定理，包含传导电流\(I\)和位移电流\(I_d\)：
+\begin{equation}
+I_d=\iint_S\frac{\partial\D}{\partial t}\cdot\dS.
+\end{equation}
+
+\subsection{四个方程的物理含义}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.24\textwidth}X}
+\toprule
+\textbf{方程} & \textbf{含义} \\
+\midrule
+电场高斯定理 & 电场是有源场，电荷是电场线的源或汇。 \\
+磁场高斯定理 & 磁场是无源场，不存在孤立磁荷，磁感线闭合。 \\
+安培-麦克斯韦环路定理 & 传导电流和变化的电场都能激发磁场。 \\
+法拉第电磁感应定律 & 变化的磁场产生有旋电场。 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{期末高频易错点汇总}
+
+\begin{warnbox}[一页核心易错点]
+\begin{enumerate}
+  \item \(E=0\) 不能推出 \(V=0\)，只说明\(V\)为常数；\(V=0\) 也不能推出 \(E=0\)。
+  \item 电势大小与场强大小没有直接等价关系，\(\E=-\grad V\)。
+  \item 电势沿电场线方向减小；电场线密处场强大。
+  \item 点电势随电势零点不同而不同，电势差不随零点改变。
+  \item 高斯面通量只看内部净电荷；高斯面上某点\(\E\)受所有电荷影响。
+  \item \(\oiint\E\cdot\dS=0\) 不能推出 \(E=0\)。
+  \item 导体内部\(E=0\)，导体是等势体；表面场强不一定处处相等。
+  \item 导体壳内有电荷\(q\)，壳内表面感应电荷为\(-q\)。
+  \item \(\oiint\B\cdot\dS=0\)表示磁场无源，不表示\(B=0\)。
+  \item 安培环路的\(\oint\B\cdot\dl\)只看穿过环路的电流；环路上\(B\)仍受环路外电流影响。
+  \item 感生电场是非保守场，场线闭合，一般不能引入单值电势。
+  \item 楞次定律判断的是“阻碍磁通量变化”，不是机械地阻碍运动方向。
+  \item 自感\(L\)在线性介质中与电流大小无关，只与几何、匝数、介质有关。
+\end{enumerate}
+\end{warnbox}
+
+\section{公式速查表}
+
+\subsection{静电场与电势}
+\begin{multicols}{2}
+\begin{align*}
+\E&=\frac{1}{4\pi\epsz}\frac{q}{r^2}\hat{\ve r}\\
+\oiint\E\cdot\dS&=\frac{q_{\mathrm{in}}}{\epsz}\\
+V&=\frac{1}{4\pi\epsz}\frac{q}{r}\\
+V&=\int\frac{\dd q}{4\pi\epsz r}\\
+\E&=-\grad V\\
+E_{\mathrm{plane}}&=\frac{\sigma}{2\epsz}\\
+E_{\mathrm{conductor}}&=\frac{\sigma}{\epsz}
+\end{align*}
+\columnbreak
+\begin{align*}
+C&=\frac{q}{U}\\
+C_{\mathrm{parallel}}&=\frac{\epsz S}{d}\\
+C&=\eps_r C_0\\
+\frac1C&=\frac1{C_1}+\frac1{C_2}\\
+C&=C_1+C_2\\
+W_e&=\frac12CU^2=\frac{q^2}{2C}\\
+\D&=\eps\E\\
+\oiint\D\cdot\dS&=q_{\mathrm{free,in}}
+\end{align*}
+\end{multicols}
+
+\subsection{磁场与电磁感应}
+\begin{multicols}{2}
+\begin{align*}
+\dd\B&=\frac{\muz}{4\pi}\frac{I\dd\ve l\times\hat{\ve r}}{r^2}\\
+B_{\mathrm{wire}}&=\frac{\muz I}{2\pi r}\\
+B_{\mathrm{loop}}&=\frac{\muz I}{2R}\\
+B_{\mathrm{solenoid}}&=\muz nI\\
+\Phi_m&=\iint\B\cdot\dS\\
+\oiint\B\cdot\dS&=0\\
+\oint\B\cdot\dl&=\muz I_{\mathrm{in}}
+\end{align*}
+\columnbreak
+\begin{align*}
+\ve p_m&=IS\ve n\\
+M&=Bp_m\sin\theta\\
+\B&=\mu\Hf=\muz\mur\Hf\\
+\oint\Hf\cdot\dl&=I_{\mathrm{free,in}}\\
+\eps_i&=-\frac{\dd\Phi}{\dd t}\\
+\eps_{\mathrm{motional}}&=\int(\ve v\times\B)\cdot\dl\\
+L&=\frac{\Phi}{I},\quad \eps_L=-L\frac{\dd I}{\dd t}\\
+W_m&=\frac12LI^2,\\ w_m=\frac{B^2}{2\muz}
+\end{align*}
+\end{multicols}
+
+
+\section{考前 3～7 天复习计划}
+
+\begin{methodbox}[7 天版]
+\begin{enumerate}
+  \item Day 1：静电场基础、点电荷/连续带电体电场、电场线判断。
+  \item Day 2：高斯定理专项，练球、柱、无限平面三类对称模型。
+  \item Day 3：电势、导体静电平衡、静电屏蔽、接地导体球壳。
+  \item Day 4：电容器、电介质、电位移矢量，重点区分恒压与断电。
+  \item Day 5：恒定磁场、安培环路、载流圆弧/长直导线/螺线管。
+  \item Day 6：洛伦兹力、磁力矩、电磁感应、动生和感生电动势。
+  \item Day 7：做一套模拟卷，订正方向题和单位符号题，背公式速查表。
+\end{enumerate}
+\end{methodbox}
+
+\begin{methodbox}[3 天版]
+\begin{enumerate}
+  \item Day 1：背静电场、高斯定理、电势、电容公式，刷选择填空。
+  \item Day 2：集中做导体球壳、同轴电容器、圆柱电流磁场计算题。
+  \item Day 3：复盘电磁感应方向题，背最后 30 分钟速记清单。
+\end{enumerate}
+\end{methodbox}
+
+\section{考前最后 30 分钟速记清单}
+\begin{keybox}[只看这些]
+\begin{enumerate}
+  \item 高斯定理：$\oiint \ve E\cdot \dd\ve S=q_{\rm in}/\varepsilon_0$，只决定总通量。
+  \item 导体静电平衡：内部 $E=0$，导体等势，净电荷在表面。
+  \item 电容：$C=q/U$；平行板 $C=\varepsilon S/d$；接电源 $U$ 不变，断电 $Q$ 不变。
+  \item 安培环路：$\oint \ve B\cdot\dd\ve l=\mu_0 I_{\rm in}$；长直导线 $B=\mu_0I/(2\pi r)$。
+  \item 洛伦兹力 $\ve F=q\ve v\times\ve B$ 不做功；圆周半径 $r=mv/(|q|B)$。
+  \item 法拉第定律：$\varepsilon=-\dd\Phi/\dd t$；楞次定律判断“阻碍磁通量变化”。
+  \item 动生电动势：$\varepsilon=\int(\ve v\times\ve B)\cdot\dd\ve l$。
+  \item 感生电场是有旋场，电场线闭合，一般不能引入单值电势。
+\end{enumerate}
+\end{keybox}
+
+\section{附录：线性微分方程叠加关系}
+
+这部分来自截图中的数学补充，主要用于处理电路暂态、振荡或其他线性微分方程。设线性非齐次方程可写为
+\[
+\mathcal L[y]=f(x),
+\]
+对应齐次方程为
+\[
+\mathcal L[y]=0.
+\]
+
+\subsection{通解结构}
+
+非齐次方程通解为
+\begin{equation}
+\boxed{y=Y+y^*}
+\end{equation}
+其中\(Y\)为对应齐次方程通解，\(y^*\)为非齐次方程的一个特解。
+
+\subsection{特解之间的关系}
+
+若\(y_1^*\)、\(y_2^*\)是同一个非齐次方程\(\mathcal L[y]=f(x)\)的特解，则
+\begin{itemize}
+  \item 若\(k_1+k_2=1\)，则\(k_1y_1^*+k_2y_2^*\)仍是该非齐次方程的特解；
+  \item 若\(k_1+k_2=0\)，则\(k_1y_1^*+k_2y_2^*\)是对应齐次方程的特解。
+\end{itemize}
+特别地，两个非齐次特解相减：
+\[
+ y_1^*-y_2^*
+\]
+是对应齐次方程的解。
+
+\subsection{齐次方程的叠加原理}
+
+齐次线性方程的任意两个解相加，或乘以常数后相加，仍为齐次方程的解：
+\begin{equation}
+Y=c_1Y_1+c_2Y_2+\cdots.
+\end{equation}
+
+\subsection{右端项叠加原理}
+
+若
+\[
+\mathcal L[y]=f_1(x)+f_2(x),
+\]
+且\(y_1^*\)、\(y_2^*\)分别是
+\[
+\mathcal L[y]=f_1(x),\qquad \mathcal L[y]=f_2(x)
+\]
+的特解，则原方程的一个特解为
+\begin{equation}
+ y^*=y_1^*+y_2^*.
+\end{equation}
+
+\end{document}

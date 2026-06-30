@@ -1,0 +1,156 @@
+
+% !TEX program = xelatex
+\documentclass[UTF8,12pt,a4paper]{ctexart}
+\usepackage{geometry}
+\usepackage{array,booktabs,longtable,multirow}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{eso-pic}
+\usepackage{tikz}
+\geometry{left=2cm,right=2cm,top=2cm,bottom=1.8cm}
+\setmainfont{Noto Serif CJK SC}
+\setCJKmainfont{Noto Serif CJK SC}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\small 【课程名称】期末模拟卷统一模板}
+\fancyfoot[C]{\small 第 \thepage\ 页 / 共 \pageref{LastPage} 页}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\AddToShipoutPictureBG{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[rotate=35,scale=1.6,text opacity=0.10] at (current page.center)
+    {Jerry 制作｜仅供个人复习使用｜禁止盗印与商用传播};
+  \end{tikzpicture}%
+}
+\setlist[enumerate,1]{leftmargin=2em,itemsep=0.4em}
+\newcommand{\examtitle}[2]{%
+\begin{center}
+  {\LARGE\bfseries 《#1》本科模拟卷#2}\\[0.4em]
+  {\small {{学校/学院}}\quad {{学年学期}}\quad {{专业/年级}}}\\[0.8em]
+\end{center}}
+\newcommand{\examinfo}{%
+\begin{center}
+\begin{tabular}{|>{\centering\arraybackslash}p{2.5cm}|>{\centering\arraybackslash}p{3.5cm}|>{\centering\arraybackslash}p{2.5cm}|>{\centering\arraybackslash}p{3.5cm}|}
+\hline
+考试方式 & {{闭卷/开卷}} & 考试时间 & {{120 分钟}} \\\hline
+卷面总分 & {{100 分}} & 适用层级 & {{A/B/其他}} \\\hline
+\end{tabular}
+\end{center}}
+\newcommand{\scoretable}{%
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+题号 & 一 & 二 & 三 & 四 & 总分 \\\hline
+得分 & & & & & \\\hline
+\end{tabular}
+\end{center}}
+\newenvironment{choices}{\begin{enumerate}[label=(\Alph*),leftmargin=3.5em,itemsep=0.1em]}{\end{enumerate}}
+\begin{document}
+\examtitle{{课程名称}}{{一/二}}
+\examinfo
+\scoretable
+
+\section*{一、单项选择题（每小题 3 分，共 30 分）}
+\begin{enumerate}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\item 【题干】（\quad）
+\begin{choices}\item 【选项A】\item 【选项B】\item 【选项C】\item 【选项D】\end{choices}
+\end{enumerate}
+
+\section*{二、填空题（每小题 3 分，共 15 分）}
+\begin{enumerate}
+\item 【题干】答案：\underline{\hspace{3cm}}。
+\item 【题干】答案：\underline{\hspace{3cm}}。
+\item 【题干】答案：\underline{\hspace{3cm}}。
+\item 【题干】答案：\underline{\hspace{3cm}}。
+\item 【题干】答案：\underline{\hspace{3cm}}。
+\end{enumerate}
+
+\section*{三、计算题（每小题 11 分，共 44 分）}
+\begin{enumerate}
+\item 【题干】
+\begin{enumerate}[label=(\arabic*)]
+\item 【小问】
+\item 【小问】
+\item 【小问】
+\end{enumerate}
+\item 【题干】
+\begin{enumerate}[label=(\arabic*)]
+\item 【小问】
+\item 【小问】
+\item 【小问】
+\end{enumerate}
+\item 【题干】
+\begin{enumerate}[label=(\arabic*)]
+\item 【小问】
+\item 【小问】
+\item 【小问】
+\end{enumerate}
+\item 【题干】
+\begin{enumerate}[label=(\arabic*)]
+\item 【小问】
+\item 【小问】
+\item 【小问】
+\end{enumerate}
+\end{enumerate}
+
+\section*{四、证明题（共 11 分）}
+\begin{enumerate}
+\item 【证明题干】
+\end{enumerate}
+
+\newpage
+\section*{答案与解析}
+\subsection*{一、单项选择题}
+\begin{enumerate}
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\item 答案：【A/B/C/D】。解析：【判断依据】。
+\end{enumerate}
+\subsection*{二、填空题}
+\begin{enumerate}
+\item 答案：【结果】。解析：【关键计算过程】。
+\item 答案：【结果】。解析：【关键计算过程】。
+\item 答案：【结果】。解析：【关键计算过程】。
+\item 答案：【结果】。解析：【关键计算过程】。
+\item 答案：【结果】。解析：【关键计算过程】。
+\end{enumerate}
+\subsection*{三、计算题}
+\begin{enumerate}
+\item 解析：【完整推导】。
+\item 解析：【完整推导】。
+\item 解析：【完整推导】。
+\item 解析：【完整推导】。
+\end{enumerate}
+\subsection*{四、证明题}
+\begin{enumerate}
+\item 证明：【完整证明过程】。
+\end{enumerate}
+\end{document}

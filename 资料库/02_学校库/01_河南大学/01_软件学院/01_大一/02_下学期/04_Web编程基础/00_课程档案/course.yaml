@@ -1,0 +1,23 @@
+# Web编程基础 课程档案
+# 由 libraryctl init-course 自动生成
+#
+# 字段说明：
+#   stage:     培养方案阶段（大一/大二/大三/大四），非入学级
+#   semester:  学期（上学期/下学期）
+#   status:    课程资料整理状态 collecting | active | complete | archived
+#   exam_type: 常见考试题型
+
+school: 河南大学
+college: 软件学院
+stage: 大一
+semester: 下学期
+course_name: Web编程基础
+course_aliases: []
+applicable_majors:
+  - 软件工程
+  - 网络工程
+teacher: ""
+exam_type: []
+status: collecting
+maintainer: ""
+notes: ""

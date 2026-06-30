@@ -1,0 +1,20 @@
+# 离散数学 课程档案
+school: 河南大学
+college: 软件学院
+stage: 大一
+semester: 下学期
+course_name: 离散数学
+course_aliases:
+  - 离散
+  - Discrete Mathematics
+applicable_majors:
+  - 软件工程
+  - 网络工程
+teacher: ""
+exam_type:
+  - 选择题
+  - 名词解释
+  - 计算题
+status: collecting
+maintainer: Jerry
+notes: "软件学院大一下学期课程；不同年份主要归档往年真题，不单独按入学级建目录。"

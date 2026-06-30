@@ -1,0 +1,237 @@
+% !TEX program = xelatex
+\documentclass[UTF8,12pt,a4paper]{ctexart}
+
+% =========================================================
+% 通用期末模拟卷 LaTeX 模板
+% 用途：根据样卷题型和分值结构生成模拟卷及答案解析
+% 敏感信息原则：模板内只保留占位符，不保留个人、学校或课程内部信息
+% =========================================================
+
+\usepackage{geometry}
+\usepackage{array,booktabs,longtable,multirow,tabularx}
+\usepackage{amsmath,amssymb,amsthm,bm,mathtools}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{hyperref}
+\usepackage{fvextra}
+\usepackage{eso-pic}
+\usepackage{tikz}
+
+\geometry{left=2cm,right=2cm,top=2cm,bottom=1.8cm}
+
+% =========================
+% 字体设置
+% =========================
+\setmainfont{Noto Serif CJK SC}
+\setCJKmainfont{Noto Serif CJK SC}
+\setmonofont{DejaVu Sans Mono}
+
+% =========================
+% 可修改变量
+% =========================
+\newcommand{\CourseName}{课程名称}
+\newcommand{\ExamSetName}{一/二}
+\newcommand{\SchoolInfo}{学校/学院：未明确}
+\newcommand{\TermInfo}{学年学期：未明确}
+\newcommand{\MajorInfo}{专业/年级：未明确}
+\newcommand{\ExamType}{闭卷/开卷：未明确}
+\newcommand{\ExamDuration}{考试时间：未明确}
+\newcommand{\ExamScore}{100 分}
+\newcommand{\ExamLevel}{适用层级：未明确}
+\newcommand{\WatermarkText}{仅供个人复习使用｜请勿商用传播}
+
+% 是否启用水印：true/false
+\newif\ifshowwatermark
+\showwatermarktrue
+
+% =========================
+% 页眉页脚
+% =========================
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\small 《\CourseName》期末模拟卷\ExamSetName}
+\fancyfoot[C]{\small 第 \thepage\ 页 / 共 \pageref{LastPage} 页}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% =========================
+% 水印
+% =========================
+\ifshowwatermark
+\AddToShipoutPictureBG{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[rotate=35,scale=1.6,text opacity=0.10] at (current page.center) {\WatermarkText};
+  \end{tikzpicture}%
+}
+\fi
+
+% =========================
+% 列表与代码块
+% =========================
+\setlist[enumerate,1]{leftmargin=2em,itemsep=0.4em}
+\setlist[enumerate,2]{leftmargin=2em,itemsep=0.25em}
+\DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\small,breaklines,breakanywhere,frame=single,framesep=2mm}
+
+% =========================
+% 常用环境
+% =========================
+\newenvironment{choices}{\begin{enumerate}[label=(\Alph*),leftmargin=3.5em,itemsep=0.1em]}{\end{enumerate}}
+
+\newcommand{\examtitle}{%
+\begin{center}
+  {\LARGE\bfseries 《\CourseName》本科期末模拟卷\ExamSetName}\\[0.4em]
+  {\small \SchoolInfo\quad \TermInfo\quad \MajorInfo}\\[0.8em]
+\end{center}}
+
+\newcommand{\examinfo}{%
+\begin{center}
+\begin{tabular}{|>{\centering\arraybackslash}p{2.5cm}|>{\centering\arraybackslash}p{3.5cm}|>{\centering\arraybackslash}p{2.5cm}|>{\centering\arraybackslash}p{3.5cm}|}
+\hline
+考试方式 & \ExamType & 考试时间 & \ExamDuration \\ \hline
+卷面总分 & \ExamScore & 适用层级 & \ExamLevel \\ \hline
+\end{tabular}
+\end{center}}
+
+% 按样卷实际题型增删列，务必保证总分一致
+\newcommand{\scoretable}{%
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+题号 & 一 & 二 & 三 & 四 & 总分 \\ \hline
+得分 & & & & & \\ \hline
+\end{tabular}
+\end{center}}
+
+\begin{document}
+\examtitle
+\examinfo
+\scoretable
+
+\noindent\textbf{命题说明：}
+本卷题型、题量和分值应严格参考样卷；题目必须重新命制，不能直接复制旧题、只改数字、只换变量名或只打乱选项。若样卷结构不同，请按样卷调整下面各大题。
+
+% =========================================================
+\section*{一、单项选择题（每小题 3 分，共 30 分）}
+% =========================================================
+
+\begin{enumerate}
+\item 【题干】（\quad）
+\begin{choices}
+\item 【选项 A】
+\item 【选项 B】
+\item 【选项 C】
+\item 【选项 D】
+\end{choices}
+
+\item 【题干】（\quad）
+\begin{choices}
+\item 【选项 A】
+\item 【选项 B】
+\item 【选项 C】
+\item 【选项 D】
+\end{choices}
+
+\item 【题干】（\quad）
+\begin{choices}
+\item 【选项 A】
+\item 【选项 B】
+\item 【选项 C】
+\item 【选项 D】
+\end{choices}
+
+% 继续补足至样卷规定题量
+\end{enumerate}
+
+% =========================================================
+\section*{二、填空题（每小题 3 分，共 15 分）}
+% =========================================================
+
+\begin{enumerate}
+\item 【题干】答案：\underline{\hspace{3cm}}。
+\item 【题干】答案：\underline{\hspace{3cm}}。
+\item 【题干】答案：\underline{\hspace{3cm}}。
+% 继续补足至样卷规定题量
+\end{enumerate}
+
+% =========================================================
+\section*{三、计算题 / 程序题 / 简答题（每小题按样卷分值设置，共若干分）}
+% =========================================================
+
+\begin{enumerate}
+\item 【题干】
+\begin{enumerate}[label=(\arabic*)]
+\item 【小问】
+\item 【小问】
+\end{enumerate}
+
+\item 【题干】
+\begin{enumerate}[label=(\arabic*)]
+\item 【小问】
+\item 【小问】
+\end{enumerate}
+
+% 继续补足至样卷规定题量
+\end{enumerate}
+
+% =========================================================
+\section*{四、综合题 / 应用题 / 论述题（共若干分）}
+% =========================================================
+
+\begin{enumerate}
+\item 【题干】
+\begin{enumerate}[label=(\arabic*)]
+\item 【小问】
+\item 【小问】
+\end{enumerate}
+\end{enumerate}
+
+\newpage
+
+% =========================================================
+\section*{答案与解析}
+% =========================================================
+
+\subsection*{一、单项选择题}
+\begin{enumerate}
+\item 答案：【A/B/C/D】。解析：【写出判断依据；必要时说明排除理由】。
+\item 答案：【A/B/C/D】。解析：【写出判断依据；必要时说明排除理由】。
+\item 答案：【A/B/C/D】。解析：【写出判断依据；必要时说明排除理由】。
+\end{enumerate}
+
+\subsection*{二、填空题}
+\begin{enumerate}
+\item 答案：【结果】。解析：【关键计算、定义、规则或记忆点】。
+\item 答案：【结果】。解析：【关键计算、定义、规则或记忆点】。
+\item 答案：【结果】。解析：【关键计算、定义、规则或记忆点】。
+\end{enumerate}
+
+\subsection*{三、计算题 / 程序题 / 简答题}
+\begin{enumerate}
+\item
+\textbf{解题思路：}【说明题型识别与方法选择】。\par
+\textbf{关键公式/规则：}【列出公式、规则、代码逻辑或论述框架】。\par
+\textbf{解答过程：}【完整推导、计算、代码输出或分点说明】。\par
+\textbf{最终答案：}【结果】。\par
+\textbf{易错提醒：}【提醒扣分点】。
+
+\item
+\textbf{解题思路：}【说明题型识别与方法选择】。\par
+\textbf{关键公式/规则：}【列出公式、规则、代码逻辑或论述框架】。\par
+\textbf{解答过程：}【完整推导、计算、代码输出或分点说明】。\par
+\textbf{最终答案：}【结果】。\par
+\textbf{易错提醒：}【提醒扣分点】。
+\end{enumerate}
+
+\subsection*{四、综合题 / 应用题 / 论述题}
+\begin{enumerate}
+\item
+\textbf{解题思路：}【说明建模、分析或论证路线】。\par
+\textbf{关键公式/规则：}【列出公式、规则或观点框架】。\par
+\textbf{主要过程：}【完整过程】。\par
+\textbf{最终答案：}【结果】。\par
+\textbf{易错提醒：}【提醒扣分点】。
+\end{enumerate}
+
+\end{document}

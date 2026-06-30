@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://final-review.example.com/schemas/materials.schema.json",
+  "title": "Materials CSV Schema",
+  "description": "Schema for materials.csv files in the material library.",
+  "type": "object",
+  "required": ["local_id", "title", "type", "status", "path"],
+  "properties": {
+    "local_id": {
+      "type": "string",
+      "description": "本地编号"
+    },
+    "title": {
+      "type": "string",
+      "description": "网页展示标题"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["真题", "样卷", "讲义", "答案解析", "课件", "笔记", "题库", "实验资料", "其他"],
+      "description": "资料类型"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["raw", "pending", "reviewed", "published", "archived"],
+      "description": "本地处理状态"
+    },
+    "year": {
+      "type": "string",
+      "description": "真题/资料年份，不能确认则留空"
+    },
+    "path": {
+      "type": "string",
+      "description": "相对课程目录的文件路径"
+    },
+    "source_note": {
+      "type": "string",
+      "description": "来源说明"
+    },
+    "sha256": {
+      "type": "string",
+      "description": "文件 SHA256 哈希"
+    },
+    "web_id": {
+      "type": "string",
+      "description": "上传网页后的资料 ID"
+    },
+    "notes": {
+      "type": "string",
+      "description": "备注"
+    }
+  }
+}

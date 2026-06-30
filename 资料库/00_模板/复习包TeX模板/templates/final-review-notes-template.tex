@@ -1,0 +1,536 @@
+% !TEX program = xelatex
+\documentclass[UTF8,zihao=-4]{ctexart}
+
+% =========================================================
+% 通用期末复习知识点讲义 LaTeX 模板
+% 用途：把任意课程的样卷、例题与复习资料整理成考试导向讲义
+% 编译建议：xelatex -> xelatex
+% 敏感信息原则：模板内只保留占位符，不保留个人、学校或课程内部信息
+% =========================================================
+
+% =========================
+% 页面与基础宏包
+% =========================
+\usepackage[a4paper,margin=2.15cm]{geometry}
+\usepackage{amsmath,amssymb,bm,mathtools}
+\usepackage{booktabs,longtable,tabularx,array,multicol,multirow}
+\usepackage[most]{tcolorbox}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{lastpage}
+\usepackage{siunitx}
+\usepackage{fvextra}
+\usepackage{tikz}
+\usepackage{eso-pic}
+
+% =========================
+% 可修改的文档变量
+% =========================
+\newcommand{\CourseName}{课程名称}
+\newcommand{\NoteTitle}{\CourseName 考前复习知识点讲义}
+\newcommand{\NoteSubtitle}{基于样卷、例题与复习资料的考试导向整理}
+\newcommand{\SchoolInfo}{学校/学院：未明确}
+\newcommand{\MajorInfo}{专业/年级：未明确}
+\newcommand{\TermInfo}{学年学期：未明确}
+\newcommand{\ExamType}{考试方式：未明确}
+\newcommand{\ExamTime}{考试时间：未明确}
+\newcommand{\TotalScore}{卷面总分：未明确}
+\newcommand{\AuthorName}{资料整理者}
+\newcommand{\Version}{V1.0}
+\newcommand{\WatermarkText}{仅供个人复习使用｜请勿商用传播}
+
+% 是否启用水印：true/false
+\newif\ifshowwatermark
+\showwatermarktrue
+
+% =========================
+% 字体设置
+% 若本机没有 Noto 字体，可替换为系统可用中文字体
+% =========================
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+
+% =========================
+% PDF 元信息与超链接
+% =========================
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black,
+  citecolor=blue!55!black,
+  pdftitle={\NoteTitle},
+  pdfauthor={\AuthorName}
+}
+
+% =========================
+% 主题颜色
+% =========================
+\definecolor{mainblue}{HTML}{1F4E79}
+\definecolor{lightblue}{HTML}{EAF3FF}
+\definecolor{warnred}{HTML}{B3261E}
+\definecolor{lightred}{HTML}{FFF1F1}
+\definecolor{darkgreen}{HTML}{1B6B3A}
+\definecolor{lightgreen}{HTML}{EEF9F0}
+\definecolor{orange}{HTML}{B26A00}
+\definecolor{lightorange}{HTML}{FFF7E8}
+\definecolor{softgray}{HTML}{777777}
+
+% =========================
+% 章节标题样式
+% =========================
+\ctexset{
+  section={format=\Large\bfseries\sffamily\color{mainblue}},
+  subsection={format=\large\bfseries\sffamily\color{mainblue!85!black}},
+  subsubsection={format=\normalsize\bfseries\sffamily\color{mainblue!75!black}}
+}
+\titleformat{\paragraph}[runin]{\bfseries\sffamily\color{mainblue!75!black}}{}{0pt}{}[\quad]
+
+% =========================
+% 页眉页脚
+% =========================
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\NoteTitle}
+\rhead{\leftmark}
+\cfoot{\thepage/\pageref{LastPage}}
+\setlength{\headheight}{15pt}
+
+% =========================
+% 列表与表格
+% =========================
+\setlist[itemize]{leftmargin=2em,itemsep=0.25em,topsep=0.25em}
+\setlist[enumerate]{leftmargin=2em,itemsep=0.25em,topsep=0.25em}
+\renewcommand{\arraystretch}{1.35}
+\allowdisplaybreaks
+
+% =========================
+% 通用数学/程序命令：按课程需要保留或扩展
+% =========================
+\newcommand{\dd}{\,\mathrm d}
+\newcommand{\ii}{\mathrm i}
+\newcommand{\ee}{\mathrm e}
+\newcommand{\ve}[1]{\bm{#1}}
+\newcommand{\grad}{\nabla}
+
+% 代码块：程序设计类课程可用
+\DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\small,breaklines,breakanywhere,frame=single,framesep=2mm}
+
+% =========================
+% 彩色盒子环境
+% =========================
+\newtcolorbox{keybox}[1][]{
+  breakable,
+  colback=lightblue,
+  colframe=mainblue,
+  arc=2mm,
+  title=\textbf{#1},
+  fonttitle=\bfseries\sffamily,
+  coltitle=white
+}
+
+\newtcolorbox{warnbox}[1][]{
+  breakable,
+  colback=lightred,
+  colframe=warnred,
+  arc=2mm,
+  title=\textbf{#1},
+  fonttitle=\bfseries\sffamily,
+  coltitle=white
+}
+
+\newtcolorbox{examplebox}[1][]{
+  breakable,
+  colback=lightgreen,
+  colframe=darkgreen,
+  arc=2mm,
+  title=\textbf{#1},
+  fonttitle=\bfseries\sffamily,
+  coltitle=white
+}
+
+\newtcolorbox{methodbox}[1][]{
+  breakable,
+  colback=lightorange,
+  colframe=orange,
+  arc=2mm,
+  title=\textbf{#1},
+  fonttitle=\bfseries\sffamily,
+  coltitle=white
+}
+
+% =========================
+% 每页斜向浅灰水印，可按需关闭
+% =========================
+\ifshowwatermark
+\AddToShipoutPictureBG{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \foreach \x in {-8,-2,4,10,16,22,28}{%
+      \foreach \y in {-4,2,8,14,20,26,32}{%
+        \node[rotate=35,scale=1.05,text=softgray,opacity=0.12]
+        at ([xshift=\x cm,yshift=\y cm]current page.south west) {\WatermarkText};
+      }
+    }
+  \end{tikzpicture}%
+}
+\fi
+
+\begin{document}
+
+% =========================
+% 封面页
+% =========================
+\begin{titlepage}
+\centering
+\vspace*{2.5cm}
+
+{\Huge\bfseries\sffamily \NoteTitle\par}
+\vspace{0.8cm}
+{\Large \NoteSubtitle\par}
+
+\vspace{0.8cm}
+\begin{tabular}{rl}
+\textbf{课程：} & \CourseName \\
+\textbf{学校/学院：} & \SchoolInfo \\
+\textbf{专业/年级：} & \MajorInfo \\
+\textbf{学年学期：} & \TermInfo \\
+\textbf{考试方式：} & \ExamType \\
+\textbf{考试时间：} & \ExamTime \\
+\textbf{卷面总分：} & \TotalScore \\
+\textbf{版本：} & \Version \\
+\end{tabular}
+
+\vfill
+\begin{tcolorbox}[colback=lightblue,colframe=mainblue,width=0.86\textwidth,arc=2mm]
+\textbf{使用定位：}
+这份讲义不是教材摘抄，而是把样卷、例题和复习资料按期末复习需要重新组织。重点放在考试范围、考点优先级、核心公式、典型题型、解题模板和易错判断。\par
+
+\textbf{复习建议：}
+先看“考试结构”和“考点优先级”，再按“高频题型方法模板”刷题，最后用“公式速查表”和“考前速记清单”查漏补缺。
+\end{tcolorbox}
+
+\vfill
+{\large 资料整理：\AuthorName\par}
+{\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% =========================================================
+\section{资料分析与考试范围概览}
+% =========================================================
+
+\subsection{课程信息识别}
+
+\begin{longtable}{p{0.28\textwidth}p{0.62\textwidth}}
+\toprule
+\textbf{项目} & \textbf{识别结果} \\
+\midrule
+课程名称 & \CourseName \\
+学校/学院/专业/年级 & \SchoolInfo；\MajorInfo \\
+学年学期 & \TermInfo \\
+考试方式 & \ExamType \\
+总分与考试时间 & \TotalScore；\ExamTime \\
+平时分与期末占比 & 未明确 / 待填 \\
+难度层级 & 未明确 / 待填 \\
+资料来源 & 样卷、例题、知识点整理、课后题、复习提纲等，按实际填写 \\
+\bottomrule
+\end{longtable}
+
+\subsection{考试范围主线}
+
+本课程可按以下逻辑组织复习：
+\[
+\text{基础概念} \to \text{核心公式/规则} \to \text{典型模型} \to \text{高频题型} \to \text{综合应用}
+\]
+
+\begin{keybox}[本课程最终主线]
+\begin{itemize}
+  \item 主线一：填写本课程从基础到综合的第一条逻辑链。
+  \item 主线二：填写本课程最重要的公式、规则、方法或理论链。
+  \item 主线三：填写本课程高频大题、论述题或综合题的共同套路。
+\end{itemize}
+\end{keybox}
+
+% =========================================================
+\section{题型与分值结构}
+% =========================================================
+
+\begin{longtable}{p{0.18\textwidth}p{0.14\textwidth}p{0.16\textwidth}p{0.14\textwidth}p{0.28\textwidth}}
+\toprule
+\textbf{题型} & \textbf{题量} & \textbf{单题分值} & \textbf{总分} & \textbf{考察特点} \\
+\midrule
+选择题 & 待填 & 待填 & 待填 & 概念判断、快速计算、规则识别 \\
+填空题 & 待填 & 待填 & 待填 & 公式应用、短计算、关键词记忆 \\
+名词解释 & 待填 & 待填 & 待填 & 核心定义、比较辨析、术语表达 \\
+计算题 & 待填 & 待填 & 待填 & 固定套路、过程得分、步骤完整性 \\
+简答/论述题 & 待填 & 待填 & 待填 & 结构化表达、原理解释、案例分析 \\
+应用/综合题 & 待填 & 待填 & 待填 & 建模、综合应用、跨模块联动 \\
+\bottomrule
+\end{longtable}
+
+\begin{methodbox}[时间分配建议]
+\begin{itemize}
+  \item 先拿基础题：选择、填空、名词解释或短答中能快速确定答案的题。
+  \item 中段攻克过程题：计算题、程序题、证明题或案例题优先写清步骤。
+  \item 最后处理综合题：先写框架和关键公式/观点，再补计算或论证细节。
+  \item 任何课程都要保留 5--10 分钟检查单位、符号、条件、选项、代码输出或论述关键词。
+\end{itemize}
+\end{methodbox}
+
+% =========================================================
+\section{考点优先级}
+% =========================================================
+
+\subsection{四级分类总表}
+
+\begin{longtable}{p{0.16\textwidth}p{0.22\textwidth}p{0.25\textwidth}p{0.27\textwidth}}
+\toprule
+\textbf{优先级} & \textbf{模块/考点} & \textbf{样卷出现方式} & \textbf{复习要求} \\
+\midrule
+第一优先级：必考核心 & 待填 & 大题/计算题/核心论述/程序题 & 必须掌握公式、步骤、表达模板和易错点 \\
+第二优先级：高频重点 & 待填 & 选择/填空/简答/中等计算 & 熟悉常见变形，能快速识别题型 \\
+第三优先级：可能考点 & 待填 & 小题/应用题/拔高题 & 会基本判断和基础套用 \\
+第四优先级：了解即可 & 待填 & 概念题/背景题 & 知道概念边界，不建议深挖 \\
+\bottomrule
+\end{longtable}
+
+\subsection{考点矩阵}
+
+\begin{longtable}{p{0.18\textwidth}p{0.25\textwidth}p{0.18\textwidth}p{0.14\textwidth}p{0.15\textwidth}}
+\toprule
+\textbf{模块} & \textbf{样卷如何考} & \textbf{题型位置} & \textbf{难度} & \textbf{重要程度} \\
+\midrule
+模块一 & 填写出现方式 & 选择/填空/大题 & 基础/中等/较难 & 必考/高频/可能考/了解 \\
+模块二 & 填写出现方式 & 选择/填空/大题 & 基础/中等/较难 & 必考/高频/可能考/了解 \\
+模块三 & 填写出现方式 & 选择/填空/大题 & 基础/中等/较难 & 必考/高频/可能考/了解 \\
+模块四 & 填写出现方式 & 选择/填空/大题 & 基础/中等/较难 & 必考/高频/可能考/了解 \\
+\bottomrule
+\end{longtable}
+
+% =========================================================
+\section{模块化知识点模板}
+% =========================================================
+
+% 复制本节结构即可新增模块
+\subsection{模块一：模块名称}
+
+\subsubsection{本模块考试地位}
+本模块属于：\textbf{必考核心 / 高频重点 / 可能考点 / 了解即可}。
+
+常见题型：
+\begin{itemize}
+  \item 选择/判断题：填写常见考法。
+  \item 填空/短答题：填写常见考法。
+  \item 计算/程序/论述/应用题：填写常见考法。
+\end{itemize}
+
+\begin{keybox}[本模块复习目标]
+\begin{enumerate}
+  \item 会判断：填写判断目标。
+  \item 会计算或会表达：填写计算、推导、编码、证明或论述目标。
+  \item 会区分：填写易混概念。
+  \item 会应用：填写应用场景。
+\end{enumerate}
+\end{keybox}
+
+\subsubsection{核心概念}
+用考试语言解释核心概念，不照抄教材。
+
+\begin{itemize}
+  \item \textbf{概念一：}填写考前理解版解释。
+  \item \textbf{概念二：}填写考前理解版解释。
+  \item \textbf{概念三：}填写考前理解版解释。
+\end{itemize}
+
+\subsubsection{核心公式、规则或结论}
+
+\begin{keybox}[核心公式/规则]
+\begin{align*}
+\text{公式或规则一：}\quad & A = B + C, \\
+\text{公式或规则二：}\quad & F(x)=\int_a^b f(x,t)\dd t.
+\end{align*}
+
+\textbf{适用条件：}
+\begin{itemize}
+  \item 条件一：填写适用条件。
+  \item 条件二：填写不能使用的情况。
+  \item 条件三：填写考试常见变形。
+\end{itemize}
+\end{keybox}
+
+\subsubsection{常见模型或常用结论}
+
+\begin{longtable}{p{0.28\textwidth}p{0.62\textwidth}}
+\toprule
+\textbf{模型/题型} & \textbf{结论/做法} \\
+\midrule
+模型一 & 填写结论或固定处理方式。 \\
+模型二 & 填写结论或固定处理方式。 \\
+模型三 & 填写结论或固定处理方式。 \\
+\bottomrule
+\end{longtable}
+
+\subsubsection{方法模板}
+
+\begin{methodbox}[方法模板：题型名称]
+\begin{enumerate}
+  \item 第一步：识别题型，判断考的是哪个知识点。
+  \item 第二步：写出核心公式、规则、判别条件或答题框架。
+  \item 第三步：代入题目条件，统一变量、区域、方向、单位、概念边界或程序输入输出。
+  \item 第四步：计算、推导、编码、证明或分点论述。
+  \item 第五步：检查符号、单位、定义域、边界、特殊情况、代码结果或关键词覆盖。
+\end{enumerate}
+\end{methodbox}
+
+\subsubsection{典型例题}
+
+\begin{examplebox}[典型例题]
+\textbf{题目：}
+填写一道与样卷同类但不照搬的例题。\par
+
+\textbf{思路：}
+说明这道题的核心识别点和解题路线。\par
+
+\textbf{解：}
+填写主要计算、推导、代码、证明或论述过程。\par
+
+\textbf{答案：}
+填写最终答案。\par
+
+\textbf{提醒：}
+本题最容易错在：填写易错点。
+\end{examplebox}
+
+\subsubsection{本模块易错点}
+
+\begin{warnbox}[本模块易错点]
+\begin{enumerate}
+  \item 易错点一：填写错误表现与正确做法。
+  \item 易错点二：填写错误表现与正确做法。
+  \item 易错点三：填写错误表现与正确做法。
+  \item 易错点四：填写错误表现与正确做法。
+\end{enumerate}
+\end{warnbox}
+
+% =========================================================
+\section{高频题型方法模板}
+% =========================================================
+
+\begin{methodbox}[题型一：填写题型名称]
+\textbf{识别特征：}
+看到题目中出现某类关键词、公式、材料、图形、代码片段、区域、数据表或条件，一般就是考某个模块。\par
+
+\textbf{固定步骤：}
+\begin{enumerate}
+  \item 判断题型与考点。
+  \item 写出核心公式、规则或答题框架。
+  \item 按题目条件逐步计算、推导、证明、编码或分点论述。
+  \item 写出最终结果，并补充必要解释。
+\end{enumerate}
+
+\textbf{常用公式/规则：}
+填写高频公式、规则或判断条件。\par
+
+\textbf{易错点：}
+\begin{itemize}
+  \item 只背结论，不看适用条件。
+  \item 漏写步骤、单位、方向、边界、特殊情况或关键词。
+\end{itemize}
+\end{methodbox}
+
+\begin{methodbox}[题型二：填写题型名称]
+\textbf{识别特征：}填写识别方式。\par
+\textbf{固定步骤：}
+\begin{enumerate}
+  \item 第一步。
+  \item 第二步。
+  \item 第三步。
+\end{enumerate}
+\end{methodbox}
+
+% =========================================================
+\section{公式速查表}
+% =========================================================
+
+\begin{longtable}{p{0.18\textwidth}p{0.42\textwidth}p{0.30\textwidth}}
+\toprule
+\textbf{模块} & \textbf{公式/规则/结论} & \textbf{使用场景} \\
+\midrule
+模块一 & 填写公式、规则或结论 & 填写使用场景 \\
+模块二 & 填写公式、规则或结论 & 填写使用场景 \\
+模块三 & 填写公式、规则或结论 & 填写使用场景 \\
+\bottomrule
+\end{longtable}
+
+% =========================================================
+\section{易错点清单}
+% =========================================================
+
+\begin{longtable}{p{0.25\textwidth}p{0.30\textwidth}p{0.35\textwidth}}
+\toprule
+\textbf{易错点} & \textbf{错误表现} & \textbf{正确做法} \\
+\midrule
+易错点一 & 填写错误表现 & 填写正确做法 \\
+易错点二 & 填写错误表现 & 填写正确做法 \\
+易错点三 & 填写错误表现 & 填写正确做法 \\
+\bottomrule
+\end{longtable}
+
+% =========================================================
+\section{考前复习计划}
+% =========================================================
+
+\subsection{七天版}
+\begin{methodbox}[7 天复习安排]
+\begin{enumerate}
+  \item Day 1：过课程主线、考试结构和核心公式/规则。
+  \item Day 2：刷选择、判断、填空、名词解释或短答题。
+  \item Day 3：专项突破计算题、程序题、证明题或论述题的基础模板。
+  \item Day 4：专项突破综合题、应用题或案例题。
+  \item Day 5：整理高频易错点和错题。
+  \item Day 6：完成模拟卷一并订正。
+  \item Day 7：完成模拟卷二，背公式速查表和最后速记清单。
+\end{enumerate}
+\end{methodbox}
+
+\subsection{三天版}
+\begin{methodbox}[3 天冲刺安排]
+\begin{enumerate}
+  \item Day 1：背核心公式/规则，过必考题型模板。
+  \item Day 2：做一套模拟卷，整理错题和不会写的表达模板。
+  \item Day 3：复盘错题，背最后 30 分钟速记清单。
+\end{enumerate}
+\end{methodbox}
+
+% =========================================================
+\section{考前最后 30 分钟速记清单}
+% =========================================================
+
+\begin{keybox}[最后 30 分钟只看这些]
+\begin{enumerate}
+  \item 必背公式/规则一：待填。
+  \item 必背公式/规则二：待填。
+  \item 必背判别条件：待填。
+  \item 大题步骤模板：待填。
+  \item 最容易丢分点：待填。
+\end{enumerate}
+\end{keybox}
+
+% =========================================================
+\section{附录：补充结论或拓展题型}
+% =========================================================
+
+\subsection{补充结论一}
+填写补充结论。
+
+\subsection{补充结论二}
+填写补充结论。
+
+\end{document}
