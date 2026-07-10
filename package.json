@@ -12,7 +12,8 @@
     "build:web": "npm --workspace @final-review/web run build",
     "build:admin": "npm --workspace @final-review/admin run build",
     "lint": "npm --workspace @final-review/web run lint && npm --workspace @final-review/admin run lint",
-    "test": "npm run build:web && npm run build:admin"
+    "test": "npm run build:web && npm run build:admin",
+    "test:libraryctl": "node --test scripts/libraryctl/tests/*.test.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3"

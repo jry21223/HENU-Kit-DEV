@@ -1,11 +1,12 @@
 // libraryctl — structure and data validator
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { resolve, join, relative, basename } from 'node:path';
+import { existsSync } from 'node:fs';
+import { resolve, join, basename, posix } from 'node:path';
 import { ROOT_DIRS, INBOX_DIRS, COURSE_INTERNAL_DIRS, discoverCourses } from './paths.mjs';
 import { readCourseYaml } from './course.mjs';
 import { readMaterialsCsv, VALID_TYPES, VALID_STATUSES } from './materials.mjs';
 import { checkFilename } from './normalizer.mjs';
+import { SafePathError, resolveWithinRoot } from './safe-path.mjs';
 
 /**
  * Validate the root library structure.
@@ -177,35 +178,30 @@ export function validateCourse(coursePath, courseRelPath) {
         });
       }
 
-      // Check path exists
-      if (row.path) {
-        const fullPath = resolve(coursePath, row.path);
-        if (!existsSync(fullPath)) {
+      // Check path boundary and existence
+      try {
+        const safePath = resolveWithinRoot(coursePath, row.path);
+
+        // Check filename for illegal characters
+        const fileName = posix.basename(safePath.relativePath);
+        const nameCheck = checkFilename(fileName);
+        if (!nameCheck.ok) {
           issues.push({
-            level: 'error',
+            level: 'warning',
             course: courseName,
             file: rowLabel,
-            message: `path 指向的文件不存在: ${row.path}`,
+            message: `文件名包含非法字符: ${nameCheck.illegalChars.join(' ')} — ${fileName}`,
           });
-        } else {
-          // Check filename for illegal characters
-          const basename = row.path.split('/').pop();
-          const nameCheck = checkFilename(basename);
-          if (!nameCheck.ok) {
-            issues.push({
-              level: 'warning',
-              course: courseName,
-              file: rowLabel,
-              message: `文件名包含非法字符: ${nameCheck.illegalChars.join(' ')} — ${basename}`,
-            });
-          }
         }
-      } else {
+      } catch (error) {
+        if (!(error instanceof SafePathError)) throw error;
         issues.push({
-          level: 'warning',
+          level: 'error',
           course: courseName,
           file: rowLabel,
-          message: 'path 为空',
+          code: error.code,
+          path: row.path ?? '',
+          message: `资料路径校验失败 [${error.code}]: ${error.message}`,
         });
       }
     }
