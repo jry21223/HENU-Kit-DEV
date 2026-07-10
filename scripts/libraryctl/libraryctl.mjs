@@ -16,13 +16,40 @@
 //   hash           计算 SHA256
 //   dedupe         去重
 
-import { resolve, join, dirname } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { resolve, join, dirname, basename } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createRootStructure, createCourseStructure } from "./lib/paths.mjs";
 import { generateDefaultCourseYaml, writeCourseYaml } from "./lib/course.mjs";
 import { MATERIALS_HEADER } from "./lib/materials.mjs";
 import { validateAll } from "./lib/validator.mjs";
-import { generateWebManifest } from "./lib/export-web.mjs";
+import { ExportPathError, generateWebManifest } from "./lib/export-web.mjs";
+import { SafePathError } from "./lib/safe-path.mjs";
+
+function writeJsonAtomically(outPath, value) {
+  const outputDir = dirname(outPath);
+  mkdirSync(outputDir, { recursive: true });
+  const tempPath = join(
+    outputDir,
+    `.${basename(outPath)}.${process.pid}.${randomUUID()}.tmp`,
+  );
+
+  try {
+    writeFileSync(tempPath, JSON.stringify(value, null, 2), {
+      encoding: "utf-8",
+      flag: "wx",
+    });
+    renameSync(tempPath, outPath);
+  } finally {
+    if (existsSync(tempPath)) unlinkSync(tempPath);
+  }
+}
 
 // ----- CLI argument parsing -----
 
@@ -237,8 +264,7 @@ function main() {
         const outPath = options.out ? resolve(options.out) : null;
 
         if (outPath) {
-          mkdirSync(dirname(outPath), { recursive: true });
-          writeFileSync(outPath, JSON.stringify(manifest, null, 2), "utf-8");
+          writeJsonAtomically(outPath, manifest);
           console.log(
             JSON.stringify(
               {
@@ -294,12 +320,18 @@ function main() {
       }
     }
   } catch (err) {
+    const isSafePathError =
+      err instanceof SafePathError || err instanceof ExportPathError;
     console.error(
       JSON.stringify(
         {
           ok: false,
           error: err.message,
-          stack: err.stack,
+          ...(err.code ? { code: err.code } : {}),
+          ...(err.course ? { course: err.course } : {}),
+          ...(err.localId !== undefined ? { localId: err.localId } : {}),
+          ...(err.path !== undefined ? { path: err.path } : {}),
+          ...(!isSafePathError && err.stack ? { stack: err.stack } : {}),
         },
         null,
         2,

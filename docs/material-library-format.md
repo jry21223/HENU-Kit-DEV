@@ -1,7 +1,7 @@
 # 资料库格式规范
 
 > 配套工具：`libraryctl`（`scripts/libraryctl/`）
-> 最后更新：2026-06-30
+> 最后更新：2026-07-10
 
 ## 目录结构
 
@@ -108,6 +108,20 @@
 ### 合法 `status` 值
 
 `raw` `pending` `reviewed` `published` `archived`
+
+### `path` 路径边界
+
+- `path` 必须是相对当前课程目录的非空路径，不能使用 POSIX 绝对路径、Windows 盘符路径或 UNC 路径。
+- `/` 和 `\\` 都按路径分隔符处理；任何独立的 `..` 路径段和 NUL 字节都会被拒绝。
+- 已存在文件会检查真实路径。课程目录内的符号链接如果最终指向课程目录外，校验失败。
+- `validate` 与 `export-web` 共用 `safe-path.mjs` 的同一边界；不能通过跳过 `validate` 导出不安全路径。
+- 导出 manifest 时，合法相对路径统一写成 `/` 分隔形式。
+
+可重复运行路径边界测试：
+
+```bash
+npm run test:libraryctl
+```
 
 ## 文件命名规范
 

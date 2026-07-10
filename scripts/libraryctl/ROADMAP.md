@@ -9,6 +9,15 @@
 | `validate` | ✅ | 校验目录完整性、YAML 必填字段、CSV 有效性、文件路径 |
 | `export-web` | ✅ | 遍历所有课程生成网页后台导入 JSON manifest |
 
+### V1.1 — 材料路径边界（2026-07-10）
+
+- `materials.csv` 的 `path` 只接受课程目录内的相对路径。
+- POSIX/Windows 绝对路径、盘符、UNC、NUL 和独立 `..` 路径段会被拒绝。
+- 已存在文件会检查真实路径，拒绝通过符号链接逃逸课程目录。
+- `validate` 与 `export-web` 共用同一个路径安全 helper；直接导出不会绕过边界。
+- manifest 中的合法路径统一使用 `/` 分隔符，导出文件采用临时文件后 rename 的替换方式。
+- `npm run test:libraryctl` 覆盖正常路径、跨平台危险输入、符号链接与失败导出不破坏旧文件。
+
 ---
 
 ## V2 — 规划中
