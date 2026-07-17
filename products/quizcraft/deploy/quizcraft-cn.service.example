@@ -1,0 +1,17 @@
+[Unit]
+Description=QuizCraft CN FastAPI backend
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/quizcraft-cn
+EnvironmentFile=/etc/quizcraft-cn.env
+ExecStart=/opt/quizcraft-cn/.venv/bin/python /opt/quizcraft-cn/server.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

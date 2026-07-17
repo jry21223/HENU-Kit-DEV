@@ -1,0 +1,67 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.quizcraft.android'
+    compileSdk 35
+    buildToolsVersion "35.0.0"
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    defaultConfig {
+        applicationId "com.quizcraft.android"
+        minSdk 24
+        targetSdk 34
+        versionCode 17
+        versionName "2.2.7"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // 只保留中文资源，大幅减小 APK 体积
+        resConfigs "zh-rCN", "zh"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(System.getenv("USERPROFILE") + "/.android/debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            shrinkResources false
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // APK 输出命名：QuizCraft-v版本号.apk
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach {
+            outputFileName = "QuizCraft-${variant.versionName}.apk"
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+}

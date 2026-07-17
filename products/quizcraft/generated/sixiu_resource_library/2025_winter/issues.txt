@@ -1,0 +1,10 @@
+sixiu_2025_winter_0015: option count issue: 绪论+第一章 领悟人生真谛 把握人生方向 single #15 options=8
+sixiu_2025_winter_0039: option count issue: 绪论+第一章 领悟人生真谛 把握人生方向 multi #4 options=8
+sixiu_2025_winter_0082: option count issue: 第三章 继承优良传统 弘扬中国精神 multi #10 options=8
+sixiu_2025_winter_0110: option count issue: 第四章 明确价值要求 践行价值准则 single #18 options=0
+sixiu_2025_winter_0149: option count issue: 第五章 遵守道德规范 锤炼道德品格 single #20 options=8
+sixiu_2025_winter_0155: option count issue: 第五章 遵守道德规范 锤炼道德品格 single #27 options=8
+sixiu_2025_winter_0163: option count issue: 第五章 遵守道德规范 锤炼道德品格 single #36 options=8
+sixiu_2025_winter_0235: option count issue: 第六章 学习法治思想 提升法治素养 single #10 options=8
+sixiu_2025_winter_0249: option count issue: 第六章 学习法治思想 提升法治素养 single #25 options=8
+sixiu_2025_winter_0264: option count issue: 第六章 学习法治思想 提升法治素养 multi #12 options=8

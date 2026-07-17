@@ -1,0 +1,3274 @@
+{
+  "meta": {
+    "name": "Java程序设计题库",
+    "version": "from-md",
+    "color": "#f57c00",
+    "total": 155,
+    "source_files": [
+      "Java题库.md"
+    ],
+    "chapters": [
+      {
+        "id": "ch01",
+        "name": "Java题库"
+      }
+    ]
+  },
+  "questions": [
+    {
+      "id": "java_0001",
+      "number": "1",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "安装Java开发环境时，需要配置的环境变量是（　）",
+      "options": [
+        "PATH和CLASSPATH",
+        "JAVA_HOME和PATH",
+        "JAVA_HOME和CLASSPATH",
+        "JAVA_HOME和PATH"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0002",
+      "number": "2",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "当子类中的方法与父类中的方法具有相同的名称、参数列表和返回类型时，这种情况称为（　）",
+      "options": [
+        "方法重载",
+        "方法重写",
+        "继承",
+        "多态"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0003",
+      "number": "3",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知 `String str = \"Java\";`，则 `str.charAt(1)` 的结果是（　）",
+      "options": [
+        "'J'",
+        "'a'",
+        "'v'",
+        "\"\""
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0004",
+      "number": "4",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知类Car有属性brand和price，以下定义访问price属性的方法正确的是（　）",
+      "options": [
+        "```java\nclass Car{\n    private String brand;\n    void setPrice(double p){ price = p; }\n    public double getPrice(){ return price; }\n}\n```",
+        "```java\nclass Car{\n    private String brand;\n    private double price;\n    public void setPrice(double p){ this.price = p; }\n    public double getPrice(){ return this.price; }\n}\n```",
+        "```java\nclass Car{\n    private String brand;\n    private double price;\n    public void setPrice(double p){ price = p; }\n    public double getPrice(){ return price; }\n}\n```",
+        "都正确"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0005",
+      "number": "5",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "在Java中，super关键字的作用不包括（　）",
+      "options": [
+        "调用父类的构造方法",
+        "调用父类的成员方法",
+        "调用父类的成员变量",
+        "调用本类的构造方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0006",
+      "number": "6",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "当一个类没有显式地定义构造方法时，Java会自动提供一个（　）",
+      "options": [
+        "带一个参数的构造方法",
+        "带两个参数的构造方法",
+        "无参构造方法",
+        "编译会报错"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0007",
+      "number": "7",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "在Java中，以下哪种方式可以实现多态的动态绑定（　）",
+      "options": [
+        "通过对象调用方法",
+        "通过类名调用静态方法",
+        "通过父类引用调用子类重写的方法",
+        "通过接口调用实现类的方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0008",
+      "number": "8",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于return语句的说法，错误的是（　）",
+      "options": [
+        "return语句用于从方法中返回一个值",
+        "一个方法中只能有一个return语句",
+        "如果方法的返回类型是void，则可以省略return语句",
+        "return语句可以提前结束方法的执行"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0009",
+      "number": "9",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的垃圾回收机制，以下说法错误的是（　）",
+      "options": [
+        "垃圾回收可以自动回收不再使用的对象所占用的内存",
+        "程序员可以手动调用垃圾回收方法来回收内存",
+        "垃圾回收会影响程序的性能",
+        "垃圾回收只回收堆内存中的对象"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0010",
+      "number": "10",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "Java语言中注释有三种类型，以下哪种注释方式会被Javadoc工具提取生成文档（　）",
+      "options": [
+        "//单行注释",
+        "/*多行注释*/",
+        "/**文档注释*/",
+        "以上都可以"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0011",
+      "number": "11",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下代码的输出结果是（　）\n```java\nint a=10; int b=5;\nif(a>b){System.out.println(\"a大于b\");}\nelse if(a<b){System.out.println(\"a小于b\");}\nelse {System.out.println(\"a等于b\");}\n```",
+      "options": [
+        "a大于b",
+        "a小于b",
+        "a等于b",
+        "无输出"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0012",
+      "number": "12",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下集合类中，适合频繁插入和删除操作的是（　）",
+      "options": [
+        "ArrayList",
+        "LinkedList",
+        "Vector",
+        "HashSet"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0013",
+      "number": "13",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "while循环和do-while循环，以下说法正确的是（　）",
+      "options": [
+        "while循环和do-while循环的执行逻辑完全相同",
+        "while循环先判断条件再执行循环体，do-while循环先执行循环体再判断条件",
+        "while循环至少会执行一次循环体",
+        "do-while循环有可能一次循环体都不执行"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0014",
+      "number": "14",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若要在Java程序中使用Scanner类来获取用户输入，导入语句正确的是（　）",
+      "options": [
+        "java.util.Scanner",
+        "java.io.Scanner",
+        "import java.util.Scanner;",
+        "import java.io.Scanner;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0015",
+      "number": "15",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知类A，以下创建类A对象的正确方式是（　）",
+      "options": [
+        "A a;",
+        "A a = new;",
+        "A a = new A();",
+        "a = A();"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0016",
+      "number": "16",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的包，以下说法正确的是（　）",
+      "options": [
+        "包是用来组织类和接口的一种机制",
+        "不同包中的类不能同名",
+        "包名必须全部由大写字母组成",
+        "一个类只能属于一个包，不能跨包使用"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0017",
+      "number": "17",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知类Student有属性name和age，以下定义构造方法正确的是（　）",
+      "options": [
+        "```java\nclass Student{\n    public Student(){\n        Student(\"zhangsan\",18);\n    }\n    private String name;\n    private int age;\n}\n```",
+        "```java\nclass Student{\n    public Student(){\n        this.name=\"zhangsan\";\n        this.age=18;\n    }\n    private String name;\n    private int age;\n}\n```",
+        "```java\nclass Student{\n    public Student(){\n        Student(\"zhangsan\",18);\n    }\n    private String name;\n    private int age;\n}\n```",
+        "以上都正确"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0018",
+      "number": "18",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若有类Animal和Dog，Dog继承了Animal，以下调用move方法的方式正确的是（　）",
+      "options": [
+        "Animal animal = new Animal(); animal.move();",
+        "Dog dog = new Dog(); dog.move();",
+        "Animal animal = new Dog(); animal.move();",
+        "以上都正确"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0019",
+      "number": "19",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下代码实现了面向对象的（　）特性\n```java\nclass Shape{\n    public void draw(){\n        System.out.println(\"Drawing a shape\");\n    }\n}\nclass Rectangle extends Shape{\n    public void draw(){\n        System.out.println(\"Drawing a rectangle\");\n    }\n}\n```",
+      "options": [
+        "封装",
+        "继承",
+        "多态",
+        "以上都是"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0020",
+      "number": "20",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若要将一个字符串变量赋值为\"Hello,World!\"，正确的写法是（　）",
+      "options": [
+        "string s = \"Hello, World!\";",
+        "String s = \"Hello, World!\";",
+        "S = \"Hello, World!\";",
+        "char s = \"Hello, World!\";"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0021",
+      "number": "21",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若要将一个类的成员变量私有化，应该使用的访问修饰符是（　）",
+      "options": [
+        "public",
+        "protected",
+        "private",
+        "default"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0022",
+      "number": "22",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于JDK、JRE和JVM的关系，正确的是（　）",
+      "options": [
+        "JVM包含JRE，JRE包含JDK",
+        "JDK包含JRE，JRE包含JVM",
+        "JRE包含JDK，JDK包含JVM",
+        "JVM、JRE、JDK相互独立"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0023",
+      "number": "23",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下运算符中，优先级最高的是（　）",
+      "options": [
+        "+",
+        "()",
+        "&&",
+        "="
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0024",
+      "number": "24",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "泛型通配符 `?` 的作用是（　）",
+      "options": [
+        "表示任意类型",
+        "用于限制类型的下界",
+        "用于限制类型的上界",
+        "以上都不对"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0025",
+      "number": "25",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若要限制一个类不能被其他类继承，应该使用的关键字是（　）",
+      "options": [
+        "final",
+        "abstract",
+        "static",
+        "private"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0026",
+      "number": "26",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于接口与抽象类的说法，错误的是（　）",
+      "options": [
+        "接口中所有方法默认都是抽象的",
+        "一个类可以实现多个接口，但只能继承一个抽象类",
+        "接口不能有构造方法，抽象类可以有构造方法",
+        "接口中的成员变量默认是private，抽象类中的成员变量默认是public"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0027",
+      "number": "27",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于方法重写的说法，正确的是（　）",
+      "options": [
+        "方法重写要求方法名不同，参数列表必须相同",
+        "方法重写要求方法名相同，参数列表必须相同",
+        "方法重写要求返回类型必须不同",
+        "方法重写要求访问权限必须更严格"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0028",
+      "number": "28",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下不属于面向对象三大特性的是（　）",
+      "options": [
+        "封装",
+        "继承",
+        "多态",
+        "接口"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0029",
+      "number": "29",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于break语句和continue语句的说法，错误的是（　）",
+      "options": [
+        "break语句用于跳出当前循环",
+        "continue语句用于跳过本次循环剩余的代码，继续下一次循环",
+        "break语句和continue语句只能用在循环语句中",
+        "在多层循环嵌套中，break语句默认只能跳出最内层循环"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0030",
+      "number": "30",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下属于Java基本数据类型的是（　）",
+      "options": [
+        "String",
+        "Integer",
+        "double",
+        "ArrayList"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0031",
+      "number": "31",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知 `int num=123`；若要获取num的个位数，正确的表达式是（　）",
+      "options": [
+        "num / 10",
+        "num % 10",
+        "num / 100",
+        "num % 100"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0032",
+      "number": "32",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "当一个方法的返回类型为void时，表示该方法（　）",
+      "options": [
+        "没有返回值",
+        "返回一个空对象",
+        "返回值为null",
+        "返回值为0"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0033",
+      "number": "33",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若要将一个整型变量num的值强制转换为float类型，正确的写法是（　）",
+      "options": [
+        "float f = num;",
+        "float f = (float)num;",
+        "float f = float(num);",
+        "f = (float)num;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0034",
+      "number": "34",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于Java程序编译的说法，正确的是（　）",
+      "options": [
+        "编译后的文件可以直接在任何操作系统上运行",
+        "编译是将Java源文件(.java)转换为字节码文件(.class)",
+        "编译过程中不会检查语法错误",
+        "一个Java源文件只能生成一个字节码文件"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0035",
+      "number": "35",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "首次提出Java语言的时间是（　）",
+      "options": [
+        "1991年",
+        "1995年",
+        "2000年",
+        "2005年"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0036",
+      "number": "36",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于抽象类的说法，正确的是（　）",
+      "options": [
+        "抽象类可以被实例化",
+        "抽象类中只能有抽象方法",
+        "子类必须重写抽象父类中的所有抽象方法",
+        "抽象类不能包含非抽象方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0037",
+      "number": "37",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若有类A和类B，B实现了接口C，以下说法正确的是（　）",
+      "options": [
+        "A可以继承B，同时实现C",
+        "A可以继承B，但不能再实现C",
+        "A不能继承B，但可以实现C",
+        "A既不能继承B，也不能实现C"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0038",
+      "number": "38",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "一个类实现接口时，必须（　）",
+      "options": [
+        "实现接口中的所有方法",
+        "实现接口中的部分方法",
+        "可以不实现接口中的方法",
+        "实现接口中的抽象方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0039",
+      "number": "39",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "当子类继承父类时，子类可以（　）",
+      "options": [
+        "增加新的属性和方法",
+        "只能继承父类的属性和方法，不能进行修改和扩展",
+        "不能继承父类的私有属性和方法",
+        "A和C都正确"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0040",
+      "number": "40",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于一维数组的遍历，以下代码正确的是（　）",
+      "options": [
+        "```java\nint[] arr={1,2,3};\nfor(int i=0;i<arr.length;i++){\n    System.out.println(arr[i]);\n}\n```",
+        "```java\nint[] arr={1,2,3};\nfor(int num : arr){\n    System.out.println(num);\n}\n```",
+        "A和B都正确",
+        "以上都不对"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0041",
+      "number": "41",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知 `int a=5; int b=2;` 则 `a / b` 的结果是（　）",
+      "options": [
+        "2.5",
+        "2",
+        "3",
+        "2.0"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0042",
+      "number": "42",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于final关键字，以下说法错误的是（　）",
+      "options": [
+        "用final修饰的类不能被继承",
+        "用final修饰的方法不能被重写",
+        "用final修饰的变量不能被重新赋值",
+        "final变量必须在声明时初始化"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0043",
+      "number": "43",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于if-else语句，以下说法正确的是（　）",
+      "options": [
+        "else部分是必须的",
+        "if后面的条件表达式只能是布尔类型",
+        "if语句中不能嵌套if语句",
+        "当if条件为假时，程序直接结束"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0044",
+      "number": "44",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "Java程序的执行过程中，负责将字节码文件转换为机器码的是（　）",
+      "options": [
+        "JDK",
+        "JRE",
+        "JVM",
+        "IDE"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0045",
+      "number": "45",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "对于类的成员变量，若不指定访问修饰符，其默认的访问权限是（　）",
+      "options": [
+        "public",
+        "protected",
+        "private",
+        "default（包访问权限）"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0046",
+      "number": "46",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下代码中，main方法输出结果是（　）\n```java\nclass Parent{\n    public void method(){\n        System.out.println(\"Parent method\");\n    }\n}\nclass Child extends Parent{\n    public void method(){\n        System.out.println(\"Child method\");\n    }\n}\npublic class Test{\n    public static void main(String[] args){\n        Parent parent = new Child();\n        parent.method();\n    }\n}\n```",
+      "options": [
+        "Parent method",
+        "Child method",
+        "编译错误",
+        "运行时错误"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0047",
+      "number": "47",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "泛型方法的正确声明是（　）",
+      "options": [
+        "`public static <T> add(T a,T b){ return a; }`",
+        "`public static add(int a,T b){ return a; }`",
+        "`public static <T> add(T a,T b){ return a; }`",
+        "`public static <T> add(T a,b){ return a; }`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0048",
+      "number": "48",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于内部类的说法，错误的是（　）",
+      "options": [
+        "内部类可以访问外部类的所有成员",
+        "成员内部类可以像外部类的成员一样被访问控制修饰符修饰",
+        "局部内部类只能在其定义的方法内使用",
+        "匿名内部类必须继承一个父类或实现一个接口，不能有构造方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0049",
+      "number": "49",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的继承，下列说法错误的是（　）",
+      "options": [
+        "子类可以继承父类所有属性和方法",
+        "一个子类只能有一个直接父类",
+        "继承可以提高代码的复用性",
+        "子类可以重写父类的方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0050",
+      "number": "50",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下哪种情况体现了Java中的多态（　）",
+      "options": [
+        "父类引用指向子类对象，调用子类重写后的方法",
+        "子类重写父类的多个同名方法",
+        "在同一个类中，多个同名但参数不同的方法",
+        "定义多个变量，变量名相同但变量类型不同"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0051",
+      "number": "51",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面关于Java类的构造方法，说法正确的是（　）",
+      "options": [
+        "构造方法不能有参数",
+        "构造方法名必须与类名相同",
+        "构造方法必须有返回值",
+        "一个类只能有一个构造方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0052",
+      "number": "52",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下代码中，存在编译错误的是（　）\n```java\nclass Animal {\n    public void eat() {\n        System.out.println(\"Animal is eating\");\n    }\n}\nclass Dog extends Animal {\n    public void bark() {\n        System.out.println(\"Dog is barking\");\n    }\n}\npublic static void main(String[] args) {\n    Animal animal = new Dog();\n    animal.bark();\n}\n```",
+      "options": [
+        "无错误",
+        "animal.bark();这行代码",
+        "animal.eat();这行代码",
+        "整个代码都有错误"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0053",
+      "number": "53",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列关于方法重载的描述，错误的是（　）",
+      "options": [
+        "方法重载要求方法名相同",
+        "方法重载要求参数列表不同",
+        "方法重载要求返回类型不同",
+        "方法重载的方法必须处在同一个类中"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0054",
+      "number": "54",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "接口中定义的方法默认的访问修饰符是（　）",
+      "options": [
+        "public",
+        "protected",
+        "private",
+        "default"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0055",
+      "number": "55",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的异常处理，以下说法正确的是（　）",
+      "options": [
+        "异常处理与面向对象无关",
+        "捕获异常后，程序一定会继续执行",
+        "异常分为运行时异常和编译异常",
+        "所有异常都必须使用try-catch处理"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0056",
+      "number": "56",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "接口与抽象类的区别不包括（　）",
+      "options": [
+        "一个类只能继承一个抽象类，但可以实现多个接口",
+        "接口不能有成员变量，抽象类可以有成员变量",
+        "接口中的成员变量默认是public，抽象类中的成员变量默认是default",
+        "接口中不能有构造方法，抽象类可以有构造方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0057",
+      "number": "57",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "在Java中，以下哪种方式不能实现多态的动态绑定（　）",
+      "options": [
+        "通过对象调用普通方法",
+        "通过类名调用静态方法",
+        "通过父类引用调用子类重写的方法",
+        "通过接口调用实现类的方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0058",
+      "number": "58",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于this关键字的说法正确的是（　）",
+      "options": [
+        "this只能在构造方法中使用",
+        "this可以用来调用本类的其他构造方法",
+        "this可以用来调用父类的方法",
+        "this不能用于成员方法中"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0059",
+      "number": "59",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的导入，以下说法错误的是（　）",
+      "options": [
+        "可以使用import语句导入包",
+        "包中的一个类被导入，则包中的所有类都可以直接使用",
+        "包名的大小写不需要与类名大小写区分开",
+        "java.lang包中的类不需要显式导入"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0060",
+      "number": "60",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若要在一个类中定义一个常量，应该使用的关键字是（　）",
+      "options": [
+        "final",
+        "static",
+        "public",
+        "private"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0061",
+      "number": "61",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下代码实现了（　）设计模式的思想\n```java\ninterface Shape { void draw(); }\nclass Circle implements Shape {\n    @Override\n    public void draw() {\n        System.out.println(\"Drawing a circle\");\n    }\n}\nclass Rectangle implements Shape {\n    @Override\n    public void draw() {\n        System.out.println(\"Drawing a rectangle\");\n    }\n}\n```",
+      "options": [
+        "工厂模式",
+        "策略模式",
+        "单例模式",
+        "观察者模式"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0062",
+      "number": "62",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于Java中的泛型，说法错误的是（　）",
+      "options": [
+        "泛型可以提高代码的类型安全性",
+        "泛型可以在编译时进行类型检查",
+        "泛型可以避免强制类型转换",
+        "泛型方法不能在类中单独定义"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0063",
+      "number": "63",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的接口，以下说法正确的是（　）",
+      "options": [
+        "接口中可以定义成员变量",
+        "JDK7中接口里的方法可以有方法体",
+        "一个类只能实现一个接口",
+        "接口不能被实例化"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0064",
+      "number": "64",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下代码中，Test类的main方法输出结果是（　）\n```java\nclass A{\n    int num = 10;\n    public void show(){\n        System.out.println(\"A:\"+num);\n    }\n}\nclass B extends A{\n    int num = 20;\n    public void show(){\n        System.out.println(\"B:\"+num);\n    }\n}\npublic class Test {\n    public static void main(String[] args) {\n        A a = new B();\n        a.show();\n    }\n}\n```",
+      "options": [
+        "A:10",
+        "A:20",
+        "B:10",
+        "B:20"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0065",
+      "number": "65",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "当一个类实现了Serializable接口时，意味着该类的对象可以（　）",
+      "options": [
+        "被序列化保存到文件",
+        "被自动垃圾回收",
+        "被自动克隆",
+        "被自动转化为字符串"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0066",
+      "number": "66",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知int num=10;正确的语句是（　）",
+      "options": [
+        "int num = 10;",
+        "integer num = 10;",
+        "num = 10.0;",
+        "num = null;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0067",
+      "number": "67",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下循环可以输出1到10的代码是（　）",
+      "options": [
+        "for(int i=1;i<=10;i++){System.out.println(i);}",
+        "for(int i=1;i<10;i++){System.out.println(i);}",
+        "for(int i=0;i<=10;i++){System.out.println(i);}",
+        "for(int i=0;i<10;i++){System.out.println(i);}"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0068",
+      "number": "68",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "创建一个长度为5的整型数组，正确的语句是（　）",
+      "options": [
+        "int arr[5];",
+        "int arr[] = new int[5];",
+        "int arr = new int[5];",
+        "int arr[5] = new int[];"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0069",
+      "number": "69",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "获取字符串\"java is fun\"的长度，应使用的方法是（　）",
+      "options": [
+        "str.length()",
+        "str.size()",
+        "str.len()",
+        "str.length"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0070",
+      "number": "70",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于switch语句的说法错误的是（　）",
+      "options": [
+        "switch后面的表达式可以是字符（JDK 7及以上）",
+        "case后面的值必须是常量",
+        "case分支必须都写break语句",
+        "default分支可以放在任意位置"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0071",
+      "number": "71",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面代码中，变量flag的值为（　）\n```java\nboolean flag = 5 > 3 && 2 < 1;\n```",
+      "options": [
+        "true",
+        "false",
+        "null",
+        "编译报错"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0072",
+      "number": "72",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面变量声明正确的语句是（　）",
+      "options": [
+        "final double PI = 3.1415926;",
+        "final float PI = 3.1415926;",
+        "double PI = 3.1415926;",
+        "double PI;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0073",
+      "number": "73",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面关于equals()方法说法正确的是（　）",
+      "options": [
+        "==比较地址，equals()比较内容",
+        "所有类的equals()都自动重写",
+        "String类重写了equals方法用来比较字符内容",
+        "基本类型可以调用equals()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0074",
+      "number": "74",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "子类重写父类的方法，通过父类引用调用子类重写的方法，这属于（　）",
+      "options": [
+        "封装",
+        "继承",
+        "多态",
+        "方法重载"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0075",
+      "number": "75",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "int a=1, b=3; 则 a++ + b++ 的结果为（　）",
+      "options": [
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0076",
+      "number": "76",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "若要将num的值强制转换为float类型，正确的写法是（　）",
+      "options": [
+        "float(num);",
+        "(float)num;",
+        "num float;",
+        "float num;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0077",
+      "number": "77",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Collections工具类的binarySearch()方法，说法正确的是（　）",
+      "options": [
+        "可以在无序集合中查找元素",
+        "要求集合元素必须实现Comparable接口或提供比较器",
+        "返回值是元素在集合中的索引，如果不存在则返回 -1",
+        "以上都正确"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0078",
+      "number": "78",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于Java中多态的说法，正确的是（　）",
+      "options": [
+        "父类引用指向子类对象，调用的是父类中定义的方法",
+        "父类引用指向子类对象，调用的是子类重写后的方法",
+        "子类引用可以指向父类对象",
+        "多态只适用于抽象类，不适用于普通类"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0079",
+      "number": "79",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的静态成员，以下说法正确的是（　）",
+      "options": [
+        "静态变量在对象创建时分配内存",
+        "静态变量在类加载时分配内存",
+        "静态方法中可以使用this关键字",
+        "静态成员不能被子类继承"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0080",
+      "number": "80",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下代码中，说法正确的是（　）\n```java\nclass A {}\nclass B extends A {}\nA a = new B();\n```",
+      "options": [
+        "编译错误，A类型变量不能指向B对象",
+        "运行时错误",
+        "合法，B的对象可以赋值给A类型的变量",
+        "合法，但调用方法时只能调用A类的方法"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0081",
+      "number": "81",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于this关键字，以下说法正确的是（　）",
+      "options": [
+        "this可以用来调用父类的构造方法",
+        "this可以用来调用当前对象的方法",
+        "this可以在静态方法中使用",
+        "this代表的是父类对象"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0082",
+      "number": "82",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于子类继承父类的说法，正确的是（　）",
+      "options": [
+        "子类可以继承父类的私有属性",
+        "子类不能继承父类的私有属性，但可以通过getter/setter方法访问",
+        "子类可以直接访问父类的私有属性",
+        "私有属性不能被子类以任何方式访问"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0083",
+      "number": "83",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的if语句，以下说法正确的是（　）",
+      "options": [
+        "if后面的条件可以是任意类型",
+        "if后面的条件必须是布尔类型的表达式",
+        "if语句中不能使用比较运算符",
+        "if语句必须与else一起使用"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0084",
+      "number": "84",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于字符串连接的说法，正确的是（　）",
+      "options": [
+        "字符串可以使用+号进行连接",
+        "字符串只能使用concat()方法连接",
+        "字符串连接后会改变原字符串的内容",
+        "字符串连接只能连接字符串类型，不能连接其他类型"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0085",
+      "number": "85",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "Java源文件的扩展名是（　）",
+      "options": [
+        ".class",
+        ".java",
+        ".jav",
+        ".jvm"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0086",
+      "number": "86",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中main方法的定义，正确的是（　）",
+      "options": [
+        "`public static void main(String args)`",
+        "`public static void main(String[] args)`",
+        "`public void main(String[] args)`",
+        "`static void main(String[] args)`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0087",
+      "number": "87",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于Java平台版本的说法，正确的是（　）",
+      "options": [
+        "Java SE是标准版，Java EE是企业版，Java ME是微型版",
+        "Java SE是企业版，Java EE是标准版",
+        "Java SE和Java EE功能完全相同",
+        "Java ME是Java的标准版本"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0088",
+      "number": "88",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中包的作用，以下说法正确的是（　）",
+      "options": [
+        "包的主要作用是组织和管理类和接口",
+        "包的主要作用是提高程序运行速度",
+        "包的主要作用是减少内存占用",
+        "包的主要作用是实现多线程"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0089",
+      "number": "89",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的数组，以下说法正确的是（　）",
+      "options": [
+        "数组创建后可以动态增加长度",
+        "数组的长度在创建后不能改变",
+        "数组可以存储不同类型的数据",
+        "数组没有length属性"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0090",
+      "number": "90",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的Vector类，以下说法正确的是（　）",
+      "options": [
+        "Vector是线程安全的",
+        "Vector不是线程安全的",
+        "Vector不能存储对象",
+        "Vector是Map接口的实现类"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0091",
+      "number": "91",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java中的泛型，以下说法正确的是（　）",
+      "options": [
+        "泛型信息在运行时会被保留",
+        "泛型信息在运行时会被擦除",
+        "泛型只能用于集合类",
+        "泛型类型参数可以直接使用基本数据类型"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0092",
+      "number": "92",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下哪个类或接口可以用来获取当前日期（　）",
+      "options": [
+        "String",
+        "Math",
+        "Date",
+        "System"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0093",
+      "number": "93",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "对List集合进行排序，可以使用以下哪个方法（　）",
+      "options": [
+        "Collections.sort()",
+        "Arrays.sort()",
+        "List.sort()（Java 8及以上）",
+        "A和C都正确"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0094",
+      "number": "94",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于LinkedList类，以下说法正确的是（　）",
+      "options": [
+        "LinkedList实现了List接口",
+        "LinkedList实现了Map接口",
+        "LinkedList是线程安全的",
+        "LinkedList不能存储null值"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0095",
+      "number": "95",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "使用Calendar类获取当前年份，正确的方法是（　）",
+      "options": [
+        "`calendar.get(Calendar.YEAR)`",
+        "`calendar.getYear()`",
+        "`calendar.year()`",
+        "`Calendar.getYear()`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0096",
+      "number": "96",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "对数组进行排序，可以使用以下哪个方法（　）",
+      "options": [
+        "Arrays.sort()",
+        "Collections.sort()",
+        "Array.sort()",
+        "List.sort()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0097",
+      "number": "97",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于TreeSet类，以下说法正确的是（　）",
+      "options": [
+        "TreeSet中的元素是无序的",
+        "TreeSet中的元素是有序且不重复的",
+        "TreeSet允许存储重复元素",
+        "TreeSet是List接口的实现类"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0098",
+      "number": "98",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下哪种方式可以正确初始化一个数组（　）",
+      "options": [
+        "int[] arr = {1, 2, 3};",
+        "int[] arr = new int[]{1, 2, 3};",
+        "int arr[] = {1, 2, 3};",
+        "以上都正确"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0099",
+      "number": "99",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "使用Calendar类获取24小时制的小时数，应该使用以下哪个常量（　）",
+      "options": [
+        "Calendar.HOUR",
+        "Calendar.HOUR_OF_DAY",
+        "Calendar.MINUTE",
+        "Calendar.AM_PM"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0100",
+      "number": "100",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于Java 8中的DateTimeFormatter类，以下说法正确的是（　）",
+      "options": [
+        "DateTimeFormatter是线程安全的",
+        "DateTimeFormatter不是线程安全的",
+        "DateTimeFormatter不能格式化日期",
+        "DateTimeFormatter只能解析日期，不能格式化日期"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0101",
+      "number": "101",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下代码中，存在编译错误的是（　）\n```java\npublic class Main {\n    public static void main(String[] args) {\n        int num;\n        System.out.println(num);\n    }\n}\n```",
+      "options": [
+        "无错误",
+        "int num;这行代码",
+        "System.out.println(num);这行代码",
+        "整个代码都有错误"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0102",
+      "number": "102",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知boolean flag = true; 则 !flag 的值为（　）",
+      "options": [
+        "true",
+        "false",
+        "1",
+        "0"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0103",
+      "number": "103",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下关于Java中类和对象的说法，正确的是（　）",
+      "options": [
+        "一个类只能创建一个对象",
+        "对象是类的实例，类是对象的模板",
+        "类和对象没有任何关系",
+        "类必须有构造方法，否则无法创建对象"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0104",
+      "number": "104",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知 int[] arr = {1,2,3,4,5}; 则 arr[2] 的值为（　）",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0105",
+      "number": "105",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "Java语言是由哪家公司开发的（　）",
+      "options": [
+        "Microsoft",
+        "Apple",
+        "Oracle（原Sun Microsystems）",
+        "Google"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0106",
+      "number": "106",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下选项中关于Java集合的说法错误的是（　）",
+      "options": [
+        "List接口中存放的元素有序，可重复",
+        "List接口中存放的元素具有有序，不唯一的特点",
+        "Set接口中存放的元素具有无序，不唯一的特点",
+        "Map接口存放的是映射信息，每个元素都是一个键值对"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0107",
+      "number": "107",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "阅读下面的程序片段：\n```java\nString str = \"abcde\";\nString[] arr = str.split(\"c\");\nSystem.out.println(arr.length);\n```\n程序执行后，打印的结果为（　）",
+      "options": [
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0108",
+      "number": "108",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面对this的作用描述错误的是（　）",
+      "options": [
+        "当成员变量和局部变量重名的时候，可以区分",
+        "this语句必须放在构造函数的第一行，根据this括号中的参数调用本类的其他构造函数",
+        "this可以调用本类的一般函数",
+        "this可以调用父类的一般函数"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0109",
+      "number": "109",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面关于java.util.Random类中方法，说法错误的是（　）",
+      "options": [
+        "nextDouble()方法返回的是0.0和1.0之间double类型的值",
+        "nextFloat()方法返回的是包括指定值(不包括)之间的值",
+        "nextInt(n)返回的是包括0到n(不包括n)之间的值",
+        "nextLong()返回的可以包括2147483647的值"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0110",
+      "number": "110",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "关于封装的描述，下面说法错误的是（　）",
+      "options": [
+        "封装实现隔离",
+        "封装提高复用性",
+        "封装提高安全性",
+        "只有被private修饰才叫做封装"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0111",
+      "number": "111",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "File类的public File[] listFiles()方法的作用是（　）",
+      "options": [
+        "返回文件和目录清单（File对象）",
+        "返回当前目录下生成指定的目录",
+        "在当前目录下生成指定的目录",
+        "判断该File对象所对应的是否是文件"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0112",
+      "number": "112",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "Random对象能够生成以下（　）类型的随机数。",
+      "options": [
+        "int",
+        "long",
+        "double",
+        "A和C"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0113",
+      "number": "113",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列选项中，正确使用了泛型的是（　）",
+      "options": [
+        "ArrayList<String> list = new ArrayList<String>();",
+        "ArrayList list = new ArrayList();",
+        "ArrayList list = new ArrayList<String>();",
+        "ArrayList<String> list = new ArrayList();"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0114",
+      "number": "114",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面的代码运行结果是（　）\n```java\nclass TestA {\n    public void start() { System.out.println(\"TestA\"); }\n}\npublic class TestB extends TestA {\n    public void start() { System.out.println(\"TestB\"); }\n    public static void main(String[] args) {\n        ((TestA)new TestB()).start();\n    }\n}\n```",
+      "options": [
+        "TestA",
+        "TestB",
+        "编译失败",
+        "运行时抛出异常"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0115",
+      "number": "115",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "阅读下面代码：\n```java\npublic static void main(String[] args) {\n    List<String> list = new ArrayList<>();\n    list.add(\"aa\");\n    list.add(\"bb\");\n    Iterator<String> it = list.iterator();\n    while (it.hasNext()) {\n        String str = it.next();\n        if (str.equals(\"aa\")) {\n            list.remove(str);\n        }\n    }\n    System.out.println(list);\n}\n```\n下列选项中，哪一个是程序执行后的结果（　）",
+      "options": [
+        "[bb]",
+        "[aa,bb]",
+        "[]",
+        "以上都不对"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0116",
+      "number": "116",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列有关线程的两种创建方式，说法错误的是（　）",
+      "options": [
+        "继承Thread类、实现Runnable接口两种都可以创建多线程程序",
+        "继承Thread类的方式可以避免Java的单继承带来的局限性",
+        "实现Runnable接口与继承Thread类创建多线程这两种方式没有区别",
+        "大部分的多线程应用都会采用实现Runnable接口方式创建"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0117",
+      "number": "117",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列OutputStream流方法哪个是刷新此输出流并强制写出所有缓冲的输出字节（　）",
+      "options": [
+        "write()",
+        "close()",
+        "flush()",
+        "void()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0118",
+      "number": "118",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列List接口的方法，不是从Collection接口中继承而来的是（　）",
+      "options": [
+        "size()",
+        "add()",
+        "get()",
+        "remove()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0119",
+      "number": "119",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面对于构造方法的描述，错误的是（　）",
+      "options": [
+        "方法名必须和类名相同",
+        "构造方法不能有返回值",
+        "构造方法可以重载",
+        "构造方法的访问权限必须和类的访问权限一致"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0120",
+      "number": "120",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列选项中，对Math.random()方法描述正确的是（　）",
+      "options": [
+        "返回一个不确定的整数",
+        "返回0或是1",
+        "返回一个随机double类型，该数大于等于0.0小于1.0",
+        "返回一个随机int型数，该数大于等于0小于10"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0121",
+      "number": "121",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列关于Thread类的说法中，错误的是（　）",
+      "options": [
+        "Thread类实现了Runnable接口，可以防止出现多父类问题",
+        "Thread类属于java.lang包",
+        "继承Thread的方式定义线程后，写的run方法会在线程的start方法被调用后被JVM自动运行",
+        "继承Thread的方式定义线程后，你不能再继承其他的类了，导致程序的可扩展性大大降低"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0122",
+      "number": "122",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "表达式\"hello\" instanceof String 返回的值是（　）",
+      "options": [
+        "true",
+        "false",
+        "1",
+        "0"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0123",
+      "number": "123",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "已知String对象s=\"abcdefg\"，则s.substring(2,5)的返回值为（　）",
+      "options": [
+        "bcde",
+        "cde",
+        "cdef",
+        "def"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0124",
+      "number": "124",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列选项中，可以正确实现String初始化的是（　）",
+      "options": [
+        "String str = abc;",
+        "String str = \"abc\";",
+        "String str = 'abc';",
+        "String str = abc;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0125",
+      "number": "125",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面的集合能直接获取java.util.Iterator迭代器的是（　）",
+      "options": [
+        "java.util.HashSet",
+        "java.util.ArrayList",
+        "java.util.TreeSet",
+        "以上都对"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0126",
+      "number": "126",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "ActionEvent的对象会被传递给（　）事件处理程序。",
+      "options": [
+        "addChangeListener",
+        "addActionListener",
+        "stateChanged",
+        "actionPerformed"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0127",
+      "number": "127",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "以下集合中，不属于Collection接口的子接口的是（　）",
+      "options": [
+        "List",
+        "Set",
+        "Queue",
+        "Properties"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0128",
+      "number": "128",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "线程生命周期中正确的状态是（　）",
+      "options": [
+        "新建状态、运行状态和终止状态",
+        "新建状态、运行状态、阻塞状态和终止状态",
+        "新建状态、可运行状态、运行状态、阻塞状态和终止状态",
+        "新建状态、可运行状态、运行状态、恢复状态和终止状态"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0129",
+      "number": "129",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "System.in的作用是（　）",
+      "options": [
+        "控制台输入数据的读取",
+        "控制台输出的数据读取",
+        "控制输出的顺序读写",
+        "对文件的随机访问"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0130",
+      "number": "130",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "在Java中，如果父类中的某些方法不包含任何逻辑，并且需要由子类重写，应该使用（　）关键字来声明父类的这些方法。",
+      "options": [
+        "final",
+        "static",
+        "abstract",
+        "void"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0131",
+      "number": "131",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "在程序读入二进制文件时，能够以该文件作为直接参数的类是（　）",
+      "options": [
+        "FileReader",
+        "BufferedReader",
+        "FileInputStream",
+        "ObjectInputStream"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0132",
+      "number": "132",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "假定一个方法会产生非RuntimeException异常，如果希望把异常交给调用该方法的方法处理，正确的声明方式是（　）",
+      "options": [
+        "throw Exception",
+        "throws Exception",
+        "new Exception",
+        "不需要指明什么"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0133",
+      "number": "133",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列关于多态的叙述不正确的是（　）",
+      "options": [
+        "父类的引用指向子类的实例是一种多态",
+        "子类的引用指向父类的实例是一种多态",
+        "接口的引用指向实现该接口类的实例是一种多态",
+        "抽象类的引用指向子类的实例是一种多态"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0134",
+      "number": "134",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列属于受检异常的是（　）",
+      "options": [
+        "RuntimeException",
+        "ClassCastException",
+        "IOException",
+        "ArrayIndexOutOfBoundsException"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0135",
+      "number": "135",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面方法中，可以实现获取字符在某个字符串中第一次出现的索引的是（　）",
+      "options": [
+        "charAt(int index)",
+        "int indexOf(int ch)",
+        "boolean endsWith(String suffix)",
+        "int lastIndexOf(int ch)"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0136",
+      "number": "136",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "请将下列四步进行排列，完成文件的复制操作。\n① 将字节流写入到目标文件；② 关闭流；③ 构建输入流和输出流；④ 循环读写。",
+      "options": [
+        "①②③④",
+        "②①③④",
+        "③①④②",
+        "②③①④"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0137",
+      "number": "137",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "String类中的getBytes()方法的作用是（　）",
+      "options": [
+        "将整数变成字节数组",
+        "将字符串变成字符数组",
+        "将字符串变成字节数组",
+        "获取字符串中字符的个数"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0138",
+      "number": "138",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "StringBuffer类append()方法的返回值类型是（　）",
+      "options": [
+        "String",
+        "void",
+        "StringBuffer",
+        "StringBuilder"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0139",
+      "number": "139",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "File类的public boolean isFile()的作用是（　）",
+      "options": [
+        "判断该对象对应的是否是文件",
+        "判断该对象对应的是否是目录",
+        "在当前目录下生成指定的目录",
+        "在当前目录下生成指定的文件"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0140",
+      "number": "140",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "新建一个流对象，下面选项代码错误的是（　）",
+      "options": [
+        "new BufferedReader(new FileReader(\"a.txt\"));",
+        "new BufferedWriter(new FileOutputStream(\"a.txt\"));",
+        "new ObjectInputStream(new FileInputStream(\"a.txt\"));",
+        "new ObjectOutputStream(new FileOutputStream(\"a.txt\"));"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0141",
+      "number": "141",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "```java\npublic class SimpleDateFormatTest{\n    public static void main(String[] args) throws ParseException {\n        String date = \"1998-01-01\";\n        SimpleDateFormat sdf = new SimpleDateFormat(______);\n        Date date = sdf.parse(date);\n        System.out.println(date);\n    }\n}\n```\n横线处应该填写（　）",
+      "options": [
+        "yyyy-MM-dd",
+        "yyyy/MM/dd",
+        "yyyy.MM.dd",
+        "yyyy-MM-dd HH:mm"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0142",
+      "number": "142",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列代码中，（　）可以填入对应位置，抛出java.lang.ClassCastException异常。\n```java\ninterface F {}\nclass A implements F {}\nclass B extends A {}\npublic static void main(String[] args){\n    F f = new B();\n    //此处代码\n}\n```",
+      "options": [
+        "B b = (B)f;",
+        "A a = (A)f;",
+        "B b = (A)f;",
+        "B b = f;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0143",
+      "number": "143",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "如要读取文件中的中间一段内容，最方便的采用下列（　）流来操作。",
+      "options": [
+        "FileInputStream",
+        "PipedInputStream",
+        "RandomAccessFile",
+        "FileReader"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0144",
+      "number": "144",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "当方法遇到异常又不知如何处理时，下列做法正确的是（　）",
+      "options": [
+        "捕获异常",
+        "抛出异常",
+        "声明异常",
+        "嵌套异常"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0145",
+      "number": "145",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "对于catch子句的排列，正确的是（　）",
+      "options": [
+        "父类在先，子类在后",
+        "子类在先，父类在后",
+        "有继承关系的异常不能在同一个try程序段内",
+        "先有子类，其他如何排列都无关"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0146",
+      "number": "146",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "FileReader的父类是（　）",
+      "options": [
+        "BufferedReader",
+        "InputStreamReader",
+        "Reader",
+        "Writer"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0147",
+      "number": "147",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "无论是否发生异常，都需要执行的是（　）",
+      "options": [
+        "try语句块",
+        "catch语句块",
+        "finally语句块",
+        "return语句"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0148",
+      "number": "148",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下列关于进程和线程的说法中，错误的是（　）",
+      "options": [
+        "操作系统中每个独立执行的程序都可称之为一个进程",
+        "操作系统中的每一个进程中都至少存在一个线程",
+        "线程和进程一样，是由CPU轮流执行的",
+        "线程和进程一样，是由CPU同时执行的"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0149",
+      "number": "149",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "使新创建的线程参与运行调度方法是（　）",
+      "options": [
+        "run()",
+        "start()",
+        "init()",
+        "resume()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0150",
+      "number": "150",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "假若String类的indexOf()方法未能找到所指定的子字符串，则返回以下选项中（　）",
+      "options": [
+        "false",
+        "0",
+        "-1",
+        "以上答案都不对"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0151",
+      "number": "151",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "下面说法中错误的是（　）",
+      "options": [
+        "静态代码块只在类加载后执行一次，以后再创建对象的时候不执行",
+        "局部代码块的作用是为了限制变量的生命周期",
+        "构造代码块在每创建一次对象就执行一次",
+        "以上都不对"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0152",
+      "number": "152",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "File类的public boolean delete()方法的作用是（　）",
+      "options": [
+        "从文件系统内删除该文件",
+        "程序顺利结束时从系统中删除文件",
+        "判断文件是否存在",
+        "当文件不存在时创建文件"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0153",
+      "number": "153",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "当编译并且运行下面程序时会出现（　）结果。\n```java\npublic class ThrowsDemo{\n    static void throwMethod() {\n        System.out.print(\"Inside throwMethod\");\n        throw new IOException(\"demo\");\n    }\n    public static void main(String [] args){\n        try{\n            throwMethod();\n        }catch(IOException e){\n            System.out.println(\"Caught\"+e);\n        }\n    }\n}\n```",
+      "options": [
+        "编译错误",
+        "运行错误",
+        "编译成功，但不会打印出任何结果",
+        "没有输出结果"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0154",
+      "number": "154",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "在oneMethod()方法运行正常的情况下将显示（　）。\n```java\npublic void test() {\n    try {\n        oneMethod();\n        System.out.println(\"condition 1\");\n    } catch (ArrayIndexOutOfBoundsException e) {\n        System.out.println(\"condition 2\");\n    } catch(Exception e) {\n        System.out.println(\"condition 3\");\n    } finally {\n        System.out.println(\"finally\");\n    }\n}\n```",
+      "options": [
+        "condition 1",
+        "condition 2",
+        "condition 3",
+        "condition 1 finally"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    },
+    {
+      "id": "java_0155",
+      "number": "155",
+      "type": "single",
+      "chapter_id": "ch01",
+      "chapter": "Java题库",
+      "content": "Thread类定义于下列（　）包中。",
+      "options": [
+        "java.io",
+        "java.lang",
+        "java.util",
+        "java.awt"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "quizcraft-electron",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Electron shell for QuizCraft CN",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "ELECTRON_START_URL=http://localhost:5173 electron .",
+    "build:web": "npm --prefix ../web-app run build",
+    "start:prod": "npm run build:web && electron ."
+  },
+  "devDependencies": {
+    "electron": "^29.4.6"
+  }
+}

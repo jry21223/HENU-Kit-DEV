@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+
+# Local assistant metadata
+CLAUDE.md
+skills/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Logs
+*.log
+
+# Node
+node_modules/
+web-app/dist/
+
+# Android / Gradle
+android-app/.gradle/
+android-app/build/
+android-app/**/build/
+android-app/local.properties
+android-app/*.jks
+android-app/**/*.jks
+android-app/*.keystore
+android-app/**/*.keystore
+android-app/app/release/
+android-app/app/debug/
+android-app/**/*.apk
+android-app/**/*.aab
+
+# Local runtime data
+rankings_v2.json
+question_stats.json
+tiku/*.json
+exports/
+tmp_sources/
+.ace-tool/
+.claude/

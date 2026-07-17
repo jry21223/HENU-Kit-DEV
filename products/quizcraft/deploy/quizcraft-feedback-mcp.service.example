@@ -1,0 +1,40 @@
+[Unit]
+Description=QuizCraft Feedback MCP service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/quizcraft-cn
+EnvironmentFile=/etc/quizcraft-feedback-mcp.env
+ExecStart=/opt/quizcraft-cn/.venv/bin/python /opt/quizcraft-cn/scripts/feedback_mcp_server.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=full
+ProtectHome=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+UMask=0077
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

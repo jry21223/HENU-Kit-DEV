@@ -1,0 +1,40 @@
+name: Import HENU Kit source repositories
+
+on:
+  push:
+    branches:
+      - codex/henukit-monorepo-foundation
+    paths:
+      - .github/workflows/monorepo-import.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: henukit-monorepo-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out migration branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: codex/henukit-monorepo-foundation
+
+      - name: Configure commit identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Import QuizCraft and legacy HENU Kit planning repository
+        run: bash scripts/monorepo/import-products.sh
+
+      - name: Push imported trees
+        run: git push origin HEAD:codex/henukit-monorepo-foundation

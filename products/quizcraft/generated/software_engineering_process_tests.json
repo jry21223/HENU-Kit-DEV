@@ -1,0 +1,1746 @@
+{
+  "meta": {
+    "name": "软件工程过程性测试",
+    "version": "1.0.0",
+    "created_at": "2026-06-30T23:33:51.804409",
+    "total": 90,
+    "chapter_count": 2,
+    "color": "#1565c0",
+    "key": "software_engineering_process_tests",
+    "source_files": [
+      "软件工程第一次过程性测试_202606249.md",
+      "软件工程第二次过程性测试_202606249.md"
+    ]
+  },
+  "questions": [
+    {
+      "id": "q0001",
+      "number": "1",
+      "type": "single",
+      "content": "在软件开发的各种资源中,( )是最重要的资源。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "硬件环境",
+        "方法",
+        "人员",
+        "开发工具"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0002",
+      "number": "2",
+      "type": "single",
+      "content": "软件开发团队的每一个成员都应该参与计划活动,以便( )。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "开始设计",
+        "所有成员同意该计划",
+        "深入分析需求",
+        "降低计划的粒度"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0003",
+      "number": "3",
+      "type": "single",
+      "content": "软件工程方法的提出源于软件危机,其目的是最终解决软件的( )问题。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "软件危机",
+        "开发效率",
+        "生产过程化",
+        "质量保证"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0004",
+      "number": "4",
+      "type": "single",
+      "content": "软件开发过程中,需求活动的主要任务是( )。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "给出软件解决方案",
+        "定义模块算法",
+        "定义需求并建立系统模型",
+        "给出系统模块结构"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0005",
+      "number": "5",
+      "type": "single",
+      "content": "软件工程学涉及软件开发技术和项目管理学等方面的内容,下述内容中( )不属于开发技术的范畴。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "软件开发方法",
+        "软件开发工具",
+        "软件工程环境",
+        "软件工程经济学"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0006",
+      "number": "6",
+      "type": "single",
+      "content": "面向对象技术中,封装的含义是()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "保证对象内部的数据只能通过操作来访问",
+        "用状态机图来描述对象的行为",
+        "将对象的状态锁定,使之不能被修改",
+        "将对象放入集合"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "q0007",
+      "number": "7",
+      "type": "single",
+      "content": "下列哪项关于对象服务的说法不正确?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "为其他对象完成各种计算服务",
+        "创建新对象、撤销旧对象,修改对象属性等瞬时完成的服务",
+        "对象只有属性和行为,不对外提供服务",
+        "持续检查预设条件是否满足的监控服务"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0008",
+      "number": "8",
+      "type": "single",
+      "content": "以下哪个关于用例建模的说法是正确的?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "用例可以定义系统功能性需求的优先级",
+        "用例的参与者只能是系统用户",
+        "用例能够描述非功能性的需求",
+        "用例建模是对系统进行功能分解的过程"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "q0009",
+      "number": "9",
+      "type": "single",
+      "content": "用例图中,当一个用例只在一定条件下比另一个用例增加少数步骤时,用哪种关系建模最合适?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "uses",
+        "extends",
+        "includes",
+        "inherits"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0010",
+      "number": "10",
+      "type": "single",
+      "content": "软件需求阶段要解决的问题是( )。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "软件提供哪些信息",
+        "软件做什么",
+        "软件采用什么结构",
+        "软件怎么做"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0011",
+      "number": "11",
+      "type": "single",
+      "content": "下面哪项是百货店收银系统的非功能性需求?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "提供新鲜的蔬菜和水果",
+        "为雇员发工资",
+        "设有存包处",
+        "买10个或10个以下商品的客户可以走特殊通道"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0012",
+      "number": "12",
+      "type": "single",
+      "content": "面向对象设计方法中,LSP替换原则要求“子类可以替换父类出现在父类能出现的任何地方”,下面正确的说法是?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "要尽可能多的使用接口进行封装,利用多态技术,扩展时不需要修改源代码",
+        "子类中方法的前置和后置条件不能弱于父类中相应方法的前置和后置条件",
+        "采用契约式设计",
+        "将正方形定义为矩形的子类,符合LSP替换原则的要求"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0013",
+      "number": "13",
+      "type": "single",
+      "content": "在选择软件需求获取技术的时候,以下哪种策略最优?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "综合考虑上述因素",
+        "考虑目前系统所属的行业及应用领域的现状",
+        "考虑尚不了解的那部分需求的特点",
+        "考虑需求工程师本身对各种获取技术的驾驭能力"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "q0014",
+      "number": "14",
+      "type": "single",
+      "content": "在原型法中开发人员根据( )需求不断修改原型,直到满足用户要求为止。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "系统分析员",
+        "用户",
+        "程序员",
+        "开发人员"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0015",
+      "number": "15",
+      "type": "single",
+      "content": "在一个列车控制软件的需求文档中,我们发现了以下两条需求描述:“列车车门在两个停靠站之间要保持关闭”;“列车发生紧急停车时,要打开车门”。这里出现的需求问题是什么?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "含糊的需求",
+        "无法测试的需求",
+        "不完整的需求",
+        "矛盾与不一致的需求"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0016",
+      "number": "16",
+      "type": "single",
+      "content": "软件需求分析阶段建立原型的主要目的是( )。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "确定系统的功能和性能要求",
+        "确定系统的性能要求",
+        "确定系统是否满足开发人员需求",
+        "确定系统是否满足用户要求"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0017",
+      "number": "17",
+      "type": "single",
+      "content": "软件需求管理过程包括需求获取、需求分析、需求规格说明书编写、需求验证以及( )。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "用户参与",
+        "都不正确",
+        "需求变更",
+        "总结"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0018",
+      "number": "18",
+      "type": "single",
+      "content": "下面的( )是正确的。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "故事点估算一定要做到非常精确",
+        "故事点是一个绝对度量单位",
+        "故事点表示开发一个用户故事或特性的复杂度",
+        "故事点表示开发一个用户故事或特性所要付出的工作量"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0019",
+      "number": "19",
+      "type": "single",
+      "content": "在每日站立会议上,下面( )不是每个团队成员需要回答的主要问题。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "你打算到下次Scrum站立会议完成什么?",
+        "从上次Scrum战力会议后你做了什么?",
+        "你遇到哪些障碍或者困难?",
+        "你遇到问题的原因是什么?"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0020",
+      "number": "20",
+      "type": "single",
+      "content": "在攻克技术难题时,最佳的开发团队组织模型是( )。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "矩阵式结构",
+        "民主式结构",
+        "以上所有选项都不是",
+        "主程序员式结构"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0021",
+      "number": "21",
+      "type": "multi",
+      "content": "下面的( )是软件构造活动的任务。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "设计用户界面",
+        "实施组件的单元测试",
+        "评估组件的质量",
+        "构建软件组件"
+      ],
+      "answer": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "q0022",
+      "number": "22",
+      "type": "multi",
+      "content": "面向对象设计中,“设计抽象的接口”的含义错误的是?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "向用户暴露尽可能少的实现细节",
+        "向用户暴露尽可能多的系统实现细节",
+        "不仅仅考虑用户的业务需求,还需考虑设计约束",
+        "让用户决定接口的定义,减少开发人员的决策负担"
+      ],
+      "answer": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "q0023",
+      "number": "23",
+      "type": "multi",
+      "content": "下面的哪些决策不是在需求分析时做出的()。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "自动售票机系统已经达到交付的要求",
+        "自动售票机系统的开发实践预计是6个月",
+        "自动售票机系统将为使用者提供在线帮助",
+        "自动售票机系统由用户界面子系统、价格计算子系统以及与中心计算机通信的网络子系统组成"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "id": "q0024",
+      "number": "24",
+      "type": "multi",
+      "content": "下面的()方法可以用做你向团队成员解释他或她为什么表现不合格。",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "正式报告",
+        "电子邮件",
+        "项目团队会议",
+        "个人谈话"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "id": "q0025",
+      "number": "25",
+      "type": "multi",
+      "content": "以下哪个关于用例建模的说法是错误的?()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "用例的参与者只能是系统用户",
+        "用例能够描述非功能性的需求",
+        "用例建模是对系统进行功能分解的过程",
+        "用例可以定义系统功能性需求的优先级"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "id": "q0026",
+      "number": "26",
+      "type": "judge",
+      "content": "用例图中,当一个用例只在一定条件下比另一个用例增加少数步骤时,用extends关系建模最合适。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0027",
+      "number": "27",
+      "type": "judge",
+      "content": "用户行为数据采集方法是面向创新型产品的需求获取方法。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0028",
+      "number": "28",
+      "type": "judge",
+      "content": "软件配置管理的目的是降低开发成本。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0029",
+      "number": "29",
+      "type": "judge",
+      "content": "获取软件系统需求的来源不包括系统相关领域的法律法规。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0030",
+      "number": "30",
+      "type": "judge",
+      "content": "功能点估算及时需要以项目进度为基础进行问题分解。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0031",
+      "number": "31",
+      "type": "judge",
+      "content": "软件开发中的最大的问题不是管理问题,而是技术问题。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0032",
+      "number": "32",
+      "type": "judge",
+      "content": "经验估算模型是基于来自历史项目数据的回归模型。()",
+      "analysis": "原始题库答案缺失，导入时按人工核对结果补正。",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0033",
+      "number": "33",
+      "type": "judge",
+      "content": "用户故事可以用于估算;用例描述则不能用于估算。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0034",
+      "number": "34",
+      "type": "judge",
+      "content": "采用敏捷开发时,需求在一个Sprint中允许变化。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0035",
+      "number": "35",
+      "type": "judge",
+      "content": "开发一个铁路信号控制系统最适合采用可转换模型。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0036",
+      "number": "36",
+      "type": "judge",
+      "content": "故事点表示开发一个用户故事或特性所要付出的工作量。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0037",
+      "number": "37",
+      "type": "judge",
+      "content": "开发一个支持3D打印的操作系统最适合采用原型化模型。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0038",
+      "number": "38",
+      "type": "judge",
+      "content": "XP(极限编程)是由Kent Beck提出的一套针对业务需求和软件开发时间的规则,包括13个核心实践。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0039",
+      "number": "39",
+      "type": "judge",
+      "content": "组织每日站立会议不属于产品负责人(Product Owner)的职责范围。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0040",
+      "number": "40",
+      "type": "judge",
+      "content": "高效项目团队建设的团队成员不超过10人。()",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0041",
+      "number": "41",
+      "type": "judge",
+      "content": "软件需求工程师的职责不包括控制项目的风险。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0042",
+      "number": "42",
+      "type": "judge",
+      "content": "在敏捷开发方法中,用户故事(User Story)的作用是定义需要发布给最终用户的软件特性和功能和用于估算构建当前增量所需要的努力。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0043",
+      "number": "43",
+      "type": "judge",
+      "content": "Enterprise Architecture工具可以进行用例建模。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0044",
+      "number": "44",
+      "type": "judge",
+      "content": "面向对象设计方法中,开闭原则的含义是要尽可能多的使用接口进行封装,利用多态技术,扩展时不需修改源代码。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0045",
+      "number": "45",
+      "type": "judge",
+      "content": "采用CRC卡片分拣法的分析过程的步骤中不含建立系统的类设计模型。( )",
+      "analysis": "",
+      "chapter": "软件工程第一次过程性测试",
+      "chapter_id": "ch01",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0046",
+      "number": "1",
+      "type": "single",
+      "content": "黑盒测试是根据程序的()来设计测试用例。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "功能",
+        "需求规格说明",
+        "内部数据",
+        "内部逻辑"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0047",
+      "number": "2",
+      "type": "single",
+      "content": "()是从现有的程序代码中抽取有关数据、体系结构和处理过程的设计信息,以便恢复设计结果。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "代码重构",
+        "正向工程",
+        "数据重构",
+        "逆向工程"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0048",
+      "number": "3",
+      "type": "single",
+      "content": "一个创业团队想要开发一款社交App，但是他们对于可能的发展的业务仍不十分明确，此时希望能够开发一个相对简单的版本进行原始的需求验证与测试，这种情况比较适合选择（ ）数据库。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "Mysql",
+        "Mongo",
+        "以上选项都可以",
+        "Redis"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0049",
+      "number": "4",
+      "type": "single",
+      "content": "人们不会把 [ ]( )[ ] 中的“](”认作一对，原因是视觉认知中的（ ）定律在起作用。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "连续律",
+        "相似律",
+        "对称律",
+        "接近律"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0050",
+      "number": "5",
+      "type": "single",
+      "content": "()是为了获得高质量软件而实施的一系列活动,包括问题定义、需求开发、软件设计、软件构造、软件测试等。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "软件配置管理",
+        "软件项目管理",
+        "软件过程",
+        "软件工程"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0051",
+      "number": "6",
+      "type": "single",
+      "content": "()是为了有效地发现软件缺陷而精心设计的少量测试数据。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "缺陷报告",
+        "测试计划",
+        "测试用例",
+        "测试报告"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0052",
+      "number": "7",
+      "type": "single",
+      "content": "()是增加或修改系统功能,使其适应业务的变化。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "适应性维护",
+        "改正性维护",
+        "完善性维护",
+        "预防性维护"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0053",
+      "number": "8",
+      "type": "single",
+      "content": "关于等价类划分,下面的()说法是正确的。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "为了提高测试效率,一个测试用例可以覆盖多个有效等价类",
+        "同一输入域的等价类划分是唯一的",
+        "等价类划分是一种常用的白盒测试方法",
+        "等价类划分是将输入域划分成尽可能少的若干子域"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "q0054",
+      "number": "9",
+      "type": "single",
+      "content": "下面的()需求获取方法最适用于身处多个不同地点的人在各自方便的时间参与,围绕同一个主题表达自己的观点。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "群体诱导",
+        "面谈",
+        "问卷调查",
+        "文档分析"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0055",
+      "number": "10",
+      "type": "single",
+      "content": "下面的()是对提高程序编码效率没有影响的。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "选择良好的数据结构",
+        "选择良好的算法",
+        "变量名的使用",
+        "选择良好的设计方法"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "q0056",
+      "number": "11",
+      "type": "single",
+      "content": "()是将一个复杂问题分解成若干个简单问题,然后逐个解决。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "优化折中",
+        "分而治之",
+        "软件复用",
+        "逐步演进"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0057",
+      "number": "12",
+      "type": "single",
+      "content": "下面的()需求获取方法最适用于身处多个不同地点的人在各自方便的时间参与,围绕同一个主题表达自己的观点。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "问卷调查",
+        "面谈",
+        "群体诱导",
+        "文档分析"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "q0058",
+      "number": "13",
+      "type": "single",
+      "content": "软件工程方法是()。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "为支持软件开发、维护、管理而研制的计算机程序系统",
+        "为了获得高质量软件而实施的一系列活动",
+        "为了理解问题和确定需求而采取的一些技术和方法",
+        "为开发软件提供技术上的解决方法"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0059",
+      "number": "14",
+      "type": "single",
+      "content": "()是由于计算机软件和硬件环境变化而修改软件的过程。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "改正性维护",
+        "预防性维护",
+        "完善性维护",
+        "适应性维护"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0060",
+      "number": "15",
+      "type": "single",
+      "content": "下面的()不属于系统总体设计的任务。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "明确系统设计目标",
+        "选择系统部署方案",
+        "确定子系统或模块",
+        "设计数据结构与算法"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0061",
+      "number": "16",
+      "type": "single",
+      "content": "单元测试内容不包括()。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "全局数据结构",
+        "独立路径",
+        "出错处理",
+        "模块接口"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "q0062",
+      "number": "17",
+      "type": "single",
+      "content": "如今社交文化横行，大数据分析遍地，几乎所有的应用与产品都多少会与社交网络或大用户量、大数据相关联。如果准备开发一个较完整的社交网络应用，支持10万以上日活跃用户进行各种点赞、评论等交互活动，应该采用（ ）数据库或数据库组合。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "Mysql",
+        "Mysql + Redis",
+        "Mongo",
+        "Mongo + Redis"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0063",
+      "number": "18",
+      "type": "single",
+      "content": "下面的()不是性能测试的目的。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "评估软件系统的稳定性和可靠性",
+        "达到百分之百的语句覆盖",
+        "验证软件系统是否能够满足预期的性能要求",
+        "发现软件系统中存在的性能瓶颈"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0064",
+      "number": "19",
+      "type": "single",
+      "content": "下面的()是Scrum方法的优点。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "提高投入产出比",
+        "持续快速地发布可用的软件产品",
+        "降低变更对软件开发造成的风险",
+        "以上所有选项"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "q0065",
+      "number": "20",
+      "type": "single",
+      "content": "对顺序图与用例之间关系的阐述，错误的是（ ）。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "顺序图可帮助分析人员对用例图进行扩展、细化和补遗",
+        "用例分析阶段的顺序图要包含设计对象，并关注消息参数",
+        "顺序图用于表示为完成用例而在系统边界输入输出的数据以及消息",
+        "顺序图表达单个情景实例的行为，每个用例对应一个顺序图"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "q0066",
+      "number": "21",
+      "type": "multi",
+      "content": "下面的()是敏捷开发的基本原则。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "坚持不懈地追求技术卓越和良好设计",
+        "严格遵循计划和流程",
+        "要面对面进行交流",
+        "尽早和持续地交付有价值的软件"
+      ],
+      "answer": [
+        0,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "q0067",
+      "number": "22",
+      "type": "multi",
+      "content": "良好设计的特征是（ ）。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "实现分析模型中的所有需求",
+        "包括所有组件的测试用例",
+        "模块之间呈现高耦合",
+        "提供软件的完整描述"
+      ],
+      "answer": [
+        0,
+        3
+      ]
+    },
+    {
+      "id": "q0068",
+      "number": "23",
+      "type": "multi",
+      "content": "下面的()是测试用例的设计要求。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "寻求系统设计和功能设计的弱点",
+        "只需选取合理的输入数据",
+        "考虑用户实际的诸多使用场景",
+        "具有代表性和典型性"
+      ],
+      "answer": [
+        0,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "q0069",
+      "number": "24",
+      "type": "multi",
+      "content": "关于等价类划分法,不正确的说法是()。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "将所有可能的输入数据作为测试用例",
+        "运用场景对系统的功能点或业务流程进行描述,对应不同的业务场景生成相应的测试用例",
+        "根据经验或直觉推测程序中可能发生错误的情况,编写检查它们的测试用例",
+        "将输入数据划分成若干个等价类,从中选取有代表性的数据作为测试用例"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "id": "q0070",
+      "number": "25",
+      "type": "multi",
+      "content": "Web应用功能测试主要用来测试Web应用软件是否履行了预期功能,包括()。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "options": [
+        "Cookies测试",
+        "链接测试",
+        "表单测试",
+        "内容测试"
+      ],
+      "answer": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "q0071",
+      "number": "26",
+      "type": "judge",
+      "content": "顺序图的组合控制框（Frame）中，用于表达分支选择关系的控制符是loop。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0072",
+      "number": "27",
+      "type": "judge",
+      "content": "系统的性能测试包括压力测试、容量测试、安全测试和可靠性测试等。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0073",
+      "number": "28",
+      "type": "judge",
+      "content": "用同一等价类中的任意输入对软件进行测试,软件都输出相同的结果。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0074",
+      "number": "29",
+      "type": "judge",
+      "content": "好的命名应一目了然,不需要读者去猜,甚至不需要注释。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0075",
+      "number": "30",
+      "type": "judge",
+      "content": "影响维护成本的因素与团队的合作能力和稳定性有关,与团队成员的技术水平关系不大。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0076",
+      "number": "31",
+      "type": "judge",
+      "content": "造成大型软件开发困难的根本原因在于项目开发进度不合理。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0077",
+      "number": "32",
+      "type": "judge",
+      "content": "提高模块的可靠性和复用性是模块化设计的目的之一。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0078",
+      "number": "33",
+      "type": "judge",
+      "content": "软件需求工程师的职责是控制项目的风险。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0079",
+      "number": "34",
+      "type": "judge",
+      "content": "软件维护的工作就是为了改正软件的缺陷而对软件进行修改,修改通常发生在局部,一般不会改变系统的整体结构。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0080",
+      "number": "35",
+      "type": "judge",
+      "content": "“我们的任务是提供叫车与车辆信息服务来解决司机与乘客的问题” 描述了“滴滴打车”的业务需求。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0081",
+      "number": "36",
+      "type": "judge",
+      "content": "白盒测试是静态测试,黑盒测试是动态测试。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0082",
+      "number": "37",
+      "type": "judge",
+      "content": "顺序图中带条件消息的发送，不能分成多个顺序图子图来描述。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0083",
+      "number": "38",
+      "type": "judge",
+      "content": "第一个装载GUI操作系统的计算机是微软公司的Windows。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    },
+    {
+      "id": "q0084",
+      "number": "39",
+      "type": "judge",
+      "content": "在软件配置管理中,基线的目的是合理控制变更。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0085",
+      "number": "40",
+      "type": "judge",
+      "content": "动态测试可以使用手工测试或自动化测试的方式进行。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0086",
+      "number": "41",
+      "type": "judge",
+      "content": "软件再工程的成本比重新开发软件的成本要小得多。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0087",
+      "number": "42",
+      "type": "judge",
+      "content": "软件工程的基本目标是开发足够好的软件。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0088",
+      "number": "43",
+      "type": "judge",
+      "content": "条件组合覆盖是最强的逻辑覆盖准则。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0089",
+      "number": "44",
+      "type": "judge",
+      "content": "软件维护工作需要长期进行,导致维护的成本不断增加。( )",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": true,
+      "options": null
+    },
+    {
+      "id": "q0090",
+      "number": "45",
+      "type": "judge",
+      "content": "在MVC、Restful API、RPC架构中，MVC架构可以更好地实现Web应用的前后端分离。",
+      "analysis": "",
+      "chapter": "软件工程第二次过程性测试",
+      "chapter_id": "ch02",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "answer": false,
+      "options": null
+    }
+  ]
+}

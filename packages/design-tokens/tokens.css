@@ -1,0 +1,62 @@
+:root {
+  /* Brand colors — HENU Kit internal naming, not Henan University official VI. */
+  --hk-ink-green: #0c6b45;
+  --hk-ink-green-deep: #05603a;
+  --hk-ink-green-soft: #e4efe9;
+  --hk-paper: #f5f1e7;
+  --hk-paper-raised: #ffffff;
+  --hk-paper-line: #e9e6db;
+  --hk-ink: #343d36;
+  --hk-ink-muted: #6f766f;
+  --hk-wheat-gold: #f0be44;
+  --hk-wheat-gold-soft: #f8e8b4;
+
+  /* Semantic colors. */
+  --hk-success: #0c6b45;
+  --hk-warning: #9a6500;
+  --hk-danger: #b42318;
+  --hk-info: #175cd3;
+  --hk-focus-ring: #2e90fa;
+
+  /* Typography. */
+  --hk-font-sans: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --hk-font-size-body: 1rem;
+  --hk-font-size-meta: 0.875rem;
+  --hk-line-height-body: 1.7;
+
+  /* Spacing. */
+  --hk-space-1: 0.25rem;
+  --hk-space-2: 0.5rem;
+  --hk-space-3: 0.75rem;
+  --hk-space-4: 1rem;
+  --hk-space-6: 1.5rem;
+  --hk-space-8: 2rem;
+  --hk-space-12: 3rem;
+  --hk-space-16: 4rem;
+
+  /* Shape and elevation. */
+  --hk-radius-control: 0.75rem;
+  --hk-radius-card: 0.75rem;
+  --hk-radius-feature: 1.25rem;
+  --hk-border-width: 1px;
+  --hk-shadow-card: 0 8px 24px rgb(52 61 54 / 8%);
+
+  /* Motion. */
+  --hk-duration-fast: 120ms;
+  --hk-duration-normal: 200ms;
+  --hk-duration-book-open: 800ms;
+  --hk-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Layout. */
+  --hk-content-max: 72rem;
+  --hk-reading-max: 72ch;
+  --hk-touch-target: 2.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --hk-duration-fast: 0ms;
+    --hk-duration-normal: 0ms;
+    --hk-duration-book-open: 0ms;
+  }
+}

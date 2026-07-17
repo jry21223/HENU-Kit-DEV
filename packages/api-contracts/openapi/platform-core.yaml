@@ -1,0 +1,421 @@
+openapi: 3.1.0
+info:
+  title: HENU Kit Platform Core API
+  version: 0.1.0
+  description: |
+    HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
+servers:
+  - url: https://account.henukit.cn/api/v1
+    description: Production account origin
+  - url: http://localhost:8081/api/v1
+    description: Local development
+
+tags:
+  - name: Health
+  - name: Verification
+  - name: Authorization
+  - name: Sessions
+  - name: Internal Events
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /readyz:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Readiness probe
+      responses:
+        "200":
+          description: Dependencies are ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /verification-codes:
+    post:
+      tags: [Verification]
+      operationId: requestVerificationCode
+      summary: 请求学生邮箱验证码
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, purpose]
+              properties:
+                email:
+                  type: string
+                  format: email
+                purpose:
+                  type: string
+                  enum: [login, bind_email, security]
+                client_id:
+                  type: string
+      responses:
+        "202":
+          description: Verification delivery accepted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [expires_at, resend_after]
+                        properties:
+                          expires_at:
+                            type: string
+                            format: date-time
+                          resend_after:
+                            type: string
+                            format: date-time
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /verification-codes/verify:
+    post:
+      tags: [Verification]
+      operationId: verifyVerificationCode
+      summary: 验证学生邮箱验证码
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, purpose]
+              properties:
+                email:
+                  type: string
+                  format: email
+                code:
+                  type: string
+                  minLength: 6
+                  maxLength: 10
+                purpose:
+                  type: string
+                  enum: [login, bind_email, security]
+                login_intent_id:
+                  type: string
+      responses:
+        "200":
+          description: Verification succeeded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [verification_id]
+                        properties:
+                          verification_id:
+                            type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /oauth/token:
+    post:
+      tags: [Authorization]
+      operationId: exchangeAuthorizationCode
+      summary: 业务站后端交换一次性授权码
+      security:
+        - clientSecret: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grant_type, code, redirect_uri, client_id]
+              properties:
+                grant_type:
+                  type: string
+                  const: authorization_code
+                code:
+                  type: string
+                redirect_uri:
+                  type: string
+                  format: uri
+                client_id:
+                  type: string
+                code_verifier:
+                  type: string
+      responses:
+        "200":
+          description: Authorization code exchanged
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [user]
+                        properties:
+                          user:
+                            $ref: "#/components/schemas/PlatformUser"
+                          session_exchange_token:
+                            type: string
+                            description: Short-lived token for the requesting backend only; never place in URL or browser storage.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /sessions/revoke:
+    post:
+      tags: [Sessions]
+      operationId: revokeSession
+      summary: 撤销当前或指定平台会话
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                all_sessions:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Session revoked or already revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /internal/events:
+    post:
+      tags: [Internal Events]
+      operationId: publishBusinessEvent
+      summary: 业务服务提交标准事件
+      security:
+        - serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: X-HENU-Service-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-HENU-Timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-HENU-Nonce
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventEnvelope"
+      responses:
+        "202":
+          description: Event accepted or already accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    clientSecret:
+      type: http
+      scheme: basic
+    serviceHmac:
+      type: apiKey
+      in: header
+      name: X-HENU-Signature
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Required for retryable writes that can produce durable side effects.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
+
+  schemas:
+    RequestId:
+      type: string
+      pattern: '^req_[A-Za-z0-9_-]+$'
+
+    SuccessEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data: {}
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    ErrorObject:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-Z0-9_]+$'
+        message:
+          type: string
+        details:
+          nullable: true
+
+    ErrorEnvelope:
+      type: object
+      required: [error, request_id]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    PlatformUser:
+      type: object
+      required: [user_id, email_verified, status, created_at]
+      properties:
+        user_id:
+          type: string
+        email_verified:
+          type: boolean
+        status:
+          type: string
+          enum: [active, suspended, deleted]
+        created_at:
+          type: string
+          format: date-time
+
+    EventEnvelope:
+      type: object
+      required:
+        - event_id
+        - event_type
+        - schema_version
+        - occurred_at
+        - producer
+        - idempotency_key
+        - payload
+      properties:
+        event_id:
+          type: string
+        event_type:
+          type: string
+          enum:
+            - submission.received
+            - submission.approved
+            - submission.rejected
+            - correction.resolved
+            - points.credited
+            - school_notice.created
+            - school_notice.updated
+        schema_version:
+          type: integer
+          minimum: 1
+        occurred_at:
+          type: string
+          format: date-time
+        producer:
+          type: string
+        subject_user_id:
+          type: [string, 'null']
+        idempotency_key:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: State conflict or replay
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ServiceUnavailable:
+      description: Dependency unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"

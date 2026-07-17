@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://henukit.cn/schemas/events/event-envelope.schema.json",
+  "title": "HENU Kit Business Event Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "occurred_at",
+    "producer",
+    "idempotency_key",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "submission.received",
+        "submission.approved",
+        "submission.rejected",
+        "correction.resolved",
+        "points.credited",
+        "school_notice.created",
+        "school_notice.updated"
+      ]
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "subject_user_id": {
+      "type": ["string", "null"],
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 200
+    },
+    "trace_id": {
+      "type": ["string", "null"],
+      "maxLength": 128
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+sixiu_2026_summer_0014: option count issue: 绪论+第一章 领悟人生真谛 把握人生方向 single #14 options=8
+sixiu_2026_summer_0024: option count issue: 绪论+第一章 领悟人生真谛 把握人生方向 single #25 options=8
+sixiu_2026_summer_0054: option count issue: 第二章 追求远大理想 坚定崇高信念 single #1 options=8
+sixiu_2026_summer_0111: option count issue: 第四章 明确价值要求 践行价值准则 single #5 options=8
+sixiu_2026_summer_0156: option count issue: 第五章 遵守道德规范 锤炼道德品格 single #15 options=8
+sixiu_2026_summer_0160: option count issue: 第五章 遵守道德规范 锤炼道德品格 single #20 options=8
+sixiu_2026_summer_0166: option count issue: 第五章 遵守道德规范 锤炼道德品格 single #27 options=8
+sixiu_2026_summer_0283: option count issue: 第六章 学习法治思想 提升法治素养 multi #12 options=8

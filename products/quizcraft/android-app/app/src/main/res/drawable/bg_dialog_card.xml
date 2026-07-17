@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 弹窗卡片背景：白色 + 圆角 + 阴影（匹配网站 card 风格） -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 底部阴影层 -->
+    <item
+        android:left="0dp"
+        android:right="0dp"
+        android:top="4dp"
+        android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#1A000000" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+    <!-- 白色主体层 -->
+    <item
+        android:left="0dp"
+        android:right="0dp"
+        android:top="0dp"
+        android:bottom="0dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+</layer-list>

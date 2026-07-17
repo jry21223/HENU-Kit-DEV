@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://henukit.cn/schemas/access-context.schema.json",
+  "title": "HENU Kit Access Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "actor_type",
+    "roles",
+    "membership",
+    "entitlements",
+    "authorization_version"
+  ],
+  "properties": {
+    "actor_type": {
+      "type": "string",
+      "enum": ["guest", "user", "service"]
+    },
+    "user_id": {
+      "type": ["string", "null"]
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "scope_type"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "student",
+              "creator",
+              "reviewer",
+              "operator",
+              "admin",
+              "super_admin"
+            ]
+          },
+          "scope_type": {
+            "type": "string",
+            "enum": ["platform", "product", "course", "bank"]
+          },
+          "scope_id": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "status"],
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": ["free", "vip"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "expired", "revoked"]
+        },
+        "expires_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    },
+    "entitlements": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.-]+$"
+      }
+    },
+    "authorization_version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "actor_type": {"const": "user"}
+        }
+      },
+      "then": {
+        "required": ["user_id"]
+      }
+    }
+  ]
+}

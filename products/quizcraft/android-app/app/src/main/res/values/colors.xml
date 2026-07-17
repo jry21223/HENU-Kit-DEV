@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主色：匹配网站 Tailwind blue-500 -->
+    <color name="primary">#3B82F6</color>
+    <color name="primary_dark">#2563EB</color>
+    <color name="primary_light">#DBEAFE</color>
+    <color name="primary_surface">#EFF6FF</color>
+    <color name="accent">#F59E0B</color>
+    <color name="accent_light">#FEF3C7</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="text_primary">#1F2937</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="text_muted">#9CA3AF</color>
+    <color name="border_light">#E5E7EB</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="bg_gradient_start">#EFF6FF</color>
+    <color name="bg_gradient_end">#F9FAFB</color>
+    <color name="qq_highlight">#EC4899</color>
+    <color name="divider">#F3F4F6</color>
+</resources>

@@ -1,0 +1,43 @@
+{
+  "name": "quiz-app",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:ops": "vite --mode ops",
+    "build": "node scripts/check-admin-session.mjs && tsc && vite build && node scripts/check-admin-session.mjs --dist",
+    "build:ops": "node scripts/check-admin-session.mjs && tsc && vite build --mode ops && node scripts/check-admin-session.mjs --dist",
+    "preview": "vite preview",
+    "preview:ops": "vite preview --mode ops",
+    "lint": "eslint . --ext ts,tsx",
+    "test:syntax": "node scripts/check-admin-session.mjs && node scripts/check-answer-submission.mjs && node scripts/check-code-syntax-scope.mjs && node scripts/check-quiz-auto-advance.mjs && node scripts/check-option-layout.mjs && node scripts/check-quiz-visual-states.mjs"
+  },
+  "dependencies": {
+    "axios": "^1.18.1",
+    "clsx": "^2.0.0",
+    "framer-motion": "^10.16.16",
+    "lucide-react": "^0.294.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/parser": "^8.62.1",
+    "@vitejs/plugin-react": "^6.0.3",
+    "autoprefixer": "^10.4.16",
+    "esbuild": "^0.28.1",
+    "eslint": "^8.55.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "playwright": "^1.61.1",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.2.2",
+    "vite": "^8.1.0"
+  }
+}
