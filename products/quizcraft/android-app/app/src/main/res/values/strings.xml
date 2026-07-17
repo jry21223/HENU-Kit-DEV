@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">刷题助手</string>
+    <string name="toast_loading">祝大家考试顺利</string>
+    <string name="dialog_title">刷题助手</string>
+    <string name="dialog_message">祝各位考试顺利！\n\n刷题遇到错题、页面异常可加QQ群\n网站维护、域名变更通知都会在群内同步\n页面底部可查看群二维码</string>
+    <string name="dialog_stay">留在APP</string>
+    <string name="dialog_exit">退出程序</string>
+</resources>

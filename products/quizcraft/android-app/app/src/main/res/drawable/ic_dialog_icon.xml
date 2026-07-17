@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 弹窗图标：蓝色圆角方块 + 白色对勾 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="36dp"
+    android:viewportWidth="36"
+    android:viewportHeight="36">
+    <!-- 蓝色圆角背景 -->
+    <path
+        android:fillColor="#3B82F6"
+        android:pathData="M4,0h28a4,4 0,0 1,4 4v28a4,4 0,0 1,-4 4h-28a4,4 0,0 1,-4 -4v-28a4,4 0,0 1,4 -4z" />
+    <!-- 白色对勾 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M10,18 L16,24 L26,12"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

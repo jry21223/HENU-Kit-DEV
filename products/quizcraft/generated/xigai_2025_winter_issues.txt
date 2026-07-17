@@ -1,0 +1,9 @@
+option count issue: 第一章 新时代坚持和发展中国特色社会主义 multi #6 options=2
+option count issue: 第四章 坚持以人民为中心 multi #3 options=3
+option count issue: 第四章 坚持以人民为中心 multi #4 options=3
+option count issue: 第四章 坚持以人民为中心 multi #5 options=3
+option count issue: 第五章 全面深化改革开放 multi #1 options=0
+option count issue: 第五章 全面深化改革开放 multi #2 options=3
+option count issue: 第五章 全面深化改革开放 multi #3 options=0
+option count issue: 第十一章 以保障和改善民生为重点加强社会建设 single #7 options=3
+option count issue: 第十二章 建设社会主义生态文明 multi #3 options=3

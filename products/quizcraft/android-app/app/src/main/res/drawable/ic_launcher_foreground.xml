@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 刷题助手图标：白底 + 白色圆圈 + 蓝色对勾 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="22"
+        android:translateY="22">
+        <!-- 白色圆形背景 -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M32,4 A28,28 0 1,1 32,60 A28,28 0 1,1 32,4 Z" />
+        <!-- 蓝色对勾 -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M18,33 L27,43 L47,21"
+            android:strokeWidth="5"
+            android:strokeColor="#3B82F6"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>
