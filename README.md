@@ -1,10 +1,16 @@
 # HENU Kit Monorepo
 
-> 当前仓库名称仍为 `final-review-platform`，目标是在迁移完成并通过发布验收后改名为 `HENU-Kit`。本分支用于完成仓库级重构，不直接改变线上流量。
+> 当前仓库名称仍为 `final-review-platform`，目标是在迁移完成并通过发布验收后改名为 `HENUKitDev`。现有公开仓库 `jry21223/HENU-Kit` 保持原名，不被替换。本分支用于完成仓库级重构，不直接改变线上流量。
 
 HENU Kit 是由河南大学学生自主发起并维护的统一校园工具系统。它不是简单的网站导航集合，也不是河南大学官方产品，不代表学校官方立场。
 
 > 学生自主运营 · 非河南大学官方项目
+
+## 仓库分工
+
+- `HENUKitDev`：实际 Monorepo 开发仓库，承载产品代码、平台核心、契约、测试和部署配置。
+- `HENU-Kit`：继续作为公开项目入口，承载公开介绍、项目索引、路线图和社区信息。
+- 两个仓库不并行维护同一份实现代码；公开内容经评审后从开发仓同步。
 
 ## 产品结构
 
@@ -17,6 +23,16 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 - **平台核心**：统一账户、邮件、通知、事件、用户统计、服务间认证和 API 契约，不作为首页一级入口。
 
 资料库不再开发或展示第二套刷题流程。资料页中的“去刷题”只负责携带课程上下文跳转到 QuizCraft。
+
+## 身份与权益基线
+
+平台从第一阶段开始区分：
+
+- 主体类型：游客、登录用户、服务账号。
+- 权限角色：学生、创作者、审核员、运营、管理员、超级管理员。
+- 会员权益：免费学生、VIP 学生。VIP 是权益档位，不是管理角色。
+
+游客不写入 `users` 表，可使用业务站本地的不可猜测匿名会话。一个用户可以同时拥有多个可限定作用域的角色。详细规则见 [`docs/architecture/ACCESS_CONTROL.md`](docs/architecture/ACCESS_CONTROL.md)。
 
 ## 当前迁移状态
 
@@ -39,6 +55,7 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 完整结构、迁移顺序和兼容策略见：
 
 - [`docs/architecture/MONOREPO_ARCHITECTURE.md`](docs/architecture/MONOREPO_ARCHITECTURE.md)
+- [`docs/architecture/ACCESS_CONTROL.md`](docs/architecture/ACCESS_CONTROL.md)
 - [`docs/migrations/FINAL_REVIEW_TO_HENUKIT.md`](docs/migrations/FINAL_REVIEW_TO_HENUKIT.md)
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)
 - [`docs/product/PRODUCT_BOUNDARIES.md`](docs/product/PRODUCT_BOUNDARIES.md)
@@ -51,7 +68,8 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 3. **QuizCraft 逐接口迁移。** 第一阶段继续使用 FastAPI；新 Go 平台核心只接管公共能力。题库读取、作答、排行榜和题库工坊按契约测试、影子流量、双读/双算和功能开关逐批迁移。
 4. **数据 Owner 唯一。** 用户归平台核心，资料归资料库，题目和作答归 QuizCraft，业务模块不得直接读取平台核心数据库。
 5. **OpenAPI 驱动。** 新平台接口以 `/api/v1`、`snake_case`、UTC ISO 8601 和统一响应包络为标准；旧接口通过兼容层渐进接入。
-6. **品牌不冒充官方。** 主色称为“Kit 墨绿”，不得称为河南大学官方标准色；所有公开产品固定展示非官方声明。
+6. **角色与权益分离。** 角色决定管理行为，会员和 entitlement 决定内容、额度和增强功能；VIP 不获得审核或管理权限。
+7. **品牌不冒充官方。** 主色称为“Kit 墨绿”，不得称为河南大学官方标准色；所有公开产品固定展示非官方声明。
 
 ## 资料库体验约束
 
@@ -87,9 +105,10 @@ cd ../worker && go test ./...
 - 不提交邮箱验证码、Token、Cookie、JWT 私钥、支付密钥、LLM Key 或真实课程资料。
 - 不允许业务模块直接连接平台核心数据库。
 - 不通过跨主域共享 Cookie 实现统一登录。
+- 不信任浏览器请求体中的 `user_id`、`role`、`membership_tier` 或 `entitlements`。
 - 生产变更必须有灰度、监控、备份验证和应用回滚方案。
 - 破坏性 Migration 不自动执行，采用 expand / migrate / contract。
 
 ## License
 
-项目现有开源部分沿用仓库内许可证；导入的子产品保留各自许可证和来源说明。仓库改名、许可证统一和历史仓库归档需在迁移里程碑中单独评审。
+项目现有开源部分沿用仓库内许可证；导入的子产品保留各自许可证和来源说明。`HENUKitDev` 的可见性、许可证边界和向公开 `HENU-Kit` 同步的内容需在迁移里程碑中单独评审。
