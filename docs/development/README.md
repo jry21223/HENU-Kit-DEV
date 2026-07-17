@@ -26,7 +26,7 @@
 
 ## 3. 默认执行口径
 
-- 当前开发主仓：`jry21223/final-review-platform`；全部迁移验收后改名为 `jry21223/HENUKitDev`。
+- 当前实际开发仓：`jry21223/HENU-Kit-DEV`，由原 `jry21223/final-review-platform` 演进而来；全部迁移验收后计划规范为 `jry21223/HENUKitDev`。
 - 公开仓：`jry21223/HENU-Kit` 保持原名，只承担公开介绍、项目索引、路线图和社区信息。
 - Quiz 旧仓：`jry21223/quizcraft-cn` 在冻结点前保留生产来源，之后只读并归档。
 - 推荐团队：2 名开发 + 1 名测试，约 21 周；增加第 2 名测试可压缩为约 18 周。
