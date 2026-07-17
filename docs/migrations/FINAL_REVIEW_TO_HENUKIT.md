@@ -1,97 +1,131 @@
-# final-review-platform → HENU Kit Monorepo 迁移计划
+# final-review-platform → HENUKitDev Monorepo 迁移计划
 
-> 状态：执行版 v1.0  
+> 状态：执行版 v1.1  
 > 迁移策略：非破坏性、可回滚、按部署单元推进  
-> 目标仓库：当前 `jry21223/final-review-platform`，完成里程碑后改名为 `jry21223/HENU-Kit`
+> 目标开发仓库：当前 `jry21223/final-review-platform`，完成里程碑后改名为 `jry21223/HENUKitDev`  
+> 公开项目仓库：`jry21223/HENU-Kit` 保持原名和公开入口职责
 
 ## 1. 迁移目标
 
-将当前大型学习平台仓库重构为 HENU Kit 的唯一开发仓库，使主站、资料库、QuizCraft、平台核心、共享契约和基础设施位于同一个 monorepo，同时保持：
+将当前大型学习平台仓库重构为 HENU Kit 的统一开发 Monorepo，使主站、资料库、QuizCraft、平台核心、共享契约和基础设施位于同一个开发仓，同时保持：
 
 - 现有 `study.superhuazai.me` 在迁移期间持续可部署。
 - 资料下载、审核、支付安全测试和备份能力不丢失。
 - QuizCraft 在导入后仍可按原 FastAPI + React/Vite 方式运行。
 - 新平台核心使用 Go，但不触发一次性 Python 重写。
 - 每个路径移动、认证切换和数据库迁移均可独立回滚。
+- 公开 `HENU-Kit` 仓库继续服务项目介绍、索引、公开路线图和社区信息。
 
-## 2. 代码确认的起点
+## 2. 仓库职责
 
-当前仓库已经具备：
+### HENUKitDev
+
+- 产品实现代码。
+- Platform Core 和业务服务。
+- OpenAPI、事件 schema、测试、CI/CD 和部署配置。
+- 内部技术文档和迁移 Runbook。
+
+### HENU-Kit
+
+- 公开介绍和项目索引。
+- 对外路线图和社区说明。
+- 公开贡献指南。
+
+两个仓库不得并行维护同一份实现代码。需要公开的内容从开发仓经评审后同步。
+
+## 3. 代码确认的起点
+
+当前主仓已经具备：
 
 - `apps/web`：Next.js Web。
 - `apps/admin`：Vue Admin。
 - `services/api`：Gin + GORM + PostgreSQL API。
 - `services/worker`：Go + Redis Streams Worker。
 - 课程、资料、下载审计、刷题、社区、积分、会员、支付、AI、通知和管理后台。
-- `docker-compose.dev.yml`、生产示例、备份恢复脚本和自动部署工作流。
+- Compose、生产示例、备份恢复脚本和自动部署工作流。
 
-现有 `services/api` 不是可直接改名为“平台核心”的纯公共服务。它同时持有资料、刷题、支付、社区和用户数据，必须先建立模块边界，再迁移数据 Owner。
+现有 `services/api` 不是可直接改名为 Platform Core 的纯公共服务。它同时持有资料、刷题、支付、社区和用户数据，必须先建立模块边界，再迁移数据 Owner。
 
 QuizCraft 当前：
 
-- React 18 + TypeScript + Vite。
+- React + TypeScript + Vite。
 - FastAPI + Pydantic + psycopg。
 - PostgreSQL 题库、用户统计、题目统计、反馈和排行榜。
 - `POST /api/practice/submit` 接受客户端提供的可选 `user_id` 并直接更新统计。
 - 本地 JSON fallback 与 PostgreSQL 并存。
 
-因此不能先把作答写流量切到新 Go 服务。
+因此不能先切作答写流量，必须先建立可信匿名会话、统一用户绑定和 append-only 作答记录。
 
-## 3. 总体迁移序列
+## 4. 身份与访问基线
+
+从 Platform Core 第一张表开始就区分：
+
+- 主体类型：游客、登录用户、服务账号。
+- 权限角色：学生、创作者、审核员、运营、管理员、超级管理员。
+- 会员档位：Free、VIP。
+- Entitlement：具体内容、额度和资源授权。
+
+VIP 是权益，不是权限角色。一个用户可以拥有多个有作用域的角色。详细规则见 `docs/architecture/ACCESS_CONTROL.md`。
+
+目标数据至少新增：
+
+- `user_roles`
+- `memberships`
+- `entitlement_grants`
+- `anonymous_subjects`（由业务模块持有）
+- `account_links`
+
+现有 Study `users.role` 和会员数据先保留，采用 expand / migrate / contract。
+
+## 5. 总体迁移序列
 
 ```text
 M0 仓库基线与导入
-→ M1 产品边界与主站骨架
-→ M2 平台核心骨架和契约
+→ M1 产品边界、主站骨架和 Design Tokens
+→ M2 Platform Core、角色/会员模型和 OpenAPI
 → M3 统一账户最小闭环
 → M4 事件、通知和邮件
-→ M5 QuizCraft 统一身份接入
+→ M5 QuizCraft 可信匿名身份和统一账号绑定
 → M6 资料库产品收敛
 → M7 QuizCraft API 渐进 Go 化
 → M8 目录物理重排
-→ M9 仓库改名与旧仓库归档
+→ M9 开发仓改名为 HENUKitDev
 ```
 
-目录物理重排放在业务边界和部署兼容完成之后。否则排障时无法区分“路径错误”和“业务迁移错误”。
+目录物理重排放在业务边界和部署兼容完成之后。否则排障时无法区分路径错误和业务迁移错误。
 
 ---
 
-# M0：仓库基线与外部仓库导入
+# M0：仓库基线与外部代码导入
 
 ## 目标
 
-让当前仓库成为 HENU Kit 的事实来源，但不改变线上服务。
+让当前仓库成为实际开发事实来源，但不改变线上服务。
 
 ## 变更
 
-1. 新建迁移分支 `codex/henukit-monorepo-foundation`。
-2. 根 README 改为 HENU Kit monorepo 说明。
+1. 使用分支 `codex/henukit-monorepo-foundation`。
+2. 根 README 改为 HENU Kit Monorepo 说明。
 3. 迁入产品边界、设计系统、架构、开发和迁移文档。
-4. 通过 `git subtree --squash` 导入：
-   - `jry21223/quizcraft-cn` → `products/quizcraft`
-   - `jry21223/HENU-Kit` → `archive/henukit-planning`
-5. 增加来源 commit、许可证和更新命令记录。
-6. 不修改现有 `apps/web`、`apps/admin`、`services/api`、`services/worker` 的构建路径。
+4. 通过 subtree 导入 `quizcraft-cn` 到 `products/quizcraft`。
+5. 保存公开 `HENU-Kit` 在导入时的规划快照到 `archive/henukit-planning`，但不替代或归档公开仓库。
+6. 增加来源 commit、许可证和更新记录。
+7. 不修改现有 Study 构建路径。
 
 ## 验收
 
-- 当前学习平台原有 CI/build 不因文档和导入失败。
-- `products/quizcraft` 中包含原仓库完整代码。
-- 旧 HENU-Kit 规划文档可追溯。
-- 根 README 明确资料库与 QuizCraft 的唯一职责。
-- 没有生产配置、真实数据或密钥被导入。
+- 原 Study CI/build 不因导入失败。
+- `products/quizcraft` 包含原仓完整代码和来源 SHA。
+- 根 README 明确 HENUKitDev 与 HENU-Kit 的仓库分工。
+- 没有真实数据或敏感配置被导入。
 
 ## 回滚
 
-关闭 PR 即可；`main` 和线上部署不受影响。
+关闭或 revert Foundation PR；`main` 和线上部署不受影响。
 
 ---
 
 # M1：主站骨架与共享设计变量
-
-## 目标
-
-建立 `henukit.cn` 的真实代码入口，不把主站做成外链列表。
 
 ## 目录
 
@@ -100,469 +134,293 @@ apps/portal/
 packages/design-tokens/
 ```
 
-## 主站首批页面
+## 首批页面
 
-- `/`：三个一级入口和继续上次任务。
+- `/`：美食榜单、工具箱、学习三个一级入口。
 - `/tools`：工具目录、维护状态和更新时间。
-- `/learn`：资料库、刷题和接毕设（二期占位）。
+- `/learn`：资料库、刷题和接毕设二期占位。
 - `/food`：美食榜单入口或 MVP。
 - `/status`：子产品可用状态。
-- `/legal/non-official`：主体与数据来源说明。
+- `/legal/non-official`：主体和数据来源说明。
 
-## 主站不做
-
-- 不代理资料详情正文。
-- 不代理题库和作答。
-- 不建立第二套用户表。
-- 不把通知、邮件和平台核心放在一级导航。
-
-## 共享设计变量
-
-`packages/design-tokens` 第一批只提供框架无关的 CSS/JSON：
-
-- Kit 墨绿 `#0C6B45`
-- Kit 墨绿深色 `#05603A`
-- Kit 墨绿浅色 `#E4EFE9`
-- 纸白 `#F5F1E7`
-- 墨色 `#343D36`
-- Kit 麦金 `#F0BE44`
-- 字级、间距、圆角、阴影和状态色
-
-不在第一阶段开发跨 React/Vue 的统一组件实现；先统一 token、交互和视觉验收。
+主站不代理资料正文、题库作答、验证码、通知队列或业务后台。
 
 ## 验收
 
-- 360px 宽度下三个一级入口可用。
-- 页脚固定展示“学生自主运营 · 非河南大学官方项目”。
-- 主色文档和代码均称为 Kit 墨绿。
-- 主站与子产品的 Logo 返回行为一致。
-
-## 回滚
-
-主站独立部署，DNS 不切换即可回滚；不会影响资料库或 QuizCraft。
+- 360px 宽度下一级入口可用。
+- 固定展示“学生自主运营 · 非河南大学官方项目”。
+- 主色只称 Kit 墨绿。
+- 主站不是简单外链列表，具备统一账户状态和继续任务能力。
 
 ---
 
-# M2：平台核心骨架与 API 契约
-
-## 目标
-
-建立新公共能力的代码边界，不复制现有全部业务。
+# M2：Platform Core、角色和会员模型
 
 ## 目录
 
 ```text
 services/platform-core/
 services/platform-worker/
-packages/api-contracts/openapi/
-packages/api-contracts/events/
+packages/api-contracts/
 ```
 
-## 技术栈
+## 技术基线
 
-- Go 1.26.x，CI 固定具体补丁版本。
-- Gin、GORM、go-redis，优先复用团队已有经验。
-- PostgreSQL。
-- Redis Streams。
-- OpenAPI 3.1。
-- API 和 Worker 分进程。
-- JSON 结构化日志。
-- `/healthz` 与 `/readyz`。
-- 显式 SQL migration；不使用生产 `AutoMigrate` 代替版本迁移。
+- Go 1.26.x 固定补丁版本。
+- Gin、GORM、go-redis、PostgreSQL、Redis Streams。
+- API 与 Worker 分进程。
+- OpenAPI 3.1 是新接口唯一契约来源。
+- JSON 结构化日志、request_id、Health 和 Readiness。
 
-## 模块
+## 数据表
 
-- identity
-- email_identity
-- verification
-- oauth_client
-- authorization_code
-- session
-- account_link
-- service_credential
-- event
-- outbox
-- notification
-- email_delivery
-- metrics
-- audit
+- `users`
+- `email_identities`
+- `verification_codes`
+- `oauth_clients`
+- `authorization_codes`
+- `sessions`
+- `account_links`
+- `user_roles`
+- `memberships`
+- `entitlement_grants`
+- `service_credentials`
+- `events`
+- `outbox_events`
+- `notifications`
+- `notification_preferences`
+- `email_deliveries`
+- `dead_letters`
+- `daily_user_metrics`
 
-## API 基线
+## 访问模型
 
-- `/api/v1`
-- `snake_case`
-- `request_id`
-- `Idempotency-Key`
-- UTC ISO 8601
-- 统一错误码
-- 浏览器 API 与内部 API 分离
-
-## 兼容原则
-
-现有 `services/api` 的 `{code,message,data}` 不立即修改。由资料库适配器把平台核心新格式转换为现有前端需要的格式，或者逐页面迁移消费方。
+- 游客不写入统一用户表。
+- 登录用户默认获得 `student` 角色。
+- Creator、Reviewer、Operator、Admin、Super Admin 使用多角色和作用域表。
+- Free/VIP 使用 membership，不进入 role。
+- 业务接口依据 entitlement 授权。
 
 ## 验收
 
 - OpenAPI lint 通过。
-- 生成代码无未提交差异。
-- PostgreSQL/Redis 集成测试通过。
-- Migration upgrade、rollback 和空库重放通过。
-- API/Worker readiness 正确反映依赖状态。
-
-## 回滚
-
-平台核心尚无生产调用时直接停止部署；接入后通过 client 级功能开关回到旧认证。
+- Migration 升级和回滚测试通过。
+- Free/VIP 和多角色权限测试可由 Mock 编写。
+- 浏览器自报的 user_id、role、membership、entitlement 不被信任。
 
 ---
 
 # M3：统一账户最小闭环
 
-## 目标
-
-完成一个测试业务站的跨主域登录，不切换所有用户。
-
 ## 流程
 
-1. 业务站后端创建 `state` 和登录意图。
-2. 浏览器跳转 `account.henukit.cn/api/v1/authorize`。
-3. 用户输入河南大学学生邮箱。
-4. 平台创建验证码记录和 critical 邮件事件。
-5. Worker 通过 DirectMail 发送。
-6. 用户验证验证码。
-7. 平台创建/读取统一用户。
-8. 平台签发短期、单次授权码。
-9. 浏览器跳回白名单 callback。
-10. 业务站后端交换身份。
-11. 业务站建立自己的 HttpOnly、Secure session。
+1. 业务站跳转 `account.henukit.cn`。
+2. 用户输入学生邮箱。
+3. Platform Worker 通过 DirectMail 发送验证码。
+4. 验证后创建或读取统一用户。
+5. 生成短期单次授权码。
+6. 跳回白名单 callback。
+7. 业务站后端交换统一身份、roles、membership 和 entitlement 摘要。
+8. 业务站建立自己的 HttpOnly、Secure Session。
 
-## 关键约束
+## 要求
 
-- 授权码建议 60–120 秒过期。
-- 授权码只保存哈希。
-- 使用唯一约束或锁保证只交换一次。
-- callback 与 `return_to` 分别维护白名单。
-- `state` 必须绑定浏览器登录意图。
-- 公共客户端或纯 SPA 使用 PKCE；有可信后端的站点仍建议支持 PKCE。
-- URL 不传长期 Token。
-- localStorage 不保存长期 JWT。
-
-## 旧 final-review 用户
-
-- 不直接改现有 `users.id`。
-- 新建 `account_links`：`platform_user_id + service + local_user_id`。
-- 首次登录按已验证邮箱提出绑定候选，但必须经过一次性确认流程。
-- 冲突账号进入人工合并队列，不能以邮箱自动覆盖。
-- 下载记录、资料投稿、积分、会员和订单继续关联旧本地 ID，直到数据 Owner 决策完成。
+- state 防 CSRF。
+- callback 与 return_to 白名单。
+- 授权码单次使用和短期过期。
+- 服务端交换。
+- 不跨主域共享 Cookie。
+- 不在 URL 或 localStorage 保存长期 Token。
 
 ## 验收
 
-- 真实学生邮箱验证码送达。
-- 授权码重复交换返回稳定错误。
-- callback 非法被拒绝。
-- state 不匹配被拒绝。
-- 日志中无完整邮箱、验证码、Token 和 Cookie。
-- 测试业务站可切回旧登录。
+- 学生邮箱真实送达。
+- 同一授权码只能成功交换一次。
+- 测试业务站能区分游客、Free 学生和 VIP 学生。
+- 日志不泄露邮箱、验证码、Cookie 或 Token。
 
 ---
 
 # M4：事件、通知和邮件
 
-## 目标
+## 流程
 
-把“业务直接写通知/发邮件”改为标准事件驱动流程。
+```text
+业务事件
+→ 服务认证和幂等校验
+→ events + outbox 同事务
+→ Redis Stream
+→ Platform Worker
+→ 站内通知和偏好检查
+→ DirectMail
+→ 投递状态、重试或死信
+```
 
-## 首批事件
+关键事件：投稿收到、审核通过/驳回、纠错处理、积分到账、校园通知新增/更新、会员开通/到期。
 
-- `submission.received`
-- `submission.approved`
-- `submission.rejected`
-- `correction.resolved`
-- `points.credited`
-- `school_notice.created`
-- `school_notice.updated`
-
-## 事务边界
-
-业务事件接收时，在一个 PostgreSQL 事务中：
-
-1. 根据 `service_id + idempotency_key` 去重。
-2. 写 `events`。
-3. 写 `outbox_events`。
-4. 返回已接受状态。
-
-Outbox relay 再提交 Redis Stream。Redis 暂时不可用不能导致已提交业务事件丢失。
-
-## 邮件优先级
-
-- `critical`：验证码、安全提醒。
-- `transactional`：投稿、审核、纠错、积分。
-- `digest`：校园通知摘要。
-
-三个优先级使用不同 stream 或独立 consumer policy。摘要堆积不能阻塞验证码。
+验证码和安全提醒使用 critical 队列，不被摘要邮件阻塞。
 
 ## 验收
 
-- 重复事件不重复建通知、不重复发积分、不重复发邮件。
-- Worker 重启后可继续处理。
-- DirectMail 超时进入重试。
-- 拒收和重试耗尽进入死信。
-- 死信有管理员重新投递入口和审计记录。
+- 重复事件不产生重复通知、积分或会员权益。
+- Redis 暂时不可用时 Outbox 保留待投递事件。
+- Worker 重启可继续处理。
+- 重试耗尽进入死信并有人工处理入口。
 
 ---
 
-# M5：QuizCraft 统一身份接入
+# M5：QuizCraft 身份接入
 
-## 目标
+## 先做
 
-让 QuizCraft 接受可信平台用户身份，同时不丢匿名用户历史统计。
+- 服务端匿名 Session。
+- `anonymous_subject_id` 持有证明。
+- `account_links` 唯一绑定。
+- append-only practice sessions / answers。
+- 服务端从本地 Session 获得平台用户 ID。
 
-## 当前风险
+## 绑定事务
 
-当前作答请求允许客户端传 `user_id`。统一身份接入后，服务端不得信任浏览器任意提交的统一用户 ID。
-
-## 新模型
-
-在 QuizCraft 数据库增加：
-
-```text
-quiz_sessions
-quiz_account_links
-quiz_anonymous_identities
-```
-
-- 匿名用户由服务端签发不可猜测匿名 ID 和 HttpOnly Cookie。
-- 登录后由 QuizCraft 后端根据平台交换结果写绑定。
-- 作答 API 从可信会话解析 user，不读取请求体中的平台 `user_id`。
-- 原有 `users.user_id` 和统计表先保留。
-
-## 绑定流程
-
-- 未登录用户继续使用匿名会话。
-- 登录后请求绑定当前匿名身份。
-- 事务内锁定匿名身份和目标本地用户。
-- 已绑定其他平台用户时返回冲突，不自动改绑。
-- 聚合统计先关联原本地 user ID，不做大范围重写。
-- 建立可重复执行的数据核对报表。
+1. 锁定匿名主体。
+2. 检查是否已绑定其他用户。
+3. 创建唯一 link。
+4. 迁移练习和作答归属。
+5. 重算聚合统计和排行榜。
+6. 写审计和绑定事件。
+7. 标记匿名主体不可再次绑定。
 
 ## 验收
 
-- 旧匿名数据保留。
-- 并发绑定只有一次成功。
-- 不能通过伪造请求体归属到其他用户。
-- 解绑/合并有人工审计入口。
-- 可通过功能开关回到原匿名方式。
+- 伪造 body `user_id` 无效。
+- 匿名用户绑定不丢练习数据。
+- 冲突绑定不覆盖历史数据。
+- 可切回旧认证入口。
 
 ---
 
 # M6：资料库产品收敛
 
-## 目标
+## 保留
 
-让 `study.superhuazai.me` 只展示资料库。
+- 课程。
+- 资料检索、详情、预览、下载。
+- 投稿、审核、纠错。
+- 下载审计和必要管理后台。
 
-## 前台处理顺序
+## 隐藏或冻结
 
-1. 从主导航移除刷题、错题、排行榜、泛社区、动态和 AI 独立入口。
-2. 课程页刷题按钮改为 QuizCraft 跳转。
-3. 首页删除第二套刷题产品文案。
-4. 保留资料检索、详情、预览、下载、我的下载、投稿和纠错。
-5. 保留必要 Wiki/说明内容，不发展泛社区信息流。
-6. “打开资料册”改为轻量一次性动画。
+- 第二套刷题。
+- Wiki、Blog、论坛、动态和关系。
+- 泛 AI。
+- 积分、会员和支付的前台入口，直到迁移和对账完成。
 
-## 后端处理顺序
+资料页“去刷题”携带课程映射跳转 QuizCraft。
 
-1. 保留旧路由但标记 deprecated。
-2. 禁止新前端继续调用旧刷题路由。
-3. 记录 30 天调用量和调用方。
-4. QuizCraft 替代路径稳定后返回迁移提示。
-5. 经过备份和回滚窗口后，再删除实现。
-
-## 账号、通知、积分等
-
-- 账号：兼容旧会话，逐步切统一账户。
-- 通知：逐类改为平台事件。
-- 积分：先确认投稿、AI 和会员依赖，暂不删除。
-- 支付/会员：冻结扩展，不与平台重构同时上线重大变化。
-- Blog/论坛/动态：前台隐藏和冻结；数据只读保留。
-- AI：只保留资料处理必要流程，其余按 Owner 拆分。
+资料库保留“打开资料册”创意，但动画必须一次性、轻量、可关闭并尊重减少动态设置。
 
 ## 验收
 
-- 学生前台看不到第二套刷题产品。
-- 原资料下载、审核和审计 smoke 全部通过。
-- 旧 URL 有兼容或明确迁移提示。
-- 可通过前端版本回滚恢复原入口。
+- 学生端只展示资料库。
+- 原下载权限和记录继续有效。
+- 移动端核心流程可用。
+- 隐藏功能可由 feature flag 恢复。
 
 ---
 
 # M7：QuizCraft API 渐进 Go 化
 
-## 迁移批次
+## 顺序
 
-### Q1：兼容网关和观测
+1. Go Adapter 和 FastAPI fallback。
+2. 题库列表和只读查询。
+3. 练习开始只读逻辑。
+4. Append-only 作答写入。
+5. 错题和进度。
+6. 排行榜双算。
+7. 反馈。
+8. 题库工坊最后迁移。
 
-- Go 入口只代理 FastAPI。
-- 统一 request ID。
-- 记录 route provider、延迟和错误率。
-- 功能开关按 API、用户百分比和环境控制。
+每批迁移要求：OpenAPI 契约、影子流量、结果对比、功能开关、回滚开关和至少一个完整观察周期。
 
-### Q2：题库只读
-
-- 题库列表。
-- 题库详情。
-- 章节与题目读取。
-- 隐藏答案字段。
-
-验证：双读 JSON 规范化后完全一致。
-
-### Q3：反馈
-
-- 创建反馈。
-- 反馈看板只读。
-- 管理状态变更。
-
-验证：唯一键、状态流和管理鉴权一致。
-
-### Q4：练习开始
-
-- 随机、章节、难题模式。
-- 随机性使用统计分布而不是逐次 JSON 完全相等。
-
-### Q5：作答与统计
-
-- 先引入 append-only `answer_events`。
-- Go 与 FastAPI 双算，不双写同一聚合行。
-- 比较正确性、题目统计、用户统计和排行榜快照。
-- 一致性达到门槛并连续观察后切写流量。
-
-### Q6：题库工坊
-
-最后迁移文件解析、WebSocket 进度、AI 解析和题库保存。
-
-## 切流门槛
-
-- 契约测试通过。
-- 数据一致性报表通过。
-- 影子流量无敏感数据泄露。
-- P95、错误率和资源使用不劣于基线。
-- 回滚开关经过演练。
-- 测试负责人批准。
-
-## FastAPI 下线
-
-- 连续至少两周零生产流量。
-- 无仅 FastAPI 支持的管理脚本。
-- 备份、恢复和回滚演练完成。
-- 归档至少保留六个月，不立即删除。
+一次性重写不进入计划。
 
 ---
 
 # M8：目录物理重排
 
-## 目标路径
+目标路径：
 
-| 当前路径 | 目标路径 |
-|---|---|
-| `apps/web` | `apps/study-web` |
-| `apps/admin` | `apps/study-admin` |
-| `services/api` | `services/study-api`（公共模块迁出后） |
-| `services/worker` | `services/study-worker` |
-| `products/quizcraft/web-app` | `apps/quiz-web` |
-| `products/quizcraft` 后端文件 | `services/quiz-api-legacy` |
+```text
+apps/web -> apps/study-web
+apps/admin -> apps/study-admin
+services/api -> services/study-api
+services/worker -> services/study-worker
+products/quizcraft/web-app -> apps/quiz-web
+products/quizcraft FastAPI -> services/quiz-api-legacy
+```
 
-## 每次移动步骤
-
-1. CI 同时识别新旧路径。
-2. Docker 和部署脚本增加新路径参数。
-3. 使用 `git mv` 完成单一部署单元移动。
-4. 修复 import、workspace、build context 和文档。
-5. 新旧构建结果比对。
-6. 测试环境部署。
-7. 合并后观察一个发布周期。
-8. 删除旧路径兼容逻辑。
-
-不在一个 PR 同时移动 Web、Admin、API、Worker 和 QuizCraft。
+目录移动 PR 不修改业务语义和数据库 schema。必须同步 CI、Compose、Dockerfile、部署脚本和文档，并保留可回退 commit。
 
 ---
 
-# M9：仓库改名与旧仓库归档
+# M9：开发仓改名
 
-## 改名前检查
+## 前置条件
 
-- 默认分支所有必需检查通过。
-- GitHub Actions、Secrets、Environments、Deploy Keys、Webhook 已盘点。
-- 容器镜像、部署脚本和状态页不硬编码旧仓库名。
-- 文档和贡献入口只指向新仓库。
-- 旧 `HENU-Kit` 和 `quizcraft-cn` 仓库准备归档 README。
+- Portal、Platform Core、Study、Quiz 均可独立构建和部署。
+- GitHub Actions、Deploy Key、Secrets、服务器 remote、脚本和文档已完成名称清单。
+- 生产回滚演练通过。
+- 外部 webhook 和 GitHub App 权限已核验。
 
-## 改名后
+## 唯一改名动作
 
-- 仓库改名为 `HENU-Kit`。
-- 验证 GitHub redirect。
-- 更新本地 remote、CI badge、镜像仓库和部署自动化。
-- 旧仓库设置 archived，只保留迁移说明。
-- 不删除历史 release、issue 或许可证信息。
+```text
+jry21223/final-review-platform -> jry21223/HENUKitDev
+```
 
----
+现有：
 
-# 10. 关键风险与控制
+```text
+jry21223/HENU-Kit
+```
 
-| 风险 | 控制 |
-|---|---|
-| Monorepo 导入后 CI 时间激增 | 路径过滤、共享缓存、并行任务、夜间全量回归 |
-| 当前 `services/api` 同时承担公共和业务能力 | 先建模块边界和契约，不直接改名为 core |
-| 资料库隐藏入口但旧 API 仍被调用 | 调用量观测、deprecated header、分阶段停用 |
-| QuizCraft 用户 ID 可由客户端提交 | 先引入可信会话，再迁移作答 |
-| 排行榜迁移不一致 | 双算、快照 diff、固定数据集、回滚开关 |
-| 目录移动破坏自动部署 | 新旧路径兼容、测试环境发布、单部署单元 PR |
-| 旧仓库继续产生新提交 | 导入后冻结，旧 README 指向 monorepo |
-| 被误认为河南大学官方项目 | 固定非官方声明，不使用校徽和官方色描述 |
+保持不变。
 
-# 11. 里程碑退出条件
+## 回滚
 
-## R0：Monorepo Foundation
+GitHub 通常保留仓库重定向，但仍需在 Runbook 中记录：旧 remote、部署服务器 remote、Actions、webhook、文档链接和本地开发者更新命令。出现部署或权限异常时先恢复原仓库名和 remote，再排查外围集成。
 
-- 外部仓库已导入。
-- 根文档已切换为 HENU Kit。
-- 现有学习平台构建不受影响。
+## 6. 发布原则
 
-## R1：Portal Preview
+- main 禁止直接 push。
+- PR CI 全通过。
+- 镜像使用 commit SHA。
+- 生产人工批准。
+- Migration 使用 expand / migrate / contract。
+- 不自动执行破坏性 Migration。
+- 发布前验证备份。
+- 灰度失败自动停止放量。
+- 每个部署单元独立回滚。
 
-- 主站预览可访问。
-- 统一导航和 Kit 墨绿 token 可被三个前端消费。
+## 7. 第一批执行任务
 
-## R2：Unified Account Pilot
+1. 评审并合并 Foundation PR。
+2. 完成 HENUKitDev 与 HENU-Kit 仓库分工说明。
+3. 建立 Access Control 契约和测试矩阵。
+4. 建立 Portal 可运行骨架。
+5. 建立 Platform Core API/Worker 骨架。
+6. 建立 user_roles、memberships 和 entitlement migration。
+7. 建立验证码与授权码 Mock 契约测试。
+8. 收敛 Study 前台导航。
+9. 为 QuizCraft 增加可信匿名 Session。
+10. 建立课程 ID 与题库 ID 映射。
 
-- 一个测试站完成授权码登录。
-- 真实验证码可送达。
-- 旧登录可回滚。
+## 8. 明确不做
 
-## R3：Study Boundary
-
-- 学习平台学生前台只展示资料库。
-- QuizCraft 是唯一刷题入口。
-
-## R4：Quiz Identity
-
-- 匿名用户和统一用户安全绑定。
-- 作答不信任客户端 user ID。
-
-## R5：Repository Rename
-
-- 新仓库结构、CI/CD、文档和部署稳定。
-- 旧仓库已冻结。
-
-# 12. 第一批实施任务
-
-1. 导入 QuizCraft 和旧 HENU-Kit 规划仓库。
-2. 建立 `apps/portal` 骨架。
-3. 建立 `packages/design-tokens`。
-4. 建立 OpenAPI 3.1 基线。
-5. 建立 `services/platform-core` 空骨架与 CI。
-6. 给现有学习平台刷题、社区、动态和 AI 路由加功能清单与调用观测。
-7. 为 QuizCraft 作答链路补可信身份威胁模型。
-8. 设计课程 ID ↔ 题库 ID 映射文件和 API。
-9. 盘点自动部署中所有硬编码旧仓库名和路径。
-10. 在测试环境演练单服务回滚。
-
-本计划只定义迁移顺序。任何生产切换仍必须在对应 Issue 中写明负责人、测试结果、灰度比例、监控指标和回滚命令。
+- 不替换或改名公开 `HENU-Kit` 仓库。
+- 不一次性删除原学习平台功能。
+- 不一次性重写 QuizCraft。
+- 不把 VIP 当成管理角色。
+- 不把游客自动注册成统一用户。
+- 不把所有业务数据库合并。
+- 不在 Foundation PR 切生产流量。
