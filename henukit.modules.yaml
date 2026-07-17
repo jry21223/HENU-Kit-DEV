@@ -56,9 +56,10 @@ modules:
     kind: imported_product
     source_repository: jry21223/quizcraft-cn
     source_branch: master
+    source_commit: e9d31993960d233869dc3704eb211f8374384b7f
     current_path: products/quizcraft
     owner: quiz
-    status: import_pending
+    status: imported
     target_components:
       web: apps/quiz-web
       api: services/quiz-api-legacy
@@ -93,6 +94,15 @@ modules:
     current_path: packages/api-contracts
     owner: platform
     status: foundation
+
+  - id: henukit_planning_archive
+    kind: imported_archive
+    source_repository: jry21223/HENU-Kit
+    source_branch: main
+    source_commit: 85154e1e1eea25d212e4b8f0591a912c527587e8
+    current_path: archive/henukit-planning
+    owner: product
+    status: imported_read_only
 
 data_owners:
   platform_identity: platform_core
