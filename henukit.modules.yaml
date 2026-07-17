@@ -1,0 +1,115 @@
+version: 1
+repository:
+  current_name: final-review-platform
+  target_name: HENU-Kit
+  default_branch: main
+  unofficial_notice: 学生自主运营 · 非河南大学官方项目
+
+modules:
+  - id: portal
+    kind: web_app
+    current_path: apps/portal
+    target_path: apps/portal
+    owner: portal
+    deploy_unit: portal-web
+    target_domain: henukit.cn
+    status: foundation
+
+  - id: study_web
+    kind: web_app
+    current_path: apps/web
+    target_path: apps/study-web
+    owner: study
+    deploy_unit: study-web
+    current_domain: study.superhuazai.me
+    target_domain: study.henukit.cn
+    status: migrate_in_place
+
+  - id: study_admin
+    kind: web_app
+    current_path: apps/admin
+    target_path: apps/study-admin
+    owner: study
+    deploy_unit: study-admin
+    status: migrate_in_place
+
+  - id: study_api
+    kind: go_service
+    current_path: services/api
+    target_path: services/study-api
+    owner: study
+    deploy_unit: study-api
+    status: mixed_legacy
+    notes:
+      - 当前包含账号、资料、刷题、社区、支付、AI 等混合能力
+      - 公共能力迁出前不得直接改名为 platform-core
+
+  - id: study_worker
+    kind: go_worker
+    current_path: services/worker
+    target_path: services/study-worker
+    owner: study
+    deploy_unit: study-worker
+    status: migrate_in_place
+
+  - id: quizcraft_product
+    kind: imported_product
+    source_repository: jry21223/quizcraft-cn
+    source_branch: master
+    current_path: products/quizcraft
+    owner: quiz
+    status: import_pending
+    target_components:
+      web: apps/quiz-web
+      api: services/quiz-api-legacy
+    current_domain: superhuazai.me
+    target_domain: quiz.henukit.cn
+
+  - id: platform_core
+    kind: go_service
+    current_path: services/platform-core
+    target_path: services/platform-core
+    owner: platform
+    deploy_unit: platform-core-api
+    target_domain: account.henukit.cn
+    status: planned
+
+  - id: platform_worker
+    kind: go_worker
+    current_path: services/platform-worker
+    target_path: services/platform-worker
+    owner: platform
+    deploy_unit: platform-core-worker
+    status: planned
+
+  - id: design_tokens
+    kind: shared_package
+    current_path: packages/design-tokens
+    owner: design
+    status: foundation
+
+  - id: api_contracts
+    kind: shared_package
+    current_path: packages/api-contracts
+    owner: platform
+    status: foundation
+
+data_owners:
+  platform_identity: platform_core
+  verification_codes: platform_core
+  sessions: platform_core
+  account_links: platform_core
+  notifications: platform_core
+  email_deliveries: platform_core
+  user_metrics: platform_core
+  courses: study_api
+  materials: study_api
+  material_files: study_api
+  material_downloads: study_api
+  question_banks: quizcraft_product
+  questions: quizcraft_product
+  attempts: quizcraft_product
+  wrong_questions: quizcraft_product
+  rankings: quizcraft_product
+  food_rankings: campus_life
+  tool_catalog: portal
