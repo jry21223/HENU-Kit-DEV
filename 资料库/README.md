@@ -50,4 +50,4 @@
 
 ## 格式规范
 
-详见 [material-library-format.md](../docs/material-library-format.md) 和 [libraryctl](../scripts/libraryctl/)
+详见 [material-library-format.md](../docs/product/material-library-format.md) 和 [libraryctl](../scripts/libraryctl/)
