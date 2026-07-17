@@ -1,0 +1,10 @@
+sixiu_0014: truncated options 8 -> 4 from 2026_summer
+sixiu_0024: truncated options 8 -> 4 from 2026_summer
+sixiu_0054: truncated options 8 -> 4 from 2026_summer
+sixiu_0111: truncated options 8 -> 4 from 2026_summer
+sixiu_0156: truncated options 8 -> 4 from 2026_summer
+sixiu_0160: truncated options 8 -> 4 from 2026_summer
+sixiu_0166: truncated options 8 -> 4 from 2026_summer
+sixiu_0283: truncated options 8 -> 4 from 2026_summer
+sixiu_0302: truncated options 8 -> 4 from 2025_winter
+sixiu_0326: truncated options 8 -> 4 from 2025_winter

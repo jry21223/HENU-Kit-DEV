@@ -1,0 +1,33 @@
+{
+  "subject": "思想道德与法治",
+  "seasons": [
+    {
+      "season": "2025_winter",
+      "name": "思修2025冬",
+      "question_count": 282,
+      "type_counts": {
+        "single": 127,
+        "multi": 107,
+        "judge": 48
+      },
+      "lecture_sections": 7,
+      "rag_chunks": 20,
+      "issues": 10,
+      "path": "generated/sixiu_resource_library/2025_winter"
+    },
+    {
+      "season": "2026_summer",
+      "name": "思修2026夏",
+      "question_count": 301,
+      "type_counts": {
+        "single": 130,
+        "multi": 104,
+        "judge": 67
+      },
+      "lecture_sections": 7,
+      "rag_chunks": 20,
+      "issues": 8,
+      "path": "generated/sixiu_resource_library/2026_summer"
+    }
+  ]
+}

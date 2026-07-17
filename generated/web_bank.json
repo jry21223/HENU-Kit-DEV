@@ -1,0 +1,2323 @@
+{
+  "meta": {
+    "name": "Web前端题库",
+    "version": "from-md",
+    "color": "#00897b",
+    "total": 119,
+    "source_files": [
+      "Web题库.md"
+    ],
+    "chapters": [
+      {
+        "id": "ch01",
+        "name": "一、HTML基础"
+      },
+      {
+        "id": "ch02",
+        "name": "二、HTML进阶"
+      },
+      {
+        "id": "ch03",
+        "name": "三、HTML表单与表格"
+      },
+      {
+        "id": "ch04",
+        "name": "四、CSS"
+      },
+      {
+        "id": "ch05",
+        "name": "五、JavaScript基础"
+      },
+      {
+        "id": "ch06",
+        "name": "六、JavaScript进阶"
+      }
+    ]
+  },
+  "questions": [
+    {
+      "id": "web_0001",
+      "number": "1",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "下面选项中，用于为页面添加视频的标签是（）。",
+      "options": [
+        "audio",
+        "video",
+        "text",
+        "image"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0002",
+      "number": "2",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "下列选项中，用来设置一行内容的垂直对齐方式的是（）。",
+      "options": [
+        "height",
+        "align",
+        "valign",
+        "background"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0003",
+      "number": "3",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "Web标准的制定者是?()",
+      "options": [
+        "以上都不是",
+        "微软(Microsoft)",
+        "网景公司(Netscape)",
+        "万维网联盟(W3C)"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0004",
+      "number": "4",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "下面选项中，有哪些浏览器是基于Trident内核的()。",
+      "options": [
+        "谷歌浏览器",
+        "火狐浏览器",
+        "欧朋浏览器",
+        "IE浏览器"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0005",
+      "number": "5",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "在下列的HTML中，哪个可以产生超链接?()",
+      "options": [
+        "`<a url=\"http://www.w3school.com.cn\">W3School.com.cn</a>`",
+        "`<a href=\"http://www.w3school.com.cn\">W3School</a>`",
+        "`<a>http://www.w3school.com.cn</a>`",
+        "`<a name=\"http://www.w3school.com.cn\">W3School.com.cn</a>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0006",
+      "number": "6",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "以下哪个是HTML中的内联(行内)元素？",
+      "options": [
+        "`<span>`",
+        "`<div>`",
+        "`<p>`",
+        "`<h1>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0007",
+      "number": "7",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "在下列的HTML中，哪个可以插入换行?()",
+      "options": [
+        "`<br/>`",
+        "`<break>`",
+        "以上都不是",
+        "`<lb/>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0008",
+      "number": "8",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "在下列的HTML中，哪个是字号最大的标题?()",
+      "options": [
+        "`<heading>`",
+        "`<head>`",
+        "`<h1>`",
+        "`<h6>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0009",
+      "number": "9",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "下列标签中，用于定义HTML5文档所要显示内容的是()。",
+      "options": [
+        "`<body></body>`",
+        "`<html></html>`",
+        "`<head></head>`",
+        "`<title></title>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0010",
+      "number": "10",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "下列选项中属于单标签语法格式的是()。",
+      "options": [
+        "`<标签名>内容`",
+        "`<标签名/>`",
+        "`</标签名>`",
+        "`<标签名>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0011",
+      "number": "11",
+      "type": "single",
+      "chapter": "一、HTML基础",
+      "content": "下列属性中，用来设置单元格跨行合并的是（）。",
+      "options": [
+        "colspan",
+        "width",
+        "rowspan",
+        "bgcolor"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0012",
+      "number": "12",
+      "type": "multi",
+      "chapter": "一、HTML基础",
+      "content": "下列选项中的术语名词，属于网页术语的是( )",
+      "options": [
+        "WEB",
+        "IOS",
+        "HTTP",
+        "DNS"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0013",
+      "number": "13",
+      "type": "multi",
+      "chapter": "一、HTML基础",
+      "content": "下列选项中，属于`<tr>`标签相关属性的是( )。",
+      "options": [
+        "background",
+        "right",
+        "align",
+        "height"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0014",
+      "number": "14",
+      "type": "multi",
+      "chapter": "一、HTML基础",
+      "content": "关于`<title>`标签的相关描述，下列说法正确的是( )。",
+      "options": [
+        "一个HTML文档只能包含一对`<title>`标签",
+        "`<title>`标签必须包含在`<head>`之内",
+        "`<title></title>`之间的内容将显示在浏览器窗口的标题栏中",
+        "`<title>`标签和`<head>`标签是并列关系"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0015",
+      "number": "15",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "在HTML中，form标签可以实现用户信息的收集和传递。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0016",
+      "number": "16",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "在表格中，有几对`<tr></tr>`，就表示该表格有几行。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0017",
+      "number": "17",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "在网页制作中，图片只能用GIF格式。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0018",
+      "number": "18",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "在超链接中，如果暂时没有确定链接目标，通常将`<a>`标签的href属性值定义为\"#\"。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0019",
+      "number": "19",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "设置标签属性时，标签名与属性、属性与属性之间均以逗号分开。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0020",
+      "number": "20",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "创建锚点链接包括创建链接文本和设置跳转目标位置两个步骤。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0021",
+      "number": "21",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "在标签嵌套结构中，双标签可以作为父级标签。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0022",
+      "number": "22",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "标签就是放在\"< >\"标签符中表示某个功能的编码命令。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0023",
+      "number": "23",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "在不同的浏览器中调用video标签时，浏览器显示视频的浏览器相同。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0024",
+      "number": "24",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "在表格中，cellpadding属性用于设置单元格内容与单元格边框之间的空白间距。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0025",
+      "number": "25",
+      "type": "judge",
+      "chapter": "一、HTML基础",
+      "content": "在`<audio>`和`</audio>`之间不能插入文字。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch01"
+    },
+    {
+      "id": "web_0026",
+      "number": "26",
+      "type": "single",
+      "chapter": "二、HTML进阶",
+      "content": "当图像不能显示时，可以用下列哪个属性设置其替换文本()。",
+      "options": [
+        "font",
+        "head",
+        "face",
+        "alt"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0027",
+      "number": "27",
+      "type": "single",
+      "chapter": "二、HTML进阶",
+      "content": "关于定义有序列表的基本语法格式，下列书写正确的是()。",
+      "options": [
+        "`<ul> 列表项1 列表项2</ul>`",
+        "`<ul> <li>列表项1</li> <li>列表项2</li>……</ul>`",
+        "`<ol> <li>列表项1</li> <li>列表项2</li>……</ol>`",
+        "`<ol>列表项1</ol><ol>列表项2</ol>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0028",
+      "number": "28",
+      "type": "single",
+      "chapter": "二、HTML进阶",
+      "content": "在下列的HTML中，哪个可以插入图像?()",
+      "options": [
+        "`<img src=\"image.gif\"/>`",
+        "image.gif",
+        "`<img href=\"image.gif\"/>`",
+        "`<img>image.gif</img>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0029",
+      "number": "29",
+      "type": "single",
+      "chapter": "二、HTML进阶",
+      "content": "下列属性中，用来设置单元格横跨列数的是()。",
+      "options": [
+        "colspan",
+        "bgcolor",
+        "width",
+        "rowspan"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0030",
+      "number": "30",
+      "type": "single",
+      "chapter": "二、HTML进阶",
+      "content": "要在HTML页面中直接引入外部CSS样式表，应使用的标签是（）",
+      "options": [
+        "`<script>`",
+        "`<link>`",
+        "`<style>`",
+        "`<import>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0031",
+      "number": "31",
+      "type": "single",
+      "chapter": "二、HTML进阶",
+      "content": "在定义列表中，用于对名词进行解释和描述的标签是 ()。",
+      "options": [
+        "`<dd></dd>`",
+        "`<li></li>`",
+        "`<dt></dt>`",
+        "`<dl></dl>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0032",
+      "number": "32",
+      "type": "single",
+      "chapter": "二、HTML进阶",
+      "content": "下列选项中，可以设置文字字体的属性是()。",
+      "options": [
+        "color",
+        "font",
+        "size",
+        "face"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0033",
+      "number": "33",
+      "type": "single",
+      "chapter": "二、HTML进阶",
+      "content": "下面选项中，用于为页面添加音频的标签是()。",
+      "options": [
+        "image",
+        "video",
+        "audio",
+        "以上都不是"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0034",
+      "number": "34",
+      "type": "multi",
+      "chapter": "二、HTML进阶",
+      "content": "下列选项中，属于表单标签`<form>`的属性是()。",
+      "options": [
+        "name",
+        "action",
+        "method",
+        "size"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0035",
+      "number": "35",
+      "type": "judge",
+      "chapter": "二、HTML进阶",
+      "content": "一个HTML5文档可以包含多对`<head>`标签。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0036",
+      "number": "36",
+      "type": "judge",
+      "chapter": "二、HTML进阶",
+      "content": "有序列表是指有排列顺序的列表，其各个列表项按照一定的顺序排列。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0037",
+      "number": "37",
+      "type": "judge",
+      "chapter": "二、HTML进阶",
+      "content": "无序列表的各个列表项之间，虽然没有顺序级别，但是存在主次关系。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0038",
+      "number": "38",
+      "type": "judge",
+      "chapter": "二、HTML进阶",
+      "content": "在定义单选按钮时，必须为同一组中的选项指定相同的name值，这样\"单选\"才会生效。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0039",
+      "number": "39",
+      "type": "judge",
+      "chapter": "二、HTML进阶",
+      "content": "src属性可以让音频具有循环播放功能。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch02"
+    },
+    {
+      "id": "web_0040",
+      "number": "40",
+      "type": "single",
+      "chapter": "三、HTML表单与表格",
+      "content": "关于创建锚点链接的代码,下列书写正确的是()。",
+      "options": [
+        "`<a href=\"#\">链接文本</a>……<h3 id=\"one\">锚点链接 </h3>`",
+        "`<a href=\"#one\">链接文本</a>……<h3 id=\"#one\">锚点链接 </h3>`",
+        "`<a href=\"#one\">链接文本</a>……<h3 id=\"one\">锚点链接 </h3>`",
+        "`<a href=\"#id\">链接文本</a>……<h3 id=\"one\">锚点链接 </h3>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0041",
+      "number": "41",
+      "type": "single",
+      "chapter": "三、HTML表单与表格",
+      "content": "下面的代码中,可以设置单元格宽度的是()。",
+      "options": [
+        "td{line-height:50px;}",
+        "td{font-size:50px;}",
+        "td{height:50px;}",
+        "td{width:50px;}"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0042",
+      "number": "42",
+      "type": "single",
+      "chapter": "三、HTML表单与表格",
+      "content": "关于HTML标签设置属性的基本语法格式，下列选项正确的是()。",
+      "options": [
+        "`<标签名 属性1=\"属性值1\"属性2=\"属性值2\"…>内容 </标签名>;`",
+        "`<标签名 属性1=\";属性值1\" 属性2=\";属性值2\"…> 内容 </标签名>;`",
+        "`<标签名 属性1=\"属性值1\" 属性2=\"属性值2\"…> 内容 </标签名>;`",
+        "`<title>属性</title>;`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0043",
+      "number": "43",
+      "type": "single",
+      "chapter": "三、HTML表单与表格",
+      "content": "下列选项中，用来定义多行文本输入框的是 ()。",
+      "options": [
+        "`<input/>`",
+        "`<form>`",
+        "`<select></select>`",
+        "`<textarea></textarea>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0044",
+      "number": "44",
+      "type": "single",
+      "chapter": "三、HTML表单与表格",
+      "content": "以下选项中,哪个全部都是表格标签?()",
+      "options": [
+        "`<thead><body><tr>`",
+        "`<table><tr><tl>`",
+        "`<table><tr><td>`",
+        "`<table><head><tfoot>`"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0045",
+      "number": "45",
+      "type": "multi",
+      "chapter": "三、HTML表单与表格",
+      "content": "下列选项中，属于表单控件的是 ()。",
+      "options": [
+        "密码输入框",
+        "单行文本输入框",
+        "提交按钮",
+        "复选框"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0046",
+      "number": "46",
+      "type": "multi",
+      "chapter": "三、HTML表单与表格",
+      "content": "下列选项中，属于`<textarea>`标签的必须属性的是 ()",
+      "options": [
+        "value",
+        "rows",
+        "size",
+        "cols"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0047",
+      "number": "47",
+      "type": "multi",
+      "chapter": "三、HTML表单与表格",
+      "content": "下列选项中，属于表单标签`<form>`的属性是 ()。",
+      "options": [
+        "action",
+        "name",
+        "method",
+        "size"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0048",
+      "number": "48",
+      "type": "judge",
+      "chapter": "三、HTML表单与表格",
+      "content": "在定义下拉列表时，`<optgroup>`标签有一个必需属性label，用于定义具体的组名。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0049",
+      "number": "49",
+      "type": "judge",
+      "chapter": "三、HTML表单与表格",
+      "content": "HTML5中的form属性，可以把表单内的子元素写在页面中的任一位置。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0050",
+      "number": "50",
+      "type": "judge",
+      "chapter": "三、HTML表单与表格",
+      "content": "method属性用于设置表单数据的提交方式。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0051",
+      "number": "51",
+      "type": "judge",
+      "chapter": "三、HTML表单与表格",
+      "content": "一个标签只能设置一个属性。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch03"
+    },
+    {
+      "id": "web_0052",
+      "number": "52",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "CSS3中，()选择器用于为父元素中的第一个子元素设置样式。",
+      "options": [
+        "first-child",
+        "nth-child",
+        "only-child",
+        "last-child"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0053",
+      "number": "53",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "()属性用于调整重叠定位元素的堆叠顺序。",
+      "options": [
+        "order",
+        "z-index",
+        "index",
+        "list"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0054",
+      "number": "54",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "()属性是CSS3的新增属性，用于定义服务器字体。通过此属性，开发者可以在用户计算机未安装字体时，使用任何喜欢的字体。",
+      "options": [
+        "@font-face",
+        "@font",
+        "face",
+        "font-family"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0055",
+      "number": "55",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "下列选项中，用于更改元素内边距的是 ()。",
+      "options": [
+        "padding-left",
+        "padding-right",
+        "text-indent",
+        "margin-left"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0056",
+      "number": "56",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "()属性用于设置文本的下划线，上划线，删除线等装饰效果。",
+      "options": [
+        "text-transform",
+        "text-indent",
+        "text-decoration",
+        "text-align"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0057",
+      "number": "57",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "层次选择器中表示相邻兄弟选择器的是 ()。",
+      "options": [
+        "E ~ F",
+        "E + F",
+        "E > F",
+        "E F"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0058",
+      "number": "58",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "下列属性中不属于float的属性为 ()。",
+      "options": [
+        "none",
+        "both",
+        "right",
+        "left"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0059",
+      "number": "59",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "下列选项中，用于设置首行文本缩进的属性是 ()。",
+      "options": [
+        "text-shadow",
+        "text-overflow",
+        "white-space",
+        "text-indent"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0060",
+      "number": "60",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "下列选项中，用于设置边框样式的属性是 ()。",
+      "options": [
+        "border-height",
+        "border-color",
+        "border-style",
+        "border-width"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0061",
+      "number": "61",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "下列选项中，用来表示通配符选择器的符号是 ()。",
+      "options": [
+        "*",
+        ".",
+        "?",
+        "#"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0062",
+      "number": "62",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "()是将所有的样式放在一个或多个以.css为扩展名的外部样式表文件中，实现了结构和样式完全分离。",
+      "options": [
+        "!important",
+        "内嵌式",
+        "外链式",
+        "行内式"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0063",
+      "number": "63",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "下列选项中，关于选择器权重的优先级的说法正确的是 ()。",
+      "options": [
+        "ID选择器 > 类选择器 > 标签选择器",
+        "标签选择器 > 类选择器 > ID选择器",
+        "类选择器 < ID选择器 < 标签选择器",
+        "标签选择器 > ID选择器 > 类选择器"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0064",
+      "number": "64",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "id选择器使用 () 进行标识，后面紧跟id名。",
+      "options": [
+        "#",
+        "^",
+        "$",
+        "."
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0065",
+      "number": "65",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "CSS样式规则由选择器和声明构成。写法正确的是 ()。",
+      "options": [
+        "选择器{属性1:属性值1; 属性2:属性值2; 属性3:属性值3;}",
+        "选择器(属性1:属性值1; 属性2:属性值2; 属性3:属性值3;)",
+        "选择器{属性1=属性值1; 属性2=属性值2; 属性3=属性值3;}",
+        "{选择器:属性1:属性值1; 属性2:属性值2; 属性3:属性值3;}"
+      ],
+      "answer": 0,
+      "analysis": "CSS 规则由选择器和声明块组成，声明块写在花括号中；每条声明由“属性: 属性值”构成，多条声明之间用分号分隔。A 符合语法；B 使用圆括号，C 使用等号，D 把选择器写进声明块，均不正确。",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0066",
+      "number": "66",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "在设置页面布局时，可以使用 () 的布局方法。",
+      "options": [
+        "绝对定位法",
+        "相对定位法",
+        "浮动法",
+        "以上方法均可以"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0067",
+      "number": "67",
+      "type": "single",
+      "chapter": "四、CSS",
+      "content": "下列样式代码中，可以实现相对定位的是 ()。",
+      "options": [
+        "position: fixed;",
+        "position: absolute;",
+        "position: static;",
+        "position: relative;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0068",
+      "number": "68",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "在驼峰式命名中，所有单词都要大写。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0069",
+      "number": "69",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "CSS3中，nth-last-of-type(n)选择器属于结构化伪类选择器。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0070",
+      "number": "70",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "当对元素应用overflow:hidden;样式时，元素的溢出内容会被修剪。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0071",
+      "number": "71",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "当表格的border-collapse属性设置为collapse时，HTML中设置的cellspacing属性无效。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0072",
+      "number": "72",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "设置了浮动属性值为left的元素不会脱离标准文档流的控制。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0073",
+      "number": "73",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "在设置边框颜色时，无需同时设置边框样式就能显示边框。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0074",
+      "number": "74",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "E[attr*=value]属性选择器中，E可以省略。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0075",
+      "number": "75",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "父子标签的外边距发生合并。若子元素是父元素的第一个子元素，且父标签没有上内边距及边框，则父标签的上外边距会与子标签的上外边距发生合并。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0076",
+      "number": "76",
+      "type": "judge",
+      "chapter": "四、CSS",
+      "content": "`<div>`默认是块元素。()",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch04"
+    },
+    {
+      "id": "web_0077",
+      "number": "77",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "如何求得2和4中最大的数( )。",
+      "options": [
+        "Math.max(2,4)",
+        "top(2,4)",
+        "Math.min(2,4)",
+        "Math.ceil(2,4)"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0078",
+      "number": "78",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "下列选项中，可以实现警告框的是( )。",
+      "options": [
+        "console.log()",
+        "alert()",
+        "prompt()",
+        "document.write()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0079",
+      "number": "79",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "在JavaScript中可以使用Date对象的( )方法返回该对象的某一天具体的日期。",
+      "options": [
+        "getMonth()",
+        "getYear()",
+        "getDate()",
+        "getTime()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0080",
+      "number": "80",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "在使用构造函数创建对象时，构造函数内部的this表示( )。",
+      "options": [
+        "新创建的对象",
+        "window对象",
+        "构造函数本身",
+        "原型对象"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0081",
+      "number": "81",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "下列关于Javascript特征说法错误的是( )。",
+      "options": [
+        "Javascript支持面向对象",
+        "Javascript是一种非脚本语言",
+        "Javascript是事件驱动的",
+        "Javascript是独立于平台的"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0082",
+      "number": "82",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "下列选项中，可以获取到父节点的是()。",
+      "options": [
+        "childrenNode",
+        "parent",
+        "parentNode",
+        "Node"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0083",
+      "number": "83",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "下列选项中,( )可以修改指定元素的指定属性值。",
+      "options": [
+        "removeAttribute()",
+        "setAttribute()",
+        "attributes",
+        "getAttribute()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0084",
+      "number": "84",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "在JavaScript中，有var p=document.getElementById(\"data\"),则使用DOM将data对应内容设置为黄色的语句中正确的是( )。",
+      "options": [
+        "p.style.backgroundColor=\"yellow\"",
+        "p.style.color=\"yellow\"",
+        "p.color=\"yellow\"",
+        "p.backgroundColor=\"yellow\""
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0085",
+      "number": "85",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "若字符串的indexOf方法查找失败，则返回( )。",
+      "options": [
+        "-1",
+        "null",
+        "false",
+        "0"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0086",
+      "number": "86",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "下面关于事件的描述错误的是( )。",
+      "options": [
+        "事件处理程序指的是事件触发后要执行的代码",
+        "事件源是指触发事件的元素",
+        "事件指的是可以被JavaScript侦测到的行为",
+        "以上说法都不正确"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0087",
+      "number": "87",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "下列选项中，可以实现创建元素的是( )。",
+      "options": [
+        "document.createElement(\"p\")",
+        "element.innerValue=\"你好\"",
+        "element.pop(\"你好\")",
+        "element.push(\"你好\")"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0088",
+      "number": "88",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "程序片段：var str1=\"12year\"; var i=str1.indexOf(\"2\"); alert(i);运行后，警告框消息为( )。",
+      "options": [
+        "1",
+        "2",
+        "12",
+        "p"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0089",
+      "number": "89",
+      "type": "single",
+      "chapter": "五、JavaScript基础",
+      "content": "当调整window窗口大小的时候，就会触发的事件是( )。",
+      "options": [
+        "window.onload",
+        "document.DOMContentLoaded",
+        "window.innerWidth",
+        "window.onresize"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0090",
+      "number": "90",
+      "type": "multi",
+      "chapter": "五、JavaScript基础",
+      "content": "下列选项中,( )属于内置对象。",
+      "options": [
+        "Math",
+        "String",
+        "Date",
+        "Array"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0091",
+      "number": "91",
+      "type": "multi",
+      "chapter": "五、JavaScript基础",
+      "content": "下列选项中属于文本节点的是( )。",
+      "options": [
+        "注释",
+        "元素",
+        "空格",
+        "换行"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0092",
+      "number": "92",
+      "type": "multi",
+      "chapter": "五、JavaScript基础",
+      "content": "下列选项中，属于JavaScript注释的是( )。",
+      "options": [
+        "<!-- -->",
+        "/* */",
+        "#",
+        "//"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0093",
+      "number": "93",
+      "type": "multi",
+      "chapter": "五、JavaScript基础",
+      "content": "下面属于符号\"+\"的功能是( )。",
+      "options": [
+        "正数",
+        "字符串连接",
+        "自增",
+        "相加"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0094",
+      "number": "94",
+      "type": "judge",
+      "chapter": "五、JavaScript基础",
+      "content": "事件是指可以被JavaScript侦测到的行为，是一种\"触发-响应\"的机制。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0095",
+      "number": "95",
+      "type": "judge",
+      "chapter": "五、JavaScript基础",
+      "content": "JavaScript不声明变量的数据类型，变量可直接使用。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0096",
+      "number": "96",
+      "type": "judge",
+      "chapter": "五、JavaScript基础",
+      "content": "调用日期对象的getMonth()方法获取的月份，范围为1~12(1表示一月，2表示二月，依次类推)。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0097",
+      "number": "97",
+      "type": "judge",
+      "chapter": "五、JavaScript基础",
+      "content": "JavaScript语言中，调用Math.random()可以获取0到1(包括0和1)之间的随机数。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0098",
+      "number": "98",
+      "type": "judge",
+      "chapter": "五、JavaScript基础",
+      "content": "JavaScript中的变量必须在声明的同时赋值。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0099",
+      "number": "99",
+      "type": "judge",
+      "chapter": "五、JavaScript基础",
+      "content": "调用document.getElementById(id)方法返回的是拥有指定id的元素。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0100",
+      "number": "100",
+      "type": "judge",
+      "chapter": "五、JavaScript基础",
+      "content": "JavaScript可以使用数组名[索引]的方式来访问数组元素。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0101",
+      "number": "101",
+      "type": "judge",
+      "chapter": "五、JavaScript基础",
+      "content": "使用var声明变量y后，alert(typeof y)将显示字符型。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch05"
+    },
+    {
+      "id": "web_0102",
+      "number": "102",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "下面选项中，表示浏览器对象模型的是( )。",
+      "options": [
+        "BOM",
+        "window",
+        "DOM",
+        "document"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0103",
+      "number": "103",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "可获取当前元素对象ele所在层级的最后一个节点的是()。",
+      "options": [
+        "ele.parentNode",
+        "以上答案都不正确",
+        "ele.lastChild",
+        "ele.parentNode.lastChild"
+      ],
+      "answer": 3,
+      "analysis": "ele.parentNode 获取父节点；ele.lastChild 获取 ele 自身的最后一个子节点；ele.parentNode.lastChild 获取 ele 父节点的最后一个子节点，也就是 ele 所在同一层级中的最后一个节点。因此正确答案是 D。",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0104",
+      "number": "104",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "Javascript中，需要声明一个整数变量num，以下语句正确的是( )。",
+      "options": [
+        "number num;",
+        "var num;",
+        "Integer num;",
+        "int num;"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0105",
+      "number": "105",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "'8'+8的结果是( )。",
+      "options": [
+        "undefined",
+        "88",
+        "NaN",
+        "16"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0106",
+      "number": "106",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "下面关于字符串的描述错误的是( )。",
+      "options": [
+        "单引号中使用单引号不需要转义",
+        "双引号中使用单引号不需要转义",
+        "单引号或双引号包裹的数据称为字符串",
+        "双引号内使用换行需要转义"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0107",
+      "number": "107",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "下列选项中，可以实现循环遍历页面中标签的是()。",
+      "options": [
+        "if(){}else{}",
+        "for(){}",
+        "if(){}",
+        "switch(){}"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0108",
+      "number": "108",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "在网页中单击鼠标左键时会触发( )事件。",
+      "options": [
+        "clicks",
+        "dblclick",
+        "onclick",
+        "onfocus"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0109",
+      "number": "109",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "执行程序代码var a;console.log(a);后控制台的输出结果为( )。",
+      "options": [
+        "null",
+        "0",
+        "\"\"",
+        "undefined"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0110",
+      "number": "110",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "为了实现3秒后自动关闭广告的效果，可以使用( )来实现。",
+      "options": [
+        "setInterval()",
+        "clearInterval()",
+        "clearTimeout()",
+        "setTimeout()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0111",
+      "number": "111",
+      "type": "single",
+      "chapter": "六、JavaScript进阶",
+      "content": "HTML DOM中的根节点是( )。",
+      "options": [
+        "head",
+        "div",
+        "window",
+        "document"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0112",
+      "number": "112",
+      "type": "multi",
+      "chapter": "六、JavaScript进阶",
+      "content": "下面选项中，( )属于清除定时器方法。",
+      "options": [
+        "clearInterval()",
+        "setInterval()",
+        "setTimeout()",
+        "clearTimeout()"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0113",
+      "number": "113",
+      "type": "multi",
+      "chapter": "六、JavaScript进阶",
+      "content": "下列选项中，可以获取当前元素节点的兄弟节点的是( )。",
+      "options": [
+        "childNodes",
+        "nextSibling",
+        "parentNode",
+        "previousSibling"
+      ],
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0114",
+      "number": "114",
+      "type": "judge",
+      "chapter": "六、JavaScript进阶",
+      "content": "JavaScript不可以跨平台。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0115",
+      "number": "115",
+      "type": "judge",
+      "chapter": "六、JavaScript进阶",
+      "content": "在JavaScript中，使用childNodes属性和children属性获得的对象是一样的。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0116",
+      "number": "116",
+      "type": "judge",
+      "chapter": "六、JavaScript进阶",
+      "content": "JavaScript中的循环跳转语句break和continue作用完全相同。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0117",
+      "number": "117",
+      "type": "judge",
+      "chapter": "六、JavaScript进阶",
+      "content": "调用日期对象的getMonth()方法获取的月份，范围为1~12(1表示一月,2表示二月,依次类推)。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0118",
+      "number": "118",
+      "type": "judge",
+      "chapter": "六、JavaScript进阶",
+      "content": "使用var声明变量y后，alert(typeof y)将显示字符型。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    },
+    {
+      "id": "web_0119",
+      "number": "119",
+      "type": "judge",
+      "chapter": "六、JavaScript进阶",
+      "content": "JavaScript提供的常用内置对象包括字符串对象、数学对象、日期对象、数组对象。( )",
+      "options": null,
+      "answer": null,
+      "analysis": "",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "rate": 0
+      },
+      "chapter_id": "ch06"
+    }
+  ]
+}

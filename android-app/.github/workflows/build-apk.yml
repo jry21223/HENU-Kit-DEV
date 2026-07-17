@@ -1,0 +1,65 @@
+name: Build Android APK
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [master, main]
+    paths:
+      - 'android-app/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Prepare APK asset
+        run: |
+          APK_SOURCE="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          if [ -z "$APK_SOURCE" ]; then
+            echo "No APK found under app/build/outputs/apk/debug" >&2
+            exit 1
+          fi
+          APK_ASSET_PATH="app/build/outputs/apk/debug/刷题助手.apk"
+          cp "$APK_SOURCE" "$APK_ASSET_PATH"
+          echo "APK_ASSET_PATH=$APK_ASSET_PATH" >> "$GITHUB_ENV"
+          echo "APK_ASSET_NAME=刷题助手.apk" >> "$GITHUB_ENV"
+
+      - name: Upload APK to Release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: android-app/${{ env.APK_ASSET_PATH }}
+          asset_name: ${{ env.APK_ASSET_NAME }}
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: Upload APK as Artifact
+        if: github.event_name != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 刷题助手-APK
+          path: android-app/${{ env.APK_ASSET_PATH }}
