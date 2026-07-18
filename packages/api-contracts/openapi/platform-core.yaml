@@ -1,9 +1,11 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
+    HENU Kit Platform Core machine contract.
+    The communication, idempotency, HMAC and event rules are defined by
+    docs/development/api-communication-spec.md.
 servers:
   - url: https://account.henukit.cn/api/v1
     description: Production account origin
@@ -12,10 +14,14 @@ servers:
 
 tags:
   - name: Health
-  - name: Verification
+  - name: Authentication
   - name: Authorization
   - name: Sessions
+  - name: Users
+  - name: Notifications
   - name: Internal Events
+  - name: Internal Identity
+  - name: Internal Metrics
 
 paths:
   /healthz:
@@ -30,6 +36,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+
   /readyz:
     get:
       tags: [Health]
@@ -45,10 +52,10 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
-  /verification-codes:
+  /auth/email-codes:
     post:
-      tags: [Verification]
-      operationId: requestVerificationCode
+      tags: [Authentication]
+      operationId: requestEmailCode
       summary: 请求学生邮箱验证码
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -57,47 +64,26 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [email, purpose]
-              properties:
-                email:
-                  type: string
-                  format: email
-                purpose:
-                  type: string
-                  enum: [login, bind_email, security]
-                client_id:
-                  type: string
+              $ref: "#/components/schemas/EmailCodeRequest"
       responses:
         "202":
-          description: Verification delivery accepted
+          description: Email code delivery accepted
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/SuccessEnvelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [expires_at, resend_after]
-                        properties:
-                          expires_at:
-                            type: string
-                            format: date-time
-                          resend_after:
-                            type: string
-                            format: date-time
+                $ref: "#/components/schemas/EmailCodeAcceptedEnvelope"
         "400":
           $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
-  /verification-codes/verify:
+  /auth/email-codes/verify:
     post:
-      tags: [Verification]
-      operationId: verifyVerificationCode
-      summary: 验证学生邮箱验证码
+      tags: [Authentication]
+      operationId: verifyEmailCode
+      summary: 校验验证码并建立 Core Session
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -105,47 +91,72 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [email, code, purpose]
-              properties:
-                email:
-                  type: string
-                  format: email
-                code:
-                  type: string
-                  minLength: 6
-                  maxLength: 10
-                purpose:
-                  type: string
-                  enum: [login, bind_email, security]
-                login_intent_id:
-                  type: string
+              $ref: "#/components/schemas/EmailCodeVerifyRequest"
       responses:
         "200":
           description: Verification succeeded
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: HttpOnly, Secure, SameSite=Lax Core Session cookie.
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/SuccessEnvelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [verification_id]
-                        properties:
-                          verification_id:
-                            type: string
+                $ref: "#/components/schemas/VerificationSucceededEnvelope"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /oauth/authorize:
+    get:
+      tags: [Authorization]
+      operationId: authorizeClient
+      summary: 校验 Client、Callback、State 和 PKCE
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          required: true
+          schema:
+            type: string
+            const: S256
+      responses:
+        "302":
+          description: Redirect to exact registered callback or login flow.
+        "400":
+          $ref: "#/components/responses/BadRequest"
 
   /oauth/token:
     post:
       tags: [Authorization]
       operationId: exchangeAuthorizationCode
-      summary: 业务站后端交换一次性授权码
+      summary: 业务站后端交换单次授权码
       security:
         - clientSecret: []
       parameters:
@@ -155,40 +166,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [grant_type, code, redirect_uri, client_id]
-              properties:
-                grant_type:
-                  type: string
-                  const: authorization_code
-                code:
-                  type: string
-                redirect_uri:
-                  type: string
-                  format: uri
-                client_id:
-                  type: string
-                code_verifier:
-                  type: string
+              $ref: "#/components/schemas/AuthorizationCodeExchangeRequest"
       responses:
         "200":
           description: Authorization code exchanged
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/SuccessEnvelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [user]
-                        properties:
-                          user:
-                            $ref: "#/components/schemas/PlatformUser"
-                          session_exchange_token:
-                            type: string
-                            description: Short-lived token for the requesting backend only; never place in URL or browser storage.
+                $ref: "#/components/schemas/AuthorizationCodeExchangeEnvelope"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -196,27 +181,15 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
-  /sessions/revoke:
+  /oauth/logout:
     post:
       tags: [Sessions]
-      operationId: revokeSession
-      summary: 撤销当前或指定平台会话
+      operationId: logoutCoreSession
+      summary: 撤销当前 Core Session
       security:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                session_id:
-                  type: string
-                all_sessions:
-                  type: boolean
-                  default: false
       responses:
         "200":
           description: Session revoked or already revoked
@@ -227,6 +200,162 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /sessions/revoke:
+    post:
+      tags: [Sessions]
+      operationId: revokeSessions
+      summary: 撤销指定或全部平台会话
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                all_sessions:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Sessions revoked or already revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me:
+    get:
+      tags: [Users]
+      operationId: getCurrentUser
+      summary: 返回当前用户最小身份、角色、会员和授权上下文
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUserEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: 当前用户通知分页
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Notification page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPageEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/{notification_id}/read:
+    post:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: 幂等标记当前用户通知已读
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NotificationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Notification marked read or already read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: 幂等标记当前用户全部通知已读
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Notifications marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notification-preferences:
+    get:
+      tags: [Notifications]
+      operationId: getNotificationPreferences
+      summary: 查询通知偏好
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Notifications]
+      operationId: updateNotificationPreferences
+      summary: 更新通知订阅与退订偏好
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /internal/events:
     post:
       tags: [Internal Events]
@@ -236,21 +365,10 @@ paths:
         - serviceHmac: []
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
-        - name: X-HENU-Service-Id
-          in: header
-          required: true
-          schema:
-            type: string
-        - name: X-HENU-Timestamp
-          in: header
-          required: true
-          schema:
-            type: string
-        - name: X-HENU-Nonce
-          in: header
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/XServiceId"
+        - $ref: "#/components/parameters/XKeyId"
+        - $ref: "#/components/parameters/XTimestamp"
+        - $ref: "#/components/parameters/XNonce"
       requestBody:
         required: true
         content:
@@ -270,6 +388,163 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "409":
           $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /internal/activity:
+    post:
+      tags: [Internal Events]
+      operationId: publishActivity
+      summary: 上报最小活跃事件
+      security:
+        - serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/XServiceId"
+        - $ref: "#/components/parameters/XKeyId"
+        - $ref: "#/components/parameters/XTimestamp"
+        - $ref: "#/components/parameters/XNonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [event_id, user_id, service, action_category, occurred_at]
+              properties:
+                event_id:
+                  type: string
+                  format: uuid
+                user_id:
+                  type: string
+                  format: uuid
+                service:
+                  type: string
+                action_category:
+                  type: string
+                occurred_at:
+                  type: string
+                  format: date-time
+                request_id:
+                  $ref: "#/components/schemas/RequestId"
+      responses:
+        "202":
+          description: Activity accepted or already accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /internal/account-links/resolve:
+    post:
+      tags: [Internal Identity]
+      operationId: resolveAccountLink
+      summary: 查询或创建外部账户映射
+      security:
+        - serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/XServiceId"
+        - $ref: "#/components/parameters/XKeyId"
+        - $ref: "#/components/parameters/XTimestamp"
+        - $ref: "#/components/parameters/XNonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [service_id, external_user_id, platform_user_id]
+              properties:
+                service_id:
+                  type: string
+                external_user_id:
+                  type: string
+                platform_user_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Account link resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /internal/sessions/introspect:
+    post:
+      tags: [Internal Identity]
+      operationId: introspectSession
+      summary: 检查 Core Session 和撤销状态
+      security:
+        - serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/XServiceId"
+        - $ref: "#/components/parameters/XKeyId"
+        - $ref: "#/components/parameters/XTimestamp"
+        - $ref: "#/components/parameters/XNonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [session_id]
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Session introspection result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /internal/metrics/users:
+    get:
+      tags: [Internal Metrics]
+      operationId: getUserMetrics
+      summary: 用户数与活跃量聚合
+      security:
+        - serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/XServiceId"
+        - $ref: "#/components/parameters/XKeyId"
+        - $ref: "#/components/parameters/XTimestamp"
+        - $ref: "#/components/parameters/XNonce"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: User metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
 components:
   securitySchemes:
@@ -283,26 +558,83 @@ components:
     serviceHmac:
       type: apiKey
       in: header
-      name: X-HENU-Signature
+      name: X-Signature
+      description: HMAC-SHA256 signature over the canonical request string.
 
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
       in: header
-      required: false
+      required: true
       description: Required for retryable writes that can produce durable side effects.
       schema:
         type: string
         minLength: 8
         maxLength: 200
+    XServiceId:
+      name: X-Service-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 2
+        maxLength: 100
+    XKeyId:
+      name: X-Key-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 2
+        maxLength: 100
+    XTimestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+    XNonce:
+      name: X-Nonce
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    NotificationId:
+      name: notification_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   schemas:
     RequestId:
       type: string
       pattern: '^req_[A-Za-z0-9_-]+$'
+      maxLength: 128
 
     SuccessEnvelope:
       type: object
+      additionalProperties: false
       required: [data, request_id]
       properties:
         data: {}
@@ -311,7 +643,8 @@ components:
 
     ErrorObject:
       type: object
-      required: [code, message]
+      additionalProperties: false
+      required: [code, message, details]
       properties:
         code:
           type: string
@@ -319,10 +652,11 @@ components:
         message:
           type: string
         details:
-          nullable: true
+          type: [object, array, string, number, boolean, 'null']
 
     ErrorEnvelope:
       type: object
+      additionalProperties: false
       required: [error, request_id]
       properties:
         error:
@@ -330,12 +664,118 @@ components:
         request_id:
           $ref: "#/components/schemas/RequestId"
 
+    Pagination:
+      type: object
+      additionalProperties: false
+      required: [page, page_size, total, total_pages]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
+          minimum: 0
+        total_pages:
+          type: integer
+          minimum: 0
+
+    EmailCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [email, purpose]
+      properties:
+        email:
+          type: string
+          format: email
+        purpose:
+          type: string
+          enum: [login, bind_email, security]
+        client_id:
+          type: [string, 'null']
+
+    EmailCodeAcceptedEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [expires_at, resend_after]
+          properties:
+            expires_at:
+              type: string
+              format: date-time
+            resend_after:
+              type: string
+              format: date-time
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    EmailCodeVerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [email, code, purpose]
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+          minLength: 6
+          maxLength: 10
+        purpose:
+          type: string
+          enum: [login, bind_email, security]
+        login_intent_id:
+          type: [string, 'null']
+
+    VerificationSucceededEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [verification_id]
+          properties:
+            verification_id:
+              type: string
+              format: uuid
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    AuthorizationCodeExchangeRequest:
+      type: object
+      additionalProperties: false
+      required: [grant_type, code, redirect_uri, client_id, code_verifier]
+      properties:
+        grant_type:
+          type: string
+          const: authorization_code
+        code:
+          type: string
+        redirect_uri:
+          type: string
+          format: uri
+        client_id:
+          type: string
+        code_verifier:
+          type: string
+
     PlatformUser:
       type: object
+      additionalProperties: false
       required: [user_id, email_verified, status, created_at]
       properties:
         user_id:
           type: string
+          format: uuid
         email_verified:
           type: boolean
         status:
@@ -345,29 +785,119 @@ components:
           type: string
           format: date-time
 
+    AccessContext:
+      type: object
+      additionalProperties: true
+      required: [actor_type, roles, membership, entitlements, authorization_version]
+      properties:
+        actor_type:
+          type: string
+          enum: [guest, user, service]
+        roles:
+          type: array
+          items:
+            type: object
+        membership:
+          type: object
+        entitlements:
+          type: array
+          items:
+            type: string
+        authorization_version:
+          type: integer
+          minimum: 1
+
+    AuthorizationCodeExchangeEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [user, access_context]
+          properties:
+            user:
+              $ref: "#/components/schemas/PlatformUser"
+            access_context:
+              $ref: "#/components/schemas/AccessContext"
+            session_exchange_token:
+              type: [string, 'null']
+              description: Short-lived backend-only token. Never place it in a URL or browser storage.
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    CurrentUserEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [user, access_context]
+          properties:
+            user:
+              $ref: "#/components/schemas/PlatformUser"
+            access_context:
+              $ref: "#/components/schemas/AccessContext"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    Notification:
+      type: object
+      additionalProperties: false
+      required: [notification_id, type, title, body, created_at]
+      properties:
+        notification_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        data:
+          type: object
+        read_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    NotificationPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [items, pagination]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Notification"
+            pagination:
+              $ref: "#/components/schemas/Pagination"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
     EventEnvelope:
       type: object
-      required:
-        - event_id
-        - event_type
-        - schema_version
-        - occurred_at
-        - producer
-        - idempotency_key
-        - payload
+      additionalProperties: false
+      required: [event_id, event_type, schema_version, occurred_at, producer, resource, data, request_id]
       properties:
         event_id:
           type: string
+          format: uuid
         event_type:
           type: string
-          enum:
-            - submission.received
-            - submission.approved
-            - submission.rejected
-            - correction.resolved
-            - points.credited
-            - school_notice.created
-            - school_notice.updated
+          pattern: '^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$'
+          maxLength: 160
         schema_version:
           type: integer
           minimum: 1
@@ -375,14 +905,31 @@ components:
           type: string
           format: date-time
         producer:
-          type: string
+          type: object
+          additionalProperties: false
+          required: [service_id]
+          properties:
+            service_id:
+              type: string
+              pattern: '^[a-z][a-z0-9_-]{1,99}$'
         subject_user_id:
           type: [string, 'null']
-        idempotency_key:
-          type: string
-        payload:
+          format: uuid
+        resource:
           type: object
-          additionalProperties: true
+          additionalProperties: false
+          required: [type, id]
+          properties:
+            type:
+              type: string
+              pattern: '^[a-z][a-z0-9_-]{1,99}$'
+            id:
+              type: string
+              format: uuid
+        data:
+          type: object
+        request_id:
+          $ref: "#/components/schemas/RequestId"
 
   responses:
     BadRequest:
@@ -392,13 +939,19 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
     Unauthorized:
-      description: Authentication failed
+      description: Authentication or service signature failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Resource not found
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
     Conflict:
-      description: State conflict or replay
+      description: State, idempotency or replay conflict
       content:
         application/json:
           schema:
