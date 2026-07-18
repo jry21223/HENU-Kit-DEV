@@ -8,6 +8,8 @@
 
 原 V2.1 计划同时包含仓库审计、产品边界、架构、API、数据模型、时序、测试矩阵、甘特图和 60 余个 Issue，信息完整，但不适合作为开发人员每天直接执行的手册。本包将其拆为九个互相引用、职责明确的文档，并把重复任务合并为 56 个可执行任务，其中 3 个校园通知任务为可选项。
 
+统一管理后台另有一套 Epic 级产品与交付规范，覆盖用户、通知、邮件、两级反馈、美食榜单、系统运行和 shadcn-vue 渐进迁移。该 Epic 必须从 [`admin-dashboard/README.md`](./admin-dashboard/README.md) 进入。
+
 ## 2. 文档目录
 
 | 文件 | 使用者 | 用途 |
@@ -21,6 +23,7 @@
 | [`testing-acceptance-spec.md`](./testing-acceptance-spec.md) | 测试、开发 | 分层测试、关键用例、发布门禁和验收报告 |
 | [`github-issues.md`](./github-issues.md) | 项目负责人、开发、测试 | 可直接录入项目看板的任务、依赖、工时和验收条件 |
 | [`go-no-go-checklist.md`](./go-no-go-checklist.md) | 项目负责人 | 启动前决策、第一周行动、禁止事项和停止线 |
+| [`admin-dashboard/`](./admin-dashboard/) | 产品、前后端、测试 | 统一管理后台 PRD、数据/API、shadcn-vue、Roadmap、测试与决策日志 |
 
 仓库以拆分文件为准，便于按模块评审、认领和持续维护。
 
