@@ -14,6 +14,17 @@ Console Overview 固定呈现 Portal、Platform Operations、Notice、Library、
 
 QuizCraft 保留 React 用户端并用 Go 重构后端，以稳定题库和题目标识承载 Practice Core、按题库收藏夹、公开排行、反馈和 Question Bank Workshop。迁移采用 OpenAPI-first、真实 PostgreSQL/Redis 验证、影子读、对账、灰度切流和可回滚快照。
 
+## Delivery Status
+
+| 状态 | 能力 |
+|---|---|
+| Current | 当前仓库仍运行原 Web、Admin、Study Legacy API 与 Worker，并使用 npm Workspace；这些现状是迁移输入，不是目标 Console 已经存在的证据。 |
+| Current after this docs-only change | Context、ADR、替代计划、执行规格和验收 Gate 成为后续工作的决策基线；本变更不创建运行时、不迁移数据库，也不切生产流量。 |
+| Planned | pnpm Workspace、Study Legacy Admin 物理拆分、HENUKit Console、Console Gateway、Platform Core、六个 Active Product Module 接入，以及 QuizCraft React + Go 重构与可回滚迁移。 |
+| Out of scope for V1 | Portal CMS/部署控制、积分、会员、排行奖励、QuizCraft Electron/Android、AI 生成解析、旧身份自动绑定、跨题库自定义收藏夹和 QuizCraft 美食转盘。 |
+
+下文 Implementation Decisions 均描述 Planned 目标态，除非某条明确标记为 Current 或 Out of scope。实际交付状态只能由已验证代码、契约、Migration 和运行证据更新，不能由现在时措辞推断。
+
 ## User Stories
 
 1. As an HENU Kit operator, I want one Console Overview with six clearly named modules, so that I can understand the active product family without seeing retired Study features.
@@ -179,6 +190,7 @@ QuizCraft 保留 React 用户端并用 Go 重构后端，以稳定题库和题�
 ## Further Notes
 
 - This specification executes the accepted replacement plan and ADRs; it does not describe the new architecture as already deployed.
+- `CONTEXT.md` 是领域词汇及语义的规范来源；本规格和替代计划为了验收而复述行为，修改概念时必须先更新所属 Context，再消除下游差异。
 - The current Admin implementation and its associated old unified-dashboard issues are superseded inputs, not the implementation base for HENUKit Console.
 - Reusable work from the superseded PR is limited to boundary-reviewed UI primitives, contract-test patterns and low-level test scenarios. Legacy navigation, route ownership, authorization and migrations are not reusable.
 - The superseded PR remains Draft until a replacement architecture pull request links back to it and foundational checks pass; it is then closed without deleting its branch or history.

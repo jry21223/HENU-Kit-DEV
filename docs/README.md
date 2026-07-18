@@ -57,13 +57,17 @@
 
 发生冲突时按以下顺序处理：
 
-1. 已运行验证的代码、OpenAPI、Migration 和 CI；
-2. 已接受且明确标为当前的执行规格与替代计划；
-3. Accepted ADR 与当前 Context；
-4. `docs/development/` 下未被替代的执行规范；
-5. `docs/architecture/`、`docs/product/` 中未被 ADR 替代的长期规范；
-6. `docs/operations/` 中与当前运行单元匹配的 Runbook；
-7. `docs/archive/` 与根目录 `archive/` 中的历史材料。
+1. 安全、隐私和法律要求；
+2. Accepted ADR；
+3. 当前 Context 与 `docs/product/PRODUCT_BOUNDARIES.md`；
+4. 明确标为当前的执行规格与替代计划；
+5. `docs/product/DESIGN_SYSTEM.md`；
+6. `docs/architecture/MONOREPO_ARCHITECTURE.md`；
+7. `docs/DEVELOPMENT.md` 与 `docs/development/` 下未被替代的规范；
+8. 各应用、服务 README 和与当前运行单元匹配的 Runbook；
+9. `docs/archive/` 与根目录 `archive/` 中的历史材料。
+
+代码、OpenAPI、Migration、CI 或运行证据与上述决策不一致时，先记录真实状态并创建差异 Issue；不能用现有实现自动覆盖安全要求或 Accepted ADR，也不能把计划能力写成已部署能力。
 
 ## 5. 维护规则
 

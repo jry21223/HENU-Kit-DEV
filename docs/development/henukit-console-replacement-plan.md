@@ -4,6 +4,8 @@
 > 日期：2026-07-19
 > 替代：PR #21 `feat(admin): implement unified dashboard V1 workflows`
 
+> 本计划描述 Planned 目标态，不代表对应应用或服务已经部署。当前实现状态与明确非目标见[执行规格的 Delivery Status](./henukit-console-executable-spec.md#delivery-status)；领域词汇以根目录 `CONTEXT.md` 为规范来源。
+
 ## 1. 目标
 
 建立面向整个 HENU Kit 产品族的独立 HENUKit Console，并将原期末复习平台后台隔离为 Study Legacy Admin。Console 统一入口、身份、权限和观测，但不统一子产品数据库，也不继承旧学习平台的产品边界。
