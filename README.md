@@ -50,7 +50,7 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 
 - `apps/web`：Next.js 学习平台 Web，迁移期间收敛为资料库 Web。
 - `apps/study-legacy-admin`：物理隔离的旧 Study Vue 管理后台，保留原路由、行为、部署入口与回滚能力。
-- `apps/console`：独立 HENUKit Console 应用边界；HC-03 仅提供无旧依赖的最小 Bundle，六模块产品壳由 HC-04 交付。
+- `apps/console`：独立 HENUKit Console；已交付无旧依赖的响应式六模块 Mock Overview，真实 Gateway、会话、授权与产品数据接入仍待后续任务完成。
 - `services/api`：Go Gin/GORM API，当前同时包含账号、资料、刷题、社区、支付、AI 等能力。
 - `services/worker`：Go + Redis Streams Worker。
 - `legacy/v1-next-prisma`：V1 归档。

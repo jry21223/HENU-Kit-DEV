@@ -39,7 +39,7 @@
 
 - `apps/web`：Next.js Web。
 - `apps/study-legacy-admin`：已物理隔离的 Vue Study Legacy Admin。
-- `apps/console`：不含旧路由和 Element Plus 的最小 Console 应用边界。
+- `apps/console`：不含旧路由和 Element Plus 的六模块 Mock Console 壳；尚未接入真实 Gateway、会话或产品数据。
 - `services/api`：Gin + GORM + PostgreSQL API。
 - `services/worker`：Go + Redis Streams Worker。
 - 课程、资料、下载审计、刷题、社区、积分、会员、支付、AI、通知和管理后台。
