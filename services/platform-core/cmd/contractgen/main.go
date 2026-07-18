@@ -86,11 +86,15 @@ func main() {
 	authorizePath, authorize := findOperation(spec.Paths, "authorizeOAuthClient")
 	tokenPath, token := findOperation(spec.Paths, "exchangeAuthorizationCode")
 	authorizationCheckPath, authorizationCheck := findOperation(spec.Paths, "checkAuthorization")
-	if authorize == nil || token == nil || authorizationCheck == nil {
+	requestVerificationPath, requestVerification := findOperation(spec.Paths, "requestVerificationCode")
+	verifyVerificationPath, verifyVerification := findOperation(spec.Paths, "verifyVerificationCode")
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
 	validateAuthorizationCheckOperation(authorizationCheck, spec.Components.Parameters)
+	validateIdempotentPublicWrite(requestVerification, spec.Components.Parameters, "verification-code request")
+	validateIdempotentPublicWrite(verifyVerification, spec.Components.Parameters, "verification-code verification")
 	requestSchema := token.RequestBody.Content["application/json"].Schema
 	if requestSchema == nil {
 		fail(fmt.Errorf("token request application/json schema is missing"))
@@ -108,6 +112,13 @@ func main() {
 	authorizationDecision := resolveSchema(responseDataSchema(authorizationCheck.Responses["200"].Content["application/json"].Schema), spec.Components.Schemas)
 	if authorizationCheckRequest == nil || authorizationScope == nil || authorizationDecision == nil {
 		fail(fmt.Errorf("authorization check schemas are missing"))
+	}
+	requestVerificationRequest := resolveSchema(requestVerification.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
+	requestVerificationResponse := resolveSchema(responseDataSchema(requestVerification.Responses["202"].Content["application/json"].Schema), spec.Components.Schemas)
+	verifyVerificationRequest := resolveSchema(verifyVerification.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
+	verifyVerificationResponse := resolveSchema(responseDataSchema(verifyVerification.Responses["200"].Content["application/json"].Schema), spec.Components.Schemas)
+	if requestVerificationRequest == nil || requestVerificationResponse == nil || verifyVerificationRequest == nil || verifyVerificationResponse == nil {
+		fail(fmt.Errorf("verification-code schemas are missing"))
 	}
 	successEnvelope := spec.Components.Schemas["SuccessEnvelope"]
 	errorObject := spec.Components.Schemas["ErrorObject"]
@@ -131,6 +142,8 @@ const (
 	AuthorizeRoute = %q
 	TokenRoute = %q
 	AuthorizationCheckRoute = %q
+	RequestVerificationCodeRoute = %q
+	VerifyVerificationCodeRoute = %q
 	SourceSHA256 = %q
 )
 
@@ -155,7 +168,15 @@ const (
 %s
 
 %s
-`, authorizePath, tokenPath, authorizationCheckPath, fmt.Sprintf("%x", digest),
+
+%s
+
+%s
+
+%s
+
+%s
+`, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),
@@ -167,6 +188,10 @@ const (
 		renderSuccessEnvelope(successEnvelope),
 		renderStruct("ErrorObject", errorObject),
 		renderStruct("ErrorEnvelope", errorEnvelope),
+		renderStruct("RequestVerificationCodeRequest", requestVerificationRequest),
+		renderStruct("VerificationCodeAccepted", requestVerificationResponse),
+		renderStruct("VerifyVerificationCodeRequest", verifyVerificationRequest),
+		renderStruct("VerificationCodeVerified", verifyVerificationResponse),
 	)
 	formatted, err := format.Source([]byte(generated))
 	if err != nil {
@@ -306,6 +331,22 @@ func validateAuthorizationCheckOperation(operation *operation, parameters map[st
 	}
 	if !operation.RequestBody.Required {
 		fail(fmt.Errorf("authorization check request body must be required"))
+	}
+}
+
+func validateIdempotentPublicWrite(operation *operation, parameters map[string]parameter, name string) {
+	found := false
+	for _, reference := range operation.Parameters {
+		if reference.Ref == "#/components/parameters/RequiredIdempotencyKey" {
+			found = true
+		}
+	}
+	definition, ok := parameters["RequiredIdempotencyKey"]
+	if !found || !ok || definition.In != "header" || !definition.Required || definition.Name != "Idempotency-Key" || definition.Schema == nil {
+		fail(fmt.Errorf("%s must require Idempotency-Key", name))
+	}
+	if !operation.RequestBody.Required {
+		fail(fmt.Errorf("%s request body must be required", name))
 	}
 }
 

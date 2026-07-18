@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
 servers:
@@ -47,13 +47,13 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
-  /verification-codes:
+  /auth/email-codes:
     post:
       tags: [Verification]
       operationId: requestVerificationCode
       summary: 请求学生邮箱验证码
       parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
       requestBody:
         required: true
         content:
@@ -72,7 +72,7 @@ paths:
                   type: string
       responses:
         "202":
-          description: Verification delivery accepted
+          description: Request accepted for queued processing; this is not proof of provider acceptance or delivery
           content:
             application/json:
               schema:
@@ -94,14 +94,16 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
-  /verification-codes/verify:
+  /auth/email-codes/verify:
     post:
       tags: [Verification]
       operationId: verifyVerificationCode
       summary: 验证学生邮箱验证码
       parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
       requestBody:
         required: true
         content:
@@ -142,6 +144,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "409":
           $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /oauth/token:
     post:

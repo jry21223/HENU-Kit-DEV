@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -16,17 +17,24 @@ type Config struct {
 	ExchangeSessionTTL       time.Duration
 	IdempotencyEncryptionKey []byte
 	IdempotencyTTL           time.Duration
+	VerificationKey          []byte
+	StudentEmailDomains      []string
+	VerificationCodeTTL      time.Duration
+	VerificationResendDelay  time.Duration
 }
 
 func Load() (Config, error) {
 	config := Config{
-		Address:            env("PLATFORM_CORE_ADDRESS", ":8081"),
-		DatabaseURL:        os.Getenv("PLATFORM_CORE_DATABASE_URL"),
-		RedisURL:           env("PLATFORM_CORE_REDIS_URL", "redis://localhost:6379/0"),
-		CoreCookieName:     env("PLATFORM_CORE_COOKIE_NAME", "__Host-henukit_core_session"),
-		AuthorizationTTL:   durationEnv("PLATFORM_CORE_AUTHORIZATION_TTL", 90*time.Second),
-		ExchangeSessionTTL: durationEnv("PLATFORM_CORE_EXCHANGE_SESSION_TTL", 5*time.Minute),
-		IdempotencyTTL:     durationEnv("PLATFORM_CORE_IDEMPOTENCY_TTL", 24*time.Hour),
+		Address:                 env("PLATFORM_CORE_ADDRESS", ":8081"),
+		DatabaseURL:             os.Getenv("PLATFORM_CORE_DATABASE_URL"),
+		RedisURL:                env("PLATFORM_CORE_REDIS_URL", "redis://localhost:6379/0"),
+		CoreCookieName:          env("PLATFORM_CORE_COOKIE_NAME", "__Host-henukit_core_session"),
+		AuthorizationTTL:        durationEnv("PLATFORM_CORE_AUTHORIZATION_TTL", 90*time.Second),
+		ExchangeSessionTTL:      durationEnv("PLATFORM_CORE_EXCHANGE_SESSION_TTL", 5*time.Minute),
+		IdempotencyTTL:          durationEnv("PLATFORM_CORE_IDEMPOTENCY_TTL", 24*time.Hour),
+		StudentEmailDomains:     strings.Split(env("PLATFORM_CORE_STUDENT_EMAIL_DOMAINS", "henu.edu.cn"), ","),
+		VerificationCodeTTL:     durationEnv("PLATFORM_CORE_VERIFICATION_CODE_TTL", 10*time.Minute),
+		VerificationResendDelay: durationEnv("PLATFORM_CORE_VERIFICATION_RESEND_DELAY", 60*time.Second),
 	}
 	if config.DatabaseURL == "" {
 		return Config{}, errors.New("PLATFORM_CORE_DATABASE_URL is required")
@@ -37,6 +45,11 @@ func Load() (Config, error) {
 		return Config{}, errors.New("PLATFORM_CORE_IDEMPOTENCY_KEY must be base64 for exactly 32 bytes")
 	}
 	config.IdempotencyEncryptionKey = decodedKey
+	verificationKey, err := base64.StdEncoding.DecodeString(os.Getenv("PLATFORM_CORE_VERIFICATION_KEY"))
+	if err != nil || len(verificationKey) != 32 {
+		return Config{}, errors.New("PLATFORM_CORE_VERIFICATION_KEY must be base64 for exactly 32 bytes")
+	}
+	config.VerificationKey = verificationKey
 	if config.AuthorizationTTL < 60*time.Second || config.AuthorizationTTL > 120*time.Second {
 		return Config{}, errors.New("PLATFORM_CORE_AUTHORIZATION_TTL must be between 60s and 120s")
 	}
@@ -45,6 +58,12 @@ func Load() (Config, error) {
 	}
 	if config.IdempotencyTTL < 24*time.Hour {
 		return Config{}, errors.New("PLATFORM_CORE_IDEMPOTENCY_TTL must be at least 24h")
+	}
+	if config.VerificationCodeTTL < 5*time.Minute || config.VerificationCodeTTL > 10*time.Minute {
+		return Config{}, errors.New("PLATFORM_CORE_VERIFICATION_CODE_TTL must be between 5m and 10m")
+	}
+	if config.VerificationResendDelay < 60*time.Second {
+		return Config{}, errors.New("PLATFORM_CORE_VERIFICATION_RESEND_DELAY must be at least 60s")
 	}
 	return config, nil
 }

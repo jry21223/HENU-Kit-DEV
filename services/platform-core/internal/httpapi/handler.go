@@ -21,18 +21,20 @@ import (
 
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/identity"
+	"henukit.dev/platform-core/internal/verification"
 )
 
 type Handler struct {
-	flow       *identity.Service
-	database   *pgxpool.Pool
-	redis      *redis.Client
-	cookieName string
-	logger     *slog.Logger
+	flow         *identity.Service
+	verification *verification.Service
+	database     *pgxpool.Pool
+	redis        *redis.Client
+	cookieName   string
+	logger       *slog.Logger
 }
 
-func New(flow *identity.Service, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, logger *slog.Logger) http.Handler {
-	handler := &Handler{flow: flow, database: database, redis: redisClient, cookieName: cookieName, logger: logger}
+func New(flow *identity.Service, verificationFlow *verification.Service, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, logger *slog.Logger) http.Handler {
+	handler := &Handler{flow: flow, verification: verificationFlow, database: database, redis: redisClient, cookieName: cookieName, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -40,7 +42,65 @@ func New(flow *identity.Service, database *pgxpool.Pool, redisClient *redis.Clie
 	router.Get(contract.AuthorizeRoute, handler.authorize)
 	router.Post(contract.TokenRoute, handler.exchange)
 	router.Post(contract.AuthorizationCheckRoute, handler.checkAuthorization)
+	router.Post(contract.RequestVerificationCodeRoute, handler.requestVerificationCode)
+	router.Post(contract.VerifyVerificationCodeRoute, handler.verifyVerificationCode)
 	return router
+}
+
+func (h *Handler) requestVerificationCode(writer http.ResponseWriter, request *http.Request) {
+	idempotencyKey := request.Header.Get(contract.IdempotencyKeyHeader)
+	if len(idempotencyKey) < 8 || len(idempotencyKey) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+		return
+	}
+	var body contract.RequestVerificationCodeRequest
+	if err := decodeStrictJSON(writer, request, &body); err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+		return
+	}
+	accepted, err := h.verification.Request(request.Context(), verification.RequestInput{
+		Email: body.Email, Purpose: body.Purpose, ClientID: optionalString(body.ClientID),
+		IdempotencyKey: idempotencyKey, RequestID: requestIDFrom(request.Context()),
+	})
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	writeSuccess(writer, request, http.StatusAccepted, contract.VerificationCodeAccepted{ExpiresAt: accepted.ExpiresAt, ResendAfter: accepted.ResendAfter})
+}
+
+func (h *Handler) verifyVerificationCode(writer http.ResponseWriter, request *http.Request) {
+	idempotencyKey := request.Header.Get(contract.IdempotencyKeyHeader)
+	if len(idempotencyKey) < 8 || len(idempotencyKey) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+		return
+	}
+	var body contract.VerifyVerificationCodeRequest
+	if err := decodeStrictJSON(writer, request, &body); err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+		return
+	}
+	verified, err := h.verification.Verify(request.Context(), verification.VerifyInput{
+		Email: body.Email, Code: body.Code, Purpose: body.Purpose, IdempotencyKey: idempotencyKey,
+	})
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	writeSuccess(writer, request, http.StatusOK, contract.VerificationCodeVerified{VerificationID: verified.VerificationID})
+}
+
+func decodeStrictJSON(writer http.ResponseWriter, request *http.Request, target any) error {
+	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain one JSON value")
+	}
+	return nil
 }
 
 func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {
@@ -209,6 +269,21 @@ func (h *Handler) checkAuthorization(writer http.ResponseWriter, request *http.R
 
 func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Request, err error) {
 	switch {
+	case errors.Is(err, verification.ErrRateLimited):
+		writer.Header().Set("Retry-After", "60")
+		writeError(writer, request, http.StatusTooManyRequests, "VERIFICATION_RATE_LIMITED", "verification request is rate limited")
+	case errors.Is(err, verification.ErrCodeExpired):
+		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_EXPIRED", "verification code expired")
+	case errors.Is(err, verification.ErrCodeAlreadyUsed):
+		writeError(writer, request, http.StatusConflict, "VERIFICATION_CODE_ALREADY_USED", "verification code was already used")
+	case errors.Is(err, verification.ErrCodeInvalid):
+		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_INVALID", "verification code is invalid")
+	case errors.Is(err, verification.ErrIdempotency):
+		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
+	case errors.Is(err, verification.ErrDependency):
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+	case errors.Is(err, verification.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
 	case errors.Is(err, identity.ErrUnauthorized):
 		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
 	case errors.Is(err, identity.ErrForbidden):

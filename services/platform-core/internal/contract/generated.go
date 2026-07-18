@@ -9,10 +9,12 @@ import (
 )
 
 const (
-	AuthorizeRoute          = "/api/v1/oauth/authorize"
-	TokenRoute              = "/api/v1/oauth/token"
-	AuthorizationCheckRoute = "/api/v1/authorization/check"
-	SourceSHA256            = "3fef8ec7bf03a37f590c82961523deee029b31a5ad988919f7a98cc1421a79b6"
+	AuthorizeRoute               = "/api/v1/oauth/authorize"
+	TokenRoute                   = "/api/v1/oauth/token"
+	AuthorizationCheckRoute      = "/api/v1/authorization/check"
+	RequestVerificationCodeRoute = "/api/v1/auth/email-codes"
+	VerifyVerificationCodeRoute  = "/api/v1/auth/email-codes/verify"
+	SourceSHA256                 = "1504ec4b7d78b4db163fe5e42e03d0e446dcf8ced32143e28b84be6d1a9a8181"
 )
 
 const (
@@ -182,4 +184,26 @@ type ErrorObject struct {
 type ErrorEnvelope struct {
 	Error     ErrorObject `json:"error"`
 	RequestID string      `json:"request_id"`
+}
+
+type RequestVerificationCodeRequest struct {
+	Email    string  `json:"email"`
+	Purpose  string  `json:"purpose"`
+	ClientID *string `json:"client_id,omitempty"`
+}
+
+type VerificationCodeAccepted struct {
+	ExpiresAt   time.Time `json:"expires_at"`
+	ResendAfter time.Time `json:"resend_after"`
+}
+
+type VerifyVerificationCodeRequest struct {
+	Email         string  `json:"email"`
+	Code          string  `json:"code"`
+	Purpose       string  `json:"purpose"`
+	LoginIntentID *string `json:"login_intent_id,omitempty"`
+}
+
+type VerificationCodeVerified struct {
+	VerificationID string `json:"verification_id"`
 }
