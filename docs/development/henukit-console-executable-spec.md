@@ -19,8 +19,8 @@ QuizCraft 保留 React 用户端并用 Go 重构后端，以稳定题库和题�
 | 状态 | 能力 |
 |---|---|
 | Current | 当前仓库仍运行原 Web、Admin、Study Legacy API 与 Worker；Web、Admin 与现有 QuizCraft 前端现已统一到 pnpm Workspace，这些现状仍是迁移输入，不是目标 Console 已经存在的证据。 |
-| Current after this docs-only change | Context、ADR、替代计划、执行规格和验收 Gate 成为后续工作的决策基线；本变更不创建运行时、不迁移数据库，也不切生产流量。 |
-| Planned | pnpm Workspace、Study Legacy Admin 物理拆分、HENUKit Console、Console Gateway、Platform Core、六个 Active Product Module 接入，以及 QuizCraft React + Go 重构与可回滚迁移。 |
+| Current documentation baseline | Context、ADR、替代计划、执行规格和验收 Gate 已成为后续工作的决策基线；这些文档本身不证明运行时、数据库迁移或生产切流已经交付。 |
+| Planned | 后续 Console、Portal 与拆分后的 Study Legacy Admin 包接入现有 pnpm Workspace；并交付物理拆分、HENUKit Console、Console Gateway、Platform Core、六个 Active Product Module 接入，以及 QuizCraft React + Go 重构与可回滚迁移。 |
 | Out of scope for V1 | Portal CMS/部署控制、积分、会员、排行奖励、QuizCraft Electron/Android、AI 生成解析、旧身份自动绑定、跨题库自定义收藏夹和 QuizCraft 美食转盘。 |
 
 下文 Implementation Decisions 均描述 Planned 目标态，除非某条明确标记为 Current 或 Out of scope。实际交付状态只能由已验证代码、契约、Migration 和运行证据更新，不能由现在时措辞推断。

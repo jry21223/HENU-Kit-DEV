@@ -20,7 +20,8 @@ FROM pnpm AS runner
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/admin/package.json ./apps/admin/package.json
-RUN pnpm install --frozen-lockfile --prod --filter @final-review/admin...
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/admin/node_modules ./apps/admin/node_modules
 COPY --from=builder /app/apps/admin/dist ./apps/admin/dist
 EXPOSE 4173
 CMD ["pnpm", "--filter", "@final-review/admin", "exec", "vite", "preview", "--host", "0.0.0.0", "--port", "4173"]

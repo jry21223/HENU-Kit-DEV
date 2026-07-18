@@ -1,4 +1,4 @@
-﻿# Internal Smoke Runbook
+# Internal Smoke Runbook
 
 Use this runbook before an internal test, after deploy changes, and after importing real course materials. It is intentionally conservative: the default API smoke does not mark orders paid, does not grant entitlement, and does not bypass paid download checks.
 

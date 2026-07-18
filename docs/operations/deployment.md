@@ -1,6 +1,6 @@
-﻿# Deployment
+# Deployment
 
-> 鏈枃鎻忚堪杩佺Щ鍓?Study V2 鐨勯儴缃插舰鎬併€侶ENUKitDev 澶氶儴缃插崟鍏冪殑缁熶竴鍙戝竷瑙勫垯浠?[`../development/engineering-release-spec.md`](../development/engineering-release-spec.md) 涓哄噯銆?
+> 本文描述迁移前 Study V2 的部署形态。HENUKitDev 多部署单元的统一发布规则以 [`../development/engineering-release-spec.md`](../development/engineering-release-spec.md) 为准。
 
 This project is still in internal-test hardening. The production files in this repository are examples, not a one-command guarantee of a safe public launch. They are meant to make deployment review repeatable.
 

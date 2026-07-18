@@ -9,7 +9,7 @@ process.env.E2E_WEB_BASE_URL ??= testOrigin;
 export default defineConfig({
   testDir: "./tests",
   webServer: {
-    command: "pnpm exec next dev -p 3102",
+    command: "pnpm run build && pnpm exec next start -p 3102",
     url: testOrigin,
     reuseExistingServer: false,
     timeout: 120_000,

@@ -84,7 +84,7 @@ if ! resolve_python_bin; then
 fi
 
 if ! command -v pnpm >/dev/null 2>&1; then
-  echo "❌ 需要安装 Node.js 和 npm"
+  echo "❌ 需要安装 Node.js 和 pnpm（可通过 Corepack 启用）"
   exit 1
 fi
 
