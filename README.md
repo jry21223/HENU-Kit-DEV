@@ -1,10 +1,18 @@
 # HENU Kit Monorepo
 
-> 当前仓库名称仍为 `final-review-platform`，目标是在迁移完成并通过发布验收后改名为 `HENUKitDev`。现有公开仓库 `jry21223/HENU-Kit` 保持原名，不被替换。本分支用于完成仓库级重构，不直接改变线上流量。
+> 当前实际开发仓库为 `jry21223/HENU-Kit-DEV`，它由原 `final-review-platform` 演进而来；迁移完成并通过发布验收后，计划规范为 `jry21223/HENUKitDev`。现有公开仓库 `jry21223/HENU-Kit` 保持原名，不被替换。
 
 HENU Kit 是由河南大学学生自主发起并维护的统一校园工具系统。它不是简单的网站导航集合，也不是河南大学官方产品，不代表学校官方立场。
 
 > 学生自主运营 · 非河南大学官方项目
+
+## 文档入口
+
+- [`docs/README.md`](docs/README.md)：文档中心，区分当前规范、运行维护和历史归档。
+- [`docs/development/implementation-plan.md`](docs/development/implementation-plan.md)：面向 1–2 名开发、1–2 名测试的实施计划。
+- [`docs/development/go-no-go-checklist.md`](docs/development/go-no-go-checklist.md)：启动决策、第一周行动和停止条件。
+
+新开发者应从文档中心进入，不再直接使用散落的旧 V2 文档作为当前规范。
 
 ## 仓库分工
 
@@ -44,7 +52,7 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 - `services/worker`：Go + Redis Streams Worker。
 - `legacy/v1-next-prisma`：V1 归档。
 
-迁移分支新增或导入：
+Monorepo Foundation 新增或导入：
 
 - `apps/portal`：HENU Kit 主站入口。
 - `products/quizcraft`：从 `jry21223/quizcraft-cn` 导入的完整 QuizCraft 产品代码，第一阶段保持 FastAPI + React/Vite 原样运行。
@@ -98,7 +106,7 @@ cd services/api && go test ./...
 cd ../worker && go test ./...
 ```
 
-新增产品或共享包不得绕过 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) 中的模块边界、测试、迁移和发布要求。
+新增产品或共享包不得绕过 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) 和 [`docs/development/`](docs/development/) 中的模块边界、测试、迁移和发布要求。
 
 ## 生产安全
 

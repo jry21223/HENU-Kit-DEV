@@ -30,4 +30,4 @@ Current hardening in the template:
   and moment images are served through Go API endpoints so permission and
   visibility checks always run.
 
-After editing the template, run an `nginx -t` check with real or temporary certificates before deployment. The release checklist in `docs/deployment.md` includes a Docker-based example.
+After editing the template, run an `nginx -t` check with real or temporary certificates before deployment. The release checklist in `docs/operations/deployment.md` includes a Docker-based example.

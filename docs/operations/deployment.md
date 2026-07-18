@@ -1,5 +1,7 @@
 # Deployment
 
+> 本文描述迁移前 Study V2 的部署形态。HENUKitDev 多部署单元的统一发布规则以 [`../development/engineering-release-spec.md`](../development/engineering-release-spec.md) 为准。
+
 This project is still in internal-test hardening. The production files in this repository are examples, not a one-command guarantee of a safe public launch. They are meant to make deployment review repeatable.
 
 ## Production Shape
@@ -158,13 +160,13 @@ Before opening paid sales, verify all items below:
 - production `.env.production` has `APP_ENV=production`, `WECHAT_PAY_MODE=live`, `AUTO_MIGRATE=false`, and an empty `DEV_FIXED_VERIFICATION_CODE`
 - `CORS_ALLOWED_ORIGINS` lists exact HTTPS origins and does not use `*`; the API rejects wildcard origins and refuses production startup without exact HTTPS origins
 - `docker compose --env-file .env.production -f docker-compose.prod.example.yml run --rm nginx nginx -t`
-- API smoke in `docs/internal-smoke.md` passes with a fresh student test email
+- API smoke in [`internal-smoke.md`](./internal-smoke.md) passes with a fresh student test email
 - payment ops readiness smoke passes with `go run ./cmd/smoke -skip-login -admin-email <admin-email> -payment-ops-readiness`, proving local reconciliation has no critical/high issues and payment incidents have no critical, high, or overdue open items
 - WeChat Pay Native live order-and-close smoke has passed with `go run ./cmd/smoke -wechat-live-native` against a positive-price test package
 - WeChat Pay Native successful payment notify has been tested with the real merchant dashboard and a real internal paid order
 - WeChat paid-order verification smoke has passed with `go run ./cmd/smoke -verify-paid-order -order-id <paid-order-id>` for that real internal paid order
 - material import dry-run report has been reviewed against mounted real files
-- manual-grant smoke in `docs/internal-smoke.md` passes with fresh student/admin test accounts after importing real mounted files
+- manual-grant smoke in [`internal-smoke.md`](./internal-smoke.md) passes with fresh student/admin test accounts after importing real mounted files
 - browser delivery smoke `npm --workspace @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
 - leaderboards smoke `npm --workspace @final-review/web run test:e2e:leaderboards` passes against Web/API without leaking email addresses
 - quiz wrong-question smoke `npm --workspace @final-review/web run test:e2e:quiz` passes against Web/API with a fresh student test account
