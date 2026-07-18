@@ -9,11 +9,11 @@
 - 测试 A：API、Migration、并发、幂等、安全、数据一致性。
 - 测试 B：浏览器、移动端、审核流程、灰度与回滚。
 
-推荐周期：**14–16 周**，包含不少于 20% 缓冲。
+推荐周期：**16–18 周**，包含不少于 20% 集成缓冲。
 
 ### 最小配置
 
-1 名开发 + 1 名测试：**18–22 周**。必须按阶段串行，不允许同时展开 Notice、Mail、Food 三条未闭环链路。
+1 名开发 + 1 名测试：**24–28 周**。必须按阶段串行，不允许同时展开 Notice、Mail、Food 三条未闭环链路。
 
 ## 2. 关键路径
 
@@ -23,7 +23,7 @@
 → Platform Core Admin Module/BFF
 → 总览与用户
 → 邮件闭环
-→ 通知采集与分发
+→ 通知人工录入、JSONL 导入与分发
 → 两级反馈
 → 美食投稿与校准
 → 系统/审计
@@ -36,7 +36,7 @@ OpenAPI、数据口径和权限必须先于页面实现。页面可以使用 Moc
 
 ### 目标
 
-建立不可漂移的产品、数据、API、UI、测试和决策基线。
+建立不可漂移的产品、数据、API、UI、测试和决策基线。合并顺序固定为 PR #12 → PR #19 → Admin OpenAPI/Mock PR。
 
 ### 任务
 
@@ -131,32 +131,32 @@ OpenAPI、数据口径和权限必须先于页面实现。页面可以使用 Moc
 - 死信重放、抑制和敏感信息脱敏通过；
 - Provider 可通过配置切回 Fake/备用实现。
 
-## 7. Phase 4：校园通知采集与分发（W7–W10）
+## 7. Phase 4：校园通知导入与分发（W7–W10）
 
 ### 目标
 
-支持学院来源、不可变版本、人工审核、主动订阅与邮件/站内分发。
+支持人工表单、JSONL 批量导入、不可变版本、人工审核、主动订阅与邮件/站内分发。
 
 ### 任务
 
 | ID | 任务 | 开发 | 测试 | 依赖 |
 |---|---|---:|---:|---|
-| ADMIN-023 | Notice Source/Fetch Log/Parser Version Migration/API | 3d | 2d | ADMIN-011 |
-| ADMIN-024 | 白名单抓取 Worker、条件请求、Fixture Parser | 4d | 3d | ADMIN-023 |
-| ADMIN-025 | Notice/Version/Audience Migration/API | 4d | 3d | ADMIN-024 |
-| ADMIN-026 | 审核、版本 Diff 和目标受众页面 | 4d | 2d | ADMIN-025/008 |
-| ADMIN-027 | Distribution 计划、用户匹配、去重和取消 | 4d | 3d | ADMIN-014/019/025 |
-| ADMIN-028 | 来源监控、分发任务和异常页面 | 3d | 2d | ADMIN-026/027 |
+| ADMIN-023 | Notice Service 骨架、独立凭据与版本化 Migration | 3d | 2d | ADMIN-011 |
+| ADMIN-024 | 单条表单、JSONL 导入任务和逐行结果 | 4d | 3d | ADMIN-023 |
+| ADMIN-025 | Notice/Version/Audience 与 S3 对象键追溯 | 4d | 3d | ADMIN-024 |
+| ADMIN-026 | 审核、驳回、版本 Diff 和目标受众页面 | 4d | 2d | ADMIN-025/008 |
+| ADMIN-027 | Distribution 计划、订阅匹配、去重和取消 | 4d | 3d | ADMIN-014/019/025 |
+| ADMIN-028 | 导入任务、分发任务和异常页面 | 3d | 2d | ADMIN-026/027 |
 
 ### 退出条件
 
-- 只抓取白名单公开来源；
+- 表单与 JSONL 共用 Upsert，逐行结果可定位；
 - 版本更新不覆盖历史；
 - 原来源、时间和链接完整；
 - 未主动订阅用户不收到邮件；
 - 退订立即生效；
 - `(user_id, notice_id, channel, window)` 唯一防重复；
-- 来源结构变化进入人工处理。
+- 自动抓取、QQ 空间同步、网页解析器和 OCR 不进入 V1。
 
 ## 8. Phase 5：反馈中心（W9–W11）
 
@@ -207,6 +207,7 @@ OpenAPI、数据口径和权限必须先于页面实现。页面可以使用 Moc
 - 调档后旧轮次关闭，新轮次建立；
 - 每次最多调整一档；
 - suspected/invalidated 票不进入共识；
+- Policy V1 固定为 10 人、70%、7 天冷却；
 - 首发仅系统建议 + 管理员确认；
 - 审核、调档和票作废均可审计和回滚。
 
