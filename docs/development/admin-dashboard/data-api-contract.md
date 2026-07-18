@@ -66,7 +66,7 @@
 
 所有产生持久副作用的 `POST`、`PATCH` 必须接受 `Idempotency-Key`。
 
-- 唯一范围：`client_id + method + normalized_route + key`。
+- 唯一范围：`principal_id + method + normalized_route + key`；浏览器使用已认证 actor，内部服务使用 client/service id。
 - 相同 Key + 相同请求：返回首次结果。
 - 相同 Key + 不同请求：409 `IDEMPOTENCY_KEY_CONFLICT`。
 - 最终幂等由数据库唯一约束保证，Redis 仅作加速或短期防重。
@@ -159,6 +159,7 @@ SHA256(BODY)
 
 - `first_response_time`：首次管理员有效操作 - created_at。
 - `resolution_time`：resolved_at - created_at。
+- `urgent` 创建后 24 小时到期；`normal` 创建后 72 小时到期。
 - `overdue`：未解决且当前时间超过 due_at。
 - 平台反馈和题目反馈分别计算，再在总览汇总。
 
@@ -169,6 +170,7 @@ SHA256(BODY)
 - `initial_tier_retention_rate`：当前档位仍等于初始档位条目 / 已发布条目。
 - `promotion_candidate_count`、`demotion_candidate_count`：按 Policy 版本计算。
 - suspected/invalidated 票不进入有效共识分母。
+- Policy V1：至少 10 名有效参与者、70% 候选阈值、调档后 7 天冷却。
 
 ## 5. 浏览器 Admin API
 
@@ -182,7 +184,7 @@ GET /api/v1/admin/metric-series
 
 通用过滤：`from`、`to`、`timezone`、`organization_id`、`product_code`、`environment`。
 
-`dashboard-snapshots/latest` 允许部分成功：
+`dashboard-snapshots/latest` 固定返回用户、校园通知、邮件、反馈、美食、系统六张卡并允许部分成功；未接入域使用 `not_integrated` 和 `value: null`：
 
 ```json
 {
@@ -238,26 +240,21 @@ DELETE /api/v1/notification-subscriptions/{subscription_id}
 
 ### 5.3 校园通知
 
+V1 仅人工表单与 UTF-8 `campus-notice-import/1.0` JSONL 导入：
+
 ```http
-GET   /api/v1/admin/notice-sources
-POST  /api/v1/admin/notice-sources
-GET   /api/v1/admin/notice-sources/{source_id}
-PATCH /api/v1/admin/notice-sources/{source_id}
-POST  /api/v1/admin/notice-sources/{source_id}/fetch-jobs
-POST  /api/v1/admin/notice-sources/{source_id}/parser-test-jobs
-
-GET   /api/v1/admin/school-notices
-GET   /api/v1/admin/school-notices/{notice_id}
-GET   /api/v1/admin/school-notices/{notice_id}/versions
-POST  /api/v1/admin/school-notices/{notice_id}/approvals
-POST  /api/v1/admin/school-notices/{notice_id}/rejections
-POST  /api/v1/admin/school-notices/{notice_id}/distributions
-
-GET   /api/v1/admin/notice-distributions
-GET   /api/v1/admin/notice-distributions/{distribution_id}
-POST  /api/v1/admin/notice-distributions/{distribution_id}/cancellations
-POST  /api/v1/admin/notice-distributions/{distribution_id}/retry-jobs
+POST /api/v1/admin/school-notices
+POST /api/v1/admin/notice-import-jobs
+GET  /api/v1/admin/notice-import-jobs/{job_id}
+GET  /api/v1/admin/school-notices
+GET  /api/v1/admin/school-notices/{notice_id}/versions
+POST /api/v1/admin/school-notices/{notice_id}/approvals
+POST /api/v1/admin/school-notices/{notice_id}/rejections
+POST /api/v1/admin/school-notices/{notice_id}/distributions
+POST /api/v1/object-upload-intents
 ```
+
+每任务最多 1,000 条或 10 MB并逐行返回结果。表单与 JSONL 共用 Upsert；相同 Hash 幂等，内容变化建立不可变新版本。附件通过预签名 URL 上传 S3 兼容存储，浏览器不得获得 Secret。自动抓取、网页解析、QQ 空间同步与 OCR 不进入 V1。
 
 ### 5.4 邮件
 
