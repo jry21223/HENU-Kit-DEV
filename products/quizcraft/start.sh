@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "$SCRIPT_DIR"
 
 BACKEND_HOST="${BACKEND_HOST:-0.0.0.0}"
@@ -82,7 +83,7 @@ if ! resolve_python_bin; then
   exit 1
 fi
 
-if ! command -v npm >/dev/null 2>&1; then
+if ! command -v pnpm >/dev/null 2>&1; then
   echo "❌ 需要安装 Node.js 和 npm"
   exit 1
 fi
@@ -119,9 +120,9 @@ wait_for_url "后端" "http://${WAIT_HOST}:${BACKEND_PORT}/api/banks"
 echo "🌐 启动前端..."
 cd web-app
 echo "📦 同步前端依赖..."
-npm install --include=dev
+pnpm --dir "${WORKSPACE_ROOT}" install --frozen-lockfile
 
-npm run dev -- --host "${FRONTEND_HOST}" --port "${FRONTEND_PORT}" > dev.log 2>&1 &
+pnpm --dir "${WORKSPACE_ROOT}" --filter quiz-app run dev -- --host "${FRONTEND_HOST}" --port "${FRONTEND_PORT}" > dev.log 2>&1 &
 CLIENT_PID=$!
 wait_for_url "前端" "http://${WAIT_HOST}:${FRONTEND_PORT}/"
 

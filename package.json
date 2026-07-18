@@ -5,12 +5,15 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev": "docker compose -f docker-compose.dev.yml up --build",
-    "build": "pnpm run build:web && pnpm run build:admin",
+    "build": "pnpm run build:web && pnpm run build:admin && pnpm run build:quizcraft",
     "build:web": "pnpm --filter @final-review/web run build",
     "build:admin": "pnpm --filter @final-review/admin run build",
-    "lint": "pnpm --filter @final-review/web run lint && pnpm --filter @final-review/admin run lint",
-    "test": "pnpm run build:web && pnpm run build:admin",
-    "test:libraryctl": "node --test scripts/libraryctl/tests/*.test.mjs"
+    "build:quizcraft": "pnpm --filter quiz-app run build",
+    "lint": "pnpm --filter @final-review/web run lint && pnpm --filter @final-review/admin run lint && pnpm --filter quiz-app run lint",
+    "test": "pnpm run test:libraryctl && pnpm run test:web-ui && pnpm run test:quizcraft",
+    "test:libraryctl": "node --test scripts/libraryctl/tests/*.test.mjs",
+    "test:web-ui": "pnpm --filter @final-review/web run test:e2e:ui",
+    "test:quizcraft": "pnpm --filter quiz-app run test:syntax"
   },
   "devDependencies": {
     "typescript": "5.9.3"

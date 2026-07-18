@@ -103,6 +103,8 @@ docker compose -f docker-compose.dev.yml up --build
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm run lint
+pnpm run test
 pnpm run build
 cd services/api && go test ./...
 cd ../worker && go test ./...

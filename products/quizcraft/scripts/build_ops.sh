@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+WORKSPACE_ROOT="$(cd "${ROOT_DIR}/../.." && pwd)"
 STATIC_DEPLOY_DIR="${STATIC_DEPLOY_DIR:-}"
 
 _validate_static_deploy_dir() {
@@ -34,7 +35,7 @@ _validate_static_deploy_dir() {
 }
 
 cd "${ROOT_DIR}/web-app"
-npm run build:ops
+pnpm --dir "${WORKSPACE_ROOT}" --filter quiz-app run build:ops
 
 if [ -n "${STATIC_DEPLOY_DIR}" ]; then
   STATIC_DEPLOY_DIR="$(_validate_static_deploy_dir "${STATIC_DEPLOY_DIR}")"

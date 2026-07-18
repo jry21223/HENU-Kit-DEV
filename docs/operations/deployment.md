@@ -1,6 +1,6 @@
-# Deployment
+﻿# Deployment
 
-> 本文描述迁移前 Study V2 的部署形态。HENUKitDev 多部署单元的统一发布规则以 [`../development/engineering-release-spec.md`](../development/engineering-release-spec.md) 为准。
+> 鏈枃鎻忚堪杩佺Щ鍓?Study V2 鐨勯儴缃插舰鎬併€侶ENUKitDev 澶氶儴缃插崟鍏冪殑缁熶竴鍙戝竷瑙勫垯浠?[`../development/engineering-release-spec.md`](../development/engineering-release-spec.md) 涓哄噯銆?
 
 This project is still in internal-test hardening. The production files in this repository are examples, not a one-command guarantee of a safe public launch. They are meant to make deployment review repeatable.
 
@@ -155,8 +155,9 @@ Before opening paid sales, verify all items below:
 - API `/readyz` returns HTTP 200, and `docker compose ps` shows API and Worker as healthy
 - `go test ./...` in `services/api`
 - `go test ./...` in `services/worker`
-- `pnpm --filter @final-review/web run build`
-- `pnpm --filter @final-review/admin run build`
+- `pnpm run build:web`
+- `pnpm run build:admin`
+- `pnpm run build:quizcraft`
 - production `.env.production` has `APP_ENV=production`, `WECHAT_PAY_MODE=live`, `AUTO_MIGRATE=false`, and an empty `DEV_FIXED_VERIFICATION_CODE`
 - `CORS_ALLOWED_ORIGINS` lists exact HTTPS origins and does not use `*`; the API rejects wildcard origins and refuses production startup without exact HTTPS origins
 - `docker compose --env-file .env.production -f docker-compose.prod.example.yml run --rm nginx nginx -t`
@@ -168,18 +169,18 @@ Before opening paid sales, verify all items below:
 - material import dry-run report has been reviewed against mounted real files
 - manual-grant smoke in [`internal-smoke.md`](./internal-smoke.md) passes with fresh student/admin test accounts after importing real mounted files
 - browser delivery smoke `pnpm --filter @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
-- leaderboards smoke `npm --workspace @final-review/web run test:e2e:leaderboards` passes against Web/API without leaking email addresses
-- quiz wrong-question smoke `npm --workspace @final-review/web run test:e2e:quiz` passes against Web/API with a fresh student test account
-- quiz multi-type smoke `npm --workspace @final-review/web run test:e2e:quiz-multi-type` passes against Web/API with seed data or explicit question/answer overrides
-- admin material-review smoke `npm --workspace @final-review/web run test:e2e:material-review` passes against Web/Admin/API with an admin reviewer account
-- admin blog-review smoke `npm --workspace @final-review/web run test:e2e:review` passes against Web/Admin/API with fresh author/admin test accounts
-- admin wiki-review smoke `npm --workspace @final-review/web run test:e2e:wiki-review` passes against Web/Admin/API with a creator/admin author account and admin reviewer account
-- admin wiki-proposal-review smoke `npm --workspace @final-review/web run test:e2e:wiki-proposal-review` passes against Web/Admin/API with a creator/admin author account and admin reviewer account
-- admin forum-review smoke `npm --workspace @final-review/web run test:e2e:forum-review` passes against Web/Admin/API with fresh author/admin test accounts
-- admin forum-reply-review smoke `npm --workspace @final-review/web run test:e2e:forum-reply-review` passes against Web/Admin/API with fresh author/admin test accounts
-- admin report-review smoke `npm --workspace @final-review/web run test:e2e:report-review` passes against Web/Admin/API with fresh author/reporter/admin test accounts
-- admin AI draft-review smoke `npm --workspace @final-review/web run test:e2e:ai-draft-review` passes against API/Admin/Worker with mock LLM mode and fresh student/admin test accounts
-- mobile public-page smoke `npm --workspace @final-review/web run test:e2e:mobile` passes against the deployed Web origin at a 390px viewport
+- leaderboards smoke `pnpm --filter @final-review/web run test:e2e:leaderboards` passes against Web/API without leaking email addresses
+- quiz wrong-question smoke `pnpm --filter @final-review/web run test:e2e:quiz` passes against Web/API with a fresh student test account
+- quiz multi-type smoke `pnpm --filter @final-review/web run test:e2e:quiz-multi-type` passes against Web/API with seed data or explicit question/answer overrides
+- admin material-review smoke `pnpm --filter @final-review/web run test:e2e:material-review` passes against Web/Admin/API with an admin reviewer account
+- admin blog-review smoke `pnpm --filter @final-review/web run test:e2e:review` passes against Web/Admin/API with fresh author/admin test accounts
+- admin wiki-review smoke `pnpm --filter @final-review/web run test:e2e:wiki-review` passes against Web/Admin/API with a creator/admin author account and admin reviewer account
+- admin wiki-proposal-review smoke `pnpm --filter @final-review/web run test:e2e:wiki-proposal-review` passes against Web/Admin/API with a creator/admin author account and admin reviewer account
+- admin forum-review smoke `pnpm --filter @final-review/web run test:e2e:forum-review` passes against Web/Admin/API with fresh author/admin test accounts
+- admin forum-reply-review smoke `pnpm --filter @final-review/web run test:e2e:forum-reply-review` passes against Web/Admin/API with fresh author/admin test accounts
+- admin report-review smoke `pnpm --filter @final-review/web run test:e2e:report-review` passes against Web/Admin/API with fresh author/reporter/admin test accounts
+- admin AI draft-review smoke `pnpm --filter @final-review/web run test:e2e:ai-draft-review` passes against API/Admin/Worker with mock LLM mode and fresh student/admin test accounts
+- mobile public-page smoke `pnpm --filter @final-review/web run test:e2e:mobile` passes against the deployed Web origin at a 390px viewport
 - paid material download is denied before entitlement and allowed after a verified paid order
 - `scripts/ops/backup-postgres.sh` produces a restorable dump in a staging environment
 - Nginx TLS certs, HSTS, CSP, secure cookie flags, and security headers are active; `CHECK_SECURITY_HEADERS=true scripts/ops/healthcheck.sh` passes against the public Web/Admin origins
