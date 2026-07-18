@@ -7,7 +7,9 @@ import BlogReviewsView from "../views/BlogReviewsView.vue";
 import CoursesView from "../views/CoursesView.vue";
 import AiDraftsView from "../views/AiDraftsView.vue";
 import DashboardView from "../views/DashboardView.vue";
+import LegacyDashboardView from "../views/LegacyDashboardView.vue";
 import DownloadsView from "../views/DownloadsView.vue";
+import DomainOperationsView from "../views/DomainOperationsView.vue";
 import ForumReplyReviewsView from "../views/ForumReplyReviewsView.vue";
 import ForumReviewsView from "../views/ForumReviewsView.vue";
 import LoginView from "../views/LoginView.vue";
@@ -33,6 +35,13 @@ export const router = createRouter({
     { path: "/", component: DashboardView },
     { path: "/login", component: LoginView, meta: { public: true } },
     { path: "/dashboard", component: DashboardView },
+    { path: "/legacy-dashboard", component: LegacyDashboardView },
+    { path: "/notices", component: DomainOperationsView, meta: { title: "校园通知", domain: "notice", description: "人工导入、不可变版本、审核与订阅分发。" } },
+    { path: "/mail", component: DomainOperationsView, meta: { title: "邮件投递", domain: "mail", description: "Critical、Transactional、Digest 队列与投递状态。" } },
+    { path: "/feedback", component: DomainOperationsView, meta: { title: "反馈中心", domain: "feedback", description: "平台反馈、题目反馈与两档 SLA 待办。" } },
+    { path: "/food", component: DomainOperationsView, meta: { title: "美食榜单", domain: "food", description: "五档投稿、社区校准、调档候选与异常票。" } },
+    { path: "/system", component: DomainOperationsView, meta: { title: "系统运行", domain: "system", description: "服务健康、Worker、Outbox、部署与数据新鲜度。" } },
+    { path: "/quiz-operations", component: DomainOperationsView, meta: { title: "刷题运营", domain: "quiz", description: "QuizCraft 是唯一刷题数据 Owner。" } },
     { path: "/users", component: UsersView },
     { path: "/points", component: PointsView },
     { path: "/memberships", component: MembershipsView },

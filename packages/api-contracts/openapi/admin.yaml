@@ -1,0 +1,245 @@
+openapi: 3.1.0
+info:
+  title: HENU Kit Unified Admin API
+  version: 0.1.0
+  description: Machine contract for the student-operated, non-official HENU Kit admin console.
+servers:
+  - url: /api/v1
+paths:
+  /admin/ui-config:
+    get:
+      summary: Read runtime admin UI capabilities
+      operationId: getAdminUIConfig
+      security: [{ legacyAdminBearer: [] }]
+      responses:
+        "200":
+          description: Runtime shell and capability flags.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UIConfigEnvelope"
+  /admin/dashboard-snapshots/latest:
+    get:
+      summary: Read the latest six-domain dashboard snapshot
+      operationId: getLatestAdminDashboardSnapshot
+      security: [{ legacyAdminBearer: [] }]
+      responses:
+        "200":
+          description: Six-domain snapshot. Downstream failures are represented per card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSnapshotEnvelope"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/action-items:
+    get:
+      summary: List unified cross-domain action items
+      operationId: listAdminActionItems
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - name: urgency
+          in: query
+          schema: { $ref: "#/components/schemas/Urgency" }
+        - name: domain
+          in: query
+          schema: { $ref: "#/components/schemas/DomainCode" }
+      responses:
+        "200":
+          description: Cross-domain references ordered by urgency and due time.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItemPageEnvelope"
+  /admin/metric-series:
+    get:
+      summary: Read a versioned admin metric time series
+      operationId: getAdminMetricSeries
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - name: metric
+          in: query
+          required: true
+          schema: { type: string, pattern: "^[a-z][a-z0-9_]{1,79}$" }
+      responses:
+        "200":
+          description: Time series using the same metric definition as the cards.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricSeriesEnvelope"
+components:
+  securitySchemes:
+    legacyAdminBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT RS256
+      description: Temporary verifier; replaced by Platform Core session without changing this API.
+  schemas:
+    RequestId:
+      type: string
+      pattern: "^req_[A-Za-z0-9_-]+$"
+      maxLength: 128
+    IntegrationStatus:
+      type: string
+      enum: [not_integrated, ok, partial, stale, unavailable]
+    Urgency:
+      type: string
+      enum: [urgent, normal]
+    DomainCode:
+      type: string
+      enum: [users, notice, mail, feedback, food, system]
+    Metric:
+      type: object
+      additionalProperties: false
+      required: [code, label, value, previous_value, change_rate, definition_version, as_of]
+      properties:
+        code: { type: string }
+        label: { type: string }
+        value: { type: [number, "null"] }
+        previous_value: { type: [number, "null"] }
+        change_rate: { type: [number, "null"] }
+        definition_version: { type: string }
+        as_of: { type: string, format: date-time }
+    DashboardCard:
+      type: object
+      additionalProperties: false
+      required: [domain, title, status, primary_metric, metrics, as_of, last_success_at, action_path, message]
+      properties:
+        domain: { $ref: "#/components/schemas/DomainCode" }
+        title: { type: string }
+        status: { $ref: "#/components/schemas/IntegrationStatus" }
+        primary_metric: { $ref: "#/components/schemas/Metric" }
+        metrics:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { $ref: "#/components/schemas/Metric" }
+        as_of: { type: string, format: date-time }
+        last_success_at: { type: [string, "null"], format: date-time }
+        action_path: { type: [string, "null"] }
+        message: { type: string }
+    PartialFailure:
+      type: object
+      additionalProperties: false
+      required: [service_id, code, last_success_at]
+      properties:
+        service_id: { type: string }
+        code: { type: string }
+        last_success_at: { type: [string, "null"], format: date-time }
+    DashboardSnapshot:
+      type: object
+      additionalProperties: false
+      required: [status, as_of, cards, partial_failures]
+      properties:
+        status: { type: string, enum: [ok, partial] }
+        as_of: { type: string, format: date-time }
+        cards:
+          type: array
+          minItems: 6
+          maxItems: 6
+          items: { $ref: "#/components/schemas/DashboardCard" }
+        partial_failures:
+          type: array
+          items: { $ref: "#/components/schemas/PartialFailure" }
+    ActionItem:
+      type: object
+      additionalProperties: false
+      required: [id, domain, urgency, summary, source_service, source_type, source_id, created_at, due_at, action_path]
+      properties:
+        id: { type: string }
+        domain: { $ref: "#/components/schemas/DomainCode" }
+        urgency: { $ref: "#/components/schemas/Urgency" }
+        summary: { type: string }
+        source_service: { type: string }
+        source_type: { type: string }
+        source_id: { type: string }
+        created_at: { type: string, format: date-time }
+        due_at: { type: string, format: date-time }
+        action_path: { type: string, pattern: "^/" }
+    UIConfigEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              required: [shell_version, dashboard_v2_enabled, environment, capabilities]
+              properties:
+                shell_version: { type: string, enum: [legacy, v2] }
+                dashboard_v2_enabled: { type: boolean }
+                environment: { type: string }
+                capabilities:
+                  type: object
+                  required: [global_search, notification_center, legacy_shell]
+                  properties:
+                    global_search: { type: boolean }
+                    notification_center: { type: boolean }
+                    legacy_shell: { type: boolean }
+    DashboardSnapshotEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: "#/components/schemas/DashboardSnapshot" }
+    ActionItemPageEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              required: [items, as_of]
+              properties:
+                items: { type: array, items: { $ref: "#/components/schemas/ActionItem" } }
+                as_of: { type: string, format: date-time }
+    MetricSeriesEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              required: [metric, definition_version, points]
+              properties:
+                metric: { type: string }
+                definition_version: { type: string }
+                points:
+                  type: array
+                  items:
+                    type: object
+                    required: [time, value]
+                    properties:
+                      time: { type: string }
+                      value: { type: number }
+    SuccessEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data: {}
+        request_id: { $ref: "#/components/schemas/RequestId" }
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: {}
+        request_id: { $ref: "#/components/schemas/RequestId" }
+  responses:
+    Unauthorized:
+      description: Authentication failed.
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+    Forbidden:
+      description: Scope or permission denied.
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }

@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm"
 
 	"final-review-platform/services/api/internal/admin"
+	"final-review-platform/services/api/internal/admindashboard"
+	"final-review-platform/services/api/internal/adminoperations"
 	"final-review-platform/services/api/internal/ai"
 	"final-review-platform/services/api/internal/analytics"
 	"final-review-platform/services/api/internal/auth"
@@ -24,6 +26,7 @@ import (
 	"final-review-platform/services/api/internal/member"
 	"final-review-platform/services/api/internal/moment"
 	"final-review-platform/services/api/internal/notification"
+	"final-review-platform/services/api/internal/objectstorage"
 	"final-review-platform/services/api/internal/order"
 	"final-review-platform/services/api/internal/org"
 	"final-review-platform/services/api/internal/packagecatalog"
@@ -56,8 +59,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.CORSAllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Idempotency-Key", "X-Request-Id"},
+		ExposeHeaders:    []string{"Content-Length", "X-Request-Id", "X-Idempotency-Replayed"},
 		AllowCredentials: true,
 	}))
 
@@ -92,6 +95,12 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	adminHandler := admin.NewHandler(db, cfg.LocalUploadDir, cfg.OperationLogRetentionDays, cfg.OperationLogExportLimit, cfg.PaymentIncidentAlerts, cfg.Environment)
 	aiHandler := ai.NewHandler(db, cache, cfg.AITaskStream)
 	analyticsHandler := analytics.NewHandler(db)
+	adminDashboardHandler := admindashboard.NewHandler(db, cache, cfg.AdminDashboardV2Enabled, cfg.Environment, cfg.Version)
+	storageSigner, _ := objectstorage.New(objectstorage.Config{
+		Endpoint: cfg.ObjectStorage.Endpoint, Region: cfg.ObjectStorage.Region, Bucket: cfg.ObjectStorage.Bucket,
+		AccessKey: cfg.ObjectStorage.AccessKey, SecretKey: cfg.ObjectStorage.SecretKey,
+	})
+	adminOperationsHandler := adminoperations.NewHandler(db, storageSigner)
 	router.GET("/healthz", healthHandler.Healthz)
 	router.GET("/readyz", healthHandler.Readyz)
 	v1 := router.Group("/api/v1")
@@ -114,6 +123,11 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.POST("/auth/logout", authHandler.Logout)
 	v1.GET("/auth/me", authMiddleware.RequireAuth(), authHandler.Me)
 	v1.PATCH("/auth/me", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authHandler.UpdateMe)
+	v1.POST("/platform-feedback", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.Idempotent(), adminOperationsHandler.CreatePlatformFeedback)
+	v1.POST("/object-upload-intents", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.CreateUploadIntent)
+	v1.GET("/food-tier-definitions", adminOperationsHandler.FoodTiers)
+	v1.POST("/food-submissions", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.Idempotent(), adminOperationsHandler.CreateFoodSubmission)
+	v1.PUT("/food-entries/:id/calibration-votes/me", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.PutFoodVote)
 	v1.GET("/schools", orgHandler.Schools)
 	v1.GET("/colleges", orgHandler.Colleges)
 	v1.GET("/majors", orgHandler.Majors)
@@ -198,6 +212,13 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.GET("/healthz", func(ctx *gin.Context) {
 		response.OK(ctx, gin.H{"admin": true})
 	})
+	admin.GET("/ui-config", adminDashboardHandler.UIConfig)
+	admin.GET("/dashboard-snapshots/latest", adminDashboardHandler.LatestSnapshot)
+	admin.GET("/action-items", adminDashboardHandler.ActionItems)
+	admin.GET("/metric-series", adminDashboardHandler.MetricSeries)
+	admin.POST("/school-notices", adminOperationsHandler.Idempotent(), adminOperationsHandler.CreateNotice)
+	admin.POST("/notice-import-jobs", adminOperationsHandler.Idempotent(), adminOperationsHandler.ImportNotices)
+	admin.POST("/food-submissions/:id/approvals", adminOperationsHandler.Idempotent(), adminOperationsHandler.ApproveFoodSubmission)
 	admin.GET("/users", adminHandler.ListUsers)
 	admin.PATCH("/users/:id", adminHandler.UpdateUser)
 	admin.GET("/media-assets", adminHandler.ListMediaAssets)

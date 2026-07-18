@@ -575,5 +575,10 @@ func AllModels() []interface{} {
 		&Membership{}, &MembershipPlan{},
 		&AITask{}, &AIDraft{}, &AIUsageLog{},
 		&Notification{}, &Report{}, &OperationLog{}, &LeaderboardSnapshot{}, &SystemConfig{},
+		&CampusNotice{}, &CampusNoticeVersion{}, &NoticeImportJob{},
+		&MailDelivery{}, &MailDeadLetter{},
+		&PlatformFeedback{}, &OperationCase{},
+		&FoodTierDefinition{}, &FoodSubmission{}, &FoodEntry{}, &FoodCalibrationRound{}, &FoodCalibrationVote{}, &FoodVoteAnomaly{},
+		&ServiceHeartbeat{}, &IdempotencyRecord{},
 	}
 }

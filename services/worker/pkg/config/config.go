@@ -15,6 +15,11 @@ type Config struct {
 	LLMMode       string
 	TaskStream    string
 	HealthPort    string
+	SMTPHost      string
+	SMTPPort      string
+	SMTPUsername  string
+	SMTPPassword  string
+	SMTPFrom      string
 }
 
 func Load() Config {
@@ -27,6 +32,11 @@ func Load() Config {
 		LLMMode:       env("LLM_MODE", "mock"),
 		TaskStream:    env("AI_TASK_STREAM", "ai_tasks"),
 		HealthPort:    env("WORKER_HEALTH_PORT", "9090"),
+		SMTPHost:      env("SMTP_HOST", ""),
+		SMTPPort:      env("SMTP_PORT", "587"),
+		SMTPUsername:  env("SMTP_USERNAME", ""),
+		SMTPPassword:  env("SMTP_PASSWORD", ""),
+		SMTPFrom:      env("SMTP_FROM", ""),
 	}
 }
 

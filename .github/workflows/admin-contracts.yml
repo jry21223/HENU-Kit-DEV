@@ -1,0 +1,38 @@
+name: Admin contracts
+
+on:
+  pull_request:
+    paths:
+      - "packages/api-contracts/**"
+      - "apps/admin/src/lib/generated/**"
+      - ".github/workflows/admin-contracts.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/api-contracts/**"
+      - "apps/admin/src/lib/generated/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install PyYAML==6.0.3 jsonschema==4.23.0
+      - name: OpenAPI 3.1 lint
+        run: npx --yes @redocly/cli@2.39.0 lint --extends minimal packages/api-contracts/openapi/admin.yaml
+      - name: JSON Schema positive and negative examples
+        run: python -m unittest discover -s packages/api-contracts/tests -p "test_*.py"
+      - name: Generated TypeScript is current
+        run: |
+          npx --yes openapi-typescript@7.13.0 packages/api-contracts/openapi/admin.yaml -o /tmp/admin.generated.ts
+          diff -u apps/admin/src/lib/generated/admin.ts /tmp/admin.generated.ts

@@ -1,0 +1,13 @@
+{
+  "schema_version": "campus-notice-import/1.0",
+  "external_id": "henu-2026-001",
+  "source_id": "8d3562d3-822e-4cbb-a906-20ebdd53183a",
+  "organization_id": null,
+  "title": "示例通知",
+  "body": "示例正文",
+  "published_at": "2026-07-18T08:00:00Z",
+  "original_url": "https://example.edu/notices/henu-2026-001",
+  "importance": "normal",
+  "content_sha256": "a765c91cb784731b17211a654ca7c7b33a3349e7e78d43c51503f279bb5aca9b",
+  "attachments": []
+}

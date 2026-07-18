@@ -3,6 +3,7 @@ package audit
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -36,10 +37,22 @@ func RecordForOperator(ctx *gin.Context, db *gorm.DB, operatorID string, action 
 		Metadata:   marshalMetadata(metadata),
 	}
 	if ctx != nil && ctx.Request != nil {
-		log.IP = ctx.ClientIP()
+		log.IP = ipPrefix(ctx.ClientIP())
 		log.UserAgent = ctx.Request.UserAgent()
 	}
 	return db.Create(&log).Error
+}
+
+func ipPrefix(value string) string {
+	ip := net.ParseIP(strings.TrimSpace(value))
+	if ip == nil {
+		return ""
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return (&net.IPNet{IP: ipv4.Mask(net.CIDRMask(24, 32)), Mask: net.CIDRMask(24, 32)}).String()
+	}
+	ipv6 := ip.To16()
+	return (&net.IPNet{IP: ipv6.Mask(net.CIDRMask(64, 128)), Mask: net.CIDRMask(64, 128)}).String()
 }
 
 func marshalMetadata(metadata map[string]interface{}) datatypes.JSON {

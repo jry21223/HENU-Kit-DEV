@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://henukit.cn/schemas/campus-notice-import.schema.json",
+  "title": "campus-notice-import/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "external_id", "source_id", "title", "body", "published_at", "original_url", "content_sha256"],
+  "properties": {
+    "schema_version": { "const": "campus-notice-import/1.0" },
+    "external_id": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "source_id": { "type": "string", "format": "uuid" },
+    "organization_id": { "type": ["string", "null"], "format": "uuid" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "body": { "type": "string", "minLength": 1, "maxLength": 200000 },
+    "published_at": { "type": "string", "format": "date-time" },
+    "original_url": { "type": "string", "format": "uri", "maxLength": 1000 },
+    "importance": { "type": "string", "enum": ["normal", "important", "urgent"], "default": "normal" },
+    "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "attachments": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object_key", "sha256", "content_type", "size_bytes"],
+        "properties": {
+          "object_key": { "type": "string", "maxLength": 500 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "content_type": { "type": "string", "enum": ["image/jpeg", "image/png", "image/webp", "application/pdf"] },
+          "size_bytes": { "type": "integer", "minimum": 1, "maximum": 20971520 }
+        }
+      }
+    }
+  }
+}

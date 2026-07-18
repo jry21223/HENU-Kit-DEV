@@ -21,12 +21,21 @@ type RedisConfig struct {
 	DB       int
 }
 
+type ObjectStorageConfig struct {
+	Endpoint  string
+	Region    string
+	Bucket    string
+	AccessKey string
+	SecretKey string
+}
+
 type Config struct {
 	Environment               string
 	Port                      string
 	Version                   string
 	DatabaseURL               string
 	Redis                     RedisConfig
+	ObjectStorage             ObjectStorageConfig
 	CORSAllowedOrigins        []string
 	RateLimitRPS              float64
 	RateLimitBurst            int
@@ -36,6 +45,7 @@ type Config struct {
 	AITaskStream              string
 	OperationLogRetentionDays int
 	OperationLogExportLimit   int
+	AdminDashboardV2Enabled   bool
 	JWT                       JWTConfig
 	WeChatPay                 WeChatPayConfig
 	PaymentIncidentAlerts     PaymentIncidentAlertConfig
@@ -76,11 +86,18 @@ type PaymentIncidentAlertConfig struct {
 func Load() Config {
 	environment := env("APP_ENV", "development")
 	return Config{
-		Environment:               environment,
-		Port:                      env("API_PORT", "8080"),
-		Version:                   env("APP_VERSION", "0.1.0"),
-		DatabaseURL:               env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
-		Redis:                     loadRedisConfig(),
+		Environment: environment,
+		Port:        env("API_PORT", "8080"),
+		Version:     env("APP_VERSION", "0.1.0"),
+		DatabaseURL: env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
+		Redis:       loadRedisConfig(),
+		ObjectStorage: ObjectStorageConfig{
+			Endpoint:  env("S3_ENDPOINT", ""),
+			Region:    env("S3_REGION", "us-east-1"),
+			Bucket:    env("S3_BUCKET", "henu-kit"),
+			AccessKey: env("S3_ACCESS_KEY", ""),
+			SecretKey: env("S3_SECRET_KEY", ""),
+		},
 		CORSAllowedOrigins:        csvEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"),
 		RateLimitRPS:              floatEnv("RATE_LIMIT_RPS", 20),
 		RateLimitBurst:            intEnv("RATE_LIMIT_BURST", 40),
@@ -90,6 +107,7 @@ func Load() Config {
 		AITaskStream:              env("AI_TASK_STREAM", "ai_tasks"),
 		OperationLogRetentionDays: intEnv("OPERATION_LOG_RETENTION_DAYS", 180),
 		OperationLogExportLimit:   intEnv("OPERATION_LOG_EXPORT_LIMIT", 5000),
+		AdminDashboardV2Enabled:   boolEnv("ADMIN_DASHBOARD_V2_ENABLED", environment != "production"),
 		JWT: JWTConfig{
 			Issuer:           env("JWT_ISSUER", "final-review-platform"),
 			AccessTTLMinutes: intEnv("JWT_ACCESS_TTL_MINUTES", 15),

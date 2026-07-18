@@ -29,6 +29,31 @@ services:
       timeout: 5s
       retries: 10
 
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mc alias set local http://minio:9000 minioadmin minioadmin && mc mb --ignore-existing local/henu-kit"]
+
   api:
     build:
       context: ./services/api
@@ -37,12 +62,20 @@ services:
       API_PORT: 8080
       DATABASE_URL: postgres://final_review:final_review_dev@postgres:5432/final_review_v2?sslmode=disable
       REDIS_ADDR: redis:6379
+      ADMIN_DASHBOARD_V2_ENABLED: "true"
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: henu-kit
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
       CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     healthcheck:
@@ -94,3 +127,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:

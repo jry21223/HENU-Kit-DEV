@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS idempotency_records;
+DROP TABLE IF EXISTS service_heartbeats;
+DROP TABLE IF EXISTS food_vote_anomalies;
+DROP TABLE IF EXISTS food_calibration_votes;
+DROP TABLE IF EXISTS food_calibration_rounds;
+DROP TABLE IF EXISTS food_entries;
+DROP TABLE IF EXISTS food_submissions;
+DROP TABLE IF EXISTS food_tier_definitions;
+DROP TABLE IF EXISTS operation_cases;
+DROP TABLE IF EXISTS platform_feedbacks;
+DROP TABLE IF EXISTS mail_dead_letters;
+DROP TABLE IF EXISTS mail_deliveries;
+DROP TABLE IF EXISTS notice_import_jobs;
+DROP TABLE IF EXISTS campus_notice_versions;
+DROP TABLE IF EXISTS campus_notices;

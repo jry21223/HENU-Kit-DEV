@@ -1,0 +1,10 @@
+{
+  "schema_version": "campus-notice-import/2.0",
+  "external_id": "",
+  "source_id": "not-a-uuid",
+  "title": "",
+  "body": "示例正文",
+  "published_at": "not-a-time",
+  "original_url": "not-a-url",
+  "content_sha256": "wrong"
+}

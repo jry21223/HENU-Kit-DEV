@@ -5,7 +5,13 @@
 ```text
 packages/api-contracts/
 ├── openapi/
-│   └── platform-core.yaml
+│   ├── platform-core.yaml
+│   └── admin.yaml
+├── schemas/
+│   └── campus-notice-import.schema.json
+├── examples/
+│   ├── campus-notice.valid.json
+│   └── campus-notice.invalid.json
 └── events/
     └── event-envelope.schema.json
 ```
@@ -39,3 +45,11 @@ packages/api-contracts/
 - Major：删除字段、改变语义或不兼容认证方式。
 
 安全关键契约变更必须由非作者评审。
+
+## 本地验证
+
+```bash
+python -m unittest discover -s packages/api-contracts/tests -p "test_*.py"
+npx --yes @redocly/cli@2.39.0 lint --extends minimal packages/api-contracts/openapi/admin.yaml
+npx --yes openapi-typescript@7.13.0 packages/api-contracts/openapi/admin.yaml -o apps/admin/src/lib/generated/admin.ts
+```
