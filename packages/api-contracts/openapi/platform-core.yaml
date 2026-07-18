@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
 servers:
@@ -17,6 +17,8 @@ tags:
   - name: Verification
   - name: Authorization
   - name: Sessions
+  - name: Operations Inbox
+    description: Cross-product work coordination metadata and immutable source-resource references.
   - name: Internal Events
 
 paths:
@@ -408,6 +410,158 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /operations-inbox/items:
+    get:
+      tags: [Operations Inbox]
+      operationId: listOperationsInboxItems
+      summary: List cross-product work references within one granted product Scope
+      description: Returns coordination metadata and source resource references only; product-owned title, body and feedback text are never copied here.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - name: product_code
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9-]{1,63}$'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, in_progress, blocked, resolved, cancelled]
+      responses:
+        "200":
+          description: Scoped Operations Inbox items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/OperationsInboxItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    post:
+      tags: [Operations Inbox]
+      operationId: createOperationsInboxItem
+      summary: Create a cross-product work reference
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOperationsInboxItemRequest"
+      responses:
+        "201":
+          description: Created, or the original response for the same idempotent request
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/OperationsInboxItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /operations-inbox/items/{item_id}/updates:
+    post:
+      tags: [Operations Inbox]
+      operationId: updateOperationsInboxItem
+      summary: Update assignment or workflow metadata using an optimistic version
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOperationsInboxItemRequest"
+      responses:
+        "200":
+          description: Updated, or the original response for the same idempotent request
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/OperationsInboxItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /internal/events:
     post:
       tags: [Internal Events]
@@ -516,6 +670,15 @@ components:
       required: true
       schema:
         type: string
+    SessionExchangeToken:
+      name: X-Session-Exchange-Token
+      in: header
+      required: true
+      description: Short-lived server-held client exchange Session token; never exposed as a browser token.
+      schema:
+        type: string
+        minLength: 32
+
 
   schemas:
     RequestId:
@@ -650,6 +813,114 @@ components:
         checked_at:
           type: string
           format: date-time
+
+    OperationsInboxItem:
+      type: object
+      additionalProperties: false
+      required: [id, source_product_code, source_resource_type, source_resource_id, priority, status, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_product_code:
+          type: string
+        source_resource_type:
+          type: string
+        source_resource_id:
+          type: string
+        source_resource_url:
+          type: string
+          format: uri
+        owner_user_id:
+          type: string
+          format: uuid
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        sla_due_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [open, in_progress, blocked, resolved, cancelled]
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateOperationsInboxItemRequest:
+      type: object
+      additionalProperties: false
+      required: [source_product_code, source_resource_type, source_resource_id, priority]
+      properties:
+        source_product_code:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{1,63}$'
+        source_resource_type:
+          type: string
+          pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        source_resource_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        source_resource_url:
+          type: string
+          format: uri
+          maxLength: 1000
+        owner_user_id:
+          type: string
+          format: uuid
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        sla_due_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [open, in_progress, blocked]
+
+    UpdateOperationsInboxItemRequest:
+      type: object
+      additionalProperties: false
+      required: [source_product_code, source_resource_type, source_resource_id, expected_version]
+      properties:
+        source_product_code:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{1,63}$'
+        source_resource_type:
+          type: string
+          pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        source_resource_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        expected_version:
+          type: integer
+          format: int64
+          minimum: 1
+        owner_user_id:
+          type: string
+          format: uuid
+        clear_owner:
+          type: boolean
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        sla_due_at:
+          type: string
+          format: date-time
+        clear_sla:
+          type: boolean
+        status:
+          type: string
+          enum: [open, in_progress, blocked, resolved, cancelled]
 
     EventEnvelope:
       type: object

@@ -15,8 +15,13 @@ const (
 	RequestVerificationCodeRoute = "/api/v1/auth/email-codes"
 	VerifyVerificationCodeRoute  = "/api/v1/auth/email-codes/verify"
 	RecordMailDeliveryRoute      = "/api/v1/mail/deliveries"
-	SourceSHA256                 = "6eac1a6097e1236c3d8aab0ba4f740c4d49cda7d29b581e6c69e65f01639092a"
+	ListOperationsInboxRoute     = "/api/v1/operations-inbox/items"
+	CreateOperationsInboxRoute   = "/api/v1/operations-inbox/items"
+	UpdateOperationsInboxRoute   = "/api/v1/operations-inbox/items/{item_id}/updates"
+	SourceSHA256                 = "bc78d96d185e51d57d21bf7cc8d428514cab8f85e0797a906a0f8a862962f7ab"
 )
+
+const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 
 const (
 	IdempotencyKeyHeader = "Idempotency-Key"
@@ -216,4 +221,43 @@ type RecordMailDeliveryRequest struct {
 
 type MailDeliveryAccepted struct {
 	Accepted bool `json:"accepted"`
+}
+
+type OperationsInboxItem struct {
+	ID                 string     `json:"id"`
+	SourceProductCode  string     `json:"source_product_code"`
+	SourceResourceType string     `json:"source_resource_type"`
+	SourceResourceID   string     `json:"source_resource_id"`
+	Priority           string     `json:"priority"`
+	Status             string     `json:"status"`
+	Version            int64      `json:"version"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	OwnerUserID        *string    `json:"owner_user_id,omitempty"`
+	SlaDueAt           *time.Time `json:"sla_due_at,omitempty"`
+	SourceResourceURL  *string    `json:"source_resource_url,omitempty"`
+}
+
+type CreateOperationsInboxItemRequest struct {
+	SourceProductCode  string     `json:"source_product_code"`
+	SourceResourceType string     `json:"source_resource_type"`
+	SourceResourceID   string     `json:"source_resource_id"`
+	Priority           string     `json:"priority"`
+	OwnerUserID        *string    `json:"owner_user_id,omitempty"`
+	SlaDueAt           *time.Time `json:"sla_due_at,omitempty"`
+	SourceResourceURL  *string    `json:"source_resource_url,omitempty"`
+	Status             *string    `json:"status,omitempty"`
+}
+
+type UpdateOperationsInboxItemRequest struct {
+	SourceProductCode  string     `json:"source_product_code"`
+	SourceResourceType string     `json:"source_resource_type"`
+	SourceResourceID   string     `json:"source_resource_id"`
+	ExpectedVersion    int64      `json:"expected_version"`
+	ClearOwner         *bool      `json:"clear_owner,omitempty"`
+	ClearSla           *bool      `json:"clear_sla,omitempty"`
+	OwnerUserID        *string    `json:"owner_user_id,omitempty"`
+	Priority           *string    `json:"priority,omitempty"`
+	SlaDueAt           *time.Time `json:"sla_due_at,omitempty"`
+	Status             *string    `json:"status,omitempty"`
 }
