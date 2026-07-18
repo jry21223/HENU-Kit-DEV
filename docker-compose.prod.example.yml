@@ -85,7 +85,8 @@ services:
 
   web:
     build:
-      context: ./apps/web
+      context: .
+      dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:?set PUBLIC_API_BASE_URL}
     restart: unless-stopped
@@ -99,7 +100,8 @@ services:
 
   admin:
     build:
-      context: ./apps/admin
+      context: .
+      dockerfile: apps/admin/Dockerfile
       args:
         VITE_API_BASE_URL: ${PUBLIC_ADMIN_ORIGIN:?set PUBLIC_ADMIN_ORIGIN}/api/v1
     restart: unless-stopped

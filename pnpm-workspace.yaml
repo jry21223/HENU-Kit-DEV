@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "products/quizcraft/web-app"
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+  vue-demi: true

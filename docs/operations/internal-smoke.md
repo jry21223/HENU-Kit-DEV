@@ -120,7 +120,7 @@ $env:E2E_STUDENT_EMAIL="smoke-browser@stu.henu.edu.cn"
 $env:E2E_STUDENT_CODE="123456"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
-npm --workspace @final-review/web run test:e2e:delivery
+pnpm --filter @final-review/web run test:e2e:delivery
 ```
 
 The browser smoke uses separate student/admin browser contexts. It opens the real Web package/material pages, logs in as the student through the Web login page, confirms paid download is denied before entitlement, logs in as admin through the Vue Admin login page, creates an admin-only package grant through the API, then confirms the same student can download the paid material and sees the package as unlocked.
@@ -138,7 +138,7 @@ $env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
 $env:E2E_STUDENT_EMAIL="smoke-mock-pay@stu.henu.edu.cn"
 $env:E2E_STUDENT_CODE="123456"
 $env:E2E_MOCK_PAYMENT_SECRET="mock-notify-secret"
-npm --workspace @final-review/web run test:e2e:mock-payment
+pnpm --filter @final-review/web run test:e2e:mock-payment
 ```
 
 The API must run with `WECHAT_PAY_MODE=mock` and `WECHAT_PAY_API_V3_KEY` equal to `E2E_MOCK_PAYMENT_SECRET`. The test opens the real Web package detail page, creates a package order, verifies the QR panel, sends a signed mock notify to the backend, refreshes the read-only order status, and then verifies entitlement plus paid download. Use a fresh student account because the successful mock notify grants the package.
@@ -153,7 +153,7 @@ After Web and API are reachable, run the read-only leaderboards smoke from the r
 $env:E2E_LEADERBOARDS_SMOKE="1"
 $env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
 $env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
-npm --workspace @final-review/web run test:e2e:leaderboards
+pnpm --filter @final-review/web run test:e2e:leaderboards
 ```
 
 This smoke checks the public Wiki, quiz, and overall leaderboard APIs, verifies the API response body does not contain email addresses, and opens the real Web `/leaderboards` page. It is read-only and should be safe for internal staging checks.
@@ -168,7 +168,7 @@ $env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
 $env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
 $env:E2E_STUDENT_EMAIL="smoke-quiz@stu.henu.edu.cn"
 $env:E2E_STUDENT_CODE="123456"
-npm --workspace @final-review/web run test:e2e:quiz
+pnpm --filter @final-review/web run test:e2e:quiz
 ```
 
 This smoke logs in as a student through the real Web login page, opens a real course quiz page, submits an intentionally wrong choice answer, checks the authenticated Go API wrong-question count, and confirms `/me/wrong-questions` renders the question. Use a fresh student account when possible because the test increments wrong-question counters. Set `E2E_QUIZ_COURSE_ID`, `E2E_QUIZ_QUESTION_ID`, or `E2E_QUIZ_WRONG_ANSWER` when the target environment does not use seed data.
@@ -181,7 +181,7 @@ After Web and API are reachable, run the multi-type quiz smoke from the reposito
 $env:E2E_QUIZ_MULTI_TYPE_SMOKE="1"
 $env:E2E_WEB_BASE_URL="http://127.0.0.1:3000"
 $env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
-npm --workspace @final-review/web run test:e2e:quiz-multi-type
+pnpm --filter @final-review/web run test:e2e:quiz-multi-type
 ```
 
 This smoke opens the real Web quiz page and verifies browser submission for a multiple-choice answer set and a fill-blank free-text answer. It probes correct answers through the backend submit API instead of reading hidden answer fields from public question payloads. It does not log in, so it should not mutate wrong-question records. Set `E2E_QUIZ_MULTI_TYPE_COURSE_ID`, `E2E_QUIZ_MULTI_CHOICE_QUESTION_ID`, `E2E_QUIZ_MULTI_CHOICE_ANSWER`, `E2E_QUIZ_FREE_TEXT_QUESTION_ID`, or `E2E_QUIZ_FREE_TEXT_ANSWER` when the target environment does not use seed data.
@@ -197,7 +197,7 @@ $env:E2E_ADMIN_BASE_URL="http://127.0.0.1:5173"
 $env:E2E_API_BASE_URL="http://127.0.0.1:8080/api/v1"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
-npm --workspace @final-review/web run test:e2e:material-review
+pnpm --filter @final-review/web run test:e2e:material-review
 ```
 
 This smoke creates a unique pending material through the Go Admin API, proves the public detail endpoint returns 404 before review, opens Vue Admin `/material-reviews`, approves the material through the Admin UI, and verifies the public API and Web material detail page render it after approval. It also checks the public material response hides `storageKey`, `createdBy`, `reviewerId`, `reviewedAt`, and `reviewReason`. It is opt-in because it mutates material rows, notifications, and operation logs. It does not download the file; use delivery/payment smoke for download permission checks. Set `E2E_MATERIAL_REVIEW_COURSE_ID` when the target environment does not use seed data or you need a specific course.
@@ -215,7 +215,7 @@ $env:E2E_REVIEW_AUTHOR_EMAIL="smoke-review-author@stu.henu.edu.cn"
 $env:E2E_REVIEW_AUTHOR_CODE="123456"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
-npm --workspace @final-review/web run test:e2e:review
+pnpm --filter @final-review/web run test:e2e:review
 ```
 
 This smoke creates a unique pending blog post through the Go API, proves the public detail endpoint returns 404 before review, opens Vue Admin `/blog-reviews`, approves the post through the Admin UI, and verifies the public Web blog detail page renders the approved post. It is opt-in because it mutates blog rows, notifications, and operation logs.
@@ -233,7 +233,7 @@ $env:E2E_WIKI_REVIEW_AUTHOR_EMAIL="creator@example.com"
 $env:E2E_WIKI_REVIEW_AUTHOR_CODE="123456"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
-npm --workspace @final-review/web run test:e2e:wiki-review
+pnpm --filter @final-review/web run test:e2e:wiki-review
 ```
 
 This smoke creates a unique pending Wiki entry through the Go API using a creator/admin account, proves the public detail endpoint returns 404 before review, opens Vue Admin `/wiki-reviews`, approves the entry through the Admin UI, and verifies the public API and Web Wiki detail page render it after approval. It is opt-in because it mutates Wiki rows, edit history, notifications, and operation logs. The author account must already have `creator`, `admin`, or `super_admin` privileges.
@@ -251,7 +251,7 @@ $env:E2E_WIKI_PROPOSAL_REVIEW_AUTHOR_EMAIL="creator@example.com"
 $env:E2E_WIKI_PROPOSAL_REVIEW_AUTHOR_CODE="123456"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
-npm --workspace @final-review/web run test:e2e:wiki-proposal-review
+pnpm --filter @final-review/web run test:e2e:wiki-proposal-review
 ```
 
 This smoke creates and approves a baseline Wiki entry through the Go API, submits an edit proposal as a creator, proves the public Wiki detail still shows the original content before review, opens Vue Admin `/wiki-proposal-reviews`, approves the proposal through the Admin UI, and verifies the public API and Web Wiki detail page render the proposed content only after approval. It also checks the public wiki detail response hides review metadata. It is opt-in because it mutates Wiki rows, edit history, notifications, and operation logs. The author account must already have `creator`, `admin`, or `super_admin` privileges.
@@ -269,7 +269,7 @@ $env:E2E_FORUM_REVIEW_AUTHOR_EMAIL="smoke-forum-author@stu.henu.edu.cn"
 $env:E2E_FORUM_REVIEW_AUTHOR_CODE="123456"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
-npm --workspace @final-review/web run test:e2e:forum-review
+pnpm --filter @final-review/web run test:e2e:forum-review
 ```
 
 This smoke creates a unique pending forum post through the Go API, proves the public detail endpoint returns 404 before review, opens Vue Admin `/forum-reviews`, approves the post through the Admin UI, and verifies the public API and Web forum detail page render it after approval. It is opt-in because it mutates forum rows, notifications, and operation logs. Set `E2E_FORUM_BOARD_ID` when the target environment has multiple boards and you need a specific published board.
@@ -287,7 +287,7 @@ $env:E2E_FORUM_REPLY_REVIEW_AUTHOR_EMAIL="smoke-forum-reply-author@stu.henu.edu.
 $env:E2E_FORUM_REPLY_REVIEW_AUTHOR_CODE="123456"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
-npm --workspace @final-review/web run test:e2e:forum-reply-review
+pnpm --filter @final-review/web run test:e2e:forum-reply-review
 ```
 
 This smoke creates a unique pending Forum post, approves that setup post through the Go API, creates a pending reply, proves the public Forum detail omits the reply before review, opens Vue Admin `/forum-reply-reviews`, approves the reply through the Admin UI, and verifies the public API and Web Forum detail page render it after approval. It is opt-in because it mutates forum post/reply rows, notifications, and operation logs. Set `E2E_FORUM_BOARD_ID` when the target environment has multiple boards and you need a specific published board.
@@ -307,7 +307,7 @@ $env:E2E_REPORT_REVIEW_REPORTER_EMAIL="smoke-report-reporter@stu.henu.edu.cn"
 $env:E2E_REPORT_REVIEW_REPORTER_CODE="123456"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
-npm --workspace @final-review/web run test:e2e:report-review
+pnpm --filter @final-review/web run test:e2e:report-review
 ```
 
 This smoke creates and approves a public Blog target, submits a report from a separate reporter account, opens Vue Admin `/reports`, resolves the report through the Admin UI, verifies the reporter receives a `report_result` notification without reviewer identity leakage, and confirms the public Blog content remains unchanged. It is opt-in because it mutates Blog, report, notification, and operation-log rows.
@@ -325,7 +325,7 @@ $env:E2E_AI_DRAFT_REVIEW_STUDENT_CODE="123456"
 $env:E2E_ADMIN_EMAIL="admin@example.com"
 $env:E2E_ADMIN_CODE="123456"
 $env:E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS="60"
-npm --workspace @final-review/web run test:e2e:ai-draft-review
+pnpm --filter @final-review/web run test:e2e:ai-draft-review
 ```
 
 This smoke logs in an admin, grants the smoke student a temporary `tier2` membership for AI quota, creates a real AI task through the Go API, waits for the worker to produce a pending draft, opens Vue Admin `/ai/drafts`, approves that draft through the Admin UI, and verifies the draft becomes `approved` without a `publishedId`. It is opt-in because it mutates membership, AI task/draft, AI usage log, notification, and operation log rows. It should run with `LLM_MODE=mock` until real LLM credentials and quality controls are configured.
@@ -561,79 +561,79 @@ E2E_AI_DRAFT_REVIEW_TIMEOUT_SECONDS=60
 12. Run browser delivery smoke with Web/Admin/API base URLs and fresh test accounts:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:delivery
+   pnpm --filter @final-review/web run test:e2e:delivery
    ```
 
 13. In development/test mock payment mode, run browser mock-payment smoke with Web/API base URLs, a fresh test account, and a fake secret matching `WECHAT_PAY_API_V3_KEY`:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:mock-payment
+   pnpm --filter @final-review/web run test:e2e:mock-payment
    ```
 
 14. Run leaderboards smoke with Web/API base URLs:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:leaderboards
+   pnpm --filter @final-review/web run test:e2e:leaderboards
    ```
 
 15. Run quiz wrong-question smoke with Web/API base URLs and a fresh test account:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:quiz
+   pnpm --filter @final-review/web run test:e2e:quiz
    ```
 
 16. Run quiz multi-type smoke with Web/API base URLs and seed data or explicit question/answer overrides:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:quiz-multi-type
+   pnpm --filter @final-review/web run test:e2e:quiz-multi-type
    ```
 
 17. Run admin material-review smoke with Web/Admin/API base URLs and an admin reviewer account:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:material-review
+   pnpm --filter @final-review/web run test:e2e:material-review
    ```
 
 18. Run admin blog-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:review
+   pnpm --filter @final-review/web run test:e2e:review
    ```
 
 19. Run admin wiki-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:wiki-review
+   pnpm --filter @final-review/web run test:e2e:wiki-review
    ```
 
 20. Run admin wiki-proposal-review smoke with Web/Admin/API base URLs and a creator/admin author account plus an admin reviewer account:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:wiki-proposal-review
+   pnpm --filter @final-review/web run test:e2e:wiki-proposal-review
    ```
 
 21. Run admin forum-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:forum-review
+   pnpm --filter @final-review/web run test:e2e:forum-review
    ```
 
 22. Run admin forum-reply-review smoke with Web/Admin/API base URLs and fresh author/admin test accounts:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:forum-reply-review
+   pnpm --filter @final-review/web run test:e2e:forum-reply-review
    ```
 
 23. Run admin report-review smoke with Web/Admin/API base URLs and fresh author/reporter/admin test accounts:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:report-review
+   pnpm --filter @final-review/web run test:e2e:report-review
    ```
 
 24. Run admin AI draft-review smoke with API/Admin/Worker reachable, mock LLM mode, and fresh student/admin test accounts:
 
    ```bash
-   npm --workspace @final-review/web run test:e2e:ai-draft-review
+   pnpm --filter @final-review/web run test:e2e:ai-draft-review
    ```
 
 25. For paid-sales testing, use a real WeChat merchant sandbox/internal payment only after the smoke proves unpaid access is denied. Payment success must be confirmed by the backend WeChat notify path, not by frontend polling, mock notify, or manual access-grant smoke.

@@ -120,7 +120,7 @@
 可重复运行路径边界测试：
 
 ```bash
-npm run test:libraryctl
+pnpm run test:libraryctl
 ```
 
 ## 文件命名规范

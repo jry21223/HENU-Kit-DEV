@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+WORKSPACE_ROOT="$(cd "${ROOT_DIR}/../.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-}"
 
 if [ -z "${PYTHON_BIN}" ]; then
@@ -21,9 +22,4 @@ fi
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -r requirements.txt
 
-cd web-app
-if [ -f package-lock.json ]; then
-  npm ci --include=dev
-else
-  npm install --include=dev
-fi
+pnpm --dir "${WORKSPACE_ROOT}" install --frozen-lockfile

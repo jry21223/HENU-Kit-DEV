@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WORKSPACE_ROOT="$(cd "${ROOT_DIR}/../.." && pwd)"
 BACKEND_PORT="${BACKEND_PORT:-10086}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 WAIT_HOST="${WAIT_HOST:-127.0.0.1}"
@@ -58,7 +59,7 @@ SERVER_PID=$!
 wait_for_url "backend" "http://${WAIT_HOST}:${BACKEND_PORT}/api/banks"
 
 cd "${ROOT_DIR}/web-app"
-npm run preview:ops -- --host "${FRONTEND_HOST:-127.0.0.1}" --port "${FRONTEND_PORT}" > dev.log 2>&1 &
+pnpm --dir "${WORKSPACE_ROOT}" --filter quiz-app run preview:ops -- --host "${FRONTEND_HOST:-127.0.0.1}" --port "${FRONTEND_PORT}" > dev.log 2>&1 &
 CLIENT_PID=$!
 wait_for_url "frontend" "http://${WAIT_HOST}:${FRONTEND_PORT}/"
 
