@@ -4,22 +4,27 @@
 
 ## 1. 新开发者入口
 
-1. [`development/README.md`](./development/README.md)：开发实施文档索引。
-2. [`development/implementation-plan.md`](./development/implementation-plan.md)：1–2 名开发、1–2 名测试的执行计划。
-3. [`development/go-no-go-checklist.md`](./development/go-no-go-checklist.md)：启动决策与停止条件。
-4. [`DEVELOPMENT.md`](./DEVELOPMENT.md)：Monorepo Foundation 阶段形成的仓库级开发约束。
+1. [`../CONTEXT-MAP.md`](../CONTEXT-MAP.md)：先确定当前领域词汇、所有权和新旧系统边界。
+2. [`development/henukit-console-executable-spec.md`](./development/henukit-console-executable-spec.md)：HENUKit Console 与 QuizCraft 重构的可执行规格。
+3. [`development/henukit-console-replacement-plan.md`](./development/henukit-console-replacement-plan.md)：已接受的替代实施计划、迁移顺序和 Gate。
+4. [`adr/README.md`](./adr/README.md)：支撑当前替代方案的架构决策索引。
+5. [`development/README.md`](./development/README.md)：其余开发实施文档索引。
+6. [`development/go-no-go-checklist.md`](./development/go-no-go-checklist.md)：启动决策与停止条件。
+7. [`DEVELOPMENT.md`](./DEVELOPMENT.md)：Monorepo Foundation 阶段形成的仓库级开发约束。
 
 ## 2. 当前有效规范
 
 ### 开发实施
 
-- [`development/`](./development/)：任务、API、数据迁移、安全、测试、发布和 GitHub Issues。
+- [`development/henukit-console-executable-spec.md`](./development/henukit-console-executable-spec.md)：当前 HENUKit Console 与 QuizCraft 重构规格。
+- [`development/henukit-console-replacement-plan.md`](./development/henukit-console-replacement-plan.md)：对应的替代计划和 PR 拆分顺序。
+- [`development/`](./development/)：未被替代部分的任务、API、数据迁移、安全、测试、发布和 GitHub Issues。
 
 ### 架构与决策
 
 - [`architecture/MONOREPO_ARCHITECTURE.md`](./architecture/MONOREPO_ARCHITECTURE.md)
 - [`architecture/ACCESS_CONTROL.md`](./architecture/ACCESS_CONTROL.md)
-- [`adr/`](./adr/)
+- [`adr/README.md`](./adr/README.md)
 
 ### 产品规范
 
@@ -52,11 +57,17 @@
 
 发生冲突时按以下顺序处理：
 
-1. 已运行验证的代码、OpenAPI、Migration 和 CI；
-2. `docs/development/` 下的当前执行规范；
-3. `docs/architecture/`、`docs/product/`、`docs/adr/` 中的长期规范；
-4. `docs/operations/` 中与当前运行单元匹配的 Runbook；
-5. `docs/archive/` 与根目录 `archive/` 中的历史材料。
+1. 安全、隐私和法律要求；
+2. Accepted ADR；
+3. 当前 Context 与 `docs/product/PRODUCT_BOUNDARIES.md`；
+4. 明确标为当前的执行规格与替代计划；
+5. `docs/product/DESIGN_SYSTEM.md`；
+6. `docs/architecture/MONOREPO_ARCHITECTURE.md`；
+7. `docs/DEVELOPMENT.md` 与 `docs/development/` 下未被替代的规范；
+8. 各应用、服务 README 和与当前运行单元匹配的 Runbook；
+9. `docs/archive/` 与根目录 `archive/` 中的历史材料。
+
+代码、OpenAPI、Migration、CI 或运行证据与上述决策不一致时，先记录真实状态并创建差异 Issue；不能用现有实现自动覆盖安全要求或 Accepted ADR，也不能把计划能力写成已部署能力。
 
 ## 5. 维护规则
 
