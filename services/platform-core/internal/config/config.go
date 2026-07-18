@@ -1,18 +1,20 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"os"
 	"time"
 )
 
 type Config struct {
-	Address            string
-	DatabaseURL        string
-	RedisURL           string
-	CoreCookieName     string
-	AuthorizationTTL   time.Duration
-	ExchangeSessionTTL time.Duration
+	Address                  string
+	DatabaseURL              string
+	RedisURL                 string
+	CoreCookieName           string
+	AuthorizationTTL         time.Duration
+	ExchangeSessionTTL       time.Duration
+	IdempotencyEncryptionKey []byte
 }
 
 func Load() (Config, error) {
@@ -27,6 +29,12 @@ func Load() (Config, error) {
 	if config.DatabaseURL == "" {
 		return Config{}, errors.New("PLATFORM_CORE_DATABASE_URL is required")
 	}
+	encodedKey := os.Getenv("PLATFORM_CORE_IDEMPOTENCY_KEY")
+	decodedKey, err := base64.StdEncoding.DecodeString(encodedKey)
+	if err != nil || len(decodedKey) != 32 {
+		return Config{}, errors.New("PLATFORM_CORE_IDEMPOTENCY_KEY must be base64 for exactly 32 bytes")
+	}
+	config.IdempotencyEncryptionKey = decodedKey
 	if config.AuthorizationTTL < 60*time.Second || config.AuthorizationTTL > 120*time.Second {
 		return Config{}, errors.New("PLATFORM_CORE_AUTHORIZATION_TTL must be between 60s and 120s")
 	}

@@ -23,9 +23,19 @@ type AuthorizationCode struct {
 
 type OauthClient struct {
 	ID           string             `json:"id"`
+	KeyID        string             `json:"key_id"`
 	SecretHash   []byte             `json:"secret_hash"`
 	RedirectUris []string           `json:"redirect_uris"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type OauthExchangeIdempotency struct {
+	ClientID           string             `json:"client_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	RequestHash        []byte             `json:"request_hash"`
+	ResponseCiphertext []byte             `json:"response_ciphertext"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
 type Session struct {

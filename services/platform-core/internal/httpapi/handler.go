@@ -1,11 +1,15 @@
 package httpapi
 
 import (
+	"bytes"
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/identity"
 )
 
@@ -23,49 +28,51 @@ type Handler struct {
 	database   *pgxpool.Pool
 	redis      *redis.Client
 	cookieName string
+	logger     *slog.Logger
 }
 
-func New(flow *identity.Service, database *pgxpool.Pool, redisClient *redis.Client, cookieName string) http.Handler {
-	handler := &Handler{flow: flow, database: database, redis: redisClient, cookieName: cookieName}
+func New(flow *identity.Service, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, logger *slog.Logger) http.Handler {
+	handler := &Handler{flow: flow, database: database, redis: redisClient, cookieName: cookieName, logger: logger}
 	router := chi.NewRouter()
+	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
 	router.Get("/api/v1/readyz", handler.ready)
-	router.Get("/api/v1/oauth/authorize", handler.authorize)
-	router.Post("/api/v1/oauth/token", handler.exchange)
+	router.Get(contract.AuthorizeRoute, handler.authorize)
+	router.Post(contract.TokenRoute, handler.exchange)
 	return router
 }
 
-func (h *Handler) health(writer http.ResponseWriter, _ *http.Request) {
-	writeSuccess(writer, http.StatusOK, map[string]bool{"alive": true})
+func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {
+	writeSuccess(writer, request, http.StatusOK, map[string]bool{"alive": true})
 }
 
 func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 	ctx := request.Context()
 	if err := h.database.Ping(ctx); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
 		return
 	}
 	if err := h.redis.Ping(ctx).Err(); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
 		return
 	}
-	writeSuccess(writer, http.StatusOK, map[string]bool{"ready": true})
+	writeSuccess(writer, request, http.StatusOK, map[string]bool{"ready": true})
 }
 
 func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
 	if query.Get("response_type") != "code" || query.Get("code_challenge_method") != "S256" || len(query.Get("state")) < 8 {
-		writeError(writer, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
 		return
 	}
 	callback, err := url.Parse(query.Get("redirect_uri"))
 	if err != nil || callback.Scheme != "https" || callback.Host == "" || callback.User != nil || callback.Fragment != "" {
-		writeError(writer, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
 		return
 	}
 	cookie, err := request.Cookie(h.cookieName)
 	if err != nil {
-		writeError(writer, http.StatusUnauthorized, "SESSION_REQUIRED", "a valid Core Session is required")
+		writeError(writer, request, http.StatusUnauthorized, "SESSION_REQUIRED", "a valid Core Session is required")
 		return
 	}
 	authorization, err := h.flow.Authorize(request.Context(), identity.AuthorizeInput{
@@ -73,7 +80,7 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 		ClientID:         query.Get("client_id"), RedirectURI: query.Get("redirect_uri"), CodeChallenge: query.Get("code_challenge"),
 	})
 	if err != nil {
-		h.writeFlowError(writer, err)
+		h.writeFlowError(writer, request, err)
 		return
 	}
 	http.SetCookie(writer, &http.Cookie{
@@ -84,83 +91,93 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	callbackQuery.Set("code", authorization.Code)
 	callbackQuery.Set("state", query.Get("state"))
 	callback.RawQuery = callbackQuery.Encode()
+	auditFrom(request.Context()).subjectUserID = maskSubject(authorization.UserID)
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Pragma", "no-cache")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
 	http.Redirect(writer, request, callback.String(), http.StatusFound)
 }
 
-type exchangeRequest struct {
-	GrantType    string `json:"grant_type"`
-	Code         string `json:"code"`
-	RedirectURI  string `json:"redirect_uri"`
-	ClientID     string `json:"client_id"`
-	CodeVerifier string `json:"code_verifier"`
-}
-
 func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
-	var body exchangeRequest
-	decoder := json.NewDecoder(request.Body)
+	rawBody, err := io.ReadAll(request.Body)
+	if err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "token request is invalid")
+		return
+	}
+	var body contract.ExchangeAuthorizationCodeRequest
+	decoder := json.NewDecoder(bytes.NewReader(rawBody))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&body); err != nil || body.GrantType != "authorization_code" {
-		writeError(writer, http.StatusBadRequest, "INVALID_REQUEST", "token request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "token request is invalid")
 		return
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		writeError(writer, http.StatusBadRequest, "INVALID_REQUEST", "token request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "token request is invalid")
 		return
 	}
 	basicClientID, clientSecret, ok := request.BasicAuth()
 	if !ok || basicClientID != body.ClientID {
-		writeError(writer, http.StatusUnauthorized, "CLIENT_AUTH_FAILED", "client authentication failed")
+		writeError(writer, request, http.StatusUnauthorized, "CLIENT_AUTH_FAILED", "client authentication failed")
 		return
 	}
+	bodyHash := sha256.Sum256(rawBody)
+	audit := auditFrom(request.Context())
+	audit.serviceID, audit.keyID = request.Header.Get("X-Service-Id"), request.Header.Get("X-Key-Id")
 	exchange, err := h.flow.Exchange(request.Context(), identity.ExchangeInput{
 		ClientID: body.ClientID, ClientSecret: clientSecret, Code: body.Code,
 		RedirectURI: body.RedirectURI, CodeVerifier: body.CodeVerifier,
+		ServiceID: request.Header.Get("X-Service-Id"), KeyID: request.Header.Get("X-Key-Id"),
+		Timestamp: request.Header.Get("X-Timestamp"), Nonce: request.Header.Get("X-Nonce"),
+		Signature: request.Header.Get("X-Signature"), BodyHash: bodyHash[:], IdempotencyKey: request.Header.Get("Idempotency-Key"),
 	})
 	if err != nil {
-		h.writeFlowError(writer, err)
+		h.writeFlowError(writer, request, err)
 		return
 	}
-	writeSuccess(writer, http.StatusOK, map[string]any{
-		"user": map[string]any{
-			"user_id": exchange.UserID, "email_verified": exchange.EmailVerified,
-			"status": exchange.UserStatus, "created_at": exchange.UserCreatedAt,
-		},
-		"session_exchange_token": exchange.SessionExchangeToken,
-		"expires_at":             exchange.ExpiresAt,
+	audit.subjectUserID = maskSubject(exchange.UserID)
+	writeSuccess(writer, request, http.StatusOK, contract.ExchangeAuthorizationCodeResponse{
+		User:                 contract.PlatformUser{UserID: exchange.UserID, EmailVerified: exchange.EmailVerified, Status: exchange.UserStatus, CreatedAt: exchange.UserCreatedAt},
+		SessionExchangeToken: exchange.SessionExchangeToken, ExpiresAt: exchange.ExpiresAt,
 	})
 }
 
-func (h *Handler) writeFlowError(writer http.ResponseWriter, err error) {
+func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Request, err error) {
 	switch {
 	case errors.Is(err, identity.ErrUnauthorized):
-		writeError(writer, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
+		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
 	case errors.Is(err, identity.ErrCallback):
-		writeError(writer, http.StatusBadRequest, "CALLBACK_NOT_REGISTERED", "callback is not registered")
+		writeError(writer, request, http.StatusBadRequest, "CALLBACK_NOT_REGISTERED", "callback is not registered")
 	case errors.Is(err, identity.ErrCodeUsed):
-		writeError(writer, http.StatusConflict, "AUTH_CODE_ALREADY_USED", "authorization code was already used")
+		writeError(writer, request, http.StatusConflict, "AUTH_CODE_ALREADY_USED", "authorization code was already used")
 	case errors.Is(err, identity.ErrCodeBusy):
-		writeError(writer, http.StatusConflict, "AUTH_CODE_IN_USE", "authorization code exchange is already in progress")
+		writeError(writer, request, http.StatusConflict, "AUTH_CODE_IN_USE", "authorization code exchange is already in progress")
 	case errors.Is(err, identity.ErrCodeExpired):
-		writeError(writer, http.StatusBadRequest, "AUTH_CODE_EXPIRED", "authorization code expired")
+		writeError(writer, request, http.StatusBadRequest, "AUTH_CODE_EXPIRED", "authorization code expired")
+	case errors.Is(err, identity.ErrNonceReplay):
+		writeError(writer, request, http.StatusConflict, "NONCE_ALREADY_USED", "request nonce was already used")
+	case errors.Is(err, identity.ErrSignature):
+		writeError(writer, request, http.StatusUnauthorized, "SIGNATURE_INVALID", "request signature is invalid")
+	case errors.Is(err, identity.ErrTimestamp):
+		writeError(writer, request, http.StatusUnauthorized, "TIMESTAMP_INVALID", "request timestamp is invalid")
+	case errors.Is(err, identity.ErrIdempotency):
+		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
 	case errors.Is(err, identity.ErrInvalid):
-		writeError(writer, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
 	case errors.Is(err, identity.ErrDependency):
-		writeError(writer, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
 	default:
-		writeError(writer, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		writeError(writer, request, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 	}
 }
 
-func writeSuccess(writer http.ResponseWriter, status int, data any) {
-	writeJSON(writer, status, map[string]any{"data": data, "request_id": requestID()})
+func writeSuccess(writer http.ResponseWriter, request *http.Request, status int, data any) {
+	writeJSON(writer, status, map[string]any{"data": data, "request_id": requestIDFrom(request.Context())})
 }
 
-func writeError(writer http.ResponseWriter, status int, code, message string) {
-	writeJSON(writer, status, map[string]any{"error": map[string]string{"code": code, "message": message}, "request_id": requestID()})
+func writeError(writer http.ResponseWriter, request *http.Request, status int, code, message string) {
+	auditFrom(request.Context()).errorCode = code
+	writeJSON(writer, status, map[string]any{"error": map[string]string{"code": code, "message": message}, "request_id": requestIDFrom(request.Context())})
 }
 
 func writeJSON(writer http.ResponseWriter, status int, payload any) {
@@ -176,4 +193,72 @@ func requestID() string {
 		return "req_unavailable"
 	}
 	return "req_" + strings.TrimRight(base64.RawURLEncoding.EncodeToString(bytes), "=")
+}
+
+type contextKey string
+
+const requestContextKey contextKey = "request-audit"
+
+type auditContext struct {
+	requestID, errorCode, serviceID, keyID, subjectUserID string
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (h *Handler) requestAudit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		started := time.Now()
+		id := request.Header.Get("X-Request-Id")
+		if !validRequestID(id) {
+			id = requestID()
+		}
+		audit := &auditContext{requestID: id}
+		request = request.WithContext(context.WithValue(request.Context(), requestContextKey, audit))
+		writer.Header().Set("X-Request-Id", id)
+		recorder := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
+		next.ServeHTTP(recorder, request)
+		h.logger.Info("http_request",
+			"request_id", id, "method", request.Method, "path", request.URL.Path,
+			"status", recorder.status, "error_code", audit.errorCode,
+			"service_id", audit.serviceID, "key_id", audit.keyID,
+			"subject_user_id", audit.subjectUserID, "duration_ms", time.Since(started).Milliseconds(),
+		)
+	})
+}
+
+func validRequestID(value string) bool {
+	if !strings.HasPrefix(value, "req_") || len(value) < 8 || len(value) > 100 {
+		return false
+	}
+	for _, character := range value[4:] {
+		if !(character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || character == '_' || character == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+func auditFrom(ctx context.Context) *auditContext {
+	audit, _ := ctx.Value(requestContextKey).(*auditContext)
+	if audit == nil {
+		return &auditContext{requestID: requestID()}
+	}
+	return audit
+}
+
+func requestIDFrom(ctx context.Context) string { return auditFrom(ctx).requestID }
+
+func maskSubject(value string) string {
+	if len(value) < 8 {
+		return ""
+	}
+	return value[:4] + "..." + value[len(value)-4:]
 }

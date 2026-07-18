@@ -23,7 +23,7 @@ FOR UPDATE OF s, u;
 UPDATE sessions SET last_seen_at = now() WHERE id = $1 AND kind = 'core';
 
 -- name: GetOAuthClient :one
-SELECT id, secret_hash, redirect_uris FROM oauth_clients WHERE id = $1;
+SELECT id, key_id, secret_hash, redirect_uris FROM oauth_clients WHERE id = $1;
 
 -- name: CreateAuthorizationCode :one
 INSERT INTO authorization_codes (
@@ -48,3 +48,19 @@ RETURNING id, expires_at;
 
 -- name: GetPlatformUser :one
 SELECT id, email_verified, status, created_at FROM users WHERE id = $1;
+
+-- name: GetOAuthExchangeIdempotency :one
+SELECT request_hash, response_ciphertext, expires_at
+FROM oauth_exchange_idempotency
+WHERE client_id = $1 AND idempotency_key = $2 AND expires_at > now();
+
+-- name: CreateOAuthExchangeIdempotency :exec
+INSERT INTO oauth_exchange_idempotency (
+    client_id, idempotency_key, request_hash, response_ciphertext, expires_at
+) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (client_id, idempotency_key) DO UPDATE SET
+    request_hash = EXCLUDED.request_hash,
+    response_ciphertext = EXCLUDED.response_ciphertext,
+    expires_at = EXCLUDED.expires_at,
+    created_at = now()
+WHERE oauth_exchange_idempotency.expires_at <= now();

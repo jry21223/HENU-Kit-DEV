@@ -40,6 +40,7 @@ func main() {
 	handler, err := platformcore.New(platformcore.Config{
 		Database: database, Redis: redisClient, CoreCookieName: settings.CoreCookieName,
 		AuthorizationTTL: settings.AuthorizationTTL, ExchangeSessionTTL: settings.ExchangeSessionTTL,
+		IdempotencyEncryptionKey: settings.IdempotencyEncryptionKey, Logger: logger,
 	})
 	if err != nil {
 		logger.Error("server initialization failed", "error", err.Error())

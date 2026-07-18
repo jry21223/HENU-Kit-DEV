@@ -2,12 +2,18 @@ package identity
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -26,10 +32,15 @@ var (
 	ErrCodeExpired  = errors.New("authorization code expired")
 	ErrCodeBusy     = errors.New("authorization code exchange in progress")
 	ErrDependency   = errors.New("coordination dependency unavailable")
+	ErrNonceReplay  = errors.New("request nonce was already used")
+	ErrSignature    = errors.New("request signature is invalid")
+	ErrTimestamp    = errors.New("request timestamp is invalid")
+	ErrIdempotency  = errors.New("idempotency key conflicts with another request")
 )
 
 type Coordinator interface {
 	Acquire(context.Context, string, time.Duration) (func(context.Context) error, error)
+	UseOnce(context.Context, string, time.Duration) error
 }
 
 type Service struct {
@@ -38,6 +49,7 @@ type Service struct {
 	coordinator        Coordinator
 	authorizationTTL   time.Duration
 	exchangeSessionTTL time.Duration
+	idempotencyKey     []byte
 }
 
 type AuthorizeInput struct {
@@ -50,14 +62,22 @@ type AuthorizeInput struct {
 type Authorization struct {
 	Code           string
 	SessionExpires time.Time
+	UserID         string
 }
 
 type ExchangeInput struct {
-	ClientID     string
-	ClientSecret string
-	Code         string
-	RedirectURI  string
-	CodeVerifier string
+	ClientID       string
+	ClientSecret   string
+	Code           string
+	RedirectURI    string
+	CodeVerifier   string
+	ServiceID      string
+	KeyID          string
+	Timestamp      string
+	Nonce          string
+	Signature      string
+	BodyHash       []byte
+	IdempotencyKey string
 }
 
 type Exchange struct {
@@ -69,8 +89,8 @@ type Exchange struct {
 	UserCreatedAt        time.Time
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL time.Duration) *Service {
-	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL}
+func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL time.Duration, idempotencyKey []byte) *Service {
+	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, idempotencyKey: idempotencyKey}
 }
 
 func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authorization, error) {
@@ -123,11 +143,11 @@ func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authoriz
 	if err := tx.Commit(ctx); err != nil {
 		return Authorization{}, err
 	}
-	return Authorization{Code: code, SessionExpires: session.ExpiresAt.Time}, nil
+	return Authorization{Code: code, SessionExpires: session.ExpiresAt.Time, UserID: uuidString(session.UserID)}, nil
 }
 
 func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, error) {
-	if input.ClientID == "" || input.ClientSecret == "" || input.Code == "" || input.RedirectURI == "" || input.CodeVerifier == "" {
+	if input.ClientID == "" || input.ClientSecret == "" || input.Code == "" || input.RedirectURI == "" || input.CodeVerifier == "" || input.ServiceID == "" || input.KeyID == "" || input.Timestamp == "" || input.Nonce == "" || input.Signature == "" || len(input.BodyHash) != sha256.Size || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 {
 		return Exchange{}, ErrInvalid
 	}
 	client, err := s.queries.GetOAuthClient(ctx, input.ClientID)
@@ -140,6 +160,36 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 	secretHash := sha256.Sum256([]byte(input.ClientSecret))
 	if len(client.SecretHash) != len(secretHash) || subtle.ConstantTimeCompare(client.SecretHash, secretHash[:]) != 1 {
 		return Exchange{}, ErrUnauthorized
+	}
+	if input.ServiceID != input.ClientID || input.KeyID != client.KeyID {
+		return Exchange{}, ErrSignature
+	}
+	requestTimeUnix, err := strconv.ParseInt(input.Timestamp, 10, 64)
+	if err != nil || time.Since(time.Unix(requestTimeUnix, 0)).Abs() > 5*time.Minute {
+		return Exchange{}, ErrTimestamp
+	}
+	canonical := strings.Join([]string{"POST", "/api/v1/oauth/token", input.Timestamp, input.Nonce, hex.EncodeToString(input.BodyHash)}, "\n")
+	mac := hmac.New(sha256.New, []byte(input.ClientSecret))
+	_, _ = mac.Write([]byte(canonical))
+	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if subtle.ConstantTimeCompare([]byte(input.Signature), []byte(expectedSignature)) != 1 {
+		return Exchange{}, ErrSignature
+	}
+	if err := s.coordinator.UseOnce(ctx, "platform-core:oauth-nonce:"+input.ClientID+":"+input.Nonce, 10*time.Minute); err != nil {
+		if errors.Is(err, coordination.ErrBusy) {
+			return Exchange{}, ErrNonceReplay
+		}
+		return Exchange{}, ErrDependency
+	}
+	cached, err := s.queries.GetOAuthExchangeIdempotency(ctx, store.GetOAuthExchangeIdempotencyParams{ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey})
+	if err == nil {
+		if subtle.ConstantTimeCompare(cached.RequestHash, input.BodyHash) != 1 {
+			return Exchange{}, ErrIdempotency
+		}
+		return s.decryptExchange(cached.ResponseCiphertext)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return Exchange{}, err
 	}
 	codeHash := sha256.Sum256([]byte(input.Code))
 	release, err := s.coordinator.Acquire(ctx, "platform-core:oauth-code:"+hex.EncodeToString(codeHash[:]), 5*time.Second)
@@ -207,13 +257,67 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 	if err != nil {
 		return Exchange{}, err
 	}
+	result := Exchange{
+		SessionExchangeToken: sessionToken, ExpiresAt: expiresAt, UserID: uuidString(user.ID),
+		EmailVerified: user.EmailVerified, UserStatus: user.Status, UserCreatedAt: user.CreatedAt.Time,
+	}
+	ciphertext, err := s.encryptExchange(result)
+	if err != nil {
+		return Exchange{}, err
+	}
+	if err := queries.CreateOAuthExchangeIdempotency(ctx, store.CreateOAuthExchangeIdempotencyParams{
+		ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey, RequestHash: input.BodyHash,
+		ResponseCiphertext: ciphertext, ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	}); err != nil {
+		return Exchange{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Exchange{}, err
 	}
-	return Exchange{
-		SessionExchangeToken: sessionToken, ExpiresAt: expiresAt, UserID: uuidString(user.ID),
-		EmailVerified: user.EmailVerified, UserStatus: user.Status, UserCreatedAt: user.CreatedAt.Time,
-	}, nil
+	return result, nil
+}
+
+func (s *Service) encryptExchange(value Exchange) ([]byte, error) {
+	plaintext, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(s.idempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	return gcm.Seal(nonce, nonce, plaintext, nil), nil
+}
+
+func (s *Service) decryptExchange(ciphertext []byte) (Exchange, error) {
+	block, err := aes.NewCipher(s.idempotencyKey)
+	if err != nil {
+		return Exchange{}, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return Exchange{}, err
+	}
+	if len(ciphertext) < gcm.NonceSize() {
+		return Exchange{}, errors.New("invalid cached exchange")
+	}
+	plaintext, err := gcm.Open(nil, ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():], nil)
+	if err != nil {
+		return Exchange{}, err
+	}
+	var value Exchange
+	if err := json.Unmarshal(plaintext, &value); err != nil {
+		return Exchange{}, err
+	}
+	return value, nil
 }
 
 func randomToken() (string, []byte, error) {

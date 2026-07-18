@@ -3,14 +3,19 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,7 +34,10 @@ const (
 	testClientSecret = "test-client-secret-with-enough-entropy"
 	testRedirectURI  = "https://console.henukit.test/auth/callback"
 	testCoreToken    = "core_test_session_token_32_bytes_long"
+	testKeyID        = "primary"
 )
+
+var testIdempotencyEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
 
 func TestAuthorizationCodeIsSingleUseAndCreatesDurableSession(t *testing.T) {
 	ctx := context.Background()
@@ -38,11 +46,12 @@ func TestAuthorizationCodeIsSingleUseAndCreatesDurableSession(t *testing.T) {
 	seedIdentity(t, ctx, pool)
 
 	handler, err := platformcore.New(platformcore.Config{
-		Database:           pool,
-		Redis:              redisClient,
-		CoreCookieName:     "__Host-henukit_core_session",
-		AuthorizationTTL:   90 * time.Second,
-		ExchangeSessionTTL: 5 * time.Minute,
+		Database:                 pool,
+		Redis:                    redisClient,
+		CoreCookieName:           "__Host-henukit_core_session",
+		AuthorizationTTL:         90 * time.Second,
+		ExchangeSessionTTL:       5 * time.Minute,
+		IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
 	})
 	if err != nil {
 		t.Fatalf("create platform core: %v", err)
@@ -109,7 +118,7 @@ func TestUnsafeCallbackAndWrongPKCEDoNotConsumeAuthorizationCode(t *testing.T) {
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
 	seedIdentity(t, ctx, pool)
-	handler, err := platformcore.New(platformcore.Config{Database: pool, Redis: redisClient})
+	handler, err := platformcore.New(platformcore.Config{Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey})
 	if err != nil {
 		t.Fatalf("create platform core: %v", err)
 	}
@@ -164,7 +173,7 @@ func TestRevokedCoreSessionBlocksCodeExchange(t *testing.T) {
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
 	seedIdentity(t, ctx, pool)
-	handler, err := platformcore.New(platformcore.Config{Database: pool, Redis: redisClient})
+	handler, err := platformcore.New(platformcore.Config{Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey})
 	if err != nil {
 		t.Fatalf("create platform core: %v", err)
 	}
@@ -196,7 +205,7 @@ func TestConcurrentAuthorizationCodeExchangeHasOneWinner(t *testing.T) {
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
 	seedIdentity(t, ctx, pool)
-	handler, err := platformcore.New(platformcore.Config{Database: pool, Redis: redisClient})
+	handler, err := platformcore.New(platformcore.Config{Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey})
 	if err != nil {
 		t.Fatalf("create platform core: %v", err)
 	}
@@ -241,12 +250,107 @@ func TestConcurrentAuthorizationCodeExchangeHasOneWinner(t *testing.T) {
 	}
 }
 
+func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	seedIdentity(t, ctx, pool)
+	var logs bytes.Buffer
+	handler, err := platformcore.New(platformcore.Config{
+		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
+		Logger: slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+	if err != nil {
+		t.Fatalf("create platform core: %v", err)
+	}
+	server := httptest.NewTLSServer(handler)
+	t.Cleanup(server.Close)
+	server.Client().CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+
+	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
+	code := issueAuthorizationCode(t, server, verifier)
+	idempotencyKey := "idem_" + uuid.NewString()
+	badSignature := exchangeCodeWith(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "not-a-valid-signature")
+	badSignature.Body.Close()
+	if badSignature.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("bad signature status = %d, want 401", badSignature.StatusCode)
+	}
+	wrongKeyRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "", "")
+	wrongKeyRequest.Header.Set("X-Key-Id", "retired-key")
+	wrongKeyResponse, err := server.Client().Do(wrongKeyRequest)
+	if err != nil {
+		t.Fatalf("wrong key request: %v", err)
+	}
+	wrongKeyResponse.Body.Close()
+	if wrongKeyResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong key status = %d, want 401", wrongKeyResponse.StatusCode)
+	}
+	expiredTimestamp := fmt.Sprintf("%d", time.Now().Add(-6*time.Minute).Unix())
+	expiredRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), expiredTimestamp, "")
+	expiredResponse, err := server.Client().Do(expiredRequest)
+	if err != nil {
+		t.Fatalf("expired timestamp request: %v", err)
+	}
+	expiredResponse.Body.Close()
+	if expiredResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expired timestamp status = %d, want 401", expiredResponse.StatusCode)
+	}
+	firstNonce := "nonce_" + uuid.NewString()
+	first := exchangeCodeWith(t, server, code, verifier, idempotencyKey, firstNonce, "")
+	firstBody, _ := io.ReadAll(first.Body)
+	first.Body.Close()
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("signed exchange status = %d: %s", first.StatusCode, firstBody)
+	}
+	second := exchangeCodeWith(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "")
+	secondBody, _ := io.ReadAll(second.Body)
+	second.Body.Close()
+	var firstEnvelope, secondEnvelope map[string]any
+	_ = json.Unmarshal(firstBody, &firstEnvelope)
+	_ = json.Unmarshal(secondBody, &secondEnvelope)
+	if second.StatusCode != http.StatusOK || !reflect.DeepEqual(firstEnvelope["data"], secondEnvelope["data"]) {
+		t.Fatalf("idempotent retry status/body = %d/%s, want original 200 response", second.StatusCode, secondBody)
+	}
+	token := firstEnvelope["data"].(map[string]any)["session_exchange_token"].(string)
+	var cachedCiphertext []byte
+	if err := pool.QueryRow(ctx, `SELECT response_ciphertext FROM oauth_exchange_idempotency WHERE client_id = $1 AND idempotency_key = $2`, testClientID, idempotencyKey).Scan(&cachedCiphertext); err != nil {
+		t.Fatalf("read cached idempotency response: %v", err)
+	}
+	if bytes.Contains(cachedCiphertext, []byte(token)) {
+		t.Fatal("idempotency cache persisted a plaintext Session token")
+	}
+	nonceReplay := exchangeCodeWith(t, server, code, verifier, "idem_"+uuid.NewString(), firstNonce, "")
+	nonceReplay.Body.Close()
+	if nonceReplay.StatusCode != http.StatusConflict {
+		t.Fatalf("nonce replay status = %d, want 409", nonceReplay.StatusCode)
+	}
+	var sessions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE kind = 'client_exchange'`).Scan(&sessions); err != nil || sessions != 1 {
+		t.Fatalf("idempotent retry created %d exchange sessions (query error %v)", sessions, err)
+	}
+
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/healthz", nil)
+	request.Header.Set("X-Request-Id", "req_upstream_123")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatalf("health request: %v", err)
+	}
+	response.Body.Close()
+	if response.Header.Get("X-Request-Id") != "req_upstream_123" {
+		t.Fatal("upstream request id was not preserved")
+	}
+	logText := logs.String()
+	if !strings.Contains(logText, `"request_id":"req_upstream_123"`) || strings.Contains(logText, testClientSecret) || strings.Contains(logText, code) {
+		t.Fatalf("audit log missing request id or leaked a secret: %s", logText)
+	}
+}
+
 func openDependencies(t *testing.T, ctx context.Context) (*pgxpool.Pool, *redis.Client) {
 	t.Helper()
 	databaseURL := os.Getenv("PLATFORM_CORE_TEST_DATABASE_URL")
 	redisAddr := os.Getenv("PLATFORM_CORE_TEST_REDIS_ADDR")
 	if databaseURL == "" || redisAddr == "" {
-		t.Skip("real PostgreSQL/Redis integration environment is not configured")
+		t.Fatal("TestMain did not configure real PostgreSQL and Redis dependencies")
 	}
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -283,7 +387,7 @@ func seedIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	if _, err := pool.Exec(ctx, `INSERT INTO users (id, email_verified, status) VALUES ($1, true, 'active')`, userID); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, secret_hash, redirect_uris) VALUES ($1, $2, $3)`, testClientID, secretHash[:], []string{testRedirectURI}); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, key_id, secret_hash, redirect_uris) VALUES ($1, $2, $3, $4)`, testClientID, testKeyID, secretHash[:], []string{testRedirectURI}); err != nil {
 		t.Fatalf("seed client: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO sessions (id, user_id, kind, token_hash, expires_at) VALUES ($1, $2, 'core', $3, now() + interval '1 hour')`, sessionID, userID, tokenHash[:]); err != nil {
@@ -293,15 +397,43 @@ func seedIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 
 func exchangeCode(t *testing.T, server *httptest.Server, code, verifier string) *http.Response {
 	t.Helper()
-	body := fmt.Sprintf(`{"grant_type":"authorization_code","code":%q,"redirect_uri":%q,"client_id":%q,"code_verifier":%q}`, code, testRedirectURI, testClientID, verifier)
-	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/oauth/token", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(testClientID, testClientSecret)
+	return exchangeCodeWith(t, server, code, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "")
+}
+
+func exchangeCodeWith(t *testing.T, server *httptest.Server, code, verifier, idempotencyKey, nonce, signatureOverride string) *http.Response {
+	t.Helper()
+	req := signedExchangeRequest(t, server, code, verifier, idempotencyKey, nonce, "", signatureOverride)
 	response, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("exchange code: %v", err)
 	}
 	return response
+}
+
+func signedExchangeRequest(t *testing.T, server *httptest.Server, code, verifier, idempotencyKey, nonce, timestamp, signatureOverride string) *http.Request {
+	t.Helper()
+	body := fmt.Sprintf(`{"grant_type":"authorization_code","code":%q,"redirect_uri":%q,"client_id":%q,"code_verifier":%q}`, code, testRedirectURI, testClientID, verifier)
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/oauth/token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(testClientID, testClientSecret)
+	if timestamp == "" {
+		timestamp = fmt.Sprintf("%d", time.Now().Unix())
+	}
+	bodyHash := sha256.Sum256([]byte(body))
+	canonical := strings.Join([]string{"POST", "/api/v1/oauth/token", timestamp, nonce, hex.EncodeToString(bodyHash[:])}, "\n")
+	mac := hmac.New(sha256.New, []byte(testClientSecret))
+	_, _ = mac.Write([]byte(canonical))
+	req.Header.Set("X-Service-Id", testClientID)
+	req.Header.Set("X-Key-Id", testKeyID)
+	req.Header.Set("X-Timestamp", timestamp)
+	req.Header.Set("X-Nonce", nonce)
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if signatureOverride != "" {
+		signature = signatureOverride
+	}
+	req.Header.Set("X-Signature", signature)
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+	return req
 }
 
 func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier string) string {

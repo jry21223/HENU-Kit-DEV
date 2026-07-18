@@ -9,6 +9,7 @@ CREATE TABLE users (
 
 CREATE TABLE oauth_clients (
     id text PRIMARY KEY,
+    key_id text NOT NULL,
     secret_hash bytea NOT NULL CHECK (octet_length(secret_hash) = 32),
     redirect_uris text[] NOT NULL CHECK (cardinality(redirect_uris) > 0),
     created_at timestamptz NOT NULL DEFAULT now()
@@ -48,3 +49,15 @@ CREATE TABLE authorization_codes (
 );
 
 CREATE INDEX authorization_codes_expiry_idx ON authorization_codes (expires_at) WHERE used_at IS NULL;
+
+CREATE TABLE oauth_exchange_idempotency (
+    client_id text NOT NULL REFERENCES oauth_clients(id) ON DELETE CASCADE,
+    idempotency_key text NOT NULL CHECK (length(idempotency_key) BETWEEN 8 AND 200),
+    request_hash bytea NOT NULL CHECK (octet_length(request_hash) = 32),
+    response_ciphertext bytea NOT NULL,
+    expires_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (client_id, idempotency_key)
+);
+
+CREATE INDEX oauth_exchange_idempotency_expiry_idx ON oauth_exchange_idempotency (expires_at);

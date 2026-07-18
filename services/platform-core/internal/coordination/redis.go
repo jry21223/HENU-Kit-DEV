@@ -20,6 +20,17 @@ func NewRedis(client *redis.Client) *Redis {
 	return &Redis{client: client}
 }
 
+func (r *Redis) UseOnce(ctx context.Context, key string, ttl time.Duration) error {
+	stored, err := r.client.SetNX(ctx, key, "1", ttl).Result()
+	if err != nil {
+		return err
+	}
+	if !stored {
+		return ErrBusy
+	}
+	return nil
+}
+
 func (r *Redis) Acquire(ctx context.Context, key string, ttl time.Duration) (func(context.Context) error, error) {
 	tokenBytes := make([]byte, 24)
 	if _, err := rand.Read(tokenBytes); err != nil {

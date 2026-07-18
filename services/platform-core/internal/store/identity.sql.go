@@ -76,6 +76,37 @@ func (q *Queries) CreateExchangeSession(ctx context.Context, arg CreateExchangeS
 	return i, err
 }
 
+const createOAuthExchangeIdempotency = `-- name: CreateOAuthExchangeIdempotency :exec
+INSERT INTO oauth_exchange_idempotency (
+    client_id, idempotency_key, request_hash, response_ciphertext, expires_at
+) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (client_id, idempotency_key) DO UPDATE SET
+    request_hash = EXCLUDED.request_hash,
+    response_ciphertext = EXCLUDED.response_ciphertext,
+    expires_at = EXCLUDED.expires_at,
+    created_at = now()
+WHERE oauth_exchange_idempotency.expires_at <= now()
+`
+
+type CreateOAuthExchangeIdempotencyParams struct {
+	ClientID           string             `json:"client_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	RequestHash        []byte             `json:"request_hash"`
+	ResponseCiphertext []byte             `json:"response_ciphertext"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) CreateOAuthExchangeIdempotency(ctx context.Context, arg CreateOAuthExchangeIdempotencyParams) error {
+	_, err := q.db.Exec(ctx, createOAuthExchangeIdempotency,
+		arg.ClientID,
+		arg.IdempotencyKey,
+		arg.RequestHash,
+		arg.ResponseCiphertext,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const getActiveCoreSessionByTokenHash = `-- name: GetActiveCoreSessionByTokenHash :one
 SELECT s.id, s.user_id, s.expires_at, u.email_verified, u.status, u.created_at AS user_created_at
 FROM sessions s
@@ -164,11 +195,12 @@ func (q *Queries) GetAuthorizationCodeForUpdate(ctx context.Context, codeHash []
 }
 
 const getOAuthClient = `-- name: GetOAuthClient :one
-SELECT id, secret_hash, redirect_uris FROM oauth_clients WHERE id = $1
+SELECT id, key_id, secret_hash, redirect_uris FROM oauth_clients WHERE id = $1
 `
 
 type GetOAuthClientRow struct {
 	ID           string   `json:"id"`
+	KeyID        string   `json:"key_id"`
 	SecretHash   []byte   `json:"secret_hash"`
 	RedirectUris []string `json:"redirect_uris"`
 }
@@ -176,7 +208,36 @@ type GetOAuthClientRow struct {
 func (q *Queries) GetOAuthClient(ctx context.Context, id string) (GetOAuthClientRow, error) {
 	row := q.db.QueryRow(ctx, getOAuthClient, id)
 	var i GetOAuthClientRow
-	err := row.Scan(&i.ID, &i.SecretHash, &i.RedirectUris)
+	err := row.Scan(
+		&i.ID,
+		&i.KeyID,
+		&i.SecretHash,
+		&i.RedirectUris,
+	)
+	return i, err
+}
+
+const getOAuthExchangeIdempotency = `-- name: GetOAuthExchangeIdempotency :one
+SELECT request_hash, response_ciphertext, expires_at
+FROM oauth_exchange_idempotency
+WHERE client_id = $1 AND idempotency_key = $2 AND expires_at > now()
+`
+
+type GetOAuthExchangeIdempotencyParams struct {
+	ClientID       string `json:"client_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type GetOAuthExchangeIdempotencyRow struct {
+	RequestHash        []byte             `json:"request_hash"`
+	ResponseCiphertext []byte             `json:"response_ciphertext"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) GetOAuthExchangeIdempotency(ctx context.Context, arg GetOAuthExchangeIdempotencyParams) (GetOAuthExchangeIdempotencyRow, error) {
+	row := q.db.QueryRow(ctx, getOAuthExchangeIdempotency, arg.ClientID, arg.IdempotencyKey)
+	var i GetOAuthExchangeIdempotencyRow
+	err := row.Scan(&i.RequestHash, &i.ResponseCiphertext, &i.ExpiresAt)
 	return i, err
 }
 

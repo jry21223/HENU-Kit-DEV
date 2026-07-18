@@ -2,6 +2,8 @@ package platformcore
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -16,22 +18,24 @@ import (
 )
 
 type Config struct {
-	Database           *pgxpool.Pool
-	Redis              *redis.Client
-	CoreCookieName     string
-	AuthorizationTTL   time.Duration
-	ExchangeSessionTTL time.Duration
+	Database                 *pgxpool.Pool
+	Redis                    *redis.Client
+	CoreCookieName           string
+	AuthorizationTTL         time.Duration
+	ExchangeSessionTTL       time.Duration
+	IdempotencyEncryptionKey []byte
+	Logger                   *slog.Logger
 }
 
 func New(config Config) (http.Handler, error) {
 	if config.Database == nil || config.Redis == nil {
-		return nil, errors.New("PostgreSQL and Redis are required")
+		return nil, errors.New("postgresql and Redis clients are required")
 	}
 	if config.CoreCookieName == "" {
 		config.CoreCookieName = "__Host-henukit_core_session"
 	}
 	if !strings.HasPrefix(config.CoreCookieName, "__Host-") {
-		return nil, errors.New("Core Session cookie name must use the __Host- prefix")
+		return nil, errors.New("core session cookie name must use the __Host- prefix")
 	}
 	if config.AuthorizationTTL <= 0 {
 		config.AuthorizationTTL = 90 * time.Second
@@ -45,8 +49,14 @@ func New(config Config) (http.Handler, error) {
 	if config.ExchangeSessionTTL > 15*time.Minute {
 		return nil, errors.New("exchange Session TTL must not exceed 15m")
 	}
+	if len(config.IdempotencyEncryptionKey) != 32 {
+		return nil, errors.New("idempotency encryption key must be 32 bytes")
+	}
+	if config.Logger == nil {
+		config.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	queries := store.New(config.Database)
 	coordinator := coordination.NewRedis(config.Redis)
-	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL)
-	return httpapi.New(flow, config.Database, config.Redis, config.CoreCookieName), nil
+	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyEncryptionKey)
+	return httpapi.New(flow, config.Database, config.Redis, config.CoreCookieName, config.Logger), nil
 }
