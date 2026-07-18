@@ -24,6 +24,7 @@ type Config struct {
 	AuthorizationTTL         time.Duration
 	ExchangeSessionTTL       time.Duration
 	IdempotencyEncryptionKey []byte
+	IdempotencyTTL           time.Duration
 	Logger                   *slog.Logger
 }
 
@@ -52,11 +53,17 @@ func New(config Config) (http.Handler, error) {
 	if len(config.IdempotencyEncryptionKey) != 32 {
 		return nil, errors.New("idempotency encryption key must be 32 bytes")
 	}
+	if config.IdempotencyTTL <= 0 {
+		config.IdempotencyTTL = 24 * time.Hour
+	}
+	if config.IdempotencyTTL < 24*time.Hour {
+		return nil, errors.New("idempotency TTL must be at least 24h")
+	}
 	if config.Logger == nil {
 		config.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	queries := store.New(config.Database)
 	coordinator := coordination.NewRedis(config.Redis)
-	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyEncryptionKey)
+	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL, config.IdempotencyEncryptionKey)
 	return httpapi.New(flow, config.Database, config.Redis, config.CoreCookieName, config.Logger), nil
 }

@@ -99,6 +99,8 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
+	audit := auditFrom(request.Context())
+	audit.serviceID, audit.keyID = request.Header.Get("X-Service-Id"), request.Header.Get("X-Key-Id")
 	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
 	rawBody, err := io.ReadAll(request.Body)
 	if err != nil {
@@ -122,14 +124,17 @@ func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	bodyHash := sha256.Sum256(rawBody)
-	audit := auditFrom(request.Context())
-	audit.serviceID, audit.keyID = request.Header.Get("X-Service-Id"), request.Header.Get("X-Key-Id")
+	pathAndQuery := request.URL.EscapedPath()
+	if request.URL.RawQuery != "" {
+		pathAndQuery += "?" + request.URL.RawQuery
+	}
 	exchange, err := h.flow.Exchange(request.Context(), identity.ExchangeInput{
 		ClientID: body.ClientID, ClientSecret: clientSecret, Code: body.Code,
 		RedirectURI: body.RedirectURI, CodeVerifier: body.CodeVerifier,
 		ServiceID: request.Header.Get("X-Service-Id"), KeyID: request.Header.Get("X-Key-Id"),
 		Timestamp: request.Header.Get("X-Timestamp"), Nonce: request.Header.Get("X-Nonce"),
 		Signature: request.Header.Get("X-Signature"), BodyHash: bodyHash[:], IdempotencyKey: request.Header.Get("Idempotency-Key"),
+		PathAndQuery: pathAndQuery,
 	})
 	if err != nil {
 		h.writeFlowError(writer, request, err)
@@ -162,6 +167,8 @@ func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, request, http.StatusUnauthorized, "TIMESTAMP_INVALID", "request timestamp is invalid")
 	case errors.Is(err, identity.ErrIdempotency):
 		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
+	case errors.Is(err, identity.ErrIdempotencyBusy):
+		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_IN_USE", "idempotent request is still in progress")
 	case errors.Is(err, identity.ErrInvalid):
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
 	case errors.Is(err, identity.ErrDependency):

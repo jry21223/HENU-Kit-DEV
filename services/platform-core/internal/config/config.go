@@ -15,6 +15,7 @@ type Config struct {
 	AuthorizationTTL         time.Duration
 	ExchangeSessionTTL       time.Duration
 	IdempotencyEncryptionKey []byte
+	IdempotencyTTL           time.Duration
 }
 
 func Load() (Config, error) {
@@ -25,6 +26,7 @@ func Load() (Config, error) {
 		CoreCookieName:     env("PLATFORM_CORE_COOKIE_NAME", "__Host-henukit_core_session"),
 		AuthorizationTTL:   durationEnv("PLATFORM_CORE_AUTHORIZATION_TTL", 90*time.Second),
 		ExchangeSessionTTL: durationEnv("PLATFORM_CORE_EXCHANGE_SESSION_TTL", 5*time.Minute),
+		IdempotencyTTL:     durationEnv("PLATFORM_CORE_IDEMPOTENCY_TTL", 24*time.Hour),
 	}
 	if config.DatabaseURL == "" {
 		return Config{}, errors.New("PLATFORM_CORE_DATABASE_URL is required")
@@ -40,6 +42,9 @@ func Load() (Config, error) {
 	}
 	if config.ExchangeSessionTTL <= 0 || config.ExchangeSessionTTL > 15*time.Minute {
 		return Config{}, errors.New("PLATFORM_CORE_EXCHANGE_SESSION_TTL must be greater than zero and at most 15m")
+	}
+	if config.IdempotencyTTL < 24*time.Hour {
+		return Config{}, errors.New("PLATFORM_CORE_IDEMPOTENCY_TTL must be at least 24h")
 	}
 	return config, nil
 }

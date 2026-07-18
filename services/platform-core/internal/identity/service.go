@@ -25,17 +25,18 @@ import (
 )
 
 var (
-	ErrUnauthorized = errors.New("authentication failed")
-	ErrInvalid      = errors.New("invalid authorization request")
-	ErrCallback     = errors.New("callback is not registered")
-	ErrCodeUsed     = errors.New("authorization code was already used")
-	ErrCodeExpired  = errors.New("authorization code expired")
-	ErrCodeBusy     = errors.New("authorization code exchange in progress")
-	ErrDependency   = errors.New("coordination dependency unavailable")
-	ErrNonceReplay  = errors.New("request nonce was already used")
-	ErrSignature    = errors.New("request signature is invalid")
-	ErrTimestamp    = errors.New("request timestamp is invalid")
-	ErrIdempotency  = errors.New("idempotency key conflicts with another request")
+	ErrUnauthorized    = errors.New("authentication failed")
+	ErrInvalid         = errors.New("invalid authorization request")
+	ErrCallback        = errors.New("callback is not registered")
+	ErrCodeUsed        = errors.New("authorization code was already used")
+	ErrCodeExpired     = errors.New("authorization code expired")
+	ErrCodeBusy        = errors.New("authorization code exchange in progress")
+	ErrDependency      = errors.New("coordination dependency unavailable")
+	ErrNonceReplay     = errors.New("request nonce was already used")
+	ErrSignature       = errors.New("request signature is invalid")
+	ErrTimestamp       = errors.New("request timestamp is invalid")
+	ErrIdempotency     = errors.New("idempotency key conflicts with another request")
+	ErrIdempotencyBusy = errors.New("idempotent request is still in progress")
 )
 
 type Coordinator interface {
@@ -50,6 +51,7 @@ type Service struct {
 	authorizationTTL   time.Duration
 	exchangeSessionTTL time.Duration
 	idempotencyKey     []byte
+	idempotencyTTL     time.Duration
 }
 
 type AuthorizeInput struct {
@@ -78,6 +80,7 @@ type ExchangeInput struct {
 	Signature      string
 	BodyHash       []byte
 	IdempotencyKey string
+	PathAndQuery   string
 }
 
 type Exchange struct {
@@ -89,8 +92,8 @@ type Exchange struct {
 	UserCreatedAt        time.Time
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL time.Duration, idempotencyKey []byte) *Service {
-	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, idempotencyKey: idempotencyKey}
+func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL, idempotencyTTL time.Duration, idempotencyKey []byte) *Service {
+	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, idempotencyTTL: idempotencyTTL, idempotencyKey: idempotencyKey}
 }
 
 func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authorization, error) {
@@ -147,10 +150,10 @@ func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authoriz
 }
 
 func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, error) {
-	if input.ClientID == "" || input.ClientSecret == "" || input.Code == "" || input.RedirectURI == "" || input.CodeVerifier == "" || input.ServiceID == "" || input.KeyID == "" || input.Timestamp == "" || input.Nonce == "" || input.Signature == "" || len(input.BodyHash) != sha256.Size || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 {
+	if input.ClientID == "" || input.ClientSecret == "" || input.Code == "" || input.RedirectURI == "" || input.CodeVerifier == "" || input.ServiceID == "" || input.KeyID == "" || input.Timestamp == "" || input.Nonce == "" || input.Signature == "" || len(input.BodyHash) != sha256.Size || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 || !strings.HasPrefix(input.PathAndQuery, "/") {
 		return Exchange{}, ErrInvalid
 	}
-	client, err := s.queries.GetOAuthClient(ctx, input.ClientID)
+	clientKey, err := s.queries.GetOAuthClientKey(ctx, store.GetOAuthClientKeyParams{ClientID: input.ClientID, KeyID: input.KeyID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Exchange{}, ErrUnauthorized
@@ -158,17 +161,17 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		return Exchange{}, err
 	}
 	secretHash := sha256.Sum256([]byte(input.ClientSecret))
-	if len(client.SecretHash) != len(secretHash) || subtle.ConstantTimeCompare(client.SecretHash, secretHash[:]) != 1 {
+	if len(clientKey.SecretHash) != len(secretHash) || subtle.ConstantTimeCompare(clientKey.SecretHash, secretHash[:]) != 1 {
 		return Exchange{}, ErrUnauthorized
 	}
-	if input.ServiceID != input.ClientID || input.KeyID != client.KeyID {
+	if input.ServiceID != input.ClientID {
 		return Exchange{}, ErrSignature
 	}
 	requestTimeUnix, err := strconv.ParseInt(input.Timestamp, 10, 64)
 	if err != nil || time.Since(time.Unix(requestTimeUnix, 0)).Abs() > 5*time.Minute {
 		return Exchange{}, ErrTimestamp
 	}
-	canonical := strings.Join([]string{"POST", "/api/v1/oauth/token", input.Timestamp, input.Nonce, hex.EncodeToString(input.BodyHash)}, "\n")
+	canonical := strings.Join([]string{"POST", input.PathAndQuery, input.Timestamp, input.Nonce, hex.EncodeToString(input.BodyHash)}, "\n")
 	mac := hmac.New(sha256.New, []byte(input.ClientSecret))
 	_, _ = mac.Write([]byte(canonical))
 	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
@@ -181,6 +184,15 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		}
 		return Exchange{}, ErrDependency
 	}
+	idempotencyHash := sha256.Sum256([]byte(input.ClientID + "\x00" + input.IdempotencyKey))
+	releaseIdempotency, err := s.acquireWithWait(ctx, "platform-core:oauth-idempotency:"+hex.EncodeToString(idempotencyHash[:]), 30*time.Second, 5*time.Second)
+	if err != nil {
+		if errors.Is(err, coordination.ErrBusy) {
+			return Exchange{}, ErrIdempotencyBusy
+		}
+		return Exchange{}, ErrDependency
+	}
+	defer releaseCoordination(releaseIdempotency)()
 	cached, err := s.queries.GetOAuthExchangeIdempotency(ctx, store.GetOAuthExchangeIdempotencyParams{ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey})
 	if err == nil {
 		if subtle.ConstantTimeCompare(cached.RequestHash, input.BodyHash) != 1 {
@@ -199,11 +211,7 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		}
 		return Exchange{}, ErrDependency
 	}
-	defer func() {
-		releaseContext, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = release(releaseContext)
-	}()
+	defer releaseCoordination(release)()
 
 	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -219,6 +227,16 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		return Exchange{}, err
 	}
 	if code.UsedAt.Valid {
+		cached, cacheErr := queries.GetOAuthExchangeIdempotency(ctx, store.GetOAuthExchangeIdempotencyParams{ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey})
+		if cacheErr == nil {
+			if subtle.ConstantTimeCompare(cached.RequestHash, input.BodyHash) != 1 {
+				return Exchange{}, ErrIdempotency
+			}
+			return s.decryptExchange(cached.ResponseCiphertext)
+		}
+		if !errors.Is(cacheErr, pgx.ErrNoRows) {
+			return Exchange{}, cacheErr
+		}
 		return Exchange{}, ErrCodeUsed
 	}
 	if !time.Now().UTC().Before(code.ExpiresAt.Time) {
@@ -267,7 +285,7 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 	}
 	if err := queries.CreateOAuthExchangeIdempotency(ctx, store.CreateOAuthExchangeIdempotencyParams{
 		ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey, RequestHash: input.BodyHash,
-		ResponseCiphertext: ciphertext, ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		ResponseCiphertext: ciphertext, ExpiresAt: pgtype.Timestamptz{Time: time.Now().UTC().Add(s.idempotencyTTL), Valid: true},
 	}); err != nil {
 		return Exchange{}, err
 	}
@@ -275,6 +293,39 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		return Exchange{}, err
 	}
 	return result, nil
+}
+
+func (s *Service) acquireWithWait(ctx context.Context, key string, lockTTL, wait time.Duration) (func(context.Context) error, error) {
+	deadline := time.Now().Add(wait)
+	for {
+		release, err := s.coordinator.Acquire(ctx, key, lockTTL)
+		if err == nil {
+			return release, nil
+		}
+		if !errors.Is(err, coordination.ErrBusy) {
+			return nil, err
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, coordination.ErrBusy
+		}
+		delay := min(25*time.Millisecond, remaining)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func releaseCoordination(release func(context.Context) error) func() {
+	return func() {
+		releaseContext, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = release(releaseContext)
+	}
 }
 
 func (s *Service) encryptExchange(value Exchange) ([]byte, error) {

@@ -23,7 +23,12 @@ FOR UPDATE OF s, u;
 UPDATE sessions SET last_seen_at = now() WHERE id = $1 AND kind = 'core';
 
 -- name: GetOAuthClient :one
-SELECT id, key_id, secret_hash, redirect_uris FROM oauth_clients WHERE id = $1;
+SELECT id, redirect_uris FROM oauth_clients WHERE id = $1;
+
+-- name: GetOAuthClientKey :one
+SELECT client_id, key_id, secret_hash, status
+FROM oauth_client_keys
+WHERE client_id = $1 AND key_id = $2 AND status IN ('active', 'retiring');
 
 -- name: CreateAuthorizationCode :one
 INSERT INTO authorization_codes (

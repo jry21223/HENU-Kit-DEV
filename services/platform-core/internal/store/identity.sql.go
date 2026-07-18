@@ -195,24 +195,47 @@ func (q *Queries) GetAuthorizationCodeForUpdate(ctx context.Context, codeHash []
 }
 
 const getOAuthClient = `-- name: GetOAuthClient :one
-SELECT id, key_id, secret_hash, redirect_uris FROM oauth_clients WHERE id = $1
+SELECT id, redirect_uris FROM oauth_clients WHERE id = $1
 `
 
 type GetOAuthClientRow struct {
 	ID           string   `json:"id"`
-	KeyID        string   `json:"key_id"`
-	SecretHash   []byte   `json:"secret_hash"`
 	RedirectUris []string `json:"redirect_uris"`
 }
 
 func (q *Queries) GetOAuthClient(ctx context.Context, id string) (GetOAuthClientRow, error) {
 	row := q.db.QueryRow(ctx, getOAuthClient, id)
 	var i GetOAuthClientRow
+	err := row.Scan(&i.ID, &i.RedirectUris)
+	return i, err
+}
+
+const getOAuthClientKey = `-- name: GetOAuthClientKey :one
+SELECT client_id, key_id, secret_hash, status
+FROM oauth_client_keys
+WHERE client_id = $1 AND key_id = $2 AND status IN ('active', 'retiring')
+`
+
+type GetOAuthClientKeyParams struct {
+	ClientID string `json:"client_id"`
+	KeyID    string `json:"key_id"`
+}
+
+type GetOAuthClientKeyRow struct {
+	ClientID   string `json:"client_id"`
+	KeyID      string `json:"key_id"`
+	SecretHash []byte `json:"secret_hash"`
+	Status     string `json:"status"`
+}
+
+func (q *Queries) GetOAuthClientKey(ctx context.Context, arg GetOAuthClientKeyParams) (GetOAuthClientKeyRow, error) {
+	row := q.db.QueryRow(ctx, getOAuthClientKey, arg.ClientID, arg.KeyID)
+	var i GetOAuthClientKeyRow
 	err := row.Scan(
-		&i.ID,
+		&i.ClientID,
 		&i.KeyID,
 		&i.SecretHash,
-		&i.RedirectUris,
+		&i.Status,
 	)
 	return i, err
 }

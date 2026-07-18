@@ -41,6 +41,7 @@ func main() {
 		Database: database, Redis: redisClient, CoreCookieName: settings.CoreCookieName,
 		AuthorizationTTL: settings.AuthorizationTTL, ExchangeSessionTTL: settings.ExchangeSessionTTL,
 		IdempotencyEncryptionKey: settings.IdempotencyEncryptionKey, Logger: logger,
+		IdempotencyTTL: settings.IdempotencyTTL,
 	})
 	if err != nil {
 		logger.Error("server initialization failed", "error", err.Error())
