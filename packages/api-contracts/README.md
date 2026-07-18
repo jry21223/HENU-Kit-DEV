@@ -21,6 +21,10 @@ packages/api-contracts/
 - 内部服务接口与浏览器接口使用不同 tag、安全方案和路径空间。
 - 生成客户端和服务端类型不得手工修改；生成命令应进入 CI。
 
+## 当前实现状态
+
+`platform-core.yaml` 是完整目标契约，其中只有 Health、Readiness、`GET /oauth/authorize` 和 `POST /oauth/token` 已由 `services/platform-core` 的 HC-05 身份切片实现。验证码、Session 撤销和内部事件仍是契约先行的 Planned 接口，不应被描述为已部署能力。
+
 ## 旧接口兼容
 
 现有 final-review API 使用 `{code,message,data}`，QuizCraft 使用裸 JSON。它们不在一个发布中强制改写。

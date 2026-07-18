@@ -1,0 +1,109 @@
+name: Platform Core
+
+on:
+  pull_request:
+    paths:
+      - services/platform-core/**
+      - packages/api-contracts/openapi/platform-core.yaml
+      - .github/workflows/platform-core.yml
+  push:
+    branches: [main]
+    paths:
+      - services/platform-core/**
+      - packages/api-contracts/openapi/platform-core.yaml
+      - .github/workflows/platform-core.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PGPASSWORD: platform_core_test
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: platform_core_test
+          POSTGRES_USER: platform_core
+          POSTGRES_PASSWORD: platform_core_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U platform_core -d platform_core_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/platform-core/go.mod
+          cache-dependency-path: services/platform-core/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify migration round trip
+        run: |
+          set -euo pipefail
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000001_identity.up.sql
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.sessions') IS NOT NULL")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000001_identity.down.sql
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.sessions') IS NULL")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000001_identity.up.sql
+
+      - name: Verify generated SQL and OpenAPI
+        run: |
+          set -euo pipefail
+          cd services/platform-core
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          git diff --exit-code -- internal/store
+          go run ./cmd/contractgen
+          git diff --exit-code -- internal/contract
+          cd ../..
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/platform-core.yaml
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/platform-core.yaml" > /tmp/platform-core-base.yaml
+            if ! go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/platform-core-base.yaml packages/api-contracts/openapi/platform-core.yaml; then
+              base_version="$(awk '/^  version:/ { print $2; exit }' /tmp/platform-core-base.yaml)"
+              head_version="$(awk '/^  version:/ { print $2; exit }' packages/api-contracts/openapi/platform-core.yaml)"
+              test "$base_version" != "$head_version" || { echo "Breaking OpenAPI changes require an API document version bump"; exit 1; }
+            fi
+          fi
+
+      - name: Vet, test, and build
+        working-directory: services/platform-core
+        run: |
+          set -euo pipefail
+          gofmt -d . | tee /tmp/gofmt.diff
+          test ! -s /tmp/gofmt.diff
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+          go test -race -count=1 ./...
+          go build -o /tmp/platform-core ./cmd/server
+
+      - name: Build service image
+        run: docker build -t henukit-platform-core:${{ github.sha }} services/platform-core
+
+      - name: Scan repository and image
+        run: |
+          docker run --rm -v "$PWD:/workspace" aquasec/trivy:0.70.0 fs --scanners secret --exit-code 1 /workspace
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.70.0 image --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 henukit-platform-core:${{ github.sha }}

@@ -1,0 +1,4 @@
+.git
+server
+*.exe
+coverage.out

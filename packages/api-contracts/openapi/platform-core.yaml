@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
 servers:
@@ -9,6 +9,8 @@ servers:
     description: Production account origin
   - url: http://localhost:8081/api/v1
     description: Local development
+
+security: []
 
 tags:
   - name: Health
@@ -148,15 +150,20 @@ paths:
       summary: 业务站后端交换一次性授权码
       security:
         - clientSecret: []
+          serviceHmac: []
       parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [grant_type, code, redirect_uri, client_id]
+              required: [grant_type, code, redirect_uri, client_id, code_verifier]
               properties:
                 grant_type:
                   type: string
@@ -182,19 +189,89 @@ paths:
                     properties:
                       data:
                         type: object
-                        required: [user]
+                        required: [user, session_exchange_token, expires_at]
                         properties:
                           user:
                             $ref: "#/components/schemas/PlatformUser"
                           session_exchange_token:
                             type: string
                             description: Short-lived token for the requesting backend only; never place in URL or browser storage.
+                          expires_at:
+                            type: string
+                            format: date-time
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "409":
           $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /oauth/authorize:
+    get:
+      tags: [Authorization]
+      operationId: authorizeOAuthClient
+      summary: 账户中心为已登录用户签发短期单次授权码
+      description: |
+        Requires the host-only Core Session cookie. The callback must exactly match a registered HTTPS URI,
+        PKCE is S256-only, and the authorization code is returned once in the callback URL.
+      security:
+        - coreSession: []
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            const: code
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 8
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+        - name: code_challenge_method
+          in: query
+          required: true
+          schema:
+            type: string
+            const: S256
+      responses:
+        "302":
+          description: Redirect to the exact registered callback with code and preserved state
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              description: Reissues the unextended `__Host-henukit_core_session` cookie with HttpOnly, Secure, SameSite=Lax and Path=/; Domain is omitted.
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /sessions/revoke:
     post:
@@ -273,6 +350,10 @@ paths:
 
 components:
   securitySchemes:
+    coreSession:
+      type: apiKey
+      in: cookie
+      name: __Host-henukit_core_session
     bearerAuth:
       type: http
       scheme: bearer
@@ -283,7 +364,7 @@ components:
     serviceHmac:
       type: apiKey
       in: header
-      name: X-HENU-Signature
+      name: X-Signature
 
   parameters:
     IdempotencyKey:
@@ -295,6 +376,38 @@ components:
         type: string
         minLength: 8
         maxLength: 200
+    RequiredIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
+    ServiceId:
+      name: X-Service-Id
+      in: header
+      required: true
+      schema:
+        type: string
+    KeyId:
+      name: X-Key-Id
+      in: header
+      required: true
+      schema:
+        type: string
+    Timestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+    Nonce:
+      name: X-Nonce
+      in: header
+      required: true
+      schema:
+        type: string
 
   schemas:
     RequestId:
@@ -319,7 +432,8 @@ components:
         message:
           type: string
         details:
-          nullable: true
+          type: [object, "null"]
+          additionalProperties: true
 
     ErrorEnvelope:
       type: object

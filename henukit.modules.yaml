@@ -83,7 +83,7 @@ modules:
     owner: platform
     deploy_unit: platform-core-api
     target_domain: account.henukit.cn
-    status: planned
+    status: identity_foundation
 
   - id: platform_worker
     kind: go_worker
