@@ -6,14 +6,16 @@
 
 1. [`development/README.md`](./development/README.md)：开发实施文档索引。
 2. [`development/implementation-plan.md`](./development/implementation-plan.md)：1–2 名开发、1–2 名测试的执行计划。
-3. [`development/go-no-go-checklist.md`](./development/go-no-go-checklist.md)：启动决策与停止条件。
-4. [`DEVELOPMENT.md`](./DEVELOPMENT.md)：Monorepo Foundation 阶段形成的仓库级开发约束。
+3. [`development/admin-dashboard/README.md`](./development/admin-dashboard/README.md)：统一管理后台产品与交付总纲。
+4. [`development/go-no-go-checklist.md`](./development/go-no-go-checklist.md)：启动决策与停止条件。
+5. [`DEVELOPMENT.md`](./DEVELOPMENT.md)：Monorepo Foundation 阶段形成的仓库级开发约束。
 
 ## 2. 当前有效规范
 
 ### 开发实施
 
 - [`development/`](./development/)：任务、API、数据迁移、安全、测试、发布和 GitHub Issues。
+- [`development/admin-dashboard/`](./development/admin-dashboard/)：用户、校园通知、自建邮件、两级反馈、美食榜单、系统运行与 shadcn-vue 管理后台实施规范。
 
 ### 架构与决策
 
