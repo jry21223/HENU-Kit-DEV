@@ -17,6 +17,8 @@ describe("Console Overview", () => {
     }
     expect(wrapper.text()).not.toContain("积分");
     expect(wrapper.text()).not.toContain("会员");
+    expect(wrapper.text()).toContain("Mock 权限态");
+    expect(wrapper.text()).not.toContain("权限已验证");
     wrapper.unmount();
   });
 

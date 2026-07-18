@@ -16,6 +16,8 @@ test("desktop overview exposes six modules, degradation states, and chart altern
   await expect(page.getByRole("table", { name: "Portal 探针成功次数表格" })).toBeVisible();
   await expect(page.getByText("积分", { exact: true })).toHaveCount(0);
   await expect(page.getByText("会员", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Mock 权限态", { exact: true })).toBeVisible();
+  await expect(page.getByText("权限已验证", { exact: true })).toHaveCount(0);
 });
 
 test("390px overview keeps every module and mobile navigation usable", async ({ page }) => {
