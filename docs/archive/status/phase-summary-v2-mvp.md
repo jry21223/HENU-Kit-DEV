@@ -14,7 +14,7 @@
 - `apps/admin`：Vue 3 管理后台。
 - `services/api`：Go Gin/GORM 单体 API。
 - `services/worker`：Go Worker。
-- `legacy/v1-next-prisma`：旧版代码归档，仅作参考。
+- 旧版 Next.js + Prisma 代码：本阶段记录时仅作归档参考，后来已从工作树删除。
 
 本阶段不是上线阶段，也不是生产支付联调完成阶段。当前目标是让 V2 主要产品闭环具备可本地验证的基础形态，并持续把高风险边界收紧。
 
@@ -23,7 +23,7 @@
 ### 2.1 工程与架构
 
 - 建立 V2 monorepo 结构。
-- 旧版 Next.js + Prisma 代码已归档到 `legacy/v1-next-prisma`。
+- 旧版 Next.js + Prisma 代码当时已归档；该归档后来已从工作树删除。
 - 新业务后端放到 Go API，不再把核心业务写在 Next.js Route Handler / Server Action 中。
 - 添加 Docker Compose 本地开发配置。
 - 添加 `.env.example`，不提交真实密钥、证书、课程 PDF。

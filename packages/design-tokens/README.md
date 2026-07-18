@@ -36,4 +36,4 @@
 - 破坏性重命名需要 Design System 主版本升级。
 - `prefers-reduced-motion` 下非必要动画时长归零。
 
-规范来源：[`../../docs/product/DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md)。
+规范来源：[`../../docs/reference/product/DESIGN_SYSTEM.md`](../../docs/reference/product/DESIGN_SYSTEM.md)。

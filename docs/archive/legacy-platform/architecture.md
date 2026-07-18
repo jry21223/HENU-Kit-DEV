@@ -1,6 +1,6 @@
 # V2 Architecture
 
-V2 uses a greenfield monorepo. The old Next.js route-handler backend and Prisma schema are archived in `legacy/v1-next-prisma` and are not runtime dependencies.
+V2 uses a greenfield monorepo. The old Next.js route-handler backend and Prisma schema are not runtime dependencies and have been removed from the working tree; they remain recoverable from Git history.
 
 ## Runtime Services
 

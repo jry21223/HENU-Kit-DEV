@@ -1,6 +1,6 @@
 # Deployment
 
-> 本文描述迁移前 Study V2 的部署形态。HENUKitDev 多部署单元的统一发布规则以 [`../development/engineering-release-spec.md`](../development/engineering-release-spec.md) 为准。
+> 本文描述迁移前 Study V2 的部署形态。HENUKitDev 多部署单元的统一发布规则以 [`06 工程协作与发布`](../development/06-工程协作与发布.md) 为准。
 
 This project is still in internal-test hardening. The production files in this repository are examples, not a one-command guarantee of a safe public launch. They are meant to make deployment review repeatable.
 

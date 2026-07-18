@@ -8,11 +8,18 @@ HENU Kit 是由河南大学学生自主发起并维护的统一校园工具系�
 
 ## 文档入口
 
-- [`docs/README.md`](docs/README.md)：文档中心，区分当前规范、运行维护和历史归档。
-- [`docs/development/implementation-plan.md`](docs/development/implementation-plan.md)：面向 1–2 名开发、1–2 名测试的实施计划。
-- [`docs/development/go-no-go-checklist.md`](docs/development/go-no-go-checklist.md)：启动决策、第一周行动和停止条件。
+- [`docs/README.md`](docs/README.md)：唯一文档入口和推荐阅读顺序。
+- [`01 开发实施计划`](docs/development/01-开发实施计划.md)
+- [`02 架构与模块边界`](docs/development/02-架构与模块边界.md)
+- [`03 API 与服务通信`](docs/development/03-API与服务通信.md)
+- [`04 数据库与数据迁移`](docs/development/04-数据库与数据迁移.md)
+- [`05 身份权限与安全`](docs/development/05-身份权限与安全.md)
+- [`06 工程协作与发布`](docs/development/06-工程协作与发布.md)
+- [`07 测试与验收`](docs/development/07-测试与验收.md)
+- [`08 GitHub 任务清单`](docs/development/08-GitHub任务清单.md)
+- [`09 启动与停止条件`](docs/development/09-启动与停止条件.md)
 
-新开发者应从文档中心进入，不再直接使用散落的旧 V2 文档作为当前规范。
+旧 V2 和已替代规范统一位于 `docs/archive/`，不作为新开发依据。
 
 ## 仓库分工
 
@@ -40,7 +47,7 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 - 权限角色：学生、创作者、审核员、运营、管理员、超级管理员。
 - 会员权益：免费学生、VIP 学生。VIP 是权益档位，不是管理角色。
 
-游客不写入 `users` 表，可使用业务站本地的不可猜测匿名会话。一个用户可以同时拥有多个可限定作用域的角色。详细规则见 [`docs/architecture/ACCESS_CONTROL.md`](docs/architecture/ACCESS_CONTROL.md)。
+游客不写入 `users` 表，可使用业务站本地的不可猜测匿名会话。一个用户可以同时拥有多个可限定作用域的角色。详细规则见 [`ACCESS_CONTROL.md`](docs/reference/architecture/ACCESS_CONTROL.md)。
 
 ## 当前迁移状态
 
@@ -50,7 +57,6 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 - `apps/admin`：Vue 管理后台，保留资料、投稿、审核、纠错等必要管理能力。
 - `services/api`：Go Gin/GORM API，当前同时包含账号、资料、刷题、社区、支付、AI 等能力。
 - `services/worker`：Go + Redis Streams Worker。
-- `legacy/v1-next-prisma`：V1 归档。
 
 Monorepo Foundation 新增或导入：
 
@@ -62,12 +68,11 @@ Monorepo Foundation 新增或导入：
 
 完整结构、迁移顺序和兼容策略见：
 
-- [`docs/architecture/MONOREPO_ARCHITECTURE.md`](docs/architecture/MONOREPO_ARCHITECTURE.md)
-- [`docs/architecture/ACCESS_CONTROL.md`](docs/architecture/ACCESS_CONTROL.md)
-- [`docs/migrations/FINAL_REVIEW_TO_HENUKIT.md`](docs/migrations/FINAL_REVIEW_TO_HENUKIT.md)
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)
-- [`docs/product/PRODUCT_BOUNDARIES.md`](docs/product/PRODUCT_BOUNDARIES.md)
-- [`docs/product/DESIGN_SYSTEM.md`](docs/product/DESIGN_SYSTEM.md)
+- [`Monorepo 架构`](docs/reference/architecture/MONOREPO_ARCHITECTURE.md)
+- [`访问控制`](docs/reference/architecture/ACCESS_CONTROL.md)
+- [`迁移基线`](docs/reference/migrations/FINAL_REVIEW_TO_HENUKIT.md)
+- [`产品边界`](docs/reference/product/PRODUCT_BOUNDARIES.md)
+- [`设计系统`](docs/reference/product/DESIGN_SYSTEM.md)
 
 ## 迁移原则
 
@@ -106,7 +111,7 @@ cd services/api && go test ./...
 cd ../worker && go test ./...
 ```
 
-新增产品或共享包不得绕过 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) 和 [`docs/development/`](docs/development/) 中的模块边界、测试、迁移和发布要求。
+新增产品或共享包必须遵守 [`02 架构与模块边界`](docs/development/02-架构与模块边界.md)、[`06 工程协作与发布`](docs/development/06-工程协作与发布.md) 和 [`07 测试与验收`](docs/development/07-测试与验收.md)。
 
 ## 生产安全
 

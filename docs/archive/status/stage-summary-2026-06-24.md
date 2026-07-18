@@ -8,7 +8,7 @@
 
 当前处于 V2 MVP 收敛与上线前硬化阶段。
 
-本阶段不是继续大范围扩功能，而是把已经形成的 V2 monorepo、Go API、Web、Admin、Worker、课程资料、课程包、支付权限边界和文档状态收敛清楚。旧版 Next.js + Prisma 只保留在 `legacy/v1-next-prisma` 作为参考，不再作为运行依赖。
+本阶段不是继续大范围扩功能，而是把已经形成的 V2 monorepo、Go API、Web、Admin、Worker、课程资料、课程包、支付权限边界和文档状态收敛清楚。旧版 Next.js + Prisma 当时作为参考归档，不再作为运行依赖；该归档后来已从工作树删除，必要时可从 Git 历史恢复。
 
 当前项目还不能声明为生产上线版本。主要原因是：真实微信商户环境尚未端到端联调，完整 E2E / 移动端截图回归 / 生产部署硬化仍不足，真实 AI/RAG、真实模型成本核算和搜索增强仍未完全闭环。
 
@@ -17,7 +17,7 @@
 ### 2.1 工程骨架
 
 - 建立 V2 monorepo：`apps/web`、`apps/admin`、`services/api`、`services/worker`、`docs`、`infra`、`scripts`、`legacy`。
-- 将旧版 Next.js + Prisma 代码归档到 `legacy/v1-next-prisma`。
+- 将旧版 Next.js + Prisma 代码归档；该历史归档后来已从工作树删除。
 - 核心业务后端转移到 Go API；Next.js 主站不再承担核心业务 API。
 - 添加 Docker Compose 本地开发配置和统一 `.env.example`。
 - README 和核心文档已覆盖架构、API、数据库、开发、部署、安全、AI 工作流、积分会员、后台使用说明和路线图。

@@ -14,9 +14,10 @@
 
 当前开发请优先阅读：
 
-- [`../../development/README.md`](../../development/README.md)
-- [`../../architecture/MONOREPO_ARCHITECTURE.md`](../../architecture/MONOREPO_ARCHITECTURE.md)
-- [`../../architecture/ACCESS_CONTROL.md`](../../architecture/ACCESS_CONTROL.md)
-- [`../../product/PRODUCT_BOUNDARIES.md`](../../product/PRODUCT_BOUNDARIES.md)
+- [`../../README.md`](../../README.md)
+- [`../../development/01-开发实施计划.md`](../../development/01-开发实施计划.md)
+- [`../../reference/architecture/MONOREPO_ARCHITECTURE.md`](../../reference/architecture/MONOREPO_ARCHITECTURE.md)
+- [`../../reference/architecture/ACCESS_CONTROL.md`](../../reference/architecture/ACCESS_CONTROL.md)
+- [`../../reference/product/PRODUCT_BOUNDARIES.md`](../../reference/product/PRODUCT_BOUNDARIES.md)
 
 归档文件中的路径、命令和链接可能仍使用迁移前名称；需要执行操作时，应以当前代码、CI 和 `docs/operations/` 为准。不要从归档计划直接启动新开发任务。

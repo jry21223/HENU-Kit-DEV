@@ -6,4 +6,4 @@
 - [`internal-smoke.md`](./internal-smoke.md)：内部测试和部署后 Smoke Runbook。
 - [`wechat-pay-native.md`](./wechat-pay-native.md)：微信支付 Native 联调与上线准备。
 
-Monorepo 的统一 CI/CD、灰度和回滚规范以 [`../development/engineering-release-spec.md`](../development/engineering-release-spec.md) 为准。目录中的旧部署命令仅适用于相应旧服务，不能直接推广到 Platform Core、Portal 或 QuizCraft。
+Monorepo 的统一 CI/CD、灰度和回滚规范以 [`06 工程协作与发布`](../development/06-工程协作与发布.md) 为准。目录中的旧部署命令仅适用于相应旧服务，不能直接推广到 Platform Core、Portal 或 QuizCraft。

@@ -73,7 +73,6 @@ Run these before release-oriented pushes:
 
 ```bash
 npm audit --audit-level=low
-npm audit --prefix legacy/v1-next-prisma --audit-level=low
 python -m pip_audit -r integrations/langbot-sales-agent/requirements.txt
 cd services/api && go test ./...
 cd services/worker && go test ./...
