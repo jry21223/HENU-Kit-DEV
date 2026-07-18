@@ -9,16 +9,17 @@ import (
 )
 
 const (
-	AuthorizeRoute               = "/api/v1/oauth/authorize"
-	TokenRoute                   = "/api/v1/oauth/token"
-	AuthorizationCheckRoute      = "/api/v1/authorization/check"
-	RequestVerificationCodeRoute = "/api/v1/auth/email-codes"
-	VerifyVerificationCodeRoute  = "/api/v1/auth/email-codes/verify"
-	RecordMailDeliveryRoute      = "/api/v1/mail/deliveries"
-	ListOperationsInboxRoute     = "/api/v1/operations-inbox/items"
-	CreateOperationsInboxRoute   = "/api/v1/operations-inbox/items"
-	UpdateOperationsInboxRoute   = "/api/v1/operations-inbox/items/{item_id}/updates"
-	SourceSHA256                 = "bc78d96d185e51d57d21bf7cc8d428514cab8f85e0797a906a0f8a862962f7ab"
+	AuthorizeRoute                      = "/api/v1/oauth/authorize"
+	TokenRoute                          = "/api/v1/oauth/token"
+	AuthorizationCheckRoute             = "/api/v1/authorization/check"
+	RequestVerificationCodeRoute        = "/api/v1/auth/email-codes"
+	VerifyVerificationCodeRoute         = "/api/v1/auth/email-codes/verify"
+	RecordMailDeliveryRoute             = "/api/v1/mail/deliveries"
+	ListOperationsInboxRoute            = "/api/v1/operations-inbox/items"
+	CreateOperationsInboxRoute          = "/api/v1/operations-inbox/items"
+	UpdateOperationsInboxRoute          = "/api/v1/operations-inbox/items/{item_id}/updates"
+	OperationsInboxOperationStatusRoute = "/api/v1/operations-inbox/operations/{operation}"
+	SourceSHA256                        = "0aa7aa8b28bb17bcb9e5e3e5cc754a3f6ed2469f23a9dd1ae33c804599988254"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
@@ -260,4 +261,9 @@ type UpdateOperationsInboxItemRequest struct {
 	Priority           *string    `json:"priority,omitempty"`
 	SlaDueAt           *time.Time `json:"sla_due_at,omitempty"`
 	Status             *string    `json:"status,omitempty"`
+}
+
+type OperationsInboxOperationStatus struct {
+	Status string               `json:"status"`
+	Item   *OperationsInboxItem `json:"item,omitempty"`
 }

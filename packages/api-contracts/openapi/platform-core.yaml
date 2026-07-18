@@ -437,6 +437,21 @@ paths:
           schema:
             type: string
             enum: [open, in_progress, blocked, resolved, cancelled]
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         "200":
           description: Scoped Operations Inbox items
@@ -449,12 +464,21 @@ paths:
                     properties:
                       data:
                         type: object
-                        required: [items]
+                        required: [items, page, page_size, has_more]
                         properties:
                           items:
                             type: array
                             items:
                               $ref: "#/components/schemas/OperationsInboxItem"
+                          page:
+                            type: integer
+                            minimum: 1
+                          page_size:
+                            type: integer
+                            minimum: 1
+                            maximum: 100
+                          has_more:
+                            type: boolean
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -559,6 +583,82 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /operations-inbox/operations/{operation}:
+    get:
+      tags: [Operations Inbox]
+      operationId: getOperationsInboxOperationStatus
+      summary: Resolve an unknown write outcome using the original idempotency key
+      description: Returns succeeded when the durable write committed, or unknown when no matching committed write exists. The caller may only retry the same write with the same idempotency key.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - name: operation
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [create, update]
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+        - name: source_product_code
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9-]{1,63}$'
+        - name: source_resource_type
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        - name: source_resource_id
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: Durable operation resolution
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/OperationsInboxOperationStatus"
+              example:
+                data:
+                  status: succeeded
+                  item:
+                    id: 5cc45fb0-f5a7-48f0-922c-719fd44ff882
+                    source_product_code: quizcraft
+                    source_resource_type: feedback
+                    source_resource_id: feedback-2026-001
+                    priority: high
+                    status: open
+                    version: 1
+                    created_at: "2026-07-19T00:00:00Z"
+                    updated_at: "2026-07-19T00:00:00Z"
+                request_id: req_example_operation_status
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
@@ -885,11 +985,48 @@ components:
         status:
           type: string
           enum: [open, in_progress, blocked]
+      example:
+        source_product_code: quizcraft
+        source_resource_type: feedback
+        source_resource_id: feedback-2026-001
+        source_resource_url: https://quizcraft.henukit.cn/admin/feedback/feedback-2026-001
+        priority: high
+        status: open
+      x-invalid-examples:
+        copied_source_content:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          priority: high
+          title: Source-owned title must not be copied
+        invalid_priority:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          priority: critical
 
     UpdateOperationsInboxItemRequest:
       type: object
       additionalProperties: false
       required: [source_product_code, source_resource_type, source_resource_id, expected_version]
+      anyOf:
+        - required: [owner_user_id]
+        - required: [clear_owner]
+        - required: [priority]
+        - required: [sla_due_at]
+        - required: [clear_sla]
+        - required: [status]
+      allOf:
+        - not:
+            required: [owner_user_id, clear_owner]
+            properties:
+              owner_user_id: {}
+              clear_owner: {}
+        - not:
+            required: [sla_due_at, clear_sla]
+            properties:
+              sla_due_at: {}
+              clear_sla: {}
       properties:
         source_product_code:
           type: string
@@ -910,6 +1047,7 @@ components:
           format: uuid
         clear_owner:
           type: boolean
+          const: true
         priority:
           type: string
           enum: [low, normal, high, urgent]
@@ -918,9 +1056,59 @@ components:
           format: date-time
         clear_sla:
           type: boolean
+          const: true
         status:
           type: string
           enum: [open, in_progress, blocked, resolved, cancelled]
+      example:
+        source_product_code: quizcraft
+        source_resource_type: feedback
+        source_resource_id: feedback-2026-001
+        expected_version: 1
+        priority: urgent
+        status: in_progress
+      x-invalid-examples:
+        missing_optimistic_version:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          status: resolved
+        copied_source_content:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          body: Source-owned feedback text must not be copied
+        no_changes:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+        conflicting_owner_change:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          owner_user_id: 5cc45fb0-f5a7-48f0-922c-719fd44ff882
+          clear_owner: true
+        conflicting_sla_change:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          sla_due_at: "2026-07-20T00:00:00Z"
+          clear_sla: true
+
+    OperationsInboxOperationStatus:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [succeeded, unknown]
+        item:
+          $ref: "#/components/schemas/OperationsInboxItem"
 
     EventEnvelope:
       type: object

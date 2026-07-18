@@ -129,17 +129,19 @@ type OauthExchangeIdempotency struct {
 }
 
 type OperationsInboxAuditEvent struct {
-	ID          pgtype.UUID        `json:"id"`
-	ItemID      pgtype.UUID        `json:"item_id"`
-	ActorUserID pgtype.UUID        `json:"actor_user_id"`
-	RequestID   string             `json:"request_id"`
-	Action      string             `json:"action"`
-	FromVersion pgtype.Int8        `json:"from_version"`
-	ToVersion   int64              `json:"to_version"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ID           pgtype.UUID        `json:"id"`
+	ItemID       pgtype.UUID        `json:"item_id"`
+	ActorUserID  pgtype.UUID        `json:"actor_user_id"`
+	RequestID    string             `json:"request_id"`
+	Action       string             `json:"action"`
+	FromVersion  pgtype.Int8        `json:"from_version"`
+	ToVersion    int64              `json:"to_version"`
+	ItemSnapshot []byte             `json:"item_snapshot"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type OperationsInboxIdempotency struct {
+	ServiceID       string             `json:"service_id"`
 	ActorUserID     pgtype.UUID        `json:"actor_user_id"`
 	Operation       string             `json:"operation"`
 	IdempotencyKey  string             `json:"idempotency_key"`

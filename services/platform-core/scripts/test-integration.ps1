@@ -40,6 +40,9 @@ if (($preInboxReady | Out-String).Trim() -ne "t") { throw "Migration 000003 did 
 Invoke-SqlFile (Join-Path $migrationDirectory "000004_operations_inbox.up.sql")
 $inboxUpgraded = docker compose -f $composeFile exec -T postgres psql -At -U platform_core -d platform_core_test -c "SELECT to_regclass('public.operations_inbox_items') IS NOT NULL AND to_regclass('public.operations_inbox_audit_events') IS NOT NULL AND (SELECT count(*) = 1 FROM users);"
 if (($inboxUpgraded | Out-String).Trim() -ne "t") { throw "Migration 000004 did not upgrade the supported HC-07 schema without data loss" }
+Invoke-SqlFile (Join-Path $migrationDirectory "000004_operations_inbox.up.sql")
+$repeatedInboxUp = docker compose -f $composeFile exec -T postgres psql -At -U platform_core -d platform_core_test -c "SELECT count(*) = 2 FROM permission_codes WHERE code IN ('platform.operations_inbox.read', 'platform.operations_inbox.write');"
+if (($repeatedInboxUp | Out-String).Trim() -ne "t") { throw "Migration 000004 repeated Up was not idempotent" }
 
 Invoke-SqlFile (Join-Path $migrationDirectory "000004_operations_inbox.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000003_verification_mail.down.sql")

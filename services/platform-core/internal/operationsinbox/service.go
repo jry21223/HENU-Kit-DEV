@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/url"
 	"regexp"
 	"strings"
@@ -35,21 +36,22 @@ type Service struct {
 }
 
 type Item struct {
-	ID                 string
-	SourceProductCode  string
-	SourceResourceType string
-	SourceResourceID   string
-	SourceResourceURL  *string
-	OwnerUserID        *string
-	Priority           string
-	SLADueAt           *time.Time
-	Status             string
-	Version            int64
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 string     `json:"id"`
+	SourceProductCode  string     `json:"source_product_code"`
+	SourceResourceType string     `json:"source_resource_type"`
+	SourceResourceID   string     `json:"source_resource_id"`
+	SourceResourceURL  *string    `json:"source_resource_url,omitempty"`
+	OwnerUserID        *string    `json:"owner_user_id,omitempty"`
+	Priority           string     `json:"priority"`
+	SLADueAt           *time.Time `json:"sla_due_at,omitempty"`
+	Status             string     `json:"status"`
+	Version            int64      `json:"version"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 type CreateInput struct {
+	ServiceID          string
 	ActorUserID        string
 	RequestID          string
 	IdempotencyKey     string
@@ -65,6 +67,7 @@ type CreateInput struct {
 }
 
 type UpdateInput struct {
+	ServiceID       string
 	ItemID          string
 	ActorUserID     string
 	RequestID       string
@@ -95,26 +98,56 @@ func (s *Service) Get(ctx context.Context, itemID string) (Item, error) {
 	return itemFromRow(row), err
 }
 
-func (s *Service) List(ctx context.Context, productCode, status string) ([]Item, error) {
-	if !productPattern.MatchString(productCode) || status != "" && !validStatus(status) {
-		return nil, ErrInvalid
+func (s *Service) List(ctx context.Context, productCode, status string, page, pageSize int) ([]Item, bool, error) {
+	if !productPattern.MatchString(productCode) || status != "" && !validStatus(status) || page < 1 || pageSize < 1 || pageSize > 100 {
+		return nil, false, ErrInvalid
 	}
+	if page-1 > math.MaxInt32/pageSize {
+		return nil, false, ErrInvalid
+	}
+	offset := (page - 1) * pageSize
 	rows, err := s.queries.ListOperationsInboxItems(ctx, store.ListOperationsInboxItemsParams{
-		SourceProductCode: productCode, Status: nullableText(status), PageSize: 100,
+		SourceProductCode: productCode, Status: nullableText(status),
+		PageOffset: int32(offset), PageSize: int32(pageSize + 1),
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	hasMore := len(rows) > pageSize
+	if hasMore {
+		rows = rows[:pageSize]
 	}
 	items := make([]Item, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, itemFromRow(row))
 	}
-	return items, nil
+	return items, hasMore, nil
+}
+
+func (s *Service) OperationStatus(ctx context.Context, serviceID, actorUserID, operation, idempotencyKey string) (Item, bool, error) {
+	actorID, err := parseUUID(actorUserID)
+	if err != nil || serviceID == "" || operation != "create" && operation != "update" || len(idempotencyKey) < 8 || len(idempotencyKey) > 200 {
+		return Item{}, false, ErrInvalid
+	}
+	payload, err := s.queries.GetOperationsInboxOperationStatus(ctx, store.GetOperationsInboxOperationStatusParams{
+		ServiceID: serviceID, ActorUserID: actorID, Operation: operation, IdempotencyKey: idempotencyKey,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Item{}, false, nil
+	}
+	if err != nil {
+		return Item{}, false, err
+	}
+	var item Item
+	if err := json.Unmarshal(payload, &item); err != nil {
+		return Item{}, false, err
+	}
+	return item, true, nil
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
 	actorID, err := parseUUID(input.ActorUserID)
-	if err != nil || !validWriteEnvelope(input.RequestID, input.IdempotencyKey, input.RequestHash) || !validReference(input.SourceProductCode, input.SourceResourceType, input.SourceResourceID, input.SourceResourceURL) || !validPriority(input.Priority) || input.Status != "" && !validCreateStatus(input.Status) {
+	if err != nil || input.ServiceID == "" || !validWriteEnvelope(input.RequestID, input.IdempotencyKey, input.RequestHash) || !validReference(input.SourceProductCode, input.SourceResourceType, input.SourceResourceID, input.SourceResourceURL) || !validPriority(input.Priority) || input.Status != "" && !validCreateStatus(input.Status) {
 		return Item{}, ErrInvalid
 	}
 	ownerID, err := optionalUUID(input.OwnerUserID)
@@ -124,7 +157,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
 	if input.Status == "" {
 		input.Status = "open"
 	}
-	return s.write(ctx, actorID, "create", input.IdempotencyKey, input.RequestHash, func(queries *store.Queries) (store.OperationsInboxItem, error) {
+	return s.write(ctx, input.ServiceID, actorID, "create", input.IdempotencyKey, input.RequestHash, func(queries *store.Queries) (store.OperationsInboxItem, error) {
 		row, createErr := queries.CreateOperationsInboxItem(ctx, store.CreateOperationsInboxItemParams{
 			SourceProductCode: input.SourceProductCode, SourceResourceType: input.SourceResourceType,
 			SourceResourceID: input.SourceResourceID, SourceResourceUrl: nullableString(input.SourceResourceURL),
@@ -134,9 +167,13 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
 		if createErr != nil {
 			return store.OperationsInboxItem{}, classifyWriteError(createErr)
 		}
+		snapshot, snapshotErr := json.Marshal(itemFromRow(row))
+		if snapshotErr != nil {
+			return store.OperationsInboxItem{}, snapshotErr
+		}
 		if auditErr := queries.CreateOperationsInboxAudit(ctx, store.CreateOperationsInboxAuditParams{
 			ItemID: row.ID, ActorUserID: actorID, RequestID: input.RequestID,
-			Action: "created", ToVersion: 1,
+			Action: "created", ToVersion: 1, ItemSnapshot: snapshot,
 		}); auditErr != nil {
 			return store.OperationsInboxItem{}, auditErr
 		}
@@ -146,7 +183,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (Item, error) {
 	actorID, err := parseUUID(input.ActorUserID)
-	if err != nil || !validWriteEnvelope(input.RequestID, input.IdempotencyKey, input.RequestHash) || input.ExpectedVersion < 1 || input.ClearOwner && input.OwnerUserID != nil || input.ClearSLA && input.SLADueAt != nil || input.OwnerUserID == nil && !input.ClearOwner && input.Priority == nil && input.SLADueAt == nil && !input.ClearSLA && input.Status == nil {
+	if err != nil || input.ServiceID == "" || !validWriteEnvelope(input.RequestID, input.IdempotencyKey, input.RequestHash) || input.ExpectedVersion < 1 || input.ClearOwner && input.OwnerUserID != nil || input.ClearSLA && input.SLADueAt != nil || input.OwnerUserID == nil && !input.ClearOwner && input.Priority == nil && input.SLADueAt == nil && !input.ClearSLA && input.Status == nil {
 		return Item{}, ErrInvalid
 	}
 	itemID, err := parseUUID(input.ItemID)
@@ -157,7 +194,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Item, error) {
 	if err != nil || input.Priority != nil && !validPriority(*input.Priority) || input.Status != nil && !validStatus(*input.Status) {
 		return Item{}, ErrInvalid
 	}
-	return s.write(ctx, actorID, "update", input.IdempotencyKey, input.RequestHash, func(queries *store.Queries) (store.OperationsInboxItem, error) {
+	return s.write(ctx, input.ServiceID, actorID, "update", input.IdempotencyKey, input.RequestHash, func(queries *store.Queries) (store.OperationsInboxItem, error) {
 		row, updateErr := queries.UpdateOperationsInboxItem(ctx, store.UpdateOperationsInboxItemParams{
 			SetOwner: input.ClearOwner || input.OwnerUserID != nil, OwnerUserID: ownerID,
 			Priority: nullableString(input.Priority), SetSla: input.ClearSLA || input.SLADueAt != nil,
@@ -175,9 +212,13 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Item, error) {
 		if updateErr != nil {
 			return store.OperationsInboxItem{}, classifyWriteError(updateErr)
 		}
+		snapshot, snapshotErr := json.Marshal(itemFromRow(row))
+		if snapshotErr != nil {
+			return store.OperationsInboxItem{}, snapshotErr
+		}
 		if auditErr := queries.CreateOperationsInboxAudit(ctx, store.CreateOperationsInboxAuditParams{
 			ItemID: row.ID, ActorUserID: actorID, RequestID: input.RequestID,
-			Action: "updated", FromVersion: pgtype.Int8{Int64: input.ExpectedVersion, Valid: true}, ToVersion: row.Version,
+			Action: "updated", FromVersion: pgtype.Int8{Int64: input.ExpectedVersion, Valid: true}, ToVersion: row.Version, ItemSnapshot: snapshot,
 		}); auditErr != nil {
 			return store.OperationsInboxItem{}, auditErr
 		}
@@ -185,17 +226,17 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Item, error) {
 	})
 }
 
-func (s *Service) write(ctx context.Context, actorID pgtype.UUID, operation, key string, requestHash []byte, mutate func(*store.Queries) (store.OperationsInboxItem, error)) (Item, error) {
+func (s *Service) write(ctx context.Context, serviceID string, actorID pgtype.UUID, operation, key string, requestHash []byte, mutate func(*store.Queries) (store.OperationsInboxItem, error)) (Item, error) {
 	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Item{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	queries := s.queries.WithTx(tx)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, uuidString(actorID)+"\n"+operation+"\n"+key); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, serviceID+"\n"+uuidString(actorID)+"\n"+operation+"\n"+key); err != nil {
 		return Item{}, err
 	}
-	cached, err := queries.GetOperationsInboxIdempotency(ctx, store.GetOperationsInboxIdempotencyParams{ActorUserID: actorID, Operation: operation, IdempotencyKey: key})
+	cached, err := queries.GetOperationsInboxIdempotency(ctx, store.GetOperationsInboxIdempotencyParams{ServiceID: serviceID, ActorUserID: actorID, Operation: operation, IdempotencyKey: key})
 	if err == nil {
 		if !bytes.Equal(cached.RequestHash, requestHash) {
 			return Item{}, ErrIdempotencyConflict
@@ -222,7 +263,7 @@ func (s *Service) write(ctx context.Context, actorID pgtype.UUID, operation, key
 		return Item{}, err
 	}
 	if err := queries.CreateOperationsInboxIdempotency(ctx, store.CreateOperationsInboxIdempotencyParams{
-		ActorUserID: actorID, Operation: operation, IdempotencyKey: key, RequestHash: requestHash,
+		ServiceID: serviceID, ActorUserID: actorID, Operation: operation, IdempotencyKey: key, RequestHash: requestHash,
 		ItemID: row.ID, ResponseVersion: row.Version, ResponsePayload: payload,
 	}); err != nil {
 		return Item{}, err

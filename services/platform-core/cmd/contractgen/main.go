@@ -92,7 +92,8 @@ func main() {
 	listInboxPath, listInbox := findOperation(spec.Paths, "listOperationsInboxItems")
 	createInboxPath, createInbox := findOperation(spec.Paths, "createOperationsInboxItem")
 	updateInboxPath, updateInbox := findOperation(spec.Paths, "updateOperationsInboxItem")
-	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || createInbox == nil || updateInbox == nil {
+	operationStatusPath, operationStatus := findOperation(spec.Paths, "getOperationsInboxOperationStatus")
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
@@ -100,9 +101,10 @@ func main() {
 	validateIdempotentPublicWrite(requestVerification, spec.Components.Parameters, "verification-code request")
 	validateIdempotentPublicWrite(verifyVerification, spec.Components.Parameters, "verification-code verification")
 	validateSignedDeliveryOperation(recordDelivery, spec.Components.Parameters, spec.Components.SecuritySchemes)
-	validateInboxOperation(listInbox, spec.Components.Parameters, false)
-	validateInboxOperation(createInbox, spec.Components.Parameters, true)
-	validateInboxOperation(updateInbox, spec.Components.Parameters, true)
+	validateInboxOperation(listInbox, spec.Components.Parameters, false, false)
+	validateInboxOperation(createInbox, spec.Components.Parameters, true, true)
+	validateInboxOperation(updateInbox, spec.Components.Parameters, true, true)
+	validateInboxOperation(operationStatus, spec.Components.Parameters, true, false)
 	requestSchema := token.RequestBody.Content["application/json"].Schema
 	if requestSchema == nil {
 		fail(fmt.Errorf("token request application/json schema is missing"))
@@ -133,7 +135,8 @@ func main() {
 	inboxItem := spec.Components.Schemas["OperationsInboxItem"]
 	createInboxRequest := resolveSchema(createInbox.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
 	updateInboxRequest := resolveSchema(updateInbox.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
-	if inboxItem == nil || createInboxRequest == nil || updateInboxRequest == nil {
+	operationStatusResponse := resolveSchema(responseDataSchema(operationStatus.Responses["200"].Content["application/json"].Schema), spec.Components.Schemas)
+	if inboxItem == nil || createInboxRequest == nil || updateInboxRequest == nil || operationStatusResponse == nil {
 		fail(fmt.Errorf("operations inbox schemas are missing"))
 	}
 	successEnvelope := spec.Components.Schemas["SuccessEnvelope"]
@@ -164,6 +167,7 @@ const (
 	ListOperationsInboxRoute = %q
 	CreateOperationsInboxRoute = %q
 	UpdateOperationsInboxRoute = %q
+	OperationsInboxOperationStatusRoute = %q
 	SourceSHA256 = %q
 )
 
@@ -208,8 +212,10 @@ const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 %s
 
 %s
+
+%s
 `, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath,
-		listInboxPath, createInboxPath, updateInboxPath, fmt.Sprintf("%x", digest),
+		listInboxPath, createInboxPath, updateInboxPath, operationStatusPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),
@@ -230,6 +236,7 @@ const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 		renderStruct("OperationsInboxItem", inboxItem),
 		renderStruct("CreateOperationsInboxItemRequest", createInboxRequest),
 		renderStruct("UpdateOperationsInboxItemRequest", updateInboxRequest),
+		renderStruct("OperationsInboxOperationStatus", operationStatusResponse),
 	)
 	formatted, err := format.Source([]byte(generated))
 	if err != nil {
@@ -416,7 +423,7 @@ func validateSignedDeliveryOperation(operation *operation, parameters map[string
 	}
 }
 
-func validateInboxOperation(operation *operation, parameters map[string]parameter, write bool) {
+func validateInboxOperation(operation *operation, parameters map[string]parameter, requireIdempotency, requireBody bool) {
 	validSecurity := false
 	for _, requirement := range operation.Security {
 		_, basic := requirement["clientSecret"]
@@ -433,7 +440,7 @@ func validateInboxOperation(operation *operation, parameters map[string]paramete
 		"#/components/parameters/Nonce":                false,
 		"#/components/parameters/SessionExchangeToken": false,
 	}
-	if write {
+	if requireIdempotency {
 		required["#/components/parameters/RequiredIdempotencyKey"] = false
 	}
 	for _, candidate := range operation.Parameters {
@@ -448,7 +455,7 @@ func validateInboxOperation(operation *operation, parameters map[string]paramete
 			fail(fmt.Errorf("%s is missing required header %s", operation.OperationID, reference))
 		}
 	}
-	if write && !operation.RequestBody.Required {
+	if requireBody && !operation.RequestBody.Required {
 		fail(fmt.Errorf("%s request body must be required", operation.OperationID))
 	}
 }

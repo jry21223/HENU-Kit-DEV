@@ -13,17 +13,18 @@ import (
 
 const createOperationsInboxAudit = `-- name: CreateOperationsInboxAudit :exec
 INSERT INTO operations_inbox_audit_events (
-    item_id, actor_user_id, request_id, action, from_version, to_version
-) VALUES ($1, $2, $3, $4, $5, $6)
+    item_id, actor_user_id, request_id, action, from_version, to_version, item_snapshot
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type CreateOperationsInboxAuditParams struct {
-	ItemID      pgtype.UUID `json:"item_id"`
-	ActorUserID pgtype.UUID `json:"actor_user_id"`
-	RequestID   string      `json:"request_id"`
-	Action      string      `json:"action"`
-	FromVersion pgtype.Int8 `json:"from_version"`
-	ToVersion   int64       `json:"to_version"`
+	ItemID       pgtype.UUID `json:"item_id"`
+	ActorUserID  pgtype.UUID `json:"actor_user_id"`
+	RequestID    string      `json:"request_id"`
+	Action       string      `json:"action"`
+	FromVersion  pgtype.Int8 `json:"from_version"`
+	ToVersion    int64       `json:"to_version"`
+	ItemSnapshot []byte      `json:"item_snapshot"`
 }
 
 func (q *Queries) CreateOperationsInboxAudit(ctx context.Context, arg CreateOperationsInboxAuditParams) error {
@@ -34,17 +35,19 @@ func (q *Queries) CreateOperationsInboxAudit(ctx context.Context, arg CreateOper
 		arg.Action,
 		arg.FromVersion,
 		arg.ToVersion,
+		arg.ItemSnapshot,
 	)
 	return err
 }
 
 const createOperationsInboxIdempotency = `-- name: CreateOperationsInboxIdempotency :exec
 INSERT INTO operations_inbox_idempotency (
-    actor_user_id, operation, idempotency_key, request_hash, item_id, response_version, response_payload
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    service_id, actor_user_id, operation, idempotency_key, request_hash, item_id, response_version, response_payload
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type CreateOperationsInboxIdempotencyParams struct {
+	ServiceID       string      `json:"service_id"`
 	ActorUserID     pgtype.UUID `json:"actor_user_id"`
 	Operation       string      `json:"operation"`
 	IdempotencyKey  string      `json:"idempotency_key"`
@@ -56,6 +59,7 @@ type CreateOperationsInboxIdempotencyParams struct {
 
 func (q *Queries) CreateOperationsInboxIdempotency(ctx context.Context, arg CreateOperationsInboxIdempotencyParams) error {
 	_, err := q.db.Exec(ctx, createOperationsInboxIdempotency,
+		arg.ServiceID,
 		arg.ActorUserID,
 		arg.Operation,
 		arg.IdempotencyKey,
@@ -125,10 +129,11 @@ func (q *Queries) CreateOperationsInboxItem(ctx context.Context, arg CreateOpera
 const getOperationsInboxIdempotency = `-- name: GetOperationsInboxIdempotency :one
 SELECT request_hash, item_id, response_version, response_payload
 FROM operations_inbox_idempotency
-WHERE actor_user_id = $1 AND operation = $2 AND idempotency_key = $3
+WHERE service_id = $1 AND actor_user_id = $2 AND operation = $3 AND idempotency_key = $4
 `
 
 type GetOperationsInboxIdempotencyParams struct {
+	ServiceID      string      `json:"service_id"`
 	ActorUserID    pgtype.UUID `json:"actor_user_id"`
 	Operation      string      `json:"operation"`
 	IdempotencyKey string      `json:"idempotency_key"`
@@ -142,7 +147,12 @@ type GetOperationsInboxIdempotencyRow struct {
 }
 
 func (q *Queries) GetOperationsInboxIdempotency(ctx context.Context, arg GetOperationsInboxIdempotencyParams) (GetOperationsInboxIdempotencyRow, error) {
-	row := q.db.QueryRow(ctx, getOperationsInboxIdempotency, arg.ActorUserID, arg.Operation, arg.IdempotencyKey)
+	row := q.db.QueryRow(ctx, getOperationsInboxIdempotency,
+		arg.ServiceID,
+		arg.ActorUserID,
+		arg.Operation,
+		arg.IdempotencyKey,
+	)
 	var i GetOperationsInboxIdempotencyRow
 	err := row.Scan(
 		&i.RequestHash,
@@ -179,22 +189,54 @@ func (q *Queries) GetOperationsInboxItem(ctx context.Context, id pgtype.UUID) (O
 	return i, err
 }
 
+const getOperationsInboxOperationStatus = `-- name: GetOperationsInboxOperationStatus :one
+SELECT response_payload
+FROM operations_inbox_idempotency
+WHERE service_id = $1 AND actor_user_id = $2 AND operation = $3 AND idempotency_key = $4
+`
+
+type GetOperationsInboxOperationStatusParams struct {
+	ServiceID      string      `json:"service_id"`
+	ActorUserID    pgtype.UUID `json:"actor_user_id"`
+	Operation      string      `json:"operation"`
+	IdempotencyKey string      `json:"idempotency_key"`
+}
+
+func (q *Queries) GetOperationsInboxOperationStatus(ctx context.Context, arg GetOperationsInboxOperationStatusParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getOperationsInboxOperationStatus,
+		arg.ServiceID,
+		arg.ActorUserID,
+		arg.Operation,
+		arg.IdempotencyKey,
+	)
+	var response_payload []byte
+	err := row.Scan(&response_payload)
+	return response_payload, err
+}
+
 const listOperationsInboxItems = `-- name: ListOperationsInboxItems :many
 SELECT id, source_product_code, source_resource_type, source_resource_id, source_resource_url, owner_user_id, priority, sla_due_at, status, version, created_by, updated_by, created_at, updated_at FROM operations_inbox_items
 WHERE source_product_code = $1
   AND ($2::text IS NULL OR status = $2::text)
 ORDER BY updated_at DESC, id
-LIMIT $3
+LIMIT $4
+OFFSET $3
 `
 
 type ListOperationsInboxItemsParams struct {
 	SourceProductCode string      `json:"source_product_code"`
 	Status            pgtype.Text `json:"status"`
+	PageOffset        int32       `json:"page_offset"`
 	PageSize          int32       `json:"page_size"`
 }
 
 func (q *Queries) ListOperationsInboxItems(ctx context.Context, arg ListOperationsInboxItemsParams) ([]OperationsInboxItem, error) {
-	rows, err := q.db.Query(ctx, listOperationsInboxItems, arg.SourceProductCode, arg.Status, arg.PageSize)
+	rows, err := q.db.Query(ctx, listOperationsInboxItems,
+		arg.SourceProductCode,
+		arg.Status,
+		arg.PageOffset,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}

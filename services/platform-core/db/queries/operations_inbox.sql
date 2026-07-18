@@ -1,7 +1,12 @@
 -- name: GetOperationsInboxIdempotency :one
 SELECT request_hash, item_id, response_version, response_payload
 FROM operations_inbox_idempotency
-WHERE actor_user_id = $1 AND operation = $2 AND idempotency_key = $3;
+WHERE service_id = $1 AND actor_user_id = $2 AND operation = $3 AND idempotency_key = $4;
+
+-- name: GetOperationsInboxOperationStatus :one
+SELECT response_payload
+FROM operations_inbox_idempotency
+WHERE service_id = $1 AND actor_user_id = $2 AND operation = $3 AND idempotency_key = $4;
 
 -- name: CreateOperationsInboxItem :one
 INSERT INTO operations_inbox_items (
@@ -21,7 +26,8 @@ SELECT * FROM operations_inbox_items
 WHERE source_product_code = sqlc.arg(source_product_code)
   AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
 ORDER BY updated_at DESC, id
-LIMIT sqlc.arg(page_size);
+LIMIT sqlc.arg(page_size)
+OFFSET sqlc.arg(page_offset);
 
 -- name: UpdateOperationsInboxItem :one
 UPDATE operations_inbox_items SET
@@ -37,10 +43,10 @@ RETURNING *;
 
 -- name: CreateOperationsInboxIdempotency :exec
 INSERT INTO operations_inbox_idempotency (
-    actor_user_id, operation, idempotency_key, request_hash, item_id, response_version, response_payload
-) VALUES ($1, $2, $3, $4, $5, $6, $7);
+    service_id, actor_user_id, operation, idempotency_key, request_hash, item_id, response_version, response_payload
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: CreateOperationsInboxAudit :exec
 INSERT INTO operations_inbox_audit_events (
-    item_id, actor_user_id, request_id, action, from_version, to_version
-) VALUES ($1, $2, $3, $4, $5, $6);
+    item_id, actor_user_id, request_id, action, from_version, to_version, item_snapshot
+) VALUES ($1, $2, $3, $4, $5, $6, $7);

@@ -60,17 +60,61 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Get(contract.ListOperationsInboxRoute, handler.listOperationsInboxItems)
 	router.Post(contract.CreateOperationsInboxRoute, handler.createOperationsInboxItem)
 	router.Post(contract.UpdateOperationsInboxRoute, handler.updateOperationsInboxItem)
+	router.Get(contract.OperationsInboxOperationStatusRoute, handler.getOperationsInboxOperationStatus)
 	return router
+}
+
+func (h *Handler) getOperationsInboxOperationStatus(writer http.ResponseWriter, request *http.Request) {
+	operation := chi.URLParam(request, "operation")
+	productCode := request.URL.Query().Get("source_product_code")
+	resourceType := request.URL.Query().Get("source_resource_type")
+	resourceID := request.URL.Query().Get("source_resource_id")
+	decision, err := h.authorizeInbox(request, nil, "platform.operations_inbox.write", "resource", productCode, resourceType, resourceID)
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	item, found, err := h.inbox.OperationStatus(request.Context(), request.Header.Get(contract.ServiceIDHeader), decision.ActorUserID, operation, request.Header.Get(contract.IdempotencyKeyHeader))
+	if err != nil {
+		h.writeInboxError(writer, request, err)
+		return
+	}
+	if found && (item.SourceProductCode != productCode || item.SourceResourceType != resourceType || item.SourceResourceID != resourceID) {
+		found = false
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	status := contract.OperationsInboxOperationStatus{Status: "unknown"}
+	if found {
+		contractItem := inboxContractItem(item)
+		status.Status, status.Item = "succeeded", &contractItem
+	}
+	writeSuccess(writer, request, http.StatusOK, status)
 }
 
 func (h *Handler) listOperationsInboxItems(writer http.ResponseWriter, request *http.Request) {
 	productCode, status := request.URL.Query().Get("product_code"), request.URL.Query().Get("status")
+	page, pageSize := 1, 20
+	var err error
+	if rawPage := request.URL.Query().Get("page"); rawPage != "" {
+		page, err = strconv.Atoi(rawPage)
+		if err != nil {
+			h.writeInboxError(writer, request, operationsinbox.ErrInvalid)
+			return
+		}
+	}
+	if rawPageSize := request.URL.Query().Get("page_size"); rawPageSize != "" {
+		pageSize, err = strconv.Atoi(rawPageSize)
+		if err != nil {
+			h.writeInboxError(writer, request, operationsinbox.ErrInvalid)
+			return
+		}
+	}
 	decision, err := h.authorizeInbox(request, nil, "platform.operations_inbox.read", "product", productCode, "", "")
 	if err != nil {
 		h.writeFlowError(writer, request, err)
 		return
 	}
-	items, err := h.inbox.List(request.Context(), productCode, status)
+	items, hasMore, err := h.inbox.List(request.Context(), productCode, status, page, pageSize)
 	if err != nil {
 		h.writeInboxError(writer, request, err)
 		return
@@ -80,7 +124,7 @@ func (h *Handler) listOperationsInboxItems(writer http.ResponseWriter, request *
 	for _, item := range items {
 		result = append(result, inboxContractItem(item))
 	}
-	writeSuccess(writer, request, http.StatusOK, map[string]any{"items": result})
+	writeSuccess(writer, request, http.StatusOK, map[string]any{"items": result, "page": page, "page_size": pageSize, "has_more": hasMore})
 }
 
 func (h *Handler) createOperationsInboxItem(writer http.ResponseWriter, request *http.Request) {
@@ -96,7 +140,7 @@ func (h *Handler) createOperationsInboxItem(writer http.ResponseWriter, request 
 	}
 	hash := sha256.Sum256(rawBody)
 	item, err := h.inbox.Create(request.Context(), operationsinbox.CreateInput{
-		ActorUserID: decision.ActorUserID, RequestID: requestIDFrom(request.Context()),
+		ServiceID: request.Header.Get(contract.ServiceIDHeader), ActorUserID: decision.ActorUserID, RequestID: requestIDFrom(request.Context()),
 		IdempotencyKey: request.Header.Get(contract.IdempotencyKeyHeader), RequestHash: hash[:],
 		SourceProductCode: body.SourceProductCode, SourceResourceType: body.SourceResourceType,
 		SourceResourceID: body.SourceResourceID, SourceResourceURL: body.SourceResourceURL,
@@ -134,7 +178,7 @@ func (h *Handler) updateOperationsInboxItem(writer http.ResponseWriter, request 
 	}
 	hash := sha256.Sum256(append([]byte(itemID+"\x00"), rawBody...))
 	item, err := h.inbox.Update(request.Context(), operationsinbox.UpdateInput{
-		ItemID: itemID, ActorUserID: decision.ActorUserID, RequestID: requestIDFrom(request.Context()),
+		ServiceID: request.Header.Get(contract.ServiceIDHeader), ItemID: itemID, ActorUserID: decision.ActorUserID, RequestID: requestIDFrom(request.Context()),
 		IdempotencyKey: request.Header.Get(contract.IdempotencyKeyHeader), RequestHash: hash[:], ExpectedVersion: body.ExpectedVersion,
 		OwnerUserID: body.OwnerUserID, ClearOwner: body.ClearOwner != nil && *body.ClearOwner,
 		Priority: body.Priority, SLADueAt: body.SlaDueAt, ClearSLA: body.ClearSla != nil && *body.ClearSla, Status: body.Status,
