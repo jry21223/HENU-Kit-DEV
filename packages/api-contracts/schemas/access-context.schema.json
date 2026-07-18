@@ -17,14 +17,15 @@
       "enum": ["guest", "user", "service"]
     },
     "user_id": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "format": "uuid"
     },
     "roles": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["code", "scope_type"],
+        "required": ["code", "scope_type", "scope_id"],
         "properties": {
           "code": {
             "type": "string",
@@ -39,18 +40,39 @@
           },
           "scope_type": {
             "type": "string",
-            "enum": ["platform", "product", "course", "bank"]
+            "enum": ["platform", "product", "organization", "course", "bank"]
           },
           "scope_id": {
-            "type": ["string", "null"]
+            "type": ["string", "null"],
+            "format": "uuid"
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "scope_type": {"const": "platform"}
+              },
+              "required": ["scope_type"]
+            },
+            "then": {
+              "properties": {
+                "scope_id": {"type": "null"}
+              }
+            },
+            "else": {
+              "properties": {
+                "scope_id": {"type": "string", "format": "uuid"}
+              }
+            }
+          }
+        ]
       }
     },
     "membership": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tier", "status"],
+      "required": ["tier", "status", "expires_at"],
       "properties": {
         "tier": {
           "type": "string",
@@ -84,10 +106,14 @@
       "if": {
         "properties": {
           "actor_type": {"const": "user"}
-        }
+        },
+        "required": ["actor_type"]
       },
       "then": {
-        "required": ["user_id"]
+        "required": ["user_id"],
+        "properties": {
+          "user_id": {"type": "string", "format": "uuid"}
+        }
       }
     }
   ]
