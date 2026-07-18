@@ -4,6 +4,9 @@
 > 原计划保留为审计与证据文档；本文件用于日常开发、评审、测试和发布。  
 > 固定原则：`expand -> migrate -> contract`；业务变化、数据库迁移、目录移动、域名切换和仓库改名不得合并为一次大改动。
 
+> [!IMPORTANT]
+> HENUKit Console 与 QuizCraft 重构已经由新的[执行规格](./henukit-console-executable-spec.md)、[替代计划](./henukit-console-replacement-plan.md)、[领域上下文](../../CONTEXT-MAP.md)和 Accepted ADR 冻结。上述文件在其覆盖范围内替代本 V1.0 文档包；本包继续作为其他未替代迁移工作的背景资料，不能用于恢复旧 Admin 产品边界。
+
 ## 1. 这套文档解决什么问题
 
 原 V2.1 计划同时包含仓库审计、产品边界、架构、API、数据模型、时序、测试矩阵、甘特图和 60 余个 Issue，信息完整，但不适合作为开发人员每天直接执行的手册。本包将其拆为九个互相引用、职责明确的文档，并把重复任务合并为 56 个可执行任务，其中 3 个校园通知任务为可选项。
@@ -12,6 +15,8 @@
 
 | 文件 | 使用者 | 用途 |
 |---|---|---|
+| [`henukit-console-executable-spec.md`](./henukit-console-executable-spec.md) | 全员 | 当前 Console 与 QuizCraft 重构的用户行为、实现决策、测试缝和非目标 |
+| [`henukit-console-replacement-plan.md`](./henukit-console-replacement-plan.md) | 全员 | 新旧边界、技术栈、迁移顺序、复用矩阵和 Gate |
 | [`implementation-plan.md`](./implementation-plan.md) | 全员 | 18–32 周排期、人员分工、阶段门槛、交付物 |
 | [`architecture-boundaries.md`](./architecture-boundaries.md) | 开发、架构评审 | 仓库目录、产品边界、数据 Owner、依赖禁区 |
 | [`api-communication-spec.md`](./api-communication-spec.md) | 前后端、测试 | REST/OpenAPI、响应、幂等、签名、事件和接口清单 |
@@ -46,9 +51,10 @@
 发生冲突时依次采用：
 
 1. 已合并并运行验证的 OpenAPI、Migration、CI 和代码；
-2. 本文档包中的执行规范；
-3. 原 V2.1 计划的详细审计和证据；
-4. 旧 README 或历史规划声明。
+2. 当前执行规格、替代计划、Accepted ADR 和 Context；
+3. 本文档包中未被替代的执行规范；
+4. 原 V2.1 计划的详细审计和证据；
+5. 旧 README 或历史规划声明。
 
 ## 6. 来源映射
 

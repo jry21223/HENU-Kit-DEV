@@ -9,6 +9,8 @@ HENU Kit 是由河南大学学生自主发起并维护的统一校园工具系�
 ## 文档入口
 
 - [`docs/README.md`](docs/README.md)：文档中心，区分当前规范、运行维护和历史归档。
+- [`CONTEXT-MAP.md`](CONTEXT-MAP.md)：当前领域上下文、规范词汇及各实现上下文的归属。
+- [`docs/development/henukit-console-executable-spec.md`](docs/development/henukit-console-executable-spec.md)：HENUKit Console 与 QuizCraft 重构的当前执行规格。
 - [`docs/development/implementation-plan.md`](docs/development/implementation-plan.md)：面向 1–2 名开发、1–2 名测试的实施计划。
 - [`docs/development/go-no-go-checklist.md`](docs/development/go-no-go-checklist.md)：启动决策、第一周行动和停止条件。
 
