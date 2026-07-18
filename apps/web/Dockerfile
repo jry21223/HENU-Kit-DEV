@@ -5,7 +5,8 @@ WORKDIR /app
 FROM pnpm AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
-COPY apps/admin/package.json ./apps/admin/package.json
+COPY apps/console/package.json ./apps/console/package.json
+COPY apps/study-legacy-admin/package.json ./apps/study-legacy-admin/package.json
 RUN pnpm install --frozen-lockfile --filter @final-review/web...
 
 FROM pnpm AS builder

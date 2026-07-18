@@ -5,7 +5,7 @@ Dockerfiles live beside each app/service:
 - `services/api/Dockerfile`
 - `services/worker/Dockerfile`
 - `apps/web/Dockerfile`
-- `apps/admin/Dockerfile`
+- `apps/study-legacy-admin/Dockerfile`
 
 Compose files:
 

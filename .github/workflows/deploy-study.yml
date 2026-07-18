@@ -46,12 +46,12 @@ jobs:
           (cd services/api && go build -trimpath -ldflags='-s -w' -o ../../release/bin/final-review-api ./cmd/server)
           (cd services/worker && go build -trimpath -ldflags='-s -w' -o ../../release/bin/final-review-worker ./cmd/worker)
           pnpm run build:web
-          pnpm run build:admin
+          pnpm run build:study-legacy-admin
 
           mkdir -p release/web/apps/web/.next
           cp -a apps/web/.next/standalone/. release/web/
           cp -a apps/web/.next/static release/web/apps/web/.next/static
-          cp -a apps/admin/dist release/admin
+          cp -a apps/study-legacy-admin/dist release/admin
           test -x release/bin/final-review-api
           test -x release/bin/final-review-worker
           test -f release/web/apps/web/server.js

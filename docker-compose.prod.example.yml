@@ -101,7 +101,7 @@ services:
   admin:
     build:
       context: .
-      dockerfile: apps/admin/Dockerfile
+      dockerfile: apps/study-legacy-admin/Dockerfile
       args:
         VITE_API_BASE_URL: ${PUBLIC_ADMIN_ORIGIN:?set PUBLIC_ADMIN_ORIGIN}/api/v1
     restart: unless-stopped

@@ -46,7 +46,7 @@ flowchart LR
 | 目录 | 职责 | 技术 | 禁止事项 |
 |---|---|---|---|
 | `apps/console` | HENUKit Console | Vue 3、TypeScript、Vite、shadcn-vue、Reka UI、Tailwind v4 | Element Plus、旧路由、旧 `isAdmin` |
-| `apps/study-legacy-admin` | 旧学习平台存量后台 | 从现 `apps/admin` 拆出 | 出现在 Console 导航或 Bundle |
+| `apps/study-legacy-admin` | 旧学习平台存量后台 | 原 `apps/admin` 代码，保持行为不变 | 出现在 Console 导航或 Bundle |
 | `apps/portal` | HENU Kit 公共主站 | 独立构建 | 通过 Console 编辑页面或触发部署 |
 | `products/quizcraft/web-app` | QuizCraft 用户端与自有管理面 | React、TypeScript、Vite、pnpm | 在 Console 复制题库工坊 |
 
@@ -222,7 +222,7 @@ Portal Module 只读展示：
 ### 不复用
 
 - AdminShellV2 的“旧版运营”导航。
-- 当前 `apps/admin` 路由树和全局 Element Plus 入口。
+- 已隔离到 `apps/study-legacy-admin` 的旧路由树和全局 Element Plus 入口。
 - `UnifiedDomainView` 以六业务域替代产品模块的模型。
 - 把新管理逻辑写入 `services/api` 的 Handler、Model 与 Migration。
 - 单一 `users.role`、`isAdmin` 和统一 RequireAdmin Gate。
@@ -232,7 +232,7 @@ Portal Module 只读展示：
 
 1. **Docs only**：合入 Context、ADR、模块地图、数据 Owner、迁移矩阵和验收门槛。
 2. **pnpm migration**：建立 Workspace，验证 Portal、Console、Study Legacy Admin 和 QuizCraft 前端构建。
-3. **Admin physical split**：现 `apps/admin` 移为 `apps/study-legacy-admin`，行为不变；创建空 `apps/console`。
+3. **Admin physical split**：原 `apps/admin` 移为 `apps/study-legacy-admin`，行为不变；创建无旧依赖的最小 `apps/console` Bundle。
 4. **Console foundation**：Vue、shadcn-vue、Tokens、路由、权限壳和六模块 Mock，不接真实数据。
 5. **Platform Core foundation**：Go/chi/pgx/sqlc、Migration、账户授权码、权限与 Scope、Session。
 6. **Console Gateway foundation**：独立部署、Console Session、权限校验、聚合 Envelope、超时与降级。

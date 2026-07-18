@@ -3,12 +3,13 @@
 ## Current contexts
 
 - [Management Plane and Cross-Product Operations](./CONTEXT.md) — accepted language for HENUKit Console, Platform Operations, module boundaries, QuizCraft learning behavior, and migration-era legacy separation.
+- [HENUKit Console](./apps/console/CONTEXT.md) — application boundary, bundle isolation, and Console-owned presentation terms.
+- [Study Legacy Admin](./apps/study-legacy-admin/CONTEXT.md) — preserved legacy behavior, rollback entrypoint, and retirement boundary.
 
 ## Extraction targets
 
 As implementation directories are established, move resolved terms into context-owned glossaries without duplicating definitions:
 
-- `apps/console/CONTEXT.md` — HENUKit Console and Console Overview.
 - `services/console-gateway/CONTEXT.md` — Console Gateway and Console Session edge behavior.
 - `services/platform-core/CONTEXT.md` — accounts, access context, sessions, Operations Inbox, mail, and audit.
 - `apps/portal/CONTEXT.md` — Portal and Portal Configuration.
@@ -16,7 +17,6 @@ As implementation directories are established, move resolved terms into context-
 - `services/library/CONTEXT.md` — courses, materials, downloads, submissions, review, and correction.
 - `products/quizcraft/CONTEXT.md` — Practice Core, favorites, rankings, feedback, and Question Bank Workshop.
 - `services/food/CONTEXT.md` — food submissions, calibration, anomalies, and tier adjustment.
-- `apps/study-legacy-admin/CONTEXT.md` — Study Legacy Admin retirement boundary.
 
 Do not create empty context files. Move a term when its owning implementation context is materialized or when the term is next changed.
 
