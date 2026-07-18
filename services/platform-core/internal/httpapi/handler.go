@@ -60,12 +60,12 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
-	query := request.URL.Query()
-	if query.Get("response_type") != "code" || query.Get("code_challenge_method") != "S256" || len(query.Get("state")) < 8 {
+	query, err := contract.ParseAuthorizeOAuthClientQuery(request.URL.Query())
+	if err != nil {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
 		return
 	}
-	callback, err := url.Parse(query.Get("redirect_uri"))
+	callback, err := url.Parse(query.RedirectURI)
 	if err != nil || callback.Scheme != "https" || callback.Host == "" || callback.User != nil || callback.Fragment != "" {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
 		return
@@ -77,7 +77,7 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	}
 	authorization, err := h.flow.Authorize(request.Context(), identity.AuthorizeInput{
 		CoreSessionToken: cookie.Value,
-		ClientID:         query.Get("client_id"), RedirectURI: query.Get("redirect_uri"), CodeChallenge: query.Get("code_challenge"),
+		ClientID:         query.ClientID, RedirectURI: query.RedirectURI, CodeChallenge: query.CodeChallenge,
 	})
 	if err != nil {
 		h.writeFlowError(writer, request, err)
@@ -89,7 +89,7 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	})
 	callbackQuery := callback.Query()
 	callbackQuery.Set("code", authorization.Code)
-	callbackQuery.Set("state", query.Get("state"))
+	callbackQuery.Set("state", query.State)
 	callback.RawQuery = callbackQuery.Encode()
 	auditFrom(request.Context()).subjectUserID = maskSubject(authorization.UserID)
 	writer.Header().Set("Cache-Control", "no-store")
@@ -100,7 +100,12 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 
 func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 	audit := auditFrom(request.Context())
-	audit.serviceID, audit.keyID = request.Header.Get("X-Service-Id"), request.Header.Get("X-Key-Id")
+	audit.serviceID, audit.keyID = request.Header.Get(contract.ServiceIDHeader), request.Header.Get(contract.KeyIDHeader)
+	headers, err := contract.ParseExchangeHeaders(request.Header)
+	if err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "token request headers are invalid")
+		return
+	}
 	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
 	rawBody, err := io.ReadAll(request.Body)
 	if err != nil {
@@ -131,9 +136,9 @@ func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 	exchange, err := h.flow.Exchange(request.Context(), identity.ExchangeInput{
 		ClientID: body.ClientID, ClientSecret: clientSecret, Code: body.Code,
 		RedirectURI: body.RedirectURI, CodeVerifier: body.CodeVerifier,
-		ServiceID: request.Header.Get("X-Service-Id"), KeyID: request.Header.Get("X-Key-Id"),
-		Timestamp: request.Header.Get("X-Timestamp"), Nonce: request.Header.Get("X-Nonce"),
-		Signature: request.Header.Get("X-Signature"), BodyHash: bodyHash[:], IdempotencyKey: request.Header.Get("Idempotency-Key"),
+		ServiceID: headers.ServiceID, KeyID: headers.KeyID,
+		Timestamp: headers.Timestamp, Nonce: headers.Nonce,
+		Signature: headers.Signature, BodyHash: bodyHash[:], IdempotencyKey: headers.IdempotencyKey,
 		PathAndQuery: pathAndQuery,
 	})
 	if err != nil {
@@ -179,12 +184,12 @@ func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Reque
 }
 
 func writeSuccess(writer http.ResponseWriter, request *http.Request, status int, data any) {
-	writeJSON(writer, status, map[string]any{"data": data, "request_id": requestIDFrom(request.Context())})
+	writeJSON(writer, status, contract.SuccessEnvelope[any]{Data: data, RequestID: requestIDFrom(request.Context())})
 }
 
 func writeError(writer http.ResponseWriter, request *http.Request, status int, code, message string) {
 	auditFrom(request.Context()).errorCode = code
-	writeJSON(writer, status, map[string]any{"error": map[string]string{"code": code, "message": message}, "request_id": requestIDFrom(request.Context())})
+	writeJSON(writer, status, contract.ErrorEnvelope{Error: contract.ErrorObject{Code: code, Message: message}, RequestID: requestIDFrom(request.Context())})
 }
 
 func writeJSON(writer http.ResponseWriter, status int, payload any) {

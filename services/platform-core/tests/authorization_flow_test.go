@@ -27,6 +27,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	platformcore "henukit.dev/platform-core"
+	"henukit.dev/platform-core/internal/contract"
 )
 
 const (
@@ -36,6 +37,7 @@ const (
 	testCoreToken      = "core_test_session_token_32_bytes_long"
 	testKeyID          = "primary"
 	testRetiringSecret = "retiring-client-secret-with-enough-entropy"
+	testRevokedSecret  = "revoked-client-secret-with-enough-entropy"
 )
 
 var testIdempotencyEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
@@ -271,13 +273,25 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
 	code := issueAuthorizationCode(t, server, verifier)
 	idempotencyKey := "idem_" + uuid.NewString()
+	missingHeaderRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "", "")
+	missingHeaderRequest.Header.Del(contract.IdempotencyKeyHeader)
+	missingHeaderResponse, err := server.Client().Do(missingHeaderRequest)
+	if err != nil {
+		t.Fatalf("missing contract header request: %v", err)
+	}
+	missingHeaderResponse.Body.Close()
+	if missingHeaderResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing contract header status = %d, want 400", missingHeaderResponse.StatusCode)
+	}
 	badSignature := exchangeCodeWith(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "not-a-valid-signature")
 	badSignature.Body.Close()
 	if badSignature.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("bad signature status = %d, want 401", badSignature.StatusCode)
 	}
 	wrongKeyRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "", "")
-	wrongKeyRequest.Header.Set("X-Key-Id", "retired-key")
+	wrongKeyRequest.Header.Set(contract.KeyIDHeader, "revoked-key")
+	wrongKeyRequest.SetBasicAuth(testClientID, testRevokedSecret)
+	signExchangeRequestWithSecret(t, wrongKeyRequest, testRevokedSecret)
 	wrongKeyResponse, err := server.Client().Do(wrongKeyRequest)
 	if err != nil {
 		t.Fatalf("wrong key request: %v", err)
@@ -302,6 +316,10 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	first.Body.Close()
 	if first.StatusCode != http.StatusOK {
 		t.Fatalf("signed exchange status = %d: %s", first.StatusCode, firstBody)
+	}
+	idempotencyLockHash := sha256.Sum256([]byte(testClientID + "\x00" + idempotencyKey))
+	if err := redisClient.Set(ctx, "platform-core:oauth-idempotency:"+hex.EncodeToString(idempotencyLockHash[:]), "stale-owner", 30*time.Second).Err(); err != nil {
+		t.Fatalf("seed stale idempotency lock: %v", err)
 	}
 	second := exchangeCodeWith(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "")
 	secondBody, _ := io.ReadAll(second.Body)
@@ -335,7 +353,7 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	}
 	rotatingCode := issueAuthorizationCode(t, server, verifier)
 	rotatingRequest := signedExchangeRequest(t, server, rotatingCode, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "", "")
-	rotatingRequest.Header.Set("X-Key-Id", "retiring-key")
+	rotatingRequest.Header.Set(contract.KeyIDHeader, "retiring-key")
 	rotatingRequest.SetBasicAuth(testClientID, testRetiringSecret)
 	signExchangeRequestWithSecret(t, rotatingRequest, testRetiringSecret)
 	rotatingResponse, err := server.Client().Do(rotatingRequest)
@@ -472,6 +490,7 @@ func seedIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	sessionID := uuid.New()
 	secretHash := sha256.Sum256([]byte(testClientSecret))
 	retiringSecretHash := sha256.Sum256([]byte(testRetiringSecret))
+	revokedSecretHash := sha256.Sum256([]byte(testRevokedSecret))
 	tokenHash := sha256.Sum256([]byte(testCoreToken))
 	if _, err := pool.Exec(ctx, `INSERT INTO users (id, email_verified, status) VALUES ($1, true, 'active')`, userID); err != nil {
 		t.Fatalf("seed user: %v", err)
@@ -479,7 +498,7 @@ func seedIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ($1, $2)`, testClientID, []string{testRedirectURI}); err != nil {
 		t.Fatalf("seed client: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO oauth_client_keys (client_id, key_id, secret_hash, status) VALUES ($1, $2, $3, 'active'), ($1, 'retiring-key', $4, 'retiring')`, testClientID, testKeyID, secretHash[:], retiringSecretHash[:]); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_client_keys (client_id, key_id, secret_hash, status) VALUES ($1, $2, $3, 'active'), ($1, 'retiring-key', $4, 'retiring'), ($1, 'revoked-key', $5, 'revoked')`, testClientID, testKeyID, secretHash[:], retiringSecretHash[:], revokedSecretHash[:]); err != nil {
 		t.Fatalf("seed client keys: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO sessions (id, user_id, kind, token_hash, expires_at) VALUES ($1, $2, 'core', $3, now() + interval '1 hour')`, sessionID, userID, tokenHash[:]); err != nil {
@@ -511,17 +530,17 @@ func signedExchangeRequest(t *testing.T, server *httptest.Server, code, verifier
 	if timestamp == "" {
 		timestamp = fmt.Sprintf("%d", time.Now().Unix())
 	}
-	req.Header.Set("X-Service-Id", testClientID)
-	req.Header.Set("X-Key-Id", testKeyID)
-	req.Header.Set("X-Timestamp", timestamp)
-	req.Header.Set("X-Nonce", nonce)
+	req.Header.Set(contract.ServiceIDHeader, testClientID)
+	req.Header.Set(contract.KeyIDHeader, testKeyID)
+	req.Header.Set(contract.TimestampHeader, timestamp)
+	req.Header.Set(contract.NonceHeader, nonce)
 	signExchangeRequest(t, req)
-	signature := req.Header.Get("X-Signature")
+	signature := req.Header.Get(contract.SignatureHeader)
 	if signatureOverride != "" {
 		signature = signatureOverride
 	}
-	req.Header.Set("X-Signature", signature)
-	req.Header.Set("Idempotency-Key", idempotencyKey)
+	req.Header.Set(contract.SignatureHeader, signature)
+	req.Header.Set(contract.IdempotencyKeyHeader, idempotencyKey)
 	return req
 }
 
@@ -541,10 +560,10 @@ func signExchangeRequestWithSecret(t *testing.T, request *http.Request, secret s
 		t.Fatalf("read exchange body: %v", err)
 	}
 	bodyHash := sha256.Sum256(body)
-	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), request.Header.Get("X-Nonce"), hex.EncodeToString(bodyHash[:])}, "\n")
+	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), request.Header.Get(contract.TimestampHeader), request.Header.Get(contract.NonceHeader), hex.EncodeToString(bodyHash[:])}, "\n")
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(canonical))
-	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
+	request.Header.Set(contract.SignatureHeader, base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 }
 
 func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier string) string {

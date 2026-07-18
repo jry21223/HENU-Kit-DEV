@@ -184,6 +184,11 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		}
 		return Exchange{}, ErrDependency
 	}
+	if cached, found, err := s.lookupIdempotency(ctx, s.queries, input); err != nil {
+		return Exchange{}, err
+	} else if found {
+		return cached, nil
+	}
 	idempotencyHash := sha256.Sum256([]byte(input.ClientID + "\x00" + input.IdempotencyKey))
 	releaseIdempotency, err := s.acquireWithWait(ctx, "platform-core:oauth-idempotency:"+hex.EncodeToString(idempotencyHash[:]), 30*time.Second, 5*time.Second)
 	if err != nil {
@@ -193,15 +198,10 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		return Exchange{}, ErrDependency
 	}
 	defer releaseCoordination(releaseIdempotency)()
-	cached, err := s.queries.GetOAuthExchangeIdempotency(ctx, store.GetOAuthExchangeIdempotencyParams{ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey})
-	if err == nil {
-		if subtle.ConstantTimeCompare(cached.RequestHash, input.BodyHash) != 1 {
-			return Exchange{}, ErrIdempotency
-		}
-		return s.decryptExchange(cached.ResponseCiphertext)
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if cached, found, err := s.lookupIdempotency(ctx, s.queries, input); err != nil {
 		return Exchange{}, err
+	} else if found {
+		return cached, nil
 	}
 	codeHash := sha256.Sum256([]byte(input.Code))
 	release, err := s.coordinator.Acquire(ctx, "platform-core:oauth-code:"+hex.EncodeToString(codeHash[:]), 5*time.Second)
@@ -227,15 +227,10 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		return Exchange{}, err
 	}
 	if code.UsedAt.Valid {
-		cached, cacheErr := queries.GetOAuthExchangeIdempotency(ctx, store.GetOAuthExchangeIdempotencyParams{ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey})
-		if cacheErr == nil {
-			if subtle.ConstantTimeCompare(cached.RequestHash, input.BodyHash) != 1 {
-				return Exchange{}, ErrIdempotency
-			}
-			return s.decryptExchange(cached.ResponseCiphertext)
-		}
-		if !errors.Is(cacheErr, pgx.ErrNoRows) {
+		if cached, found, cacheErr := s.lookupIdempotency(ctx, queries, input); cacheErr != nil {
 			return Exchange{}, cacheErr
+		} else if found {
+			return cached, nil
 		}
 		return Exchange{}, ErrCodeUsed
 	}
@@ -293,6 +288,21 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		return Exchange{}, err
 	}
 	return result, nil
+}
+
+func (s *Service) lookupIdempotency(ctx context.Context, queries *store.Queries, input ExchangeInput) (Exchange, bool, error) {
+	cached, err := queries.GetOAuthExchangeIdempotency(ctx, store.GetOAuthExchangeIdempotencyParams{ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Exchange{}, false, nil
+	}
+	if err != nil {
+		return Exchange{}, false, err
+	}
+	if subtle.ConstantTimeCompare(cached.RequestHash, input.BodyHash) != 1 {
+		return Exchange{}, false, ErrIdempotency
+	}
+	value, err := s.decryptExchange(cached.ResponseCiphertext)
+	return value, err == nil, err
 }
 
 func (s *Service) acquireWithWait(ctx context.Context, key string, lockTTL, wait time.Duration) (func(context.Context) error, error) {

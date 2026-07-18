@@ -17,7 +17,7 @@ CREATE TABLE oauth_client_keys (
     client_id text NOT NULL REFERENCES oauth_clients(id) ON DELETE CASCADE,
     key_id text NOT NULL,
     secret_hash bytea NOT NULL CHECK (octet_length(secret_hash) = 32),
-    status text NOT NULL CHECK (status IN ('active', 'retiring')),
+    status text NOT NULL CHECK (status IN ('active', 'retiring', 'revoked')),
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (client_id, key_id)
 );
