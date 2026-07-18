@@ -49,6 +49,62 @@ type AuthorizationRole struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type MailDeadLetter struct {
+	ID             pgtype.UUID        `json:"id"`
+	OutboxID       pgtype.UUID        `json:"outbox_id"`
+	AttemptCount   int32              `json:"attempt_count"`
+	ErrorCode      string             `json:"error_code"`
+	DeadLetteredAt pgtype.Timestamptz `json:"dead_lettered_at"`
+	RequeuedAt     pgtype.Timestamptz `json:"requeued_at"`
+	RequeuedBy     pgtype.Text        `json:"requeued_by"`
+	RequeueReason  pgtype.Text        `json:"requeue_reason"`
+}
+
+type MailDeliveryReceipt struct {
+	MessageID       string             `json:"message_id"`
+	RequestID       string             `json:"request_id"`
+	ActorID         string             `json:"actor_id"`
+	ReceivedAt      pgtype.Timestamptz `json:"received_at"`
+	AppliedOutboxID pgtype.UUID        `json:"applied_outbox_id"`
+	AppliedAt       pgtype.Timestamptz `json:"applied_at"`
+}
+
+type MailOutbox struct {
+	ID                  pgtype.UUID        `json:"id"`
+	VerificationCodeID  pgtype.UUID        `json:"verification_code_id"`
+	DedupeKey           string             `json:"dedupe_key"`
+	RequestID           string             `json:"request_id"`
+	Kind                string             `json:"kind"`
+	Priority            string             `json:"priority"`
+	RecipientCiphertext []byte             `json:"recipient_ciphertext"`
+	PayloadCiphertext   []byte             `json:"payload_ciphertext"`
+	Status              string             `json:"status"`
+	AttemptCount        int32              `json:"attempt_count"`
+	MaxAttempts         int32              `json:"max_attempts"`
+	AvailableAt         pgtype.Timestamptz `json:"available_at"`
+	LockedAt            pgtype.Timestamptz `json:"locked_at"`
+	LockedBy            pgtype.Text        `json:"locked_by"`
+	ProviderMessageID   pgtype.Text        `json:"provider_message_id"`
+	AcceptedAt          pgtype.Timestamptz `json:"accepted_at"`
+	DeliveredAt         pgtype.Timestamptz `json:"delivered_at"`
+	FailedAt            pgtype.Timestamptz `json:"failed_at"`
+	LastErrorCode       pgtype.Text        `json:"last_error_code"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MailOutboxAuditEvent struct {
+	ID           pgtype.UUID        `json:"id"`
+	OutboxID     pgtype.UUID        `json:"outbox_id"`
+	RequestID    string             `json:"request_id"`
+	ActorKind    string             `json:"actor_kind"`
+	ActorID      string             `json:"actor_id"`
+	Action       string             `json:"action"`
+	AttemptCount int32              `json:"attempt_count"`
+	ReasonCode   pgtype.Text        `json:"reason_code"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type OauthClient struct {
 	ID           string             `json:"id"`
 	RedirectUris []string           `json:"redirect_uris"`
@@ -119,4 +175,21 @@ type UserRoleGrant struct {
 	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type VerificationCode struct {
+	ID                         pgtype.UUID        `json:"id"`
+	EmailLookupHash            []byte             `json:"email_lookup_hash"`
+	Purpose                    string             `json:"purpose"`
+	RequestKey                 string             `json:"request_key"`
+	RequestFingerprint         []byte             `json:"request_fingerprint"`
+	CodeNonce                  []byte             `json:"code_nonce"`
+	CodeHash                   []byte             `json:"code_hash"`
+	ExpiresAt                  pgtype.Timestamptz `json:"expires_at"`
+	UsedAt                     pgtype.Timestamptz `json:"used_at"`
+	ConsumedRequestKey         pgtype.Text        `json:"consumed_request_key"`
+	ConsumedRequestFingerprint []byte             `json:"consumed_request_fingerprint"`
+	RevokedAt                  pgtype.Timestamptz `json:"revoked_at"`
+	FailedAttempts             int32              `json:"failed_attempts"`
+	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
 }

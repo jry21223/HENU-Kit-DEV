@@ -3,15 +3,20 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,18 +26,25 @@ import (
 
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/identity"
+	"henukit.dev/platform-core/internal/store"
+	"henukit.dev/platform-core/internal/verification"
 )
 
 type Handler struct {
-	flow       *identity.Service
-	database   *pgxpool.Pool
-	redis      *redis.Client
-	cookieName string
-	logger     *slog.Logger
+	flow           *identity.Service
+	verification   *verification.Service
+	queries        *store.Queries
+	database       *pgxpool.Pool
+	redis          *redis.Client
+	cookieName     string
+	logger         *slog.Logger
+	deliveryKeys   map[string][]byte
+	deviceKey      []byte
+	trustedProxies []*net.IPNet
 }
 
-func New(flow *identity.Service, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, logger *slog.Logger) http.Handler {
-	handler := &Handler{flow: flow, database: database, redis: redisClient, cookieName: cookieName, logger: logger}
+func New(flow *identity.Service, verificationFlow *verification.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
+	handler := &Handler{flow: flow, verification: verificationFlow, queries: queries, database: database, redis: redisClient, cookieName: cookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -40,7 +52,115 @@ func New(flow *identity.Service, database *pgxpool.Pool, redisClient *redis.Clie
 	router.Get(contract.AuthorizeRoute, handler.authorize)
 	router.Post(contract.TokenRoute, handler.exchange)
 	router.Post(contract.AuthorizationCheckRoute, handler.checkAuthorization)
+	router.Post(contract.RequestVerificationCodeRoute, handler.requestVerificationCode)
+	router.Post(contract.VerifyVerificationCodeRoute, handler.verifyVerificationCode)
+	router.Post(contract.RecordMailDeliveryRoute, handler.recordMailDelivery)
 	return router
+}
+
+func (h *Handler) recordMailDelivery(writer http.ResponseWriter, request *http.Request) {
+	keyID, timestamp, nonce, signature := request.Header.Get(contract.KeyIDHeader), request.Header.Get(contract.TimestampHeader), request.Header.Get(contract.NonceHeader), request.Header.Get(contract.SignatureHeader)
+	audit := auditFrom(request.Context())
+	audit.serviceID, audit.keyID = "mail-provider", keyID
+	secret, knownKey := h.deliveryKeys[keyID]
+	unixTime, parseErr := strconv.ParseInt(timestamp, 10, 64)
+	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
+	rawBody, readErr := io.ReadAll(request.Body)
+	if !knownKey || parseErr != nil || readErr != nil || len(nonce) < 16 || len(nonce) > 200 || time.Since(time.Unix(unixTime, 0)).Abs() > 5*time.Minute {
+		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "delivery receipt authentication failed")
+		return
+	}
+	bodyHash := sha256.Sum256(rawBody)
+	canonical := fmt.Sprintf("%s\n%s\n%s\n%s\n%s", request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(bodyHash[:]))
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(canonical))
+	providedSignature, decodeErr := base64.RawURLEncoding.DecodeString(signature)
+	if decodeErr != nil || !hmac.Equal(providedSignature, mac.Sum(nil)) {
+		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "delivery receipt authentication failed")
+		return
+	}
+	stored, err := h.redis.SetNX(request.Context(), "platform-core:mail-delivery:nonce:"+keyID+":"+nonce, "1", 10*time.Minute).Result()
+	if err != nil {
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		return
+	}
+	if !stored {
+		writeError(writer, request, http.StatusConflict, "NONCE_ALREADY_USED", "delivery receipt was already submitted")
+		return
+	}
+	var body contract.RecordMailDeliveryRequest
+	decoder := json.NewDecoder(bytes.NewReader(rawBody))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil || decoder.Decode(&struct{}{}) != io.EOF || body.Status != "delivered" || len(body.MessageID) > 200 || body.MessageID == "" {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "delivery receipt is invalid")
+		return
+	}
+	_, err = h.queries.RecordMailDeliveryReceipt(request.Context(), store.RecordMailDeliveryReceiptParams{
+		MessageID: body.MessageID, RequestID: requestIDFrom(request.Context()), ActorID: keyID,
+	})
+	if err != nil {
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		return
+	}
+	writeSuccess(writer, request, http.StatusAccepted, contract.MailDeliveryAccepted{Accepted: true})
+}
+
+func (h *Handler) requestVerificationCode(writer http.ResponseWriter, request *http.Request) {
+	idempotencyKey := request.Header.Get(contract.IdempotencyKeyHeader)
+	if len(idempotencyKey) < 8 || len(idempotencyKey) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+		return
+	}
+	var body contract.RequestVerificationCodeRequest
+	if err := decodeStrictJSON(writer, request, &body); err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+		return
+	}
+	accepted, err := h.verification.Request(request.Context(), verification.RequestInput{
+		Email: body.Email, Purpose: body.Purpose, ClientID: optionalString(body.ClientID),
+		DeviceID: h.deviceID(writer, request), ClientIP: h.clientIP(request),
+		IdempotencyKey: idempotencyKey, RequestID: requestIDFrom(request.Context()),
+	})
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	writeSuccess(writer, request, http.StatusAccepted, contract.VerificationCodeAccepted{ExpiresAt: accepted.ExpiresAt, ResendAfter: accepted.ResendAfter})
+}
+
+func (h *Handler) verifyVerificationCode(writer http.ResponseWriter, request *http.Request) {
+	idempotencyKey := request.Header.Get(contract.IdempotencyKeyHeader)
+	if len(idempotencyKey) < 8 || len(idempotencyKey) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+		return
+	}
+	var body contract.VerifyVerificationCodeRequest
+	if err := decodeStrictJSON(writer, request, &body); err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+		return
+	}
+	verified, err := h.verification.Verify(request.Context(), verification.VerifyInput{
+		Email: body.Email, Code: body.Code, Purpose: body.Purpose, IdempotencyKey: idempotencyKey,
+		DeviceID: h.deviceID(writer, request), ClientIP: h.clientIP(request),
+	})
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	writeSuccess(writer, request, http.StatusOK, contract.VerificationCodeVerified{VerificationID: verified.VerificationID})
+}
+
+func decodeStrictJSON(writer http.ResponseWriter, request *http.Request, target any) error {
+	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain one JSON value")
+	}
+	return nil
 }
 
 func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {
@@ -209,6 +329,20 @@ func (h *Handler) checkAuthorization(writer http.ResponseWriter, request *http.R
 
 func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Request, err error) {
 	switch {
+	case errors.Is(err, verification.ErrCodeExpired):
+		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_EXPIRED", "verification code expired")
+	case errors.Is(err, verification.ErrCodeAlreadyUsed):
+		writeError(writer, request, http.StatusConflict, "VERIFICATION_CODE_ALREADY_USED", "verification code was already used")
+	case errors.Is(err, verification.ErrCodeInvalid):
+		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_INVALID", "verification code is invalid")
+	case errors.Is(err, verification.ErrIdempotency):
+		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
+	case errors.Is(err, verification.ErrDependency):
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+	case errors.Is(err, verification.ErrRateLimited):
+		writeError(writer, request, http.StatusTooManyRequests, "RATE_LIMITED", "verification attempts are temporarily limited")
+	case errors.Is(err, verification.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
 	case errors.Is(err, identity.ErrUnauthorized):
 		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
 	case errors.Is(err, identity.ErrForbidden):
@@ -337,4 +471,68 @@ func optionalString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func remoteIP(remoteAddress string) string {
+	host, _, err := net.SplitHostPort(remoteAddress)
+	if err == nil && host != "" {
+		return host
+	}
+	return remoteAddress
+}
+
+func (h *Handler) clientIP(request *http.Request) string {
+	peer := net.ParseIP(remoteIP(request.RemoteAddr))
+	if peer == nil || !h.isTrustedProxy(peer) {
+		return remoteIP(request.RemoteAddr)
+	}
+	chain := strings.Split(request.Header.Get("X-Forwarded-For"), ",")
+	addresses := make([]net.IP, 0, len(chain)+1)
+	for _, value := range chain {
+		parsed := net.ParseIP(strings.TrimSpace(value))
+		if parsed == nil {
+			return peer.String()
+		}
+		addresses = append(addresses, parsed)
+	}
+	addresses = append(addresses, peer)
+	index := len(addresses) - 1
+	for index > 0 && h.isTrustedProxy(addresses[index]) {
+		index--
+	}
+	return addresses[index].String()
+}
+
+func (h *Handler) isTrustedProxy(address net.IP) bool {
+	for _, network := range h.trustedProxies {
+		if network.Contains(address) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *Handler) deviceID(writer http.ResponseWriter, request *http.Request) string {
+	const name = "__Host-henukit_device"
+	if cookie, err := request.Cookie(name); err == nil {
+		parts := strings.Split(cookie.Value, ".")
+		if len(parts) == 2 {
+			identifier, decodeIDErr := base64.RawURLEncoding.DecodeString(parts[0])
+			signature, decodeSignatureErr := base64.RawURLEncoding.DecodeString(parts[1])
+			mac := hmac.New(sha256.New, h.deviceKey)
+			_, _ = mac.Write(identifier)
+			if decodeIDErr == nil && decodeSignatureErr == nil && len(identifier) == 16 && hmac.Equal(signature, mac.Sum(nil)) {
+				return parts[0]
+			}
+		}
+	}
+	identifier := make([]byte, 16)
+	if _, err := rand.Read(identifier); err != nil {
+		return "device-unavailable"
+	}
+	mac := hmac.New(sha256.New, h.deviceKey)
+	_, _ = mac.Write(identifier)
+	value := base64.RawURLEncoding.EncodeToString(identifier) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	http.SetCookie(writer, &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: 365 * 24 * 60 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	return base64.RawURLEncoding.EncodeToString(identifier)
 }

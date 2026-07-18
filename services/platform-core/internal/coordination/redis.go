@@ -31,6 +31,22 @@ func (r *Redis) UseOnce(ctx context.Context, key string, ttl time.Duration) erro
 	return nil
 }
 
+func (r *Redis) Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, error) {
+	if key == "" || limit <= 0 || window <= 0 {
+		return false, errors.New("rate limit key, limit, and window are required")
+	}
+	const script = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then redis.call("PEXPIRE", KEYS[1], ARGV[1]) end
+if count > tonumber(ARGV[2]) then return 0 end
+return 1`
+	result, err := r.client.Eval(ctx, script, []string{key}, window.Milliseconds(), limit).Int64()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
 func (r *Redis) Acquire(ctx context.Context, key string, ttl time.Duration) (func(context.Context) error, error) {
 	tokenBytes := make([]byte, 24)
 	if _, err := rand.Read(tokenBytes); err != nil {

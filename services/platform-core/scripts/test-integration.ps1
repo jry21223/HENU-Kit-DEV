@@ -14,6 +14,7 @@ function Invoke-SqlFile([string]$path) {
 docker compose -f $composeFile up -d --wait
 if ($LASTEXITCODE -ne 0) { throw "Test dependencies did not become healthy" }
 
+Invoke-SqlFile (Join-Path $migrationDirectory "000003_verification_mail.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000002_authorization.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000001_identity.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000001_identity.up.sql")
@@ -27,12 +28,20 @@ Invoke-SqlFile (Join-Path $migrationDirectory "000002_authorization.up.sql")
 $upgraded = docker compose -f $composeFile exec -T postgres psql -At -U platform_core -d platform_core_test -c "SELECT to_regclass('public.permission_codes') IS NOT NULL AND (SELECT authorization_revision = 1 FROM users LIMIT 1);"
 if (($upgraded | Out-String).Trim() -ne "t") { throw "Migration 000002 did not upgrade the supported HC-05 schema and backfill users" }
 
+$preMailReady = docker compose -f $composeFile exec -T postgres psql -At -U platform_core -d platform_core_test -c "SELECT to_regclass('public.verification_codes') IS NULL AND to_regclass('public.mail_outbox') IS NULL;"
+if (($preMailReady | Out-String).Trim() -ne "t") { throw "Migration 000002 did not reproduce the supported HC-06 schema" }
+Invoke-SqlFile (Join-Path $migrationDirectory "000003_verification_mail.up.sql")
+$mailUpgraded = docker compose -f $composeFile exec -T postgres psql -At -U platform_core -d platform_core_test -c "SELECT to_regclass('public.verification_codes') IS NOT NULL AND to_regclass('public.mail_outbox') IS NOT NULL AND (SELECT count(*) = 1 FROM users);"
+if (($mailUpgraded | Out-String).Trim() -ne "t") { throw "Migration 000003 did not upgrade the supported HC-06 schema without data loss" }
+
+Invoke-SqlFile (Join-Path $migrationDirectory "000003_verification_mail.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000002_authorization.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000001_identity.down.sql")
 $absent = docker compose -f $composeFile exec -T postgres psql -At -U platform_core -d platform_core_test -c "SELECT to_regclass('public.authorization_codes') IS NULL AND to_regclass('public.sessions') IS NULL AND to_regclass('public.permission_codes') IS NULL;"
 if (($absent | Out-String).Trim() -ne "t") { throw "Migration down did not remove all versioned tables" }
 Invoke-SqlFile (Join-Path $migrationDirectory "000001_identity.up.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000002_authorization.up.sql")
+Invoke-SqlFile (Join-Path $migrationDirectory "000003_verification_mail.up.sql")
 
 docker run --rm --network henukit-platform-core-test_default `
     -e PLATFORM_CORE_TEST_DATABASE_URL="postgres://platform_core:platform_core_test@postgres:5432/platform_core_test?sslmode=disable" `
@@ -41,5 +50,5 @@ docker run --rm --network henukit-platform-core-test_default `
     -v henukit-go-mod:/go/pkg/mod `
     -v henukit-go-build:/root/.cache/go-build `
     -w /workspace/services/platform-core `
-    $goImage sh -lc "export PATH=/usr/local/go/bin:`$PATH; gofmt -d . > /tmp/gofmt.diff; test ! -s /tmp/gofmt.diff; go vet ./...; go test -count=1 -v ./...; go build -o /tmp/platform-core ./cmd/server"
+    $goImage sh -lc "export PATH=/usr/local/go/bin:`$PATH; gofmt -d . > /tmp/gofmt.diff; test ! -s /tmp/gofmt.diff; go vet ./...; go test -count=1 -v ./...; go build -o /tmp/platform-core ./cmd/server; go build -o /tmp/platform-mail-worker ./cmd/mail-worker"
 if ($LASTEXITCODE -ne 0) { throw "Platform Core verification failed" }

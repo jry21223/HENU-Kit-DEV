@@ -41,7 +41,12 @@ func main() {
 		Database: database, Redis: redisClient, CoreCookieName: settings.CoreCookieName,
 		AuthorizationTTL: settings.AuthorizationTTL, ExchangeSessionTTL: settings.ExchangeSessionTTL,
 		IdempotencyEncryptionKey: settings.IdempotencyEncryptionKey, Logger: logger,
-		IdempotencyTTL: settings.IdempotencyTTL,
+		IdempotencyTTL:            settings.IdempotencyTTL,
+		VerificationEncryptionKey: settings.VerificationKey, StudentEmailDomains: settings.StudentEmailDomains,
+		VerificationCodeTTL: settings.VerificationCodeTTL, VerificationResendDelay: settings.VerificationResendDelay,
+		MailDeliveryWebhookToken: settings.MailDeliveryWebhookToken,
+		MailDeliveryActiveKeyID:  settings.MailDeliveryActiveKeyID, MailDeliveryRetiringToken: settings.MailDeliveryRetiringToken, MailDeliveryRetiringKeyID: settings.MailDeliveryRetiringKeyID,
+		TrustedProxyCIDRs: settings.TrustedProxyCIDRs,
 	})
 	if err != nil {
 		logger.Error("server initialization failed", "error", err.Error())

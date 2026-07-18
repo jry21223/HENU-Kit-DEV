@@ -23,7 +23,7 @@ packages/api-contracts/
 
 ## 当前实现状态
 
-`platform-core.yaml` 是完整目标契约，其中只有 Health、Readiness、`GET /oauth/authorize` 和 `POST /oauth/token` 已由 `services/platform-core` 的 HC-05 身份切片实现。验证码、Session 撤销和内部事件仍是契约先行的 Planned 接口，不应被描述为已部署能力。
+`platform-core.yaml` 是完整目标契约。当前检出版本中，Health、Readiness、`GET /oauth/authorize`、`POST /oauth/token`、授权检查、邮箱验证码请求/验证和邮件送达回执已有 `services/platform-core` 实现；Session 撤销和内部事件仍是契约先行的 Planned 接口。这里描述的是代码状态，不代表这些能力已经部署到生产环境。
 
 ## 旧接口兼容
 

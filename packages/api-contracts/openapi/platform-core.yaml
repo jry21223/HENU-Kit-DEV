@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
 servers:
@@ -47,13 +47,13 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
-  /verification-codes:
+  /auth/email-codes:
     post:
       tags: [Verification]
       operationId: requestVerificationCode
       summary: 请求学生邮箱验证码
       parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
       requestBody:
         required: true
         content:
@@ -72,7 +72,7 @@ paths:
                   type: string
       responses:
         "202":
-          description: Verification delivery accepted
+          description: Request accepted for queued processing; this is not proof of provider acceptance or delivery
           content:
             application/json:
               schema:
@@ -92,16 +92,16 @@ paths:
                             format: date-time
         "400":
           $ref: "#/components/responses/BadRequest"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
-  /verification-codes/verify:
+  /auth/email-codes/verify:
     post:
       tags: [Verification]
       operationId: verifyVerificationCode
       summary: 验证学生邮箱验证码
       parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
       requestBody:
         required: true
         content:
@@ -142,6 +142,63 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /mail/deliveries:
+    post:
+      tags: [Verification]
+      operationId: recordMailDelivery
+      summary: Record an authenticated provider delivery receipt
+      security:
+        - mailDeliveryHmac: []
+      parameters:
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message_id, status]
+              properties:
+                message_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                status:
+                  type: string
+                  const: delivered
+      responses:
+        "202":
+          description: Delivery receipt accepted; repeated or unknown message IDs are not disclosed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [accepted]
+                        properties:
+                          accepted:
+                            type: boolean
+                            const: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /oauth/token:
     post:
@@ -412,6 +469,10 @@ components:
       type: apiKey
       in: header
       name: X-Signature
+    mailDeliveryHmac:
+      type: apiKey
+      in: header
+      name: X-Signature
 
   parameters:
     IdempotencyKey:
@@ -655,11 +716,7 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
     TooManyRequests:
-      description: Rate limit exceeded
-      headers:
-        Retry-After:
-          schema:
-            type: integer
+      description: Verification attempt rate limit exceeded
       content:
         application/json:
           schema:
