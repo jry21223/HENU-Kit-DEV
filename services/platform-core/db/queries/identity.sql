@@ -54,6 +54,67 @@ RETURNING id, expires_at;
 -- name: GetPlatformUser :one
 SELECT id, email_verified, status, created_at FROM users WHERE id = $1;
 
+-- name: GetActiveExchangeSessionByTokenHash :one
+SELECT s.id, s.user_id, s.client_id
+FROM sessions s
+JOIN sessions parent ON parent.id = s.parent_session_id
+JOIN users u ON u.id = s.user_id
+WHERE s.token_hash = $1
+  AND s.kind = 'client_exchange'
+  AND s.revoked_at IS NULL
+  AND s.expires_at > now()
+  AND parent.kind = 'core'
+  AND parent.revoked_at IS NULL
+  AND parent.expires_at > now()
+  AND u.status = 'active';
+
+-- name: GetAuthorizationGrant :one
+SELECT s.user_id, g.id AS grant_id,
+       CAST(GREATEST(u.authorization_revision, r.revision, g.revision) AS bigint) AS authorization_revision
+FROM sessions s
+JOIN sessions parent ON parent.id = s.parent_session_id
+JOIN users u ON u.id = s.user_id
+JOIN user_role_grants g ON g.user_id = u.id AND g.status = 'active'
+JOIN authorization_roles r ON r.id = g.role_id AND r.status = 'active'
+JOIN role_permissions rp ON rp.role_id = r.id
+JOIN permission_codes p ON p.code = rp.permission_code AND p.status = 'active'
+WHERE s.token_hash = sqlc.arg(token_hash)
+  AND s.kind = 'client_exchange'
+  AND s.client_id = sqlc.arg(client_id)
+  AND s.revoked_at IS NULL
+  AND s.expires_at > now()
+  AND parent.kind = 'core'
+  AND parent.revoked_at IS NULL
+  AND parent.expires_at > now()
+  AND u.status = 'active'
+  AND rp.permission_code = sqlc.arg(permission_code)
+  AND (
+      (g.scope_kind = 'platform')
+      OR
+      (g.scope_kind = 'product'
+       AND sqlc.arg(scope_kind)::text IN ('product', 'resource')
+       AND g.product_code = sqlc.arg(product_code)::text)
+      OR
+      (g.scope_kind = 'resource'
+       AND sqlc.arg(scope_kind)::text = 'resource'
+       AND g.product_code = sqlc.arg(product_code)::text
+       AND g.resource_type = sqlc.arg(resource_type)::text
+       AND g.resource_id = sqlc.arg(resource_id)::text)
+  )
+ORDER BY CASE g.scope_kind WHEN 'resource' THEN 1 WHEN 'product' THEN 2 ELSE 3 END, g.created_at
+LIMIT 1;
+
+-- name: CreateAuthorizationAuditEvent :exec
+INSERT INTO authorization_audit_events (
+    actor_user_id, session_id, request_id, service_id, permission_code,
+    target_kind, target_product_code, target_resource_type, target_resource_id,
+    decision, reason_code, grant_id, authorization_revision
+) VALUES (
+    sqlc.arg(actor_user_id), sqlc.arg(session_id), sqlc.arg(request_id), sqlc.arg(service_id), sqlc.arg(permission_code),
+    sqlc.arg(target_kind), sqlc.narg(target_product_code), sqlc.narg(target_resource_type), sqlc.narg(target_resource_id),
+    sqlc.arg(decision), sqlc.arg(reason_code), sqlc.narg(grant_id), sqlc.narg(authorization_revision)
+);
+
 -- name: GetOAuthExchangeIdempotency :one
 SELECT request_hash, response_ciphertext, expires_at
 FROM oauth_exchange_idempotency

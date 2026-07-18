@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 
 var (
 	ErrUnauthorized    = errors.New("authentication failed")
+	ErrForbidden       = errors.New("permission or scope is not granted")
 	ErrInvalid         = errors.New("invalid authorization request")
 	ErrCallback        = errors.New("callback is not registered")
 	ErrCodeUsed        = errors.New("authorization code was already used")
@@ -37,6 +39,12 @@ var (
 	ErrTimestamp       = errors.New("request timestamp is invalid")
 	ErrIdempotency     = errors.New("idempotency key conflicts with another request")
 	ErrIdempotencyBusy = errors.New("idempotent request is still in progress")
+)
+
+var (
+	permissionCodePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$`)
+	productCodePattern    = regexp.MustCompile(`^[a-z][a-z0-9-]{1,63}$`)
+	resourceTypePattern   = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,63}$`)
 )
 
 type Coordinator interface {
@@ -90,6 +98,31 @@ type Exchange struct {
 	EmailVerified        bool
 	UserStatus           string
 	UserCreatedAt        time.Time
+}
+
+type AuthorizationCheckInput struct {
+	SessionToken   string
+	ClientSecret   string
+	PermissionCode string
+	ScopeKind      string
+	ProductCode    string
+	ResourceType   string
+	ResourceID     string
+	ServiceID      string
+	KeyID          string
+	Timestamp      string
+	Nonce          string
+	Signature      string
+	BodyHash       []byte
+	PathAndQuery   string
+	RequestID      string
+}
+
+type AuthorizationDecision struct {
+	ActorUserID           string
+	GrantID               string
+	AuthorizationRevision int64
+	CheckedAt             time.Time
 }
 
 func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL, idempotencyTTL time.Duration, idempotencyKey []byte) *Service {
@@ -290,6 +323,94 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 	return result, nil
 }
 
+func (s *Service) CheckAuthorization(ctx context.Context, input AuthorizationCheckInput) (AuthorizationDecision, error) {
+	if input.SessionToken == "" || input.ClientSecret == "" || !validPermissionCode(input.PermissionCode) || input.ServiceID == "" || input.KeyID == "" || input.Timestamp == "" || input.Nonce == "" || input.Signature == "" || input.RequestID == "" || len(input.BodyHash) != sha256.Size || !strings.HasPrefix(input.PathAndQuery, "/") || !validScope(input.ScopeKind, input.ProductCode, input.ResourceType, input.ResourceID) {
+		return AuthorizationDecision{}, ErrInvalid
+	}
+	clientKey, err := s.queries.GetOAuthClientKey(ctx, store.GetOAuthClientKeyParams{ClientID: input.ServiceID, KeyID: input.KeyID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AuthorizationDecision{}, ErrUnauthorized
+		}
+		return AuthorizationDecision{}, err
+	}
+	secretHash := sha256.Sum256([]byte(input.ClientSecret))
+	if len(clientKey.SecretHash) != len(secretHash) || subtle.ConstantTimeCompare(clientKey.SecretHash, secretHash[:]) != 1 {
+		return AuthorizationDecision{}, ErrUnauthorized
+	}
+	requestTimeUnix, err := strconv.ParseInt(input.Timestamp, 10, 64)
+	if err != nil || time.Since(time.Unix(requestTimeUnix, 0)).Abs() > 5*time.Minute {
+		return AuthorizationDecision{}, ErrTimestamp
+	}
+	canonical := strings.Join([]string{"POST", input.PathAndQuery, input.Timestamp, input.Nonce, hex.EncodeToString(input.BodyHash)}, "\n")
+	mac := hmac.New(sha256.New, []byte(input.ClientSecret))
+	_, _ = mac.Write([]byte(canonical))
+	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if subtle.ConstantTimeCompare([]byte(input.Signature), []byte(expectedSignature)) != 1 {
+		return AuthorizationDecision{}, ErrSignature
+	}
+	if err := s.coordinator.UseOnce(ctx, "platform-core:authorization-nonce:"+input.ServiceID+":"+input.Nonce, 10*time.Minute); err != nil {
+		if errors.Is(err, coordination.ErrBusy) {
+			return AuthorizationDecision{}, ErrNonceReplay
+		}
+		return AuthorizationDecision{}, ErrDependency
+	}
+	tokenHash := sha256.Sum256([]byte(input.SessionToken))
+	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return AuthorizationDecision{}, err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	queries := s.queries.WithTx(tx)
+	session, err := queries.GetActiveExchangeSessionByTokenHash(ctx, tokenHash[:])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AuthorizationDecision{}, ErrUnauthorized
+		}
+		return AuthorizationDecision{}, err
+	}
+	if !session.ClientID.Valid || session.ClientID.String != input.ServiceID {
+		return AuthorizationDecision{}, ErrUnauthorized
+	}
+	grant, err := queries.GetAuthorizationGrant(ctx, store.GetAuthorizationGrantParams{
+		TokenHash: tokenHash[:], ClientID: session.ClientID, PermissionCode: input.PermissionCode,
+		ScopeKind: input.ScopeKind, ProductCode: input.ProductCode, ResourceType: input.ResourceType, ResourceID: input.ResourceID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			if auditErr := queries.CreateAuthorizationAuditEvent(ctx, store.CreateAuthorizationAuditEventParams{
+				ActorUserID: session.UserID, SessionID: session.ID, RequestID: input.RequestID, ServiceID: input.ServiceID,
+				PermissionCode: input.PermissionCode, TargetKind: input.ScopeKind,
+				TargetProductCode: nullableText(input.ProductCode), TargetResourceType: nullableText(input.ResourceType), TargetResourceID: nullableText(input.ResourceID),
+				Decision: "denied", ReasonCode: "PERMISSION_OR_SCOPE_MISSING",
+			}); auditErr != nil {
+				return AuthorizationDecision{}, auditErr
+			}
+			if commitErr := tx.Commit(ctx); commitErr != nil {
+				return AuthorizationDecision{}, commitErr
+			}
+			return AuthorizationDecision{}, ErrForbidden
+		}
+		return AuthorizationDecision{}, err
+	}
+	if err := queries.CreateAuthorizationAuditEvent(ctx, store.CreateAuthorizationAuditEventParams{
+		ActorUserID: session.UserID, SessionID: session.ID, RequestID: input.RequestID, ServiceID: input.ServiceID,
+		PermissionCode: input.PermissionCode, TargetKind: input.ScopeKind,
+		TargetProductCode: nullableText(input.ProductCode), TargetResourceType: nullableText(input.ResourceType), TargetResourceID: nullableText(input.ResourceID),
+		Decision: "allowed", ReasonCode: "GRANTED", GrantID: grant.GrantID,
+		AuthorizationRevision: pgtype.Int8{Int64: grant.AuthorizationRevision, Valid: true},
+	}); err != nil {
+		return AuthorizationDecision{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AuthorizationDecision{}, err
+	}
+	return AuthorizationDecision{
+		ActorUserID: uuidString(grant.UserID), GrantID: uuidString(grant.GrantID),
+		AuthorizationRevision: grant.AuthorizationRevision, CheckedAt: time.Now().UTC(),
+	}, nil
+}
+
 func (s *Service) lookupIdempotency(ctx context.Context, queries *store.Queries, input ExchangeInput) (Exchange, bool, error) {
 	cached, err := queries.GetOAuthExchangeIdempotency(ctx, store.GetOAuthExchangeIdempotencyParams{ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -403,6 +524,27 @@ func validPKCE(verifier, expectedChallenge string) bool {
 func validCodeChallenge(challenge string) bool {
 	decoded, err := base64.RawURLEncoding.DecodeString(challenge)
 	return err == nil && len(decoded) == sha256.Size && len(challenge) == 43
+}
+
+func validScope(kind, productCode, resourceType, resourceID string) bool {
+	switch kind {
+	case "platform":
+		return productCode == "" && resourceType == "" && resourceID == ""
+	case "product":
+		return productCodePattern.MatchString(productCode) && resourceType == "" && resourceID == ""
+	case "resource":
+		return productCodePattern.MatchString(productCode) && resourceTypePattern.MatchString(resourceType) && resourceID != "" && len(resourceID) <= 200
+	default:
+		return false
+	}
+}
+
+func validPermissionCode(value string) bool {
+	return len(value) >= 3 && len(value) <= 120 && permissionCodePattern.MatchString(value)
+}
+
+func nullableText(value string) pgtype.Text {
+	return pgtype.Text{String: value, Valid: value != ""}
 }
 
 func containsExact(values []string, expected string) bool {

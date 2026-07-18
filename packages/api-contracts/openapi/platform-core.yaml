@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
 servers:
@@ -304,6 +304,53 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /authorization/check:
+    post:
+      tags: [Authorization]
+      operationId: checkAuthorization
+      summary: 根据服务端权限授权与 Scope 判定管理请求
+      description: |
+        The request carries a server-held client-exchange Session token over the authenticated backend channel. Platform Core derives roles and grants
+        from PostgreSQL and ignores caller-supplied role or isAdmin claims. Decisions default to deny.
+        Account, role-grant and Session revocation must affect checks within 30 seconds; this API does not
+        permit an authorization cache with a longer lifetime.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorizationCheckRequest"
+      responses:
+        "200":
+          description: Permission and Scope are both granted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AuthorizationDecision"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /internal/events:
     post:
       tags: [Internal Events]
@@ -459,6 +506,90 @@ components:
           type: string
           format: date-time
 
+    AuthorizationCheckRequest:
+      type: object
+      additionalProperties: false
+      required: [session_exchange_token, permission_code, scope]
+      properties:
+        session_exchange_token:
+          type: string
+          minLength: 32
+        permission_code:
+          type: string
+          pattern: '^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$'
+          minLength: 3
+          maxLength: 120
+        scope:
+          $ref: "#/components/schemas/AuthorizationScope"
+
+    AuthorizationScope:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [platform, product, resource]
+        product_code:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{1,63}$'
+        resource_type:
+          type: string
+          pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        resource_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+      oneOf:
+        - properties:
+            kind:
+              const: platform
+            product_code: false
+            resource_type: false
+            resource_id: false
+        - required: [product_code]
+          properties:
+            kind:
+              const: product
+            product_code: {}
+            resource_type: false
+            resource_id: false
+        - required: [product_code, resource_type, resource_id]
+          properties:
+            kind:
+              const: resource
+            product_code: {}
+            resource_type: {}
+            resource_id: {}
+      discriminator:
+        propertyName: kind
+
+    AuthorizationDecision:
+      type: object
+      additionalProperties: false
+      required: [allowed, actor_user_id, permission_code, scope, grant_id, authorization_revision, checked_at]
+      properties:
+        allowed:
+          type: boolean
+          const: true
+        actor_user_id:
+          type: string
+          format: uuid
+        permission_code:
+          type: string
+        scope:
+          $ref: "#/components/schemas/AuthorizationScope"
+        grant_id:
+          type: string
+          format: uuid
+        authorization_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        checked_at:
+          type: string
+          format: date-time
+
     EventEnvelope:
       type: object
       required:
@@ -507,6 +638,12 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
     Unauthorized:
       description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Forbidden:
+      description: Permission or Scope is not granted
       content:
         application/json:
           schema:
