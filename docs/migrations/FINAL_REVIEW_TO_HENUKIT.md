@@ -42,6 +42,7 @@
 - `apps/console`：不含旧路由和 Element Plus 的六模块 Mock Console 壳；尚未接入真实 Gateway、会话或产品数据。
 - `services/api`：Gin + GORM + PostgreSQL API。
 - `services/worker`：Go + Redis Streams Worker。
+- `services/platform-core`：独立的 Go/chi/pgx/sqlc 身份基础切片，当前只覆盖已有 Core Session、S256 授权码与短期 exchange Session。
 - 课程、资料、下载审计、刷题、社区、积分、会员、支付、AI、通知和管理后台。
 - Compose、生产示例、备份恢复脚本和自动部署工作流。
 
@@ -168,7 +169,7 @@ packages/api-contracts/
 ## 技术基线
 
 - Go 1.26.x 固定补丁版本。
-- Gin、GORM、go-redis、PostgreSQL、Redis Streams。
+- `net/http`、chi、pgx、sqlc、PostgreSQL 与 Redis；不使用 Gin、GORM 或运行时 AutoMigrate。
 - API 与 Worker 分进程。
 - OpenAPI 3.1 是新接口唯一契约来源。
 - JSON 结构化日志、request_id、Health 和 Readiness。

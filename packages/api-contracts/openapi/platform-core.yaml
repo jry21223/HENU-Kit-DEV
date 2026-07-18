@@ -10,6 +10,8 @@ servers:
   - url: http://localhost:8081/api/v1
     description: Local development
 
+security: []
+
 tags:
   - name: Health
   - name: Verification
@@ -156,7 +158,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [grant_type, code, redirect_uri, client_id]
+              required: [grant_type, code, redirect_uri, client_id, code_verifier]
               properties:
                 grant_type:
                   type: string
@@ -182,19 +184,89 @@ paths:
                     properties:
                       data:
                         type: object
-                        required: [user]
+                        required: [user, session_exchange_token, expires_at]
                         properties:
                           user:
                             $ref: "#/components/schemas/PlatformUser"
                           session_exchange_token:
                             type: string
                             description: Short-lived token for the requesting backend only; never place in URL or browser storage.
+                          expires_at:
+                            type: string
+                            format: date-time
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "409":
           $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /oauth/authorize:
+    get:
+      tags: [Authorization]
+      operationId: authorizeOAuthClient
+      summary: 账户中心为已登录用户签发短期单次授权码
+      description: |
+        Requires the host-only Core Session cookie. The callback must exactly match a registered HTTPS URI,
+        PKCE is S256-only, and the authorization code is returned once in the callback URL.
+      security:
+        - coreSession: []
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            const: code
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 8
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+        - name: code_challenge_method
+          in: query
+          required: true
+          schema:
+            type: string
+            const: S256
+      responses:
+        "302":
+          description: Redirect to the exact registered callback with code and preserved state
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              description: Reissues the unextended `__Host-henukit_core_session` cookie with HttpOnly, Secure, SameSite=Lax and Path=/; Domain is omitted.
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /sessions/revoke:
     post:
@@ -273,6 +345,10 @@ paths:
 
 components:
   securitySchemes:
+    coreSession:
+      type: apiKey
+      in: cookie
+      name: __Host-henukit_core_session
     bearerAuth:
       type: http
       scheme: bearer
@@ -319,7 +395,8 @@ components:
         message:
           type: string
         details:
-          nullable: true
+          type: [object, "null"]
+          additionalProperties: true
 
     ErrorEnvelope:
       type: object

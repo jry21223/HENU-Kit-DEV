@@ -1,0 +1,28 @@
+name: henukit-platform-core-test
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: platform_core_test
+      POSTGRES_USER: platform_core
+      POSTGRES_PASSWORD: platform_core_test
+    ports:
+      - "55432:5432"
+    volumes:
+      - ./db/migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform_core -d platform_core_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
