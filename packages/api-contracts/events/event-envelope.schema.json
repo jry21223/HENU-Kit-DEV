@@ -10,26 +10,20 @@
     "schema_version",
     "occurred_at",
     "producer",
-    "idempotency_key",
-    "payload"
+    "resource",
+    "data",
+    "request_id"
   ],
   "properties": {
     "event_id": {
       "type": "string",
-      "minLength": 8,
-      "maxLength": 128
+      "format": "uuid"
     },
     "event_type": {
       "type": "string",
-      "enum": [
-        "submission.received",
-        "submission.approved",
-        "submission.rejected",
-        "correction.resolved",
-        "points.credited",
-        "school_notice.created",
-        "school_notice.updated"
-      ]
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$",
+      "minLength": 3,
+      "maxLength": 160
     },
     "schema_version": {
       "type": "integer",
@@ -40,26 +34,42 @@
       "format": "date-time"
     },
     "producer": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 100
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service_id"],
+      "properties": {
+        "service_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{1,99}$"
+        }
+      }
     },
     "subject_user_id": {
       "type": ["string", "null"],
-      "minLength": 8,
-      "maxLength": 128
+      "format": "uuid"
     },
-    "idempotency_key": {
-      "type": "string",
-      "minLength": 8,
-      "maxLength": 200
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{1,99}$"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
     },
-    "trace_id": {
-      "type": ["string", "null"],
-      "maxLength": 128
-    },
-    "payload": {
+    "data": {
       "type": "object"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^req_[A-Za-z0-9_-]+$",
+      "maxLength": 128
     }
   }
 }
