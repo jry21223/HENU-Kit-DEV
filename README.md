@@ -102,8 +102,8 @@ docker compose -f docker-compose.dev.yml up --build
 常用检查：
 
 ```bash
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 cd services/api && go test ./...
 cd ../worker && go test ./...
 ```

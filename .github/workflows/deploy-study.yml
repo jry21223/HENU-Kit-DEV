@@ -28,21 +28,25 @@ jobs:
             services/api/go.sum
             services/worker/go.sum
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Build release artifact
         run: |
           set -euo pipefail
-          npm ci
+          pnpm install --frozen-lockfile
           mkdir -p release/bin
           (cd services/api && go build -trimpath -ldflags='-s -w' -o ../../release/bin/final-review-api ./cmd/server)
           (cd services/worker && go build -trimpath -ldflags='-s -w' -o ../../release/bin/final-review-worker ./cmd/worker)
-          npm run build:web
-          npm run build:admin
+          pnpm run build:web
+          pnpm run build:admin
 
           mkdir -p release/web/apps/web/.next
           cp -a apps/web/.next/standalone/. release/web/

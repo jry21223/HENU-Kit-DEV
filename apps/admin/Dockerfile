@@ -1,20 +1,26 @@
-FROM node:22-alpine AS deps
+FROM node:22-alpine AS pnpm
+RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 WORKDIR /app
-COPY package.json ./
-RUN npm install
 
-FROM node:22-alpine AS builder
-WORKDIR /app
+FROM pnpm AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/admin/package.json ./apps/admin/package.json
+RUN pnpm install --frozen-lockfile --filter @final-review/admin...
+
+FROM pnpm AS builder
 ARG VITE_API_BASE_URL
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/admin/node_modules ./apps/admin/node_modules
 COPY . .
-RUN npm run build
+RUN pnpm --filter @final-review/admin run build
 
-FROM node:22-alpine AS runner
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package.json ./package.json
-RUN npm install --omit=dev vite@8.0.16
+FROM pnpm AS runner
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/admin/package.json ./apps/admin/package.json
+RUN pnpm install --frozen-lockfile --prod --filter @final-review/admin...
+COPY --from=builder /app/apps/admin/dist ./apps/admin/dist
 EXPOSE 4173
-CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "4173"]
+CMD ["pnpm", "--filter", "@final-review/admin", "exec", "vite", "preview", "--host", "0.0.0.0", "--port", "4173"]

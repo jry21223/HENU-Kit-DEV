@@ -45,9 +45,9 @@
 
 Portal 的具体前端栈在实现 Issue 中确认。优先满足：
 
-- 与当前 Node 22/npm 工作流兼容。
+- 与当前 Node 22/pnpm Workspace 兼容。
 - 支持 SSR/静态输出与 SEO。
 - 可独立构建和部署。
 - 不要求 Study Web 或 Quiz Web 改框架。
 
-在更新根 `package.json` 和 lockfile 前，本目录只作为产品与结构占位，不加入现有 npm workspace，避免破坏当前 `npm ci`。
+本目录当前只作为产品与结构占位；未来加入 `package.json` 后会由根 `pnpm-workspace.yaml` 自动纳入，但在 Portal 技术栈 Issue 决策前不安装依赖或参与构建。

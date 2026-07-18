@@ -155,8 +155,8 @@ Before opening paid sales, verify all items below:
 - API `/readyz` returns HTTP 200, and `docker compose ps` shows API and Worker as healthy
 - `go test ./...` in `services/api`
 - `go test ./...` in `services/worker`
-- `npm run build --workspace @final-review/web`
-- `npm run build --workspace @final-review/admin`
+- `pnpm --filter @final-review/web run build`
+- `pnpm --filter @final-review/admin run build`
 - production `.env.production` has `APP_ENV=production`, `WECHAT_PAY_MODE=live`, `AUTO_MIGRATE=false`, and an empty `DEV_FIXED_VERIFICATION_CODE`
 - `CORS_ALLOWED_ORIGINS` lists exact HTTPS origins and does not use `*`; the API rejects wildcard origins and refuses production startup without exact HTTPS origins
 - `docker compose --env-file .env.production -f docker-compose.prod.example.yml run --rm nginx nginx -t`
@@ -167,7 +167,7 @@ Before opening paid sales, verify all items below:
 - WeChat paid-order verification smoke has passed with `go run ./cmd/smoke -verify-paid-order -order-id <paid-order-id>` for that real internal paid order
 - material import dry-run report has been reviewed against mounted real files
 - manual-grant smoke in [`internal-smoke.md`](./internal-smoke.md) passes with fresh student/admin test accounts after importing real mounted files
-- browser delivery smoke `npm --workspace @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
+- browser delivery smoke `pnpm --filter @final-review/web run test:e2e:delivery` passes against Web/Admin/API with fresh student/admin test accounts
 - leaderboards smoke `npm --workspace @final-review/web run test:e2e:leaderboards` passes against Web/API without leaking email addresses
 - quiz wrong-question smoke `npm --workspace @final-review/web run test:e2e:quiz` passes against Web/API with a fresh student test account
 - quiz multi-type smoke `npm --workspace @final-review/web run test:e2e:quiz-multi-type` passes against Web/API with seed data or explicit question/answer overrides
