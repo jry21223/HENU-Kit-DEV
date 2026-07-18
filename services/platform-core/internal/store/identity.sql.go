@@ -207,34 +207,6 @@ func (q *Queries) GetActiveCoreSessionForExchange(ctx context.Context, id pgtype
 	return id_2, err
 }
 
-const getActiveExchangeSessionByTokenHash = `-- name: GetActiveExchangeSessionByTokenHash :one
-SELECT s.id, s.user_id, s.client_id
-FROM sessions s
-JOIN sessions parent ON parent.id = s.parent_session_id
-JOIN users u ON u.id = s.user_id
-WHERE s.token_hash = $1
-  AND s.kind = 'client_exchange'
-  AND s.revoked_at IS NULL
-  AND s.expires_at > now()
-  AND parent.kind = 'core'
-  AND parent.revoked_at IS NULL
-  AND parent.expires_at > now()
-  AND u.status = 'active'
-`
-
-type GetActiveExchangeSessionByTokenHashRow struct {
-	ID       pgtype.UUID `json:"id"`
-	UserID   pgtype.UUID `json:"user_id"`
-	ClientID pgtype.Text `json:"client_id"`
-}
-
-func (q *Queries) GetActiveExchangeSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveExchangeSessionByTokenHashRow, error) {
-	row := q.db.QueryRow(ctx, getActiveExchangeSessionByTokenHash, tokenHash)
-	var i GetActiveExchangeSessionByTokenHashRow
-	err := row.Scan(&i.ID, &i.UserID, &i.ClientID)
-	return i, err
-}
-
 const getAuthorizationCodeForUpdate = `-- name: GetAuthorizationCodeForUpdate :one
 SELECT id, user_id, client_id, core_session_id, redirect_uri, code_challenge, expires_at, used_at
 FROM authorization_codes
@@ -334,6 +306,46 @@ func (q *Queries) GetAuthorizationGrant(ctx context.Context, arg GetAuthorizatio
 	)
 	var i GetAuthorizationGrantRow
 	err := row.Scan(&i.UserID, &i.GrantID, &i.AuthorizationRevision)
+	return i, err
+}
+
+const getExchangeSessionAuthorizationContext = `-- name: GetExchangeSessionAuthorizationContext :one
+SELECT s.id, s.user_id, s.client_id,
+       s.revoked_at AS session_revoked_at, s.expires_at AS session_expires_at,
+       parent.revoked_at AS parent_revoked_at, parent.expires_at AS parent_expires_at,
+       u.status AS user_status
+FROM sessions s
+JOIN sessions parent ON parent.id = s.parent_session_id
+JOIN users u ON u.id = s.user_id
+WHERE s.token_hash = $1
+  AND s.kind = 'client_exchange'
+  AND parent.kind = 'core'
+`
+
+type GetExchangeSessionAuthorizationContextRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	UserID           pgtype.UUID        `json:"user_id"`
+	ClientID         pgtype.Text        `json:"client_id"`
+	SessionRevokedAt pgtype.Timestamptz `json:"session_revoked_at"`
+	SessionExpiresAt pgtype.Timestamptz `json:"session_expires_at"`
+	ParentRevokedAt  pgtype.Timestamptz `json:"parent_revoked_at"`
+	ParentExpiresAt  pgtype.Timestamptz `json:"parent_expires_at"`
+	UserStatus       string             `json:"user_status"`
+}
+
+func (q *Queries) GetExchangeSessionAuthorizationContext(ctx context.Context, tokenHash []byte) (GetExchangeSessionAuthorizationContextRow, error) {
+	row := q.db.QueryRow(ctx, getExchangeSessionAuthorizationContext, tokenHash)
+	var i GetExchangeSessionAuthorizationContextRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ClientID,
+		&i.SessionRevokedAt,
+		&i.SessionExpiresAt,
+		&i.ParentRevokedAt,
+		&i.ParentExpiresAt,
+		&i.UserStatus,
+	)
 	return i, err
 }
 

@@ -125,8 +125,55 @@ type AuthorizationDecision struct {
 	CheckedAt             time.Time
 }
 
+type serviceRequestCredentials struct {
+	ClientID       string
+	ClientSecret   string
+	KeyID          string
+	Timestamp      string
+	Nonce          string
+	Signature      string
+	BodyHash       []byte
+	PathAndQuery   string
+	NonceNamespace string
+}
+
 func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL, idempotencyTTL time.Duration, idempotencyKey []byte) *Service {
 	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, idempotencyTTL: idempotencyTTL, idempotencyKey: idempotencyKey}
+}
+
+func (s *Service) authenticateServiceRequest(ctx context.Context, credentials serviceRequestCredentials) error {
+	if credentials.ClientID == "" || credentials.ClientSecret == "" || credentials.KeyID == "" || credentials.Timestamp == "" || credentials.Nonce == "" || credentials.Signature == "" || len(credentials.BodyHash) != sha256.Size || !strings.HasPrefix(credentials.PathAndQuery, "/") || credentials.NonceNamespace == "" {
+		return ErrInvalid
+	}
+	clientKey, err := s.queries.GetOAuthClientKey(ctx, store.GetOAuthClientKeyParams{ClientID: credentials.ClientID, KeyID: credentials.KeyID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrUnauthorized
+		}
+		return err
+	}
+	secretHash := sha256.Sum256([]byte(credentials.ClientSecret))
+	if len(clientKey.SecretHash) != len(secretHash) || subtle.ConstantTimeCompare(clientKey.SecretHash, secretHash[:]) != 1 {
+		return ErrUnauthorized
+	}
+	requestTimeUnix, err := strconv.ParseInt(credentials.Timestamp, 10, 64)
+	if err != nil || time.Since(time.Unix(requestTimeUnix, 0)).Abs() > 5*time.Minute {
+		return ErrTimestamp
+	}
+	canonical := strings.Join([]string{"POST", credentials.PathAndQuery, credentials.Timestamp, credentials.Nonce, hex.EncodeToString(credentials.BodyHash)}, "\n")
+	mac := hmac.New(sha256.New, []byte(credentials.ClientSecret))
+	_, _ = mac.Write([]byte(canonical))
+	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if subtle.ConstantTimeCompare([]byte(credentials.Signature), []byte(expectedSignature)) != 1 {
+		return ErrSignature
+	}
+	if err := s.coordinator.UseOnce(ctx, "platform-core:"+credentials.NonceNamespace+"-nonce:"+credentials.ClientID+":"+credentials.Nonce, 10*time.Minute); err != nil {
+		if errors.Is(err, coordination.ErrBusy) {
+			return ErrNonceReplay
+		}
+		return ErrDependency
+	}
+	return nil
 }
 
 func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authorization, error) {
@@ -183,39 +230,18 @@ func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authoriz
 }
 
 func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, error) {
-	if input.ClientID == "" || input.ClientSecret == "" || input.Code == "" || input.RedirectURI == "" || input.CodeVerifier == "" || input.ServiceID == "" || input.KeyID == "" || input.Timestamp == "" || input.Nonce == "" || input.Signature == "" || len(input.BodyHash) != sha256.Size || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 || !strings.HasPrefix(input.PathAndQuery, "/") {
+	if input.ClientID == "" || input.Code == "" || input.RedirectURI == "" || input.CodeVerifier == "" || input.ServiceID == "" || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 {
 		return Exchange{}, ErrInvalid
 	}
-	clientKey, err := s.queries.GetOAuthClientKey(ctx, store.GetOAuthClientKeyParams{ClientID: input.ClientID, KeyID: input.KeyID})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return Exchange{}, ErrUnauthorized
-		}
+	if err := s.authenticateServiceRequest(ctx, serviceRequestCredentials{
+		ClientID: input.ClientID, ClientSecret: input.ClientSecret, KeyID: input.KeyID,
+		Timestamp: input.Timestamp, Nonce: input.Nonce, Signature: input.Signature,
+		BodyHash: input.BodyHash, PathAndQuery: input.PathAndQuery, NonceNamespace: "oauth",
+	}); err != nil {
 		return Exchange{}, err
-	}
-	secretHash := sha256.Sum256([]byte(input.ClientSecret))
-	if len(clientKey.SecretHash) != len(secretHash) || subtle.ConstantTimeCompare(clientKey.SecretHash, secretHash[:]) != 1 {
-		return Exchange{}, ErrUnauthorized
 	}
 	if input.ServiceID != input.ClientID {
 		return Exchange{}, ErrSignature
-	}
-	requestTimeUnix, err := strconv.ParseInt(input.Timestamp, 10, 64)
-	if err != nil || time.Since(time.Unix(requestTimeUnix, 0)).Abs() > 5*time.Minute {
-		return Exchange{}, ErrTimestamp
-	}
-	canonical := strings.Join([]string{"POST", input.PathAndQuery, input.Timestamp, input.Nonce, hex.EncodeToString(input.BodyHash)}, "\n")
-	mac := hmac.New(sha256.New, []byte(input.ClientSecret))
-	_, _ = mac.Write([]byte(canonical))
-	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	if subtle.ConstantTimeCompare([]byte(input.Signature), []byte(expectedSignature)) != 1 {
-		return Exchange{}, ErrSignature
-	}
-	if err := s.coordinator.UseOnce(ctx, "platform-core:oauth-nonce:"+input.ClientID+":"+input.Nonce, 10*time.Minute); err != nil {
-		if errors.Is(err, coordination.ErrBusy) {
-			return Exchange{}, ErrNonceReplay
-		}
-		return Exchange{}, ErrDependency
 	}
 	if cached, found, err := s.lookupIdempotency(ctx, s.queries, input); err != nil {
 		return Exchange{}, err
@@ -324,36 +350,15 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 }
 
 func (s *Service) CheckAuthorization(ctx context.Context, input AuthorizationCheckInput) (AuthorizationDecision, error) {
-	if input.SessionToken == "" || input.ClientSecret == "" || !validPermissionCode(input.PermissionCode) || input.ServiceID == "" || input.KeyID == "" || input.Timestamp == "" || input.Nonce == "" || input.Signature == "" || input.RequestID == "" || len(input.BodyHash) != sha256.Size || !strings.HasPrefix(input.PathAndQuery, "/") || !validScope(input.ScopeKind, input.ProductCode, input.ResourceType, input.ResourceID) {
+	if input.SessionToken == "" || !validPermissionCode(input.PermissionCode) || input.ServiceID == "" || input.RequestID == "" || !validScope(input.ScopeKind, input.ProductCode, input.ResourceType, input.ResourceID) {
 		return AuthorizationDecision{}, ErrInvalid
 	}
-	clientKey, err := s.queries.GetOAuthClientKey(ctx, store.GetOAuthClientKeyParams{ClientID: input.ServiceID, KeyID: input.KeyID})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return AuthorizationDecision{}, ErrUnauthorized
-		}
+	if err := s.authenticateServiceRequest(ctx, serviceRequestCredentials{
+		ClientID: input.ServiceID, ClientSecret: input.ClientSecret, KeyID: input.KeyID,
+		Timestamp: input.Timestamp, Nonce: input.Nonce, Signature: input.Signature,
+		BodyHash: input.BodyHash, PathAndQuery: input.PathAndQuery, NonceNamespace: "authorization",
+	}); err != nil {
 		return AuthorizationDecision{}, err
-	}
-	secretHash := sha256.Sum256([]byte(input.ClientSecret))
-	if len(clientKey.SecretHash) != len(secretHash) || subtle.ConstantTimeCompare(clientKey.SecretHash, secretHash[:]) != 1 {
-		return AuthorizationDecision{}, ErrUnauthorized
-	}
-	requestTimeUnix, err := strconv.ParseInt(input.Timestamp, 10, 64)
-	if err != nil || time.Since(time.Unix(requestTimeUnix, 0)).Abs() > 5*time.Minute {
-		return AuthorizationDecision{}, ErrTimestamp
-	}
-	canonical := strings.Join([]string{"POST", input.PathAndQuery, input.Timestamp, input.Nonce, hex.EncodeToString(input.BodyHash)}, "\n")
-	mac := hmac.New(sha256.New, []byte(input.ClientSecret))
-	_, _ = mac.Write([]byte(canonical))
-	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	if subtle.ConstantTimeCompare([]byte(input.Signature), []byte(expectedSignature)) != 1 {
-		return AuthorizationDecision{}, ErrSignature
-	}
-	if err := s.coordinator.UseOnce(ctx, "platform-core:authorization-nonce:"+input.ServiceID+":"+input.Nonce, 10*time.Minute); err != nil {
-		if errors.Is(err, coordination.ErrBusy) {
-			return AuthorizationDecision{}, ErrNonceReplay
-		}
-		return AuthorizationDecision{}, ErrDependency
 	}
 	tokenHash := sha256.Sum256([]byte(input.SessionToken))
 	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
@@ -362,7 +367,7 @@ func (s *Service) CheckAuthorization(ctx context.Context, input AuthorizationChe
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	queries := s.queries.WithTx(tx)
-	session, err := queries.GetActiveExchangeSessionByTokenHash(ctx, tokenHash[:])
+	session, err := queries.GetExchangeSessionAuthorizationContext(ctx, tokenHash[:])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return AuthorizationDecision{}, ErrUnauthorized
@@ -371,6 +376,33 @@ func (s *Service) CheckAuthorization(ctx context.Context, input AuthorizationChe
 	}
 	if !session.ClientID.Valid || session.ClientID.String != input.ServiceID {
 		return AuthorizationDecision{}, ErrUnauthorized
+	}
+	deniedSession := func(reason string) (AuthorizationDecision, error) {
+		if auditErr := queries.CreateAuthorizationAuditEvent(ctx, store.CreateAuthorizationAuditEventParams{
+			ActorUserID: session.UserID, SessionID: session.ID, RequestID: input.RequestID, ServiceID: input.ServiceID,
+			PermissionCode: input.PermissionCode, TargetKind: input.ScopeKind,
+			TargetProductCode: nullableText(input.ProductCode), TargetResourceType: nullableText(input.ResourceType), TargetResourceID: nullableText(input.ResourceID),
+			Decision: "denied", ReasonCode: reason,
+		}); auditErr != nil {
+			return AuthorizationDecision{}, auditErr
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return AuthorizationDecision{}, commitErr
+		}
+		return AuthorizationDecision{}, ErrUnauthorized
+	}
+	now := time.Now().UTC()
+	switch {
+	case session.SessionRevokedAt.Valid:
+		return deniedSession("SESSION_REVOKED")
+	case !now.Before(session.SessionExpiresAt.Time):
+		return deniedSession("SESSION_EXPIRED")
+	case session.ParentRevokedAt.Valid:
+		return deniedSession("PARENT_SESSION_REVOKED")
+	case !now.Before(session.ParentExpiresAt.Time):
+		return deniedSession("PARENT_SESSION_EXPIRED")
+	case session.UserStatus != "active":
+		return deniedSession("ACCOUNT_NOT_ACTIVE")
 	}
 	grant, err := queries.GetAuthorizationGrant(ctx, store.GetAuthorizationGrantParams{
 		TokenHash: tokenHash[:], ClientID: session.ClientID, PermissionCode: input.PermissionCode,

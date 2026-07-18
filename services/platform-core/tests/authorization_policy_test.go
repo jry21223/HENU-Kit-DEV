@@ -198,6 +198,7 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 		name       string
 		revoke     func(context.Context, authorizationFixture) error
 		wantStatus int
+		wantReason string
 	}{
 		{
 			name: "account suspended",
@@ -206,6 +207,7 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 				return err
 			},
 			wantStatus: http.StatusUnauthorized,
+			wantReason: "ACCOUNT_NOT_ACTIVE",
 		},
 		{
 			name: "role revoked",
@@ -214,6 +216,7 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 				return err
 			},
 			wantStatus: http.StatusForbidden,
+			wantReason: "PERMISSION_OR_SCOPE_MISSING",
 		},
 		{
 			name: "role grant revoked",
@@ -222,6 +225,7 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 				return err
 			},
 			wantStatus: http.StatusForbidden,
+			wantReason: "PERMISSION_OR_SCOPE_MISSING",
 		},
 		{
 			name: "exchange Session revoked",
@@ -231,6 +235,7 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 				return err
 			},
 			wantStatus: http.StatusUnauthorized,
+			wantReason: "SESSION_REVOKED",
 		},
 		{
 			name: "parent Core Session revoked",
@@ -239,6 +244,7 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 				return err
 			},
 			wantStatus: http.StatusUnauthorized,
+			wantReason: "PARENT_SESSION_REVOKED",
 		},
 	}
 	for index, test := range tests {
@@ -252,10 +258,19 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 			if err := test.revoke(context.Background(), fixture); err != nil {
 				t.Fatalf("apply revocation: %v", err)
 			}
-			after := sendAuthorizationCheck(t, fixture, "quizcraft", fmt.Sprintf("nonce_after_revoke_%d", index), "")
+			requestID := fmt.Sprintf("req_after_revoke_%d", index)
+			after := sendAuthorizationCheck(t, fixture, "quizcraft", fmt.Sprintf("nonce_after_revoke_%d", index), requestID)
 			after.Body.Close()
 			if after.StatusCode != test.wantStatus {
 				t.Fatalf("authorization immediately after revocation = %d, want %d", after.StatusCode, test.wantStatus)
+			}
+			var decision, reason string
+			if err := fixture.pool.QueryRow(context.Background(), `
+				SELECT decision, reason_code FROM authorization_audit_events WHERE request_id = $1`, requestID).Scan(&decision, &reason); err != nil {
+				t.Fatalf("read revocation audit: %v", err)
+			}
+			if decision != "denied" || reason != test.wantReason {
+				t.Fatalf("unexpected revocation audit: decision=%s reason=%s, want denied/%s", decision, reason, test.wantReason)
 			}
 		})
 	}

@@ -64,10 +64,15 @@ jobs:
         run: |
           set -euo pipefail
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000001_identity.up.sql
-          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.sessions') IS NOT NULL")" = t
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.sessions') IS NOT NULL AND to_regclass('public.permission_codes') IS NULL")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -c "INSERT INTO users (email_verified, status) VALUES (true, 'active')"
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000002_authorization.up.sql
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.permission_codes') IS NOT NULL AND (SELECT authorization_revision = 1 FROM users LIMIT 1)")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000002_authorization.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000001_identity.down.sql
-          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.sessions') IS NULL")" = t
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.sessions') IS NULL AND to_regclass('public.permission_codes') IS NULL")" = t
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000001_identity.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000002_authorization.up.sql
 
       - name: Verify generated SQL and OpenAPI
         run: |

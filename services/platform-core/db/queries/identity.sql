@@ -54,19 +54,17 @@ RETURNING id, expires_at;
 -- name: GetPlatformUser :one
 SELECT id, email_verified, status, created_at FROM users WHERE id = $1;
 
--- name: GetActiveExchangeSessionByTokenHash :one
-SELECT s.id, s.user_id, s.client_id
+-- name: GetExchangeSessionAuthorizationContext :one
+SELECT s.id, s.user_id, s.client_id,
+       s.revoked_at AS session_revoked_at, s.expires_at AS session_expires_at,
+       parent.revoked_at AS parent_revoked_at, parent.expires_at AS parent_expires_at,
+       u.status AS user_status
 FROM sessions s
 JOIN sessions parent ON parent.id = s.parent_session_id
 JOIN users u ON u.id = s.user_id
 WHERE s.token_hash = $1
   AND s.kind = 'client_exchange'
-  AND s.revoked_at IS NULL
-  AND s.expires_at > now()
-  AND parent.kind = 'core'
-  AND parent.revoked_at IS NULL
-  AND parent.expires_at > now()
-  AND u.status = 'active';
+  AND parent.kind = 'core';
 
 -- name: GetAuthorizationGrant :one
 SELECT s.user_id, g.id AS grant_id,

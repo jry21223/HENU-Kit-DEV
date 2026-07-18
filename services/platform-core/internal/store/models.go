@@ -102,8 +102,8 @@ type User struct {
 	ID                    pgtype.UUID        `json:"id"`
 	EmailVerified         bool               `json:"email_verified"`
 	Status                string             `json:"status"`
-	AuthorizationRevision int64              `json:"authorization_revision"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	AuthorizationRevision int64              `json:"authorization_revision"`
 }
 
 type UserRoleGrant struct {

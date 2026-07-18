@@ -1,10 +1,5 @@
 DROP TABLE IF EXISTS oauth_exchange_idempotency;
 DROP TABLE IF EXISTS authorization_codes;
-DROP TABLE IF EXISTS authorization_audit_events;
-DROP TABLE IF EXISTS user_role_grants;
-DROP TABLE IF EXISTS role_permissions;
-DROP TABLE IF EXISTS authorization_roles;
-DROP TABLE IF EXISTS permission_codes;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS oauth_client_keys;
 DROP TABLE IF EXISTS oauth_clients;
