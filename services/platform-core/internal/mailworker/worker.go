@@ -2,15 +2,15 @@ package mailworker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"henukit.dev/platform-core/internal/securebox"
 	"henukit.dev/platform-core/internal/store"
+	"henukit.dev/platform-core/internal/verificationmail"
 )
 
 type Message struct {
@@ -40,87 +40,103 @@ func (e *SendError) Error() string {
 }
 
 type Worker struct {
-	queries        *store.Queries
-	sender         Sender
-	workerID       string
-	recipientCodec *securebox.Codec
-	payloadCodec   *securebox.Codec
-	leaseTimeout   time.Duration
-	sendTimeout    time.Duration
-	now            func() time.Time
+	queries           *store.Queries
+	sender            Sender
+	workerID          string
+	mailCodec         *verificationmail.Codec
+	leaseTimeout      time.Duration
+	sendTimeout       time.Duration
+	now               func() time.Time
+	nextReconcile     time.Time
+	reconcileInterval time.Duration
 }
 
-type payload struct {
-	Code      string    `json:"code"`
-	Purpose   string    `json:"purpose"`
-	ExpiresAt time.Time `json:"expires_at"`
+type Outcome struct {
+	Processed    bool
+	OutboxID     string
+	RequestID    string
+	Result       string
+	ErrorCode    string
+	AttemptCount int32
+	Duration     time.Duration
 }
 
 func New(queries *store.Queries, sender Sender, workerID string, masterKey []byte, leaseTimeout, sendTimeout time.Duration) (*Worker, error) {
 	if queries == nil || sender == nil || workerID == "" || len(masterKey) != 32 || leaseTimeout <= 0 || sendTimeout <= 0 {
 		return nil, errors.New("mail worker dependencies and positive timeouts are required")
 	}
-	recipientCodec, err := securebox.New(masterKey, "verification-recipient")
-	if err != nil {
-		return nil, err
-	}
-	payloadCodec, err := securebox.New(masterKey, "verification-payload")
+	mailCodec, err := verificationmail.NewCodec(masterKey)
 	if err != nil {
 		return nil, err
 	}
 	return &Worker{
 		queries: queries, sender: sender, workerID: workerID,
-		recipientCodec: recipientCodec, payloadCodec: payloadCodec,
+		mailCodec:    mailCodec,
 		leaseTimeout: leaseTimeout, sendTimeout: sendTimeout, now: func() time.Time { return time.Now().UTC() },
+		reconcileInterval: 5 * time.Second,
 	}, nil
 }
 
-func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
+func (w *Worker) ProcessOne(ctx context.Context) (outcome Outcome, err error) {
+	startedAt := w.now()
+	defer func() { outcome.Duration = w.now().Sub(startedAt) }()
+	if !w.now().Before(w.nextReconcile) {
+		if err := w.queries.ApplyAllPendingMailDeliveryReceipts(ctx); err != nil {
+			return outcome, err
+		}
+		w.nextReconcile = w.now().Add(w.reconcileInterval)
+	}
 	reclaimBefore := w.now().Add(-w.leaseTimeout)
 	if err := w.queries.FailExhaustedOutboxLeases(ctx, pgtype.Timestamptz{Time: reclaimBefore, Valid: true}); err != nil {
-		return false, err
+		return outcome, err
 	}
 	job, err := w.queries.ClaimMailOutbox(ctx, store.ClaimMailOutboxParams{
 		WorkerID:      pgtype.Text{String: w.workerID, Valid: true},
 		ReclaimBefore: pgtype.Timestamptz{Time: reclaimBefore, Valid: true},
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
+		outcome.Result = "no_work"
+		return outcome, nil
 	}
 	if err != nil {
-		return false, err
+		return outcome, err
 	}
-	recipient, err := w.recipientCodec.Open(job.RecipientCiphertext)
+	outcome.Processed = true
+	outcome.OutboxID = uuidString(job.ID)
+	outcome.RequestID = job.RequestID
+	outcome.AttemptCount = job.AttemptCount
+	recipient, content, err := w.mailCodec.Decode(job.RecipientCiphertext, job.PayloadCiphertext)
 	if err != nil {
-		return true, w.fail(ctx, job.ID, "PAYLOAD_INVALID")
+		outcome.Result, outcome.ErrorCode = "failed", "PAYLOAD_INVALID"
+		return outcome, w.fail(ctx, job.ID, outcome.ErrorCode)
 	}
-	payloadBytes, err := w.payloadCodec.Open(job.PayloadCiphertext)
-	if err != nil {
-		return true, w.fail(ctx, job.ID, "PAYLOAD_INVALID")
-	}
-	var content payload
-	if err := json.Unmarshal(payloadBytes, &content); err != nil || content.Code == "" || content.Purpose == "" || content.ExpiresAt.IsZero() {
-		return true, w.fail(ctx, job.ID, "PAYLOAD_INVALID")
+	if !w.now().Before(content.ExpiresAt) {
+		outcome.Result, outcome.ErrorCode = "failed", "VERIFICATION_EXPIRED"
+		return outcome, w.fail(ctx, job.ID, outcome.ErrorCode)
 	}
 	sendContext, cancel := context.WithTimeout(ctx, w.sendTimeout)
 	providerMessageID, sendErr := w.sender.Send(sendContext, Message{
 		IdempotencyKey: job.DedupeKey,
-		Recipient:      string(recipient), Code: content.Code, Purpose: content.Purpose,
+		Recipient:      recipient, Code: content.Code, Purpose: content.Purpose,
 		ExpiresAt: content.ExpiresAt, RequestID: job.RequestID,
 	})
 	cancel()
 	if sendErr == nil && providerMessageID != "" {
 		rows, err := w.queries.AcceptMailOutbox(ctx, store.AcceptMailOutboxParams{
-			ID: job.ID, LockedBy: pgtype.Text{String: w.workerID, Valid: true},
+			OutboxID: job.ID, WorkerID: w.workerID,
 			ProviderMessageID: pgtype.Text{String: providerMessageID, Valid: true},
 		})
 		if err != nil {
-			return true, err
+			return outcome, err
 		}
 		if rows != 1 {
-			return true, errors.New("mail outbox lease was lost before acceptance")
+			return outcome, errors.New("mail outbox lease was lost before acceptance")
 		}
-		return true, nil
+		if _, err := w.queries.ApplyPendingMailDeliveryReceipt(ctx, pgtype.Text{String: providerMessageID, Valid: true}); err != nil {
+			return outcome, err
+		}
+		outcome.Result = "accepted"
+		return outcome, nil
 	}
 	code, permanent := "PROVIDER_UNAVAILABLE", false
 	var classified *SendError
@@ -130,34 +146,58 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		code = "SEND_TIMEOUT"
 	}
 	if permanent || job.AttemptCount >= job.MaxAttempts {
-		return true, w.fail(ctx, job.ID, code)
+		outcome.Result, outcome.ErrorCode = "failed", code
+		return outcome, w.fail(ctx, job.ID, code)
 	}
 	retryAt := w.now().Add(retryDelay(job.AttemptCount))
 	rows, err := w.queries.RetryMailOutbox(ctx, store.RetryMailOutboxParams{
-		ID: job.ID, LockedBy: pgtype.Text{String: w.workerID, Valid: true},
+		OutboxID: job.ID, WorkerID: w.workerID,
 		AvailableAt:   pgtype.Timestamptz{Time: retryAt, Valid: true},
 		LastErrorCode: pgtype.Text{String: code, Valid: true},
 	})
 	if err != nil {
-		return true, err
+		return outcome, err
 	}
 	if rows != 1 {
-		return true, errors.New("mail outbox lease was lost before retry")
+		return outcome, errors.New("mail outbox lease was lost before retry")
 	}
-	return true, nil
+	outcome.Result, outcome.ErrorCode = "retry_due", code
+	return outcome, nil
 }
 
-func (w *Worker) MarkDelivered(ctx context.Context, providerMessageID string) (bool, error) {
-	if providerMessageID == "" {
-		return false, errors.New("provider message id is required")
+func (w *Worker) MarkDelivered(ctx context.Context, providerMessageID, requestID, actorID string) (bool, error) {
+	if providerMessageID == "" || requestID == "" || actorID == "" {
+		return false, errors.New("provider message id, request id, and actor id are required")
 	}
-	rows, err := w.queries.MarkMailOutboxDelivered(ctx, pgtype.Text{String: providerMessageID, Valid: true})
+	rows, err := w.queries.MarkMailOutboxDelivered(ctx, store.MarkMailOutboxDeliveredParams{
+		ProviderMessageID: pgtype.Text{String: providerMessageID, Valid: true},
+		RequestID:         requestID,
+		ActorID:           actorID,
+	})
 	return rows == 1, err
+}
+
+func (w *Worker) Requeue(ctx context.Context, outboxID, requestID, actorID, reason string) error {
+	return Requeue(ctx, w.queries, outboxID, requestID, actorID, reason)
+}
+
+func Requeue(ctx context.Context, queries *store.Queries, outboxID, requestID, actorID, reason string) error {
+	parsedID, err := uuid.Parse(outboxID)
+	if queries == nil || err != nil || requestID == "" || actorID == "" || reason == "" {
+		return errors.New("valid outbox id, request id, actor id, and reason are required")
+	}
+	_, err = queries.RequeueMailOutbox(ctx, store.RequeueMailOutboxParams{
+		OutboxID:  pgtype.UUID{Bytes: parsedID, Valid: true},
+		RequestID: requestID,
+		ActorID:   pgtype.Text{String: actorID, Valid: true},
+		Reason:    pgtype.Text{String: reason, Valid: true},
+	})
+	return err
 }
 
 func (w *Worker) fail(ctx context.Context, id pgtype.UUID, code string) error {
 	rows, err := w.queries.FailMailOutbox(ctx, store.FailMailOutboxParams{
-		ID: id, LockedBy: pgtype.Text{String: w.workerID, Valid: true},
+		OutboxID: id, WorkerID: w.workerID,
 		LastErrorCode: pgtype.Text{String: safeErrorCode(code), Valid: true},
 	})
 	if err != nil {
@@ -187,4 +227,11 @@ func safeErrorCode(value string) string {
 		}
 	}
 	return value
+}
+
+func uuidString(value pgtype.UUID) string {
+	if !value.Valid {
+		return ""
+	}
+	return uuid.UUID(value.Bytes).String()
 }

@@ -14,7 +14,8 @@ const (
 	AuthorizationCheckRoute      = "/api/v1/authorization/check"
 	RequestVerificationCodeRoute = "/api/v1/auth/email-codes"
 	VerifyVerificationCodeRoute  = "/api/v1/auth/email-codes/verify"
-	SourceSHA256                 = "1504ec4b7d78b4db163fe5e42e03d0e446dcf8ced32143e28b84be6d1a9a8181"
+	RecordMailDeliveryRoute      = "/api/v1/mail/deliveries"
+	SourceSHA256                 = "6eac1a6097e1236c3d8aab0ba4f740c4d49cda7d29b581e6c69e65f01639092a"
 )
 
 const (
@@ -206,4 +207,13 @@ type VerifyVerificationCodeRequest struct {
 
 type VerificationCodeVerified struct {
 	VerificationID string `json:"verification_id"`
+}
+
+type RecordMailDeliveryRequest struct {
+	MessageID string `json:"message_id"`
+	Status    string `json:"status"`
+}
+
+type MailDeliveryAccepted struct {
+	Accepted bool `json:"accepted"`
 }

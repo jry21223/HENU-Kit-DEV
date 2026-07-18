@@ -15,9 +15,9 @@ Independent Go service for platform-owned identity data. The delivered HC-05 thr
 - transactional allowed/denied authorization audit events correlated by actor, Session, request, service, permission, target resource, grant, and revision;
 - database constraints that prevent concurrent duplicate active role grants for the same Scope.
 - student-email verification requests with hash-only codes, encrypted recipients and encrypted minimal mail payloads;
-- transactional PostgreSQL verification facts plus critical-priority mail Outbox jobs, with Redis used only for a replaceable resend limit;
+- transactional PostgreSQL verification facts plus critical-priority mail Outbox jobs, with Redis used only for fail-closed email/IP/device hourly, daily, and resend limits;
 - single-use verification with attempt limits and idempotent success replay under concurrent requests;
-- an independently deployable mail worker with lease recovery, bounded provider timeouts, exponential retry, permanent failure, provider acceptance and separate delivery confirmation states.
+- an independently deployable mail worker with lease recovery, bounded provider timeouts, exponential retry, immutable transition audits, dead letters, controlled operator requeue, provider acceptance and separate delivery confirmation states.
 
 It does not implement Console Gateway or turn a successful verification into a production account-login/bootstrap Session yet.
 
@@ -27,7 +27,9 @@ Production configuration is environment-only. Copy key names from `.env.example`
 
 `POST /api/v1/authorization/check` uses the same Basic + HMAC service authentication and a server-held exchange Session token in its JSON body. Callers provide only a permission code and structured Scope; client roles and `isAdmin` are never authorization evidence. The service reads PostgreSQL on every check, so the implemented revocation propagation is the next request and remains below the contract's 30-second maximum.
 
-`POST /api/v1/auth/email-codes` and `/api/v1/auth/email-codes/verify` require `Idempotency-Key`. A `202` means the durable mail job was queued; it does not mean the provider accepted or delivered the email. `cmd/mail-worker` claims jobs with `FOR UPDATE SKIP LOCKED`, sends the decrypted payload only to the configured HTTPS provider, records `accepted` after the provider returns a message ID, and records `delivered` only after explicit delivery confirmation. Build its independent image with `Dockerfile.worker`.
+`POST /api/v1/auth/email-codes` and `/api/v1/auth/email-codes/verify` require `Idempotency-Key`. Platform Core issues a signed, `HttpOnly`, `Secure` device cookie instead of trusting a browser-supplied device ID; both request and verification attempts use email/IP/device hourly and daily limits. Rate-limited send requests return the same privacy-preserving `202` shape but create no verification or Outbox row, verification-attempt limits return `429`, and Redis failure returns `503` (fail closed). Client IP comes from the socket peer unless it is in `PLATFORM_CORE_TRUSTED_PROXY_CIDRS`; trusted proxy chains are stripped from right to left so an appended client-controlled `X-Forwarded-For` prefix is not trusted.
+
+A verification request `202` means only that processing was accepted; it does not prove provider acceptance or delivery. `cmd/mail-worker` claims jobs with `FOR UPDATE SKIP LOCKED`, refuses expired payloads, sends the decrypted payload only to the configured HTTPS provider, and records every transition without email addresses or codes. `POST /api/v1/mail/deliveries` requires HMAC, a five-minute timestamp window, Redis-backed single-use Nonce, and an active or retiring Key ID. Receipts are persisted before reconciliation, so an early provider callback is applied after the matching Outbox acceptance instead of being lost. A failed job can be requeued deliberately with `cmd/mail-worker -requeue-outbox ... -request-id ... -actor-id ... -reason ...`; the dead letter and database-protected append-only operator audit remain durable. Build the worker's independent image with `Dockerfile.worker`.
 
 ## Verification
 

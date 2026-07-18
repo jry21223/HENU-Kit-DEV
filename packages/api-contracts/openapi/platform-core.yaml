@@ -92,8 +92,6 @@ paths:
                             format: date-time
         "400":
           $ref: "#/components/responses/BadRequest"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
@@ -142,6 +140,61 @@ paths:
                             type: string
         "400":
           $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /mail/deliveries:
+    post:
+      tags: [Verification]
+      operationId: recordMailDelivery
+      summary: Record an authenticated provider delivery receipt
+      security:
+        - mailDeliveryHmac: []
+      parameters:
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message_id, status]
+              properties:
+                message_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                status:
+                  type: string
+                  const: delivered
+      responses:
+        "202":
+          description: Delivery receipt accepted; repeated or unknown message IDs are not disclosed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [accepted]
+                        properties:
+                          accepted:
+                            type: boolean
+                            const: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "409":
           $ref: "#/components/responses/Conflict"
         "503":
@@ -416,6 +469,10 @@ components:
       type: apiKey
       in: header
       name: X-Signature
+    mailDeliveryHmac:
+      type: apiKey
+      in: header
+      name: X-Signature
 
   parameters:
     IdempotencyKey:
@@ -659,11 +716,7 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
     TooManyRequests:
-      description: Rate limit exceeded
-      headers:
-        Retry-After:
-          schema:
-            type: integer
+      description: Verification attempt rate limit exceeded
       content:
         application/json:
           schema:

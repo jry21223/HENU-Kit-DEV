@@ -49,6 +49,26 @@ type AuthorizationRole struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type MailDeadLetter struct {
+	ID             pgtype.UUID        `json:"id"`
+	OutboxID       pgtype.UUID        `json:"outbox_id"`
+	AttemptCount   int32              `json:"attempt_count"`
+	ErrorCode      string             `json:"error_code"`
+	DeadLetteredAt pgtype.Timestamptz `json:"dead_lettered_at"`
+	RequeuedAt     pgtype.Timestamptz `json:"requeued_at"`
+	RequeuedBy     pgtype.Text        `json:"requeued_by"`
+	RequeueReason  pgtype.Text        `json:"requeue_reason"`
+}
+
+type MailDeliveryReceipt struct {
+	MessageID       string             `json:"message_id"`
+	RequestID       string             `json:"request_id"`
+	ActorID         string             `json:"actor_id"`
+	ReceivedAt      pgtype.Timestamptz `json:"received_at"`
+	AppliedOutboxID pgtype.UUID        `json:"applied_outbox_id"`
+	AppliedAt       pgtype.Timestamptz `json:"applied_at"`
+}
+
 type MailOutbox struct {
 	ID                  pgtype.UUID        `json:"id"`
 	VerificationCodeID  pgtype.UUID        `json:"verification_code_id"`
@@ -71,6 +91,18 @@ type MailOutbox struct {
 	LastErrorCode       pgtype.Text        `json:"last_error_code"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MailOutboxAuditEvent struct {
+	ID           pgtype.UUID        `json:"id"`
+	OutboxID     pgtype.UUID        `json:"outbox_id"`
+	RequestID    string             `json:"request_id"`
+	ActorKind    string             `json:"actor_kind"`
+	ActorID      string             `json:"actor_id"`
+	Action       string             `json:"action"`
+	AttemptCount int32              `json:"attempt_count"`
+	ReasonCode   pgtype.Text        `json:"reason_code"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type OauthClient struct {

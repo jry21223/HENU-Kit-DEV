@@ -12,20 +12,96 @@ import (
 )
 
 const acceptMailOutbox = `-- name: AcceptMailOutbox :execrows
-UPDATE mail_outbox
-SET status = 'accepted', locked_at = NULL, locked_by = NULL,
-    provider_message_id = $3, accepted_at = now(), last_error_code = NULL, updated_at = now()
-WHERE id = $1 AND status = 'processing' AND locked_by = $2
+WITH transitioned AS (
+    UPDATE mail_outbox AS job
+    SET status = 'accepted', locked_at = NULL, locked_by = NULL,
+        provider_message_id = $2, accepted_at = now(),
+        last_error_code = NULL, updated_at = now()
+    WHERE job.id = $3 AND job.status = 'processing' AND job.locked_by = $1
+    RETURNING job.id, job.request_id, job.attempt_count
+)
+INSERT INTO mail_outbox_audit_events (
+    outbox_id, request_id, actor_kind, actor_id, action, attempt_count
+)
+SELECT id, request_id, 'worker', $1, 'accepted', attempt_count
+FROM transitioned
 `
 
 type AcceptMailOutboxParams struct {
-	ID                pgtype.UUID `json:"id"`
-	LockedBy          pgtype.Text `json:"locked_by"`
+	WorkerID          string      `json:"worker_id"`
 	ProviderMessageID pgtype.Text `json:"provider_message_id"`
+	OutboxID          pgtype.UUID `json:"outbox_id"`
 }
 
 func (q *Queries) AcceptMailOutbox(ctx context.Context, arg AcceptMailOutboxParams) (int64, error) {
-	result, err := q.db.Exec(ctx, acceptMailOutbox, arg.ID, arg.LockedBy, arg.ProviderMessageID)
+	result, err := q.db.Exec(ctx, acceptMailOutbox, arg.WorkerID, arg.ProviderMessageID, arg.OutboxID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const applyAllPendingMailDeliveryReceipts = `-- name: ApplyAllPendingMailDeliveryReceipts :exec
+WITH candidates AS (
+    SELECT receipt.message_id, receipt.request_id, receipt.actor_id
+    FROM mail_delivery_receipts AS receipt
+    JOIN mail_outbox AS job ON job.provider_message_id = receipt.message_id
+    WHERE receipt.applied_at IS NULL AND job.status = 'accepted'
+    ORDER BY receipt.received_at
+    FOR UPDATE OF receipt SKIP LOCKED
+    LIMIT 50
+), transitioned AS (
+    UPDATE mail_outbox AS job
+    SET status = 'delivered', delivered_at = now(), updated_at = now()
+    FROM candidates
+    WHERE candidates.message_id = job.provider_message_id AND job.status = 'accepted'
+    RETURNING job.id, job.attempt_count, candidates.message_id, candidates.request_id, candidates.actor_id
+), audited AS (
+    INSERT INTO mail_outbox_audit_events (
+        outbox_id, request_id, actor_kind, actor_id, action, attempt_count
+    )
+    SELECT id, request_id, 'provider', actor_id, 'delivered', attempt_count
+    FROM transitioned
+    RETURNING outbox_id
+)
+UPDATE mail_delivery_receipts AS receipt
+SET applied_outbox_id = transitioned.id, applied_at = now()
+FROM transitioned
+JOIN audited ON audited.outbox_id = transitioned.id
+WHERE receipt.message_id = transitioned.message_id
+`
+
+func (q *Queries) ApplyAllPendingMailDeliveryReceipts(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, applyAllPendingMailDeliveryReceipts)
+	return err
+}
+
+const applyPendingMailDeliveryReceipt = `-- name: ApplyPendingMailDeliveryReceipt :execrows
+WITH transitioned AS (
+    UPDATE mail_outbox AS job
+    SET status = 'delivered', delivered_at = now(), updated_at = now()
+    FROM mail_delivery_receipts AS receipt
+    WHERE job.provider_message_id = $1
+      AND receipt.message_id = job.provider_message_id
+      AND receipt.applied_at IS NULL AND job.status = 'accepted'
+    RETURNING job.id, job.attempt_count, receipt.message_id, receipt.request_id, receipt.actor_id
+), audited AS (
+    INSERT INTO mail_outbox_audit_events (
+        outbox_id, request_id, actor_kind, actor_id, action, attempt_count
+    )
+    SELECT id, request_id, 'provider', actor_id, 'delivered', attempt_count
+    FROM transitioned
+    RETURNING outbox_id
+)
+UPDATE mail_delivery_receipts AS receipt
+SET applied_outbox_id = transitioned.id, applied_at = now()
+FROM transitioned
+JOIN audited ON audited.outbox_id = transitioned.id
+WHERE receipt.message_id = transitioned.message_id
+`
+
+func (q *Queries) ApplyPendingMailDeliveryReceipt(ctx context.Context, messageID pgtype.Text) (int64, error) {
+	result, err := q.db.Exec(ctx, applyPendingMailDeliveryReceipt, messageID)
 	if err != nil {
 		return 0, err
 	}
@@ -38,25 +114,38 @@ WITH candidate AS (
     FROM mail_outbox AS candidate_job
     WHERE (
         (candidate_job.status IN ('pending', 'retry_due') AND candidate_job.available_at <= now())
-        OR (candidate_job.status = 'processing' AND candidate_job.locked_at < $2)
+        OR (candidate_job.status = 'processing' AND candidate_job.locked_at < $1)
     )
       AND candidate_job.attempt_count < candidate_job.max_attempts
     ORDER BY CASE candidate_job.priority WHEN 'critical' THEN 1 ELSE 2 END, candidate_job.available_at, candidate_job.created_at
     FOR UPDATE SKIP LOCKED
     LIMIT 1
+), claimed AS (
+    UPDATE mail_outbox AS job
+    SET status = 'processing', attempt_count = attempt_count + 1,
+        locked_at = now(), locked_by = $2, updated_at = now()
+    FROM candidate
+    WHERE job.id = candidate.id
+    RETURNING job.id, job.dedupe_key, job.request_id, job.recipient_ciphertext, job.payload_ciphertext,
+              job.attempt_count, job.max_attempts
+), audited AS (
+    INSERT INTO mail_outbox_audit_events (
+        outbox_id, request_id, actor_kind, actor_id, action, attempt_count
+    )
+    SELECT id, request_id, 'worker', $2, 'claimed', attempt_count
+    FROM claimed
+    RETURNING outbox_id
 )
-UPDATE mail_outbox AS job
-SET status = 'processing', attempt_count = attempt_count + 1,
-    locked_at = now(), locked_by = $1, updated_at = now()
-FROM candidate
-WHERE job.id = candidate.id
-RETURNING job.id, job.dedupe_key, job.request_id, job.recipient_ciphertext, job.payload_ciphertext,
-          job.attempt_count, job.max_attempts
+SELECT claimed.id, claimed.dedupe_key, claimed.request_id,
+       claimed.recipient_ciphertext, claimed.payload_ciphertext,
+       claimed.attempt_count, claimed.max_attempts
+FROM claimed
+JOIN audited ON audited.outbox_id = claimed.id
 `
 
 type ClaimMailOutboxParams struct {
-	WorkerID      pgtype.Text        `json:"worker_id"`
 	ReclaimBefore pgtype.Timestamptz `json:"reclaim_before"`
+	WorkerID      pgtype.Text        `json:"worker_id"`
 }
 
 type ClaimMailOutboxRow struct {
@@ -70,7 +159,7 @@ type ClaimMailOutboxRow struct {
 }
 
 func (q *Queries) ClaimMailOutbox(ctx context.Context, arg ClaimMailOutboxParams) (ClaimMailOutboxRow, error) {
-	row := q.db.QueryRow(ctx, claimMailOutbox, arg.WorkerID, arg.ReclaimBefore)
+	row := q.db.QueryRow(ctx, claimMailOutbox, arg.ReclaimBefore, arg.WorkerID)
 	var i ClaimMailOutboxRow
 	err := row.Scan(
 		&i.ID,
@@ -173,10 +262,24 @@ func (q *Queries) CreateVerificationMailOutbox(ctx context.Context, arg CreateVe
 }
 
 const failExhaustedOutboxLeases = `-- name: FailExhaustedOutboxLeases :exec
-UPDATE mail_outbox
-SET status = 'failed', locked_at = NULL, locked_by = NULL,
-    failed_at = now(), last_error_code = 'WORKER_LEASE_EXHAUSTED', updated_at = now()
-WHERE status = 'processing' AND locked_at < $1 AND attempt_count >= max_attempts
+WITH transitioned AS (
+    UPDATE mail_outbox AS job
+    SET status = 'failed', locked_at = NULL, locked_by = NULL,
+        failed_at = now(), last_error_code = 'WORKER_LEASE_EXHAUSTED', updated_at = now()
+    WHERE job.status = 'processing' AND job.locked_at < $1 AND job.attempt_count >= job.max_attempts
+    RETURNING job.id, job.request_id, job.attempt_count
+), dead_lettered AS (
+    INSERT INTO mail_dead_letters (outbox_id, attempt_count, error_code)
+    SELECT id, attempt_count, 'WORKER_LEASE_EXHAUSTED' FROM transitioned
+    RETURNING outbox_id
+)
+INSERT INTO mail_outbox_audit_events (
+    outbox_id, request_id, actor_kind, actor_id, action, attempt_count, reason_code
+)
+SELECT transitioned.id, transitioned.request_id, 'system', 'lease-recovery', 'failed',
+       transitioned.attempt_count, 'WORKER_LEASE_EXHAUSTED'
+FROM transitioned
+JOIN dead_lettered ON dead_lettered.outbox_id = transitioned.id
 `
 
 func (q *Queries) FailExhaustedOutboxLeases(ctx context.Context, lockedAt pgtype.Timestamptz) error {
@@ -185,24 +288,56 @@ func (q *Queries) FailExhaustedOutboxLeases(ctx context.Context, lockedAt pgtype
 }
 
 const failMailOutbox = `-- name: FailMailOutbox :execrows
-UPDATE mail_outbox
-SET status = 'failed', locked_at = NULL, locked_by = NULL,
-    failed_at = now(), last_error_code = $3, updated_at = now()
-WHERE id = $1 AND status = 'processing' AND locked_by = $2
+WITH transitioned AS (
+    UPDATE mail_outbox AS job
+    SET status = 'failed', locked_at = NULL, locked_by = NULL,
+        failed_at = now(), last_error_code = $2, updated_at = now()
+    WHERE job.id = $3 AND job.status = 'processing' AND job.locked_by = $1
+    RETURNING job.id, job.request_id, job.attempt_count, job.last_error_code
+), dead_lettered AS (
+    INSERT INTO mail_dead_letters (outbox_id, attempt_count, error_code)
+    SELECT id, attempt_count, last_error_code FROM transitioned
+    RETURNING outbox_id
+)
+INSERT INTO mail_outbox_audit_events (
+    outbox_id, request_id, actor_kind, actor_id, action, attempt_count, reason_code
+)
+SELECT transitioned.id, transitioned.request_id, 'worker', $1, 'failed',
+       transitioned.attempt_count, transitioned.last_error_code
+FROM transitioned
+JOIN dead_lettered ON dead_lettered.outbox_id = transitioned.id
 `
 
 type FailMailOutboxParams struct {
-	ID            pgtype.UUID `json:"id"`
-	LockedBy      pgtype.Text `json:"locked_by"`
+	WorkerID      string      `json:"worker_id"`
 	LastErrorCode pgtype.Text `json:"last_error_code"`
+	OutboxID      pgtype.UUID `json:"outbox_id"`
 }
 
 func (q *Queries) FailMailOutbox(ctx context.Context, arg FailMailOutboxParams) (int64, error) {
-	result, err := q.db.Exec(ctx, failMailOutbox, arg.ID, arg.LockedBy, arg.LastErrorCode)
+	result, err := q.db.Exec(ctx, failMailOutbox, arg.WorkerID, arg.LastErrorCode, arg.OutboxID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getConsumedVerificationReplay = `-- name: GetConsumedVerificationReplay :one
+SELECT id, consumed_request_fingerprint
+FROM verification_codes
+WHERE consumed_request_key = $1 AND used_at IS NOT NULL
+`
+
+type GetConsumedVerificationReplayRow struct {
+	ID                         pgtype.UUID `json:"id"`
+	ConsumedRequestFingerprint []byte      `json:"consumed_request_fingerprint"`
+}
+
+func (q *Queries) GetConsumedVerificationReplay(ctx context.Context, consumedRequestKey pgtype.Text) (GetConsumedVerificationReplayRow, error) {
+	row := q.db.QueryRow(ctx, getConsumedVerificationReplay, consumedRequestKey)
+	var i GetConsumedVerificationReplayRow
+	err := row.Scan(&i.ID, &i.ConsumedRequestFingerprint)
+	return i, err
 }
 
 const getMailOutboxByVerificationCode = `-- name: GetMailOutboxByVerificationCode :one
@@ -310,14 +445,114 @@ func (q *Queries) GetVerificationRequestByKey(ctx context.Context, requestKey st
 	return i, err
 }
 
-const markMailOutboxDelivered = `-- name: MarkMailOutboxDelivered :execrows
-UPDATE mail_outbox
-SET status = 'delivered', delivered_at = now(), updated_at = now()
-WHERE provider_message_id = $1 AND status = 'accepted'
+const listMailOutboxAuditEvents = `-- name: ListMailOutboxAuditEvents :many
+SELECT request_id, actor_kind, actor_id, action, attempt_count, reason_code, created_at
+FROM mail_outbox_audit_events
+WHERE outbox_id = $1
+ORDER BY created_at, id
 `
 
-func (q *Queries) MarkMailOutboxDelivered(ctx context.Context, providerMessageID pgtype.Text) (int64, error) {
-	result, err := q.db.Exec(ctx, markMailOutboxDelivered, providerMessageID)
+type ListMailOutboxAuditEventsRow struct {
+	RequestID    string             `json:"request_id"`
+	ActorKind    string             `json:"actor_kind"`
+	ActorID      string             `json:"actor_id"`
+	Action       string             `json:"action"`
+	AttemptCount int32              `json:"attempt_count"`
+	ReasonCode   pgtype.Text        `json:"reason_code"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ListMailOutboxAuditEvents(ctx context.Context, outboxID pgtype.UUID) ([]ListMailOutboxAuditEventsRow, error) {
+	rows, err := q.db.Query(ctx, listMailOutboxAuditEvents, outboxID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMailOutboxAuditEventsRow{}
+	for rows.Next() {
+		var i ListMailOutboxAuditEventsRow
+		if err := rows.Scan(
+			&i.RequestID,
+			&i.ActorKind,
+			&i.ActorID,
+			&i.Action,
+			&i.AttemptCount,
+			&i.ReasonCode,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markMailOutboxDelivered = `-- name: MarkMailOutboxDelivered :execrows
+WITH transitioned AS (
+    UPDATE mail_outbox
+    SET status = 'delivered', delivered_at = now(), updated_at = now()
+    WHERE provider_message_id = $3 AND status = 'accepted'
+    RETURNING id, attempt_count
+)
+INSERT INTO mail_outbox_audit_events (
+    outbox_id, request_id, actor_kind, actor_id, action, attempt_count
+)
+SELECT id, $1, 'provider', $2, 'delivered', attempt_count
+FROM transitioned
+`
+
+type MarkMailOutboxDeliveredParams struct {
+	RequestID         string      `json:"request_id"`
+	ActorID           string      `json:"actor_id"`
+	ProviderMessageID pgtype.Text `json:"provider_message_id"`
+}
+
+func (q *Queries) MarkMailOutboxDelivered(ctx context.Context, arg MarkMailOutboxDeliveredParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markMailOutboxDelivered, arg.RequestID, arg.ActorID, arg.ProviderMessageID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recordMailDeliveryReceipt = `-- name: RecordMailDeliveryReceipt :execrows
+WITH receipt AS (
+    INSERT INTO mail_delivery_receipts (message_id, request_id, actor_id)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (message_id) DO UPDATE SET message_id = EXCLUDED.message_id
+    RETURNING message_id, request_id, actor_id
+), transitioned AS (
+    UPDATE mail_outbox AS job
+    SET status = 'delivered', delivered_at = now(), updated_at = now()
+    FROM receipt
+    WHERE job.provider_message_id = receipt.message_id AND job.status = 'accepted'
+    RETURNING job.id, job.attempt_count, receipt.message_id, receipt.request_id, receipt.actor_id
+), audited AS (
+    INSERT INTO mail_outbox_audit_events (
+        outbox_id, request_id, actor_kind, actor_id, action, attempt_count
+    )
+    SELECT id, request_id, 'provider', actor_id, 'delivered', attempt_count
+    FROM transitioned
+    RETURNING outbox_id
+)
+UPDATE mail_delivery_receipts AS receipt
+SET applied_outbox_id = transitioned.id, applied_at = now()
+FROM transitioned
+JOIN audited ON audited.outbox_id = transitioned.id
+WHERE receipt.message_id = transitioned.message_id AND receipt.applied_at IS NULL
+`
+
+type RecordMailDeliveryReceiptParams struct {
+	MessageID string `json:"message_id"`
+	RequestID string `json:"request_id"`
+	ActorID   string `json:"actor_id"`
+}
+
+func (q *Queries) RecordMailDeliveryReceipt(ctx context.Context, arg RecordMailDeliveryReceiptParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordMailDeliveryReceipt, arg.MessageID, arg.RequestID, arg.ActorID)
 	if err != nil {
 		return 0, err
 	}
@@ -344,26 +579,94 @@ func (q *Queries) RegisterFailedVerificationAttempt(ctx context.Context, id pgty
 	return i, err
 }
 
+const requeueMailOutbox = `-- name: RequeueMailOutbox :one
+WITH target AS (
+    SELECT dead_letter.id AS dead_letter_id, job.id AS outbox_id
+    FROM mail_outbox AS job
+    JOIN mail_dead_letters AS dead_letter ON dead_letter.outbox_id = job.id
+    WHERE job.id = $1 AND job.status = 'failed'
+      AND dead_letter.requeued_at IS NULL
+    ORDER BY dead_letter.dead_lettered_at DESC
+    FOR UPDATE OF job, dead_letter
+    LIMIT 1
+), transitioned AS (
+    UPDATE mail_outbox AS job
+    SET status = 'pending', attempt_count = 0, available_at = now(),
+        locked_at = NULL, locked_by = NULL, provider_message_id = NULL,
+        accepted_at = NULL, delivered_at = NULL, failed_at = NULL,
+        last_error_code = NULL, updated_at = now()
+    FROM target
+    WHERE job.id = target.outbox_id
+    RETURNING job.id, job.request_id, job.attempt_count
+), closed_dead_letter AS (
+    UPDATE mail_dead_letters AS dead_letter
+    SET requeued_at = now(), requeued_by = $2, requeue_reason = $3
+    FROM target
+    WHERE dead_letter.id = target.dead_letter_id
+    RETURNING dead_letter.outbox_id
+), audited AS (
+    INSERT INTO mail_outbox_audit_events (
+        outbox_id, request_id, actor_kind, actor_id, action, attempt_count, reason_code
+    )
+    SELECT transitioned.id, $4, 'operator', $2,
+           'requeued', transitioned.attempt_count, 'MANUAL_REQUEUE'
+    FROM transitioned
+    JOIN closed_dead_letter ON closed_dead_letter.outbox_id = transitioned.id
+    RETURNING outbox_id
+)
+SELECT transitioned.id
+FROM transitioned
+JOIN audited ON audited.outbox_id = transitioned.id
+`
+
+type RequeueMailOutboxParams struct {
+	OutboxID  pgtype.UUID `json:"outbox_id"`
+	ActorID   pgtype.Text `json:"actor_id"`
+	Reason    pgtype.Text `json:"reason"`
+	RequestID string      `json:"request_id"`
+}
+
+func (q *Queries) RequeueMailOutbox(ctx context.Context, arg RequeueMailOutboxParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, requeueMailOutbox,
+		arg.OutboxID,
+		arg.ActorID,
+		arg.Reason,
+		arg.RequestID,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const retryMailOutbox = `-- name: RetryMailOutbox :execrows
-UPDATE mail_outbox
-SET status = 'retry_due', locked_at = NULL, locked_by = NULL,
-    available_at = $3, last_error_code = $4, updated_at = now()
-WHERE id = $1 AND status = 'processing' AND locked_by = $2 AND attempt_count < max_attempts
+WITH transitioned AS (
+    UPDATE mail_outbox AS job
+    SET status = 'retry_due', locked_at = NULL, locked_by = NULL,
+        available_at = $2, last_error_code = $3, updated_at = now()
+    WHERE job.id = $4 AND job.status = 'processing' AND job.locked_by = $1
+      AND job.attempt_count < job.max_attempts
+    RETURNING job.id, job.request_id, job.attempt_count, job.last_error_code
+)
+INSERT INTO mail_outbox_audit_events (
+    outbox_id, request_id, actor_kind, actor_id, action, attempt_count, reason_code
+)
+SELECT id, request_id, 'worker', $1, 'retry_scheduled', attempt_count, last_error_code
+FROM transitioned
 `
 
 type RetryMailOutboxParams struct {
-	ID            pgtype.UUID        `json:"id"`
-	LockedBy      pgtype.Text        `json:"locked_by"`
+	WorkerID      string             `json:"worker_id"`
 	AvailableAt   pgtype.Timestamptz `json:"available_at"`
 	LastErrorCode pgtype.Text        `json:"last_error_code"`
+	OutboxID      pgtype.UUID        `json:"outbox_id"`
 }
 
 func (q *Queries) RetryMailOutbox(ctx context.Context, arg RetryMailOutboxParams) (int64, error) {
 	result, err := q.db.Exec(ctx, retryMailOutbox,
-		arg.ID,
-		arg.LockedBy,
+		arg.WorkerID,
 		arg.AvailableAt,
 		arg.LastErrorCode,
+		arg.OutboxID,
 	)
 	if err != nil {
 		return 0, err

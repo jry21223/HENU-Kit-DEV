@@ -3,12 +3,18 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,9 +29,14 @@ import (
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/mailworker"
 	"henukit.dev/platform-core/internal/store"
+	"henukit.dev/platform-core/internal/verificationmail"
 )
 
 const testStudentEmail = "student@henu.edu.cn"
+const testDeliveryToken = "test-mail-delivery-token-32-characters"
+const testRetiringDeliveryToken = "test-retiring-delivery-token-32-characters"
+
+var testDeviceClients sync.Map
 
 func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 	ctx := context.Background()
@@ -37,6 +48,7 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 		IdempotencyEncryptionKey:  testIdempotencyEncryptionKey,
 		VerificationEncryptionKey: testVerificationEncryptionKey,
 		StudentEmailDomains:       []string{"henu.edu.cn"},
+		MailDeliveryWebhookToken:  testDeliveryToken,
 	})
 	if err != nil {
 		t.Fatalf("create platform core: %v", err)
@@ -71,9 +83,9 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create mail worker: %v", err)
 	}
-	processed, err := worker.ProcessOne(ctx)
-	if err != nil || !processed {
-		t.Fatalf("process verification mail: processed=%v err=%v", processed, err)
+	outcome, err := worker.ProcessOne(ctx)
+	if err != nil || !outcome.Processed {
+		t.Fatalf("process verification mail: outcome=%+v err=%v", outcome, err)
 	}
 	message := sender.lastMessage()
 	if message.Recipient != testStudentEmail || len(message.Code) != 6 {
@@ -118,17 +130,163 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 		t.Fatalf("concurrent verification successes = %d, want 1", successes.Load())
 	}
 	key := <-winningKey
-	replay := verifyCode(t, server, message.Code, key)
-	replay.Body.Close()
-	if replay.StatusCode != http.StatusOK {
-		t.Fatalf("idempotent verification replay = %d, want 200", replay.StatusCode)
+	for replayIndex := range 40 {
+		replay := verifyCode(t, server, message.Code, key)
+		replay.Body.Close()
+		if replay.StatusCode != http.StatusOK {
+			t.Fatalf("idempotent verification replay %d = %d, want 200", replayIndex, replay.StatusCode)
+		}
 	}
-	delivered, err := worker.MarkDelivered(ctx, sender.messageID)
-	if err != nil || !delivered {
-		t.Fatalf("mark provider delivery: delivered=%v err=%v", delivered, err)
+	deliveryJSON := []byte(fmt.Sprintf(`{"message_id":%q,"status":"delivered"}`, sender.messageID))
+	unauthorizedRequest, _ := http.NewRequest(http.MethodPost, server.URL+contract.RecordMailDeliveryRoute, bytes.NewReader(deliveryJSON))
+	unauthorizedRequest.Header.Set("Content-Type", "application/json")
+	signDeliveryRequest(unauthorizedRequest, deliveryJSON, "mail-provider-active", "invalid-delivery-token-invalid-delivery-token", "nonce_unauthorized_001")
+	unauthorizedResponse, err := server.Client().Do(unauthorizedRequest)
+	if err != nil || unauthorizedResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthorized provider delivery: status=%v err=%v, want 401", unauthorizedResponse.StatusCode, err)
 	}
+	unauthorizedResponse.Body.Close()
+	deliveryRequest, _ := http.NewRequest(http.MethodPost, server.URL+contract.RecordMailDeliveryRoute, bytes.NewReader(deliveryJSON))
+	deliveryRequest.Header.Set("Content-Type", "application/json")
+	signDeliveryRequest(deliveryRequest, deliveryJSON, "mail-provider-active", testDeliveryToken, "nonce_delivery_001")
+	deliveryResponse, err := server.Client().Do(deliveryRequest)
+	if err != nil {
+		t.Fatalf("record provider delivery: %v", err)
+	}
+	if deliveryResponse.StatusCode != http.StatusAccepted {
+		t.Fatalf("record provider delivery: status=%v, want 202", deliveryResponse.StatusCode)
+	}
+	deliveryResponse.Body.Close()
 	if err := pool.QueryRow(ctx, `SELECT status FROM mail_outbox WHERE verification_code_id = $1`, verificationID).Scan(&status); err != nil || status != "delivered" {
 		t.Fatalf("final delivery status = %s err=%v, want delivered", status, err)
+	}
+	var auditActions string
+	if err := pool.QueryRow(ctx, `
+		SELECT string_agg(action, ',' ORDER BY created_at, id)
+		FROM mail_outbox_audit_events
+		WHERE outbox_id = (SELECT id FROM mail_outbox WHERE verification_code_id = $1)`, verificationID).Scan(&auditActions); err != nil || auditActions != "claimed,accepted,delivered" {
+		t.Fatalf("delivery audit actions = %q err=%v, want claimed,accepted,delivered", auditActions, err)
+	}
+}
+
+func TestMailWorkerNeverSendsExpiredVerificationPayload(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	response := requestVerificationCode(t, server, "request_expired_payload_001")
+	response.Body.Close()
+
+	var outboxID pgtype.UUID
+	var recipientCiphertext, payloadCiphertext []byte
+	if err := pool.QueryRow(ctx, `SELECT id, recipient_ciphertext, payload_ciphertext FROM mail_outbox`).Scan(&outboxID, &recipientCiphertext, &payloadCiphertext); err != nil {
+		t.Fatalf("read queued payload: %v", err)
+	}
+	codec, err := verificationmail.NewCodec(testVerificationEncryptionKey)
+	if err != nil {
+		t.Fatalf("create payload codec: %v", err)
+	}
+	recipient, payload, err := codec.Decode(recipientCiphertext, payloadCiphertext)
+	if err != nil {
+		t.Fatalf("decode queued payload: %v", err)
+	}
+	payload.ExpiresAt = time.Now().Add(-time.Second)
+	recipientCiphertext, payloadCiphertext, err = codec.Encode(recipient, payload)
+	if err != nil {
+		t.Fatalf("encode expired payload: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE mail_outbox SET recipient_ciphertext = $2, payload_ciphertext = $3 WHERE id = $1`, outboxID, recipientCiphertext, payloadCiphertext); err != nil {
+		t.Fatalf("store expired payload: %v", err)
+	}
+
+	sender := &captureSender{messageID: "must_not_send"}
+	worker, _ := mailworker.New(store.New(pool), sender, "worker_expired_payload", testVerificationEncryptionKey, time.Minute, time.Second)
+	outcome, err := worker.ProcessOne(ctx)
+	if err != nil || !outcome.Processed || outcome.Result != "failed" || outcome.ErrorCode != "VERIFICATION_EXPIRED" {
+		t.Fatalf("expired payload outcome=%+v err=%v", outcome, err)
+	}
+	if sender.lastMessage().Recipient != "" {
+		t.Fatal("worker sent an expired verification payload")
+	}
+	var status, errorCode string
+	var deadLetters int
+	if err := pool.QueryRow(ctx, `SELECT status, last_error_code, (SELECT count(*) FROM mail_dead_letters WHERE outbox_id = mail_outbox.id) FROM mail_outbox WHERE id = $1`, outboxID).Scan(&status, &errorCode, &deadLetters); err != nil || status != "failed" || errorCode != "VERIFICATION_EXPIRED" || deadLetters != 1 {
+		t.Fatalf("expired payload state=%s/%s dead_letters=%d err=%v", status, errorCode, deadLetters, err)
+	}
+}
+
+func TestEarlyDeliveryReceiptReconcilesAfterProviderAcceptance(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	handler, err := platformcore.New(platformcore.Config{
+		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
+		VerificationEncryptionKey: testVerificationEncryptionKey, StudentEmailDomains: []string{"henu.edu.cn"},
+		MailDeliveryWebhookToken:  testDeliveryToken,
+		MailDeliveryRetiringKeyID: "mail-provider-retiring", MailDeliveryRetiringToken: testRetiringDeliveryToken,
+	})
+	if err != nil {
+		t.Fatalf("create platform core: %v", err)
+	}
+	server := httptest.NewTLSServer(handler)
+	t.Cleanup(server.Close)
+	response := requestVerificationCode(t, server, "request_early_receipt_001")
+	response.Body.Close()
+
+	messageID := "provider_early_receipt_001"
+	body := []byte(fmt.Sprintf(`{"message_id":%q,"status":"delivered"}`, messageID))
+	receiptRequest, _ := http.NewRequest(http.MethodPost, server.URL+contract.RecordMailDeliveryRoute, bytes.NewReader(body))
+	receiptRequest.Header.Set("Content-Type", "application/json")
+	signDeliveryRequest(receiptRequest, body, "mail-provider-retiring", testRetiringDeliveryToken, "nonce_early_receipt_001")
+	receiptResponse, err := server.Client().Do(receiptRequest)
+	if err != nil || receiptResponse.StatusCode != http.StatusAccepted {
+		t.Fatalf("early receipt status=%v err=%v", receiptResponse.StatusCode, err)
+	}
+	receiptResponse.Body.Close()
+	var applied bool
+	if err := pool.QueryRow(ctx, `SELECT applied_at IS NOT NULL FROM mail_delivery_receipts WHERE message_id = $1`, messageID).Scan(&applied); err != nil || applied {
+		t.Fatalf("early receipt applied=%v err=%v, want pending", applied, err)
+	}
+
+	worker, _ := mailworker.New(store.New(pool), &captureSender{messageID: messageID}, "worker_early_receipt", testVerificationEncryptionKey, time.Minute, time.Second)
+	outcome, err := worker.ProcessOne(ctx)
+	if err != nil || outcome.Result != "accepted" {
+		t.Fatalf("worker outcome=%+v err=%v", outcome, err)
+	}
+	var status string
+	if err := pool.QueryRow(ctx, `SELECT status FROM mail_outbox`).Scan(&status); err != nil || status != "delivered" {
+		t.Fatalf("early receipt reconciled status=%s err=%v, want delivered", status, err)
+	}
+
+	replayRequest, _ := http.NewRequest(http.MethodPost, server.URL+contract.RecordMailDeliveryRoute, bytes.NewReader(body))
+	replayRequest.Header.Set("Content-Type", "application/json")
+	signDeliveryRequest(replayRequest, body, "mail-provider-retiring", testRetiringDeliveryToken, "nonce_early_receipt_001")
+	replayResponse, err := server.Client().Do(replayRequest)
+	if err != nil || replayResponse.StatusCode != http.StatusConflict {
+		t.Fatalf("receipt nonce replay status=%v err=%v, want 409", replayResponse.StatusCode, err)
+	}
+	replayResponse.Body.Close()
+}
+
+func TestVerificationAndOutboxRollbackTogether(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	if _, err := pool.Exec(ctx, `CREATE FUNCTION fail_test_mail_outbox_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected outbox failure'; END $$; CREATE TRIGGER fail_test_mail_outbox BEFORE INSERT ON mail_outbox FOR EACH ROW EXECUTE FUNCTION fail_test_mail_outbox_insert()`); err != nil {
+		t.Fatalf("install failure injection: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DROP TRIGGER IF EXISTS fail_test_mail_outbox ON mail_outbox; DROP FUNCTION IF EXISTS fail_test_mail_outbox_insert()`)
+	})
+	response := requestVerificationCode(t, server, "request_rollback_001")
+	response.Body.Close()
+	if response.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("injected outbox failure status=%d, want 500", response.StatusCode)
+	}
+	var codes, jobs int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM verification_codes), (SELECT count(*) FROM mail_outbox)`).Scan(&codes, &jobs); err != nil || codes != 0 || jobs != 0 {
+		t.Fatalf("partial transaction codes=%d jobs=%d err=%v, want 0/0", codes, jobs, err)
 	}
 }
 
@@ -139,6 +297,7 @@ func TestVerificationRateLimitAndRedisLossDoNotLoseOutbox(t *testing.T) {
 	handler, err := platformcore.New(platformcore.Config{
 		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
 		VerificationEncryptionKey: testVerificationEncryptionKey, StudentEmailDomains: []string{"henu.edu.cn"},
+		TrustedProxyCIDRs: []string{"127.0.0.0/8", "::1/128"},
 	})
 	if err != nil {
 		t.Fatalf("create platform core: %v", err)
@@ -152,8 +311,8 @@ func TestVerificationRateLimitAndRedisLossDoNotLoseOutbox(t *testing.T) {
 	}
 	limited := requestVerificationCode(t, server, "request_rate_limit_002")
 	limited.Body.Close()
-	if limited.StatusCode != http.StatusTooManyRequests || limited.Header.Get("Retry-After") != "60" {
-		t.Fatalf("rate-limited request = %d retry=%q, want 429/60", limited.StatusCode, limited.Header.Get("Retry-After"))
+	if limited.StatusCode != http.StatusAccepted {
+		t.Fatalf("rate-limited request = %d, want privacy-preserving 202", limited.StatusCode)
 	}
 	var codes, jobs int
 	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM verification_codes), (SELECT count(*) FROM mail_outbox)`).Scan(&codes, &jobs); err != nil || codes != 1 || jobs != 1 {
@@ -169,9 +328,9 @@ func TestVerificationRateLimitAndRedisLossDoNotLoseOutbox(t *testing.T) {
 	}
 	sender := &captureSender{messageID: "provider_after_redis_loss"}
 	worker, _ := mailworker.New(store.New(pool), sender, "worker_no_redis", testVerificationEncryptionKey, time.Minute, time.Second)
-	processed, err := worker.ProcessOne(ctx)
-	if err != nil || !processed || sender.lastMessage().Code == "" {
-		t.Fatalf("process durable outbox without Redis: processed=%v err=%v", processed, err)
+	outcome, err := worker.ProcessOne(ctx)
+	if err != nil || !outcome.Processed || sender.lastMessage().Code == "" {
+		t.Fatalf("process durable outbox without Redis: outcome=%+v err=%v", outcome, err)
 	}
 }
 
@@ -237,6 +396,58 @@ func TestVerificationIdempotencyExpiryAndAttemptLimit(t *testing.T) {
 	}
 }
 
+func TestVerificationAppliesIPAndDeviceTimeBuckets(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	for index := range 31 {
+		response := requestVerificationCodeFromDevice(t, server,
+			fmt.Sprintf("ip-limit-%02d@henu.edu.cn", index), "login", "portal",
+			fmt.Sprintf("device-ip-%02d", index), fmt.Sprintf("request_ip_limit_%02d", index))
+		response.Body.Close()
+		if response.StatusCode != http.StatusAccepted {
+			t.Fatalf("IP bucket request %d = %d, want 202", index, response.StatusCode)
+		}
+	}
+	var rows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM verification_codes`).Scan(&rows); err != nil || rows != 30 {
+		t.Fatalf("IP hourly bucket rows = %d err=%v, want 30", rows, err)
+	}
+
+	resetIdentityTables(t, ctx, pool, redisClient)
+	for index := range 11 {
+		response := requestVerificationCodeFromDevice(t, server,
+			fmt.Sprintf("device-limit-%02d@henu.edu.cn", index), "login", "portal",
+			"shared-device-001", fmt.Sprintf("request_device_limit_%02d", index))
+		response.Body.Close()
+		if response.StatusCode != http.StatusAccepted {
+			t.Fatalf("device bucket request %d = %d, want 202", index, response.StatusCode)
+		}
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM verification_codes`).Scan(&rows); err != nil || rows != 10 {
+		t.Fatalf("device hourly bucket rows = %d err=%v, want 10", rows, err)
+	}
+}
+
+func TestVerificationAttemptsUseDeviceAndIPBuckets(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	for index := range 31 {
+		response := verifyCodeWithEmail(t, server, fmt.Sprintf("verify-limit-%02d@henu.edu.cn", index), "000000", fmt.Sprintf("verify_limit_%02d", index))
+		response.Body.Close()
+		want := http.StatusBadRequest
+		if index == 30 {
+			want = http.StatusTooManyRequests
+		}
+		if response.StatusCode != want {
+			t.Fatalf("verify device bucket request %d=%d, want %d", index, response.StatusCode, want)
+		}
+	}
+}
+
 func TestMailWorkerRetriesAndRecoversExpiredLease(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
@@ -247,9 +458,9 @@ func TestMailWorkerRetriesAndRecoversExpiredLease(t *testing.T) {
 
 	sender := &captureSender{messageID: "provider_retry_001", failures: 1}
 	worker, _ := mailworker.New(store.New(pool), sender, "worker_retry", testVerificationEncryptionKey, time.Minute, time.Second)
-	processed, err := worker.ProcessOne(ctx)
-	if err != nil || !processed {
-		t.Fatalf("first retry attempt: processed=%v err=%v", processed, err)
+	outcome, err := worker.ProcessOne(ctx)
+	if err != nil || !outcome.Processed {
+		t.Fatalf("first retry attempt: outcome=%+v err=%v", outcome, err)
 	}
 	var status string
 	var attempts int
@@ -259,9 +470,9 @@ func TestMailWorkerRetriesAndRecoversExpiredLease(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE mail_outbox SET available_at = now() WHERE status = 'retry_due'`); err != nil {
 		t.Fatalf("make retry due: %v", err)
 	}
-	processed, err = worker.ProcessOne(ctx)
-	if err != nil || !processed {
-		t.Fatalf("second retry attempt: processed=%v err=%v", processed, err)
+	outcome, err = worker.ProcessOne(ctx)
+	if err != nil || !outcome.Processed {
+		t.Fatalf("second retry attempt: outcome=%+v err=%v", outcome, err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT status, attempt_count FROM mail_outbox`).Scan(&status, &attempts); err != nil || status != "accepted" || attempts != 2 {
 		t.Fatalf("accepted retry state = %s/%d err=%v, want accepted/2", status, attempts, err)
@@ -275,12 +486,45 @@ func TestMailWorkerRetriesAndRecoversExpiredLease(t *testing.T) {
 	}
 	recoverySender := &captureSender{messageID: "provider_recovered_001"}
 	recoveryWorker, _ := mailworker.New(store.New(pool), recoverySender, "worker_recovery", testVerificationEncryptionKey, time.Minute, time.Second)
-	processed, err = recoveryWorker.ProcessOne(ctx)
-	if err != nil || !processed {
-		t.Fatalf("recover abandoned lease: processed=%v err=%v", processed, err)
+	outcome, err = recoveryWorker.ProcessOne(ctx)
+	if err != nil || !outcome.Processed {
+		t.Fatalf("recover abandoned lease: outcome=%+v err=%v", outcome, err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT status, attempt_count FROM mail_outbox`).Scan(&status, &attempts); err != nil || status != "accepted" || attempts != 2 {
 		t.Fatalf("recovered state = %s/%d err=%v, want accepted/2", status, attempts, err)
+	}
+}
+
+func TestMailWorkerRecoveryReliesOnProviderIdempotencyAfterAcceptanceCrash(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	response := requestVerificationCode(t, server, "request_acceptance_crash_001")
+	response.Body.Close()
+	queries := store.New(pool)
+	claimed, err := queries.ClaimMailOutbox(ctx, store.ClaimMailOutboxParams{
+		WorkerID:      pgtype.Text{String: "worker_killed", Valid: true},
+		ReclaimBefore: pgtype.Timestamptz{Time: time.Now().Add(-time.Minute), Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("claim before simulated crash: %v", err)
+	}
+	provider := newIdempotentSender("provider_acceptance_crash_001")
+	if _, err := provider.Send(ctx, mailworker.Message{IdempotencyKey: claimed.DedupeKey}); err != nil {
+		t.Fatalf("provider acceptance: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE mail_outbox SET locked_at = now() - interval '5 minutes' WHERE id = $1`, claimed.ID); err != nil {
+		t.Fatalf("expire crashed lease: %v", err)
+	}
+	recoveryWorker, _ := mailworker.New(queries, provider, "worker_after_kill", testVerificationEncryptionKey, time.Minute, time.Second)
+	outcome, err := recoveryWorker.ProcessOne(ctx)
+	if err != nil || outcome.Result != "accepted" {
+		t.Fatalf("recovery outcome=%+v err=%v", outcome, err)
+	}
+	attempts, deliveries := provider.counts()
+	if attempts != 2 || deliveries != 1 {
+		t.Fatalf("provider attempts=%d deliveries=%d, want 2/1", attempts, deliveries)
 	}
 }
 
@@ -295,9 +539,9 @@ func TestMailWorkerTimeoutAndPermanentFailureReachDurableStates(t *testing.T) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	}), "worker_timeout", testVerificationEncryptionKey, time.Minute, 20*time.Millisecond)
-	processed, err := timeoutWorker.ProcessOne(ctx)
-	if err != nil || !processed {
-		t.Fatalf("timeout attempt: processed=%v err=%v", processed, err)
+	outcome, err := timeoutWorker.ProcessOne(ctx)
+	if err != nil || !outcome.Processed {
+		t.Fatalf("timeout attempt: outcome=%+v err=%v", outcome, err)
 	}
 	var status, errorCode string
 	if err := pool.QueryRow(ctx, `SELECT status, last_error_code FROM mail_outbox`).Scan(&status, &errorCode); err != nil || status != "retry_due" || errorCode != "SEND_TIMEOUT" {
@@ -310,12 +554,46 @@ func TestMailWorkerTimeoutAndPermanentFailureReachDurableStates(t *testing.T) {
 	permanentWorker, _ := mailworker.New(store.New(pool), senderFunc(func(context.Context, mailworker.Message) (string, error) {
 		return "", &mailworker.SendError{Code: "RECIPIENT_REJECTED", Permanent: true}
 	}), "worker_permanent", testVerificationEncryptionKey, time.Minute, time.Second)
-	processed, err = permanentWorker.ProcessOne(ctx)
-	if err != nil || !processed {
-		t.Fatalf("permanent failure attempt: processed=%v err=%v", processed, err)
+	outcome, err = permanentWorker.ProcessOne(ctx)
+	if err != nil || !outcome.Processed {
+		t.Fatalf("permanent failure attempt: outcome=%+v err=%v", outcome, err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT status, last_error_code FROM mail_outbox`).Scan(&status, &errorCode); err != nil || status != "failed" || errorCode != "RECIPIENT_REJECTED" {
 		t.Fatalf("permanent state = %s/%s err=%v, want failed/RECIPIENT_REJECTED", status, errorCode, err)
+	}
+	var outboxID string
+	var openDeadLetters int
+	if err := pool.QueryRow(ctx, `SELECT id::text, (SELECT count(*) FROM mail_dead_letters WHERE outbox_id = mail_outbox.id AND requeued_at IS NULL) FROM mail_outbox`).Scan(&outboxID, &openDeadLetters); err != nil || openDeadLetters != 1 {
+		t.Fatalf("permanent failure dead letter = %d err=%v, want 1", openDeadLetters, err)
+	}
+	if err := mailworker.Requeue(ctx, store.New(pool), outboxID, "req_manual_requeue_001", "operator-test", "provider configuration repaired"); err != nil {
+		t.Fatalf("requeue permanent failure: %v", err)
+	}
+	var attempts int
+	var requeuedDeadLetters int
+	if err := pool.QueryRow(ctx, `SELECT status, attempt_count, (SELECT count(*) FROM mail_dead_letters WHERE outbox_id = mail_outbox.id AND requeued_at IS NOT NULL) FROM mail_outbox`).Scan(&status, &attempts, &requeuedDeadLetters); err != nil || status != "pending" || attempts != 0 || requeuedDeadLetters != 1 {
+		t.Fatalf("requeued state=%s/%d dead_letters=%d err=%v", status, attempts, requeuedDeadLetters, err)
+	}
+	secondFailureWorker, _ := mailworker.New(store.New(pool), senderFunc(func(context.Context, mailworker.Message) (string, error) {
+		return "", &mailworker.SendError{Code: "RECIPIENT_REJECTED", Permanent: true}
+	}), "worker_permanent_second_cycle", testVerificationEncryptionKey, time.Minute, time.Second)
+	secondOutcome, err := secondFailureWorker.ProcessOne(ctx)
+	if err != nil || secondOutcome.Result != "failed" {
+		t.Fatalf("second dead-letter cycle outcome=%+v err=%v", secondOutcome, err)
+	}
+	var totalDeadLetters int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM mail_dead_letters WHERE outbox_id = $1::uuid`, outboxID).Scan(&totalDeadLetters); err != nil || totalDeadLetters != 2 {
+		t.Fatalf("dead-letter cycles=%d err=%v, want 2", totalDeadLetters, err)
+	}
+	var auditActions string
+	if err := pool.QueryRow(ctx, `SELECT string_agg(action, ',' ORDER BY created_at, id) FROM mail_outbox_audit_events WHERE outbox_id = $1::uuid`, outboxID).Scan(&auditActions); err != nil || auditActions != "claimed,failed,requeued,claimed,failed" {
+		t.Fatalf("requeue audit actions=%q err=%v, want claimed,failed,requeued,claimed,failed", auditActions, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE mail_outbox_audit_events SET actor_id = 'tampered' WHERE outbox_id = $1::uuid`, outboxID); err == nil {
+		t.Fatal("mail outbox audit events allowed mutation")
+	}
+	if _, err := pool.Exec(ctx, `TRUNCATE mail_outbox_audit_events`); err == nil {
+		t.Fatal("mail outbox audit events allowed truncation")
 	}
 }
 
@@ -330,6 +608,31 @@ type captureSender struct {
 	messageID string
 	message   mailworker.Message
 	failures  int
+}
+
+type idempotentSender struct {
+	mu        sync.Mutex
+	messageID string
+	attempts  int
+	delivered map[string]struct{}
+}
+
+func newIdempotentSender(messageID string) *idempotentSender {
+	return &idempotentSender{messageID: messageID, delivered: map[string]struct{}{}}
+}
+
+func (s *idempotentSender) Send(_ context.Context, message mailworker.Message) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attempts++
+	s.delivered[message.IdempotencyKey] = struct{}{}
+	return s.messageID, nil
+}
+
+func (s *idempotentSender) counts() (int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.attempts, len(s.delivered)
 }
 
 func (s *captureSender) Send(_ context.Context, message mailworker.Message) (string, error) {
@@ -354,6 +657,7 @@ func newVerificationServer(t *testing.T, pool *pgxpool.Pool, redisClient *redis.
 	handler, err := platformcore.New(platformcore.Config{
 		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
 		VerificationEncryptionKey: testVerificationEncryptionKey, StudentEmailDomains: []string{"henu.edu.cn"},
+		TrustedProxyCIDRs: []string{"127.0.0.0/8", "::1/128"},
 	})
 	if err != nil {
 		t.Fatalf("create platform core: %v", err)
@@ -370,11 +674,17 @@ func requestVerificationCode(t *testing.T, server *httptest.Server, idempotencyK
 
 func requestVerificationCodeWith(t *testing.T, server *httptest.Server, email, purpose, clientID, idempotencyKey string) *http.Response {
 	t.Helper()
+	return requestVerificationCodeFromDevice(t, server, email, purpose, clientID, "test-device-001", idempotencyKey)
+}
+
+func requestVerificationCodeFromDevice(t *testing.T, server *httptest.Server, email, purpose, clientID, deviceID, idempotencyKey string) *http.Response {
+	t.Helper()
 	body := fmt.Sprintf(`{"email":%q,"purpose":%q,"client_id":%q}`, email, purpose, clientID)
 	request, _ := http.NewRequest(http.MethodPost, server.URL+contract.RequestVerificationCodeRoute, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set(contract.IdempotencyKeyHeader, idempotencyKey)
-	response, err := server.Client().Do(request)
+	request.Header.Set("X-Forwarded-For", "198.51.100.99, 203.0.113.10")
+	response, err := clientForDevice(server, deviceID).Do(request)
 	if err != nil {
 		t.Fatalf("request verification code: %v", err)
 	}
@@ -383,13 +693,41 @@ func requestVerificationCodeWith(t *testing.T, server *httptest.Server, email, p
 
 func verifyCode(t *testing.T, server *httptest.Server, code, idempotencyKey string) *http.Response {
 	t.Helper()
-	body, _ := json.Marshal(contract.VerifyVerificationCodeRequest{Email: testStudentEmail, Code: code, Purpose: "login"})
+	return verifyCodeWithEmail(t, server, testStudentEmail, code, idempotencyKey)
+}
+
+func verifyCodeWithEmail(t *testing.T, server *httptest.Server, email, code, idempotencyKey string) *http.Response {
+	t.Helper()
+	body, _ := json.Marshal(contract.VerifyVerificationCodeRequest{Email: email, Code: code, Purpose: "login"})
 	request, _ := http.NewRequest(http.MethodPost, server.URL+contract.VerifyVerificationCodeRoute, bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set(contract.IdempotencyKeyHeader, idempotencyKey)
-	response, err := server.Client().Do(request)
+	response, err := clientForDevice(server, "test-device-001").Do(request)
 	if err != nil {
 		t.Fatalf("verify code: %v", err)
 	}
 	return response
+}
+
+func clientForDevice(server *httptest.Server, deviceID string) *http.Client {
+	key := server.URL + "|" + deviceID
+	if existing, ok := testDeviceClients.Load(key); ok {
+		return existing.(*http.Client)
+	}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Transport: server.Client().Transport, Jar: jar}
+	actual, _ := testDeviceClients.LoadOrStore(key, client)
+	return actual.(*http.Client)
+}
+
+func signDeliveryRequest(request *http.Request, body []byte, keyID, secret, nonce string) {
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	digest := sha256.Sum256(body)
+	canonical := fmt.Sprintf("%s\n%s\n%s\n%s\n%s", request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:]))
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(canonical))
+	request.Header.Set(contract.KeyIDHeader, keyID)
+	request.Header.Set(contract.TimestampHeader, timestamp)
+	request.Header.Set(contract.NonceHeader, nonce)
+	request.Header.Set(contract.SignatureHeader, base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 }

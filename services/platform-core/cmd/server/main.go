@@ -44,6 +44,9 @@ func main() {
 		IdempotencyTTL:            settings.IdempotencyTTL,
 		VerificationEncryptionKey: settings.VerificationKey, StudentEmailDomains: settings.StudentEmailDomains,
 		VerificationCodeTTL: settings.VerificationCodeTTL, VerificationResendDelay: settings.VerificationResendDelay,
+		MailDeliveryWebhookToken: settings.MailDeliveryWebhookToken,
+		MailDeliveryActiveKeyID:  settings.MailDeliveryActiveKeyID, MailDeliveryRetiringToken: settings.MailDeliveryRetiringToken, MailDeliveryRetiringKeyID: settings.MailDeliveryRetiringKeyID,
+		TrustedProxyCIDRs: settings.TrustedProxyCIDRs,
 	})
 	if err != nil {
 		logger.Error("server initialization failed", "error", err.Error())

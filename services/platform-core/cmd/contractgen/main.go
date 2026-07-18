@@ -88,13 +88,15 @@ func main() {
 	authorizationCheckPath, authorizationCheck := findOperation(spec.Paths, "checkAuthorization")
 	requestVerificationPath, requestVerification := findOperation(spec.Paths, "requestVerificationCode")
 	verifyVerificationPath, verifyVerification := findOperation(spec.Paths, "verifyVerificationCode")
-	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil {
+	recordDeliveryPath, recordDelivery := findOperation(spec.Paths, "recordMailDelivery")
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
 	validateAuthorizationCheckOperation(authorizationCheck, spec.Components.Parameters)
 	validateIdempotentPublicWrite(requestVerification, spec.Components.Parameters, "verification-code request")
 	validateIdempotentPublicWrite(verifyVerification, spec.Components.Parameters, "verification-code verification")
+	validateSignedDeliveryOperation(recordDelivery, spec.Components.Parameters, spec.Components.SecuritySchemes)
 	requestSchema := token.RequestBody.Content["application/json"].Schema
 	if requestSchema == nil {
 		fail(fmt.Errorf("token request application/json schema is missing"))
@@ -117,7 +119,9 @@ func main() {
 	requestVerificationResponse := resolveSchema(responseDataSchema(requestVerification.Responses["202"].Content["application/json"].Schema), spec.Components.Schemas)
 	verifyVerificationRequest := resolveSchema(verifyVerification.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
 	verifyVerificationResponse := resolveSchema(responseDataSchema(verifyVerification.Responses["200"].Content["application/json"].Schema), spec.Components.Schemas)
-	if requestVerificationRequest == nil || requestVerificationResponse == nil || verifyVerificationRequest == nil || verifyVerificationResponse == nil {
+	recordDeliveryRequest := resolveSchema(recordDelivery.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
+	recordDeliveryResponse := resolveSchema(responseDataSchema(recordDelivery.Responses["202"].Content["application/json"].Schema), spec.Components.Schemas)
+	if requestVerificationRequest == nil || requestVerificationResponse == nil || verifyVerificationRequest == nil || verifyVerificationResponse == nil || recordDeliveryRequest == nil || recordDeliveryResponse == nil {
 		fail(fmt.Errorf("verification-code schemas are missing"))
 	}
 	successEnvelope := spec.Components.Schemas["SuccessEnvelope"]
@@ -144,6 +148,7 @@ const (
 	AuthorizationCheckRoute = %q
 	RequestVerificationCodeRoute = %q
 	VerifyVerificationCodeRoute = %q
+	RecordMailDeliveryRoute = %q
 	SourceSHA256 = %q
 )
 
@@ -176,7 +181,11 @@ const (
 %s
 
 %s
-`, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, fmt.Sprintf("%x", digest),
+
+%s
+
+%s
+`, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),
@@ -192,6 +201,8 @@ const (
 		renderStruct("VerificationCodeAccepted", requestVerificationResponse),
 		renderStruct("VerifyVerificationCodeRequest", verifyVerificationRequest),
 		renderStruct("VerificationCodeVerified", verifyVerificationResponse),
+		renderStruct("RecordMailDeliveryRequest", recordDeliveryRequest),
+		renderStruct("MailDeliveryAccepted", recordDeliveryResponse),
 	)
 	formatted, err := format.Source([]byte(generated))
 	if err != nil {
@@ -347,6 +358,34 @@ func validateIdempotentPublicWrite(operation *operation, parameters map[string]p
 	}
 	if !operation.RequestBody.Required {
 		fail(fmt.Errorf("%s request body must be required", name))
+	}
+}
+
+func validateSignedDeliveryOperation(operation *operation, parameters map[string]parameter, schemes map[string]securityScheme) {
+	found := false
+	for _, requirement := range operation.Security {
+		_, found = requirement["mailDeliveryHmac"]
+		if found {
+			break
+		}
+	}
+	scheme := schemes["mailDeliveryHmac"]
+	if !found || scheme.Type != "apiKey" || scheme.In != "header" || scheme.Name != "X-Signature" {
+		fail(fmt.Errorf("%s must require delivery HMAC authentication", operation.OperationID))
+	}
+	required := map[string]bool{"#/components/parameters/KeyId": false, "#/components/parameters/Timestamp": false, "#/components/parameters/Nonce": false}
+	for _, parameter := range operation.Parameters {
+		if _, ok := required[parameter.Ref]; ok {
+			required[parameter.Ref] = true
+		}
+	}
+	for reference, present := range required {
+		if !present {
+			fail(fmt.Errorf("%s is missing %s", operation.OperationID, reference))
+		}
+	}
+	if !operation.RequestBody.Required {
+		fail(fmt.Errorf("%s request body must be required", operation.OperationID))
 	}
 }
 

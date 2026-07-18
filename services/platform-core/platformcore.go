@@ -4,8 +4,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -33,6 +35,11 @@ type Config struct {
 	StudentEmailDomains       []string
 	VerificationCodeTTL       time.Duration
 	VerificationResendDelay   time.Duration
+	MailDeliveryWebhookToken  string
+	MailDeliveryActiveKeyID   string
+	MailDeliveryRetiringToken string
+	MailDeliveryRetiringKeyID string
+	TrustedProxyCIDRs         []string
 }
 
 func New(config Config) (http.Handler, error) {
@@ -83,12 +90,44 @@ func New(config Config) (http.Handler, error) {
 	if config.VerificationResendDelay <= 0 {
 		config.VerificationResendDelay = 60 * time.Second
 	}
+	if config.MailDeliveryWebhookToken == "" {
+		mac := hmac.New(sha256.New, config.IdempotencyEncryptionKey)
+		_, _ = mac.Write([]byte("henukit-mail-delivery-webhook"))
+		config.MailDeliveryWebhookToken = fmt.Sprintf("%x", mac.Sum(nil))
+	}
+	if len(config.MailDeliveryWebhookToken) < 32 {
+		return nil, errors.New("mail delivery webhook token must contain at least 32 characters")
+	}
+	if config.MailDeliveryActiveKeyID == "" {
+		config.MailDeliveryActiveKeyID = "mail-provider-active"
+	}
+	if (config.MailDeliveryRetiringToken == "") != (config.MailDeliveryRetiringKeyID == "") {
+		return nil, errors.New("retiring mail delivery key id and token must be configured together")
+	}
+	if config.MailDeliveryRetiringToken != "" && (len(config.MailDeliveryRetiringToken) < 32 || config.MailDeliveryRetiringKeyID == config.MailDeliveryActiveKeyID) {
+		return nil, errors.New("retiring mail delivery key must be distinct and contain at least 32 characters")
+	}
 	queries := store.New(config.Database)
+	trustedProxies := make([]*net.IPNet, 0, len(config.TrustedProxyCIDRs))
+	for _, value := range config.TrustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy CIDR %q", value)
+		}
+		trustedProxies = append(trustedProxies, network)
+	}
+	deviceMAC := hmac.New(sha256.New, config.VerificationEncryptionKey)
+	_, _ = deviceMAC.Write([]byte("henukit-device-cookie"))
+	deviceKey := deviceMAC.Sum(nil)
 	coordinator := coordination.NewRedis(config.Redis)
 	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL, config.IdempotencyEncryptionKey)
 	verificationFlow, err := verification.New(queries, config.Database, coordinator, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay)
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.New(flow, verificationFlow, config.Database, config.Redis, config.CoreCookieName, config.Logger), nil
+	deliveryKeys := map[string][]byte{config.MailDeliveryActiveKeyID: []byte(config.MailDeliveryWebhookToken)}
+	if config.MailDeliveryRetiringToken != "" {
+		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
+	}
+	return httpapi.New(flow, verificationFlow, queries, config.Database, config.Redis, config.CoreCookieName, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
 }

@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"math/big"
 	"net/mail"
@@ -19,23 +18,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"henukit.dev/platform-core/internal/coordination"
-	"henukit.dev/platform-core/internal/securebox"
 	"henukit.dev/platform-core/internal/store"
+	"henukit.dev/platform-core/internal/verificationmail"
 )
 
 var (
 	ErrInvalid         = errors.New("verification request is invalid")
-	ErrRateLimited     = errors.New("verification request is rate limited")
 	ErrDependency      = errors.New("verification dependency unavailable")
 	ErrIdempotency     = errors.New("idempotency key conflicts with another request")
 	ErrCodeInvalid     = errors.New("verification code is invalid")
 	ErrCodeExpired     = errors.New("verification code expired")
 	ErrCodeAlreadyUsed = errors.New("verification code was already used")
+	ErrRateLimited     = errors.New("verification attempts are rate limited")
 )
 
 type Coordinator interface {
-	UseOnce(context.Context, string, time.Duration) error
+	Allow(context.Context, string, int64, time.Duration) (bool, error)
 }
 
 type Service struct {
@@ -43,8 +41,7 @@ type Service struct {
 	database       *pgxpool.Pool
 	coordinator    Coordinator
 	secretKey      []byte
-	recipientCodec *securebox.Codec
-	payloadCodec   *securebox.Codec
+	mailCodec      *verificationmail.Codec
 	allowedDomains map[string]struct{}
 	codeTTL        time.Duration
 	resendDelay    time.Duration
@@ -54,6 +51,8 @@ type RequestInput struct {
 	Email          string
 	Purpose        string
 	ClientID       string
+	DeviceID       string
+	ClientIP       string
 	IdempotencyKey string
 	RequestID      string
 }
@@ -68,16 +67,12 @@ type VerifyInput struct {
 	Code           string
 	Purpose        string
 	IdempotencyKey string
+	DeviceID       string
+	ClientIP       string
 }
 
 type Verified struct {
 	VerificationID string
-}
-
-type mailPayload struct {
-	Code      string    `json:"code"`
-	Purpose   string    `json:"purpose"`
-	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, masterKey []byte, allowedDomains []string, codeTTL, resendDelay time.Duration) (*Service, error) {
@@ -97,24 +92,20 @@ func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator
 	if len(domains) == 0 {
 		return nil, errors.New("at least one student email domain is required")
 	}
-	recipientCodec, err := securebox.New(masterKey, "verification-recipient")
-	if err != nil {
-		return nil, err
-	}
-	payloadCodec, err := securebox.New(masterKey, "verification-payload")
+	mailCodec, err := verificationmail.NewCodec(masterKey)
 	if err != nil {
 		return nil, err
 	}
 	return &Service{
 		queries: queries, database: database, coordinator: coordinator, secretKey: append([]byte(nil), masterKey...),
-		recipientCodec: recipientCodec, payloadCodec: payloadCodec, allowedDomains: domains,
+		mailCodec: mailCodec, allowedDomains: domains,
 		codeTTL: codeTTL, resendDelay: resendDelay,
 	}, nil
 }
 
 func (s *Service) Request(ctx context.Context, input RequestInput) (Accepted, error) {
 	email, err := s.normalizeEmail(input.Email)
-	if err != nil || !validPurpose(input.Purpose) || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 || input.RequestID == "" {
+	if err != nil || !validPurpose(input.Purpose) || len(input.DeviceID) < 8 || len(input.DeviceID) > 200 || input.ClientIP == "" || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 || input.RequestID == "" {
 		return Accepted{}, ErrInvalid
 	}
 	emailHash := s.digest("email", []byte(email))
@@ -127,12 +118,13 @@ func (s *Service) Request(ctx context.Context, input RequestInput) (Accepted, er
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return Accepted{}, err
 	}
-	rateKey := "platform-core:verification-resend:" + hex.EncodeToString(emailHash) + ":" + input.Purpose
-	if err := s.coordinator.UseOnce(ctx, rateKey, s.resendDelay); err != nil {
-		if errors.Is(err, coordination.ErrBusy) {
-			return Accepted{}, ErrRateLimited
-		}
-		return Accepted{}, ErrDependency
+	limited, err := s.rateLimited(ctx, emailHash, input.DeviceID, input.ClientIP, input.Purpose)
+	if err != nil {
+		return Accepted{}, err
+	}
+	if limited {
+		now := time.Now().UTC()
+		return Accepted{ExpiresAt: now.Add(s.codeTTL), ResendAfter: now.Add(s.resendDelay)}, nil
 	}
 	code, err := randomCode()
 	if err != nil {
@@ -145,15 +137,7 @@ func (s *Service) Request(ctx context.Context, input RequestInput) (Accepted, er
 	codeHash := s.digest("code", nonce, []byte(code))
 	now := time.Now().UTC()
 	expiresAt := now.Add(s.codeTTL)
-	recipientCiphertext, err := s.recipientCodec.Seal([]byte(email))
-	if err != nil {
-		return Accepted{}, err
-	}
-	payload, err := json.Marshal(mailPayload{Code: code, Purpose: input.Purpose, ExpiresAt: expiresAt})
-	if err != nil {
-		return Accepted{}, err
-	}
-	payloadCiphertext, err := s.payloadCodec.Seal(payload)
+	recipientCiphertext, payloadCiphertext, err := s.mailCodec.Encode(email, verificationmail.Payload{Code: code, Purpose: input.Purpose, ExpiresAt: expiresAt})
 	if err != nil {
 		return Accepted{}, err
 	}
@@ -183,13 +167,53 @@ func (s *Service) Request(ctx context.Context, input RequestInput) (Accepted, er
 	return Accepted{ExpiresAt: created.ExpiresAt.Time, ResendAfter: created.CreatedAt.Time.Add(s.resendDelay)}, nil
 }
 
+func (s *Service) rateLimited(ctx context.Context, emailHash []byte, deviceID, clientIP, purpose string) (bool, error) {
+	dimensions := []struct {
+		key    string
+		limit  int64
+		window time.Duration
+	}{
+		{key: "email-resend:" + hex.EncodeToString(emailHash) + ":" + purpose, limit: 1, window: s.resendDelay},
+		{key: "email-hour:" + hex.EncodeToString(emailHash), limit: 5, window: time.Hour},
+		{key: "email-day:" + hex.EncodeToString(emailHash), limit: 20, window: 24 * time.Hour},
+		{key: "ip-hour:" + hex.EncodeToString(s.digest("ip", []byte(clientIP))), limit: 30, window: time.Hour},
+		{key: "ip-day:" + hex.EncodeToString(s.digest("ip", []byte(clientIP))), limit: 100, window: 24 * time.Hour},
+		{key: "device-hour:" + hex.EncodeToString(s.digest("device", []byte(deviceID))), limit: 10, window: time.Hour},
+		{key: "device-day:" + hex.EncodeToString(s.digest("device", []byte(deviceID))), limit: 40, window: 24 * time.Hour},
+	}
+	limited := false
+	for _, dimension := range dimensions {
+		allowed, err := s.coordinator.Allow(ctx, "platform-core:verification:"+dimension.key, dimension.limit, dimension.window)
+		if err != nil {
+			return false, ErrDependency
+		}
+		limited = limited || !allowed
+	}
+	return limited, nil
+}
+
 func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, error) {
 	email, err := s.normalizeEmail(input.Email)
-	if err != nil || !validPurpose(input.Purpose) || len(input.Code) != 6 || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 {
+	if err != nil || !validPurpose(input.Purpose) || len(input.Code) != 6 || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 || input.DeviceID == "" || input.ClientIP == "" {
 		return Verified{}, ErrInvalid
 	}
 	emailHash := s.digest("email", []byte(email))
 	requestFingerprint := s.digest("consume", emailHash, []byte(input.Purpose), []byte(input.Code))
+	if replay, replayErr := s.queries.GetConsumedVerificationReplay(ctx, pgtype.Text{String: input.IdempotencyKey, Valid: true}); replayErr == nil {
+		if subtle.ConstantTimeCompare(replay.ConsumedRequestFingerprint, requestFingerprint) == 1 {
+			return Verified{VerificationID: uuidString(replay.ID)}, nil
+		}
+		return Verified{}, ErrIdempotency
+	} else if !errors.Is(replayErr, pgx.ErrNoRows) {
+		return Verified{}, replayErr
+	}
+	limited, err := s.verifyRateLimited(ctx, emailHash, input.DeviceID, input.ClientIP)
+	if err != nil {
+		return Verified{}, err
+	}
+	if limited {
+		return Verified{}, ErrRateLimited
+	}
 	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Verified{}, err
@@ -239,6 +263,30 @@ func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, erro
 		return Verified{}, err
 	}
 	return Verified{VerificationID: uuidString(verification.ID)}, nil
+}
+
+func (s *Service) verifyRateLimited(ctx context.Context, emailHash []byte, deviceID, clientIP string) (bool, error) {
+	dimensions := []struct {
+		key    string
+		limit  int64
+		window time.Duration
+	}{
+		{"email-verify-hour:" + hex.EncodeToString(emailHash), 50, time.Hour},
+		{"email-verify-day:" + hex.EncodeToString(emailHash), 200, 24 * time.Hour},
+		{"ip-verify-hour:" + hex.EncodeToString(s.digest("ip", []byte(clientIP))), 60, time.Hour},
+		{"ip-verify-day:" + hex.EncodeToString(s.digest("ip", []byte(clientIP))), 500, 24 * time.Hour},
+		{"device-verify-hour:" + hex.EncodeToString(s.digest("device", []byte(deviceID))), 30, time.Hour},
+		{"device-verify-day:" + hex.EncodeToString(s.digest("device", []byte(deviceID))), 200, 24 * time.Hour},
+	}
+	limited := false
+	for _, dimension := range dimensions {
+		allowed, err := s.coordinator.Allow(ctx, "platform-core:verification:"+dimension.key, dimension.limit, dimension.window)
+		if err != nil {
+			return false, ErrDependency
+		}
+		limited = limited || !allowed
+	}
+	return limited, nil
 }
 
 func (s *Service) normalizeEmail(value string) (string, error) {
