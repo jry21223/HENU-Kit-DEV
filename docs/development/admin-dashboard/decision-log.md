@@ -86,6 +86,51 @@
 - 决策：所有管理后台 API、HMAC、事件、幂等、Envelope 和兼容策略严格遵守 `docs/development/api-communication-spec.md`。
 - 影响：必须修复现有早期 OpenAPI 中与该文档冲突的路由、HMAC Header 和 Event Envelope。
 
+## ADR-ADMIN-012：六张业务卡固定保留并渐进接入
+
+- 状态：Accepted
+- 日期：2026-07-18
+- 决策：总览固定展示用户、校园通知、邮件、反馈、美食、系统六张卡。
+- 约束：未接入域必须显示 `not_integrated` 与 `—`，不得用示例值或 0 冒充真实数据；正式 V1 验收时六域全部接入。
+- 回滚：运行时 Feature Flag 可立即切回旧 Shell。
+
+## ADR-ADMIN-013：校园通知 V1 仅人工录入与 JSONL 导入
+
+- 状态：Accepted
+- 日期：2026-07-18
+- 决策：V1 支持后台单条表单和 UTF-8 `campus-notice-import/1.0` JSONL 导入，每任务最多 1,000 条或 10 MB。
+- 约束：表单与 JSONL 共用 Upsert；`(source_id, external_id)` 唯一；相同内容幂等，内容变化创建不可变新版本。
+- 明确不做：自动抓取、QQ 空间同步、网页解析器、OCR、来源抓取失败指标和解析器测试。
+- 存储：通知附件使用 S3 兼容对象存储，本地与 CI 使用 MinIO。
+
+## ADR-ADMIN-014：统一待办采用两档 SLA
+
+- 状态：Accepted
+- 日期：2026-07-18
+- 决策：`urgent` 创建后 24 小时到期，`normal` 创建后 72 小时到期。
+- 约束：只有未解决且超过 `due_at` 才计算 overdue；受限管理员可调整到期时间，调整必须审计。
+
+## ADR-ADMIN-015：美食试运营 Policy 使用 10 人、70%、7 天
+
+- 状态：Accepted
+- 日期：2026-07-18
+- 决策：有效参与者少于 10 为 `insufficient_votes`；任一方向达到 70% 才形成对应候选；最近调档不足 7 天为 `cooldown`。
+- 约束：suspected/invalidated 票不进入分母；存在未处理阻断异常为 `blocked_by_risk`；管理员每次最多升降一档。
+
+## ADR-ADMIN-016：S3 兼容存储与通用 SMTP
+
+- 状态：Accepted
+- 日期：2026-07-18
+- 决策：通知附件和美食图片使用 S3 兼容存储；邮件使用 Fake 与通用 SMTP Adapter。
+- 约束：生产凭据只由 Secret/环境配置注入；SMTP 接受只记 `accepted`，没有 DSN 或回调证据不得记 `delivered`。
+
+## ADR-ADMIN-017：新认证不进入本 Epic
+
+- 状态：Accepted
+- 日期：2026-07-18
+- 决策：本 Epic 保留现有认证流程，通过旧认证适配器验证 RS256 管理员 Token，并从内部身份接口读取角色与 Scope。
+- 约束：适配器不得读取 Study 数据库；未来新认证上线只替换验证器，不改变 Admin API 与前端。
+
 ## 变更模板
 
 ```markdown
