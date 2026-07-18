@@ -476,7 +476,7 @@ func openDependencies(t *testing.T, ctx context.Context) (*pgxpool.Pool, *redis.
 
 func resetIdentityTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool, redisClient *redis.Client) {
 	t.Helper()
-	if _, err := pool.Exec(ctx, `TRUNCATE authorization_codes, sessions, oauth_clients, users CASCADE`); err != nil {
+	if _, err := pool.Exec(ctx, `TRUNCATE permission_codes, authorization_roles, authorization_codes, sessions, oauth_clients, users CASCADE`); err != nil {
 		t.Fatalf("reset identity tables: %v", err)
 	}
 	if err := redisClient.FlushDB(ctx).Err(); err != nil {

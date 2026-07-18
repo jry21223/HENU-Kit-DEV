@@ -39,6 +39,7 @@ func New(flow *identity.Service, database *pgxpool.Pool, redisClient *redis.Clie
 	router.Get("/api/v1/readyz", handler.ready)
 	router.Get(contract.AuthorizeRoute, handler.authorize)
 	router.Post(contract.TokenRoute, handler.exchange)
+	router.Post(contract.AuthorizationCheckRoute, handler.checkAuthorization)
 	return router
 }
 
@@ -152,10 +153,66 @@ func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 	})
 }
 
+func (h *Handler) checkAuthorization(writer http.ResponseWriter, request *http.Request) {
+	audit := auditFrom(request.Context())
+	audit.serviceID, audit.keyID = request.Header.Get(contract.ServiceIDHeader), request.Header.Get(contract.KeyIDHeader)
+	timestamp, nonce, signature := request.Header.Get(contract.TimestampHeader), request.Header.Get(contract.NonceHeader), request.Header.Get(contract.SignatureHeader)
+	if audit.serviceID == "" || audit.keyID == "" || timestamp == "" || nonce == "" || signature == "" {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request headers are invalid")
+		return
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
+	rawBody, err := io.ReadAll(request.Body)
+	if err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
+		return
+	}
+	var body contract.AuthorizationCheckRequest
+	decoder := json.NewDecoder(bytes.NewReader(rawBody))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
+		return
+	}
+	clientID, clientSecret, ok := request.BasicAuth()
+	if !ok || clientID != audit.serviceID {
+		writeError(writer, request, http.StatusUnauthorized, "CLIENT_AUTH_FAILED", "client authentication failed")
+		return
+	}
+	bodyHash := sha256.Sum256(rawBody)
+	pathAndQuery := request.URL.EscapedPath()
+	if request.URL.RawQuery != "" {
+		pathAndQuery += "?" + request.URL.RawQuery
+	}
+	decision, err := h.flow.CheckAuthorization(request.Context(), identity.AuthorizationCheckInput{
+		SessionToken: body.SessionExchangeToken, ClientSecret: clientSecret,
+		PermissionCode: body.PermissionCode, ScopeKind: body.Scope.Kind,
+		ProductCode: optionalString(body.Scope.ProductCode), ResourceType: optionalString(body.Scope.ResourceType), ResourceID: optionalString(body.Scope.ResourceID),
+		ServiceID: audit.serviceID, KeyID: audit.keyID, Timestamp: timestamp, Nonce: nonce, Signature: signature,
+		BodyHash: bodyHash[:], PathAndQuery: pathAndQuery, RequestID: audit.requestID,
+	})
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	audit.subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, contract.AuthorizationDecision{
+		Allowed: true, ActorUserID: decision.ActorUserID, PermissionCode: body.PermissionCode,
+		Scope: body.Scope, GrantID: decision.GrantID, AuthorizationRevision: decision.AuthorizationRevision,
+		CheckedAt: decision.CheckedAt,
+	})
+}
+
 func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Request, err error) {
 	switch {
 	case errors.Is(err, identity.ErrUnauthorized):
 		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
+	case errors.Is(err, identity.ErrForbidden):
+		writeError(writer, request, http.StatusForbidden, "PERMISSION_DENIED", "permission or scope is not granted")
 	case errors.Is(err, identity.ErrCallback):
 		writeError(writer, request, http.StatusBadRequest, "CALLBACK_NOT_REGISTERED", "callback is not registered")
 	case errors.Is(err, identity.ErrCodeUsed):
@@ -273,4 +330,11 @@ func maskSubject(value string) string {
 		return ""
 	}
 	return value[:4] + "..." + value[len(value)-4:]
+}
+
+func optionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -45,12 +47,19 @@ func runTests(m *testing.M) int {
 	if err != nil {
 		panic(fmt.Errorf("connect PostgreSQL testcontainer: %w", err))
 	}
-	migration, err := os.ReadFile("../db/migrations/000001_identity.up.sql")
+	migrations, err := filepath.Glob("../db/migrations/*.up.sql")
 	if err != nil {
 		panic(err)
 	}
-	if _, err := connection.Exec(ctx, string(migration)); err != nil {
-		panic(fmt.Errorf("apply test migration: %w", err))
+	sort.Strings(migrations)
+	for _, migrationPath := range migrations {
+		migration, readErr := os.ReadFile(migrationPath)
+		if readErr != nil {
+			panic(readErr)
+		}
+		if _, execErr := connection.Exec(ctx, string(migration)); execErr != nil {
+			panic(fmt.Errorf("apply test migration %s: %w", migrationPath, execErr))
+		}
 	}
 	_ = connection.Close(ctx)
 

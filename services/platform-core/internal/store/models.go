@@ -8,6 +8,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuthorizationAuditEvent struct {
+	ID                    pgtype.UUID        `json:"id"`
+	ActorUserID           pgtype.UUID        `json:"actor_user_id"`
+	SessionID             pgtype.UUID        `json:"session_id"`
+	RequestID             string             `json:"request_id"`
+	ServiceID             string             `json:"service_id"`
+	PermissionCode        string             `json:"permission_code"`
+	TargetKind            string             `json:"target_kind"`
+	TargetProductCode     pgtype.Text        `json:"target_product_code"`
+	TargetResourceType    pgtype.Text        `json:"target_resource_type"`
+	TargetResourceID      pgtype.Text        `json:"target_resource_id"`
+	Decision              string             `json:"decision"`
+	ReasonCode            string             `json:"reason_code"`
+	GrantID               pgtype.UUID        `json:"grant_id"`
+	AuthorizationRevision pgtype.Int8        `json:"authorization_revision"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+}
+
 type AuthorizationCode struct {
 	ID            pgtype.UUID        `json:"id"`
 	CodeHash      []byte             `json:"code_hash"`
@@ -19,6 +37,16 @@ type AuthorizationCode struct {
 	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
 	UsedAt        pgtype.Timestamptz `json:"used_at"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type AuthorizationRole struct {
+	ID          pgtype.UUID        `json:"id"`
+	Code        string             `json:"code"`
+	DisplayName string             `json:"display_name"`
+	Status      string             `json:"status"`
+	Revision    int64              `json:"revision"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type OauthClient struct {
@@ -44,6 +72,19 @@ type OauthExchangeIdempotency struct {
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
+type PermissionCode struct {
+	Code        string             `json:"code"`
+	Description string             `json:"description"`
+	Status      string             `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type RolePermission struct {
+	RoleID         pgtype.UUID        `json:"role_id"`
+	PermissionCode string             `json:"permission_code"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type Session struct {
 	ID              pgtype.UUID        `json:"id"`
 	UserID          pgtype.UUID        `json:"user_id"`
@@ -58,8 +99,24 @@ type Session struct {
 }
 
 type User struct {
-	ID            pgtype.UUID        `json:"id"`
-	EmailVerified bool               `json:"email_verified"`
-	Status        string             `json:"status"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	ID                    pgtype.UUID        `json:"id"`
+	EmailVerified         bool               `json:"email_verified"`
+	Status                string             `json:"status"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	AuthorizationRevision int64              `json:"authorization_revision"`
+}
+
+type UserRoleGrant struct {
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	RoleID       pgtype.UUID        `json:"role_id"`
+	ScopeKind    string             `json:"scope_kind"`
+	ProductCode  pgtype.Text        `json:"product_code"`
+	ResourceType pgtype.Text        `json:"resource_type"`
+	ResourceID   pgtype.Text        `json:"resource_id"`
+	Status       string             `json:"status"`
+	Revision     int64              `json:"revision"`
+	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }

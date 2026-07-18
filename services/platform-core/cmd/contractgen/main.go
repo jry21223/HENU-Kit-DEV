@@ -85,10 +85,12 @@ func main() {
 	}
 	authorizePath, authorize := findOperation(spec.Paths, "authorizeOAuthClient")
 	tokenPath, token := findOperation(spec.Paths, "exchangeAuthorizationCode")
-	if authorize == nil || token == nil {
+	authorizationCheckPath, authorizationCheck := findOperation(spec.Paths, "checkAuthorization")
+	if authorize == nil || token == nil || authorizationCheck == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
+	validateAuthorizationCheckOperation(authorizationCheck, spec.Components.Parameters)
 	requestSchema := token.RequestBody.Content["application/json"].Schema
 	if requestSchema == nil {
 		fail(fmt.Errorf("token request application/json schema is missing"))
@@ -100,6 +102,12 @@ func main() {
 	responseSchema := responseDataSchema(token.Responses["200"].Content["application/json"].Schema)
 	if responseSchema == nil {
 		fail(fmt.Errorf("token 200 response data schema is missing"))
+	}
+	authorizationCheckRequest := resolveSchema(authorizationCheck.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
+	authorizationScope := spec.Components.Schemas["AuthorizationScope"]
+	authorizationDecision := resolveSchema(responseDataSchema(authorizationCheck.Responses["200"].Content["application/json"].Schema), spec.Components.Schemas)
+	if authorizationCheckRequest == nil || authorizationScope == nil || authorizationDecision == nil {
+		fail(fmt.Errorf("authorization check schemas are missing"))
 	}
 	successEnvelope := spec.Components.Schemas["SuccessEnvelope"]
 	errorObject := spec.Components.Schemas["ErrorObject"]
@@ -122,6 +130,7 @@ import (
 const (
 	AuthorizeRoute = %q
 	TokenRoute = %q
+	AuthorizationCheckRoute = %q
 	SourceSHA256 = %q
 )
 
@@ -140,7 +149,25 @@ const (
 %s
 
 %s
-`, authorizePath, tokenPath, fmt.Sprintf("%x", digest), headerSupport, renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters), renderStruct("ExchangeAuthorizationCodeRequest", requestSchema), renderStruct("PlatformUser", userSchema), renderStruct("ExchangeAuthorizationCodeResponse", responseSchema), renderSuccessEnvelope(successEnvelope), renderStruct("ErrorObject", errorObject), renderStruct("ErrorEnvelope", errorEnvelope))
+
+%s
+
+%s
+
+%s
+`, authorizePath, tokenPath, authorizationCheckPath, fmt.Sprintf("%x", digest),
+		headerSupport,
+		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
+		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),
+		renderStruct("PlatformUser", userSchema),
+		renderStruct("ExchangeAuthorizationCodeResponse", responseSchema),
+		renderStruct("AuthorizationScope", authorizationScope),
+		renderStruct("AuthorizationCheckRequest", authorizationCheckRequest),
+		renderStruct("AuthorizationDecision", authorizationDecision),
+		renderSuccessEnvelope(successEnvelope),
+		renderStruct("ErrorObject", errorObject),
+		renderStruct("ErrorEnvelope", errorEnvelope),
+	)
 	formatted, err := format.Source([]byte(generated))
 	if err != nil {
 		fail(fmt.Errorf("format generated contract: %w", err))
@@ -248,6 +275,40 @@ func validateTokenOperation(operation *operation, parameters map[string]paramete
 	}
 }
 
+func validateAuthorizationCheckOperation(operation *operation, parameters map[string]parameter) {
+	validSecurity := false
+	for _, requirement := range operation.Security {
+		_, basic := requirement["clientSecret"]
+		_, hmac := requirement["serviceHmac"]
+		validSecurity = validSecurity || basic && hmac
+	}
+	if !validSecurity {
+		fail(fmt.Errorf("authorization check must require clientSecret and serviceHmac together"))
+	}
+	requiredParameters := map[string]bool{
+		"#/components/parameters/ServiceId": false, "#/components/parameters/KeyId": false,
+		"#/components/parameters/Timestamp": false, "#/components/parameters/Nonce": false,
+	}
+	for _, parameter := range operation.Parameters {
+		if _, ok := requiredParameters[parameter.Ref]; ok {
+			requiredParameters[parameter.Ref] = true
+		}
+	}
+	for reference, present := range requiredParameters {
+		if !present {
+			fail(fmt.Errorf("authorization check is missing %s", reference))
+		}
+		name := strings.TrimPrefix(reference, "#/components/parameters/")
+		definition, ok := parameters[name]
+		if !ok || definition.In != "header" || !definition.Required || definition.Name == "" || definition.Schema == nil {
+			fail(fmt.Errorf("%s must resolve to a required header parameter", reference))
+		}
+	}
+	if !operation.RequestBody.Required {
+		fail(fmt.Errorf("authorization check request body must be required"))
+	}
+}
+
 func renderHeaders(references []parameter, parameters map[string]parameter, hmac securityScheme) string {
 	var headers []parameter
 	for _, reference := range references {
@@ -309,6 +370,21 @@ func responseDataSchema(root *schema) *schema {
 		}
 	}
 	return root.Properties["data"]
+}
+
+func resolveSchema(value *schema, schemas map[string]*schema) *schema {
+	if value == nil || value.Ref == "" {
+		return value
+	}
+	const prefix = "#/components/schemas/"
+	if !strings.HasPrefix(value.Ref, prefix) {
+		fail(fmt.Errorf("unsupported schema reference %s", value.Ref))
+	}
+	resolved := schemas[strings.TrimPrefix(value.Ref, prefix)]
+	if resolved == nil {
+		fail(fmt.Errorf("schema reference %s is missing", value.Ref))
+	}
+	return resolved
 }
 
 func renderStruct(name string, value *schema) string {
@@ -376,6 +452,9 @@ func schemaType(value *schema) string {
 	case "boolean":
 		return "bool"
 	case "integer":
+		if value.Format == "int64" {
+			return "int64"
+		}
 		return "int"
 	case "object":
 		return "map[string]any"

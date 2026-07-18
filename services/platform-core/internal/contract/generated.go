@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	AuthorizeRoute = "/api/v1/oauth/authorize"
-	TokenRoute     = "/api/v1/oauth/token"
-	SourceSHA256   = "fae4d59e3f5221a19f43bf2f9447c6260ea6c177d3fdccab7b5c66e14bd04c32"
+	AuthorizeRoute          = "/api/v1/oauth/authorize"
+	TokenRoute              = "/api/v1/oauth/token"
+	AuthorizationCheckRoute = "/api/v1/authorization/check"
+	SourceSHA256            = "3fef8ec7bf03a37f590c82961523deee029b31a5ad988919f7a98cc1421a79b6"
 )
 
 const (
@@ -142,6 +143,29 @@ type ExchangeAuthorizationCodeResponse struct {
 	User                 PlatformUser `json:"user"`
 	SessionExchangeToken string       `json:"session_exchange_token"`
 	ExpiresAt            time.Time    `json:"expires_at"`
+}
+
+type AuthorizationScope struct {
+	Kind         string  `json:"kind"`
+	ProductCode  *string `json:"product_code,omitempty"`
+	ResourceID   *string `json:"resource_id,omitempty"`
+	ResourceType *string `json:"resource_type,omitempty"`
+}
+
+type AuthorizationCheckRequest struct {
+	SessionExchangeToken string             `json:"session_exchange_token"`
+	PermissionCode       string             `json:"permission_code"`
+	Scope                AuthorizationScope `json:"scope"`
+}
+
+type AuthorizationDecision struct {
+	Allowed               bool               `json:"allowed"`
+	ActorUserID           string             `json:"actor_user_id"`
+	PermissionCode        string             `json:"permission_code"`
+	Scope                 AuthorizationScope `json:"scope"`
+	GrantID               string             `json:"grant_id"`
+	AuthorizationRevision int64              `json:"authorization_revision"`
+	CheckedAt             time.Time          `json:"checked_at"`
 }
 
 type SuccessEnvelope[T any] struct {
