@@ -41,7 +41,7 @@
 
 ## 3. 历史文档
 
-- [`archive/legacy-platform/`](./archive/legacy-platform/)：旧 Study V2 的开发、架构、API、安全、积分会员、AI Mock 和路线图。
+- [`archive/legacy-platform/`](./archive/legacy-platform/)：旧 Study V2 的产品语境、开发、架构、API、数据库、管理后台、安全、UI 设计记录和路线图。
 - [`archive/status/`](./archive/status/)：带日期的阶段总结和当时的验收结论。
 
 这些文件用于追溯历史，不作为新功能实现依据。

@@ -283,7 +283,7 @@ QUIZCRAFT_SYNC_LOCAL_BANKS_TO_DB=0
 - [docs/feedback-triage-workflow.md](docs/feedback-triage-workflow.md)：生产反馈修复流程。
 - [docs/performance-comparison-2026-06-30.md](docs/performance-comparison-2026-06-30.md)：前端性能对比记录。
 - [electron-app/README.md](electron-app/README.md)：Electron 桌面端说明。
-- [android-app/README.md](android-app/README.md)：Android 端说明。
+- `android-app/`：Android 客户端源码；当前没有独立 README。
 
 ## License
 
