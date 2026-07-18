@@ -19,8 +19,9 @@
 HENUKitDev/
 ├── apps/
 │   ├── portal/
+│   ├── console/
 │   ├── study-web/
-│   ├── study-admin/
+│   ├── study-legacy-admin/
 │   └── quiz-web/
 ├── services/
 │   ├── platform-core/
