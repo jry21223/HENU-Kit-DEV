@@ -41,7 +41,7 @@ modules:
     target_path: apps/console
     owner: platform
     deploy_unit: henukit-console
-    status: boundary_only
+    status: mock_foundation
 
   - id: study_api
     kind: go_service

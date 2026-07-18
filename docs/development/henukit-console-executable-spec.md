@@ -18,9 +18,9 @@ QuizCraft 保留 React 用户端并用 Go 重构后端，以稳定题库和题�
 
 | 状态 | 能力 |
 |---|---|
-| Current | 当前仓库仍运行原 Web、物理隔离后的 Study Legacy Admin、Study Legacy API 与 Worker；Web、Study Legacy Admin、最小 Console 边界与现有 QuizCraft 前端已统一到 pnpm Workspace。最小 Console Bundle 只证明应用边界存在，不代表六模块产品壳已经交付。 |
+| Current | 当前仓库仍运行原 Web、物理隔离后的 Study Legacy Admin、Study Legacy API 与 Worker；Web、Study Legacy Admin、Console 与现有 QuizCraft 前端已统一到 pnpm Workspace。Console 已交付使用 Mock 数据的响应式六模块 Overview 及降级/权限展示状态，但尚未接入 Gateway、登录会话、真实授权或产品数据。 |
 | Current documentation baseline | Context、ADR、替代计划、执行规格和验收 Gate 已成为后续工作的决策基线；这些文档本身不证明运行时、数据库迁移或生产切流已经交付。 |
-| Planned | 后续 Portal 包接入现有 pnpm Workspace；并交付 HENUKit Console 六模块产品壳、Console Gateway、Platform Core、六个 Active Product Module 接入，以及 QuizCraft React + Go 重构与可回滚迁移。 |
+| Planned | 后续 Portal 包接入现有 pnpm Workspace；并交付 Console Gateway、Platform Core、六个 Active Product Module 的真实接入，以及 QuizCraft React + Go 重构与可回滚迁移。 |
 | Out of scope for V1 | Portal CMS/部署控制、积分、会员、排行奖励、QuizCraft Electron/Android、AI 生成解析、旧身份自动绑定、跨题库自定义收藏夹和 QuizCraft 美食转盘。 |
 
 下文 Implementation Decisions 均描述 Planned 目标态，除非某条明确标记为 Current 或 Out of scope。实际交付状态只能由已验证代码、契约、Migration 和运行证据更新，不能由现在时措辞推断。
