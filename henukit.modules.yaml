@@ -27,13 +27,21 @@ modules:
     target_domain: study.henukit.cn
     status: migrate_in_place
 
-  - id: study_admin
+  - id: study_legacy_admin
     kind: web_app
-    current_path: apps/admin
-    target_path: apps/study-admin
+    current_path: apps/study-legacy-admin
+    target_path: apps/study-legacy-admin
     owner: study
     deploy_unit: study-admin
-    status: migrate_in_place
+    status: legacy_preserved
+
+  - id: console
+    kind: web_app
+    current_path: apps/console
+    target_path: apps/console
+    owner: platform
+    deploy_unit: henukit-console
+    status: boundary_only
 
   - id: study_api
     kind: go_service

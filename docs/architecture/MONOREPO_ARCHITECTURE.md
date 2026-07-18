@@ -45,7 +45,8 @@ Monorepo 仍允许：
 final-review-platform/             # 迁移完成后改名 HENUKitDev
 ├── apps/
 │   ├── web/                       # 当前 Next.js，迁移期作为资料库 Web
-│   ├── admin/                     # 当前 Vue Admin
+│   ├── console/                   # HENUKit Console 独立应用边界
+│   ├── study-legacy-admin/        # 物理隔离的旧 Vue Admin
 │   └── portal/                    # 新 HENU Kit 主站
 ├── services/
 │   ├── api/                       # 当前混合 Go API，迁移期兼容层
@@ -75,8 +76,9 @@ final-review-platform/             # 迁移完成后改名 HENUKitDev
 HENUKitDev/
 ├── apps/
 │   ├── portal/                    # henukit.cn
+│   ├── console/                   # HENUKit Console，Vue/Vite
 │   ├── study-web/                 # study.henukit.cn，Next.js
-│   ├── study-admin/               # 资料管理后台，Vue
+│   ├── study-legacy-admin/        # 物理隔离的旧 Study 后台，迁移期保留回滚
 │   └── quiz-web/                  # quiz.henukit.cn，React/Vite
 ├── services/
 │   ├── platform-core/             # Go 模块化单体 API

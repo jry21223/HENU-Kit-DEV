@@ -8,7 +8,7 @@ HENUKit Console 是整个 HENU Kit 产品族的统一管理入口，只承载平
 
 ## Consequences
 
-- 新旧后台使用独立的应用目录、前端 Bundle、路由树、导航入口、构建、部署和退役边界；Study Legacy Admin 从当前 `apps/admin` 物理拆出，HENUKit Console 不打包旧页面或 Element Plus。
+- 新旧后台使用独立的应用目录、前端 Bundle、路由树、导航入口、构建、部署和退役边界；Study Legacy Admin 已从原 `apps/admin` 物理拆到 `apps/study-legacy-admin`，HENUKit Console 不打包旧页面或 Element Plus。
 - 新建独立部署的 Console Gateway，专门为 HENUKit Console 验证后台权限、聚合模块摘要并转发受控操作；它不能写入现有混合 `services/api`，也不直接连接各子产品数据库。现有 `services/api` 作为 Study Legacy API 保留旧接口和数据模型。
 - Console Gateway 保持无业务状态，只允许短期缓存、限流和请求追踪；用户、角色、Operations Inbox 及各产品业务数据继续由 Platform Core 或对应产品拥有。
 - 管理员通过 Platform Core 账户中心登录，Console Gateway 在服务端使用一次性授权码交换身份与作用域权限并建立独立 Console Session；浏览器不保存长期 Token，也不跨站共享 Cookie，角色冻结和 Session 撤销必须在目标时限内传播。

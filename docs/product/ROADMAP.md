@@ -152,7 +152,7 @@
 ### 范围
 
 - `apps/web` → `apps/study-web`
-- `apps/admin` → `apps/study-admin`
+- `apps/admin` → `apps/study-legacy-admin`（已完成物理拆分）
 - `services/api` → `services/study-api`
 - `services/worker` → `services/study-worker`
 - `products/quizcraft/web-app` → `apps/quiz-web`
