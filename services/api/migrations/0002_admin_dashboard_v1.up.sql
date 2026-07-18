@@ -60,8 +60,12 @@ CREATE TABLE IF NOT EXISTS food_tier_definitions (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz,
     code varchar(60) NOT NULL UNIQUE, name varchar(80) NOT NULL, sort_order integer NOT NULL UNIQUE, enabled boolean NOT NULL DEFAULT true
 );
-INSERT INTO food_tier_definitions (code, name, sort_order) VALUES
-    ('hang', '夯', 10), ('ren_shang_ren', '人上人', 20), ('top', '顶级', 30), ('npc', 'NPC', 40), ('la_wan_le', '拉完了', 50)
+INSERT INTO food_tier_definitions (id, code, name, sort_order) VALUES
+    (gen_random_uuid(), 'hang', '夯', 10),
+    (gen_random_uuid(), 'ren_shang_ren', '人上人', 20),
+    (gen_random_uuid(), 'top', '顶级', 30),
+    (gen_random_uuid(), 'npc', 'NPC', 40),
+    (gen_random_uuid(), 'la_wan_le', '拉完了', 50)
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, sort_order = EXCLUDED.sort_order;
 
 CREATE TABLE IF NOT EXISTS food_submissions (

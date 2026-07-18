@@ -20,10 +20,11 @@ const (
 )
 
 type Claims struct {
-	UserID string `json:"userId"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
-	Type   string `json:"type"`
+	UserID       string `json:"userId"`
+	Email        string `json:"email"`
+	Role         string `json:"role"`
+	Type         string `json:"type"`
+	TokenVersion int    `json:"tokenVersion"`
 	jwt.RegisteredClaims
 }
 
@@ -50,17 +51,18 @@ func NewTokenManager(cfg config.Config) (*TokenManager, error) {
 	}, nil
 }
 
-func (m *TokenManager) Issue(userID string, email string, role string, tokenType string) (string, time.Time, error) {
+func (m *TokenManager) Issue(userID string, email string, role string, tokenType string, tokenVersion int) (string, time.Time, error) {
 	ttl := m.accessTTL
 	if tokenType == TokenTypeRefresh {
 		ttl = m.refreshTTL
 	}
 	expiresAt := time.Now().Add(ttl)
 	claims := Claims{
-		UserID: userID,
-		Email:  email,
-		Role:   role,
-		Type:   tokenType,
+		UserID:       userID,
+		Email:        email,
+		Role:         role,
+		Type:         tokenType,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    m.issuer,
 			Subject:   userID,

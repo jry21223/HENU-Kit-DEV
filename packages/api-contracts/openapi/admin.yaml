@@ -2,10 +2,48 @@ openapi: 3.1.0
 info:
   title: HENU Kit Unified Admin API
   version: 0.1.0
+  license:
+    name: UNLICENSED
   description: Machine contract for the student-operated, non-official HENU Kit admin console.
 servers:
   - url: /api/v1
 paths:
+  /object-upload-intents:
+    post:
+      summary: Create a short-lived presigned upload for an allowed object
+      operationId: createObjectUploadIntent
+      security: [{ legacyAdminBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectUploadIntentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /me/notice-email-subscription:
+    get:
+      summary: Read the current user's opt-in notice email setting
+      operationId: getMyNoticeEmailSubscription
+      security: [{ legacyAdminBearer: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      summary: Opt in or immediately opt out of notice email
+      operationId: updateMyNoticeEmailSubscription
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoticeEmailSubscriptionRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /admin/ui-config:
     get:
       summary: Read runtime admin UI capabilities
@@ -18,6 +56,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UIConfigEnvelope"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/users/{id}/sessions/revoke:
+    post:
+      summary: Revoke every issued access and refresh token for a user
+      operationId: revokeAdminUserSessions
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VersionedMutationRequest" } } }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /admin/dashboard-snapshots/latest:
     get:
       summary: Read the latest six-domain dashboard snapshot
@@ -51,6 +104,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActionItemPageEnvelope"
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /admin/metric-series:
     get:
       summary: Read a versioned admin metric time series
@@ -68,6 +122,318 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MetricSeriesEnvelope"
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /admin/notices:
+    get:
+      summary: List campus notice heads for admin review
+      operationId: listAdminNotices
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/notices/{id}/versions:
+    get:
+      summary: List immutable notice versions for admin comparison
+      operationId: listAdminNoticeVersions
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "404": { $ref: "#/components/responses/BadRequest" }
+  /admin/notice-import-jobs:
+    get:
+      summary: List notice JSONL import jobs
+      operationId: listAdminNoticeImportJobs
+      security: [{ legacyAdminBearer: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      summary: Import UTF-8 campus-notice-import/1.0 JSONL
+      operationId: importAdminNotices
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/x-ndjson:
+            schema: { type: string, maxLength: 10485760 }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /admin/school-notices:
+    post:
+      summary: Create or idempotently version one campus notice
+      operationId: createAdminNotice
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoticeUpsertRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /admin/notices/{id}/reviews:
+    post:
+      summary: Approve or reject a campus notice with optimistic locking
+      operationId: reviewAdminNotice
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoticeReviewRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/mail-operations:
+    get:
+      summary: List mail deliveries and open dead letters
+      operationId: listAdminMailOperations
+      security: [{ legacyAdminBearer: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/mail-deliveries/{id}/retries:
+    post:
+      summary: Safely retry one failed or suppressed delivery
+      operationId: retryAdminMailDelivery
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VersionedMutationRequest" } } }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/mail-dead-letters/{id}/replays:
+    post:
+      summary: Replay one open dead letter
+      operationId: replayAdminMailDeadLetter
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VersionedMutationRequest" } } }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/mail-suppressions:
+    post:
+      summary: Add or update a hashed-recipient suppression
+      operationId: createAdminMailSuppression
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MailSuppressionRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /admin/mail-suppressions/{id}:
+    patch:
+      summary: Release an active mail suppression
+      operationId: releaseAdminMailSuppression
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VersionedMutationRequest" } } }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/platform-feedback:
+    get:
+      summary: List platform feedback ordered by SLA deadline
+      operationId: listAdminPlatformFeedback
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: urgency, in: query, schema: { $ref: "#/components/schemas/Urgency" } }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/feedback-operations:
+    get:
+      summary: Read platform and QuizCraft feedback in one admin view
+      operationId: listAdminFeedbackOperations
+      security: [{ legacyAdminBearer: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/platform-feedback/{id}:
+    patch:
+      summary: Assign, reschedule, or resolve platform feedback
+      operationId: updateAdminPlatformFeedback
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeedbackUpdateRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/quiz-feedback/{id}/verifications:
+    post:
+      summary: Verify snapshot JSON, PostgreSQL row, and online API
+      operationId: verifyAdminQuizFeedback
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VersionedMutationRequest" } } }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/quiz-feedback/{id}/resolutions:
+    post:
+      summary: Resolve QuizCraft feedback only after all three verifications
+      operationId: resolveAdminQuizFeedback
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VersionedMutationRequest" } } }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/food-operations:
+    get:
+      summary: List food submissions, entries, and policy candidates
+      operationId: listAdminFoodOperations
+      security: [{ legacyAdminBearer: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/food-entries/{id}/adjustments:
+    post:
+      summary: Confirm a one-tier food ranking adjustment
+      operationId: adjustAdminFoodEntry
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FoodAdjustmentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/food-submissions/{id}/approvals:
+    post:
+      summary: Approve a food submission and open its first calibration round
+      operationId: approveAdminFoodSubmission
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionedMutationRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/food-vote-anomalies/{id}/resolutions:
+    post:
+      summary: Resolve a reviewed food vote anomaly
+      operationId: resolveAdminFoodVoteAnomaly
+      security: [{ legacyAdminBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FoodAnomalyResolutionRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/system-operations:
+    get:
+      summary: List deployment unit heartbeats and operational counters
+      operationId: listAdminSystemOperations
+      security: [{ legacyAdminBearer: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /internal/admin-summaries/current:
+    get:
+      summary: Read the current six-domain summary from a trusted service
+      operationId: getInternalAdminSummary
+      security: [{ serviceHmac: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/XServiceId" }
+        - { $ref: "#/components/parameters/XKeyId" }
+        - { $ref: "#/components/parameters/XTimestamp" }
+        - { $ref: "#/components/parameters/XNonce" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /internal/action-items:
+    get:
+      summary: Read action item references from a trusted service
+      operationId: listInternalActionItems
+      security: [{ serviceHmac: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/XServiceId" }
+        - { $ref: "#/components/parameters/XKeyId" }
+        - { $ref: "#/components/parameters/XTimestamp" }
+        - { $ref: "#/components/parameters/XNonce" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /internal/mail-deliveries:
+    post:
+      summary: Enqueue one priority-isolated mail delivery
+      operationId: enqueueInternalMailDelivery
+      security: [{ serviceHmac: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/XServiceId" }
+        - { $ref: "#/components/parameters/XKeyId" }
+        - { $ref: "#/components/parameters/XTimestamp" }
+        - { $ref: "#/components/parameters/XNonce" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MailDeliveryRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/DomainOperationsOK" }
+        "409": { $ref: "#/components/responses/Conflict" }
 components:
   securitySchemes:
     legacyAdminBearer:
@@ -75,6 +441,11 @@ components:
       scheme: bearer
       bearerFormat: JWT RS256
       description: Temporary verifier; replaced by Platform Core session without changing this API.
+    serviceHmac:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: HMAC-SHA256 over method, path and query, timestamp, nonce, and SHA256(body).
   schemas:
     RequestId:
       type: string
@@ -86,6 +457,119 @@ components:
     Urgency:
       type: string
       enum: [urgent, normal]
+    NoticeReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [decision, expected_version]
+      properties:
+        decision: { type: string, enum: [approve, reject] }
+        reason: { type: string, maxLength: 1000 }
+        expected_version: { type: integer, minimum: 1 }
+    NoticeEmailSubscriptionRequest:
+      type: object
+      additionalProperties: false
+      required: [enabled, expected_version]
+      properties:
+        enabled: { type: boolean }
+        expected_version: { type: integer, minimum: 0 }
+    NoticeUpsertRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, source_id, external_id, title, body, published_at, original_url]
+      properties:
+        schema_version: { type: string, const: campus-notice-import/1.0 }
+        source_id: { type: string, format: uuid }
+        external_id: { type: string, minLength: 1, maxLength: 200 }
+        organization_id: { type: [string, "null"], format: uuid }
+        title: { type: string, minLength: 1, maxLength: 500 }
+        body: { type: string, minLength: 1, maxLength: 200000 }
+        published_at: { type: string, format: date-time }
+        original_url: { type: string, format: uri, maxLength: 2048 }
+        importance: { type: string, enum: [normal, important, urgent], default: normal }
+        audience:
+          type: array
+          maxItems: 20
+          items: { type: string, pattern: "^(all_verified_users|(school|major):[0-9a-fA-F-]{36})$" }
+        content_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        attachments:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/NoticeAttachment" }
+    NoticeAttachment:
+      type: object
+      additionalProperties: false
+      required: [object_key, sha256, content_type, size_bytes]
+      properties:
+        object_key: { type: string, pattern: "^notice_attachment/" }
+        sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        content_type: { type: string, enum: [application/pdf, image/jpeg, image/png, image/webp] }
+        size_bytes: { type: integer, minimum: 1, maximum: 20971520 }
+    ObjectUploadIntentRequest:
+      type: object
+      additionalProperties: false
+      required: [scope, file_name, content_type, size_bytes]
+      properties:
+        scope: { type: string, enum: [food_image, notice_attachment] }
+        file_name: { type: string, minLength: 1, maxLength: 255 }
+        content_type: { type: string, enum: [application/pdf, image/jpeg, image/png, image/webp] }
+        size_bytes: { type: integer, minimum: 1, maximum: 20971520 }
+    VersionedMutationRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        expected_version: { type: integer, minimum: 1 }
+    MailDeliveryRequest:
+      type: object
+      additionalProperties: false
+      required: [category, recipient, template_code, subject, body, request_id]
+      properties:
+        category: { type: string, enum: [critical, transactional, digest] }
+        recipient: { type: string, format: email, maxLength: 320 }
+        template_code: { type: string, minLength: 1, maxLength: 120 }
+        subject: { type: string, minLength: 1, maxLength: 500 }
+        body: { type: string, minLength: 1, maxLength: 200000 }
+        request_id: { $ref: "#/components/schemas/RequestId" }
+    MailSuppressionRequest:
+      type: object
+      additionalProperties: false
+      required: [recipient, reason_code]
+      properties:
+        recipient: { type: string, format: email, maxLength: 320 }
+        reason_code: { type: string, minLength: 1, maxLength: 120 }
+        expires_at: { type: [string, "null"], format: date-time }
+    FeedbackUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [status, expected_version]
+      properties:
+        status: { type: string, enum: [new, in_progress, resolved] }
+        assignee_id: { type: [string, "null"], format: uuid }
+        due_at: { type: [string, "null"], format: date-time }
+        expected_version: { type: integer, minimum: 1 }
+    FoodAdjustmentRequest:
+      type: object
+      additionalProperties: false
+      required: [direction, expected_version]
+      properties:
+        direction: { type: string, enum: [promote, demote] }
+        expected_version: { type: integer, minimum: 1 }
+    FoodAnomalyResolutionRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, resolution]
+      properties:
+        expected_version: { type: integer, minimum: 1 }
+        resolution: { type: string, minLength: 1, maxLength: 1000 }
+    DomainOperationsEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              description: Domain-specific read model; concrete row schemas are versioned with each domain service contract.
     DomainCode:
       type: string
       enum: [users, notice, mail, feedback, food, system]
@@ -237,9 +721,49 @@ components:
             details: {}
         request_id: { $ref: "#/components/schemas/RequestId" }
   responses:
+    BadRequest:
+      description: Input validation failed.
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+    DomainOperationsOK:
+      description: Domain-specific admin read model.
+      content: { application/json: { schema: { $ref: "#/components/schemas/DomainOperationsEnvelope" } } }
+    Conflict:
+      description: Optimistic version conflict.
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
     Unauthorized:
       description: Authentication failed.
       content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
     Forbidden:
       description: Scope or permission denied.
       content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 200 }
+    XServiceId:
+      name: X-Service-Id
+      in: header
+      required: true
+      schema: { type: string, minLength: 2, maxLength: 100 }
+    XKeyId:
+      name: X-Key-Id
+      in: header
+      required: true
+      schema: { type: string, minLength: 2, maxLength: 100 }
+    XTimestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      schema: { type: string, format: date-time }
+    XNonce:
+      name: X-Nonce
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 200 }

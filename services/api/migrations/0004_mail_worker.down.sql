@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS mail_suppressions;
+DROP TABLE IF EXISTS mail_attempts;
+DROP INDEX IF EXISTS idx_mail_deliveries_claim;
+ALTER TABLE mail_deliveries DROP COLUMN IF EXISTS version;
+ALTER TABLE mail_deliveries DROP COLUMN IF EXISTS last_error_code;
+ALTER TABLE mail_deliveries DROP COLUMN IF EXISTS locked_by;
+ALTER TABLE mail_deliveries DROP COLUMN IF EXISTS locked_at;
+ALTER TABLE mail_deliveries DROP COLUMN IF EXISTS body;
+ALTER TABLE mail_deliveries DROP COLUMN IF EXISTS subject;
+ALTER TABLE mail_deliveries DROP COLUMN IF EXISTS recipient;

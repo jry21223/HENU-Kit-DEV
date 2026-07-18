@@ -15,6 +15,11 @@
     "published_at": { "type": "string", "format": "date-time" },
     "original_url": { "type": "string", "format": "uri", "maxLength": 1000 },
     "importance": { "type": "string", "enum": ["normal", "important", "urgent"], "default": "normal" },
+    "audience": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "type": "string", "pattern": "^(all_verified_users|(school|major):[0-9a-fA-F-]{36})$" }
+    },
     "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "attachments": {
       "type": "array",

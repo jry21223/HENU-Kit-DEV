@@ -91,6 +91,8 @@ type User struct {
 	EmailVerified bool       `json:"emailVerified" gorm:"default:false"`
 	FrozenUntil   *time.Time `json:"frozenUntil,omitempty"`
 	PointsBalance int64      `json:"pointsBalance" gorm:"default:0"`
+	TokenVersion  int        `json:"-" gorm:"not null;default:1"`
+	Version       int        `json:"version" gorm:"not null;default:1"`
 }
 
 type EmailVerificationCode struct {
@@ -525,11 +527,16 @@ type Notification struct {
 type Report struct {
 	BaseModel
 	ReviewFields
-	ReporterID  string `json:"reporterId" gorm:"type:uuid;index;not null"`
-	TargetType  string `json:"targetType" gorm:"size:60;index;not null"`
-	TargetID    string `json:"targetId" gorm:"size:120;index;not null"`
-	Reason      string `json:"reason" gorm:"size:500"`
-	Description string `json:"description" gorm:"type:text"`
+	ReporterID       string         `json:"reporterId" gorm:"type:uuid;index;not null"`
+	TargetType       string         `json:"targetType" gorm:"size:60;index;not null"`
+	TargetID         string         `json:"targetId" gorm:"size:120;index;not null"`
+	Reason           string         `json:"reason" gorm:"size:500"`
+	Description      string         `json:"description" gorm:"type:text"`
+	TargetSnapshot   datatypes.JSON `json:"targetSnapshot,omitempty" gorm:"type:json"`
+	JSONVerified     bool           `json:"jsonVerified" gorm:"not null;default:false"`
+	PostgresVerified bool           `json:"postgresVerified" gorm:"not null;default:false"`
+	APIVerified      bool           `json:"apiVerified" gorm:"not null;default:false"`
+	Version          int            `json:"version" gorm:"not null;default:1"`
 }
 
 type OperationLog struct {
@@ -575,10 +582,10 @@ func AllModels() []interface{} {
 		&Membership{}, &MembershipPlan{},
 		&AITask{}, &AIDraft{}, &AIUsageLog{},
 		&Notification{}, &Report{}, &OperationLog{}, &LeaderboardSnapshot{}, &SystemConfig{},
-		&CampusNotice{}, &CampusNoticeVersion{}, &NoticeImportJob{},
-		&MailDelivery{}, &MailDeadLetter{},
+		&CampusNotice{}, &CampusNoticeVersion{}, &NoticeImportJob{}, &NoticeEmailSubscription{}, &NoticeDistributionReceipt{},
+		&MailDelivery{}, &MailDeadLetter{}, &MailAttempt{}, &MailSuppression{},
 		&PlatformFeedback{}, &OperationCase{},
-		&FoodTierDefinition{}, &FoodSubmission{}, &FoodEntry{}, &FoodCalibrationRound{}, &FoodCalibrationVote{}, &FoodVoteAnomaly{},
-		&ServiceHeartbeat{}, &IdempotencyRecord{},
+		&FoodTierDefinition{}, &FoodSubmission{}, &FoodEntry{}, &FoodCalibrationRound{}, &FoodCalibrationVote{}, &FoodVoteAnomaly{}, &FoodTierAdjustment{},
+		&ServiceHeartbeat{}, &OutboxEvent{}, &IdempotencyRecord{},
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	"final-review-platform/services/worker/internal/mailprovider"
 	"final-review-platform/services/worker/pkg/config"
 )
 
@@ -41,11 +42,24 @@ func (r Runner) Run(ctx context.Context) error {
 		return err
 	}
 	StartProbeServer(ctx, r.cfg, r.log, db, client)
+	startHeartbeat(ctx, db, r.cfg)
 
 	processor := Processor{db: db, log: r.log, llmMode: r.cfg.LLMMode}
+	provider, err := buildMailProvider(r.cfg)
+	if err != nil {
+		return err
+	}
+	mailProcessor := NewMailProcessor(db, provider)
+	outboxProcessor := NewOutboxProcessor(db, redisEventPublisher{client: client}, r.cfg.EventStream)
 	r.log.Info("worker started", slog.String("environment", r.cfg.Environment), slog.String("llm_mode", r.cfg.LLMMode))
 	lastID := "0"
 	for {
+		if err := outboxProcessor.ProcessNext(ctx); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			r.log.Error("outbox processing failed", slog.String("error", err.Error()))
+		}
+		if err := mailProcessor.ProcessNext(ctx); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			r.log.Error("mail delivery processing failed", slog.String("error", err.Error()))
+		}
 		if err := processor.ProcessNextPending(ctx); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			r.log.Error("pending task processing failed", slog.String("error", err.Error()))
 		}
@@ -76,6 +90,20 @@ func (r Runner) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func buildMailProvider(cfg config.Config) (mailprovider.Provider, error) {
+	if cfg.SMTPHost == "" {
+		if cfg.Environment == "production" {
+			return nil, errors.New("SMTP configuration is required in production")
+		}
+		return &mailprovider.Fake{}, nil
+	}
+	provider, err := mailprovider.NewSMTP(mailprovider.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom})
+	if err != nil {
+		return nil, err
+	}
+	return provider, nil
 }
 
 type Processor struct {

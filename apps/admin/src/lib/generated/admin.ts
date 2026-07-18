@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/object-upload-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a short-lived presigned upload for an allowed object */
+        post: operations["createObjectUploadIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/notice-email-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the current user's opt-in notice email setting */
+        get: operations["getMyNoticeEmailSubscription"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Opt in or immediately opt out of notice email */
+        patch: operations["updateMyNoticeEmailSubscription"];
+        trace?: never;
+    };
     "/admin/ui-config": {
         parameters: {
             query?: never;
@@ -15,6 +50,23 @@ export interface paths {
         get: operations["getAdminUIConfig"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{id}/sessions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke every issued access and refresh token for a user */
+        post: operations["revokeAdminUserSessions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -72,6 +124,398 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List campus notice heads for admin review */
+        get: operations["listAdminNotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/notices/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List immutable notice versions for admin comparison */
+        get: operations["listAdminNoticeVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/notice-import-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List notice JSONL import jobs */
+        get: operations["listAdminNoticeImportJobs"];
+        put?: never;
+        /** Import UTF-8 campus-notice-import/1.0 JSONL */
+        post: operations["importAdminNotices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/school-notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create or idempotently version one campus notice */
+        post: operations["createAdminNotice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/notices/{id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or reject a campus notice with optimistic locking */
+        post: operations["reviewAdminNotice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/mail-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List mail deliveries and open dead letters */
+        get: operations["listAdminMailOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/mail-deliveries/{id}/retries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Safely retry one failed or suppressed delivery */
+        post: operations["retryAdminMailDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/mail-dead-letters/{id}/replays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replay one open dead letter */
+        post: operations["replayAdminMailDeadLetter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/mail-suppressions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add or update a hashed-recipient suppression */
+        post: operations["createAdminMailSuppression"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/mail-suppressions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Release an active mail suppression */
+        patch: operations["releaseAdminMailSuppression"];
+        trace?: never;
+    };
+    "/admin/platform-feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List platform feedback ordered by SLA deadline */
+        get: operations["listAdminPlatformFeedback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/feedback-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read platform and QuizCraft feedback in one admin view */
+        get: operations["listAdminFeedbackOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/platform-feedback/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Assign, reschedule, or resolve platform feedback */
+        patch: operations["updateAdminPlatformFeedback"];
+        trace?: never;
+    };
+    "/admin/quiz-feedback/{id}/verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify snapshot JSON, PostgreSQL row, and online API */
+        post: operations["verifyAdminQuizFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/quiz-feedback/{id}/resolutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve QuizCraft feedback only after all three verifications */
+        post: operations["resolveAdminQuizFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/food-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List food submissions, entries, and policy candidates */
+        get: operations["listAdminFoodOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/food-entries/{id}/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a one-tier food ranking adjustment */
+        post: operations["adjustAdminFoodEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/food-submissions/{id}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a food submission and open its first calibration round */
+        post: operations["approveAdminFoodSubmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/food-vote-anomalies/{id}/resolutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a reviewed food vote anomaly */
+        post: operations["resolveAdminFoodVoteAnomaly"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/system-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List deployment unit heartbeats and operational counters */
+        get: operations["listAdminSystemOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/admin-summaries/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the current six-domain summary from a trusted service */
+        get: operations["getInternalAdminSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/action-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read action item references from a trusted service */
+        get: operations["listInternalActionItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/mail-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue one priority-isolated mail delivery */
+        post: operations["enqueueInternalMailDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -81,6 +525,96 @@ export interface components {
         IntegrationStatus: "not_integrated" | "ok" | "partial" | "stale" | "unavailable";
         /** @enum {string} */
         Urgency: "urgent" | "normal";
+        NoticeReviewRequest: {
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            reason?: string;
+            expected_version: number;
+        };
+        NoticeEmailSubscriptionRequest: {
+            enabled: boolean;
+            expected_version: number;
+        };
+        NoticeUpsertRequest: {
+            /** @constant */
+            schema_version: "campus-notice-import/1.0";
+            /** Format: uuid */
+            source_id: string;
+            external_id: string;
+            /** Format: uuid */
+            organization_id?: string | null;
+            title: string;
+            body: string;
+            /** Format: date-time */
+            published_at: string;
+            /** Format: uri */
+            original_url: string;
+            /**
+             * @default normal
+             * @enum {string}
+             */
+            importance: "normal" | "important" | "urgent";
+            audience?: string[];
+            content_sha256?: string;
+            attachments?: components["schemas"]["NoticeAttachment"][];
+        };
+        NoticeAttachment: {
+            object_key: string;
+            sha256: string;
+            /** @enum {string} */
+            content_type: "application/pdf" | "image/jpeg" | "image/png" | "image/webp";
+            size_bytes: number;
+        };
+        ObjectUploadIntentRequest: {
+            /** @enum {string} */
+            scope: "food_image" | "notice_attachment";
+            file_name: string;
+            /** @enum {string} */
+            content_type: "application/pdf" | "image/jpeg" | "image/png" | "image/webp";
+            size_bytes: number;
+        };
+        VersionedMutationRequest: {
+            expected_version: number;
+        };
+        MailDeliveryRequest: {
+            /** @enum {string} */
+            category: "critical" | "transactional" | "digest";
+            /** Format: email */
+            recipient: string;
+            template_code: string;
+            subject: string;
+            body: string;
+            request_id: components["schemas"]["RequestId"];
+        };
+        MailSuppressionRequest: {
+            /** Format: email */
+            recipient: string;
+            reason_code: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+        };
+        FeedbackUpdateRequest: {
+            /** @enum {string} */
+            status: "new" | "in_progress" | "resolved";
+            /** Format: uuid */
+            assignee_id?: string | null;
+            /** Format: date-time */
+            due_at?: string | null;
+            expected_version: number;
+        };
+        FoodAdjustmentRequest: {
+            /** @enum {string} */
+            direction: "promote" | "demote";
+            expected_version: number;
+        };
+        FoodAnomalyResolutionRequest: {
+            expected_version: number;
+            resolution: string;
+        };
+        DomainOperationsEnvelope: components["schemas"]["SuccessEnvelope"] & {
+            /** @description Domain-specific read model; concrete row schemas are versioned with each domain service contract. */
+            data: Record<string, never>;
+        };
         /** @enum {string} */
         DomainCode: "users" | "notice" | "mail" | "feedback" | "food" | "system";
         Metric: {
@@ -181,6 +715,33 @@ export interface components {
         };
     };
     responses: {
+        /** @description Input validation failed. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /** @description Domain-specific admin read model. */
+        DomainOperationsOK: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["DomainOperationsEnvelope"];
+            };
+        };
+        /** @description Optimistic version conflict. */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
         /** @description Authentication failed. */
         Unauthorized: {
             headers: {
@@ -200,13 +761,70 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        ResourceId: string;
+        IdempotencyKey: string;
+        XServiceId: string;
+        XKeyId: string;
+        XTimestamp: string;
+        XNonce: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    createObjectUploadIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObjectUploadIntentRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMyNoticeEmailSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateMyNoticeEmailSubscription: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeEmailSubscriptionRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     getAdminUIConfig: {
         parameters: {
             query?: never;
@@ -225,6 +843,28 @@ export interface operations {
                     "application/json": components["schemas"]["UIConfigEnvelope"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    revokeAdminUserSessions: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedMutationRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
         };
     };
     getLatestAdminDashboardSnapshot: {
@@ -270,6 +910,7 @@ export interface operations {
                     "application/json": components["schemas"]["ActionItemPageEnvelope"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getAdminMetricSeries: {
@@ -292,6 +933,445 @@ export interface operations {
                     "application/json": components["schemas"]["MetricSeriesEnvelope"];
                 };
             };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    listAdminNotices: {
+        parameters: {
+            query?: {
+                status?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAdminNoticeVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            404: components["responses"]["BadRequest"];
+        };
+    };
+    listAdminNoticeImportJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    importAdminNotices: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-ndjson": string;
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createAdminNotice: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeUpsertRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    reviewAdminNotice: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeReviewRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAdminMailOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    retryAdminMailDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedMutationRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    replayAdminMailDeadLetter: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedMutationRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createAdminMailSuppression: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailSuppressionRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    releaseAdminMailSuppression: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedMutationRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAdminPlatformFeedback: {
+        parameters: {
+            query?: {
+                status?: string;
+                urgency?: components["schemas"]["Urgency"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAdminFeedbackOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateAdminPlatformFeedback: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackUpdateRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    verifyAdminQuizFeedback: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedMutationRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    resolveAdminQuizFeedback: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedMutationRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAdminFoodOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adjustAdminFoodEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FoodAdjustmentRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    approveAdminFoodSubmission: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedMutationRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    resolveAdminFoodVoteAnomaly: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FoodAnomalyResolutionRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAdminSystemOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getInternalAdminSummary: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Service-Id": components["parameters"]["XServiceId"];
+                "X-Key-Id": components["parameters"]["XKeyId"];
+                "X-Timestamp": components["parameters"]["XTimestamp"];
+                "X-Nonce": components["parameters"]["XNonce"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listInternalActionItems: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Service-Id": components["parameters"]["XServiceId"];
+                "X-Key-Id": components["parameters"]["XKeyId"];
+                "X-Timestamp": components["parameters"]["XTimestamp"];
+                "X-Nonce": components["parameters"]["XNonce"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    enqueueInternalMailDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Service-Id": components["parameters"]["XServiceId"];
+                "X-Key-Id": components["parameters"]["XKeyId"];
+                "X-Timestamp": components["parameters"]["XTimestamp"];
+                "X-Nonce": components["parameters"]["XNonce"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailDeliveryRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["DomainOperationsOK"];
+            409: components["responses"]["Conflict"];
         };
     };
 }

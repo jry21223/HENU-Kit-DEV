@@ -3,6 +3,7 @@
   "style": "new-york",
   "typescript": true,
   "tailwind": {
+    "config": "",
     "css": "src/styles/main.css",
     "baseColor": "neutral",
     "cssVariables": true
@@ -11,6 +12,8 @@
     "components": "@/components",
     "utils": "@/lib/utils",
     "ui": "@/components/ui",
-    "lib": "@/lib"
-  }
+    "lib": "@/lib",
+    "hooks": "@/composables"
+  },
+  "iconLibrary": "lucide"
 }

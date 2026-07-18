@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	redislib "github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -25,6 +27,7 @@ import (
 	"final-review-platform/services/api/internal/auth"
 	"final-review-platform/services/api/internal/objectstorage"
 	"final-review-platform/services/api/internal/platform/model"
+	"final-review-platform/services/api/pkg/middleware"
 )
 
 const (
@@ -33,12 +36,17 @@ const (
 )
 
 type Handler struct {
-	db      *gorm.DB
-	storage *objectstorage.Signer
+	db         *gorm.DB
+	storage    *objectstorage.Signer
+	version    string
+	commit     string
+	apiBaseURL string
+	cache      *redislib.Client
+	telemetry  *middleware.HTTPRegistry
 }
 
-func NewHandler(db *gorm.DB, storage *objectstorage.Signer) Handler {
-	return Handler{db: db, storage: storage}
+func NewHandler(db *gorm.DB, storage *objectstorage.Signer, version string, commit string, apiBaseURL string, cache *redislib.Client, telemetry *middleware.HTTPRegistry) Handler {
+	return Handler{db: db, storage: storage, version: version, commit: commit, apiBaseURL: strings.TrimRight(apiBaseURL, "/"), cache: cache, telemetry: telemetry}
 }
 
 type captureWriter struct {
@@ -127,6 +135,7 @@ type noticeInput struct {
 	PublishedAt    time.Time          `json:"published_at"`
 	OriginalURL    string             `json:"original_url"`
 	Importance     string             `json:"importance"`
+	Audience       []string           `json:"audience"`
 	ContentSHA256  string             `json:"content_sha256"`
 	Attachments    []noticeAttachment `json:"attachments"`
 }
@@ -143,6 +152,76 @@ type importRowResult struct {
 	ExternalID string `json:"external_id,omitempty"`
 	Result     string `json:"result"`
 	Error      string `json:"error,omitempty"`
+}
+
+func createOutboxEvent(tx *gorm.DB, aggregateType, aggregateID, eventType string, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return tx.Create(&model.OutboxEvent{AggregateType: aggregateType, AggregateID: aggregateID, EventType: eventType, Payload: body, Status: "pending", AvailableAt: time.Now().UTC()}).Error
+}
+
+// EnqueueMail accepts only service-authenticated requests. Its idempotency
+// scope is the calling service plus Idempotency-Key and survives restarts.
+func (h Handler) EnqueueMail(ctx *gin.Context) {
+	serviceID, _ := ctx.Get("service_id")
+	idempotencyKey := strings.TrimSpace(ctx.GetHeader("Idempotency-Key"))
+	if len(idempotencyKey) < 8 {
+		writeError(ctx, http.StatusBadRequest, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key must contain at least 8 characters", nil)
+		return
+	}
+	var input struct {
+		Category     string `json:"category"`
+		Recipient    string `json:"recipient"`
+		TemplateCode string `json:"template_code"`
+		Subject      string `json:"subject"`
+		Body         string `json:"body"`
+		RequestID    string `json:"request_id"`
+	}
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		writeError(ctx, http.StatusBadRequest, "VALIDATION_ERROR", "invalid mail delivery request", nil)
+		return
+	}
+	if input.Category != "critical" && input.Category != "transactional" && input.Category != "digest" {
+		writeError(ctx, http.StatusBadRequest, "INVALID_MAIL_CATEGORY", "category must be critical, transactional, or digest", nil)
+		return
+	}
+	address, err := mail.ParseAddress(strings.TrimSpace(input.Recipient))
+	if err != nil || address.Address == "" || strings.TrimSpace(input.TemplateCode) == "" || strings.TrimSpace(input.Subject) == "" || strings.TrimSpace(input.Body) == "" || strings.TrimSpace(input.RequestID) == "" {
+		writeError(ctx, http.StatusBadRequest, "VALIDATION_ERROR", "recipient, template_code, subject, body, and request_id are required", nil)
+		return
+	}
+	canonicalBody, _ := json.Marshal(input)
+	requestSum := sha256.Sum256(canonicalBody)
+	enqueueSum := sha256.Sum256([]byte(fmt.Sprint(serviceID) + "\n" + idempotencyKey))
+	enqueueKey := hex.EncodeToString(enqueueSum[:])
+	requestHash := hex.EncodeToString(requestSum[:])
+	var existing model.MailDelivery
+	if err := h.db.Where("enqueue_key = ?", enqueueKey).First(&existing).Error; err == nil {
+		if existing.RequestHash != requestHash {
+			writeError(ctx, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "the idempotency key was already used for a different mail", nil)
+			return
+		}
+		ctx.Header("X-Idempotency-Replayed", "true")
+		writeSuccess(ctx, existing)
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		writeError(ctx, http.StatusInternalServerError, "MAIL_LOOKUP_FAILED", "mail idempotency lookup failed", nil)
+		return
+	}
+	recipient := strings.ToLower(address.Address)
+	recipientSum := sha256.Sum256([]byte(recipient))
+	delivery := model.MailDelivery{
+		EnqueueKey: enqueueKey, RequestHash: requestHash, Category: input.Category, Status: "queued",
+		RecipientHash: hex.EncodeToString(recipientSum[:]), Recipient: recipient, TemplateCode: input.TemplateCode,
+		Subject: input.Subject, Body: input.Body, RequestID: input.RequestID, QueuedAt: time.Now().UTC(), Version: 1,
+	}
+	if err := h.db.Create(&delivery).Error; err != nil {
+		writeError(ctx, http.StatusConflict, "MAIL_ENQUEUE_CONFLICT", "mail delivery could not be enqueued", nil)
+		return
+	}
+	writeSuccess(ctx, delivery)
 }
 
 func (h Handler) CreateUploadIntent(ctx *gin.Context) {
@@ -320,13 +399,77 @@ func (h Handler) CreatePlatformFeedback(ctx *gin.Context) {
 		if err := tx.Create(&feedback).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.OperationCase{SourceService: "feedback", SourceType: "platform_feedback", SourceID: feedback.ID, Summary: feedback.Summary, Urgency: feedback.Urgency, Status: "open", DueAt: feedback.DueAt, ActionPath: "/feedback?source_type=platform_feedback&status=open", Version: 1}).Error
+		if err := tx.Create(&model.OperationCase{SourceService: "feedback", SourceType: "platform_feedback", SourceID: feedback.ID, Summary: feedback.Summary, Urgency: feedback.Urgency, Status: "open", DueAt: feedback.DueAt, ActionPath: "/feedback?source_type=platform_feedback&status=open", Version: 1}).Error; err != nil {
+			return err
+		}
+		return createOutboxEvent(tx, "platform_feedback", feedback.ID, "feedback.created.v1", map[string]any{"feedback_id": feedback.ID, "urgency": feedback.Urgency, "due_at": feedback.DueAt})
 	})
 	if err != nil {
 		writeError(ctx, http.StatusInternalServerError, "FEEDBACK_CREATE_FAILED", "反馈创建失败", nil)
 		return
 	}
 	writeSuccess(ctx, feedback)
+}
+
+func (h Handler) MyNoticeEmailSubscription(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		writeError(ctx, http.StatusUnauthorized, "UNAUTHORIZED", "not authenticated", nil)
+		return
+	}
+	var subscription model.NoticeEmailSubscription
+	if err := h.db.Where("user_id = ?", user.ID).First(&subscription).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		writeSuccess(ctx, gin.H{"user_id": user.ID, "enabled": false, "version": 0})
+		return
+	} else if err != nil {
+		writeError(ctx, http.StatusInternalServerError, "QUERY_FAILED", "subscription could not be read", nil)
+		return
+	}
+	writeSuccess(ctx, subscription)
+}
+
+func (h Handler) UpdateMyNoticeEmailSubscription(ctx *gin.Context) {
+	user, ok := auth.CurrentUser(ctx)
+	if !ok {
+		writeError(ctx, http.StatusUnauthorized, "UNAUTHORIZED", "not authenticated", nil)
+		return
+	}
+	var input struct {
+		Enabled         bool `json:"enabled"`
+		ExpectedVersion int  `json:"expected_version"`
+	}
+	if err := ctx.ShouldBindJSON(&input); err != nil || input.ExpectedVersion < 0 {
+		writeError(ctx, http.StatusBadRequest, "VALIDATION_ERROR", "enabled and expected_version are required", nil)
+		return
+	}
+	var subscription model.NoticeEmailSubscription
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", user.ID).First(&subscription).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if input.ExpectedVersion != 0 {
+				return errVersionConflict
+			}
+			subscription = model.NoticeEmailSubscription{UserID: user.ID, Enabled: input.Enabled, Version: 1}
+			return tx.Create(&subscription).Error
+		}
+		if err != nil {
+			return err
+		}
+		if subscription.Version != input.ExpectedVersion {
+			return errVersionConflict
+		}
+		return tx.Model(&subscription).Updates(map[string]any{"enabled": input.Enabled, "version": subscription.Version + 1}).Error
+	})
+	if errors.Is(err, errVersionConflict) {
+		writeError(ctx, http.StatusConflict, "RESOURCE_VERSION_CONFLICT", "subscription was updated by another request", nil)
+		return
+	}
+	if err != nil {
+		writeError(ctx, http.StatusInternalServerError, "SUBSCRIPTION_SAVE_FAILED", "subscription could not be saved", nil)
+		return
+	}
+	h.db.Where("user_id = ?", user.ID).First(&subscription)
+	writeSuccess(ctx, subscription)
 }
 
 func (h Handler) FoodTiers(ctx *gin.Context) {
@@ -402,6 +545,9 @@ func (h Handler) ApproveFoodSubmission(ctx *gin.Context) {
 		if err := tx.Model(&submission).Updates(map[string]any{"status": model.StatusApproved, "version": submission.Version + 1}).Error; err != nil {
 			return err
 		}
+		if err := createOutboxEvent(tx, "food_entry", entry.ID, "food.entry_approved.v1", map[string]any{"entry_id": entry.ID, "round_id": round.ID}); err != nil {
+			return err
+		}
 		return audit.Record(ctx, tx, "food_submission.approved", "food_submission", submission.ID, map[string]interface{}{
 			"before":     map[string]interface{}{"status": submission.Status, "version": submission.Version},
 			"after":      map[string]interface{}{"status": model.StatusApproved, "version": submission.Version + 1, "entry_id": entry.ID},
@@ -454,12 +600,17 @@ func (h Handler) upsertNotice(input noticeInput) (string, model.CampusNotice, er
 		return "", model.CampusNotice{}, err
 	}
 	objects, _ := json.Marshal(input.Attachments)
+	audience := input.Audience
+	if len(audience) == 0 {
+		audience = []string{"all_verified_users"}
+	}
+	audienceJSON, _ := json.Marshal(audience)
 	var notice model.CampusNotice
 	result := "created"
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		err := tx.Where("source_id = ? AND external_id = ?", input.SourceID, input.ExternalID).First(&notice).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			notice = model.CampusNotice{SourceID: input.SourceID, ExternalID: input.ExternalID, OrganizationID: input.OrganizationID, Title: input.Title, OriginalURL: input.OriginalURL, OriginalPublishedAt: &input.PublishedAt, CurrentVersion: 1, ContentHash: input.ContentSHA256, Status: "review_pending", DistributionStatus: "not_scheduled", Importance: defaultImportance(input.Importance), Version: 1}
+			notice = model.CampusNotice{SourceID: input.SourceID, ExternalID: input.ExternalID, OrganizationID: input.OrganizationID, Title: input.Title, OriginalURL: input.OriginalURL, OriginalPublishedAt: &input.PublishedAt, CurrentVersion: 1, ContentHash: input.ContentSHA256, Status: "review_pending", DistributionStatus: "not_scheduled", Importance: defaultImportance(input.Importance), Audience: audienceJSON, Version: 1}
 			if err := tx.Create(&notice).Error; err != nil {
 				return err
 			}
@@ -477,7 +628,7 @@ func (h Handler) upsertNotice(input noticeInput) (string, model.CampusNotice, er
 		if err := tx.Create(&model.CampusNoticeVersion{NoticeID: notice.ID, Version: nextVersion, Title: input.Title, Body: input.Body, ContentHash: input.ContentSHA256, ObjectKeys: objects}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&notice).Updates(map[string]any{"title": input.Title, "original_url": input.OriginalURL, "original_published_at": input.PublishedAt, "organization_id": input.OrganizationID, "current_version": nextVersion, "content_hash": input.ContentSHA256, "status": "review_pending", "distribution_status": "not_scheduled", "importance": defaultImportance(input.Importance), "version": notice.Version + 1}).Error
+		return tx.Model(&notice).Updates(map[string]any{"title": input.Title, "original_url": input.OriginalURL, "original_published_at": input.PublishedAt, "organization_id": input.OrganizationID, "current_version": nextVersion, "content_hash": input.ContentSHA256, "status": "review_pending", "distribution_status": "not_scheduled", "importance": defaultImportance(input.Importance), "audience": audienceJSON, "version": notice.Version + 1}).Error
 	})
 	return result, notice, err
 }
@@ -510,6 +661,21 @@ func validateNotice(input noticeInput) error {
 	}
 	if len(input.Attachments) > 20 {
 		return errors.New("attachments cannot exceed 20 items")
+	}
+	if len(input.Audience) > 20 {
+		return errors.New("audience cannot exceed 20 selectors")
+	}
+	for _, selector := range input.Audience {
+		if selector == "all_verified_users" {
+			continue
+		}
+		parts := strings.SplitN(selector, ":", 2)
+		if len(parts) != 2 || (parts[0] != "school" && parts[0] != "major") {
+			return errors.New("audience selector must be all_verified_users, school:<uuid> or major:<uuid>")
+		}
+		if _, err := uuid.Parse(parts[1]); err != nil {
+			return errors.New("audience selector id must be UUID")
+		}
 	}
 	for _, attachment := range input.Attachments {
 		if !strings.HasPrefix(attachment.ObjectKey, "notice_attachment/") || utf8.RuneCountInString(attachment.ObjectKey) > 500 || !isSHA256(attachment.SHA256) {

@@ -171,6 +171,7 @@ func validProductionConfig(t *testing.T) config.Config {
 	uploadDir := t.TempDir()
 	return config.Config{
 		Environment:        "production",
+		InternalHMACKeys:   map[string]string{"notice:active": "strong-internal-hmac-secret"},
 		DatabaseURL:        "postgres://final_review:strong-password@postgres:5432/final_review_v2?sslmode=disable",
 		Redis:              config.RedisConfig{Addr: "redis:6379", Password: "strong-redis-password"},
 		CORSAllowedOrigins: []string{"https://review.henu.local", "https://admin.henu.local"},

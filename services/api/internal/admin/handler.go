@@ -377,6 +377,7 @@ func (h Handler) UpdateUser(ctx *gin.Context) {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "empty_update", nil)
 		return
 	}
+	updates["version"] = gorm.Expr("version + 1")
 
 	targetID := ctx.Param("id")
 	var updated model.User

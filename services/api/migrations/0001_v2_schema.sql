@@ -1,8 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- V2 uses GORM AutoMigrate for the first greenfield skeleton so the Go model
--- definitions remain the source of truth while the schema is still moving.
--- This file documents the bootstrap prerequisite and anchors migration order.
+-- Historical bootstrap note. New installations use 0001_core_schema.up.sql;
+-- runtime AutoMigrate is disabled and every admin V1 schema change is versioned.
 --
 -- Required table set covered by internal/platform/model:
 -- users, email_verification_codes, schools, colleges, majors, courses,

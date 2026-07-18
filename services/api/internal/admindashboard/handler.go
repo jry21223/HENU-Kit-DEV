@@ -204,13 +204,13 @@ func (h Handler) userCard(now time.Time) domainCard {
 	h.db.Model(&model.User{}).Where("created_at >= ?", beginningOfDay(now)).Count(&newToday)
 	h.db.Model(&model.User{}).Where("email_verified = ? AND school_id IS NOT NULL AND major_id IS NOT NULL AND grade <> ''", true).Count(&profileComplete)
 	completion := ratio(profileComplete, verified)
-	return card("users", "用户", model.IntegrationPartial,
+	return card("users", "用户", model.IntegrationOK,
 		m("verified_users", "已验证用户", number(verified), now),
 		[]metric{
 			m("new_users_today", "今日新增", number(newToday), now),
 			m("dau", "DAU", nil, now),
 			m("academic_profile_completion_rate", "学院资料完成率", completion, now),
-		}, "/users", "用户数据已接入；DAU 等待受保护操作事件口径。", now)
+		}, "/users", "用户域已接入；尚未冻结口径的 DAU 诚实显示为 —。", now)
 }
 
 func (h Handler) noticeCard(now time.Time) domainCard {
@@ -255,13 +255,13 @@ func (h Handler) feedbackCard(now time.Time) domainCard {
 	h.db.Model(&model.Report{}).Where("status = ?", model.StatusPending).Count(&questionOpen)
 	h.db.Model(&model.PlatformFeedback{}).Where("status NOT IN ? AND due_at < ?", []string{"resolved", "closed", "rejected"}, now).Count(&overdue)
 	h.db.Model(&model.PlatformFeedback{}).Where("resolved_at >= ?", beginningOfDay(now)).Count(&resolvedToday)
-	return card("feedback", "反馈", model.IntegrationPartial,
+	return card("feedback", "反馈", model.IntegrationOK,
 		m("platform_feedback_open", "平台反馈", number(platformOpen), now),
 		[]metric{
 			m("question_feedback_open", "题目反馈", number(questionOpen), now),
 			m("feedback_overdue", "超时", number(overdue), now),
 			m("feedback_resolved_today", "今日解决", number(resolvedToday), now),
-		}, "/feedback", "平台反馈已接入；题目反馈当前通过旧 Report Adapter 汇总。", now)
+		}, "/feedback", "平台反馈与 QuizCraft Report Adapter 均已接入。", now)
 }
 
 func (h Handler) foodCard(now time.Time) domainCard {
@@ -303,7 +303,7 @@ func (h Handler) systemCard(requestContext context.Context, now time.Time) domai
 		for _, heartbeat := range heartbeats {
 			outboxPending += heartbeat.OutboxPending
 			workerAnomalies += heartbeat.WorkerAnomalies
-			if heartbeat.Status != "ready" || now.Sub(heartbeat.LastReadyAt) > 5*time.Minute {
+			if (heartbeat.Status != "ready" && heartbeat.Status != "ok") || now.Sub(heartbeat.LastReadyAt) > 5*time.Minute {
 				degraded++
 				status = model.IntegrationPartial
 			}

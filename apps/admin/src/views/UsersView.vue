@@ -1,127 +1,24 @@
 <template>
-  <AdminShell>
-    <div class="page-header">
-      <div>
-        <p class="eyebrow">Users</p>
-        <h1>{{ copy.title }}</h1>
-        <p class="muted">{{ copy.description }}</p>
-      </div>
-      <el-button type="primary" :loading="loading" @click="loadUsers">{{ copy.refresh }}</el-button>
+  <AdminShellV2 title="用户与会话" environment="runtime">
+    <div class="space-y-6">
+      <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p class="text-xs font-semibold uppercase tracking-[.16em] text-primary">users</p><h1 class="mt-2 text-3xl font-semibold tracking-tight">{{ copy.title }}</h1><p class="mt-2 text-sm text-muted-foreground">{{ copy.description }}</p></div><Button variant="outline" :disabled="loading" @click="loadUsers">{{ copy.refresh }}</Button></header>
+      <Alert v-if="message" class="border-emerald-200 bg-emerald-50 text-emerald-800">{{ message }}</Alert><Alert v-if="error" variant="destructive">{{ error }}</Alert>
+      <Card><CardHeader><CardTitle>{{ copy.filters }}</CardTitle><CardDescription>筛选条件会写入 URL 查询对应的服务端过滤。</CardDescription></CardHeader><CardContent><form class="grid gap-3 md:grid-cols-3" @submit.prevent="loadUsers"><label class="grid gap-1.5 text-xs font-medium">{{ copy.email }}<Input v-model="filters.email" placeholder="student@stu.henu.edu.cn" /></label><label class="grid gap-1.5 text-xs font-medium">{{ copy.role }}<select v-model="filters.role" class="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">{{ copy.allRoles }}</option><option v-for="item in roleOptions" :key="item.value" :disabled="item.value === 'super_admin' && auth.user?.role !== 'super_admin'" :value="item.value">{{ item.label }}</option></select></label><label class="grid gap-1.5 text-xs font-medium">{{ copy.status }}<select v-model="filters.status" class="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">{{ copy.allStatuses }}</option><option v-for="item in statusOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label><div class="flex gap-2 md:col-span-3"><Button type="submit" :disabled="loading">{{ copy.apply }}</Button><Button type="button" variant="outline" @click="resetFilters">{{ copy.reset }}</Button></div></form></CardContent></Card>
+      <Card><CardHeader><CardTitle>{{ copy.listTitle }}</CardTitle><CardDescription>共 {{ users.length }} 名用户；角色、冻结与 Session 撤销均由服务端权限和乐观锁校验。</CardDescription></CardHeader><CardContent class="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{{ copy.user }}</TableHead><TableHead>{{ copy.role }}</TableHead><TableHead>{{ copy.status }}</TableHead><TableHead>{{ copy.profile }}</TableHead><TableHead>{{ copy.points }}</TableHead><TableHead>{{ copy.verified }}</TableHead><TableHead>{{ copy.createdAt }}</TableHead><TableHead>{{ copy.actions }}</TableHead></TableRow></TableHeader><TableBody><TableRow v-for="row in users" :key="row.id"><TableCell><strong>{{ row.name }}</strong><p class="text-xs text-muted-foreground">{{ row.email }}</p></TableCell><TableCell><Badge :variant="row.role.includes('admin') ? 'destructive' : 'secondary'">{{ roleLabel(row.role) }}</Badge></TableCell><TableCell><Badge :variant="row.status === 'frozen' ? 'destructive' : 'success'">{{ statusLabel(row.status) }}</Badge></TableCell><TableCell>{{ row.grade || copy.empty }}<p class="text-xs text-muted-foreground">{{ row.schoolId || copy.unbound }}</p></TableCell><TableCell>{{ row.pointsBalance }}</TableCell><TableCell>{{ row.emailVerified ? copy.yes : copy.no }}</TableCell><TableCell>{{ formatDate(row.createdAt) }}</TableCell><TableCell><div class="flex gap-2"><Button size="sm" variant="outline" @click="openEdit(row)">{{ copy.edit }}</Button><Button size="sm" variant="destructive" :disabled="row.id === auth.user?.id" @click="revokeSessions(row)">{{ copy.revokeSessions }}</Button></div></TableCell></TableRow><TableRow v-if="!users.length"><TableCell colspan="8" class="py-10 text-center text-muted-foreground">暂无符合条件的用户</TableCell></TableRow></TableBody></Table></CardContent></Card>
+      <Card v-if="editOpen"><CardHeader><CardTitle>{{ copy.editTitle }}</CardTitle><CardDescription>{{ editForm.email }}</CardDescription></CardHeader><CardContent class="grid gap-4"><Alert v-if="sensitiveNotice" class="border-amber-200 bg-amber-50 text-amber-800">{{ sensitiveNotice }}</Alert><div class="grid gap-3 md:grid-cols-3"><label class="grid gap-1.5 text-xs font-medium">{{ copy.name }}<Input v-model="editForm.name" maxlength="80" /></label><label class="grid gap-1.5 text-xs font-medium">{{ copy.role }}<select v-model="editForm.role" :disabled="disableSensitiveEdit" class="h-10 rounded-md border border-input bg-background px-3 text-sm"><option v-for="item in roleOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label><label class="grid gap-1.5 text-xs font-medium">{{ copy.status }}<select v-model="editForm.status" :disabled="disableSensitiveEdit" class="h-10 rounded-md border border-input bg-background px-3 text-sm"><option v-for="item in statusOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label></div><div class="flex justify-end gap-2"><Button variant="outline" @click="editOpen=false">{{ copy.cancel }}</Button><Button :disabled="saving" @click="saveUser">{{ copy.save }}</Button></div></CardContent></Card>
     </div>
-
-    <el-card class="section-card" shadow="never">
-      <template #header>
-        <strong>{{ copy.filters }}</strong>
-      </template>
-      <el-form class="form-grid" label-position="top" @submit.prevent>
-        <el-form-item :label="copy.email">
-          <el-input v-model="filters.email" clearable placeholder="student@stu.henu.edu.cn" @keyup.enter="loadUsers" />
-        </el-form-item>
-        <el-form-item :label="copy.role">
-          <el-select v-model="filters.role" clearable :placeholder="copy.allRoles">
-            <el-option
-              v-for="item in roleOptions"
-              :key="item.value"
-              :disabled="item.value === 'super_admin' && auth.user?.role !== 'super_admin'"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="copy.status">
-          <el-select v-model="filters.status" clearable :placeholder="copy.allStatuses">
-            <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <div class="action-row">
-        <el-button :loading="loading" @click="loadUsers">{{ copy.apply }}</el-button>
-        <el-button @click="resetFilters">{{ copy.reset }}</el-button>
-      </div>
-    </el-card>
-
-    <el-card class="section-card" shadow="never">
-      <template #header>
-        <strong>{{ copy.listTitle }}</strong>
-      </template>
-      <el-table v-loading="loading" :data="users" empty-text="No users" style="width: 100%">
-        <el-table-column :label="copy.user" min-width="240">
-          <template #default="{ row }">
-            <strong>{{ row.name }}</strong>
-            <p class="cell-muted">{{ row.email }}</p>
-          </template>
-        </el-table-column>
-        <el-table-column :label="copy.role" width="140">
-          <template #default="{ row }">
-            <el-tag :type="roleTag(row.role)">{{ roleLabel(row.role) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="copy.status" width="120">
-          <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)">{{ statusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="copy.profile" min-width="180">
-          <template #default="{ row }">
-            <span>{{ row.grade || copy.empty }}</span>
-            <p class="cell-muted">{{ row.schoolId || copy.unbound }}</p>
-          </template>
-        </el-table-column>
-        <el-table-column prop="pointsBalance" :label="copy.points" width="100" />
-        <el-table-column :label="copy.verified" width="110">
-          <template #default="{ row }">
-            <el-tag :type="row.emailVerified ? 'success' : 'warning'">
-              {{ row.emailVerified ? copy.yes : copy.no }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="copy.createdAt" min-width="160">
-          <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
-        </el-table-column>
-        <el-table-column :label="copy.actions" width="120" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" @click="openEdit(row)">{{ copy.edit }}</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <el-dialog v-model="editOpen" :title="copy.editTitle" width="min(560px, 92vw)">
-      <el-alert v-if="sensitiveNotice" class="notice" type="warning" :closable="false" :title="sensitiveNotice" />
-      <el-form class="form-grid" label-position="top">
-        <el-form-item :label="copy.email">
-          <el-input v-model="editForm.email" disabled />
-        </el-form-item>
-        <el-form-item :label="copy.name">
-          <el-input v-model="editForm.name" maxlength="80" />
-        </el-form-item>
-        <el-form-item :label="copy.role">
-          <el-select v-model="editForm.role" :disabled="disableSensitiveEdit">
-            <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="copy.status">
-          <el-select v-model="editForm.status" :disabled="disableSensitiveEdit">
-            <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="action-row">
-          <el-button @click="editOpen = false">{{ copy.cancel }}</el-button>
-          <el-button type="primary" :loading="saving" @click="saveUser">{{ copy.save }}</el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <el-alert v-if="message" class="notice" type="success" :closable="false" :title="message" />
-    <el-alert v-if="error" class="notice" type="error" :closable="false" :title="error" />
-  </AdminShell>
+  </AdminShellV2>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import AdminShell from "../components/AdminShell.vue";
+import AdminShellV2 from "../components/AdminShellV2.vue";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiRequest, type User } from "../lib/api";
 import { useAuthStore } from "../stores/auth";
 
@@ -155,6 +52,7 @@ const copy = {
   createdAt: "\u521b\u5efa\u65f6\u95f4",
   actions: "\u64cd\u4f5c",
   edit: "\u7f16\u8f91",
+	revokeSessions: "\u64a4\u9500 Session",
   editTitle: "\u7f16\u8f91\u7528\u6237",
   name: "\u6635\u79f0",
   cancel: "\u53d6\u6d88",
@@ -166,6 +64,7 @@ const copy = {
   loadFailed: "\u7528\u6237\u52a0\u8f7d\u5931\u8d25",
   updateDone: "\u7528\u6237\u5df2\u66f4\u65b0\u3002",
   updateFailed: "\u7528\u6237\u66f4\u65b0\u5931\u8d25",
+	revokeDone: "\u8be5\u7528\u6237\u7684\u5df2\u7b7e\u53d1 Session \u5df2\u5168\u90e8\u64a4\u9500\u3002",
   selfNotice: "\u5f53\u524d\u767b\u5f55\u8d26\u53f7\u4e0d\u80fd\u5728\u6b64\u4fee\u6539\u81ea\u5df1\u7684\u89d2\u8272\u6216\u72b6\u6001\u3002",
   superNotice: "\u975e super_admin \u4e0d\u80fd\u4fee\u6539 super_admin \u8d26\u53f7\u6216\u6388\u4e88 super_admin\u3002",
 };
@@ -284,6 +183,25 @@ async function saveUser() {
   } finally {
     saving.value = false;
   }
+}
+
+async function revokeSessions(user: User) {
+	loading.value = true;
+	error.value = "";
+	message.value = "";
+	try {
+		const response = await apiRequest<{ user_id: string; version: number; sessions_revoked: boolean }>(`/admin/users/${user.id}/sessions/revoke`, {
+			method: "POST",
+			headers: { "Idempotency-Key": crypto.randomUUID() },
+			body: JSON.stringify({ expected_version: user.version }),
+		});
+		users.value = users.value.map((item) => item.id === user.id ? { ...item, version: response.data?.version ?? item.version } : item);
+		message.value = copy.revokeDone;
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : copy.updateFailed;
+	} finally {
+		loading.value = false;
+	}
 }
 
 function roleLabel(role: string) {

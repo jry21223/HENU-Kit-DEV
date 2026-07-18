@@ -15,6 +15,7 @@ export type AdminMetric = components["schemas"]["Metric"];
 export type DashboardCard = components["schemas"]["DashboardCard"];
 export type DashboardSnapshot = components["schemas"]["DashboardSnapshot"];
 export type ActionItem = components["schemas"]["ActionItem"];
+export type MetricSeries = components["schemas"]["MetricSeriesEnvelope"]["data"];
 
 export type UIConfig = {
   shell_version: "legacy" | "v2";
@@ -32,7 +33,7 @@ export async function adminRequest<T>(path: string, init: RequestInit = {}): Pro
   const token = getStoredToken();
   headers.set("Accept", "application/json");
   headers.set("X-Request-Id", createRequestId());
-  if (!(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
+  if (!(init.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const response = await fetch(`${baseUrl}${path}`, {

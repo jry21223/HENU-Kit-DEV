@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"net/url"
 	"os"
@@ -13,6 +14,8 @@ var (
 	ErrProductionCORSRequired      = errors.New("production CORS_ALLOWED_ORIGINS must not be empty")
 	ErrProductionCORSHTTPSRequired = errors.New("production CORS_ALLOWED_ORIGINS must use https origins")
 	ErrInvalidCORSOrigin           = errors.New("invalid CORS origin")
+	ErrProductionAutoMigrate       = errors.New("AUTO_MIGRATE must be false in production")
+	ErrProductionHMACKeysRequired  = errors.New("INTERNAL_HMAC_KEYS must be configured in production")
 )
 
 type RedisConfig struct {
@@ -33,6 +36,9 @@ type Config struct {
 	Environment               string
 	Port                      string
 	Version                   string
+	CommitSHA                 string
+	PublicAPIBaseURL          string
+	InternalHMACKeys          map[string]string
 	DatabaseURL               string
 	Redis                     RedisConfig
 	ObjectStorage             ObjectStorageConfig
@@ -86,11 +92,14 @@ type PaymentIncidentAlertConfig struct {
 func Load() Config {
 	environment := env("APP_ENV", "development")
 	return Config{
-		Environment: environment,
-		Port:        env("API_PORT", "8080"),
-		Version:     env("APP_VERSION", "0.1.0"),
-		DatabaseURL: env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
-		Redis:       loadRedisConfig(),
+		Environment:      environment,
+		Port:             env("API_PORT", "8080"),
+		Version:          env("APP_VERSION", "0.1.0"),
+		CommitSHA:        env("GIT_COMMIT_SHA", "development"),
+		PublicAPIBaseURL: env("PUBLIC_API_BASE_URL", "http://127.0.0.1:8080/api/v1"),
+		InternalHMACKeys: loadInternalHMACKeys(environment),
+		DatabaseURL:      env("DATABASE_URL", "postgres://final_review:final_review_dev@localhost:5432/final_review_v2?sslmode=disable"),
+		Redis:            loadRedisConfig(),
 		ObjectStorage: ObjectStorageConfig{
 			Endpoint:  env("S3_ENDPOINT", ""),
 			Region:    env("S3_REGION", "us-east-1"),
@@ -101,7 +110,7 @@ func Load() Config {
 		CORSAllowedOrigins:        csvEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"),
 		RateLimitRPS:              floatEnv("RATE_LIMIT_RPS", 20),
 		RateLimitBurst:            intEnv("RATE_LIMIT_BURST", 40),
-		AutoMigrate:               boolEnv("AUTO_MIGRATE", true),
+		AutoMigrate:               boolEnv("AUTO_MIGRATE", false),
 		DevFixedCode:              devFixedCode(environment),
 		LocalUploadDir:            env("LOCAL_UPLOAD_DIR", "uploads"),
 		AITaskStream:              env("AI_TASK_STREAM", "ai_tasks"),
@@ -140,6 +149,18 @@ func Load() Config {
 	}
 }
 
+func loadInternalHMACKeys(environment string) map[string]string {
+	fallback := `{"local:dev":"development-internal-secret"}`
+	if strings.EqualFold(environment, "production") {
+		fallback = `{}`
+	}
+	result := map[string]string{}
+	if err := json.Unmarshal([]byte(env("INTERNAL_HMAC_KEYS", fallback)), &result); err != nil {
+		return map[string]string{}
+	}
+	return result
+}
+
 func ValidateHTTPConfig(cfg Config) error {
 	validOrigins := 0
 	for _, origin := range cfg.CORSAllowedOrigins {
@@ -161,6 +182,12 @@ func ValidateHTTPConfig(cfg Config) error {
 	}
 	if validOrigins == 0 && strings.EqualFold(cfg.Environment, "production") {
 		return ErrProductionCORSRequired
+	}
+	if strings.EqualFold(cfg.Environment, "production") && cfg.AutoMigrate {
+		return ErrProductionAutoMigrate
+	}
+	if strings.EqualFold(cfg.Environment, "production") && len(cfg.InternalHMACKeys) == 0 {
+		return ErrProductionHMACKeysRequired
 	}
 	return nil
 }

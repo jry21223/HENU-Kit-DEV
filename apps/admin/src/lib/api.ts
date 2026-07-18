@@ -22,6 +22,7 @@ export type User = {
   pointsBalance?: number;
   createdAt?: string;
   updatedAt?: string;
+	version: number;
 };
 
 export type Course = {

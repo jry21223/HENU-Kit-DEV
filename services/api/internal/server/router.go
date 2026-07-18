@@ -36,6 +36,7 @@ import (
 	"final-review-platform/services/api/internal/relation"
 	"final-review-platform/services/api/internal/report"
 	"final-review-platform/services/api/internal/search"
+	"final-review-platform/services/api/internal/serviceauth"
 	"final-review-platform/services/api/internal/user"
 	"final-review-platform/services/api/internal/wiki"
 	"final-review-platform/services/api/pkg/config"
@@ -52,9 +53,11 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	}
 
 	router := gin.New()
+	httpTelemetry := middleware.NewHTTPRegistry()
 	router.Use(middleware.SecurityHeaders(cfg.Environment))
 	router.Use(middleware.RequestLogger(log))
 	router.Use(middleware.Recover(log))
+	router.Use(httpTelemetry.Observe())
 	router.Use(middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst))
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.CORSAllowedOrigins,
@@ -100,7 +103,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 		Endpoint: cfg.ObjectStorage.Endpoint, Region: cfg.ObjectStorage.Region, Bucket: cfg.ObjectStorage.Bucket,
 		AccessKey: cfg.ObjectStorage.AccessKey, SecretKey: cfg.ObjectStorage.SecretKey,
 	})
-	adminOperationsHandler := adminoperations.NewHandler(db, storageSigner)
+	adminOperationsHandler := adminoperations.NewHandler(db, storageSigner, cfg.Version, cfg.CommitSHA, cfg.PublicAPIBaseURL, cache, httpTelemetry)
+	serviceVerifier := serviceauth.New(cache, cfg.InternalHMACKeys)
 	router.GET("/healthz", healthHandler.Healthz)
 	router.GET("/readyz", healthHandler.Readyz)
 	v1 := router.Group("/api/v1")
@@ -124,10 +128,17 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	v1.GET("/auth/me", authMiddleware.RequireAuth(), authHandler.Me)
 	v1.PATCH("/auth/me", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), authHandler.UpdateMe)
 	v1.POST("/platform-feedback", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.Idempotent(), adminOperationsHandler.CreatePlatformFeedback)
+	v1.GET("/me/notice-email-subscription", authMiddleware.RequireAuth(), adminOperationsHandler.MyNoticeEmailSubscription)
+	v1.PATCH("/me/notice-email-subscription", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.Idempotent(), adminOperationsHandler.UpdateMyNoticeEmailSubscription)
 	v1.POST("/object-upload-intents", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.CreateUploadIntent)
 	v1.GET("/food-tier-definitions", adminOperationsHandler.FoodTiers)
 	v1.POST("/food-submissions", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.Idempotent(), adminOperationsHandler.CreateFoodSubmission)
 	v1.PUT("/food-entries/:id/calibration-votes/me", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), adminOperationsHandler.PutFoodVote)
+	internal := v1.Group("/internal")
+	internal.Use(serviceVerifier.Require())
+	internal.GET("/admin-summaries/current", adminDashboardHandler.LatestSnapshot)
+	internal.GET("/action-items", adminDashboardHandler.ActionItems)
+	internal.POST("/mail-deliveries", adminOperationsHandler.EnqueueMail)
 	v1.GET("/schools", orgHandler.Schools)
 	v1.GET("/colleges", orgHandler.Colleges)
 	v1.GET("/majors", orgHandler.Majors)
@@ -216,10 +227,29 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	admin.GET("/dashboard-snapshots/latest", adminDashboardHandler.LatestSnapshot)
 	admin.GET("/action-items", adminDashboardHandler.ActionItems)
 	admin.GET("/metric-series", adminDashboardHandler.MetricSeries)
+	admin.GET("/notices", adminOperationsHandler.ListNotices)
+	admin.GET("/notices/:id/versions", adminOperationsHandler.ListNoticeVersions)
+	admin.GET("/notice-import-jobs", adminOperationsHandler.ListNoticeImportJobs)
+	admin.POST("/notices/:id/reviews", adminOperationsHandler.Idempotent(), adminOperationsHandler.ReviewNotice)
+	admin.GET("/mail-operations", adminOperationsHandler.ListMailOperations)
+	admin.POST("/mail-deliveries/:id/retries", adminOperationsHandler.Idempotent(), adminOperationsHandler.RetryMailDelivery)
+	admin.POST("/mail-dead-letters/:id/replays", adminOperationsHandler.Idempotent(), adminOperationsHandler.ReplayMailDeadLetter)
+	admin.POST("/mail-suppressions", adminOperationsHandler.Idempotent(), adminOperationsHandler.CreateMailSuppression)
+	admin.PATCH("/mail-suppressions/:id", adminOperationsHandler.Idempotent(), adminOperationsHandler.ReleaseMailSuppression)
+	admin.GET("/platform-feedback", adminOperationsHandler.ListPlatformFeedback)
+	admin.GET("/feedback-operations", adminOperationsHandler.ListFeedbackOperations)
+	admin.PATCH("/platform-feedback/:id", adminOperationsHandler.Idempotent(), adminOperationsHandler.UpdatePlatformFeedback)
+	admin.POST("/quiz-feedback/:id/verifications", adminOperationsHandler.Idempotent(), adminOperationsHandler.VerifyQuizFeedback)
+	admin.POST("/quiz-feedback/:id/resolutions", adminOperationsHandler.Idempotent(), adminOperationsHandler.ResolveQuizFeedback)
+	admin.GET("/food-operations", adminOperationsHandler.ListFoodOperations)
+	admin.POST("/food-entries/:id/adjustments", adminOperationsHandler.Idempotent(), adminOperationsHandler.AdjustFoodEntry)
+	admin.POST("/food-vote-anomalies/:id/resolutions", adminOperationsHandler.Idempotent(), adminOperationsHandler.ResolveFoodAnomaly)
+	admin.GET("/system-operations", adminOperationsHandler.ListSystemOperations)
 	admin.POST("/school-notices", adminOperationsHandler.Idempotent(), adminOperationsHandler.CreateNotice)
 	admin.POST("/notice-import-jobs", adminOperationsHandler.Idempotent(), adminOperationsHandler.ImportNotices)
 	admin.POST("/food-submissions/:id/approvals", adminOperationsHandler.Idempotent(), adminOperationsHandler.ApproveFoodSubmission)
 	admin.GET("/users", adminHandler.ListUsers)
+	admin.POST("/users/:id/sessions/revoke", adminOperationsHandler.Idempotent(), adminOperationsHandler.RevokeUserSessions)
 	admin.PATCH("/users/:id", adminHandler.UpdateUser)
 	admin.GET("/media-assets", adminHandler.ListMediaAssets)
 	admin.POST("/media-assets/cleanup", adminHandler.CleanupMediaAssets)

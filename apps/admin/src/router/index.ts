@@ -1,33 +1,35 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { adminRequest, type UIConfig } from "../lib/admin-api";
 
-import AccessGrantsView from "../views/AccessGrantsView.vue";
-import AnalyticsView from "../views/AnalyticsView.vue";
-import BlogReviewsView from "../views/BlogReviewsView.vue";
-import CoursesView from "../views/CoursesView.vue";
-import AiDraftsView from "../views/AiDraftsView.vue";
-import DashboardView from "../views/DashboardView.vue";
-import LegacyDashboardView from "../views/LegacyDashboardView.vue";
-import DownloadsView from "../views/DownloadsView.vue";
-import DomainOperationsView from "../views/DomainOperationsView.vue";
-import ForumReplyReviewsView from "../views/ForumReplyReviewsView.vue";
-import ForumReviewsView from "../views/ForumReviewsView.vue";
-import LoginView from "../views/LoginView.vue";
-import MaterialReviewsView from "../views/MaterialReviewsView.vue";
-import MaterialsView from "../views/MaterialsView.vue";
-import MediaAssetsView from "../views/MediaAssetsView.vue";
-import OperationLogsView from "../views/OperationLogsView.vue";
-import OrdersView from "../views/OrdersView.vue";
-import PackagesView from "../views/PackagesView.vue";
-import PaymentIncidentsView from "../views/PaymentIncidentsView.vue";
-import PaymentReconciliationView from "../views/PaymentReconciliationView.vue";
-import MembershipsView from "../views/MembershipsView.vue";
-import PointsView from "../views/PointsView.vue";
-import ReportsView from "../views/ReportsView.vue";
-import UsersView from "../views/UsersView.vue";
-import WikiCreatorApplicationsView from "../views/WikiCreatorApplicationsView.vue";
-import WikiProposalReviewsView from "../views/WikiProposalReviewsView.vue";
-import WikiReviewsView from "../views/WikiReviewsView.vue";
+const AccessGrantsView = () => import("../views/AccessGrantsView.vue");
+const AnalyticsView = () => import("../views/AnalyticsView.vue");
+const BlogReviewsView = () => import("../views/BlogReviewsView.vue");
+const CoursesView = () => import("../views/CoursesView.vue");
+const AiDraftsView = () => import("../views/AiDraftsView.vue");
+const DashboardView = () => import("../views/DashboardView.vue");
+const LegacyDashboardView = () => import("../views/LegacyDashboardView.vue");
+const DownloadsView = () => import("../views/DownloadsView.vue");
+const DomainOperationsView = () => import("../views/DomainOperationsView.vue");
+const UnifiedDomainView = () => import("../views/UnifiedDomainView.vue");
+const ForumReplyReviewsView = () => import("../views/ForumReplyReviewsView.vue");
+const ForumReviewsView = () => import("../views/ForumReviewsView.vue");
+const LoginView = () => import("../views/LoginView.vue");
+const MaterialReviewsView = () => import("../views/MaterialReviewsView.vue");
+const MaterialsView = () => import("../views/MaterialsView.vue");
+const MediaAssetsView = () => import("../views/MediaAssetsView.vue");
+const OperationLogsView = () => import("../views/OperationLogsView.vue");
+const OrdersView = () => import("../views/OrdersView.vue");
+const PackagesView = () => import("../views/PackagesView.vue");
+const PaymentIncidentsView = () => import("../views/PaymentIncidentsView.vue");
+const PaymentReconciliationView = () => import("../views/PaymentReconciliationView.vue");
+const MembershipsView = () => import("../views/MembershipsView.vue");
+const PointsView = () => import("../views/PointsView.vue");
+const ReportsView = () => import("../views/ReportsView.vue");
+const UsersView = () => import("../views/UsersView.vue");
+const WikiCreatorApplicationsView = () => import("../views/WikiCreatorApplicationsView.vue");
+const WikiProposalReviewsView = () => import("../views/WikiProposalReviewsView.vue");
+const WikiReviewsView = () => import("../views/WikiReviewsView.vue");
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -36,11 +38,11 @@ export const router = createRouter({
     { path: "/login", component: LoginView, meta: { public: true } },
     { path: "/dashboard", component: DashboardView },
     { path: "/legacy-dashboard", component: LegacyDashboardView },
-    { path: "/notices", component: DomainOperationsView, meta: { title: "校园通知", domain: "notice", description: "人工导入、不可变版本、审核与订阅分发。" } },
-    { path: "/mail", component: DomainOperationsView, meta: { title: "邮件投递", domain: "mail", description: "Critical、Transactional、Digest 队列与投递状态。" } },
-    { path: "/feedback", component: DomainOperationsView, meta: { title: "反馈中心", domain: "feedback", description: "平台反馈、题目反馈与两档 SLA 待办。" } },
-    { path: "/food", component: DomainOperationsView, meta: { title: "美食榜单", domain: "food", description: "五档投稿、社区校准、调档候选与异常票。" } },
-    { path: "/system", component: DomainOperationsView, meta: { title: "系统运行", domain: "system", description: "服务健康、Worker、Outbox、部署与数据新鲜度。" } },
+    { path: "/notices", component: UnifiedDomainView, meta: { title: "校园通知", domain: "notice", description: "人工导入、不可变版本、审核与订阅分发。" } },
+    { path: "/mail", component: UnifiedDomainView, meta: { title: "邮件投递", domain: "mail", description: "Critical、Transactional、Digest 队列与投递状态。" } },
+    { path: "/feedback", component: UnifiedDomainView, meta: { title: "反馈中心", domain: "feedback", description: "平台反馈、题目反馈与两档 SLA 待办。" } },
+    { path: "/food", component: UnifiedDomainView, meta: { title: "美食榜单", domain: "food", description: "五档投稿、社区校准、调档候选与异常票。" } },
+    { path: "/system", component: UnifiedDomainView, meta: { title: "系统运行", domain: "system", description: "服务健康、Worker、Outbox、部署与数据新鲜度。" } },
     { path: "/quiz-operations", component: DomainOperationsView, meta: { title: "刷题运营", domain: "quiz", description: "QuizCraft 是唯一刷题数据 Owner。" } },
     { path: "/users", component: UsersView },
     { path: "/points", component: PointsView },
@@ -94,5 +96,14 @@ router.beforeEach(async (to) => {
   if (!auth.isAdmin) {
     return "/login";
   }
+	if (["/dashboard", "/notices", "/mail", "/feedback", "/food", "/system", "/quiz-operations"].includes(to.path)) {
+		try {
+			const config = (await adminRequest<UIConfig>("/admin/ui-config")).data;
+			if (config.shell_version === "legacy") return "/legacy-dashboard";
+		} catch {
+			// The destination page owns the full-page BFF error state. Authentication
+			// has already succeeded, so a transient config failure must not log out.
+		}
+	}
   return true;
 });

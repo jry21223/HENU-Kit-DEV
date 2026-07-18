@@ -176,6 +176,10 @@ func (h Handler) Refresh(ctx *gin.Context) {
 		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
 		return
 	}
+	if claims.TokenVersion != user.TokenVersion {
+		response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "session_revoked", nil)
+		return
+	}
 	h.issueSession(ctx, user)
 }
 
@@ -238,12 +242,12 @@ func (h Handler) UpdateMe(ctx *gin.Context) {
 }
 
 func (h Handler) issueSession(ctx *gin.Context, user model.User) {
-	accessToken, accessExpiresAt, err := h.tokens.Issue(user.ID, user.Email, user.Role, TokenTypeAccess)
+	accessToken, accessExpiresAt, err := h.tokens.Issue(user.ID, user.Email, user.Role, TokenTypeAccess, user.TokenVersion)
 	if err != nil {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "token_issue_failed", nil)
 		return
 	}
-	refreshToken, refreshExpiresAt, err := h.tokens.Issue(user.ID, user.Email, user.Role, TokenTypeRefresh)
+	refreshToken, refreshExpiresAt, err := h.tokens.Issue(user.ID, user.Email, user.Role, TokenTypeRefresh, user.TokenVersion)
 	if err != nil {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "token_issue_failed", nil)
 		return

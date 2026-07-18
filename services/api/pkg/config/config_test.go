@@ -44,9 +44,23 @@ func TestValidateHTTPConfigAcceptsExactProductionHTTPSOrigins(t *testing.T) {
 	err := ValidateHTTPConfig(Config{
 		Environment:        "production",
 		CORSAllowedOrigins: []string{"https://review.example.com", "https://admin.review.example.com"},
+		InternalHMACKeys:   map[string]string{"notice:active": "secret"},
 	})
 	if err != nil {
 		t.Fatalf("expected valid production CORS origins, got %v", err)
+	}
+}
+
+func TestValidateHTTPConfigRejectsUnsafeProductionRuntimeSettings(t *testing.T) {
+	base := Config{Environment: "production", CORSAllowedOrigins: []string{"https://admin.example.com"}, InternalHMACKeys: map[string]string{"notice:active": "secret"}}
+	base.AutoMigrate = true
+	if err := ValidateHTTPConfig(base); !errors.Is(err, ErrProductionAutoMigrate) {
+		t.Fatalf("expected production AutoMigrate rejection, got %v", err)
+	}
+	base.AutoMigrate = false
+	base.InternalHMACKeys = nil
+	if err := ValidateHTTPConfig(base); !errors.Is(err, ErrProductionHMACKeysRequired) {
+		t.Fatalf("expected production HMAC key rejection, got %v", err)
 	}
 }
 

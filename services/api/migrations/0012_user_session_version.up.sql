@@ -1,0 +1,4 @@
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS token_version integer NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
+

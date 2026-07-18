@@ -43,7 +43,7 @@ func (m Middleware) OptionalAuth() gin.HandlerFunc {
 		}
 
 		var user model.User
-		if err := m.db.First(&user, "id = ?", claims.UserID).Error; err == nil {
+		if err := m.db.First(&user, "id = ?", claims.UserID).Error; err == nil && claims.TokenVersion == user.TokenVersion {
 			ctx.Set(CurrentUserKey, &user)
 		}
 		ctx.Next()
@@ -74,6 +74,11 @@ func (m Middleware) RequireAuth() gin.HandlerFunc {
 		var user model.User
 		if err := m.db.First(&user, "id = ?", claims.UserID).Error; err != nil {
 			response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized", nil)
+			ctx.Abort()
+			return
+		}
+		if claims.TokenVersion != user.TokenVersion {
+			response.Error(ctx, http.StatusUnauthorized, response.CodeUnauthorized, "session_revoked", nil)
 			ctx.Abort()
 			return
 		}

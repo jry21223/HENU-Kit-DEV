@@ -1,11 +1,13 @@
 package report
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -86,8 +88,25 @@ func (h Handler) Create(ctx *gin.Context) {
 		TargetID:     targetID,
 		Reason:       reason,
 		Description:  description,
+		Version:      1,
 	}
-	if err := h.db.Create(&report).Error; err != nil {
+	if targetType == "quiz_question" {
+		snapshot, err := h.quizQuestionSnapshot(targetID)
+		if err != nil {
+			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "snapshot_failed", nil)
+			return
+		}
+		report.TargetSnapshot = snapshot
+	}
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&report).Error; err != nil {
+			return err
+		}
+		if targetType != "quiz_question" {
+			return nil
+		}
+		return tx.Create(&model.OperationCase{SourceService: "quizcraft", SourceType: "quiz_feedback", SourceID: report.ID, Summary: reason, Urgency: model.UrgencyNormal, Status: "open", DueAt: time.Now().UTC().Add(72 * time.Hour), ActionPath: "/feedback?source_type=quiz_feedback&status=open", Version: 1}).Error
+	}); err != nil {
 		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "create_failed", nil)
 		return
 	}
@@ -165,6 +184,10 @@ func (h Handler) review(ctx *gin.Context, status string) {
 	}
 	if report.Status != model.StatusPending {
 		response.Error(ctx, http.StatusConflict, response.CodeConflict, "report_not_reviewable", gin.H{"status": report.Status})
+		return
+	}
+	if status == model.StatusApproved && report.TargetType == "quiz_question" && (!report.JSONVerified || !report.PostgresVerified || !report.APIVerified) {
+		response.Error(ctx, http.StatusConflict, response.CodeConflict, "quiz_feedback_verification_required", gin.H{"json_verified": report.JSONVerified, "postgres_verified": report.PostgresVerified, "api_verified": report.APIVerified})
 		return
 	}
 	action := "report.resolved"
@@ -249,6 +272,8 @@ func (h Handler) ensureReportTargetVisible(targetType string, targetID string) e
 		return h.db.Select("id").First(&model.ForumReply{}, "id = ? AND status = ?", targetID, model.StatusPublished).Error
 	case "user":
 		return h.db.Select("id").First(&model.User{}, "id = ? AND status <> ?", targetID, "deleted").Error
+	case "quiz_question":
+		return h.db.Select("id").First(&model.QuizQuestion{}, "id = ? AND status = ?", targetID, model.StatusPublished).Error
 	default:
 		return gorm.ErrRecordNotFound
 	}
@@ -256,11 +281,31 @@ func (h Handler) ensureReportTargetVisible(targetType string, targetID string) e
 
 func isAllowedReportTargetType(targetType string) bool {
 	switch targetType {
-	case "material", "wiki_entry", "blog_post", "forum_post", "forum_reply", "user":
+	case "material", "wiki_entry", "blog_post", "forum_post", "forum_reply", "user", "quiz_question":
 		return true
 	default:
 		return false
 	}
+}
+
+func (h Handler) quizQuestionSnapshot(questionID string) ([]byte, error) {
+	var question model.QuizQuestion
+	if err := h.db.First(&question, "id = ?", questionID).Error; err != nil {
+		return nil, err
+	}
+	var options []model.QuizOption
+	if err := h.db.Where("question_id = ?", questionID).Order("sort_order asc").Find(&options).Error; err != nil {
+		return nil, err
+	}
+	rows := make([]map[string]any, 0, len(options))
+	for _, option := range options {
+		rows = append(rows, map[string]any{"label": option.Label, "content": option.Content, "sort_order": option.SortOrder})
+	}
+	return json.Marshal(map[string]any{
+		"question_id": question.ID, "course_id": question.CourseID, "type": question.Type,
+		"stem": question.Stem, "explanation": question.Explanation, "difficulty": question.Difficulty,
+		"status": question.Status, "options": rows, "captured_at": time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 func isReportStatus(status string) bool {
