@@ -14,6 +14,7 @@ function Invoke-SqlFile([string]$path) {
 docker compose -f $composeFile up -d --wait
 if ($LASTEXITCODE -ne 0) { throw "Test dependencies did not become healthy" }
 
+Invoke-SqlFile (Join-Path $migrationDirectory "000005_console_access.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000004_operations_inbox.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000003_verification_mail.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000002_authorization.down.sql")
@@ -44,6 +45,12 @@ Invoke-SqlFile (Join-Path $migrationDirectory "000004_operations_inbox.up.sql")
 $repeatedInboxUp = docker compose -f $composeFile exec -T postgres psql -At -U platform_core -d platform_core_test -c "SELECT count(*) = 2 FROM permission_codes WHERE code IN ('platform.operations_inbox.read', 'platform.operations_inbox.write');"
 if (($repeatedInboxUp | Out-String).Trim() -ne "t") { throw "Migration 000004 repeated Up was not idempotent" }
 
+Invoke-SqlFile (Join-Path $migrationDirectory "000005_console_access.up.sql")
+Invoke-SqlFile (Join-Path $migrationDirectory "000005_console_access.up.sql")
+$consolePermissionReady = docker compose -f $composeFile exec -T postgres psql -At -U platform_core -d platform_core_test -c "SELECT count(*) = 1 FROM permission_codes WHERE code = 'console.overview.read' AND status = 'active';"
+if (($consolePermissionReady | Out-String).Trim() -ne "t") { throw "Migration 000005 repeated Up did not provision the Console permission" }
+
+Invoke-SqlFile (Join-Path $migrationDirectory "000005_console_access.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000004_operations_inbox.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000003_verification_mail.down.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000002_authorization.down.sql")
@@ -54,6 +61,7 @@ Invoke-SqlFile (Join-Path $migrationDirectory "000001_identity.up.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000002_authorization.up.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000003_verification_mail.up.sql")
 Invoke-SqlFile (Join-Path $migrationDirectory "000004_operations_inbox.up.sql")
+Invoke-SqlFile (Join-Path $migrationDirectory "000005_console_access.up.sql")
 
 docker run --rm --network henukit-platform-core-test_default `
     -e PLATFORM_CORE_TEST_DATABASE_URL="postgres://platform_core:platform_core_test@postgres:5432/platform_core_test?sslmode=disable" `

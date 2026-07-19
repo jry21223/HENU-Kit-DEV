@@ -14,4 +14,4 @@
 
 ## Current boundary
 
-HC-04 provides the responsive six-module Mock Overview and its loading, empty, partial, stale, unavailable, and denied presentation states. The cards use fixture data only: Console Gateway integration, authentication, authoritative authorization decisions, routes beyond Overview, and production operations remain planned.
+HC-04 provides the responsive six-module Overview presentation states. HC-09 integrates the same-origin Console Gateway Session endpoint: signed-out, expired, denied, and unavailable states expose no fixture metrics, while the original module fixtures render only after `console.overview.read` and platform Scope have been verified by Platform Core. Module summary aggregation, routes beyond Overview, and production operations remain planned.

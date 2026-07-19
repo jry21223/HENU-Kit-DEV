@@ -1,0 +1,245 @@
+openapi: 3.1.0
+info:
+  title: HENUKit Console Gateway API
+  version: 0.1.0
+servers:
+  - url: https://console.henukit.cn/api/v1
+tags:
+  - name: Console Authentication
+    description: Console-local authorization-code flow and Session boundary.
+paths:
+  /healthz:
+    get:
+      tags: [Console Authentication]
+      operationId: getConsoleGatewayHealth
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: Gateway process is alive
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [ok]
+                        properties:
+                          ok:
+                            type: boolean
+                            const: true
+  /auth/login:
+    get:
+      tags: [Console Authentication]
+      operationId: beginConsoleLogin
+      summary: Start the Platform Core authorization-code flow
+      security: []
+      parameters:
+        - name: return_to
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^/(?!/)[A-Za-z0-9/_?&=.%#~-]*$'
+            default: /
+      responses:
+        "302":
+          description: Redirect to the Platform Core account origin
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /auth/callback:
+    get:
+      tags: [Console Authentication]
+      operationId: completeConsoleLogin
+      summary: Consume one authorization code and establish the Console Session
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 16
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 32
+      responses:
+        "302":
+          description: Console Session established and redirected to the stored same-origin path
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+            Set-Cookie:
+              required: true
+              description: Host-only HttpOnly Secure SameSite=Lax Console Session cookie.
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /session:
+    get:
+      tags: [Console Authentication]
+      operationId: getConsoleSession
+      summary: Return a server-verified Console Access Context
+      description: The Gateway checks permission and Scope with Platform Core on every request and defaults to deny.
+      security:
+        - consoleSession: []
+      responses:
+        "200":
+          description: Active Console Session and verified access context
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ConsoleSession"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /session/logout:
+    post:
+      tags: [Console Authentication]
+      operationId: logoutConsoleSession
+      summary: Clear the local Console Session
+      security: []
+      responses:
+        "204":
+          description: Session cookie cleared
+          headers:
+            Set-Cookie:
+              required: true
+              schema:
+                type: string
+components:
+  securitySchemes:
+    consoleSession:
+      type: apiKey
+      in: cookie
+      name: __Host-henukit_console_session
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data: {}
+        request_id:
+          type: string
+          pattern: '^req_[A-Za-z0-9_-]+$'
+    ErrorObject:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ErrorEnvelope:
+      type: object
+      required: [error, request_id]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        request_id:
+          type: string
+    ConsoleSession:
+      type: object
+      additionalProperties: false
+      required: [user, access_context, expires_at]
+      properties:
+        user:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id:
+              type: string
+              format: uuid
+        access_context:
+          $ref: "#/components/schemas/ConsoleAccessContext"
+        expires_at:
+          type: string
+          format: date-time
+    ConsoleAccessContext:
+      type: object
+      additionalProperties: false
+      required: [permissions, scopes, verified_at]
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+          example: [console.overview.read]
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsoleScope"
+        verified_at:
+          type: string
+          format: date-time
+    ConsoleScope:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          const: platform
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Unauthorized:
+      description: Missing, invalid, expired, frozen, or revoked Session
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Forbidden:
+      description: Required permission or Scope is missing
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: Authorization code or idempotency conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ServiceUnavailable:
+      description: Platform Core or transient coordination is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"

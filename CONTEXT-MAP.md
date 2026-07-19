@@ -6,12 +6,12 @@
 - [HENUKit Console](./apps/console/CONTEXT.md) — application boundary, bundle isolation, and Console-owned presentation terms.
 - [Study Legacy Admin](./apps/study-legacy-admin/CONTEXT.md) — preserved legacy behavior, rollback entrypoint, and retirement boundary.
 - [Platform Core](./services/platform-core/CONTEXT.md) — platform identity ownership, Core Session, OAuth client, Authorization Code, and Redis coordination boundaries.
+- [Console Gateway](./services/console-gateway/CONTEXT.md) — Console-local authorization callback, Session cookie, and verified access-context boundary.
 
 ## Extraction targets
 
 As implementation directories are established, move resolved terms into context-owned glossaries without duplicating definitions:
 
-- `services/console-gateway/CONTEXT.md` — Console Gateway and Console Session edge behavior.
 - `apps/portal/CONTEXT.md` — Portal and Portal Configuration.
 - `services/notice/CONTEXT.md` — notice sources, immutable versions, review, audience, and distribution.
 - `services/library/CONTEXT.md` — courses, materials, downloads, submissions, review, and correction.

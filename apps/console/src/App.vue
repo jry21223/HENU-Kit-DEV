@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { Activity, Bell, BookOpen, Building2, Menu, Search, ShieldCheck, Utensils, X } from "@lucide/vue";
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from "reka-ui";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import ModuleCard from "@/components/ModuleCard.vue";
 import StatusBadge from "@/components/ui/StatusBadge.vue";
 import UiButton from "@/components/ui/UiButton.vue";
 import { moduleSummaries, type ModuleSummary } from "@/data/modules";
+import { consoleLoginHref, fetchConsoleSession, logoutConsoleSession, type ConsoleSession } from "@/lib/console-gateway";
 
 const icons = {
   portal: Building2,
@@ -20,11 +21,34 @@ const icons = {
 const query = new URLSearchParams(window.location.search);
 const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
+const authState = ref<"loading" | "authenticated" | "signed_out" | "denied" | "unavailable">("loading");
+const consoleSession = ref<ConsoleSession>();
+
+async function refreshSession() {
+  authState.value = "loading";
+  const result = await fetchConsoleSession();
+  authState.value = result.state;
+  consoleSession.value = result.state === "authenticated" ? result.session : undefined;
+}
+
+async function signOut() {
+  try {
+    await logoutConsoleSession();
+    authState.value = "signed_out";
+    consoleSession.value = undefined;
+  } catch {
+    authState.value = "unavailable";
+  }
+}
+
+onMounted(refreshSession);
 
 const summaries = computed<ModuleSummary[]>(() =>
-  loading
+  loading || authState.value === "loading"
     ? moduleSummaries.map((summary) => ({ ...summary, status: "loading", metrics: [] }))
-    : moduleSummaries,
+    : authState.value === "authenticated"
+      ? moduleSummaries
+      : moduleSummaries.map((summary) => ({ ...summary, status: "denied", metrics: [], statusMessage: "登录并通过服务端权限校验后可查看此模块。" })),
 );
 
 const visibleCount = computed(() => summaries.value.filter((summary) => summary.status !== "denied").length);
@@ -95,8 +119,14 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <span id="search-note" class="sr-only">Mock 阶段暂不提供搜索</span>
 
         <div class="ml-auto flex items-center gap-3">
-          <StatusBadge status="loading">Mock 权限态</StatusBadge>
-          <div class="operator-avatar" aria-label="当前操作员：Console Operator">CO</div>
+          <StatusBadge v-if="authState === 'loading'" status="loading">正在验证 Session</StatusBadge>
+          <template v-else-if="authState === 'authenticated'">
+            <StatusBadge status="ok">权限已验证</StatusBadge>
+            <button type="button" class="operator-avatar" aria-label="退出 Console" @click="signOut">CO</button>
+          </template>
+          <StatusBadge v-else-if="authState === 'denied'" status="denied">权限不足</StatusBadge>
+          <button v-else-if="authState === 'unavailable'" type="button" class="rounded-xl bg-[var(--hk-ink-green-deep)] px-4 py-2 text-sm font-semibold text-white" @click="refreshSession">重试连接</button>
+          <a v-else :href="consoleLoginHref()" class="rounded-xl bg-[var(--hk-ink-green-deep)] px-4 py-2 text-sm font-semibold text-white">登录 Console</a>
         </div>
       </header>
 
@@ -106,12 +136,12 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
             <p class="eyebrow">Operations overview</p>
             <h1 id="overview-heading" class="mt-2 text-2xl font-bold tracking-[-0.03em] sm:text-3xl">产品运行概览</h1>
             <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">
-              六个产品模块保持各自的数据所有权。此页面仅验证 Console 的结构、权限表达与降级状态，不连接生产服务。
+              六个产品模块保持各自的数据所有权。当前模块指标仍是展示夹具，不连接生产产品数据。
             </p>
           </div>
-          <div class="access-context" aria-label="Mock 访问上下文">
-            <span>console.overview.read</span>
-            <strong>{{ visibleCount }}/6 可见</strong>
+          <div class="access-context" aria-label="服务端验证的访问上下文">
+            <span>{{ authState === "authenticated" ? "console.overview.read" : "需要服务端权限" }}</span>
+            <strong>{{ authState === "authenticated" ? visibleCount : 0 }}/6 可见</strong>
           </div>
         </section>
 
@@ -130,10 +160,14 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
             <div>
               <p class="eyebrow">Access context</p>
               <h2 id="permission-heading" class="mt-1 text-lg font-semibold">权限按代码与 Scope 表达</h2>
-              <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">当前仅模拟未来由服务端返回的访问上下文；正式接入后，前端不信任浏览器角色，也不使用旧的单一 isAdmin 判断。</p>
+              <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">访问上下文由 Console Gateway 在每次请求时向 Platform Core 验证；前端不信任浏览器角色，也不使用旧的 isAdmin 判断。</p>
             </div>
-            <div class="flex flex-wrap gap-2" aria-label="Mock 权限代码">
-              <code>console.overview.read</code><code>platform.health.read</code><code>scope:all-products</code>
+            <div class="flex flex-wrap gap-2" aria-label="服务端验证的权限代码">
+              <template v-if="consoleSession">
+                <code v-for="permission in consoleSession.access_context.permissions" :key="permission">{{ permission }}</code>
+                <code v-for="scope in consoleSession.access_context.scopes" :key="scope.kind">scope:{{ scope.kind }}</code>
+              </template>
+              <span v-else>{{ authState === "denied" ? "当前账户缺少权限或 Scope" : "登录后显示访问上下文" }}</span>
             </div>
           </div>
         </section>
