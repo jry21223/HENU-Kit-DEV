@@ -37,6 +37,7 @@ func main() {
 	service, err := summary.New(summary.Config{
 		Version: os.Getenv("PORTAL_VERSION"), CommitSHA: os.Getenv("PORTAL_COMMIT_SHA"), DeployedAt: deployedAt,
 		ReadinessURL: os.Getenv("PORTAL_READINESS_URL"), KeyProbes: keyProbes, EntryProbes: entryProbes, FeedbackURL: os.Getenv("PORTAL_FEEDBACK_SUMMARY_URL"),
+		FeedbackCredentials: summary.Credentials{ClientID: os.Getenv("PORTAL_FEEDBACK_CLIENT_ID"), ClientSecret: os.Getenv("PORTAL_FEEDBACK_CLIENT_SECRET"), KeyID: os.Getenv("PORTAL_FEEDBACK_KEY_ID")},
 	}, &http.Client{})
 	if err != nil {
 		logger.Error("invalid_summary_config", "error", err)
@@ -48,7 +49,18 @@ func main() {
 		os.Exit(1)
 	}
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddress})
-	handler, err := httpapi.New(httpapi.Config{ClientID: os.Getenv("PORTAL_SUMMARY_CLIENT_ID"), ClientSecret: os.Getenv("PORTAL_SUMMARY_CLIENT_SECRET"), KeyID: os.Getenv("PORTAL_SUMMARY_KEY_ID")}, redisClient, service)
+	keys := map[string]string{os.Getenv("PORTAL_SUMMARY_ACTIVE_KEY_ID"): os.Getenv("PORTAL_SUMMARY_ACTIVE_SECRET")}
+	if retiringKeyID := strings.TrimSpace(os.Getenv("PORTAL_SUMMARY_RETIRING_KEY_ID")); retiringKeyID != "" {
+		keys[retiringKeyID] = os.Getenv("PORTAL_SUMMARY_RETIRING_SECRET")
+	}
+	feedbackSecret := os.Getenv("PORTAL_FEEDBACK_CLIENT_SECRET")
+	for _, secret := range keys {
+		if feedbackSecret != "" && feedbackSecret == secret {
+			logger.Error("invalid_key_separation", "error", "feedback and Gateway verifier secrets must differ")
+			os.Exit(1)
+		}
+	}
+	handler, err := httpapi.New(httpapi.Config{ClientID: os.Getenv("PORTAL_SUMMARY_CLIENT_ID"), Keys: keys}, redisClient, service)
 	if err != nil {
 		logger.Error("invalid_http_config", "error", err)
 		os.Exit(1)

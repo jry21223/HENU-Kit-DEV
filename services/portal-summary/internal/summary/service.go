@@ -2,6 +2,11 @@ package summary
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,11 +17,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"henukit.dev/portal-summary/internal/contract"
 )
 
 const (
 	DefaultProbeTimeout = 500 * time.Millisecond
 	DefaultTotalTimeout = 1500 * time.Millisecond
+	maxFeedbackAge      = 5 * time.Minute
 	maxProbes           = 8
 )
 
@@ -26,30 +34,18 @@ type Probe struct {
 }
 
 type Config struct {
-	Version, CommitSHA string
-	DeployedAt         time.Time
-	ReadinessURL       string
-	KeyProbes          []Probe
-	EntryProbes        []Probe
-	FeedbackURL        string
-	ProbeTimeout       time.Duration
-	TotalTimeout       time.Duration
+	Version, CommitSHA  string
+	DeployedAt          time.Time
+	ReadinessURL        string
+	KeyProbes           []Probe
+	EntryProbes         []Probe
+	FeedbackURL         string
+	FeedbackCredentials Credentials
+	ProbeTimeout        time.Duration
+	TotalTimeout        time.Duration
 }
 
-type Metric struct {
-	Label string `json:"label"`
-	Value string `json:"value"`
-	Hint  string `json:"hint,omitempty"`
-}
-
-type Result struct {
-	ID            string    `json:"id"`
-	Status        string    `json:"status"`
-	Metrics       []Metric  `json:"metrics"`
-	StatusMessage string    `json:"status_message"`
-	AsOf          time.Time `json:"as_of"`
-	RequestID     string    `json:"request_id"`
-}
+type Credentials struct{ ClientID, ClientSecret, KeyID string }
 
 type Service struct {
 	config Config
@@ -94,6 +90,9 @@ func New(config Config, client *http.Client) (*Service, error) {
 		if err := validEndpoint(config.FeedbackURL, true); err != nil {
 			return nil, fmt.Errorf("invalid feedback URL: %w", err)
 		}
+		if config.FeedbackCredentials.ClientID == "" || len(config.FeedbackCredentials.ClientSecret) < 16 || config.FeedbackCredentials.KeyID == "" {
+			return nil, errors.New("feedback summary credentials are required when its URL is configured")
+		}
 	}
 	if config.ProbeTimeout <= 0 || config.ProbeTimeout > time.Second {
 		config.ProbeTimeout = DefaultProbeTimeout
@@ -106,7 +105,7 @@ func New(config Config, client *http.Client) (*Service, error) {
 	return &Service{config: config, client: &probeClient, now: time.Now}, nil
 }
 
-func (s *Service) Build(ctx context.Context) Result {
+func (s *Service) Build(ctx context.Context) contract.PortalSummary {
 	ctx, cancel := context.WithTimeout(ctx, s.config.TotalTimeout)
 	defer cancel()
 	type groupResult struct {
@@ -144,7 +143,7 @@ func (s *Service) Build(ctx context.Context) Result {
 	if status == "partial" {
 		message = fmt.Sprintf("Portal 摘要部分可用：%d 个当前探测异常，反馈状态为%s", failures, feedbackValue)
 	}
-	return Result{ID: "portal", Status: status, AsOf: s.now().UTC(), StatusMessage: message, Metrics: []Metric{
+	return contract.PortalSummary{ID: "portal", Status: status, AsOf: s.now().UTC(), StatusMessage: message, Metrics: []contract.Metric{
 		{Label: "部署版本", Value: s.config.Version},
 		{Label: "Commit", Value: shortCommit(s.config.CommitSHA), Hint: s.config.CommitSHA},
 		{Label: "部署时间", Value: s.config.DeployedAt.UTC().Format("01-02 15:04"), Hint: s.config.DeployedAt.UTC().Format(time.RFC3339)},
@@ -174,7 +173,8 @@ func (s *Service) probeAll(ctx context.Context, probes []Probe) []probeResult {
 			}
 			defer response.Body.Close()
 			_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
-			results[index] = probeResult{name: probe.Name, healthy: response.StatusCode >= 200 && response.StatusCode < 400, detail: fmt.Sprintf("http_%d", response.StatusCode)}
+			healthy := response.StatusCode >= 200 && response.StatusCode < 300
+			results[index] = probeResult{name: probe.Name, healthy: healthy, detail: fmt.Sprintf("http_%d", response.StatusCode)}
 		}()
 	}
 	wait.Wait()
@@ -189,6 +189,9 @@ func (s *Service) feedback(ctx context.Context) (Feedback, string) {
 	defer cancel()
 	request, _ := http.NewRequestWithContext(probeCtx, http.MethodGet, s.config.FeedbackURL, nil)
 	request.Header.Set("Accept", "application/json")
+	if err := sign(request, s.config.FeedbackCredentials, s.now()); err != nil {
+		return Feedback{}, "unavailable"
+	}
 	response, err := s.client.Do(request)
 	if err != nil {
 		return Feedback{}, "unavailable"
@@ -197,10 +200,38 @@ func (s *Service) feedback(ctx context.Context) (Feedback, string) {
 	var value Feedback
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 8<<10))
 	decoder.DisallowUnknownFields()
-	if response.StatusCode != http.StatusOK || decoder.Decode(&value) != nil || value.PendingCount < 0 || value.RecentCount < 0 || value.AsOf.IsZero() {
+	if response.StatusCode != http.StatusOK || decoder.Decode(&value) != nil {
+		return Feedback{}, "unavailable"
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return Feedback{}, "unavailable"
+	}
+	feedbackAge := s.now().Sub(value.AsOf)
+	if value.PendingCount < 0 || value.RecentCount < 0 || value.AsOf.IsZero() || feedbackAge < -time.Minute || feedbackAge > maxFeedbackAge {
 		return Feedback{}, "unavailable"
 	}
 	return value, "ok"
+}
+
+func sign(request *http.Request, credentials Credentials, now time.Time) error {
+	nonce := make([]byte, 24)
+	if _, err := rand.Read(nonce); err != nil {
+		return err
+	}
+	nonceValue := base64.RawURLEncoding.EncodeToString(nonce)
+	timestamp := fmt.Sprintf("%d", now.Unix())
+	digest := sha256.Sum256(nil)
+	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonceValue, hex.EncodeToString(digest[:])}, "\n")
+	mac := hmac.New(sha256.New, []byte(credentials.ClientSecret))
+	_, _ = mac.Write([]byte(canonical))
+	request.SetBasicAuth(credentials.ClientID, credentials.ClientSecret)
+	request.Header.Set("X-Service-Id", credentials.ClientID)
+	request.Header.Set("X-Key-Id", credentials.KeyID)
+	request.Header.Set("X-Timestamp", timestamp)
+	request.Header.Set("X-Nonce", nonceValue)
+	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
+	request.Header.Set("X-Request-Id", "req_portal_feedback_"+base64.RawURLEncoding.EncodeToString(nonce[:9]))
+	return nil
 }
 
 func countHealthy(results []probeResult) (int, int) {

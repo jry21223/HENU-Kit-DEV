@@ -99,6 +99,15 @@ components:
           as_of: "2026-07-19T00:01:00Z"
           request_id: req_portal_example
         request_id: req_portal_example
+      x-invalid-example:
+        data:
+          id: portal
+          status: ok
+          metrics: []
+          status_message: 缺少八项真实 Portal 指标
+          as_of: "2026-07-19T00:00:00Z"
+          request_id: req_mismatch_inner
+        request_id: req_mismatch_outer
     PortalSummary:
       allOf:
         - $ref: "./console-gateway.yaml#/components/schemas/ConsoleModuleSummary"

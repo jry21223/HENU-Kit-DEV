@@ -61,7 +61,10 @@ test("desktop overview exposes six traced module summaries and degradation state
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
   await expect(page.getByText("req_quizcraft_browser", { exact: true })).toBeVisible();
   const portal = page.locator('[data-module-card="portal"]');
+  await expect(portal).toHaveAccessibleName("Portal：正常");
   for (const fact of ["2026.07.19", "0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) await expect(portal.getByText(fact, { exact: true })).toBeVisible();
+  await expect(portal.getByLabel("Readiness：ready")).toBeVisible();
+  await expect(portal.getByLabel("入口健康：2/2")).toBeVisible();
   for (const control of ["编辑内容", "重新部署", "回滚版本", "切换版本"]) await expect(page.getByText(control, { exact: true })).toHaveCount(0);
 });
 
@@ -74,10 +77,13 @@ test("390px overview keeps every module and mobile navigation usable", async ({ 
   const navigation = page.getByRole("navigation", { name: "移动端产品模块" });
   await expect(navigation.getByRole("link")).toHaveCount(6);
   for (const name of moduleNames) await expect(navigation.getByRole("link", { name })).toBeVisible();
+  await page.getByRole("button", { name: "关闭产品导航" }).click();
 
   const portal = page.locator('[data-module-card="portal"]');
+  await expect(portal).toHaveAccessibleName("Portal：正常");
   await expect(portal.getByText("Readiness", { exact: true })).toBeVisible();
   await expect(portal.getByText("入口健康", { exact: true })).toBeVisible();
+  await expect(portal.getByLabel("Readiness：ready")).toBeVisible();
 
   const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(width.scroll).toBeLessThanOrEqual(width.client + 2);

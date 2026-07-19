@@ -52,7 +52,7 @@ const statusLabels: Record<ModuleStatus, string> = {
       <p class="mt-3 min-h-12 text-base leading-7 text-[var(--hk-ink-muted)]">{{ summary.description }}</p>
 
       <div v-if="summary.metrics.length" class="mt-4 grid grid-cols-2 gap-3">
-        <div v-for="metric in summary.metrics" :key="metric.label" class="metric-tile">
+        <div v-for="metric in summary.metrics" :key="metric.label" class="metric-tile" :aria-label="`${metric.label}：${metric.value}`">
           <span>{{ metric.label }}</span><strong>{{ metric.value }}</strong><small v-if="metric.hint">{{ metric.hint }}</small>
         </div>
       </div>
