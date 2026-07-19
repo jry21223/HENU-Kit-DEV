@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	sessionCookie = "__Host-henukit_console_session"
-	stateTTL      = 5 * time.Minute
+	sessionCookie   = "__Host-henukit_console_session"
+	oauthFlowCookie = "__Host-henukit_console_oauth"
+	stateTTL        = 5 * time.Minute
 )
 
 type platformClient interface {
@@ -50,7 +51,7 @@ type flowState struct {
 func New(platformOrigin, clientID, redirectURI string, platform platformClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger) (http.Handler, error) {
 	origin, err := url.Parse(platformOrigin)
 	redirect, redirectErr := url.Parse(redirectURI)
-	if err != nil || redirectErr != nil || origin.Scheme == "" || origin.Host == "" || redirect.Scheme != "https" || redirect.Host == "" || clientID == "" || platform == nil || redisClient == nil || codec == nil {
+	if err != nil || redirectErr != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || (origin.Path != "" && origin.Path != "/") || origin.RawQuery != "" || origin.Fragment != "" || redirect.Scheme != "https" || redirect.Host == "" || clientID == "" || platform == nil || redisClient == nil || codec == nil {
 		return nil, errors.New("invalid console gateway handler configuration")
 	}
 	if logger == nil {
@@ -104,9 +105,15 @@ func (h *Handler) login(writer http.ResponseWriter, request *http.Request) {
 		h.unavailable(writer, request, err)
 		return
 	}
+	browserNonce, err := randomToken(32)
+	if err != nil {
+		h.unavailable(writer, request, err)
+		return
+	}
 	payload, _ := json.Marshal(flowState{Verifier: verifier, ReturnTo: returnTo})
 	stateHash := sha256.Sum256([]byte(state))
-	stored, err := h.redis.SetNX(request.Context(), "console:oauth-state:"+hex.EncodeToString(stateHash[:]), payload, stateTTL).Result()
+	browserHash := sha256.Sum256([]byte(browserNonce))
+	stored, err := h.redis.SetNX(request.Context(), oauthStateKey(stateHash, browserHash), payload, stateTTL).Result()
 	if err != nil || !stored {
 		if err == nil {
 			err = errors.New("oauth state collision")
@@ -114,6 +121,7 @@ func (h *Handler) login(writer http.ResponseWriter, request *http.Request) {
 		h.unavailable(writer, request, err)
 		return
 	}
+	http.SetCookie(writer, &http.Cookie{Name: oauthFlowCookie, Value: browserNonce, Path: "/", MaxAge: int(stateTTL.Seconds()), Expires: h.now().Add(stateTTL), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	challenge := sha256.Sum256([]byte(verifier))
 	query := url.Values{
 		"response_type": {"code"}, "client_id": {h.clientID}, "redirect_uri": {h.redirectURI}, "state": {state},
@@ -128,8 +136,15 @@ func (h *Handler) callback(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_CALLBACK", "authorization callback is invalid")
 		return
 	}
+	flowCookie, cookieErr := request.Cookie(oauthFlowCookie)
+	if cookieErr != nil || len(flowCookie.Value) != 43 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "authorization state is not bound to this browser")
+		return
+	}
+	h.clearOAuthFlow(writer)
 	stateHash := sha256.Sum256([]byte(state))
-	payload, err := h.redis.GetDel(request.Context(), "console:oauth-state:"+hex.EncodeToString(stateHash[:])).Bytes()
+	browserHash := sha256.Sum256([]byte(flowCookie.Value))
+	payload, err := h.redis.GetDel(request.Context(), oauthStateKey(stateHash, browserHash)).Bytes()
 	if errors.Is(err, redis.Nil) {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "authorization state is invalid or already used")
 		return
@@ -174,10 +189,14 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 		h.writePlatformError(writer, request, err)
 		return
 	}
-	writeJSON(writer, request, http.StatusOK, map[string]any{
-		"user": map[string]string{"id": value.UserID}, "expires_at": value.ExpiresAt,
-		"access_context": map[string]any{"permissions": []string{"console.overview.read"}, "scopes": []map[string]string{{"kind": "platform"}}, "verified_at": h.now().UTC()},
-	})
+	response := contract.ConsoleSession{
+		AccessContext: contract.ConsoleAccessContext{
+			Permissions: []string{"console.overview.read"}, Scopes: []contract.ConsoleScope{{Kind: "platform"}}, VerifiedAt: h.now().UTC(),
+		},
+		ExpiresAt: value.ExpiresAt,
+	}
+	response.User.ID = value.UserID
+	writeJSON(writer, request, http.StatusOK, response)
 }
 
 func (h *Handler) logout(writer http.ResponseWriter, _ *http.Request) {
@@ -202,6 +221,14 @@ func (h *Handler) readSession(writer http.ResponseWriter, request *http.Request)
 
 func (h *Handler) clearSession(writer http.ResponseWriter) {
 	http.SetCookie(writer, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+}
+
+func (h *Handler) clearOAuthFlow(writer http.ResponseWriter) {
+	http.SetCookie(writer, &http.Cookie{Name: oauthFlowCookie, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+}
+
+func oauthStateKey(stateHash, browserHash [sha256.Size]byte) string {
+	return "console:oauth-state:" + hex.EncodeToString(stateHash[:]) + ":" + hex.EncodeToString(browserHash[:])
 }
 
 func (h *Handler) writePlatformError(writer http.ResponseWriter, request *http.Request, err error) {

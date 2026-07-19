@@ -47,11 +47,12 @@ jobs:
         run: corepack enable
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-      - name: Verify OpenAPI and generated clients
+      - name: Verify OpenAPI examples, implementation, and generated clients
         run: |
           set -euo pipefail
           cd services/console-gateway
           go run ./cmd/contractgen
+          CONSOLE_GATEWAY_TEST_REDIS_ADDR=localhost:6379 go test ./internal/httpapi -run ConformsToContract -count=1
           cd ../..
           git diff --exit-code -- services/console-gateway/internal/contract apps/console/src/lib/console-gateway.ts
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/console-gateway.yaml

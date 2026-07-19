@@ -54,6 +54,11 @@ paths:
               schema:
                 type: string
                 format: uri
+            Set-Cookie:
+              required: true
+              description: Short-lived host-only HttpOnly Secure SameSite=Lax browser-binding cookie.
+              schema:
+                type: string
         "400":
           $ref: "#/components/responses/BadRequest"
         "503":
@@ -87,7 +92,7 @@ paths:
                 type: string
             Set-Cookie:
               required: true
-              description: Host-only HttpOnly Secure SameSite=Lax Console Session cookie.
+              description: Clears the browser-binding cookie and establishes the host-only HttpOnly Secure SameSite=Lax Console Session cookie.
               schema:
                 type: string
         "400":
@@ -172,6 +177,18 @@ components:
     ConsoleSession:
       type: object
       additionalProperties: false
+      example:
+        user:
+          id: 171f1c6f-7b10-4c92-91a2-b39bf5af5302
+        access_context:
+          permissions: [console.overview.read]
+          scopes: [{ kind: platform }]
+          verified_at: "2026-07-19T00:00:00Z"
+        expires_at: "2026-07-19T00:05:00Z"
+      x-invalid-example:
+        user:
+          id: not-a-uuid
+        expires_at: "not-a-date"
       required: [user, access_context, expires_at]
       properties:
         user:

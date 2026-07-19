@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/console-gateway/internal/contract"
 	"henukit.dev/console-gateway/internal/platformcore"
 	"henukit.dev/console-gateway/internal/session"
 )
@@ -48,7 +50,7 @@ func (fake *fakePlatform) CheckOverview(_ context.Context, token string) error {
 	return fake.checkErr
 }
 
-func TestConsoleAuthorizationCodeFlowAndAccessContext(t *testing.T) {
+func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testing.T) {
 	redisClient := testRedis(t)
 	codec, err := session.New([]byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {
@@ -64,6 +66,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContext(t *testing.T) {
 	server := httptest.NewTLSServer(handler)
 	defer server.Close()
 	client := server.Client()
+	client.Jar, _ = cookiejar.New(nil)
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 	login, err := client.Get(server.URL + "/api/v1/auth/login?return_to=%2Foperations%3Ftab%3Dinbox")
@@ -77,11 +80,29 @@ func TestConsoleAuthorizationCodeFlowAndAccessContext(t *testing.T) {
 	if login.Header.Get("Cache-Control") != "no-store" || login.Header.Get("Referrer-Policy") != "no-referrer" || login.Header.Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("missing security headers: %v", login.Header)
 	}
+	var flowCookie *http.Cookie
+	for _, cookie := range login.Cookies() {
+		if cookie.Name == oauthFlowCookie {
+			flowCookie = cookie
+		}
+	}
+	if flowCookie == nil || !flowCookie.HttpOnly || !flowCookie.Secure || flowCookie.SameSite != http.SameSiteLaxMode || flowCookie.Path != "/" || flowCookie.MaxAge != int(stateTTL.Seconds()) {
+		t.Fatalf("invalid browser-bound OAuth cookie: %+v", login.Cookies())
+	}
 	authorize, err := url.Parse(login.Header.Get("Location"))
 	if err != nil || authorize.Host != "account.henukit.test" || authorize.Query().Get("code_challenge_method") != "S256" || len(authorize.Query().Get("code_challenge")) != 43 {
 		t.Fatalf("invalid authorize redirect: %s (%v)", login.Header.Get("Location"), err)
 	}
 	state := authorize.Query().Get("state")
+	attackerCallbackClient := &http.Client{Transport: client.Transport, CheckRedirect: client.CheckRedirect}
+	unbound, err := attackerCallbackClient.Get(server.URL + "/api/v1/auth/callback?code=authorization_code_123456&state=" + url.QueryEscape(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unbound.Body.Close()
+	if unbound.StatusCode != http.StatusBadRequest || fake.exchangeCalls != 0 {
+		t.Fatalf("unbound callback = %d with %d exchanges", unbound.StatusCode, fake.exchangeCalls)
+	}
 	callback, err := client.Get(server.URL + "/api/v1/auth/callback?code=authorization_code_123456&state=" + url.QueryEscape(state))
 	if err != nil {
 		t.Fatal(err)
@@ -90,9 +111,14 @@ func TestConsoleAuthorizationCodeFlowAndAccessContext(t *testing.T) {
 	if callback.StatusCode != http.StatusFound || callback.Header.Get("Location") != "/operations?tab=inbox" {
 		t.Fatalf("callback = %d %q", callback.StatusCode, callback.Header.Get("Location"))
 	}
-	cookies := callback.Cookies()
-	if len(cookies) != 1 || cookies[0].Name != sessionCookie || !cookies[0].HttpOnly || !cookies[0].Secure || cookies[0].SameSite != http.SameSiteLaxMode || cookies[0].Path != "/" {
-		t.Fatalf("invalid Console Session cookie: %+v", cookies)
+	var sessionValue *http.Cookie
+	for _, cookie := range callback.Cookies() {
+		if cookie.Name == sessionCookie {
+			sessionValue = cookie
+		}
+	}
+	if sessionValue == nil || !sessionValue.HttpOnly || !sessionValue.Secure || sessionValue.SameSite != http.SameSiteLaxMode || sessionValue.Path != "/" {
+		t.Fatalf("invalid Console Session cookie: %+v", callback.Cookies())
 	}
 	if fake.exchangeCalls != 1 || len(fake.verifier) != 43 || !strings.HasPrefix(fake.idempotencyKey, "idem_console_") {
 		t.Fatalf("unexpected exchange call: %+v", fake)
@@ -105,7 +131,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContext(t *testing.T) {
 	}
 
 	request, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/session", nil)
-	request.AddCookie(cookies[0])
+	request.AddCookie(sessionValue)
 	sessionResponse, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -116,17 +142,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContext(t *testing.T) {
 		t.Fatalf("session response = %d %s", sessionResponse.StatusCode, payload)
 	}
 	var envelope struct {
-		Data struct {
-			User struct {
-				ID string `json:"id"`
-			} `json:"user"`
-			AccessContext struct {
-				Permissions []string `json:"permissions"`
-				Scopes      []struct {
-					Kind string `json:"kind"`
-				} `json:"scopes"`
-			} `json:"access_context"`
-		} `json:"data"`
+		Data contract.ConsoleSession `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Data.User.ID != fake.exchange.UserID || len(envelope.Data.AccessContext.Permissions) != 1 || envelope.Data.AccessContext.Scopes[0].Kind != "platform" {
 		t.Fatalf("invalid access context: %s (%v)", payload, err)

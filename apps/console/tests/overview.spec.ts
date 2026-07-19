@@ -57,9 +57,38 @@ test("loading scenario marks all six modules busy without fake metrics", async (
   await expect(page.locator(".metric-tile")).toHaveCount(0);
 });
 
-test("expired session offers reauthentication and preserves the intended path", async ({ page }) => {
+test("expired session completes sign-in callback and returns to the intended path", async ({ page, context }) => {
   await page.unroute("**/api/v1/session");
-  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 401, contentType: "application/json", body: "{}" }));
+  await page.route("**/api/v1/session", (route) => {
+    const authenticated = route.request().headers().cookie?.includes("henukit_console_e2e=bound");
+    return authenticated
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: {
+              user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" },
+              access_context: { permissions: ["console.overview.read"], scopes: [{ kind: "platform" }], verified_at: "2026-07-19T00:00:00Z" },
+              expires_at: "2026-07-19T00:05:00Z",
+            },
+            request_id: "req_browser_return",
+          }),
+        })
+      : route.fulfill({ status: 401, contentType: "application/json", body: "{}" });
+  });
+  let storedReturn = "/";
+  await context.route(/\/api\/v1\/auth\/login(?:\?|$)/, (route) => {
+    storedReturn = new URL(route.request().url()).searchParams.get("return_to") ?? "/";
+    return route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: `<script>location.replace('/api/v1/auth/callback?code=authorization_code_123456&state=browser_bound_state_123456789012345')</script>`,
+    });
+  });
+  await context.route(/\/api\/v1\/auth\/callback(?:\?|$)/, async (route) => {
+    await context.addCookies([{ name: "henukit_console_e2e", value: "bound", url: "http://127.0.0.1:4174", httpOnly: true, sameSite: "Lax" }]);
+    return route.fulfill({ status: 200, contentType: "text/html", body: `<script>location.replace(${JSON.stringify(storedReturn)})</script>` });
+  });
   await page.goto("/operations?tab=inbox");
 
   const login = page.getByRole("link", { name: "登录 Console" });
@@ -67,4 +96,10 @@ test("expired session offers reauthentication and preserves the intended path", 
   await expect(login).toHaveAttribute("href", /return_to=%2Foperations%3Ftab%3Dinbox/);
   await expect(page.locator("[data-state='denied']")).toHaveCount(6);
   await expect(page.locator(".metric-tile")).toHaveCount(0);
+  await login.click();
+
+  await expect(page).toHaveURL(/\/operations\?tab=inbox$/);
+  await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
+  await expect(page.locator(".metric-tile")).not.toHaveCount(0);
+  expect((await context.cookies()).some((cookie) => cookie.name === "henukit_console_e2e" && cookie.httpOnly)).toBe(true);
 });

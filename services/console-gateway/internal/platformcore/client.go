@@ -40,7 +40,7 @@ type Exchange struct {
 
 func New(baseURL, clientID, clientSecret, keyID string, client *http.Client) (*Client, error) {
 	parsed, err := url.Parse(baseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || clientID == "" || clientSecret == "" || keyID == "" {
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" || clientID == "" || clientSecret == "" || keyID == "" {
 		return nil, errors.New("invalid platform core client configuration")
 	}
 	loopback := parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || net.ParseIP(parsed.Hostname()).IsLoopback())
@@ -96,7 +96,10 @@ func (c *Client) CheckOverview(ctx context.Context, exchangeToken string) error 
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		_ = response.Body.Close()
+	}()
 	return responseError(response)
 }
 

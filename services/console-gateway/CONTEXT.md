@@ -3,7 +3,7 @@
 ## Owns
 
 - The Console-local authorization-code callback and Console Session cookie.
-- One-time OAuth state, PKCE verifier, and same-origin return path coordination in Redis.
+- One-time OAuth state, browser-binding nonce, PKCE verifier, and same-origin return path coordination across a short-lived host-only cookie and Redis.
 - Server-to-server validation of Console permission codes and Scope through Platform Core.
 
 ## Does not own
