@@ -167,6 +167,7 @@ paths:
       responses:
         '200': { description: Overall weekly by default or lifetime ranking, content: { application/json: { schema: { $ref: '#/components/schemas/RankingEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks/{bank_id}/rankings:
     get:
       summary: Get one bank's public ranking
@@ -179,6 +180,7 @@ paths:
       responses:
         '200': { description: Bank weekly or lifetime ranking, content: { application/json: { schema: { $ref: '#/components/schemas/RankingEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/ranking-profile:
     patch:
       summary: Set controlled public nickname, system avatar, and ranking visibility
@@ -192,6 +194,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/feedback:
     post:
       summary: Submit a correction linked to stable content identity

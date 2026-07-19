@@ -4,6 +4,8 @@ This directory is the parallel Go/PostgreSQL foundation for QuizCraft. HC-16 fre
 
 HC-17 adds the Practice Core shadow HTTP process. It serves guest sessions, server-side scoring for all four question types, and authenticated progress/wrong-question state while FastAPI remains live. Set `QUIZCRAFT_LEGACY_BASE_URL` and the matching `QUIZCRAFT_LEGACY_COMPARE_SECRET` / FastAPI `QUIZCRAFT_SHADOW_COMPARE_SECRET` to record bounded comparisons through the side-effect-free legacy `/api/practice/shadow-compare` route; legacy errors never change the new API response or legacy statistics.
 
+HC-18 and HC-19 add authenticated per-bank favorites and public rankings derived from immutable Practice Attempts. Ranking defaults to the current UTC Monday-to-Monday week and exposes only the controlled nickname, system avatar, and correct-answer count of opted-in profiles. The four allowed avatars are `scholar-blue`, `coder-green`, `reader-amber`, and `owl-purple`.
+
 Apply the migration, then import one named file explicitly:
 
 ```bash
@@ -26,6 +28,14 @@ Run the shadow process after applying every migration and configuring `.env.exam
 ```bash
 go run ./cmd/server
 ```
+
+After a UTC week closes, record its idempotent, reward-free Overall and per-bank settlement facts with:
+
+```bash
+go run ./cmd/settleranking
+```
+
+The optional `-at` RFC3339 instant is for deterministic recovery/testing. Settlement rows contain only the period, scope, `correct_answer_count` standings, and audit timestamps; they cannot be updated or deleted and do not grant points, membership, entitlements, or other rewards.
 
 An unauthenticated browser receives an unguessable `quizcraft_anonymous` HttpOnly, Secure, SameSite=Lax cookie and can practice without creating a Core user. After a server-side Platform identity exchange, the business site supplies its short-lived QuizCraft-local session through the HttpOnly `quizcraft_session` cookie; trusted non-browser clients may use the equivalent local bearer JWT. Platform Core exchange tokens and client-provided legacy user IDs are never accepted directly as identity evidence. Every session creation and answer submission requires an `Idempotency-Key`; `(session, question)` uniqueness and transaction locks prevent concurrent duplicate scoring.
 
