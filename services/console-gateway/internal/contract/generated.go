@@ -9,7 +9,7 @@ const (
 	CallbackRoute = "/api/v1/auth/callback"
 	SessionRoute  = "/api/v1/session"
 	LogoutRoute   = "/api/v1/session/logout"
-	SourceSHA256  = "d8e4aa382eede3d326833a1ace2eb611b26143a7d8ba9aabebe78cb9a895c930"
+	SourceSHA256  = "8e16c8b29b697d0994357256cbf97a22746875d04b5c8cc74b2425f022d1f0a1"
 )
 
 type ConsoleAccessContext struct {

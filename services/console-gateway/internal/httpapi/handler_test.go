@@ -103,6 +103,14 @@ func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testi
 	if unbound.StatusCode != http.StatusBadRequest || fake.exchangeCalls != 0 {
 		t.Fatalf("unbound callback = %d with %d exchanges", unbound.StatusCode, fake.exchangeCalls)
 	}
+	wrongState, err := client.Get(server.URL + "/api/v1/auth/callback?code=authorization_code_123456&state=wrong_browser_bound_state_123456789012")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongState.Body.Close()
+	if wrongState.StatusCode != http.StatusBadRequest || fake.exchangeCalls != 0 {
+		t.Fatalf("wrong bound state = %d with %d exchanges", wrongState.StatusCode, fake.exchangeCalls)
+	}
 	callback, err := client.Get(server.URL + "/api/v1/auth/callback?code=authorization_code_123456&state=" + url.QueryEscape(state))
 	if err != nil {
 		t.Fatal(err)
@@ -176,6 +184,9 @@ func TestConsoleSessionDefaultsToDenyAndClearsRevokedSession(t *testing.T) {
 }
 
 func TestConsoleRejectsOpenRedirectAndExpiredCookieBeforePlatformCall(t *testing.T) {
+	if !validReturnTo("/search?q=10:30") {
+		t.Fatal("same-origin URI-reference with colon should be accepted")
+	}
 	redisClient := testRedis(t)
 	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
 	fake := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: "exchange_token_with_at_least_32_characters"}}

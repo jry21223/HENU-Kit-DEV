@@ -141,7 +141,6 @@ func (h *Handler) callback(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "authorization state is not bound to this browser")
 		return
 	}
-	h.clearOAuthFlow(writer)
 	stateHash := sha256.Sum256([]byte(state))
 	browserHash := sha256.Sum256([]byte(flowCookie.Value))
 	payload, err := h.redis.GetDel(request.Context(), oauthStateKey(stateHash, browserHash)).Bytes()
@@ -153,6 +152,7 @@ func (h *Handler) callback(writer http.ResponseWriter, request *http.Request) {
 		h.unavailable(writer, request, err)
 		return
 	}
+	h.clearOAuthFlow(writer)
 	var flow flowState
 	if err := json.Unmarshal(payload, &flow); err != nil || !validReturnTo(flow.ReturnTo) || len(flow.Verifier) != 43 {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "authorization state is invalid")
