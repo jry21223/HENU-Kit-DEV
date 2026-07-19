@@ -26,6 +26,8 @@ export interface QuestionBank {
   color: string;
   total: number;
   chapters: Chapter[];
+  bank_id?: string;
+  bank_version_id?: string;
 }
 
 // 章节

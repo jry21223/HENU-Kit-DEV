@@ -4,6 +4,8 @@ go 1.26.5
 
 require (
 	github.com/getkin/kin-openapi v0.142.0
+	github.com/go-chi/chi/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/oapi-codegen/runtime v1.6.0

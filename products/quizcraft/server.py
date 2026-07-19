@@ -1830,20 +1830,11 @@ async def start_practice(request: StartPracticeRequest):
     }
 
 
-@app.post("/api/practice/submit")
-async def submit_answer(request: SubmitAnswerRequest):
-    """提交答案"""
-    require_enabled_bank(request.bank)
-
-    question = get_bank_question(request.bank, request.question_id)
-    if not question:
-        raise HTTPException(status_code=404, detail="题目不存在")
-    
-    # 检查答案
-    user_answer = request.answer
+def score_practice_answer(question: Dict[str, Any], user_answer: Any) -> Tuple[bool, Any]:
+    """Score one legacy question without mutating user or question statistics."""
     correct_answer = question["answer"]
     q_type = question["type"]
-    
+
     is_correct = False
     response_correct_answer = correct_answer
     if q_type == "judge":
@@ -1864,7 +1855,59 @@ async def submit_answer(request: SubmitAnswerRequest):
         is_correct = user_sorted == correct_sorted
     else:
         is_correct = user_answer == correct_answer
-    
+
+    return is_correct, response_correct_answer
+
+
+def get_shadow_compare_secret() -> str:
+    return os.getenv("QUIZCRAFT_SHADOW_COMPARE_SECRET", "").strip()
+
+
+@app.post("/api/practice/shadow-compare")
+async def shadow_compare_answer(
+    request: SubmitAnswerRequest,
+    x_quizcraft_shadow_secret: Optional[str] = Header(
+        default=None,
+        alias="X-QuizCraft-Shadow-Secret",
+    ),
+):
+    """Return legacy scoring semantics without recording a second submission."""
+    expected_secret = get_shadow_compare_secret()
+    if (
+        len(expected_secret) < 32
+        or not x_quizcraft_shadow_secret
+        or not secrets.compare_digest(x_quizcraft_shadow_secret, expected_secret)
+    ):
+        raise HTTPException(status_code=401, detail="影子比较认证失败")
+    require_enabled_bank(request.bank)
+    question = get_bank_question(request.bank, request.question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    is_correct, response_correct_answer = score_practice_answer(
+        question,
+        request.answer,
+    )
+    return {
+        "correct": is_correct,
+        "correct_answer": response_correct_answer,
+        "analysis": question.get("analysis", ""),
+    }
+
+
+@app.post("/api/practice/submit")
+async def submit_answer(request: SubmitAnswerRequest):
+    """提交答案"""
+    require_enabled_bank(request.bank)
+
+    question = get_bank_question(request.bank, request.question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="题目不存在")
+
+    is_correct, response_correct_answer = score_practice_answer(
+        question,
+        request.answer,
+    )
+
     # 更新用户统计
     resolved_user_id = request.user_id
     user_stats_payload: Optional[Dict[str, Any]] = None

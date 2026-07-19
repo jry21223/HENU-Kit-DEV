@@ -28,4 +28,4 @@ _Avoid_: 服务启动扫描、JSON 运行时兜底
 
 ## Current boundary
 
-HC-16 冻结五个产品域的 OpenAPI，并建立可独立验证的 Go/PostgreSQL 导入基线。现有 FastAPI 仍是当前运行实现，Go 与其并行存在；本阶段没有替换路由、部署或流量。
+HC-16 冻结五个产品域的 OpenAPI，并建立可独立验证的 Go/PostgreSQL 导入基线。HC-17 在该基线上提供 Practice Core 影子 HTTP 服务、四类服务端判题、Session/重放事实、登录学习状态与可选旧响应对比。现有 FastAPI 仍是当前运行实现，Go 与其并行存在；本阶段没有替换生产路由或流量。

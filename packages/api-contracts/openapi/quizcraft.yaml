@@ -13,6 +13,15 @@ tags:
   - { name: Feedback, description: Corrections linked to stable bank and question identity. }
   - { name: Workshop, description: Scoped QuizCraft-owned bank lifecycle administration. }
 paths:
+  /healthz:
+    get:
+      summary: Check the Practice shadow process
+      tags: [Practice]
+      operationId: getQuizCraftHealth
+      security: []
+      responses:
+        '200': { description: Process is alive, content: { application/json: { schema: { $ref: '#/components/schemas/HealthEnvelope' } } } }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks:
     get:
       summary: List published practice banks
@@ -22,24 +31,27 @@ paths:
       responses:
         '200': { description: Published banks, content: { application/json: { schema: { $ref: '#/components/schemas/BankListEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/practice/sessions:
     post:
       summary: Create a random, difficult, chapter, or favorites practice session
       tags: [Practice]
       operationId: createPracticeSession
-      security: [{}, { userSession: [] }]
+      security: [{}, { userSession: [] }, { userSessionCookie: [] }]
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreatePracticeSession' } } } }
       responses:
         '201': { description: Session pinned to immutable content, content: { application/json: { schema: { $ref: '#/components/schemas/PracticeSessionEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/practice/sessions/{session_id}/answers:
     post:
       summary: Submit an answer for server-side evaluation
       tags: [Practice]
       operationId: submitPracticeAnswer
-      security: [{}, { userSession: [] }]
+      security: [{}, { userSession: [] }, { userSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/SessionID'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -47,25 +59,40 @@ paths:
       responses:
         '200': { description: Server-confirmed result and explanation, content: { application/json: { schema: { $ref: '#/components/schemas/AnswerResultEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/learning-state:
+    get:
+      summary: Read signed-in progress and wrong-question state
+      tags: [Practice]
+      operationId: getLearningState
+      security: [{ userSession: [] }, { userSessionCookie: [] }]
+      responses:
+        '200': { description: Persistent account learning state, content: { application/json: { schema: { $ref: '#/components/schemas/LearningStateEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/operations/{operation_kind}:
     get:
       summary: Resolve an idempotent write after an unknown outcome
       tags: [Practice]
       operationId: getQuizCraftOperation
-      security: [{}, { userSession: [] }, { workshopOAuth: [quizcraft.workshop.read] }]
+      security: [{}, { userSession: [] }, { userSessionCookie: [] }, { workshopOAuth: [quizcraft.workshop.read] }]
       parameters:
         - $ref: '#/components/parameters/OperationKindParam'
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200': { description: Original write state and correlated request, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/favorites:
     get:
       summary: List per-bank favorites counts and unavailable counts
       tags: [Favorites]
       operationId: getFavoritesOverview
-      security: [{ userSession: [] }]
+      security: [{ userSession: [] }, { userSessionCookie: [] }]
       responses:
         '200': { description: Automatic per-bank folders, content: { application/json: { schema: { $ref: '#/components/schemas/FavoritesOverviewEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -74,7 +101,7 @@ paths:
       summary: List one bank's favorite references
       tags: [Favorites]
       operationId: listFavoriteQuestions
-      security: [{ userSession: [] }]
+      security: [{ userSession: [] }, { userSessionCookie: [] }]
       parameters: [{ $ref: '#/components/parameters/BankID' }]
       responses:
         '200': { description: Available items include content versions; unavailable items expose references only, content: { application/json: { schema: { $ref: '#/components/schemas/FavoriteListEnvelope' } } } }
@@ -84,7 +111,7 @@ paths:
       summary: Favorite a stable question reference idempotently
       tags: [Favorites]
       operationId: favoriteQuestion
-      security: [{ userSession: [] }]
+      security: [{ userSession: [] }, { userSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/QuestionID'
@@ -97,7 +124,7 @@ paths:
       summary: Remove a stable favorite idempotently
       tags: [Favorites]
       operationId: unfavoriteQuestion
-      security: [{ userSession: [] }]
+      security: [{ userSession: [] }, { userSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/QuestionID'
@@ -111,7 +138,7 @@ paths:
       summary: Create a Practice Core session from one bank's available favorites
       tags: [Favorites]
       operationId: createFavoritesPracticeSession
-      security: [{ userSession: [] }]
+      security: [{ userSession: [] }, { userSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -146,7 +173,7 @@ paths:
       summary: Set controlled public nickname, system avatar, and ranking visibility
       tags: [Ranking]
       operationId: updateRankingProfile
-      security: [{ userSession: [] }]
+      security: [{ userSession: [] }, { userSessionCookie: [] }]
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RankingProfileUpdate' } } } }
       responses:
@@ -159,7 +186,7 @@ paths:
       summary: Submit a correction linked to stable content identity
       tags: [Feedback]
       operationId: createQuestionFeedback
-      security: [{}, { userSession: [] }]
+      security: [{}, { userSession: [] }, { userSessionCookie: [] }]
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionFeedback' } } } }
       responses:
@@ -295,7 +322,8 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
 components:
   securitySchemes:
-    userSession: { type: http, scheme: bearer, bearerFormat: JWT }
+    userSession: { type: http, scheme: bearer, bearerFormat: LocalSessionJWT, description: QuizCraft-local short-lived session token; not a Platform Core exchange token. }
+    userSessionCookie: { type: apiKey, in: cookie, name: quizcraft_session, description: HttpOnly Secure QuizCraft-local session established after server-side identity exchange. }
     workshopOAuth:
       type: oauth2
       flows:
@@ -320,6 +348,7 @@ components:
     Forbidden: { description: Permission code or product Scope denied, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     NotFound: { description: Resource or operation is unknown to this actor, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     Conflict: { description: Idempotency payload or optimistic version conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    ServiceUnavailable: { description: PostgreSQL or a required service is unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   schemas:
     RequestID: { type: string, pattern: '^req_[A-Za-z0-9_-]+$', maxLength: 120 }
     Error:
@@ -330,6 +359,15 @@ components:
       type: object
       required: [request_id, error]
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, error: { $ref: '#/components/schemas/Error' } }
+    HealthEnvelope:
+      type: object
+      required: [request_id, data]
+      properties:
+        request_id: { $ref: '#/components/schemas/RequestID' }
+        data:
+          type: object
+          required: [status]
+          properties: { status: { type: string, const: ok } }
     QuestionType: { type: string, enum: [single, multi, judge, blank] }
     PracticeSessionMode: { type: string, enum: [random, difficult, chapter, favorites] }
     OperationKind:
@@ -337,13 +375,21 @@ components:
       enum: [create_practice_session, submit_practice_answer, favorite_question, unfavorite_question, create_favorites_session, update_ranking_profile, create_feedback, create_workshop_bank, create_bank_version, import_bank, validate_version, publish_version, unpublish_version, rollback_bank]
     BankVersion:
       type: object
-      required: [bank_id, bank_version_id, bank_key, name, content_sha256]
+      required: [bank_id, bank_version_id, bank_key, name, content_sha256, question_count, chapters]
       properties:
         bank_id: { type: string, format: uuid, description: Stable across every version of this bank. }
         bank_version_id: { type: string, format: uuid, description: Immutable identifier for exact bank content. }
         bank_key: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$' }
         name: { type: string, minLength: 1, maxLength: 160 }
         content_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        question_count: { type: integer, minimum: 0 }
+        chapters: { type: array, items: { $ref: '#/components/schemas/Chapter' } }
+    Chapter:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 160 }
+        name: { type: string, minLength: 1, maxLength: 240 }
     QuestionReference:
       type: object
       required: [question_id, question_version_id]
@@ -396,20 +442,24 @@ components:
         - $ref: '#/components/schemas/NonChoicePracticeQuestion'
     ChoicePracticeQuestion:
       type: object
-      required: [question_id, question_version_id, type, content, options]
+      required: [question_id, question_version_id, type, chapter_id, chapter, content, options]
       properties:
         question_id: { type: string, format: uuid }
         question_version_id: { type: string, format: uuid }
         type: { type: string, enum: [single, multi] }
+        chapter_id: { type: string, minLength: 1, maxLength: 160 }
+        chapter: { type: string, minLength: 1, maxLength: 240 }
         content: { type: string, minLength: 1, maxLength: 10000 }
         options: { type: array, minItems: 2, items: { type: string, minLength: 1 } }
     NonChoicePracticeQuestion:
       type: object
-      required: [question_id, question_version_id, type, content]
+      required: [question_id, question_version_id, type, chapter_id, chapter, content]
       properties:
         question_id: { type: string, format: uuid }
         question_version_id: { type: string, format: uuid }
         type: { type: string, enum: [judge, blank] }
+        chapter_id: { type: string, minLength: 1, maxLength: 160 }
+        chapter: { type: string, minLength: 1, maxLength: 240 }
         content: { type: string, minLength: 1, maxLength: 10000 }
     AnswerSubmission:
       type: object
@@ -428,6 +478,17 @@ components:
         replayed: { type: boolean }
         expected_answer: {}
         analysis: { type: string }
+    LearningStateItem:
+      type: object
+      required: [bank_id, question_id, question_version_id, wrong, attempt_count, correct_count, updated_at]
+      properties:
+        bank_id: { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        wrong: { type: boolean }
+        attempt_count: { type: integer, format: int64, minimum: 1 }
+        correct_count: { type: integer, format: int64, minimum: 0 }
+        updated_at: { type: string, format: date-time }
     FavoriteFolder:
       type: object
       required: [bank_id, bank_name, available_count, unavailable_count]
@@ -573,6 +634,10 @@ components:
       type: object
       required: [request_id, data]
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/AnswerResult' } }
+    LearningStateEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/LearningStateItem' } } }
     OperationEnvelope:
       type: object
       required: [request_id, data]

@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { Chapter } from './Chapter';
 export type BankVersion = {
     /**
      * Stable across every version of this bank.
@@ -14,4 +15,6 @@ export type BankVersion = {
     bank_key: string;
     name: string;
     content_sha256: string;
+    question_count: number;
+    chapters: Array<Chapter>;
 };

@@ -5,6 +5,7 @@ package contract
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -52,6 +53,21 @@ const (
 func (e DifficultPracticeSelectionMode) Valid() bool {
 	switch e {
 	case DifficultPracticeSelectionModeDifficult:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HealthEnvelopeDataStatus.
+const (
+	Ok HealthEnvelopeDataStatus = "ok"
+)
+
+// Valid indicates whether the value is a known member of the HealthEnvelopeDataStatus enum.
+func (e HealthEnvelopeDataStatus) Valid() bool {
+	switch e {
+	case Ok:
 		return true
 	default:
 		return false
@@ -392,8 +408,16 @@ type BankVersion struct {
 
 	// BankVersionId Immutable identifier for exact bank content.
 	BankVersionId openapi_types.UUID `json:"bank_version_id"`
+	Chapters      []Chapter          `json:"chapters"`
 	ContentSha256 string             `json:"content_sha256"`
 	Name          string             `json:"name"`
+	QuestionCount int                `json:"question_count"`
+}
+
+// Chapter defines model for Chapter.
+type Chapter struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // ChapterPracticeSelection defines model for ChapterPracticeSelection.
@@ -410,6 +434,8 @@ type ChapterPracticeSelectionMode string
 
 // ChoicePracticeQuestion defines model for ChoicePracticeQuestion.
 type ChoicePracticeQuestion struct {
+	Chapter           string                     `json:"chapter"`
+	ChapterId         string                     `json:"chapter_id"`
 	Content           string                     `json:"content"`
 	Options           []string                   `json:"options"`
 	QuestionId        openapi_types.UUID         `json:"question_id"`
@@ -490,6 +516,17 @@ type FavoritesOverviewEnvelope struct {
 	RequestId RequestID        `json:"request_id"`
 }
 
+// HealthEnvelope defines model for HealthEnvelope.
+type HealthEnvelope struct {
+	Data struct {
+		Status HealthEnvelopeDataStatus `json:"status"`
+	} `json:"data"`
+	RequestId RequestID `json:"request_id"`
+}
+
+// HealthEnvelopeDataStatus defines model for HealthEnvelope.Data.Status.
+type HealthEnvelopeDataStatus string
+
 // ImportReport defines model for ImportReport.
 type ImportReport struct {
 	Accepted      bool                `json:"accepted"`
@@ -541,8 +578,27 @@ type ImportedQuestionReport struct {
 	SourceQuestionId  string             `json:"source_question_id"`
 }
 
+// LearningStateEnvelope defines model for LearningStateEnvelope.
+type LearningStateEnvelope struct {
+	Data      []LearningStateItem `json:"data"`
+	RequestId RequestID           `json:"request_id"`
+}
+
+// LearningStateItem defines model for LearningStateItem.
+type LearningStateItem struct {
+	AttemptCount      int64              `json:"attempt_count"`
+	BankId            openapi_types.UUID `json:"bank_id"`
+	CorrectCount      int64              `json:"correct_count"`
+	QuestionId        openapi_types.UUID `json:"question_id"`
+	QuestionVersionId openapi_types.UUID `json:"question_version_id"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+	Wrong             bool               `json:"wrong"`
+}
+
 // NonChoicePracticeQuestion defines model for NonChoicePracticeQuestion.
 type NonChoicePracticeQuestion struct {
+	Chapter           string                        `json:"chapter"`
+	ChapterId         string                        `json:"chapter_id"`
 	Content           string                        `json:"content"`
 	QuestionId        openapi_types.UUID            `json:"question_id"`
 	QuestionVersionId openapi_types.UUID            `json:"question_version_id"`
@@ -716,6 +772,9 @@ type Forbidden = ErrorEnvelope
 
 // NotFound defines model for NotFound.
 type NotFound = ErrorEnvelope
+
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = ErrorEnvelope
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = ErrorEnvelope

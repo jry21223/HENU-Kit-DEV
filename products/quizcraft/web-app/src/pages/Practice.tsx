@@ -2,6 +2,7 @@ import { useEffect, useReducer } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
 import { bankApi, practiceApi, userApi } from '@/api/client';
+import { QUIZCRAFT_GO_SHADOW_ENABLED } from '@/api/quizcraftShadowClient';
 import { useQuizStore } from '@/stores/quizStore';
 import type { PracticeMode } from '@/types';
 import { IS_OPS_MODE } from '@/config/appMode';
@@ -83,6 +84,10 @@ export default function Practice() {
         setCurrentBank(res.banks[0].key);
       }
     }).catch(() => {
+      if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+        setBanks([]);
+        return;
+      }
       // Mock data for local development preview
       setBanks([
         { key: 'java', name: 'Java 题库', total: 286, chapters: [{ id: 'ch1', name: '基础语法' }, { id: 'ch2', name: '面向对象' }, { id: 'ch3', name: '集合框架' }], color: '#E57373' },
@@ -99,7 +104,7 @@ export default function Practice() {
   const handleStart = async () => {
     if (!currentBank) return;
 
-    if (IS_OPS_MODE) {
+    if (IS_OPS_MODE && !QUIZCRAFT_GO_SHADOW_ENABLED) {
       const normalizedId = userIdInput.trim();
       if (!normalizedId) {
         alert('请输入ID');
@@ -112,10 +117,10 @@ export default function Practice() {
       const normalizedUserId = userIdInput.trim();
       const savedUserId = readStoredUserId();
 
-      if (IS_OPS_MODE) {
+      if (IS_OPS_MODE && !QUIZCRAFT_GO_SHADOW_ENABLED) {
         localStorage.setItem('user_id', normalizedUserId);
       } else {
-        if (!savedUserId) {
+        if (!savedUserId && !QUIZCRAFT_GO_SHADOW_ENABLED) {
           const user = await userApi.ensureUser();
           setUser(user);
           setUi({ displayUserId: user.userId });
@@ -132,7 +137,10 @@ export default function Practice() {
           threshold: mode === 'hard' ? threshold : undefined,
         });
         questions = result.questions;
-      } catch {
+      } catch (error) {
+        if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+          throw error;
+        }
         // Mock questions for local dev preview
         questions = Array.from({ length: count }, (_, i) => ({
           id: `preview-${i}`,
@@ -182,7 +190,7 @@ export default function Practice() {
       <button
         type="button"
         onClick={handleStart}
-        disabled={loading || (mode === 'chapter' && !chapterId) || (IS_OPS_MODE && !userIdInput.trim())}
+        disabled={loading || (mode === 'chapter' && !chapterId) || (IS_OPS_MODE && !QUIZCRAFT_GO_SHADOW_ENABLED && !userIdInput.trim())}
         className="w-full py-3 bg-primary-500 text-white font-medium rounded-xl hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {loading ? '加载中...' : '开始练习'}

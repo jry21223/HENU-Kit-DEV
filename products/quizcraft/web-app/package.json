@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "preview:ops": "vite preview --mode ops",
     "lint": "eslint . --ext ts,tsx",
-    "test:syntax": "node scripts/check-admin-session.mjs && node scripts/check-answer-submission.mjs && node scripts/check-code-syntax-scope.mjs && node scripts/check-quiz-auto-advance.mjs && node scripts/check-option-layout.mjs && node scripts/check-quiz-visual-states.mjs"
+    "test:syntax": "node scripts/check-admin-session.mjs && node scripts/check-answer-submission.mjs && node scripts/check-code-syntax-scope.mjs && node scripts/check-quiz-auto-advance.mjs && node scripts/check-option-layout.mjs && node scripts/check-quiz-visual-states.mjs",
+    "test:browser:practice": "playwright test tests/browser/practice-shadow.spec.ts"
   },
   "dependencies": {
     "axios": "^1.18.1",

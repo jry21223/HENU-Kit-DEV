@@ -2,6 +2,8 @@
 
 This directory is the parallel Go/PostgreSQL foundation for QuizCraft. HC-16 freezes the five-domain API contract and provides deterministic, explicit JSON imports; it does not replace or proxy the existing FastAPI runtime.
 
+HC-17 adds the Practice Core shadow HTTP process. It serves guest sessions, server-side scoring for all four question types, and authenticated progress/wrong-question state while FastAPI remains live. Set `QUIZCRAFT_LEGACY_BASE_URL` and the matching `QUIZCRAFT_LEGACY_COMPARE_SECRET` / FastAPI `QUIZCRAFT_SHADOW_COMPARE_SECRET` to record bounded comparisons through the side-effect-free legacy `/api/practice/shadow-compare` route; legacy errors never change the new API response or legacy statistics.
+
 Apply the migration, then import one named file explicitly:
 
 ```bash
@@ -19,11 +21,20 @@ Stable IDs use a fixed UUIDv5 namespace: `bank_key` determines the Bank ID and t
 
 PostgreSQL is the only runtime source of truth for this baseline. No Go startup path scans JSON directories or falls back to local files. JSON is read only when an operator invokes `importbank` with `--file`.
 
+Run the shadow process after applying every migration and configuring `.env.example`:
+
+```bash
+go run ./cmd/server
+```
+
+An unauthenticated browser receives an unguessable `quizcraft_anonymous` HttpOnly, Secure, SameSite=Lax cookie and can practice without creating a Core user. After a server-side Platform identity exchange, the business site supplies its short-lived QuizCraft-local session through the HttpOnly `quizcraft_session` cookie; trusted non-browser clients may use the equivalent local bearer JWT. Platform Core exchange tokens and client-provided legacy user IDs are never accepted directly as identity evidence. Every session creation and answer submission requires an `Idempotency-Key`; `(session, question)` uniqueness and transaction locks prevent concurrent duplicate scoring.
+
 Generate and verify contract bindings:
 
 ```bash
 bash scripts/generate-contract.sh
-git diff --exit-code -- internal/contract ../web-app/src/generated/quizcraft-api
+docker run --rm -v "$PWD:/src" -w /src sqlc/sqlc:1.31.0 generate
+git diff --exit-code -- internal/contract internal/store ../web-app/src/generated/quizcraft-api
 go test -race ./...
 ```
 

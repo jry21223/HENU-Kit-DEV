@@ -32,7 +32,9 @@ QuizCraft CN 是一个面向中文课程题库的刷题系统。它用 React + T
 
 `go-service/` 是 HC-16 建立的并行契约与导入基线：它冻结 Practice、Favorites、Ranking、Feedback 和 Question Bank Workshop 的 OpenAPI，并用 PostgreSQL 保存稳定 Bank/Question ID 与不可变版本。JSON 只允许通过显式 `importbank --file` 命令导入，Go 路径不会在启动时扫描或回退到文件。
 
-当前 FastAPI 仍是实际运行后端；Go 基线尚未接管生产路由或流量。后续迁移必须单独验证和切换，不能把本目录的存在视为已部署。
+HC-17 在同一目录增加了 Go Practice Core 影子进程：访客通过业务站签发的安全匿名 Cookie 练习，只有服务端完成 Platform 身份交换后签发的 QuizCraft 本地 Session 才会持久化错题与学习状态；四种题型都在服务端判题，每次建会话和提交都要求幂等键并落不可变事实。设置 `VITE_QUIZCRAFT_GO_SHADOW=1` 后，React 才会改用生成客户端；默认关闭时仍走现有 FastAPI。可选的新旧比较只调用带共享密钥、不会写旧统计的 `/api/practice/shadow-compare`，不影响主响应。
+
+当前 FastAPI 仍是实际运行后端；Go 影子服务尚未接管生产路由或流量。后续迁移必须单独验证和切换，不能把本目录的存在视为已部署。
 
 ## 项目结构
 
