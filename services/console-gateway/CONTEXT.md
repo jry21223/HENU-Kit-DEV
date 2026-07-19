@@ -14,4 +14,4 @@
 
 ## Current boundary
 
-HC-09 establishes the login, callback, logout, and server-verified Console Access Context flow. HC-10 adds concurrent reads of exactly six configured module-summary endpoints with a two-second module limit, three-second overall deadline, one idempotent retry, and a five-minute Redis stale fallback. The browser receives no exchange token or sensitive detail; product operation forwarding remains planned.
+HC-09 establishes the login, callback, logout, and server-verified Console Access Context flow. HC-10 adds concurrent reads of exactly six configured module-summary endpoints with a two-second module limit, three-second overall deadline, one idempotent retry, and a five-minute Redis stale fallback. HC-11 supplies the first real owner endpoint through the independent Portal Summary service; the Gateway still owns no Portal metadata or probes. The browser receives no exchange token or sensitive detail; product operation forwarding remains planned.

@@ -15,7 +15,15 @@ const authenticated = {
 const overview = {
   data: {
     modules: [
-      { id: "portal", status: "ok", metrics: [{ label: "部署版本", value: "2026.07.19" }], status_message: "摘要可用", as_of: "2026-07-19T00:00:00Z", request_id: "req_portal" },
+      {
+        id: "portal", status: "ok", status_message: "Portal 部署与只读探测正常", as_of: "2026-07-19T00:00:00Z", request_id: "req_portal",
+        metrics: [
+          { label: "部署版本", value: "2026.07.19" }, { label: "Commit", value: "0123456789ab" },
+          { label: "部署时间", value: "07-19 08:00" }, { label: "Readiness", value: "ready" },
+          { label: "关键探测", value: "2/2" }, { label: "入口健康", value: "2/2" },
+          { label: "反馈摘要", value: "0 待处理" }, { label: "当前异常", value: "0" },
+        ],
+      },
       { id: "platform", status: "partial", metrics: [], status_message: "部分来源可用", as_of: "2026-07-19T00:00:00Z", request_id: "req_platform" },
       { id: "notice", status: "empty", metrics: [], status_message: "当前无待办", as_of: "2026-07-19T00:00:00Z", request_id: "req_notice" },
       { id: "library", status: "stale", metrics: [], status_message: "展示最近成功摘要", as_of: "2026-07-19T00:00:00Z", last_success_at: "2026-07-19T00:00:01Z", request_id: "req_library" },
@@ -40,6 +48,8 @@ describe("Console Overview", () => {
     for (const name of ["Portal", "Platform Operations", "Notice", "Library", "QuizCraft", "Food"]) expect(wrapper.text()).toContain(name);
     for (const state of ["ok", "empty", "partial", "stale", "unavailable"]) expect(wrapper.find(`[data-state="${state}"]`).exists()).toBe(true);
     expect(wrapper.text()).toContain("req_quizcraft");
+    for (const portalFact of ["0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) expect(wrapper.text()).toContain(portalFact);
+    for (const forbiddenControl of ["编辑内容", "重新部署", "回滚版本", "切换版本"]) expect(wrapper.text()).not.toContain(forbiddenControl);
     expect(wrapper.text()).toContain("权限已验证");
     expect(wrapper.text()).toContain("console.overview.read");
     expect(wrapper.text()).not.toContain("积分");
