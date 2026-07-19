@@ -27,6 +27,7 @@ import (
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/identity"
 	"henukit.dev/platform-core/internal/operationsinbox"
+	"henukit.dev/platform-core/internal/platformoperations"
 	"henukit.dev/platform-core/internal/store"
 	"henukit.dev/platform-core/internal/verification"
 )
@@ -35,6 +36,7 @@ type Handler struct {
 	flow           *identity.Service
 	verification   *verification.Service
 	inbox          *operationsinbox.Service
+	platformOps    *platformoperations.Service
 	queries        *store.Queries
 	database       *pgxpool.Pool
 	redis          *redis.Client
@@ -45,8 +47,8 @@ type Handler struct {
 	trustedProxies []*net.IPNet
 }
 
-func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
-	handler := &Handler{flow: flow, verification: verificationFlow, inbox: inbox, queries: queries, database: database, redis: redisClient, cookieName: cookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
+func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
+	handler := &Handler{flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -62,7 +64,131 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Post(contract.CreateOperationsInboxRoute, handler.createOperationsInboxItem)
 	router.Post(contract.UpdateOperationsInboxRoute, handler.updateOperationsInboxItem)
 	router.Get(contract.OperationsInboxOperationStatusRoute, handler.getOperationsInboxOperationStatus)
+	router.Get(contract.PlatformOperationsRoute, handler.getPlatformOperations)
+	router.Post(contract.RevokePlatformOperationSessionRoute, handler.revokePlatformOperationSession)
+	router.Post(contract.UpdatePlatformOperationAccessRoute, handler.updatePlatformOperationAccess)
+	router.Get(contract.PlatformOperationStatusRoute, handler.getPlatformOperationStatus)
 	return router
+}
+
+func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *http.Request) {
+	decision, err := h.authorizeInbox(request, nil, "platform.operations.read", "platform", "", "", "")
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	snapshot, err := h.platformOps.Snapshot(request.Context())
+	if err != nil {
+		h.logger.Error("platform_operations_snapshot_error", "request_id", requestIDFrom(request.Context()), "error", err)
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, snapshot)
+}
+
+func (h *Handler) revokePlatformOperationSession(writer http.ResponseWriter, request *http.Request) {
+	rawBody, body, ok := decodeInboxBody[struct {
+		ExpectedActive bool `json:"expected_active"`
+	}](writer, request)
+	if !ok || !body.ExpectedActive {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation request is invalid")
+		return
+	}
+	decision, err := h.authorizeInbox(request, rawBody, "platform.operations.write", "platform", "", "", "")
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	hash := sha256.Sum256(append([]byte(chi.URLParam(request, "session_id")+"\x00"), rawBody...))
+	result, err := h.platformOps.RevokeSession(request.Context(), platformoperations.WriteInput{
+		ServiceID: request.Header.Get(contract.ServiceIDHeader), ActorUserID: decision.ActorUserID,
+		RequestID: requestIDFrom(request.Context()), IdempotencyKey: request.Header.Get(contract.IdempotencyKeyHeader),
+		RequestHash: hash[:], ResourceID: chi.URLParam(request, "session_id"),
+	})
+	if err != nil {
+		h.writePlatformOperationError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, result)
+}
+
+func (h *Handler) updatePlatformOperationAccess(writer http.ResponseWriter, request *http.Request) {
+	type scope struct {
+		Kind         string `json:"kind"`
+		ProductCode  string `json:"product_code"`
+		ResourceType string `json:"resource_type"`
+		ResourceID   string `json:"resource_id"`
+	}
+	type grant struct {
+		RoleCode string `json:"role_code"`
+		Scope    scope  `json:"scope"`
+	}
+	rawBody, body, ok := decodeInboxBody[struct {
+		ExpectedRevision int64   `json:"expected_revision"`
+		Status           string  `json:"status"`
+		Grants           []grant `json:"grants"`
+	}](writer, request)
+	if !ok {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation request is invalid")
+		return
+	}
+	decision, err := h.authorizeInbox(request, rawBody, "platform.operations.write", "platform", "", "", "")
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	grants := make([]platformoperations.GrantInput, 0, len(body.Grants))
+	for _, item := range body.Grants {
+		grants = append(grants, platformoperations.GrantInput{RoleCode: item.RoleCode, Scope: platformoperations.ScopeInput{Kind: item.Scope.Kind, ProductCode: item.Scope.ProductCode, ResourceType: item.Scope.ResourceType, ResourceID: item.Scope.ResourceID}})
+	}
+	hash := sha256.Sum256(append([]byte(chi.URLParam(request, "user_id")+"\x00"), rawBody...))
+	result, err := h.platformOps.UpdateAccess(request.Context(), platformoperations.AccessUpdateInput{
+		WriteInput: platformoperations.WriteInput{
+			ServiceID: request.Header.Get(contract.ServiceIDHeader), ActorUserID: decision.ActorUserID,
+			RequestID: requestIDFrom(request.Context()), IdempotencyKey: request.Header.Get(contract.IdempotencyKeyHeader),
+			RequestHash: hash[:], ResourceID: chi.URLParam(request, "user_id"),
+		},
+		ExpectedRevision: body.ExpectedRevision, Status: body.Status, Grants: grants,
+	})
+	if err != nil {
+		h.writePlatformOperationError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, result)
+}
+
+func (h *Handler) getPlatformOperationStatus(writer http.ResponseWriter, request *http.Request) {
+	decision, err := h.authorizeInbox(request, nil, "platform.operations.write", "platform", "", "", "")
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	result, err := h.platformOps.OperationStatus(request.Context(), request.Header.Get(contract.ServiceIDHeader), decision.ActorUserID, chi.URLParam(request, "operation"), request.Header.Get(contract.IdempotencyKeyHeader))
+	if err != nil {
+		h.writePlatformOperationError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, result)
+}
+
+func (h *Handler) writePlatformOperationError(writer http.ResponseWriter, request *http.Request, err error) {
+	switch {
+	case errors.Is(err, platformoperations.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation request is invalid")
+	case errors.Is(err, platformoperations.ErrNotFound):
+		writeError(writer, request, http.StatusNotFound, "PLATFORM_OPERATION_RESOURCE_NOT_FOUND", "Platform Operation resource was not found")
+	case errors.Is(err, platformoperations.ErrConflict):
+		writeError(writer, request, http.StatusConflict, "VERSION_CONFLICT", "Platform Operation resource state conflicts with the request")
+	case errors.Is(err, platformoperations.ErrIdempotencyConflict):
+		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
+	default:
+		h.logger.Error("platform_operation_error", "request_id", requestIDFrom(request.Context()), "error", err)
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+	}
 }
 
 func (h *Handler) getOperationsInboxItem(writer http.ResponseWriter, request *http.Request) {

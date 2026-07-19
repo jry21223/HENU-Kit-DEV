@@ -25,11 +25,65 @@ var (
 	ErrUnauthorized = errors.New("platform core rejected session")
 	ErrForbidden    = errors.New("platform core denied access")
 	ErrConflict     = errors.New("platform core conflict")
+	ErrNotFound     = errors.New("platform core resource not found")
+	ErrInvalid      = errors.New("platform core rejected request")
 )
 
 type Client struct {
 	baseURL, clientID, clientSecret, keyID string
 	httpClient                             *http.Client
+}
+
+func (c *Client) PlatformOperations(ctx context.Context, exchangeToken string) (json.RawMessage, error) {
+	return c.operationRequest(ctx, http.MethodGet, "/api/v1/platform-operations", exchangeToken, "", nil)
+}
+
+func (c *Client) RevokeSession(ctx context.Context, exchangeToken, sessionID, idempotencyKey string, body []byte) (json.RawMessage, error) {
+	if _, err := uuid.Parse(sessionID); err != nil {
+		return nil, ErrInvalid
+	}
+	return c.operationRequest(ctx, http.MethodPost, "/api/v1/platform-operations/sessions/"+sessionID+"/revocations", exchangeToken, idempotencyKey, body)
+}
+
+func (c *Client) UpdateAccess(ctx context.Context, exchangeToken, userID, idempotencyKey string, body []byte) (json.RawMessage, error) {
+	if _, err := uuid.Parse(userID); err != nil {
+		return nil, ErrInvalid
+	}
+	return c.operationRequest(ctx, http.MethodPost, "/api/v1/platform-operations/users/"+userID+"/access-updates", exchangeToken, idempotencyKey, body)
+}
+
+func (c *Client) OperationStatus(ctx context.Context, exchangeToken, operation, idempotencyKey string) (json.RawMessage, error) {
+	if operation != "session_revoke" && operation != "access_update" {
+		return nil, ErrInvalid
+	}
+	return c.operationRequest(ctx, http.MethodGet, "/api/v1/platform-operations/operations/"+operation, exchangeToken, idempotencyKey, nil)
+}
+
+func (c *Client) operationRequest(ctx context.Context, method, path, exchangeToken, idempotencyKey string, body []byte) (json.RawMessage, error) {
+	request, err := c.signedRequest(ctx, method, path, body)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("X-Session-Exchange-Token", exchangeToken)
+	if idempotencyKey != "" {
+		request.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if err := responseError(response); err != nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		return nil, err
+	}
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&envelope); err != nil || len(envelope.Data) == 0 {
+		return nil, errors.New("invalid platform core operations response")
+	}
+	return envelope.Data, nil
 }
 
 type Exchange struct {
@@ -87,7 +141,19 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI, verifier, 
 }
 
 func (c *Client) CheckOverview(ctx context.Context, exchangeToken string) error {
-	body, _ := json.Marshal(map[string]any{"session_exchange_token": exchangeToken, "permission_code": "console.overview.read", "scope": map[string]string{"kind": "platform"}})
+	return c.checkPermission(ctx, exchangeToken, "console.overview.read")
+}
+
+func (c *Client) CheckPlatformOperations(ctx context.Context, exchangeToken string) error {
+	return c.checkPermission(ctx, exchangeToken, "platform.operations.read")
+}
+
+func (c *Client) CheckPlatformOperationsWrite(ctx context.Context, exchangeToken string) error {
+	return c.checkPermission(ctx, exchangeToken, "platform.operations.write")
+}
+
+func (c *Client) checkPermission(ctx context.Context, exchangeToken, permissionCode string) error {
+	body, _ := json.Marshal(map[string]any{"session_exchange_token": exchangeToken, "permission_code": permissionCode, "scope": map[string]string{"kind": "platform"}})
 	request, err := c.signedRequest(ctx, http.MethodPost, "/api/v1/authorization/check", body)
 	if err != nil {
 		return err
@@ -138,6 +204,10 @@ func responseError(response *http.Response) error {
 		return ErrForbidden
 	case http.StatusConflict:
 		return ErrConflict
+	case http.StatusNotFound:
+		return ErrNotFound
+	case http.StatusBadRequest:
+		return ErrInvalid
 	default:
 		return fmt.Errorf("platform core returned %d", response.StatusCode)
 	}

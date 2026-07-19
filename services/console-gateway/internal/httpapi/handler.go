@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -33,6 +34,12 @@ const (
 type platformClient interface {
 	ExchangeCode(context.Context, string, string, string, string) (platformcore.Exchange, error)
 	CheckOverview(context.Context, string) error
+	CheckPlatformOperations(context.Context, string) error
+	CheckPlatformOperationsWrite(context.Context, string) error
+	PlatformOperations(context.Context, string) (json.RawMessage, error)
+	RevokeSession(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	UpdateAccess(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	OperationStatus(context.Context, string, string, string) (json.RawMessage, error)
 }
 
 type overviewClient interface {
@@ -72,8 +79,122 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.CallbackRoute, handler.callback)
 	router.Get(contract.SessionRoute, handler.getSession)
 	router.Get(contract.OverviewRoute, handler.getOverview)
+	router.Get(contract.OperationsRoute, handler.getPlatformOperations)
+	router.Post(contract.RevokeSessionRoute, handler.revokePlatformSession)
+	router.Post(contract.UpdateAccessRoute, handler.updatePlatformAccess)
+	router.Get(contract.OperationStatusRoute, handler.getPlatformOperationStatus)
 	router.Post(contract.LogoutRoute, handler.logout)
 	return router, nil
+}
+
+func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return
+	}
+	data, err := h.platform.PlatformOperations(request.Context(), value.ExchangeToken)
+	if err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return
+	}
+	var snapshot contract.PlatformOperationsSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		h.unavailable(writer, request, err)
+		return
+	}
+	permissions := []string{"platform.operations.read"}
+	if err := h.platform.CheckPlatformOperationsWrite(request.Context(), value.ExchangeToken); err == nil {
+		permissions = append(permissions, "platform.operations.write")
+	} else if !errors.Is(err, platformcore.ErrForbidden) {
+		h.handlePlatformSessionError(writer, request, err)
+		return
+	}
+	snapshot.AccessContext = contract.ConsoleAccessContext{Permissions: permissions, Scopes: []contract.ConsoleScope{{Kind: "platform"}}, VerifiedAt: h.now().UTC()}
+	writeJSON(writer, request, http.StatusOK, snapshot)
+}
+
+func (h *Handler) revokePlatformSession(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return
+	}
+	var input contract.RevokePlatformSessionRequest
+	body, ok := decodeOperationInput(writer, request, &input)
+	if !ok || !input.ExpectedActive {
+		if ok {
+			writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "expected_active must be true")
+		}
+		return
+	}
+	data, err := h.platform.RevokeSession(request.Context(), value.ExchangeToken, chi.URLParam(request, "session_id"), request.Header.Get("Idempotency-Key"), body)
+	if err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return
+	}
+	writeJSON(writer, request, http.StatusOK, data)
+}
+
+func (h *Handler) updatePlatformAccess(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return
+	}
+	var input contract.UpdatePlatformAccessRequest
+	body, ok := decodeOperationInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	data, err := h.platform.UpdateAccess(request.Context(), value.ExchangeToken, chi.URLParam(request, "user_id"), request.Header.Get("Idempotency-Key"), body)
+	if err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return
+	}
+	writeJSON(writer, request, http.StatusOK, data)
+}
+
+func (h *Handler) getPlatformOperationStatus(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return
+	}
+	key := request.Header.Get("Idempotency-Key")
+	if len(key) < 8 || len(key) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		return
+	}
+	data, err := h.platform.OperationStatus(request.Context(), value.ExchangeToken, chi.URLParam(request, "operation"), key)
+	if err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return
+	}
+	writeJSON(writer, request, http.StatusOK, data)
+}
+
+func decodeOperationInput(writer http.ResponseWriter, request *http.Request, target any) ([]byte, bool) {
+	key := request.Header.Get("Idempotency-Key")
+	if len(key) < 8 || len(key) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		return nil, false
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Request body is invalid")
+		return nil, false
+	}
+	body, err := json.Marshal(target)
+	if err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Request body is invalid")
+		return nil, false
+	}
+	return body, true
+}
+
+func (h *Handler) handlePlatformSessionError(writer http.ResponseWriter, request *http.Request, err error) {
+	if errors.Is(err, platformcore.ErrUnauthorized) {
+		h.clearSession(writer)
+	}
+	h.writePlatformError(writer, request, err)
 }
 
 func (h *Handler) getOverview(writer http.ResponseWriter, request *http.Request) {
@@ -184,7 +305,7 @@ func (h *Handler) callback(writer http.ResponseWriter, request *http.Request) {
 	}
 	exchange, err := h.platform.ExchangeCode(request.Context(), code, h.redirectURI, flow.Verifier, "idem_console_"+hex.EncodeToString(stateHash[:16]))
 	if err != nil {
-		h.writePlatformError(writer, request, err)
+		h.writeOAuthPlatformError(writer, request, err)
 		return
 	}
 	encoded, err := h.codec.Encode(session.Value{UserID: exchange.UserID, ExchangeToken: exchange.ExchangeToken, ExpiresAt: exchange.ExpiresAt})
@@ -206,7 +327,25 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if !ok {
 		return
 	}
-	if err := h.platform.CheckOverview(request.Context(), value.ExchangeToken); err != nil {
+	overviewErr := h.platform.CheckOverview(request.Context(), value.ExchangeToken)
+	operationsErr := h.platform.CheckPlatformOperations(request.Context(), value.ExchangeToken)
+	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) {
+		h.clearSession(writer)
+		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
+		return
+	}
+	permissions := make([]string, 0, 2)
+	if overviewErr == nil {
+		permissions = append(permissions, "console.overview.read")
+	}
+	if operationsErr == nil {
+		permissions = append(permissions, "platform.operations.read")
+	}
+	if len(permissions) == 0 {
+		err := overviewErr
+		if errors.Is(err, platformcore.ErrForbidden) {
+			err = operationsErr
+		}
 		if errors.Is(err, platformcore.ErrUnauthorized) {
 			h.clearSession(writer)
 		}
@@ -215,7 +354,7 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	}
 	response := contract.ConsoleSession{
 		AccessContext: contract.ConsoleAccessContext{
-			Permissions: []string{"console.overview.read"}, Scopes: []contract.ConsoleScope{{Kind: "platform"}}, VerifiedAt: h.now().UTC(),
+			Permissions: permissions, Scopes: []contract.ConsoleScope{{Kind: "platform"}}, VerifiedAt: h.now().UTC(),
 		},
 		ExpiresAt: value.ExpiresAt,
 	}
@@ -262,10 +401,22 @@ func (h *Handler) writePlatformError(writer http.ResponseWriter, request *http.R
 	case errors.Is(err, platformcore.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Required permission or Scope is missing")
 	case errors.Is(err, platformcore.ErrConflict):
-		writeError(writer, request, http.StatusConflict, "AUTHORIZATION_CONFLICT", "Authorization code could not be consumed")
+		writeError(writer, request, http.StatusConflict, "PLATFORM_OPERATION_CONFLICT", "Platform Operation conflicts with current state or idempotency history")
+	case errors.Is(err, platformcore.ErrNotFound):
+		writeError(writer, request, http.StatusNotFound, "PLATFORM_RESOURCE_NOT_FOUND", "Platform resource was not found")
+	case errors.Is(err, platformcore.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation request is invalid")
 	default:
 		h.unavailable(writer, request, err)
 	}
+}
+
+func (h *Handler) writeOAuthPlatformError(writer http.ResponseWriter, request *http.Request, err error) {
+	if errors.Is(err, platformcore.ErrConflict) {
+		writeError(writer, request, http.StatusConflict, "AUTHORIZATION_CONFLICT", "Authorization code could not be consumed")
+		return
+	}
+	h.writePlatformError(writer, request, err)
 }
 
 func (h *Handler) unavailable(writer http.ResponseWriter, request *http.Request, err error) {

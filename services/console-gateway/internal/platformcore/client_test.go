@@ -59,6 +59,31 @@ func TestAuthorizationStatusMapping(t *testing.T) {
 	}
 }
 
+func TestPlatformOperationsForwardSessionOnlyInHeaderAndSignExactPath(t *testing.T) {
+	const secret = "test-console-client-secret-with-entropy"
+	const sessionToken = "exchange_token_with_at_least_32_characters"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		digest := sha256.Sum256(body)
+		canonical := strings.Join([]string{request.Method, request.URL.Path, request.Header.Get("X-Timestamp"), request.Header.Get("X-Nonce"), hex.EncodeToString(digest[:])}, "\n")
+		mac := hmac.New(sha256.New, []byte(secret))
+		_, _ = mac.Write([]byte(canonical))
+		if request.Header.Get("X-Session-Exchange-Token") != sessionToken || request.Header.Get("Idempotency-Key") != "idem_platform_write" || request.Header.Get("X-Signature") != base64.RawURLEncoding.EncodeToString(mac.Sum(nil)) {
+			t.Errorf("operation headers/signature are invalid")
+		}
+		if strings.Contains(request.URL.String(), sessionToken) {
+			t.Errorf("session token leaked into URL")
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{"operation": "session_revoke", "status": "succeeded"}})
+	}))
+	defer server.Close()
+	client, _ := New(server.URL, "console-gateway", secret, "active-key", server.Client())
+	result, err := client.RevokeSession(t.Context(), sessionToken, "171f1c6f-7b10-4c92-91a2-b39bf5af5302", "idem_platform_write", []byte(`{"expected_active":true}`))
+	if err != nil || !strings.Contains(string(result), `"succeeded"`) {
+		t.Fatalf("result=%s err=%v", result, err)
+	}
+}
+
 func TestClientRejectsPlaintextRemotePlatformCore(t *testing.T) {
 	if _, err := New("http://platform-core.example", "console-gateway", "secret-with-enough-entropy", "active-key", nil); err == nil {
 		t.Fatal("expected plaintext remote Platform Core URL to be rejected")

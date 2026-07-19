@@ -7,6 +7,8 @@ servers:
 tags:
   - name: Console Authentication
     description: Console-local authorization-code flow and Session boundary.
+  - name: Platform Operations
+    description: Bounded account, Session, mail, Inbox, audit, and dependency operations.
 paths:
   /healthz:
     get:
@@ -156,6 +158,126 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /operations:
+    get:
+      tags: [Platform Operations]
+      operationId: getConsolePlatformOperations
+      summary: Read the bounded Platform Operations workspace
+      description: Platform Core rechecks platform.operations.read with platform Scope. Sensitive mail and Session fields are excluded.
+      security:
+        - consoleSession: []
+      responses:
+        "200":
+          description: Operational metadata
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PlatformOperationsSnapshot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /operations/sessions/{session_id}/revocations:
+    post:
+      tags: [Platform Operations]
+      operationId: revokeConsolePlatformSession
+      summary: Revoke one active Platform Session
+      security:
+        - consoleSession: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokePlatformSessionRequest" }
+      responses:
+        "200":
+          description: Session revoked or original idempotent result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PlatformOperationResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /operations/users/{user_id}/access-updates:
+    post:
+      tags: [Platform Operations]
+      operationId: updateConsolePlatformAccess
+      summary: Replace one account's status, roles, and Scope grants
+      security:
+        - consoleSession: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePlatformAccessRequest" }
+      responses:
+        "200":
+          description: Access updated or original idempotent result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PlatformOperationResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /operations/results/{operation}:
+    get:
+      tags: [Platform Operations]
+      operationId: getConsolePlatformOperationStatus
+      summary: Resolve a possibly unknown write outcome
+      security:
+        - consoleSession: []
+      parameters:
+        - name: operation
+          in: path
+          required: true
+          schema: { type: string, enum: [session_revoke, access_update] }
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      responses:
+        "200":
+          description: Succeeded or unknown result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PlatformOperationResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /session/logout:
     post:
       tags: [Console Authentication]
@@ -171,6 +293,12 @@ paths:
               schema:
                 type: string
 components:
+  parameters:
+    RequiredIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 200 }
   securitySchemes:
     consoleSession:
       type: apiKey
@@ -362,6 +490,132 @@ components:
         label: { type: string, maxLength: 40 }
         value: { type: string, maxLength: 80 }
         hint: { type: string, maxLength: 120 }
+    PlatformOperationsSnapshot:
+      type: object
+      additionalProperties: false
+      required: [access_context, accounts, sessions, mail, inbox_items, audit, dependencies, generated_at]
+      properties:
+        access_context: { $ref: "#/components/schemas/ConsoleAccessContext" }
+        accounts: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsAccount" } }
+        sessions: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsSession" } }
+        mail: { $ref: "#/components/schemas/PlatformOperationsMailStatus" }
+        inbox_items: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsInboxItem" } }
+        audit: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsAuditEvent" } }
+        dependencies: { $ref: "#/components/schemas/PlatformOperationsDependencies" }
+        generated_at: { type: string, format: date-time }
+    PlatformOperationsAccount:
+      type: object
+      additionalProperties: false
+      required: [id, email_verified, status, authorization_revision, created_at, grants]
+      properties:
+        id: { type: string, format: uuid }
+        email_verified: { type: boolean }
+        status: { type: string, enum: [active, suspended, deleted] }
+        authorization_revision: { type: integer, format: int64, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        grants: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/PlatformAccessGrantInput" } }
+    PlatformScope:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [platform, product, resource] }
+        product_code: { type: string }
+        resource_type: { type: string }
+        resource_id: { type: string }
+    PlatformAccessGrantInput:
+      type: object
+      additionalProperties: false
+      required: [role_code, scope]
+      properties:
+        role_code: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        scope: { $ref: "#/components/schemas/PlatformScope" }
+    PlatformOperationsSession:
+      type: object
+      additionalProperties: false
+      required: [id, user_id, kind, last_seen_at, expires_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        kind: { type: string, enum: [core, client_exchange] }
+        client_id: { type: string }
+        last_seen_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time }
+    PlatformOperationsMailStatus:
+      type: object
+      additionalProperties: false
+      required: [pending, processing, retry_due, accepted, delivered, failed, dead_letters]
+      properties:
+        pending: { type: integer, minimum: 0 }
+        processing: { type: integer, minimum: 0 }
+        retry_due: { type: integer, minimum: 0 }
+        accepted: { type: integer, minimum: 0 }
+        delivered: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        dead_letters: { type: integer, minimum: 0 }
+    PlatformOperationsInboxItem:
+      type: object
+      additionalProperties: false
+      required: [id, source_product_code, source_resource_type, source_resource_id, priority, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        source_product_code: { type: string }
+        source_resource_type: { type: string }
+        source_resource_id: { type: string }
+        source_resource_url: { type: string, format: uri }
+        owner_user_id: { type: string, format: uuid }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        sla_due_at: { type: string, format: date-time }
+        status: { type: string, enum: [open, in_progress, blocked, resolved, archived] }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PlatformOperationsAuditEvent:
+      type: object
+      additionalProperties: false
+      required: [request_id, actor_user_id, permission_code, target_kind, decision, reason_code, created_at]
+      properties:
+        request_id: { type: string }
+        actor_user_id: { type: string, format: uuid }
+        permission_code: { type: string }
+        target_kind: { type: string, enum: [platform, product, resource] }
+        target_product_code: { type: string }
+        target_resource_type: { type: string }
+        target_resource_id: { type: string }
+        decision: { type: string, enum: [allowed, denied] }
+        reason_code: { type: string }
+        created_at: { type: string, format: date-time }
+    PlatformOperationsDependencies:
+      type: object
+      additionalProperties: false
+      required: [postgres, redis]
+      properties:
+        postgres: { type: string, enum: [ready, unavailable] }
+        redis: { type: string, enum: [ready, unavailable] }
+    RevokePlatformSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_active]
+      properties:
+        expected_active: { type: boolean, const: true }
+    UpdatePlatformAccessRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, status, grants]
+      properties:
+        expected_revision: { type: integer, minimum: 1 }
+        status: { type: string, enum: [active, suspended, deleted] }
+        grants: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/PlatformAccessGrantInput" } }
+    PlatformOperationResult:
+      type: object
+      additionalProperties: false
+      required: [operation, status]
+      properties:
+        operation: { type: string, enum: [session_revoke, access_update] }
+        status: { type: string, enum: [succeeded, unknown] }
+        resource_id: { type: string, format: uuid }
+        resource_version: { type: integer, minimum: 1 }
   responses:
     BadRequest:
       description: Invalid request
@@ -383,6 +637,12 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
     Conflict:
       description: Authorization code or idempotency conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Platform resource does not exist
       content:
         application/json:
           schema:
