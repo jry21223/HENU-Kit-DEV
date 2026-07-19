@@ -26,11 +26,12 @@ paths:
           headers:
             Cache-Control:
               schema: { type: string, const: no-store }
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PortalSummaryEnvelope"
-        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/Unavailable" }
@@ -72,6 +73,10 @@ components:
     RequestId:
       name: X-Request-Id
       in: header
+      required: true
+      schema: { type: string, maxLength: 120, pattern: '^req_[A-Za-z0-9_-]+$' }
+  headers:
+    RequestId:
       required: true
       schema: { type: string, maxLength: 120, pattern: '^req_[A-Za-z0-9_-]+$' }
   schemas:
@@ -131,19 +136,27 @@ components:
           additionalProperties: false
           required: [code, message]
           properties:
-            code: { type: string }
-            message: { type: string }
-        request_id: { type: string }
+            code:
+              type: string
+              enum: [INVALID_SERVICE_AUTH, REPLAY_DETECTED, DEPENDENCY_UNAVAILABLE, INVALID_OWNER_SUMMARY]
+            message: { type: string, minLength: 1, maxLength: 240 }
+        request_id: { type: string, maxLength: 120, pattern: '^req_[A-Za-z0-9_-]+$' }
   responses:
-    BadRequest:
-      description: Request identifier violates the contract
-      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
     Unauthorized:
       description: Basic or HMAC service authentication failed
+      x-error-codes: [INVALID_SERVICE_AUTH]
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/RequestId" }
       content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
     Conflict:
       description: Nonce replay was rejected
+      x-error-codes: [REPLAY_DETECTED]
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/RequestId" }
       content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
     Unavailable:
-      description: Replay-defense storage is unavailable
+      description: Replay-defense storage is unavailable or the owner produced an invalid summary
+      x-error-codes: [DEPENDENCY_UNAVAILABLE, INVALID_OWNER_SUMMARY]
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/RequestId" }
       content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }

@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -52,14 +54,15 @@ func New(config Config, redisClient *redis.Client, service *summary.Service) (ht
 	}
 	handler := &Handler{config: config, redis: redisClient, summary: service, now: time.Now}
 	router := chi.NewRouter()
+	router.Use(handler.requestContext)
 	router.Get("/healthz", handler.health)
 	router.Get("/readyz", handler.ready)
 	router.Get("/api/v1/console-summary", handler.consoleSummary)
 	return router, nil
 }
 
-func (h *Handler) health(writer http.ResponseWriter, _ *http.Request) {
-	writeJSON(writer, http.StatusOK, map[string]bool{"ok": true})
+func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {
+	writeSuccess(writer, request, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
@@ -67,17 +70,11 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, requestID(request), http.StatusServiceUnavailable, "NOT_READY", "nonce store is unavailable")
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]bool{"ready": true})
+	writeSuccess(writer, request, http.StatusOK, map[string]bool{"ready": true})
 }
 
 func (h *Handler) consoleSummary(writer http.ResponseWriter, request *http.Request) {
 	requestID := requestID(request)
-	if !requestIDPattern.MatchString(requestID) || len(requestID) > 120 {
-		writer.Header().Set("X-Request-Id", "req_invalid")
-		writeError(writer, "req_invalid", http.StatusBadRequest, "INVALID_REQUEST_ID", "X-Request-Id violates the Portal summary contract")
-		return
-	}
-	writer.Header().Set("X-Request-Id", requestID)
 	if authErr := h.authenticate(request); authErr != nil {
 		writeError(writer, requestID, authErr.status, authErr.code, authErr.message)
 		return
@@ -87,10 +84,31 @@ func (h *Handler) consoleSummary(writer http.ResponseWriter, request *http.Reque
 	result.RequestID = requestID
 	envelope := contract.PortalSummaryEnvelope{Data: result, RequestID: requestID}
 	if err := contract.ValidatePortalSummaryEnvelope(envelope); err != nil {
-		writeError(writer, requestID, http.StatusServiceUnavailable, "INVALID_OWNER_SUMMARY", "Portal summary violates its versioned contract")
+		writeError(writer, requestID, http.StatusServiceUnavailable, contract.ErrorInvalidOwnerSummary, "Portal summary violates its versioned contract")
 		return
 	}
 	writeJSON(writer, http.StatusOK, envelope)
+}
+
+func (h *Handler) requestContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		id := request.Header.Get("X-Request-Id")
+		if len(id) > 120 || !requestIDPattern.MatchString(id) {
+			id = generatedRequestID()
+		}
+		writer.Header().Set("X-Request-Id", id)
+		next.ServeHTTP(writer, request.WithContext(context.WithValue(request.Context(), requestIDKey{}, id)))
+	})
+}
+
+type requestIDKey struct{}
+
+func generatedRequestID() string {
+	value := make([]byte, 16)
+	if _, err := rand.Read(value); err == nil {
+		return "req_" + hex.EncodeToString(value)
+	}
+	return "req_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
 type authError struct {
@@ -103,16 +121,16 @@ func (h *Handler) authenticate(request *http.Request) *authError {
 	keyID := request.Header.Get("X-Key-Id")
 	selectedSecret, knownKey := h.config.Keys[keyID]
 	if !basic || clientID != h.config.ClientID || !knownKey || !hmac.Equal([]byte(secret), []byte(selectedSecret)) || request.Header.Get("X-Service-Id") != clientID {
-		return &authError{http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid"}
+		return &authError{http.StatusUnauthorized, contract.ErrorInvalidServiceAuth, "service credentials are invalid"}
 	}
 	timestamp, err := strconv.ParseInt(request.Header.Get("X-Timestamp"), 10, 64)
 	if err != nil || abs(h.now().Unix()-timestamp) > 60 {
-		return &authError{http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service timestamp is invalid"}
+		return &authError{http.StatusUnauthorized, contract.ErrorInvalidServiceAuth, "service timestamp is invalid"}
 	}
 	nonce := request.Header.Get("X-Nonce")
 	decodedNonce, err := base64.RawURLEncoding.DecodeString(nonce)
 	if err != nil || len(decodedNonce) != 24 {
-		return &authError{http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service nonce is invalid"}
+		return &authError{http.StatusUnauthorized, contract.ErrorInvalidServiceAuth, "service nonce is invalid"}
 	}
 	digest := sha256.Sum256(nil)
 	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}, "\n")
@@ -120,19 +138,22 @@ func (h *Handler) authenticate(request *http.Request) *authError {
 	_, _ = mac.Write([]byte(canonical))
 	want := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(request.Header.Get("X-Signature")), []byte(want)) {
-		return &authError{http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service signature is invalid"}
+		return &authError{http.StatusUnauthorized, contract.ErrorInvalidServiceAuth, "service signature is invalid"}
 	}
 	claimed, err := h.redis.SetNX(request.Context(), "portal-summary:nonce:"+clientID+":"+nonce, "1", nonceTTL).Result()
 	if err != nil {
-		return &authError{http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "nonce store is unavailable"}
+		return &authError{http.StatusServiceUnavailable, contract.ErrorDependencyUnavailable, "nonce store is unavailable"}
 	}
 	if !claimed {
-		return &authError{http.StatusConflict, "REPLAY_DETECTED", "service nonce was already used"}
+		return &authError{http.StatusConflict, contract.ErrorReplayDetected, "service nonce was already used"}
 	}
 	return nil
 }
 
-func requestID(request *http.Request) string { return request.Header.Get("X-Request-Id") }
+func requestID(request *http.Request) string {
+	value, _ := request.Context().Value(requestIDKey{}).(string)
+	return value
+}
 func abs(value int64) int64 {
 	if value < 0 {
 		return -value
@@ -142,6 +163,10 @@ func abs(value int64) int64 {
 
 func writeError(writer http.ResponseWriter, requestID string, status int, code, message string) {
 	writeJSON(writer, status, map[string]any{"error": map[string]string{"code": code, "message": message}, "request_id": requestID})
+}
+
+func writeSuccess(writer http.ResponseWriter, request *http.Request, status int, data any) {
+	writeJSON(writer, status, map[string]any{"data": data, "request_id": requestID(request)})
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {

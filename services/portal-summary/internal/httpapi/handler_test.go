@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -74,9 +75,24 @@ func TestConsoleSummaryAuthenticatesConformsAndRejectsReplay(t *testing.T) {
 	invalid, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/console-summary", nil)
 	sign(invalid, "req_invalid value", "another-portal-nonce-val", "portal-active-key", testSecret)
 	invalidResponse, _ := server.Client().Do(invalid)
+	var normalized contract.PortalSummaryEnvelope
+	_ = json.NewDecoder(invalidResponse.Body).Decode(&normalized)
 	invalidResponse.Body.Close()
-	if invalidResponse.StatusCode != http.StatusBadRequest {
-		t.Fatalf("invalid request ID = %d, want 400", invalidResponse.StatusCode)
+	normalizedID := invalidResponse.Header.Get("X-Request-Id")
+	if invalidResponse.StatusCode != http.StatusOK || normalizedID == "req_invalid value" || !regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`).MatchString(normalizedID) || normalized.RequestID != normalizedID || normalized.Data.RequestID != normalizedID {
+		t.Fatalf("invalid request ID normalization = %d/%q/%+v", invalidResponse.StatusCode, normalizedID, normalized)
+	}
+
+	healthRequest, _ := http.NewRequest(http.MethodGet, server.URL+"/healthz", nil)
+	healthRequest.Header.Set("X-Request-Id", "invalid health trace")
+	healthResponse, _ := server.Client().Do(healthRequest)
+	var healthBody struct {
+		RequestID string `json:"request_id"`
+	}
+	_ = json.NewDecoder(healthResponse.Body).Decode(&healthBody)
+	healthResponse.Body.Close()
+	if healthResponse.StatusCode != http.StatusOK || healthBody.RequestID == "" || healthBody.RequestID != healthResponse.Header.Get("X-Request-Id") {
+		t.Fatalf("health trace = %d/%q/%q", healthResponse.StatusCode, healthBody.RequestID, healthResponse.Header.Get("X-Request-Id"))
 	}
 
 	unsigned, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/console-summary", nil)
@@ -127,6 +143,16 @@ func TestConsoleSummaryAuthenticatesConformsAndRejectsReplay(t *testing.T) {
 	unavailableResponse.Body.Close()
 	if unavailableResponse.StatusCode != http.StatusServiceUnavailable || unavailableError.Error.Code != "DEPENDENCY_UNAVAILABLE" || unavailableResponse.Header.Get("X-Request-Id") != "req_redis_unavailable" {
 		t.Fatalf("Redis failure = %d/%s/%s, want 503/DEPENDENCY_UNAVAILABLE/traced", unavailableResponse.StatusCode, unavailableError.Error.Code, unavailableResponse.Header.Get("X-Request-Id"))
+	}
+
+	readyResponse, _ := server.Client().Get(server.URL + "/readyz")
+	var readyError struct {
+		RequestID string `json:"request_id"`
+	}
+	_ = json.NewDecoder(readyResponse.Body).Decode(&readyError)
+	readyResponse.Body.Close()
+	if readyResponse.StatusCode != http.StatusServiceUnavailable || readyError.RequestID == "" || readyError.RequestID != readyResponse.Header.Get("X-Request-Id") {
+		t.Fatalf("ready failure trace = %d/%q/%q", readyResponse.StatusCode, readyError.RequestID, readyResponse.Header.Get("X-Request-Id"))
 	}
 }
 

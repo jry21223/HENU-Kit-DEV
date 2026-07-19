@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -49,9 +50,13 @@ func main() {
 		os.Exit(1)
 	}
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddress})
-	keys := map[string]string{os.Getenv("PORTAL_SUMMARY_ACTIVE_KEY_ID"): os.Getenv("PORTAL_SUMMARY_ACTIVE_SECRET")}
-	if retiringKeyID := strings.TrimSpace(os.Getenv("PORTAL_SUMMARY_RETIRING_KEY_ID")); retiringKeyID != "" {
-		keys[retiringKeyID] = os.Getenv("PORTAL_SUMMARY_RETIRING_SECRET")
+	keys, err := keyRing(
+		os.Getenv("PORTAL_SUMMARY_ACTIVE_KEY_ID"), os.Getenv("PORTAL_SUMMARY_ACTIVE_SECRET"),
+		os.Getenv("PORTAL_SUMMARY_RETIRING_KEY_ID"), os.Getenv("PORTAL_SUMMARY_RETIRING_SECRET"),
+	)
+	if err != nil {
+		logger.Error("invalid_key_ring", "error", err)
+		os.Exit(1)
 	}
 	feedbackSecret := os.Getenv("PORTAL_FEEDBACK_CLIENT_SECRET")
 	for _, secret := range keys {
@@ -83,6 +88,22 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(ctx)
+}
+
+func keyRing(activeID, activeSecret, retiringID, retiringSecret string) (map[string]string, error) {
+	activeID = strings.TrimSpace(activeID)
+	retiringID = strings.TrimSpace(retiringID)
+	if activeID == "" {
+		return nil, errors.New("active key ID is required")
+	}
+	if retiringID != "" && retiringID == activeID {
+		return nil, errors.New("active and retiring key IDs must differ")
+	}
+	keys := map[string]string{activeID: activeSecret}
+	if retiringID != "" {
+		keys[retiringID] = retiringSecret
+	}
+	return keys, nil
 }
 
 func probes(name string) ([]summary.Probe, error) {

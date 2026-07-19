@@ -1,4 +1,4 @@
-// Code generated from portal-summary.yaml and console-gateway.yaml (SHA256 d95bd550dba37e19c777192ff3299e266246055efbc0fe515575de57bbfdfd80); DO NOT EDIT.
+// Code generated from portal-summary.yaml and console-gateway.yaml (SHA256 18ff52e4896046febccff2972c32d27e67c610ebe215f81c2475041f2a405bb0); DO NOT EDIT.
 package contract
 
 import (
@@ -8,7 +8,13 @@ import (
 	"unicode/utf8"
 )
 
-const ContractSHA256 = "d95bd550dba37e19c777192ff3299e266246055efbc0fe515575de57bbfdfd80"
+const (
+	ContractSHA256             = "18ff52e4896046febccff2972c32d27e67c610ebe215f81c2475041f2a405bb0"
+	ErrorDependencyUnavailable = "DEPENDENCY_UNAVAILABLE"
+	ErrorInvalidOwnerSummary   = "INVALID_OWNER_SUMMARY"
+	ErrorInvalidServiceAuth    = "INVALID_SERVICE_AUTH"
+	ErrorReplayDetected        = "REPLAY_DETECTED"
+)
 
 type Metric struct {
 	Label string `json:"label"`
@@ -30,6 +36,9 @@ type PortalSummaryEnvelope struct {
 
 var requestIDPattern = regexp.MustCompile("^req_[A-Za-z0-9_-]+$")
 var liveStatuses = map[string]bool{"ok": true, "partial": true}
+var errorStatuses = map[string]int{"DEPENDENCY_UNAVAILABLE": 503, "INVALID_OWNER_SUMMARY": 503, "INVALID_SERVICE_AUTH": 401, "REPLAY_DETECTED": 409}
+
+func ValidErrorStatus(status int, code string) bool { return errorStatuses[code] == status }
 
 func ValidatePortalSummaryEnvelope(value PortalSummaryEnvelope) error {
 	if value.Data.ID != "portal" || !liveStatuses[value.Data.Status] || len(value.Data.Metrics) != 8 || value.Data.AsOf.IsZero() || value.Data.RequestID != value.RequestID {
