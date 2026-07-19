@@ -138,6 +138,16 @@ func main() {
 	if err := validateSchema(libraryCommandSchema, libraryCommandSchema.InvalidExample, spec.Components.Schemas); err == nil {
 		fail(errors.New("library command x-invalid-example unexpectedly satisfies the schema"))
 	}
+	foodCommandSchema, ok := spec.Components.Schemas["FoodCommand"]
+	if !ok || foodCommandSchema.Example == nil || foodCommandSchema.InvalidExample == nil {
+		fail(errors.New("food command requires example and x-invalid-example"))
+	}
+	if err := validateSchema(foodCommandSchema, foodCommandSchema.Example, spec.Components.Schemas); err != nil {
+		fail(fmt.Errorf("food command example is invalid: %w", err))
+	}
+	if err := validateSchema(foodCommandSchema, foodCommandSchema.InvalidExample, spec.Components.Schemas); err == nil {
+		fail(errors.New("food command x-invalid-example unexpectedly satisfies the schema"))
+	}
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
 	goSource := renderGo(spec, routes, digest)
@@ -194,11 +204,14 @@ const (
 	LibraryWorkspaceRoute = %q
 	LibraryCommandRoute = %q
 	LibraryOperationRoute = %q
+	FoodWorkspaceRoute = %q
+	FoodCommandRoute = %q
+	FoodOperationRoute = %q
 	LogoutRoute = %q
 	SourceSHA256 = %q
 )
 
-`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["logoutConsoleSession"], digest)
+`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -462,6 +475,49 @@ export async function resolveLibraryOperation(operation: LibraryCommandKind, ide
   } catch { return { state: "unavailable" }; }
 }
 
+export type FoodWorkspaceResult = { state: "authenticated"; workspace: FoodWorkspace } | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchFoodWorkspace(): Promise<FoodWorkspaceResult> {
+  try {
+    const response = await fetch("{{FOOD_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isFoodWorkspace(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", workspace: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type FoodWriteResult = { state: "succeeded" | "unknown"; result?: FoodOperationResult } | { state: "signed_out" | "denied" | "conflict" | "invalid" | "unavailable" };
+
+export async function executeFoodCommand(input: FoodCommand, idempotencyKey: string): Promise<FoodWriteResult> {
+  try {
+    const response = await fetch("{{FOOD_COMMAND_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unknown" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unknown" };
+    return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unknown" }; }
+}
+
+export async function resolveFoodOperation(operation: FoodCommandKind, idempotencyKey: string): Promise<FoodWriteResult> {
+  try {
+    const response = await fetch("{{FOOD_OPERATION_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unavailable" };
+    return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
 export async function logoutConsoleSession(): Promise<void> {
   const response = await fetch("{{LOGOUT_ROUTE}}", { method: "POST", credentials: "same-origin" });
   if (!response.ok) throw new Error("Console logout failed");
@@ -477,6 +533,7 @@ export function consoleLoginHref(): string {
 		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{OPERATIONS_ROUTE}}": routes["getConsolePlatformOperations"], "{{REVOKE_SESSION_ROUTE}}": routes["revokeConsolePlatformSession"], "{{UPDATE_ACCESS_ROUTE}}": routes["updateConsolePlatformAccess"], "{{OPERATION_STATUS_ROUTE}}": routes["getConsolePlatformOperationStatus"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
 		"{{NOTICE_ROUTE}}": routes["getConsoleNotices"], "{{NOTICE_SOURCE_ROUTE}}": routes["createConsoleNoticeSource"], "{{NOTICE_VERSION_ROUTE}}": routes["createConsoleNoticeVersion"], "{{NOTICE_REVIEW_ROUTE}}": routes["reviewConsoleNoticeVersion"], "{{NOTICE_DISTRIBUTION_ROUTE}}": routes["distributeConsoleNoticeVersion"], "{{NOTICE_OPERATION_ROUTE}}": routes["getConsoleNoticeOperationStatus"],
 		"{{LIBRARY_ROUTE}}": routes["getConsoleLibraryWorkspace"], "{{LIBRARY_COMMAND_ROUTE}}": routes["executeConsoleLibraryCommand"], "{{LIBRARY_OPERATION_ROUTE}}": routes["getConsoleLibraryOperationStatus"],
+		"{{FOOD_ROUTE}}": routes["getConsoleFoodWorkspace"], "{{FOOD_COMMAND_ROUTE}}": routes["executeConsoleFoodCommand"], "{{FOOD_OPERATION_ROUTE}}": routes["getConsoleFoodOperationStatus"],
 	}
 	for old, replacement := range replacements {
 		template = strings.ReplaceAll(template, old, replacement)

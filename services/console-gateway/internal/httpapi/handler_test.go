@@ -36,6 +36,7 @@ type fakePlatform struct {
 	operationToken     string
 	operationKey       string
 	libraryPermissions []string
+	foodPermissions    []string
 }
 
 type fakeOverview struct{}
@@ -48,6 +49,24 @@ type fakeNotice struct {
 type fakeLibrary struct {
 	actor, key        string
 	workspace, result json.RawMessage
+}
+
+type fakeFood struct {
+	actor, key        string
+	workspace, result json.RawMessage
+}
+
+func (f *fakeFood) Workspace(_ context.Context, actor string) (json.RawMessage, error) {
+	f.actor = actor
+	return f.workspace, nil
+}
+func (f *fakeFood) Command(_ context.Context, actor, key string, _ []byte) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
+}
+func (f *fakeFood) Operation(_ context.Context, actor, _, key string) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
 }
 
 func (f *fakeLibrary) Workspace(_ context.Context, actor string) (json.RawMessage, error) {
@@ -140,6 +159,14 @@ func (fake *fakePlatform) CheckLibrary(_ context.Context, token, permission stri
 		return platformcore.ErrUnauthorized
 	}
 	fake.libraryPermissions = append(fake.libraryPermissions, permission)
+	return fake.checkErr
+}
+
+func (fake *fakePlatform) CheckFood(_ context.Context, token, permission string) error {
+	if token != fake.exchange.ExchangeToken {
+		return platformcore.ErrUnauthorized
+	}
+	fake.foodPermissions = append(fake.foodPermissions, permission)
 	return fake.checkErr
 }
 
@@ -282,6 +309,52 @@ func TestLibraryForwardingUsesServerActorAndPreservesIdempotency(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || platform.libraryPermissions[len(platform.libraryPermissions)-1] != "library.review" {
 		t.Fatalf("Library operation status/permission=%d/%v", response.StatusCode, platform.libraryPermissions)
+	}
+}
+
+func TestFoodForwardingUsesExactPermissionActorAndIdempotency(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	userID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeFood{workspace: json.RawMessage(`{"status":"ok","status_message":"Food 数据正常","stale":false,"as_of":"2026-07-20T00:00:00Z","submissions":[],"anomaly_tickets":[],"tier_adjustments":[]}`), result: json.RawMessage(`{"operation":"anomaly_resolve","resource_id":"22222222-2222-4222-8222-222222222222","state":"succeeded","version":2}`)}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: userID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+	read, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/food", nil)
+	read.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err := server.Client().Do(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.actor != userID {
+		t.Fatalf("Food read status/actor=%d/%s", response.StatusCode, owner.actor)
+	}
+	command, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/food/commands", strings.NewReader(`{"kind":"anomaly_resolve","resource_id":"22222222-2222-4222-8222-222222222222","expected_version":1,"payload":{"note":"已核验"}}`))
+	command.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	command.Header.Set("Content-Type", "application/json")
+	command.Header.Set("Idempotency-Key", "idem_food_gateway")
+	response, err = server.Client().Do(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.key != "idem_food_gateway" || platform.foodPermissions[len(platform.foodPermissions)-1] != "food.anomaly" {
+		t.Fatalf("Food command status/key/permissions=%d/%s/%v", response.StatusCode, owner.key, platform.foodPermissions)
+	}
+	operation, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/food/operations/anomaly_resolve", nil)
+	operation.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	operation.Header.Set("Idempotency-Key", "idem_food_gateway")
+	response, err = server.Client().Do(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || platform.foodPermissions[len(platform.foodPermissions)-1] != "food.anomaly" {
+		t.Fatalf("Food lookup status/permission=%d/%v", response.StatusCode, platform.foodPermissions)
 	}
 }
 

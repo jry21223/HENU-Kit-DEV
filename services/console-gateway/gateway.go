@@ -7,6 +7,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/console-gateway/internal/food"
 	"henukit.dev/console-gateway/internal/httpapi"
 	"henukit.dev/console-gateway/internal/library"
 	"henukit.dev/console-gateway/internal/notice"
@@ -27,6 +28,8 @@ type Config struct {
 	NoticeCredentials                          overview.Credentials
 	LibraryAPIURL                              string
 	LibraryCredentials                         overview.Credentials
+	FoodAPIURL                                 string
+	FoodCredentials                            overview.Credentials
 	Logger                                     *slog.Logger
 }
 
@@ -56,6 +59,13 @@ func New(config Config) (http.Handler, error) {
 			return nil, err
 		}
 	}
+	var foodClient *food.Client
+	if config.FoodAPIURL != "" {
+		foodClient, err = food.New(config.FoodAPIURL, config.FoodCredentials.ClientID, config.FoodCredentials.ClientSecret, config.FoodCredentials.KeyID, config.HTTPClient)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for id, credential := range config.OverviewCredentials {
 		if credential.ClientSecret == config.ClientSecret {
 			return nil, fmt.Errorf("%s summary secret must be separate from Platform Core OAuth credentials", id)
@@ -65,5 +75,5 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient)
+	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient, foodClient)
 }

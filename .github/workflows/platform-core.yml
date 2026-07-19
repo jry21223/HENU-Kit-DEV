@@ -88,6 +88,10 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000008_library_access.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000008_library_access.up.sql
           test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT count(*) = 3 FROM permission_codes WHERE code IN ('library.read', 'library.manage', 'library.review') AND status = 'active'")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000009_food_access.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000009_food_access.up.sql
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT count(*) = 4 FROM permission_codes WHERE code IN ('food.read', 'food.review', 'food.anomaly', 'food.tier_adjust') AND status = 'active'")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000009_food_access.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000008_library_access.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000007_notice_access.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000006_platform_operations.down.sql
@@ -105,6 +109,7 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000006_platform_operations.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000007_notice_access.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000008_library_access.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000009_food_access.up.sql
 
       - name: Verify generated SQL and OpenAPI
         run: |
