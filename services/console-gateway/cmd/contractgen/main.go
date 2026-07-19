@@ -9,6 +9,8 @@ import (
 	"go/format"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -23,12 +25,24 @@ type schema struct {
 	Type                 string            `yaml:"type"`
 	Format               string            `yaml:"format"`
 	Const                any               `yaml:"const"`
+	Enum                 []string          `yaml:"enum"`
+	MinItems             int               `yaml:"minItems"`
+	MaxItems             int               `yaml:"maxItems"`
+	MaxLength            int               `yaml:"maxLength"`
+	Pattern              string            `yaml:"pattern"`
 	Required             []string          `yaml:"required"`
 	Properties           map[string]schema `yaml:"properties"`
 	Items                *schema           `yaml:"items"`
 	AdditionalProperties *bool             `yaml:"additionalProperties"`
 	Example              any               `yaml:"example"`
 	InvalidExample       any               `yaml:"x-invalid-example"`
+	AllOf                []schema          `yaml:"allOf"`
+	AnyOf                []schema          `yaml:"anyOf"`
+	If                   *schema           `yaml:"if"`
+	Then                 *schema           `yaml:"then"`
+	Contains             *schema           `yaml:"contains"`
+	MinContains          int               `yaml:"minContains"`
+	MaxContains          int               `yaml:"maxContains"`
 }
 
 type document struct {
@@ -60,7 +74,7 @@ func main() {
 		fail(errors.New("console gateway server must end with /api/v1"))
 	}
 	routes := operationRoutes(spec)
-	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "logoutConsoleSession"} {
+	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "logoutConsoleSession"} {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
@@ -74,6 +88,34 @@ func main() {
 	}
 	if err := validateSchema(sessionSchema, sessionSchema.InvalidExample, spec.Components.Schemas); err == nil {
 		fail(errors.New("ConsoleSession x-invalid-example unexpectedly satisfies the schema"))
+	}
+	overviewSchema, ok := spec.Components.Schemas["ConsoleOverview"]
+	if !ok || overviewSchema.Example == nil || overviewSchema.InvalidExample == nil {
+		fail(errors.New("ConsoleOverview requires example and x-invalid-example"))
+	}
+	if err := validateSchema(overviewSchema, overviewSchema.Example, spec.Components.Schemas); err != nil {
+		fail(fmt.Errorf("ConsoleOverview example is invalid: %w", err))
+	}
+	if err := validateSchema(overviewSchema, overviewSchema.InvalidExample, spec.Components.Schemas); err == nil {
+		fail(errors.New("ConsoleOverview x-invalid-example unexpectedly satisfies the schema"))
+	}
+	moduleSummarySchema, ok := spec.Components.Schemas["ConsoleModuleSummary"]
+	if !ok {
+		fail(errors.New("ConsoleModuleSummary is missing"))
+	}
+	invalidStaleSummary := map[string]any{
+		"id": "library", "status": "stale", "metrics": []any{},
+		"status_message": "missing stale timestamps", "request_id": "req_invalid_stale",
+	}
+	if err := validateSchema(moduleSummarySchema, invalidStaleSummary, spec.Components.Schemas); err == nil {
+		fail(errors.New("ConsoleModuleSummary stale value without timestamps unexpectedly satisfies the schema"))
+	}
+	invalidRequestIDSummary := map[string]any{
+		"id": "library", "status": "ok", "metrics": []any{}, "as_of": "2026-07-19T01:00:00Z",
+		"status_message": "invalid request id", "request_id": "req_invalid value!",
+	}
+	if err := validateSchema(moduleSummarySchema, invalidRequestIDSummary, spec.Components.Schemas); err == nil {
+		fail(errors.New("ConsoleModuleSummary request_id outside its pattern unexpectedly satisfies the schema"))
 	}
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
@@ -117,11 +159,12 @@ const (
 	LoginRoute = %q
 	CallbackRoute = %q
 	SessionRoute = %q
+	OverviewRoute = %q
 	LogoutRoute = %q
 	SourceSHA256 = %q
 )
 
-`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["logoutConsoleSession"], digest)
+`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -148,8 +191,15 @@ func goType(value schema, indent int) string {
 	case "object":
 		var output strings.Builder
 		output.WriteString("struct {\n")
+		required := stringSet(value.Required)
 		for _, property := range sortedProperties(value.Properties) {
-			fmt.Fprintf(&output, "%s%s %s `json:\"%s\"`\n", strings.Repeat("\t", indent+1), goName(property), goType(value.Properties[property], indent+1), property)
+			fieldType := goType(value.Properties[property], indent+1)
+			tag := property
+			if !required[property] {
+				fieldType = "*" + fieldType
+				tag += ",omitempty"
+			}
+			fmt.Fprintf(&output, "%s%s %s `json:\"%s\"`\n", strings.Repeat("\t", indent+1), goName(property), fieldType, tag)
 		}
 		output.WriteString(strings.Repeat("\t", indent) + "}")
 		return output.String()
@@ -197,6 +247,24 @@ export async function fetchConsoleSession(): Promise<ConsoleSessionResult> {
   }
 }
 
+export type ConsoleOverviewResult =
+  | { state: "authenticated"; overview: ConsoleOverview }
+  | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchConsoleOverview(): Promise<ConsoleOverviewResult> {
+  try {
+    const response = await fetch("{{OVERVIEW_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleOverview(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", overview: envelope.data };
+  } catch {
+    return { state: "unavailable" };
+  }
+}
+
 export async function logoutConsoleSession(): Promise<void> {
   const response = await fetch("{{LOGOUT_ROUTE}}", { method: "POST", credentials: "same-origin" });
   if (!response.ok) throw new Error("Console logout failed");
@@ -209,7 +277,7 @@ export function consoleLoginHref(): string {
 `
 	replacements := map[string]string{
 		"{{SHA}}": digest, "{{SCHEMAS}}": schemas.String(), "{{VALIDATORS}}": validators.String(),
-		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
+		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
 	}
 	for old, replacement := range replacements {
 		template = strings.ReplaceAll(template, old, replacement)
@@ -241,6 +309,14 @@ func tsType(value schema) string {
 	}
 	switch value.Type {
 	case "string":
+		if len(value.Enum) > 0 {
+			encoded := make([]string, 0, len(value.Enum))
+			for _, item := range value.Enum {
+				quoted, _ := json.Marshal(item)
+				encoded = append(encoded, string(quoted))
+			}
+			return strings.Join(encoded, " | ")
+		}
 		if literal, ok := value.Const.(string); ok {
 			encoded, _ := json.Marshal(literal)
 			return string(encoded)
@@ -261,11 +337,46 @@ func tsType(value schema) string {
 }
 
 func tsCheck(expression string, value schema) string {
+	checks := []string{tsCheckBase(expression, value)}
+	for _, item := range value.AllOf {
+		checks = append(checks, tsCheck(expression, item))
+	}
+	if len(value.AnyOf) > 0 {
+		alternatives := make([]string, 0, len(value.AnyOf))
+		for _, item := range value.AnyOf {
+			alternatives = append(alternatives, "("+tsCheck(expression, item)+")")
+		}
+		checks = append(checks, "("+strings.Join(alternatives, " || ")+")")
+	}
+	if value.If != nil && value.Then != nil {
+		checks = append(checks, "(!("+tsCheck(expression, *value.If)+") || "+tsCheck(expression, *value.Then)+")")
+	}
+	if value.Contains != nil {
+		count := expression + ".filter((item) => " + tsCheck("item", *value.Contains) + ").length"
+		if value.MinContains > 0 {
+			checks = append(checks, fmt.Sprintf("%s >= %d", count, value.MinContains))
+		}
+		if value.MaxContains > 0 {
+			checks = append(checks, fmt.Sprintf("%s <= %d", count, value.MaxContains))
+		}
+	}
+	return strings.Join(checks, " && ")
+}
+
+func tsCheckBase(expression string, value schema) string {
 	if value.Ref != "" {
 		return "is" + refName(value.Ref) + "(" + expression + ")"
 	}
-	switch value.Type {
+	if value.Const != nil {
+		encoded, _ := json.Marshal(value.Const)
+		return expression + " === " + string(encoded)
+	}
+	switch schemaType(value) {
 	case "string":
+		if len(value.Enum) > 0 {
+			encoded, _ := json.Marshal(value.Enum)
+			return "typeof " + expression + ` === "string" && ` + string(encoded) + ".includes(" + expression + ")"
+		}
 		if literal, ok := value.Const.(string); ok {
 			encoded, _ := json.Marshal(literal)
 			return expression + " === " + string(encoded)
@@ -276,14 +387,30 @@ func tsCheck(expression string, value schema) string {
 		if value.Format == "date-time" {
 			return "isDateTime(" + expression + ")"
 		}
-		return "typeof " + expression + ` === "string"`
+		check := "typeof " + expression + ` === "string"`
+		if value.MaxLength > 0 {
+			check += fmt.Sprintf(" && %s.length <= %d", expression, value.MaxLength)
+		}
+		if value.Pattern != "" {
+			encoded, _ := json.Marshal(value.Pattern)
+			check += " && new RegExp(" + string(encoded) + ").test(" + expression + ")"
+		}
+		return check
 	case "boolean":
 		return "typeof " + expression + ` === "boolean"`
 	case "array":
 		if value.Items == nil {
 			return "Array.isArray(" + expression + ")"
 		}
-		return "Array.isArray(" + expression + ") && " + expression + ".every((item) => " + tsCheck("item", *value.Items) + ")"
+		checks := []string{"Array.isArray(" + expression + ")"}
+		if value.MinItems > 0 {
+			checks = append(checks, fmt.Sprintf("%s.length >= %d", expression, value.MinItems))
+		}
+		if value.MaxItems > 0 {
+			checks = append(checks, fmt.Sprintf("%s.length <= %d", expression, value.MaxItems))
+		}
+		checks = append(checks, expression+".every((item) => "+tsCheck("item", *value.Items)+")")
+		return strings.Join(checks, " && ")
 	case "object":
 		checks := []string{"isRecord(" + expression + ")"}
 		required := stringSet(value.Required)
@@ -307,6 +434,53 @@ func tsCheck(expression string, value schema) string {
 }
 
 func validateSchema(value schema, candidate any, schemas map[string]schema) error {
+	if err := validateSchemaBase(value, candidate, schemas); err != nil {
+		return err
+	}
+	for _, item := range value.AllOf {
+		if err := validateSchema(item, candidate, schemas); err != nil {
+			return err
+		}
+	}
+	if len(value.AnyOf) > 0 {
+		matched := false
+		for _, item := range value.AnyOf {
+			if validateSchema(item, candidate, schemas) == nil {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return errors.New("value does not satisfy anyOf")
+		}
+	}
+	if value.If != nil && value.Then != nil && validateSchema(*value.If, candidate, schemas) == nil {
+		if err := validateSchema(*value.Then, candidate, schemas); err != nil {
+			return err
+		}
+	}
+	if value.Contains != nil {
+		items, ok := candidate.([]any)
+		if !ok {
+			return errors.New("contains requires array")
+		}
+		count := 0
+		for _, item := range items {
+			if validateSchema(*value.Contains, item, schemas) == nil {
+				count++
+			}
+		}
+		if value.MinContains > 0 && count < value.MinContains {
+			return fmt.Errorf("contains matched %d, want at least %d", count, value.MinContains)
+		}
+		if value.MaxContains > 0 && count > value.MaxContains {
+			return fmt.Errorf("contains matched %d, want at most %d", count, value.MaxContains)
+		}
+	}
+	return nil
+}
+
+func validateSchemaBase(value schema, candidate any, schemas map[string]schema) error {
 	if value.Ref != "" {
 		referenced, ok := schemas[refName(value.Ref)]
 		if !ok {
@@ -314,7 +488,10 @@ func validateSchema(value schema, candidate any, schemas map[string]schema) erro
 		}
 		return validateSchema(referenced, candidate, schemas)
 	}
-	switch value.Type {
+	if value.Const != nil && !reflect.DeepEqual(value.Const, candidate) {
+		return fmt.Errorf("expected constant %v", value.Const)
+	}
+	switch schemaType(value) {
 	case "string":
 		text, ok := candidate.(string)
 		if !ok {
@@ -322,6 +499,9 @@ func validateSchema(value schema, candidate any, schemas map[string]schema) erro
 		}
 		if literal, ok := value.Const.(string); ok && text != literal {
 			return fmt.Errorf("expected constant %q", literal)
+		}
+		if len(value.Enum) > 0 && !stringSet(value.Enum)[text] {
+			return fmt.Errorf("value %q is outside enum", text)
 		}
 		if value.Format == "uuid" {
 			_, err := uuid.Parse(text)
@@ -331,6 +511,18 @@ func validateSchema(value schema, candidate any, schemas map[string]schema) erro
 			_, err := time.Parse(time.RFC3339, text)
 			return err
 		}
+		if value.MaxLength > 0 && len([]rune(text)) > value.MaxLength {
+			return fmt.Errorf("string exceeds %d characters", value.MaxLength)
+		}
+		if value.Pattern != "" {
+			matched, err := regexp.MatchString(value.Pattern, text)
+			if err != nil {
+				return fmt.Errorf("invalid pattern %q: %w", value.Pattern, err)
+			}
+			if !matched {
+				return fmt.Errorf("string does not match %s", value.Pattern)
+			}
+		}
 	case "boolean":
 		if _, ok := candidate.(bool); !ok {
 			return errors.New("expected boolean")
@@ -339,6 +531,12 @@ func validateSchema(value schema, candidate any, schemas map[string]schema) erro
 		items, ok := candidate.([]any)
 		if !ok {
 			return errors.New("expected array")
+		}
+		if value.MinItems > 0 && len(items) < value.MinItems {
+			return fmt.Errorf("expected at least %d items", value.MinItems)
+		}
+		if value.MaxItems > 0 && len(items) > value.MaxItems {
+			return fmt.Errorf("expected at most %d items", value.MaxItems)
 		}
 		if value.Items != nil {
 			for _, item := range items {
@@ -371,6 +569,19 @@ func validateSchema(value schema, candidate any, schemas map[string]schema) erro
 		}
 	}
 	return nil
+}
+
+func schemaType(value schema) string {
+	if value.Type != "" {
+		return value.Type
+	}
+	if len(value.Properties) > 0 || len(value.Required) > 0 || value.AdditionalProperties != nil {
+		return "object"
+	}
+	if value.Items != nil || value.Contains != nil || value.MinItems > 0 || value.MaxItems > 0 {
+		return "array"
+	}
+	return ""
 }
 
 func sortedProperties(properties map[string]schema) []string {

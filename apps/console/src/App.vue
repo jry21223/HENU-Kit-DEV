@@ -7,7 +7,7 @@ import ModuleCard from "@/components/ModuleCard.vue";
 import StatusBadge from "@/components/ui/StatusBadge.vue";
 import UiButton from "@/components/ui/UiButton.vue";
 import { moduleSummaries, type ModuleSummary } from "@/data/modules";
-import { consoleLoginHref, fetchConsoleSession, logoutConsoleSession, type ConsoleSession } from "@/lib/console-gateway";
+import { consoleLoginHref, fetchConsoleOverview, fetchConsoleSession, logoutConsoleSession, type ConsoleOverview, type ConsoleSession } from "@/lib/console-gateway";
 
 const icons = {
   portal: Building2,
@@ -23,12 +23,29 @@ const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
 const authState = ref<"loading" | "authenticated" | "signed_out" | "denied" | "unavailable">("loading");
 const consoleSession = ref<ConsoleSession>();
+const consoleOverview = ref<ConsoleOverview>();
+const overviewState = ref<"loading" | "ready" | "unavailable">("loading");
 
 async function refreshSession() {
   authState.value = "loading";
   const result = await fetchConsoleSession();
   authState.value = result.state;
   consoleSession.value = result.state === "authenticated" ? result.session : undefined;
+  consoleOverview.value = undefined;
+  if (result.state === "authenticated") {
+    overviewState.value = "loading";
+    const overviewResult = await fetchConsoleOverview();
+    if (overviewResult.state === "authenticated") {
+      consoleOverview.value = overviewResult.overview;
+      overviewState.value = "ready";
+    } else if (overviewResult.state === "signed_out" || overviewResult.state === "denied") {
+      authState.value = overviewResult.state;
+      consoleSession.value = undefined;
+      overviewState.value = "unavailable";
+    } else {
+      overviewState.value = "unavailable";
+    }
+  }
 }
 
 async function signOut() {
@@ -36,6 +53,7 @@ async function signOut() {
     await logoutConsoleSession();
     authState.value = "signed_out";
     consoleSession.value = undefined;
+    consoleOverview.value = undefined;
   } catch {
     authState.value = "unavailable";
   }
@@ -44,10 +62,26 @@ async function signOut() {
 onMounted(refreshSession);
 
 const summaries = computed<ModuleSummary[]>(() =>
-  loading || authState.value === "loading"
-    ? moduleSummaries.map((summary) => ({ ...summary, status: "loading", metrics: [] }))
+  loading || authState.value === "loading" || (authState.value === "authenticated" && overviewState.value === "loading")
+    ? moduleSummaries.map((summary) => ({ ...summary, status: "loading", metrics: [], trend: undefined }))
     : authState.value === "authenticated"
-      ? moduleSummaries
+      ? overviewState.value === "ready" && consoleOverview.value
+        ? moduleSummaries.map((presentation) => {
+            const live = consoleOverview.value?.modules.find((module) => module.id === presentation.id);
+            return live
+              ? {
+                  ...presentation,
+                  status: live.status,
+                  metrics: live.metrics,
+                  statusMessage: live.status_message,
+                  asOf: live.as_of,
+                  lastSuccessAt: live.last_success_at,
+                  requestId: live.request_id,
+                  trend: undefined,
+                }
+              : { ...presentation, status: "unavailable", metrics: [], statusMessage: "聚合响应缺少此模块。", trend: undefined };
+          })
+        : moduleSummaries.map((summary) => ({ ...summary, status: "unavailable", metrics: [], statusMessage: "Overview 聚合暂不可用。", trend: undefined }))
       : moduleSummaries.map((summary) => ({ ...summary, status: "denied", metrics: [], statusMessage: "登录并通过服务端权限校验后可查看此模块。" })),
 );
 
@@ -77,7 +111,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         </a>
       </nav>
 
-      <div class="mt-auto p-4 text-sm leading-6 text-white/85">非河南大学官方项目<br />Console V1 · Mock data</div>
+      <div class="mt-auto p-4 text-sm leading-6 text-white/85">非河南大学官方项目<br />Console V1 · Bounded summaries</div>
     </aside>
 
     <div class="console-main">
@@ -116,7 +150,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
           <span class="sr-only">搜索模块</span>
           <input type="search" placeholder="搜索模块或状态" disabled aria-describedby="search-note" />
         </label>
-        <span id="search-note" class="sr-only">Mock 阶段暂不提供搜索</span>
+        <span id="search-note" class="sr-only">当前 Overview 暂不提供搜索</span>
 
         <div class="ml-auto flex items-center gap-3">
           <StatusBadge v-if="authState === 'loading'" status="loading">正在验证 Session</StatusBadge>
@@ -136,7 +170,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
             <p class="eyebrow">Operations overview</p>
             <h1 id="overview-heading" class="mt-2 text-2xl font-bold tracking-[-0.03em] sm:text-3xl">产品运行概览</h1>
             <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">
-              六个产品模块保持各自的数据所有权。当前模块指标仍是展示夹具，不连接生产产品数据。
+              六个产品模块保持各自的数据所有权；Gateway 仅聚合各 Owner 提供的有界摘要，生产操作仍由后续纵向切片接入。
             </p>
           </div>
           <div class="access-context" aria-label="服务端验证的访问上下文">

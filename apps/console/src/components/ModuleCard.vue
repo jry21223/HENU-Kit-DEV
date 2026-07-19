@@ -91,9 +91,11 @@ const statusLabels: Record<ModuleStatus, string> = {
       <footer class="mt-4 flex min-h-8 items-end justify-between gap-3 border-t border-[var(--hk-paper-line)] pt-3 text-sm text-[var(--hk-ink-muted)]">
         <span v-if="summary.status !== 'empty'">{{ summary.statusMessage }}</span>
         <span v-else>正常空状态</span>
-        <span v-if="summary.status === 'stale'">最近成功 {{ summary.lastSuccessAt }}</span>
-        <span v-else-if="summary.requestId" class="font-mono">{{ summary.requestId }}</span>
-        <span v-else-if="summary.asOf">截至 {{ summary.asOf }}</span>
+        <span class="flex flex-col items-end gap-1 text-right">
+          <span v-if="summary.asOf">截至 {{ summary.asOf }}</span>
+          <span v-if="summary.status === 'stale'">最近成功 {{ summary.lastSuccessAt }}</span>
+          <span v-if="summary.requestId" class="font-mono">{{ summary.requestId }}</span>
+        </span>
       </footer>
     </template>
   </article>

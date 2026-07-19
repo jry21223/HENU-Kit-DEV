@@ -14,4 +14,4 @@
 
 ## Current boundary
 
-HC-04 provides the responsive six-module Overview presentation states. HC-09 integrates the same-origin Console Gateway Session endpoint: signed-out, expired, denied, and unavailable states expose no fixture metrics, while the original module fixtures render only after `console.overview.read` and platform Scope have been verified by Platform Core. Module summary aggregation, routes beyond Overview, and production operations remain planned.
+HC-04 provides the responsive six-module Overview presentation states. HC-09 integrates the same-origin Console Gateway Session endpoint. HC-10 replaces metric fixtures with the Gateway's six-module aggregation response: signed-out and denied states expose no metrics; authenticated cards display only bounded owner summaries with honest partial, stale, unavailable, observation-time, last-success, and request-tracing metadata. Product operation routes remain planned.

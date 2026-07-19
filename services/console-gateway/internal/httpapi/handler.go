@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,9 +35,14 @@ type platformClient interface {
 	CheckOverview(context.Context, string) error
 }
 
+type overviewClient interface {
+	Fetch(context.Context, string) contract.ConsoleOverview
+}
+
 type Handler struct {
 	platformOrigin, clientID, redirectURI string
 	platform                              platformClient
+	overview                              overviewClient
 	redis                                 *redis.Client
 	codec                                 *session.Codec
 	logger                                *slog.Logger
@@ -48,16 +54,16 @@ type flowState struct {
 	ReturnTo string `json:"return_to"`
 }
 
-func New(platformOrigin, clientID, redirectURI string, platform platformClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger) (http.Handler, error) {
+func New(platformOrigin, clientID, redirectURI string, platform platformClient, overview overviewClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger) (http.Handler, error) {
 	origin, err := url.Parse(platformOrigin)
 	redirect, redirectErr := url.Parse(redirectURI)
-	if err != nil || redirectErr != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || (origin.Path != "" && origin.Path != "/") || origin.RawQuery != "" || origin.Fragment != "" || redirect.Scheme != "https" || redirect.Host == "" || clientID == "" || platform == nil || redisClient == nil || codec == nil {
+	if err != nil || redirectErr != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || (origin.Path != "" && origin.Path != "/") || origin.RawQuery != "" || origin.Fragment != "" || redirect.Scheme != "https" || redirect.Host == "" || clientID == "" || platform == nil || overview == nil || redisClient == nil || codec == nil {
 		return nil, errors.New("invalid console gateway handler configuration")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, redis: redisClient, codec: codec, logger: logger, now: time.Now}
+	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
 	router := chi.NewRouter()
 	router.Use(handler.requestContext)
 	router.Use(securityHeaders)
@@ -65,14 +71,30 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.LoginRoute, handler.login)
 	router.Get(contract.CallbackRoute, handler.callback)
 	router.Get(contract.SessionRoute, handler.getSession)
+	router.Get(contract.OverviewRoute, handler.getOverview)
 	router.Post(contract.LogoutRoute, handler.logout)
 	return router, nil
+}
+
+func (h *Handler) getOverview(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return
+	}
+	if err := h.platform.CheckOverview(request.Context(), value.ExchangeToken); err != nil {
+		if errors.Is(err, platformcore.ErrUnauthorized) {
+			h.clearSession(writer)
+		}
+		h.writePlatformError(writer, request, err)
+		return
+	}
+	writeJSON(writer, request, http.StatusOK, h.overview.Fetch(request.Context(), requestID(request)))
 }
 
 func (h *Handler) requestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requestID := request.Header.Get("X-Request-Id")
-		if !strings.HasPrefix(requestID, "req_") || len(requestID) > 100 {
+		if len(requestID) > 100 || !requestIDPattern.MatchString(requestID) {
 			requestID = "req_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 		}
 		writer.Header().Set("X-Request-Id", requestID)
@@ -81,6 +103,8 @@ func (h *Handler) requestContext(next http.Handler) http.Handler {
 }
 
 type requestIDKey struct{}
+
+var requestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
 
 func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, request, http.StatusOK, map[string]bool{"ok": true})

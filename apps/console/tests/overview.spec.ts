@@ -17,23 +17,41 @@ test.beforeEach(async ({ page }) => {
       }),
     });
   });
+  await page.route("**/api/v1/overview", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          modules: [
+            { id: "portal", status: "ok", metrics: [{ label: "部署版本", value: "2026.07.19" }], status_message: "摘要可用", as_of: "2026-07-19T00:00:00Z", request_id: "req_portal_browser" },
+            { id: "platform", status: "partial", metrics: [], status_message: "部分来源可用", as_of: "2026-07-19T00:00:00Z", request_id: "req_platform_browser" },
+            { id: "notice", status: "empty", metrics: [], status_message: "当前无待办", as_of: "2026-07-19T00:00:00Z", request_id: "req_notice_browser" },
+            { id: "library", status: "stale", metrics: [], status_message: "展示最近成功摘要", as_of: "2026-07-19T00:00:00Z", last_success_at: "2026-07-19T00:00:01Z", request_id: "req_library_browser" },
+            { id: "quizcraft", status: "unavailable", metrics: [], status_message: "摘要暂不可用", request_id: "req_quizcraft_browser" },
+            { id: "food", status: "ok", metrics: [], status_message: "摘要可用", as_of: "2026-07-19T00:00:00Z", request_id: "req_food_browser" },
+          ],
+          generated_at: "2026-07-19T00:00:01Z",
+        },
+        request_id: "req_overview_browser",
+      }),
+    }),
+  );
 });
 
-test("desktop overview exposes six modules, degradation states, and chart alternative", async ({ page }) => {
+test("desktop overview exposes six traced module summaries and degradation states", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "产品运行概览" })).toBeVisible();
   await expect(page.locator("[data-module-card]")).toHaveCount(6);
   for (const name of moduleNames) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
-  for (const state of ["empty", "partial", "stale", "unavailable", "denied"]) {
-    await expect(page.locator(`[data-state="${state}"]`)).toHaveCount(1);
-  }
-  await page.getByRole("button", { name: "查看表格数据" }).click();
-  await expect(page.getByRole("table", { name: "Portal 探针成功次数表格" })).toBeVisible();
+  await expect(page.locator('[data-state="ok"]')).toHaveCount(2);
+  for (const state of ["empty", "partial", "stale", "unavailable"]) await expect(page.locator(`[data-state="${state}"]`)).toHaveCount(1);
   await expect(page.getByText("积分", { exact: true })).toHaveCount(0);
   await expect(page.getByText("会员", { exact: true })).toHaveCount(0);
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
+  await expect(page.getByText("req_quizcraft_browser", { exact: true })).toBeVisible();
 });
 
 test("390px overview keeps every module and mobile navigation usable", async ({ page }) => {

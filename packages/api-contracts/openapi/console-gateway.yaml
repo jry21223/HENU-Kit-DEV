@@ -130,6 +130,32 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /overview:
+    get:
+      tags: [Console Authentication]
+      operationId: getConsoleOverview
+      summary: Aggregate six bounded product-module summaries
+      description: Runs all module reads concurrently, returns partial results, and labels cached fallback data as stale.
+      security:
+        - consoleSession: []
+      responses:
+        "200":
+          description: Six module results, including honest degradation states
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ConsoleOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /session/logout:
     post:
       tags: [Console Authentication]
@@ -158,6 +184,7 @@ components:
         data: {}
         request_id:
           type: string
+          maxLength: 100
           pattern: '^req_[A-Za-z0-9_-]+$'
     ErrorObject:
       type: object
@@ -175,6 +202,8 @@ components:
           $ref: "#/components/schemas/ErrorObject"
         request_id:
           type: string
+          maxLength: 100
+          pattern: '^req_[A-Za-z0-9_-]+$'
     ConsoleSession:
       type: object
       additionalProperties: false
@@ -230,6 +259,109 @@ components:
         kind:
           type: string
           const: platform
+    ConsoleOverview:
+      type: object
+      additionalProperties: false
+      required: [modules, generated_at]
+      properties:
+        modules:
+          type: array
+          minItems: 6
+          maxItems: 6
+          items:
+            $ref: "#/components/schemas/ConsoleModuleSummary"
+          allOf:
+            - contains: { type: object, required: [id], properties: { id: { const: portal } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: platform } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: notice } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: library } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: quizcraft } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: food } } }
+              minContains: 1
+              maxContains: 1
+        generated_at:
+          type: string
+          format: date-time
+      example:
+        modules:
+          - id: portal
+            status: ok
+            metrics: [{ label: 部署版本, value: "2026.07.19" }]
+            status_message: 摘要可用
+            as_of: "2026-07-19T01:00:00Z"
+            request_id: req_portal_example
+          - { id: platform, status: empty, metrics: [], status_message: 当前无待办, as_of: "2026-07-19T01:00:00Z", request_id: req_platform_example }
+          - { id: notice, status: unavailable, metrics: [], status_message: 摘要暂不可用, request_id: req_notice_example }
+          - { id: library, status: stale, metrics: [], status_message: 展示最近成功摘要, as_of: "2026-07-19T00:58:00Z", last_success_at: "2026-07-19T00:58:05Z", request_id: req_library_example }
+          - { id: quizcraft, status: partial, metrics: [], status_message: 部分来源可用, as_of: "2026-07-19T01:00:00Z", request_id: req_quizcraft_example }
+          - { id: food, status: ok, metrics: [], status_message: 摘要可用, as_of: "2026-07-19T01:00:00Z", request_id: req_food_example }
+        generated_at: "2026-07-19T01:00:01Z"
+      x-invalid-example:
+        modules:
+          - { id: portal, status: stale, metrics: [], status_message: 缺少 stale 时间戳, request_id: req_duplicate_1 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_2 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_3 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_4 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_5 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_6 }
+        generated_at: "2026-07-19T01:00:01Z"
+    ConsoleModuleSummary:
+      type: object
+      additionalProperties: false
+      anyOf:
+        - required: [as_of, last_success_at]
+          properties:
+            as_of: {}
+            last_success_at: {}
+        - required: [status]
+          properties:
+            status:
+              type: string
+              enum: [ok, empty, partial, unavailable]
+      required: [id, status, metrics, status_message, request_id]
+      properties:
+        id:
+          type: string
+          enum: [portal, platform, notice, library, quizcraft, food]
+        status:
+          type: string
+          enum: [ok, empty, partial, stale, unavailable]
+        metrics:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/ConsoleModuleMetric"
+        status_message:
+          type: string
+          maxLength: 240
+        as_of:
+          type: string
+          format: date-time
+        last_success_at:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+          maxLength: 120
+          pattern: '^req_[A-Za-z0-9_-]+$'
+    ConsoleModuleMetric:
+      type: object
+      additionalProperties: false
+      required: [label, value]
+      properties:
+        label: { type: string, maxLength: 40 }
+        value: { type: string, maxLength: 80 }
+        hint: { type: string, maxLength: 120 }
   responses:
     BadRequest:
       description: Invalid request
