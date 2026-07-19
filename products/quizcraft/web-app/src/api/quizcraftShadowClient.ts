@@ -1,4 +1,6 @@
 import {
+  ApiError,
+  FavoritesService,
   OpenAPI,
   PracticeService,
   type BankVersion,
@@ -13,12 +15,50 @@ export const QUIZCRAFT_GO_SHADOW_ENABLED =
   import.meta.env.VITE_QUIZCRAFT_GO_SHADOW === '1';
 
 const bankRegistry = new Map<string, BankVersion>();
-let activeSession: {
+type ShadowPracticeSession = {
   id: string;
+  bankId: string;
   bankKey: string;
   versions: Map<string, string>;
   pendingKeys: Map<string, string>;
-} | null = null;
+};
+
+let activeSession: ShadowPracticeSession | null = null;
+
+const persistActiveSession = (session: ShadowPracticeSession) => {
+  activeSession = session;
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem('quizcraft_shadow_practice_session', JSON.stringify({
+      id: session.id,
+      bankId: session.bankId,
+      bankKey: session.bankKey,
+      versions: Array.from(session.versions.entries()),
+    }));
+  }
+};
+
+const restoreActiveSession = (): ShadowPracticeSession | null => {
+  if (activeSession || typeof window === 'undefined') return activeSession;
+  try {
+    const stored = JSON.parse(window.sessionStorage.getItem('quizcraft_shadow_practice_session') || '{}') as {
+      id?: string;
+      bankId?: string;
+      bankKey?: string;
+      versions?: Array<[string, string]>;
+    };
+    if (!stored.id || !stored.bankId || !stored.bankKey || !Array.isArray(stored.versions)) return null;
+    activeSession = {
+      id: stored.id,
+      bankId: stored.bankId,
+      bankKey: stored.bankKey,
+      versions: new Map(stored.versions),
+      pendingKeys: new Map(),
+    };
+  } catch {
+    return null;
+  }
+  return activeSession;
+};
 
 const randomKey = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -104,8 +144,9 @@ export const shadowPracticeApi = {
       idempotencyKey: randomKey(),
       requestBody,
     });
-    activeSession = {
+    persistActiveSession({
       id: response.data.session_id,
+      bankId: bank.bank_id,
       bankKey,
       versions: new Map(
         response.data.questions.map((question) => [
@@ -114,7 +155,7 @@ export const shadowPracticeApi = {
         ]),
       ),
       pendingKeys: new Map(),
-    };
+    });
     return {
       questions: response.data.questions.map(toQuestion),
       total: response.data.questions.length,
@@ -123,18 +164,19 @@ export const shadowPracticeApi = {
 
   async submitAnswer(bankKey: string, questionId: string, answer: unknown) {
     configureGeneratedClient();
-    if (!activeSession || activeSession.bankKey !== bankKey) {
+    const session = restoreActiveSession();
+    if (!session || session.bankKey !== bankKey) {
       throw new Error('当前影子练习 Session 不存在，请重新开始练习');
     }
-    const questionVersionId = activeSession.versions.get(questionId);
+    const questionVersionId = session.versions.get(questionId);
     if (!questionVersionId) {
       throw new Error('题目不属于当前影子练习 Session');
     }
     const idempotencyKey =
-      activeSession.pendingKeys.get(questionId) || randomKey();
-    activeSession.pendingKeys.set(questionId, idempotencyKey);
+      session.pendingKeys.get(questionId) || randomKey();
+    session.pendingKeys.set(questionId, idempotencyKey);
     const response = await PracticeService.submitPracticeAnswer({
-      sessionId: activeSession.id,
+      sessionId: session.id,
       idempotencyKey,
       requestBody: {
         question_id: questionId,
@@ -142,11 +184,82 @@ export const shadowPracticeApi = {
         answer,
       },
     });
-    activeSession.pendingKeys.delete(questionId);
+    session.pendingKeys.delete(questionId);
     return {
       correct: response.data.correct,
       correct_answer: response.data.expected_answer,
       analysis: response.data.analysis,
+    };
+  },
+};
+
+export const isQuizcraftAuthenticationError = (error: unknown) =>
+  error instanceof ApiError && error.status === 401;
+
+export const getActiveShadowBankId = () => restoreActiveSession()?.bankId;
+
+export const redirectToQuizcraftLogin = (bankId: string, questionId: string, favorite: boolean) => {
+  const loginEntry = import.meta.env.VITE_QUIZCRAFT_LOGIN_URL?.trim();
+  if (!loginEntry) {
+    throw new Error('未配置 QuizCraft 登录入口');
+  }
+  const returnURL = new URL(window.location.href);
+  window.sessionStorage.setItem(
+    'quizcraft_pending_favorite',
+    JSON.stringify({ bankId, questionId, favorite }),
+  );
+  returnURL.searchParams.set('favorite_question_id', questionId);
+  returnURL.searchParams.set('favorite_bank_id', bankId);
+  const loginURL = new URL(loginEntry, window.location.origin);
+  loginURL.searchParams.set(
+    'return_to',
+    `${returnURL.pathname}${returnURL.search}${returnURL.hash}`,
+  );
+  window.location.assign(loginURL.toString());
+};
+
+export const shadowFavoritesApi = {
+  async list(bankId: string) {
+    configureGeneratedClient();
+    return (await FavoritesService.listFavoriteQuestions({ bankId })).data;
+  },
+
+  async set(bankId: string, questionId: string, favorite: boolean) {
+    configureGeneratedClient();
+    const input = { bankId, questionId, idempotencyKey: randomKey() };
+    if (favorite) {
+      await FavoritesService.favoriteQuestion(input);
+    } else {
+      await FavoritesService.unfavoriteQuestion(input);
+    }
+  },
+
+  async overview() {
+    configureGeneratedClient();
+    return (await FavoritesService.getFavoritesOverview()).data;
+  },
+
+  async start(bankId: string, bankKey: string) {
+    configureGeneratedClient();
+    const response = await FavoritesService.createFavoritesPracticeSession({
+      bankId,
+      idempotencyKey: randomKey(),
+    });
+    persistActiveSession({
+      id: response.data.session_id,
+      bankId,
+      bankKey,
+      versions: new Map(
+        response.data.questions.map((question) => [
+          question.question_id,
+          question.question_version_id,
+        ]),
+      ),
+      pendingKeys: new Map(),
+    });
+    return {
+      questions: response.data.questions.map(toQuestion),
+      excludedUnavailableCount: response.data.excluded_unavailable_count,
     };
   },
 };

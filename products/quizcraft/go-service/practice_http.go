@@ -127,6 +127,11 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	router := chi.NewRouter()
 	router.Get("/healthz", service.health)
 	router.Get("/api/v1/banks", service.listBanks)
+	router.Get("/api/v1/favorites", service.listFavoriteFolders)
+	router.Get("/api/v1/banks/{bank_id}/favorites", service.listFavoriteQuestions)
+	router.Put("/api/v1/banks/{bank_id}/favorites/{question_id}", service.favoriteQuestion)
+	router.Delete("/api/v1/banks/{bank_id}/favorites/{question_id}", service.unfavoriteQuestion)
+	router.Post("/api/v1/banks/{bank_id}/favorites/practice-sessions", service.createFavoritesSession)
 	router.Post("/api/v1/practice/sessions", service.createSession)
 	router.Post("/api/v1/practice/sessions/{session_id}/answers", service.submitAnswer)
 	router.Get("/api/v1/operations/{operation_kind}", service.operationStatus)
@@ -145,7 +150,7 @@ func (service *practiceHTTP) operationStatus(writer http.ResponseWriter, request
 		return
 	}
 	kind := chi.URLParam(request, "operation_kind")
-	if kind != "create_practice_session" && kind != "submit_practice_answer" {
+	if kind != "create_practice_session" && kind != "submit_practice_answer" && kind != "favorite_question" && kind != "unfavorite_question" && kind != "create_favorites_session" {
 		writeError(writer, http.StatusNotFound, "operation_unknown", "operation is not implemented by Practice Core")
 		return
 	}
@@ -171,6 +176,255 @@ func (service *practiceHTTP) operationStatus(writer http.ResponseWriter, request
 		"state":        "succeeded", "idempotency_key": idempotencyKey,
 		"request_id": original.RequestID, "resource_id": result.ResourceID.UUID,
 	}})
+}
+
+func (service *practiceHTTP) requireUser(writer http.ResponseWriter, request *http.Request) (practiceActor, bool) {
+	actor, status, err := service.actor(writer, request)
+	if err != nil {
+		writeError(writer, status, "invalid_session", err.Error())
+		return practiceActor{}, false
+	}
+	if actor.userID == nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to use favorites")
+		return practiceActor{}, false
+	}
+	return actor, true
+}
+
+func parseFavoritePath(writer http.ResponseWriter, request *http.Request, withQuestion bool) (uuid.UUID, uuid.UUID, bool) {
+	bankID, err := uuid.Parse(chi.URLParam(request, "bank_id"))
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "invalid_bank_id", "bank_id must be a UUID")
+		return uuid.Nil, uuid.Nil, false
+	}
+	if !withQuestion {
+		return bankID, uuid.Nil, true
+	}
+	questionID, err := uuid.Parse(chi.URLParam(request, "question_id"))
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "invalid_question_id", "question_id must be a UUID")
+		return uuid.Nil, uuid.Nil, false
+	}
+	return bankID, questionID, true
+}
+
+func (service *practiceHTTP) listFavoriteFolders(writer http.ResponseWriter, request *http.Request) {
+	actor, ok := service.requireUser(writer, request)
+	if !ok {
+		return
+	}
+	rows, err := service.queries.ListFavoriteFolders(request.Context(), *actor.userID)
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	items := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, map[string]any{"bank_id": row.BankID, "bank_name": row.BankName, "available_count": row.AvailableCount, "unavailable_count": row.UnavailableCount})
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: items})
+}
+
+func (service *practiceHTTP) listFavoriteQuestions(writer http.ResponseWriter, request *http.Request) {
+	actor, ok := service.requireUser(writer, request)
+	if !ok {
+		return
+	}
+	bankID, _, ok := parseFavoritePath(writer, request, false)
+	if !ok {
+		return
+	}
+	rows, err := service.queries.ListFavoriteQuestions(request.Context(), store.ListFavoriteQuestionsParams{UserID: *actor.userID, BankID: bankID})
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	items := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		item := map[string]any{"bank_id": row.BankID, "question_id": row.QuestionID, "available": row.QuestionVersionID.Valid}
+		if row.QuestionVersionID.Valid {
+			item["question_version_id"] = row.QuestionVersionID.UUID
+		}
+		items = append(items, item)
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: items})
+}
+
+func (service *practiceHTTP) favoriteQuestion(writer http.ResponseWriter, request *http.Request) {
+	service.changeFavorite(writer, request, true)
+}
+
+func (service *practiceHTTP) unfavoriteQuestion(writer http.ResponseWriter, request *http.Request) {
+	service.changeFavorite(writer, request, false)
+}
+
+func (service *practiceHTTP) changeFavorite(writer http.ResponseWriter, request *http.Request, add bool) {
+	actor, ok := service.requireUser(writer, request)
+	if !ok {
+		return
+	}
+	bankID, questionID, ok := parseFavoritePath(writer, request, true)
+	if !ok {
+		return
+	}
+	idempotencyKey, ok := requiredIdempotencyKey(writer, request)
+	if !ok {
+		return
+	}
+	kind := "unfavorite_question"
+	if add {
+		kind = "favorite_question"
+	}
+	requestHash := hashCanonical([]byte(request.Method + ":" + bankID.String() + ":" + questionID.String()))
+	tx, err := service.database.BeginTx(request.Context(), pgx.TxOptions{})
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	defer func() { _ = tx.Rollback(request.Context()) }()
+	queries := store.New(tx)
+	if err := lockIdempotency(request.Context(), queries, actor.key, kind, idempotencyKey); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	if storedStatus, storedBody, found, conflict, err := loadIdempotency(request.Context(), queries, actor.key, kind, idempotencyKey, requestHash); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	} else if conflict {
+		writeError(writer, http.StatusConflict, "idempotency_conflict", "idempotency key was already used with another request")
+		return
+	} else if found {
+		writeRawJSON(writer, storedStatus, storedBody)
+		return
+	}
+	if err := queries.LockFavorite(request.Context(), actor.key+":"+bankID.String()); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	if add {
+		if _, err := queries.IsQuestionInBank(request.Context(), store.IsQuestionInBankParams{BankID: bankID, ID: questionID}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeError(writer, http.StatusNotFound, "question_unknown", "question does not belong to this bank")
+			} else {
+				writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+			}
+			return
+		}
+		err = queries.AddFavorite(request.Context(), store.AddFavoriteParams{UserID: *actor.userID, BankID: bankID, QuestionID: questionID})
+	} else {
+		err = queries.RemoveFavorite(request.Context(), store.RemoveFavoriteParams{UserID: *actor.userID, BankID: bankID, QuestionID: questionID})
+	}
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	outerRequestID := requestID()
+	response := responseEnvelope{RequestID: outerRequestID, Data: map[string]any{"operation_id": uuid.NewSHA1(questionID, []byte(kind+":"+idempotencyKey)), "state": "succeeded", "idempotency_key": idempotencyKey, "request_id": outerRequestID, "resource_id": questionID}}
+	encoded, _ := json.Marshal(response)
+	if err := storeIdempotency(request.Context(), queries, actor.key, kind, idempotencyKey, requestHash, http.StatusOK, encoded, questionID); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	if err := tx.Commit(request.Context()); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	writeRawJSON(writer, http.StatusOK, encoded)
+}
+
+func (service *practiceHTTP) createFavoritesSession(writer http.ResponseWriter, request *http.Request) {
+	actor, ok := service.requireUser(writer, request)
+	if !ok {
+		return
+	}
+	bankID, _, ok := parseFavoritePath(writer, request, false)
+	if !ok {
+		return
+	}
+	idempotencyKey, ok := requiredIdempotencyKey(writer, request)
+	if !ok {
+		return
+	}
+	requestHash := hashCanonical([]byte(bankID.String()))
+	tx, err := service.database.BeginTx(request.Context(), pgx.TxOptions{})
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	defer func() { _ = tx.Rollback(request.Context()) }()
+	queries := store.New(tx)
+	if err := lockIdempotency(request.Context(), queries, actor.key, "create_favorites_session", idempotencyKey); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	if storedStatus, storedBody, found, conflict, err := loadIdempotency(request.Context(), queries, actor.key, "create_favorites_session", idempotencyKey, requestHash); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	} else if conflict {
+		writeError(writer, http.StatusConflict, "idempotency_conflict", "idempotency key was already used with another request")
+		return
+	} else if found {
+		writeRawJSON(writer, storedStatus, storedBody)
+		return
+	}
+	if err := queries.LockFavorite(request.Context(), actor.key+":"+bankID.String()); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	bankVersionID, err := queries.GetActiveBankVersion(request.Context(), bankID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(writer, http.StatusNotFound, "bank_unavailable", "bank has no published active version")
+		} else {
+			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		}
+		return
+	}
+	rows, err := queries.ListFavoritePracticeQuestions(request.Context(), store.ListFavoritePracticeQuestionsParams{BankVersionID: bankVersionID, UserID: *actor.userID, BankID: bankID})
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	total, err := queries.CountFavoritesForBank(request.Context(), store.CountFavoritesForBankParams{UserID: *actor.userID, BankID: bankID})
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	if len(rows) == 0 {
+		writeError(writer, http.StatusConflict, "empty_favorites", "this bank has no available favorite questions")
+		return
+	}
+	sessionID := uuid.New()
+	if err := queries.CreatePracticeSession(request.Context(), store.CreatePracticeSessionParams{ID: sessionID, BankID: bankID, BankVersionID: bankVersionID, UserID: nullableUUID(actor.userID), ActorKey: actor.key, Mode: "favorites"}); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	questions := make([]practiceQuestion, 0, len(rows))
+	for index, row := range rows {
+		question := practiceQuestion{QuestionID: row.QuestionID, QuestionVersionID: row.QuestionVersionID, Type: row.Type, ChapterID: row.ChapterID, Chapter: row.ChapterName, Content: row.Content}
+		if question.Type == "single" || question.Type == "multi" {
+			if err := json.Unmarshal(row.Options, &question.Options); err != nil {
+				writeError(writer, http.StatusServiceUnavailable, "invalid_question", "stored question options are invalid")
+				return
+			}
+		}
+		questions = append(questions, question)
+		if err := queries.AddPracticeSessionQuestion(request.Context(), store.AddPracticeSessionQuestionParams{SessionID: sessionID, BankID: bankID, BankVersionID: bankVersionID, QuestionID: row.QuestionID, QuestionVersionID: row.QuestionVersionID, Position: int32(index + 1)}); err != nil {
+			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+			return
+		}
+	}
+	response := responseEnvelope{RequestID: requestID(), Data: practiceSession{SessionID: sessionID, BankID: bankID, BankVersionID: bankVersionID, Mode: "favorites", ExcludedUnavailableCount: int(total) - len(questions), Questions: questions}}
+	encoded, _ := json.Marshal(response)
+	if err := storeIdempotency(request.Context(), queries, actor.key, "create_favorites_session", idempotencyKey, requestHash, http.StatusCreated, encoded, sessionID); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	if err := tx.Commit(request.Context()); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
+		return
+	}
+	writeRawJSON(writer, http.StatusCreated, encoded)
 }
 
 func (service *practiceHTTP) health(writer http.ResponseWriter, _ *http.Request) {
@@ -345,8 +599,37 @@ func (service *practiceHTTP) submitAnswer(writer http.ResponseWriter, request *h
 	}
 	defer func() { _ = tx.Rollback(request.Context()) }()
 	queries := store.New(tx)
-	if err = queries.LockSubmission(request.Context(), sessionID.String()+":"+input.QuestionID.String()); err != nil {
+	if err = queries.LockSubmission(request.Context(), sessionID.String()); err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
+		return
+	}
+	question, err := queries.GetSessionQuestion(request.Context(), store.GetSessionQuestionParams{ID: sessionID, QuestionID: input.QuestionID, QuestionVersionID: input.QuestionVersionID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(writer, http.StatusBadRequest, "question_not_in_session", "question version is not part of this session")
+		} else {
+			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
+		}
+		return
+	}
+	ownerMatches := question.ActorKey == actor.key
+	if !ownerMatches && actor.userID != nil {
+		if anonymousCookie, cookieErr := request.Cookie("quizcraft_anonymous"); cookieErr == nil {
+			if anonymousSubject, parseErr := service.parseSubject(anonymousCookie.Value, "quizcraft-anonymous"); parseErr == nil {
+				guestActorKey := "guest:" + anonymousSubject.String()
+				if guestActorKey == question.ActorKey {
+					claimed, claimErr := queries.ClaimGuestPracticeSession(request.Context(), store.ClaimGuestPracticeSessionParams{ID: sessionID, GuestActorKey: guestActorKey, UserID: *actor.userID, UserActorKey: actor.key})
+					if claimErr != nil {
+						writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
+						return
+					}
+					ownerMatches = claimed == 1
+				}
+			}
+		}
+	}
+	if !ownerMatches {
+		writeError(writer, http.StatusForbidden, "session_owner_mismatch", "practice session belongs to another actor")
 		return
 	}
 	if storedStatus, storedBody, found, conflict, err := loadIdempotency(request.Context(), queries, actor.key, "submit_practice_answer", idempotencyKey, requestHash); err != nil {
@@ -357,20 +640,6 @@ func (service *practiceHTTP) submitAnswer(writer http.ResponseWriter, request *h
 		return
 	} else if found {
 		writeRawJSON(writer, storedStatus, storedBody)
-		return
-	}
-
-	question, err := queries.GetSessionQuestion(request.Context(), store.GetSessionQuestionParams{ID: sessionID, QuestionID: input.QuestionID, QuestionVersionID: input.QuestionVersionID})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(writer, http.StatusBadRequest, "question_not_in_session", "question version is not part of this session")
-		} else {
-			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
-		}
-		return
-	}
-	if question.ActorKey != actor.key {
-		writeError(writer, http.StatusForbidden, "session_owner_mismatch", "practice session belongs to another actor")
 		return
 	}
 	var expected any

@@ -31,6 +31,13 @@ import {
 } from "lucide-react";
 import { useQuizStore } from "@/stores/quizStore";
 import { feedbackApi, practiceApi } from "@/api/client";
+import {
+  QUIZCRAFT_GO_SHADOW_ENABLED,
+  getActiveShadowBankId,
+  isQuizcraftAuthenticationError,
+  redirectToQuizcraftLogin,
+  shadowFavoritesApi,
+} from "@/api/quizcraftShadowClient";
 import { RichText } from "@/components/RichText";
 import {
   formatQuestionType,
@@ -556,6 +563,8 @@ type QuizUiState = {
   feedbackSubmitting: boolean;
   feedbackMessage: string;
   feedbackError: string;
+  serverFavoriteIds: string[];
+  favoriteSubmitting: boolean;
 };
 
 const initialQuizUiState: QuizUiState = {
@@ -571,6 +580,8 @@ const initialQuizUiState: QuizUiState = {
   feedbackSubmitting: false,
   feedbackMessage: "",
   feedbackError: "",
+  serverFavoriteIds: [],
+  favoriteSubmitting: false,
 };
 
 const mergeQuizUiState = (
@@ -821,6 +832,7 @@ function useQuizController() {
     finishPractice,
     toggleStar,
     starredQuestions,
+    banks,
     setUser,
   } = useQuizStore();
 
@@ -835,6 +847,7 @@ function useQuizController() {
     isSliding,
     visualCurrentIndex,
     feedbackSuggestion,
+    favoriteSubmitting,
     feedbackSubmitting,
     feedbackMessage,
     feedbackError,
@@ -847,6 +860,8 @@ function useQuizController() {
   const dragXRef = useRef(0);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const swipeStartRef = useRef<SwipeStart | null>(null);
+  const favoriteReturnHandledRef = useRef(false);
+  const favoriteMutationVersionRef = useRef(0);
 
 
   const currentIndex = practice?.currentIndex ?? -1;
@@ -854,6 +869,8 @@ function useQuizController() {
   const activeQuestion = practice?.questions[currentIndex];
   const activeQuestionId = activeQuestion?.id;
   const activeBankKey = practice?.bankKey || currentBank;
+  const activeBankId = banks.find((bank) => bank.key === activeBankKey)?.bank_id
+    || (QUIZCRAFT_GO_SHADOW_ENABLED ? getActiveShadowBankId() : undefined);
   const activeAnswer = activeQuestionId
     ? practice?.answers[activeQuestionId]
     : undefined;
@@ -886,6 +903,52 @@ function useQuizController() {
       navigate("/practice");
     }
   }, [hasPractice, navigate]);
+
+  useEffect(() => {
+    if (!QUIZCRAFT_GO_SHADOW_ENABLED || !activeBankId) return;
+    let cancelled = false;
+    const mutationVersion = favoriteMutationVersionRef.current;
+    void shadowFavoritesApi.list(activeBankId).then((items) => {
+      if (!cancelled && mutationVersion === favoriteMutationVersionRef.current) {
+        setUi({ serverFavoriteIds: items.filter((item) => item.available).map((item) => item.question_id) });
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [activeBankId]);
+
+  useEffect(() => {
+    if (!QUIZCRAFT_GO_SHADOW_ENABLED || !activeQuestionId || favoriteReturnHandledRef.current) return;
+    const url = new URL(window.location.href);
+    const pendingQuestionId = url.searchParams.get('favorite_question_id');
+    const pendingBankId = url.searchParams.get('favorite_bank_id') || activeBankId;
+    let browserIntent: { bankId?: string; questionId?: string; favorite?: boolean } = {};
+    try {
+      browserIntent = JSON.parse(window.sessionStorage.getItem('quizcraft_pending_favorite') || '{}');
+    } catch {
+      browserIntent = {};
+    }
+    if (!pendingBankId || !pendingQuestionId || pendingQuestionId !== activeQuestionId || browserIntent.bankId !== pendingBankId || browserIntent.questionId !== pendingQuestionId || typeof browserIntent.favorite !== 'boolean') return;
+    favoriteReturnHandledRef.current = true;
+    favoriteMutationVersionRef.current += 1;
+    window.sessionStorage.removeItem('quizcraft_pending_favorite');
+    setUi({ favoriteSubmitting: true });
+    void shadowFavoritesApi.set(pendingBankId, pendingQuestionId, browserIntent.favorite).then(() => {
+      setUi({
+        serverFavoriteIds: browserIntent.favorite
+          ? Array.from(new Set([...ui.serverFavoriteIds, pendingQuestionId]))
+          : ui.serverFavoriteIds.filter((id) => id !== pendingQuestionId),
+        favoriteSubmitting: false,
+      });
+      url.searchParams.delete('favorite_question_id');
+      url.searchParams.delete('favorite_bank_id');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }).catch((error) => {
+      setUi({ favoriteSubmitting: false });
+      if (isQuizcraftAuthenticationError(error)) {
+        redirectToQuizcraftLogin(pendingBankId, pendingQuestionId, browserIntent.favorite!);
+      }
+    });
+  }, [activeBankId, activeQuestionId, ui.serverFavoriteIds]);
 
   useEffect(() => () => {
     if (autoAdvanceTimerRef.current !== null) {
@@ -1405,7 +1468,33 @@ function useQuizController() {
     setUi({ selectedAnswer: value });
   };
 
-  const starred = starredQuestions.includes(activeQuestion.id);
+  const starred = QUIZCRAFT_GO_SHADOW_ENABLED
+    ? ui.serverFavoriteIds.includes(activeQuestion.id)
+    : starredQuestions.includes(activeQuestion.id);
+
+  const handleToggleStar = () => {
+    if (!QUIZCRAFT_GO_SHADOW_ENABLED) {
+      toggleStar(activeQuestion.id);
+      return;
+    }
+    if (!activeBankId || ui.favoriteSubmitting) return;
+    const nextFavorite = !starred;
+    favoriteMutationVersionRef.current += 1;
+    setUi({ favoriteSubmitting: true });
+    void shadowFavoritesApi.set(activeBankId, activeQuestion.id, nextFavorite).then(() => {
+      setUi({
+        favoriteSubmitting: false,
+        serverFavoriteIds: nextFavorite
+          ? Array.from(new Set([...ui.serverFavoriteIds, activeQuestion.id]))
+          : ui.serverFavoriteIds.filter((id) => id !== activeQuestion.id),
+      });
+    }).catch((error) => {
+      setUi({ favoriteSubmitting: false });
+      if (isQuizcraftAuthenticationError(error)) {
+        redirectToQuizcraftLogin(activeBankId, activeQuestion.id, nextFavorite);
+      }
+    });
+  };
 
   return {
     activeBankKey,
@@ -1422,6 +1511,7 @@ function useQuizController() {
     feedbackQuestionIndex,
     feedbackSubmitting,
     feedbackSuggestion,
+    favoriteSubmitting,
     handleCardTouchEnd,
     handleCardTouchMove,
     handleCardTouchStart,
@@ -1450,7 +1540,7 @@ function useQuizController() {
     submissionLocked,
     starred,
     starredQuestions,
-    toggleStar,
+    toggleStar: handleToggleStar,
     trackX,
     visualIndex,
     viewportRef,
@@ -1585,7 +1675,8 @@ function QuizProgressHeader({ controller }: { controller: QuizController }) {
           </div>
           <button
             type="button"
-            onClick={() => controller.toggleStar(controller.activeQuestion.id)}
+            onClick={controller.toggleStar}
+            disabled={controller.favoriteSubmitting}
             className={`p-1.5 rounded-lg transition-colors ${controller.starred ? "text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20" : "text-gray-400 dark:text-slate-500 hover:bg-gray-100 dark:hover:bg-slate-700"}`}
             aria-label={controller.starred ? "取消收藏本题" : "收藏本题"}
           >

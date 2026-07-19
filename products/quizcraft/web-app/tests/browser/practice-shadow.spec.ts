@@ -131,3 +131,98 @@ test('shadow bank failure does not fall back to browser-owned mock banks', async
   await page.getByRole('button', { name: '开始练习' }).click();
   await expect(page).toHaveURL(/\/practice$/);
 });
+
+test('favorites use the generated server client and never merge guest browser state', async ({ page }) => {
+  let favoriteWrites = 0;
+  const favoriteMethods: string[] = [];
+  let authenticated = false;
+  await page.context().addCookies([{ name: 'quizcraft_anonymous', value: 'server-issued-anonymous-session', domain: '127.0.0.1', path: '/', httpOnly: true, secure: false, sameSite: 'Lax' }]);
+  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
+    const request = route.request();
+    if (request.url().endsWith('/api/v1/banks')) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'banks', data: [{ bank_id: bankId, bank_version_id: bankVersionId, bank_key: 'browser-bank', name: '浏览器影子题库', content_sha256: 'a'.repeat(64), question_count: 1, chapters: [{ id: 'ch01', name: '第一章' }] }] }) });
+      return;
+    }
+    if (request.url().endsWith('/api/v1/practice/sessions')) {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ request_id: 'session', data: { session_id: sessionId, bank_id: bankId, bank_version_id: bankVersionId, mode: 'random', excluded_unavailable_count: 0, questions: [{ question_id: questionId, question_version_id: questionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '需要登录收藏的问题', options: ['是', '否'] }] } }) });
+      return;
+    }
+    if (request.url().endsWith(`/api/v1/banks/${bankId}/favorites`)) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'list', data: [] }) });
+      return;
+    }
+    if (request.url().endsWith(`/api/v1/banks/${bankId}/favorites/${questionId}`)) {
+      favoriteWrites += 1;
+      favoriteMethods.push(request.method());
+      if (!authenticated) {
+        await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'auth', error: { code: 'authentication_required', message: 'sign in' } }) });
+        return;
+      }
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'favorite', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'favorite', resource_id: questionId } }) });
+      return;
+    }
+    if (request.url().endsWith(`/api/v1/practice/sessions/${sessionId}/answers`)) {
+      expect((await request.allHeaders()).cookie).toContain('quizcraft_anonymous=server-issued-anonymous-session');
+      expect((await request.allHeaders()).cookie).toContain('quizcraft_session=signed-in');
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'answer', data: { question_id: questionId, question_version_id: questionVersionId, correct: true, replayed: false, expected_answer: 1, analysis: '登录回跳后仍可作答' } }) });
+      return;
+    }
+    await route.abort();
+  });
+  await page.route('http://127.0.0.1:18080/auth/login**', async (route) => {
+    const returnTo = new URL(route.request().url()).searchParams.get('return_to');
+    expect(returnTo).toContain('/quiz?favorite_question_id=');
+    authenticated = true;
+    await route.fulfill({ status: 302, headers: { location: `http://127.0.0.1:4173${returnTo}`, 'set-cookie': 'quizcraft_session=signed-in; Path=/; HttpOnly; SameSite=Lax' } });
+  });
+
+  await page.goto('/practice');
+  await page.getByRole('button', { name: '开始练习' }).click();
+  await page.getByRole('button', { name: '收藏本题' }).click();
+  await expect(page).toHaveURL(/\/quiz$/);
+  await expect(page.getByRole('button', { name: '取消收藏本题' })).toBeVisible();
+  await page.getByRole('button', { name: /B.*否/ }).click();
+  await page.getByRole('button', { name: '提交答案' }).click();
+  await expect(page.getByText('登录回跳后仍可作答')).toBeVisible();
+
+  authenticated = false;
+  await page.getByRole('button', { name: '取消收藏本题' }).click();
+  await expect(page).toHaveURL(/\/quiz$/);
+  await expect.poll(() => favoriteWrites).toBe(4);
+  await expect(page.getByRole('button', { name: '收藏本题' })).toBeVisible();
+  expect(favoriteMethods).toEqual(['PUT', 'PUT', 'DELETE', 'DELETE']);
+  const persistedStars = await page.evaluate(() => JSON.parse(localStorage.getItem('quiz-storage') || '{}')?.state?.starredQuestions || []);
+  expect(persistedStars).toEqual([]);
+});
+
+test('favorites overview starts a bank-scoped favorites practice', async ({ page }) => {
+  const calls: string[] = [];
+  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
+    const request = route.request();
+    calls.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    if (request.url().endsWith('/api/v1/banks')) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'banks', data: [{ bank_id: bankId, bank_version_id: bankVersionId, bank_key: 'browser-bank', name: '浏览器影子题库', content_sha256: 'a'.repeat(64), question_count: 1, chapters: [] }] }) });
+      return;
+    }
+    if (request.url().endsWith('/api/v1/favorites')) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'folders', data: [{ bank_id: bankId, bank_name: '浏览器影子题库', available_count: 1, unavailable_count: 2 }] }) });
+      return;
+    }
+    if (request.url().endsWith(`/api/v1/banks/${bankId}/favorites/practice-sessions`)) {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ request_id: 'favorites-session', data: { session_id: sessionId, bank_id: bankId, bank_version_id: bankVersionId, mode: 'favorites', excluded_unavailable_count: 2, questions: [{ question_id: questionId, question_version_id: questionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '只来自当前题库', options: ['是', '否'] }] } }) });
+      return;
+    }
+    if (request.url().endsWith(`/api/v1/banks/${bankId}/favorites`)) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'list', data: [{ bank_id: bankId, question_id: questionId, available: true, question_version_id: questionVersionId }] }) });
+      return;
+    }
+    await route.abort();
+  });
+  await page.goto('/favorites');
+  await expect(page.getByText('可练习 1 题')).toBeVisible();
+  await expect(page.getByText('另有 2 题暂不可用')).toBeVisible();
+  await page.getByRole('button', { name: '练习这个题库' }).click();
+  await expect(page).toHaveURL(/\/quiz$/);
+  await expect(page.getByRole('heading', { name: '只来自当前题库' })).toBeVisible();
+  expect(calls).toContain(`POST /api/v1/banks/${bankId}/favorites/practice-sessions`);
+});

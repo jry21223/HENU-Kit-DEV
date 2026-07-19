@@ -21,6 +21,7 @@ export class FavoritesService {
             url: '/api/v1/favorites',
             errors: {
                 401: `Missing or invalid actor credentials`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -41,7 +42,9 @@ export class FavoritesService {
                 'bank_id': bankId,
             },
             errors: {
+                400: `Invalid request`,
                 401: `Missing or invalid actor credentials`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -70,8 +73,11 @@ export class FavoritesService {
                 'Idempotency-Key': idempotencyKey,
             },
             errors: {
+                400: `Invalid request`,
                 401: `Missing or invalid actor credentials`,
+                404: `Resource or operation is unknown to this actor`,
                 409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -100,8 +106,10 @@ export class FavoritesService {
                 'Idempotency-Key': idempotencyKey,
             },
             errors: {
+                400: `Invalid request`,
                 401: `Missing or invalid actor credentials`,
                 409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -127,8 +135,11 @@ export class FavoritesService {
                 'Idempotency-Key': idempotencyKey,
             },
             errors: {
+                400: `Invalid request`,
                 401: `Missing or invalid actor credentials`,
+                404: `Resource or operation is unknown to this actor`,
                 409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
