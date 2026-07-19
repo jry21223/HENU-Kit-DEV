@@ -141,22 +141,49 @@ components:
               enum: [INVALID_SERVICE_AUTH, REPLAY_DETECTED, DEPENDENCY_UNAVAILABLE, INVALID_OWNER_SUMMARY]
             message: { type: string, minLength: 1, maxLength: 240 }
         request_id: { type: string, maxLength: 120, pattern: '^req_[A-Za-z0-9_-]+$' }
+    UnauthorizedErrorEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/ErrorEnvelope"
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, const: INVALID_SERVICE_AUTH }
+    ConflictErrorEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/ErrorEnvelope"
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, const: REPLAY_DETECTED }
+    UnavailableErrorEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/ErrorEnvelope"
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, enum: [DEPENDENCY_UNAVAILABLE, INVALID_OWNER_SUMMARY] }
   responses:
     Unauthorized:
       description: Basic or HMAC service authentication failed
       x-error-codes: [INVALID_SERVICE_AUTH]
       headers:
         X-Request-Id: { $ref: "#/components/headers/RequestId" }
-      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/UnauthorizedErrorEnvelope" } } }
     Conflict:
       description: Nonce replay was rejected
       x-error-codes: [REPLAY_DETECTED]
       headers:
         X-Request-Id: { $ref: "#/components/headers/RequestId" }
-      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/ConflictErrorEnvelope" } } }
     Unavailable:
       description: Replay-defense storage is unavailable or the owner produced an invalid summary
       x-error-codes: [DEPENDENCY_UNAVAILABLE, INVALID_OWNER_SUMMARY]
       headers:
         X-Request-Id: { $ref: "#/components/headers/RequestId" }
-      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/UnavailableErrorEnvelope" } } }

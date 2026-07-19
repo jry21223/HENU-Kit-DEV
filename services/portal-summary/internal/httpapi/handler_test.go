@@ -95,6 +95,23 @@ func TestConsoleSummaryAuthenticatesConformsAndRejectsReplay(t *testing.T) {
 		t.Fatalf("health trace = %d/%q/%q", healthResponse.StatusCode, healthBody.RequestID, healthResponse.Header.Get("X-Request-Id"))
 	}
 
+	for _, route := range []struct {
+		method string
+		path   string
+		status int
+	}{{http.MethodGet, "/missing", http.StatusNotFound}, {http.MethodPost, "/api/v1/console-summary", http.StatusMethodNotAllowed}} {
+		routeRequest, _ := http.NewRequest(route.method, server.URL+route.path, nil)
+		routeResponse, _ := server.Client().Do(routeRequest)
+		var routeError struct {
+			RequestID string `json:"request_id"`
+		}
+		_ = json.NewDecoder(routeResponse.Body).Decode(&routeError)
+		routeResponse.Body.Close()
+		if routeResponse.StatusCode != route.status || routeError.RequestID == "" || routeError.RequestID != routeResponse.Header.Get("X-Request-Id") || !strings.HasPrefix(routeResponse.Header.Get("Content-Type"), "application/json") {
+			t.Fatalf("route %s %s = %d/%q/%q", route.method, route.path, routeResponse.StatusCode, routeError.RequestID, routeResponse.Header.Get("X-Request-Id"))
+		}
+	}
+
 	unsigned, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/console-summary", nil)
 	unsigned.Header.Set("X-Request-Id", "req_unsigned")
 	unsignedResponse, _ := server.Client().Do(unsigned)

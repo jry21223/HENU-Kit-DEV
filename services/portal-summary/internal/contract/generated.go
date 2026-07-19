@@ -1,4 +1,4 @@
-// Code generated from portal-summary.yaml and console-gateway.yaml (SHA256 18ff52e4896046febccff2972c32d27e67c610ebe215f81c2475041f2a405bb0); DO NOT EDIT.
+// Code generated from portal-summary.yaml and console-gateway.yaml (SHA256 8726234818488631d1b64615813b8e4c34eed6e710662a0b0fd6de94675cad05); DO NOT EDIT.
 package contract
 
 import (
@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ContractSHA256             = "18ff52e4896046febccff2972c32d27e67c610ebe215f81c2475041f2a405bb0"
+	ContractSHA256             = "8726234818488631d1b64615813b8e4c34eed6e710662a0b0fd6de94675cad05"
 	ErrorDependencyUnavailable = "DEPENDENCY_UNAVAILABLE"
 	ErrorInvalidOwnerSummary   = "INVALID_OWNER_SUMMARY"
 	ErrorInvalidServiceAuth    = "INVALID_SERVICE_AUTH"

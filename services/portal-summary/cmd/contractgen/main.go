@@ -41,6 +41,11 @@ type response struct {
 	Ref         string            `yaml:"$ref"`
 	Headers     map[string]schema `yaml:"headers"`
 	XErrorCodes []string          `yaml:"x-error-codes"`
+	Content     map[string]media  `yaml:"content"`
+}
+
+type media struct {
+	Schema schema `yaml:"schema"`
 }
 
 type operation struct {
@@ -171,10 +176,11 @@ func validateErrorContract(portal document, values limits) map[string]int {
 	expected := map[string]struct {
 		status int
 		codes  []string
+		schema string
 	}{
-		"Unauthorized": {status: 401, codes: []string{"INVALID_SERVICE_AUTH"}},
-		"Conflict":     {status: 409, codes: []string{"REPLAY_DETECTED"}},
-		"Unavailable":  {status: 503, codes: []string{"DEPENDENCY_UNAVAILABLE", "INVALID_OWNER_SUMMARY"}},
+		"Unauthorized": {status: 401, codes: []string{"INVALID_SERVICE_AUTH"}, schema: "UnauthorizedErrorEnvelope"},
+		"Conflict":     {status: 409, codes: []string{"REPLAY_DETECTED"}, schema: "ConflictErrorEnvelope"},
+		"Unavailable":  {status: 503, codes: []string{"DEPENDENCY_UNAVAILABLE", "INVALID_OWNER_SUMMARY"}, schema: "UnavailableErrorEnvelope"},
 	}
 	requestHeader, ok := portal.Components.Headers["RequestId"]
 	if !ok || !requestHeader.Required || requestHeader.Schema.MaxLength != values.requestIDLength || requestHeader.Schema.Pattern != values.requestIDPattern {
@@ -188,8 +194,11 @@ func validateErrorContract(portal document, values limits) map[string]int {
 	codeStatuses := map[string]int{}
 	for name, expectation := range expected {
 		definition, ok := portal.Components.Responses[name]
-		if !ok || definition.Headers["X-Request-Id"].Ref != "#/components/headers/RequestId" || !sameStrings(definition.XErrorCodes, expectation.codes) {
+		if !ok || definition.Headers["X-Request-Id"].Ref != "#/components/headers/RequestId" || !sameStrings(definition.XErrorCodes, expectation.codes) || definition.Content["application/json"].Schema.Ref != "#/components/schemas/"+expectation.schema {
 			fail(fmt.Errorf("response %s must declare its stable error codes and trace header", name))
+		}
+		if !sameStrings(specializedErrorCodes(requiredSchema(portal, expectation.schema)), expectation.codes) {
+			fail(fmt.Errorf("response %s must use a standard OpenAPI schema with status-specific error codes", name))
 		}
 		if operationResponses[fmt.Sprint(expectation.status)].Ref != "#/components/responses/"+name {
 			fail(fmt.Errorf("status %d must reference response %s", expectation.status, name))
@@ -207,6 +216,17 @@ func validateErrorContract(portal document, values limits) map[string]int {
 		fail(errors.New("ErrorEnvelope code enum must equal the response-specific stable codes"))
 	}
 	return codeStatuses
+}
+
+func specializedErrorCodes(value schema) []string {
+	if len(value.AllOf) != 2 || value.AllOf[0].Ref != "#/components/schemas/ErrorEnvelope" {
+		return nil
+	}
+	code := value.AllOf[1].Properties["error"].Properties["code"]
+	if text, ok := code.Const.(string); ok && text != "" {
+		return []string{text}
+	}
+	return code.Enum
 }
 
 func sameStrings(left, right []string) bool {

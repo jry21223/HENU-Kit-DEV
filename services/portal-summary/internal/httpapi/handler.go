@@ -58,6 +58,8 @@ func New(config Config, redisClient *redis.Client, service *summary.Service) (ht
 	router.Get("/healthz", handler.health)
 	router.Get("/readyz", handler.ready)
 	router.Get("/api/v1/console-summary", handler.consoleSummary)
+	router.NotFound(handler.notFound)
+	router.MethodNotAllowed(handler.methodNotAllowed)
 	return router, nil
 }
 
@@ -76,7 +78,7 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 func (h *Handler) consoleSummary(writer http.ResponseWriter, request *http.Request) {
 	requestID := requestID(request)
 	if authErr := h.authenticate(request); authErr != nil {
-		writeError(writer, requestID, authErr.status, authErr.code, authErr.message)
+		writeContractError(writer, requestID, authErr.status, authErr.code, authErr.message)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
@@ -84,10 +86,18 @@ func (h *Handler) consoleSummary(writer http.ResponseWriter, request *http.Reque
 	result.RequestID = requestID
 	envelope := contract.PortalSummaryEnvelope{Data: result, RequestID: requestID}
 	if err := contract.ValidatePortalSummaryEnvelope(envelope); err != nil {
-		writeError(writer, requestID, http.StatusServiceUnavailable, contract.ErrorInvalidOwnerSummary, "Portal summary violates its versioned contract")
+		writeContractError(writer, requestID, http.StatusServiceUnavailable, contract.ErrorInvalidOwnerSummary, "Portal summary violates its versioned contract")
 		return
 	}
 	writeJSON(writer, http.StatusOK, envelope)
+}
+
+func (h *Handler) notFound(writer http.ResponseWriter, request *http.Request) {
+	writeError(writer, requestID(request), http.StatusNotFound, "NOT_FOUND", "route does not exist")
+}
+
+func (h *Handler) methodNotAllowed(writer http.ResponseWriter, request *http.Request) {
+	writeError(writer, requestID(request), http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method is not allowed")
 }
 
 func (h *Handler) requestContext(next http.Handler) http.Handler {
@@ -163,6 +173,13 @@ func abs(value int64) int64 {
 
 func writeError(writer http.ResponseWriter, requestID string, status int, code, message string) {
 	writeJSON(writer, status, map[string]any{"error": map[string]string{"code": code, "message": message}, "request_id": requestID})
+}
+
+func writeContractError(writer http.ResponseWriter, requestID string, status int, code, message string) {
+	if !contract.ValidErrorStatus(status, code) {
+		status, code, message = http.StatusServiceUnavailable, contract.ErrorInvalidOwnerSummary, "Portal error violates its versioned contract"
+	}
+	writeError(writer, requestID, status, code, message)
 }
 
 func writeSuccess(writer http.ResponseWriter, request *http.Request, status int, data any) {
