@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  title: HENUKit Portal Summary API
+  version: 0.1.0
+  description: Read-only, owner-provided Portal runtime summary for Console aggregation. No content or release mutations exist.
+servers:
+  - url: https://portal-summary.internal/api/v1
+security:
+  - serviceBasic: []
+    serviceSignature: []
+paths:
+  /console-summary:
+    get:
+      operationId: getPortalConsoleSummary
+      summary: Read the bounded Portal deployment and probe summary
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Current Portal summary; optional unavailable sources produce a partial summary rather than invented data
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSummaryEnvelope"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+components:
+  securitySchemes:
+    serviceBasic:
+      type: http
+      scheme: basic
+    serviceSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+  parameters:
+    ServiceId:
+      name: X-Service-Id
+      in: header
+      required: true
+      schema: { type: string, maxLength: 80 }
+    KeyId:
+      name: X-Key-Id
+      in: header
+      required: true
+      schema: { type: string, maxLength: 80 }
+    Timestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      schema: { type: string, pattern: '^[0-9]{10}$' }
+    Nonce:
+      name: X-Nonce
+      in: header
+      required: true
+      schema: { type: string, minLength: 32, maxLength: 32 }
+    Signature:
+      name: X-Signature
+      in: header
+      required: true
+      schema: { type: string, minLength: 43, maxLength: 43 }
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: true
+      schema: { type: string, maxLength: 120, pattern: '^req_[A-Za-z0-9_-]+$' }
+  schemas:
+    PortalSummaryEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data: { $ref: "#/components/schemas/PortalSummary" }
+        request_id: { type: string, maxLength: 120, pattern: '^req_[A-Za-z0-9_-]+$' }
+      example:
+        data:
+          id: portal
+          status: partial
+          metrics:
+            - { label: 部署版本, value: "2026.07.19" }
+            - { label: Commit, value: 0123456789ab, hint: 0123456789abcdef0123456789abcdef01234567 }
+            - { label: 部署时间, value: "07-19 00:00", hint: "2026-07-19T00:00:00Z" }
+            - { label: Readiness, value: ready }
+            - { label: 关键探测, value: 2/2, hint: 全部配置探测成功 }
+            - { label: 入口健康, value: 2/2, hint: 全部配置探测成功 }
+            - { label: 反馈摘要, value: 未接入, hint: 未配置 Portal 反馈摘要数据源 }
+            - { label: 当前异常, value: "0", hint: 仅表示本次有界探测，不冒充历史事故记录 }
+          status_message: Portal 摘要部分可用：0 个当前探测异常，反馈状态为未接入
+          as_of: "2026-07-19T00:01:00Z"
+          request_id: req_portal_example
+        request_id: req_portal_example
+    PortalSummary:
+      allOf:
+        - $ref: "./console-gateway.yaml#/components/schemas/ConsoleModuleSummary"
+        - type: object
+          required: [id, status, metrics, status_message, as_of, request_id]
+          properties:
+            id: { type: string, const: portal }
+            status: { type: string, enum: [ok, partial] }
+            metrics:
+              type: array
+              minItems: 8
+              maxItems: 8
+              items: { $ref: "./console-gateway.yaml#/components/schemas/ConsoleModuleMetric" }
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+        request_id: { type: string }
+  responses:
+    BadRequest:
+      description: Request identifier violates the contract
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+    Unauthorized:
+      description: Basic or HMAC service authentication failed
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+    Conflict:
+      description: Nonce replay was rejected
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+    Unavailable:
+      description: Replay-defense storage is unavailable
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }

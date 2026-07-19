@@ -51,3 +51,9 @@ Portal 的具体前端栈在实现 Issue 中确认。优先满足：
 - 不要求 Study Web 或 Quiz Web 改框架。
 
 本目录当前只作为产品与结构占位；未来加入 `package.json` 后会由根 `pnpm-workspace.yaml` 自动纳入，但在 Portal 技术栈 Issue 决策前不安装依赖或参与构建。
+
+## Console 只读状态
+
+`services/portal-summary` 是独立的运维摘要服务，不是 Portal 前端实现。它从受保护的发布流水线接收版本、Commit SHA 和部署时间，并对 readiness、关键页面与子产品入口执行有界只读探测。可选反馈数据源未接入时会明确显示“未接入”，不会生成模拟数据。
+
+该服务没有内容编辑、部署、回滚或版本切换接口；Portal Configuration 仍只通过 Git、PR 与 CI/CD 变更。

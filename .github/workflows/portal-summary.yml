@@ -1,0 +1,72 @@
+name: Portal Summary
+
+on:
+  pull_request:
+    paths:
+      - services/portal-summary/**
+      - packages/api-contracts/openapi/portal-summary.yaml
+      - packages/api-contracts/openapi/console-gateway.yaml
+      - .github/workflows/portal-summary.yml
+  push:
+    branches: [main]
+    paths:
+      - services/portal-summary/**
+      - packages/api-contracts/openapi/portal-summary.yaml
+      - packages/api-contracts/openapi/console-gateway.yaml
+      - .github/workflows/portal-summary.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/portal-summary/go.mod
+          cache-dependency-path: services/portal-summary/go.sum
+      - name: Verify Portal Summary contract
+        run: |
+          set -euo pipefail
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/portal-summary.yaml
+          if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/portal-summary.yaml" 2>/dev/null; then
+            git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/portal-summary.yaml" > /tmp/portal-summary-base.yaml
+            cd services/portal-summary
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/portal-summary-base.yaml ../../packages/api-contracts/openapi/portal-summary.yaml
+          fi
+      - name: Verify read-only Portal owner service
+        working-directory: services/portal-summary
+        env:
+          PORTAL_SUMMARY_TEST_REDIS_ADDR: localhost:6379
+        run: |
+          set -euo pipefail
+          test ! -d db
+          test ! -d migrations
+          ! grep -E 'gorm|database/sql|jackc/pgx' go.mod
+          gofmt -d . | tee /tmp/gofmt.diff
+          test ! -s /tmp/gofmt.diff
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+          go test -race -count=1 ./...
+          go build -o /tmp/portal-summary ./cmd/server
+      - name: Build and scan Portal Summary image
+        run: |
+          docker build -t henukit-portal-summary:${{ github.sha }} services/portal-summary
+          docker run --rm -v "$PWD:/workspace" aquasec/trivy:0.70.0 fs --scanners secret --exit-code 1 /workspace
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.70.0 image --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 henukit-portal-summary:${{ github.sha }}

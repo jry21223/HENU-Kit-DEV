@@ -24,7 +24,15 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify({
         data: {
           modules: [
-            { id: "portal", status: "ok", metrics: [{ label: "部署版本", value: "2026.07.19" }], status_message: "摘要可用", as_of: "2026-07-19T00:00:00Z", request_id: "req_portal_browser" },
+            {
+              id: "portal", status: "ok", status_message: "Portal 部署与只读探测正常", as_of: "2026-07-19T00:00:00Z", request_id: "req_portal_browser",
+              metrics: [
+                { label: "部署版本", value: "2026.07.19" }, { label: "Commit", value: "0123456789ab" },
+                { label: "部署时间", value: "07-19 08:00" }, { label: "Readiness", value: "ready" },
+                { label: "关键探测", value: "2/2" }, { label: "入口健康", value: "2/2" },
+                { label: "反馈摘要", value: "0 待处理" }, { label: "当前异常", value: "0" },
+              ],
+            },
             { id: "platform", status: "partial", metrics: [], status_message: "部分来源可用", as_of: "2026-07-19T00:00:00Z", request_id: "req_platform_browser" },
             { id: "notice", status: "empty", metrics: [], status_message: "当前无待办", as_of: "2026-07-19T00:00:00Z", request_id: "req_notice_browser" },
             { id: "library", status: "stale", metrics: [], status_message: "展示最近成功摘要", as_of: "2026-07-19T00:00:00Z", last_success_at: "2026-07-19T00:00:01Z", request_id: "req_library_browser" },
@@ -52,6 +60,9 @@ test("desktop overview exposes six traced module summaries and degradation state
   await expect(page.getByText("会员", { exact: true })).toHaveCount(0);
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
   await expect(page.getByText("req_quizcraft_browser", { exact: true })).toBeVisible();
+  const portal = page.locator('[data-module-card="portal"]');
+  for (const fact of ["2026.07.19", "0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) await expect(portal.getByText(fact, { exact: true })).toBeVisible();
+  for (const control of ["编辑内容", "重新部署", "回滚版本", "切换版本"]) await expect(page.getByText(control, { exact: true })).toHaveCount(0);
 });
 
 test("390px overview keeps every module and mobile navigation usable", async ({ page }) => {
@@ -63,6 +74,10 @@ test("390px overview keeps every module and mobile navigation usable", async ({ 
   const navigation = page.getByRole("navigation", { name: "移动端产品模块" });
   await expect(navigation.getByRole("link")).toHaveCount(6);
   for (const name of moduleNames) await expect(navigation.getByRole("link", { name })).toBeVisible();
+
+  const portal = page.locator('[data-module-card="portal"]');
+  await expect(portal.getByText("Readiness", { exact: true })).toBeVisible();
+  await expect(portal.getByText("入口健康", { exact: true })).toBeVisible();
 
   const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
