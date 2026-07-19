@@ -10,7 +10,7 @@ const (
 	SessionRoute  = "/api/v1/session"
 	OverviewRoute = "/api/v1/overview"
 	LogoutRoute   = "/api/v1/session/logout"
-	SourceSHA256  = "61b9cb7efd9827f5a638d5b027f5696417dbca5223a0eebc3fd21507acdaeb74"
+	SourceSHA256  = "4aff2ba2848fbae8ff6f10cfec575e097f48ba5d3451d98db18e32f4c00117c5"
 )
 
 type ConsoleAccessContext struct {

@@ -2,6 +2,11 @@ package overview
 
 import (
 	"context"
+	"crypto/hmac"
+	cryptorand "crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +40,10 @@ type Aggregator struct {
 	cacheTTL        time.Duration
 	retryDelay      func(int) time.Duration
 	now             func() time.Time
+	credentials     Credentials
 }
+
+type Credentials struct{ ClientID, ClientSecret, KeyID string }
 
 type Options struct {
 	ModuleTimeout, OverviewTimeout, CacheTTL time.Duration
@@ -48,8 +56,8 @@ type cacheEntry struct {
 	LastSuccessAt time.Time                     `json:"last_success_at"`
 }
 
-func New(endpoints map[string]string, client *http.Client, redisClient *redis.Client, options Options) (*Aggregator, error) {
-	if client == nil || redisClient == nil {
+func New(endpoints map[string]string, client *http.Client, redisClient *redis.Client, credentials Credentials, options Options) (*Aggregator, error) {
+	if client == nil || redisClient == nil || credentials.ClientID == "" || len(credentials.ClientSecret) < 16 || credentials.KeyID == "" {
 		return nil, errors.New("overview dependencies are required")
 	}
 	validated := make(map[string]string, len(moduleIDs))
@@ -74,12 +82,12 @@ func New(endpoints map[string]string, client *http.Client, redisClient *redis.Cl
 		options.CacheTTL = DefaultCacheTTL
 	}
 	if options.RetryDelay == nil {
-		options.RetryDelay = func(attempt int) time.Duration { return time.Duration(25+attempt*17) * time.Millisecond }
+		options.RetryDelay = func(attempt int) time.Duration { return jitteredRetryDelay(cryptorand.Reader, attempt) }
 	}
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	return &Aggregator{endpoints: validated, httpClient: client, redis: redisClient, moduleTimeout: options.ModuleTimeout, overviewTimeout: options.OverviewTimeout, cacheTTL: options.CacheTTL, retryDelay: options.RetryDelay, now: options.Now}, nil
+	return &Aggregator{endpoints: validated, httpClient: client, redis: redisClient, moduleTimeout: options.ModuleTimeout, overviewTimeout: options.OverviewTimeout, cacheTTL: options.CacheTTL, retryDelay: options.RetryDelay, now: options.Now, credentials: credentials}, nil
 }
 
 func (a *Aggregator) Fetch(ctx context.Context, requestID string) contract.ConsoleOverview {
@@ -110,7 +118,6 @@ func (a *Aggregator) fetchModule(parent context.Context, id, requestID string) c
 	ctx, cancel := context.WithTimeout(parent, a.moduleTimeout)
 	defer cancel()
 	endpoint := a.endpoints[id]
-	var lastErr error
 	if endpoint != "" {
 		for attempt := 0; attempt < 2; attempt++ {
 			summary, retry, err := a.read(ctx, id, endpoint, requestID)
@@ -118,13 +125,10 @@ func (a *Aggregator) fetchModule(parent context.Context, id, requestID string) c
 				a.store(ctx, id, summary)
 				return summary
 			}
-			lastErr = err
 			if !retry || attempt == 1 || !waitFor(ctx, a.retryDelay(attempt)) {
 				break
 			}
 		}
-	} else {
-		lastErr = errors.New("module summary endpoint is not configured")
 	}
 	if cached, ok := a.cached(parent, id); ok {
 		cached.Summary.Status = "stale"
@@ -133,7 +137,6 @@ func (a *Aggregator) fetchModule(parent context.Context, id, requestID string) c
 		cached.Summary.StatusMessage = "当前摘要不可用，展示五分钟内最近一次成功结果"
 		return cached.Summary
 	}
-	_ = lastErr
 	return contract.ConsoleModuleSummary{ID: id, Status: "unavailable", Metrics: []contract.ConsoleModuleMetric{}, StatusMessage: "摘要暂不可用", RequestID: requestID}
 }
 
@@ -144,6 +147,9 @@ func (a *Aggregator) read(ctx context.Context, id, endpoint, requestID string) (
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("X-Request-Id", requestID)
+	if err := a.sign(request); err != nil {
+		return contract.ConsoleModuleSummary{}, false, err
+	}
 	response, err := a.httpClient.Do(request)
 	if err != nil {
 		return contract.ConsoleModuleSummary{}, !errors.Is(err, context.Canceled), err
@@ -159,7 +165,7 @@ func (a *Aggregator) read(ctx context.Context, id, endpoint, requestID string) (
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 32<<10))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&envelope); err != nil || envelope.Data.ID != id || !liveStatus(envelope.Data.Status) || !validSummary(envelope.Data) || !strings.HasPrefix(envelope.RequestID, "req_") {
+	if err := decoder.Decode(&envelope); err != nil || envelope.Data.ID != id || !liveStatus(envelope.Data.Status) || !validSummary(envelope.Data) || envelope.RequestID != requestID {
 		return contract.ConsoleModuleSummary{}, false, errors.New("module summary violates contract")
 	}
 	envelope.Data.RequestID = envelope.RequestID
@@ -174,15 +180,42 @@ func (a *Aggregator) store(ctx context.Context, id string, summary contract.Cons
 }
 
 func (a *Aggregator) cached(ctx context.Context, id string) (cacheEntry, bool) {
+	ttl, err := a.redis.TTL(ctx, "console:overview:"+id).Result()
+	if err != nil || ttl <= 0 || ttl > a.cacheTTL {
+		return cacheEntry{}, false
+	}
 	encoded, err := a.redis.Get(ctx, "console:overview:"+id).Bytes()
 	if err != nil {
 		return cacheEntry{}, false
 	}
 	var entry cacheEntry
-	if json.Unmarshal(encoded, &entry) != nil || entry.Summary.ID != id || entry.LastSuccessAt.IsZero() {
+	if json.Unmarshal(encoded, &entry) != nil {
+		return cacheEntry{}, false
+	}
+	age := a.now().Sub(entry.LastSuccessAt)
+	if entry.Summary.ID != id || !liveStatus(entry.Summary.Status) || !validSummary(entry.Summary) || entry.LastSuccessAt.IsZero() || age < 0 || age > a.cacheTTL {
 		return cacheEntry{}, false
 	}
 	return entry, true
+}
+
+func (a *Aggregator) sign(request *http.Request) error {
+	nonce := make([]byte, 24)
+	if _, err := cryptorand.Read(nonce); err != nil {
+		return err
+	}
+	timestamp := fmt.Sprintf("%d", a.now().Unix())
+	digest := sha256.Sum256(nil)
+	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, base64.RawURLEncoding.EncodeToString(nonce), hex.EncodeToString(digest[:])}, "\n")
+	mac := hmac.New(sha256.New, []byte(a.credentials.ClientSecret))
+	_, _ = mac.Write([]byte(canonical))
+	request.SetBasicAuth(a.credentials.ClientID, a.credentials.ClientSecret)
+	request.Header.Set("X-Service-Id", a.credentials.ClientID)
+	request.Header.Set("X-Key-Id", a.credentials.KeyID)
+	request.Header.Set("X-Timestamp", timestamp)
+	request.Header.Set("X-Nonce", base64.RawURLEncoding.EncodeToString(nonce))
+	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
+	return nil
 }
 
 func liveStatus(status string) bool {
@@ -210,4 +243,12 @@ func waitFor(ctx context.Context, delay time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+func jitteredRetryDelay(source io.Reader, attempt int) time.Duration {
+	var random [1]byte
+	if _, err := io.ReadFull(source, random[:]); err != nil {
+		random[0] = byte(time.Now().UnixNano())
+	}
+	return time.Duration(25+int(random[0])%51+attempt*17) * time.Millisecond
 }

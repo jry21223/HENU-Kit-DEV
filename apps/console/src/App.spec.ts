@@ -59,6 +59,17 @@ describe("Console Overview", () => {
     expect(wrapper.get("a[href^='/api/v1/auth/login']").attributes("href")).toContain(encodeURIComponent("/operations?tab=inbox"));
   });
 
+  it("drops the verified UI when the overview recheck observes revocation", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(String(input).endsWith("/overview") ? new Response("", { status: 401 }) : new Response(JSON.stringify(authenticated), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain("权限已验证");
+    expect(wrapper.get("a[href^='/api/v1/auth/login']").text()).toContain("登录 Console");
+    expect(wrapper.findAll("[data-state='denied']")).toHaveLength(6);
+  });
+
   it("exposes a loading state without inventing metrics", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
     window.history.replaceState({}, "", "/?scenario=loading");

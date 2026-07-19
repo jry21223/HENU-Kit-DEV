@@ -267,6 +267,25 @@ components:
           maxItems: 6
           items:
             $ref: "#/components/schemas/ConsoleModuleSummary"
+          allOf:
+            - contains: { type: object, required: [id], properties: { id: { const: portal } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: platform } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: notice } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: library } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: quizcraft } } }
+              minContains: 1
+              maxContains: 1
+            - contains: { type: object, required: [id], properties: { id: { const: food } } }
+              minContains: 1
+              maxContains: 1
         generated_at:
           type: string
           format: date-time
@@ -285,11 +304,27 @@ components:
           - { id: food, status: ok, metrics: [], status_message: 摘要可用, as_of: "2026-07-19T01:00:00Z", request_id: req_food_example }
         generated_at: "2026-07-19T01:00:01Z"
       x-invalid-example:
-        modules: []
-        generated_at: not-a-date
+        modules:
+          - { id: portal, status: stale, metrics: [], status_message: 缺少 stale 时间戳, request_id: req_duplicate_1 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_2 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_3 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_4 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_5 }
+          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_6 }
+        generated_at: "2026-07-19T01:00:01Z"
     ConsoleModuleSummary:
       type: object
       additionalProperties: false
+      anyOf:
+        - required: [as_of, last_success_at]
+          properties:
+            as_of: {}
+            last_success_at: {}
+        - required: [status]
+          properties:
+            status:
+              type: string
+              enum: [ok, empty, partial, unavailable]
       required: [id, status, metrics, status_message, request_id]
       properties:
         id:

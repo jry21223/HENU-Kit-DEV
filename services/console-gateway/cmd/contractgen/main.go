@@ -9,6 +9,7 @@ import (
 	"go/format"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -33,6 +34,13 @@ type schema struct {
 	AdditionalProperties *bool             `yaml:"additionalProperties"`
 	Example              any               `yaml:"example"`
 	InvalidExample       any               `yaml:"x-invalid-example"`
+	AllOf                []schema          `yaml:"allOf"`
+	AnyOf                []schema          `yaml:"anyOf"`
+	If                   *schema           `yaml:"if"`
+	Then                 *schema           `yaml:"then"`
+	Contains             *schema           `yaml:"contains"`
+	MinContains          int               `yaml:"minContains"`
+	MaxContains          int               `yaml:"maxContains"`
 }
 
 type document struct {
@@ -88,6 +96,17 @@ func main() {
 	}
 	if err := validateSchema(overviewSchema, overviewSchema.InvalidExample, spec.Components.Schemas); err == nil {
 		fail(errors.New("ConsoleOverview x-invalid-example unexpectedly satisfies the schema"))
+	}
+	moduleSummarySchema, ok := spec.Components.Schemas["ConsoleModuleSummary"]
+	if !ok {
+		fail(errors.New("ConsoleModuleSummary is missing"))
+	}
+	invalidStaleSummary := map[string]any{
+		"id": "library", "status": "stale", "metrics": []any{},
+		"status_message": "missing stale timestamps", "request_id": "req_invalid_stale",
+	}
+	if err := validateSchema(moduleSummarySchema, invalidStaleSummary, spec.Components.Schemas); err == nil {
+		fail(errors.New("ConsoleModuleSummary stale value without timestamps unexpectedly satisfies the schema"))
 	}
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
@@ -219,12 +238,22 @@ export async function fetchConsoleSession(): Promise<ConsoleSessionResult> {
   }
 }
 
-export async function fetchConsoleOverview(): Promise<ConsoleOverview> {
-  const response = await fetch("{{OVERVIEW_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error("Console overview failed");
-  const envelope: unknown = await response.json();
-  if (!isSuccessEnvelope(envelope) || !isConsoleOverview(envelope.data)) throw new Error("Console overview contract mismatch");
-  return envelope.data;
+export type ConsoleOverviewResult =
+  | { state: "authenticated"; overview: ConsoleOverview }
+  | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchConsoleOverview(): Promise<ConsoleOverviewResult> {
+  try {
+    const response = await fetch("{{OVERVIEW_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleOverview(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", overview: envelope.data };
+  } catch {
+    return { state: "unavailable" };
+  }
 }
 
 export async function logoutConsoleSession(): Promise<void> {
@@ -299,10 +328,41 @@ func tsType(value schema) string {
 }
 
 func tsCheck(expression string, value schema) string {
+	checks := []string{tsCheckBase(expression, value)}
+	for _, item := range value.AllOf {
+		checks = append(checks, tsCheck(expression, item))
+	}
+	if len(value.AnyOf) > 0 {
+		alternatives := make([]string, 0, len(value.AnyOf))
+		for _, item := range value.AnyOf {
+			alternatives = append(alternatives, "("+tsCheck(expression, item)+")")
+		}
+		checks = append(checks, "("+strings.Join(alternatives, " || ")+")")
+	}
+	if value.If != nil && value.Then != nil {
+		checks = append(checks, "(!("+tsCheck(expression, *value.If)+") || "+tsCheck(expression, *value.Then)+")")
+	}
+	if value.Contains != nil {
+		count := expression + ".filter((item) => " + tsCheck("item", *value.Contains) + ").length"
+		if value.MinContains > 0 {
+			checks = append(checks, fmt.Sprintf("%s >= %d", count, value.MinContains))
+		}
+		if value.MaxContains > 0 {
+			checks = append(checks, fmt.Sprintf("%s <= %d", count, value.MaxContains))
+		}
+	}
+	return strings.Join(checks, " && ")
+}
+
+func tsCheckBase(expression string, value schema) string {
 	if value.Ref != "" {
 		return "is" + refName(value.Ref) + "(" + expression + ")"
 	}
-	switch value.Type {
+	if value.Const != nil {
+		encoded, _ := json.Marshal(value.Const)
+		return expression + " === " + string(encoded)
+	}
+	switch schemaType(value) {
 	case "string":
 		if len(value.Enum) > 0 {
 			encoded, _ := json.Marshal(value.Enum)
@@ -361,6 +421,53 @@ func tsCheck(expression string, value schema) string {
 }
 
 func validateSchema(value schema, candidate any, schemas map[string]schema) error {
+	if err := validateSchemaBase(value, candidate, schemas); err != nil {
+		return err
+	}
+	for _, item := range value.AllOf {
+		if err := validateSchema(item, candidate, schemas); err != nil {
+			return err
+		}
+	}
+	if len(value.AnyOf) > 0 {
+		matched := false
+		for _, item := range value.AnyOf {
+			if validateSchema(item, candidate, schemas) == nil {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return errors.New("value does not satisfy anyOf")
+		}
+	}
+	if value.If != nil && value.Then != nil && validateSchema(*value.If, candidate, schemas) == nil {
+		if err := validateSchema(*value.Then, candidate, schemas); err != nil {
+			return err
+		}
+	}
+	if value.Contains != nil {
+		items, ok := candidate.([]any)
+		if !ok {
+			return errors.New("contains requires array")
+		}
+		count := 0
+		for _, item := range items {
+			if validateSchema(*value.Contains, item, schemas) == nil {
+				count++
+			}
+		}
+		if value.MinContains > 0 && count < value.MinContains {
+			return fmt.Errorf("contains matched %d, want at least %d", count, value.MinContains)
+		}
+		if value.MaxContains > 0 && count > value.MaxContains {
+			return fmt.Errorf("contains matched %d, want at most %d", count, value.MaxContains)
+		}
+	}
+	return nil
+}
+
+func validateSchemaBase(value schema, candidate any, schemas map[string]schema) error {
 	if value.Ref != "" {
 		referenced, ok := schemas[refName(value.Ref)]
 		if !ok {
@@ -368,7 +475,10 @@ func validateSchema(value schema, candidate any, schemas map[string]schema) erro
 		}
 		return validateSchema(referenced, candidate, schemas)
 	}
-	switch value.Type {
+	if value.Const != nil && !reflect.DeepEqual(value.Const, candidate) {
+		return fmt.Errorf("expected constant %v", value.Const)
+	}
+	switch schemaType(value) {
 	case "string":
 		text, ok := candidate.(string)
 		if !ok {
@@ -437,6 +547,19 @@ func validateSchema(value schema, candidate any, schemas map[string]schema) erro
 		}
 	}
 	return nil
+}
+
+func schemaType(value schema) string {
+	if value.Type != "" {
+		return value.Type
+	}
+	if len(value.Properties) > 0 || len(value.Required) > 0 || value.AdditionalProperties != nil {
+		return "object"
+	}
+	if value.Items != nil || value.Contains != nil || value.MinItems > 0 || value.MaxItems > 0 {
+		return "array"
+	}
+	return ""
 }
 
 func sortedProperties(properties map[string]schema) []string {

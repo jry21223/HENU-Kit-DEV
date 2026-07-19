@@ -34,10 +34,15 @@ async function refreshSession() {
   consoleOverview.value = undefined;
   if (result.state === "authenticated") {
     overviewState.value = "loading";
-    try {
-      consoleOverview.value = await fetchConsoleOverview();
+    const overviewResult = await fetchConsoleOverview();
+    if (overviewResult.state === "authenticated") {
+      consoleOverview.value = overviewResult.overview;
       overviewState.value = "ready";
-    } catch {
+    } else if (overviewResult.state === "signed_out" || overviewResult.state === "denied") {
+      authState.value = overviewResult.state;
+      consoleSession.value = undefined;
+      overviewState.value = "unavailable";
+    } else {
       overviewState.value = "unavailable";
     }
   }
@@ -106,7 +111,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         </a>
       </nav>
 
-      <div class="mt-auto p-4 text-sm leading-6 text-white/85">非河南大学官方项目<br />Console V1 · Mock data</div>
+      <div class="mt-auto p-4 text-sm leading-6 text-white/85">非河南大学官方项目<br />Console V1 · Bounded summaries</div>
     </aside>
 
     <div class="console-main">
@@ -145,7 +150,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
           <span class="sr-only">搜索模块</span>
           <input type="search" placeholder="搜索模块或状态" disabled aria-describedby="search-note" />
         </label>
-        <span id="search-note" class="sr-only">Mock 阶段暂不提供搜索</span>
+        <span id="search-note" class="sr-only">当前 Overview 暂不提供搜索</span>
 
         <div class="ml-auto flex items-center gap-3">
           <StatusBadge v-if="authState === 'loading'" status="loading">正在验证 Session</StatusBadge>
@@ -165,7 +170,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
             <p class="eyebrow">Operations overview</p>
             <h1 id="overview-heading" class="mt-2 text-2xl font-bold tracking-[-0.03em] sm:text-3xl">产品运行概览</h1>
             <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">
-              六个产品模块保持各自的数据所有权。当前模块指标仍是展示夹具，不连接生产产品数据。
+              六个产品模块保持各自的数据所有权；Gateway 仅聚合各 Owner 提供的有界摘要，生产操作仍由后续纵向切片接入。
             </p>
           </div>
           <div class="access-context" aria-label="服务端验证的访问上下文">

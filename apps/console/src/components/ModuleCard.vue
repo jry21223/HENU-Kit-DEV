@@ -92,9 +92,9 @@ const statusLabels: Record<ModuleStatus, string> = {
         <span v-if="summary.status !== 'empty'">{{ summary.statusMessage }}</span>
         <span v-else>正常空状态</span>
         <span class="flex flex-col items-end gap-1 text-right">
+          <span v-if="summary.asOf">截至 {{ summary.asOf }}</span>
           <span v-if="summary.status === 'stale'">最近成功 {{ summary.lastSuccessAt }}</span>
           <span v-if="summary.requestId" class="font-mono">{{ summary.requestId }}</span>
-          <span v-else-if="summary.asOf">截至 {{ summary.asOf }}</span>
         </span>
       </footer>
     </template>

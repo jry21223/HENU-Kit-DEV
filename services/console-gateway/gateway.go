@@ -34,7 +34,7 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	aggregator, err := overview.New(config.OverviewEndpoints, config.HTTPClient, config.Redis, overview.Options{})
+	aggregator, err := overview.New(config.OverviewEndpoints, config.HTTPClient, config.Redis, overview.Credentials{ClientID: config.ClientID, ClientSecret: config.ClientSecret, KeyID: config.KeyID}, overview.Options{})
 	if err != nil {
 		return nil, err
 	}
