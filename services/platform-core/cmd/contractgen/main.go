@@ -89,7 +89,12 @@ func main() {
 	requestVerificationPath, requestVerification := findOperation(spec.Paths, "requestVerificationCode")
 	verifyVerificationPath, verifyVerification := findOperation(spec.Paths, "verifyVerificationCode")
 	recordDeliveryPath, recordDelivery := findOperation(spec.Paths, "recordMailDelivery")
-	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil {
+	listInboxPath, listInbox := findOperation(spec.Paths, "listOperationsInboxItems")
+	getInboxPath, getInbox := findOperation(spec.Paths, "getOperationsInboxItem")
+	createInboxPath, createInbox := findOperation(spec.Paths, "createOperationsInboxItem")
+	updateInboxPath, updateInbox := findOperation(spec.Paths, "updateOperationsInboxItem")
+	operationStatusPath, operationStatus := findOperation(spec.Paths, "getOperationsInboxOperationStatus")
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
@@ -97,6 +102,11 @@ func main() {
 	validateIdempotentPublicWrite(requestVerification, spec.Components.Parameters, "verification-code request")
 	validateIdempotentPublicWrite(verifyVerification, spec.Components.Parameters, "verification-code verification")
 	validateSignedDeliveryOperation(recordDelivery, spec.Components.Parameters, spec.Components.SecuritySchemes)
+	validateInboxOperation(listInbox, spec.Components.Parameters, false, false)
+	validateInboxOperation(getInbox, spec.Components.Parameters, false, false)
+	validateInboxOperation(createInbox, spec.Components.Parameters, true, true)
+	validateInboxOperation(updateInbox, spec.Components.Parameters, true, true)
+	validateInboxOperation(operationStatus, spec.Components.Parameters, true, false)
 	requestSchema := token.RequestBody.Content["application/json"].Schema
 	if requestSchema == nil {
 		fail(fmt.Errorf("token request application/json schema is missing"))
@@ -124,6 +134,13 @@ func main() {
 	if requestVerificationRequest == nil || requestVerificationResponse == nil || verifyVerificationRequest == nil || verifyVerificationResponse == nil || recordDeliveryRequest == nil || recordDeliveryResponse == nil {
 		fail(fmt.Errorf("verification-code schemas are missing"))
 	}
+	inboxItem := spec.Components.Schemas["OperationsInboxItem"]
+	createInboxRequest := resolveSchema(createInbox.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
+	updateInboxRequest := resolveSchema(updateInbox.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
+	operationStatusResponse := resolveSchema(responseDataSchema(operationStatus.Responses["200"].Content["application/json"].Schema), spec.Components.Schemas)
+	if inboxItem == nil || createInboxRequest == nil || updateInboxRequest == nil || operationStatusResponse == nil {
+		fail(fmt.Errorf("operations inbox schemas are missing"))
+	}
 	successEnvelope := spec.Components.Schemas["SuccessEnvelope"]
 	errorObject := spec.Components.Schemas["ErrorObject"]
 	errorEnvelope := spec.Components.Schemas["ErrorEnvelope"]
@@ -149,10 +166,15 @@ const (
 	RequestVerificationCodeRoute = %q
 	VerifyVerificationCodeRoute = %q
 	RecordMailDeliveryRoute = %q
+	ListOperationsInboxRoute = %q
+	GetOperationsInboxRoute = %q
+	CreateOperationsInboxRoute = %q
+	UpdateOperationsInboxRoute = %q
+	OperationsInboxOperationStatusRoute = %q
 	SourceSHA256 = %q
 )
 
-%s
+const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 
 %s
 
@@ -185,7 +207,18 @@ const (
 %s
 
 %s
-`, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath, fmt.Sprintf("%x", digest),
+
+%s
+
+%s
+
+%s
+
+%s
+
+%s
+`, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath,
+		listInboxPath, getInboxPath, createInboxPath, updateInboxPath, operationStatusPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),
@@ -203,6 +236,10 @@ const (
 		renderStruct("VerificationCodeVerified", verifyVerificationResponse),
 		renderStruct("RecordMailDeliveryRequest", recordDeliveryRequest),
 		renderStruct("MailDeliveryAccepted", recordDeliveryResponse),
+		renderStruct("OperationsInboxItem", inboxItem),
+		renderStruct("CreateOperationsInboxItemRequest", createInboxRequest),
+		renderStruct("UpdateOperationsInboxItemRequest", updateInboxRequest),
+		renderStruct("OperationsInboxOperationStatus", operationStatusResponse),
 	)
 	formatted, err := format.Source([]byte(generated))
 	if err != nil {
@@ -385,6 +422,43 @@ func validateSignedDeliveryOperation(operation *operation, parameters map[string
 		}
 	}
 	if !operation.RequestBody.Required {
+		fail(fmt.Errorf("%s request body must be required", operation.OperationID))
+	}
+}
+
+func validateInboxOperation(operation *operation, parameters map[string]parameter, requireIdempotency, requireBody bool) {
+	validSecurity := false
+	for _, requirement := range operation.Security {
+		_, basic := requirement["clientSecret"]
+		_, hmac := requirement["serviceHmac"]
+		validSecurity = validSecurity || basic && hmac
+	}
+	if !validSecurity {
+		fail(fmt.Errorf("%s must require clientSecret and serviceHmac together", operation.OperationID))
+	}
+	required := map[string]bool{
+		"#/components/parameters/ServiceId":            false,
+		"#/components/parameters/KeyId":                false,
+		"#/components/parameters/Timestamp":            false,
+		"#/components/parameters/Nonce":                false,
+		"#/components/parameters/SessionExchangeToken": false,
+	}
+	if requireIdempotency {
+		required["#/components/parameters/RequiredIdempotencyKey"] = false
+	}
+	for _, candidate := range operation.Parameters {
+		if _, ok := required[candidate.Ref]; ok {
+			required[candidate.Ref] = true
+		}
+	}
+	for reference, present := range required {
+		name := strings.TrimPrefix(reference, "#/components/parameters/")
+		definition, ok := parameters[name]
+		if !present || !ok || definition.In != "header" || !definition.Required {
+			fail(fmt.Errorf("%s is missing required header %s", operation.OperationID, reference))
+		}
+	}
+	if requireBody && !operation.RequestBody.Required {
 		fail(fmt.Errorf("%s request body must be required", operation.OperationID))
 	}
 }

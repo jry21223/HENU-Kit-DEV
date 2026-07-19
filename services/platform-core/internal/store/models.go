@@ -128,6 +128,47 @@ type OauthExchangeIdempotency struct {
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
+type OperationsInboxAuditEvent struct {
+	ID           pgtype.UUID        `json:"id"`
+	ItemID       pgtype.UUID        `json:"item_id"`
+	ActorUserID  pgtype.UUID        `json:"actor_user_id"`
+	RequestID    string             `json:"request_id"`
+	Action       string             `json:"action"`
+	FromVersion  pgtype.Int8        `json:"from_version"`
+	ToVersion    int64              `json:"to_version"`
+	ItemSnapshot []byte             `json:"item_snapshot"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type OperationsInboxIdempotency struct {
+	ServiceID       string             `json:"service_id"`
+	ActorUserID     pgtype.UUID        `json:"actor_user_id"`
+	Operation       string             `json:"operation"`
+	IdempotencyKey  string             `json:"idempotency_key"`
+	RequestHash     []byte             `json:"request_hash"`
+	ItemID          pgtype.UUID        `json:"item_id"`
+	ResponseVersion int64              `json:"response_version"`
+	ResponsePayload []byte             `json:"response_payload"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type OperationsInboxItem struct {
+	ID                 pgtype.UUID        `json:"id"`
+	SourceProductCode  string             `json:"source_product_code"`
+	SourceResourceType string             `json:"source_resource_type"`
+	SourceResourceID   string             `json:"source_resource_id"`
+	SourceResourceUrl  pgtype.Text        `json:"source_resource_url"`
+	OwnerUserID        pgtype.UUID        `json:"owner_user_id"`
+	Priority           string             `json:"priority"`
+	SlaDueAt           pgtype.Timestamptz `json:"sla_due_at"`
+	Status             string             `json:"status"`
+	Version            int64              `json:"version"`
+	CreatedBy          pgtype.UUID        `json:"created_by"`
+	UpdatedBy          pgtype.UUID        `json:"updated_by"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
 type PermissionCode struct {
 	Code        string             `json:"code"`
 	Description string             `json:"description"`

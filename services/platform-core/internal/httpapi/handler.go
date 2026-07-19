@@ -26,6 +26,7 @@ import (
 
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/identity"
+	"henukit.dev/platform-core/internal/operationsinbox"
 	"henukit.dev/platform-core/internal/store"
 	"henukit.dev/platform-core/internal/verification"
 )
@@ -33,6 +34,7 @@ import (
 type Handler struct {
 	flow           *identity.Service
 	verification   *verification.Service
+	inbox          *operationsinbox.Service
 	queries        *store.Queries
 	database       *pgxpool.Pool
 	redis          *redis.Client
@@ -43,8 +45,8 @@ type Handler struct {
 	trustedProxies []*net.IPNet
 }
 
-func New(flow *identity.Service, verificationFlow *verification.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
-	handler := &Handler{flow: flow, verification: verificationFlow, queries: queries, database: database, redis: redisClient, cookieName: cookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
+func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
+	handler := &Handler{flow: flow, verification: verificationFlow, inbox: inbox, queries: queries, database: database, redis: redisClient, cookieName: cookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -55,7 +57,232 @@ func New(flow *identity.Service, verificationFlow *verification.Service, queries
 	router.Post(contract.RequestVerificationCodeRoute, handler.requestVerificationCode)
 	router.Post(contract.VerifyVerificationCodeRoute, handler.verifyVerificationCode)
 	router.Post(contract.RecordMailDeliveryRoute, handler.recordMailDelivery)
+	router.Get(contract.ListOperationsInboxRoute, handler.listOperationsInboxItems)
+	router.Get(contract.GetOperationsInboxRoute, handler.getOperationsInboxItem)
+	router.Post(contract.CreateOperationsInboxRoute, handler.createOperationsInboxItem)
+	router.Post(contract.UpdateOperationsInboxRoute, handler.updateOperationsInboxItem)
+	router.Get(contract.OperationsInboxOperationStatusRoute, handler.getOperationsInboxOperationStatus)
 	return router
+}
+
+func (h *Handler) getOperationsInboxItem(writer http.ResponseWriter, request *http.Request) {
+	itemID := chi.URLParam(request, "item_id")
+	productCode := request.URL.Query().Get("source_product_code")
+	resourceType := request.URL.Query().Get("source_resource_type")
+	resourceID := request.URL.Query().Get("source_resource_id")
+	decision, err := h.authorizeInbox(request, nil, "platform.operations_inbox.read", "resource", productCode, resourceType, resourceID)
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	item, err := h.inbox.Get(request.Context(), itemID)
+	if err != nil {
+		h.writeInboxError(writer, request, err)
+		return
+	}
+	if item.SourceProductCode != productCode || item.SourceResourceType != resourceType || item.SourceResourceID != resourceID {
+		h.writeInboxError(writer, request, operationsinbox.ErrNotFound)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, inboxContractItem(item))
+}
+
+func (h *Handler) getOperationsInboxOperationStatus(writer http.ResponseWriter, request *http.Request) {
+	operation := chi.URLParam(request, "operation")
+	productCode := request.URL.Query().Get("source_product_code")
+	resourceType := request.URL.Query().Get("source_resource_type")
+	resourceID := request.URL.Query().Get("source_resource_id")
+	decision, err := h.authorizeInbox(request, nil, "platform.operations_inbox.write", "resource", productCode, resourceType, resourceID)
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	item, found, err := h.inbox.OperationStatus(request.Context(), request.Header.Get(contract.ServiceIDHeader), decision.ActorUserID, operation, request.Header.Get(contract.IdempotencyKeyHeader))
+	if err != nil {
+		h.writeInboxError(writer, request, err)
+		return
+	}
+	if found && (item.SourceProductCode != productCode || item.SourceResourceType != resourceType || item.SourceResourceID != resourceID) {
+		found = false
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	status := contract.OperationsInboxOperationStatus{Status: "unknown"}
+	if found {
+		contractItem := inboxContractItem(item)
+		status.Status, status.Item = "succeeded", &contractItem
+	}
+	writeSuccess(writer, request, http.StatusOK, status)
+}
+
+func (h *Handler) listOperationsInboxItems(writer http.ResponseWriter, request *http.Request) {
+	productCode, status := request.URL.Query().Get("product_code"), request.URL.Query().Get("status")
+	page, pageSize := 1, 20
+	var err error
+	if rawPage := request.URL.Query().Get("page"); rawPage != "" {
+		page, err = strconv.Atoi(rawPage)
+		if err != nil {
+			h.writeInboxError(writer, request, operationsinbox.ErrInvalid)
+			return
+		}
+	}
+	if rawPageSize := request.URL.Query().Get("page_size"); rawPageSize != "" {
+		pageSize, err = strconv.Atoi(rawPageSize)
+		if err != nil {
+			h.writeInboxError(writer, request, operationsinbox.ErrInvalid)
+			return
+		}
+	}
+	decision, err := h.authorizeInbox(request, nil, "platform.operations_inbox.read", "product", productCode, "", "")
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	items, hasMore, err := h.inbox.List(request.Context(), productCode, status, page, pageSize)
+	if err != nil {
+		h.writeInboxError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	result := make([]contract.OperationsInboxItem, 0, len(items))
+	for _, item := range items {
+		result = append(result, inboxContractItem(item))
+	}
+	writeSuccess(writer, request, http.StatusOK, map[string]any{"items": result, "page": page, "page_size": pageSize, "has_more": hasMore})
+}
+
+func (h *Handler) createOperationsInboxItem(writer http.ResponseWriter, request *http.Request) {
+	rawBody, body, ok := decodeInboxBody[contract.CreateOperationsInboxItemRequest](writer, request)
+	if !ok {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Operations Inbox request is invalid")
+		return
+	}
+	decision, err := h.authorizeInbox(request, rawBody, "platform.operations_inbox.write", "resource", body.SourceProductCode, body.SourceResourceType, body.SourceResourceID)
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	hash := sha256.Sum256(rawBody)
+	item, err := h.inbox.Create(request.Context(), operationsinbox.CreateInput{
+		ServiceID: request.Header.Get(contract.ServiceIDHeader), ActorUserID: decision.ActorUserID, RequestID: requestIDFrom(request.Context()),
+		IdempotencyKey: request.Header.Get(contract.IdempotencyKeyHeader), RequestHash: hash[:],
+		SourceProductCode: body.SourceProductCode, SourceResourceType: body.SourceResourceType,
+		SourceResourceID: body.SourceResourceID, SourceResourceURL: body.SourceResourceURL,
+		OwnerUserID: body.OwnerUserID, Priority: body.Priority, SLADueAt: body.SlaDueAt,
+		Status: optionalString(body.Status),
+	})
+	if err != nil {
+		h.writeInboxError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusCreated, inboxContractItem(item))
+}
+
+func (h *Handler) updateOperationsInboxItem(writer http.ResponseWriter, request *http.Request) {
+	itemID := chi.URLParam(request, "item_id")
+	rawBody, body, ok := decodeInboxBody[contract.UpdateOperationsInboxItemRequest](writer, request)
+	if !ok {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Operations Inbox request is invalid")
+		return
+	}
+	if body.ClearOwner != nil && !*body.ClearOwner || body.ClearSla != nil && !*body.ClearSla {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Operations Inbox request is invalid")
+		return
+	}
+	decision, err := h.authorizeInbox(request, rawBody, "platform.operations_inbox.write", "resource", body.SourceProductCode, body.SourceResourceType, body.SourceResourceID)
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	existing, err := h.inbox.Get(request.Context(), itemID)
+	if err != nil {
+		h.writeInboxError(writer, request, err)
+		return
+	}
+	if existing.SourceProductCode != body.SourceProductCode || existing.SourceResourceType != body.SourceResourceType || existing.SourceResourceID != body.SourceResourceID {
+		writeError(writer, request, http.StatusNotFound, "OPERATIONS_INBOX_ITEM_NOT_FOUND", "Operations Inbox item was not found")
+		return
+	}
+	hash := sha256.Sum256(append([]byte(itemID+"\x00"), rawBody...))
+	item, err := h.inbox.Update(request.Context(), operationsinbox.UpdateInput{
+		ServiceID: request.Header.Get(contract.ServiceIDHeader), ItemID: itemID, ActorUserID: decision.ActorUserID, RequestID: requestIDFrom(request.Context()),
+		IdempotencyKey: request.Header.Get(contract.IdempotencyKeyHeader), RequestHash: hash[:], ExpectedVersion: body.ExpectedVersion,
+		OwnerUserID: body.OwnerUserID, ClearOwner: body.ClearOwner != nil && *body.ClearOwner,
+		Priority: body.Priority, SLADueAt: body.SlaDueAt, ClearSLA: body.ClearSla != nil && *body.ClearSla, Status: body.Status,
+	})
+	if err != nil {
+		h.writeInboxError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, inboxContractItem(item))
+}
+
+func (h *Handler) authorizeInbox(request *http.Request, rawBody []byte, permission, scopeKind, productCode, resourceType, resourceID string) (identity.AuthorizationDecision, error) {
+	audit := auditFrom(request.Context())
+	audit.serviceID, audit.keyID = request.Header.Get(contract.ServiceIDHeader), request.Header.Get(contract.KeyIDHeader)
+	clientID, clientSecret, ok := request.BasicAuth()
+	if !ok || clientID != audit.serviceID {
+		return identity.AuthorizationDecision{}, identity.ErrUnauthorized
+	}
+	timestamp, nonce, signature := request.Header.Get(contract.TimestampHeader), request.Header.Get(contract.NonceHeader), request.Header.Get(contract.SignatureHeader)
+	sessionToken := request.Header.Get(contract.SessionExchangeTokenHeader)
+	if audit.serviceID == "" || audit.keyID == "" || timestamp == "" || nonce == "" || signature == "" || len(sessionToken) < 32 {
+		return identity.AuthorizationDecision{}, identity.ErrInvalid
+	}
+	bodyHash := sha256.Sum256(rawBody)
+	pathAndQuery := request.URL.EscapedPath()
+	if request.URL.RawQuery != "" {
+		pathAndQuery += "?" + request.URL.RawQuery
+	}
+	return h.flow.CheckAuthorization(request.Context(), identity.AuthorizationCheckInput{
+		HTTPMethod:   request.Method,
+		SessionToken: sessionToken, ClientSecret: clientSecret, PermissionCode: permission,
+		ScopeKind: scopeKind, ProductCode: productCode, ResourceType: resourceType, ResourceID: resourceID,
+		ServiceID: audit.serviceID, KeyID: audit.keyID, Timestamp: timestamp, Nonce: nonce,
+		Signature: signature, BodyHash: bodyHash[:], PathAndQuery: pathAndQuery, RequestID: audit.requestID,
+	})
+}
+
+func decodeInboxBody[T any](writer http.ResponseWriter, request *http.Request) ([]byte, T, bool) {
+	var body T
+	request.Body = http.MaxBytesReader(writer, request.Body, 32<<10)
+	rawBody, err := io.ReadAll(request.Body)
+	if err != nil {
+		return nil, body, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(rawBody))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, body, false
+	}
+	return rawBody, body, true
+}
+
+func inboxContractItem(item operationsinbox.Item) contract.OperationsInboxItem {
+	return contract.OperationsInboxItem{
+		ID: item.ID, SourceProductCode: item.SourceProductCode, SourceResourceType: item.SourceResourceType,
+		SourceResourceID: item.SourceResourceID, SourceResourceURL: item.SourceResourceURL,
+		OwnerUserID: item.OwnerUserID, Priority: item.Priority, SlaDueAt: item.SLADueAt,
+		Status: item.Status, Version: item.Version, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
+	}
+}
+
+func (h *Handler) writeInboxError(writer http.ResponseWriter, request *http.Request, err error) {
+	switch {
+	case errors.Is(err, operationsinbox.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Operations Inbox request is invalid")
+	case errors.Is(err, operationsinbox.ErrNotFound):
+		writeError(writer, request, http.StatusNotFound, "OPERATIONS_INBOX_ITEM_NOT_FOUND", "Operations Inbox item was not found")
+	case errors.Is(err, operationsinbox.ErrConflict):
+		writeError(writer, request, http.StatusConflict, "VERSION_CONFLICT", "Operations Inbox item version or source reference conflicts")
+	case errors.Is(err, operationsinbox.ErrIdempotencyConflict):
+		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
+	default:
+		h.logger.Error("operations_inbox_error", "request_id", requestIDFrom(request.Context()), "error", err)
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+	}
 }
 
 func (h *Handler) recordMailDelivery(writer http.ResponseWriter, request *http.Request) {

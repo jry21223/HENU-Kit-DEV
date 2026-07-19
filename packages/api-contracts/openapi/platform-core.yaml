@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
 servers:
@@ -17,6 +17,8 @@ tags:
   - name: Verification
   - name: Authorization
   - name: Sessions
+  - name: Operations Inbox
+    description: Cross-product work coordination metadata and immutable source-resource references.
   - name: Internal Events
 
 paths:
@@ -408,6 +410,325 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /operations-inbox/items:
+    get:
+      tags: [Operations Inbox]
+      operationId: listOperationsInboxItems
+      summary: List cross-product work references within one granted product Scope
+      description: Returns coordination metadata and source resource references only; product-owned title, body and feedback text are never copied here.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - name: product_code
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9-]{1,63}$'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, in_progress, blocked, resolved, cancelled]
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Scoped Operations Inbox items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, page, page_size, has_more]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/OperationsInboxItem"
+                          page:
+                            type: integer
+                            minimum: 1
+                          page_size:
+                            type: integer
+                            minimum: 1
+                            maximum: 100
+                          has_more:
+                            type: boolean
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    post:
+      tags: [Operations Inbox]
+      operationId: createOperationsInboxItem
+      summary: Create a cross-product work reference
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOperationsInboxItemRequest"
+      responses:
+        "201":
+          description: Created, or the original response for the same idempotent request
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/OperationsInboxItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /operations-inbox/items/{item_id}:
+    get:
+      tags: [Operations Inbox]
+      operationId: getOperationsInboxItem
+      summary: Get one work reference within its granted resource Scope
+      description: The source reference query identifies the authorization target and must match the stored item.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - name: source_product_code
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9-]{1,63}$'
+        - name: source_resource_type
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        - name: source_resource_id
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: Scoped Operations Inbox item
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/OperationsInboxItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Item not found or source reference does not match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /operations-inbox/items/{item_id}/updates:
+    post:
+      tags: [Operations Inbox]
+      operationId: updateOperationsInboxItem
+      summary: Update assignment or workflow metadata using an optimistic version
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOperationsInboxItemRequest"
+      responses:
+        "200":
+          description: Updated, or the original response for the same idempotent request
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/OperationsInboxItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /operations-inbox/operations/{operation}:
+    get:
+      tags: [Operations Inbox]
+      operationId: getOperationsInboxOperationStatus
+      summary: Resolve an unknown write outcome using the original idempotency key
+      description: Returns succeeded when the durable write committed, or unknown when no matching committed write exists. The caller may only retry the same write with the same idempotency key.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - name: operation
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [create, update]
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+        - name: source_product_code
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9-]{1,63}$'
+        - name: source_resource_type
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        - name: source_resource_id
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: Durable operation resolution
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/OperationsInboxOperationStatus"
+              example:
+                data:
+                  status: succeeded
+                  item:
+                    id: 5cc45fb0-f5a7-48f0-922c-719fd44ff882
+                    source_product_code: quizcraft
+                    source_resource_type: feedback
+                    source_resource_id: feedback-2026-001
+                    priority: high
+                    status: open
+                    version: 1
+                    created_at: "2026-07-19T00:00:00Z"
+                    updated_at: "2026-07-19T00:00:00Z"
+                request_id: req_example_operation_status
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /internal/events:
     post:
       tags: [Internal Events]
@@ -516,6 +837,15 @@ components:
       required: true
       schema:
         type: string
+    SessionExchangeToken:
+      name: X-Session-Exchange-Token
+      in: header
+      required: true
+      description: Short-lived server-held client exchange Session token; never exposed as a browser token.
+      schema:
+        type: string
+        minLength: 32
+
 
   schemas:
     RequestId:
@@ -650,6 +980,225 @@ components:
         checked_at:
           type: string
           format: date-time
+
+    OperationsInboxItem:
+      type: object
+      additionalProperties: false
+      required: [id, source_product_code, source_resource_type, source_resource_id, priority, status, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_product_code:
+          type: string
+        source_resource_type:
+          type: string
+        source_resource_id:
+          type: string
+        source_resource_url:
+          type: string
+          format: uri
+          pattern: '^https?://[^/?#]+(?:[/?#].*)?$'
+          maxLength: 1000
+        owner_user_id:
+          type: string
+          format: uuid
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        sla_due_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [open, in_progress, blocked, resolved, cancelled]
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateOperationsInboxItemRequest:
+      type: object
+      additionalProperties: false
+      required: [source_product_code, source_resource_type, source_resource_id, priority]
+      properties:
+        source_product_code:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{1,63}$'
+        source_resource_type:
+          type: string
+          pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        source_resource_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        source_resource_url:
+          type: string
+          format: uri
+          pattern: '^https?://[^/?#]+(?:[/?#].*)?$'
+          maxLength: 1000
+        owner_user_id:
+          type: string
+          format: uuid
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        sla_due_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [open, in_progress, blocked]
+      example:
+        source_product_code: quizcraft
+        source_resource_type: feedback
+        source_resource_id: feedback-2026-001
+        source_resource_url: https://quizcraft.henukit.cn/admin/feedback/feedback-2026-001
+        priority: high
+        status: open
+      x-invalid-examples:
+        copied_source_content:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          priority: high
+          title: Source-owned title must not be copied
+        invalid_priority:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          priority: critical
+        non_http_resource_url:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          source_resource_url: urn:quizcraft:feedback:feedback-2026-001
+          priority: high
+
+    UpdateOperationsInboxItemRequest:
+      type: object
+      additionalProperties: false
+      required: [source_product_code, source_resource_type, source_resource_id, expected_version]
+      anyOf:
+        - required: [owner_user_id]
+        - required: [clear_owner]
+        - required: [priority]
+        - required: [sla_due_at]
+        - required: [clear_sla]
+        - required: [status]
+      allOf:
+        - not:
+            required: [owner_user_id, clear_owner]
+            properties:
+              owner_user_id: {}
+              clear_owner: {}
+        - not:
+            required: [sla_due_at, clear_sla]
+            properties:
+              sla_due_at: {}
+              clear_sla: {}
+      properties:
+        source_product_code:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{1,63}$'
+        source_resource_type:
+          type: string
+          pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        source_resource_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        expected_version:
+          type: integer
+          format: int64
+          minimum: 1
+        owner_user_id:
+          type: string
+          format: uuid
+        clear_owner:
+          type: boolean
+          const: true
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        sla_due_at:
+          type: string
+          format: date-time
+        clear_sla:
+          type: boolean
+          const: true
+        status:
+          type: string
+          enum: [open, in_progress, blocked, resolved, cancelled]
+      example:
+        source_product_code: quizcraft
+        source_resource_type: feedback
+        source_resource_id: feedback-2026-001
+        expected_version: 1
+        priority: urgent
+        status: in_progress
+      x-invalid-examples:
+        missing_optimistic_version:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          status: resolved
+        copied_source_content:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          body: Source-owned feedback text must not be copied
+        no_changes:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+        conflicting_owner_change:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          owner_user_id: 5cc45fb0-f5a7-48f0-922c-719fd44ff882
+          clear_owner: true
+        conflicting_sla_change:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          sla_due_at: "2026-07-20T00:00:00Z"
+          clear_sla: true
+        false_clear_owner:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          clear_owner: false
+          priority: high
+        false_clear_sla:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          clear_sla: false
+          status: blocked
+
+    OperationsInboxOperationStatus:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [succeeded, unknown]
+        item:
+          $ref: "#/components/schemas/OperationsInboxItem"
 
     EventEnvelope:
       type: object

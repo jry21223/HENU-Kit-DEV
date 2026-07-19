@@ -101,6 +101,7 @@ type Exchange struct {
 }
 
 type AuthorizationCheckInput struct {
+	HTTPMethod     string
 	SessionToken   string
 	ClientSecret   string
 	PermissionCode string
@@ -126,6 +127,7 @@ type AuthorizationDecision struct {
 }
 
 type serviceRequestCredentials struct {
+	HTTPMethod     string
 	ClientID       string
 	ClientSecret   string
 	KeyID          string
@@ -142,7 +144,13 @@ func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator
 }
 
 func (s *Service) authenticateServiceRequest(ctx context.Context, credentials serviceRequestCredentials) error {
+	if credentials.HTTPMethod == "" {
+		credentials.HTTPMethod = "POST"
+	}
 	if credentials.ClientID == "" || credentials.ClientSecret == "" || credentials.KeyID == "" || credentials.Timestamp == "" || credentials.Nonce == "" || credentials.Signature == "" || len(credentials.BodyHash) != sha256.Size || !strings.HasPrefix(credentials.PathAndQuery, "/") || credentials.NonceNamespace == "" {
+		return ErrInvalid
+	}
+	if credentials.HTTPMethod != "GET" && credentials.HTTPMethod != "POST" {
 		return ErrInvalid
 	}
 	clientKey, err := s.queries.GetOAuthClientKey(ctx, store.GetOAuthClientKeyParams{ClientID: credentials.ClientID, KeyID: credentials.KeyID})
@@ -160,7 +168,7 @@ func (s *Service) authenticateServiceRequest(ctx context.Context, credentials se
 	if err != nil || time.Since(time.Unix(requestTimeUnix, 0)).Abs() > 5*time.Minute {
 		return ErrTimestamp
 	}
-	canonical := strings.Join([]string{"POST", credentials.PathAndQuery, credentials.Timestamp, credentials.Nonce, hex.EncodeToString(credentials.BodyHash)}, "\n")
+	canonical := strings.Join([]string{credentials.HTTPMethod, credentials.PathAndQuery, credentials.Timestamp, credentials.Nonce, hex.EncodeToString(credentials.BodyHash)}, "\n")
 	mac := hmac.New(sha256.New, []byte(credentials.ClientSecret))
 	_, _ = mac.Write([]byte(canonical))
 	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
@@ -354,7 +362,8 @@ func (s *Service) CheckAuthorization(ctx context.Context, input AuthorizationChe
 		return AuthorizationDecision{}, ErrInvalid
 	}
 	if err := s.authenticateServiceRequest(ctx, serviceRequestCredentials{
-		ClientID: input.ServiceID, ClientSecret: input.ClientSecret, KeyID: input.KeyID,
+		HTTPMethod: input.HTTPMethod,
+		ClientID:   input.ServiceID, ClientSecret: input.ClientSecret, KeyID: input.KeyID,
 		Timestamp: input.Timestamp, Nonce: input.Nonce, Signature: input.Signature,
 		BodyHash: input.BodyHash, PathAndQuery: input.PathAndQuery, NonceNamespace: "authorization",
 	}); err != nil {

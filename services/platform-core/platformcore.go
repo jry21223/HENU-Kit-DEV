@@ -18,6 +18,7 @@ import (
 	"henukit.dev/platform-core/internal/coordination"
 	"henukit.dev/platform-core/internal/httpapi"
 	"henukit.dev/platform-core/internal/identity"
+	"henukit.dev/platform-core/internal/operationsinbox"
 	"henukit.dev/platform-core/internal/store"
 	"henukit.dev/platform-core/internal/verification"
 )
@@ -121,6 +122,7 @@ func New(config Config) (http.Handler, error) {
 	deviceKey := deviceMAC.Sum(nil)
 	coordinator := coordination.NewRedis(config.Redis)
 	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL, config.IdempotencyEncryptionKey)
+	inbox := operationsinbox.New(queries, config.Database)
 	verificationFlow, err := verification.New(queries, config.Database, coordinator, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay)
 	if err != nil {
 		return nil, err
@@ -129,5 +131,5 @@ func New(config Config) (http.Handler, error) {
 	if config.MailDeliveryRetiringToken != "" {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
-	return httpapi.New(flow, verificationFlow, queries, config.Database, config.Redis, config.CoreCookieName, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
+	return httpapi.New(flow, verificationFlow, inbox, queries, config.Database, config.Redis, config.CoreCookieName, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
 }
