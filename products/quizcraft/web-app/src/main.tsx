@@ -11,7 +11,9 @@ import Extract from '@/pages/Extract';
 import Feedback from '@/pages/Feedback';
 import FeedbackBoard from '@/pages/FeedbackBoard';
 import FoodWheel from '@/pages/FoodWheel';
+import Favorites from '@/pages/Favorites';
 import { IS_OPS_MODE } from '@/config/appMode';
+import { QUIZCRAFT_GO_SHADOW_ENABLED } from '@/api/quizcraftShadowClient';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -26,6 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="practice" element={<Practice />} />
           <Route path="quiz" element={<Quiz />} />
           <Route path="result" element={<Result />} />
+          <Route path="favorites" element={QUIZCRAFT_GO_SHADOW_ENABLED ? <Favorites /> : <Navigate to="/practice" replace />} />
           <Route path="ranking" element={<Ranking />} />
           <Route path="feedback" element={<Feedback />} />
           <Route path="feedback-board" element={<FeedbackBoard />} />

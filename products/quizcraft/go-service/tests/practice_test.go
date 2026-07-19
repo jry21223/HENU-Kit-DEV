@@ -157,7 +157,7 @@ func TestPracticeHTTPGuestFourTypesAndReplayProtection(t *testing.T) {
 	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_practice_attempts WHERE session_id=$1`, session.Data.SessionID).Scan(&attempts); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_learning_state`).Scan(&learningRows); err != nil {
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_learning_state WHERE bank_id=$1`, report.BankID).Scan(&learningRows); err != nil {
 		t.Fatal(err)
 	}
 	if attempts != 4 || learningRows != 0 {

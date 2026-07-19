@@ -38,6 +38,13 @@ type QuizcraftBankVersionQuestion struct {
 	Position          int32     `json:"position"`
 }
 
+type QuizcraftFavorite struct {
+	UserID     uuid.UUID          `json:"user_id"`
+	BankID     uuid.UUID          `json:"bank_id"`
+	QuestionID uuid.UUID          `json:"question_id"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
 type QuizcraftIdempotencyResult struct {
 	ActorKey       string             `json:"actor_key"`
 	OperationKind  string             `json:"operation_kind"`
@@ -85,6 +92,14 @@ type QuizcraftPracticeSession struct {
 	Mode          string             `json:"mode"`
 	ChapterID     pgtype.Text        `json:"chapter_id"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftPracticeSessionClaim struct {
+	SessionID     uuid.UUID          `json:"session_id"`
+	GuestActorKey string             `json:"guest_actor_key"`
+	UserID        uuid.UUID          `json:"user_id"`
+	UserActorKey  string             `json:"user_actor_key"`
+	ClaimedAt     pgtype.Timestamptz `json:"claimed_at"`
 }
 
 type QuizcraftPracticeSessionQuestion struct {

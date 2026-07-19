@@ -12,6 +12,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addFavorite = `-- name: AddFavorite :exec
+INSERT INTO quizcraft_favorites(user_id,bank_id,question_id)
+VALUES($1,$2,$3)
+ON CONFLICT(user_id,bank_id,question_id) DO NOTHING
+`
+
+type AddFavoriteParams struct {
+	UserID     uuid.UUID `json:"user_id"`
+	BankID     uuid.UUID `json:"bank_id"`
+	QuestionID uuid.UUID `json:"question_id"`
+}
+
+func (q *Queries) AddFavorite(ctx context.Context, arg AddFavoriteParams) error {
+	_, err := q.db.Exec(ctx, addFavorite, arg.UserID, arg.BankID, arg.QuestionID)
+	return err
+}
+
 const addPracticeSessionQuestion = `-- name: AddPracticeSessionQuestion :exec
 INSERT INTO quizcraft_practice_session_questions(session_id,bank_id,bank_version_id,question_id,question_version_id,position)
 VALUES($1,$2,$3,$4,$5,$6)
@@ -36,6 +53,52 @@ func (q *Queries) AddPracticeSessionQuestion(ctx context.Context, arg AddPractic
 		arg.Position,
 	)
 	return err
+}
+
+const claimGuestPracticeSession = `-- name: ClaimGuestPracticeSession :execrows
+INSERT INTO quizcraft_practice_session_claims(session_id,guest_actor_key,user_id,user_actor_key)
+SELECT id,$2,$3,$4
+FROM quizcraft_practice_sessions
+WHERE id=$1 AND user_id IS NULL AND actor_key=$2
+ON CONFLICT(session_id) DO NOTHING
+`
+
+type ClaimGuestPracticeSessionParams struct {
+	ID            uuid.UUID `json:"id"`
+	GuestActorKey string    `json:"guest_actor_key"`
+	UserID        uuid.UUID `json:"user_id"`
+	UserActorKey  string    `json:"user_actor_key"`
+}
+
+func (q *Queries) ClaimGuestPracticeSession(ctx context.Context, arg ClaimGuestPracticeSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimGuestPracticeSession,
+		arg.ID,
+		arg.GuestActorKey,
+		arg.UserID,
+		arg.UserActorKey,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const countFavoritesForBank = `-- name: CountFavoritesForBank :one
+SELECT count(*)::bigint
+FROM quizcraft_favorites
+WHERE user_id=$1 AND bank_id=$2
+`
+
+type CountFavoritesForBankParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	BankID uuid.UUID `json:"bank_id"`
+}
+
+func (q *Queries) CountFavoritesForBank(ctx context.Context, arg CountFavoritesForBankParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countFavoritesForBank, arg.UserID, arg.BankID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const createPracticeAttempt = `-- name: CreatePracticeAttempt :exec
@@ -102,6 +165,20 @@ func (q *Queries) CreatePracticeSession(ctx context.Context, arg CreatePracticeS
 		arg.ChapterID,
 	)
 	return err
+}
+
+const getActiveBankVersion = `-- name: GetActiveBankVersion :one
+SELECT bv.id
+FROM quizcraft_banks b
+JOIN quizcraft_bank_versions bv ON bv.id=b.active_version_id AND bv.bank_id=b.id AND bv.sealed_at IS NOT NULL
+WHERE b.id=$1
+`
+
+func (q *Queries) GetActiveBankVersion(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getActiveBankVersion, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const getIdempotencyResult = `-- name: GetIdempotencyResult :one
@@ -172,12 +249,13 @@ func (q *Queries) GetPracticeAttemptResponse(ctx context.Context, arg GetPractic
 }
 
 const getSessionQuestion = `-- name: GetSessionQuestion :one
-SELECT s.bank_id,s.bank_version_id,s.user_id,s.actor_key,qv.type,qv.answer,COALESCE(qv.options,'null'::jsonb) AS options,qv.analysis,b.bank_key,q.source_question_id
+SELECT s.bank_id,s.bank_version_id,COALESCE(c.user_id,s.user_id) AS user_id,COALESCE(c.user_actor_key,s.actor_key) AS actor_key,qv.type,qv.answer,COALESCE(qv.options,'null'::jsonb) AS options,qv.analysis,b.bank_key,q.source_question_id
 FROM quizcraft_practice_sessions s
 JOIN quizcraft_practice_session_questions sq ON sq.session_id=s.id
 JOIN quizcraft_question_versions qv ON qv.id=sq.question_version_id AND qv.question_id=sq.question_id
 JOIN quizcraft_questions q ON q.id=sq.question_id
 JOIN quizcraft_banks b ON b.id=s.bank_id
+LEFT JOIN quizcraft_practice_session_claims c ON c.session_id=s.id
 WHERE s.id=$1 AND sq.question_id=$2 AND sq.question_version_id=$3
 `
 
@@ -188,16 +266,16 @@ type GetSessionQuestionParams struct {
 }
 
 type GetSessionQuestionRow struct {
-	BankID           uuid.UUID     `json:"bank_id"`
-	BankVersionID    uuid.UUID     `json:"bank_version_id"`
-	UserID           uuid.NullUUID `json:"user_id"`
-	ActorKey         string        `json:"actor_key"`
-	Type             string        `json:"type"`
-	Answer           []byte        `json:"answer"`
-	Options          []byte        `json:"options"`
-	Analysis         string        `json:"analysis"`
-	BankKey          string        `json:"bank_key"`
-	SourceQuestionID string        `json:"source_question_id"`
+	BankID           uuid.UUID `json:"bank_id"`
+	BankVersionID    uuid.UUID `json:"bank_version_id"`
+	UserID           uuid.UUID `json:"user_id"`
+	ActorKey         string    `json:"actor_key"`
+	Type             string    `json:"type"`
+	Answer           []byte    `json:"answer"`
+	Options          []byte    `json:"options"`
+	Analysis         string    `json:"analysis"`
+	BankKey          string    `json:"bank_key"`
+	SourceQuestionID string    `json:"source_question_id"`
 }
 
 func (q *Queries) GetSessionQuestion(ctx context.Context, arg GetSessionQuestionParams) (GetSessionQuestionRow, error) {
@@ -263,6 +341,165 @@ func (q *Queries) IsPublishedBankVersion(ctx context.Context, arg IsPublishedBan
 	var published bool
 	err := row.Scan(&published)
 	return published, err
+}
+
+const isQuestionInBank = `-- name: IsQuestionInBank :one
+SELECT true AS exists
+FROM quizcraft_questions
+WHERE bank_id=$1 AND id=$2
+`
+
+type IsQuestionInBankParams struct {
+	BankID uuid.UUID `json:"bank_id"`
+	ID     uuid.UUID `json:"id"`
+}
+
+func (q *Queries) IsQuestionInBank(ctx context.Context, arg IsQuestionInBankParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isQuestionInBank, arg.BankID, arg.ID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const listFavoriteFolders = `-- name: ListFavoriteFolders :many
+SELECT f.bank_id,b.name AS bank_name,
+       count(*) FILTER (WHERE m.question_id IS NOT NULL)::bigint AS available_count,
+       count(*) FILTER (WHERE m.question_id IS NULL)::bigint AS unavailable_count
+FROM quizcraft_favorites f
+JOIN quizcraft_banks b ON b.id=f.bank_id
+LEFT JOIN quizcraft_bank_version_questions m
+  ON m.bank_id=f.bank_id AND m.question_id=f.question_id AND m.bank_version_id=b.active_version_id
+WHERE f.user_id=$1
+GROUP BY f.bank_id,b.name
+ORDER BY b.name,f.bank_id
+`
+
+type ListFavoriteFoldersRow struct {
+	BankID           uuid.UUID `json:"bank_id"`
+	BankName         string    `json:"bank_name"`
+	AvailableCount   int64     `json:"available_count"`
+	UnavailableCount int64     `json:"unavailable_count"`
+}
+
+func (q *Queries) ListFavoriteFolders(ctx context.Context, userID uuid.UUID) ([]ListFavoriteFoldersRow, error) {
+	rows, err := q.db.Query(ctx, listFavoriteFolders, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFavoriteFoldersRow{}
+	for rows.Next() {
+		var i ListFavoriteFoldersRow
+		if err := rows.Scan(
+			&i.BankID,
+			&i.BankName,
+			&i.AvailableCount,
+			&i.UnavailableCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFavoritePracticeQuestions = `-- name: ListFavoritePracticeQuestions :many
+SELECT m.question_id,m.question_version_id,qv.type,qv.chapter_id,qv.chapter_name,qv.content,COALESCE(qv.options,'null'::jsonb) AS options
+FROM quizcraft_favorites f
+JOIN quizcraft_bank_version_questions m
+  ON m.bank_id=f.bank_id AND m.question_id=f.question_id AND m.bank_version_id=$1
+JOIN quizcraft_question_versions qv
+  ON qv.id=m.question_version_id AND qv.question_id=m.question_id AND qv.bank_id=m.bank_id
+WHERE f.user_id=$2 AND f.bank_id=$3
+ORDER BY f.created_at,f.question_id
+`
+
+type ListFavoritePracticeQuestionsParams struct {
+	BankVersionID uuid.UUID `json:"bank_version_id"`
+	UserID        uuid.UUID `json:"user_id"`
+	BankID        uuid.UUID `json:"bank_id"`
+}
+
+type ListFavoritePracticeQuestionsRow struct {
+	QuestionID        uuid.UUID `json:"question_id"`
+	QuestionVersionID uuid.UUID `json:"question_version_id"`
+	Type              string    `json:"type"`
+	ChapterID         string    `json:"chapter_id"`
+	ChapterName       string    `json:"chapter_name"`
+	Content           string    `json:"content"`
+	Options           []byte    `json:"options"`
+}
+
+func (q *Queries) ListFavoritePracticeQuestions(ctx context.Context, arg ListFavoritePracticeQuestionsParams) ([]ListFavoritePracticeQuestionsRow, error) {
+	rows, err := q.db.Query(ctx, listFavoritePracticeQuestions, arg.BankVersionID, arg.UserID, arg.BankID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFavoritePracticeQuestionsRow{}
+	for rows.Next() {
+		var i ListFavoritePracticeQuestionsRow
+		if err := rows.Scan(
+			&i.QuestionID,
+			&i.QuestionVersionID,
+			&i.Type,
+			&i.ChapterID,
+			&i.ChapterName,
+			&i.Content,
+			&i.Options,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFavoriteQuestions = `-- name: ListFavoriteQuestions :many
+SELECT f.bank_id,f.question_id,m.question_version_id
+FROM quizcraft_favorites f
+JOIN quizcraft_banks b ON b.id=f.bank_id
+LEFT JOIN quizcraft_bank_version_questions m
+  ON m.bank_id=f.bank_id AND m.question_id=f.question_id AND m.bank_version_id=b.active_version_id
+WHERE f.user_id=$1 AND f.bank_id=$2
+ORDER BY f.created_at,f.question_id
+`
+
+type ListFavoriteQuestionsParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	BankID uuid.UUID `json:"bank_id"`
+}
+
+type ListFavoriteQuestionsRow struct {
+	BankID            uuid.UUID     `json:"bank_id"`
+	QuestionID        uuid.UUID     `json:"question_id"`
+	QuestionVersionID uuid.NullUUID `json:"question_version_id"`
+}
+
+func (q *Queries) ListFavoriteQuestions(ctx context.Context, arg ListFavoriteQuestionsParams) ([]ListFavoriteQuestionsRow, error) {
+	rows, err := q.db.Query(ctx, listFavoriteQuestions, arg.UserID, arg.BankID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFavoriteQuestionsRow{}
+	for rows.Next() {
+		var i ListFavoriteQuestionsRow
+		if err := rows.Scan(&i.BankID, &i.QuestionID, &i.QuestionVersionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listLearningState = `-- name: ListLearningState :many
@@ -424,6 +661,15 @@ func (q *Queries) ListPublishedBanks(ctx context.Context) ([]ListPublishedBanksR
 	return items, nil
 }
 
+const lockFavorite = `-- name: LockFavorite :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1,0))
+`
+
+func (q *Queries) LockFavorite(ctx context.Context, hashtextextended string) error {
+	_, err := q.db.Exec(ctx, lockFavorite, hashtextextended)
+	return err
+}
+
 const lockIdempotency = `-- name: LockIdempotency :exec
 SELECT pg_advisory_xact_lock(hashtextextended($1,0))
 `
@@ -439,6 +685,22 @@ SELECT pg_advisory_xact_lock(hashtextextended($1,0))
 
 func (q *Queries) LockSubmission(ctx context.Context, hashtextextended string) error {
 	_, err := q.db.Exec(ctx, lockSubmission, hashtextextended)
+	return err
+}
+
+const removeFavorite = `-- name: RemoveFavorite :exec
+DELETE FROM quizcraft_favorites
+WHERE user_id=$1 AND bank_id=$2 AND question_id=$3
+`
+
+type RemoveFavoriteParams struct {
+	UserID     uuid.UUID `json:"user_id"`
+	BankID     uuid.UUID `json:"bank_id"`
+	QuestionID uuid.UUID `json:"question_id"`
+}
+
+func (q *Queries) RemoveFavorite(ctx context.Context, arg RemoveFavoriteParams) error {
+	_, err := q.db.Exec(ctx, removeFavorite, arg.UserID, arg.BankID, arg.QuestionID)
 	return err
 }
 

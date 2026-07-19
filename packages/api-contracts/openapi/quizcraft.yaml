@@ -96,6 +96,7 @@ paths:
       responses:
         '200': { description: Automatic per-bank folders, content: { application/json: { schema: { $ref: '#/components/schemas/FavoritesOverviewEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks/{bank_id}/favorites:
     get:
       summary: List one bank's favorite references
@@ -105,7 +106,9 @@ paths:
       parameters: [{ $ref: '#/components/parameters/BankID' }]
       responses:
         '200': { description: Available items include content versions; unavailable items expose references only, content: { application/json: { schema: { $ref: '#/components/schemas/FavoriteListEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks/{bank_id}/favorites/{question_id}:
     put:
       summary: Favorite a stable question reference idempotently
@@ -118,8 +121,11 @@ paths:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200': { description: Favorite write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
     delete:
       summary: Remove a stable favorite idempotently
       tags: [Favorites]
@@ -131,8 +137,10 @@ paths:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200': { description: Unfavorite write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks/{bank_id}/favorites/practice-sessions:
     post:
       summary: Create a Practice Core session from one bank's available favorites
@@ -144,8 +152,11 @@ paths:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '201': { description: Session excludes unavailable favorites and reports the excluded count, content: { application/json: { schema: { $ref: '#/components/schemas/PracticeSessionEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/rankings/overall:
     get:
       summary: Get the public overall ranking

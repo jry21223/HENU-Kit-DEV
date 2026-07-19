@@ -16,10 +16,11 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { IS_OPS_MODE } from '@/config/appMode';
+import { QUIZCRAFT_GO_SHADOW_ENABLED } from '@/api/quizcraftShadowClient';
 import { useThemeStore } from '@/stores/themeStore';
 import { useRef, useState } from 'react';
 
-const navItems = IS_OPS_MODE
+const baseNavItems = IS_OPS_MODE
   ? [
       { path: '/practice', icon: BookOpen, label: '刷题' },
       { path: '/ranking', icon: Trophy, label: '排行榜' },
@@ -33,6 +34,14 @@ const navItems = IS_OPS_MODE
       { path: '/feedback-board', icon: MessageSquare, label: '反馈看板' },
       { path: '/wheel', icon: Dices, label: '随机大转盘' },
   ];
+
+const navItems = QUIZCRAFT_GO_SHADOW_ENABLED
+  ? [
+      ...baseNavItems.slice(0, IS_OPS_MODE ? 1 : 2),
+      { path: '/favorites', icon: Heart, label: '收藏' },
+      ...baseNavItems.slice(IS_OPS_MODE ? 1 : 2),
+    ]
+  : baseNavItems;
 
 const donateQrUrl =
   (import.meta.env.VITE_DONATE_QR_URL?.trim()) || '/wechat-receive-qrcode.jpg';
