@@ -184,6 +184,7 @@ components:
         data: {}
         request_id:
           type: string
+          maxLength: 100
           pattern: '^req_[A-Za-z0-9_-]+$'
     ErrorObject:
       type: object
@@ -201,6 +202,8 @@ components:
           $ref: "#/components/schemas/ErrorObject"
         request_id:
           type: string
+          maxLength: 100
+          pattern: '^req_[A-Za-z0-9_-]+$'
     ConsoleSession:
       type: object
       additionalProperties: false
@@ -349,6 +352,7 @@ components:
           format: date-time
         request_id:
           type: string
+          maxLength: 120
           pattern: '^req_[A-Za-z0-9_-]+$'
     ConsoleModuleMetric:
       type: object

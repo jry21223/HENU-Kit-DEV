@@ -40,7 +40,7 @@ type Aggregator struct {
 	cacheTTL        time.Duration
 	retryDelay      func(int) time.Duration
 	now             func() time.Time
-	credentials     Credentials
+	credentials     map[string]Credentials
 }
 
 type Credentials struct{ ClientID, ClientSecret, KeyID string }
@@ -56,11 +56,12 @@ type cacheEntry struct {
 	LastSuccessAt time.Time                     `json:"last_success_at"`
 }
 
-func New(endpoints map[string]string, client *http.Client, redisClient *redis.Client, credentials Credentials, options Options) (*Aggregator, error) {
-	if client == nil || redisClient == nil || credentials.ClientID == "" || len(credentials.ClientSecret) < 16 || credentials.KeyID == "" {
+func New(endpoints map[string]string, client *http.Client, redisClient *redis.Client, credentials map[string]Credentials, options Options) (*Aggregator, error) {
+	if client == nil || redisClient == nil {
 		return nil, errors.New("overview dependencies are required")
 	}
 	validated := make(map[string]string, len(moduleIDs))
+	usedSecrets := map[string]string{}
 	for _, id := range moduleIDs {
 		endpoint := strings.TrimSpace(endpoints[id])
 		if endpoint != "" {
@@ -69,6 +70,14 @@ func New(endpoints map[string]string, client *http.Client, redisClient *redis.Cl
 			if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !loopback) || parsed.User != nil || parsed.Fragment != "" {
 				return nil, fmt.Errorf("invalid %s summary endpoint", id)
 			}
+			credential := credentials[id]
+			if credential.ClientID == "" || len(credential.ClientSecret) < 16 || credential.KeyID == "" {
+				return nil, fmt.Errorf("%s summary credentials are required", id)
+			}
+			if owner, duplicate := usedSecrets[credential.ClientSecret]; duplicate {
+				return nil, fmt.Errorf("%s and %s summary credentials must use distinct secrets", owner, id)
+			}
+			usedSecrets[credential.ClientSecret] = id
 		}
 		validated[id] = endpoint
 	}
@@ -147,7 +156,7 @@ func (a *Aggregator) read(ctx context.Context, id, endpoint, requestID string) (
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("X-Request-Id", requestID)
-	if err := a.sign(request); err != nil {
+	if err := a.sign(request, a.credentials[id]); err != nil {
 		return contract.ConsoleModuleSummary{}, false, err
 	}
 	response, err := a.httpClient.Do(request)
@@ -199,7 +208,7 @@ func (a *Aggregator) cached(ctx context.Context, id string) (cacheEntry, bool) {
 	return entry, true
 }
 
-func (a *Aggregator) sign(request *http.Request) error {
+func (a *Aggregator) sign(request *http.Request, credentials Credentials) error {
 	nonce := make([]byte, 24)
 	if _, err := cryptorand.Read(nonce); err != nil {
 		return err
@@ -207,11 +216,11 @@ func (a *Aggregator) sign(request *http.Request) error {
 	timestamp := fmt.Sprintf("%d", a.now().Unix())
 	digest := sha256.Sum256(nil)
 	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, base64.RawURLEncoding.EncodeToString(nonce), hex.EncodeToString(digest[:])}, "\n")
-	mac := hmac.New(sha256.New, []byte(a.credentials.ClientSecret))
+	mac := hmac.New(sha256.New, []byte(credentials.ClientSecret))
 	_, _ = mac.Write([]byte(canonical))
-	request.SetBasicAuth(a.credentials.ClientID, a.credentials.ClientSecret)
-	request.Header.Set("X-Service-Id", a.credentials.ClientID)
-	request.Header.Set("X-Key-Id", a.credentials.KeyID)
+	request.SetBasicAuth(credentials.ClientID, credentials.ClientSecret)
+	request.Header.Set("X-Service-Id", credentials.ClientID)
+	request.Header.Set("X-Key-Id", credentials.KeyID)
 	request.Header.Set("X-Timestamp", timestamp)
 	request.Header.Set("X-Nonce", base64.RawURLEncoding.EncodeToString(nonce))
 	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))

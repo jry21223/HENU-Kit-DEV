@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 4aff2ba2848fbae8ff6f10cfec575e097f48ba5d3451d98db18e32f4c00117c5); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 7c8b07d2f6a670d97e4118575fe234849cf2acbd6d28130600263b8d82c83531); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -74,7 +74,7 @@ function isConsoleModuleMetric(value: unknown): value is ConsoleModuleMetric {
 }
 
 function isConsoleModuleSummary(value: unknown): value is ConsoleModuleSummary {
-  return isRecord(value) && (!("as_of" in value) || isDateTime(value["as_of"])) && "id" in value && typeof value["id"] === "string" && ["portal","platform","notice","library","quizcraft","food"].includes(value["id"]) && (!("last_success_at" in value) || isDateTime(value["last_success_at"])) && "metrics" in value && Array.isArray(value["metrics"]) && value["metrics"].length <= 8 && value["metrics"].every((item) => isConsoleModuleMetric(item)) && "request_id" in value && typeof value["request_id"] === "string" && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","stale","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && Object.keys(value).every((key) => ["as_of","id","last_success_at","metrics","request_id","status","status_message"].includes(key)) && ((isRecord(value) && "as_of" in value && true && "last_success_at" in value && true) || (isRecord(value) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","unavailable"].includes(value["status"])));
+  return isRecord(value) && (!("as_of" in value) || isDateTime(value["as_of"])) && "id" in value && typeof value["id"] === "string" && ["portal","platform","notice","library","quizcraft","food"].includes(value["id"]) && (!("last_success_at" in value) || isDateTime(value["last_success_at"])) && "metrics" in value && Array.isArray(value["metrics"]) && value["metrics"].length <= 8 && value["metrics"].every((item) => isConsoleModuleMetric(item)) && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 120 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","stale","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && Object.keys(value).every((key) => ["as_of","id","last_success_at","metrics","request_id","status","status_message"].includes(key)) && ((isRecord(value) && "as_of" in value && true && "last_success_at" in value && true) || (isRecord(value) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","unavailable"].includes(value["status"])));
 }
 
 function isConsoleOverview(value: unknown): value is ConsoleOverview {
@@ -90,7 +90,7 @@ function isConsoleSession(value: unknown): value is ConsoleSession {
 }
 
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
-  return isRecord(value) && "error" in value && isErrorObject(value["error"]) && "request_id" in value && typeof value["request_id"] === "string";
+  return isRecord(value) && "error" in value && isErrorObject(value["error"]) && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 100 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]);
 }
 
 function isErrorObject(value: unknown): value is ErrorObject {
@@ -98,7 +98,7 @@ function isErrorObject(value: unknown): value is ErrorObject {
 }
 
 function isSuccessEnvelope(value: unknown): value is SuccessEnvelope {
-  return isRecord(value) && "data" in value && true && "request_id" in value && typeof value["request_id"] === "string";
+  return isRecord(value) && "data" in value && true && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 100 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]);
 }
 
 export type ConsoleSessionResult =

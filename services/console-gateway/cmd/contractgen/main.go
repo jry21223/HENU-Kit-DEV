@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ type schema struct {
 	MinItems             int               `yaml:"minItems"`
 	MaxItems             int               `yaml:"maxItems"`
 	MaxLength            int               `yaml:"maxLength"`
+	Pattern              string            `yaml:"pattern"`
 	Required             []string          `yaml:"required"`
 	Properties           map[string]schema `yaml:"properties"`
 	Items                *schema           `yaml:"items"`
@@ -107,6 +109,13 @@ func main() {
 	}
 	if err := validateSchema(moduleSummarySchema, invalidStaleSummary, spec.Components.Schemas); err == nil {
 		fail(errors.New("ConsoleModuleSummary stale value without timestamps unexpectedly satisfies the schema"))
+	}
+	invalidRequestIDSummary := map[string]any{
+		"id": "library", "status": "ok", "metrics": []any{}, "as_of": "2026-07-19T01:00:00Z",
+		"status_message": "invalid request id", "request_id": "req_invalid value!",
+	}
+	if err := validateSchema(moduleSummarySchema, invalidRequestIDSummary, spec.Components.Schemas); err == nil {
+		fail(errors.New("ConsoleModuleSummary request_id outside its pattern unexpectedly satisfies the schema"))
 	}
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
@@ -382,6 +391,10 @@ func tsCheckBase(expression string, value schema) string {
 		if value.MaxLength > 0 {
 			check += fmt.Sprintf(" && %s.length <= %d", expression, value.MaxLength)
 		}
+		if value.Pattern != "" {
+			encoded, _ := json.Marshal(value.Pattern)
+			check += " && new RegExp(" + string(encoded) + ").test(" + expression + ")"
+		}
 		return check
 	case "boolean":
 		return "typeof " + expression + ` === "boolean"`
@@ -500,6 +513,15 @@ func validateSchemaBase(value schema, candidate any, schemas map[string]schema) 
 		}
 		if value.MaxLength > 0 && len([]rune(text)) > value.MaxLength {
 			return fmt.Errorf("string exceeds %d characters", value.MaxLength)
+		}
+		if value.Pattern != "" {
+			matched, err := regexp.MatchString(value.Pattern, text)
+			if err != nil {
+				return fmt.Errorf("invalid pattern %q: %w", value.Pattern, err)
+			}
+			if !matched {
+				return fmt.Errorf("string does not match %s", value.Pattern)
+			}
 		}
 	case "boolean":
 		if _, ok := candidate.(bool); !ok {

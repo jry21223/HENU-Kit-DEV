@@ -21,7 +21,13 @@ import (
 	"henukit.dev/console-gateway/internal/contract"
 )
 
-var testCredentials = Credentials{ClientID: "console-gateway", ClientSecret: "test-overview-secret-with-entropy", KeyID: "active-key"}
+func testCredentials() map[string]Credentials {
+	result := make(map[string]Credentials, len(moduleIDs))
+	for _, id := range moduleIDs {
+		result[id] = Credentials{ClientID: "console-gateway-" + id, ClientSecret: "test-" + id + "-summary-secret-with-entropy", KeyID: id + "-active-key"}
+	}
+	return result
+}
 
 func TestAggregatorReturnsPartialResultsRetriesOnceAndUsesStaleCache(t *testing.T) {
 	redisClient := integrationRedis(t)
@@ -65,7 +71,7 @@ func TestAggregatorReturnsPartialResultsRetriesOnceAndUsesStaleCache(t *testing.
 		defer server.Close()
 	}
 
-	aggregator, err := New(endpoints, &http.Client{}, redisClient, testCredentials, Options{ModuleTimeout: 50 * time.Millisecond, OverviewTimeout: 90 * time.Millisecond, CacheTTL: DefaultCacheTTL, RetryDelay: func(int) time.Duration { return time.Millisecond }})
+	aggregator, err := New(endpoints, &http.Client{}, redisClient, testCredentials(), Options{ModuleTimeout: 50 * time.Millisecond, OverviewTimeout: 90 * time.Millisecond, CacheTTL: DefaultCacheTTL, RetryDelay: func(int) time.Duration { return time.Millisecond }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +118,7 @@ func TestAggregatorOverallDeadlineCancelsEveryModule(t *testing.T) {
 	for _, id := range moduleIDs {
 		endpoints[id] = server.URL
 	}
-	aggregator, _ := New(endpoints, &http.Client{}, redisClient, testCredentials, Options{ModuleTimeout: 500 * time.Millisecond, OverviewTimeout: 60 * time.Millisecond, RetryDelay: func(int) time.Duration { return 0 }})
+	aggregator, _ := New(endpoints, &http.Client{}, redisClient, testCredentials(), Options{ModuleTimeout: 500 * time.Millisecond, OverviewTimeout: 60 * time.Millisecond, RetryDelay: func(int) time.Duration { return 0 }})
 	started := time.Now()
 	result := aggregator.Fetch(t.Context(), "req_overall_deadline")
 	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
@@ -139,8 +145,13 @@ func TestDefaultOverviewLimitsMatchContract(t *testing.T) {
 func TestAggregatorRequiresServiceCredentials(t *testing.T) {
 	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
 	t.Cleanup(func() { _ = client.Close() })
-	if _, err := New(nil, &http.Client{}, client, Credentials{}, Options{}); err == nil {
+	if _, err := New(map[string]string{"portal": "https://portal.internal/summary"}, &http.Client{}, client, nil, Options{}); err == nil {
 		t.Fatal("aggregator accepted missing service credentials")
+	}
+	credentials := testCredentials()
+	credentials["platform"] = credentials["portal"]
+	if _, err := New(map[string]string{"portal": "https://portal.internal/summary", "platform": "https://platform.internal/summary"}, &http.Client{}, client, credentials, Options{}); err == nil {
+		t.Fatal("aggregator accepted a summary secret shared across modules")
 	}
 }
 
@@ -157,7 +168,7 @@ func TestRetryUsesDistinctNonces(t *testing.T) {
 		successfulSummary("portal").ServeHTTP(writer, request)
 	}))
 	defer server.Close()
-	aggregator, err := New(map[string]string{"portal": server.URL}, &http.Client{}, redisClient, testCredentials, Options{RetryDelay: func(int) time.Duration { return 0 }})
+	aggregator, err := New(map[string]string{"portal": server.URL}, &http.Client{}, redisClient, testCredentials(), Options{RetryDelay: func(int) time.Duration { return 0 }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,12 +181,13 @@ func TestRetryUsesDistinctNonces(t *testing.T) {
 
 func successfulSummary(id string) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
+		credentials := testCredentials()[id]
 		clientID, secret, basic := request.BasicAuth()
 		digest := sha256.Sum256(nil)
 		canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), request.Header.Get("X-Nonce"), hex.EncodeToString(digest[:])}, "\n")
-		mac := hmac.New(sha256.New, []byte(testCredentials.ClientSecret))
+		mac := hmac.New(sha256.New, []byte(credentials.ClientSecret))
 		_, _ = mac.Write([]byte(canonical))
-		if !basic || clientID != testCredentials.ClientID || secret != testCredentials.ClientSecret || request.Header.Get("X-Service-Id") != clientID || request.Header.Get("X-Key-Id") != testCredentials.KeyID || !hmac.Equal([]byte(request.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
+		if !basic || clientID != credentials.ClientID || secret != credentials.ClientSecret || request.Header.Get("X-Service-Id") != clientID || request.Header.Get("X-Key-Id") != credentials.KeyID || !hmac.Equal([]byte(request.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
 			writer.WriteHeader(http.StatusUnauthorized)
 			return
 		}

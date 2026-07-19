@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -93,7 +94,7 @@ func (h *Handler) getOverview(writer http.ResponseWriter, request *http.Request)
 func (h *Handler) requestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requestID := request.Header.Get("X-Request-Id")
-		if !strings.HasPrefix(requestID, "req_") || len(requestID) > 100 {
+		if len(requestID) > 100 || !requestIDPattern.MatchString(requestID) {
 			requestID = "req_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 		}
 		writer.Header().Set("X-Request-Id", requestID)
@@ -102,6 +103,8 @@ func (h *Handler) requestContext(next http.Handler) http.Handler {
 }
 
 type requestIDKey struct{}
+
+var requestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
 
 func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, request, http.StatusOK, map[string]bool{"ok": true})

@@ -13,6 +13,7 @@ import (
 
 	consolegateway "henukit.dev/console-gateway"
 	"henukit.dev/console-gateway/internal/config"
+	"henukit.dev/console-gateway/internal/overview"
 )
 
 func main() {
@@ -23,11 +24,15 @@ func main() {
 		os.Exit(1)
 	}
 	redisClient := redis.NewClient(&redis.Options{Addr: config.RedisAddr})
+	overviewCredentials := make(map[string]overview.Credentials, len(config.OverviewCredentials))
+	for id, credential := range config.OverviewCredentials {
+		overviewCredentials[id] = overview.Credentials{ClientID: credential.ClientID, ClientSecret: credential.ClientSecret, KeyID: credential.KeyID}
+	}
 	handler, err := consolegateway.New(consolegateway.Config{
 		PlatformCoreURL: config.PlatformCoreURL, PlatformAccountOrigin: config.PlatformAuthorize,
 		ClientID: config.ClientID, ClientSecret: config.ClientSecret, KeyID: config.KeyID, RedirectURI: config.RedirectURI,
 		SessionKey: config.SessionKey, Redis: redisClient, Logger: logger,
-		OverviewEndpoints: config.OverviewEndpoints,
+		OverviewEndpoints: config.OverviewEndpoints, OverviewCredentials: overviewCredentials,
 	})
 	if err != nil {
 		logger.Error("create_gateway", "error", err)

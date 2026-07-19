@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -58,6 +59,23 @@ func (fake *fakePlatform) CheckOverview(_ context.Context, token string) error {
 		return platformcore.ErrUnauthorized
 	}
 	return fake.checkErr
+}
+
+func TestRequestContextReplacesContractInvalidRequestID(t *testing.T) {
+	handler := (&Handler{}).requestContext(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+		if requestID(request) != writer.Header().Get("X-Request-Id") {
+			t.Error("request context and response header use different request IDs")
+		}
+	}))
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	request.Header.Set("X-Request-Id", "req_invalid value!")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	requestID := response.Header().Get("X-Request-Id")
+	if requestID == "req_invalid value!" || len(requestID) > 100 || !regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`).MatchString(requestID) {
+		t.Fatalf("invalid replacement request ID %q", requestID)
+	}
 }
 
 func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testing.T) {

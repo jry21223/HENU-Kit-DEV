@@ -1,6 +1,7 @@
 package consolegateway
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -19,6 +20,7 @@ type Config struct {
 	Redis                                      *redis.Client
 	HTTPClient                                 *http.Client
 	OverviewEndpoints                          map[string]string
+	OverviewCredentials                        map[string]overview.Credentials
 	Logger                                     *slog.Logger
 }
 
@@ -34,7 +36,12 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	aggregator, err := overview.New(config.OverviewEndpoints, config.HTTPClient, config.Redis, overview.Credentials{ClientID: config.ClientID, ClientSecret: config.ClientSecret, KeyID: config.KeyID}, overview.Options{})
+	for id, credential := range config.OverviewCredentials {
+		if credential.ClientSecret == config.ClientSecret {
+			return nil, fmt.Errorf("%s summary secret must be separate from Platform Core OAuth credentials", id)
+		}
+	}
+	aggregator, err := overview.New(config.OverviewEndpoints, config.HTTPClient, config.Redis, config.OverviewCredentials, overview.Options{})
 	if err != nil {
 		return nil, err
 	}
