@@ -28,6 +28,12 @@ QuizCraft CN 是一个面向中文课程题库的刷题系统。它用 React + T
 | 文件与 AI | PyPDF2、python-docx、httpx | 文件解析和 LLM 接口调用 |
 | 部署 | Nginx、systemd、环境文件 | 静态站点、反向代理和后端进程管理 |
 
+## Go 并行基线
+
+`go-service/` 是 HC-16 建立的并行契约与导入基线：它冻结 Practice、Favorites、Ranking、Feedback 和 Question Bank Workshop 的 OpenAPI，并用 PostgreSQL 保存稳定 Bank/Question ID 与不可变版本。JSON 只允许通过显式 `importbank --file` 命令导入，Go 路径不会在启动时扫描或回退到文件。
+
+当前 FastAPI 仍是实际运行后端；Go 基线尚未接管生产路由或流量。后续迁移必须单独验证和切换，不能把本目录的存在视为已部署。
+
 ## 项目结构
 
 ```text
@@ -35,6 +41,7 @@ QuizCraft CN 是一个面向中文课程题库的刷题系统。它用 React + T
 ├── server.py                  # FastAPI 后端入口
 ├── db_storage.py              # PostgreSQL 数据访问层
 ├── requirements.txt           # Python 依赖
+├── go-service/                # 并行 Go/PostgreSQL 契约与显式导入基线
 ├── start.sh                   # 本地完整开发环境
 ├── start_ops.sh               # 本地 ops 预览
 ├── web-app/                   # React 前端
