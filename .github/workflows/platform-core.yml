@@ -76,6 +76,10 @@ jobs:
           test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.operations_inbox_items') IS NOT NULL AND to_regclass('public.operations_inbox_audit_events') IS NOT NULL AND (SELECT count(*) = 1 FROM users)")" = t
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000004_operations_inbox.up.sql
           test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT count(*) = 2 FROM permission_codes WHERE code IN ('platform.operations_inbox.read', 'platform.operations_inbox.write')")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000005_console_access.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000005_console_access.up.sql
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT count(*) = 1 FROM permission_codes WHERE code = 'console.overview.read' AND status = 'active'")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000005_console_access.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000004_operations_inbox.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000003_verification_mail.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000002_authorization.down.sql
@@ -85,6 +89,7 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000002_authorization.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000003_verification_mail.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000004_operations_inbox.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000005_console_access.up.sql
 
       - name: Verify generated SQL and OpenAPI
         run: |
@@ -96,7 +101,7 @@ jobs:
           git diff --exit-code -- internal/contract
           cd ../..
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/platform-core.yaml
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] && ! git diff --quiet "origin/${{ github.base_ref }}" -- packages/api-contracts/openapi/platform-core.yaml; then
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/platform-core.yaml" > /tmp/platform-core-base.yaml
             if ! go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/platform-core-base.yaml packages/api-contracts/openapi/platform-core.yaml; then
               base_version="$(awk '/^  version:/ { print $2; exit }' /tmp/platform-core-base.yaml)"

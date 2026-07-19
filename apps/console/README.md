@@ -2,7 +2,7 @@
 
 This directory is the physical application boundary for HENUKit Console. It contains a responsive six-module Mock Overview built with Vue, shadcn-vue conventions, Reka UI, Tailwind CSS v4, and HENU Kit Design Tokens. The legacy Study Admin does not contribute routes, Element Plus, or Study API types to this bundle.
 
-The current cards are presentation fixtures used to validate information architecture, degradation states, permission-state rendering, accessibility, and 390px behavior. They do not call Console Gateway, authenticate an operator, make authorization decisions, or expose production operations.
+The current cards remain presentation fixtures for information architecture, degradation states, accessibility, and 390px behavior. Console now obtains its Session and access context from the same-origin Console Gateway; fixture metrics are withheld until Platform Core has verified `console.overview.read` and platform Scope. Product summary aggregation and production operations are not yet connected.
 
 ## Commands
 

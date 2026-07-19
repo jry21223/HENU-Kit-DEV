@@ -1,0 +1,89 @@
+name: Console Gateway
+
+on:
+  pull_request:
+    paths:
+      - services/console-gateway/**
+      - apps/console/**
+      - packages/api-contracts/openapi/console-gateway.yaml
+      - .github/workflows/console-gateway.yml
+  push:
+    branches: [main]
+    paths:
+      - services/console-gateway/**
+      - apps/console/**
+      - packages/api-contracts/openapi/console-gateway.yaml
+      - .github/workflows/console-gateway.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/console-gateway/go.mod
+          cache-dependency-path: services/console-gateway/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify OpenAPI examples, implementation, and generated clients
+        run: |
+          set -euo pipefail
+          cd services/console-gateway
+          go run ./cmd/contractgen
+          CONSOLE_GATEWAY_TEST_REDIS_ADDR=localhost:6379 go test ./internal/httpapi -run ConformsToContract -count=1
+          cd ../..
+          git diff --exit-code -- services/console-gateway/internal/contract apps/console/src/lib/console-gateway.ts
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/console-gateway.yaml
+          if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/console-gateway.yaml" 2>/dev/null; then
+            git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/console-gateway.yaml" > /tmp/console-gateway-base.yaml
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/console-gateway-base.yaml packages/api-contracts/openapi/console-gateway.yaml
+          fi
+      - name: Verify Gateway boundary and Go service
+        working-directory: services/console-gateway
+        env:
+          CONSOLE_GATEWAY_TEST_REDIS_ADDR: localhost:6379
+        run: |
+          set -euo pipefail
+          test ! -d db
+          test ! -d migrations
+          ! grep -E 'gorm|database/sql|jackc/pgx' go.mod
+          gofmt -d . | tee /tmp/gofmt.diff
+          test ! -s /tmp/gofmt.diff
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+          go test -race -count=1 ./...
+          go build -o /tmp/console-gateway ./cmd/server
+      - name: Verify Console browser behavior
+        run: |
+          pnpm --filter @henukit/console run lint
+          pnpm --filter @henukit/console run test
+          pnpm --filter @henukit/console run test:e2e
+          pnpm --filter @henukit/console run build
+      - name: Build and scan service image
+        run: |
+          docker build -t henukit-console-gateway:${{ github.sha }} services/console-gateway
+          docker run --rm -v "$PWD:/workspace" aquasec/trivy:0.70.0 fs --scanners secret --exit-code 1 /workspace
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.70.0 image --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 henukit-console-gateway:${{ github.sha }}

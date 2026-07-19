@@ -1,28 +1,50 @@
-import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { flushPromises, mount } from "@vue/test-utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App.vue";
 
+const authenticated = {
+  data: {
+    user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" },
+    access_context: { permissions: ["console.overview.read"], scopes: [{ kind: "platform" }], verified_at: "2026-07-19T00:00:00Z" },
+    expires_at: "2026-07-19T00:05:00Z",
+  },
+  request_id: "req_console_test",
+};
+
+afterEach(() => vi.unstubAllGlobals());
+
 describe("Console Overview", () => {
-  it("shows exactly the six accepted modules and every degradation state", () => {
+  it("renders six modules only after the server verifies the access context", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(authenticated), { status: 200 })));
     window.history.replaceState({}, "", "/");
     const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
 
     expect(wrapper.findAll("[data-module-card]")).toHaveLength(6);
-    for (const name of ["Portal", "Platform Operations", "Notice", "Library", "QuizCraft", "Food"]) {
-      expect(wrapper.text()).toContain(name);
-    }
-    for (const state of ["empty", "partial", "stale", "unavailable", "denied"]) {
-      expect(wrapper.find(`[data-state="${state}"]`).exists()).toBe(true);
-    }
+    for (const name of ["Portal", "Platform Operations", "Notice", "Library", "QuizCraft", "Food"]) expect(wrapper.text()).toContain(name);
+    for (const state of ["empty", "partial", "stale", "unavailable", "denied"]) expect(wrapper.find(`[data-state="${state}"]`).exists()).toBe(true);
+    expect(wrapper.text()).toContain("权限已验证");
+    expect(wrapper.text()).toContain("console.overview.read");
     expect(wrapper.text()).not.toContain("积分");
     expect(wrapper.text()).not.toContain("会员");
-    expect(wrapper.text()).toContain("Mock 权限态");
-    expect(wrapper.text()).not.toContain("权限已验证");
     wrapper.unmount();
   });
 
-  it("exposes a real loading state without inventing metrics", () => {
+  it("shows a signed-out state without exposing mock metrics", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
+    window.history.replaceState({}, "", "/operations?tab=inbox");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.get("a[href^='/api/v1/auth/login']").text()).toContain("登录 Console");
+    expect(wrapper.findAll("[data-state='denied']")).toHaveLength(6);
+    expect(wrapper.findAll(".metric-tile")).toHaveLength(0);
+    expect(wrapper.get("a[href^='/api/v1/auth/login']").attributes("href")).toContain(encodeURIComponent("/operations?tab=inbox"));
+  });
+
+  it("exposes a loading state without inventing metrics", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
     window.history.replaceState({}, "", "/?scenario=loading");
     const wrapper = mount(App);
 
