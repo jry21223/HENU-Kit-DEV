@@ -34,6 +34,7 @@ func main() {
 		SessionKey: config.SessionKey, Redis: redisClient, Logger: logger,
 		OverviewEndpoints: config.OverviewEndpoints, OverviewCredentials: overviewCredentials,
 		NoticeAPIURL: config.NoticeAPIURL, NoticeCredentials: overview.Credentials{ClientID: config.NoticeCredentials.ClientID, ClientSecret: config.NoticeCredentials.ClientSecret, KeyID: config.NoticeCredentials.KeyID},
+		LibraryAPIURL: config.LibraryAPIURL, LibraryCredentials: overview.Credentials{ClientID: config.LibraryCredentials.ClientID, ClientSecret: config.LibraryCredentials.ClientSecret, KeyID: config.LibraryCredentials.KeyID},
 	})
 	if err != nil {
 		logger.Error("create_gateway", "error", err)

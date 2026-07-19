@@ -19,8 +19,11 @@ const (
 	NoticeReviewRoute       = "/api/v1/notices/versions/{version_id}/reviews"
 	NoticeDistributionRoute = "/api/v1/notices/versions/{version_id}/distributions"
 	NoticeOperationRoute    = "/api/v1/notices/operations/{operation}"
+	LibraryWorkspaceRoute   = "/api/v1/library"
+	LibraryCommandRoute     = "/api/v1/library/commands"
+	LibraryOperationRoute   = "/api/v1/library/operations/{operation}"
 	LogoutRoute             = "/api/v1/session/logout"
-	SourceSHA256            = "b5a09cf14075494a97fa8a854dc95baf9c822fb2abd900fec6b71fb92da3c74d"
+	SourceSHA256            = "b973c975e1cd49ee8f55620ed2103a995e4d94cc4b2d67d7535d4c9936752ce8"
 )
 
 type ConsoleAccessContext struct {
@@ -63,6 +66,56 @@ type ConsoleSession struct {
 	} `json:"user"`
 }
 
+type CorrectionReviewCommand struct {
+	ExpectedVersion time.Time     `json:"expected_version"`
+	Kind            string        `json:"kind"`
+	Payload         ReviewPayload `json:"payload"`
+	ResourceID      string        `json:"resource_id"`
+}
+
+type CourseArchiveCommand struct {
+	ExpectedVersion time.Time    `json:"expected_version"`
+	Kind            string       `json:"kind"`
+	Payload         EmptyPayload `json:"payload"`
+	ResourceID      string       `json:"resource_id"`
+}
+
+type CourseCreateCommand struct {
+	Kind    string              `json:"kind"`
+	Payload CourseCreatePayload `json:"payload"`
+}
+
+type CourseCreatePayload struct {
+	CollegeID   string  `json:"collegeId"`
+	Description *string `json:"description,omitempty"`
+	ExamScope   *string `json:"examScope,omitempty"`
+	Grade       string  `json:"grade"`
+	MajorID     string  `json:"majorId"`
+	Name        string  `json:"name"`
+	SchoolID    string  `json:"schoolId"`
+	Slug        string  `json:"slug"`
+	Status      *string `json:"status,omitempty"`
+}
+
+type CourseMutationPayload struct {
+	CollegeID   *string `json:"collegeId,omitempty"`
+	Description *string `json:"description,omitempty"`
+	ExamScope   *string `json:"examScope,omitempty"`
+	Grade       *string `json:"grade,omitempty"`
+	MajorID     *string `json:"majorId,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	SchoolID    *string `json:"schoolId,omitempty"`
+	Slug        *string `json:"slug,omitempty"`
+	Status      *string `json:"status,omitempty"`
+}
+
+type CourseUpdateCommand struct {
+	ExpectedVersion time.Time             `json:"expected_version"`
+	Kind            string                `json:"kind"`
+	Payload         CourseMutationPayload `json:"payload"`
+	ResourceID      string                `json:"resource_id"`
+}
+
 type CreateNoticeSourceRequest struct {
 	CanonicalUrl string `json:"canonical_url"`
 	Code         string `json:"code"`
@@ -76,6 +129,9 @@ type CreateNoticeVersionRequest struct {
 	Title             string     `json:"title"`
 }
 
+type EmptyPayload struct {
+}
+
 type ErrorEnvelope struct {
 	Error     ErrorObject `json:"error"`
 	RequestID string      `json:"request_id"`
@@ -84,6 +140,109 @@ type ErrorEnvelope struct {
 type ErrorObject struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+type LibraryCommand any
+
+type LibraryCommandKind string
+
+type LibraryCorrection struct {
+	Description string    `json:"description"`
+	ID          string    `json:"id"`
+	Reason      string    `json:"reason"`
+	Status      string    `json:"status"`
+	TargetID    string    `json:"target_id"`
+	TargetType  string    `json:"target_type"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type LibraryCourse struct {
+	Grade     string    `json:"grade"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type LibraryDownload struct {
+	AccessLevel   string    `json:"access_level"`
+	DownloadedAt  time.Time `json:"downloaded_at"`
+	ID            string    `json:"id"`
+	MaterialID    string    `json:"material_id"`
+	MaterialTitle string    `json:"material_title"`
+}
+
+type LibraryMaterial struct {
+	AccessLevel string    `json:"access_level"`
+	CourseID    string    `json:"course_id"`
+	FileName    string    `json:"file_name"`
+	FileSize    int64     `json:"file_size"`
+	ID          string    `json:"id"`
+	Status      string    `json:"status"`
+	Title       string    `json:"title"`
+	Type        string    `json:"type"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type LibraryOperationResult struct {
+	Operation  LibraryCommandKind `json:"operation"`
+	ResourceID *string            `json:"resource_id,omitempty"`
+	State      string             `json:"state"`
+}
+
+type LibraryWorkspace struct {
+	Corrections   []LibraryCorrection `json:"corrections"`
+	Courses       []LibraryCourse     `json:"courses"`
+	Degraded      bool                `json:"degraded"`
+	Downloads     []LibraryDownload   `json:"downloads"`
+	GeneratedAt   time.Time           `json:"generated_at"`
+	Materials     []LibraryMaterial   `json:"materials"`
+	Status        string              `json:"status"`
+	StatusMessage string              `json:"status_message"`
+	Submissions   []LibraryMaterial   `json:"submissions"`
+}
+
+type MaterialArchiveCommand struct {
+	ExpectedVersion time.Time    `json:"expected_version"`
+	Kind            string       `json:"kind"`
+	Payload         EmptyPayload `json:"payload"`
+	ResourceID      string       `json:"resource_id"`
+}
+
+type MaterialCreateCommand struct {
+	Kind    string                `json:"kind"`
+	Payload MaterialCreatePayload `json:"payload"`
+}
+
+type MaterialCreatePayload struct {
+	AccessLevel    *string `json:"accessLevel,omitempty"`
+	CourseID       string  `json:"courseId"`
+	Description    *string `json:"description,omitempty"`
+	FileName       *string `json:"fileName,omitempty"`
+	FileSize       *int64  `json:"fileSize,omitempty"`
+	PreviewContent *string `json:"previewContent,omitempty"`
+	Status         *string `json:"status,omitempty"`
+	StorageKey     string  `json:"storageKey"`
+	Title          string  `json:"title"`
+	Type           *string `json:"type,omitempty"`
+}
+
+type MaterialUpdateCommand struct {
+	ExpectedVersion time.Time             `json:"expected_version"`
+	Kind            string                `json:"kind"`
+	Payload         MaterialUpdatePayload `json:"payload"`
+	ResourceID      string                `json:"resource_id"`
+}
+
+type MaterialUpdatePayload struct {
+	AccessLevel    *string `json:"accessLevel,omitempty"`
+	CourseID       *string `json:"courseId,omitempty"`
+	Description    *string `json:"description,omitempty"`
+	PreviewContent *string `json:"previewContent,omitempty"`
+	Status         *string `json:"status,omitempty"`
+	Title          *string `json:"title,omitempty"`
+	Type           *string `json:"type,omitempty"`
 }
 
 type NoticeAudience struct {
@@ -222,8 +381,19 @@ type PlatformScope struct {
 	ResourceType *string `json:"resource_type,omitempty"`
 }
 
+type ReviewPayload struct {
+	ReviewReason *string `json:"reviewReason,omitempty"`
+}
+
 type RevokePlatformSessionRequest struct {
 	ExpectedActive bool `json:"expected_active"`
+}
+
+type SubmissionReviewCommand struct {
+	ExpectedVersion time.Time     `json:"expected_version"`
+	Kind            string        `json:"kind"`
+	Payload         ReviewPayload `json:"payload"`
+	ResourceID      string        `json:"resource_id"`
 }
 
 type SuccessEnvelope struct {

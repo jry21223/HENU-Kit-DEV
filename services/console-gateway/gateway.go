@@ -8,6 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/console-gateway/internal/httpapi"
+	"henukit.dev/console-gateway/internal/library"
 	"henukit.dev/console-gateway/internal/notice"
 	"henukit.dev/console-gateway/internal/overview"
 	"henukit.dev/console-gateway/internal/platformcore"
@@ -24,6 +25,8 @@ type Config struct {
 	OverviewCredentials                        map[string]overview.Credentials
 	NoticeAPIURL                               string
 	NoticeCredentials                          overview.Credentials
+	LibraryAPIURL                              string
+	LibraryCredentials                         overview.Credentials
 	Logger                                     *slog.Logger
 }
 
@@ -46,6 +49,13 @@ func New(config Config) (http.Handler, error) {
 			return nil, err
 		}
 	}
+	var libraryClient *library.Client
+	if config.LibraryAPIURL != "" {
+		libraryClient, err = library.New(config.LibraryAPIURL, config.LibraryCredentials.ClientID, config.LibraryCredentials.ClientSecret, config.LibraryCredentials.KeyID, config.HTTPClient)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for id, credential := range config.OverviewCredentials {
 		if credential.ClientSecret == config.ClientSecret {
 			return nil, fmt.Errorf("%s summary secret must be separate from Platform Core OAuth credentials", id)
@@ -55,5 +65,5 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger)
+	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient)
 }

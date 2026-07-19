@@ -163,6 +163,15 @@ func (c *Client) CheckNotice(ctx context.Context, exchangeToken, permissionCode 
 	return c.checkPermission(ctx, exchangeToken, permissionCode, map[string]string{"kind": "product", "product_code": "notice"})
 }
 
+func (c *Client) CheckLibrary(ctx context.Context, exchangeToken, permissionCode string) error {
+	switch permissionCode {
+	case "library.read", "library.manage", "library.review":
+	default:
+		return ErrInvalid
+	}
+	return c.checkPermission(ctx, exchangeToken, permissionCode, map[string]string{"kind": "product", "product_code": "library"})
+}
+
 func (c *Client) checkPermission(ctx context.Context, exchangeToken, permissionCode string, scope map[string]string) error {
 	body, _ := json.Marshal(map[string]any{"session_exchange_token": exchangeToken, "permission_code": permissionCode, "scope": scope})
 	request, err := c.signedRequest(ctx, http.MethodPost, "/api/v1/authorization/check", body)

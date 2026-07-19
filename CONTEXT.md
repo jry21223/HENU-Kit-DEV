@@ -48,10 +48,6 @@ _Avoid_: 六业务域大屏、旧后台总览
 HENUKit Console 中独立管理校园通知来源、不可变内容版本、审核、受众和分发生命周期的 Active Product Module；通知数据由 Notice 服务拥有。
 _Avoid_: Platform Operations 通知页、Portal 公告编辑器
 
-**Library Module**:
-HENUKit Console 中管理课程、资料、下载、投稿、审核和纠错的 Active Product Module；当前边界不包含刷题、社区、动态、支付、积分或会员。
-_Avoid_: Study Legacy Admin、学习平台后台
-
 **QuizCraft Module**:
 以 React 前端与 Go 后端重构的 Active Product Module；HENUKit Console 只呈现题库、反馈和服务状态摘要并提供深链接，题库维护与审核继续由 QuizCraft 自有后台承担。
 _Avoid_: Library 刷题页、Console 内置题库后台
@@ -139,7 +135,3 @@ _Avoid_: 旧版运营、新 Console 的兼容菜单
 **Study Legacy API**:
 迁移期继续承载旧学习平台接口和数据模型的现有 `services/api`；不得继续接收 HENUKit Console 或新 Platform Core 的实现。
 _Avoid_: Platform Core、新 Console API
-
-**Compatibility Adapter**:
-迁移期连接旧接口或旧数据模型的受限兼容层；它可以支撑回滚，但不得成为 HENUKit Console 的导航或产品概念。
-_Avoid_: 旧功能入口、临时新功能

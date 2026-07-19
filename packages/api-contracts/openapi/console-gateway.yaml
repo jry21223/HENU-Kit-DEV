@@ -11,6 +11,8 @@ tags:
     description: Bounded account, Session, mail, Inbox, audit, and dependency operations.
   - name: Notice
     description: Permission-checked forwarding to the Notice data owner.
+  - name: Library
+    description: Permission-checked forwarding to the bounded Library Compatibility Adapter.
 paths:
   /healthz:
     get:
@@ -392,6 +394,50 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /library:
+    get:
+      tags: [Library]
+      operationId: getConsoleLibraryWorkspace
+      summary: Read the bounded Library workspace
+      security: [{ consoleSession: [] }]
+      responses:
+        "200":
+          description: Confirmed Library data with explicit legacy degradation
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/LibraryWorkspace" } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /library/commands:
+    post:
+      tags: [Library]
+      operationId: executeConsoleLibraryCommand
+      summary: Execute one allowlisted Library command
+      security: [{ consoleSession: [] }]
+      parameters: [{ $ref: "#/components/parameters/RequiredIdempotencyKey" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/LibraryCommand" } } } }
+      responses:
+        "200": { description: Original or newly completed operation, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/LibraryOperationResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /library/operations/{operation}:
+    get:
+      tags: [Library]
+      operationId: getConsoleLibraryOperationStatus
+      summary: Resolve a possibly unknown Library write
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: operation, in: path, required: true, schema: { $ref: "#/components/schemas/LibraryCommandKind" } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      responses:
+        "200": { description: Original result or unknown state, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/LibraryOperationResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 components:
   parameters:
     RequiredIdempotencyKey:
@@ -584,6 +630,224 @@ components:
       properties:
         items: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/NoticeVersion" } }
         generated_at: { type: string, format: date-time }
+    LibraryWorkspace:
+      type: object
+      additionalProperties: false
+      required: [status, status_message, degraded, courses, materials, downloads, submissions, corrections, generated_at]
+      properties:
+        status: { type: string, enum: [ok, partial, unavailable] }
+        status_message: { type: string, maxLength: 240 }
+        degraded: { type: boolean }
+        courses: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/LibraryCourse" } }
+        materials: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/LibraryMaterial" } }
+        downloads: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/LibraryDownload" } }
+        submissions: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/LibraryMaterial" } }
+        corrections: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/LibraryCorrection" } }
+        generated_at: { type: string, format: date-time }
+    LibraryCourse:
+      type: object
+      additionalProperties: false
+      required: [id, name, slug, grade, status, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 160 }
+        slug: { type: string, maxLength: 160 }
+        grade: { type: string, maxLength: 32 }
+        status: { type: string, enum: [draft, published, archived] }
+        updated_at: { type: string, format: date-time }
+    LibraryMaterial:
+      type: object
+      additionalProperties: false
+      required: [id, course_id, title, type, file_name, file_size, access_level, status, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        course_id: { type: string, format: uuid }
+        title: { type: string, maxLength: 200 }
+        type: { type: string, enum: [knowledge_note, mock_paper, answer, quick_review, past_exam, other] }
+        file_name: { type: string, maxLength: 255 }
+        file_size: { type: integer, minimum: 0 }
+        access_level: { type: string, enum: [public, authenticated, restricted] }
+        status: { type: string, enum: [draft, pending, published, rejected, archived] }
+        updated_at: { type: string, format: date-time }
+    LibraryDownload:
+      type: object
+      additionalProperties: false
+      required: [id, material_id, material_title, access_level, downloaded_at]
+      properties:
+        id: { type: string, format: uuid }
+        material_id: { type: string, format: uuid }
+        material_title: { type: string, maxLength: 200 }
+        access_level: { type: string, enum: [public, authenticated, restricted] }
+        downloaded_at: { type: string, format: date-time }
+    LibraryCorrection:
+      type: object
+      additionalProperties: false
+      required: [id, target_type, target_id, reason, description, status, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        target_type: { type: string, enum: [course, material] }
+        target_id: { type: string, format: uuid }
+        reason: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        status: { type: string, enum: [pending, approved, rejected] }
+        updated_at: { type: string, format: date-time }
+    LibraryCommandKind:
+      type: string
+      enum: [course_create, course_update, course_archive, material_create, material_update, material_archive, submission_approve, submission_reject, correction_resolve, correction_reject]
+    LibraryCommand:
+      oneOf:
+        - $ref: "#/components/schemas/CourseCreateCommand"
+        - $ref: "#/components/schemas/CourseUpdateCommand"
+        - $ref: "#/components/schemas/CourseArchiveCommand"
+        - $ref: "#/components/schemas/MaterialCreateCommand"
+        - $ref: "#/components/schemas/MaterialUpdateCommand"
+        - $ref: "#/components/schemas/MaterialArchiveCommand"
+        - $ref: "#/components/schemas/SubmissionReviewCommand"
+        - $ref: "#/components/schemas/CorrectionReviewCommand"
+      example: { kind: submission_approve, resource_id: 22222222-2222-4222-8222-222222222222, expected_version: "2026-07-19T00:00:00Z", payload: { reviewReason: checked } }
+      x-invalid-example: { kind: material_update, resource_id: 22222222-2222-4222-8222-222222222222, expected_version: "2026-07-19T00:00:00Z", payload: { paymentId: hidden-order } }
+    CourseCreateCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, payload]
+      properties:
+        kind: { type: string, const: course_create }
+        payload: { $ref: "#/components/schemas/CourseCreatePayload" }
+    CourseUpdateCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, const: course_update }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/CourseMutationPayload" }
+    CourseArchiveCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, const: course_archive }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/EmptyPayload" }
+    MaterialCreateCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, payload]
+      properties:
+        kind: { type: string, const: material_create }
+        payload: { $ref: "#/components/schemas/MaterialCreatePayload" }
+    MaterialUpdateCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, const: material_update }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/MaterialUpdatePayload" }
+    MaterialArchiveCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, const: material_archive }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/EmptyPayload" }
+    SubmissionReviewCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, enum: [submission_approve, submission_reject] }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/ReviewPayload" }
+    CorrectionReviewCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, enum: [correction_resolve, correction_reject] }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/ReviewPayload" }
+    CourseCreatePayload:
+      type: object
+      additionalProperties: false
+      required: [schoolId, collegeId, majorId, grade, name, slug]
+      maxProperties: 9
+      properties:
+        schoolId: { type: string, format: uuid }
+        collegeId: { type: string, format: uuid }
+        majorId: { type: string, format: uuid }
+        grade: { type: string, maxLength: 32 }
+        name: { type: string, maxLength: 160 }
+        slug: { type: string, maxLength: 160 }
+        description: { type: string, maxLength: 4000 }
+        examScope: { type: string, maxLength: 2000 }
+        status: { type: string, enum: [draft, published, archived] }
+    CourseMutationPayload:
+      type: object
+      additionalProperties: false
+      maxProperties: 9
+      properties:
+        schoolId: { type: string, format: uuid }
+        collegeId: { type: string, format: uuid }
+        majorId: { type: string, format: uuid }
+        grade: { type: string, maxLength: 32 }
+        name: { type: string, maxLength: 160 }
+        slug: { type: string, maxLength: 160 }
+        description: { type: string, maxLength: 4000 }
+        examScope: { type: string, maxLength: 2000 }
+        status: { type: string, enum: [draft, published, archived] }
+    MaterialCreatePayload:
+      type: object
+      additionalProperties: false
+      required: [courseId, title, storageKey]
+      maxProperties: 10
+      properties:
+        courseId: { type: string, format: uuid }
+        title: { type: string, maxLength: 200 }
+        type: { type: string, enum: [knowledge_note, mock_paper, answer, quick_review, past_exam, other] }
+        description: { type: string, maxLength: 4000 }
+        storageKey: { type: string, maxLength: 512 }
+        fileName: { type: string, maxLength: 255 }
+        fileSize: { type: integer, minimum: 0 }
+        previewContent: { type: string, maxLength: 20000 }
+        accessLevel: { type: string, enum: [free, login_required] }
+        status: { type: string, enum: [draft, pending, published, rejected, archived] }
+    MaterialUpdatePayload:
+      type: object
+      additionalProperties: false
+      maxProperties: 7
+      properties:
+        courseId: { type: string, format: uuid }
+        title: { type: string, maxLength: 200 }
+        type: { type: string, enum: [knowledge_note, mock_paper, answer, quick_review, past_exam, other] }
+        description: { type: string, maxLength: 4000 }
+        previewContent: { type: string, maxLength: 20000 }
+        accessLevel: { type: string, enum: [free, login_required] }
+        status: { type: string, enum: [draft, pending, published, rejected, archived] }
+    ReviewPayload:
+      type: object
+      additionalProperties: false
+      properties:
+        reviewReason: { type: string, maxLength: 1000 }
+    EmptyPayload:
+      type: object
+      additionalProperties: false
+      maxProperties: 0
+    LibraryOperationResult:
+      type: object
+      additionalProperties: false
+      required: [operation, state]
+      properties:
+        operation: { $ref: "#/components/schemas/LibraryCommandKind" }
+        resource_id: { type: string, format: uuid }
+        state: { type: string, enum: [succeeded, unknown] }
     ConsoleOverview:
       type: object
       additionalProperties: false

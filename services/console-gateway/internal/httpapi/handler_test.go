@@ -35,6 +35,7 @@ type fakePlatform struct {
 	operationResult    json.RawMessage
 	operationToken     string
 	operationKey       string
+	libraryPermissions []string
 }
 
 type fakeOverview struct{}
@@ -42,6 +43,24 @@ type fakeOverview struct{}
 type fakeNotice struct {
 	actor, key       string
 	snapshot, result json.RawMessage
+}
+
+type fakeLibrary struct {
+	actor, key        string
+	workspace, result json.RawMessage
+}
+
+func (f *fakeLibrary) Workspace(_ context.Context, actor string) (json.RawMessage, error) {
+	f.actor = actor
+	return f.workspace, nil
+}
+func (f *fakeLibrary) Command(_ context.Context, actor, key string, _ []byte) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
+}
+func (f *fakeLibrary) Operation(_ context.Context, actor, _, key string) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
 }
 
 func (f *fakeNotice) Snapshot(_ context.Context, actor string) (json.RawMessage, error) {
@@ -113,6 +132,14 @@ func (fake *fakePlatform) CheckNotice(_ context.Context, token, _ string) error 
 	if token != fake.exchange.ExchangeToken {
 		return platformcore.ErrUnauthorized
 	}
+	return fake.checkErr
+}
+
+func (fake *fakePlatform) CheckLibrary(_ context.Context, token, permission string) error {
+	if token != fake.exchange.ExchangeToken {
+		return platformcore.ErrUnauthorized
+	}
+	fake.libraryPermissions = append(fake.libraryPermissions, permission)
 	return fake.checkErr
 }
 
@@ -206,6 +233,55 @@ func TestNoticeForwardingUsesServerActorAndPreservesIdempotency(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || owner.key != "idem_notice_review_test" {
 		t.Fatalf("Notice review status/key=%d/%s", response.StatusCode, owner.key)
+	}
+}
+
+func TestLibraryForwardingUsesServerActorAndPreservesIdempotency(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	userID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeLibrary{workspace: json.RawMessage(`{"status":"partial","status_message":"one source unavailable","degraded":true,"courses":[],"materials":[],"downloads":[],"submissions":[],"corrections":[],"generated_at":"2026-07-19T00:00:00Z"}`), result: json.RawMessage(`{"operation":"submission_approve","resource_id":"22222222-2222-4222-8222-222222222222","state":"succeeded"}`)}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: userID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	read, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/library", nil)
+	read.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err := server.Client().Do(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.actor != userID {
+		t.Fatalf("Library read status/actor=%d/%s", response.StatusCode, owner.actor)
+	}
+
+	command, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/library/commands", strings.NewReader(`{"kind":"submission_approve","resource_id":"22222222-2222-4222-8222-222222222222","expected_version":"2026-07-19T00:00:00Z","payload":{"reviewReason":"checked"}}`))
+	command.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	command.Header.Set("Content-Type", "application/json")
+	command.Header.Set("Idempotency-Key", "idem_library_gateway")
+	response, err = server.Client().Do(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.key != "idem_library_gateway" {
+		t.Fatalf("Library command status/key=%d/%s", response.StatusCode, owner.key)
+	}
+
+	operation, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/library/operations/submission_approve", nil)
+	operation.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	operation.Header.Set("Idempotency-Key", "idem_library_gateway")
+	response, err = server.Client().Do(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || platform.libraryPermissions[len(platform.libraryPermissions)-1] != "library.review" {
+		t.Fatalf("Library operation status/permission=%d/%v", response.StatusCode, platform.libraryPermissions)
 	}
 }
 
