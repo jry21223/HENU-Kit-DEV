@@ -6,6 +6,8 @@ The Gateway stores one-time OAuth state, PKCE verifier, and the validated same-o
 
 OAuth client credentials, the exact callback URL, HMAC keys, and the Console Session encryption key are provisioned through the deployment environment or secret manager. They are not created by Gateway migrations; the Gateway intentionally owns no database migrations.
 
+`GET /api/v1/overview` reads the configured Portal, Platform Operations, Notice, Library, QuizCraft, and Food summary endpoints concurrently. Each module has a two-second budget, the whole response has a three-second deadline, and only these idempotent GET reads receive at most one jittered retry. Successful bounded summaries may be cached in Redis for at most five minutes; a fallback is always labeled `stale` with `as_of`, `last_success_at`, and the current trace request identifier.
+
 ## Verification
 
 - `powershell -ExecutionPolicy Bypass -File services/console-gateway/scripts/test-integration.ps1`

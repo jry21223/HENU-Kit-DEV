@@ -8,14 +8,36 @@ const (
 	LoginRoute    = "/api/v1/auth/login"
 	CallbackRoute = "/api/v1/auth/callback"
 	SessionRoute  = "/api/v1/session"
+	OverviewRoute = "/api/v1/overview"
 	LogoutRoute   = "/api/v1/session/logout"
-	SourceSHA256  = "8e16c8b29b697d0994357256cbf97a22746875d04b5c8cc74b2425f022d1f0a1"
+	SourceSHA256  = "61b9cb7efd9827f5a638d5b027f5696417dbca5223a0eebc3fd21507acdaeb74"
 )
 
 type ConsoleAccessContext struct {
 	Permissions []string       `json:"permissions"`
 	Scopes      []ConsoleScope `json:"scopes"`
 	VerifiedAt  time.Time      `json:"verified_at"`
+}
+
+type ConsoleModuleMetric struct {
+	Hint  *string `json:"hint,omitempty"`
+	Label string  `json:"label"`
+	Value string  `json:"value"`
+}
+
+type ConsoleModuleSummary struct {
+	AsOf          *time.Time            `json:"as_of,omitempty"`
+	ID            string                `json:"id"`
+	LastSuccessAt *time.Time            `json:"last_success_at,omitempty"`
+	Metrics       []ConsoleModuleMetric `json:"metrics"`
+	RequestID     string                `json:"request_id"`
+	Status        string                `json:"status"`
+	StatusMessage string                `json:"status_message"`
+}
+
+type ConsoleOverview struct {
+	GeneratedAt time.Time              `json:"generated_at"`
+	Modules     []ConsoleModuleSummary `json:"modules"`
 }
 
 type ConsoleScope struct {

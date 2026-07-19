@@ -1,8 +1,29 @@
-// Code generated from console-gateway.yaml (SHA256 8e16c8b29b697d0994357256cbf97a22746875d04b5c8cc74b2425f022d1f0a1); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 61b9cb7efd9827f5a638d5b027f5696417dbca5223a0eebc3fd21507acdaeb74); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
   verified_at: string;
+}
+
+export interface ConsoleModuleMetric {
+  hint?: string;
+  label: string;
+  value: string;
+}
+
+export interface ConsoleModuleSummary {
+  as_of?: string;
+  id: "portal" | "platform" | "notice" | "library" | "quizcraft" | "food";
+  last_success_at?: string;
+  metrics: Array<ConsoleModuleMetric>;
+  request_id: string;
+  status: "ok" | "empty" | "partial" | "stale" | "unavailable";
+  status_message: string;
+}
+
+export interface ConsoleOverview {
+  generated_at: string;
+  modules: Array<ConsoleModuleSummary>;
 }
 
 export interface ConsoleScope {
@@ -48,6 +69,18 @@ function isConsoleAccessContext(value: unknown): value is ConsoleAccessContext {
   return isRecord(value) && "permissions" in value && Array.isArray(value["permissions"]) && value["permissions"].every((item) => typeof item === "string") && "scopes" in value && Array.isArray(value["scopes"]) && value["scopes"].every((item) => isConsoleScope(item)) && "verified_at" in value && isDateTime(value["verified_at"]) && Object.keys(value).every((key) => ["permissions","scopes","verified_at"].includes(key));
 }
 
+function isConsoleModuleMetric(value: unknown): value is ConsoleModuleMetric {
+  return isRecord(value) && (!("hint" in value) || typeof value["hint"] === "string" && value["hint"].length <= 120) && "label" in value && typeof value["label"] === "string" && value["label"].length <= 40 && "value" in value && typeof value["value"] === "string" && value["value"].length <= 80 && Object.keys(value).every((key) => ["hint","label","value"].includes(key));
+}
+
+function isConsoleModuleSummary(value: unknown): value is ConsoleModuleSummary {
+  return isRecord(value) && (!("as_of" in value) || isDateTime(value["as_of"])) && "id" in value && typeof value["id"] === "string" && ["portal","platform","notice","library","quizcraft","food"].includes(value["id"]) && (!("last_success_at" in value) || isDateTime(value["last_success_at"])) && "metrics" in value && Array.isArray(value["metrics"]) && value["metrics"].length <= 8 && value["metrics"].every((item) => isConsoleModuleMetric(item)) && "request_id" in value && typeof value["request_id"] === "string" && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","stale","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && Object.keys(value).every((key) => ["as_of","id","last_success_at","metrics","request_id","status","status_message"].includes(key));
+}
+
+function isConsoleOverview(value: unknown): value is ConsoleOverview {
+  return isRecord(value) && "generated_at" in value && isDateTime(value["generated_at"]) && "modules" in value && Array.isArray(value["modules"]) && value["modules"].length >= 6 && value["modules"].length <= 6 && value["modules"].every((item) => isConsoleModuleSummary(item)) && Object.keys(value).every((key) => ["generated_at","modules"].includes(key));
+}
+
 function isConsoleScope(value: unknown): value is ConsoleScope {
   return isRecord(value) && "kind" in value && value["kind"] === "platform" && Object.keys(value).every((key) => ["kind"].includes(key));
 }
@@ -84,6 +117,14 @@ export async function fetchConsoleSession(): Promise<ConsoleSessionResult> {
   } catch {
     return { state: "unavailable" };
   }
+}
+
+export async function fetchConsoleOverview(): Promise<ConsoleOverview> {
+  const response = await fetch("/api/v1/overview", { credentials: "same-origin", headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("Console overview failed");
+  const envelope: unknown = await response.json();
+  if (!isSuccessEnvelope(envelope) || !isConsoleOverview(envelope.data)) throw new Error("Console overview contract mismatch");
+  return envelope.data;
 }
 
 export async function logoutConsoleSession(): Promise<void> {

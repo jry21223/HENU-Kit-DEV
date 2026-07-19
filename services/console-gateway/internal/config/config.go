@@ -17,6 +17,7 @@ type Config struct {
 	RedirectURI       string
 	RedisAddr         string
 	SessionKey        []byte
+	OverviewEndpoints map[string]string
 }
 
 func FromEnv() (Config, error) {
@@ -29,6 +30,10 @@ func FromEnv() (Config, error) {
 		PlatformAuthorize: strings.TrimRight(os.Getenv("PLATFORM_ACCOUNT_ORIGIN"), "/"), ClientID: os.Getenv("PLATFORM_CLIENT_ID"),
 		ClientSecret: os.Getenv("PLATFORM_CLIENT_SECRET"), KeyID: os.Getenv("PLATFORM_KEY_ID"), RedirectURI: os.Getenv("CONSOLE_REDIRECT_URI"),
 		RedisAddr: os.Getenv("REDIS_ADDR"), SessionKey: key,
+		OverviewEndpoints: map[string]string{
+			"portal": os.Getenv("PORTAL_SUMMARY_URL"), "platform": os.Getenv("PLATFORM_SUMMARY_URL"), "notice": os.Getenv("NOTICE_SUMMARY_URL"),
+			"library": os.Getenv("LIBRARY_SUMMARY_URL"), "quizcraft": os.Getenv("QUIZCRAFT_SUMMARY_URL"), "food": os.Getenv("FOOD_SUMMARY_URL"),
+		},
 	}
 	if config.ListenAddr == "" {
 		config.ListenAddr = ":8082"

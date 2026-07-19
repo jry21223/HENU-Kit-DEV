@@ -27,6 +27,7 @@ func main() {
 		PlatformCoreURL: config.PlatformCoreURL, PlatformAccountOrigin: config.PlatformAuthorize,
 		ClientID: config.ClientID, ClientSecret: config.ClientSecret, KeyID: config.KeyID, RedirectURI: config.RedirectURI,
 		SessionKey: config.SessionKey, Redis: redisClient, Logger: logger,
+		OverviewEndpoints: config.OverviewEndpoints,
 	})
 	if err != nil {
 		logger.Error("create_gateway", "error", err)

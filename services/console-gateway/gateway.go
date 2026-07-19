@@ -7,6 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/console-gateway/internal/httpapi"
+	"henukit.dev/console-gateway/internal/overview"
 	"henukit.dev/console-gateway/internal/platformcore"
 	"henukit.dev/console-gateway/internal/session"
 )
@@ -17,10 +18,14 @@ type Config struct {
 	SessionKey                                 []byte
 	Redis                                      *redis.Client
 	HTTPClient                                 *http.Client
+	OverviewEndpoints                          map[string]string
 	Logger                                     *slog.Logger
 }
 
 func New(config Config) (http.Handler, error) {
+	if config.HTTPClient == nil {
+		config.HTTPClient = &http.Client{}
+	}
 	codec, err := session.New(config.SessionKey)
 	if err != nil {
 		return nil, err
@@ -29,5 +34,9 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, config.Redis, codec, config.Logger)
+	aggregator, err := overview.New(config.OverviewEndpoints, config.HTTPClient, config.Redis, overview.Options{})
+	if err != nil {
+		return nil, err
+	}
+	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, aggregator, config.Redis, codec, config.Logger)
 }

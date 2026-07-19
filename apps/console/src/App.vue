@@ -7,7 +7,7 @@ import ModuleCard from "@/components/ModuleCard.vue";
 import StatusBadge from "@/components/ui/StatusBadge.vue";
 import UiButton from "@/components/ui/UiButton.vue";
 import { moduleSummaries, type ModuleSummary } from "@/data/modules";
-import { consoleLoginHref, fetchConsoleSession, logoutConsoleSession, type ConsoleSession } from "@/lib/console-gateway";
+import { consoleLoginHref, fetchConsoleOverview, fetchConsoleSession, logoutConsoleSession, type ConsoleOverview, type ConsoleSession } from "@/lib/console-gateway";
 
 const icons = {
   portal: Building2,
@@ -23,12 +23,24 @@ const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
 const authState = ref<"loading" | "authenticated" | "signed_out" | "denied" | "unavailable">("loading");
 const consoleSession = ref<ConsoleSession>();
+const consoleOverview = ref<ConsoleOverview>();
+const overviewState = ref<"loading" | "ready" | "unavailable">("loading");
 
 async function refreshSession() {
   authState.value = "loading";
   const result = await fetchConsoleSession();
   authState.value = result.state;
   consoleSession.value = result.state === "authenticated" ? result.session : undefined;
+  consoleOverview.value = undefined;
+  if (result.state === "authenticated") {
+    overviewState.value = "loading";
+    try {
+      consoleOverview.value = await fetchConsoleOverview();
+      overviewState.value = "ready";
+    } catch {
+      overviewState.value = "unavailable";
+    }
+  }
 }
 
 async function signOut() {
@@ -36,6 +48,7 @@ async function signOut() {
     await logoutConsoleSession();
     authState.value = "signed_out";
     consoleSession.value = undefined;
+    consoleOverview.value = undefined;
   } catch {
     authState.value = "unavailable";
   }
@@ -44,10 +57,26 @@ async function signOut() {
 onMounted(refreshSession);
 
 const summaries = computed<ModuleSummary[]>(() =>
-  loading || authState.value === "loading"
-    ? moduleSummaries.map((summary) => ({ ...summary, status: "loading", metrics: [] }))
+  loading || authState.value === "loading" || (authState.value === "authenticated" && overviewState.value === "loading")
+    ? moduleSummaries.map((summary) => ({ ...summary, status: "loading", metrics: [], trend: undefined }))
     : authState.value === "authenticated"
-      ? moduleSummaries
+      ? overviewState.value === "ready" && consoleOverview.value
+        ? moduleSummaries.map((presentation) => {
+            const live = consoleOverview.value?.modules.find((module) => module.id === presentation.id);
+            return live
+              ? {
+                  ...presentation,
+                  status: live.status,
+                  metrics: live.metrics,
+                  statusMessage: live.status_message,
+                  asOf: live.as_of,
+                  lastSuccessAt: live.last_success_at,
+                  requestId: live.request_id,
+                  trend: undefined,
+                }
+              : { ...presentation, status: "unavailable", metrics: [], statusMessage: "聚合响应缺少此模块。", trend: undefined };
+          })
+        : moduleSummaries.map((summary) => ({ ...summary, status: "unavailable", metrics: [], statusMessage: "Overview 聚合暂不可用。", trend: undefined }))
       : moduleSummaries.map((summary) => ({ ...summary, status: "denied", metrics: [], statusMessage: "登录并通过服务端权限校验后可查看此模块。" })),
 );
 
