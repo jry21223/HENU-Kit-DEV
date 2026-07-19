@@ -1,0 +1,91 @@
+name: Library
+
+on:
+  pull_request:
+    paths:
+      - services/library/**
+      - packages/api-contracts/openapi/library.yaml
+      - .github/workflows/library.yml
+  push:
+    branches: [main]
+    paths:
+      - services/library/**
+      - packages/api-contracts/openapi/library.yaml
+      - .github/workflows/library.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PGPASSWORD: library_test
+      LIBRARY_TEST_DATABASE_URL: postgres://library:library_test@localhost:5432/library_test?sslmode=disable
+      LIBRARY_TEST_REDIS_ADDR: localhost:6379
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_DB: library_test, POSTGRES_USER: library, POSTGRES_PASSWORD: library_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U library -d library_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/library/go.mod
+          cache-dependency-path: services/library/go.sum
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Verify migration round trip and recovery
+        run: |
+          set -euo pipefail
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -c "CREATE TABLE baseline_probe(id integer PRIMARY KEY); INSERT INTO baseline_probe VALUES(1)"
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000001_library_adapter.up.sql
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000001_library_adapter.up.sql
+          test "$(psql -h localhost -U library -d library_test -Atc "SELECT to_regclass('public.library_adapter_operations') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
+          pg_dump -h localhost -U library -d library_test --format=custom --file=/tmp/library-recovery.dump
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000001_library_adapter.down.sql
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000001_library_adapter.up.sql
+          createdb -h localhost -U library library_recovery
+          pg_restore -h localhost -U library -d library_recovery --no-owner /tmp/library-recovery.dump
+          test "$(psql -h localhost -U library -d library_recovery -Atc "SELECT to_regclass('public.library_adapter_audit_events') IS NOT NULL")" = t
+      - name: Verify Library contract
+        run: |
+          set -euo pipefail
+          cd services/library
+          go run ./cmd/contractgen
+          cd ../..
+          git diff --exit-code -- services/library/internal/contract/generated.go
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/library.yaml
+          if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/library.yaml" 2>/dev/null; then
+            git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/library.yaml" > /tmp/library-base.yaml
+            cd services/library
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/library-base.yaml ../../packages/api-contracts/openapi/library.yaml
+          fi
+      - name: Vet, test, and build
+        working-directory: services/library
+        run: |
+          set -euo pipefail
+          gofmt -d . | tee /tmp/gofmt.diff
+          test ! -s /tmp/gofmt.diff
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
+          go test -race -count=1 ./...
+          go build -o /tmp/library ./cmd/server
+      - name: Build image
+        run: docker build -t henukit-library:${{ github.sha }} services/library

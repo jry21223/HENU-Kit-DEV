@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App.vue";
+import { fetchLibraryWorkspace } from "./lib/console-gateway";
 
 const authenticated = {
   data: {
@@ -38,6 +39,30 @@ const overview = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Console Overview", () => {
+  it("reviews a Library submission without exposing retired Study capabilities", async () => {
+    const librarySession = { ...authenticated, data: { ...authenticated.data, access_context: { permissions: ["library.read", "library.manage", "library.review"], scopes: [{ kind: "product", product_code: "library" }], verified_at: "2026-07-19T00:00:00Z" } } };
+    let approved = false;
+    const material = { id: "22222222-2222-4222-8222-222222222222", course_id: "11111111-1111-4111-8111-111111111111", title: "期末复习提纲", type: "quick_review", file_name: "review.pdf", file_size: 2048, access_level: "authenticated", status: approved ? "published" : "pending", updated_at: "2026-07-19T00:00:00Z" };
+    const workspace = () => ({ data: { status: "partial", status_message: "纠错来源暂不可用", degraded: true, courses: [{ id: "11111111-1111-4111-8111-111111111111", name: "高等数学", slug: "math", grade: "2025", status: "published", updated_at: "2026-07-19T00:00:00Z" }], materials: [material], downloads: [{ id: "33333333-3333-4333-8333-333333333333", material_id: material.id, material_title: material.title, access_level: "authenticated", downloaded_at: "2026-07-19T01:00:00Z" }], submissions: approved ? [] : [material], corrections: [], generated_at: "2026-07-19T00:00:00Z" }, request_id: "req_library_workspace" });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/api/v1/session")) return Promise.resolve(new Response(JSON.stringify(librarySession), { status: 200 }));
+      if (path.endsWith("/library/commands") && init?.method === "POST") { approved = true; return Promise.resolve(new Response(JSON.stringify({ data: { operation: "submission_approve", resource_id: "22222222-2222-4222-8222-222222222222", state: "succeeded" }, request_id: "req_library_review" }), { status: 200 })); }
+      return Promise.resolve(new Response(JSON.stringify(workspace()), { status: 200 }));
+    }));
+    expect(await fetchLibraryWorkspace()).toMatchObject({ state: "authenticated" });
+    window.history.replaceState({}, "", "/library");
+    const wrapper = mount(App);
+    await flushPromises();
+    for (const text of ["资料库运营", "课程", "资料", "下载", "投稿审核", "资料纠错", "纠错来源暂不可用"]) expect(wrapper.text()).toContain(text);
+    for (const excluded of ["社区", "支付", "刷题", "积分", "会员"]) expect(wrapper.text()).not.toContain(excluded);
+    await wrapper.findAll("button").find((button) => button.text() === "批准投稿")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("投稿已批准");
+    expect(wrapper.text()).not.toContain("批准投稿");
+    wrapper.unmount();
+  });
+
   it("reviews an immutable Notice version through the scoped workflow", async () => {
     const noticeSession = { ...authenticated, data: { ...authenticated.data, access_context: { permissions: ["notice.read", "notice.review", "notice.distribute"], scopes: [{ kind: "product", product_code: "notice" }], verified_at: "2026-07-19T00:00:00Z" } } };
     let approved = false;

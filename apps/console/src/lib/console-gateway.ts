@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 b5a09cf14075494a97fa8a854dc95baf9c822fb2abd900fec6b71fb92da3c74d); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 b973c975e1cd49ee8f55620ed2103a995e4d94cc4b2d67d7535d4c9936752ce8); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -39,6 +39,56 @@ export interface ConsoleSession {
 };
 }
 
+export interface CorrectionReviewCommand {
+  expected_version: string;
+  kind: "correction_resolve" | "correction_reject";
+  payload: ReviewPayload;
+  resource_id: string;
+}
+
+export interface CourseArchiveCommand {
+  expected_version: string;
+  kind: "course_archive";
+  payload: EmptyPayload;
+  resource_id: string;
+}
+
+export interface CourseCreateCommand {
+  kind: "course_create";
+  payload: CourseCreatePayload;
+}
+
+export interface CourseCreatePayload {
+  collegeId: string;
+  description?: string;
+  examScope?: string;
+  grade: string;
+  majorId: string;
+  name: string;
+  schoolId: string;
+  slug: string;
+  status?: "draft" | "published" | "archived";
+}
+
+export interface CourseMutationPayload {
+  collegeId?: string;
+  description?: string;
+  examScope?: string;
+  grade?: string;
+  majorId?: string;
+  name?: string;
+  schoolId?: string;
+  slug?: string;
+  status?: "draft" | "published" | "archived";
+}
+
+export interface CourseUpdateCommand {
+  expected_version: string;
+  kind: "course_update";
+  payload: CourseMutationPayload;
+  resource_id: string;
+}
+
 export interface CreateNoticeSourceRequest {
   canonical_url: string;
   code: string;
@@ -52,6 +102,9 @@ export interface CreateNoticeVersionRequest {
   title: string;
 }
 
+export interface EmptyPayload {
+}
+
 export interface ErrorEnvelope {
   error: ErrorObject;
   request_id: string;
@@ -60,6 +113,109 @@ export interface ErrorEnvelope {
 export interface ErrorObject {
   code: string;
   message: string;
+}
+
+export type LibraryCommand = CourseCreateCommand | CourseUpdateCommand | CourseArchiveCommand | MaterialCreateCommand | MaterialUpdateCommand | MaterialArchiveCommand | SubmissionReviewCommand | CorrectionReviewCommand;
+
+export type LibraryCommandKind = "course_create" | "course_update" | "course_archive" | "material_create" | "material_update" | "material_archive" | "submission_approve" | "submission_reject" | "correction_resolve" | "correction_reject";
+
+export interface LibraryCorrection {
+  description: string;
+  id: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  target_id: string;
+  target_type: "course" | "material";
+  updated_at: string;
+}
+
+export interface LibraryCourse {
+  grade: string;
+  id: string;
+  name: string;
+  slug: string;
+  status: "draft" | "published" | "archived";
+  updated_at: string;
+}
+
+export interface LibraryDownload {
+  access_level: "public" | "authenticated" | "restricted";
+  downloaded_at: string;
+  id: string;
+  material_id: string;
+  material_title: string;
+}
+
+export interface LibraryMaterial {
+  access_level: "public" | "authenticated" | "restricted";
+  course_id: string;
+  file_name: string;
+  file_size: number;
+  id: string;
+  status: "draft" | "pending" | "published" | "rejected" | "archived";
+  title: string;
+  type: "knowledge_note" | "mock_paper" | "answer" | "quick_review" | "past_exam" | "other";
+  updated_at: string;
+}
+
+export interface LibraryOperationResult {
+  operation: LibraryCommandKind;
+  resource_id?: string;
+  state: "succeeded" | "unknown";
+}
+
+export interface LibraryWorkspace {
+  corrections: Array<LibraryCorrection>;
+  courses: Array<LibraryCourse>;
+  degraded: boolean;
+  downloads: Array<LibraryDownload>;
+  generated_at: string;
+  materials: Array<LibraryMaterial>;
+  status: "ok" | "partial" | "unavailable";
+  status_message: string;
+  submissions: Array<LibraryMaterial>;
+}
+
+export interface MaterialArchiveCommand {
+  expected_version: string;
+  kind: "material_archive";
+  payload: EmptyPayload;
+  resource_id: string;
+}
+
+export interface MaterialCreateCommand {
+  kind: "material_create";
+  payload: MaterialCreatePayload;
+}
+
+export interface MaterialCreatePayload {
+  accessLevel?: "free" | "login_required";
+  courseId: string;
+  description?: string;
+  fileName?: string;
+  fileSize?: number;
+  previewContent?: string;
+  status?: "draft" | "pending" | "published" | "rejected" | "archived";
+  storageKey: string;
+  title: string;
+  type?: "knowledge_note" | "mock_paper" | "answer" | "quick_review" | "past_exam" | "other";
+}
+
+export interface MaterialUpdateCommand {
+  expected_version: string;
+  kind: "material_update";
+  payload: MaterialUpdatePayload;
+  resource_id: string;
+}
+
+export interface MaterialUpdatePayload {
+  accessLevel?: "free" | "login_required";
+  courseId?: string;
+  description?: string;
+  previewContent?: string;
+  status?: "draft" | "pending" | "published" | "rejected" | "archived";
+  title?: string;
+  type?: "knowledge_note" | "mock_paper" | "answer" | "quick_review" | "past_exam" | "other";
 }
 
 export interface NoticeAudience {
@@ -198,8 +354,19 @@ export interface PlatformScope {
   resource_type?: string;
 }
 
+export interface ReviewPayload {
+  reviewReason?: string;
+}
+
 export interface RevokePlatformSessionRequest {
   expected_active: boolean;
+}
+
+export interface SubmissionReviewCommand {
+  expected_version: string;
+  kind: "submission_approve" | "submission_reject";
+  payload: ReviewPayload;
+  resource_id: string;
 }
 
 export interface SuccessEnvelope {
@@ -249,6 +416,30 @@ function isConsoleSession(value: unknown): value is ConsoleSession {
   return isRecord(value) && "access_context" in value && isConsoleAccessContext(value["access_context"]) && "expires_at" in value && isDateTime(value["expires_at"]) && "user" in value && isRecord(value["user"]) && "id" in value["user"] && isUUID(value["user"]["id"]) && Object.keys(value["user"]).every((key) => ["id"].includes(key)) && Object.keys(value).every((key) => ["access_context","expires_at","user"].includes(key));
 }
 
+function isCorrectionReviewCommand(value: unknown): value is CorrectionReviewCommand {
+  return isRecord(value) && "expected_version" in value && isDateTime(value["expected_version"]) && "kind" in value && typeof value["kind"] === "string" && ["correction_resolve","correction_reject"].includes(value["kind"]) && "payload" in value && isReviewPayload(value["payload"]) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
+}
+
+function isCourseArchiveCommand(value: unknown): value is CourseArchiveCommand {
+  return isRecord(value) && "expected_version" in value && isDateTime(value["expected_version"]) && "kind" in value && value["kind"] === "course_archive" && "payload" in value && isEmptyPayload(value["payload"]) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
+}
+
+function isCourseCreateCommand(value: unknown): value is CourseCreateCommand {
+  return isRecord(value) && "kind" in value && value["kind"] === "course_create" && "payload" in value && isCourseCreatePayload(value["payload"]) && Object.keys(value).every((key) => ["kind","payload"].includes(key));
+}
+
+function isCourseCreatePayload(value: unknown): value is CourseCreatePayload {
+  return isRecord(value) && "collegeId" in value && isUUID(value["collegeId"]) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("examScope" in value) || typeof value["examScope"] === "string" && value["examScope"].length <= 2000) && "grade" in value && typeof value["grade"] === "string" && value["grade"].length <= 32 && "majorId" in value && isUUID(value["majorId"]) && "name" in value && typeof value["name"] === "string" && value["name"].length <= 160 && "schoolId" in value && isUUID(value["schoolId"]) && "slug" in value && typeof value["slug"] === "string" && value["slug"].length <= 160 && (!("status" in value) || typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"])) && Object.keys(value).every((key) => ["collegeId","description","examScope","grade","majorId","name","schoolId","slug","status"].includes(key));
+}
+
+function isCourseMutationPayload(value: unknown): value is CourseMutationPayload {
+  return isRecord(value) && (!("collegeId" in value) || isUUID(value["collegeId"])) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("examScope" in value) || typeof value["examScope"] === "string" && value["examScope"].length <= 2000) && (!("grade" in value) || typeof value["grade"] === "string" && value["grade"].length <= 32) && (!("majorId" in value) || isUUID(value["majorId"])) && (!("name" in value) || typeof value["name"] === "string" && value["name"].length <= 160) && (!("schoolId" in value) || isUUID(value["schoolId"])) && (!("slug" in value) || typeof value["slug"] === "string" && value["slug"].length <= 160) && (!("status" in value) || typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"])) && Object.keys(value).every((key) => ["collegeId","description","examScope","grade","majorId","name","schoolId","slug","status"].includes(key));
+}
+
+function isCourseUpdateCommand(value: unknown): value is CourseUpdateCommand {
+  return isRecord(value) && "expected_version" in value && isDateTime(value["expected_version"]) && "kind" in value && value["kind"] === "course_update" && "payload" in value && isCourseMutationPayload(value["payload"]) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
+}
+
 function isCreateNoticeSourceRequest(value: unknown): value is CreateNoticeSourceRequest {
   return isRecord(value) && "canonical_url" in value && typeof value["canonical_url"] === "string" && new RegExp("^https://").test(value["canonical_url"]) && "code" in value && typeof value["code"] === "string" && new RegExp("^[a-z0-9][a-z0-9-]{1,62}$").test(value["code"]) && "name" in value && typeof value["name"] === "string" && value["name"].length <= 120 && Object.keys(value).every((key) => ["canonical_url","code","name"].includes(key));
 }
@@ -257,12 +448,68 @@ function isCreateNoticeVersionRequest(value: unknown): value is CreateNoticeVers
   return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length <= 100000 && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && new RegExp("^https://").test(value["source_url"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && Object.keys(value).every((key) => ["body","source_published_at","source_url","title"].includes(key));
 }
 
+function isEmptyPayload(value: unknown): value is EmptyPayload {
+  return isRecord(value) && Object.keys(value).length === 0;
+}
+
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
   return isRecord(value) && "error" in value && isErrorObject(value["error"]) && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 100 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]);
 }
 
 function isErrorObject(value: unknown): value is ErrorObject {
   return isRecord(value) && "code" in value && typeof value["code"] === "string" && "message" in value && typeof value["message"] === "string";
+}
+
+function isLibraryCommand(value: unknown): value is LibraryCommand {
+  return true && ([(isCourseCreateCommand(value)), (isCourseUpdateCommand(value)), (isCourseArchiveCommand(value)), (isMaterialCreateCommand(value)), (isMaterialUpdateCommand(value)), (isMaterialArchiveCommand(value)), (isSubmissionReviewCommand(value)), (isCorrectionReviewCommand(value))].filter(Boolean).length === 1);
+}
+
+function isLibraryCommandKind(value: unknown): value is LibraryCommandKind {
+  return typeof value === "string" && ["course_create","course_update","course_archive","material_create","material_update","material_archive","submission_approve","submission_reject","correction_resolve","correction_reject"].includes(value);
+}
+
+function isLibraryCorrection(value: unknown): value is LibraryCorrection {
+  return isRecord(value) && "description" in value && typeof value["description"] === "string" && value["description"].length <= 2000 && "id" in value && isUUID(value["id"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length <= 120 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "target_id" in value && isUUID(value["target_id"]) && "target_type" in value && typeof value["target_type"] === "string" && ["course","material"].includes(value["target_type"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["description","id","reason","status","target_id","target_type","updated_at"].includes(key));
+}
+
+function isLibraryCourse(value: unknown): value is LibraryCourse {
+  return isRecord(value) && "grade" in value && typeof value["grade"] === "string" && value["grade"].length <= 32 && "id" in value && isUUID(value["id"]) && "name" in value && typeof value["name"] === "string" && value["name"].length <= 160 && "slug" in value && typeof value["slug"] === "string" && value["slug"].length <= 160 && "status" in value && typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["grade","id","name","slug","status","updated_at"].includes(key));
+}
+
+function isLibraryDownload(value: unknown): value is LibraryDownload {
+  return isRecord(value) && "access_level" in value && typeof value["access_level"] === "string" && ["public","authenticated","restricted"].includes(value["access_level"]) && "downloaded_at" in value && isDateTime(value["downloaded_at"]) && "id" in value && isUUID(value["id"]) && "material_id" in value && isUUID(value["material_id"]) && "material_title" in value && typeof value["material_title"] === "string" && value["material_title"].length <= 200 && Object.keys(value).every((key) => ["access_level","downloaded_at","id","material_id","material_title"].includes(key));
+}
+
+function isLibraryMaterial(value: unknown): value is LibraryMaterial {
+  return isRecord(value) && "access_level" in value && typeof value["access_level"] === "string" && ["public","authenticated","restricted"].includes(value["access_level"]) && "course_id" in value && isUUID(value["course_id"]) && "file_name" in value && typeof value["file_name"] === "string" && value["file_name"].length <= 255 && "file_size" in value && typeof value["file_size"] === "number" && Number.isSafeInteger(value["file_size"]) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && "type" in value && typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["access_level","course_id","file_name","file_size","id","status","title","type","updated_at"].includes(key));
+}
+
+function isLibraryOperationResult(value: unknown): value is LibraryOperationResult {
+  return isRecord(value) && "operation" in value && isLibraryCommandKind(value["operation"]) && (!("resource_id" in value) || isUUID(value["resource_id"])) && "state" in value && typeof value["state"] === "string" && ["succeeded","unknown"].includes(value["state"]) && Object.keys(value).every((key) => ["operation","resource_id","state"].includes(key));
+}
+
+function isLibraryWorkspace(value: unknown): value is LibraryWorkspace {
+  return isRecord(value) && "corrections" in value && Array.isArray(value["corrections"]) && value["corrections"].length <= 500 && value["corrections"].every((item) => isLibraryCorrection(item)) && "courses" in value && Array.isArray(value["courses"]) && value["courses"].length <= 500 && value["courses"].every((item) => isLibraryCourse(item)) && "degraded" in value && typeof value["degraded"] === "boolean" && "downloads" in value && Array.isArray(value["downloads"]) && value["downloads"].length <= 200 && value["downloads"].every((item) => isLibraryDownload(item)) && "generated_at" in value && isDateTime(value["generated_at"]) && "materials" in value && Array.isArray(value["materials"]) && value["materials"].length <= 500 && value["materials"].every((item) => isLibraryMaterial(item)) && "status" in value && typeof value["status"] === "string" && ["ok","partial","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && "submissions" in value && Array.isArray(value["submissions"]) && value["submissions"].length <= 500 && value["submissions"].every((item) => isLibraryMaterial(item)) && Object.keys(value).every((key) => ["corrections","courses","degraded","downloads","generated_at","materials","status","status_message","submissions"].includes(key));
+}
+
+function isMaterialArchiveCommand(value: unknown): value is MaterialArchiveCommand {
+  return isRecord(value) && "expected_version" in value && isDateTime(value["expected_version"]) && "kind" in value && value["kind"] === "material_archive" && "payload" in value && isEmptyPayload(value["payload"]) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
+}
+
+function isMaterialCreateCommand(value: unknown): value is MaterialCreateCommand {
+  return isRecord(value) && "kind" in value && value["kind"] === "material_create" && "payload" in value && isMaterialCreatePayload(value["payload"]) && Object.keys(value).every((key) => ["kind","payload"].includes(key));
+}
+
+function isMaterialCreatePayload(value: unknown): value is MaterialCreatePayload {
+  return isRecord(value) && (!("accessLevel" in value) || typeof value["accessLevel"] === "string" && ["free","login_required"].includes(value["accessLevel"])) && "courseId" in value && isUUID(value["courseId"]) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("fileName" in value) || typeof value["fileName"] === "string" && value["fileName"].length <= 255) && (!("fileSize" in value) || typeof value["fileSize"] === "number" && Number.isSafeInteger(value["fileSize"])) && (!("previewContent" in value) || typeof value["previewContent"] === "string" && value["previewContent"].length <= 20000) && (!("status" in value) || typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"])) && "storageKey" in value && typeof value["storageKey"] === "string" && value["storageKey"].length <= 512 && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && (!("type" in value) || typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"])) && Object.keys(value).every((key) => ["accessLevel","courseId","description","fileName","fileSize","previewContent","status","storageKey","title","type"].includes(key));
+}
+
+function isMaterialUpdateCommand(value: unknown): value is MaterialUpdateCommand {
+  return isRecord(value) && "expected_version" in value && isDateTime(value["expected_version"]) && "kind" in value && value["kind"] === "material_update" && "payload" in value && isMaterialUpdatePayload(value["payload"]) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
+}
+
+function isMaterialUpdatePayload(value: unknown): value is MaterialUpdatePayload {
+  return isRecord(value) && (!("accessLevel" in value) || typeof value["accessLevel"] === "string" && ["free","login_required"].includes(value["accessLevel"])) && (!("courseId" in value) || isUUID(value["courseId"])) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("previewContent" in value) || typeof value["previewContent"] === "string" && value["previewContent"].length <= 20000) && (!("status" in value) || typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"])) && (!("title" in value) || typeof value["title"] === "string" && value["title"].length <= 200) && (!("type" in value) || typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"])) && Object.keys(value).every((key) => ["accessLevel","courseId","description","previewContent","status","title","type"].includes(key));
 }
 
 function isNoticeAudience(value: unknown): value is NoticeAudience {
@@ -329,8 +576,16 @@ function isPlatformScope(value: unknown): value is PlatformScope {
   return isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["platform","product","resource"].includes(value["kind"]) && (!("product_code" in value) || typeof value["product_code"] === "string") && (!("resource_id" in value) || typeof value["resource_id"] === "string") && (!("resource_type" in value) || typeof value["resource_type"] === "string") && Object.keys(value).every((key) => ["kind","product_code","resource_id","resource_type"].includes(key));
 }
 
+function isReviewPayload(value: unknown): value is ReviewPayload {
+  return isRecord(value) && (!("reviewReason" in value) || typeof value["reviewReason"] === "string" && value["reviewReason"].length <= 1000) && Object.keys(value).every((key) => ["reviewReason"].includes(key));
+}
+
 function isRevokePlatformSessionRequest(value: unknown): value is RevokePlatformSessionRequest {
   return isRecord(value) && "expected_active" in value && value["expected_active"] === true && Object.keys(value).every((key) => ["expected_active"].includes(key));
+}
+
+function isSubmissionReviewCommand(value: unknown): value is SubmissionReviewCommand {
+  return isRecord(value) && "expected_version" in value && isDateTime(value["expected_version"]) && "kind" in value && typeof value["kind"] === "string" && ["submission_approve","submission_reject"].includes(value["kind"]) && "payload" in value && isReviewPayload(value["payload"]) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
 }
 
 function isSuccessEnvelope(value: unknown): value is SuccessEnvelope {
@@ -488,6 +743,49 @@ export async function resolveNoticeOperation(operation: "source_create" | "versi
     const envelope: unknown = await response.json();
     if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unavailable" };
     return envelope.data.status === "unknown" ? { state: "unknown" } : { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type LibraryWorkspaceResult = { state: "authenticated"; workspace: LibraryWorkspace } | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchLibraryWorkspace(): Promise<LibraryWorkspaceResult> {
+  try {
+    const response = await fetch("/api/v1/library", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isLibraryWorkspace(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", workspace: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type LibraryWriteResult = { state: "succeeded" | "unknown"; result?: LibraryOperationResult } | { state: "signed_out" | "denied" | "conflict" | "invalid" | "unavailable" };
+
+export async function executeLibraryCommand(input: LibraryCommand, idempotencyKey: string): Promise<LibraryWriteResult> {
+  try {
+    const response = await fetch("/api/v1/library/commands", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unknown" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unknown" };
+    return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unknown" }; }
+}
+
+export async function resolveLibraryOperation(operation: LibraryCommandKind, idempotencyKey: string): Promise<LibraryWriteResult> {
+  try {
+    const response = await fetch("/api/v1/library/operations/{operation}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unavailable" };
+    return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unavailable" }; }
 }
 

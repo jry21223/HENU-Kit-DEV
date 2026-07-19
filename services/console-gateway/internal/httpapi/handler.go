@@ -21,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/console-gateway/internal/contract"
+	libraryapi "henukit.dev/console-gateway/internal/library"
 	noticeapi "henukit.dev/console-gateway/internal/notice"
 	"henukit.dev/console-gateway/internal/platformcore"
 	"henukit.dev/console-gateway/internal/session"
@@ -42,6 +43,7 @@ type platformClient interface {
 	UpdateAccess(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	OperationStatus(context.Context, string, string, string) (json.RawMessage, error)
 	CheckNotice(context.Context, string, string) error
+	CheckLibrary(context.Context, string, string) error
 }
 
 type noticeClient interface {
@@ -53,6 +55,12 @@ type noticeClient interface {
 	Operation(context.Context, string, string, string) (json.RawMessage, error)
 }
 
+type libraryClient interface {
+	Workspace(context.Context, string) (json.RawMessage, error)
+	Command(context.Context, string, string, []byte) (json.RawMessage, error)
+	Operation(context.Context, string, string, string) (json.RawMessage, error)
+}
+
 type overviewClient interface {
 	Fetch(context.Context, string) contract.ConsoleOverview
 }
@@ -61,6 +69,7 @@ type Handler struct {
 	platformOrigin, clientID, redirectURI string
 	platform                              platformClient
 	notice                                noticeClient
+	library                               libraryClient
 	overview                              overviewClient
 	redis                                 *redis.Client
 	codec                                 *session.Codec
@@ -73,7 +82,7 @@ type flowState struct {
 	ReturnTo string `json:"return_to"`
 }
 
-func New(platformOrigin, clientID, redirectURI string, platform platformClient, notice noticeClient, overview overviewClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger) (http.Handler, error) {
+func New(platformOrigin, clientID, redirectURI string, platform platformClient, notice noticeClient, overview overviewClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger, libraryClients ...libraryClient) (http.Handler, error) {
 	origin, err := url.Parse(platformOrigin)
 	redirect, redirectErr := url.Parse(redirectURI)
 	if err != nil || redirectErr != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || (origin.Path != "" && origin.Path != "/") || origin.RawQuery != "" || origin.Fragment != "" || redirect.Scheme != "https" || redirect.Host == "" || clientID == "" || platform == nil || overview == nil || redisClient == nil || codec == nil {
@@ -82,7 +91,11 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	if logger == nil {
 		logger = slog.Default()
 	}
-	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, notice: notice, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
+	var library libraryClient
+	if len(libraryClients) > 0 {
+		library = libraryClients[0]
+	}
+	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, notice: notice, library: library, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
 	router := chi.NewRouter()
 	router.Use(handler.requestContext)
 	router.Use(securityHeaders)
@@ -101,8 +114,97 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Post(contract.NoticeReviewRoute, handler.reviewNoticeVersion)
 	router.Post(contract.NoticeDistributionRoute, handler.distributeNoticeVersion)
 	router.Get(contract.NoticeOperationRoute, handler.getNoticeOperation)
+	router.Get(contract.LibraryWorkspaceRoute, handler.getLibraryWorkspace)
+	router.Post(contract.LibraryCommandRoute, handler.executeLibraryCommand)
+	router.Get(contract.LibraryOperationRoute, handler.getLibraryOperation)
 	router.Post(contract.LogoutRoute, handler.logout)
 	return router, nil
+}
+
+func (h *Handler) getLibraryWorkspace(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeLibrary(writer, request, "library.read")
+	if !ok {
+		return
+	}
+	data, err := h.library.Workspace(libraryapi.WithRequestID(request.Context(), requestID(request)), value.UserID)
+	h.writeLibraryResult(writer, request, data, err)
+}
+
+func (h *Handler) executeLibraryCommand(writer http.ResponseWriter, request *http.Request) {
+	var input struct {
+		Kind            string          `json:"kind"`
+		ResourceID      string          `json:"resource_id,omitempty"`
+		ExpectedVersion string          `json:"expected_version,omitempty"`
+		Payload         json.RawMessage `json:"payload"`
+	}
+	body, ok := decodeOperationInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	permission := "library.manage"
+	if strings.HasPrefix(input.Kind, "submission_") || strings.HasPrefix(input.Kind, "correction_") {
+		permission = "library.review"
+	}
+	value, ok := h.authorizeLibrary(writer, request, permission)
+	if !ok {
+		return
+	}
+	data, err := h.library.Command(libraryapi.WithRequestID(request.Context(), requestID(request)), value.UserID, request.Header.Get("Idempotency-Key"), body)
+	h.writeLibraryResult(writer, request, data, err)
+}
+
+func (h *Handler) getLibraryOperation(writer http.ResponseWriter, request *http.Request) {
+	operation := chi.URLParam(request, "operation")
+	permission := "library.manage"
+	if strings.HasPrefix(operation, "submission_") || strings.HasPrefix(operation, "correction_") {
+		permission = "library.review"
+	}
+	value, ok := h.authorizeLibrary(writer, request, permission)
+	if !ok {
+		return
+	}
+	key := request.Header.Get("Idempotency-Key")
+	if len(key) < 8 || len(key) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		return
+	}
+	data, err := h.library.Operation(libraryapi.WithRequestID(request.Context(), requestID(request)), value.UserID, operation, key)
+	h.writeLibraryResult(writer, request, data, err)
+}
+
+func (h *Handler) authorizeLibrary(writer http.ResponseWriter, request *http.Request, permission string) (session.Value, bool) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return session.Value{}, false
+	}
+	if h.library == nil {
+		h.unavailable(writer, request, errors.New("library API is not configured"))
+		return session.Value{}, false
+	}
+	if err := h.platform.CheckLibrary(request.Context(), value.ExchangeToken, permission); err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return session.Value{}, false
+	}
+	return value, true
+}
+
+func (h *Handler) writeLibraryResult(writer http.ResponseWriter, request *http.Request, data json.RawMessage, err error) {
+	if err == nil {
+		writeJSON(writer, request, http.StatusOK, data)
+		return
+	}
+	switch {
+	case errors.Is(err, libraryapi.ErrUnauthorized):
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Library rejected the verified actor")
+	case errors.Is(err, libraryapi.ErrForbidden):
+		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Library permission or Scope is missing")
+	case errors.Is(err, libraryapi.ErrConflict):
+		writeError(writer, request, http.StatusConflict, "LIBRARY_CONFLICT", "Library version or idempotency history conflicts")
+	case errors.Is(err, libraryapi.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Library request is invalid")
+	default:
+		h.unavailable(writer, request, err)
+	}
 }
 
 func (h *Handler) getNotices(writer http.ResponseWriter, request *http.Request) {
@@ -467,7 +569,13 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	noticeManageErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.manage")
 	noticeReviewErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.review")
 	noticeDistributeErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.distribute")
-	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) {
+	libraryReadErr, libraryManageErr, libraryReviewErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
+	if h.library != nil {
+		libraryReadErr = h.platform.CheckLibrary(request.Context(), value.ExchangeToken, "library.read")
+		libraryManageErr = h.platform.CheckLibrary(request.Context(), value.ExchangeToken, "library.manage")
+		libraryReviewErr = h.platform.CheckLibrary(request.Context(), value.ExchangeToken, "library.review")
+	}
+	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) {
 		h.clearSession(writer)
 		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
 		return
@@ -491,6 +599,15 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if noticeDistributeErr == nil {
 		permissions = append(permissions, "notice.distribute")
 	}
+	if libraryReadErr == nil {
+		permissions = append(permissions, "library.read")
+	}
+	if libraryManageErr == nil {
+		permissions = append(permissions, "library.manage")
+	}
+	if libraryReviewErr == nil {
+		permissions = append(permissions, "library.review")
+	}
 	if len(permissions) == 0 {
 		err := overviewErr
 		if errors.Is(err, platformcore.ErrForbidden) {
@@ -511,6 +628,10 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if noticeErr == nil {
 		noticeProduct := "notice"
 		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &noticeProduct})
+	}
+	if libraryReadErr == nil {
+		libraryProduct := "library"
+		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &libraryProduct})
 	}
 	response.User.ID = value.UserID
 	writeJSON(writer, request, http.StatusOK, response)

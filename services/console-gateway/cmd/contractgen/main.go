@@ -38,6 +38,7 @@ type schema struct {
 	InvalidExample       any               `yaml:"x-invalid-example"`
 	AllOf                []schema          `yaml:"allOf"`
 	AnyOf                []schema          `yaml:"anyOf"`
+	OneOf                []schema          `yaml:"oneOf"`
 	If                   *schema           `yaml:"if"`
 	Then                 *schema           `yaml:"then"`
 	Contains             *schema           `yaml:"contains"`
@@ -74,7 +75,7 @@ func main() {
 		fail(errors.New("console gateway server must end with /api/v1"))
 	}
 	routes := operationRoutes(spec)
-	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "logoutConsoleSession"} {
+	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "logoutConsoleSession"} {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
@@ -126,6 +127,16 @@ func main() {
 	}
 	if err := validateSchema(distributionSchema, distributionSchema.InvalidExample, spec.Components.Schemas); err == nil {
 		fail(errors.New("notice distribution request x-invalid-example unexpectedly satisfies the schema"))
+	}
+	libraryCommandSchema, ok := spec.Components.Schemas["LibraryCommand"]
+	if !ok || libraryCommandSchema.Example == nil || libraryCommandSchema.InvalidExample == nil {
+		fail(errors.New("library command requires example and x-invalid-example"))
+	}
+	if err := validateSchema(libraryCommandSchema, libraryCommandSchema.Example, spec.Components.Schemas); err != nil {
+		fail(fmt.Errorf("library command example is invalid: %w", err))
+	}
+	if err := validateSchema(libraryCommandSchema, libraryCommandSchema.InvalidExample, spec.Components.Schemas); err == nil {
+		fail(errors.New("library command x-invalid-example unexpectedly satisfies the schema"))
 	}
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
@@ -180,11 +191,14 @@ const (
 	NoticeReviewRoute = %q
 	NoticeDistributionRoute = %q
 	NoticeOperationRoute = %q
+	LibraryWorkspaceRoute = %q
+	LibraryCommandRoute = %q
+	LibraryOperationRoute = %q
 	LogoutRoute = %q
 	SourceSHA256 = %q
 )
 
-`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["logoutConsoleSession"], digest)
+`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -235,7 +249,11 @@ func renderTypeScript(spec document, routes map[string]string, digest string) st
 	var validators strings.Builder
 	for _, name := range schemaNames(spec) {
 		value := spec.Components.Schemas[name]
-		fmt.Fprintf(&schemas, "export interface %s %s\n\n", name, tsObject(value))
+		if value.Type == "object" || schemaType(value) == "object" {
+			fmt.Fprintf(&schemas, "export interface %s %s\n\n", name, tsObject(value))
+		} else {
+			fmt.Fprintf(&schemas, "export type %s = %s;\n\n", name, tsType(value))
+		}
 		fmt.Fprintf(&validators, "function is%s(value: unknown): value is %s {\n  return %s;\n}\n\n", name, name, tsCheck("value", value))
 	}
 	template := `// Code generated from console-gateway.yaml (SHA256 {{SHA}}); DO NOT EDIT.
@@ -401,6 +419,49 @@ export async function resolveNoticeOperation(operation: "source_create" | "versi
   } catch { return { state: "unavailable" }; }
 }
 
+export type LibraryWorkspaceResult = { state: "authenticated"; workspace: LibraryWorkspace } | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchLibraryWorkspace(): Promise<LibraryWorkspaceResult> {
+  try {
+    const response = await fetch("{{LIBRARY_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isLibraryWorkspace(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", workspace: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type LibraryWriteResult = { state: "succeeded" | "unknown"; result?: LibraryOperationResult } | { state: "signed_out" | "denied" | "conflict" | "invalid" | "unavailable" };
+
+export async function executeLibraryCommand(input: LibraryCommand, idempotencyKey: string): Promise<LibraryWriteResult> {
+  try {
+    const response = await fetch("{{LIBRARY_COMMAND_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unknown" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unknown" };
+    return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unknown" }; }
+}
+
+export async function resolveLibraryOperation(operation: LibraryCommandKind, idempotencyKey: string): Promise<LibraryWriteResult> {
+  try {
+    const response = await fetch("{{LIBRARY_OPERATION_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unavailable" };
+    return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
 export async function logoutConsoleSession(): Promise<void> {
   const response = await fetch("{{LOGOUT_ROUTE}}", { method: "POST", credentials: "same-origin" });
   if (!response.ok) throw new Error("Console logout failed");
@@ -415,6 +476,7 @@ export function consoleLoginHref(): string {
 		"{{SHA}}": digest, "{{SCHEMAS}}": schemas.String(), "{{VALIDATORS}}": validators.String(),
 		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{OPERATIONS_ROUTE}}": routes["getConsolePlatformOperations"], "{{REVOKE_SESSION_ROUTE}}": routes["revokeConsolePlatformSession"], "{{UPDATE_ACCESS_ROUTE}}": routes["updateConsolePlatformAccess"], "{{OPERATION_STATUS_ROUTE}}": routes["getConsolePlatformOperationStatus"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
 		"{{NOTICE_ROUTE}}": routes["getConsoleNotices"], "{{NOTICE_SOURCE_ROUTE}}": routes["createConsoleNoticeSource"], "{{NOTICE_VERSION_ROUTE}}": routes["createConsoleNoticeVersion"], "{{NOTICE_REVIEW_ROUTE}}": routes["reviewConsoleNoticeVersion"], "{{NOTICE_DISTRIBUTION_ROUTE}}": routes["distributeConsoleNoticeVersion"], "{{NOTICE_OPERATION_ROUTE}}": routes["getConsoleNoticeOperationStatus"],
+		"{{LIBRARY_ROUTE}}": routes["getConsoleLibraryWorkspace"], "{{LIBRARY_COMMAND_ROUTE}}": routes["executeConsoleLibraryCommand"], "{{LIBRARY_OPERATION_ROUTE}}": routes["getConsoleLibraryOperationStatus"],
 	}
 	for old, replacement := range replacements {
 		template = strings.ReplaceAll(template, old, replacement)
@@ -443,6 +505,13 @@ func tsObject(value schema) string {
 func tsType(value schema) string {
 	if value.Ref != "" {
 		return refName(value.Ref)
+	}
+	if len(value.OneOf) > 0 {
+		alternatives := make([]string, 0, len(value.OneOf))
+		for _, item := range value.OneOf {
+			alternatives = append(alternatives, tsType(item))
+		}
+		return strings.Join(alternatives, " | ")
 	}
 	switch value.Type {
 	case "string":
@@ -486,6 +555,13 @@ func tsCheck(expression string, value schema) string {
 			alternatives = append(alternatives, "("+tsCheck(expression, item)+")")
 		}
 		checks = append(checks, "("+strings.Join(alternatives, " || ")+")")
+	}
+	if len(value.OneOf) > 0 {
+		alternatives := make([]string, 0, len(value.OneOf))
+		for _, item := range value.OneOf {
+			alternatives = append(alternatives, "("+tsCheck(expression, item)+")")
+		}
+		checks = append(checks, "(["+strings.Join(alternatives, ", ")+"].filter(Boolean).length === 1)")
 	}
 	if value.If != nil && value.Then != nil {
 		checks = append(checks, "(!("+tsCheck(expression, *value.If)+") || "+tsCheck(expression, *value.Then)+")")
@@ -565,8 +641,13 @@ func tsCheckBase(expression string, value schema) string {
 			}
 		}
 		if value.AdditionalProperties != nil && !*value.AdditionalProperties {
-			allowed, _ := json.Marshal(sortedProperties(value.Properties))
-			checks = append(checks, "Object.keys("+expression+").every((key) => "+string(allowed)+".includes(key))")
+			properties := sortedProperties(value.Properties)
+			if len(properties) == 0 {
+				checks = append(checks, "Object.keys("+expression+").length === 0")
+			} else {
+				allowed, _ := json.Marshal(properties)
+				checks = append(checks, "Object.keys("+expression+").every((key) => "+string(allowed)+".includes(key))")
+			}
 		}
 		return strings.Join(checks, " && ")
 	default:
@@ -593,6 +674,17 @@ func validateSchema(value schema, candidate any, schemas map[string]schema) erro
 		}
 		if !matched {
 			return errors.New("value does not satisfy anyOf")
+		}
+	}
+	if len(value.OneOf) > 0 {
+		matches := 0
+		for _, item := range value.OneOf {
+			if validateSchema(item, candidate, schemas) == nil {
+				matches++
+			}
+		}
+		if matches != 1 {
+			return fmt.Errorf("value satisfies %d oneOf alternatives", matches)
 		}
 	}
 	if value.If != nil && value.Then != nil && validateSchema(*value.If, candidate, schemas) == nil {
