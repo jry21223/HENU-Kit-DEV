@@ -1,0 +1,105 @@
+name: Notice
+
+on:
+  pull_request:
+    paths:
+      - services/notice/**
+      - services/console-gateway/cmd/noticecontractgen/**
+      - services/console-gateway/internal/notice/**
+      - packages/api-contracts/openapi/notice.yaml
+      - .github/workflows/notice.yml
+  push:
+    branches: [main]
+    paths:
+      - services/notice/**
+      - services/console-gateway/cmd/noticecontractgen/**
+      - services/console-gateway/internal/notice/**
+      - packages/api-contracts/openapi/notice.yaml
+      - .github/workflows/notice.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PGPASSWORD: notice_test
+      NOTICE_TEST_DATABASE_URL: postgres://notice:notice_test@localhost:5432/notice_test?sslmode=disable
+      NOTICE_TEST_REDIS_ADDR: localhost:6379
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: notice_test
+          POSTGRES_USER: notice
+          POSTGRES_PASSWORD: notice_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U notice -d notice_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/notice/go.mod
+          cache-dependency-path: services/notice/go.sum
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Verify migration round trip
+        run: |
+          set -euo pipefail
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -c "CREATE TABLE baseline_probe (id integer PRIMARY KEY); INSERT INTO baseline_probe VALUES (1)"
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000001_notice.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000001_notice.up.sql
+          test "$(psql -h localhost -U notice -d notice_test -Atc "SELECT to_regclass('public.notice_versions') IS NOT NULL AND to_regclass('public.notice_distributions') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -c "INSERT INTO notice_sources (id,code,name,canonical_url,created_by) VALUES ('00000000-0000-4000-8000-000000000001','recovery-probe','Recovery probe','https://example.edu/recovery','00000000-0000-4000-8000-000000000002')"
+          pg_dump -h localhost -U notice -d notice_test --format=custom --file=/tmp/notice-recovery.dump
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000001_notice.down.sql
+          test "$(psql -h localhost -U notice -d notice_test -Atc "SELECT to_regclass('public.notice_versions') IS NULL")" = t
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000001_notice.up.sql
+          createdb -h localhost -U notice notice_recovery
+          pg_restore -h localhost -U notice -d notice_recovery --no-owner /tmp/notice-recovery.dump
+          test "$(psql -h localhost -U notice -d notice_recovery -Atc "SELECT count(*) FROM notice_sources WHERE code='recovery-probe'")" = 1
+      - name: Verify OpenAPI
+        run: |
+          set -euo pipefail
+          cd services/notice
+          go run ./cmd/contractgen
+          cd ../console-gateway
+          go run ./cmd/noticecontractgen
+          cd ../..
+          git diff --exit-code -- services/notice/internal/contract services/console-gateway/internal/notice/contract_generated.go
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/notice.yaml
+          if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/notice.yaml" 2>/dev/null; then
+            git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/notice.yaml" > /tmp/notice-base.yaml
+            cd services/notice
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/notice-base.yaml ../../packages/api-contracts/openapi/notice.yaml
+          fi
+      - name: Vet, test, and build
+        working-directory: services/notice
+        run: |
+          set -euo pipefail
+          gofmt -d . | tee /tmp/gofmt.diff
+          test ! -s /tmp/gofmt.diff
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
+          go test -race -count=1 ./...
+          go build -o /tmp/notice ./cmd/server
+          go build -o /tmp/notice-worker ./cmd/worker
+      - name: Build image
+        run: |
+          docker build -t henukit-notice:${{ github.sha }} services/notice
+          docker build -f services/notice/Dockerfile.worker -t henukit-notice-worker:${{ github.sha }} services/notice

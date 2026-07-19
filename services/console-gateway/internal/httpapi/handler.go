@@ -21,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/console-gateway/internal/contract"
+	noticeapi "henukit.dev/console-gateway/internal/notice"
 	"henukit.dev/console-gateway/internal/platformcore"
 	"henukit.dev/console-gateway/internal/session"
 )
@@ -40,6 +41,16 @@ type platformClient interface {
 	RevokeSession(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	UpdateAccess(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	OperationStatus(context.Context, string, string, string) (json.RawMessage, error)
+	CheckNotice(context.Context, string, string) error
+}
+
+type noticeClient interface {
+	Snapshot(context.Context, string) (json.RawMessage, error)
+	CreateSource(context.Context, string, string, []byte) (json.RawMessage, error)
+	CreateVersion(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	Review(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	Distribute(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	Operation(context.Context, string, string, string) (json.RawMessage, error)
 }
 
 type overviewClient interface {
@@ -49,6 +60,7 @@ type overviewClient interface {
 type Handler struct {
 	platformOrigin, clientID, redirectURI string
 	platform                              platformClient
+	notice                                noticeClient
 	overview                              overviewClient
 	redis                                 *redis.Client
 	codec                                 *session.Codec
@@ -61,7 +73,7 @@ type flowState struct {
 	ReturnTo string `json:"return_to"`
 }
 
-func New(platformOrigin, clientID, redirectURI string, platform platformClient, overview overviewClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger) (http.Handler, error) {
+func New(platformOrigin, clientID, redirectURI string, platform platformClient, notice noticeClient, overview overviewClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger) (http.Handler, error) {
 	origin, err := url.Parse(platformOrigin)
 	redirect, redirectErr := url.Parse(redirectURI)
 	if err != nil || redirectErr != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || (origin.Path != "" && origin.Path != "/") || origin.RawQuery != "" || origin.Fragment != "" || redirect.Scheme != "https" || redirect.Host == "" || clientID == "" || platform == nil || overview == nil || redisClient == nil || codec == nil {
@@ -70,7 +82,7 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	if logger == nil {
 		logger = slog.Default()
 	}
-	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
+	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, notice: notice, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
 	router := chi.NewRouter()
 	router.Use(handler.requestContext)
 	router.Use(securityHeaders)
@@ -83,8 +95,130 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Post(contract.RevokeSessionRoute, handler.revokePlatformSession)
 	router.Post(contract.UpdateAccessRoute, handler.updatePlatformAccess)
 	router.Get(contract.OperationStatusRoute, handler.getPlatformOperationStatus)
+	router.Get(contract.NoticeSnapshotRoute, handler.getNotices)
+	router.Post(contract.NoticeSourceRoute, handler.createNoticeSource)
+	router.Post(contract.NoticeVersionRoute, handler.createNoticeVersion)
+	router.Post(contract.NoticeReviewRoute, handler.reviewNoticeVersion)
+	router.Post(contract.NoticeDistributionRoute, handler.distributeNoticeVersion)
+	router.Get(contract.NoticeOperationRoute, handler.getNoticeOperation)
 	router.Post(contract.LogoutRoute, handler.logout)
 	return router, nil
+}
+
+func (h *Handler) getNotices(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeNotice(writer, request, "notice.read")
+	if !ok {
+		return
+	}
+	data, err := h.notice.Snapshot(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID)
+	h.writeNoticeResult(writer, request, data, err)
+}
+
+func (h *Handler) createNoticeSource(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeNotice(writer, request, "notice.manage")
+	if !ok {
+		return
+	}
+	var input map[string]any
+	body, ok := decodeOperationInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	data, err := h.notice.CreateSource(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID, request.Header.Get("Idempotency-Key"), body)
+	h.writeNoticeResult(writer, request, data, err)
+}
+
+func (h *Handler) createNoticeVersion(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeNotice(writer, request, "notice.manage")
+	if !ok {
+		return
+	}
+	var input map[string]any
+	body, ok := decodeOperationInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	data, err := h.notice.CreateVersion(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "source_id"), request.Header.Get("Idempotency-Key"), body)
+	h.writeNoticeResult(writer, request, data, err)
+}
+
+func (h *Handler) reviewNoticeVersion(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeNotice(writer, request, "notice.review")
+	if !ok {
+		return
+	}
+	var input map[string]any
+	body, ok := decodeOperationInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	data, err := h.notice.Review(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "version_id"), request.Header.Get("Idempotency-Key"), body)
+	h.writeNoticeResult(writer, request, data, err)
+}
+
+func (h *Handler) distributeNoticeVersion(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeNotice(writer, request, "notice.distribute")
+	if !ok {
+		return
+	}
+	var input map[string]any
+	body, ok := decodeOperationInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	data, err := h.notice.Distribute(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "version_id"), request.Header.Get("Idempotency-Key"), body)
+	h.writeNoticeResult(writer, request, data, err)
+}
+
+func (h *Handler) getNoticeOperation(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeNotice(writer, request, "notice.read")
+	if !ok {
+		return
+	}
+	key := request.Header.Get("Idempotency-Key")
+	if len(key) < 8 || len(key) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		return
+	}
+	data, err := h.notice.Operation(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "operation"), key)
+	h.writeNoticeResult(writer, request, data, err)
+}
+
+func (h *Handler) authorizeNotice(writer http.ResponseWriter, request *http.Request, permission string) (session.Value, bool) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return session.Value{}, false
+	}
+	if h.notice == nil {
+		h.unavailable(writer, request, errors.New("notice API is not configured"))
+		return session.Value{}, false
+	}
+	if err := h.platform.CheckNotice(request.Context(), value.ExchangeToken, permission); err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return session.Value{}, false
+	}
+	return value, true
+}
+
+func (h *Handler) writeNoticeResult(writer http.ResponseWriter, request *http.Request, data json.RawMessage, err error) {
+	if err == nil {
+		writeJSON(writer, request, http.StatusOK, data)
+		return
+	}
+	switch {
+	case errors.Is(err, noticeapi.ErrUnauthorized):
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Notice rejected the verified actor")
+	case errors.Is(err, noticeapi.ErrForbidden):
+		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Notice permission or Scope is missing")
+	case errors.Is(err, noticeapi.ErrConflict):
+		writeError(writer, request, http.StatusConflict, "NOTICE_CONFLICT", "Notice state, revision, or idempotency history conflicts")
+	case errors.Is(err, noticeapi.ErrNotFound):
+		writeError(writer, request, http.StatusNotFound, "NOTICE_NOT_FOUND", "Notice resource was not found")
+	case errors.Is(err, noticeapi.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Notice request is invalid")
+	default:
+		h.unavailable(writer, request, err)
+	}
 }
 
 func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *http.Request) {
@@ -329,7 +463,11 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	}
 	overviewErr := h.platform.CheckOverview(request.Context(), value.ExchangeToken)
 	operationsErr := h.platform.CheckPlatformOperations(request.Context(), value.ExchangeToken)
-	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) {
+	noticeErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.read")
+	noticeManageErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.manage")
+	noticeReviewErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.review")
+	noticeDistributeErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.distribute")
+	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) {
 		h.clearSession(writer)
 		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
 		return
@@ -340,6 +478,18 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	}
 	if operationsErr == nil {
 		permissions = append(permissions, "platform.operations.read")
+	}
+	if noticeErr == nil {
+		permissions = append(permissions, "notice.read")
+	}
+	if noticeManageErr == nil {
+		permissions = append(permissions, "notice.manage")
+	}
+	if noticeReviewErr == nil {
+		permissions = append(permissions, "notice.review")
+	}
+	if noticeDistributeErr == nil {
+		permissions = append(permissions, "notice.distribute")
 	}
 	if len(permissions) == 0 {
 		err := overviewErr
@@ -357,6 +507,10 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 			Permissions: permissions, Scopes: []contract.ConsoleScope{{Kind: "platform"}}, VerifiedAt: h.now().UTC(),
 		},
 		ExpiresAt: value.ExpiresAt,
+	}
+	if noticeErr == nil {
+		noticeProduct := "notice"
+		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &noticeProduct})
 	}
 	response.User.ID = value.UserID
 	writeJSON(writer, request, http.StatusOK, response)

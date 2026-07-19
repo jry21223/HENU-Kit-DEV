@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 d363dd3299b30c702662ae39f315b3e250c65e57309a4f3f4c4236764f008437); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 b5a09cf14075494a97fa8a854dc95baf9c822fb2abd900fec6b71fb92da3c74d); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -27,7 +27,8 @@ export interface ConsoleOverview {
 }
 
 export interface ConsoleScope {
-  kind: "platform";
+  kind: "platform" | "product";
+  product_code?: string;
 }
 
 export interface ConsoleSession {
@@ -38,6 +39,19 @@ export interface ConsoleSession {
 };
 }
 
+export interface CreateNoticeSourceRequest {
+  canonical_url: string;
+  code: string;
+  name: string;
+}
+
+export interface CreateNoticeVersionRequest {
+  body: string;
+  source_published_at?: string;
+  source_url: string;
+  title: string;
+}
+
 export interface ErrorEnvelope {
   error: ErrorObject;
   request_id: string;
@@ -46,6 +60,50 @@ export interface ErrorEnvelope {
 export interface ErrorObject {
   code: string;
   message: string;
+}
+
+export interface NoticeAudience {
+  kind?: "all_students" | "college" | "role";
+  value?: string;
+}
+
+export interface NoticeDistributionRequest {
+  audience: NoticeAudience;
+  channel: "in_app" | "email";
+  expected_revision: number;
+}
+
+export interface NoticeReviewRequest {
+  decision: "approved" | "rejected";
+  expected_revision: number;
+  note?: string;
+}
+
+export interface NoticeSnapshot {
+  generated_at: string;
+  items: Array<NoticeVersion>;
+}
+
+export interface NoticeSource {
+  code: string;
+  id: string;
+  name: string;
+}
+
+export interface NoticeVersion {
+  body: string;
+  content_hash: string;
+  created_at: string;
+  distribution_count: number;
+  distribution_status?: "queued" | "processing" | "delivered" | "failed";
+  id: string;
+  revision: number;
+  source: NoticeSource;
+  source_published_at?: string;
+  source_url: string;
+  state: "pending_review" | "approved" | "rejected" | "distributed";
+  title: string;
+  version: number;
 }
 
 export interface PlatformAccessGrantInput {
@@ -184,11 +242,19 @@ function isConsoleOverview(value: unknown): value is ConsoleOverview {
 }
 
 function isConsoleScope(value: unknown): value is ConsoleScope {
-  return isRecord(value) && "kind" in value && value["kind"] === "platform" && Object.keys(value).every((key) => ["kind"].includes(key));
+  return isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["platform","product"].includes(value["kind"]) && (!("product_code" in value) || typeof value["product_code"] === "string" && value["product_code"].length <= 80) && Object.keys(value).every((key) => ["kind","product_code"].includes(key)) && true && (!(isRecord(value) && "kind" in value && value["kind"] === "product") || isRecord(value) && "product_code" in value && typeof value["product_code"] === "string" && value["product_code"].length <= 80);
 }
 
 function isConsoleSession(value: unknown): value is ConsoleSession {
   return isRecord(value) && "access_context" in value && isConsoleAccessContext(value["access_context"]) && "expires_at" in value && isDateTime(value["expires_at"]) && "user" in value && isRecord(value["user"]) && "id" in value["user"] && isUUID(value["user"]["id"]) && Object.keys(value["user"]).every((key) => ["id"].includes(key)) && Object.keys(value).every((key) => ["access_context","expires_at","user"].includes(key));
+}
+
+function isCreateNoticeSourceRequest(value: unknown): value is CreateNoticeSourceRequest {
+  return isRecord(value) && "canonical_url" in value && typeof value["canonical_url"] === "string" && new RegExp("^https://").test(value["canonical_url"]) && "code" in value && typeof value["code"] === "string" && new RegExp("^[a-z0-9][a-z0-9-]{1,62}$").test(value["code"]) && "name" in value && typeof value["name"] === "string" && value["name"].length <= 120 && Object.keys(value).every((key) => ["canonical_url","code","name"].includes(key));
+}
+
+function isCreateNoticeVersionRequest(value: unknown): value is CreateNoticeVersionRequest {
+  return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length <= 100000 && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && new RegExp("^https://").test(value["source_url"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && Object.keys(value).every((key) => ["body","source_published_at","source_url","title"].includes(key));
 }
 
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
@@ -197,6 +263,30 @@ function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
 
 function isErrorObject(value: unknown): value is ErrorObject {
   return isRecord(value) && "code" in value && typeof value["code"] === "string" && "message" in value && typeof value["message"] === "string";
+}
+
+function isNoticeAudience(value: unknown): value is NoticeAudience {
+  return isRecord(value) && (!("kind" in value) || typeof value["kind"] === "string" && ["all_students","college","role"].includes(value["kind"])) && (!("value" in value) || typeof value["value"] === "string" && value["value"].length <= 120) && Object.keys(value).every((key) => ["kind","value"].includes(key)) && ((isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["all_students"].includes(value["kind"]) && Object.keys(value).every((key) => ["kind"].includes(key))) || (isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["college","role"].includes(value["kind"]) && "value" in value && typeof value["value"] === "string" && value["value"].length <= 120 && Object.keys(value).every((key) => ["kind","value"].includes(key))));
+}
+
+function isNoticeDistributionRequest(value: unknown): value is NoticeDistributionRequest {
+  return isRecord(value) && "audience" in value && isNoticeAudience(value["audience"]) && "channel" in value && typeof value["channel"] === "string" && ["in_app","email"].includes(value["channel"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && Object.keys(value).every((key) => ["audience","channel","expected_revision"].includes(key));
+}
+
+function isNoticeReviewRequest(value: unknown): value is NoticeReviewRequest {
+  return isRecord(value) && "decision" in value && typeof value["decision"] === "string" && ["approved","rejected"].includes(value["decision"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && (!("note" in value) || typeof value["note"] === "string" && value["note"].length <= 1000) && Object.keys(value).every((key) => ["decision","expected_revision","note"].includes(key));
+}
+
+function isNoticeSnapshot(value: unknown): value is NoticeSnapshot {
+  return isRecord(value) && "generated_at" in value && isDateTime(value["generated_at"]) && "items" in value && Array.isArray(value["items"]) && value["items"].length <= 50 && value["items"].every((item) => isNoticeVersion(item)) && Object.keys(value).every((key) => ["generated_at","items"].includes(key));
+}
+
+function isNoticeSource(value: unknown): value is NoticeSource {
+  return isRecord(value) && "code" in value && typeof value["code"] === "string" && "id" in value && isUUID(value["id"]) && "name" in value && typeof value["name"] === "string" && Object.keys(value).every((key) => ["code","id","name"].includes(key));
+}
+
+function isNoticeVersion(value: unknown): value is NoticeVersion {
+  return isRecord(value) && "body" in value && typeof value["body"] === "string" && "content_hash" in value && typeof value["content_hash"] === "string" && new RegExp("^[a-f0-9]{64}$").test(value["content_hash"]) && "created_at" in value && isDateTime(value["created_at"]) && "distribution_count" in value && typeof value["distribution_count"] === "number" && Number.isSafeInteger(value["distribution_count"]) && (!("distribution_status" in value) || typeof value["distribution_status"] === "string" && ["queued","processing","delivered","failed"].includes(value["distribution_status"])) && "id" in value && isUUID(value["id"]) && "revision" in value && typeof value["revision"] === "number" && Number.isSafeInteger(value["revision"]) && "source" in value && isNoticeSource(value["source"]) && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && "state" in value && typeof value["state"] === "string" && ["pending_review","approved","rejected","distributed"].includes(value["state"]) && "title" in value && typeof value["title"] === "string" && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["body","content_hash","created_at","distribution_count","distribution_status","id","revision","source","source_published_at","source_url","state","title","version"].includes(key));
 }
 
 function isPlatformAccessGrantInput(value: unknown): value is PlatformAccessGrantInput {
@@ -348,6 +438,57 @@ export async function resolvePlatformOperation(operation: "session_revoke" | "ac
   } catch {
     return { state: "unavailable" };
   }
+}
+
+export type NoticeSnapshotResult =
+  | { state: "authenticated"; snapshot: NoticeSnapshot }
+  | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchNoticeSnapshot(): Promise<NoticeSnapshotResult> {
+  try {
+    const response = await fetch("/api/v1/notices", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isNoticeSnapshot(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", snapshot: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type NoticeWriteResult = { state: "succeeded"; result: Record<string, unknown> } | { state: "signed_out" | "denied" | "conflict" | "invalid" | "not_found" | "unknown" | "unavailable" };
+
+async function writeNotice(path: string, input: unknown, idempotencyKey: string): Promise<NoticeWriteResult> {
+  try {
+    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unknown" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unknown" };
+    return { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unknown" }; }
+}
+
+export function createNoticeSource(input: CreateNoticeSourceRequest, idempotencyKey: string): Promise<NoticeWriteResult> { return writeNotice("/api/v1/notices/sources", input, idempotencyKey); }
+export function createNoticeVersion(sourceID: string, input: CreateNoticeVersionRequest, idempotencyKey: string): Promise<NoticeWriteResult> { return writeNotice("/api/v1/notices/sources/{source_id}/versions".replace("{source_id}", encodeURIComponent(sourceID)), input, idempotencyKey); }
+export function reviewNoticeVersion(versionID: string, input: NoticeReviewRequest, idempotencyKey: string): Promise<NoticeWriteResult> { return writeNotice("/api/v1/notices/versions/{version_id}/reviews".replace("{version_id}", encodeURIComponent(versionID)), input, idempotencyKey); }
+export function distributeNoticeVersion(versionID: string, input: NoticeDistributionRequest, idempotencyKey: string): Promise<NoticeWriteResult> { return writeNotice("/api/v1/notices/versions/{version_id}/distributions".replace("{version_id}", encodeURIComponent(versionID)), input, idempotencyKey); }
+
+export async function resolveNoticeOperation(operation: "source_create" | "version_create" | "review" | "distribution", idempotencyKey: string): Promise<NoticeWriteResult> {
+  try {
+    const response = await fetch("/api/v1/notices/operations/{operation}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unavailable" };
+    return envelope.data.status === "unknown" ? { state: "unknown" } : { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unavailable" }; }
 }
 
 export async function logoutConsoleSession(): Promise<void> {

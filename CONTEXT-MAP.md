@@ -13,7 +13,7 @@
 As implementation directories are established, move resolved terms into context-owned glossaries without duplicating definitions:
 
 - `apps/portal/CONTEXT.md` — Portal and Portal Configuration.
-- `services/notice/CONTEXT.md` — notice sources, immutable versions, review, audience, and distribution.
+- [Notice Service](./services/notice/CONTEXT.md) — notice sources, immutable versions, review, audience, and distribution.
 - `services/library/CONTEXT.md` — courses, materials, downloads, submissions, review, and correction.
 - `products/quizcraft/CONTEXT.md` — Practice Core, favorites, rankings, feedback, and Question Bank Workshop.
 - `services/food/CONTEXT.md` — food submissions, calibration, anomalies, and tier adjustment.

@@ -74,7 +74,7 @@ func main() {
 		fail(errors.New("console gateway server must end with /api/v1"))
 	}
 	routes := operationRoutes(spec)
-	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "logoutConsoleSession"} {
+	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "logoutConsoleSession"} {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
@@ -116,6 +116,16 @@ func main() {
 	}
 	if err := validateSchema(moduleSummarySchema, invalidRequestIDSummary, spec.Components.Schemas); err == nil {
 		fail(errors.New("ConsoleModuleSummary request_id outside its pattern unexpectedly satisfies the schema"))
+	}
+	distributionSchema, ok := spec.Components.Schemas["NoticeDistributionRequest"]
+	if !ok || distributionSchema.Example == nil || distributionSchema.InvalidExample == nil {
+		fail(errors.New("notice distribution request requires example and x-invalid-example"))
+	}
+	if err := validateSchema(distributionSchema, distributionSchema.Example, spec.Components.Schemas); err != nil {
+		fail(fmt.Errorf("notice distribution request example is invalid: %w", err))
+	}
+	if err := validateSchema(distributionSchema, distributionSchema.InvalidExample, spec.Components.Schemas); err == nil {
+		fail(errors.New("notice distribution request x-invalid-example unexpectedly satisfies the schema"))
 	}
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
@@ -164,11 +174,17 @@ const (
 	RevokeSessionRoute = %q
 	UpdateAccessRoute = %q
 	OperationStatusRoute = %q
+	NoticeSnapshotRoute = %q
+	NoticeSourceRoute = %q
+	NoticeVersionRoute = %q
+	NoticeReviewRoute = %q
+	NoticeDistributionRoute = %q
+	NoticeOperationRoute = %q
 	LogoutRoute = %q
 	SourceSHA256 = %q
 )
 
-`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["logoutConsoleSession"], digest)
+`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -334,6 +350,57 @@ export async function resolvePlatformOperation(operation: "session_revoke" | "ac
   }
 }
 
+export type NoticeSnapshotResult =
+  | { state: "authenticated"; snapshot: NoticeSnapshot }
+  | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchNoticeSnapshot(): Promise<NoticeSnapshotResult> {
+  try {
+    const response = await fetch("{{NOTICE_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isNoticeSnapshot(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", snapshot: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type NoticeWriteResult = { state: "succeeded"; result: Record<string, unknown> } | { state: "signed_out" | "denied" | "conflict" | "invalid" | "not_found" | "unknown" | "unavailable" };
+
+async function writeNotice(path: string, input: unknown, idempotencyKey: string): Promise<NoticeWriteResult> {
+  try {
+    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unknown" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unknown" };
+    return { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unknown" }; }
+}
+
+export function createNoticeSource(input: CreateNoticeSourceRequest, idempotencyKey: string): Promise<NoticeWriteResult> { return writeNotice("{{NOTICE_SOURCE_ROUTE}}", input, idempotencyKey); }
+export function createNoticeVersion(sourceID: string, input: CreateNoticeVersionRequest, idempotencyKey: string): Promise<NoticeWriteResult> { return writeNotice("{{NOTICE_VERSION_ROUTE}}".replace("{source_id}", encodeURIComponent(sourceID)), input, idempotencyKey); }
+export function reviewNoticeVersion(versionID: string, input: NoticeReviewRequest, idempotencyKey: string): Promise<NoticeWriteResult> { return writeNotice("{{NOTICE_REVIEW_ROUTE}}".replace("{version_id}", encodeURIComponent(versionID)), input, idempotencyKey); }
+export function distributeNoticeVersion(versionID: string, input: NoticeDistributionRequest, idempotencyKey: string): Promise<NoticeWriteResult> { return writeNotice("{{NOTICE_DISTRIBUTION_ROUTE}}".replace("{version_id}", encodeURIComponent(versionID)), input, idempotencyKey); }
+
+export async function resolveNoticeOperation(operation: "source_create" | "version_create" | "review" | "distribution", idempotencyKey: string): Promise<NoticeWriteResult> {
+  try {
+    const response = await fetch("{{NOTICE_OPERATION_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unavailable" };
+    return envelope.data.status === "unknown" ? { state: "unknown" } : { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
 export async function logoutConsoleSession(): Promise<void> {
   const response = await fetch("{{LOGOUT_ROUTE}}", { method: "POST", credentials: "same-origin" });
   if (!response.ok) throw new Error("Console logout failed");
@@ -347,6 +414,7 @@ export function consoleLoginHref(): string {
 	replacements := map[string]string{
 		"{{SHA}}": digest, "{{SCHEMAS}}": schemas.String(), "{{VALIDATORS}}": validators.String(),
 		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{OPERATIONS_ROUTE}}": routes["getConsolePlatformOperations"], "{{REVOKE_SESSION_ROUTE}}": routes["revokeConsolePlatformSession"], "{{UPDATE_ACCESS_ROUTE}}": routes["updateConsolePlatformAccess"], "{{OPERATION_STATUS_ROUTE}}": routes["getConsolePlatformOperationStatus"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
+		"{{NOTICE_ROUTE}}": routes["getConsoleNotices"], "{{NOTICE_SOURCE_ROUTE}}": routes["createConsoleNoticeSource"], "{{NOTICE_VERSION_ROUTE}}": routes["createConsoleNoticeVersion"], "{{NOTICE_REVIEW_ROUTE}}": routes["reviewConsoleNoticeVersion"], "{{NOTICE_DISTRIBUTION_ROUTE}}": routes["distributeConsoleNoticeVersion"], "{{NOTICE_OPERATION_ROUTE}}": routes["getConsoleNoticeOperationStatus"],
 	}
 	for old, replacement := range replacements {
 		template = strings.ReplaceAll(template, old, replacement)

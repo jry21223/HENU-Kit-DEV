@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS notice_service_nonces;
+DROP TRIGGER IF EXISTS notice_audit_append_only ON notice_audit_events;
+DROP FUNCTION IF EXISTS reject_notice_audit_mutation();
+DROP TABLE IF EXISTS notice_audit_events;
+DROP TABLE IF EXISTS notice_operations;
+DROP TABLE IF EXISTS notice_distributions;
+DROP TABLE IF EXISTS notice_reviews;
+DROP TABLE IF EXISTS notice_lifecycles;
+DROP TRIGGER IF EXISTS notice_versions_immutable_update ON notice_versions;
+DROP FUNCTION IF EXISTS reject_notice_version_mutation();
+DROP TABLE IF EXISTS notice_versions;
+DROP TABLE IF EXISTS notice_sources;

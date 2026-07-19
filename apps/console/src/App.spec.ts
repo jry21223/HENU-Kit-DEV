@@ -38,6 +38,28 @@ const overview = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Console Overview", () => {
+  it("reviews an immutable Notice version through the scoped workflow", async () => {
+    const noticeSession = { ...authenticated, data: { ...authenticated.data, access_context: { permissions: ["notice.read", "notice.review", "notice.distribute"], scopes: [{ kind: "product", product_code: "notice" }], verified_at: "2026-07-19T00:00:00Z" } } };
+    let approved = false;
+    const noticeEnvelope = () => ({ data: { items: [{ id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", source: { id: "571f1c6f-7b10-4c92-91a2-b39bf5af5302", code: "henu-office", name: "学校办公室" }, version: 1, title: "暑期安排", body: "不可变正文", source_url: "https://example.edu/notices/1", content_hash: "a".repeat(64), state: approved ? "approved" : "pending_review", revision: approved ? 2 : 1, created_at: "2026-07-19T00:00:00Z", distribution_count: 0 }], generated_at: "2026-07-19T00:00:00Z" }, request_id: "req_notice_snapshot" });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/api/v1/session")) return Promise.resolve(new Response(JSON.stringify(noticeSession), { status: 200 }));
+      if (path.endsWith("/reviews") && init?.method === "POST") { approved = true; return Promise.resolve(new Response(JSON.stringify({ data: { state: "approved", revision: 2 }, request_id: "req_notice_review" }), { status: 200 })); }
+      return Promise.resolve(new Response(JSON.stringify(noticeEnvelope()), { status: 200 }));
+    }));
+    window.history.replaceState({}, "", "/notices");
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.text()).toContain("校园通知审核与分发");
+    expect(wrapper.text()).toContain("不可变正文");
+    await wrapper.findAll("button").find((button) => button.text() === "批准")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("审核已批准");
+    expect(wrapper.text()).toContain("approved · r2");
+    wrapper.unmount();
+  });
+
   it("renders the Platform Operations workspace without sensitive fields", async () => {
     const operations = {
       data: {

@@ -14,4 +14,4 @@
 
 ## Current boundary
 
-HC-09 establishes the login, callback, logout, and server-verified Console Access Context flow. HC-10 and HC-11 add the six-owner Overview aggregation and first real Portal owner endpoint. HC-12 adds thin signed forwarding for Platform Operations reads, idempotent Session/access writes, and unknown-result lookup. Every operation uses the server-held exchange token and is authorized again by Platform Core against permission code plus platform Scope; browser responses never contain that token or Platform Core credentials.
+HC-09 establishes the login, callback, logout, and server-verified Console Access Context flow. HC-10 and HC-11 add the six-owner Overview aggregation and first real Portal owner endpoint. HC-12 adds thin signed forwarding for Platform Operations reads, idempotent Session/access writes, and unknown-result lookup. HC-13 adds the same thin boundary for Notice while preserving Notice as the sole data owner; Gateway verifies `notice.*` against product Scope `notice` and signs the actor context it forwards. Browser responses never contain the exchange token or service credentials.

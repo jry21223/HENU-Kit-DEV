@@ -52,9 +52,10 @@ jobs:
           set -euo pipefail
           cd services/console-gateway
           go run ./cmd/contractgen
+          go run ./cmd/noticecontractgen
           CONSOLE_GATEWAY_TEST_REDIS_ADDR=localhost:6379 go test ./internal/httpapi -run ConformsToContract -count=1
           cd ../..
-          git diff --exit-code -- services/console-gateway/internal/contract apps/console/src/lib/console-gateway.ts
+          git diff --exit-code -- services/console-gateway/internal/contract services/console-gateway/internal/notice/contract_generated.go apps/console/src/lib/console-gateway.ts
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/console-gateway.yaml
           if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/console-gateway.yaml" 2>/dev/null; then
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/console-gateway.yaml" > /tmp/console-gateway-base.yaml

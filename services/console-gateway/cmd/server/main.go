@@ -33,6 +33,7 @@ func main() {
 		ClientID: config.ClientID, ClientSecret: config.ClientSecret, KeyID: config.KeyID, RedirectURI: config.RedirectURI,
 		SessionKey: config.SessionKey, Redis: redisClient, Logger: logger,
 		OverviewEndpoints: config.OverviewEndpoints, OverviewCredentials: overviewCredentials,
+		NoticeAPIURL: config.NoticeAPIURL, NoticeCredentials: overview.Credentials{ClientID: config.NoticeCredentials.ClientID, ClientSecret: config.NoticeCredentials.ClientSecret, KeyID: config.NoticeCredentials.KeyID},
 	})
 	if err != nil {
 		logger.Error("create_gateway", "error", err)

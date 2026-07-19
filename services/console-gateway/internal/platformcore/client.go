@@ -3,11 +3,6 @@ package platformcore
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"henukit.dev/console-gateway/internal/serviceauth"
 )
 
 var (
@@ -30,8 +27,9 @@ var (
 )
 
 type Client struct {
-	baseURL, clientID, clientSecret, keyID string
-	httpClient                             *http.Client
+	baseURL, clientID string
+	signer            *serviceauth.Signer
+	httpClient        *http.Client
 }
 
 func (c *Client) PlatformOperations(ctx context.Context, exchangeToken string) (json.RawMessage, error) {
@@ -104,7 +102,11 @@ func New(baseURL, clientID, clientSecret, keyID string, client *http.Client) (*C
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Second}
 	}
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), clientID: clientID, clientSecret: clientSecret, keyID: keyID, httpClient: client}, nil
+	signer, err := serviceauth.New(clientID, clientSecret, keyID)
+	if err != nil {
+		return nil, errors.New("invalid platform core client configuration")
+	}
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), clientID: clientID, signer: signer, httpClient: client}, nil
 }
 
 func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI, verifier, idempotencyKey string) (Exchange, error) {
@@ -141,19 +143,28 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI, verifier, 
 }
 
 func (c *Client) CheckOverview(ctx context.Context, exchangeToken string) error {
-	return c.checkPermission(ctx, exchangeToken, "console.overview.read")
+	return c.checkPermission(ctx, exchangeToken, "console.overview.read", map[string]string{"kind": "platform"})
 }
 
 func (c *Client) CheckPlatformOperations(ctx context.Context, exchangeToken string) error {
-	return c.checkPermission(ctx, exchangeToken, "platform.operations.read")
+	return c.checkPermission(ctx, exchangeToken, "platform.operations.read", map[string]string{"kind": "platform"})
 }
 
 func (c *Client) CheckPlatformOperationsWrite(ctx context.Context, exchangeToken string) error {
-	return c.checkPermission(ctx, exchangeToken, "platform.operations.write")
+	return c.checkPermission(ctx, exchangeToken, "platform.operations.write", map[string]string{"kind": "platform"})
 }
 
-func (c *Client) checkPermission(ctx context.Context, exchangeToken, permissionCode string) error {
-	body, _ := json.Marshal(map[string]any{"session_exchange_token": exchangeToken, "permission_code": permissionCode, "scope": map[string]string{"kind": "platform"}})
+func (c *Client) CheckNotice(ctx context.Context, exchangeToken, permissionCode string) error {
+	switch permissionCode {
+	case "notice.read", "notice.manage", "notice.review", "notice.distribute":
+	default:
+		return ErrInvalid
+	}
+	return c.checkPermission(ctx, exchangeToken, permissionCode, map[string]string{"kind": "product", "product_code": "notice"})
+}
+
+func (c *Client) checkPermission(ctx context.Context, exchangeToken, permissionCode string, scope map[string]string) error {
+	body, _ := json.Marshal(map[string]any{"session_exchange_token": exchangeToken, "permission_code": permissionCode, "scope": scope})
 	request, err := c.signedRequest(ctx, http.MethodPost, "/api/v1/authorization/check", body)
 	if err != nil {
 		return err
@@ -175,22 +186,9 @@ func (c *Client) signedRequest(ctx context.Context, method, path string, body []
 		return nil, err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.SetBasicAuth(c.clientID, c.clientSecret)
-	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	nonceBytes := make([]byte, 24)
-	if _, err := rand.Read(nonceBytes); err != nil {
+	if err := c.signer.Sign(request, body); err != nil {
 		return nil, err
 	}
-	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
-	digest := sha256.Sum256(body)
-	canonical := strings.Join([]string{method, path, timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
-	mac := hmac.New(sha256.New, []byte(c.clientSecret))
-	_, _ = mac.Write([]byte(canonical))
-	request.Header.Set("X-Service-Id", c.clientID)
-	request.Header.Set("X-Key-Id", c.keyID)
-	request.Header.Set("X-Timestamp", timestamp)
-	request.Header.Set("X-Nonce", nonce)
-	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 	return request, nil
 }
 
