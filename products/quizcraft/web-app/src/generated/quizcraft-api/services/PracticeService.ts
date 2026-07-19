@@ -6,6 +6,8 @@ import type { AnswerResultEnvelope } from '../models/AnswerResultEnvelope';
 import type { AnswerSubmission } from '../models/AnswerSubmission';
 import type { BankListEnvelope } from '../models/BankListEnvelope';
 import type { CreatePracticeSession } from '../models/CreatePracticeSession';
+import type { HealthEnvelope } from '../models/HealthEnvelope';
+import type { LearningStateEnvelope } from '../models/LearningStateEnvelope';
 import type { OperationEnvelope } from '../models/OperationEnvelope';
 import type { OperationKind } from '../models/OperationKind';
 import type { PracticeSessionEnvelope } from '../models/PracticeSessionEnvelope';
@@ -13,6 +15,20 @@ import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class PracticeService {
+    /**
+     * Check the Practice shadow process
+     * @returns HealthEnvelope Process is alive
+     * @throws ApiError
+     */
+    public static getQuizCraftHealth(): CancelablePromise<HealthEnvelope> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/healthz',
+            errors: {
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
     /**
      * List published practice banks
      * @returns BankListEnvelope Published banks
@@ -24,6 +40,7 @@ export class PracticeService {
             url: '/api/v1/banks',
             errors: {
                 400: `Invalid request`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -49,7 +66,9 @@ export class PracticeService {
             mediaType: 'application/json',
             errors: {
                 400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
                 409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -80,7 +99,25 @@ export class PracticeService {
             mediaType: 'application/json',
             errors: {
                 400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
+                403: `Permission code or product Scope denied`,
                 409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
+    /**
+     * Read signed-in progress and wrong-question state
+     * @returns LearningStateEnvelope Persistent account learning state
+     * @throws ApiError
+     */
+    public static getLearningState(): CancelablePromise<LearningStateEnvelope> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/learning-state',
+            errors: {
+                401: `Missing or invalid actor credentials`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -106,7 +143,9 @@ export class PracticeService {
                 'Idempotency-Key': idempotencyKey,
             },
             errors: {
+                401: `Missing or invalid actor credentials`,
                 404: `Resource or operation is unknown to this actor`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }

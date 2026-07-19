@@ -6,7 +6,10 @@ on:
       - products/quizcraft/go-service/**
       - products/quizcraft/CONTEXT.md
       - products/quizcraft/README.md
-      - products/quizcraft/web-app/src/generated/quizcraft-api/**
+      - products/quizcraft/web-app/**
+      - products/quizcraft/server.py
+      - products/quizcraft/tests/test_shadow_compare.py
+      - products/quizcraft/deploy/quizcraft-cn.env.example
       - packages/api-contracts/openapi/quizcraft.yaml
       - packages/api-contracts/README.md
       - CONTEXT-MAP.md
@@ -17,7 +20,10 @@ on:
       - products/quizcraft/go-service/**
       - products/quizcraft/CONTEXT.md
       - products/quizcraft/README.md
-      - products/quizcraft/web-app/src/generated/quizcraft-api/**
+      - products/quizcraft/web-app/**
+      - products/quizcraft/server.py
+      - products/quizcraft/tests/test_shadow_compare.py
+      - products/quizcraft/deploy/quizcraft-cn.env.example
       - packages/api-contracts/openapi/quizcraft.yaml
       - packages/api-contracts/README.md
       - CONTEXT-MAP.md
@@ -52,24 +58,31 @@ jobs:
           cache-dependency-path: products/quizcraft/go-service/go.sum
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: products/quizcraft/requirements.txt
       - name: Verify migration round trip and recovery
         run: |
           set -euo pipefail
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -c "CREATE TABLE baseline_probe(id integer PRIMARY KEY); INSERT INTO baseline_probe VALUES(1)"
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000001_quizcraft_content.up.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000001_quizcraft_content.up.sql
-          test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT to_regclass('public.quizcraft_banks') IS NOT NULL AND to_regclass('public.quizcraft_bank_version_questions') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
+          for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
+          for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
+          test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT to_regclass('public.quizcraft_banks') IS NOT NULL AND to_regclass('public.quizcraft_practice_attempts') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
           pg_dump -h localhost -U quizcraft -d quizcraft_test --format=custom --file=/tmp/quizcraft-recovery.dump
+          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000002_practice_core.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000001_quizcraft_content.down.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000001_quizcraft_content.up.sql
+          for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
           createdb -h localhost -U quizcraft quizcraft_recovery
           pg_restore -h localhost -U quizcraft -d quizcraft_recovery --no-owner /tmp/quizcraft-recovery.dump
-          test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL")" = t
+          test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL AND to_regclass('public.quizcraft_practice_sessions') IS NOT NULL")" = t
       - name: Verify QuizCraft contract
         run: |
           set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/products/quizcraft/go-service:/src" -w /src sqlc/sqlc:1.31.0 generate
           bash products/quizcraft/go-service/scripts/generate-contract.sh
-          git diff --exit-code -- products/quizcraft/go-service/internal/contract products/quizcraft/web-app/src/generated/quizcraft-api
+          git diff --exit-code -- products/quizcraft/go-service/internal/contract products/quizcraft/go-service/internal/store products/quizcraft/web-app/src/generated/quizcraft-api
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft.yaml
           if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" 2>/dev/null; then
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" > /tmp/quizcraft-base.yaml
@@ -86,7 +99,24 @@ jobs:
           go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
           go test -race -count=1 ./...
           go build -o /tmp/quizcraft-importbank ./cmd/importbank
+          go build -o /tmp/quizcraft-server ./cmd/server
           DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft' /tmp/quizcraft-importbank -h 2>&1 | tee /tmp/importbank-help.txt
           ! grep -F 'DO_NOT_PRINT' /tmp/importbank-help.txt
       - name: Verify existing FastAPI remains intact
-        run: python3 -m py_compile products/quizcraft/server.py products/quizcraft/db_storage.py
+        run: |
+          python -m pip install -r products/quizcraft/requirements.txt pytest
+          python -m py_compile products/quizcraft/server.py products/quizcraft/db_storage.py
+          cd products/quizcraft
+          PYTHONPATH=. python -m pytest -q tests/test_shadow_compare.py
+      - name: Verify React generated-client shadow flow
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm --dir products/quizcraft/web-app run build
+          pnpm --dir products/quizcraft/web-app run lint
+          pnpm --dir products/quizcraft/web-app run test:syntax
+          pnpm --dir products/quizcraft/web-app exec playwright install --with-deps chromium
+          pnpm --dir products/quizcraft/web-app run test:browser:practice
+      - name: Build shadow image
+        run: docker build -t henukit-quizcraft:${{ github.sha }} products/quizcraft/go-service

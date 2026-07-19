@@ -1,5 +1,9 @@
 import axios, { type AxiosInstance, type AxiosError } from 'axios';
 import { ApiRequestError, classifyApiErrorKind } from '@/api/errors';
+import {
+  QUIZCRAFT_GO_SHADOW_ENABLED,
+  shadowPracticeApi,
+} from '@/api/quizcraftShadowClient';
 import type { 
   QuestionBank, 
   Question, 
@@ -199,6 +203,9 @@ export const adminApi = {
 export const bankApi = {
   // 获取题库列表
   getList: (): Promise<{ banks: QuestionBank[] }> => {
+    if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+      return shadowPracticeApi.listBanks();
+    }
     return api.get('/banks');
   },
 
@@ -231,6 +238,9 @@ export const practiceApi = {
     total: number;
     avg_rate?: number;
   }> => {
+    if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+      return shadowPracticeApi.start(bank, settings);
+    }
     return api.post('/practice/start', {
       bank,
       mode: settings.mode,
@@ -250,6 +260,9 @@ export const practiceApi = {
     stats?: any;
     user_stats?: UserStats;
   }> => {
+    if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+      return shadowPracticeApi.submitAnswer(bank, questionId, answer);
+    }
     return api.post('/practice/submit', {
       bank,
       question_id: questionId,

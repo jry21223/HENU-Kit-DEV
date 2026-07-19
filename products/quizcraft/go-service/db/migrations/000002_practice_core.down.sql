@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS quizcraft_shadow_comparisons;
+DROP TABLE IF EXISTS quizcraft_learning_state;
+DROP TABLE IF EXISTS quizcraft_question_stats;
+DROP TABLE IF EXISTS quizcraft_idempotency_results;
+DROP TABLE IF EXISTS quizcraft_practice_attempts;
+DROP TABLE IF EXISTS quizcraft_practice_session_questions;
+DROP TABLE IF EXISTS quizcraft_practice_sessions;
+ALTER TABLE IF EXISTS quizcraft_bank_version_questions
+    DROP CONSTRAINT IF EXISTS quizcraft_bank_version_questions_identity_unique;

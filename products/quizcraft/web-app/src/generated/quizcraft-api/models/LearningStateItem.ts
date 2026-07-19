@@ -2,11 +2,12 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type NonChoicePracticeQuestion = {
+export type LearningStateItem = {
+    bank_id: string;
     question_id: string;
     question_version_id: string;
-    type: 'judge' | 'blank';
-    chapter_id: string;
-    chapter: string;
-    content: string;
+    wrong: boolean;
+    attempt_count: number;
+    correct_count: number;
+    updated_at: string;
 };
