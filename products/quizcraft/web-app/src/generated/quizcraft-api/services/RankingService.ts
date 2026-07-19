@@ -27,6 +27,7 @@ export class RankingService {
             },
             errors: {
                 400: `Invalid request`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -53,6 +54,7 @@ export class RankingService {
             },
             errors: {
                 400: `Invalid request`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }
@@ -80,6 +82,7 @@ export class RankingService {
                 400: `Invalid request`,
                 401: `Missing or invalid actor credentials`,
                 409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }

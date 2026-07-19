@@ -167,6 +167,36 @@ func (q *Queries) CreatePracticeSession(ctx context.Context, arg CreatePracticeS
 	return err
 }
 
+const createRankingSettlementEvent = `-- name: CreateRankingSettlementEvent :execrows
+INSERT INTO quizcraft_ranking_settlement_events(id,period_start,period_end,scope,bank_id,metric,standings)
+VALUES($1,$2,$3,$4,$5,'correct_answer_count',$6)
+ON CONFLICT(period_start,period_end,scope,bank_id) DO NOTHING
+`
+
+type CreateRankingSettlementEventParams struct {
+	ID          uuid.UUID          `json:"id"`
+	PeriodStart pgtype.Timestamptz `json:"period_start"`
+	PeriodEnd   pgtype.Timestamptz `json:"period_end"`
+	Scope       string             `json:"scope"`
+	BankID      uuid.NullUUID      `json:"bank_id"`
+	Standings   []byte             `json:"standings"`
+}
+
+func (q *Queries) CreateRankingSettlementEvent(ctx context.Context, arg CreateRankingSettlementEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createRankingSettlementEvent,
+		arg.ID,
+		arg.PeriodStart,
+		arg.PeriodEnd,
+		arg.Scope,
+		arg.BankID,
+		arg.Standings,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getActiveBankVersion = `-- name: GetActiveBankVersion :one
 SELECT bv.id
 FROM quizcraft_banks b
@@ -361,6 +391,109 @@ func (q *Queries) IsQuestionInBank(ctx context.Context, arg IsQuestionInBankPara
 	return exists, err
 }
 
+const listBankRanking = `-- name: ListBankRanking :many
+WITH totals AS (
+  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  FROM quizcraft_practice_attempts a
+  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
+  WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2
+  GROUP BY a.user_id,p.nickname,p.system_avatar
+)
+SELECT rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
+FROM totals
+ORDER BY correct_answer_count DESC,user_id
+LIMIT 100
+`
+
+type ListBankRankingParams struct {
+	BankID      uuid.UUID          `json:"bank_id"`
+	SubmittedAt pgtype.Timestamptz `json:"submitted_at"`
+}
+
+type ListBankRankingRow struct {
+	Rank               int64  `json:"rank"`
+	Nickname           string `json:"nickname"`
+	SystemAvatar       string `json:"system_avatar"`
+	CorrectAnswerCount int64  `json:"correct_answer_count"`
+}
+
+func (q *Queries) ListBankRanking(ctx context.Context, arg ListBankRankingParams) ([]ListBankRankingRow, error) {
+	rows, err := q.db.Query(ctx, listBankRanking, arg.BankID, arg.SubmittedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBankRankingRow{}
+	for rows.Next() {
+		var i ListBankRankingRow
+		if err := rows.Scan(
+			&i.Rank,
+			&i.Nickname,
+			&i.SystemAvatar,
+			&i.CorrectAnswerCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBankRankingWindow = `-- name: ListBankRankingWindow :many
+WITH totals AS (
+  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  FROM quizcraft_practice_attempts a
+  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
+  WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2 AND a.submitted_at < $3
+  GROUP BY a.user_id,p.nickname,p.system_avatar
+)
+SELECT user_id,rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
+FROM totals ORDER BY correct_answer_count DESC,user_id LIMIT 100
+`
+
+type ListBankRankingWindowParams struct {
+	BankID        uuid.UUID          `json:"bank_id"`
+	SubmittedAt   pgtype.Timestamptz `json:"submitted_at"`
+	SubmittedAt_2 pgtype.Timestamptz `json:"submitted_at_2"`
+}
+
+type ListBankRankingWindowRow struct {
+	UserID             uuid.NullUUID `json:"user_id"`
+	Rank               int64         `json:"rank"`
+	Nickname           string        `json:"nickname"`
+	SystemAvatar       string        `json:"system_avatar"`
+	CorrectAnswerCount int64         `json:"correct_answer_count"`
+}
+
+func (q *Queries) ListBankRankingWindow(ctx context.Context, arg ListBankRankingWindowParams) ([]ListBankRankingWindowRow, error) {
+	rows, err := q.db.Query(ctx, listBankRankingWindow, arg.BankID, arg.SubmittedAt, arg.SubmittedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBankRankingWindowRow{}
+	for rows.Next() {
+		var i ListBankRankingWindowRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Rank,
+			&i.Nickname,
+			&i.SystemAvatar,
+			&i.CorrectAnswerCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFavoriteFolders = `-- name: ListFavoriteFolders :many
 SELECT f.bank_id,b.name AS bank_name,
        count(*) FILTER (WHERE m.question_id IS NOT NULL)::bigint AS available_count,
@@ -547,6 +680,103 @@ func (q *Queries) ListLearningState(ctx context.Context, userID uuid.UUID) ([]Li
 	return items, nil
 }
 
+const listOverallRanking = `-- name: ListOverallRanking :many
+WITH totals AS (
+  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  FROM quizcraft_practice_attempts a
+  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
+  WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1
+  GROUP BY a.user_id,p.nickname,p.system_avatar
+)
+SELECT rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
+FROM totals
+ORDER BY correct_answer_count DESC,user_id
+LIMIT 100
+`
+
+type ListOverallRankingRow struct {
+	Rank               int64  `json:"rank"`
+	Nickname           string `json:"nickname"`
+	SystemAvatar       string `json:"system_avatar"`
+	CorrectAnswerCount int64  `json:"correct_answer_count"`
+}
+
+func (q *Queries) ListOverallRanking(ctx context.Context, submittedAt pgtype.Timestamptz) ([]ListOverallRankingRow, error) {
+	rows, err := q.db.Query(ctx, listOverallRanking, submittedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOverallRankingRow{}
+	for rows.Next() {
+		var i ListOverallRankingRow
+		if err := rows.Scan(
+			&i.Rank,
+			&i.Nickname,
+			&i.SystemAvatar,
+			&i.CorrectAnswerCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOverallRankingWindow = `-- name: ListOverallRankingWindow :many
+WITH totals AS (
+  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  FROM quizcraft_practice_attempts a
+  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
+  WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
+  GROUP BY a.user_id,p.nickname,p.system_avatar
+)
+SELECT user_id,rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
+FROM totals ORDER BY correct_answer_count DESC,user_id LIMIT 100
+`
+
+type ListOverallRankingWindowParams struct {
+	SubmittedAt   pgtype.Timestamptz `json:"submitted_at"`
+	SubmittedAt_2 pgtype.Timestamptz `json:"submitted_at_2"`
+}
+
+type ListOverallRankingWindowRow struct {
+	UserID             uuid.NullUUID `json:"user_id"`
+	Rank               int64         `json:"rank"`
+	Nickname           string        `json:"nickname"`
+	SystemAvatar       string        `json:"system_avatar"`
+	CorrectAnswerCount int64         `json:"correct_answer_count"`
+}
+
+func (q *Queries) ListOverallRankingWindow(ctx context.Context, arg ListOverallRankingWindowParams) ([]ListOverallRankingWindowRow, error) {
+	rows, err := q.db.Query(ctx, listOverallRankingWindow, arg.SubmittedAt, arg.SubmittedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOverallRankingWindowRow{}
+	for rows.Next() {
+		var i ListOverallRankingWindowRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Rank,
+			&i.Nickname,
+			&i.SystemAvatar,
+			&i.CorrectAnswerCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPracticeQuestions = `-- name: ListPracticeQuestions :many
 SELECT m.question_id,m.question_version_id,qv.type,qv.chapter_id,qv.chapter_name,qv.content,COALESCE(qv.options,'null'::jsonb) AS options
 FROM quizcraft_bank_version_questions m
@@ -661,6 +891,38 @@ func (q *Queries) ListPublishedBanks(ctx context.Context) ([]ListPublishedBanksR
 	return items, nil
 }
 
+const listScoredBankIDsWindow = `-- name: ListScoredBankIDsWindow :many
+SELECT DISTINCT a.bank_id
+FROM quizcraft_practice_attempts a
+WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
+ORDER BY a.bank_id
+`
+
+type ListScoredBankIDsWindowParams struct {
+	SubmittedAt   pgtype.Timestamptz `json:"submitted_at"`
+	SubmittedAt_2 pgtype.Timestamptz `json:"submitted_at_2"`
+}
+
+func (q *Queries) ListScoredBankIDsWindow(ctx context.Context, arg ListScoredBankIDsWindowParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listScoredBankIDsWindow, arg.SubmittedAt, arg.SubmittedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var bank_id uuid.UUID
+		if err := rows.Scan(&bank_id); err != nil {
+			return nil, err
+		}
+		items = append(items, bank_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockFavorite = `-- name: LockFavorite :exec
 SELECT pg_advisory_xact_lock(hashtextextended($1,0))
 `
@@ -676,6 +938,15 @@ SELECT pg_advisory_xact_lock(hashtextextended($1,0))
 
 func (q *Queries) LockIdempotency(ctx context.Context, hashtextextended string) error {
 	_, err := q.db.Exec(ctx, lockIdempotency, hashtextextended)
+	return err
+}
+
+const lockRankingProfileMutation = `-- name: LockRankingProfileMutation :exec
+SELECT pg_advisory_xact_lock(hashtextextended('ranking-profile-user:' || $1::text,0))
+`
+
+func (q *Queries) LockRankingProfileMutation(ctx context.Context, dollar_1 string) error {
+	_, err := q.db.Exec(ctx, lockRankingProfileMutation, dollar_1)
 	return err
 }
 
@@ -780,5 +1051,28 @@ type UpdateQuestionStatsParams struct {
 
 func (q *Queries) UpdateQuestionStats(ctx context.Context, arg UpdateQuestionStatsParams) error {
 	_, err := q.db.Exec(ctx, updateQuestionStats, arg.QuestionID, arg.CorrectCount)
+	return err
+}
+
+const upsertRankingProfile = `-- name: UpsertRankingProfile :exec
+INSERT INTO quizcraft_ranking_profiles(user_id,nickname,system_avatar,visible)
+VALUES($1,$2,$3,$4)
+ON CONFLICT(user_id) DO UPDATE SET nickname=EXCLUDED.nickname,system_avatar=EXCLUDED.system_avatar,visible=EXCLUDED.visible,updated_at=now()
+`
+
+type UpsertRankingProfileParams struct {
+	UserID       uuid.UUID `json:"user_id"`
+	Nickname     string    `json:"nickname"`
+	SystemAvatar string    `json:"system_avatar"`
+	Visible      bool      `json:"visible"`
+}
+
+func (q *Queries) UpsertRankingProfile(ctx context.Context, arg UpsertRankingProfileParams) error {
+	_, err := q.db.Exec(ctx, upsertRankingProfile,
+		arg.UserID,
+		arg.Nickname,
+		arg.SystemAvatar,
+		arg.Visible,
+	)
 	return err
 }

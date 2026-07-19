@@ -166,3 +166,70 @@ ORDER BY f.created_at,f.question_id;
 SELECT count(*)::bigint
 FROM quizcraft_favorites
 WHERE user_id=$1 AND bank_id=$2;
+
+-- name: UpsertRankingProfile :exec
+INSERT INTO quizcraft_ranking_profiles(user_id,nickname,system_avatar,visible)
+VALUES($1,$2,$3,$4)
+ON CONFLICT(user_id) DO UPDATE SET nickname=EXCLUDED.nickname,system_avatar=EXCLUDED.system_avatar,visible=EXCLUDED.visible,updated_at=now();
+
+-- name: LockRankingProfileMutation :exec
+SELECT pg_advisory_xact_lock(hashtextextended('ranking-profile-user:' || $1::text,0));
+
+-- name: ListOverallRanking :many
+WITH totals AS (
+  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  FROM quizcraft_practice_attempts a
+  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
+  WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1
+  GROUP BY a.user_id,p.nickname,p.system_avatar
+)
+SELECT rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
+FROM totals
+ORDER BY correct_answer_count DESC,user_id
+LIMIT 100;
+
+-- name: ListBankRanking :many
+WITH totals AS (
+  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  FROM quizcraft_practice_attempts a
+  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
+  WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2
+  GROUP BY a.user_id,p.nickname,p.system_avatar
+)
+SELECT rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
+FROM totals
+ORDER BY correct_answer_count DESC,user_id
+LIMIT 100;
+
+-- name: ListOverallRankingWindow :many
+WITH totals AS (
+  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  FROM quizcraft_practice_attempts a
+  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
+  WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
+  GROUP BY a.user_id,p.nickname,p.system_avatar
+)
+SELECT user_id,rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
+FROM totals ORDER BY correct_answer_count DESC,user_id LIMIT 100;
+
+-- name: ListBankRankingWindow :many
+WITH totals AS (
+  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  FROM quizcraft_practice_attempts a
+  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
+  WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2 AND a.submitted_at < $3
+  GROUP BY a.user_id,p.nickname,p.system_avatar
+)
+SELECT user_id,rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
+FROM totals ORDER BY correct_answer_count DESC,user_id LIMIT 100;
+
+-- name: CreateRankingSettlementEvent :execrows
+INSERT INTO quizcraft_ranking_settlement_events(id,period_start,period_end,scope,bank_id,metric,standings)
+VALUES($1,$2,$3,$4,$5,'correct_answer_count',$6)
+ON CONFLICT(period_start,period_end,scope,bank_id) DO NOTHING;
+
+-- name: ListScoredBankIDsWindow :many
+SELECT DISTINCT a.bank_id
+FROM quizcraft_practice_attempts a
+WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
+ORDER BY a.bank_id;

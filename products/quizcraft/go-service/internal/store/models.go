@@ -140,6 +140,25 @@ type QuizcraftQuestionVersion struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
+type QuizcraftRankingProfile struct {
+	UserID       uuid.UUID          `json:"user_id"`
+	Nickname     string             `json:"nickname"`
+	SystemAvatar string             `json:"system_avatar"`
+	Visible      bool               `json:"visible"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type QuizcraftRankingSettlementEvent struct {
+	ID          uuid.UUID          `json:"id"`
+	PeriodStart pgtype.Timestamptz `json:"period_start"`
+	PeriodEnd   pgtype.Timestamptz `json:"period_end"`
+	Scope       string             `json:"scope"`
+	BankID      uuid.NullUUID      `json:"bank_id"`
+	Metric      string             `json:"metric"`
+	Standings   []byte             `json:"standings"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type QuizcraftShadowComparison struct {
 	ID             uuid.UUID          `json:"id"`
 	SessionID      uuid.UUID          `json:"session_id"`

@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS quizcraft_ranking_settlement_events;
+DROP TABLE IF EXISTS quizcraft_ranking_profiles;
+DROP INDEX IF EXISTS quizcraft_practice_attempts_ranking_bank_idx;
+DROP INDEX IF EXISTS quizcraft_practice_attempts_ranking_overall_idx;
