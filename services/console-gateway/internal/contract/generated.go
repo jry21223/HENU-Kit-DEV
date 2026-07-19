@@ -4,17 +4,23 @@ package contract
 import "time"
 
 const (
-	HealthRoute          = "/api/v1/healthz"
-	LoginRoute           = "/api/v1/auth/login"
-	CallbackRoute        = "/api/v1/auth/callback"
-	SessionRoute         = "/api/v1/session"
-	OverviewRoute        = "/api/v1/overview"
-	OperationsRoute      = "/api/v1/operations"
-	RevokeSessionRoute   = "/api/v1/operations/sessions/{session_id}/revocations"
-	UpdateAccessRoute    = "/api/v1/operations/users/{user_id}/access-updates"
-	OperationStatusRoute = "/api/v1/operations/results/{operation}"
-	LogoutRoute          = "/api/v1/session/logout"
-	SourceSHA256         = "d363dd3299b30c702662ae39f315b3e250c65e57309a4f3f4c4236764f008437"
+	HealthRoute             = "/api/v1/healthz"
+	LoginRoute              = "/api/v1/auth/login"
+	CallbackRoute           = "/api/v1/auth/callback"
+	SessionRoute            = "/api/v1/session"
+	OverviewRoute           = "/api/v1/overview"
+	OperationsRoute         = "/api/v1/operations"
+	RevokeSessionRoute      = "/api/v1/operations/sessions/{session_id}/revocations"
+	UpdateAccessRoute       = "/api/v1/operations/users/{user_id}/access-updates"
+	OperationStatusRoute    = "/api/v1/operations/results/{operation}"
+	NoticeSnapshotRoute     = "/api/v1/notices"
+	NoticeSourceRoute       = "/api/v1/notices/sources"
+	NoticeVersionRoute      = "/api/v1/notices/sources/{source_id}/versions"
+	NoticeReviewRoute       = "/api/v1/notices/versions/{version_id}/reviews"
+	NoticeDistributionRoute = "/api/v1/notices/versions/{version_id}/distributions"
+	NoticeOperationRoute    = "/api/v1/notices/operations/{operation}"
+	LogoutRoute             = "/api/v1/session/logout"
+	SourceSHA256            = "b5a09cf14075494a97fa8a854dc95baf9c822fb2abd900fec6b71fb92da3c74d"
 )
 
 type ConsoleAccessContext struct {
@@ -45,7 +51,8 @@ type ConsoleOverview struct {
 }
 
 type ConsoleScope struct {
-	Kind string `json:"kind"`
+	Kind        string  `json:"kind"`
+	ProductCode *string `json:"product_code,omitempty"`
 }
 
 type ConsoleSession struct {
@@ -56,6 +63,19 @@ type ConsoleSession struct {
 	} `json:"user"`
 }
 
+type CreateNoticeSourceRequest struct {
+	CanonicalUrl string `json:"canonical_url"`
+	Code         string `json:"code"`
+	Name         string `json:"name"`
+}
+
+type CreateNoticeVersionRequest struct {
+	Body              string     `json:"body"`
+	SourcePublishedAt *time.Time `json:"source_published_at,omitempty"`
+	SourceUrl         string     `json:"source_url"`
+	Title             string     `json:"title"`
+}
+
 type ErrorEnvelope struct {
 	Error     ErrorObject `json:"error"`
 	RequestID string      `json:"request_id"`
@@ -64,6 +84,50 @@ type ErrorEnvelope struct {
 type ErrorObject struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+type NoticeAudience struct {
+	Kind  *string `json:"kind,omitempty"`
+	Value *string `json:"value,omitempty"`
+}
+
+type NoticeDistributionRequest struct {
+	Audience         NoticeAudience `json:"audience"`
+	Channel          string         `json:"channel"`
+	ExpectedRevision int64          `json:"expected_revision"`
+}
+
+type NoticeReviewRequest struct {
+	Decision         string  `json:"decision"`
+	ExpectedRevision int64   `json:"expected_revision"`
+	Note             *string `json:"note,omitempty"`
+}
+
+type NoticeSnapshot struct {
+	GeneratedAt time.Time       `json:"generated_at"`
+	Items       []NoticeVersion `json:"items"`
+}
+
+type NoticeSource struct {
+	Code string `json:"code"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type NoticeVersion struct {
+	Body               string       `json:"body"`
+	ContentHash        string       `json:"content_hash"`
+	CreatedAt          time.Time    `json:"created_at"`
+	DistributionCount  int64        `json:"distribution_count"`
+	DistributionStatus *string      `json:"distribution_status,omitempty"`
+	ID                 string       `json:"id"`
+	Revision           int64        `json:"revision"`
+	Source             NoticeSource `json:"source"`
+	SourcePublishedAt  *time.Time   `json:"source_published_at,omitempty"`
+	SourceUrl          string       `json:"source_url"`
+	State              string       `json:"state"`
+	Title              string       `json:"title"`
+	Version            int64        `json:"version"`
 }
 
 type PlatformAccessGrantInput struct {

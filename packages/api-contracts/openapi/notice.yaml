@@ -1,0 +1,268 @@
+openapi: 3.1.0
+info:
+  title: HENU Kit Notice API
+  version: 0.1.0
+  description: Notice-owned sources, immutable content versions, review, audience, and distribution lifecycle.
+  license: { name: MIT, url: https://opensource.org/license/mit }
+servers:
+  - url: https://notice.internal
+security:
+  - serviceAuth: []
+    serviceId: []
+    keyId: []
+    timestamp: []
+    nonce: []
+    signature: []
+paths:
+  /healthz:
+    get:
+      summary: Check Notice service liveness
+      operationId: noticeHealth
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/console-notices:
+    get:
+      summary: List bounded Notice lifecycle data for Console
+      operationId: listConsoleNotices
+      parameters: [{ $ref: "#/components/parameters/Actor" }, { $ref: "#/components/parameters/Permission" }, { $ref: "#/components/parameters/Scope" }, { $ref: "#/components/parameters/Product" }]
+      responses:
+        "200":
+          description: Bounded Notice lifecycle snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoticeSnapshotEnvelope" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/console-summary:
+    get:
+      summary: Read the bounded Notice module summary
+      operationId: getNoticeConsoleSummary
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/v1/sources:
+    post:
+      summary: Create a Notice source
+      operationId: createNoticeSource
+      parameters: [{ $ref: "#/components/parameters/Actor" }, { $ref: "#/components/parameters/Permission" }, { $ref: "#/components/parameters/Scope" }, { $ref: "#/components/parameters/Product" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSourceRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/sources/{source_id}/versions:
+    post:
+      summary: Create an immutable Notice content version
+      operationId: createNoticeVersion
+      parameters: [{ $ref: "#/components/parameters/SourceId" }, { $ref: "#/components/parameters/Actor" }, { $ref: "#/components/parameters/Permission" }, { $ref: "#/components/parameters/Scope" }, { $ref: "#/components/parameters/Product" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVersionRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/versions/{version_id}/reviews:
+    post:
+      summary: Review a Notice content version
+      operationId: reviewNoticeVersion
+      parameters: [{ $ref: "#/components/parameters/VersionId" }, { $ref: "#/components/parameters/Actor" }, { $ref: "#/components/parameters/Permission" }, { $ref: "#/components/parameters/Scope" }, { $ref: "#/components/parameters/Product" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/versions/{version_id}/distributions:
+    post:
+      summary: Queue an approved Notice version for an audience
+      operationId: distributeNoticeVersion
+      parameters: [{ $ref: "#/components/parameters/VersionId" }, { $ref: "#/components/parameters/Actor" }, { $ref: "#/components/parameters/Permission" }, { $ref: "#/components/parameters/Scope" }, { $ref: "#/components/parameters/Product" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DistributionRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/operations/{operation}:
+    get:
+      summary: Resolve a Notice write by idempotency key
+      operationId: getNoticeOperation
+      parameters:
+        - name: operation
+          in: path
+          required: true
+          schema: { type: string, enum: [source_create, version_create, review, distribution] }
+        - { $ref: "#/components/parameters/Actor" }
+        - { $ref: "#/components/parameters/Permission" }
+        - { $ref: "#/components/parameters/Scope" }
+        - { $ref: "#/components/parameters/Product" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    serviceAuth:
+      type: http
+      scheme: basic
+      description: Client ID and the active or retiring service secret.
+    serviceId: { type: apiKey, in: header, name: X-Service-Id, description: "Must equal the Basic Auth client ID." }
+    keyId: { type: apiKey, in: header, name: X-Key-Id, description: "Selects the active or retiring HMAC key." }
+    timestamp: { type: apiKey, in: header, name: X-Timestamp, description: "Unix seconds within the five-minute acceptance window." }
+    nonce: { type: apiKey, in: header, name: X-Nonce, description: "Base64url-encoded 24-byte nonce atomically consumed in Redis." }
+    signature: { type: apiKey, in: header, name: X-Signature, description: "Base64url HMAC-SHA256 over method, path and query, timestamp, nonce, and body SHA256." }
+  parameters:
+    Actor: { name: X-Actor-User-Id, in: header, required: true, schema: { type: string, format: uuid } }
+    Permission: { name: X-Permission-Code, in: header, required: true, schema: { type: string, enum: [notice.read, notice.manage, notice.review, notice.distribute] } }
+    Scope: { name: X-Scope-Kind, in: header, required: true, schema: { type: string, enum: [product] } }
+    Product: { name: X-Product-Code, in: header, required: true, schema: { type: string, enum: [notice] } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
+    SourceId: { name: source_id, in: path, required: true, schema: { type: string, format: uuid } }
+    VersionId: { name: version_id, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Success:
+      description: Successful Notice operation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/GenericSuccessEnvelope" }
+    Error:
+      description: Notice error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    RequestId: { type: string, pattern: '^req_[A-Za-z0-9_-]+$', maxLength: 120 }
+    CreateSourceRequest:
+      type: object
+      additionalProperties: false
+      required: [code, name, canonical_url]
+      properties:
+        code: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$' }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        canonical_url: { type: string, format: uri, pattern: '^https://' }
+      example: { code: henu-office, name: 学校办公室, canonical_url: https://example.edu/notices }
+      x-invalid-examples:
+        - { code: "INVALID", name: 学校办公室, canonical_url: http://example.edu/notices }
+    CreateVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [title, body, source_url]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 100000 }
+        source_url: { type: string, format: uri, pattern: '^https://' }
+        source_published_at: { type: string, format: date-time }
+      example: { title: 暑期安排, body: 不可变正文, source_url: https://example.edu/notices/1, source_published_at: "2026-07-19T08:00:00Z" }
+      x-invalid-examples:
+        - { title: "", body: 正文, source_url: https://example.edu/notices/1 }
+    ReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [decision, expected_revision]
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
+        note: { type: string, maxLength: 1000, default: "" }
+        expected_revision: { type: integer, minimum: 1 }
+      example: { decision: approved, note: 来源与正文已核验, expected_revision: 1 }
+      x-invalid-examples:
+        - { decision: pending, expected_revision: 0 }
+    Audience:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind]
+          properties: { kind: { type: string, enum: [all_students] } }
+        - type: object
+          additionalProperties: false
+          required: [kind, value]
+          properties:
+            kind: { type: string, enum: [college, role] }
+            value: { type: string, minLength: 1, maxLength: 120 }
+    DistributionRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, audience, expected_revision]
+      properties:
+        channel: { type: string, enum: [in_app, email] }
+        audience: { $ref: "#/components/schemas/Audience" }
+        expected_revision: { type: integer, minimum: 1 }
+      example: { channel: in_app, audience: { kind: all_students }, expected_revision: 2 }
+      x-invalid-examples:
+        - { channel: sms, audience: { kind: college }, expected_revision: 0 }
+    NoticeSource:
+      type: object
+      additionalProperties: false
+      required: [id, code, name]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+    NoticeVersion:
+      type: object
+      additionalProperties: false
+      required: [id, source, version, title, body, source_url, content_hash, state, revision, created_at, distribution_count]
+      properties:
+        id: { type: string, format: uuid }
+        source: { $ref: "#/components/schemas/NoticeSource" }
+        version: { type: integer, minimum: 1 }
+        title: { type: string }
+        body: { type: string }
+        source_url: { type: string, format: uri }
+        content_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        state: { type: string, enum: [pending_review, approved, rejected, distributed] }
+        revision: { type: integer, minimum: 1 }
+        source_published_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        distribution_count: { type: integer, minimum: 0 }
+        distribution_status: { type: string, enum: [queued, processing, delivered, failed] }
+    NoticeSnapshot:
+      type: object
+      additionalProperties: false
+      required: [items, generated_at]
+      properties:
+        items: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/NoticeVersion" } }
+        generated_at: { type: string, format: date-time }
+    NoticeSnapshotEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data: { $ref: "#/components/schemas/NoticeSnapshot" }
+        request_id: { $ref: "#/components/schemas/RequestId" }
+    GenericSuccessEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data: { type: object }
+        request_id: { $ref: "#/components/schemas/RequestId" }
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties: { code: { type: string }, message: { type: string } }
+        request_id: { $ref: "#/components/schemas/RequestId" }

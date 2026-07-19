@@ -9,6 +9,8 @@ tags:
     description: Console-local authorization-code flow and Session boundary.
   - name: Platform Operations
     description: Bounded account, Session, mail, Inbox, audit, and dependency operations.
+  - name: Notice
+    description: Permission-checked forwarding to the Notice data owner.
 paths:
   /healthz:
     get:
@@ -292,6 +294,104 @@ paths:
               required: true
               schema:
                 type: string
+  /notices:
+    get:
+      tags: [Notice]
+      operationId: getConsoleNotices
+      summary: Read the bounded Notice lifecycle snapshot
+      security: [{ consoleSession: [] }]
+      responses:
+        "200":
+          description: Notice-owned lifecycle data
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/NoticeSnapshot" } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /notices/sources:
+    post:
+      tags: [Notice]
+      operationId: createConsoleNoticeSource
+      summary: Create a Notice source through its owner
+      security: [{ consoleSession: [] }]
+      parameters: [{ $ref: "#/components/parameters/RequiredIdempotencyKey" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateNoticeSourceRequest" } } } }
+      responses:
+        "200": { description: Source created, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /notices/sources/{source_id}/versions:
+    post:
+      tags: [Notice]
+      operationId: createConsoleNoticeVersion
+      summary: Create an immutable Notice version through its owner
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: source_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateNoticeVersionRequest" } } } }
+      responses:
+        "200": { description: Version created, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /notices/versions/{version_id}/reviews:
+    post:
+      tags: [Notice]
+      operationId: reviewConsoleNoticeVersion
+      summary: Review a Notice version through its owner
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: version_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NoticeReviewRequest" } } } }
+      responses:
+        "200": { description: Review recorded, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /notices/versions/{version_id}/distributions:
+    post:
+      tags: [Notice]
+      operationId: distributeConsoleNoticeVersion
+      summary: Queue an approved Notice version for an audience
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: version_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NoticeDistributionRequest" } } } }
+      responses:
+        "200": { description: Distribution queued, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /notices/operations/{operation}:
+    get:
+      tags: [Notice]
+      operationId: getConsoleNoticeOperationStatus
+      summary: Resolve a possibly unknown Notice write
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: operation, in: path, required: true, schema: { type: string, enum: [source_create, version_create, review, distribution] } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      responses:
+        "200": { description: Original result or unknown, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 components:
   parameters:
     RequiredIdempotencyKey:
@@ -386,7 +486,104 @@ components:
       properties:
         kind:
           type: string
-          const: platform
+          enum: [platform, product]
+        product_code:
+          type: string
+          minLength: 1
+          maxLength: 80
+      allOf:
+        - if:
+            properties: { kind: { const: product } }
+            required: [kind]
+          then:
+            required: [product_code]
+            properties:
+              product_code: { type: string, minLength: 1, maxLength: 80 }
+    CreateNoticeSourceRequest:
+      type: object
+      additionalProperties: false
+      required: [code, name, canonical_url]
+      properties:
+        code: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$' }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        canonical_url: { type: string, format: uri, pattern: '^https://' }
+    CreateNoticeVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [title, body, source_url]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 100000 }
+        source_url: { type: string, format: uri, pattern: '^https://' }
+        source_published_at: { type: string, format: date-time }
+    NoticeReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [decision, expected_revision]
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
+        note: { type: string, maxLength: 1000 }
+        expected_revision: { type: integer, minimum: 1 }
+    NoticeAudience:
+      type: object
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [all_students, college, role] }
+        value: { type: string, minLength: 1, maxLength: 120 }
+      anyOf:
+        - type: object
+          additionalProperties: false
+          required: [kind]
+          properties: { kind: { type: string, enum: [all_students] } }
+        - type: object
+          additionalProperties: false
+          required: [kind, value]
+          properties:
+            kind: { type: string, enum: [college, role] }
+            value: { type: string, minLength: 1, maxLength: 120 }
+    NoticeDistributionRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, audience, expected_revision]
+      properties:
+        channel: { type: string, enum: [in_app, email] }
+        audience: { $ref: "#/components/schemas/NoticeAudience" }
+        expected_revision: { type: integer, minimum: 1 }
+      example: { channel: email, audience: { kind: college, value: software-college }, expected_revision: 2 }
+      x-invalid-example: { channel: email, audience: { kind: all_students, value: forbidden }, expected_revision: 2 }
+    NoticeSource:
+      type: object
+      additionalProperties: false
+      required: [id, code, name]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+    NoticeVersion:
+      type: object
+      additionalProperties: false
+      required: [id, source, version, title, body, source_url, content_hash, state, revision, created_at, distribution_count]
+      properties:
+        id: { type: string, format: uuid }
+        source: { $ref: "#/components/schemas/NoticeSource" }
+        version: { type: integer, minimum: 1 }
+        title: { type: string }
+        body: { type: string }
+        source_url: { type: string, format: uri }
+        content_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        state: { type: string, enum: [pending_review, approved, rejected, distributed] }
+        revision: { type: integer, minimum: 1 }
+        source_published_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        distribution_count: { type: integer, minimum: 0 }
+        distribution_status: { type: string, enum: [queued, processing, delivered, failed] }
+    NoticeSnapshot:
+      type: object
+      additionalProperties: false
+      required: [items, generated_at]
+      properties:
+        items: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/NoticeVersion" } }
+        generated_at: { type: string, format: date-time }
     ConsoleOverview:
       type: object
       additionalProperties: false

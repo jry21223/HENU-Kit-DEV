@@ -4,6 +4,7 @@ import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPor
 import { computed, onMounted, ref } from "vue";
 
 import ModuleCard from "@/components/ModuleCard.vue";
+import NoticeOperationsView from "@/components/NoticeOperationsView.vue";
 import PlatformOperationsView from "@/components/PlatformOperationsView.vue";
 import StatusBadge from "@/components/ui/StatusBadge.vue";
 import UiButton from "@/components/ui/UiButton.vue";
@@ -21,6 +22,7 @@ const icons = {
 
 const query = new URLSearchParams(window.location.search);
 const isPlatformOperations = window.location.pathname === "/operations";
+const isNoticeOperations = window.location.pathname === "/notices";
 const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
 const authState = ref<"loading" | "authenticated" | "signed_out" | "denied" | "unavailable">("loading");
@@ -34,7 +36,7 @@ async function refreshSession() {
   authState.value = result.state;
   consoleSession.value = result.state === "authenticated" ? result.session : undefined;
   consoleOverview.value = undefined;
-  if (result.state === "authenticated" && !isPlatformOperations) {
+  if (result.state === "authenticated" && !isPlatformOperations && !isNoticeOperations) {
     overviewState.value = "loading";
     const overviewResult = await fetchConsoleOverview();
     if (overviewResult.state === "authenticated") {
@@ -105,6 +107,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <a v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" href="/operations" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10">
           <ShieldCheck :size="17" aria-hidden="true" />平台运营工作台
         </a>
+        <a v-if="consoleSession?.access_context.permissions.includes('notice.read')" href="/notices" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Bell :size="17" aria-hidden="true" />通知审核与分发</a>
         <a
           v-for="module in moduleSummaries"
           :key="module.id"
@@ -141,6 +144,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
               </div>
               <nav class="mt-6 grid gap-2" aria-label="移动端产品模块">
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" as-child><a href="/operations" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><ShieldCheck :size="18" />平台运营工作台</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('notice.read')" as-child><a href="/notices" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Bell :size="18" />通知审核与分发</a></DialogClose>
                 <DialogClose v-for="module in moduleSummaries" :key="module.id" as-child>
                   <a :href="`#module-${module.id}`" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white/85 hover:bg-white/10">
                     <component :is="icons[module.id]" :size="18" aria-hidden="true" />{{ module.name }}
@@ -172,6 +176,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
 
       <main class="mx-auto w-full max-w-[var(--hk-content-max)] px-4 py-6 sm:px-6 lg:px-8 lg:py-9">
         <PlatformOperationsView v-if="isPlatformOperations" :auth-state="authState" />
+        <NoticeOperationsView v-else-if="isNoticeOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
         <template v-else>
         <section class="overview-hero" aria-labelledby="overview-heading">
           <div>

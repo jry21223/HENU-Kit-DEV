@@ -19,6 +19,8 @@ type Config struct {
 	SessionKey          []byte
 	OverviewEndpoints   map[string]string
 	OverviewCredentials map[string]SummaryCredentials
+	NoticeAPIURL        string
+	NoticeCredentials   SummaryCredentials
 }
 
 type SummaryCredentials struct{ ClientID, ClientSecret, KeyID string }
@@ -41,6 +43,7 @@ func FromEnv() (Config, error) {
 			"portal": summaryCredentials("PORTAL"), "platform": summaryCredentials("PLATFORM"), "notice": summaryCredentials("NOTICE"),
 			"library": summaryCredentials("LIBRARY"), "quizcraft": summaryCredentials("QUIZCRAFT"), "food": summaryCredentials("FOOD"),
 		},
+		NoticeAPIURL: strings.TrimRight(os.Getenv("NOTICE_API_URL"), "/"), NoticeCredentials: summaryCredentials("NOTICE"),
 	}
 	if config.ListenAddr == "" {
 		config.ListenAddr = ":8082"

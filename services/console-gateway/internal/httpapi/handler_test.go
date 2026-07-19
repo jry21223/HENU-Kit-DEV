@@ -39,6 +39,36 @@ type fakePlatform struct {
 
 type fakeOverview struct{}
 
+type fakeNotice struct {
+	actor, key       string
+	snapshot, result json.RawMessage
+}
+
+func (f *fakeNotice) Snapshot(_ context.Context, actor string) (json.RawMessage, error) {
+	f.actor = actor
+	return f.snapshot, nil
+}
+func (f *fakeNotice) CreateSource(_ context.Context, actor, key string, _ []byte) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
+}
+func (f *fakeNotice) CreateVersion(_ context.Context, actor, _, key string, _ []byte) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
+}
+func (f *fakeNotice) Review(_ context.Context, actor, _, key string, _ []byte) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
+}
+func (f *fakeNotice) Distribute(_ context.Context, actor, _, key string, _ []byte) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
+}
+func (f *fakeNotice) Operation(_ context.Context, actor, _, key string) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, nil
+}
+
 func (fakeOverview) Fetch(_ context.Context, _ string) contract.ConsoleOverview {
 	modules := make([]contract.ConsoleModuleSummary, 0, 6)
 	for _, id := range []string{"portal", "platform", "notice", "library", "quizcraft", "food"} {
@@ -79,6 +109,13 @@ func (fake *fakePlatform) CheckPlatformOperationsWrite(_ context.Context, token 
 	return fake.checkErr
 }
 
+func (fake *fakePlatform) CheckNotice(_ context.Context, token, _ string) error {
+	if token != fake.exchange.ExchangeToken {
+		return platformcore.ErrUnauthorized
+	}
+	return fake.checkErr
+}
+
 func (fake *fakePlatform) PlatformOperations(_ context.Context, token string) (json.RawMessage, error) {
 	fake.operationToken = token
 	return fake.operations, fake.checkErr
@@ -107,7 +144,7 @@ func TestPlatformOperationsUsesServerSessionAndForwardsIdempotency(t *testing.T)
 		operations:      json.RawMessage(`{"accounts":[],"sessions":[],"mail":{"pending":0,"processing":0,"retry_due":0,"accepted":0,"delivered":0,"failed":0,"dead_letters":0},"inbox_items":[],"audit":[],"dependencies":{"postgres":"ready","redis":"ready"},"generated_at":"2026-07-19T00:00:00Z"}`),
 		operationResult: json.RawMessage(`{"operation":"session_revoke","status":"succeeded","resource_id":"171f1c6f-7b10-4c92-91a2-b39bf5af5302"}`),
 	}
-	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	server := httptest.NewTLSServer(handler)
 	defer server.Close()
 	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: fake.exchange.ExchangeToken, ExpiresAt: time.Now().Add(time.Minute)})
@@ -137,6 +174,41 @@ func TestPlatformOperationsUsesServerSessionAndForwardsIdempotency(t *testing.T)
 	}
 }
 
+func TestNoticeForwardingUsesServerActorAndPreservesIdempotency(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	userID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeNotice{snapshot: json.RawMessage(`{"items":[],"generated_at":"2026-07-19T00:00:00Z"}`), result: json.RawMessage(`{"state":"approved","revision":2}`)}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, owner, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: userID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+	read, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/notices", nil)
+	read.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err := server.Client().Do(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.actor != userID {
+		t.Fatalf("Notice read status/actor=%d/%s", response.StatusCode, owner.actor)
+	}
+	review, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/notices/versions/471f1c6f-7b10-4c92-91a2-b39bf5af5302/reviews", strings.NewReader(`{"decision":"approved","expected_revision":1}`))
+	review.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	review.Header.Set("Content-Type", "application/json")
+	review.Header.Set("Idempotency-Key", "idem_notice_review_test")
+	response, err = server.Client().Do(review)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.key != "idem_notice_review_test" {
+		t.Fatalf("Notice review status/key=%d/%s", response.StatusCode, owner.key)
+	}
+}
+
 func TestRequestContextReplacesContractInvalidRequestID(t *testing.T) {
 	handler := (&Handler{}).requestContext(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusNoContent)
@@ -163,7 +235,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testi
 	fake := &fakePlatform{exchange: platformcore.Exchange{
 		UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: "exchange_token_with_at_least_32_characters", ExpiresAt: time.Now().Add(5 * time.Minute),
 	}}
-	handler, err := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler, err := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +328,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testi
 	var envelope struct {
 		Data contract.ConsoleSession `json:"data"`
 	}
-	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Data.User.ID != fake.exchange.UserID || len(envelope.Data.AccessContext.Permissions) != 2 || envelope.Data.AccessContext.Scopes[0].Kind != "platform" {
+	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Data.User.ID != fake.exchange.UserID || len(envelope.Data.AccessContext.Permissions) != 6 || len(envelope.Data.AccessContext.Scopes) != 2 || envelope.Data.AccessContext.Scopes[0].Kind != "platform" || envelope.Data.AccessContext.Scopes[1].ProductCode == nil || *envelope.Data.AccessContext.Scopes[1].ProductCode != "notice" {
 		t.Fatalf("invalid access context: %s (%v)", payload, err)
 	}
 	overviewRequest, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/overview", nil)
@@ -278,7 +350,7 @@ func TestConsoleSessionDefaultsToDenyAndClearsRevokedSession(t *testing.T) {
 	redisClient := testRedis(t)
 	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
 	fake := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: "exchange_token_with_at_least_32_characters"}, checkErr: platformcore.ErrForbidden}
-	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	server := httptest.NewTLSServer(handler)
 	defer server.Close()
 	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: fake.exchange.ExchangeToken, ExpiresAt: time.Now().Add(time.Minute)})
@@ -307,7 +379,7 @@ func TestConsoleRejectsOpenRedirectAndExpiredCookieBeforePlatformCall(t *testing
 	redisClient := testRedis(t)
 	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
 	fake := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: "exchange_token_with_at_least_32_characters"}}
-	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	server := httptest.NewTLSServer(handler)
 	defer server.Close()
 	response, _ := server.Client().Get(server.URL + "/api/v1/auth/login?return_to=https%3A%2F%2Fevil.example")
