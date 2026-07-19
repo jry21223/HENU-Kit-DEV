@@ -21,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/console-gateway/internal/contract"
+	foodapi "henukit.dev/console-gateway/internal/food"
 	libraryapi "henukit.dev/console-gateway/internal/library"
 	noticeapi "henukit.dev/console-gateway/internal/notice"
 	"henukit.dev/console-gateway/internal/platformcore"
@@ -44,6 +45,7 @@ type platformClient interface {
 	OperationStatus(context.Context, string, string, string) (json.RawMessage, error)
 	CheckNotice(context.Context, string, string) error
 	CheckLibrary(context.Context, string, string) error
+	CheckFood(context.Context, string, string) error
 }
 
 type noticeClient interface {
@@ -61,6 +63,12 @@ type libraryClient interface {
 	Operation(context.Context, string, string, string) (json.RawMessage, error)
 }
 
+type foodClient interface {
+	Workspace(context.Context, string) (json.RawMessage, error)
+	Command(context.Context, string, string, []byte) (json.RawMessage, error)
+	Operation(context.Context, string, string, string) (json.RawMessage, error)
+}
+
 type overviewClient interface {
 	Fetch(context.Context, string) contract.ConsoleOverview
 }
@@ -70,6 +78,7 @@ type Handler struct {
 	platform                              platformClient
 	notice                                noticeClient
 	library                               libraryClient
+	food                                  foodClient
 	overview                              overviewClient
 	redis                                 *redis.Client
 	codec                                 *session.Codec
@@ -82,7 +91,7 @@ type flowState struct {
 	ReturnTo string `json:"return_to"`
 }
 
-func New(platformOrigin, clientID, redirectURI string, platform platformClient, notice noticeClient, overview overviewClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger, libraryClients ...libraryClient) (http.Handler, error) {
+func New(platformOrigin, clientID, redirectURI string, platform platformClient, notice noticeClient, overview overviewClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger, ownerClients ...any) (http.Handler, error) {
 	origin, err := url.Parse(platformOrigin)
 	redirect, redirectErr := url.Parse(redirectURI)
 	if err != nil || redirectErr != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || (origin.Path != "" && origin.Path != "/") || origin.RawQuery != "" || origin.Fragment != "" || redirect.Scheme != "https" || redirect.Host == "" || clientID == "" || platform == nil || overview == nil || redisClient == nil || codec == nil {
@@ -92,10 +101,14 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 		logger = slog.Default()
 	}
 	var library libraryClient
-	if len(libraryClients) > 0 {
-		library = libraryClients[0]
+	var food foodClient
+	if len(ownerClients) > 0 && ownerClients[0] != nil {
+		library, _ = ownerClients[0].(libraryClient)
 	}
-	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, notice: notice, library: library, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
+	if len(ownerClients) > 1 && ownerClients[1] != nil {
+		food, _ = ownerClients[1].(foodClient)
+	}
+	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, notice: notice, library: library, food: food, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
 	router := chi.NewRouter()
 	router.Use(handler.requestContext)
 	router.Use(securityHeaders)
@@ -117,8 +130,111 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.LibraryWorkspaceRoute, handler.getLibraryWorkspace)
 	router.Post(contract.LibraryCommandRoute, handler.executeLibraryCommand)
 	router.Get(contract.LibraryOperationRoute, handler.getLibraryOperation)
+	router.Get(contract.FoodWorkspaceRoute, handler.getFoodWorkspace)
+	router.Post(contract.FoodCommandRoute, handler.executeFoodCommand)
+	router.Get(contract.FoodOperationRoute, handler.getFoodOperation)
 	router.Post(contract.LogoutRoute, handler.logout)
 	return router, nil
+}
+
+func foodPermission(operation string) (string, bool) {
+	switch {
+	case operation == "submission_approve" || operation == "submission_reject":
+		return "food.review", true
+	case operation == "anomaly_resolve" || operation == "anomaly_dismiss":
+		return "food.anomaly", true
+	case operation == "tier_adjustment_confirm" || operation == "tier_adjustment_reject":
+		return "food.tier_adjust", true
+	default:
+		return "", false
+	}
+}
+
+func (h *Handler) getFoodWorkspace(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeFood(writer, request, "food.read")
+	if !ok {
+		return
+	}
+	data, err := h.food.Workspace(foodapi.WithRequestID(request.Context(), requestID(request)), value.UserID)
+	h.writeFoodResult(writer, request, data, err)
+}
+
+func (h *Handler) executeFoodCommand(writer http.ResponseWriter, request *http.Request) {
+	var input struct {
+		Kind            string          `json:"kind"`
+		ResourceID      string          `json:"resource_id"`
+		ExpectedVersion int             `json:"expected_version"`
+		Payload         json.RawMessage `json:"payload"`
+	}
+	body, ok := decodeOperationInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	permission, valid := foodPermission(input.Kind)
+	if !valid {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Food operation is invalid")
+		return
+	}
+	value, ok := h.authorizeFood(writer, request, permission)
+	if !ok {
+		return
+	}
+	data, err := h.food.Command(foodapi.WithRequestID(request.Context(), requestID(request)), value.UserID, request.Header.Get("Idempotency-Key"), body)
+	h.writeFoodResult(writer, request, data, err)
+}
+
+func (h *Handler) getFoodOperation(writer http.ResponseWriter, request *http.Request) {
+	operation, key := chi.URLParam(request, "operation"), request.Header.Get("Idempotency-Key")
+	if len(key) < 8 || len(key) > 200 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		return
+	}
+	permission, valid := foodPermission(operation)
+	if !valid {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Food operation is invalid")
+		return
+	}
+	value, ok := h.authorizeFood(writer, request, permission)
+	if !ok {
+		return
+	}
+	data, err := h.food.Operation(foodapi.WithRequestID(request.Context(), requestID(request)), value.UserID, operation, key)
+	h.writeFoodResult(writer, request, data, err)
+}
+
+func (h *Handler) authorizeFood(writer http.ResponseWriter, request *http.Request, permission string) (session.Value, bool) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return session.Value{}, false
+	}
+	if h.food == nil {
+		h.unavailable(writer, request, errors.New("food API is not configured"))
+		return session.Value{}, false
+	}
+	if err := h.platform.CheckFood(request.Context(), value.ExchangeToken, permission); err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return session.Value{}, false
+	}
+	return value, true
+}
+
+func (h *Handler) writeFoodResult(writer http.ResponseWriter, request *http.Request, data json.RawMessage, err error) {
+	if err == nil {
+		writeJSON(writer, request, http.StatusOK, data)
+		return
+	}
+	switch {
+	case errors.Is(err, foodapi.ErrUnauthorized):
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Food rejected the verified actor")
+	case errors.Is(err, foodapi.ErrForbidden):
+		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Food permission or Scope is missing")
+	case errors.Is(err, foodapi.ErrConflict):
+		writeError(writer, request, http.StatusConflict, "FOOD_CONFLICT", "Food version or idempotency history conflicts")
+	case errors.Is(err, foodapi.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Food request is invalid")
+	default:
+		h.unavailable(writer, request, err)
+	}
 }
 
 func (h *Handler) getLibraryWorkspace(writer http.ResponseWriter, request *http.Request) {
@@ -575,7 +691,14 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 		libraryManageErr = h.platform.CheckLibrary(request.Context(), value.ExchangeToken, "library.manage")
 		libraryReviewErr = h.platform.CheckLibrary(request.Context(), value.ExchangeToken, "library.review")
 	}
-	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) {
+	foodReadErr, foodReviewErr, foodAnomalyErr, foodTierErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
+	if h.food != nil {
+		foodReadErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.read")
+		foodReviewErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.review")
+		foodAnomalyErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.anomaly")
+		foodTierErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.tier_adjust")
+	}
+	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) {
 		h.clearSession(writer)
 		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
 		return
@@ -608,6 +731,18 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if libraryReviewErr == nil {
 		permissions = append(permissions, "library.review")
 	}
+	if foodReadErr == nil {
+		permissions = append(permissions, "food.read")
+	}
+	if foodReviewErr == nil {
+		permissions = append(permissions, "food.review")
+	}
+	if foodAnomalyErr == nil {
+		permissions = append(permissions, "food.anomaly")
+	}
+	if foodTierErr == nil {
+		permissions = append(permissions, "food.tier_adjust")
+	}
 	if len(permissions) == 0 {
 		err := overviewErr
 		if errors.Is(err, platformcore.ErrForbidden) {
@@ -632,6 +767,10 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if libraryReadErr == nil {
 		libraryProduct := "library"
 		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &libraryProduct})
+	}
+	if foodReadErr == nil {
+		foodProduct := "food"
+		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &foodProduct})
 	}
 	response.User.ID = value.UserID
 	writeJSON(writer, request, http.StatusOK, response)

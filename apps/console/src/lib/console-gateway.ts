@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 b973c975e1cd49ee8f55620ed2103a995e4d94cc4b2d67d7535d4c9936752ce8); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 f0c98955843333d1abccffee93eb61ae317bd2ed66582de78df6587667f95252); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -113,6 +113,69 @@ export interface ErrorEnvelope {
 export interface ErrorObject {
   code: string;
   message: string;
+}
+
+export interface FoodAnomalyTicket {
+  created_at: string;
+  details: string;
+  id: string;
+  kind: "duplicate" | "spam" | "quality" | "location";
+  severity: "low" | "medium" | "high";
+  status: "open" | "resolved" | "dismissed";
+  updated_at: string;
+  venue_name: string;
+  version: number;
+}
+
+export interface FoodCommand {
+  expected_version: number;
+  kind: FoodCommandKind;
+  payload: {
+  note: string;
+};
+  resource_id: string;
+}
+
+export type FoodCommandKind = "submission_approve" | "submission_reject" | "anomaly_resolve" | "anomaly_dismiss" | "tier_adjustment_confirm" | "tier_adjustment_reject";
+
+export interface FoodOperationResult {
+  operation: FoodCommandKind;
+  resource_id?: string;
+  state: "succeeded" | "unknown";
+  version?: number;
+}
+
+export interface FoodSubmission {
+  description: string;
+  id: string;
+  item_name: string;
+  status: "pending" | "approved" | "rejected";
+  submitted_at: string;
+  updated_at: string;
+  venue_name: string;
+  version: number;
+}
+
+export interface FoodTierAdjustment {
+  created_at: string;
+  current_tier: "featured" | "recommended" | "standard" | "watch";
+  id: string;
+  proposed_tier: "featured" | "recommended" | "standard" | "watch";
+  reason: string;
+  status: "pending" | "confirmed" | "rejected";
+  updated_at: string;
+  venue_name: string;
+  version: number;
+}
+
+export interface FoodWorkspace {
+  anomaly_tickets: Array<FoodAnomalyTicket>;
+  as_of: string;
+  stale: boolean;
+  status: "ok" | "empty" | "stale";
+  status_message: string;
+  submissions: Array<FoodSubmission>;
+  tier_adjustments: Array<FoodTierAdjustment>;
 }
 
 export type LibraryCommand = CourseCreateCommand | CourseUpdateCommand | CourseArchiveCommand | MaterialCreateCommand | MaterialUpdateCommand | MaterialArchiveCommand | SubmissionReviewCommand | CorrectionReviewCommand;
@@ -460,6 +523,34 @@ function isErrorObject(value: unknown): value is ErrorObject {
   return isRecord(value) && "code" in value && typeof value["code"] === "string" && "message" in value && typeof value["message"] === "string";
 }
 
+function isFoodAnomalyTicket(value: unknown): value is FoodAnomalyTicket {
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "details" in value && typeof value["details"] === "string" && value["details"].length <= 2000 && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["duplicate","spam","quality","location"].includes(value["kind"]) && "severity" in value && typeof value["severity"] === "string" && ["low","medium","high"].includes(value["severity"]) && "status" in value && typeof value["status"] === "string" && ["open","resolved","dismissed"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["created_at","details","id","kind","severity","status","updated_at","venue_name","version"].includes(key));
+}
+
+function isFoodCommand(value: unknown): value is FoodCommand {
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && "kind" in value && isFoodCommandKind(value["kind"]) && "payload" in value && isRecord(value["payload"]) && "note" in value["payload"] && typeof value["payload"]["note"] === "string" && value["payload"]["note"].length <= 1000 && Object.keys(value["payload"]).every((key) => ["note"].includes(key)) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
+}
+
+function isFoodCommandKind(value: unknown): value is FoodCommandKind {
+  return typeof value === "string" && ["submission_approve","submission_reject","anomaly_resolve","anomaly_dismiss","tier_adjustment_confirm","tier_adjustment_reject"].includes(value);
+}
+
+function isFoodOperationResult(value: unknown): value is FoodOperationResult {
+  return isRecord(value) && "operation" in value && isFoodCommandKind(value["operation"]) && (!("resource_id" in value) || isUUID(value["resource_id"])) && "state" in value && typeof value["state"] === "string" && ["succeeded","unknown"].includes(value["state"]) && (!("version" in value) || typeof value["version"] === "number" && Number.isSafeInteger(value["version"])) && Object.keys(value).every((key) => ["operation","resource_id","state","version"].includes(key));
+}
+
+function isFoodSubmission(value: unknown): value is FoodSubmission {
+  return isRecord(value) && "description" in value && typeof value["description"] === "string" && value["description"].length <= 2000 && "id" in value && isUUID(value["id"]) && "item_name" in value && typeof value["item_name"] === "string" && value["item_name"].length <= 160 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "submitted_at" in value && isDateTime(value["submitted_at"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["description","id","item_name","status","submitted_at","updated_at","venue_name","version"].includes(key));
+}
+
+function isFoodTierAdjustment(value: unknown): value is FoodTierAdjustment {
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "current_tier" in value && typeof value["current_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["current_tier"]) && "id" in value && isUUID(value["id"]) && "proposed_tier" in value && typeof value["proposed_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["proposed_tier"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length <= 2000 && "status" in value && typeof value["status"] === "string" && ["pending","confirmed","rejected"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["created_at","current_tier","id","proposed_tier","reason","status","updated_at","venue_name","version"].includes(key));
+}
+
+function isFoodWorkspace(value: unknown): value is FoodWorkspace {
+  return isRecord(value) && "anomaly_tickets" in value && Array.isArray(value["anomaly_tickets"]) && value["anomaly_tickets"].length <= 200 && value["anomaly_tickets"].every((item) => isFoodAnomalyTicket(item)) && "as_of" in value && isDateTime(value["as_of"]) && "stale" in value && typeof value["stale"] === "boolean" && "status" in value && typeof value["status"] === "string" && ["ok","empty","stale"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && "submissions" in value && Array.isArray(value["submissions"]) && value["submissions"].length <= 200 && value["submissions"].every((item) => isFoodSubmission(item)) && "tier_adjustments" in value && Array.isArray(value["tier_adjustments"]) && value["tier_adjustments"].length <= 200 && value["tier_adjustments"].every((item) => isFoodTierAdjustment(item)) && Object.keys(value).every((key) => ["anomaly_tickets","as_of","stale","status","status_message","submissions","tier_adjustments"].includes(key));
+}
+
 function isLibraryCommand(value: unknown): value is LibraryCommand {
   return true && ([(isCourseCreateCommand(value)), (isCourseUpdateCommand(value)), (isCourseArchiveCommand(value)), (isMaterialCreateCommand(value)), (isMaterialUpdateCommand(value)), (isMaterialArchiveCommand(value)), (isSubmissionReviewCommand(value)), (isCorrectionReviewCommand(value))].filter(Boolean).length === 1);
 }
@@ -785,6 +876,49 @@ export async function resolveLibraryOperation(operation: LibraryCommandKind, ide
     if (!response.ok) return { state: "unavailable" };
     const envelope: unknown = await response.json();
     if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unavailable" };
+    return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type FoodWorkspaceResult = { state: "authenticated"; workspace: FoodWorkspace } | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchFoodWorkspace(): Promise<FoodWorkspaceResult> {
+  try {
+    const response = await fetch("/api/v1/food", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isFoodWorkspace(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", workspace: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type FoodWriteResult = { state: "succeeded" | "unknown"; result?: FoodOperationResult } | { state: "signed_out" | "denied" | "conflict" | "invalid" | "unavailable" };
+
+export async function executeFoodCommand(input: FoodCommand, idempotencyKey: string): Promise<FoodWriteResult> {
+  try {
+    const response = await fetch("/api/v1/food/commands", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unknown" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unknown" };
+    return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unknown" }; }
+}
+
+export async function resolveFoodOperation(operation: FoodCommandKind, idempotencyKey: string): Promise<FoodWriteResult> {
+  try {
+    const response = await fetch("/api/v1/food/operations/{operation}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unavailable" };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unavailable" }; }
 }

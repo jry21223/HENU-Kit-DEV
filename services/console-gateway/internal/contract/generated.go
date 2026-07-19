@@ -22,8 +22,11 @@ const (
 	LibraryWorkspaceRoute   = "/api/v1/library"
 	LibraryCommandRoute     = "/api/v1/library/commands"
 	LibraryOperationRoute   = "/api/v1/library/operations/{operation}"
+	FoodWorkspaceRoute      = "/api/v1/food"
+	FoodCommandRoute        = "/api/v1/food/commands"
+	FoodOperationRoute      = "/api/v1/food/operations/{operation}"
 	LogoutRoute             = "/api/v1/session/logout"
-	SourceSHA256            = "b973c975e1cd49ee8f55620ed2103a995e4d94cc4b2d67d7535d4c9936752ce8"
+	SourceSHA256            = "f0c98955843333d1abccffee93eb61ae317bd2ed66582de78df6587667f95252"
 )
 
 type ConsoleAccessContext struct {
@@ -140,6 +143,69 @@ type ErrorEnvelope struct {
 type ErrorObject struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+type FoodAnomalyTicket struct {
+	CreatedAt time.Time `json:"created_at"`
+	Details   string    `json:"details"`
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`
+	Severity  string    `json:"severity"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
+	VenueName string    `json:"venue_name"`
+	Version   int64     `json:"version"`
+}
+
+type FoodCommand struct {
+	ExpectedVersion int64           `json:"expected_version"`
+	Kind            FoodCommandKind `json:"kind"`
+	Payload         struct {
+		Note string `json:"note"`
+	} `json:"payload"`
+	ResourceID string `json:"resource_id"`
+}
+
+type FoodCommandKind string
+
+type FoodOperationResult struct {
+	Operation  FoodCommandKind `json:"operation"`
+	ResourceID *string         `json:"resource_id,omitempty"`
+	State      string          `json:"state"`
+	Version    *int64          `json:"version,omitempty"`
+}
+
+type FoodSubmission struct {
+	Description string    `json:"description"`
+	ID          string    `json:"id"`
+	ItemName    string    `json:"item_name"`
+	Status      string    `json:"status"`
+	SubmittedAt time.Time `json:"submitted_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	VenueName   string    `json:"venue_name"`
+	Version     int64     `json:"version"`
+}
+
+type FoodTierAdjustment struct {
+	CreatedAt    time.Time `json:"created_at"`
+	CurrentTier  string    `json:"current_tier"`
+	ID           string    `json:"id"`
+	ProposedTier string    `json:"proposed_tier"`
+	Reason       string    `json:"reason"`
+	Status       string    `json:"status"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	VenueName    string    `json:"venue_name"`
+	Version      int64     `json:"version"`
+}
+
+type FoodWorkspace struct {
+	AnomalyTickets  []FoodAnomalyTicket  `json:"anomaly_tickets"`
+	AsOf            time.Time            `json:"as_of"`
+	Stale           bool                 `json:"stale"`
+	Status          string               `json:"status"`
+	StatusMessage   string               `json:"status_message"`
+	Submissions     []FoodSubmission     `json:"submissions"`
+	TierAdjustments []FoodTierAdjustment `json:"tier_adjustments"`
 }
 
 type LibraryCommand any

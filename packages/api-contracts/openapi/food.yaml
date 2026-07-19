@@ -1,0 +1,251 @@
+openapi: 3.1.0
+info:
+  title: HENU Kit Food Operations API
+  version: 0.1.0
+  description: Food-owned operations for submission review, anomaly handling, and tier adjustment confirmation.
+  license: { name: MIT, identifier: MIT }
+servers: [{ url: "https://food.internal" }]
+security:
+  - serviceBasic: []
+    serviceSignature: []
+    serviceActor: []
+tags: [{ name: Food, description: Food-owned operational data and commands }]
+paths:
+  /healthz:
+    get:
+      tags: [Food]
+      operationId: getFoodHealth
+      summary: Check the Food process liveness
+      security: []
+      responses:
+        "200": { description: Process is alive, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /api/v1/console-summary:
+    get:
+      tags: [Food]
+      operationId: getFoodConsoleSummary
+      summary: Read the bounded Food Console summary
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      responses:
+        "200": { description: Bounded Food summary, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodSummary" } } }] } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/workspace:
+    get:
+      tags: [Food]
+      operationId: getFoodWorkspace
+      summary: Read Food submissions, anomaly tickets, and tier adjustments
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - $ref: "#/components/parameters/FoodReadPermission"
+        - $ref: "#/components/parameters/ScopeKind"
+        - $ref: "#/components/parameters/ProductScope"
+      responses:
+        "200": { description: Food operations workspace, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodWorkspace" } } }] } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/commands:
+    post:
+      tags: [Food]
+      operationId: executeFoodCommand
+      summary: Execute one allowlisted Food operation
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - $ref: "#/components/parameters/FoodWritePermission"
+        - $ref: "#/components/parameters/ScopeKind"
+        - $ref: "#/components/parameters/ProductScope"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FoodCommand" } } } }
+      responses:
+        "200": { description: Command succeeded or its original result was replayed, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/operations/{operation}:
+    get:
+      tags: [Food]
+      operationId: getFoodOperation
+      summary: Resolve a Food operation by actor-scoped idempotency key
+      parameters:
+        - { name: operation, in: path, required: true, schema: { $ref: "#/components/schemas/FoodCommandKind" } }
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - $ref: "#/components/parameters/FoodWritePermission"
+        - $ref: "#/components/parameters/ScopeKind"
+        - $ref: "#/components/parameters/ProductScope"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200": { description: Original result or explicit unknown state, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+components:
+  securitySchemes:
+    serviceBasic: { type: http, scheme: basic }
+    serviceSignature: { type: apiKey, in: header, name: X-Signature }
+    serviceActor: { type: apiKey, in: header, name: X-Actor-User-Id }
+  parameters:
+    ServiceID: { name: X-Service-Id, in: header, required: true, description: Must equal the service Basic username, schema: { type: string, minLength: 1, maxLength: 120 } }
+    KeyID: { name: X-Key-Id, in: header, required: true, description: Selects one key from the Food service key ring, schema: { type: string, minLength: 1, maxLength: 120 } }
+    Timestamp: { name: X-Timestamp, in: header, required: true, description: Unix seconds within the Food replay window, schema: { type: integer, format: int64 } }
+    Nonce: { name: X-Nonce, in: header, required: true, description: Base64url encoding of 24 random bytes, schema: { type: string, pattern: '^[A-Za-z0-9_-]{32}$' } }
+    ActorUserID: { name: X-Actor-User-Id, in: header, required: true, schema: { type: string, format: uuid } }
+    FoodReadPermission: { name: X-Permission-Code, in: header, required: true, schema: { type: string, const: food.read } }
+    FoodWritePermission: { name: X-Permission-Code, in: header, required: true, schema: { type: string, enum: [food.review, food.anomaly, food.tier_adjust] } }
+    ScopeKind: { name: X-Scope-Kind, in: header, required: true, schema: { type: string, const: product } }
+    ProductScope: { name: X-Product-Code, in: header, required: true, schema: { type: string, const: food } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [data, request_id]
+      properties: { data: {}, request_id: { type: string, pattern: '^req_[A-Za-z0-9_-]+$', maxLength: 120 } }
+    ErrorEnvelope:
+      type: object
+      required: [error, request_id]
+      properties:
+        error: { type: object, required: [code, message], properties: { code: { type: string }, message: { type: string } } }
+        request_id: { type: string, pattern: '^req_[A-Za-z0-9_-]+$', maxLength: 120 }
+    FoodSummary:
+      type: object
+      additionalProperties: false
+      required: [status, metrics, status_message, as_of]
+      properties:
+        status: { type: string, enum: [ok, empty, stale] }
+        metrics: { type: array, maxItems: 8, items: { type: object, additionalProperties: false, required: [label, value], properties: { label: { type: string, maxLength: 40 }, value: { type: string, maxLength: 80 } } } }
+        status_message: { type: string, maxLength: 240 }
+        as_of: { type: string, format: date-time }
+        last_success_at: { type: string, format: date-time }
+    FoodWorkspace:
+      type: object
+      additionalProperties: false
+      required: [status, status_message, stale, as_of, submissions, anomaly_tickets, tier_adjustments]
+      properties:
+        status: { type: string, enum: [ok, empty, stale] }
+        status_message: { type: string, maxLength: 240 }
+        stale: { type: boolean }
+        as_of: { type: string, format: date-time }
+        submissions: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodSubmission" } }
+        anomaly_tickets: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodAnomalyTicket" } }
+        tier_adjustments: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodTierAdjustment" } }
+    FoodSubmission:
+      type: object
+      additionalProperties: false
+      required: [id, venue_name, item_name, description, status, version, submitted_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        venue_name: { type: string, maxLength: 160 }
+        item_name: { type: string, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        status: { type: string, enum: [pending, approved, rejected] }
+        version: { type: integer, minimum: 1 }
+        submitted_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    FoodAnomalyTicket:
+      type: object
+      additionalProperties: false
+      required: [id, venue_name, kind, details, severity, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        venue_name: { type: string, maxLength: 160 }
+        kind: { type: string, enum: [duplicate, spam, quality, location] }
+        details: { type: string, maxLength: 2000 }
+        severity: { type: string, enum: [low, medium, high] }
+        status: { type: string, enum: [open, resolved, dismissed] }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    FoodTierAdjustment:
+      type: object
+      additionalProperties: false
+      required: [id, venue_name, current_tier, proposed_tier, reason, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        venue_name: { type: string, maxLength: 160 }
+        current_tier: { type: string, enum: [featured, recommended, standard, watch] }
+        proposed_tier: { type: string, enum: [featured, recommended, standard, watch] }
+        reason: { type: string, maxLength: 2000 }
+        status: { type: string, enum: [pending, confirmed, rejected] }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    FoodCommandKind:
+      type: string
+      enum: [submission_approve, submission_reject, anomaly_resolve, anomaly_dismiss, tier_adjustment_confirm, tier_adjustment_reject]
+    FoodCommand:
+      oneOf:
+        - $ref: "#/components/schemas/SubmissionCommand"
+        - $ref: "#/components/schemas/AnomalyCommand"
+        - $ref: "#/components/schemas/TierAdjustmentCommand"
+      example: { kind: submission_approve, resource_id: 11111111-1111-4111-8111-111111111111, expected_version: 1, payload: { note: checked } }
+      x-invalid-example: { kind: submission_approve, resource_id: 11111111-1111-4111-8111-111111111111, expected_version: 1, payload: { paymentId: hidden } }
+    SubmissionCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, enum: [submission_approve, submission_reject] }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: integer, minimum: 1 }
+        payload: { $ref: "#/components/schemas/DecisionPayload" }
+    AnomalyCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, enum: [anomaly_resolve, anomaly_dismiss] }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: integer, minimum: 1 }
+        payload: { $ref: "#/components/schemas/DecisionPayload" }
+    TierAdjustmentCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, resource_id, expected_version, payload]
+      properties:
+        kind: { type: string, enum: [tier_adjustment_confirm, tier_adjustment_reject] }
+        resource_id: { type: string, format: uuid }
+        expected_version: { type: integer, minimum: 1 }
+        payload: { $ref: "#/components/schemas/DecisionPayload" }
+    DecisionPayload:
+      type: object
+      additionalProperties: false
+      required: [note]
+      properties: { note: { type: string, minLength: 2, maxLength: 1000 } }
+    FoodOperationResult:
+      type: object
+      additionalProperties: false
+      required: [operation, state]
+      properties:
+        operation: { $ref: "#/components/schemas/FoodCommandKind" }
+        resource_id: { type: string, format: uuid }
+        state: { type: string, enum: [succeeded, unknown] }
+        version: { type: integer, minimum: 1 }
+  responses:
+    BadRequest: { description: Invalid Food request, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+    Unauthorized: { description: Invalid service or actor identity, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+    Forbidden: { description: Required Food permission or Scope is missing, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+    Conflict: { description: Idempotency or optimistic version conflict, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+    ServiceUnavailable: { description: Food dependency or operation result is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }

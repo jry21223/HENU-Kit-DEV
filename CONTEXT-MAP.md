@@ -8,6 +8,7 @@
 - [Platform Core](./services/platform-core/CONTEXT.md) — platform identity ownership, Core Session, OAuth client, Authorization Code, and Redis coordination boundaries.
 - [Console Gateway](./services/console-gateway/CONTEXT.md) — Console-local authorization callback, Session cookie, and verified access-context boundary.
 - [Library Compatibility](./services/library/CONTEXT.md) — Library Module terms, bounded legacy translation, idempotency, and degradation semantics.
+- [Food Operations](./services/food/CONTEXT.md) — Food-owned submissions, anomaly tickets, tier adjustments, idempotency, and stale semantics.
 
 ## Extraction targets
 
@@ -16,7 +17,6 @@ As implementation directories are established, move resolved terms into context-
 - `apps/portal/CONTEXT.md` — Portal and Portal Configuration.
 - [Notice Service](./services/notice/CONTEXT.md) — notice sources, immutable versions, review, audience, and distribution.
 - `products/quizcraft/CONTEXT.md` — Practice Core, favorites, rankings, feedback, and Question Bank Workshop.
-- `services/food/CONTEXT.md` — food submissions, calibration, anomalies, and tier adjustment.
 
 Do not create empty context files. Move a term when its owning implementation context is materialized or when the term is next changed.
 
