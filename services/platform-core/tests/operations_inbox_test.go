@@ -165,6 +165,22 @@ func TestOperationsInboxEnforcesProductScopeOnReadsAndWrites(t *testing.T) {
 	if err := json.NewDecoder(allowed.Body).Decode(&list); err != nil || len(list.Data.Items) != 1 {
 		t.Fatalf("decode in-scope list: items=%d err=%v", len(list.Data.Items), err)
 	}
+	if _, err := fixture.pool.Exec(context.Background(), `
+		UPDATE user_role_grants
+		SET scope_kind = 'resource', resource_type = 'feedback', resource_id = 'feedback-scope'
+		WHERE user_id = $1`, fixture.userID); err != nil {
+		t.Fatalf("narrow operator grant to one resource: %v", err)
+	}
+	resourceRead := sendInboxRequest(t, fixture, http.MethodGet, itemReadPath(item, "feedback-scope"), "", "", "nonce_"+uuid.NewString(), "req_inbox_resource_read")
+	readItem := decodeInboxItem(t, resourceRead, http.StatusOK)
+	if readItem.ID != item.ID {
+		t.Fatalf("resource-scoped read returned %s, want %s", readItem.ID, item.ID)
+	}
+	adjacentRead := sendInboxRequest(t, fixture, http.MethodGet, itemReadPath(item, "feedback-neighbor"), "", "", "nonce_"+uuid.NewString(), "req_inbox_resource_read_escape")
+	adjacentRead.Body.Close()
+	if adjacentRead.StatusCode != http.StatusForbidden {
+		t.Fatalf("adjacent resource read = %d, want 403", adjacentRead.StatusCode)
+	}
 
 	denied := sendInboxRequest(t, fixture, http.MethodGet, "/api/v1/operations-inbox/items?product_code=food", "", "", "nonce_"+uuid.NewString(), "req_inbox_scope_escape")
 	denied.Body.Close()
@@ -417,6 +433,15 @@ func operationStatusPath(operation string, item contract.OperationsInboxItem) st
 		"source_resource_id":   {item.SourceResourceID},
 	}
 	return "/api/v1/operations-inbox/operations/" + operation + "?" + query.Encode()
+}
+
+func itemReadPath(item contract.OperationsInboxItem, resourceID string) string {
+	query := url.Values{
+		"source_product_code":  {item.SourceProductCode},
+		"source_resource_type": {item.SourceResourceType},
+		"source_resource_id":   {resourceID},
+	}
+	return "/api/v1/operations-inbox/items/" + item.ID + "?" + query.Encode()
 }
 
 type inboxContractExamples struct {

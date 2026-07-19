@@ -58,10 +58,34 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Post(contract.VerifyVerificationCodeRoute, handler.verifyVerificationCode)
 	router.Post(contract.RecordMailDeliveryRoute, handler.recordMailDelivery)
 	router.Get(contract.ListOperationsInboxRoute, handler.listOperationsInboxItems)
+	router.Get(contract.GetOperationsInboxRoute, handler.getOperationsInboxItem)
 	router.Post(contract.CreateOperationsInboxRoute, handler.createOperationsInboxItem)
 	router.Post(contract.UpdateOperationsInboxRoute, handler.updateOperationsInboxItem)
 	router.Get(contract.OperationsInboxOperationStatusRoute, handler.getOperationsInboxOperationStatus)
 	return router
+}
+
+func (h *Handler) getOperationsInboxItem(writer http.ResponseWriter, request *http.Request) {
+	itemID := chi.URLParam(request, "item_id")
+	productCode := request.URL.Query().Get("source_product_code")
+	resourceType := request.URL.Query().Get("source_resource_type")
+	resourceID := request.URL.Query().Get("source_resource_id")
+	decision, err := h.authorizeInbox(request, nil, "platform.operations_inbox.read", "resource", productCode, resourceType, resourceID)
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	item, err := h.inbox.Get(request.Context(), itemID)
+	if err != nil {
+		h.writeInboxError(writer, request, err)
+		return
+	}
+	if item.SourceProductCode != productCode || item.SourceResourceType != resourceType || item.SourceResourceID != resourceID {
+		h.writeInboxError(writer, request, operationsinbox.ErrNotFound)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, inboxContractItem(item))
 }
 
 func (h *Handler) getOperationsInboxOperationStatus(writer http.ResponseWriter, request *http.Request) {
@@ -159,6 +183,10 @@ func (h *Handler) updateOperationsInboxItem(writer http.ResponseWriter, request 
 	itemID := chi.URLParam(request, "item_id")
 	rawBody, body, ok := decodeInboxBody[contract.UpdateOperationsInboxItemRequest](writer, request)
 	if !ok {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Operations Inbox request is invalid")
+		return
+	}
+	if body.ClearOwner != nil && !*body.ClearOwner || body.ClearSla != nil && !*body.ClearSla {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Operations Inbox request is invalid")
 		return
 	}

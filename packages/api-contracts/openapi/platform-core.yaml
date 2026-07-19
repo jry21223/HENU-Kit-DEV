@@ -530,6 +530,73 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /operations-inbox/items/{item_id}:
+    get:
+      tags: [Operations Inbox]
+      operationId: getOperationsInboxItem
+      summary: Get one work reference within its granted resource Scope
+      description: The source reference query identifies the authorization target and must match the stored item.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+        - name: source_product_code
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9-]{1,63}$'
+        - name: source_resource_type
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9_-]{1,63}$'
+        - name: source_resource_id
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: Scoped Operations Inbox item
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/OperationsInboxItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Item not found or source reference does not match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /operations-inbox/items/{item_id}/updates:
     post:
       tags: [Operations Inbox]
@@ -931,6 +998,8 @@ components:
         source_resource_url:
           type: string
           format: uri
+          pattern: '^https?://[^/?#]+(?:[/?#].*)?$'
+          maxLength: 1000
         owner_user_id:
           type: string
           format: uuid
@@ -972,6 +1041,7 @@ components:
         source_resource_url:
           type: string
           format: uri
+          pattern: '^https?://[^/?#]+(?:[/?#].*)?$'
           maxLength: 1000
         owner_user_id:
           type: string
@@ -1004,6 +1074,12 @@ components:
           source_resource_type: feedback
           source_resource_id: feedback-2026-001
           priority: critical
+        non_http_resource_url:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          source_resource_url: urn:quizcraft:feedback:feedback-2026-001
+          priority: high
 
     UpdateOperationsInboxItemRequest:
       type: object
@@ -1098,6 +1174,20 @@ components:
           expected_version: 1
           sla_due_at: "2026-07-20T00:00:00Z"
           clear_sla: true
+        false_clear_owner:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          clear_owner: false
+          priority: high
+        false_clear_sla:
+          source_product_code: quizcraft
+          source_resource_type: feedback
+          source_resource_id: feedback-2026-001
+          expected_version: 1
+          clear_sla: false
+          status: blocked
 
     OperationsInboxOperationStatus:
       type: object

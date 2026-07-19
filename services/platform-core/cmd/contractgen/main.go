@@ -90,10 +90,11 @@ func main() {
 	verifyVerificationPath, verifyVerification := findOperation(spec.Paths, "verifyVerificationCode")
 	recordDeliveryPath, recordDelivery := findOperation(spec.Paths, "recordMailDelivery")
 	listInboxPath, listInbox := findOperation(spec.Paths, "listOperationsInboxItems")
+	getInboxPath, getInbox := findOperation(spec.Paths, "getOperationsInboxItem")
 	createInboxPath, createInbox := findOperation(spec.Paths, "createOperationsInboxItem")
 	updateInboxPath, updateInbox := findOperation(spec.Paths, "updateOperationsInboxItem")
 	operationStatusPath, operationStatus := findOperation(spec.Paths, "getOperationsInboxOperationStatus")
-	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil {
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
@@ -102,6 +103,7 @@ func main() {
 	validateIdempotentPublicWrite(verifyVerification, spec.Components.Parameters, "verification-code verification")
 	validateSignedDeliveryOperation(recordDelivery, spec.Components.Parameters, spec.Components.SecuritySchemes)
 	validateInboxOperation(listInbox, spec.Components.Parameters, false, false)
+	validateInboxOperation(getInbox, spec.Components.Parameters, false, false)
 	validateInboxOperation(createInbox, spec.Components.Parameters, true, true)
 	validateInboxOperation(updateInbox, spec.Components.Parameters, true, true)
 	validateInboxOperation(operationStatus, spec.Components.Parameters, true, false)
@@ -165,6 +167,7 @@ const (
 	VerifyVerificationCodeRoute = %q
 	RecordMailDeliveryRoute = %q
 	ListOperationsInboxRoute = %q
+	GetOperationsInboxRoute = %q
 	CreateOperationsInboxRoute = %q
 	UpdateOperationsInboxRoute = %q
 	OperationsInboxOperationStatusRoute = %q
@@ -215,7 +218,7 @@ const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 
 %s
 `, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath,
-		listInboxPath, createInboxPath, updateInboxPath, operationStatusPath, fmt.Sprintf("%x", digest),
+		listInboxPath, getInboxPath, createInboxPath, updateInboxPath, operationStatusPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),

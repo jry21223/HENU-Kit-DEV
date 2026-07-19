@@ -16,10 +16,11 @@ const (
 	VerifyVerificationCodeRoute         = "/api/v1/auth/email-codes/verify"
 	RecordMailDeliveryRoute             = "/api/v1/mail/deliveries"
 	ListOperationsInboxRoute            = "/api/v1/operations-inbox/items"
+	GetOperationsInboxRoute             = "/api/v1/operations-inbox/items/{item_id}"
 	CreateOperationsInboxRoute          = "/api/v1/operations-inbox/items"
 	UpdateOperationsInboxRoute          = "/api/v1/operations-inbox/items/{item_id}/updates"
 	OperationsInboxOperationStatusRoute = "/api/v1/operations-inbox/operations/{operation}"
-	SourceSHA256                        = "0aa7aa8b28bb17bcb9e5e3e5cc754a3f6ed2469f23a9dd1ae33c804599988254"
+	SourceSHA256                        = "a07d2f316e9d912851fe3fa1a8c6e29cd21119e43c37c3076fc2a557c7678b9b"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
