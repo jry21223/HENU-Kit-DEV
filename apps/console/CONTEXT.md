@@ -14,4 +14,4 @@
 
 ## Current boundary
 
-HC-04 provides the responsive six-module Overview presentation states. HC-09 integrates the same-origin Console Gateway Session endpoint. HC-10 replaces metric fixtures with the Gateway's six-module aggregation response: signed-out and denied states expose no metrics; authenticated cards display only bounded owner summaries with honest partial, stale, unavailable, observation-time, last-success, and request-tracing metadata. Product operation routes remain planned.
+HC-04 provides the responsive six-module Overview presentation states. HC-09 integrates the same-origin Console Gateway Session endpoint. HC-10 replaces metric fixtures with the Gateway's six-module aggregation response. HC-12 adds a responsive Platform Operations workspace for bounded account grants/Scope, Session revocation, mail status, Operations Inbox references, audit, and dependency health. Writes carry generated idempotency keys, surface conflicts, and resolve unknown outcomes before retry; no Session token, mail recipient, secret, or source-product content enters browser state.

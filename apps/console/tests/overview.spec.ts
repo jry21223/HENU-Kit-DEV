@@ -128,16 +128,16 @@ test("expired session completes sign-in callback and returns to the intended pat
     await context.addCookies([{ name: "henukit_console_e2e", value: "bound", url: "http://127.0.0.1:4174", httpOnly: true, sameSite: "Lax" }]);
     return route.fulfill({ status: 200, contentType: "text/html", body: `<script>location.replace(${JSON.stringify(storedReturn)})</script>` });
   });
-  await page.goto("/operations?tab=inbox");
+  await page.goto("/?tab=inbox");
 
   const login = page.getByRole("link", { name: "登录 Console" });
   await expect(login).toBeVisible();
-  await expect(login).toHaveAttribute("href", /return_to=%2Foperations%3Ftab%3Dinbox/);
+  await expect(login).toHaveAttribute("href", /return_to=%2F%3Ftab%3Dinbox/);
   await expect(page.locator("[data-state='denied']")).toHaveCount(6);
   await expect(page.locator(".metric-tile")).toHaveCount(0);
   await login.click();
 
-  await expect(page).toHaveURL(/\/operations\?tab=inbox$/);
+  await expect(page).toHaveURL(/\/\?tab=inbox$/);
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
   await expect(page.locator(".metric-tile")).not.toHaveCount(0);
   expect((await context.cookies()).some((cookie) => cookie.name === "henukit_console_e2e" && cookie.httpOnly)).toBe(true);

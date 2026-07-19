@@ -38,6 +38,36 @@ const overview = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Console Overview", () => {
+  it("renders the Platform Operations workspace without sensitive fields", async () => {
+    const operations = {
+      data: {
+        access_context: { permissions: ["platform.operations.read", "platform.operations.write"], scopes: [{ kind: "platform" }], verified_at: "2026-07-19T00:00:00Z" },
+        accounts: [{ id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", email_verified: true, status: "active", authorization_revision: 1, created_at: "2026-07-19T00:00:00Z", grants: [{ role_code: "operations-operator", scope: { kind: "platform" } }] }],
+        sessions: [{ id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", kind: "core", last_seen_at: "2026-07-19T00:00:00Z", expires_at: "2026-07-19T01:00:00Z" }],
+        mail: { pending: 1, processing: 0, retry_due: 0, accepted: 0, delivered: 2, failed: 0, dead_letters: 0 },
+        inbox_items: [{ id: "371f1c6f-7b10-4c92-91a2-b39bf5af5302", source_product_code: "quizcraft", source_resource_type: "submission", source_resource_id: "submission-7", priority: "normal", status: "open", version: 1, created_at: "2026-07-19T00:00:00Z", updated_at: "2026-07-19T00:00:00Z" }],
+        audit: [{ request_id: "req_operations_test", actor_user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", permission_code: "platform.operations.read", target_kind: "platform", decision: "allowed", reason_code: "permission_granted", created_at: "2026-07-19T00:00:00Z" }],
+        dependencies: { postgres: "ready", redis: "ready" }, generated_at: "2026-07-19T00:00:00Z",
+      }, request_id: "req_operations_envelope",
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/operations") ? operations : authenticated), { status: 200 }))));
+    window.history.replaceState({}, "", "/operations");
+    const wrapper = mount(App);
+    await flushPromises();
+    for (const heading of ["平台运营工作台", "账户、角色与 Scope", "Session", "邮件基础设施", "Operations Inbox", "授权审计"]) expect(wrapper.text()).toContain(heading);
+    expect((wrapper.get("input[pattern]").element as HTMLInputElement).value).toBe("operations-operator");
+    expect(wrapper.text()).toContain("撤销 Session");
+    expect(wrapper.findAll("button").some((button) => button.text().includes("保存访问设置"))).toBe(true);
+    for (const secret of ["token_hash", "recipient_ciphertext", "provider_message_id"]) expect(wrapper.text()).not.toContain(secret);
+    wrapper.unmount();
+
+    operations.data.access_context.permissions = ["platform.operations.read"];
+    const readOnly = mount(App);
+    await flushPromises();
+    expect(readOnly.text()).toContain("只读权限");
+    expect(readOnly.findAll("button").some((button) => button.text().includes("保存访问设置") || button.text().includes("撤销 Session"))).toBe(false);
+    readOnly.unmount();
+  });
   it("renders six modules only after the server verifies the access context", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : authenticated), { status: 200 }))));
     window.history.replaceState({}, "", "/");
@@ -64,7 +94,8 @@ describe("Console Overview", () => {
     await flushPromises();
 
     expect(wrapper.get("a[href^='/api/v1/auth/login']").text()).toContain("登录 Console");
-    expect(wrapper.findAll("[data-state='denied']")).toHaveLength(6);
+    expect(wrapper.text()).toContain("缺少 platform.operations.read");
+    expect(wrapper.findAll("[data-module-card]")).toHaveLength(0);
     expect(wrapper.findAll(".metric-tile")).toHaveLength(0);
     expect(wrapper.get("a[href^='/api/v1/auth/login']").attributes("href")).toContain(encodeURIComponent("/operations?tab=inbox"));
   });

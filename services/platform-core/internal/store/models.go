@@ -176,6 +176,27 @@ type PermissionCode struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type PlatformOperationsAuditEvent struct {
+	ID            pgtype.UUID        `json:"id"`
+	ActorUserID   pgtype.UUID        `json:"actor_user_id"`
+	RequestID     string             `json:"request_id"`
+	Operation     string             `json:"operation"`
+	ResourceKind  string             `json:"resource_kind"`
+	ResourceID    pgtype.UUID        `json:"resource_id"`
+	ResultPayload []byte             `json:"result_payload"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type PlatformOperationsIdempotency struct {
+	ServiceID       string             `json:"service_id"`
+	ActorUserID     pgtype.UUID        `json:"actor_user_id"`
+	Operation       string             `json:"operation"`
+	IdempotencyKey  string             `json:"idempotency_key"`
+	RequestHash     []byte             `json:"request_hash"`
+	ResponsePayload []byte             `json:"response_payload"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
 type RolePermission struct {
 	RoleID         pgtype.UUID        `json:"role_id"`
 	PermissionCode string             `json:"permission_code"`

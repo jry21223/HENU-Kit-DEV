@@ -14,4 +14,4 @@
 
 ## Current boundary
 
-HC-09 establishes the login, callback, logout, and server-verified Console Access Context flow. HC-10 adds concurrent reads of exactly six configured module-summary endpoints with a two-second module limit, three-second overall deadline, one idempotent retry, and a five-minute Redis stale fallback. HC-11 supplies the first real owner endpoint through the independent Portal Summary service; the Gateway still owns no Portal metadata or probes. The browser receives no exchange token or sensitive detail; product operation forwarding remains planned.
+HC-09 establishes the login, callback, logout, and server-verified Console Access Context flow. HC-10 and HC-11 add the six-owner Overview aggregation and first real Portal owner endpoint. HC-12 adds thin signed forwarding for Platform Operations reads, idempotent Session/access writes, and unknown-result lookup. Every operation uses the server-held exchange token and is authorized again by Platform Core against permission code plus platform Scope; browser responses never contain that token or Platform Core credentials.

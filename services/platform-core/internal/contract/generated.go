@@ -20,7 +20,11 @@ const (
 	CreateOperationsInboxRoute          = "/api/v1/operations-inbox/items"
 	UpdateOperationsInboxRoute          = "/api/v1/operations-inbox/items/{item_id}/updates"
 	OperationsInboxOperationStatusRoute = "/api/v1/operations-inbox/operations/{operation}"
-	SourceSHA256                        = "a07d2f316e9d912851fe3fa1a8c6e29cd21119e43c37c3076fc2a557c7678b9b"
+	PlatformOperationsRoute             = "/api/v1/platform-operations"
+	RevokePlatformOperationSessionRoute = "/api/v1/platform-operations/sessions/{session_id}/revocations"
+	UpdatePlatformOperationAccessRoute  = "/api/v1/platform-operations/users/{user_id}/access-updates"
+	PlatformOperationStatusRoute        = "/api/v1/platform-operations/operations/{operation}"
+	SourceSHA256                        = "ecdc1e497eaef073c9b1d667c26a16354da0c82e84a91636760ad689a58025fa"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"

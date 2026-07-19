@@ -4,13 +4,17 @@ package contract
 import "time"
 
 const (
-	HealthRoute   = "/api/v1/healthz"
-	LoginRoute    = "/api/v1/auth/login"
-	CallbackRoute = "/api/v1/auth/callback"
-	SessionRoute  = "/api/v1/session"
-	OverviewRoute = "/api/v1/overview"
-	LogoutRoute   = "/api/v1/session/logout"
-	SourceSHA256  = "7c8b07d2f6a670d97e4118575fe234849cf2acbd6d28130600263b8d82c83531"
+	HealthRoute          = "/api/v1/healthz"
+	LoginRoute           = "/api/v1/auth/login"
+	CallbackRoute        = "/api/v1/auth/callback"
+	SessionRoute         = "/api/v1/session"
+	OverviewRoute        = "/api/v1/overview"
+	OperationsRoute      = "/api/v1/operations"
+	RevokeSessionRoute   = "/api/v1/operations/sessions/{session_id}/revocations"
+	UpdateAccessRoute    = "/api/v1/operations/users/{user_id}/access-updates"
+	OperationStatusRoute = "/api/v1/operations/results/{operation}"
+	LogoutRoute          = "/api/v1/session/logout"
+	SourceSHA256         = "d363dd3299b30c702662ae39f315b3e250c65e57309a4f3f4c4236764f008437"
 )
 
 type ConsoleAccessContext struct {
@@ -62,7 +66,109 @@ type ErrorObject struct {
 	Message string `json:"message"`
 }
 
+type PlatformAccessGrantInput struct {
+	RoleCode string        `json:"role_code"`
+	Scope    PlatformScope `json:"scope"`
+}
+
+type PlatformOperationResult struct {
+	Operation       string  `json:"operation"`
+	ResourceID      *string `json:"resource_id,omitempty"`
+	ResourceVersion *int64  `json:"resource_version,omitempty"`
+	Status          string  `json:"status"`
+}
+
+type PlatformOperationsAccount struct {
+	AuthorizationRevision int64                      `json:"authorization_revision"`
+	CreatedAt             time.Time                  `json:"created_at"`
+	EmailVerified         bool                       `json:"email_verified"`
+	Grants                []PlatformAccessGrantInput `json:"grants"`
+	ID                    string                     `json:"id"`
+	Status                string                     `json:"status"`
+}
+
+type PlatformOperationsAuditEvent struct {
+	ActorUserID        string    `json:"actor_user_id"`
+	CreatedAt          time.Time `json:"created_at"`
+	Decision           string    `json:"decision"`
+	PermissionCode     string    `json:"permission_code"`
+	ReasonCode         string    `json:"reason_code"`
+	RequestID          string    `json:"request_id"`
+	TargetKind         string    `json:"target_kind"`
+	TargetProductCode  *string   `json:"target_product_code,omitempty"`
+	TargetResourceID   *string   `json:"target_resource_id,omitempty"`
+	TargetResourceType *string   `json:"target_resource_type,omitempty"`
+}
+
+type PlatformOperationsDependencies struct {
+	Postgres string `json:"postgres"`
+	Redis    string `json:"redis"`
+}
+
+type PlatformOperationsInboxItem struct {
+	CreatedAt          time.Time  `json:"created_at"`
+	ID                 string     `json:"id"`
+	OwnerUserID        *string    `json:"owner_user_id,omitempty"`
+	Priority           string     `json:"priority"`
+	SlaDueAt           *time.Time `json:"sla_due_at,omitempty"`
+	SourceProductCode  string     `json:"source_product_code"`
+	SourceResourceID   string     `json:"source_resource_id"`
+	SourceResourceType string     `json:"source_resource_type"`
+	SourceResourceUrl  *string    `json:"source_resource_url,omitempty"`
+	Status             string     `json:"status"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	Version            int64      `json:"version"`
+}
+
+type PlatformOperationsMailStatus struct {
+	Accepted    int64 `json:"accepted"`
+	DeadLetters int64 `json:"dead_letters"`
+	Delivered   int64 `json:"delivered"`
+	Failed      int64 `json:"failed"`
+	Pending     int64 `json:"pending"`
+	Processing  int64 `json:"processing"`
+	RetryDue    int64 `json:"retry_due"`
+}
+
+type PlatformOperationsSession struct {
+	ClientID   *string    `json:"client_id,omitempty"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	ID         string     `json:"id"`
+	Kind       string     `json:"kind"`
+	LastSeenAt time.Time  `json:"last_seen_at"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	UserID     string     `json:"user_id"`
+}
+
+type PlatformOperationsSnapshot struct {
+	AccessContext ConsoleAccessContext           `json:"access_context"`
+	Accounts      []PlatformOperationsAccount    `json:"accounts"`
+	Audit         []PlatformOperationsAuditEvent `json:"audit"`
+	Dependencies  PlatformOperationsDependencies `json:"dependencies"`
+	GeneratedAt   time.Time                      `json:"generated_at"`
+	InboxItems    []PlatformOperationsInboxItem  `json:"inbox_items"`
+	Mail          PlatformOperationsMailStatus   `json:"mail"`
+	Sessions      []PlatformOperationsSession    `json:"sessions"`
+}
+
+type PlatformScope struct {
+	Kind         string  `json:"kind"`
+	ProductCode  *string `json:"product_code,omitempty"`
+	ResourceID   *string `json:"resource_id,omitempty"`
+	ResourceType *string `json:"resource_type,omitempty"`
+}
+
+type RevokePlatformSessionRequest struct {
+	ExpectedActive bool `json:"expected_active"`
+}
+
 type SuccessEnvelope struct {
 	Data      any    `json:"data"`
 	RequestID string `json:"request_id"`
+}
+
+type UpdatePlatformAccessRequest struct {
+	ExpectedRevision int64                      `json:"expected_revision"`
+	Grants           []PlatformAccessGrantInput `json:"grants"`
+	Status           string                     `json:"status"`
 }

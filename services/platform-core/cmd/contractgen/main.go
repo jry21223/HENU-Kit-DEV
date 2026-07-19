@@ -94,7 +94,11 @@ func main() {
 	createInboxPath, createInbox := findOperation(spec.Paths, "createOperationsInboxItem")
 	updateInboxPath, updateInbox := findOperation(spec.Paths, "updateOperationsInboxItem")
 	operationStatusPath, operationStatus := findOperation(spec.Paths, "getOperationsInboxOperationStatus")
-	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil {
+	platformOperationsPath, platformOperations := findOperation(spec.Paths, "getPlatformOperations")
+	revokePlatformSessionPath, revokePlatformSession := findOperation(spec.Paths, "revokePlatformOperationSession")
+	updatePlatformAccessPath, updatePlatformAccess := findOperation(spec.Paths, "updatePlatformOperationAccess")
+	platformOperationStatusPath, platformOperationStatus := findOperation(spec.Paths, "getPlatformOperationStatus")
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil || platformOperations == nil || revokePlatformSession == nil || updatePlatformAccess == nil || platformOperationStatus == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
@@ -107,6 +111,10 @@ func main() {
 	validateInboxOperation(createInbox, spec.Components.Parameters, true, true)
 	validateInboxOperation(updateInbox, spec.Components.Parameters, true, true)
 	validateInboxOperation(operationStatus, spec.Components.Parameters, true, false)
+	validateInboxOperation(platformOperations, spec.Components.Parameters, false, false)
+	validateInboxOperation(revokePlatformSession, spec.Components.Parameters, true, true)
+	validateInboxOperation(updatePlatformAccess, spec.Components.Parameters, true, true)
+	validateInboxOperation(platformOperationStatus, spec.Components.Parameters, true, false)
 	requestSchema := token.RequestBody.Content["application/json"].Schema
 	if requestSchema == nil {
 		fail(fmt.Errorf("token request application/json schema is missing"))
@@ -171,6 +179,10 @@ const (
 	CreateOperationsInboxRoute = %q
 	UpdateOperationsInboxRoute = %q
 	OperationsInboxOperationStatusRoute = %q
+	PlatformOperationsRoute = %q
+	RevokePlatformOperationSessionRoute = %q
+	UpdatePlatformOperationAccessRoute = %q
+	PlatformOperationStatusRoute = %q
 	SourceSHA256 = %q
 )
 
@@ -218,7 +230,8 @@ const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 
 %s
 `, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath,
-		listInboxPath, getInboxPath, createInboxPath, updateInboxPath, operationStatusPath, fmt.Sprintf("%x", digest),
+		listInboxPath, getInboxPath, createInboxPath, updateInboxPath, operationStatusPath,
+		platformOperationsPath, revokePlatformSessionPath, updatePlatformAccessPath, platformOperationStatusPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),

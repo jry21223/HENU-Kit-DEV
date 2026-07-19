@@ -74,7 +74,7 @@ func main() {
 		fail(errors.New("console gateway server must end with /api/v1"))
 	}
 	routes := operationRoutes(spec)
-	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "logoutConsoleSession"} {
+	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "logoutConsoleSession"} {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
@@ -160,11 +160,15 @@ const (
 	CallbackRoute = %q
 	SessionRoute = %q
 	OverviewRoute = %q
+	OperationsRoute = %q
+	RevokeSessionRoute = %q
+	UpdateAccessRoute = %q
+	OperationStatusRoute = %q
 	LogoutRoute = %q
 	SourceSHA256 = %q
 )
 
-`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["logoutConsoleSession"], digest)
+`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -183,6 +187,8 @@ func goType(value schema, indent int) string {
 		return "string"
 	case "boolean":
 		return "bool"
+	case "integer":
+		return "int64"
 	case "array":
 		if value.Items == nil {
 			return "[]any"
@@ -265,6 +271,69 @@ export async function fetchConsoleOverview(): Promise<ConsoleOverviewResult> {
   }
 }
 
+export type PlatformOperationsResult =
+  | { state: "authenticated"; operations: PlatformOperationsSnapshot }
+  | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchPlatformOperations(): Promise<PlatformOperationsResult> {
+  try {
+    const response = await fetch("{{OPERATIONS_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isPlatformOperationsSnapshot(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", operations: envelope.data };
+  } catch {
+    return { state: "unavailable" };
+  }
+}
+
+export type PlatformOperationWriteResult =
+  | { state: "succeeded" | "unknown"; result: PlatformOperationResult }
+  | { state: "signed_out" | "denied" | "conflict" | "invalid" | "not_found" | "unavailable" };
+
+async function writePlatformOperation(path: string, body: unknown, idempotencyKey: string): Promise<PlatformOperationWriteResult> {
+  try {
+    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unknown" as const, result: { operation: path.includes("access-updates") ? "access_update" : "session_revoke", status: "unknown" } };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isPlatformOperationResult(envelope.data)) return { state: "unknown" as const, result: { operation: path.includes("access-updates") ? "access_update" : "session_revoke", status: "unknown" } };
+    return { state: envelope.data.status, result: envelope.data };
+  } catch {
+    return { state: "unknown" as const, result: { operation: path.includes("access-updates") ? "access_update" : "session_revoke", status: "unknown" } };
+  }
+}
+
+export function revokePlatformSession(sessionID: string, idempotencyKey: string): Promise<PlatformOperationWriteResult> {
+  return writePlatformOperation("{{REVOKE_SESSION_ROUTE}}".replace("{session_id}", encodeURIComponent(sessionID)), { expected_active: true }, idempotencyKey);
+}
+
+export function updatePlatformAccess(userID: string, input: UpdatePlatformAccessRequest, idempotencyKey: string): Promise<PlatformOperationWriteResult> {
+  return writePlatformOperation("{{UPDATE_ACCESS_ROUTE}}".replace("{user_id}", encodeURIComponent(userID)), input, idempotencyKey);
+}
+
+export async function resolvePlatformOperation(operation: "session_revoke" | "access_update", idempotencyKey: string): Promise<PlatformOperationWriteResult> {
+  try {
+    const path = "{{OPERATION_STATUS_ROUTE}}".replace("{operation}", operation);
+    const response = await fetch(path, { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isPlatformOperationResult(envelope.data)) return { state: "unavailable" };
+    return { state: envelope.data.status, result: envelope.data };
+  } catch {
+    return { state: "unavailable" };
+  }
+}
+
 export async function logoutConsoleSession(): Promise<void> {
   const response = await fetch("{{LOGOUT_ROUTE}}", { method: "POST", credentials: "same-origin" });
   if (!response.ok) throw new Error("Console logout failed");
@@ -277,7 +346,7 @@ export function consoleLoginHref(): string {
 `
 	replacements := map[string]string{
 		"{{SHA}}": digest, "{{SCHEMAS}}": schemas.String(), "{{VALIDATORS}}": validators.String(),
-		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
+		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{OPERATIONS_ROUTE}}": routes["getConsolePlatformOperations"], "{{REVOKE_SESSION_ROUTE}}": routes["revokeConsolePlatformSession"], "{{UPDATE_ACCESS_ROUTE}}": routes["updateConsolePlatformAccess"], "{{OPERATION_STATUS_ROUTE}}": routes["getConsolePlatformOperationStatus"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
 	}
 	for old, replacement := range replacements {
 		template = strings.ReplaceAll(template, old, replacement)
@@ -324,6 +393,8 @@ func tsType(value schema) string {
 		return "string"
 	case "boolean":
 		return "boolean"
+	case "integer":
+		return "number"
 	case "array":
 		if value.Items == nil {
 			return "unknown[]"
@@ -398,6 +469,8 @@ func tsCheckBase(expression string, value schema) string {
 		return check
 	case "boolean":
 		return "typeof " + expression + ` === "boolean"`
+	case "integer":
+		return "typeof " + expression + ` === "number" && Number.isSafeInteger(` + expression + ")"
 	case "array":
 		if value.Items == nil {
 			return "Array.isArray(" + expression + ")"
@@ -526,6 +599,10 @@ func validateSchemaBase(value schema, candidate any, schemas map[string]schema) 
 	case "boolean":
 		if _, ok := candidate.(bool); !ok {
 			return errors.New("expected boolean")
+		}
+	case "integer":
+		if _, ok := candidate.(int); !ok {
+			return errors.New("expected integer")
 		}
 	case "array":
 		items, ok := candidate.([]any)

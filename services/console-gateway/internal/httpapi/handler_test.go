@@ -31,6 +31,10 @@ type fakePlatform struct {
 	verifier, redirect string
 	idempotencyKey     string
 	exchange           platformcore.Exchange
+	operations         json.RawMessage
+	operationResult    json.RawMessage
+	operationToken     string
+	operationKey       string
 }
 
 type fakeOverview struct{}
@@ -59,6 +63,78 @@ func (fake *fakePlatform) CheckOverview(_ context.Context, token string) error {
 		return platformcore.ErrUnauthorized
 	}
 	return fake.checkErr
+}
+
+func (fake *fakePlatform) CheckPlatformOperations(_ context.Context, token string) error {
+	if token != fake.exchange.ExchangeToken {
+		return platformcore.ErrUnauthorized
+	}
+	return fake.checkErr
+}
+
+func (fake *fakePlatform) CheckPlatformOperationsWrite(_ context.Context, token string) error {
+	if token != fake.exchange.ExchangeToken {
+		return platformcore.ErrUnauthorized
+	}
+	return fake.checkErr
+}
+
+func (fake *fakePlatform) PlatformOperations(_ context.Context, token string) (json.RawMessage, error) {
+	fake.operationToken = token
+	return fake.operations, fake.checkErr
+}
+
+func (fake *fakePlatform) RevokeSession(_ context.Context, token, _, key string, _ []byte) (json.RawMessage, error) {
+	fake.operationToken, fake.operationKey = token, key
+	return fake.operationResult, fake.checkErr
+}
+
+func (fake *fakePlatform) UpdateAccess(_ context.Context, token, _, key string, _ []byte) (json.RawMessage, error) {
+	fake.operationToken, fake.operationKey = token, key
+	return fake.operationResult, fake.checkErr
+}
+
+func (fake *fakePlatform) OperationStatus(_ context.Context, token, _, key string) (json.RawMessage, error) {
+	fake.operationToken, fake.operationKey = token, key
+	return fake.operationResult, fake.checkErr
+}
+
+func TestPlatformOperationsUsesServerSessionAndForwardsIdempotency(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	fake := &fakePlatform{
+		exchange:        platformcore.Exchange{ExchangeToken: "exchange_token_with_at_least_32_characters"},
+		operations:      json.RawMessage(`{"accounts":[],"sessions":[],"mail":{"pending":0,"processing":0,"retry_due":0,"accepted":0,"delivered":0,"failed":0,"dead_letters":0},"inbox_items":[],"audit":[],"dependencies":{"postgres":"ready","redis":"ready"},"generated_at":"2026-07-19T00:00:00Z"}`),
+		operationResult: json.RawMessage(`{"operation":"session_revoke","status":"succeeded","resource_id":"171f1c6f-7b10-4c92-91a2-b39bf5af5302"}`),
+	}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: fake.exchange.ExchangeToken, ExpiresAt: time.Now().Add(time.Minute)})
+
+	read, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/operations", nil)
+	read.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	readResponse, err := server.Client().Do(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readPayload, _ := io.ReadAll(readResponse.Body)
+	readResponse.Body.Close()
+	if readResponse.StatusCode != http.StatusOK || strings.Contains(string(readPayload), fake.exchange.ExchangeToken) || fake.operationToken != fake.exchange.ExchangeToken {
+		t.Fatalf("operations read = %d %s token-forwarded=%t", readResponse.StatusCode, readPayload, fake.operationToken == fake.exchange.ExchangeToken)
+	}
+
+	revoke, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/operations/sessions/171f1c6f-7b10-4c92-91a2-b39bf5af5302/revocations", strings.NewReader(`{"expected_active":true}`))
+	revoke.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	revoke.Header.Set("Idempotency-Key", "idem_console_operation")
+	revokeResponse, err := server.Client().Do(revoke)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revokeResponse.Body.Close()
+	if revokeResponse.StatusCode != http.StatusOK || fake.operationKey != "idem_console_operation" {
+		t.Fatalf("operations write = %d key=%q", revokeResponse.StatusCode, fake.operationKey)
+	}
 }
 
 func TestRequestContextReplacesContractInvalidRequestID(t *testing.T) {
@@ -180,7 +256,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testi
 	var envelope struct {
 		Data contract.ConsoleSession `json:"data"`
 	}
-	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Data.User.ID != fake.exchange.UserID || len(envelope.Data.AccessContext.Permissions) != 1 || envelope.Data.AccessContext.Scopes[0].Kind != "platform" {
+	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Data.User.ID != fake.exchange.UserID || len(envelope.Data.AccessContext.Permissions) != 2 || envelope.Data.AccessContext.Scopes[0].Kind != "platform" {
 		t.Fatalf("invalid access context: %s (%v)", payload, err)
 	}
 	overviewRequest, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/overview", nil)
