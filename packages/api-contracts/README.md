@@ -10,6 +10,7 @@ packages/api-contracts/
 │   ├── library.yaml
 │   ├── notice.yaml
 │   ├── platform-core.yaml
+│   ├── quizcraft.yaml
 │   └── portal-summary.yaml
 └── events/
     └── event-envelope.schema.json
@@ -28,7 +29,7 @@ packages/api-contracts/
 
 ## 当前实现状态
 
-当前契约分别由 Platform Core、Console Gateway、Portal Summary、Notice、Library Compatibility 与 Food 数据 Owner 维护。`food.yaml` 覆盖投稿审核、异常票、调档确认和幂等结果查询，其运行实现位于 `services/food`；`notice.yaml` 覆盖来源、不可变内容版本、审核、受众、分发和幂等结果查询，其运行实现位于 `services/notice`。这里描述的是代码状态，不代表这些能力已经部署到生产环境。
+当前契约分别由 Platform Core、Console Gateway、Portal Summary、Notice、Library Compatibility、Food 与 QuizCraft 数据 Owner 维护。`quizcraft.yaml` 冻结 Practice、Favorites、Ranking、Feedback 和 Workshop 的迁移目标；其 Go 导入基线位于 `products/quizcraft/go-service`，当前 FastAPI 仍并行运行。`food.yaml` 覆盖投稿审核、异常票、调档确认和幂等结果查询，其运行实现位于 `services/food`；`notice.yaml` 覆盖来源、不可变内容版本、审核、受众、分发和幂等结果查询，其运行实现位于 `services/notice`。这里描述的是代码状态，不代表这些能力已经部署到生产环境。
 
 ## 旧接口兼容
 

@@ -1,0 +1,595 @@
+openapi: 3.1.0
+info:
+  title: QuizCraft API
+  version: 1.0.0
+  description: Frozen QuizCraft contract for Practice, Favorites, Ranking, Feedback, and Question Bank Workshop.
+  license: { name: MIT, identifier: MIT }
+servers:
+  - url: https://quizcraft-api.henukit.internal
+tags:
+  - { name: Practice, description: Guest-capable practice against immutable bank and question versions. }
+  - { name: Favorites, description: Signed-in learning state grouped by stable bank identity. }
+  - { name: Ranking, description: Public auditable rankings and private ranking profile controls. }
+  - { name: Feedback, description: Corrections linked to stable bank and question identity. }
+  - { name: Workshop, description: Scoped QuizCraft-owned bank lifecycle administration. }
+paths:
+  /api/v1/banks:
+    get:
+      summary: List published practice banks
+      tags: [Practice]
+      operationId: listPracticeBanks
+      security: []
+      responses:
+        '200': { description: Published banks, content: { application/json: { schema: { $ref: '#/components/schemas/BankListEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/v1/practice/sessions:
+    post:
+      summary: Create a random, difficult, chapter, or favorites practice session
+      tags: [Practice]
+      operationId: createPracticeSession
+      security: [{}, { userSession: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreatePracticeSession' } } } }
+      responses:
+        '201': { description: Session pinned to immutable content, content: { application/json: { schema: { $ref: '#/components/schemas/PracticeSessionEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/practice/sessions/{session_id}/answers:
+    post:
+      summary: Submit an answer for server-side evaluation
+      tags: [Practice]
+      operationId: submitPracticeAnswer
+      security: [{}, { userSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AnswerSubmission' } } } }
+      responses:
+        '200': { description: Server-confirmed result and explanation, content: { application/json: { schema: { $ref: '#/components/schemas/AnswerResultEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/operations/{operation_kind}:
+    get:
+      summary: Resolve an idempotent write after an unknown outcome
+      tags: [Practice]
+      operationId: getQuizCraftOperation
+      security: [{}, { userSession: [] }, { workshopOAuth: [quizcraft.workshop.read] }]
+      parameters:
+        - $ref: '#/components/parameters/OperationKindParam'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: Original write state and correlated request, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/favorites:
+    get:
+      summary: List per-bank favorites counts and unavailable counts
+      tags: [Favorites]
+      operationId: getFavoritesOverview
+      security: [{ userSession: [] }]
+      responses:
+        '200': { description: Automatic per-bank folders, content: { application/json: { schema: { $ref: '#/components/schemas/FavoritesOverviewEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/banks/{bank_id}/favorites:
+    get:
+      summary: List one bank's favorite references
+      tags: [Favorites]
+      operationId: listFavoriteQuestions
+      security: [{ userSession: [] }]
+      parameters: [{ $ref: '#/components/parameters/BankID' }]
+      responses:
+        '200': { description: Available items include content versions; unavailable items expose references only, content: { application/json: { schema: { $ref: '#/components/schemas/FavoriteListEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/banks/{bank_id}/favorites/{question_id}:
+    put:
+      summary: Favorite a stable question reference idempotently
+      tags: [Favorites]
+      operationId: favoriteQuestion
+      security: [{ userSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/QuestionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: Favorite write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      summary: Remove a stable favorite idempotently
+      tags: [Favorites]
+      operationId: unfavoriteQuestion
+      security: [{ userSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/QuestionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: Unfavorite write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/banks/{bank_id}/favorites/practice-sessions:
+    post:
+      summary: Create a Practice Core session from one bank's available favorites
+      tags: [Favorites]
+      operationId: createFavoritesPracticeSession
+      security: [{ userSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201': { description: Session excludes unavailable favorites and reports the excluded count, content: { application/json: { schema: { $ref: '#/components/schemas/PracticeSessionEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/rankings/overall:
+    get:
+      summary: Get the public overall ranking
+      tags: [Ranking]
+      operationId: getOverallRanking
+      security: []
+      parameters: [{ $ref: '#/components/parameters/RankingPeriodParam' }]
+      responses:
+        '200': { description: Overall weekly by default or lifetime ranking, content: { application/json: { schema: { $ref: '#/components/schemas/RankingEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/v1/banks/{bank_id}/rankings:
+    get:
+      summary: Get one bank's public ranking
+      tags: [Ranking]
+      operationId: getBankRanking
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/RankingPeriodParam'
+      responses:
+        '200': { description: Bank weekly or lifetime ranking, content: { application/json: { schema: { $ref: '#/components/schemas/RankingEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/v1/ranking-profile:
+    patch:
+      summary: Set controlled public nickname, system avatar, and ranking visibility
+      tags: [Ranking]
+      operationId: updateRankingProfile
+      security: [{ userSession: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RankingProfileUpdate' } } } }
+      responses:
+        '200': { description: Profile write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/feedback:
+    post:
+      summary: Submit a correction linked to stable content identity
+      tags: [Feedback]
+      operationId: createQuestionFeedback
+      security: [{}, { userSession: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionFeedback' } } } }
+      responses:
+        '202': { description: Feedback write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/workshop/banks:
+    get:
+      summary: List workshop banks and active versions
+      tags: [Workshop]
+      operationId: listWorkshopBanks
+      security: [{ workshopOAuth: [quizcraft.workshop.read] }]
+      responses:
+        '200': { description: Workshop banks, content: { application/json: { schema: { $ref: '#/components/schemas/BankListEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      summary: Create a stable workshop bank
+      tags: [Workshop]
+      operationId: createWorkshopBank
+      security: [{ workshopOAuth: [quizcraft.workshop.write] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateWorkshopBank' } } } }
+      responses:
+        '201': { description: Bank write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/workshop/banks/{bank_id}/versions:
+    post:
+      summary: Create an immutable draft bank version
+      tags: [Workshop]
+      operationId: createWorkshopBankVersion
+      security: [{ workshopOAuth: [quizcraft.workshop.write] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateBankVersion' } } } }
+      responses:
+        '201': { description: Version write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/workshop/banks/{bank_id}/imports:
+    post:
+      summary: Import and validate an immutable workshop bank version
+      tags: [Workshop]
+      operationId: importWorkshopBank
+      security: [{ workshopOAuth: [quizcraft.workshop.write] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankImportRequest' }
+            examples:
+              valid:
+                value:
+                  source_sha256: 1f1e1d1c1b1a19181716151413121110abcdefabcdefabcdefabcdefabcdefab
+                  questions:
+                    - { source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: ['1', '2'], answer: 1 }
+            x-invalid-examples:
+              - { source_sha256: bad, questions: [{ source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: [], answer: null }] }
+      responses:
+        '201': { description: Import report for an accepted immutable version, content: { application/json: { schema: { $ref: '#/components/schemas/ImportReportEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: Import rejected without content writes, content: { application/json: { schema: { $ref: '#/components/schemas/ImportReportEnvelope' } } } }
+  /api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/validate:
+    post:
+      summary: Record human validation of a draft before publication
+      tags: [Workshop]
+      operationId: validateWorkshopBankVersion
+      security: [{ workshopOAuth: [quizcraft.workshop.write] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/BankVersionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VersionCommand' } } } }
+      responses:
+        '200': { description: Validation write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/publish:
+    post:
+      summary: Publish a human-validated immutable version
+      tags: [Workshop]
+      operationId: publishWorkshopBankVersion
+      security: [{ workshopOAuth: [quizcraft.workshop.publish] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/BankVersionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VersionCommand' } } } }
+      responses:
+        '200': { description: Publish write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/unpublish:
+    post:
+      summary: Unpublish a bank version without deleting its facts
+      tags: [Workshop]
+      operationId: unpublishWorkshopBankVersion
+      security: [{ workshopOAuth: [quizcraft.workshop.publish] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/BankVersionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VersionCommand' } } } }
+      responses:
+        '200': { description: Unpublish write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/workshop/banks/{bank_id}/rollback:
+    post:
+      summary: Roll back by republishing a prior immutable version
+      tags: [Workshop]
+      operationId: rollbackWorkshopBank
+      security: [{ workshopOAuth: [quizcraft.workshop.publish] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RollbackCommand' } } } }
+      responses:
+        '200': { description: Rollback write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+components:
+  securitySchemes:
+    userSession: { type: http, scheme: bearer, bearerFormat: JWT }
+    workshopOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://accounts.henukit.internal/oauth/authorize
+          tokenUrl: https://accounts.henukit.internal/oauth/token
+          scopes:
+            quizcraft.workshop.read: Read Workshop banks and validation state.
+            quizcraft.workshop.write: Create, edit, import, and validate Workshop versions.
+            quizcraft.workshop.publish: Publish, unpublish, and roll back Workshop versions.
+  parameters:
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 160 } }
+    BankID: { name: bank_id, in: path, required: true, schema: { type: string, format: uuid } }
+    BankVersionID: { name: bank_version_id, in: path, required: true, schema: { type: string, format: uuid } }
+    QuestionID: { name: question_id, in: path, required: true, schema: { type: string, format: uuid } }
+    SessionID: { name: session_id, in: path, required: true, schema: { type: string, format: uuid } }
+    OperationKindParam: { name: operation_kind, in: path, required: true, schema: { $ref: '#/components/schemas/OperationKind' } }
+    RankingPeriodParam: { name: period, in: query, required: false, schema: { type: string, enum: [weekly, lifetime], default: weekly } }
+  responses:
+    BadRequest: { description: Invalid request, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    Unauthorized: { description: Missing or invalid actor credentials, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    Forbidden: { description: Permission code or product Scope denied, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    NotFound: { description: Resource or operation is unknown to this actor, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    Conflict: { description: Idempotency payload or optimistic version conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  schemas:
+    RequestID: { type: string, pattern: '^req_[A-Za-z0-9_-]+$', maxLength: 120 }
+    Error:
+      type: object
+      required: [code, message]
+      properties: { code: { type: string }, message: { type: string } }
+    ErrorEnvelope:
+      type: object
+      required: [request_id, error]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, error: { $ref: '#/components/schemas/Error' } }
+    QuestionType: { type: string, enum: [single, multi, judge, blank] }
+    PracticeSessionMode: { type: string, enum: [random, difficult, chapter, favorites] }
+    OperationKind:
+      type: string
+      enum: [create_practice_session, submit_practice_answer, favorite_question, unfavorite_question, create_favorites_session, update_ranking_profile, create_feedback, create_workshop_bank, create_bank_version, import_bank, validate_version, publish_version, unpublish_version, rollback_bank]
+    BankVersion:
+      type: object
+      required: [bank_id, bank_version_id, bank_key, name, content_sha256]
+      properties:
+        bank_id: { type: string, format: uuid, description: Stable across every version of this bank. }
+        bank_version_id: { type: string, format: uuid, description: Immutable identifier for exact bank content. }
+        bank_key: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$' }
+        name: { type: string, minLength: 1, maxLength: 160 }
+        content_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+    QuestionReference:
+      type: object
+      required: [question_id, question_version_id]
+      properties:
+        question_id: { type: string, format: uuid, description: Stable identity independent of edits. }
+        question_version_id: { type: string, format: uuid, description: Immutable content identity. }
+    CreatePracticeSession:
+      oneOf:
+        - $ref: '#/components/schemas/RandomPracticeSelection'
+        - $ref: '#/components/schemas/DifficultPracticeSelection'
+        - $ref: '#/components/schemas/ChapterPracticeSelection'
+    RandomPracticeSelection:
+      type: object
+      required: [bank_id, bank_version_id, mode]
+      properties:
+        bank_id: { type: string, format: uuid }
+        bank_version_id: { type: string, format: uuid }
+        mode: { type: string, const: random }
+        question_count: { type: integer, minimum: 1, maximum: 500 }
+    DifficultPracticeSelection:
+      type: object
+      required: [bank_id, bank_version_id, mode]
+      properties:
+        bank_id: { type: string, format: uuid }
+        bank_version_id: { type: string, format: uuid }
+        mode: { type: string, const: difficult }
+        question_count: { type: integer, minimum: 1, maximum: 500 }
+    ChapterPracticeSelection:
+      type: object
+      required: [bank_id, bank_version_id, mode, chapter_id]
+      properties:
+        bank_id: { type: string, format: uuid }
+        bank_version_id: { type: string, format: uuid }
+        mode: { type: string, const: chapter }
+        chapter_id: { type: string, minLength: 1, maxLength: 160 }
+        question_count: { type: integer, minimum: 1, maximum: 500 }
+    PracticeSession:
+      type: object
+      required: [session_id, bank_id, bank_version_id, mode, excluded_unavailable_count, questions]
+      properties:
+        session_id: { type: string, format: uuid }
+        bank_id: { type: string, format: uuid }
+        bank_version_id: { type: string, format: uuid }
+        mode: { $ref: '#/components/schemas/PracticeSessionMode' }
+        excluded_unavailable_count: { type: integer, minimum: 0 }
+        questions: { type: array, items: { $ref: '#/components/schemas/PracticeQuestion' } }
+    PracticeQuestion:
+      oneOf:
+        - $ref: '#/components/schemas/ChoicePracticeQuestion'
+        - $ref: '#/components/schemas/NonChoicePracticeQuestion'
+    ChoicePracticeQuestion:
+      type: object
+      required: [question_id, question_version_id, type, content, options]
+      properties:
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        type: { type: string, enum: [single, multi] }
+        content: { type: string, minLength: 1, maxLength: 10000 }
+        options: { type: array, minItems: 2, items: { type: string, minLength: 1 } }
+    NonChoicePracticeQuestion:
+      type: object
+      required: [question_id, question_version_id, type, content]
+      properties:
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        type: { type: string, enum: [judge, blank] }
+        content: { type: string, minLength: 1, maxLength: 10000 }
+    AnswerSubmission:
+      type: object
+      required: [question_id, question_version_id, answer]
+      properties:
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        answer: {}
+    AnswerResult:
+      type: object
+      required: [question_id, question_version_id, correct, replayed]
+      properties:
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        correct: { type: boolean }
+        replayed: { type: boolean }
+        expected_answer: {}
+        analysis: { type: string }
+    FavoriteFolder:
+      type: object
+      required: [bank_id, bank_name, available_count, unavailable_count]
+      properties:
+        bank_id: { type: string, format: uuid }
+        bank_name: { type: string }
+        available_count: { type: integer, minimum: 0 }
+        unavailable_count: { type: integer, minimum: 0 }
+    FavoriteQuestion:
+      type: object
+      required: [bank_id, question_id, available]
+      properties:
+        bank_id: { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        available: { type: boolean }
+        question_version_id: { type: string, format: uuid, description: Present only when available. }
+    RankingPeriod: { type: string, enum: [weekly, lifetime] }
+    RankingPage:
+      type: object
+      required: [scope, period, metric, entries]
+      properties:
+        scope: { type: string, enum: [overall, bank] }
+        bank_id: { type: string, format: uuid }
+        period: { $ref: '#/components/schemas/RankingPeriod' }
+        metric: { type: string, const: correct_answer_count }
+        entries:
+          type: array
+          items:
+            type: object
+            required: [rank, nickname, system_avatar, correct_answer_count]
+            properties:
+              rank: { type: integer, minimum: 1 }
+              nickname: { type: string, minLength: 1, maxLength: 32 }
+              system_avatar: { type: string, pattern: '^[a-z0-9_-]+$' }
+              correct_answer_count: { type: integer, minimum: 0 }
+    RankingProfileUpdate:
+      type: object
+      required: [visible, nickname, system_avatar]
+      properties:
+        visible: { type: boolean }
+        nickname: { type: string, minLength: 1, maxLength: 32 }
+        system_avatar: { type: string, pattern: '^[a-z0-9_-]+$' }
+    QuestionFeedback:
+      type: object
+      required: [bank_id, question_id, question_version_id, category, detail]
+      properties:
+        bank_id: { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        category: { type: string, enum: [wrong_answer, ambiguous, typo, outdated, other] }
+        detail: { type: string, minLength: 1, maxLength: 4000 }
+    CreateWorkshopBank:
+      type: object
+      required: [bank_key, name]
+      properties:
+        bank_key: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$' }
+        name: { type: string, minLength: 1, maxLength: 160 }
+    CreateBankVersion:
+      type: object
+      required: [expected_version, questions]
+      properties:
+        expected_version: { type: integer, minimum: 0 }
+        questions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ImportedQuestionInput' } }
+    VersionCommand:
+      type: object
+      required: [expected_version]
+      properties:
+        expected_version: { type: integer, minimum: 0 }
+        note: { type: string, maxLength: 1000 }
+    RollbackCommand:
+      type: object
+      required: [expected_version, target_bank_version_id]
+      properties:
+        expected_version: { type: integer, minimum: 0 }
+        target_bank_version_id: { type: string, format: uuid }
+        note: { type: string, maxLength: 1000 }
+    ImportedQuestionInput:
+      type: object
+      required: [source_question_id, type, chapter_id, content, answer]
+      properties:
+        source_question_id: { type: string, minLength: 1, maxLength: 160 }
+        type: { $ref: '#/components/schemas/QuestionType' }
+        chapter_id: { type: string, minLength: 1, maxLength: 160 }
+        chapter: { type: string, minLength: 1, maxLength: 240 }
+        content: { type: string, minLength: 1, maxLength: 10000 }
+        options: { type: array, items: { type: string, minLength: 1 } }
+        answer: {}
+        analysis: { type: string }
+    BankImportRequest:
+      type: object
+      required: [source_sha256, questions]
+      properties:
+        source_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        questions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ImportedQuestionInput' } }
+    ImportedQuestionReport:
+      allOf:
+        - $ref: '#/components/schemas/QuestionReference'
+        - type: object
+          required: [source_question_id, content_sha256, answer_sha256]
+          properties:
+            source_question_id: { type: string }
+            content_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+            answer_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+    ImportReport:
+      type: object
+      required: [accepted, source_sha256, question_count, answered_count, unanswered_count, type_counts, chapter_counts, questions, errors]
+      properties:
+        accepted: { type: boolean }
+        bank_id: { type: string, format: uuid }
+        bank_version_id: { type: string, format: uuid }
+        source_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        content_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        question_count: { type: integer, minimum: 0 }
+        answered_count: { type: integer, minimum: 0 }
+        unanswered_count: { type: integer, minimum: 0 }
+        type_counts: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+        chapter_counts: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+        questions: { type: array, items: { $ref: '#/components/schemas/ImportedQuestionReport' } }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [path, code, message]
+            properties: { path: { type: string }, code: { type: string }, message: { type: string } }
+    Operation:
+      type: object
+      required: [operation_id, state, idempotency_key, request_id]
+      properties:
+        operation_id: { type: string, format: uuid }
+        state: { type: string, enum: [pending, succeeded, rejected, unknown] }
+        idempotency_key: { type: string }
+        request_id: { $ref: '#/components/schemas/RequestID' }
+        resource_id: { type: string, format: uuid }
+    BankListEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/BankVersion' } } }
+    PracticeSessionEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/PracticeSession' } }
+    AnswerResultEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/AnswerResult' } }
+    OperationEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/Operation' } }
+    FavoritesOverviewEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/FavoriteFolder' } } }
+    FavoriteListEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/FavoriteQuestion' } } }
+    RankingEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/RankingPage' } }
+    ImportReportEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/ImportReport' } }
