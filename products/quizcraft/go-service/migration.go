@@ -22,14 +22,18 @@ type LegacyBank struct {
 }
 
 type LegacyFeedback struct {
-	LegacyID       string     `json:"legacy_id"`
-	BankKey        string     `json:"bank_key"`
-	QuestionID     string     `json:"question_id"`
-	Suggestion     string     `json:"suggestion"`
-	Status         string     `json:"status"`
-	ResolutionNote string     `json:"resolution_note"`
-	CreatedAt      time.Time  `json:"created_at"`
-	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
+	LegacyID        string     `json:"legacy_id"`
+	BankKey         string     `json:"bank_key"`
+	QuestionID      string     `json:"question_id"`
+	QuestionIndex   int        `json:"question_index"`
+	QuestionContent string     `json:"question_content"`
+	UserID          string     `json:"user_id"`
+	SourcePage      string     `json:"source_page"`
+	Suggestion      string     `json:"suggestion"`
+	Status          string     `json:"status"`
+	ResolutionNote  string     `json:"resolution_note"`
+	CreatedAt       time.Time  `json:"created_at"`
+	ResolvedAt      *time.Time `json:"resolved_at,omitempty"`
 }
 
 type LegacySnapshot struct {
@@ -286,6 +290,21 @@ func (s *Service) migrateLegacyFeedback(ctx context.Context, runID uuid.UUID, so
 		var bankID, questionID, versionID uuid.UUID
 		err := s.database.QueryRow(ctx, `SELECT b.id,q.id,m.question_version_id FROM quizcraft_banks b JOIN quizcraft_questions q ON q.bank_id=b.id JOIN quizcraft_bank_version_questions m ON m.bank_version_id=b.active_version_id AND m.question_id=q.id WHERE b.bank_key=$1 AND q.source_question_id=$2`, item.BankKey, item.QuestionID).Scan(&bankID, &questionID, &versionID)
 		if errors.Is(err, pgx.ErrNoRows) {
+			if status == "archived" {
+				command, archiveErr := s.database.Exec(ctx, `INSERT INTO quizcraft_legacy_feedback_archives(id,source_name,legacy_feedback_id,bank_key,source_question_id,question_index,question_content,legacy_user_id,source_page,detail,legacy_status,created_at,resolved_at,resolution_note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'archived',$11,$12,$13) ON CONFLICT(source_name,legacy_feedback_id) DO NOTHING`, stableID(quizcraftNamespace, "legacy-feedback-archive:"+sourceName+":"+item.LegacyID), sourceName, item.LegacyID, item.BankKey, item.QuestionID, item.QuestionIndex, item.QuestionContent, item.UserID, item.SourcePage, item.Suggestion, createdAtOrEpoch(item.CreatedAt), item.ResolvedAt, item.ResolutionNote)
+				if archiveErr != nil {
+					return migrated, exceptions, archiveErr
+				}
+				if command.RowsAffected() > 0 {
+					migrated++
+				}
+				if sourceEventID > 0 {
+					if _, resolutionErr := s.database.Exec(ctx, `INSERT INTO quizcraft_migration_exception_resolutions(id,exception_id,resolved_by_event_id,resolution) SELECT $1,e.id,$4,'archive_preserved' FROM quizcraft_migration_exceptions e LEFT JOIN quizcraft_migration_exception_resolutions r ON r.exception_id=e.id WHERE e.run_id=$2 AND e.record_type='feedback' AND e.legacy_record_id=$3 AND r.exception_id IS NULL ON CONFLICT(exception_id) DO NOTHING`, uuid.New(), runID, item.LegacyID, sourceEventID); resolutionErr != nil {
+						return migrated, exceptions, resolutionErr
+					}
+				}
+				continue
+			}
 			reason := "missing_question_reference"
 			var bankExists bool
 			if queryErr := s.database.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM quizcraft_banks WHERE bank_key=$1)`, item.BankKey).Scan(&bankExists); queryErr != nil {
@@ -304,10 +323,7 @@ func (s *Service) migrateLegacyFeedback(ctx context.Context, runID uuid.UUID, so
 			return migrated, exceptions, err
 		}
 		feedbackID := stableID(quizcraftNamespace, "legacy-feedback:"+sourceName+":"+item.LegacyID)
-		createdAt := item.CreatedAt
-		if createdAt.IsZero() {
-			createdAt = time.Unix(0, 0).UTC()
-		}
+		createdAt := createdAtOrEpoch(item.CreatedAt)
 		command, err := s.database.Exec(ctx, `INSERT INTO quizcraft_feedbacks(id,bank_id,question_id,question_version_id,actor_user_id,actor_key,category,detail,created_at,legacy_feedback_id,legacy_status,legacy_resolved_at,legacy_resolution_note) VALUES($1,$2,$3,$4,NULL,'legacy-unmapped','other',$5,$6,$7,$8,$9,$10) ON CONFLICT(legacy_feedback_id) WHERE legacy_feedback_id IS NOT NULL DO NOTHING`, feedbackID, bankID, questionID, versionID, item.Suggestion, createdAt, item.LegacyID, status, item.ResolvedAt, item.ResolutionNote)
 		if err != nil {
 			return migrated, exceptions, err
@@ -325,6 +341,13 @@ func (s *Service) migrateLegacyFeedback(ctx context.Context, runID uuid.UUID, so
 		}
 	}
 	return migrated, exceptions, nil
+}
+
+func createdAtOrEpoch(value time.Time) time.Time {
+	if value.IsZero() {
+		return time.Unix(0, 0).UTC()
+	}
+	return value
 }
 
 func (s *Service) storeMigrationException(ctx context.Context, runID uuid.UUID, legacyID, reason string, detail any) error {

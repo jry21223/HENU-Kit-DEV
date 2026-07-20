@@ -93,6 +93,64 @@ func TestFullMigrationReconcilesContentQuarantinesFeedbackAndSnapshotsRanking(t 
 	}
 }
 
+func TestFullMigrationPreservesRetiredArchivedFeedbackWithoutInventingAQuestionReference(t *testing.T) {
+	pool := practicePool(t)
+	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Date(2026, 6, 10, 1, 2, 3, 0, time.UTC)
+	report, err := service.RunFullMigration(context.Background(), quizcraft.LegacySnapshot{
+		SourceName:    "legacy-archive",
+		CutoffEventID: 7,
+		Feedback: []quizcraft.LegacyFeedback{{
+			LegacyID: "retired-feedback", BankKey: "retired-bank", QuestionIndex: 45, UserID: "legacy-user", SourcePage: "feedback-page",
+			Suggestion: "旧题反馈", Status: "archived", ResolutionNote: "题目已下线", CreatedAt: createdAt,
+		}},
+		Rankings: json.RawMessage(`[]`),
+	})
+	if err != nil || report.State != "passed" || report.FeedbackMigratedCount != 1 || report.FeedbackExceptionCount != 0 {
+		t.Fatalf("archived feedback migration = %+v / %v", report, err)
+	}
+	var bankKey, sourceQuestionID, userID, sourcePage, detail, status, note string
+	var questionIndex int
+	if err := pool.QueryRow(context.Background(), `SELECT bank_key,source_question_id,question_index,legacy_user_id,source_page,detail,legacy_status,resolution_note FROM quizcraft_legacy_feedback_archives WHERE legacy_feedback_id='retired-feedback'`).Scan(&bankKey, &sourceQuestionID, &questionIndex, &userID, &sourcePage, &detail, &status, &note); err != nil {
+		t.Fatal(err)
+	}
+	if bankKey != "retired-bank" || sourceQuestionID != "" || questionIndex != 45 || userID != "legacy-user" || sourcePage != "feedback-page" || detail != "旧题反馈" || status != "archived" || note != "题目已下线" {
+		t.Fatalf("archived feedback facts = %q/%q/%d/%q/%q/%q/%q/%q", bankKey, sourceQuestionID, questionIndex, userID, sourcePage, detail, status, note)
+	}
+	if _, err := pool.Exec(context.Background(), `UPDATE quizcraft_legacy_feedback_archives SET detail='mutated' WHERE legacy_feedback_id='retired-feedback'`); err == nil {
+		t.Fatal("retired feedback archive was mutable")
+	}
+}
+
+func TestArchivedFeedbackEventResolvesAnExistingMissingReferenceException(t *testing.T) {
+	pool := practicePool(t)
+	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Date(2026, 6, 10, 1, 2, 3, 0, time.UTC)
+	full, err := service.RunFullMigration(context.Background(), quizcraft.LegacySnapshot{
+		SourceName: "legacy-archive-event", CutoffEventID: 4,
+		Feedback: []quizcraft.LegacyFeedback{{LegacyID: "retired-after-cutoff", BankKey: "removed", QuestionIndex: 9, Suggestion: "旧反馈", Status: "pending", CreatedAt: createdAt}},
+		Rankings: json.RawMessage(`[]`),
+	})
+	if err != nil || full.State != "blocked" || full.FeedbackExceptionCount != 1 {
+		t.Fatalf("initial missing reference = %+v / %v", full, err)
+	}
+	payload := mustJSON(quizcraft.LegacyFeedback{LegacyID: "retired-after-cutoff", BankKey: "removed", QuestionIndex: 9, Suggestion: "旧反馈", Status: "archived", CreatedAt: createdAt})
+	catchUp, err := service.ApplyIncrementalEvents(context.Background(), full.RunID, 5, []quizcraft.LegacyEvent{{ID: 5, Type: "feedback.upserted", AggregateKey: "retired-after-cutoff", Payload: payload}})
+	if err != nil || !catchUp.Ready || catchUp.ExceptionCount != 0 {
+		t.Fatalf("archive event did not resolve exception = %+v / %v", catchUp, err)
+	}
+	var resolution string
+	if err := pool.QueryRow(context.Background(), `SELECT r.resolution FROM quizcraft_migration_exception_resolutions r JOIN quizcraft_migration_exceptions e ON e.id=r.exception_id WHERE e.run_id=$1`, full.RunID).Scan(&resolution); err != nil || resolution != "archive_preserved" {
+		t.Fatalf("archive resolution = %q / %v", resolution, err)
+	}
+}
+
 func TestIncrementalEventsRequireAMonotonicCaughtUpCursor(t *testing.T) {
 	pool := practicePool(t)
 	service, err := quizcraft.New(quizcraft.Config{Database: pool})
@@ -165,7 +223,7 @@ func TestLegacyPostgresSourceReadsProductionTablesAndEventLog(t *testing.T) {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS question_banks(bank_key text PRIMARY KEY,name text NOT NULL,color text NOT NULL,source_file text NOT NULL,metadata jsonb NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS bank_questions(bank_key text NOT NULL,question_id text NOT NULL,payload jsonb NOT NULL,PRIMARY KEY(bank_key,question_id))`,
-		`CREATE TABLE IF NOT EXISTS feedbacks(feedback_id bigserial PRIMARY KEY,question_bank text,question_id text,suggestion text NOT NULL,status text NOT NULL,resolution_note text NOT NULL,created_at timestamptz NOT NULL,resolved_at timestamptz)`,
+		`CREATE TABLE IF NOT EXISTS feedbacks(feedback_id bigserial PRIMARY KEY,question_bank text,question_id text,question_index integer NOT NULL,question_content text,user_id text,source_page text NOT NULL,suggestion text NOT NULL,status text NOT NULL,resolution_note text NOT NULL,created_at timestamptz NOT NULL,resolved_at timestamptz)`,
 		`CREATE TABLE IF NOT EXISTS users(user_id text PRIMARY KEY,display_name text NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS user_stats(user_id text PRIMARY KEY,correct bigint NOT NULL,total bigint NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS quizcraft_migration_events(event_id bigserial PRIMARY KEY,event_type text NOT NULL,aggregate_key text NOT NULL,source_transaction_id bigint,payload jsonb NOT NULL,occurred_at timestamptz NOT NULL DEFAULT now())`,
@@ -189,7 +247,7 @@ func TestLegacyPostgresSourceReadsProductionTablesAndEventLog(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO bank_questions(bank_key,question_id,payload) VALUES($1,'q0001',$2)`, bankKey, mustJSON(question)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO feedbacks(question_bank,question_id,suggestion,status,resolution_note,created_at) VALUES($1,'q0001','旧反馈','pending','',now())`, bankKey); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO feedbacks(question_bank,question_id,question_index,question_content,user_id,source_page,suggestion,status,resolution_note,created_at) VALUES($1,'q0001',1,'题目正文','legacy-user','quiz','旧反馈','pending','',now())`, bankKey); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO users(user_id,display_name) VALUES('generated-legacy','旧用户')`); err != nil {
