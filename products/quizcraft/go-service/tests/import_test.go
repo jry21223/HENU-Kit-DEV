@@ -13,6 +13,17 @@ import (
 	quizcraft "henukit.dev/quizcraft"
 )
 
+func TestDirectBootstrapActivationIsDisabledByDefault(t *testing.T) {
+	pool := practicePool(t)
+	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ImportJSON(context.Background(), "blocked-bootstrap", []byte(validBank)); err == nil || !strings.Contains(err.Error(), "Workshop") {
+		t.Fatalf("direct activation was not blocked: %v", err)
+	}
+}
+
 const validBank = `{"meta":{"name":"程序设计","version":"legacy-v1","color":"#2563eb","total":4,"source_files":["legacy.md"],"chapters":[{"id":"ch01","name":"基础"},{"id":"ch02","name":"进阶"}]},"questions":[{"id":"q0001","number":"1","type":"single","chapter_id":"ch01","chapter":"基础","content":"1+1=?","options":["1","2"],"answer":1,"analysis":"","stats":{"total":0,"correct":0}},{"id":"q0002","type":"multi","chapter_id":"ch02","chapter":"进阶","content":"选择偶数","options":["1","2","4"],"answer":[1,2],"analysis":""},{"id":"q0003","type":"judge","chapter_id":"ch01","chapter":"基础","content":"Go 是编译型语言","answer":true,"analysis":""},{"id":"q0004","type":"blank","chapter_id":"ch01","chapter":"基础","content":"Go 入口包是____","answer":"main","analysis":""}]}`
 
 func TestExplicitImportIsStableVersionedAndReported(t *testing.T) {
@@ -21,7 +32,7 @@ func TestExplicitImportIsStableVersionedAndReported(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	service, err := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +115,7 @@ func TestInvalidImportReportsAnswersTypesChaptersAndDoesNotWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	service, _ := quizcraft.New(quizcraft.Config{Database: pool})
+	service, _ := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	invalid := []byte(`{"meta":{"name":"坏题库"},"questions":[{"id":"dup","type":"single","content":"缺答案","chapter":""},{"id":"dup","type":"essay","content":"非法类型","chapter":"第一章","answer":"x"}]}`)
 	report, err := service.ImportJSON(context.Background(), "invalid-bank", invalid)
 	if err == nil || report.Accepted || report.UnansweredCount != 1 || len(report.Errors) < 3 {
@@ -137,7 +148,7 @@ func TestDatabaseRejectsCrossOwnerVersionMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	service, _ := quizcraft.New(quizcraft.Config{Database: pool})
+	service, _ := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	left, err := service.ImportJSON(context.Background(), "owner-left", []byte(validBank))
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +173,7 @@ func TestDatabaseRejectsImmutableContentMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	service, _ := quizcraft.New(quizcraft.Config{Database: pool})
+	service, _ := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	report, err := service.ImportJSON(context.Background(), "immutable-bank", []byte(validBank))
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +214,7 @@ func TestExistingAnsweredBankShapeImportsExplicitly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	service, err := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	if err != nil {
 		t.Fatal(err)
 	}

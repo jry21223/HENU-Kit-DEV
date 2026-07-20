@@ -13,6 +13,31 @@ tags:
   - { name: Feedback, description: Corrections linked to stable bank and question identity. }
   - { name: Workshop, description: Scoped QuizCraft-owned bank lifecycle administration. }
 paths:
+  /auth/login:
+    get:
+      summary: Start Platform Core OAuth with state and S256 PKCE
+      tags: [Workshop]
+      operationId: startQuizCraftPlatformLogin
+      security: []
+      parameters:
+        - { name: return_to, in: query, required: false, schema: { type: string, pattern: '^/([^/].*)?$' } }
+      responses:
+        '302': { description: Redirect to the Platform Core authorization endpoint and set an encrypted short-lived state cookie. }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /auth/callback:
+    get:
+      summary: Exchange a single-use Platform Core code server-side and establish an encrypted HttpOnly session
+      tags: [Workshop]
+      operationId: finishQuizCraftPlatformLogin
+      security: []
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: state, in: query, required: true, schema: { type: string, minLength: 16 } }
+      responses:
+        '302': { description: Secure local QuizCraft session established and redirected to the validated same-origin return path. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /healthz:
     get:
       summary: Check the Practice shadow process
@@ -21,6 +46,16 @@ paths:
       security: []
       responses:
         '200': { description: Process is alive, content: { application/json: { schema: { $ref: '#/components/schemas/HealthEnvelope' } } } }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/console-summary:
+    get:
+      summary: Return bounded QuizCraft facts for Console Overview
+      tags: [Workshop]
+      operationId: getQuizCraftConsoleSummary
+      security: [{ summaryBasic: [], summarySignature: [] }]
+      responses:
+        '200': { description: QuizCraft summary, content: { application/json: { schema: { $ref: '#/components/schemas/ConsoleSummaryEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks:
     get:
@@ -78,7 +113,7 @@ paths:
       summary: Resolve an idempotent write after an unknown outcome
       tags: [Practice]
       operationId: getQuizCraftOperation
-      security: [{}, { userSession: [] }, { userSessionCookie: [] }, { workshopOAuth: [quizcraft.workshop.read] }]
+      security: [{}, { userSession: [] }, { userSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/OperationKindParam'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -207,21 +242,23 @@ paths:
         '202': { description: Feedback write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/workshop/banks:
     get:
       summary: List workshop banks and active versions
       tags: [Workshop]
       operationId: listWorkshopBanks
-      security: [{ workshopOAuth: [quizcraft.workshop.read] }]
+      security: [{ workshopSessionCookie: [] }]
       responses:
-        '200': { description: Workshop banks, content: { application/json: { schema: { $ref: '#/components/schemas/BankListEnvelope' } } } }
+        '200': { description: Published Workshop banks, content: { application/json: { schema: { $ref: '#/components/schemas/BankListEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
     post:
       summary: Create a stable workshop bank
       tags: [Workshop]
       operationId: createWorkshopBank
-      security: [{ workshopOAuth: [quizcraft.workshop.write] }]
+      security: [{ workshopSessionCookie: [] }]
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateWorkshopBank' } } } }
       responses:
@@ -229,12 +266,24 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/workshop/catalog:
+    get:
+      summary: List Workshop banks with draft, validation, and publication lifecycle state
+      tags: [Workshop]
+      operationId: listWorkshopCatalog
+      security: [{ workshopSessionCookie: [] }]
+      responses:
+        '200': { description: Workshop lifecycle catalog, content: { application/json: { schema: { $ref: '#/components/schemas/WorkshopBankListEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/workshop/banks/{bank_id}/versions:
     post:
       summary: Create an immutable draft bank version
       tags: [Workshop]
       operationId: createWorkshopBankVersion
-      security: [{ workshopOAuth: [quizcraft.workshop.write] }]
+      security: [{ workshopSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -244,12 +293,13 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/workshop/banks/{bank_id}/imports:
     post:
       summary: Import and validate an immutable workshop bank version
       tags: [Workshop]
       operationId: importWorkshopBank
-      security: [{ workshopOAuth: [quizcraft.workshop.write] }]
+      security: [{ workshopSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -261,22 +311,40 @@ paths:
             examples:
               valid:
                 value:
+                  expected_version: 1
                   source_sha256: 1f1e1d1c1b1a19181716151413121110abcdefabcdefabcdefabcdefabcdefab
                   questions:
                     - { source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: ['1', '2'], answer: 1 }
             x-invalid-examples:
-              - { source_sha256: bad, questions: [{ source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: [], answer: null }] }
+              - { expected_version: 1, source_sha256: bad, questions: [{ source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: [], answer: null }] }
       responses:
         '201': { description: Import report for an accepted immutable version, content: { application/json: { schema: { $ref: '#/components/schemas/ImportReportEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { description: Import rejected without content writes, content: { application/json: { schema: { $ref: '#/components/schemas/ImportReportEnvelope' } } } }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}:
+    get:
+      summary: Read one immutable version with full questions for human validation
+      tags: [Workshop]
+      operationId: getWorkshopBankVersion
+      security: [{ workshopSessionCookie: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/BankVersionID'
+      responses:
+        '200': { description: Full authorized validation view, content: { application/json: { schema: { $ref: '#/components/schemas/WorkshopVersionDetailEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/validate:
     post:
       summary: Record human validation of a draft before publication
       tags: [Workshop]
       operationId: validateWorkshopBankVersion
-      security: [{ workshopOAuth: [quizcraft.workshop.write] }]
+      security: [{ workshopSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/BankVersionID'
@@ -287,12 +355,13 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/publish:
     post:
       summary: Publish a human-validated immutable version
       tags: [Workshop]
       operationId: publishWorkshopBankVersion
-      security: [{ workshopOAuth: [quizcraft.workshop.publish] }]
+      security: [{ workshopSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/BankVersionID'
@@ -303,12 +372,13 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/unpublish:
     post:
       summary: Unpublish a bank version without deleting its facts
       tags: [Workshop]
       operationId: unpublishWorkshopBankVersion
-      security: [{ workshopOAuth: [quizcraft.workshop.publish] }]
+      security: [{ workshopSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/BankVersionID'
@@ -319,12 +389,13 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/workshop/banks/{bank_id}/rollback:
     post:
       summary: Roll back by republishing a prior immutable version
       tags: [Workshop]
       operationId: rollbackWorkshopBank
-      security: [{ workshopOAuth: [quizcraft.workshop.publish] }]
+      security: [{ workshopSessionCookie: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -334,20 +405,31 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/workshop/feedback/{feedback_id}:
+    get:
+      summary: Read full product-owned feedback from an Operations Inbox deep link
+      tags: [Workshop]
+      operationId: getWorkshopFeedback
+      security: [{ workshopSessionCookie: [] }]
+      parameters:
+        - name: feedback_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Full feedback remains owned by QuizCraft, content: { application/json: { schema: { $ref: '#/components/schemas/WorkshopFeedbackEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
 components:
   securitySchemes:
     userSession: { type: http, scheme: bearer, bearerFormat: LocalSessionJWT, description: QuizCraft-local short-lived session token; not a Platform Core exchange token. }
     userSessionCookie: { type: apiKey, in: cookie, name: quizcraft_session, description: HttpOnly Secure QuizCraft-local session established after server-side identity exchange. }
-    workshopOAuth:
-      type: oauth2
-      flows:
-        authorizationCode:
-          authorizationUrl: https://accounts.henukit.internal/oauth/authorize
-          tokenUrl: https://accounts.henukit.internal/oauth/token
-          scopes:
-            quizcraft.workshop.read: Read Workshop banks and validation state.
-            quizcraft.workshop.write: Create, edit, import, and validate Workshop versions.
-            quizcraft.workshop.publish: Publish, unpublish, and roll back Workshop versions.
+    workshopSessionCookie: { type: apiKey, in: cookie, name: __Host-quizcraft_session, description: Encrypted HttpOnly Secure local session holding the server-only Platform Core exchange session. Every Workshop request is authorized live by the backend. }
+    summaryBasic: { type: http, scheme: basic, description: Dedicated Console Gateway to QuizCraft service credential. }
+    summarySignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
   parameters:
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 160 } }
     BankID: { name: bank_id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -382,6 +464,31 @@ components:
           type: object
           required: [status]
           properties: { status: { type: string, const: ok } }
+    ConsoleSummaryEnvelope:
+      type: object
+      required: [request_id, data]
+      properties:
+        request_id: { $ref: '#/components/schemas/RequestID' }
+        data:
+          type: object
+          additionalProperties: false
+          required: [id, status, status_message, as_of, metrics]
+          properties:
+            id: { type: string, const: quizcraft }
+            status: { type: string, enum: [ok, empty, partial] }
+            status_message: { type: string, maxLength: 240 }
+            as_of: { type: string, format: date-time }
+            metrics:
+              type: array
+              maxItems: 8
+              items:
+                type: object
+                additionalProperties: false
+                required: [label, value]
+                properties:
+                  label: { type: string, maxLength: 40 }
+                  value: { type: string, maxLength: 80 }
+                  hint: { type: string, maxLength: 120 }
     QuestionType: { type: string, enum: [single, multi, judge, blank] }
     PracticeSessionMode: { type: string, enum: [random, difficult, chapter, favorites] }
     OperationKind:
@@ -595,6 +702,7 @@ components:
       type: object
       required: [source_sha256, questions]
       properties:
+        expected_version: { type: integer, minimum: 0, description: Workshop clients send the observed lifecycle version. Omission is retained for older import clients and serializes against the current version while still creating only an unpublished draft. }
         source_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
         questions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ImportedQuestionInput' } }
     ImportedQuestionReport:
@@ -640,6 +748,69 @@ components:
       type: object
       required: [request_id, data]
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/BankVersion' } } }
+    WorkshopBankListEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/WorkshopBank' } } }
+    WorkshopBank:
+      type: object
+      required: [bank_id, bank_key, name, lifecycle_version, versions]
+      properties:
+        bank_id: { type: string, format: uuid }
+        bank_key: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$' }
+        name: { type: string, minLength: 1, maxLength: 160 }
+        lifecycle_version: { type: integer, format: int64, minimum: 1 }
+        active_version_id: { type: string, format: uuid }
+        versions: { type: array, items: { $ref: '#/components/schemas/WorkshopBankVersion' } }
+    WorkshopBankVersion:
+      type: object
+      required: [bank_version_id, content_sha256, question_count, state, active]
+      properties:
+        bank_version_id: { type: string, format: uuid }
+        content_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        question_count: { type: integer, minimum: 0 }
+        state: { type: string, enum: [draft, validated, legacy] }
+        active: { type: boolean }
+        validated_at: { type: string, format: date-time }
+    WorkshopVersionDetailEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/WorkshopVersionDetail' } }
+    WorkshopVersionDetail:
+      type: object
+      additionalProperties: false
+      required: [bank_id, bank_version_id, state, content_sha256, questions]
+      properties:
+        bank_id: { type: string, format: uuid }
+        bank_version_id: { type: string, format: uuid }
+        state: { type: string, enum: [draft, validated] }
+        content_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        questions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/WorkshopQuestionDetail' } }
+    WorkshopQuestionDetail:
+      allOf:
+        - $ref: '#/components/schemas/ImportedQuestionInput'
+        - type: object
+          required: [question_id, question_version_id, position]
+          properties:
+            question_id: { type: string, format: uuid }
+            question_version_id: { type: string, format: uuid }
+            position: { type: integer, minimum: 1 }
+    WorkshopFeedbackEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/WorkshopFeedback' } }
+    WorkshopFeedback:
+      type: object
+      additionalProperties: false
+      required: [feedback_id, bank_id, question_id, question_version_id, category, detail, created_at]
+      properties:
+        feedback_id: { type: string, format: uuid }
+        bank_id: { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        category: { type: string, enum: [wrong_answer, ambiguous, typo, outdated, other] }
+        detail: { type: string, minLength: 1, maxLength: 4000 }
+        created_at: { type: string, format: date-time }
     PracticeSessionEnvelope:
       type: object
       required: [request_id, data]

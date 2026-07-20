@@ -10,6 +10,7 @@ import Ranking from '@/pages/Ranking';
 import Extract from '@/pages/Extract';
 import Feedback from '@/pages/Feedback';
 import FeedbackBoard from '@/pages/FeedbackBoard';
+import WorkshopFeedbackPage from '@/pages/WorkshopFeedback';
 import FoodWheel from '@/pages/FoodWheel';
 import Favorites from '@/pages/Favorites';
 import { IS_OPS_MODE } from '@/config/appMode';
@@ -32,6 +33,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="ranking" element={<Ranking />} />
           <Route path="feedback" element={<Feedback />} />
           <Route path="feedback-board" element={<FeedbackBoard />} />
+          <Route path="workshop/feedback/:feedbackId" element={<WorkshopFeedbackPage />} />
           <Route
             path="wheel"
             element={IS_OPS_MODE ? <Navigate to="/practice" replace /> : <FoodWheel />}

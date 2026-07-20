@@ -23,18 +23,20 @@ var (
 )
 
 type Config struct {
-	Database *pgxpool.Pool
+	Database                     *pgxpool.Pool
+	AllowTestBootstrapActivation bool
 }
 
 type Service struct {
-	database *pgxpool.Pool
+	database                     *pgxpool.Pool
+	allowTestBootstrapActivation bool
 }
 
 func New(config Config) (*Service, error) {
 	if config.Database == nil {
 		return nil, errors.New("quizcraft database is required")
 	}
-	return &Service{database: config.Database}, nil
+	return &Service{database: config.Database, allowTestBootstrapActivation: config.AllowTestBootstrapActivation}, nil
 }
 
 type ValidationError struct {
@@ -120,8 +122,26 @@ type normalizedQuestion struct {
 }
 
 func (s *Service) ImportJSON(ctx context.Context, bankKey string, source []byte) (ImportReport, error) {
+	if !s.allowTestBootstrapActivation {
+		return ImportReport{}, errors.New("direct bank activation is disabled; use the authenticated Workshop lifecycle")
+	}
+	return s.importJSON(ctx, bankKey, source, importOptions{activate: true})
+}
+
+type importOptions struct {
+	activate       bool
+	sourceSHA256   string
+	expectedBankID uuid.UUID
+	beforeCommit   func(pgx.Tx, ImportReport) error
+}
+
+func (s *Service) importJSON(ctx context.Context, bankKey string, source []byte, options importOptions) (ImportReport, error) {
+	sourceSHA256 := hash(source)
+	if options.sourceSHA256 != "" {
+		sourceSHA256 = options.sourceSHA256
+	}
 	report := ImportReport{
-		SourceSHA256:  hash(source),
+		SourceSHA256:  sourceSHA256,
 		TypeCounts:    map[string]int{},
 		ChapterCounts: map[string]int{},
 		Questions:     []ImportedQuestion{},
@@ -155,6 +175,9 @@ func (s *Service) ImportJSON(ctx context.Context, bankKey string, source []byte)
 	seen := map[string]bool{}
 	normalized := make([]normalizedQuestion, 0, len(document.Questions))
 	bankID := stableID(quizcraftNamespace, "bank:"+bankKey)
+	if options.expectedBankID != uuid.Nil && options.expectedBankID != bankID {
+		report.Errors = append(report.Errors, validation("bank_id", "bank_identity_conflict", "bank_id does not match the stable bank key"))
+	}
 	for index, input := range document.Questions {
 		path := fmt.Sprintf("questions[%d]", index)
 		sourceID := strings.TrimSpace(input.ID)
@@ -285,13 +308,20 @@ func (s *Service) ImportJSON(ctx context.Context, bankKey string, source []byte)
 	if _, err = tx.Exec(ctx, `UPDATE quizcraft_bank_versions SET sealed_at=now() WHERE id=$1 AND sealed_at IS NULL`, bankVersionID); err != nil {
 		return report, err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE quizcraft_banks SET active_version_id=$2,updated_at=now() WHERE id=$1`, bankID, bankVersionID); err != nil {
-		return report, err
+	if options.activate {
+		if _, err = tx.Exec(ctx, `UPDATE quizcraft_banks SET active_version_id=$2,updated_at=now() WHERE id=$1`, bankID, bankVersionID); err != nil {
+			return report, err
+		}
+	}
+	report.Accepted = true
+	if options.beforeCommit != nil {
+		if err = options.beforeCommit(tx, report); err != nil {
+			return report, err
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return report, err
 	}
-	report.Accepted = true
 	return report, nil
 }
 

@@ -10,12 +10,13 @@ import (
 )
 
 type QuizcraftBank struct {
-	ID              uuid.UUID          `json:"id"`
-	BankKey         string             `json:"bank_key"`
-	Name            string             `json:"name"`
-	ActiveVersionID uuid.NullUUID      `json:"active_version_id"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ID               uuid.UUID          `json:"id"`
+	BankKey          string             `json:"bank_key"`
+	Name             string             `json:"name"`
+	ActiveVersionID  uuid.NullUUID      `json:"active_version_id"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	LifecycleVersion int64              `json:"lifecycle_version"`
 }
 
 type QuizcraftBankVersion struct {
@@ -43,6 +44,39 @@ type QuizcraftFavorite struct {
 	BankID     uuid.UUID          `json:"bank_id"`
 	QuestionID uuid.UUID          `json:"question_id"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftFeedback struct {
+	ID                uuid.UUID          `json:"id"`
+	BankID            uuid.UUID          `json:"bank_id"`
+	QuestionID        uuid.UUID          `json:"question_id"`
+	QuestionVersionID uuid.UUID          `json:"question_version_id"`
+	ActorUserID       uuid.NullUUID      `json:"actor_user_id"`
+	ActorKey          string             `json:"actor_key"`
+	Category          string             `json:"category"`
+	Detail            string             `json:"detail"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftFeedbackInboxDelivery struct {
+	OutboxID       uuid.UUID          `json:"outbox_id"`
+	PlatformItemID uuid.NullUUID      `json:"platform_item_id"`
+	Attempts       int32              `json:"attempts"`
+	DeliveredAt    pgtype.Timestamptz `json:"delivered_at"`
+	LastError      string             `json:"last_error"`
+	NextAttemptAt  pgtype.Timestamptz `json:"next_attempt_at"`
+}
+
+type QuizcraftFeedbackInboxOutbox struct {
+	ID                 uuid.UUID          `json:"id"`
+	FeedbackID         uuid.UUID          `json:"feedback_id"`
+	SourceProductCode  string             `json:"source_product_code"`
+	SourceResourceType string             `json:"source_resource_type"`
+	SourceResourceID   string             `json:"source_resource_id"`
+	SourceResourceUrl  string             `json:"source_resource_url"`
+	Category           string             `json:"category"`
+	Priority           string             `json:"priority"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
 type QuizcraftIdempotencyResult struct {
@@ -159,6 +193,13 @@ type QuizcraftRankingSettlementEvent struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type QuizcraftServiceNonce struct {
+	ClientID   string             `json:"client_id"`
+	KeyID      string             `json:"key_id"`
+	Nonce      string             `json:"nonce"`
+	ReceivedAt pgtype.Timestamptz `json:"received_at"`
+}
+
 type QuizcraftShadowComparison struct {
 	ID             uuid.UUID          `json:"id"`
 	SessionID      uuid.UUID          `json:"session_id"`
@@ -168,4 +209,29 @@ type QuizcraftShadowComparison struct {
 	Outcome        string             `json:"outcome"`
 	Detail         string             `json:"detail"`
 	ComparedAt     pgtype.Timestamptz `json:"compared_at"`
+}
+
+type QuizcraftWorkshopAuditEvent struct {
+	ID               uuid.UUID          `json:"id"`
+	ActorUserID      uuid.UUID          `json:"actor_user_id"`
+	PermissionCode   string             `json:"permission_code"`
+	Action           string             `json:"action"`
+	BankID           uuid.UUID          `json:"bank_id"`
+	BankVersionID    uuid.NullUUID      `json:"bank_version_id"`
+	ExpectedVersion  int64              `json:"expected_version"`
+	ResultingVersion int64              `json:"resulting_version"`
+	RequestID        string             `json:"request_id"`
+	Note             string             `json:"note"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftWorkshopVersionState struct {
+	BankID         uuid.UUID          `json:"bank_id"`
+	BankVersionID  uuid.UUID          `json:"bank_version_id"`
+	State          string             `json:"state"`
+	CreatedBy      uuid.UUID          `json:"created_by"`
+	ValidatedBy    uuid.NullUUID      `json:"validated_by"`
+	ValidationNote string             `json:"validation_note"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	ValidatedAt    pgtype.Timestamptz `json:"validated_at"`
 }

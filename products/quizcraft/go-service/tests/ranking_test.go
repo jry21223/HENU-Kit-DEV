@@ -235,7 +235,7 @@ func TestRankingSettlementFactsAreImmutableAndRewardFree(t *testing.T) {
 			t.Fatalf("settlement exposes reward column %s", column)
 		}
 	}
-	service, _ := quizcraft.New(quizcraft.Config{Database: pool})
+	service, _ := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	now := time.Now().UTC()
 	daysUntilNextMonday := (8 - int(now.Weekday())) % 7
 	if daysUntilNextMonday == 0 {

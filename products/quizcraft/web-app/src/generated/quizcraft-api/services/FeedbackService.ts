@@ -31,6 +31,7 @@ export class FeedbackService {
             errors: {
                 400: `Invalid request`,
                 409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
             },
         });
     }

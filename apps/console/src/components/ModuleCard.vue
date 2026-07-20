@@ -2,6 +2,7 @@
 import { ChevronDown, CircleAlert, Clock3, LockKeyhole } from "@lucide/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import type { Component } from "vue";
+import { computed } from "vue";
 
 import StatusBadge from "@/components/ui/StatusBadge.vue";
 import type { ModuleStatus, ModuleSummary } from "@/data/modules";
@@ -20,6 +21,8 @@ const statusLabels: Record<ModuleStatus, string> = {
   unavailable: "暂不可用",
   denied: "无权访问",
 };
+
+const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKSHOP_URL?.trim() || "");
 </script>
 
 <template>
@@ -63,6 +66,8 @@ const statusLabels: Record<ModuleStatus, string> = {
         <Clock3 v-else :size="18" aria-hidden="true" />
         <span>{{ summary.statusMessage }}</span>
       </div>
+
+      <a v-if="summary.id === 'quizcraft' && quizcraftWorkshopURL" :href="quizcraftWorkshopURL" target="_blank" rel="noreferrer" class="mt-4 inline-flex min-h-11 items-center rounded-lg border border-[var(--hk-paper-line)] px-3 text-sm font-semibold text-[var(--hk-ink-green-deep)]">打开 QuizCraft 题库工坊</a>
 
       <div v-if="summary.trend" class="mt-4 rounded-xl border border-[var(--hk-paper-line)] bg-[var(--hk-paper)]/45 p-3">
         <div class="flex items-center justify-between gap-3">

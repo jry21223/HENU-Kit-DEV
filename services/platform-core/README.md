@@ -1,5 +1,7 @@
 # HENU Kit Platform Core
 
+Provision the QuizCraft OAuth redirect and rotatable HMAC client key after applying migrations with `scripts/provision-quizcraft-client.sh`. The script requires `DATABASE_URL`, `QUIZCRAFT_PUBLIC_URL`, `QUIZCRAFT_PLATFORM_KEY_ID`, and `QUIZCRAFT_PLATFORM_CLIENT_SECRET`; it stores only the SHA-256 secret hash and never places the plaintext secret in SQL or process arguments. Each rotation keeps only the immediately previous active key as `retiring` and revokes any older retiring key, bounding the overlap window to one rotation.
+
 Independent Go service for platform-owned identity and operations data. The delivered HC-05 through HC-08 slices implement:
 
 - host-only Core Session validation;

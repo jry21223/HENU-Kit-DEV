@@ -34,9 +34,11 @@ import { feedbackApi, practiceApi } from "@/api/client";
 import {
   QUIZCRAFT_GO_SHADOW_ENABLED,
   getActiveShadowBankId,
+  getActiveShadowQuestionVersionId,
   isQuizcraftAuthenticationError,
   redirectToQuizcraftLogin,
   shadowFavoritesApi,
+  shadowFeedbackApi,
 } from "@/api/quizcraftShadowClient";
 import { RichText } from "@/components/RichText";
 import {
@@ -1087,13 +1089,19 @@ function useQuizController() {
       feedbackMessage: "",
     });
     try {
-      await feedbackApi.submit({
-        question_index: feedbackQuestionIndex,
-        question_bank: activeBankKey || undefined,
-        question_id: activeQuestion.id,
-        question_content: activeQuestion.content,
-        suggestion: normalizedSuggestion,
-      });
+      if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+        const questionVersionId = getActiveShadowQuestionVersionId(activeQuestion.id);
+        if (!activeBankId || !questionVersionId) throw new Error("缺少稳定题目版本引用，请重新进入练习");
+        await shadowFeedbackApi.submit({ bank_id: activeBankId, question_id: activeQuestion.id, question_version_id: questionVersionId, category: "other", detail: normalizedSuggestion });
+      } else {
+        await feedbackApi.submit({
+          question_index: feedbackQuestionIndex,
+          question_bank: activeBankKey || undefined,
+          question_id: activeQuestion.id,
+          question_content: activeQuestion.content,
+          suggestion: normalizedSuggestion,
+        });
+      }
       setUi({
         feedbackMessage: "反馈提交成功，感谢你的建议！",
         feedbackSuggestion: "",

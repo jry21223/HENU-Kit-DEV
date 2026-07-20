@@ -98,6 +98,12 @@ test('React uses the generated Practice client for a guest session', async ({ pa
       });
       return;
     }
+    if (request.method() === 'POST' && request.url().endsWith('/api/v1/feedback')) {
+      expect(request.headers()['idempotency-key']).toBeTruthy();
+      expect(request.postDataJSON()).toEqual({ bank_id: bankId, question_id: questionId, question_version_id: questionVersionId, category: 'other', detail: '解析需要补充边界条件' });
+      await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_feedback', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'req_feedback', resource_id: sessionId } }) });
+      return;
+    }
     await route.abort();
   });
 
@@ -109,12 +115,109 @@ test('React uses the generated Practice client for a guest session', async ({ pa
   await page.getByRole('button', { name: /B.*2/ }).click();
   await page.getByRole('button', { name: '提交答案' }).click();
   await expect(page.getByText('服务端判题')).toBeVisible();
+  await page.getByRole('button', { name: '反馈本题' }).click();
+  await page.getByLabel('反馈建议').fill('解析需要补充边界条件');
+  await page.getByRole('button', { name: '提交反馈' }).click();
+  await expect(page.getByText('反馈提交成功，感谢你的建议！')).toBeVisible();
   expect(calls.filter((call) => call.startsWith('POST '))).toEqual([
     'POST /api/v1/practice/sessions',
     `POST /api/v1/practice/sessions/${sessionId}/answers`,
+    'POST /api/v1/feedback',
   ]);
   expect(calls.filter((call) => call === 'GET /api/v1/banks').length).toBeGreaterThanOrEqual(1);
   expect(calls.every((call) => call.includes('/api/v1/'))).toBe(true);
+});
+
+test('Workshop uses scoped generated APIs and requires human validation before publish', async ({ page }) => {
+  let lifecycleVersion = 1;
+  let state: 'none' | 'draft' | 'validated' = 'none';
+  let active = false;
+  const versionId = '66666666-6666-4666-8666-666666666666';
+  const writes: string[] = [];
+  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === 'GET' && url.pathname === '/api/v1/workshop/catalog') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_workshop', data: [{ bank_id: bankId, bank_key: 'browser-bank', name: '浏览器题库', lifecycle_version: lifecycleVersion, ...(active ? { active_version_id: versionId } : {}), versions: state === 'none' ? [] : [{ bank_version_id: versionId, content_sha256: 'b'.repeat(64), question_count: 1, state, active }] }] }) });
+      return;
+    }
+    if (request.method() === 'GET' && url.pathname === `/api/v1/workshop/banks/${bankId}/versions/${versionId}`) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_detail', data: { bank_id: bankId, bank_version_id: versionId, state: 'draft', content_sha256: 'b'.repeat(64), questions: [{ question_id: questionId, question_version_id: versionId, source_question_id: 'q0001', type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '1 + 1 = ?', options: ['1', '2'], answer: 1, analysis: '2', position: 1 }] } }) });
+      return;
+    }
+    if (request.method() === 'POST') {
+      expect(request.headers()['idempotency-key']).toBeTruthy();
+      writes.push(url.pathname);
+      if (url.pathname.endsWith('/versions')) {
+        expect(request.postDataJSON().expected_version).toBe(1);
+        state = 'draft'; lifecycleVersion = 2;
+      } else if (url.pathname.endsWith('/validate')) {
+        expect(request.postDataJSON().expected_version).toBe(2);
+        state = 'validated'; lifecycleVersion = 3;
+      } else if (url.pathname.endsWith('/publish')) {
+        expect(request.postDataJSON().expected_version).toBe(3);
+        active = true; lifecycleVersion = 4;
+      }
+      await route.fulfill({ status: url.pathname.endsWith('/versions') ? 201 : 200, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_write', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'req_write', resource_id: versionId } }) });
+      return;
+    }
+    await route.abort();
+  });
+  await page.goto('/extract');
+  await expect(page.getByRole('heading', { name: '题库工坊' })).toBeVisible();
+  await expect(page.getByText(/ADMIN_TOKEN/)).toHaveCount(0);
+  await page.getByRole('button', { name: '创建草稿版本' }).click();
+  await expect(page.getByText('draft', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: '发布' })).toHaveCount(0);
+  await page.getByRole('button', { name: '查看并校验题目' }).click();
+  await expect(page.getByText('1. 1 + 1 = ?', { exact: true })).toBeVisible();
+  await expect(page.locator('ol li')).toHaveText(['1', '2']);
+  await page.getByRole('button', { name: '人工校验通过' }).click();
+  await page.getByRole('button', { name: '发布' }).click();
+  await expect(page.getByRole('status').getByText('已发布校验版本')).toBeVisible();
+  expect(writes).toEqual([
+    `/api/v1/workshop/banks/${bankId}/versions`,
+    `/api/v1/workshop/banks/${bankId}/versions/${versionId}/validate`,
+    `/api/v1/workshop/banks/${bankId}/versions/${versionId}/publish`,
+  ]);
+});
+
+test('Operations Inbox deep link reads full feedback only from QuizCraft', async ({ page }) => {
+  const feedbackId = '77777777-7777-4777-8777-777777777777';
+  await page.route(`http://127.0.0.1:18080/api/v1/workshop/feedback/${feedbackId}`, async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_feedback_detail', data: { feedback_id: feedbackId, bank_id: bankId, question_id: questionId, question_version_id: '66666666-6666-4666-8666-666666666666', category: 'wrong_answer', detail: '正确答案与解析矛盾', created_at: '2026-07-20T00:00:00Z' } }) });
+  });
+  await page.goto(`/workshop/feedback/${feedbackId}`);
+  await expect(page.getByRole('heading', { name: 'QuizCraft 纠错反馈' })).toBeVisible();
+  await expect(page.getByText('正确答案与解析矛盾')).toBeVisible();
+  await expect(page.getByText('正文仅从 QuizCraft 读取')).toBeVisible();
+});
+
+test('Workshop deep link offers Platform Core login and preserves return path on 401', async ({ page }) => {
+  await page.route('http://127.0.0.1:18080/api/v1/workshop/catalog', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_login', error: { code: 'platform_session_required', message: 'sign in' } }) }));
+  await page.goto('/extract');
+  const login = page.getByRole('link', { name: '通过 Platform Core 登录并返回工坊' });
+  await expect(login).toBeVisible();
+  await expect(login).toHaveAttribute('href', 'http://127.0.0.1:18080/auth/login?return_to=%2Fextract');
+});
+
+test('Workshop offers login when a detail read or mutation loses its session', async ({ page }) => {
+  const versionId = '66666666-6666-4666-8666-666666666666';
+  await page.route('http://127.0.0.1:18080/api/v1/workshop/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/v1/workshop/catalog') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_catalog', data: [{ bank_id: bankId, bank_key: 'session-bank', name: 'Session Bank', lifecycle_version: 1, versions: [{ bank_version_id: versionId, content_sha256: 'd'.repeat(64), question_count: 1, state: 'draft', active: false }] }] }) });
+      return;
+    }
+    await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_expired', error: { code: 'invalid_session', message: 'expired' } }) });
+  });
+  await page.goto('/extract');
+  await page.getByRole('button', { name: '查看并校验题目' }).click();
+  await expect(page.getByRole('link', { name: '通过 Platform Core 登录并返回工坊' })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: '创建草稿版本' }).click();
+  await expect(page.getByRole('link', { name: '通过 Platform Core 登录并返回工坊' })).toBeVisible();
 });
 
 test('shadow bank failure does not fall back to browser-owned mock banks', async ({ page }) => {
