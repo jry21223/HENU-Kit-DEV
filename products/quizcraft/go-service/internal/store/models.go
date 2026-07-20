@@ -58,6 +58,15 @@ type QuizcraftFeedback struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
+type QuizcraftFeedbackInboxDelivery struct {
+	OutboxID       uuid.UUID          `json:"outbox_id"`
+	PlatformItemID uuid.NullUUID      `json:"platform_item_id"`
+	Attempts       int32              `json:"attempts"`
+	DeliveredAt    pgtype.Timestamptz `json:"delivered_at"`
+	LastError      string             `json:"last_error"`
+	NextAttemptAt  pgtype.Timestamptz `json:"next_attempt_at"`
+}
+
 type QuizcraftFeedbackInboxOutbox struct {
 	ID                 uuid.UUID          `json:"id"`
 	FeedbackID         uuid.UUID          `json:"feedback_id"`
@@ -182,6 +191,13 @@ type QuizcraftRankingSettlementEvent struct {
 	Metric      string             `json:"metric"`
 	Standings   []byte             `json:"standings"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftServiceNonce struct {
+	ClientID   string             `json:"client_id"`
+	KeyID      string             `json:"key_id"`
+	Nonce      string             `json:"nonce"`
+	ReceivedAt pgtype.Timestamptz `json:"received_at"`
 }
 
 type QuizcraftShadowComparison struct {
