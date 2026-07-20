@@ -55,3 +55,35 @@ go test -race ./...
 ```
 
 The pinned generator emits Go contract types under `internal/contract` and a fetch-based TypeScript client under `web-app/src/generated/quizcraft-api`. CI regenerates both and fails on drift before running the breaking-change check.
+
+## Reconciliation and shadow gate
+
+Before the legacy service receives any migration-window writes, deploy its updated `db_storage.py` and run the normal `init_schema()` startup path. Bank, feedback, and ranking writes then append `quizcraft_migration_events` in the same PostgreSQL transaction. Event payloads preserve legacy subjects only as legacy snapshot keys; they never create Platform Core users or `quizcraft_ranking_profiles`.
+
+Apply every target migration to a physically separate, empty temporary QuizCraft database. Then run the full PostgreSQL-to-PostgreSQL migration:
+
+```bash
+DATABASE_URL='postgres://.../quizcraft_temp' \
+LEGACY_DATABASE_URL='postgres://.../quizcraft_legacy' \
+go run ./cmd/reconcile -mode full -source-name quizcraft-legacy-production
+```
+
+The JSON report independently records bank/question/answered counts, question types, chapters, canonical answer SHA-256, and content SHA-256 for the source import and stored target rows. Resolvable feedback is copied with stable bank/question/version references and no guessed user mapping. Unresolvable feedback produces an immutable exception fact and blocks the report. Legacy standings are stored as an immutable snapshot; `GET /api/v1/rankings/legacy` exposes only rank, display name, correct count, and total, never a legacy subject key.
+
+Use the returned `run_id` to catch up the transactional legacy event log. The command accepts increasing PostgreSQL sequence IDs (rolled-back transactions may leave numeric gaps), advances an audited cursor, and exits non-zero while lag or unresolved exceptions remain:
+
+```bash
+go run ./cmd/reconcile -mode catch-up -run-id '<run UUID>'
+```
+
+Finally evaluate a fixed, observed shadow window. Both mismatches and legacy errors count toward the rate, insufficient samples block, and every decision is immutable:
+
+```bash
+go run ./cmd/reconcile -mode shadow-gate \
+  -window-start '2026-07-20T00:00:00Z' \
+  -window-end '2026-07-21T00:00:00Z' \
+  -minimum-samples 1000 \
+  -mismatch-threshold 0.001
+```
+
+A zero exit status means only that reconciliation/catch-up/shadow evidence passed. It does not authorize production traffic movement; gradual reads, write cutover, rollback snapshots, and the legacy read-only observation window belong to the separate cutover workflow.

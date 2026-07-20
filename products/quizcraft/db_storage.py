@@ -172,6 +172,85 @@ def init_schema() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS quizcraft_migration_events (
+                    event_id BIGSERIAL PRIMARY KEY,
+                    event_type TEXT NOT NULL CHECK (event_type IN ('bank.upserted','feedback.upserted','ranking.changed')),
+                    aggregate_key TEXT NOT NULL CHECK (aggregate_key <> ''),
+                    source_transaction_id BIGINT NOT NULL,
+                    payload JSONB NOT NULL,
+                    occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                "ALTER TABLE quizcraft_migration_events ADD COLUMN IF NOT EXISTS source_transaction_id BIGINT"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_quizcraft_migration_events_occurred ON quizcraft_migration_events(occurred_at,event_id)"
+            )
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_quizcraft_migration_events_transaction_aggregate ON quizcraft_migration_events(source_transaction_id,event_type,aggregate_key) WHERE source_transaction_id IS NOT NULL"
+            )
+            cur.execute(
+                """
+                CREATE OR REPLACE FUNCTION quizcraft_capture_migration_event()
+                RETURNS trigger LANGUAGE plpgsql AS $$
+                DECLARE
+                    event_type_value text;
+                    aggregate_key_value text;
+                BEGIN
+                    PERFORM pg_advisory_xact_lock(hashtextextended('quizcraft-migration-events',0));
+                    IF TG_TABLE_NAME IN ('question_banks','bank_questions') THEN
+                        event_type_value := 'bank.upserted';
+                        aggregate_key_value := CASE WHEN TG_OP='DELETE' THEN OLD.bank_key ELSE NEW.bank_key END;
+                    ELSIF TG_TABLE_NAME = 'feedbacks' THEN
+                        event_type_value := 'feedback.upserted';
+                        aggregate_key_value := CASE WHEN TG_OP='DELETE' THEN OLD.feedback_id ELSE NEW.feedback_id END::text;
+                    ELSE
+                        event_type_value := 'ranking.changed';
+                        aggregate_key_value := CASE WHEN TG_OP='DELETE' THEN OLD.user_id ELSE NEW.user_id END;
+                    END IF;
+                    INSERT INTO quizcraft_migration_events(source_transaction_id,event_type,aggregate_key,payload)
+                    VALUES(txid_current(),event_type_value,aggregate_key_value,jsonb_build_object('changed_table',TG_TABLE_NAME))
+                    ON CONFLICT DO NOTHING;
+                    RETURN NULL;
+                END;
+                $$
+                """
+            )
+            for table_name in ("question_banks", "bank_questions", "feedbacks", "users", "user_stats"):
+                cur.execute(
+                    f"""
+                    DO $$ BEGIN
+                        CREATE TRIGGER quizcraft_{table_name}_migration_event
+                        AFTER INSERT OR UPDATE OR DELETE ON {table_name}
+                        FOR EACH ROW EXECUTE FUNCTION quizcraft_capture_migration_event();
+                    EXCEPTION WHEN duplicate_object THEN NULL;
+                    END $$
+                    """
+                )
+            cur.execute(
+                """
+                CREATE OR REPLACE FUNCTION quizcraft_reject_migration_event_mutation()
+                RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    RAISE EXCEPTION 'QuizCraft migration events are append-only' USING ERRCODE = '55000';
+                END;
+                $$
+                """
+            )
+            cur.execute(
+                """
+                DO $$ BEGIN
+                    CREATE TRIGGER quizcraft_migration_events_immutable
+                    BEFORE UPDATE OR DELETE OR TRUNCATE ON quizcraft_migration_events
+                    FOR EACH STATEMENT EXECUTE FUNCTION quizcraft_reject_migration_event_mutation();
+                EXCEPTION WHEN duplicate_object THEN NULL;
+                END $$
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS food_wheel_items (
                     id BIGSERIAL PRIMARY KEY,
                     owner_user_id TEXT NOT NULL,

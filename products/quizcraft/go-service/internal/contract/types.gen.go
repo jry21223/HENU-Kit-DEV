@@ -721,6 +721,24 @@ type LearningStateItem struct {
 	Wrong             bool               `json:"wrong"`
 }
 
+// LegacyRankingEnvelope defines model for LegacyRankingEnvelope.
+type LegacyRankingEnvelope struct {
+	Data      LegacyRankingPage `json:"data"`
+	RequestId RequestID         `json:"request_id"`
+}
+
+// LegacyRankingPage defines model for LegacyRankingPage.
+type LegacyRankingPage struct {
+	CapturedAt    *time.Time `json:"captured_at"`
+	ContentSha256 string     `json:"content_sha256"`
+	Entries       []struct {
+		Correct int    `json:"correct"`
+		Name    string `json:"name"`
+		Rank    int    `json:"rank"`
+		Total   int    `json:"total"`
+	} `json:"entries"`
+}
+
 // NonChoicePracticeQuestion defines model for NonChoicePracticeQuestion.
 type NonChoicePracticeQuestion struct {
 	Chapter           string                        `json:"chapter"`

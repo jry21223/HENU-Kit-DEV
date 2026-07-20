@@ -37,6 +37,8 @@ export type { ImportReport } from './models/ImportReport';
 export type { ImportReportEnvelope } from './models/ImportReportEnvelope';
 export type { LearningStateEnvelope } from './models/LearningStateEnvelope';
 export type { LearningStateItem } from './models/LearningStateItem';
+export type { LegacyRankingEnvelope } from './models/LegacyRankingEnvelope';
+export type { LegacyRankingPage } from './models/LegacyRankingPage';
 export type { NonChoicePracticeQuestion } from './models/NonChoicePracticeQuestion';
 export type { Operation } from './models/Operation';
 export type { OperationEnvelope } from './models/OperationEnvelope';

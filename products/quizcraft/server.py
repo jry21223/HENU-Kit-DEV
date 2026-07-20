@@ -2136,6 +2136,7 @@ async def create_feedback(request: FeedbackRequest):
             }
         except Exception as e:
             print(f"保存反馈到 PostgreSQL 失败: {e}")
+            raise HTTPException(status_code=503, detail="反馈暂时无法保存，请稍后重试")
 
     result = save_feedback_fallback(
         question_index=question_index,

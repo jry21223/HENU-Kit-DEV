@@ -47,15 +47,19 @@ type QuizcraftFavorite struct {
 }
 
 type QuizcraftFeedback struct {
-	ID                uuid.UUID          `json:"id"`
-	BankID            uuid.UUID          `json:"bank_id"`
-	QuestionID        uuid.UUID          `json:"question_id"`
-	QuestionVersionID uuid.UUID          `json:"question_version_id"`
-	ActorUserID       uuid.NullUUID      `json:"actor_user_id"`
-	ActorKey          string             `json:"actor_key"`
-	Category          string             `json:"category"`
-	Detail            string             `json:"detail"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ID                   uuid.UUID          `json:"id"`
+	BankID               uuid.UUID          `json:"bank_id"`
+	QuestionID           uuid.UUID          `json:"question_id"`
+	QuestionVersionID    uuid.UUID          `json:"question_version_id"`
+	ActorUserID          uuid.NullUUID      `json:"actor_user_id"`
+	ActorKey             string             `json:"actor_key"`
+	Category             string             `json:"category"`
+	Detail               string             `json:"detail"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	LegacyFeedbackID     pgtype.Text        `json:"legacy_feedback_id"`
+	LegacyStatus         string             `json:"legacy_status"`
+	LegacyResolvedAt     pgtype.Timestamptz `json:"legacy_resolved_at"`
+	LegacyResolutionNote string             `json:"legacy_resolution_note"`
 }
 
 type QuizcraftFeedbackInboxDelivery struct {
@@ -99,6 +103,66 @@ type QuizcraftLearningState struct {
 	AttemptCount      int64              `json:"attempt_count"`
 	CorrectCount      int64              `json:"correct_count"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type QuizcraftLegacyFeedbackStateEvent struct {
+	ID               uuid.UUID          `json:"id"`
+	RunID            uuid.UUID          `json:"run_id"`
+	LegacyFeedbackID string             `json:"legacy_feedback_id"`
+	SourceEventID    int64              `json:"source_event_id"`
+	Status           string             `json:"status"`
+	ResolvedAt       pgtype.Timestamptz `json:"resolved_at"`
+	ResolutionNote   string             `json:"resolution_note"`
+	RecordedAt       pgtype.Timestamptz `json:"recorded_at"`
+}
+
+type QuizcraftLegacyRankingSnapshot struct {
+	ID            uuid.UUID          `json:"id"`
+	RunID         uuid.UUID          `json:"run_id"`
+	SourceEventID int64              `json:"source_event_id"`
+	Standings     []byte             `json:"standings"`
+	ContentSha256 string             `json:"content_sha256"`
+	CapturedAt    pgtype.Timestamptz `json:"captured_at"`
+}
+
+type QuizcraftMigrationEventReceipt struct {
+	SourceName    string             `json:"source_name"`
+	SourceEventID int64              `json:"source_event_id"`
+	RunID         uuid.UUID          `json:"run_id"`
+	EventType     string             `json:"event_type"`
+	AggregateKey  string             `json:"aggregate_key"`
+	PayloadSha256 string             `json:"payload_sha256"`
+	AppliedAt     pgtype.Timestamptz `json:"applied_at"`
+}
+
+type QuizcraftMigrationException struct {
+	ID             uuid.UUID          `json:"id"`
+	RunID          uuid.UUID          `json:"run_id"`
+	RecordType     string             `json:"record_type"`
+	LegacyRecordID string             `json:"legacy_record_id"`
+	ReasonCode     string             `json:"reason_code"`
+	Detail         []byte             `json:"detail"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftMigrationExceptionResolution struct {
+	ID                uuid.UUID          `json:"id"`
+	ExceptionID       uuid.UUID          `json:"exception_id"`
+	ResolvedByEventID int64              `json:"resolved_by_event_id"`
+	Resolution        string             `json:"resolution"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftMigrationRun struct {
+	ID                  uuid.UUID          `json:"id"`
+	SourceName          string             `json:"source_name"`
+	SourceCutoffEventID int64              `json:"source_cutoff_event_id"`
+	CaughtUpEventID     int64              `json:"caught_up_event_id"`
+	State               string             `json:"state"`
+	Report              []byte             `json:"report"`
+	ReportSha256        string             `json:"report_sha256"`
+	StartedAt           pgtype.Timestamptz `json:"started_at"`
+	CompletedAt         pgtype.Timestamptz `json:"completed_at"`
 }
 
 type QuizcraftPracticeAttempt struct {
@@ -209,6 +273,21 @@ type QuizcraftShadowComparison struct {
 	Outcome        string             `json:"outcome"`
 	Detail         string             `json:"detail"`
 	ComparedAt     pgtype.Timestamptz `json:"compared_at"`
+}
+
+type QuizcraftShadowGateReport struct {
+	ID                 uuid.UUID          `json:"id"`
+	WindowStart        pgtype.Timestamptz `json:"window_start"`
+	WindowEnd          pgtype.Timestamptz `json:"window_end"`
+	SampleCount        int64              `json:"sample_count"`
+	MismatchCount      int64              `json:"mismatch_count"`
+	LegacyErrorCount   int64              `json:"legacy_error_count"`
+	MismatchRate       float64            `json:"mismatch_rate"`
+	MismatchThreshold  float64            `json:"mismatch_threshold"`
+	MinimumSampleCount int64              `json:"minimum_sample_count"`
+	Decision           string             `json:"decision"`
+	Reasons            []byte             `json:"reasons"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
 type QuizcraftWorkshopAuditEvent struct {
