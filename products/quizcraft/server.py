@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import db_storage
@@ -50,6 +50,10 @@ def get_cors_origins() -> list:
 
 def get_admin_token() -> str:
     return os.getenv("ADMIN_TOKEN", "").strip()
+
+
+def legacy_read_only_enabled() -> bool:
+    return os.getenv("QUIZCRAFT_READ_ONLY", "0") == "1"
 
 
 ADMIN_SESSION_COOKIE_NAME = "quizcraft_admin_session"
@@ -727,6 +731,20 @@ def initialize_database_if_configured():
         raise RuntimeError("DATABASE_URL 已配置，但 psycopg 不可用，请安装 requirements.txt")
     db_storage.init_schema()
     print("✓ PostgreSQL 存储已初始化")
+
+
+def verify_database_read_only_if_configured():
+    if not db_storage.is_enabled():
+        print("ℹ️ 未配置 DATABASE_URL，旧服务以只读 JSON 模式运行")
+        return
+    if not db_storage.is_available():
+        raise RuntimeError("DATABASE_URL 已配置，但 psycopg 不可用，请安装 requirements.txt")
+    with db_storage.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SHOW transaction_read_only")
+            if cur.fetchone() != ("on",):
+                raise RuntimeError("旧服务只读观察期必须使用 PostgreSQL 只读角色")
+    print("✓ PostgreSQL 只读角色已验证")
 
 
 def sync_question_bank_to_db(key: str, bank: Dict[str, Any]) -> bool:
@@ -1682,9 +1700,13 @@ def parse_question_text(text: str, q_type: str, chapter_id: str, chapter_name: s
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     print("🚀 正在初始化...")
-    initialize_database_if_configured()
+    if legacy_read_only_enabled():
+        verify_database_read_only_if_configured()
+    else:
+        initialize_database_if_configured()
     load_question_banks()
-    sync_question_banks_to_db()
+    if not legacy_read_only_enabled():
+        sync_question_banks_to_db()
     load_rankings()
     load_question_stats()
     load_food_wheel_items()
@@ -1692,8 +1714,9 @@ async def lifespan(app: FastAPI):
     print(f"📚 已加载 {len(QUESTION_BANKS)} 个题库")
     yield
     print("👋 正在关闭...")
-    save_rankings()
-    save_question_stats()
+    if not legacy_read_only_enabled():
+        save_rankings()
+        save_question_stats()
 
 
 app = FastAPI(
@@ -1713,7 +1736,29 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def enforce_legacy_read_only(request: Request, call_next):
+    if (
+        legacy_read_only_enabled()
+        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and request.url.path != "/api/practice/shadow-compare"
+    ):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "旧 QuizCraft 正处于只读观察期"},
+            headers={"Retry-After": "60"},
+        )
+    return await call_next(request)
+
+
 # ============== API 路由 ==============
+
+@app.get("/api/healthz")
+async def legacy_health():
+    return {
+        "status": "ok",
+        "read_only": legacy_read_only_enabled(),
+    }
 
 @app.get("/api/admin/session")
 async def get_admin_session_status(request: Request):
@@ -3325,6 +3370,9 @@ class WebSocketProgressConfig(BaseModel):
 @app.websocket("/ws/analyze/{client_id}")
 async def websocket_analyze(websocket: WebSocket, client_id: str):
     """WebSocket 实时解析进度"""
+    if legacy_read_only_enabled():
+        await websocket.close(code=1013, reason="legacy service is read-only")
+        return
     session_token = websocket.cookies.get(ADMIN_SESSION_COOKIE_NAME)
     header_token = websocket.headers.get("x-admin-token")
     if not get_admin_token() or not (

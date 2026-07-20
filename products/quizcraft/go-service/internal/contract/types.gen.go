@@ -80,6 +80,21 @@ func (e ConsoleSummaryEnvelopeDataStatus) Valid() bool {
 	}
 }
 
+// Defines values for CutoverEvidenceEnvelopeDataDatabase.
+const (
+	Ready CutoverEvidenceEnvelopeDataDatabase = "ready"
+)
+
+// Valid indicates whether the value is a known member of the CutoverEvidenceEnvelopeDataDatabase enum.
+func (e CutoverEvidenceEnvelopeDataDatabase) Valid() bool {
+	switch e {
+	case Ready:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DifficultPracticeSelectionMode.
 const (
 	DifficultPracticeSelectionModeDifficult DifficultPracticeSelectionMode = "difficult"
@@ -347,6 +362,21 @@ func (e RankingPeriod) Valid() bool {
 	}
 }
 
+// Defines values for ReadinessEnvelopeDataStatus.
+const (
+	ReadinessEnvelopeDataStatusOk ReadinessEnvelopeDataStatus = "ok"
+)
+
+// Valid indicates whether the value is a known member of the ReadinessEnvelopeDataStatus enum.
+func (e ReadinessEnvelopeDataStatus) Valid() bool {
+	switch e {
+	case ReadinessEnvelopeDataStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkshopBankVersionState.
 const (
 	WorkshopBankVersionStateDraft     WorkshopBankVersionState = "draft"
@@ -588,6 +618,22 @@ type CreateWorkshopBank struct {
 	BankKey string `json:"bank_key"`
 	Name    string `json:"name"`
 }
+
+// CutoverEvidenceEnvelope defines model for CutoverEvidenceEnvelope.
+type CutoverEvidenceEnvelope struct {
+	Data struct {
+		Database           CutoverEvidenceEnvelopeDataDatabase `json:"database"`
+		MigrationCursor    int64                               `json:"migration_cursor"`
+		MigrationRunId     openapi_types.UUID                  `json:"migration_run_id"`
+		ReleaseSha         string                              `json:"release_sha"`
+		ShadowGateReportId openapi_types.UUID                  `json:"shadow_gate_report_id"`
+		WritesEnabled      bool                                `json:"writes_enabled"`
+	} `json:"data"`
+	RequestId RequestID `json:"request_id"`
+}
+
+// CutoverEvidenceEnvelopeDataDatabase defines model for CutoverEvidenceEnvelope.Data.Database.
+type CutoverEvidenceEnvelopeDataDatabase string
 
 // DifficultPracticeSelection defines model for DifficultPracticeSelection.
 type DifficultPracticeSelection struct {
@@ -868,6 +914,17 @@ type RankingProfileUpdate struct {
 	Visible      bool   `json:"visible"`
 }
 
+// ReadinessEnvelope defines model for ReadinessEnvelope.
+type ReadinessEnvelope struct {
+	Data struct {
+		Status ReadinessEnvelopeDataStatus `json:"status"`
+	} `json:"data"`
+	RequestId RequestID `json:"request_id"`
+}
+
+// ReadinessEnvelopeDataStatus defines model for ReadinessEnvelope.Data.Status.
+type ReadinessEnvelopeDataStatus string
+
 // RequestID defines model for RequestID.
 type RequestID = string
 
@@ -1027,6 +1084,13 @@ type GetBankRankingParams struct {
 
 // GetBankRankingParamsPeriod defines parameters for GetBankRanking.
 type GetBankRankingParamsPeriod string
+
+// GetQuizCraftCutoverEvidenceParams defines parameters for GetQuizCraftCutoverEvidence.
+type GetQuizCraftCutoverEvidenceParams struct {
+	RunId              openapi_types.UUID `form:"run_id" json:"run_id"`
+	SourceHead         int64              `form:"source_head" json:"source_head"`
+	ShadowGateReportId openapi_types.UUID `form:"shadow_gate_report_id" json:"shadow_gate_report_id"`
+}
 
 // CreateQuestionFeedbackParams defines parameters for CreateQuestionFeedback.
 type CreateQuestionFeedbackParams struct {

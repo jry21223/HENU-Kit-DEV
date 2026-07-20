@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+: "${CONFIRM_CUTOVER_SWITCH:?set CONFIRM_CUTOVER_SWITCH=yes}"
+[[ "$CONFIRM_CUTOVER_SWITCH" == "yes" ]]
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+action="${1:-}"
+release_sha="${2:-}"
+static_release_id="${3:-${2:-}}"
+go_release_root="${GO_RELEASE_ROOT:-/opt/quizcraft-go/releases}"
+go_current_link="${GO_CURRENT_LINK:-/opt/quizcraft-go/releases/current}"
+static_release_root="${STATIC_RELEASE_ROOT:-/var/www/quizcraft-releases}"
+static_current_link="${STATIC_CURRENT_LINK:-/var/www/quizcraft-current}"
+state_dir="${CUTOVER_STATE_DIR:-/var/lib/quizcraft-cutover}"
+service_name="${QUIZCRAFT_GO_SERVICE:-quizcraft-go.service}"
+nginx_config="${QUIZCRAFT_NGINX_CONFIG:-/etc/nginx/sites-enabled/superhuazai.me}"
+go_health_url="${QUIZCRAFT_GO_HEALTH_URL:-http://127.0.0.1:10089/healthz}"
+writes_env_file="${QUIZCRAFT_GO_ENV_FILE:-/etc/quizcraft-go.env}"
+cutover_verify_script="${CUTOVER_VERIFY_SCRIPT:-$script_dir/verify-cutover.sh}"
+
+portable_replace() {
+  local source="$1" target="$2"
+  if mv --help 2>&1 | grep -q -- ' --no-target-directory'; then
+    mv -Tf "$source" "$target"
+  else
+    mv -fh "$source" "$target"
+  fi
+}
+
+atomic_link() {
+  local target="$1" link="$2" next_link="${2}.next.$$"
+  ln -s "$target" "$next_link"
+  portable_replace "$next_link" "$link"
+}
+
+atomic_state() {
+  local value="$1" path="$2" next_path="${2}.next.$$"
+  printf '%s\n' "$value" > "$next_path"
+  portable_replace "$next_path" "$path"
+}
+
+validate_target() {
+  local target="$1" root="$2"
+  [[ "$target" == "$root"/* && -d "$target" ]]
+}
+
+read_writes_flag() {
+  local values
+  [[ -f "$writes_env_file" ]]
+  values="$(sed -n 's/^QUIZCRAFT_WRITES_ENABLED=\([01]\)$/\1/p' "$writes_env_file")"
+  [[ "$values" =~ ^[01]$ ]]
+  printf '%s\n' "$values"
+}
+
+set_writes_flag() {
+  python3 - "$writes_env_file" "$1" <<'PY'
+import os
+import pathlib
+import re
+import sys
+import tempfile
+
+path = pathlib.Path(sys.argv[1])
+value = sys.argv[2]
+stat = path.stat()
+updated, count = re.subn(
+    r"(?m)^QUIZCRAFT_WRITES_ENABLED=[01]$",
+    f"QUIZCRAFT_WRITES_ENABLED={value}",
+    path.read_text(),
+)
+if count != 1:
+    raise SystemExit("Go environment must contain exactly one QUIZCRAFT_WRITES_ENABLED=0|1 line")
+fd, temporary = tempfile.mkstemp(prefix=".quizcraft-go-env.", dir=path.parent)
+try:
+    os.fchmod(fd, stat.st_mode & 0o7777)
+    os.fchown(fd, stat.st_uid, stat.st_gid)
+    with os.fdopen(fd, "w") as stream:
+        stream.write(updated)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+PY
+}
+
+preflight_activation() {
+  [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]
+  [[ "$static_release_id" == "$release_sha" || "$static_release_id" =~ ^[0-9a-f]{40}-(read([1-9]|[1-9][0-9]|100)|writes)$ ]]
+  next_go="$go_release_root/$release_sha"
+  next_static="$static_release_root/$static_release_id"
+  validate_target "$next_go" "$go_release_root"
+  validate_target "$next_static" "$static_release_root"
+  [[ -x "$next_go/quizcraft-server" && -f "$next_static/index.html" ]]
+  current_writes="$(read_writes_flag)"
+  [[ "$current_writes" == "0" ]]
+  if [[ "$static_release_id" == *-writes ]]; then
+    next_phase=writes
+    [[ "$action" == "activate-writes" && -x "$cutover_verify_script" ]]
+  else
+    next_phase=read
+    [[ "$action" == "activate" ]]
+    [[ "$(cat "$state_dir/active-phase" 2>/dev/null || echo legacy)" != "writes" ]]
+  fi
+}
+
+record_previous_release() {
+  install -d -m 700 "$state_dir"
+  if [[ -L "$go_current_link" ]]; then readlink -f "$go_current_link" > "$state_dir/previous-go"; else echo ABSENT > "$state_dir/previous-go"; fi
+  if [[ -L "$static_current_link" ]]; then readlink -f "$static_current_link" > "$state_dir/previous-static"; else echo ABSENT > "$state_dir/previous-static"; fi
+  if [[ -f "$state_dir/active-phase" ]]; then cp "$state_dir/active-phase" "$state_dir/previous-phase"; else echo legacy > "$state_dir/previous-phase"; fi
+  printf '%s\n' "$current_writes" > "$state_dir/previous-writes"
+}
+
+activate_release() {
+  atomic_link "$next_go" "$go_current_link"
+  if [[ "$next_phase" == "writes" ]]; then
+    atomic_state "activating-writes:$next_static" "$state_dir/active-phase"
+    set_writes_flag 1
+  fi
+  systemctl restart "$service_name"
+  systemctl is-active --quiet "$service_name"
+  curl --fail --silent --show-error --max-time 10 "$go_health_url" >/dev/null
+  if [[ "$next_phase" == "writes" ]]; then
+    "$cutover_verify_script"
+  fi
+  nginx -t
+  systemctl reload nginx
+  atomic_link "$next_static" "$static_current_link"
+  atomic_state "$next_phase" "$state_dir/active-phase"
+}
+
+rollback_release() {
+  local active_phase previous_go previous_static previous_writes
+  active_phase="$(cat "$state_dir/active-phase" 2>/dev/null || echo legacy)"
+  if [[ "$active_phase" == "writes" ]]; then
+    echo "post-write rollback to a read or legacy release is forbidden; activate a verified write-capable release or enter maintenance" >&2
+    return 3
+  fi
+  previous_go="$(cat "$state_dir/previous-go")"
+  previous_static="$(cat "$state_dir/previous-static")"
+  previous_writes="$(cat "$state_dir/previous-writes")"
+  set_writes_flag "$previous_writes"
+  if [[ "$previous_go" == "ABSENT" ]]; then [[ ! -e "$go_current_link" && ! -L "$go_current_link" ]] || unlink "$go_current_link"; else validate_target "$previous_go" "$go_release_root"; atomic_link "$previous_go" "$go_current_link"; fi
+  if [[ "$previous_static" == "ABSENT" ]]; then [[ ! -e "$static_current_link" && ! -L "$static_current_link" ]] || unlink "$static_current_link"; else validate_target "$previous_static" "$static_release_root"; atomic_link "$previous_static" "$static_current_link"; fi
+  if [[ -n "${NGINX_ROLLBACK_CONFIG:-}" ]]; then
+    [[ "$NGINX_ROLLBACK_CONFIG" == /var/backups/quizcraft/* && -f "$NGINX_ROLLBACK_CONFIG" ]]
+    install -m 644 "$NGINX_ROLLBACK_CONFIG" "$nginx_config"
+  fi
+  cp "$state_dir/previous-phase" "$state_dir/active-phase"
+}
+
+restore_runtime() {
+  nginx -t
+  if [[ -L "$go_current_link" ]]; then
+    systemctl restart "$service_name"
+    systemctl is-active --quiet "$service_name"
+  else
+    systemctl stop "$service_name"
+  fi
+  systemctl reload nginx
+}
+
+activate_with_rollback() {
+  preflight_activation
+  record_previous_release
+  nginx -t
+  trap 'handle_activation_error $?' ERR
+  activate_release
+  trap - ERR
+}
+
+handle_activation_error() {
+  local error_status="$1" active_phase pending_static current_static
+  trap - ERR
+  set +e
+  active_phase="$(cat "$state_dir/active-phase" 2>/dev/null || echo legacy)"
+  if [[ "$active_phase" == activating-writes:* || "$active_phase" == "writes" ]]; then
+    pending_static="${active_phase#activating-writes:}"
+    current_static="$(readlink -f "$static_current_link" 2>/dev/null || true)"
+    if [[ "$active_phase" == "writes" || ( -n "$pending_static" && "$current_static" == "$pending_static" ) ]]; then
+      echo "write bundle may already be exposed; preserving the write-capable state for crash recovery" >&2
+      exit "$error_status"
+    fi
+  fi
+  rollback_release
+  restore_runtime
+  exit "$error_status"
+}
+
+recover_incomplete_write_activation() {
+  local active_phase pending_static current_static
+  active_phase="$(cat "$state_dir/active-phase" 2>/dev/null || echo legacy)"
+  [[ "$active_phase" == activating-writes:* ]] || return 0
+  pending_static="${active_phase#activating-writes:}"
+  current_static="$(readlink -f "$static_current_link" 2>/dev/null || true)"
+  if validate_target "$pending_static" "$static_release_root" && [[ "$current_static" == "$pending_static" && "$(read_writes_flag)" == "1" ]]; then
+    atomic_state writes "$state_dir/active-phase"
+    echo "Recovered an exposed QuizCraft write activation"
+    return 0
+  fi
+  rollback_release
+  restore_runtime
+  echo "Recovered an unexposed QuizCraft write activation by rolling it back"
+}
+
+recover_incomplete_write_activation
+
+case "$action" in
+  activate) activate_with_rollback ;;
+  activate-writes) activate_with_rollback ;;
+  rollback) rollback_release; restore_runtime ;;
+  *) echo "usage: $0 activate <40-char-release-sha> <read-static-release-id> | activate-writes <40-char-release-sha> <writes-static-release-id> | rollback" >&2; exit 2 ;;
+esac
+
+echo "QuizCraft $action completed"

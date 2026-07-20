@@ -47,6 +47,30 @@ paths:
       responses:
         '200': { description: Process is alive, content: { application/json: { schema: { $ref: '#/components/schemas/HealthEnvelope' } } } }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /readyz:
+    get:
+      summary: Check process and database readiness without exposing release metadata
+      tags: [Practice]
+      operationId: getQuizCraftReadiness
+      security: []
+      responses:
+        '200': { description: Process and database are ready, content: { application/json: { schema: { $ref: '#/components/schemas/ReadinessEnvelope' } } } }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/cutover-evidence:
+    get:
+      summary: Return authenticated migration, shadow, write-gate, and binary release evidence
+      tags: [Practice]
+      operationId: getQuizCraftCutoverEvidence
+      security: [{ cutoverEvidence: [] }]
+      parameters:
+        - { name: run_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: source_head, in: query, required: true, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: shadow_gate_report_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Cutover evidence is complete, content: { application/json: { schema: { $ref: '#/components/schemas/CutoverEvidenceEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/console-summary:
     get:
       summary: Return bounded QuizCraft facts for Console Overview
@@ -439,6 +463,7 @@ components:
     workshopSessionCookie: { type: apiKey, in: cookie, name: __Host-quizcraft_session, description: Encrypted HttpOnly Secure local session holding the server-only Platform Core exchange session. Every Workshop request is authorized live by the backend. }
     summaryBasic: { type: http, scheme: basic, description: Dedicated Console Gateway to QuizCraft service credential. }
     summarySignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
+    cutoverEvidence: { type: apiKey, in: header, name: X-QuizCraft-Cutover-Secret, description: Dedicated operator-only secret for release evidence. }
   parameters:
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 160 } }
     BankID: { name: bank_id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -473,6 +498,32 @@ components:
           type: object
           required: [status]
           properties: { status: { type: string, const: ok } }
+    ReadinessEnvelope:
+      type: object
+      required: [request_id, data]
+      properties:
+        request_id: { $ref: '#/components/schemas/RequestID' }
+        data:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties: { status: { type: string, const: ok } }
+    CutoverEvidenceEnvelope:
+      type: object
+      required: [request_id, data]
+      properties:
+        request_id: { $ref: '#/components/schemas/RequestID' }
+        data:
+          type: object
+          additionalProperties: false
+          required: [database, writes_enabled, release_sha, migration_run_id, migration_cursor, shadow_gate_report_id]
+          properties:
+            database: { type: string, const: ready }
+            writes_enabled: { type: boolean }
+            release_sha: { type: string, minLength: 7, maxLength: 64 }
+            migration_run_id: { type: string, format: uuid }
+            migration_cursor: { type: integer, format: int64, minimum: 0 }
+            shadow_gate_report_id: { type: string, format: uuid }
     ConsoleSummaryEnvelope:
       type: object
       required: [request_id, data]

@@ -8,6 +8,7 @@ import server
 
 def test_shadow_compare_is_authenticated_and_has_no_stats_side_effects(monkeypatch):
     monkeypatch.setenv("QUIZCRAFT_SHADOW_COMPARE_SECRET", "shadow-compare-secret-at-least-32-bytes")
+    monkeypatch.setenv("QUIZCRAFT_READ_ONLY", "1")
     monkeypatch.setitem(server.QUESTION_BANKS, "shadow_compare_test", {
         "name": "Shadow Compare Test",
         "color": "#1976d2",

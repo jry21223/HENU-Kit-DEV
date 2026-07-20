@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -44,6 +46,9 @@ type PracticeHTTPConfig struct {
 	InboxExchangeToken      string
 	WorkerContext           context.Context
 	AllowTestWorkshopClaims bool
+	WritesDisabled          bool
+	ReleaseSHA              string
+	CutoverEvidenceSecret   []byte
 }
 
 type practiceHTTP struct {
@@ -62,6 +67,9 @@ type practiceHTTP struct {
 	inboxExchangeToken      string
 	inboxDispatchWake       chan struct{}
 	allowTestWorkshopClaims bool
+	writesDisabled          bool
+	releaseSHA              string
+	cutoverEvidenceSecret   []byte
 }
 
 type practiceActor struct {
@@ -164,6 +172,9 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if config.InboxExchangeToken != "" && (len(config.InboxExchangeToken) < 32 || platformCount != len(platformValues)) {
 		return nil, errors.New("operations Inbox exchange token requires complete Platform Core configuration")
 	}
+	if len(config.CutoverEvidenceSecret) != 0 && len(config.CutoverEvidenceSecret) < 32 {
+		return nil, errors.New("cutover evidence secret must be at least 32 bytes")
+	}
 	for keyID, secret := range config.SummaryKeys {
 		if keyID == "" || len(secret) < 32 {
 			return nil, errors.New("quizCraft summary key ring is invalid")
@@ -187,7 +198,11 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if now == nil {
 		now = time.Now
 	}
-	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, allowTestWorkshopClaims: config.AllowTestWorkshopClaims}
+	releaseSHA := strings.TrimSpace(config.ReleaseSHA)
+	if releaseSHA == "" {
+		releaseSHA = "development"
+	}
+	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, allowTestWorkshopClaims: config.AllowTestWorkshopClaims, writesDisabled: config.WritesDisabled, releaseSHA: releaseSHA, cutoverEvidenceSecret: config.CutoverEvidenceSecret}
 	if platformCount == len(platformValues) {
 		platform, err := newPlatformClient(config.PlatformCoreURL, config.PlatformClientID, config.PlatformClientSecret, config.PlatformKeyID, client)
 		if err != nil {
@@ -210,33 +225,38 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	}
 	router := chi.NewRouter()
 	router.Get("/healthz", service.health)
+	router.Get("/readyz", service.readiness)
+	if len(service.cutoverEvidenceSecret) != 0 {
+		router.With(service.authenticateCutoverEvidence).Get("/api/v1/cutover-evidence", service.cutoverEvidence)
+	}
 	router.Get("/auth/login", service.startPlatformLogin)
 	router.Get("/auth/callback", service.finishPlatformLogin)
 	router.With(service.authenticateConsoleSummary).Get("/api/v1/console-summary", service.consoleSummary)
 	router.Get("/api/v1/banks", service.listBanks)
-	router.Post("/api/v1/feedback", service.createFeedback)
+	writes := router.With(service.requireWritesEnabled)
+	writes.Post("/api/v1/feedback", service.createFeedback)
 	router.Get("/api/v1/workshop/banks", service.listWorkshopBanks)
 	router.Get("/api/v1/workshop/catalog", service.listWorkshopCatalog)
-	router.Post("/api/v1/workshop/banks", service.createWorkshopBank)
-	router.Post("/api/v1/workshop/banks/{bank_id}/versions", service.createWorkshopVersion)
+	writes.Post("/api/v1/workshop/banks", service.createWorkshopBank)
+	writes.Post("/api/v1/workshop/banks/{bank_id}/versions", service.createWorkshopVersion)
 	router.Get("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}", service.getWorkshopVersion)
-	router.Post("/api/v1/workshop/banks/{bank_id}/imports", service.importWorkshopVersion)
-	router.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/validate", service.validateWorkshopVersion)
-	router.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/publish", service.publishWorkshopVersion)
-	router.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/unpublish", service.unpublishWorkshopVersion)
-	router.Post("/api/v1/workshop/banks/{bank_id}/rollback", service.rollbackWorkshopBank)
+	writes.Post("/api/v1/workshop/banks/{bank_id}/imports", service.importWorkshopVersion)
+	writes.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/validate", service.validateWorkshopVersion)
+	writes.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/publish", service.publishWorkshopVersion)
+	writes.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/unpublish", service.unpublishWorkshopVersion)
+	writes.Post("/api/v1/workshop/banks/{bank_id}/rollback", service.rollbackWorkshopBank)
 	router.Get("/api/v1/workshop/feedback/{feedback_id}", service.getWorkshopFeedback)
 	router.Get("/api/v1/favorites", service.listFavoriteFolders)
 	router.Get("/api/v1/banks/{bank_id}/favorites", service.listFavoriteQuestions)
-	router.Put("/api/v1/banks/{bank_id}/favorites/{question_id}", service.favoriteQuestion)
-	router.Delete("/api/v1/banks/{bank_id}/favorites/{question_id}", service.unfavoriteQuestion)
-	router.Post("/api/v1/banks/{bank_id}/favorites/practice-sessions", service.createFavoritesSession)
+	writes.Put("/api/v1/banks/{bank_id}/favorites/{question_id}", service.favoriteQuestion)
+	writes.Delete("/api/v1/banks/{bank_id}/favorites/{question_id}", service.unfavoriteQuestion)
+	writes.Post("/api/v1/banks/{bank_id}/favorites/practice-sessions", service.createFavoritesSession)
 	router.Get("/api/v1/rankings/overall", service.overallRanking)
 	router.Get("/api/v1/rankings/legacy", service.legacyRanking)
 	router.Get("/api/v1/banks/{bank_id}/rankings", service.bankRanking)
-	router.Patch("/api/v1/ranking-profile", service.updateRankingProfile)
-	router.Post("/api/v1/practice/sessions", service.createSession)
-	router.Post("/api/v1/practice/sessions/{session_id}/answers", service.submitAnswer)
+	writes.Patch("/api/v1/ranking-profile", service.updateRankingProfile)
+	writes.Post("/api/v1/practice/sessions", service.createSession)
+	writes.Post("/api/v1/practice/sessions/{session_id}/answers", service.submitAnswer)
 	router.Get("/api/v1/operations/{operation_kind}", service.operationStatus)
 	router.Get("/api/v1/learning-state", service.learningState)
 	if service.inboxExchangeToken != "" {
@@ -688,6 +708,72 @@ func (service *practiceHTTP) createFavoritesSession(writer http.ResponseWriter, 
 
 func (service *practiceHTTP) health(writer http.ResponseWriter, _ *http.Request) {
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: map[string]string{"status": "ok"}})
+}
+
+func (service *practiceHTTP) readiness(writer http.ResponseWriter, request *http.Request) {
+	if err := service.database.Ping(request.Context()); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft database is not ready")
+		return
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: map[string]string{"status": "ok"}})
+}
+
+func (service *practiceHTTP) authenticateCutoverEvidence(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		provided := request.Header.Get("X-QuizCraft-Cutover-Secret")
+		if len(provided) != len(service.cutoverEvidenceSecret) || subtle.ConstantTimeCompare([]byte(provided), service.cutoverEvidenceSecret) != 1 {
+			writeError(writer, http.StatusUnauthorized, "cutover_evidence_unauthorized", "cutover evidence authentication failed")
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func (service *practiceHTTP) cutoverEvidence(writer http.ResponseWriter, request *http.Request) {
+	runID, err := uuid.Parse(request.URL.Query().Get("run_id"))
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "invalid_cutover_evidence", "run_id must be a UUID")
+		return
+	}
+	shadowGateID, err := uuid.Parse(request.URL.Query().Get("shadow_gate_report_id"))
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "invalid_cutover_evidence", "shadow_gate_report_id must be a UUID")
+		return
+	}
+	expectedHead, err := strconv.ParseInt(request.URL.Query().Get("source_head"), 10, 64)
+	if err != nil || expectedHead < 0 {
+		writeError(writer, http.StatusBadRequest, "invalid_cutover_evidence", "source_head must be a non-negative integer")
+		return
+	}
+	var cursor int64
+	if err := service.database.QueryRow(request.Context(), `SELECT r.caught_up_event_id FROM quizcraft_migration_runs r WHERE r.id=$1 AND r.state='passed' AND COALESCE((r.report->>'content_reconciled')::boolean,false) AND NOT EXISTS(SELECT 1 FROM quizcraft_migration_exceptions e LEFT JOIN quizcraft_migration_exception_resolutions x ON x.exception_id=e.id WHERE e.run_id=r.id AND x.exception_id IS NULL)`, runID).Scan(&cursor); err != nil || cursor != expectedHead {
+		writeError(writer, http.StatusServiceUnavailable, "migration_evidence_missing", "a passed QuizCraft migration run is required")
+		return
+	}
+	var gateExists bool
+	if err := service.database.QueryRow(request.Context(), `SELECT EXISTS(SELECT 1 FROM quizcraft_shadow_gate_reports g JOIN quizcraft_migration_runs r ON r.id=$2 WHERE g.id=$1 AND g.decision='pass' AND g.window_end<=now() AND g.window_end>=r.completed_at AND g.window_end>=now()-interval '24 hours')`, shadowGateID, runID).Scan(&gateExists); err != nil || !gateExists {
+		writeError(writer, http.StatusServiceUnavailable, "shadow_evidence_missing", "a passing QuizCraft shadow gate is required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: map[string]any{
+		"database":              "ready",
+		"writes_enabled":        !service.writesDisabled,
+		"release_sha":           service.releaseSHA,
+		"migration_run_id":      runID,
+		"migration_cursor":      cursor,
+		"shadow_gate_report_id": shadowGateID,
+	}})
+}
+
+func (service *practiceHTTP) requireWritesEnabled(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if service.writesDisabled {
+			writer.Header().Set("Retry-After", "60")
+			writeError(writer, http.StatusServiceUnavailable, "writes_disabled", "QuizCraft write cutover is not enabled")
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
 }
 
 func (service *practiceHTTP) listBanks(writer http.ResponseWriter, request *http.Request) {
