@@ -12,8 +12,9 @@
     "build:console": "pnpm --filter @henukit/console run build",
     "build:quizcraft": "pnpm --filter quiz-app run build",
     "lint": "pnpm --filter @final-review/web run lint && pnpm --filter @henukit/study-legacy-admin run lint && pnpm --filter @henukit/console run lint && pnpm --filter quiz-app run lint",
-    "test": "pnpm run test:libraryctl && pnpm run test:web-ui && pnpm run test:console && pnpm run test:quizcraft",
+    "test": "pnpm run test:libraryctl && pnpm run test:ops && pnpm run test:web-ui && pnpm run test:console && pnpm run test:quizcraft",
     "test:libraryctl": "node --test scripts/libraryctl/tests/*.test.mjs",
+    "test:ops": "node --test scripts/ops/tests/*.test.mjs",
     "test:web-ui": "pnpm --filter @final-review/web run test:e2e:ui",
     "test:console": "pnpm --filter @henukit/console run test && pnpm --filter @henukit/console run test:e2e",
     "test:quizcraft": "pnpm --filter quiz-app run test:syntax"
