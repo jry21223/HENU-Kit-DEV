@@ -27,6 +27,12 @@ exit 0
 EOF
 cat > "$test_root/bin/curl" <<'EOF'
 #!/usr/bin/env bash
+count="$(cat "$HEALTH_COUNTER_FILE" 2>/dev/null || echo 0)"
+count=$((count + 1))
+printf '%s\n' "$count" > "$HEALTH_COUNTER_FILE"
+if (( count <= ${FAIL_HEALTH_ATTEMPTS:-0} )); then
+  exit 1
+fi
 [[ "${FAIL_HEALTH:-0}" != "1" ]]
 EOF
 cat > "$test_root/bin/systemctl" <<'EOF'
@@ -59,6 +65,8 @@ chmod +x "$test_root/bin/nginx" "$test_root/bin/curl" "$test_root/bin/systemctl"
 run_switch() {
   PATH="$test_root/bin:$PATH" \
   FAIL_HEALTH="${FAIL_HEALTH:-0}" \
+  FAIL_HEALTH_ATTEMPTS="${FAIL_HEALTH_ATTEMPTS:-0}" \
+  HEALTH_COUNTER_FILE="$test_root/health-attempts" \
   FAIL_VERIFY="${FAIL_VERIFY:-0}" \
   FAIL_PHASE_COMMIT="${FAIL_PHASE_COMMIT:-0}" \
   CRASH_AFTER_WRITE_FLAG="${CRASH_AFTER_WRITE_FLAG:-0}" \
@@ -96,6 +104,11 @@ if run_switch activate "$missing_sha"; then
 fi
 test "$(readlink -f "$test_root/go/current")" = "$test_root/go/$old_sha"
 test "$(readlink -f "$test_root/static/current")" = "$test_root/static/$old_sha"
+
+printf '0\n' > "$test_root/health-attempts"
+FAIL_HEALTH_ATTEMPTS=2 run_switch activate "$new_sha" "$read_release"
+test "$(cat "$test_root/health-attempts")" = 3
+run_switch rollback
 
 if FAIL_HEALTH=1 run_switch activate "$new_sha" "$read_release"; then
   echo "expected injected health failure" >&2

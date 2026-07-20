@@ -53,6 +53,18 @@ read_writes_flag() {
   printf '%s\n' "$values"
 }
 
+wait_for_go_health() {
+  local attempt
+  for attempt in {1..20}; do
+    if curl --fail --silent --show-error --max-time 1 "$go_health_url" >/dev/null; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "QuizCraft Go health check did not become ready after restart" >&2
+  return 1
+}
+
 set_writes_flag() {
   python3 - "$writes_env_file" "$1" <<'PY'
 import os
@@ -122,7 +134,7 @@ activate_release() {
   fi
   systemctl restart "$service_name"
   systemctl is-active --quiet "$service_name"
-  curl --fail --silent --show-error --max-time 10 "$go_health_url" >/dev/null
+  wait_for_go_health
   if [[ "$next_phase" == "writes" ]]; then
     "$cutover_verify_script"
   fi
