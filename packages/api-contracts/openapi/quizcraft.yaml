@@ -203,6 +203,15 @@ paths:
         '200': { description: Overall weekly by default or lifetime ranking, content: { application/json: { schema: { $ref: '#/components/schemas/RankingEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/rankings/legacy:
+    get:
+      summary: Get the immutable pre-migration ranking snapshot without legacy identifiers
+      tags: [Ranking]
+      operationId: getLegacyRanking
+      security: []
+      responses:
+        '200': { description: Read-only pre-migration standings, content: { application/json: { schema: { $ref: '#/components/schemas/LegacyRankingEnvelope' } } } }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks/{bank_id}/rankings:
     get:
       summary: Get one bank's public ranking
@@ -652,6 +661,24 @@ components:
         visible: { type: boolean }
         nickname: { type: string, minLength: 1, maxLength: 32 }
         system_avatar: { type: string, pattern: '^[a-z0-9_-]+$' }
+    LegacyRankingPage:
+      type: object
+      additionalProperties: false
+      required: [captured_at, content_sha256, entries]
+      properties:
+        captured_at: { type: [string, 'null'], format: date-time }
+        content_sha256: { type: string, pattern: '^(|[0-9a-f]{64})$' }
+        entries:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [rank, name, correct, total]
+            properties:
+              rank: { type: integer, minimum: 1 }
+              name: { type: string, minLength: 1 }
+              correct: { type: integer, minimum: 0 }
+              total: { type: integer, minimum: 0 }
     QuestionFeedback:
       type: object
       required: [bank_id, question_id, question_version_id, category, detail]
@@ -839,6 +866,10 @@ components:
       type: object
       required: [request_id, data]
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/RankingPage' } }
+    LegacyRankingEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/LegacyRankingPage' } }
     ImportReportEnvelope:
       type: object
       required: [request_id, data]

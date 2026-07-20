@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { LegacyRankingEnvelope } from '../models/LegacyRankingEnvelope';
 import type { OperationEnvelope } from '../models/OperationEnvelope';
 import type { RankingEnvelope } from '../models/RankingEnvelope';
 import type { RankingProfileUpdate } from '../models/RankingProfileUpdate';
@@ -27,6 +28,20 @@ export class RankingService {
             },
             errors: {
                 400: `Invalid request`,
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
+    /**
+     * Get the immutable pre-migration ranking snapshot without legacy identifiers
+     * @returns LegacyRankingEnvelope Read-only pre-migration standings
+     * @throws ApiError
+     */
+    public static getLegacyRanking(): CancelablePromise<LegacyRankingEnvelope> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/rankings/legacy',
+            errors: {
                 503: `PostgreSQL or a required service is unavailable`,
             },
         });

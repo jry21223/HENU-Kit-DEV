@@ -8,7 +8,8 @@ on:
       - products/quizcraft/README.md
       - products/quizcraft/web-app/**
       - products/quizcraft/server.py
-      - products/quizcraft/tests/test_shadow_compare.py
+      - products/quizcraft/db_storage.py
+      - products/quizcraft/tests/**
       - products/quizcraft/deploy/quizcraft-cn.env.example
       - packages/api-contracts/openapi/quizcraft.yaml
       - packages/api-contracts/README.md
@@ -22,7 +23,8 @@ on:
       - products/quizcraft/README.md
       - products/quizcraft/web-app/**
       - products/quizcraft/server.py
-      - products/quizcraft/tests/test_shadow_compare.py
+      - products/quizcraft/db_storage.py
+      - products/quizcraft/tests/**
       - products/quizcraft/deploy/quizcraft-cn.env.example
       - packages/api-contracts/openapi/quizcraft.yaml
       - packages/api-contracts/README.md
@@ -71,6 +73,7 @@ jobs:
           for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
           test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT to_regclass('public.quizcraft_banks') IS NOT NULL AND to_regclass('public.quizcraft_practice_attempts') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
           pg_dump -h localhost -U quizcraft -d quizcraft_test --format=custom --file=/tmp/quizcraft-recovery.dump
+          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000006_reconciliation.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000005_workshop_feedback.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000004_ranking.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000003_favorites.down.sql
@@ -79,7 +82,7 @@ jobs:
           for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
           createdb -h localhost -U quizcraft quizcraft_recovery
           pg_restore -h localhost -U quizcraft -d quizcraft_recovery --no-owner /tmp/quizcraft-recovery.dump
-          test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL AND to_regclass('public.quizcraft_practice_sessions') IS NOT NULL AND to_regclass('public.quizcraft_favorites') IS NOT NULL AND to_regclass('public.quizcraft_practice_session_claims') IS NOT NULL AND to_regclass('public.quizcraft_ranking_profiles') IS NOT NULL AND to_regclass('public.quizcraft_ranking_settlement_events') IS NOT NULL AND to_regclass('public.quizcraft_workshop_audit_events') IS NOT NULL AND to_regclass('public.quizcraft_feedbacks') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_outbox') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_deliveries') IS NOT NULL AND to_regclass('public.quizcraft_service_nonces') IS NOT NULL")" = t
+          test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL AND to_regclass('public.quizcraft_practice_sessions') IS NOT NULL AND to_regclass('public.quizcraft_favorites') IS NOT NULL AND to_regclass('public.quizcraft_practice_session_claims') IS NOT NULL AND to_regclass('public.quizcraft_ranking_profiles') IS NOT NULL AND to_regclass('public.quizcraft_ranking_settlement_events') IS NOT NULL AND to_regclass('public.quizcraft_workshop_audit_events') IS NOT NULL AND to_regclass('public.quizcraft_feedbacks') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_outbox') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_deliveries') IS NOT NULL AND to_regclass('public.quizcraft_service_nonces') IS NOT NULL AND to_regclass('public.quizcraft_migration_runs') IS NOT NULL AND to_regclass('public.quizcraft_migration_exceptions') IS NOT NULL AND to_regclass('public.quizcraft_migration_exception_resolutions') IS NOT NULL AND to_regclass('public.quizcraft_legacy_feedback_state_events') IS NOT NULL AND to_regclass('public.quizcraft_legacy_ranking_snapshots') IS NOT NULL AND to_regclass('public.quizcraft_migration_event_receipts') IS NOT NULL AND to_regclass('public.quizcraft_shadow_gate_reports') IS NOT NULL")" = t
       - name: Verify QuizCraft contract
         run: |
           set -euo pipefail
@@ -104,14 +107,17 @@ jobs:
           go build -o /tmp/quizcraft-importbank ./cmd/importbank
           go build -o /tmp/quizcraft-server ./cmd/server
           go build -o /tmp/quizcraft-settleranking ./cmd/settleranking
+          go build -o /tmp/quizcraft-reconcile ./cmd/reconcile
           DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft' /tmp/quizcraft-importbank -h 2>&1 | tee /tmp/importbank-help.txt
           ! grep -F 'DO_NOT_PRINT' /tmp/importbank-help.txt
+          DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft' LEGACY_DATABASE_URL='postgres://legacy:DO_NOT_PRINT_LEGACY@localhost/legacy' /tmp/quizcraft-reconcile -h 2>&1 | tee /tmp/reconcile-help.txt
+          ! grep -E 'DO_NOT_PRINT|DO_NOT_PRINT_LEGACY' /tmp/reconcile-help.txt
       - name: Verify existing FastAPI remains intact
         run: |
           python -m pip install -r products/quizcraft/requirements.txt pytest
           python -m py_compile products/quizcraft/server.py products/quizcraft/db_storage.py
           cd products/quizcraft
-          PYTHONPATH=. python -m pytest -q tests/test_shadow_compare.py
+          PYTHONPATH=. python -m pytest -q tests/test_shadow_compare.py tests/test_migration_event_outbox.py tests/test_feedback_migration_boundary.py
       - name: Verify React generated-client shadow flow
         run: |
           set -euo pipefail

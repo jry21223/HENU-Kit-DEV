@@ -232,6 +232,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	router.Delete("/api/v1/banks/{bank_id}/favorites/{question_id}", service.unfavoriteQuestion)
 	router.Post("/api/v1/banks/{bank_id}/favorites/practice-sessions", service.createFavoritesSession)
 	router.Get("/api/v1/rankings/overall", service.overallRanking)
+	router.Get("/api/v1/rankings/legacy", service.legacyRanking)
 	router.Get("/api/v1/banks/{bank_id}/rankings", service.bankRanking)
 	router.Patch("/api/v1/ranking-profile", service.updateRankingProfile)
 	router.Post("/api/v1/practice/sessions", service.createSession)
