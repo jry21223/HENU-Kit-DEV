@@ -6,22 +6,18 @@ HC-17 adds the Practice Core shadow HTTP process. It serves guest sessions, serv
 
 HC-18 and HC-19 add authenticated per-bank favorites and public rankings derived from immutable Practice Attempts. Ranking defaults to the current UTC Monday-to-Monday week and exposes only the controlled nickname, system avatar, and correct-answer count of opted-in profiles. The four allowed avatars are `scholar-blue`, `coder-green`, `reader-amber`, and `owl-purple`.
 
-Apply the migration, then import one named file explicitly:
+The historical bootstrap importer is no longer an activation path. `cmd/importbank` now exits with a migration message so an operator cannot bypass Workshop review. Apply migrations, start the service, then use the authenticated Workshop import endpoint:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/migrations/000001_quizcraft_content.up.sql
-go run ./cmd/importbank \
-  --bank-key programming-basics \
-  --file /absolute/path/to/bank.json
+for migration in db/migrations/*.up.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"; done
+go run ./cmd/server
 ```
 
-Set `DATABASE_URL` in the process environment as shown above. The optional `--database-url` override is intended only for disposable local databases because command arguments may be visible in shell history and process listings.
-
-The command prints a JSON report with source/content SHA-256 hashes, stable bank/question IDs, immutable version IDs, and question/type/chapter/answer counts. Validation failures return a non-zero status and write no bank content.
+The Workshop import response contains source/content SHA-256 hashes, stable bank/question IDs, immutable version IDs, and question/type/chapter/answer counts. Validation failures write no bank content. An accepted import remains a draft until an authorized operator reads the full version, records human validation, and separately publishes it.
 
 Stable IDs use a fixed UUIDv5 namespace: `bank_key` determines the Bank ID and the pair of Bank ID plus source question ID determines the Question ID. Operators must therefore treat both source keys as immutable identities. Semantic content and answer hashes determine new immutable version IDs without changing those stable identities.
 
-PostgreSQL is the only runtime source of truth for this baseline. No Go startup path scans JSON directories or falls back to local files. JSON is read only when an operator invokes `importbank` with `--file`.
+PostgreSQL is the only runtime source of truth. No Go startup path scans JSON directories or falls back to local files; JSON enters the new runtime only through the scoped Workshop endpoint.
 
 Run the shadow process after applying every migration and configuring `.env.example`:
 
@@ -37,7 +33,17 @@ go run ./cmd/settleranking
 
 The optional `-at` RFC3339 instant is for deterministic recovery/testing. Settlement rows contain only the period, scope, `correct_answer_count` standings, and audit timestamps; they cannot be updated or deleted and do not grant points, membership, entitlements, or other rewards.
 
-An unauthenticated browser receives an unguessable `quizcraft_anonymous` HttpOnly, Secure, SameSite=Lax cookie and can practice without creating a Core user. After a server-side Platform identity exchange, the business site supplies its short-lived QuizCraft-local session through the HttpOnly `quizcraft_session` cookie; trusted non-browser clients may use the equivalent local bearer JWT. Platform Core exchange tokens and client-provided legacy user IDs are never accepted directly as identity evidence. Every session creation and answer submission requires an `Idempotency-Key`; `(session, question)` uniqueness and transaction locks prevent concurrent duplicate scoring.
+## Workshop and correction feedback
+
+`/auth/login` and `/auth/callback` perform state-bound S256 PKCE and a server-side single-use code exchange with Platform Core. The exchange token is held only in an encrypted `__Host-quizcraft_session` HttpOnly/Secure cookie. Every `/api/v1/workshop/**` request asks Platform Core for the exact `quizcraft.workshop.read`, `.write`, or `.publish` permission and QuizCraft product/matching bank resource Scope, so revocation is not hidden by local claims; the Go service does not read `ADMIN_TOKEN`. Configure the `PLATFORM_CORE_*`, `QUIZCRAFT_PLATFORM_*`, `QUIZCRAFT_PUBLIC_URL`, and 32-byte `QUIZCRAFT_SESSION_ENCRYPTION_KEY` values from `.env.example` together.
+
+Imported content is sealed as an immutable draft. `GET /api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}` supplies the authorized full question/answer review view, and publication remains unavailable until an explicit human-validation event. Create, validate, publish, unpublish, and rollback commands use actor-scoped idempotency, optimistic `expected_version`, one database transaction, and append-only audit events.
+
+`POST /api/v1/feedback` persists only a stable `(bank_id, question_id, question_version_id)` correction reference with full detail in QuizCraft. Its transactional Operations Inbox outbox contains only the feedback reference, QuizCraft deep link, category, and priority metadata; a bounded dispatcher delivers those fields to Platform Core with a rotated `QUIZCRAFT_INBOX_EXCHANGE_TOKEN` and idempotent retries. The full correction remains available only from QuizCraft's scoped deep-link endpoint.
+
+`GET /api/v1/console-summary` exposes only published-bank, draft-validation, and pending Inbox-delivery counts. It requires the Console Gateway's dedicated Basic + HMAC credential, stores each nonce atomically to reject replay, and preserves the signed child `X-Request-Id`; the Console links back to `/extract` for every editing action. Enable the Workshop independently with `VITE_QUIZCRAFT_WORKSHOP=1`; `VITE_QUIZCRAFT_GO_SHADOW` continues to control Practice shadow traffic only.
+
+An unauthenticated browser receives an unguessable `quizcraft_anonymous` HttpOnly, Secure, SameSite=Lax cookie and can practice without creating a Core user. Legacy short-lived local sessions remain limited to learner state during the shadow phase; when Platform Core is configured they cannot authorize Workshop operations. Every session creation and answer submission requires an `Idempotency-Key`; `(session, question)` uniqueness and transaction locks prevent concurrent duplicate scoring.
 
 Generate and verify contract bindings:
 

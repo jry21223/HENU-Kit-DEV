@@ -204,7 +204,7 @@ func TestPracticeHTTPScoresImportedChoiceTextAnswers(t *testing.T) {
 	questions := bank["questions"].([]any)
 	questions[0].(map[string]any)["answer"] = "2"
 	questions[1].(map[string]any)["answer"] = []any{"2", "4"}
-	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	service, err := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func practicePool(t *testing.T) *pgxpool.Pool {
 
 func importPracticeBank(t *testing.T, pool *pgxpool.Pool, key string) quizcraft.ImportReport {
 	t.Helper()
-	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	service, err := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	if err != nil {
 		t.Fatal(err)
 	}

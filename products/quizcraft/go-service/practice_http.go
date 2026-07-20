@@ -27,27 +27,57 @@ import (
 )
 
 type PracticeHTTPConfig struct {
-	Database            *pgxpool.Pool
-	AuthHMACSecret      []byte
-	LegacyBaseURL       string
-	LegacyCompareSecret string
-	HTTPClient          *http.Client
-	Now                 func() time.Time
+	Database                *pgxpool.Pool
+	AuthHMACSecret          []byte
+	LegacyBaseURL           string
+	LegacyCompareSecret     string
+	HTTPClient              *http.Client
+	Now                     func() time.Time
+	SummaryClientID         string
+	SummaryKeys             map[string]string
+	PlatformCoreURL         string
+	PlatformClientID        string
+	PlatformClientSecret    string
+	PlatformKeyID           string
+	PublicURL               string
+	SessionEncryptionKey    []byte
+	InboxExchangeToken      string
+	WorkerContext           context.Context
+	AllowTestWorkshopClaims bool
 }
 
 type practiceHTTP struct {
-	database            *pgxpool.Pool
-	queries             *store.Queries
-	authHMACSecret      []byte
-	legacyBaseURL       string
-	legacyCompareSecret string
-	httpClient          *http.Client
-	now                 func() time.Time
+	database                *pgxpool.Pool
+	queries                 *store.Queries
+	authHMACSecret          []byte
+	legacyBaseURL           string
+	legacyCompareSecret     string
+	httpClient              *http.Client
+	now                     func() time.Time
+	summaryClientID         string
+	summaryKeys             map[string]string
+	platform                *platformClient
+	sessionCodec            *quizcraftSessionCodec
+	publicURL               string
+	inboxExchangeToken      string
+	inboxDispatchWake       chan struct{}
+	allowTestWorkshopClaims bool
 }
 
 type practiceActor struct {
-	userID *uuid.UUID
-	key    string
+	userID               *uuid.UUID
+	key                  string
+	permissions          map[string]bool
+	scopes               []workshopScope
+	exchangeToken        string
+	platformProductScope bool
+}
+
+type workshopScope struct {
+	Kind         string
+	ProductCode  string
+	ResourceType string
+	ResourceID   string
 }
 
 type createSessionRequest struct {
@@ -118,6 +148,27 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if len(config.AuthHMACSecret) < 32 {
 		return nil, errors.New("practice auth HMAC secret must be at least 32 bytes")
 	}
+	if (config.SummaryClientID == "") != (len(config.SummaryKeys) == 0) {
+		return nil, errors.New("QuizCraft summary client and key ring must be configured together")
+	}
+	platformValues := []bool{config.PlatformCoreURL != "", config.PlatformClientID != "", config.PlatformClientSecret != "", config.PlatformKeyID != "", config.PublicURL != "", len(config.SessionEncryptionKey) != 0}
+	platformCount := 0
+	for _, configured := range platformValues {
+		if configured {
+			platformCount++
+		}
+	}
+	if platformCount != 0 && platformCount != len(platformValues) {
+		return nil, errors.New("platform Core OAuth configuration must be complete")
+	}
+	if config.InboxExchangeToken != "" && (len(config.InboxExchangeToken) < 32 || platformCount != len(platformValues)) {
+		return nil, errors.New("operations Inbox exchange token requires complete Platform Core configuration")
+	}
+	for keyID, secret := range config.SummaryKeys {
+		if keyID == "" || len(secret) < 32 {
+			return nil, errors.New("quizCraft summary key ring is invalid")
+		}
+	}
 	legacyBaseURL := strings.TrimRight(strings.TrimSpace(config.LegacyBaseURL), "/")
 	if legacyBaseURL != "" {
 		parsed, err := url.Parse(legacyBaseURL)
@@ -136,10 +187,45 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if now == nil {
 		now = time.Now
 	}
-	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now}
+	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, allowTestWorkshopClaims: config.AllowTestWorkshopClaims}
+	if platformCount == len(platformValues) {
+		platform, err := newPlatformClient(config.PlatformCoreURL, config.PlatformClientID, config.PlatformClientSecret, config.PlatformKeyID, client)
+		if err != nil {
+			return nil, err
+		}
+		codec, err := newQuizcraftSessionCodec(config.SessionEncryptionKey)
+		if err != nil {
+			return nil, errors.New("invalid QuizCraft session encryption key")
+		}
+		publicURL := strings.TrimRight(config.PublicURL, "/")
+		parsed, err := url.Parse(publicURL)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return nil, errors.New("QuizCraft public URL must be an HTTPS origin")
+		}
+		service.platform, service.sessionCodec, service.publicURL = platform, codec, publicURL
+		service.inboxExchangeToken = config.InboxExchangeToken
+		if config.InboxExchangeToken != "" {
+			service.inboxDispatchWake = make(chan struct{}, 1)
+		}
+	}
 	router := chi.NewRouter()
 	router.Get("/healthz", service.health)
+	router.Get("/auth/login", service.startPlatformLogin)
+	router.Get("/auth/callback", service.finishPlatformLogin)
+	router.With(service.authenticateConsoleSummary).Get("/api/v1/console-summary", service.consoleSummary)
 	router.Get("/api/v1/banks", service.listBanks)
+	router.Post("/api/v1/feedback", service.createFeedback)
+	router.Get("/api/v1/workshop/banks", service.listWorkshopBanks)
+	router.Get("/api/v1/workshop/catalog", service.listWorkshopCatalog)
+	router.Post("/api/v1/workshop/banks", service.createWorkshopBank)
+	router.Post("/api/v1/workshop/banks/{bank_id}/versions", service.createWorkshopVersion)
+	router.Get("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}", service.getWorkshopVersion)
+	router.Post("/api/v1/workshop/banks/{bank_id}/imports", service.importWorkshopVersion)
+	router.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/validate", service.validateWorkshopVersion)
+	router.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/publish", service.publishWorkshopVersion)
+	router.Post("/api/v1/workshop/banks/{bank_id}/versions/{bank_version_id}/unpublish", service.unpublishWorkshopVersion)
+	router.Post("/api/v1/workshop/banks/{bank_id}/rollback", service.rollbackWorkshopBank)
+	router.Get("/api/v1/workshop/feedback/{feedback_id}", service.getWorkshopFeedback)
 	router.Get("/api/v1/favorites", service.listFavoriteFolders)
 	router.Get("/api/v1/banks/{bank_id}/favorites", service.listFavoriteQuestions)
 	router.Put("/api/v1/banks/{bank_id}/favorites/{question_id}", service.favoriteQuestion)
@@ -152,6 +238,13 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	router.Post("/api/v1/practice/sessions/{session_id}/answers", service.submitAnswer)
 	router.Get("/api/v1/operations/{operation_kind}", service.operationStatus)
 	router.Get("/api/v1/learning-state", service.learningState)
+	if service.inboxExchangeToken != "" {
+		workerContext := config.WorkerContext
+		if workerContext == nil {
+			workerContext = context.Background()
+		}
+		go service.runInboxDispatcher(workerContext)
+	}
 	return router, nil
 }
 
@@ -166,7 +259,7 @@ func (service *practiceHTTP) operationStatus(writer http.ResponseWriter, request
 		return
 	}
 	kind := chi.URLParam(request, "operation_kind")
-	if kind != "create_practice_session" && kind != "submit_practice_answer" && kind != "favorite_question" && kind != "unfavorite_question" && kind != "create_favorites_session" && kind != "update_ranking_profile" {
+	if kind != "create_practice_session" && kind != "submit_practice_answer" && kind != "favorite_question" && kind != "unfavorite_question" && kind != "create_favorites_session" && kind != "update_ranking_profile" && kind != "create_feedback" && kind != "create_workshop_bank" && kind != "create_bank_version" && kind != "import_bank" && kind != "validate_version" && kind != "publish_version" && kind != "unpublish_version" && kind != "rollback_bank" {
 		writeError(writer, http.StatusNotFound, "operation_unknown", "operation is not implemented by Practice Core")
 		return
 	}
@@ -185,10 +278,16 @@ func (service *practiceHTTP) operationStatus(writer http.ResponseWriter, request
 	}
 	var original struct {
 		RequestID string `json:"request_id"`
+		Data      struct {
+			OperationID uuid.UUID `json:"operation_id"`
+		} `json:"data"`
 	}
 	_ = json.Unmarshal([]byte(result.ResponseBody), &original)
+	if original.Data.OperationID == uuid.Nil {
+		original.Data.OperationID = uuid.NewSHA1(result.ResourceID.UUID, []byte(kind+":"+idempotencyKey))
+	}
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: map[string]any{
-		"operation_id": uuid.NewSHA1(result.ResourceID.UUID, []byte(kind+":"+idempotencyKey)),
+		"operation_id": original.Data.OperationID,
 		"state":        "succeeded", "idempotency_key": idempotencyKey,
 		"request_id": original.RequestID, "resource_id": result.ResourceID.UUID,
 	}})
@@ -888,6 +987,19 @@ func (service *practiceHTTP) learningState(writer http.ResponseWriter, request *
 }
 
 func (service *practiceHTTP) actor(writer http.ResponseWriter, request *http.Request) (practiceActor, int, error) {
+	if service.sessionCodec != nil {
+		if cookie, err := request.Cookie("__Host-quizcraft_session"); err == nil {
+			var session localPlatformSession
+			if err := service.sessionCodec.decode(cookie.Value, "quizcraft-platform-session-v1", &session); err != nil || service.now().After(session.ExpiresAt) || len(session.ExchangeToken) < 32 {
+				return practiceActor{}, http.StatusUnauthorized, errors.New("platform Core session is invalid or expired")
+			}
+			userID, err := uuid.Parse(session.UserID)
+			if err != nil {
+				return practiceActor{}, http.StatusUnauthorized, errors.New("platform Core session user is invalid")
+			}
+			return practiceActor{userID: &userID, key: "user:" + userID.String(), exchangeToken: session.ExchangeToken}, 0, nil
+		}
+	}
 	header := strings.TrimSpace(request.Header.Get("Authorization"))
 	if header != "" {
 		if !strings.HasPrefix(header, "Bearer ") {
@@ -917,14 +1029,36 @@ func (service *practiceHTTP) actor(writer http.ResponseWriter, request *http.Req
 }
 
 func (service *practiceHTTP) signedInActor(tokenText string) (practiceActor, int, error) {
-	userID, err := service.parseSubject(tokenText, "quizcraft-session")
+	claims, userID, err := service.parseClaims(tokenText, "quizcraft-session")
 	if err != nil {
 		return practiceActor{}, http.StatusUnauthorized, errors.New("invalid or expired QuizCraft session")
 	}
-	return practiceActor{userID: &userID, key: "user:" + userID.String()}, 0, nil
+	actor := practiceActor{userID: &userID, key: "user:" + userID.String(), permissions: map[string]bool{}}
+	if values, ok := claims["permissions"].([]any); ok {
+		for _, value := range values {
+			if permission, ok := value.(string); ok {
+				actor.permissions[permission] = true
+			}
+		}
+	}
+	if values, ok := claims["scopes"].([]any); ok {
+		for _, value := range values {
+			item, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
+			actor.scopes = append(actor.scopes, workshopScope{Kind: stringClaim(item, "kind"), ProductCode: stringClaim(item, "product_code"), ResourceType: stringClaim(item, "resource_type"), ResourceID: stringClaim(item, "resource_id")})
+		}
+	}
+	return actor, 0, nil
 }
 
 func (service *practiceHTTP) parseSubject(tokenText, issuer string) (uuid.UUID, error) {
+	_, userID, err := service.parseClaims(tokenText, issuer)
+	return userID, err
+}
+
+func (service *practiceHTTP) parseClaims(tokenText, issuer string) (jwt.MapClaims, uuid.UUID, error) {
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(tokenText, claims, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
@@ -933,17 +1067,22 @@ func (service *practiceHTTP) parseSubject(tokenText, issuer string) (uuid.UUID, 
 		return service.authHMACSecret, nil
 	}, jwt.WithAudience("quizcraft"), jwt.WithIssuer(issuer), jwt.WithExpirationRequired(), jwt.WithValidMethods([]string{"HS256"}))
 	if err != nil || !token.Valid {
-		return uuid.Nil, errors.New("invalid signed session")
+		return nil, uuid.Nil, errors.New("invalid signed session")
 	}
 	subject, err := claims.GetSubject()
 	if err != nil {
-		return uuid.Nil, errors.New("signed session has no subject")
+		return nil, uuid.Nil, errors.New("signed session has no subject")
 	}
 	userID, err := uuid.Parse(subject)
 	if err != nil {
-		return uuid.Nil, errors.New("signed session subject must be a UUID")
+		return nil, uuid.Nil, errors.New("signed session subject must be a UUID")
 	}
-	return userID, nil
+	return claims, userID, nil
+}
+
+func stringClaim(values map[string]any, key string) string {
+	value, _ := values[key].(string)
+	return value
 }
 
 func (service *practiceHTTP) compareLegacy(ctx context.Context, sessionID, questionID uuid.UUID, bankKey, sourceQuestionID string, answer any, result answerResult) {

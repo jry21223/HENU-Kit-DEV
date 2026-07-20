@@ -44,6 +44,42 @@ func (e ChoicePracticeQuestionType) Valid() bool {
 	}
 }
 
+// Defines values for ConsoleSummaryEnvelopeDataId.
+const (
+	Quizcraft ConsoleSummaryEnvelopeDataId = "quizcraft"
+)
+
+// Valid indicates whether the value is a known member of the ConsoleSummaryEnvelopeDataId enum.
+func (e ConsoleSummaryEnvelopeDataId) Valid() bool {
+	switch e {
+	case Quizcraft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConsoleSummaryEnvelopeDataStatus.
+const (
+	ConsoleSummaryEnvelopeDataStatusEmpty   ConsoleSummaryEnvelopeDataStatus = "empty"
+	ConsoleSummaryEnvelopeDataStatusOk      ConsoleSummaryEnvelopeDataStatus = "ok"
+	ConsoleSummaryEnvelopeDataStatusPartial ConsoleSummaryEnvelopeDataStatus = "partial"
+)
+
+// Valid indicates whether the value is a known member of the ConsoleSummaryEnvelopeDataStatus enum.
+func (e ConsoleSummaryEnvelopeDataStatus) Valid() bool {
+	switch e {
+	case ConsoleSummaryEnvelopeDataStatusEmpty:
+		return true
+	case ConsoleSummaryEnvelopeDataStatusOk:
+		return true
+	case ConsoleSummaryEnvelopeDataStatusPartial:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DifficultPracticeSelectionMode.
 const (
 	DifficultPracticeSelectionModeDifficult DifficultPracticeSelectionMode = "difficult"
@@ -61,13 +97,13 @@ func (e DifficultPracticeSelectionMode) Valid() bool {
 
 // Defines values for HealthEnvelopeDataStatus.
 const (
-	Ok HealthEnvelopeDataStatus = "ok"
+	HealthEnvelopeDataStatusOk HealthEnvelopeDataStatus = "ok"
 )
 
 // Valid indicates whether the value is a known member of the HealthEnvelopeDataStatus enum.
 func (e HealthEnvelopeDataStatus) Valid() bool {
 	switch e {
-	case Ok:
+	case HealthEnvelopeDataStatusOk:
 		return true
 	default:
 		return false
@@ -196,25 +232,25 @@ func (e PracticeSessionMode) Valid() bool {
 
 // Defines values for QuestionFeedbackCategory.
 const (
-	Ambiguous   QuestionFeedbackCategory = "ambiguous"
-	Other       QuestionFeedbackCategory = "other"
-	Outdated    QuestionFeedbackCategory = "outdated"
-	Typo        QuestionFeedbackCategory = "typo"
-	WrongAnswer QuestionFeedbackCategory = "wrong_answer"
+	QuestionFeedbackCategoryAmbiguous   QuestionFeedbackCategory = "ambiguous"
+	QuestionFeedbackCategoryOther       QuestionFeedbackCategory = "other"
+	QuestionFeedbackCategoryOutdated    QuestionFeedbackCategory = "outdated"
+	QuestionFeedbackCategoryTypo        QuestionFeedbackCategory = "typo"
+	QuestionFeedbackCategoryWrongAnswer QuestionFeedbackCategory = "wrong_answer"
 )
 
 // Valid indicates whether the value is a known member of the QuestionFeedbackCategory enum.
 func (e QuestionFeedbackCategory) Valid() bool {
 	switch e {
-	case Ambiguous:
+	case QuestionFeedbackCategoryAmbiguous:
 		return true
-	case Other:
+	case QuestionFeedbackCategoryOther:
 		return true
-	case Outdated:
+	case QuestionFeedbackCategoryOutdated:
 		return true
-	case Typo:
+	case QuestionFeedbackCategoryTypo:
 		return true
-	case WrongAnswer:
+	case QuestionFeedbackCategoryWrongAnswer:
 		return true
 	default:
 		return false
@@ -311,6 +347,72 @@ func (e RankingPeriod) Valid() bool {
 	}
 }
 
+// Defines values for WorkshopBankVersionState.
+const (
+	WorkshopBankVersionStateDraft     WorkshopBankVersionState = "draft"
+	WorkshopBankVersionStateLegacy    WorkshopBankVersionState = "legacy"
+	WorkshopBankVersionStateValidated WorkshopBankVersionState = "validated"
+)
+
+// Valid indicates whether the value is a known member of the WorkshopBankVersionState enum.
+func (e WorkshopBankVersionState) Valid() bool {
+	switch e {
+	case WorkshopBankVersionStateDraft:
+		return true
+	case WorkshopBankVersionStateLegacy:
+		return true
+	case WorkshopBankVersionStateValidated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkshopFeedbackCategory.
+const (
+	WorkshopFeedbackCategoryAmbiguous   WorkshopFeedbackCategory = "ambiguous"
+	WorkshopFeedbackCategoryOther       WorkshopFeedbackCategory = "other"
+	WorkshopFeedbackCategoryOutdated    WorkshopFeedbackCategory = "outdated"
+	WorkshopFeedbackCategoryTypo        WorkshopFeedbackCategory = "typo"
+	WorkshopFeedbackCategoryWrongAnswer WorkshopFeedbackCategory = "wrong_answer"
+)
+
+// Valid indicates whether the value is a known member of the WorkshopFeedbackCategory enum.
+func (e WorkshopFeedbackCategory) Valid() bool {
+	switch e {
+	case WorkshopFeedbackCategoryAmbiguous:
+		return true
+	case WorkshopFeedbackCategoryOther:
+		return true
+	case WorkshopFeedbackCategoryOutdated:
+		return true
+	case WorkshopFeedbackCategoryTypo:
+		return true
+	case WorkshopFeedbackCategoryWrongAnswer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkshopVersionDetailState.
+const (
+	WorkshopVersionDetailStateDraft     WorkshopVersionDetailState = "draft"
+	WorkshopVersionDetailStateValidated WorkshopVersionDetailState = "validated"
+)
+
+// Valid indicates whether the value is a known member of the WorkshopVersionDetailState enum.
+func (e WorkshopVersionDetailState) Valid() bool {
+	switch e {
+	case WorkshopVersionDetailStateDraft:
+		return true
+	case WorkshopVersionDetailStateValidated:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RankingPeriodParam.
 const (
 	RankingPeriodParamLifetime RankingPeriodParam = "lifetime"
@@ -390,8 +492,10 @@ type AnswerSubmission struct {
 
 // BankImportRequest defines model for BankImportRequest.
 type BankImportRequest struct {
-	Questions    []ImportedQuestionInput `json:"questions"`
-	SourceSha256 string                  `json:"source_sha256"`
+	// ExpectedVersion Workshop clients send the observed lifecycle version. Omission is retained for older import clients and serializes against the current version while still creating only an unpublished draft.
+	ExpectedVersion *int                    `json:"expected_version,omitempty"`
+	Questions       []ImportedQuestionInput `json:"questions"`
+	SourceSha256    string                  `json:"source_sha256"`
 }
 
 // BankListEnvelope defines model for BankListEnvelope.
@@ -445,6 +549,28 @@ type ChoicePracticeQuestion struct {
 
 // ChoicePracticeQuestionType defines model for ChoicePracticeQuestion.Type.
 type ChoicePracticeQuestionType string
+
+// ConsoleSummaryEnvelope defines model for ConsoleSummaryEnvelope.
+type ConsoleSummaryEnvelope struct {
+	Data struct {
+		AsOf    time.Time                    `json:"as_of"`
+		Id      ConsoleSummaryEnvelopeDataId `json:"id"`
+		Metrics []struct {
+			Hint  *string `json:"hint,omitempty"`
+			Label string  `json:"label"`
+			Value string  `json:"value"`
+		} `json:"metrics"`
+		Status        ConsoleSummaryEnvelopeDataStatus `json:"status"`
+		StatusMessage string                           `json:"status_message"`
+	} `json:"data"`
+	RequestId RequestID `json:"request_id"`
+}
+
+// ConsoleSummaryEnvelopeDataId defines model for ConsoleSummaryEnvelope.Data.Id.
+type ConsoleSummaryEnvelopeDataId string
+
+// ConsoleSummaryEnvelopeDataStatus defines model for ConsoleSummaryEnvelope.Data.Status.
+type ConsoleSummaryEnvelopeDataStatus string
 
 // CreateBankVersion defines model for CreateBankVersion.
 type CreateBankVersion struct {
@@ -740,6 +866,88 @@ type VersionCommand struct {
 	Note            *string `json:"note,omitempty"`
 }
 
+// WorkshopBank defines model for WorkshopBank.
+type WorkshopBank struct {
+	ActiveVersionId  *openapi_types.UUID   `json:"active_version_id,omitempty"`
+	BankId           openapi_types.UUID    `json:"bank_id"`
+	BankKey          string                `json:"bank_key"`
+	LifecycleVersion int64                 `json:"lifecycle_version"`
+	Name             string                `json:"name"`
+	Versions         []WorkshopBankVersion `json:"versions"`
+}
+
+// WorkshopBankListEnvelope defines model for WorkshopBankListEnvelope.
+type WorkshopBankListEnvelope struct {
+	Data      []WorkshopBank `json:"data"`
+	RequestId RequestID      `json:"request_id"`
+}
+
+// WorkshopBankVersion defines model for WorkshopBankVersion.
+type WorkshopBankVersion struct {
+	Active        bool                     `json:"active"`
+	BankVersionId openapi_types.UUID       `json:"bank_version_id"`
+	ContentSha256 string                   `json:"content_sha256"`
+	QuestionCount int                      `json:"question_count"`
+	State         WorkshopBankVersionState `json:"state"`
+	ValidatedAt   *time.Time               `json:"validated_at,omitempty"`
+}
+
+// WorkshopBankVersionState defines model for WorkshopBankVersion.State.
+type WorkshopBankVersionState string
+
+// WorkshopFeedback defines model for WorkshopFeedback.
+type WorkshopFeedback struct {
+	BankId            openapi_types.UUID       `json:"bank_id"`
+	Category          WorkshopFeedbackCategory `json:"category"`
+	CreatedAt         time.Time                `json:"created_at"`
+	Detail            string                   `json:"detail"`
+	FeedbackId        openapi_types.UUID       `json:"feedback_id"`
+	QuestionId        openapi_types.UUID       `json:"question_id"`
+	QuestionVersionId openapi_types.UUID       `json:"question_version_id"`
+}
+
+// WorkshopFeedbackCategory defines model for WorkshopFeedback.Category.
+type WorkshopFeedbackCategory string
+
+// WorkshopFeedbackEnvelope defines model for WorkshopFeedbackEnvelope.
+type WorkshopFeedbackEnvelope struct {
+	Data      WorkshopFeedback `json:"data"`
+	RequestId RequestID        `json:"request_id"`
+}
+
+// WorkshopQuestionDetail defines model for WorkshopQuestionDetail.
+type WorkshopQuestionDetail struct {
+	Analysis          *string            `json:"analysis,omitempty"`
+	Answer            interface{}        `json:"answer"`
+	Chapter           *string            `json:"chapter,omitempty"`
+	ChapterId         string             `json:"chapter_id"`
+	Content           string             `json:"content"`
+	Options           *[]string          `json:"options,omitempty"`
+	Position          int                `json:"position"`
+	QuestionId        openapi_types.UUID `json:"question_id"`
+	QuestionVersionId openapi_types.UUID `json:"question_version_id"`
+	SourceQuestionId  string             `json:"source_question_id"`
+	Type              QuestionType       `json:"type"`
+}
+
+// WorkshopVersionDetail defines model for WorkshopVersionDetail.
+type WorkshopVersionDetail struct {
+	BankId        openapi_types.UUID         `json:"bank_id"`
+	BankVersionId openapi_types.UUID         `json:"bank_version_id"`
+	ContentSha256 string                     `json:"content_sha256"`
+	Questions     []WorkshopQuestionDetail   `json:"questions"`
+	State         WorkshopVersionDetailState `json:"state"`
+}
+
+// WorkshopVersionDetailState defines model for WorkshopVersionDetail.State.
+type WorkshopVersionDetailState string
+
+// WorkshopVersionDetailEnvelope defines model for WorkshopVersionDetailEnvelope.
+type WorkshopVersionDetailEnvelope struct {
+	Data      WorkshopVersionDetail `json:"data"`
+	RequestId RequestID             `json:"request_id"`
+}
+
 // BankID defines model for BankID.
 type BankID = openapi_types.UUID
 
@@ -868,6 +1076,17 @@ type UnpublishWorkshopBankVersionParams struct {
 // ValidateWorkshopBankVersionParams defines parameters for ValidateWorkshopBankVersion.
 type ValidateWorkshopBankVersionParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// FinishQuizCraftPlatformLoginParams defines parameters for FinishQuizCraftPlatformLogin.
+type FinishQuizCraftPlatformLoginParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
+}
+
+// StartQuizCraftPlatformLoginParams defines parameters for StartQuizCraftPlatformLogin.
+type StartQuizCraftPlatformLoginParams struct {
+	ReturnTo *string `form:"return_to,omitempty" json:"return_to,omitempty"`
 }
 
 // CreateQuestionFeedbackJSONRequestBody defines body for CreateQuestionFeedback for application/json ContentType.

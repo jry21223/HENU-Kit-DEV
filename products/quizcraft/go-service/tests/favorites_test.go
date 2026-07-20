@@ -82,7 +82,7 @@ func TestFavoritesHTTPAuthenticationIdempotencyConcurrencyAndUnavailablePrivacy(
 	decodeJSON(t, []byte(validBank), &updated)
 	updated["meta"].(map[string]any)["total"] = float64(3)
 	updated["questions"] = updated["questions"].([]any)[1:]
-	service, _ := quizcraft.New(quizcraft.Config{Database: pool})
+	service, _ := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
 	if _, err := service.ImportJSON(context.Background(), bankKey, mustJSON(updated)); err != nil {
 		t.Fatal(err)
 	}

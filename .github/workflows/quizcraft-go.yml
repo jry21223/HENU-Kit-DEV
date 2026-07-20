@@ -71,6 +71,7 @@ jobs:
           for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
           test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT to_regclass('public.quizcraft_banks') IS NOT NULL AND to_regclass('public.quizcraft_practice_attempts') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
           pg_dump -h localhost -U quizcraft -d quizcraft_test --format=custom --file=/tmp/quizcraft-recovery.dump
+          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000005_workshop_feedback.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000004_ranking.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000003_favorites.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000002_practice_core.down.sql
@@ -78,7 +79,7 @@ jobs:
           for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
           createdb -h localhost -U quizcraft quizcraft_recovery
           pg_restore -h localhost -U quizcraft -d quizcraft_recovery --no-owner /tmp/quizcraft-recovery.dump
-          test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL AND to_regclass('public.quizcraft_practice_sessions') IS NOT NULL AND to_regclass('public.quizcraft_favorites') IS NOT NULL AND to_regclass('public.quizcraft_practice_session_claims') IS NOT NULL AND to_regclass('public.quizcraft_ranking_profiles') IS NOT NULL AND to_regclass('public.quizcraft_ranking_settlement_events') IS NOT NULL")" = t
+          test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL AND to_regclass('public.quizcraft_practice_sessions') IS NOT NULL AND to_regclass('public.quizcraft_favorites') IS NOT NULL AND to_regclass('public.quizcraft_practice_session_claims') IS NOT NULL AND to_regclass('public.quizcraft_ranking_profiles') IS NOT NULL AND to_regclass('public.quizcraft_ranking_settlement_events') IS NOT NULL AND to_regclass('public.quizcraft_workshop_audit_events') IS NOT NULL AND to_regclass('public.quizcraft_feedbacks') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_outbox') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_deliveries') IS NOT NULL AND to_regclass('public.quizcraft_service_nonces') IS NOT NULL")" = t
       - name: Verify QuizCraft contract
         run: |
           set -euo pipefail

@@ -26,11 +26,24 @@ func main() {
 	fail(err)
 	defer pool.Close()
 	fail(pool.Ping(ctx))
+	summaryKeys := map[string]string{}
+	if keyID := os.Getenv("QUIZCRAFT_SUMMARY_KEY_ID"); keyID != "" {
+		summaryKeys[keyID] = os.Getenv("QUIZCRAFT_SUMMARY_CLIENT_SECRET")
+	}
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
-		Database:            pool,
-		AuthHMACSecret:      []byte(authSecret),
-		LegacyBaseURL:       os.Getenv("QUIZCRAFT_LEGACY_BASE_URL"),
-		LegacyCompareSecret: os.Getenv("QUIZCRAFT_LEGACY_COMPARE_SECRET"),
+		Database:             pool,
+		AuthHMACSecret:       []byte(authSecret),
+		LegacyBaseURL:        os.Getenv("QUIZCRAFT_LEGACY_BASE_URL"),
+		LegacyCompareSecret:  os.Getenv("QUIZCRAFT_LEGACY_COMPARE_SECRET"),
+		SummaryClientID:      os.Getenv("QUIZCRAFT_SUMMARY_CLIENT_ID"),
+		SummaryKeys:          summaryKeys,
+		PlatformCoreURL:      os.Getenv("PLATFORM_CORE_URL"),
+		PlatformClientID:     os.Getenv("QUIZCRAFT_PLATFORM_CLIENT_ID"),
+		PlatformClientSecret: os.Getenv("QUIZCRAFT_PLATFORM_CLIENT_SECRET"),
+		PlatformKeyID:        os.Getenv("QUIZCRAFT_PLATFORM_KEY_ID"),
+		PublicURL:            os.Getenv("QUIZCRAFT_PUBLIC_URL"),
+		SessionEncryptionKey: []byte(os.Getenv("QUIZCRAFT_SESSION_ENCRYPTION_KEY")),
+		InboxExchangeToken:   os.Getenv("QUIZCRAFT_INBOX_EXCHANGE_TOKEN"),
 	})
 	fail(err)
 	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}

@@ -31,6 +31,7 @@ import { useCachedConfig } from '@/hooks/useCachedConfig';
 import { useManagedWebSocket } from '@/hooks/useManagedWebSocket';
 import { useQuizStore } from '@/stores/quizStore';
 import type { ParsedQuestion, QuestionType } from '@/types';
+import Workshop from '@/pages/Workshop';
 
 type BuilderStep = 'select' | 'parse' | 'review' | 'analyze';
 
@@ -920,6 +921,11 @@ function useExtractController() {
 type ExtractController = ReturnType<typeof useExtractController>;
 
 export default function Extract() {
+	if (import.meta.env.VITE_QUIZCRAFT_WORKSHOP === '1') return <Workshop />;
+	return <LegacyExtract />;
+}
+
+function LegacyExtract() {
   const controller = useExtractController();
 
   return (

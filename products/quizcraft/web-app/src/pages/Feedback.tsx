@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { MessageSquare, ArrowLeft, Send } from 'lucide-react';
 import { feedbackApi } from '@/api/client';
+import { QUIZCRAFT_GO_SHADOW_ENABLED } from '@/api/quizcraftShadowClient';
 
 type FeedbackLocationState = {
   questionIndex?: unknown;
@@ -59,6 +60,10 @@ export default function Feedback() {
     }
     if (!normalizedSuggestion) {
       setError('建议改正内容不能为空');
+      return;
+    }
+    if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+      setError('请从刷题页点击“反馈本题”，以携带稳定题库、题目和版本引用');
       return;
     }
 
