@@ -105,6 +105,24 @@ type QuizcraftLearningState struct {
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 }
 
+type QuizcraftLegacyFeedbackArchive struct {
+	ID               uuid.UUID          `json:"id"`
+	SourceName       string             `json:"source_name"`
+	LegacyFeedbackID string             `json:"legacy_feedback_id"`
+	BankKey          string             `json:"bank_key"`
+	SourceQuestionID string             `json:"source_question_id"`
+	QuestionIndex    int32              `json:"question_index"`
+	QuestionContent  string             `json:"question_content"`
+	LegacyUserID     string             `json:"legacy_user_id"`
+	SourcePage       string             `json:"source_page"`
+	Detail           string             `json:"detail"`
+	LegacyStatus     string             `json:"legacy_status"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	ResolvedAt       pgtype.Timestamptz `json:"resolved_at"`
+	ResolutionNote   string             `json:"resolution_note"`
+	ArchivedAt       pgtype.Timestamptz `json:"archived_at"`
+}
+
 type QuizcraftLegacyFeedbackStateEvent struct {
 	ID               uuid.UUID          `json:"id"`
 	RunID            uuid.UUID          `json:"run_id"`

@@ -152,13 +152,13 @@ func (source *LegacyPostgresSource) Snapshot(ctx context.Context, sourceName str
 		snapshot.Banks = append(snapshot.Banks, LegacyBank{BankKey: key, Document: document})
 	}
 
-	rows, err = tx.Query(ctx, `SELECT feedback_id::text,COALESCE(question_bank,''),COALESCE(question_id,''),suggestion,status,resolution_note,created_at,resolved_at FROM feedbacks ORDER BY feedback_id`)
+	rows, err = tx.Query(ctx, `SELECT feedback_id::text,COALESCE(question_bank,''),COALESCE(question_id,''),question_index,COALESCE(question_content,''),COALESCE(user_id,''),source_page,suggestion,status,resolution_note,created_at,resolved_at FROM feedbacks ORDER BY feedback_id`)
 	if err != nil {
 		return snapshot, err
 	}
 	for rows.Next() {
 		var feedback LegacyFeedback
-		if err := rows.Scan(&feedback.LegacyID, &feedback.BankKey, &feedback.QuestionID, &feedback.Suggestion, &feedback.Status, &feedback.ResolutionNote, &feedback.CreatedAt, &feedback.ResolvedAt); err != nil {
+		if err := rows.Scan(&feedback.LegacyID, &feedback.BankKey, &feedback.QuestionID, &feedback.QuestionIndex, &feedback.QuestionContent, &feedback.UserID, &feedback.SourcePage, &feedback.Suggestion, &feedback.Status, &feedback.ResolutionNote, &feedback.CreatedAt, &feedback.ResolvedAt); err != nil {
 			rows.Close()
 			return snapshot, err
 		}
@@ -298,7 +298,7 @@ func bankSnapshot(ctx context.Context, reader legacyReader, bankKey string) (Leg
 
 func feedbackSnapshot(ctx context.Context, reader legacyReader, legacyID string) (LegacyFeedback, error) {
 	var feedback LegacyFeedback
-	err := reader.QueryRow(ctx, `SELECT feedback_id::text,COALESCE(question_bank,''),COALESCE(question_id,''),suggestion,status,resolution_note,created_at,resolved_at FROM feedbacks WHERE feedback_id::text=$1`, legacyID).Scan(&feedback.LegacyID, &feedback.BankKey, &feedback.QuestionID, &feedback.Suggestion, &feedback.Status, &feedback.ResolutionNote, &feedback.CreatedAt, &feedback.ResolvedAt)
+	err := reader.QueryRow(ctx, `SELECT feedback_id::text,COALESCE(question_bank,''),COALESCE(question_id,''),question_index,COALESCE(question_content,''),COALESCE(user_id,''),source_page,suggestion,status,resolution_note,created_at,resolved_at FROM feedbacks WHERE feedback_id::text=$1`, legacyID).Scan(&feedback.LegacyID, &feedback.BankKey, &feedback.QuestionID, &feedback.QuestionIndex, &feedback.QuestionContent, &feedback.UserID, &feedback.SourcePage, &feedback.Suggestion, &feedback.Status, &feedback.ResolutionNote, &feedback.CreatedAt, &feedback.ResolvedAt)
 	if err != nil {
 		return feedback, fmt.Errorf("hydrate legacy feedback event %q: %w", legacyID, err)
 	}
