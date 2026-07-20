@@ -19,7 +19,7 @@ import (
 
 var (
 	quizcraftNamespace = uuid.MustParse("c4d37db2-25ce-5f26-a0a8-9c67f9757f4d")
-	bankKeyPattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$`)
+	bankKeyPattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{1,78}[a-z0-9]$`)
 )
 
 type Config struct {
@@ -149,7 +149,7 @@ func (s *Service) importJSON(ctx context.Context, bankKey string, source []byte,
 	}
 	bankKey = strings.TrimSpace(bankKey)
 	if !bankKeyPattern.MatchString(bankKey) {
-		report.Errors = append(report.Errors, validation("bank_key", "invalid_bank_key", "bank key must be a stable lowercase slug"))
+		report.Errors = append(report.Errors, validation("bank_key", "invalid_bank_key", "bank key must be a stable lowercase key"))
 	}
 
 	var document bankDocument

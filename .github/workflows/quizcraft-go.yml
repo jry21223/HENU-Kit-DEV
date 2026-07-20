@@ -73,6 +73,12 @@ jobs:
           for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
           test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT to_regclass('public.quizcraft_banks') IS NOT NULL AND to_regclass('public.quizcraft_practice_attempts') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
           pg_dump -h localhost -U quizcraft -d quizcraft_test --format=custom --file=/tmp/quizcraft-recovery.dump
+          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -c "INSERT INTO quizcraft_banks(id,bank_key,name) VALUES('00000000-0000-0000-0000-000000000007','computer_fundamentals','Legacy underscore probe')"
+          if psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000007_legacy_bank_keys.down.sql; then exit 1; fi
+          test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT bank_key FROM quizcraft_banks WHERE id='00000000-0000-0000-0000-000000000007'")" = computer_fundamentals
+          test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT count(*) FROM pg_constraint WHERE conrelid='quizcraft_banks'::regclass AND conname='quizcraft_banks_bank_key_check'")" = 1
+          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -c "DELETE FROM quizcraft_banks WHERE id='00000000-0000-0000-0000-000000000007'"
+          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000007_legacy_bank_keys.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000006_reconciliation.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000005_workshop_feedback.down.sql
           psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000004_ranking.down.sql

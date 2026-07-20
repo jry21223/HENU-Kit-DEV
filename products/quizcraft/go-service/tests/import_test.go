@@ -26,6 +26,25 @@ func TestDirectBootstrapActivationIsDisabledByDefault(t *testing.T) {
 
 const validBank = `{"meta":{"name":"程序设计","version":"legacy-v1","color":"#2563eb","total":4,"source_files":["legacy.md"],"chapters":[{"id":"ch01","name":"基础"},{"id":"ch02","name":"进阶"}]},"questions":[{"id":"q0001","number":"1","type":"single","chapter_id":"ch01","chapter":"基础","content":"1+1=?","options":["1","2"],"answer":1,"analysis":"","stats":{"total":0,"correct":0}},{"id":"q0002","type":"multi","chapter_id":"ch02","chapter":"进阶","content":"选择偶数","options":["1","2","4"],"answer":[1,2],"analysis":""},{"id":"q0003","type":"judge","chapter_id":"ch01","chapter":"基础","content":"Go 是编译型语言","answer":true,"analysis":""},{"id":"q0004","type":"blank","chapter_id":"ch01","chapter":"基础","content":"Go 入口包是____","answer":"main","analysis":""}]}`
 
+func TestLegacyUnderscoreBankKeyKeepsStableIdentity(t *testing.T) {
+	pool := practicePool(t)
+	service, err := quizcraft.New(quizcraft.Config{Database: pool, AllowTestBootstrapActivation: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := service.ImportJSON(context.Background(), "computer_fundamentals", []byte(validBank))
+	if err != nil || !report.Accepted || report.BankID == "" {
+		t.Fatalf("legacy underscore key was not preserved: %+v / %v", report, err)
+	}
+	var storedKey string
+	if err := pool.QueryRow(context.Background(), `SELECT bank_key FROM quizcraft_banks WHERE id=$1`, report.BankID).Scan(&storedKey); err != nil {
+		t.Fatal(err)
+	}
+	if storedKey != "computer_fundamentals" {
+		t.Fatalf("stored bank key = %q", storedKey)
+	}
+}
+
 func TestExplicitImportIsStableVersionedAndReported(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), os.Getenv("QUIZCRAFT_TEST_DATABASE_URL"))
 	if err != nil {
