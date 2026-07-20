@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -356,5 +357,75 @@ func TestRequireEmptyTargetRejectsFactsInAnyQuizCraftTable(t *testing.T) {
 	}
 	if err := quizcraft.RequireEmptyTarget(ctx, pool); err == nil {
 		t.Fatalf("non-empty target was accepted: %v", err)
+	}
+}
+
+func TestCutoverWriteGateKeepsReadsOpenAndRejectsMutations(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "cutover-gate-"+uuid.NewString())
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		Database:       pool,
+		AuthHMACSecret: []byte(practiceAuthSecret),
+		WritesDisabled: true,
+		ReleaseSHA:     "cutover-test-sha",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	status, readiness := requestJSON(t, http.MethodGet, server.URL+"/readyz", nil, nil)
+	if status != http.StatusOK || !bytes.Contains(readiness, []byte(`"status":"ok"`)) || bytes.Contains(readiness, []byte("release_sha")) {
+		t.Fatalf("readiness = %d %s", status, readiness)
+	}
+	status, _ = requestJSON(t, http.MethodGet, server.URL+"/api/v1/banks", nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("read path was gated: %d", status)
+	}
+	status, body := requestJSON(t, http.MethodPost, server.URL+"/api/v1/practice/sessions", map[string]string{"Idempotency-Key": "cutover-disabled-write-0001"}, map[string]any{
+		"bank_id": report.BankID, "bank_version_id": report.BankVersionID, "mode": "random", "question_count": 1,
+	})
+	if status != http.StatusServiceUnavailable || !bytes.Contains(body, []byte(`"code":"writes_disabled"`)) {
+		t.Fatalf("disabled write = %d %s", status, body)
+	}
+	var sessions int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_practice_sessions WHERE bank_id=$1`, uuid.MustParse(report.BankID)).Scan(&sessions); err != nil || sessions != 0 {
+		t.Fatalf("disabled write mutated sessions = %d / %v", sessions, err)
+	}
+}
+
+func TestAuthenticatedCutoverEvidenceBindsMigrationShadowAndRelease(t *testing.T) {
+	pool := practicePool(t)
+	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := service.RunFullMigration(context.Background(), quizcraft.LegacySnapshot{
+		SourceName: "cutover-evidence", CutoffEventID: 19,
+		Banks:    []quizcraft.LegacyBank{{BankKey: "cutover-evidence-" + uuid.NewString(), Document: json.RawMessage(validBank)}},
+		Rankings: json.RawMessage(`[]`),
+	})
+	if err != nil || full.State != "passed" {
+		t.Fatalf("migration evidence = %+v / %v", full, err)
+	}
+	shadowID := uuid.New()
+	if _, err := pool.Exec(context.Background(), `INSERT INTO quizcraft_shadow_gate_reports(id,window_start,window_end,sample_count,mismatch_count,legacy_error_count,mismatch_rate,mismatch_threshold,minimum_sample_count,decision,reasons) VALUES($1,now()-interval '1 hour',now(),1000,0,0,0,0.001,1000,'pass','[]')`, shadowID); err != nil {
+		t.Fatal(err)
+	}
+	secret := "cutover-evidence-secret-at-least-32-bytes"
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), WritesDisabled: true, ReleaseSHA: "actual-binary-sha", CutoverEvidenceSecret: []byte(secret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	evidenceURL := fmt.Sprintf("%s/api/v1/cutover-evidence?run_id=%s&source_head=19&shadow_gate_report_id=%s", server.URL, full.RunID, shadowID)
+	status, _ := requestJSON(t, http.MethodGet, evidenceURL, nil, nil)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated evidence = %d", status)
+	}
+	status, body := requestJSON(t, http.MethodGet, evidenceURL, map[string]string{"X-QuizCraft-Cutover-Secret": secret}, nil)
+	if status != http.StatusOK || !bytes.Contains(body, []byte(full.RunID.String())) || !bytes.Contains(body, []byte(shadowID.String())) || !bytes.Contains(body, []byte(`"release_sha":"actual-binary-sha"`)) || !bytes.Contains(body, []byte(`"writes_enabled":false`)) {
+		t.Fatalf("cutover evidence = %d %s", status, body)
 	}
 }

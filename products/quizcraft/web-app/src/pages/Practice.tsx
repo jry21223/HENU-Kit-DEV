@@ -2,7 +2,7 @@ import { useEffect, useReducer } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
 import { bankApi, practiceApi, userApi } from '@/api/client';
-import { QUIZCRAFT_GO_SHADOW_ENABLED } from '@/api/quizcraftShadowClient';
+import { QUIZCRAFT_GO_READ_ENABLED, QUIZCRAFT_GO_SHADOW_ENABLED } from '@/api/quizcraftShadowClient';
 import { useQuizStore } from '@/stores/quizStore';
 import type { PracticeMode } from '@/types';
 import { IS_OPS_MODE } from '@/config/appMode';
@@ -84,7 +84,7 @@ export default function Practice() {
         setCurrentBank(res.banks[0].key);
       }
     }).catch(() => {
-      if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+      if (QUIZCRAFT_GO_READ_ENABLED) {
         setBanks([]);
         return;
       }

@@ -6,11 +6,13 @@ import type { AnswerResultEnvelope } from '../models/AnswerResultEnvelope';
 import type { AnswerSubmission } from '../models/AnswerSubmission';
 import type { BankListEnvelope } from '../models/BankListEnvelope';
 import type { CreatePracticeSession } from '../models/CreatePracticeSession';
+import type { CutoverEvidenceEnvelope } from '../models/CutoverEvidenceEnvelope';
 import type { HealthEnvelope } from '../models/HealthEnvelope';
 import type { LearningStateEnvelope } from '../models/LearningStateEnvelope';
 import type { OperationEnvelope } from '../models/OperationEnvelope';
 import type { OperationKind } from '../models/OperationKind';
 import type { PracticeSessionEnvelope } from '../models/PracticeSessionEnvelope';
+import type { ReadinessEnvelope } from '../models/ReadinessEnvelope';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -25,6 +27,49 @@ export class PracticeService {
             method: 'GET',
             url: '/healthz',
             errors: {
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
+    /**
+     * Check process and database readiness without exposing release metadata
+     * @returns ReadinessEnvelope Process and database are ready
+     * @throws ApiError
+     */
+    public static getQuizCraftReadiness(): CancelablePromise<ReadinessEnvelope> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/readyz',
+            errors: {
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
+    /**
+     * Return authenticated migration, shadow, write-gate, and binary release evidence
+     * @returns CutoverEvidenceEnvelope Cutover evidence is complete
+     * @throws ApiError
+     */
+    public static getQuizCraftCutoverEvidence({
+        runId,
+        sourceHead,
+        shadowGateReportId,
+    }: {
+        runId: string,
+        sourceHead: number,
+        shadowGateReportId: string,
+    }): CancelablePromise<CutoverEvidenceEnvelope> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/cutover-evidence',
+            query: {
+                'run_id': runId,
+                'source_head': sourceHead,
+                'shadow_gate_report_id': shadowGateReportId,
+            },
+            errors: {
+                400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
                 503: `PostgreSQL or a required service is unavailable`,
             },
         });

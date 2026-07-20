@@ -87,3 +87,5 @@ go run ./cmd/reconcile -mode shadow-gate \
 ```
 
 A zero exit status means only that reconciliation/catch-up/shadow evidence passed. It does not authorize production traffic movement; gradual reads, write cutover, rollback snapshots, and the legacy read-only observation window belong to the separate cutover workflow.
+
+The production sequence, rollback boundary, service/Nginx examples, and live SHA-aware smoke are defined in [`docs/cutover-runbook.md`](docs/cutover-runbook.md). Go writes are disabled unless `QUIZCRAFT_WRITES_ENABLED=1`; use `VITE_QUIZCRAFT_GO_READ_PERCENT` for the stable read cohort before setting `VITE_QUIZCRAFT_GO_WRITES=1`.

@@ -1,9 +1,10 @@
 FROM golang:1.26.5-alpine AS build
+ARG RELEASE_SHA=development
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -o /out/quizcraft ./cmd/server
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-X main.buildReleaseSHA=${RELEASE_SHA}" -o /out/quizcraft ./cmd/server
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/quizcraft /quizcraft

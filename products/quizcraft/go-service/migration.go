@@ -397,6 +397,11 @@ func (s *Service) ApplyIncrementalEvents(ctx context.Context, runID uuid.UUID, s
 		report.BlockingReason = "content_reconciliation_failed"
 	}
 	report.Ready = report.CaughtUp && report.ExceptionCount == 0 && contentReconciled
+	if report.Ready {
+		if _, err := s.database.Exec(ctx, `UPDATE quizcraft_migration_runs SET state='passed',completed_at=now() WHERE id=$1`, runID); err != nil {
+			return report, err
+		}
+	}
 	return report, nil
 }
 
