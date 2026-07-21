@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// PortalDB reads from the portal_food_* tables.
+// PortalDB reads from the portal_food_* tables (MySQL or PostgreSQL).
 type PortalDB struct {
 	conn *sql.DB
 }
@@ -22,11 +22,11 @@ func (db *PortalDB) GetPosts(campusFilter string) ([]Post, error) {
 		SELECT id, campus, title, excerpt, blocks, author, likes, stars, tags,
 		       shop_name, shop_lat, shop_lng, time, hidden, images
 		FROM portal_food_posts
-		WHERE hidden = FALSE
+		WHERE hidden = 0
 	`
 	var args []any
 	if campusFilter != "" {
-		query += " AND campus = $1"
+		query += " AND campus = ?"
 		args = append(args, campusFilter)
 	}
 	query += " ORDER BY created_at DESC"
@@ -40,23 +40,24 @@ func (db *PortalDB) GetPosts(campusFilter string) ([]Post, error) {
 	var posts []Post
 	for rows.Next() {
 		var (
-			p        Post
+			p          Post
 			blocksJSON []byte
-			tags     []string
-			images   []string
+			tagsJSON   []byte
+			imagesJSON []byte
 		)
 		if err := rows.Scan(
 			&p.ID, &p.Campus, &p.Title, &p.Excerpt, &blocksJSON,
-			&p.Author, &p.Likes, &p.Stars, &tags,
+			&p.Author, &p.Likes, &p.Stars, &tagsJSON,
 			&p.Shop.Name, &p.Shop.Lat, &p.Shop.Lng,
-			&p.Time, &p.Hidden, &images,
+			&p.Time, &p.Hidden, &imagesJSON,
 		); err != nil {
 			return nil, fmt.Errorf("scan post: %w", err)
 		}
 		json.Unmarshal(blocksJSON, &p.Blocks)
-		p.Tags = tags
-		if len(images) > 0 {
-			p.Images = images
+		json.Unmarshal(tagsJSON, &p.Tags)
+		json.Unmarshal(imagesJSON, &p.Images)
+		if p.Tags == nil {
+			p.Tags = []string{}
 		}
 		posts = append(posts, p)
 	}
@@ -72,18 +73,18 @@ func (db *PortalDB) GetPost(id string) (*Post, error) {
 	var (
 		p          Post
 		blocksJSON []byte
-		tags       []string
-		images     []string
+		tagsJSON   []byte
+		imagesJSON []byte
 	)
 	err := db.conn.QueryRow(`
 		SELECT id, campus, title, excerpt, blocks, author, likes, stars, tags,
 		       shop_name, shop_lat, shop_lng, time, hidden, images
-		FROM portal_food_posts WHERE id = $1
+		FROM portal_food_posts WHERE id = ?
 	`, id).Scan(
 		&p.ID, &p.Campus, &p.Title, &p.Excerpt, &blocksJSON,
-		&p.Author, &p.Likes, &p.Stars, &tags,
+		&p.Author, &p.Likes, &p.Stars, &tagsJSON,
 		&p.Shop.Name, &p.Shop.Lat, &p.Shop.Lng,
-		&p.Time, &p.Hidden, &images,
+		&p.Time, &p.Hidden, &imagesJSON,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -92,9 +93,10 @@ func (db *PortalDB) GetPost(id string) (*Post, error) {
 		return nil, fmt.Errorf("query post: %w", err)
 	}
 	json.Unmarshal(blocksJSON, &p.Blocks)
-	p.Tags = tags
-	if len(images) > 0 {
-		p.Images = images
+	json.Unmarshal(tagsJSON, &p.Tags)
+	json.Unmarshal(imagesJSON, &p.Images)
+	if p.Tags == nil {
+		p.Tags = []string{}
 	}
 	return &p, nil
 }
@@ -103,7 +105,7 @@ func (db *PortalDB) GetPost(id string) (*Post, error) {
 func (db *PortalDB) GetComments(postID string) ([]Comment, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, post_id, author, time, text
-		FROM portal_food_comments WHERE post_id = $1 ORDER BY created_at
+		FROM portal_food_comments WHERE post_id = ? ORDER BY created_at
 	`, postID)
 	if err != nil {
 		return nil, fmt.Errorf("query comments: %w", err)

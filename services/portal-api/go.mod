@@ -4,5 +4,6 @@ go 1.26.5
 
 require (
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/go-sql-driver/mysql v1.9.2
 	github.com/jackc/pgx/v5 v5.7.5
 )
