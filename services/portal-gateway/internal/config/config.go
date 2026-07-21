@@ -23,6 +23,8 @@ type Config struct {
 
 	RedisURL string
 
+	PortalAPIURL string
+
 	LibraryURL  string
 	FoodURL     string
 	PracticeURL string
@@ -51,6 +53,7 @@ func FromEnv() (Config, error) {
 		PortalRedirectURI: mustEnv("PORTAL_REDIRECT_URI"),
 		SessionKey:        sessionKey,
 		RedisURL:          envOrDefault("REDIS_URL", "redis://127.0.0.1:6379/2"),
+		PortalAPIURL:      envOrDefault("PORTAL_API_URL", "http://127.0.0.1:8085"),
 		LibraryURL:        mustEnv("LIBRARY_SERVICE_URL"),
 		FoodURL:           mustEnv("FOOD_SERVICE_URL"),
 		PracticeURL:       mustEnv("PRACTICE_SERVICE_URL"),

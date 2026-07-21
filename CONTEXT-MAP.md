@@ -12,6 +12,7 @@
 - [QuizCraft](./products/quizcraft/CONTEXT.md) — Practice Core, stable question identity, versioned banks, explicit imports, and workshop boundaries.
 - [Portal](./apps/portal/CONTEXT.md) — Portal main site, module sections, sub-sites, design language, and deterministic SSR.
 - [Portal Gateway](./services/portal-gateway/CONTEXT.md) — Portal OAuth session, read-only product proxying, and portal-scoped permissions.
+- [Portal API](./services/portal-api/CONTEXT.md) — User-facing data API for Portal, contract derived from frontend mock interfaces.
 
 ## Extraction targets
 

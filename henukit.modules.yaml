@@ -76,6 +76,18 @@ modules:
     current_domain: superhuazai.me
     target_domain: quiz.henukit.cn
 
+  - id: portal_api
+    kind: go_service
+    current_path: services/portal-api
+    target_path: services/portal-api
+    owner: portal
+    deploy_unit: portal-api
+    status: active_development
+    notes:
+      - User-facing data API for Portal frontend
+      - Serves Library, Food, Practice, Campus data
+      - Contract derived from frontend mock interfaces
+
   - id: portal_gateway
     kind: go_service
     current_path: services/portal-gateway
@@ -86,7 +98,7 @@ modules:
     notes:
       - Read-only BFF for Portal frontend
       - OAuth session with Platform Core
-      - Proxies to Library, Food, Practice, Notice services
+      - Proxies product data to portal-api
 
   - id: platform_core
     kind: go_service

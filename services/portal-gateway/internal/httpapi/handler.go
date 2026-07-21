@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -15,11 +16,7 @@ import (
 
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
-	"henukit.dev/portal-gateway/internal/food"
-	"henukit.dev/portal-gateway/internal/library"
-	"henukit.dev/portal-gateway/internal/notice"
 	"henukit.dev/portal-gateway/internal/platformcore"
-	"henukit.dev/portal-gateway/internal/practice"
 	"henukit.dev/portal-gateway/internal/session"
 )
 
@@ -27,10 +24,8 @@ import (
 type Handler struct {
 	sessionCodec    *session.Codec
 	platform        *platformcore.Client
-	libraryClient   *library.Client
-	foodClient      *food.Client
-	practiceClient  *practice.Client
-	noticeClient    *notice.Client
+	portalAPI       *http.Client
+	portalAPIURL    string
 	redis           *redis.Client
 	portalOrigin    string
 	platformCoreURL string
@@ -47,10 +42,8 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 	return &Handler{
 		sessionCodec:    codec,
 		platform:        platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID),
-		libraryClient:   library.NewClient(cfg.LibraryURL, cfg.LibraryAuth.ClientID, cfg.LibraryAuth.ClientSecret, cfg.LibraryAuth.KeyID),
-		foodClient:      food.NewClient(cfg.FoodURL, cfg.FoodAuth.ClientID, cfg.FoodAuth.ClientSecret, cfg.FoodAuth.KeyID),
-		practiceClient:  practice.NewClient(cfg.PracticeURL, cfg.PracticeAuth.ClientID, cfg.PracticeAuth.ClientSecret, cfg.PracticeAuth.KeyID),
-		noticeClient:    notice.NewClient(cfg.NoticeURL, cfg.NoticeAuth.ClientID, cfg.NoticeAuth.ClientSecret, cfg.NoticeAuth.KeyID),
+		portalAPI:       &http.Client{Timeout: 10 * time.Second},
+		portalAPIURL:    cfg.PortalAPIURL,
 		redis:           rdb,
 		portalOrigin:    cfg.PortalOrigin,
 		platformCoreURL: cfg.PlatformCoreURL,
@@ -70,19 +63,12 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/session", h.getSession)
 	r.Post("/api/v1/session/logout", h.logout)
 
-	// Read-only product proxies (authenticated)
-	r.Route("/api/v1/library", func(r chi.Router) {
-		r.Get("/courses", h.libraryCourses)
-	})
-	r.Route("/api/v1/food", func(r chi.Router) {
-		r.Get("/venues", h.foodVenues)
-	})
-	r.Route("/api/v1/practice", func(r chi.Router) {
-		r.Get("/banks", h.practiceBanks)
-	})
-	r.Route("/api/v1/notices", func(r chi.Router) {
-		r.Get("/", h.noticeList)
-	})
+	// Product data — proxy to portal-api (public, no auth required)
+	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
+	r.Get("/api/v1/food/*", h.proxyToPortalAPI)
+	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
+	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
+	r.Get("/api/v1/notices", h.proxyToPortalAPI)
 
 	return r
 }
@@ -96,7 +82,7 @@ func requestID(next http.Handler) http.Handler {
 			id = uuid()
 		}
 		w.Header().Set("X-Request-Id", id)
-		next.ServeHTTP(w, r.WithContext(r.Context()))
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -119,7 +105,6 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	stateHash := sha256Hex(state)
 	browserHash := sha256Hex(browserNonce)
 
-	// Store state in Redis with 5-minute TTL
 	payload, _ := json.Marshal(map[string]string{
 		"verifier":  base64.RawURLEncoding.EncodeToString(verifier),
 		"return_to": returnTo,
@@ -127,7 +112,6 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	key := fmt.Sprintf("portal:oauth-state:%s:%s", stateHash, browserHash)
 	h.redis.Set(r.Context(), key, payload, 5*time.Minute)
 
-	// Set OAuth flow cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "__Host-henukit_portal_oauth",
 		Value:    base64.RawURLEncoding.EncodeToString(browserNonce),
@@ -138,17 +122,13 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   300,
 	})
 
-	// Build PKCE challenge
 	challenge := sha256Sum(verifier)
 	codeChallenge := base64.RawURLEncoding.EncodeToString(challenge)
 
 	redirectURL := fmt.Sprintf(
 		"%s/api/v1/oauth/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
-		h.platformCoreURL,
-		h.clientID,
-		h.redirectURI,
-		base64.RawURLEncoding.EncodeToString(state),
-		codeChallenge,
+		h.platformCoreURL, h.clientID, h.redirectURI,
+		base64.RawURLEncoding.EncodeToString(state), codeChallenge,
 	)
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -162,7 +142,6 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read browser nonce from OAuth cookie
 	cookie, err := r.Cookie("__Host-henukit_portal_oauth")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "missing oauth cookie"})
@@ -178,7 +157,6 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	browserHash := sha256Hex(browserNonce)
 	key := fmt.Sprintf("portal:oauth-state:%s:%s", stateHash, browserHash)
 
-	// GETDEL: single-use state
 	data, err := h.redis.GetDel(r.Context(), key).Bytes()
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid or expired state"})
@@ -191,18 +169,11 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear OAuth cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     "__Host-henukit_portal_oauth",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		MaxAge:   -1,
-		Expires:  time.Unix(1, 0),
+		Name: "__Host-henukit_portal_oauth", Value: "", Path: "/",
+		HttpOnly: true, Secure: true, MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 
-	// Exchange code for session
 	stateBytes, _ := base64.RawURLEncoding.DecodeString(state)
 	idempotencyKey := hex.EncodeToString(stateBytes[:16])
 	result, err := h.platform.ExchangeCode(r.Context(), code, stored["verifier"], idempotencyKey)
@@ -215,11 +186,8 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Encode session cookie
 	encoded, err := h.sessionCodec.Encode(session.Value{
-		UserID:        result.UserID,
-		ExchangeToken: result.SessionExchangeTkn,
-		ExpiresAt:     result.ExpiresAt,
+		UserID: result.UserID, ExchangeToken: result.SessionExchangeTkn, ExpiresAt: result.ExpiresAt,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, contract.ErrorEnvelope{Error: "session encode error"})
@@ -228,13 +196,8 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 
 	maxAge := int(time.Until(result.ExpiresAt).Seconds())
 	http.SetCookie(w, &http.Cookie{
-		Name:     "__Host-henukit_portal_session",
-		Value:    encoded,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   maxAge,
+		Name: "__Host-henukit_portal_session", Value: encoded, Path: "/",
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: maxAge,
 	})
 
 	returnTo := stored["return_to"]
@@ -250,99 +213,42 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
 		return
 	}
-
-	writeJSON(w, http.StatusOK, contract.PortalSession{
-		UserID:    v.UserID,
-		ExpiresAt: v.ExpiresAt,
-	})
+	writeJSON(w, http.StatusOK, contract.PortalSession{UserID: v.UserID, ExpiresAt: v.ExpiresAt})
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     "__Host-henukit_portal_session",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		MaxAge:   -1,
-		Expires:  time.Unix(1, 0),
+		Name: "__Host-henukit_portal_session", Value: "", Path: "/",
+		HttpOnly: true, Secure: true, MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})
 }
 
-// --- Product proxies ---
+// --- Proxy to portal-api ---
 
-func (h *Handler) libraryCourses(w http.ResponseWriter, r *http.Request) {
-	v, err := h.readSession(r)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
-		return
+func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
+	targetURL := h.portalAPIURL + r.URL.Path
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
 	}
-	if err := h.platform.CheckPermission(r.Context(), v.ExchangeToken, "portal.library.read"); err != nil {
-		h.handlePermError(w, err)
-		return
-	}
-	result, err := h.libraryClient.Courses(r.Context(), v.UserID, w.Header().Get("X-Request-Id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "library_unavailable", Detail: err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
-}
 
-func (h *Handler) foodVenues(w http.ResponseWriter, r *http.Request) {
-	v, err := h.readSession(r)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "proxy_error"})
 		return
 	}
-	if err := h.platform.CheckPermission(r.Context(), v.ExchangeToken, "portal.food.read"); err != nil {
-		h.handlePermError(w, err)
-		return
-	}
-	campus := r.URL.Query().Get("campus")
-	result, err := h.foodClient.Venues(r.Context(), campus, v.UserID, w.Header().Get("X-Request-Id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "food_unavailable", Detail: err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
-}
+	req.Header.Set("X-Request-Id", w.Header().Get("X-Request-Id"))
 
-func (h *Handler) practiceBanks(w http.ResponseWriter, r *http.Request) {
-	v, err := h.readSession(r)
+	resp, err := h.portalAPI.Do(req)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "portal_api_unavailable"})
 		return
 	}
-	if err := h.platform.CheckPermission(r.Context(), v.ExchangeToken, "portal.practice.read"); err != nil {
-		h.handlePermError(w, err)
-		return
-	}
-	result, err := h.practiceClient.Banks(r.Context(), v.UserID, w.Header().Get("X-Request-Id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "practice_unavailable", Detail: err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
-}
+	defer resp.Body.Close()
 
-func (h *Handler) noticeList(w http.ResponseWriter, r *http.Request) {
-	v, err := h.readSession(r)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
-		return
-	}
-	if err := h.platform.CheckPermission(r.Context(), v.ExchangeToken, "portal.notice.read"); err != nil {
-		h.handlePermError(w, err)
-		return
-	}
-	result, err := h.noticeClient.List(r.Context(), v.UserID, w.Header().Get("X-Request-Id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "notice_unavailable", Detail: err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // --- Helpers ---
@@ -362,28 +268,6 @@ func (h *Handler) readSession(r *http.Request) (session.Value, error) {
 	return v, nil
 }
 
-func (h *Handler) handlePermError(w http.ResponseWriter, err error) {
-	if err == platformcore.ErrUnauthorized {
-		// Clear session cookie
-		http.SetCookie(w, &http.Cookie{
-			Name:     "__Host-henukit_portal_session",
-			Value:    "",
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   true,
-			MaxAge:   -1,
-			Expires:  time.Unix(1, 0),
-		})
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "session expired"})
-		return
-	}
-	if err == platformcore.ErrForbidden {
-		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "forbidden"})
-		return
-	}
-	writeJSON(w, http.StatusInternalServerError, contract.ErrorEnvelope{Error: "auth_check_error"})
-}
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -395,8 +279,7 @@ func uuid() string {
 	rand.Read(b)
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 func randomBytes(n int) []byte {
@@ -407,11 +290,10 @@ func randomBytes(n int) []byte {
 
 func sha256Hex(data []byte) string {
 	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
+	return fmt.Sprintf("%x", h[:])
 }
 
 func sha256Sum(data []byte) []byte {
 	h := sha256.Sum256(data)
 	return h[:]
 }
-
