@@ -11,6 +11,7 @@
  */
 
 import { hasGateway, fetchSession, redirectToLogin, logout as apiLogout } from "@/lib/api/client";
+import { initAllGateways } from "@/lib/gateway-init";
 
 export interface AuthUser {
   name: string;
@@ -47,6 +48,8 @@ function init() {
           user: { name: session.user_id, uid: session.user_id, email: "" },
           ready: true,
         };
+        // 认证成功后，并行拉取各模块数据
+        initAllGateways();
       } else {
         state = { user: null, ready: true };
       }
