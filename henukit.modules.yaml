@@ -15,7 +15,7 @@ modules:
     owner: portal
     deploy_unit: portal-web
     target_domain: henukit.cn
-    status: foundation
+    status: active_development
 
   - id: study_web
     kind: web_app
@@ -75,6 +75,18 @@ modules:
       api: services/quiz-api-legacy
     current_domain: superhuazai.me
     target_domain: quiz.henukit.cn
+
+  - id: portal_gateway
+    kind: go_service
+    current_path: services/portal-gateway
+    target_path: services/portal-gateway
+    owner: portal
+    deploy_unit: portal-gateway
+    status: active_development
+    notes:
+      - Read-only BFF for Portal frontend
+      - OAuth session with Platform Core
+      - Proxies to Library, Food, Practice, Notice services
 
   - id: platform_core
     kind: go_service

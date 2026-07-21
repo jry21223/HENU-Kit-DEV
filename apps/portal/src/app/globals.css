@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f2f0ea;
+  --color-ink: #161513;
+  --color-accent: #ff4d00;
+  --color-line: rgba(22, 21, 19, 0.14);
+  --color-line-dark: rgba(242, 240, 234, 0.16);
+
+  /* 功能色：仅用于难度分徽标等数据标识，不进装饰层 */
+  --color-easy: #3e7c4f;
+  --color-mid: #c79a2a;
+  --color-hard: #c2401f;
+
+  --font-display:
+    var(--font-space-grotesk), "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono:
+    var(--font-plex-mono), "PingFang SC", "Microsoft YaHei", monospace;
+  --font-sans:
+    "PingFang SC", "Microsoft YaHei", var(--font-space-grotesk), sans-serif;
+}
+
+/* 注意：不要给 html 加 scroll-behavior: smooth —
+   会把 GSAP ScrollToPlugin 每帧的 scrollTo 再平滑化，导致滚动被反复打断 */
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-paper);
+}
+
+/* 工程图纸网格背景 */
+.bg-blueprint {
+  background-image:
+    linear-gradient(var(--color-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
+
+.bg-blueprint-dark {
+  background-image:
+    linear-gradient(var(--color-line-dark) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-line-dark) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
+
+/* Footer 巨型描边空心字 */
+.text-outline {
+  -webkit-text-stroke: 1.5px var(--color-ink);
+  color: transparent;
+}
+
+/* 整屏模块标记：md+ 由 GSAP Observer 接管滚动切换（见 snap-scroll.tsx），
+   snap-align 仅为语义标记；小屏为普通滚动 */
+.snap-screen {
+  scroll-snap-align: start;
+}
+
+/* 热力图方格 hover 弹性放大（SVG transform 需 transform-box） */
+.heat-cell {
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.heat-cell:hover {
+  transform: scale(1.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heat-cell {
+    transition: none;
+  }
+
+  .heat-cell:hover {
+    transform: none;
+  }
+}
+
+/* reduced-motion：01 资料卡轨道回退为手动横向滚动 */
+@media (prefers-reduced-motion: reduce) {
+  .lib-track-wrap {
+    overflow-x: auto;
+  }
+}

@@ -10,12 +10,13 @@
 - [Library Compatibility](./services/library/CONTEXT.md) — Library Module terms, bounded legacy translation, idempotency, and degradation semantics.
 - [Food Operations](./services/food/CONTEXT.md) — Food-owned submissions, anomaly tickets, tier adjustments, idempotency, and stale semantics.
 - [QuizCraft](./products/quizcraft/CONTEXT.md) — Practice Core, stable question identity, versioned banks, explicit imports, and workshop boundaries.
+- [Portal](./apps/portal/CONTEXT.md) — Portal main site, module sections, sub-sites, design language, and deterministic SSR.
+- [Portal Gateway](./services/portal-gateway/CONTEXT.md) — Portal OAuth session, read-only product proxying, and portal-scoped permissions.
 
 ## Extraction targets
 
 As implementation directories are established, move resolved terms into context-owned glossaries without duplicating definitions:
 
-- `apps/portal/CONTEXT.md` — Portal and Portal Configuration.
 - [Notice Service](./services/notice/CONTEXT.md) — notice sources, immutable versions, review, audience, and distribution.
 
 Do not create empty context files. Move a term when its owning implementation context is materialized or when the term is next changed.
