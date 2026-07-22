@@ -1,5 +1,8 @@
 BEGIN;
 
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '5min';
+
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM verification_codes WHERE sensitive_cleared_at IS NOT NULL)

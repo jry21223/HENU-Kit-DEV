@@ -1,5 +1,8 @@
 BEGIN;
 
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '5min';
+
 DO $$
 BEGIN
     IF to_regclass('public.verification_codes') IS NULL
