@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 type HTTPSender struct {
@@ -56,6 +57,12 @@ func (s *HTTPSender) Send(ctx context.Context, message Message) (string, error) 
 	request.Header.Set("Authorization", "Bearer "+s.token)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", message.IdempotencyKey)
+	request.Header.Set("X-Request-ID", message.RequestID)
+	attempt := message.AttemptCount
+	if attempt < 1 {
+		attempt = 1
+	}
+	request.Header.Set("X-Mail-Attempt", strconv.FormatInt(int64(attempt), 10))
 	response, err := s.client.Do(request)
 	if err != nil {
 		return "", err
@@ -63,7 +70,10 @@ func (s *HTTPSender) Send(ctx context.Context, message Message) (string, error) 
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
-		permanent := response.StatusCode >= 400 && response.StatusCode < 500 && response.StatusCode != http.StatusTooManyRequests
+		permanent := response.StatusCode >= 400 && response.StatusCode < 500 &&
+			response.StatusCode != http.StatusRequestTimeout &&
+			response.StatusCode != http.StatusConflict &&
+			response.StatusCode != http.StatusTooManyRequests
 		return "", &SendError{Code: "PROVIDER_REJECTED", Permanent: permanent}
 	}
 	var accepted struct {

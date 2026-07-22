@@ -20,6 +20,7 @@ type Message struct {
 	Purpose        string
 	ExpiresAt      time.Time
 	RequestID      string
+	AttemptCount   int32
 }
 
 type Sender interface {
@@ -118,7 +119,7 @@ func (w *Worker) ProcessOne(ctx context.Context) (outcome Outcome, err error) {
 	providerMessageID, sendErr := w.sender.Send(sendContext, Message{
 		IdempotencyKey: job.DedupeKey,
 		Recipient:      recipient, Code: content.Code, Purpose: content.Purpose,
-		ExpiresAt: content.ExpiresAt, RequestID: job.RequestID,
+		ExpiresAt: content.ExpiresAt, RequestID: job.RequestID, AttemptCount: job.AttemptCount,
 	})
 	cancel()
 	if sendErr == nil && providerMessageID != "" {
