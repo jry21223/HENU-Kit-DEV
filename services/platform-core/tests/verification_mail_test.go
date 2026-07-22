@@ -428,6 +428,27 @@ func TestAccountCenterLoginPageCompletesBrowserSession(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE revoked_at IS NULL`).Scan(&activeSessions); err != nil || activeSessions != 0 {
 		t.Fatalf("active sessions after global revocation = %d err=%v, want 0", activeSessions, err)
 	}
+	siblingTokenHash := sha256.Sum256([]byte("active-sibling-core-session"))
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO sessions (user_id, kind, token_hash, expires_at)
+		SELECT user_id, 'core', $1, now() + interval '1 hour'
+		FROM sessions WHERE kind = 'core' LIMIT 1`, siblingTokenHash[:]); err != nil {
+		t.Fatalf("create active sibling Core Session: %v", err)
+	}
+	revokedRetryRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/sessions/revoke", bytes.NewBufferString(`{"all_sessions":true}`))
+	revokedRetryRequest.Header.Set("Content-Type", "application/json")
+	revokedRetryRequest.Header.Set("Origin", server.URL)
+	revokedRetry, err := client.Do(revokedRetryRequest)
+	if err != nil {
+		t.Fatalf("retry global revocation with revoked Session: %v", err)
+	}
+	revokedRetry.Body.Close()
+	if revokedRetry.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("global revocation with revoked Session = %d, want 401", revokedRetry.StatusCode)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE revoked_at IS NULL`).Scan(&activeSessions); err != nil || activeSessions != 1 {
+		t.Fatalf("active sessions after rejected revoked-Session request = %d err=%v, want 1", activeSessions, err)
+	}
 	afterRevoke, err := client.Get(server.URL + returnTo)
 	if err != nil {
 		t.Fatalf("authorize after Core Session revocation: %v", err)

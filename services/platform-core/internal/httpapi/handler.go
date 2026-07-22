@@ -104,7 +104,7 @@ func (h *Handler) revokeCurrentSession(writer http.ResponseWriter, request *http
 	defer func() { _ = tx.Rollback(request.Context()) }()
 	var sessionID, userID string
 	var expiresAt time.Time
-	if err := tx.QueryRow(request.Context(), `SELECT id::text,user_id::text,expires_at FROM sessions WHERE kind='core' AND token_hash=$1 FOR UPDATE`, tokenHash[:]).Scan(&sessionID, &userID, &expiresAt); err != nil {
+	if err := tx.QueryRow(request.Context(), `SELECT id::text,user_id::text,expires_at FROM sessions WHERE kind='core' AND token_hash=$1 AND revoked_at IS NULL FOR UPDATE`, tokenHash[:]).Scan(&sessionID, &userID, &expiresAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is invalid")
 			return
