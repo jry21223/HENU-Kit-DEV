@@ -76,14 +76,11 @@ HENU Kit 是由河南大学学生自主发起、运营和维护的校园工具�
 - Owner 不能独立验收自己的安全关键实现。
 - 大型迁移先开 Draft PR，先评审结构和风险，再填充实现。
 
-推荐分支：
+规范分支：
 
 ```text
-feat/<area>-<description>
-fix/<area>-<description>
-chore/<area>-<description>
-docs/<description>
-codex/<description>
+feature/<area>/<issue-id>
+fix/<area>/<issue-id>
 ```
 
 ## 5. Commit

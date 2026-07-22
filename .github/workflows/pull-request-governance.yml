@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   branch-name:
-    if: github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - name: Require a conventional branch name
@@ -20,16 +19,15 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          [[ "$HEAD_REF" =~ ^(codex|feat|fix|docs|chore|refactor|test|build|ci|perf|revert)/[a-z0-9][a-z0-9._-]*$ ]] || {
-            echo "Branch '$HEAD_REF' must use an allowed type prefix and lowercase slug." >&2
+          [[ "$HEAD_REF" =~ ^(feature|fix)/[a-z0-9][a-z0-9-]*/hc-[0-9]+$ ]] || {
+            echo "Branch '$HEAD_REF' must match feature/<area>/hc-<issue> or fix/<area>/hc-<issue>." >&2
             exit 1
           }
 
   independent-review:
-    if: github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
-      - name: Require approval of the current commit by another account
+      - name: Require current-commit developer and tester approvals
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -38,9 +36,36 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          approvals="$(gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" \
-            --jq '[.[][] | select(.state == "APPROVED" and .commit_id == env.HEAD_SHA and .user.login != env.PR_AUTHOR)] | length')"
-          test "$approvals" -ge 1 || {
-            echo "The current PR commit requires an auditable approval from an account other than $PR_AUTHOR." >&2
-            exit 1
+          gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" > reviews.json
+          python3 - "$PR_AUTHOR" "$HEAD_SHA" <<'PY'
+          import json
+          import sys
+
+          author, head_sha = sys.argv[1:]
+          pages = json.load(open("reviews.json", encoding="utf-8"))
+          reviews = [review for page in pages for review in page]
+          latest = {}
+          for review in sorted(reviews, key=lambda item: (item.get("submitted_at") or "", item.get("id") or 0)):
+              login = review.get("user", {}).get("login")
+              if login and review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                  latest[login] = review
+          approved = [
+              review for login, review in latest.items()
+              if review.get("state") == "APPROVED"
+              and review.get("commit_id") == head_sha
+              and login != author
+          ]
+          developers = {
+              review["user"]["login"] for review in approved
+              if "[role:developer]" in (review.get("body") or "").lower()
           }
+          testers = {
+              review["user"]["login"] for review in approved
+              if "[role:tester]" in (review.get("body") or "").lower()
+          }
+          if not any(developer != tester for developer in developers for tester in testers):
+              raise SystemExit(
+                  "The current commit requires distinct non-author approvals whose review bodies "
+                  "contain [role:developer] and [role:tester]."
+              )
+          PY
