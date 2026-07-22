@@ -5,7 +5,6 @@ WHERE request_key = $1;
 
 -- name: GetConsumedVerificationReplay :one
 SELECT verification_codes.id, verification_codes.consumed_request_fingerprint,
-       verification_codes.login_session_token_ciphertext,
        sessions.expires_at AS login_session_expires_at,
        users.id AS login_user_id, users.email_verified AS login_user_email_verified,
        users.status AS login_user_status, users.created_at AS login_user_created_at
@@ -30,8 +29,7 @@ RETURNING id;
 
 -- name: GetVerificationCodeForUpdate :one
 SELECT id, code_nonce, code_hash, expires_at, used_at, revoked_at, failed_attempts,
-       consumed_request_key, consumed_request_fingerprint,
-       login_session_token_ciphertext
+       consumed_request_key, consumed_request_fingerprint
 FROM verification_codes
 WHERE email_lookup_hash = $1 AND purpose = $2
 ORDER BY created_at DESC
@@ -73,8 +71,34 @@ RETURNING id, expires_at;
 
 -- name: AttachLoginSessionToVerification :execrows
 UPDATE verification_codes
-SET login_session_id = $2, login_session_token_ciphertext = $3
+SET login_session_id = $2, login_session_token_ciphertext = ''::bytea
 WHERE id = $1 AND used_at IS NOT NULL AND purpose = 'login' AND login_session_id IS NULL;
+
+-- name: ScrubExpiredVerificationSecrets :execrows
+UPDATE verification_codes
+SET request_key = NULL,
+    request_fingerprint = NULL,
+    code_nonce = NULL,
+    code_hash = NULL,
+    consumed_request_key = NULL,
+    consumed_request_fingerprint = NULL,
+    sensitive_cleared_at = now()
+WHERE created_at <= $1
+  AND sensitive_cleared_at IS NULL;
+
+-- name: ScrubExpiredVerificationOutboxPayloads :execrows
+UPDATE mail_outbox AS job
+SET payload_ciphertext = NULL,
+    payload_cleared_at = now(),
+    updated_at = now()
+FROM verification_codes AS verification
+WHERE job.verification_code_id = verification.id
+  AND verification.created_at <= $1
+  AND job.payload_cleared_at IS NULL;
+
+-- name: DeleteExpiredOAuthExchangeIdempotency :execrows
+DELETE FROM oauth_exchange_idempotency
+WHERE expires_at <= $1;
 
 -- name: FailExhaustedOutboxLeases :exec
 WITH transitioned AS (

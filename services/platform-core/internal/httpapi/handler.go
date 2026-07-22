@@ -684,6 +684,8 @@ func (h *Handler) verifyVerificationCode(writer http.ResponseWriter, request *ht
 			Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt,
 			MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 		})
+	}
+	if verified.UserID != "" {
 		response.User = &contract.PlatformUser{UserID: verified.UserID, EmailVerified: verified.EmailVerified, Status: verified.UserStatus, CreatedAt: verified.UserCreatedAt}
 		response.SessionExpiresAt = &verified.SessionExpiresAt
 		auditFrom(request.Context()).subjectUserID = maskSubject(verified.UserID)

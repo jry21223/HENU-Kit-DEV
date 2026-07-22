@@ -129,7 +129,7 @@ func New(config Config) (http.Handler, error) {
 	_, _ = deviceMAC.Write([]byte("henukit-device-cookie"))
 	deviceKey := deviceMAC.Sum(nil)
 	coordinator := coordination.NewRedis(config.Redis)
-	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL, config.IdempotencyEncryptionKey)
+	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL)
 	inbox := operationsinbox.New(queries, config.Database)
 	platformOperations := platformoperations.New(queries, config.Database, config.Redis)
 	verificationFlow, err := verification.New(queries, config.Database, coordinator, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay, config.CoreSessionTTL)

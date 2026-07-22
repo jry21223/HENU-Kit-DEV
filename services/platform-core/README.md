@@ -10,7 +10,7 @@ Independent Go service for platform-owned identity and operations data. The deli
 - 60–120 second, hash-only, single-use Authorization Codes;
 - eight-hour product-local exchange Sessions for Console and Workshop high-privilege work, with immediate server-side revocation;
 - server-to-server code exchange protected by Basic client authentication, S256 PKCE, HMAC-SHA256, a five-minute timestamp window, and Redis nonce replay prevention;
-- encrypted idempotent exchange responses retained for at least 24 hours without persisting plaintext Session tokens;
+- hash-only Session persistence; completed OAuth exchange replays return a safe conflict and require restarting OAuth rather than recovering a prior credential;
 - PostgreSQL as the durable source of truth and Redis only for short-lived coordination;
 - liveness and dependency readiness endpoints.
 - propagated request IDs and structured, redacted request audit logs.
@@ -29,6 +29,8 @@ Independent Go service for platform-owned identity and operations data. The deli
 It does not own Console Gateway sessions or product-local sessions. Legacy QuizCraft IDs are not automatically mapped to Email Identities.
 
 Production configuration is environment-only. Copy key names from `.env.example`; use distinct Platform Core PostgreSQL credentials, an authenticated `rediss://` URL, and separate random 32-byte idempotency and verification keys. The service never logs connection URLs, credentials, request bodies, email addresses, verification codes, authorization codes, or Session tokens.
+
+Production login is code-locked to the single `henu.edu.cn` domain. `PLATFORM_CORE_STUDENT_EMAIL_DOMAINS` remains an explicit deployment assertion and the process refuses to start if it contains any other value. Run `go run ./cmd/auth-retention-cleanup` at least hourly with the Platform Core database URL: it atomically removes expired OAuth exchange idempotency responses and scrubs verification hashes, nonces, and request/consume idempotency facts after 24 hours while retaining non-secret mail and login audit relationships.
 
 `POST /api/v1/oauth/token` requires `Idempotency-Key`, `X-Service-Id`, `X-Key-Id`, `X-Timestamp`, `X-Nonce`, and `X-Signature`. The signature is base64url HMAC-SHA256 over `METHOD`, the actual `PATH_AND_QUERY`, timestamp, nonce, and lowercase hexadecimal `SHA256(BODY)`, separated by newlines. Each OAuth client key progresses through `active`, `retiring`, and `revoked`; only the first two states authenticate during a rotation window.
 

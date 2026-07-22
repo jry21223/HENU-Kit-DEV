@@ -114,17 +114,17 @@ INSERT INTO authorization_audit_events (
 );
 
 -- name: GetOAuthExchangeIdempotency :one
-SELECT request_hash, response_ciphertext, expires_at
+SELECT request_hash, expires_at
 FROM oauth_exchange_idempotency
 WHERE client_id = $1 AND idempotency_key = $2 AND expires_at > now();
 
 -- name: CreateOAuthExchangeIdempotency :exec
 INSERT INTO oauth_exchange_idempotency (
     client_id, idempotency_key, request_hash, response_ciphertext, expires_at
-) VALUES ($1, $2, $3, $4, $5)
+) VALUES ($1, $2, $3, ''::bytea, $4)
 ON CONFLICT (client_id, idempotency_key) DO UPDATE SET
     request_hash = EXCLUDED.request_hash,
-    response_ciphertext = EXCLUDED.response_ciphertext,
+    response_ciphertext = ''::bytea,
     expires_at = EXCLUDED.expires_at,
     created_at = now()
 WHERE oauth_exchange_idempotency.expires_at <= now();
