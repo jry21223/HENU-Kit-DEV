@@ -33,6 +33,7 @@ func main() {
 	}
 	logger.Info("auth retention cleanup completed",
 		"verification_records_scrubbed", result.VerificationRecordsScrubbed,
+		"outbox_payloads_scrubbed", result.OutboxPayloadsScrubbed,
 		"exchange_idempotency_deleted", result.ExchangeIdempotencyDeleted,
 	)
 }

@@ -15,7 +15,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -325,19 +324,18 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	second := exchangeCodeWith(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "")
 	secondBody, _ := io.ReadAll(second.Body)
 	second.Body.Close()
-	var firstEnvelope, secondEnvelope map[string]any
+	var firstEnvelope map[string]any
 	_ = json.Unmarshal(firstBody, &firstEnvelope)
-	_ = json.Unmarshal(secondBody, &secondEnvelope)
-	if second.StatusCode != http.StatusOK || !reflect.DeepEqual(firstEnvelope["data"], secondEnvelope["data"]) {
-		t.Fatalf("idempotent retry status/body = %d/%s, want original 200 response", second.StatusCode, secondBody)
+	if second.StatusCode != http.StatusConflict || !bytes.Contains(secondBody, []byte(`"AUTH_CODE_ALREADY_USED"`)) {
+		t.Fatalf("completed exchange replay status/body = %d/%s, want safe 409 without credential recovery", second.StatusCode, secondBody)
 	}
 	token := firstEnvelope["data"].(map[string]any)["session_exchange_token"].(string)
 	var cachedCiphertext []byte
 	if err := pool.QueryRow(ctx, `SELECT response_ciphertext FROM oauth_exchange_idempotency WHERE client_id = $1 AND idempotency_key = $2`, testClientID, idempotencyKey).Scan(&cachedCiphertext); err != nil {
 		t.Fatalf("read cached idempotency response: %v", err)
 	}
-	if bytes.Contains(cachedCiphertext, []byte(token)) {
-		t.Fatal("idempotency cache persisted a plaintext Session token")
+	if len(cachedCiphertext) != 0 || bytes.Contains(cachedCiphertext, []byte(token)) {
+		t.Fatal("idempotency cache persisted a recoverable Session token")
 	}
 	var idempotencyRetention time.Duration
 	if err := pool.QueryRow(ctx, `SELECT expires_at - created_at FROM oauth_exchange_idempotency WHERE client_id = $1 AND idempotency_key = $2`, testClientID, idempotencyKey).Scan(&idempotencyRetention); err != nil || idempotencyRetention < 24*time.Hour-time.Minute {
@@ -393,7 +391,7 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	}
 }
 
-func TestConcurrentIdempotentRetriesReturnFirstResult(t *testing.T) {
+func TestConcurrentIdempotentExchangesIssueOnlyOneCredential(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
@@ -435,16 +433,24 @@ func TestConcurrentIdempotentRetriesReturnFirstResult(t *testing.T) {
 	wait.Wait()
 	close(results)
 	first := ""
+	conflicts := 0
 	for result := range results {
+		if result == "status:409" {
+			conflicts++
+			continue
+		}
 		if strings.HasPrefix(result, "status:") || strings.HasPrefix(result, "decode:") {
 			t.Error(result)
 			continue
 		}
 		if first == "" {
 			first = result
-		} else if result != first {
-			t.Errorf("idempotent retry token differs from first result")
+		} else {
+			t.Errorf("concurrent exchange recovered a second credential")
 		}
+	}
+	if first == "" || conflicts != 9 {
+		t.Fatalf("concurrent exchange outcomes: credential=%v conflicts=%d, want one credential and nine conflicts", first != "", conflicts)
 	}
 	var sessions int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE kind = 'client_exchange'`).Scan(&sessions); err != nil || sessions != 1 {

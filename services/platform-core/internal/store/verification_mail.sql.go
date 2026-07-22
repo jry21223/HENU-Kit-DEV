@@ -816,6 +816,25 @@ func (q *Queries) RetryMailOutbox(ctx context.Context, arg RetryMailOutboxParams
 	return result.RowsAffected(), nil
 }
 
+const scrubExpiredVerificationOutboxPayloads = `-- name: ScrubExpiredVerificationOutboxPayloads :execrows
+UPDATE mail_outbox AS job
+SET payload_ciphertext = NULL,
+    payload_cleared_at = now(),
+    updated_at = now()
+FROM verification_codes AS verification
+WHERE job.verification_code_id = verification.id
+  AND verification.created_at <= $1
+  AND job.payload_cleared_at IS NULL
+`
+
+func (q *Queries) ScrubExpiredVerificationOutboxPayloads(ctx context.Context, createdAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, scrubExpiredVerificationOutboxPayloads, createdAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const scrubExpiredVerificationSecrets = `-- name: ScrubExpiredVerificationSecrets :execrows
 UPDATE verification_codes
 SET request_key = NULL,

@@ -126,21 +126,20 @@ func (q *Queries) CreateExchangeSession(ctx context.Context, arg CreateExchangeS
 const createOAuthExchangeIdempotency = `-- name: CreateOAuthExchangeIdempotency :exec
 INSERT INTO oauth_exchange_idempotency (
     client_id, idempotency_key, request_hash, response_ciphertext, expires_at
-) VALUES ($1, $2, $3, $4, $5)
+) VALUES ($1, $2, $3, ''::bytea, $4)
 ON CONFLICT (client_id, idempotency_key) DO UPDATE SET
     request_hash = EXCLUDED.request_hash,
-    response_ciphertext = EXCLUDED.response_ciphertext,
+    response_ciphertext = ''::bytea,
     expires_at = EXCLUDED.expires_at,
     created_at = now()
 WHERE oauth_exchange_idempotency.expires_at <= now()
 `
 
 type CreateOAuthExchangeIdempotencyParams struct {
-	ClientID           string             `json:"client_id"`
-	IdempotencyKey     string             `json:"idempotency_key"`
-	RequestHash        []byte             `json:"request_hash"`
-	ResponseCiphertext []byte             `json:"response_ciphertext"`
-	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	ClientID       string             `json:"client_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestHash    []byte             `json:"request_hash"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) CreateOAuthExchangeIdempotency(ctx context.Context, arg CreateOAuthExchangeIdempotencyParams) error {
@@ -148,7 +147,6 @@ func (q *Queries) CreateOAuthExchangeIdempotency(ctx context.Context, arg Create
 		arg.ClientID,
 		arg.IdempotencyKey,
 		arg.RequestHash,
-		arg.ResponseCiphertext,
 		arg.ExpiresAt,
 	)
 	return err
@@ -396,7 +394,7 @@ func (q *Queries) GetOAuthClientKey(ctx context.Context, arg GetOAuthClientKeyPa
 }
 
 const getOAuthExchangeIdempotency = `-- name: GetOAuthExchangeIdempotency :one
-SELECT request_hash, response_ciphertext, expires_at
+SELECT request_hash, expires_at
 FROM oauth_exchange_idempotency
 WHERE client_id = $1 AND idempotency_key = $2 AND expires_at > now()
 `
@@ -407,15 +405,14 @@ type GetOAuthExchangeIdempotencyParams struct {
 }
 
 type GetOAuthExchangeIdempotencyRow struct {
-	RequestHash        []byte             `json:"request_hash"`
-	ResponseCiphertext []byte             `json:"response_ciphertext"`
-	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	RequestHash []byte             `json:"request_hash"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) GetOAuthExchangeIdempotency(ctx context.Context, arg GetOAuthExchangeIdempotencyParams) (GetOAuthExchangeIdempotencyRow, error) {
 	row := q.db.QueryRow(ctx, getOAuthExchangeIdempotency, arg.ClientID, arg.IdempotencyKey)
 	var i GetOAuthExchangeIdempotencyRow
-	err := row.Scan(&i.RequestHash, &i.ResponseCiphertext, &i.ExpiresAt)
+	err := row.Scan(&i.RequestHash, &i.ExpiresAt)
 	return i, err
 }
 

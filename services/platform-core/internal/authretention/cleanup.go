@@ -16,6 +16,7 @@ const verificationRetention = 24 * time.Hour
 
 type Result struct {
 	VerificationRecordsScrubbed int64
+	OutboxPayloadsScrubbed      int64
 	ExchangeIdempotencyDeleted  int64
 }
 
@@ -29,6 +30,10 @@ func Cleanup(ctx context.Context, database *pgxpool.Pool, now time.Time) (Result
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	queries := store.New(tx)
+	outboxRows, err := queries.ScrubExpiredVerificationOutboxPayloads(ctx, pgtype.Timestamptz{Time: now.UTC().Add(-verificationRetention), Valid: true})
+	if err != nil {
+		return Result{}, err
+	}
 	verificationRows, err := queries.ScrubExpiredVerificationSecrets(ctx, pgtype.Timestamptz{Time: now.UTC().Add(-verificationRetention), Valid: true})
 	if err != nil {
 		return Result{}, err
@@ -40,5 +45,5 @@ func Cleanup(ctx context.Context, database *pgxpool.Pool, now time.Time) (Result
 	if err := tx.Commit(ctx); err != nil {
 		return Result{}, err
 	}
-	return Result{VerificationRecordsScrubbed: verificationRows, ExchangeIdempotencyDeleted: idempotencyRows}, nil
+	return Result{VerificationRecordsScrubbed: verificationRows, OutboxPayloadsScrubbed: outboxRows, ExchangeIdempotencyDeleted: idempotencyRows}, nil
 }

@@ -101,6 +101,7 @@ type MailOutbox struct {
 	LastErrorCode       pgtype.Text        `json:"last_error_code"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	PayloadClearedAt    pgtype.Timestamptz `json:"payload_cleared_at"`
 }
 
 type MailOutboxAuditEvent struct {
@@ -262,20 +263,21 @@ type UserRoleGrant struct {
 }
 
 type VerificationCode struct {
-	ID                         pgtype.UUID        `json:"id"`
-	EmailLookupHash            []byte             `json:"email_lookup_hash"`
-	Purpose                    string             `json:"purpose"`
-	RequestKey                 pgtype.Text        `json:"request_key"`
-	RequestFingerprint         []byte             `json:"request_fingerprint"`
-	CodeNonce                  []byte             `json:"code_nonce"`
-	CodeHash                   []byte             `json:"code_hash"`
-	ExpiresAt                  pgtype.Timestamptz `json:"expires_at"`
-	UsedAt                     pgtype.Timestamptz `json:"used_at"`
-	ConsumedRequestKey         pgtype.Text        `json:"consumed_request_key"`
-	ConsumedRequestFingerprint []byte             `json:"consumed_request_fingerprint"`
-	RevokedAt                  pgtype.Timestamptz `json:"revoked_at"`
-	FailedAttempts             int32              `json:"failed_attempts"`
-	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
-	LoginSessionID             pgtype.UUID        `json:"login_session_id"`
-	SensitiveClearedAt         pgtype.Timestamptz `json:"sensitive_cleared_at"`
+	ID                          pgtype.UUID        `json:"id"`
+	EmailLookupHash             []byte             `json:"email_lookup_hash"`
+	Purpose                     string             `json:"purpose"`
+	RequestKey                  pgtype.Text        `json:"request_key"`
+	RequestFingerprint          []byte             `json:"request_fingerprint"`
+	CodeNonce                   []byte             `json:"code_nonce"`
+	CodeHash                    []byte             `json:"code_hash"`
+	ExpiresAt                   pgtype.Timestamptz `json:"expires_at"`
+	UsedAt                      pgtype.Timestamptz `json:"used_at"`
+	ConsumedRequestKey          pgtype.Text        `json:"consumed_request_key"`
+	ConsumedRequestFingerprint  []byte             `json:"consumed_request_fingerprint"`
+	RevokedAt                   pgtype.Timestamptz `json:"revoked_at"`
+	FailedAttempts              int32              `json:"failed_attempts"`
+	CreatedAt                   pgtype.Timestamptz `json:"created_at"`
+	LoginSessionID              pgtype.UUID        `json:"login_session_id"`
+	LoginSessionTokenCiphertext []byte             `json:"login_session_token_ciphertext"`
+	SensitiveClearedAt          pgtype.Timestamptz `json:"sensitive_cleared_at"`
 }

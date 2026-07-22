@@ -86,6 +86,16 @@ SET request_key = NULL,
 WHERE created_at <= $1
   AND sensitive_cleared_at IS NULL;
 
+-- name: ScrubExpiredVerificationOutboxPayloads :execrows
+UPDATE mail_outbox AS job
+SET payload_ciphertext = NULL,
+    payload_cleared_at = now(),
+    updated_at = now()
+FROM verification_codes AS verification
+WHERE job.verification_code_id = verification.id
+  AND verification.created_at <= $1
+  AND job.payload_cleared_at IS NULL;
+
 -- name: DeleteExpiredOAuthExchangeIdempotency :execrows
 DELETE FROM oauth_exchange_idempotency
 WHERE expires_at <= $1;

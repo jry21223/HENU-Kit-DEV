@@ -147,9 +147,9 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 			t.Fatalf("idempotent verification replay %d omitted the completed login result: %s", replayIndex, replayBody)
 		}
 	}
-	var recoverableSessionColumns int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='verification_codes' AND column_name LIKE '%session%token%'`).Scan(&recoverableSessionColumns); err != nil || recoverableSessionColumns != 0 {
-		t.Fatalf("recoverable Session credential columns = %d err=%v, want 0", recoverableSessionColumns, err)
+	var recoverableSessionCredentials int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM verification_codes WHERE coalesce(octet_length(login_session_token_ciphertext),0)>0) + (SELECT count(*) FROM oauth_exchange_idempotency WHERE octet_length(response_ciphertext)>0)`).Scan(&recoverableSessionCredentials); err != nil || recoverableSessionCredentials != 0 {
+		t.Fatalf("recoverable Session credentials = %d err=%v, want 0", recoverableSessionCredentials, err)
 	}
 	var issuedSessions int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE user_id = (SELECT user_id FROM email_identities WHERE email_lookup_hash = (SELECT email_lookup_hash FROM verification_codes WHERE id = $1))`, verificationID).Scan(&issuedSessions); err != nil {
@@ -214,6 +214,19 @@ func TestAuthRetentionCleanupScrubsVerificationAndIdempotencySecretsAfterTwentyF
 	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("seed stale verification = %d, want 202", response.StatusCode)
 	}
+	sender := &captureSender{messageID: "provider_retention_stale"}
+	worker, err := mailworker.New(store.New(pool), sender, "worker_retention_stale", testVerificationEncryptionKey, time.Minute, time.Second)
+	if err != nil {
+		t.Fatalf("create retention mail worker: %v", err)
+	}
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver retention verification: outcome=%+v err=%v", outcome, err)
+	}
+	verified := verifyCode(t, server, sender.lastMessage().Code, "verify_retention_stale")
+	verified.Body.Close()
+	if verified.StatusCode != http.StatusOK {
+		t.Fatalf("consume stale verification = %d, want 200", verified.StatusCode)
+	}
 	if _, err := pool.Exec(ctx, `UPDATE verification_codes SET created_at=now()-interval '25 hours', expires_at=now()-interval '24 hours' WHERE request_key='request_retention_stale'`); err != nil {
 		t.Fatalf("age verification record: %v", err)
 	}
@@ -225,23 +238,28 @@ func TestAuthRetentionCleanupScrubsVerificationAndIdempotencySecretsAfterTwentyF
 	if err != nil {
 		t.Fatalf("run auth retention cleanup: %v", err)
 	}
-	if result.VerificationRecordsScrubbed != 1 || result.ExchangeIdempotencyDeleted != 1 {
-		t.Fatalf("cleanup result = %+v, want one verification scrub and one idempotency delete", result)
+	if result.VerificationRecordsScrubbed != 1 || result.OutboxPayloadsScrubbed != 1 || result.ExchangeIdempotencyDeleted != 1 {
+		t.Fatalf("cleanup result = %+v, want one verification scrub, one Outbox scrub, and one idempotency delete", result)
 	}
-	var requestKey, codeHash, codeNonce, requestFingerprint any
+	var requestKey, codeHash, codeNonce, requestFingerprint, consumedKey, consumedFingerprint any
 	var scrubbed bool
-	if err := pool.QueryRow(ctx, `SELECT request_key,code_hash,code_nonce,request_fingerprint,sensitive_cleared_at IS NOT NULL FROM verification_codes`).Scan(&requestKey, &codeHash, &codeNonce, &requestFingerprint, &scrubbed); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT request_key,code_hash,code_nonce,request_fingerprint,consumed_request_key,consumed_request_fingerprint,sensitive_cleared_at IS NOT NULL FROM verification_codes`).Scan(&requestKey, &codeHash, &codeNonce, &requestFingerprint, &consumedKey, &consumedFingerprint, &scrubbed); err != nil {
 		t.Fatalf("read scrubbed verification: %v", err)
 	}
-	if requestKey != nil || codeHash != nil || codeNonce != nil || requestFingerprint != nil || !scrubbed {
-		t.Fatalf("verification secrets survived cleanup: request=%v hash=%v nonce=%v fingerprint=%v scrubbed=%v", requestKey, codeHash, codeNonce, requestFingerprint, scrubbed)
+	if requestKey != nil || codeHash != nil || codeNonce != nil || requestFingerprint != nil || consumedKey != nil || consumedFingerprint != nil || !scrubbed {
+		t.Fatalf("verification secrets survived cleanup: request=%v hash=%v nonce=%v fingerprint=%v consumed=%v/%v scrubbed=%v", requestKey, codeHash, codeNonce, requestFingerprint, consumedKey, consumedFingerprint, scrubbed)
+	}
+	var payloadCiphertext any
+	var payloadCleared bool
+	if err := pool.QueryRow(ctx, `SELECT payload_ciphertext,payload_cleared_at IS NOT NULL FROM mail_outbox`).Scan(&payloadCiphertext, &payloadCleared); err != nil || payloadCiphertext != nil || !payloadCleared {
+		t.Fatalf("verification Outbox payload survived cleanup: payload=%v cleared=%v err=%v", payloadCiphertext, payloadCleared, err)
 	}
 	var currentRows int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM oauth_exchange_idempotency WHERE idempotency_key='retention-current'`).Scan(&currentRows); err != nil || currentRows != 1 {
 		t.Fatalf("cleanup removed current idempotency record: rows=%d err=%v", currentRows, err)
 	}
 	second, err := authretention.Cleanup(ctx, pool, time.Now().UTC())
-	if err != nil || second.VerificationRecordsScrubbed != 0 || second.ExchangeIdempotencyDeleted != 0 {
+	if err != nil || second.VerificationRecordsScrubbed != 0 || second.OutboxPayloadsScrubbed != 0 || second.ExchangeIdempotencyDeleted != 0 {
 		t.Fatalf("cleanup replay was not idempotent: result=%+v err=%v", second, err)
 	}
 }
