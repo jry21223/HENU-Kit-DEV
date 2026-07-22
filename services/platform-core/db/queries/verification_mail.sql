@@ -4,8 +4,13 @@ FROM verification_codes
 WHERE request_key = $1;
 
 -- name: GetConsumedVerificationReplay :one
-SELECT id, consumed_request_fingerprint
+SELECT verification_codes.id, verification_codes.consumed_request_fingerprint,
+       sessions.expires_at AS login_session_expires_at,
+       users.id AS login_user_id, users.email_verified AS login_user_email_verified,
+       users.status AS login_user_status, users.created_at AS login_user_created_at
 FROM verification_codes
+LEFT JOIN sessions ON sessions.id = verification_codes.login_session_id
+LEFT JOIN users ON users.id = sessions.user_id
 WHERE consumed_request_key = $1 AND used_at IS NOT NULL;
 
 -- name: CreateVerificationCode :one
@@ -42,6 +47,58 @@ RETURNING failed_attempts, revoked_at;
 UPDATE verification_codes
 SET used_at = now(), consumed_request_key = $2, consumed_request_fingerprint = $3
 WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now();
+
+-- name: GetEmailIdentityForUpdate :one
+SELECT identity.user_id, users.email_verified, users.status, users.created_at
+FROM email_identities AS identity
+JOIN users ON users.id = identity.user_id
+WHERE identity.email_lookup_hash = $1
+FOR UPDATE OF identity, users;
+
+-- name: CreateEmailLoginUser :one
+INSERT INTO users (email_verified, status)
+VALUES (true, 'active')
+RETURNING id, email_verified, status, created_at;
+
+-- name: CreateEmailIdentity :exec
+INSERT INTO email_identities (user_id, email_lookup_hash, email_ciphertext, verified_at)
+VALUES ($1, $2, $3, now());
+
+-- name: CreateCoreSession :one
+INSERT INTO sessions (user_id, kind, token_hash, expires_at)
+VALUES ($1, 'core', $2, $3)
+RETURNING id, expires_at;
+
+-- name: AttachLoginSessionToVerification :execrows
+UPDATE verification_codes
+SET login_session_id = $2, login_session_token_ciphertext = ''::bytea
+WHERE id = $1 AND used_at IS NOT NULL AND purpose = 'login' AND login_session_id IS NULL;
+
+-- name: ScrubExpiredVerificationSecrets :execrows
+UPDATE verification_codes
+SET request_key = NULL,
+    request_fingerprint = NULL,
+    code_nonce = NULL,
+    code_hash = NULL,
+    consumed_request_key = NULL,
+    consumed_request_fingerprint = NULL,
+    sensitive_cleared_at = now()
+WHERE created_at <= $1
+  AND sensitive_cleared_at IS NULL;
+
+-- name: ScrubExpiredVerificationOutboxPayloads :execrows
+UPDATE mail_outbox AS job
+SET payload_ciphertext = NULL,
+    payload_cleared_at = now(),
+    updated_at = now()
+FROM verification_codes AS verification
+WHERE job.verification_code_id = verification.id
+  AND verification.created_at <= $1
+  AND job.payload_cleared_at IS NULL;
+
+-- name: DeleteExpiredOAuthExchangeIdempotency :execrows
+DELETE FROM oauth_exchange_idempotency
+WHERE expires_at <= $1;
 
 -- name: FailExhaustedOutboxLeases :exec
 WITH transitioned AS (

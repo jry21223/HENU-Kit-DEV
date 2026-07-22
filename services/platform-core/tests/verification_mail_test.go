@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,8 +27,10 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	platformcore "henukit.dev/platform-core"
+	"henukit.dev/platform-core/internal/authretention"
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/mailworker"
+	"henukit.dev/platform-core/internal/operatorbootstrap"
 	"henukit.dev/platform-core/internal/store"
 	"henukit.dev/platform-core/internal/verificationmail"
 )
@@ -132,10 +135,28 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 	key := <-winningKey
 	for replayIndex := range 40 {
 		replay := verifyCode(t, server, message.Code, key)
+		replayBody, _ := io.ReadAll(replay.Body)
 		replay.Body.Close()
 		if replay.StatusCode != http.StatusOK {
 			t.Fatalf("idempotent verification replay %d = %d, want 200", replayIndex, replay.StatusCode)
 		}
+		if replay.Header.Get("Set-Cookie") != "" {
+			t.Fatalf("idempotent verification replay %d reissued a recoverable Session credential", replayIndex)
+		}
+		if !bytes.Contains(replayBody, []byte(`"user"`)) {
+			t.Fatalf("idempotent verification replay %d omitted the completed login result: %s", replayIndex, replayBody)
+		}
+	}
+	var recoverableSessionCredentials int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM verification_codes WHERE coalesce(octet_length(login_session_token_ciphertext),0)>0) + (SELECT count(*) FROM oauth_exchange_idempotency WHERE octet_length(response_ciphertext)>0)`).Scan(&recoverableSessionCredentials); err != nil || recoverableSessionCredentials != 0 {
+		t.Fatalf("recoverable Session credentials = %d err=%v, want 0", recoverableSessionCredentials, err)
+	}
+	var issuedSessions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE user_id = (SELECT user_id FROM email_identities WHERE email_lookup_hash = (SELECT email_lookup_hash FROM verification_codes WHERE id = $1))`, verificationID).Scan(&issuedSessions); err != nil {
+		t.Fatalf("count concurrent login sessions: %v", err)
+	}
+	if issuedSessions != 1 {
+		t.Fatalf("concurrent verification and replay issued %d Core Sessions, want exactly 1", issuedSessions)
 	}
 	deliveryJSON := []byte(fmt.Sprintf(`{"message_id":%q,"status":"delivered"}`, sender.messageID))
 	unauthorizedRequest, _ := http.NewRequest(http.MethodPost, server.URL+contract.RecordMailDeliveryRoute, bytes.NewReader(deliveryJSON))
@@ -166,6 +187,320 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 		FROM mail_outbox_audit_events
 		WHERE outbox_id = (SELECT id FROM mail_outbox WHERE verification_code_id = $1)`, verificationID).Scan(&auditActions); err != nil || auditActions != "claimed,accepted,delivered" {
 		t.Fatalf("delivery audit actions = %q err=%v, want claimed,accepted,delivered", auditActions, err)
+	}
+}
+
+func TestProductionLoginDomainCannotBeExpandedByConfiguration(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	_, err := platformcore.New(platformcore.Config{
+		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
+		VerificationEncryptionKey: testVerificationEncryptionKey,
+		StudentEmailDomains:       []string{"henu.edu.cn", "example.edu"},
+	})
+	if err == nil {
+		t.Fatal("production login accepted a configured non-HENU email domain")
+	}
+}
+
+func TestAuthRetentionCleanupScrubsVerificationAndIdempotencySecretsAfterTwentyFourHours(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	response := requestVerificationCode(t, server, "request_retention_stale")
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("seed stale verification = %d, want 202", response.StatusCode)
+	}
+	sender := &captureSender{messageID: "provider_retention_stale"}
+	worker, err := mailworker.New(store.New(pool), sender, "worker_retention_stale", testVerificationEncryptionKey, time.Minute, time.Second)
+	if err != nil {
+		t.Fatalf("create retention mail worker: %v", err)
+	}
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver retention verification: outcome=%+v err=%v", outcome, err)
+	}
+	verified := verifyCode(t, server, sender.lastMessage().Code, "verify_retention_stale")
+	verified.Body.Close()
+	if verified.StatusCode != http.StatusOK {
+		t.Fatalf("consume stale verification = %d, want 200", verified.StatusCode)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE verification_codes SET created_at=now()-interval '25 hours', expires_at=now()-interval '24 hours' WHERE request_key='request_retention_stale'`); err != nil {
+		t.Fatalf("age verification record: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients(id, redirect_uris) VALUES ('retention-client', ARRAY['https://retention.example/callback']); INSERT INTO oauth_exchange_idempotency(client_id,idempotency_key,request_hash,response_ciphertext,expires_at,created_at) VALUES ('retention-client','retention-stale',decode(repeat('ab',32),'hex'),decode('deadbeef','hex'),now()-interval '1 hour',now()-interval '25 hours'),('retention-client','retention-current',decode(repeat('cd',32),'hex'),decode('cafe','hex'),now()+interval '23 hours',now()-interval '1 hour')`); err != nil {
+		t.Fatalf("seed idempotency records: %v", err)
+	}
+
+	result, err := authretention.Cleanup(ctx, pool, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("run auth retention cleanup: %v", err)
+	}
+	if result.VerificationRecordsScrubbed != 1 || result.OutboxPayloadsScrubbed != 1 || result.ExchangeIdempotencyDeleted != 1 {
+		t.Fatalf("cleanup result = %+v, want one verification scrub, one Outbox scrub, and one idempotency delete", result)
+	}
+	var requestKey, codeHash, codeNonce, requestFingerprint, consumedKey, consumedFingerprint any
+	var scrubbed bool
+	if err := pool.QueryRow(ctx, `SELECT request_key,code_hash,code_nonce,request_fingerprint,consumed_request_key,consumed_request_fingerprint,sensitive_cleared_at IS NOT NULL FROM verification_codes`).Scan(&requestKey, &codeHash, &codeNonce, &requestFingerprint, &consumedKey, &consumedFingerprint, &scrubbed); err != nil {
+		t.Fatalf("read scrubbed verification: %v", err)
+	}
+	if requestKey != nil || codeHash != nil || codeNonce != nil || requestFingerprint != nil || consumedKey != nil || consumedFingerprint != nil || !scrubbed {
+		t.Fatalf("verification secrets survived cleanup: request=%v hash=%v nonce=%v fingerprint=%v consumed=%v/%v scrubbed=%v", requestKey, codeHash, codeNonce, requestFingerprint, consumedKey, consumedFingerprint, scrubbed)
+	}
+	var payloadCiphertext any
+	var payloadCleared bool
+	if err := pool.QueryRow(ctx, `SELECT payload_ciphertext,payload_cleared_at IS NOT NULL FROM mail_outbox`).Scan(&payloadCiphertext, &payloadCleared); err != nil || payloadCiphertext != nil || !payloadCleared {
+		t.Fatalf("verification Outbox payload survived cleanup: payload=%v cleared=%v err=%v", payloadCiphertext, payloadCleared, err)
+	}
+	var currentRows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM oauth_exchange_idempotency WHERE idempotency_key='retention-current'`).Scan(&currentRows); err != nil || currentRows != 1 {
+		t.Fatalf("cleanup removed current idempotency record: rows=%d err=%v", currentRows, err)
+	}
+	second, err := authretention.Cleanup(ctx, pool, time.Now().UTC())
+	if err != nil || second.VerificationRecordsScrubbed != 0 || second.OutboxPayloadsScrubbed != 0 || second.ExchangeIdempotencyDeleted != 0 {
+		t.Fatalf("cleanup replay was not idempotent: result=%+v err=%v", second, err)
+	}
+}
+
+func TestLoginVerificationBootstrapsStableIdentityAndFifteenDayCoreSession(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+
+	login := func(requestKey, verifyKey, messageID string) (string, time.Time) {
+		response := requestVerificationCode(t, server, requestKey)
+		response.Body.Close()
+		if response.StatusCode != http.StatusAccepted {
+			t.Fatalf("request login verification = %d, want 202", response.StatusCode)
+		}
+		sender := &captureSender{messageID: messageID}
+		worker, err := mailworker.New(store.New(pool), sender, "worker_"+messageID, testVerificationEncryptionKey, time.Minute, time.Second)
+		if err != nil {
+			t.Fatalf("create mail worker: %v", err)
+		}
+		if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+			t.Fatalf("deliver login code: outcome=%+v err=%v", outcome, err)
+		}
+		verified := verifyCode(t, server, sender.lastMessage().Code, verifyKey)
+		defer verified.Body.Close()
+		body, _ := io.ReadAll(verified.Body)
+		if verified.StatusCode != http.StatusOK {
+			t.Fatalf("verify login code = %d %s, want 200", verified.StatusCode, body)
+		}
+		var envelope struct {
+			Data struct {
+				VerificationID string                `json:"verification_id"`
+				User           contract.PlatformUser `json:"user"`
+				SessionExpires time.Time             `json:"session_expires_at"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &envelope); err != nil {
+			t.Fatalf("decode login response: %v", err)
+		}
+		if envelope.Data.VerificationID == "" || envelope.Data.User.UserID == "" || !envelope.Data.User.EmailVerified || envelope.Data.User.Status != "active" {
+			t.Fatalf("incomplete login bootstrap response: %+v", envelope.Data)
+		}
+		remaining := time.Until(envelope.Data.SessionExpires)
+		if remaining < 14*24*time.Hour+23*time.Hour || remaining > 15*24*time.Hour+time.Minute {
+			t.Fatalf("core Session lifetime = %s, want 15 days", remaining)
+		}
+		accountURL, err := url.Parse(server.URL)
+		if err != nil {
+			t.Fatalf("parse account URL: %v", err)
+		}
+		cookies := clientForDevice(server, "test-device-001").Jar.Cookies(accountURL)
+		var hasCoreSession bool
+		for _, cookie := range cookies {
+			hasCoreSession = hasCoreSession || cookie.Name == "__Host-henukit_core_session" && cookie.Value != ""
+		}
+		if !hasCoreSession {
+			t.Fatalf("login did not set the Core Session cookie: %+v", cookies)
+		}
+		return envelope.Data.User.UserID, envelope.Data.SessionExpires
+	}
+
+	firstUserID, _ := login("request_login_bootstrap_001", "verify_login_bootstrap_001", "provider_login_bootstrap_001")
+	if _, err := pool.Exec(ctx, `UPDATE verification_codes SET revoked_at = now() WHERE used_at IS NULL`); err != nil {
+		t.Fatalf("prepare second login: %v", err)
+	}
+	if err := redisClient.FlushDB(ctx).Err(); err != nil {
+		t.Fatalf("reset login rate limits: %v", err)
+	}
+	secondUserID, _ := login("request_login_bootstrap_002", "verify_login_bootstrap_002", "provider_login_bootstrap_002")
+	if firstUserID != secondUserID {
+		t.Fatalf("same email created different users: %s != %s", firstUserID, secondUserID)
+	}
+	var users, identities, sessions int
+	var encryptedEmail []byte
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM email_identities), (SELECT count(*) FROM sessions WHERE kind = 'core'), (SELECT email_ciphertext FROM email_identities LIMIT 1)`).Scan(&users, &identities, &sessions, &encryptedEmail); err != nil {
+		t.Fatalf("read login identity facts: %v", err)
+	}
+	if users != 1 || identities != 1 || sessions != 2 || bytes.Contains(encryptedEmail, []byte(testStudentEmail)) {
+		t.Fatalf("identity facts users=%d identities=%d sessions=%d plaintext=%v", users, identities, sessions, bytes.Contains(encryptedEmail, []byte(testStudentEmail)))
+	}
+}
+
+func TestAccountCenterLoginPageCompletesBrowserSession(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "browser-login-device")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+
+	returnTo := contract.AuthorizeRoute + "?response_type=code&client_id=quizcraft&redirect_uri=https%3A%2F%2Fquiz.example%2Fauth%2Fcallback&state=12345678&code_challenge=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&code_challenge_method=S256"
+	authorize, err := client.Get(server.URL + returnTo)
+	if err != nil {
+		t.Fatalf("open authorize entry: %v", err)
+	}
+	authorize.Body.Close()
+	if authorize.StatusCode != http.StatusFound || !strings.HasPrefix(authorize.Header.Get("Location"), "/login?return_to=") {
+		t.Fatalf("authorize without Session = %d %q, want account login redirect", authorize.StatusCode, authorize.Header.Get("Location"))
+	}
+	login, err := client.Get(server.URL + authorize.Header.Get("Location"))
+	if err != nil {
+		t.Fatalf("open account login: %v", err)
+	}
+	loginBody, _ := io.ReadAll(login.Body)
+	login.Body.Close()
+	if login.StatusCode != http.StatusOK || !bytes.Contains(loginBody, []byte("HENU Kit 账号中心")) || !bytes.Contains(loginBody, []byte(`name="email"`)) {
+		t.Fatalf("invalid account login page = %d %s", login.StatusCode, loginBody)
+	}
+	accountURL, _ := url.Parse(server.URL)
+	var csrf string
+	for _, cookie := range client.Jar.Cookies(accountURL) {
+		if cookie.Name == "__Host-henukit_login_csrf" {
+			csrf = cookie.Value
+		}
+	}
+	if csrf == "" {
+		t.Fatal("account login page did not set a CSRF cookie")
+	}
+	requestCode, err := client.PostForm(server.URL+"/login/code", url.Values{
+		"csrf_token": {csrf}, "return_to": {returnTo}, "email": {testStudentEmail},
+	})
+	if err != nil {
+		t.Fatalf("submit account email: %v", err)
+	}
+	requestBody, _ := io.ReadAll(requestCode.Body)
+	requestCode.Body.Close()
+	if requestCode.StatusCode != http.StatusOK || !bytes.Contains(requestBody, []byte(`name="code"`)) {
+		t.Fatalf("account code page = %d %s", requestCode.StatusCode, requestBody)
+	}
+	sender := &captureSender{messageID: "provider_browser_login_001"}
+	worker, _ := mailworker.New(store.New(pool), sender, "worker_browser_login", testVerificationEncryptionKey, time.Minute, time.Second)
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver browser login code: outcome=%+v err=%v", outcome, err)
+	}
+	verified, err := client.PostForm(server.URL+"/login/verify", url.Values{
+		"csrf_token": {csrf}, "return_to": {returnTo}, "email": {testStudentEmail}, "code": {sender.lastMessage().Code},
+	})
+	if err != nil {
+		t.Fatalf("submit browser login code: %v", err)
+	}
+	verified.Body.Close()
+	if verified.StatusCode != http.StatusSeeOther || verified.Header.Get("Location") != returnTo {
+		t.Fatalf("browser login completion = %d %q, want 303 to OAuth authorize", verified.StatusCode, verified.Header.Get("Location"))
+	}
+	var hasCoreSession bool
+	for _, cookie := range client.Jar.Cookies(accountURL) {
+		hasCoreSession = hasCoreSession || cookie.Name == "__Host-henukit_core_session" && cookie.Value != ""
+	}
+	if !hasCoreSession {
+		t.Fatal("browser account login did not establish a Core Session")
+	}
+	revokeBody := bytes.NewBufferString(`{"all_sessions":true}`)
+	revokeRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/sessions/revoke", revokeBody)
+	revokeRequest.Header.Set("Content-Type", "application/json")
+	revokeRequest.Header.Set("Origin", server.URL)
+	revoked, err := client.Do(revokeRequest)
+	if err != nil {
+		t.Fatalf("revoke Core Session: %v", err)
+	}
+	revoked.Body.Close()
+	if revoked.StatusCode != http.StatusOK {
+		t.Fatalf("revoke Core Session = %d, want 200", revoked.StatusCode)
+	}
+	var activeSessions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE revoked_at IS NULL`).Scan(&activeSessions); err != nil || activeSessions != 0 {
+		t.Fatalf("active sessions after global revocation = %d err=%v, want 0", activeSessions, err)
+	}
+	siblingTokenHash := sha256.Sum256([]byte("active-sibling-core-session"))
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO sessions (user_id, kind, token_hash, expires_at)
+		SELECT user_id, 'core', $1, now() + interval '1 hour'
+		FROM sessions WHERE kind = 'core' LIMIT 1`, siblingTokenHash[:]); err != nil {
+		t.Fatalf("create active sibling Core Session: %v", err)
+	}
+	revokedRetryRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/sessions/revoke", bytes.NewBufferString(`{"all_sessions":true}`))
+	revokedRetryRequest.Header.Set("Content-Type", "application/json")
+	revokedRetryRequest.Header.Set("Origin", server.URL)
+	revokedRetry, err := client.Do(revokedRetryRequest)
+	if err != nil {
+		t.Fatalf("retry global revocation with revoked Session: %v", err)
+	}
+	revokedRetry.Body.Close()
+	if revokedRetry.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("global revocation with revoked Session = %d, want 401", revokedRetry.StatusCode)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE revoked_at IS NULL`).Scan(&activeSessions); err != nil || activeSessions != 1 {
+		t.Fatalf("active sessions after rejected revoked-Session request = %d err=%v, want 1", activeSessions, err)
+	}
+	afterRevoke, err := client.Get(server.URL + returnTo)
+	if err != nil {
+		t.Fatalf("authorize after Core Session revocation: %v", err)
+	}
+	afterRevoke.Body.Close()
+	if afterRevoke.StatusCode != http.StatusFound || !strings.HasPrefix(afterRevoke.Header.Get("Location"), "/login?return_to=") {
+		t.Fatalf("authorization after revocation = %d %q, want login redirect", afterRevoke.StatusCode, afterRevoke.Header.Get("Location"))
+	}
+}
+
+func TestInitialOperatorGrantUsesLeastPrivilegeScopesAndAudit(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	requested := requestVerificationCode(t, server, "request_operator_login_001")
+	requested.Body.Close()
+	sender := &captureSender{messageID: "provider_operator_login_001"}
+	worker, _ := mailworker.New(store.New(pool), sender, "worker_operator_login", testVerificationEncryptionKey, time.Minute, time.Second)
+	_, _ = worker.ProcessOne(ctx)
+	verified := verifyCode(t, server, sender.lastMessage().Code, "verify_operator_login_001")
+	verified.Body.Close()
+	if verified.StatusCode != http.StatusOK {
+		t.Fatalf("operator account login = %d, want 200", verified.StatusCode)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO permission_codes(code, description, status) VALUES
+('platform.operations.read', 'Read bounded Platform Operations data within platform Scope', 'active'),
+('platform.operations.write', 'Manage Platform Operations state within platform Scope', 'active'),
+('quizcraft.workshop.read', 'Read QuizCraft Workshop banks within granted QuizCraft Scope', 'active'),
+('quizcraft.workshop.write', 'Create, import, edit, and validate QuizCraft bank versions within granted QuizCraft Scope', 'active'),
+('quizcraft.workshop.publish', 'Publish, unpublish, and roll back QuizCraft banks within granted QuizCraft Scope', 'active')
+ON CONFLICT (code) DO UPDATE SET description=EXCLUDED.description, status='active'`); err != nil {
+		t.Fatalf("seed operator permission catalog: %v", err)
+	}
+	result, err := operatorbootstrap.Grant(ctx, pool, testVerificationEncryptionKey, operatorbootstrap.Input{Email: testStudentEmail, ActorUnixUser: "root", RequestID: "req_initial_operator_001", Reason: "initial production operator bootstrap"})
+	if err != nil || !result.Changed {
+		t.Fatalf("initial operator grant = %+v err=%v", result, err)
+	}
+	var permissions, grants, audits int
+	if err := pool.QueryRow(ctx, `
+SELECT
+  (SELECT count(*) FROM role_permissions rp JOIN authorization_roles r ON r.id=rp.role_id WHERE r.code IN ('platform-operator','quizcraft-workshop-operator')),
+  (SELECT count(*) FROM user_role_grants WHERE user_id=$1 AND status='active' AND ((scope_kind='platform' AND product_code IS NULL) OR (scope_kind='product' AND product_code='quizcraft'))),
+  (SELECT count(*) FROM operator_bootstrap_audit_events WHERE target_user_id=$1)`, result.UserID).Scan(&permissions, &grants, &audits); err != nil {
+		t.Fatalf("read initial operator facts: %v", err)
+	}
+	if permissions != 5 || grants != 2 || audits != 1 {
+		t.Fatalf("initial operator facts permissions=%d grants=%d audits=%d", permissions, grants, audits)
+	}
+	replay, err := operatorbootstrap.Grant(ctx, pool, testVerificationEncryptionKey, operatorbootstrap.Input{Email: testStudentEmail, ActorUnixUser: "root", RequestID: "req_initial_operator_002", Reason: "confirm initial operator bootstrap"})
+	if err != nil || replay.Changed {
+		t.Fatalf("idempotent operator grant = %+v err=%v", replay, err)
 	}
 }
 

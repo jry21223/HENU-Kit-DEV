@@ -216,7 +216,7 @@ packages/api-contracts/
 
 ## 流程
 
-1. 业务站跳转 `account.henukit.cn`。
+1. 业务站跳转当前已备案域名 `account.superhuazai.me`。
 2. 用户输入学生邮箱。
 3. Platform Worker 通过 DirectMail 发送验证码。
 4. 验证后创建或读取统一用户。

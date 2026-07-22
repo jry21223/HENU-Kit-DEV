@@ -194,7 +194,7 @@ HENU Kit
 | 能力 | 目标域名 |
 |---|---|
 | 主站 | `henukit.cn` |
-| 统一账户 | `account.henukit.cn` |
+| 统一账户 | `account.superhuazai.me`（当前备案域名） |
 | 资料库 | `study.henukit.cn` |
 | 刷题 | `quiz.henukit.cn` |
 | 邮件发件域 | `notify.henukit.cn` |

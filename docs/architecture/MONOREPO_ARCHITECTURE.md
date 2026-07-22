@@ -104,7 +104,7 @@ HENUKitDev/
 ```text
 Browser
 ├── henukit.cn               Portal
-├── account.henukit.cn       Platform Core
+├── account.superhuazai.me   Platform Core（当前备案域名）
 ├── study.henukit.cn         Study Web -> Study API -> Study DB
 └── quiz.henukit.cn          Quiz Web -> Adapter -> FastAPI/Go -> Quiz DB
 

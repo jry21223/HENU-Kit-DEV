@@ -207,7 +207,7 @@ Issue 必须包含：
 ## 9. 身份与会话
 
 - 不通过跨主域共享 Cookie 统一登录。
-- 业务站跳转 `account.henukit.cn` 完成 Authorization Code Flow。
+- 业务站跳转当前已备案域名 `account.superhuazai.me` 完成 Authorization Code Flow。
 - callback、`return_to` 和 client 必须预登记。
 - `state` 防 CSRF。
 - 授权码短期、单次使用，只保存哈希。

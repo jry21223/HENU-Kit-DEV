@@ -26,7 +26,7 @@ const (
 	FoodCommandRoute        = "/api/v1/food/commands"
 	FoodOperationRoute      = "/api/v1/food/operations/{operation}"
 	LogoutRoute             = "/api/v1/session/logout"
-	SourceSHA256            = "f0c98955843333d1abccffee93eb61ae317bd2ed66582de78df6587667f95252"
+	SourceSHA256            = "1d52529fe02eb539c07179b20ded2113b94867826422265a1cabf0be9ae8c3c7"
 )
 
 type ConsoleAccessContext struct {
