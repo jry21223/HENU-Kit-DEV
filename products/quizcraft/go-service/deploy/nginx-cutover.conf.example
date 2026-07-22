@@ -1,6 +1,5 @@
-# Put these exact-match/longest-prefix locations before the legacy /api/ proxy.
-# The browser controls the stable read cohort; Nginx never sends legacy-contract
-# requests to the Go API by percentage.
+# Stage these locations before the maintenance switch. The final browser bundle
+# moves all reads and writes together; Nginx performs no percentage routing.
 location = /healthz {
     proxy_pass http://127.0.0.1:10089/healthz;
     proxy_set_header Host $host;

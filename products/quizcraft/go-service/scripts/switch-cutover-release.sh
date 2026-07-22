@@ -7,7 +7,7 @@ set -Eeuo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 action="${1:-}"
 release_sha="${2:-}"
-static_release_id="${3:-${2:-}}"
+static_release_id="${3:-${2:-}-writes}"
 go_release_root="${GO_RELEASE_ROOT:-/opt/quizcraft-go/releases}"
 go_current_link="${GO_CURRENT_LINK:-/opt/quizcraft-go/releases/current}"
 static_release_root="${STATIC_RELEASE_ROOT:-/var/www/quizcraft-releases}"
@@ -100,7 +100,7 @@ PY
 
 preflight_activation() {
   [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]
-  [[ "$static_release_id" == "$release_sha" || "$static_release_id" =~ ^[0-9a-f]{40}-(read([1-9]|[1-9][0-9]|100)|writes)$ ]]
+  [[ "$static_release_id" == "$release_sha-writes" ]]
   next_go="$go_release_root/$release_sha"
   next_static="$static_release_root/$static_release_id"
   validate_target "$next_go" "$go_release_root"
@@ -108,14 +108,8 @@ preflight_activation() {
   [[ -x "$next_go/quizcraft-server" && -f "$next_static/index.html" ]]
   current_writes="$(read_writes_flag)"
   [[ "$current_writes" == "0" ]]
-  if [[ "$static_release_id" == *-writes ]]; then
-    next_phase=writes
-    [[ "$action" == "activate-writes" && -x "$cutover_verify_script" ]]
-  else
-    next_phase=read
-    [[ "$action" == "activate" ]]
-    [[ "$(cat "$state_dir/active-phase" 2>/dev/null || echo legacy)" != "writes" ]]
-  fi
+  next_phase=writes
+  [[ "$action" == "activate-writes" && -x "$cutover_verify_script" ]]
 }
 
 record_previous_release() {
@@ -128,16 +122,20 @@ record_previous_release() {
 
 activate_release() {
   atomic_link "$next_go" "$go_current_link"
-  if [[ "$next_phase" == "writes" ]]; then
-    atomic_state "activating-writes:$next_static" "$state_dir/active-phase"
-    set_writes_flag 1
-  fi
   systemctl restart "$service_name"
   systemctl is-active --quiet "$service_name"
   wait_for_go_health
-  if [[ "$next_phase" == "writes" ]]; then
-    "$cutover_verify_script"
-  fi
+
+  # The complete stop-write/reconciliation/restore gate runs while Go still
+  # rejects every mutation. A failure here must never cross the write promise.
+  EXPECTED_WRITES_ENABLED=false "$cutover_verify_script"
+
+  atomic_state "activating-writes:$next_static" "$state_dir/active-phase"
+  set_writes_flag 1
+  systemctl restart "$service_name"
+  systemctl is-active --quiet "$service_name"
+  wait_for_go_health
+  EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
   nginx -t
   systemctl reload nginx
   atomic_link "$next_static" "$static_current_link"
@@ -221,10 +219,9 @@ recover_incomplete_write_activation() {
 recover_incomplete_write_activation
 
 case "$action" in
-  activate) activate_with_rollback ;;
   activate-writes) activate_with_rollback ;;
   rollback) rollback_release; restore_runtime ;;
-  *) echo "usage: $0 activate <40-char-release-sha> <read-static-release-id> | activate-writes <40-char-release-sha> <writes-static-release-id> | rollback" >&2; exit 2 ;;
+  *) echo "usage: $0 activate-writes <40-char-release-sha> <sha-writes-static-release-id> | rollback" >&2; exit 2 ;;
 esac
 
 echo "QuizCraft $action completed"

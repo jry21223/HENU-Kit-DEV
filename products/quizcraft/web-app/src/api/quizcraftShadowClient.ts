@@ -20,11 +20,10 @@ import {
 import type { PracticeSettings, Question, QuestionBank } from '@/types';
 import {
   QUIZCRAFT_GO_READ_ENABLED,
-  QUIZCRAFT_GO_READ_PERCENT,
   QUIZCRAFT_GO_WRITES_ENABLED,
 } from '@/api/quizcraftRollout';
 
-export { QUIZCRAFT_GO_READ_ENABLED, QUIZCRAFT_GO_READ_PERCENT, QUIZCRAFT_GO_WRITES_ENABLED };
+export { QUIZCRAFT_GO_READ_ENABLED, QUIZCRAFT_GO_WRITES_ENABLED };
 
 // Compatibility name for pages whose complete workflow moves only at write cutover.
 export const QUIZCRAFT_GO_SHADOW_ENABLED = QUIZCRAFT_GO_WRITES_ENABLED;

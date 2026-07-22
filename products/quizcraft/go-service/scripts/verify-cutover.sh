@@ -9,7 +9,6 @@ set -euo pipefail
 : "${CUTOVER_EVIDENCE_SECRET:?set CUTOVER_EVIDENCE_SECRET}"
 : "${EXPECTED_MIGRATION_RUN_ID:?set EXPECTED_MIGRATION_RUN_ID}"
 : "${EXPECTED_SOURCE_HEAD:?set EXPECTED_SOURCE_HEAD}"
-: "${EXPECTED_SHADOW_GATE_REPORT_ID:?set EXPECTED_SHADOW_GATE_REPORT_ID}"
 : "${LEGACY_SERVER_PATH:?set LEGACY_SERVER_PATH to the deployed server.py}"
 : "${EXPECTED_LEGACY_SHA256:?set EXPECTED_LEGACY_SHA256}"
 : "${LEGACY_DATABASE_URL:?export LEGACY_DATABASE_URL without printing it}"
@@ -39,7 +38,7 @@ curl --fail --silent --show-error --max-time 10 "$GO_BASE_URL/readyz" > "$cutove
 curl --fail --silent --show-error --max-time 10 "$LEGACY_BASE_URL/api/healthz" > "$cutover_tmp/legacy-health.json"
 curl --fail --silent --show-error --max-time 10 "$GO_BASE_URL/api/v1/banks" > "$cutover_tmp/banks.json"
 curl --fail --silent --show-error --max-time 10 --config "$cutover_tmp/evidence.curl" \
-  "$GO_BASE_URL/api/v1/cutover-evidence?run_id=$EXPECTED_MIGRATION_RUN_ID&source_head=$EXPECTED_SOURCE_HEAD&shadow_gate_report_id=$EXPECTED_SHADOW_GATE_REPORT_ID" \
+  "$GO_BASE_URL/api/v1/cutover-evidence?run_id=$EXPECTED_MIGRATION_RUN_ID&source_head=$EXPECTED_SOURCE_HEAD" \
   > "$cutover_tmp/evidence.json"
 test "$(sha256sum "$LEGACY_SERVER_PATH" | awk '{print $1}')" = "$EXPECTED_LEGACY_SHA256"
 actual_source_head="$("$LEGACY_PYTHON" - <<'PY'
@@ -53,7 +52,7 @@ PY
 )"
 test "$actual_source_head" = "$EXPECTED_SOURCE_HEAD"
 
-python3 - "$cutover_tmp" "$EXPECTED_RELEASE_SHA" "$EXPECTED_WRITES_ENABLED" "$EXPECTED_LEGACY_READ_ONLY" "$EXPECTED_MIGRATION_RUN_ID" "$EXPECTED_SOURCE_HEAD" "$EXPECTED_SHADOW_GATE_REPORT_ID" <<'PY'
+python3 - "$cutover_tmp" "$EXPECTED_RELEASE_SHA" "$EXPECTED_WRITES_ENABLED" "$EXPECTED_LEGACY_READ_ONLY" "$EXPECTED_MIGRATION_RUN_ID" "$EXPECTED_SOURCE_HEAD" <<'PY'
 import json, pathlib, sys
 
 root = pathlib.Path(sys.argv[1])
@@ -62,7 +61,6 @@ expected_writes = sys.argv[3] == "true"
 expected_legacy_read_only = sys.argv[4] == "true"
 expected_run_id = sys.argv[5]
 expected_source_head = int(sys.argv[6])
-expected_gate_id = sys.argv[7]
 readiness = json.loads((root / "readiness.json").read_text())
 legacy = json.loads((root / "legacy-health.json").read_text())
 banks = json.loads((root / "banks.json").read_text())
@@ -73,7 +71,6 @@ assert evidence.get("release_sha") == expected_sha, evidence
 assert evidence.get("writes_enabled") is expected_writes, evidence
 assert evidence.get("migration_run_id") == expected_run_id, evidence
 assert evidence.get("migration_cursor") == expected_source_head, evidence
-assert evidence.get("shadow_gate_report_id") == expected_gate_id, evidence
 assert legacy.get("read_only") is expected_legacy_read_only, legacy
 assert banks.get("data"), "Go bank list is empty"
 PY
