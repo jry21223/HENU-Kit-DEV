@@ -27,6 +27,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	platformcore "henukit.dev/platform-core"
+	"henukit.dev/platform-core/internal/authretention"
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/mailworker"
 	"henukit.dev/platform-core/internal/operatorbootstrap"
@@ -134,10 +135,21 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 	key := <-winningKey
 	for replayIndex := range 40 {
 		replay := verifyCode(t, server, message.Code, key)
+		replayBody, _ := io.ReadAll(replay.Body)
 		replay.Body.Close()
 		if replay.StatusCode != http.StatusOK {
 			t.Fatalf("idempotent verification replay %d = %d, want 200", replayIndex, replay.StatusCode)
 		}
+		if replay.Header.Get("Set-Cookie") != "" {
+			t.Fatalf("idempotent verification replay %d reissued a recoverable Session credential", replayIndex)
+		}
+		if !bytes.Contains(replayBody, []byte(`"user"`)) {
+			t.Fatalf("idempotent verification replay %d omitted the completed login result: %s", replayIndex, replayBody)
+		}
+	}
+	var recoverableSessionColumns int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='verification_codes' AND column_name LIKE '%session%token%'`).Scan(&recoverableSessionColumns); err != nil || recoverableSessionColumns != 0 {
+		t.Fatalf("recoverable Session credential columns = %d err=%v, want 0", recoverableSessionColumns, err)
 	}
 	var issuedSessions int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE user_id = (SELECT user_id FROM email_identities WHERE email_lookup_hash = (SELECT email_lookup_hash FROM verification_codes WHERE id = $1))`, verificationID).Scan(&issuedSessions); err != nil {
@@ -175,6 +187,62 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 		FROM mail_outbox_audit_events
 		WHERE outbox_id = (SELECT id FROM mail_outbox WHERE verification_code_id = $1)`, verificationID).Scan(&auditActions); err != nil || auditActions != "claimed,accepted,delivered" {
 		t.Fatalf("delivery audit actions = %q err=%v, want claimed,accepted,delivered", auditActions, err)
+	}
+}
+
+func TestProductionLoginDomainCannotBeExpandedByConfiguration(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	_, err := platformcore.New(platformcore.Config{
+		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
+		VerificationEncryptionKey: testVerificationEncryptionKey,
+		StudentEmailDomains:       []string{"henu.edu.cn", "example.edu"},
+	})
+	if err == nil {
+		t.Fatal("production login accepted a configured non-HENU email domain")
+	}
+}
+
+func TestAuthRetentionCleanupScrubsVerificationAndIdempotencySecretsAfterTwentyFourHours(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	response := requestVerificationCode(t, server, "request_retention_stale")
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("seed stale verification = %d, want 202", response.StatusCode)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE verification_codes SET created_at=now()-interval '25 hours', expires_at=now()-interval '24 hours' WHERE request_key='request_retention_stale'`); err != nil {
+		t.Fatalf("age verification record: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients(id, redirect_uris) VALUES ('retention-client', ARRAY['https://retention.example/callback']); INSERT INTO oauth_exchange_idempotency(client_id,idempotency_key,request_hash,response_ciphertext,expires_at,created_at) VALUES ('retention-client','retention-stale',decode(repeat('ab',32),'hex'),decode('deadbeef','hex'),now()-interval '1 hour',now()-interval '25 hours'),('retention-client','retention-current',decode(repeat('cd',32),'hex'),decode('cafe','hex'),now()+interval '23 hours',now()-interval '1 hour')`); err != nil {
+		t.Fatalf("seed idempotency records: %v", err)
+	}
+
+	result, err := authretention.Cleanup(ctx, pool, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("run auth retention cleanup: %v", err)
+	}
+	if result.VerificationRecordsScrubbed != 1 || result.ExchangeIdempotencyDeleted != 1 {
+		t.Fatalf("cleanup result = %+v, want one verification scrub and one idempotency delete", result)
+	}
+	var requestKey, codeHash, codeNonce, requestFingerprint any
+	var scrubbed bool
+	if err := pool.QueryRow(ctx, `SELECT request_key,code_hash,code_nonce,request_fingerprint,sensitive_cleared_at IS NOT NULL FROM verification_codes`).Scan(&requestKey, &codeHash, &codeNonce, &requestFingerprint, &scrubbed); err != nil {
+		t.Fatalf("read scrubbed verification: %v", err)
+	}
+	if requestKey != nil || codeHash != nil || codeNonce != nil || requestFingerprint != nil || !scrubbed {
+		t.Fatalf("verification secrets survived cleanup: request=%v hash=%v nonce=%v fingerprint=%v scrubbed=%v", requestKey, codeHash, codeNonce, requestFingerprint, scrubbed)
+	}
+	var currentRows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM oauth_exchange_idempotency WHERE idempotency_key='retention-current'`).Scan(&currentRows); err != nil || currentRows != 1 {
+		t.Fatalf("cleanup removed current idempotency record: rows=%d err=%v", currentRows, err)
+	}
+	second, err := authretention.Cleanup(ctx, pool, time.Now().UTC())
+	if err != nil || second.VerificationRecordsScrubbed != 0 || second.ExchangeIdempotencyDeleted != 0 {
+		t.Fatalf("cleanup replay was not idempotent: result=%+v err=%v", second, err)
 	}
 }
 

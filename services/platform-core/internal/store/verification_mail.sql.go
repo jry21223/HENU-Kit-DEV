@@ -110,18 +110,17 @@ func (q *Queries) ApplyPendingMailDeliveryReceipt(ctx context.Context, messageID
 
 const attachLoginSessionToVerification = `-- name: AttachLoginSessionToVerification :execrows
 UPDATE verification_codes
-SET login_session_id = $2, login_session_token_ciphertext = $3
+SET login_session_id = $2
 WHERE id = $1 AND used_at IS NOT NULL AND purpose = 'login' AND login_session_id IS NULL
 `
 
 type AttachLoginSessionToVerificationParams struct {
-	ID                          pgtype.UUID `json:"id"`
-	LoginSessionID              pgtype.UUID `json:"login_session_id"`
-	LoginSessionTokenCiphertext []byte      `json:"login_session_token_ciphertext"`
+	ID             pgtype.UUID `json:"id"`
+	LoginSessionID pgtype.UUID `json:"login_session_id"`
 }
 
 func (q *Queries) AttachLoginSessionToVerification(ctx context.Context, arg AttachLoginSessionToVerificationParams) (int64, error) {
-	result, err := q.db.Exec(ctx, attachLoginSessionToVerification, arg.ID, arg.LoginSessionID, arg.LoginSessionTokenCiphertext)
+	result, err := q.db.Exec(ctx, attachLoginSessionToVerification, arg.ID, arg.LoginSessionID)
 	if err != nil {
 		return 0, err
 	}
@@ -289,7 +288,7 @@ RETURNING id, expires_at, created_at
 type CreateVerificationCodeParams struct {
 	EmailLookupHash    []byte             `json:"email_lookup_hash"`
 	Purpose            string             `json:"purpose"`
-	RequestKey         string             `json:"request_key"`
+	RequestKey         pgtype.Text        `json:"request_key"`
 	RequestFingerprint []byte             `json:"request_fingerprint"`
 	CodeNonce          []byte             `json:"code_nonce"`
 	CodeHash           []byte             `json:"code_hash"`
@@ -344,6 +343,19 @@ func (q *Queries) CreateVerificationMailOutbox(ctx context.Context, arg CreateVe
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const deleteExpiredOAuthExchangeIdempotency = `-- name: DeleteExpiredOAuthExchangeIdempotency :execrows
+DELETE FROM oauth_exchange_idempotency
+WHERE expires_at <= $1
+`
+
+func (q *Queries) DeleteExpiredOAuthExchangeIdempotency(ctx context.Context, expiresAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredOAuthExchangeIdempotency, expiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const failExhaustedOutboxLeases = `-- name: FailExhaustedOutboxLeases :exec
@@ -409,7 +421,6 @@ func (q *Queries) FailMailOutbox(ctx context.Context, arg FailMailOutboxParams) 
 
 const getConsumedVerificationReplay = `-- name: GetConsumedVerificationReplay :one
 SELECT verification_codes.id, verification_codes.consumed_request_fingerprint,
-       verification_codes.login_session_token_ciphertext,
        sessions.expires_at AS login_session_expires_at,
        users.id AS login_user_id, users.email_verified AS login_user_email_verified,
        users.status AS login_user_status, users.created_at AS login_user_created_at
@@ -420,14 +431,13 @@ WHERE consumed_request_key = $1 AND used_at IS NOT NULL
 `
 
 type GetConsumedVerificationReplayRow struct {
-	ID                          pgtype.UUID        `json:"id"`
-	ConsumedRequestFingerprint  []byte             `json:"consumed_request_fingerprint"`
-	LoginSessionTokenCiphertext []byte             `json:"login_session_token_ciphertext"`
-	LoginSessionExpiresAt       pgtype.Timestamptz `json:"login_session_expires_at"`
-	LoginUserID                 pgtype.UUID        `json:"login_user_id"`
-	LoginUserEmailVerified      pgtype.Bool        `json:"login_user_email_verified"`
-	LoginUserStatus             pgtype.Text        `json:"login_user_status"`
-	LoginUserCreatedAt          pgtype.Timestamptz `json:"login_user_created_at"`
+	ID                         pgtype.UUID        `json:"id"`
+	ConsumedRequestFingerprint []byte             `json:"consumed_request_fingerprint"`
+	LoginSessionExpiresAt      pgtype.Timestamptz `json:"login_session_expires_at"`
+	LoginUserID                pgtype.UUID        `json:"login_user_id"`
+	LoginUserEmailVerified     pgtype.Bool        `json:"login_user_email_verified"`
+	LoginUserStatus            pgtype.Text        `json:"login_user_status"`
+	LoginUserCreatedAt         pgtype.Timestamptz `json:"login_user_created_at"`
 }
 
 func (q *Queries) GetConsumedVerificationReplay(ctx context.Context, consumedRequestKey pgtype.Text) (GetConsumedVerificationReplayRow, error) {
@@ -436,7 +446,6 @@ func (q *Queries) GetConsumedVerificationReplay(ctx context.Context, consumedReq
 	err := row.Scan(
 		&i.ID,
 		&i.ConsumedRequestFingerprint,
-		&i.LoginSessionTokenCiphertext,
 		&i.LoginSessionExpiresAt,
 		&i.LoginUserID,
 		&i.LoginUserEmailVerified,
@@ -511,8 +520,7 @@ func (q *Queries) GetMailOutboxByVerificationCode(ctx context.Context, verificat
 
 const getVerificationCodeForUpdate = `-- name: GetVerificationCodeForUpdate :one
 SELECT id, code_nonce, code_hash, expires_at, used_at, revoked_at, failed_attempts,
-       consumed_request_key, consumed_request_fingerprint,
-       login_session_token_ciphertext
+       consumed_request_key, consumed_request_fingerprint
 FROM verification_codes
 WHERE email_lookup_hash = $1 AND purpose = $2
 ORDER BY created_at DESC
@@ -526,16 +534,15 @@ type GetVerificationCodeForUpdateParams struct {
 }
 
 type GetVerificationCodeForUpdateRow struct {
-	ID                          pgtype.UUID        `json:"id"`
-	CodeNonce                   []byte             `json:"code_nonce"`
-	CodeHash                    []byte             `json:"code_hash"`
-	ExpiresAt                   pgtype.Timestamptz `json:"expires_at"`
-	UsedAt                      pgtype.Timestamptz `json:"used_at"`
-	RevokedAt                   pgtype.Timestamptz `json:"revoked_at"`
-	FailedAttempts              int32              `json:"failed_attempts"`
-	ConsumedRequestKey          pgtype.Text        `json:"consumed_request_key"`
-	ConsumedRequestFingerprint  []byte             `json:"consumed_request_fingerprint"`
-	LoginSessionTokenCiphertext []byte             `json:"login_session_token_ciphertext"`
+	ID                         pgtype.UUID        `json:"id"`
+	CodeNonce                  []byte             `json:"code_nonce"`
+	CodeHash                   []byte             `json:"code_hash"`
+	ExpiresAt                  pgtype.Timestamptz `json:"expires_at"`
+	UsedAt                     pgtype.Timestamptz `json:"used_at"`
+	RevokedAt                  pgtype.Timestamptz `json:"revoked_at"`
+	FailedAttempts             int32              `json:"failed_attempts"`
+	ConsumedRequestKey         pgtype.Text        `json:"consumed_request_key"`
+	ConsumedRequestFingerprint []byte             `json:"consumed_request_fingerprint"`
 }
 
 func (q *Queries) GetVerificationCodeForUpdate(ctx context.Context, arg GetVerificationCodeForUpdateParams) (GetVerificationCodeForUpdateRow, error) {
@@ -551,7 +558,6 @@ func (q *Queries) GetVerificationCodeForUpdate(ctx context.Context, arg GetVerif
 		&i.FailedAttempts,
 		&i.ConsumedRequestKey,
 		&i.ConsumedRequestFingerprint,
-		&i.LoginSessionTokenCiphertext,
 	)
 	return i, err
 }
@@ -569,7 +575,7 @@ type GetVerificationRequestByKeyRow struct {
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
-func (q *Queries) GetVerificationRequestByKey(ctx context.Context, requestKey string) (GetVerificationRequestByKeyRow, error) {
+func (q *Queries) GetVerificationRequestByKey(ctx context.Context, requestKey pgtype.Text) (GetVerificationRequestByKeyRow, error) {
 	row := q.db.QueryRow(ctx, getVerificationRequestByKey, requestKey)
 	var i GetVerificationRequestByKeyRow
 	err := row.Scan(
@@ -804,6 +810,27 @@ func (q *Queries) RetryMailOutbox(ctx context.Context, arg RetryMailOutboxParams
 		arg.LastErrorCode,
 		arg.OutboxID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const scrubExpiredVerificationSecrets = `-- name: ScrubExpiredVerificationSecrets :execrows
+UPDATE verification_codes
+SET request_key = NULL,
+    request_fingerprint = NULL,
+    code_nonce = NULL,
+    code_hash = NULL,
+    consumed_request_key = NULL,
+    consumed_request_fingerprint = NULL,
+    sensitive_cleared_at = now()
+WHERE created_at <= $1
+  AND sensitive_cleared_at IS NULL
+`
+
+func (q *Queries) ScrubExpiredVerificationSecrets(ctx context.Context, createdAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, scrubExpiredVerificationSecrets, createdAt)
 	if err != nil {
 		return 0, err
 	}

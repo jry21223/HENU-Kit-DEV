@@ -12,7 +12,18 @@ CREATE INDEX IF NOT EXISTS email_identities_user_idx ON email_identities (user_i
 
 ALTER TABLE verification_codes
     ADD COLUMN IF NOT EXISTS login_session_id uuid REFERENCES sessions(id) ON DELETE SET NULL,
-    ADD COLUMN IF NOT EXISTS login_session_token_ciphertext bytea;
+    ADD COLUMN IF NOT EXISTS sensitive_cleared_at timestamptz;
+
+ALTER TABLE verification_codes
+    DROP CONSTRAINT IF EXISTS verification_codes_login_session_shape,
+    DROP CONSTRAINT IF EXISTS verification_codes_consumption_shape;
+
+ALTER TABLE verification_codes
+    DROP COLUMN IF EXISTS login_session_token_ciphertext,
+    ALTER COLUMN request_key DROP NOT NULL,
+    ALTER COLUMN request_fingerprint DROP NOT NULL,
+    ALTER COLUMN code_nonce DROP NOT NULL,
+    ALTER COLUMN code_hash DROP NOT NULL;
 
 DO $$
 BEGIN
@@ -23,9 +34,43 @@ BEGIN
     ) THEN
         ALTER TABLE verification_codes
             ADD CONSTRAINT verification_codes_login_session_shape CHECK (
-                (login_session_id IS NULL AND login_session_token_ciphertext IS NULL)
+                login_session_id IS NULL OR purpose = 'login'
+            );
+    END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'verification_codes_secret_retention_shape'
+          AND conrelid = 'verification_codes'::regclass
+    ) THEN
+        ALTER TABLE verification_codes
+            ADD CONSTRAINT verification_codes_secret_retention_shape CHECK (
+                (
+                    sensitive_cleared_at IS NULL
+                    AND request_key IS NOT NULL
+                    AND request_fingerprint IS NOT NULL
+                    AND code_nonce IS NOT NULL
+                    AND code_hash IS NOT NULL
+                    AND (
+                        (used_at IS NULL AND consumed_request_key IS NULL AND consumed_request_fingerprint IS NULL)
+                        OR
+                        (used_at IS NOT NULL AND consumed_request_key IS NOT NULL AND consumed_request_fingerprint IS NOT NULL)
+                    )
+                )
                 OR
-                (purpose = 'login' AND login_session_id IS NOT NULL AND octet_length(login_session_token_ciphertext) > 28)
+                (
+                    sensitive_cleared_at IS NOT NULL
+                    AND request_key IS NULL
+                    AND request_fingerprint IS NULL
+                    AND code_nonce IS NULL
+                    AND code_hash IS NULL
+                    AND consumed_request_key IS NULL
+                    AND consumed_request_fingerprint IS NULL
+                )
             );
     END IF;
 END;

@@ -80,6 +80,9 @@ func Load() (Config, error) {
 	if config.VerificationResendDelay < 60*time.Second {
 		return Config{}, errors.New("PLATFORM_CORE_VERIFICATION_RESEND_DELAY must be at least 60s")
 	}
+	if len(config.StudentEmailDomains) != 1 || strings.ToLower(strings.TrimSpace(config.StudentEmailDomains[0])) != "henu.edu.cn" {
+		return Config{}, errors.New("PLATFORM_CORE_STUDENT_EMAIL_DOMAINS must be exactly henu.edu.cn")
+	}
 	if len(config.MailDeliveryWebhookToken) < 32 {
 		return Config{}, errors.New("PLATFORM_CORE_MAIL_DELIVERY_TOKEN must contain at least 32 characters")
 	}
