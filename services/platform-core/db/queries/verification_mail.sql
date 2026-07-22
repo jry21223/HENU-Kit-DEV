@@ -71,7 +71,7 @@ RETURNING id, expires_at;
 
 -- name: AttachLoginSessionToVerification :execrows
 UPDATE verification_codes
-SET login_session_id = $2
+SET login_session_id = $2, login_session_token_ciphertext = ''::bytea
 WHERE id = $1 AND used_at IS NOT NULL AND purpose = 'login' AND login_session_id IS NULL;
 
 -- name: ScrubExpiredVerificationSecrets :execrows
