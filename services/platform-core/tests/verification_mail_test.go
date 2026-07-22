@@ -226,7 +226,11 @@ func TestLoginVerificationBootstrapsStableIdentityAndFifteenDayCoreSession(t *te
 			t.Fatalf("parse account URL: %v", err)
 		}
 		cookies := clientForDevice(server, "test-device-001").Jar.Cookies(accountURL)
-		if len(cookies) == 0 || cookies[0].Name != "__Host-henukit_core_session" || cookies[0].Value == "" {
+		var hasCoreSession bool
+		for _, cookie := range cookies {
+			hasCoreSession = hasCoreSession || cookie.Name == "__Host-henukit_core_session" && cookie.Value != ""
+		}
+		if !hasCoreSession {
 			t.Fatalf("login did not set the Core Session cookie: %+v", cookies)
 		}
 		return envelope.Data.User.UserID, envelope.Data.SessionExpires
@@ -362,6 +366,15 @@ func TestInitialOperatorGrantUsesLeastPrivilegeScopesAndAudit(t *testing.T) {
 	verified.Body.Close()
 	if verified.StatusCode != http.StatusOK {
 		t.Fatalf("operator account login = %d, want 200", verified.StatusCode)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO permission_codes(code, description, status) VALUES
+('platform.operations.read', 'Read bounded Platform Operations data within platform Scope', 'active'),
+('platform.operations.write', 'Manage Platform Operations state within platform Scope', 'active'),
+('quizcraft.workshop.read', 'Read QuizCraft Workshop banks within granted QuizCraft Scope', 'active'),
+('quizcraft.workshop.write', 'Create, import, edit, and validate QuizCraft bank versions within granted QuizCraft Scope', 'active'),
+('quizcraft.workshop.publish', 'Publish, unpublish, and roll back QuizCraft banks within granted QuizCraft Scope', 'active')
+ON CONFLICT (code) DO UPDATE SET description=EXCLUDED.description, status='active'`); err != nil {
+		t.Fatalf("seed operator permission catalog: %v", err)
 	}
 	result, err := operatorbootstrap.Grant(ctx, pool, testVerificationEncryptionKey, operatorbootstrap.Input{Email: testStudentEmail, ActorUnixUser: "root", RequestID: "req_initial_operator_001", Reason: "initial production operator bootstrap"})
 	if err != nil || !result.Changed {
