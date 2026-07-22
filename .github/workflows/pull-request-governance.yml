@@ -1,0 +1,46 @@
+name: Pull Request Governance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  branch-name:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require a conventional branch name
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_REF" =~ ^(codex|feat|fix|docs|chore|refactor|test|build|ci|perf|revert)/[a-z0-9][a-z0-9._-]*$ ]] || {
+            echo "Branch '$HEAD_REF' must use an allowed type prefix and lowercase slug." >&2
+            exit 1
+          }
+
+  independent-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require approval of the current commit by another account
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          approvals="$(gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            --jq '[.[][] | select(.state == "APPROVED" and .commit_id == env.HEAD_SHA and .user.login != env.PR_AUTHOR)] | length')"
+          test "$approvals" -ge 1 || {
+            echo "The current PR commit requires an auditable approval from an account other than $PR_AUTHOR." >&2
+            exit 1
+          }
