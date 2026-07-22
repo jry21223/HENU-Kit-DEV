@@ -10,7 +10,7 @@ Do not enter the write freeze until all of these are true:
 2. A real `henu.edu.cn` mailbox has completed request, delivery, verification, 15-day Core Session, OAuth callback, and logout/revocation checks. Test claims and manual SQL are forbidden.
 3. QuizCraft OAuth/HMAC credentials were generated on the host and provisioned with `services/platform-core/scripts/provision-quizcraft-client.sh`.
 4. The first human operator logged in normally; root then used `grant-initial-operator` to grant only platform operations and QuizCraft Workshop permissions. The audit row exists.
-5. The immutable Go release, the `VITE_QUIZCRAFT_GO_WRITES=1` browser bundle, and the explicit maintenance page are staged but not public.
+5. The immutable Go release and the `VITE_QUIZCRAFT_GO_WRITES=1` browser bundle are staged but not public. The immutable web-app directory retains its locked Playwright dependency and installed Chromium for the release gate. Install the explicit maintenance page at `/var/www/quizcraft-maintenance/maintenance.html` before enabling the marker; it must not depend on either release symlink.
 6. Legacy and Go backups have each been restored into temporary databases and queried successfully. Final backups are root-only, SHA-256 recorded, and retained for 30 days.
 
 Any authentication, restore, reconciliation, hash, or migration-exception failure aborts. There is no human override.
@@ -26,23 +26,23 @@ Any authentication, restore, reconciliation, hash, or migration-exception failur
 7. Take the final dual-database dumps, record SHA-256 values, restore both into temporary databases, and query their key tables.
 8. Run desktop and 390px synthetic checks for practice, feedback, favorites, rankings, and Workshop. Also verify health, readiness, account login, mail delivery, OAuth, and logs.
 
-`verify-cutover.sh` binds evidence to the exact release SHA and passed migration run. It intentionally does not require a traffic shadow report.
+Record release/reconciliation and backup metadata in a root-owned, non-group/world-writable JSON file following `deploy/cutover-gate-evidence.example.json`. Boolean claims are not acceptance evidence. `verify-cutover.sh` binds metadata to the exact release SHA, migration run and source head; recomputes both backup SHA-256 values; uses its version-controlled restore verifier to create/query/drop fresh databases from those exact dumps; runs its version-controlled desktop/390px browser, IMAP-backed real-mail Platform Core login/OAuth/logout, and journal log-audit verifiers; and probes the live maintenance page plus public mutation paths. It intentionally does not require a traffic shadow report.
 
 ## Atomic activation
 
-Load `CUTOVER_EVIDENCE_SECRET`, the dedicated operator Session, database URLs, migration run ID, source head, release SHA, and legacy source hash from root-owned environment files. Do not place secrets in shell history or arguments.
+Load `CUTOVER_EVIDENCE_SECRET`, the dedicated operator Session, source database URLs, isolated restore-admin URL, real mailbox IMAP credentials, Console origin, log start time, migration run ID, source head, release SHA, and legacy source hash from root-owned environment files. `GO_BASE_URL` and `LEGACY_BASE_URL` must be loopback origins that bypass public maintenance; `PUBLIC_BASE_URL` is the public origin. Do not place secrets in shell history or arguments.
 
 ```bash
 VITE_QUIZCRAFT_GO_WRITES=1 pnpm --filter quizcraft-web build:ops
 
-sudo --preserve-env=CONFIRM_CUTOVER_SWITCH,GO_BASE_URL,LEGACY_BASE_URL,EXPECTED_RELEASE_SHA,EXPECTED_LEGACY_READ_ONLY,CUTOVER_EVIDENCE_SECRET,EXPECTED_MIGRATION_RUN_ID,EXPECTED_SOURCE_HEAD,LEGACY_SERVER_PATH,EXPECTED_LEGACY_SHA256,LEGACY_DATABASE_URL,QUIZCRAFT_OPERATOR_SESSION \
+sudo --preserve-env=CONFIRM_CUTOVER_SWITCH,GO_BASE_URL,LEGACY_BASE_URL,PUBLIC_BASE_URL,CUTOVER_E2E_BASE_URL,CUTOVER_WEB_APP_DIR,PLATFORM_ACCOUNT_ORIGIN,CONSOLE_ORIGIN,EXPECTED_RELEASE_SHA,EXPECTED_LEGACY_READ_ONLY,CUTOVER_EVIDENCE_SECRET,CUTOVER_GATE_EVIDENCE_FILE,EXPECTED_MIGRATION_RUN_ID,EXPECTED_SOURCE_HEAD,LEGACY_SERVER_PATH,EXPECTED_LEGACY_SHA256,LEGACY_DATABASE_URL,GO_DATABASE_URL,CUTOVER_RESTORE_ADMIN_URL,CUTOVER_TEST_EMAIL,CUTOVER_IMAP_HOST,CUTOVER_IMAP_PORT,CUTOVER_IMAP_USERNAME,CUTOVER_IMAP_PASSWORD,CUTOVER_LOG_SINCE,PLATFORM_CLIENT_SECRET,QUIZCRAFT_OPERATOR_SESSION \
   /opt/quizcraft-go/current/scripts/switch-cutover-release.sh \
   activate-writes "$EXPECTED_RELEASE_SHA" "$EXPECTED_RELEASE_SHA-writes"
 ```
 
-The switch script first activates the immutable Go binary with writes still disabled, waits for health, and executes the complete preflight with `EXPECTED_WRITES_ENABLED=false`. Only after that succeeds may it set `QUIZCRAFT_WRITES_ENABLED=1`, restart Go, run post-activation synthetic mutations, reload Nginx, and atomically expose the all-Go browser bundle.
+The switch script first enables the Nginx maintenance marker, activates the immutable Go binary with writes still disabled, waits for health, and executes the complete preflight with `EXPECTED_WRITES_ENABLED=false`. Only after that succeeds may it set `QUIZCRAFT_WRITES_ENABLED=1`, restart Go, run post-activation synthetic mutations, atomically expose the all-Go browser bundle, and remove maintenance.
 
-The first durable Go business mutation is the **Go write promise point**. Before it, restore the final snapshots and legacy routing if activation fails. After it, direct rollback to the stale legacy database is forbidden: re-enter maintenance and forward-fix, or reverse-sync every Go write and reconcile before considering legacy write restoration.
+The first durable Go business mutation is the **Go write promise point**. Before it, restore the final snapshots and legacy routing if activation fails. Once the script enables Go writes it conservatively treats the promise as crossed: every later error keeps the maintenance marker and write-capable Go state for forward repair. After correcting the failed gate, rerun that exact release with `resume-writes <sha> <sha-writes>`; it re-verifies and completes only the write-capable release. Direct rollback to the stale legacy database is forbidden unless every Go write is reverse-synced and reconciled first.
 
 ## Seven-day cold reserve
 

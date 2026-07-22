@@ -1,5 +1,14 @@
 # Stage these locations before the maintenance switch. The final browser bundle
 # moves all reads and writes together; Nginx performs no percentage routing.
+# Place the following server-level maintenance boundary before public locations:
+#
+# error_page 503 @quizcraft_maintenance;
+# if (-f /var/lib/quizcraft-cutover/maintenance-enabled) { return 503; }
+# location @quizcraft_maintenance {
+#     root /var/www/quizcraft-maintenance;
+#     try_files /maintenance.html =503;
+#     add_header Retry-After 900 always;
+# }
 location = /healthz {
     proxy_pass http://127.0.0.1:10089/healthz;
     proxy_set_header Host $host;

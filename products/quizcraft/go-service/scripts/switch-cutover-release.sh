@@ -13,6 +13,7 @@ go_current_link="${GO_CURRENT_LINK:-/opt/quizcraft-go/releases/current}"
 static_release_root="${STATIC_RELEASE_ROOT:-/var/www/quizcraft-releases}"
 static_current_link="${STATIC_CURRENT_LINK:-/var/www/quizcraft-current}"
 state_dir="${CUTOVER_STATE_DIR:-/var/lib/quizcraft-cutover}"
+maintenance_marker="${QUIZCRAFT_MAINTENANCE_MARKER:-$state_dir/maintenance-enabled}"
 service_name="${QUIZCRAFT_GO_SERVICE:-quizcraft-go.service}"
 nginx_config="${QUIZCRAFT_NGINX_CONFIG:-/etc/nginx/sites-enabled/superhuazai.me}"
 go_health_url="${QUIZCRAFT_GO_HEALTH_URL:-http://127.0.0.1:10089/healthz}"
@@ -38,6 +39,19 @@ atomic_state() {
   local value="$1" path="$2" next_path="${2}.next.$$"
   printf '%s\n' "$value" > "$next_path"
   portable_replace "$next_path" "$path"
+}
+
+enable_maintenance() {
+  install -d -m 700 "$(dirname "$maintenance_marker")"
+  atomic_state enabled "$maintenance_marker"
+  nginx -t
+  systemctl reload nginx
+}
+
+disable_maintenance() {
+  nginx -t
+  systemctl reload nginx
+  if [[ -e "$maintenance_marker" ]]; then unlink "$maintenance_marker"; fi
 }
 
 validate_target() {
@@ -118,6 +132,7 @@ record_previous_release() {
   if [[ -L "$static_current_link" ]]; then readlink -f "$static_current_link" > "$state_dir/previous-static"; else echo ABSENT > "$state_dir/previous-static"; fi
   if [[ -f "$state_dir/active-phase" ]]; then cp "$state_dir/active-phase" "$state_dir/previous-phase"; else echo legacy > "$state_dir/previous-phase"; fi
   printf '%s\n' "$current_writes" > "$state_dir/previous-writes"
+  if [[ -e "$maintenance_marker" ]]; then echo enabled > "$state_dir/previous-maintenance"; else echo disabled > "$state_dir/previous-maintenance"; fi
 }
 
 activate_release() {
@@ -140,6 +155,7 @@ activate_release() {
   systemctl reload nginx
   atomic_link "$next_static" "$static_current_link"
   atomic_state "$next_phase" "$state_dir/active-phase"
+  disable_maintenance
 }
 
 rollback_release() {
@@ -160,6 +176,7 @@ rollback_release() {
     install -m 644 "$NGINX_ROLLBACK_CONFIG" "$nginx_config"
   fi
   cp "$state_dir/previous-phase" "$state_dir/active-phase"
+  if [[ "$(cat "$state_dir/previous-maintenance")" == "enabled" ]]; then enable_maintenance; else disable_maintenance; fi
 }
 
 restore_runtime() {
@@ -176,6 +193,7 @@ restore_runtime() {
 activate_with_rollback() {
   preflight_activation
   record_previous_release
+  enable_maintenance
   nginx -t
   trap 'handle_activation_error $?' ERR
   activate_release
@@ -183,17 +201,13 @@ activate_with_rollback() {
 }
 
 handle_activation_error() {
-  local error_status="$1" active_phase pending_static current_static
+  local error_status="$1" active_phase
   trap - ERR
   set +e
   active_phase="$(cat "$state_dir/active-phase" 2>/dev/null || echo legacy)"
-  if [[ "$active_phase" == activating-writes:* || "$active_phase" == "writes" ]]; then
-    pending_static="${active_phase#activating-writes:}"
-    current_static="$(readlink -f "$static_current_link" 2>/dev/null || true)"
-    if [[ "$active_phase" == "writes" || ( -n "$pending_static" && "$current_static" == "$pending_static" ) ]]; then
-      echo "write bundle may already be exposed; preserving the write-capable state for crash recovery" >&2
-      exit "$error_status"
-    fi
+  if [[ "$active_phase" == "writes" ]] || [[ "$active_phase" == activating-writes:* && "$(read_writes_flag 2>/dev/null)" == "1" ]]; then
+    echo "Go writes were enabled, so the write promise may have been crossed; preserving maintenance and the write-capable state for forward repair" >&2
+    exit "$error_status"
   fi
   rollback_release
   restore_runtime
@@ -208,20 +222,55 @@ recover_incomplete_write_activation() {
   current_static="$(readlink -f "$static_current_link" 2>/dev/null || true)"
   if validate_target "$pending_static" "$static_release_root" && [[ "$current_static" == "$pending_static" && "$(read_writes_flag)" == "1" ]]; then
     atomic_state writes "$state_dir/active-phase"
+    disable_maintenance
     echo "Recovered an exposed QuizCraft write activation"
     return 0
+  fi
+  if [[ "$(read_writes_flag)" == "1" ]]; then
+    if [[ "$action" == "resume-writes" ]]; then
+      return 0
+    fi
+    echo "Go writes were enabled before the interrupted activation; automatic rollback is forbidden, keep maintenance active and forward-fix" >&2
+    return 4
   fi
   rollback_release
   restore_runtime
   echo "Recovered an unexposed QuizCraft write activation by rolling it back"
 }
 
+resume_write_activation() {
+  [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]
+  [[ "$static_release_id" == "$release_sha-writes" ]]
+  next_go="$go_release_root/$release_sha"
+  next_static="$static_release_root/$static_release_id"
+  validate_target "$next_go" "$go_release_root"
+  validate_target "$next_static" "$static_release_root"
+  [[ "$(readlink -f "$go_current_link")" == "$next_go" ]]
+  [[ "$(read_writes_flag)" == "1" ]]
+  active_phase="$(cat "$state_dir/active-phase" 2>/dev/null || echo legacy)"
+  if [[ "$active_phase" == "writes" ]]; then
+    [[ "$(readlink -f "$static_current_link")" == "$next_static" ]]
+    EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
+    disable_maintenance
+    return 0
+  fi
+  [[ "$active_phase" == "activating-writes:$next_static" ]]
+  [[ -e "$maintenance_marker" ]]
+  EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
+  nginx -t
+  systemctl reload nginx
+  atomic_link "$next_static" "$static_current_link"
+  atomic_state writes "$state_dir/active-phase"
+  disable_maintenance
+}
+
 recover_incomplete_write_activation
 
 case "$action" in
   activate-writes) activate_with_rollback ;;
+  resume-writes) resume_write_activation ;;
   rollback) rollback_release; restore_runtime ;;
-  *) echo "usage: $0 activate-writes <40-char-release-sha> <sha-writes-static-release-id> | rollback" >&2; exit 2 ;;
+  *) echo "usage: $0 activate-writes|resume-writes <40-char-release-sha> <sha-writes-static-release-id> | rollback" >&2; exit 2 ;;
 esac
 
 echo "QuizCraft $action completed"

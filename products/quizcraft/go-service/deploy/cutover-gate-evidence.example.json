@@ -1,0 +1,22 @@
+{
+  "release_sha": "replace-with-40-character-release-sha",
+  "created_at": "2026-07-22T00:00:00Z",
+  "migration_run_id": "replace-with-migration-run-uuid",
+  "source_head": 0,
+  "reconciliation": {
+    "cursor_equals_head": true,
+    "exceptions": 0,
+    "banks": true,
+    "questions": true,
+    "question_types": true,
+    "answers": true,
+    "chapters": true,
+    "feedback": true,
+    "legacy_rankings": true,
+    "content_hashes": true
+  },
+  "backups": {
+    "legacy": { "path": "/var/backups/quizcraft/final/legacy.dump", "sha256": "replace" },
+    "go": { "path": "/var/backups/quizcraft/final/go.dump", "sha256": "replace" }
+  }
+}
