@@ -65,5 +65,8 @@ func (mailer *SMTPMailer) Send(ctx context.Context, message Mail) error {
 	if err := writer.Close(); err != nil {
 		return err
 	}
-	return client.Quit()
+	// A successful DATA close means the SMTP server accepted responsibility for
+	// the message. A later QUIT transport error must not trigger a duplicate send.
+	_ = client.Quit()
+	return nil
 }
