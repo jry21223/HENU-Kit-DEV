@@ -5,6 +5,7 @@ Provision the QuizCraft OAuth redirect and rotatable HMAC client key after apply
 Independent Go service for platform-owned identity and operations data. The delivered HC-05 through HC-08 slices implement:
 
 - host-only Core Session validation;
+- an account-center HTML flow at `/login`; successful login verification atomically creates/restores an encrypted Email Identity and issues a non-rolling 15-day Core Session;
 - exact-callback OAuth authorization with S256 PKCE;
 - 60–120 second, hash-only, single-use Authorization Codes;
 - server-to-server code exchange protected by Basic client authentication, S256 PKCE, HMAC-SHA256, a five-minute timestamp window, and Redis nonce replay prevention;
@@ -20,10 +21,11 @@ Independent Go service for platform-owned identity and operations data. The deli
 - transactional PostgreSQL verification facts plus critical-priority mail Outbox jobs, with Redis used only for fail-closed email/IP/device hourly, daily, and resend limits;
 - single-use verification with attempt limits and idempotent success replay under concurrent requests;
 - an independently deployable mail worker with lease recovery, bounded provider timeouts, exponential retry, immutable transition audits, dead letters, controlled operator requeue, provider acceptance and separate delivery confirmation states.
+- a loopback-only SMTP Provider with Bearer authentication, STARTTLS, and a root-owned idempotency ledger;
 - Operations Inbox creation, product-scoped querying, assignment, priority, SLA and status updates using source-resource references only;
 - durable write idempotency, optimistic versions, transactional append-only operations audits, and server-side permission plus Scope enforcement.
 
-It does not implement Console Gateway or turn a successful verification into a production account-login/bootstrap Session yet.
+It does not own Console Gateway sessions or product-local sessions. Legacy QuizCraft IDs are not automatically mapped to Email Identities.
 
 Production configuration is environment-only. Copy key names from `.env.example`; use distinct Platform Core PostgreSQL credentials, an authenticated `rediss://` URL, and separate random 32-byte idempotency and verification keys. The service never logs connection URLs, credentials, request bodies, email addresses, verification codes, authorization codes, or Session tokens.
 
@@ -33,7 +35,9 @@ Production configuration is environment-only. Copy key names from `.env.example`
 
 `POST /api/v1/auth/email-codes` and `/api/v1/auth/email-codes/verify` require `Idempotency-Key`. Platform Core issues a signed, `HttpOnly`, `Secure` device cookie instead of trusting a browser-supplied device ID; both request and verification attempts use email/IP/device hourly and daily limits. Rate-limited send requests return the same privacy-preserving `202` shape but create no verification or Outbox row, verification-attempt limits return `429`, and Redis failure returns `503` (fail closed). Client IP comes from the socket peer unless it is in `PLATFORM_CORE_TRUSTED_PROXY_CIDRS`; trusted proxy chains are stripped from right to left so an appended client-controlled `X-Forwarded-For` prefix is not trusted.
 
-A verification request `202` means only that processing was accepted; it does not prove provider acceptance or delivery. `cmd/mail-worker` claims jobs with `FOR UPDATE SKIP LOCKED`, refuses expired payloads, sends the decrypted payload only to the configured HTTPS provider, and records every transition without email addresses or codes. `POST /api/v1/mail/deliveries` requires HMAC, a five-minute timestamp window, Redis-backed single-use Nonce, and an active or retiring Key ID. Receipts are persisted before reconciliation, so an early provider callback is applied after the matching Outbox acceptance instead of being lost. A failed job can be requeued deliberately with `cmd/mail-worker -requeue-outbox ... -request-id ... -actor-id ... -reason ...`; the dead letter and database-protected append-only operator audit remain durable. Build the worker's independent image with `Dockerfile.worker`.
+A verification request `202` means only that processing was accepted; it does not prove provider acceptance or delivery. `cmd/mail-worker` claims jobs with `FOR UPDATE SKIP LOCKED`, refuses expired payloads, sends the decrypted payload only to the configured HTTP Provider, and records every transition without email addresses or codes. The production Provider is `cmd/smtp-provider`, bound to `127.0.0.1`, and reads SMTP credentials only from its root-owned environment. `POST /api/v1/mail/deliveries` requires HMAC, a five-minute timestamp window, Redis-backed single-use Nonce, and an active or retiring Key ID. Receipts are persisted before reconciliation, so an early provider callback is applied after the matching Outbox acceptance instead of being lost. A failed job can be requeued deliberately with `cmd/mail-worker -requeue-outbox ... -request-id ... -actor-id ... -reason ...`; the dead letter and database-protected append-only operator audit remain durable. Build the worker and provider with `Dockerfile.worker` and `Dockerfile.smtp-provider`.
+
+After the first operator signs in normally, run `cmd/grant-initial-operator` as root with `-email`, `-request-id`, and `-reason`. It grants `platform.operations.read/write` at platform Scope and `quizcraft.workshop.read/write/publish` at QuizCraft product Scope. It never creates a global superadmin and never requires manual SQL.
 
 Operations Inbox uses `GET/POST /api/v1/operations-inbox/items`, `POST /api/v1/operations-inbox/items/{item_id}/updates`, and `GET /api/v1/operations-inbox/operations/{operation}` to resolve an unknown write outcome with the original idempotency key. Calls require Basic plus HMAC service authentication and the server-held `X-Session-Exchange-Token`; writes and operation-status lookups also require `Idempotency-Key`. The data model deliberately has no title, body, content or feedback-text field: full source content stays with the product identified by the immutable product/resource reference. Append-only audits retain a safe coordination snapshot for every committed version so owner, priority, SLA and status changes can be reconstructed without copying product content.
 

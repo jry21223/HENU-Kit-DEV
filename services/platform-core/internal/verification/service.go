@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"math/big"
@@ -18,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"henukit.dev/platform-core/internal/securebox"
 	"henukit.dev/platform-core/internal/store"
 	"henukit.dev/platform-core/internal/verificationmail"
 )
@@ -42,9 +44,12 @@ type Service struct {
 	coordinator    Coordinator
 	secretKey      []byte
 	mailCodec      *verificationmail.Codec
+	emailCodec     *securebox.Codec
+	sessionCodec   *securebox.Codec
 	allowedDomains map[string]struct{}
 	codeTTL        time.Duration
 	resendDelay    time.Duration
+	coreSessionTTL time.Duration
 }
 
 type RequestInput struct {
@@ -72,15 +77,24 @@ type VerifyInput struct {
 }
 
 type Verified struct {
-	VerificationID string
+	VerificationID   string
+	UserID           string
+	EmailVerified    bool
+	UserStatus       string
+	UserCreatedAt    time.Time
+	SessionToken     string
+	SessionExpiresAt time.Time
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, masterKey []byte, allowedDomains []string, codeTTL, resendDelay time.Duration) (*Service, error) {
+func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, masterKey []byte, allowedDomains []string, codeTTL, resendDelay, coreSessionTTL time.Duration) (*Service, error) {
 	if queries == nil || database == nil || coordinator == nil || len(masterKey) != 32 {
 		return nil, errors.New("verification dependencies and a 32-byte key are required")
 	}
 	if codeTTL < 5*time.Minute || codeTTL > 10*time.Minute || resendDelay < 60*time.Second {
 		return nil, errors.New("verification TTL must be 5-10m and resend delay at least 60s")
+	}
+	if coreSessionTTL != 15*24*time.Hour {
+		return nil, errors.New("core Session TTL must be 15 days")
 	}
 	domains := make(map[string]struct{}, len(allowedDomains))
 	for _, domain := range allowedDomains {
@@ -96,10 +110,18 @@ func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator
 	if err != nil {
 		return nil, err
 	}
+	emailCodec, err := securebox.New(masterKey, "email-identity")
+	if err != nil {
+		return nil, err
+	}
+	sessionCodec, err := securebox.New(masterKey, "verification-login-session")
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
 		queries: queries, database: database, coordinator: coordinator, secretKey: append([]byte(nil), masterKey...),
-		mailCodec: mailCodec, allowedDomains: domains,
-		codeTTL: codeTTL, resendDelay: resendDelay,
+		mailCodec: mailCodec, emailCodec: emailCodec, sessionCodec: sessionCodec, allowedDomains: domains,
+		codeTTL: codeTTL, resendDelay: resendDelay, coreSessionTTL: coreSessionTTL,
 	}, nil
 }
 
@@ -201,7 +223,23 @@ func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, erro
 	requestFingerprint := s.digest("consume", emailHash, []byte(input.Purpose), []byte(input.Code))
 	if replay, replayErr := s.queries.GetConsumedVerificationReplay(ctx, pgtype.Text{String: input.IdempotencyKey, Valid: true}); replayErr == nil {
 		if subtle.ConstantTimeCompare(replay.ConsumedRequestFingerprint, requestFingerprint) == 1 {
-			return Verified{VerificationID: uuidString(replay.ID)}, nil
+			result := Verified{VerificationID: uuidString(replay.ID)}
+			if input.Purpose == "login" {
+				if !replay.LoginUserID.Valid || !replay.LoginSessionExpiresAt.Valid || len(replay.LoginSessionTokenCiphertext) == 0 {
+					return Verified{}, ErrDependency
+				}
+				token, err := s.sessionCodec.Open(replay.LoginSessionTokenCiphertext)
+				if err != nil {
+					return Verified{}, ErrDependency
+				}
+				result.UserID = uuidString(replay.LoginUserID)
+				result.EmailVerified = replay.LoginUserEmailVerified.Bool
+				result.UserStatus = replay.LoginUserStatus.String
+				result.UserCreatedAt = replay.LoginUserCreatedAt.Time
+				result.SessionToken = string(token)
+				result.SessionExpiresAt = replay.LoginSessionExpiresAt.Time
+			}
+			return result, nil
 		}
 		return Verified{}, ErrIdempotency
 	} else if !errors.Is(replayErr, pgx.ErrNoRows) {
@@ -259,10 +297,67 @@ func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, erro
 	if rows != 1 {
 		return Verified{}, ErrCodeAlreadyUsed
 	}
+	result := Verified{VerificationID: uuidString(verification.ID)}
+	if input.Purpose == "login" {
+		identity, identityErr := queries.GetEmailIdentityForUpdate(ctx, emailHash)
+		if identityErr != nil && !errors.Is(identityErr, pgx.ErrNoRows) {
+			return Verified{}, identityErr
+		}
+		var userID pgtype.UUID
+		if errors.Is(identityErr, pgx.ErrNoRows) {
+			created, err := queries.CreateEmailLoginUser(ctx)
+			if err != nil {
+				return Verified{}, err
+			}
+			emailCiphertext, err := s.emailCodec.Seal([]byte(email))
+			if err != nil {
+				return Verified{}, err
+			}
+			if err := queries.CreateEmailIdentity(ctx, store.CreateEmailIdentityParams{UserID: created.ID, EmailLookupHash: emailHash, EmailCiphertext: emailCiphertext}); err != nil {
+				return Verified{}, err
+			}
+			userID = created.ID
+			result.EmailVerified, result.UserStatus, result.UserCreatedAt = created.EmailVerified, created.Status, created.CreatedAt.Time
+		} else {
+			if identity.Status != "active" {
+				return Verified{}, ErrInvalid
+			}
+			userID = identity.UserID
+			result.EmailVerified, result.UserStatus, result.UserCreatedAt = identity.EmailVerified, identity.Status, identity.CreatedAt.Time
+		}
+		tokenBytes := make([]byte, 32)
+		if _, err := rand.Read(tokenBytes); err != nil {
+			return Verified{}, err
+		}
+		result.SessionToken = base64.RawURLEncoding.EncodeToString(tokenBytes)
+		tokenHash := sha256.Sum256([]byte(result.SessionToken))
+		result.SessionExpiresAt = time.Now().UTC().Add(s.coreSessionTTL)
+		session, err := queries.CreateCoreSession(ctx, store.CreateCoreSessionParams{
+			UserID: userID, TokenHash: tokenHash[:],
+			ExpiresAt: pgtype.Timestamptz{Time: result.SessionExpiresAt, Valid: true},
+		})
+		if err != nil {
+			return Verified{}, err
+		}
+		tokenCiphertext, err := s.sessionCodec.Seal([]byte(result.SessionToken))
+		if err != nil {
+			return Verified{}, err
+		}
+		attached, err := queries.AttachLoginSessionToVerification(ctx, store.AttachLoginSessionToVerificationParams{
+			ID: verification.ID, LoginSessionID: session.ID, LoginSessionTokenCiphertext: tokenCiphertext,
+		})
+		if err != nil || attached != 1 {
+			if err != nil {
+				return Verified{}, err
+			}
+			return Verified{}, ErrCodeAlreadyUsed
+		}
+		result.UserID = uuidString(userID)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Verified{}, err
 	}
-	return Verified{VerificationID: uuidString(verification.ID)}, nil
+	return result, nil
 }
 
 func (s *Service) verifyRateLimited(ctx context.Context, emailHash []byte, deviceID, clientIP string) (bool, error) {

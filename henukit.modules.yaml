@@ -82,7 +82,7 @@ modules:
     target_path: services/platform-core
     owner: platform
     deploy_unit: platform-core-api
-    target_domain: account.henukit.cn
+    target_domain: account.superhuazai.me
     status: identity_foundation
 
   - id: platform_worker

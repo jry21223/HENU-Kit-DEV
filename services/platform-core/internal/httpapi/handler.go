@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"log/slog"
 	"net"
@@ -53,6 +54,9 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
 	router.Get("/api/v1/readyz", handler.ready)
+	router.Get("/login", handler.loginPage)
+	router.Post("/login/code", handler.loginRequestCode)
+	router.Post("/login/verify", handler.loginVerifyCode)
 	router.Get(contract.AuthorizeRoute, handler.authorize)
 	router.Post(contract.TokenRoute, handler.exchange)
 	router.Post(contract.AuthorizationCheckRoute, handler.checkAuthorization)
@@ -458,6 +462,117 @@ func (h *Handler) recordMailDelivery(writer http.ResponseWriter, request *http.R
 	writeSuccess(writer, request, http.StatusAccepted, contract.MailDeliveryAccepted{Accepted: true})
 }
 
+var accountLoginTemplate = template.Must(template.New("account-login").Parse(`<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HENU Kit 账号中心</title><style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f7fb;color:#172033;font:16px/1.5 system-ui,sans-serif}.card{width:min(390px,calc(100% - 32px));box-sizing:border-box;background:#fff;border:1px solid #dfe5ef;border-radius:18px;padding:28px;box-shadow:0 14px 40px #27364d18}h1{margin:0 0 8px;font-size:24px}p{color:#5d687a}label{display:block;margin:20px 0 6px;font-weight:650}input{width:100%;box-sizing:border-box;border:1px solid #bdc7d6;border-radius:10px;padding:12px;font:inherit}button{width:100%;margin-top:18px;border:0;border-radius:10px;padding:12px;background:#2457d6;color:#fff;font:inherit;font-weight:700}.error{color:#b42318}.hint{font-size:13px}
+</style></head><body><main class="card"><h1>HENU Kit 账号中心</h1>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列，请查收学校邮箱。</p>{{else}}<p>使用河南大学邮箱登录。</p>{{end}}
+<form method="post" action="{{if .CodeRequested}}/login/verify{{else}}/login/code{{end}}">
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="return_to" value="{{.ReturnTo}}">
+<label for="email">学校邮箱</label><input id="email" name="email" type="email" value="{{.Email}}" autocomplete="email" required {{if .CodeRequested}}readonly{{end}}>
+{{if .CodeRequested}}<label for="code">6 位验证码</label><input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required autofocus>{{end}}
+<button type="submit">{{if .CodeRequested}}登录并继续{{else}}发送验证码{{end}}</button>
+</form><p class="hint">当前仅允许 henu.edu.cn 邮箱。会话绝对有效期为 15 天。</p></main></body></html>`))
+
+type accountLoginView struct {
+	CSRFToken, ReturnTo, Email, Error string
+	CodeRequested                     bool
+}
+
+func (h *Handler) loginPage(writer http.ResponseWriter, request *http.Request) {
+	returnTo := safeAccountReturnTo(request.URL.Query().Get("return_to"))
+	csrfToken := randomBrowserToken()
+	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: csrfToken, Path: "/", MaxAge: 10 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	_ = h.deviceID(writer, request)
+	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo})
+}
+
+func (h *Handler) loginRequestCode(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, returnTo, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	accepted, err := h.verification.Request(request.Context(), verification.RequestInput{
+		Email: email, Purpose: "login", ClientID: "account-center", DeviceID: h.deviceID(writer, request), ClientIP: h.clientIP(request),
+		IdempotencyKey: "login_request_" + randomBrowserToken(), RequestID: requestIDFrom(request.Context()),
+	})
+	if err != nil {
+		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
+		return
+	}
+	writer.Header().Set("X-Verification-Expires", accepted.ExpiresAt.Format(time.RFC3339))
+	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true})
+}
+
+func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, returnTo, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	code := strings.TrimSpace(request.FormValue("code"))
+	verified, err := h.verification.Verify(request.Context(), verification.VerifyInput{
+		Email: email, Code: code, Purpose: "login", IdempotencyKey: "login_verify_" + randomBrowserToken(),
+		DeviceID: h.deviceID(writer, request), ClientIP: h.clientIP(request),
+	})
+	if err != nil || verified.SessionToken == "" {
+		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true, Error: "验证码无效、已过期或登录暂不可用。"})
+		return
+	}
+	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt, MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	auditFrom(request.Context()).subjectUserID = maskSubject(verified.UserID)
+	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
+}
+
+func (h *Handler) parseLoginForm(writer http.ResponseWriter, request *http.Request) (string, string, string, bool) {
+	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
+	if err := request.ParseForm(); err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "login form is invalid")
+		return "", "", "", false
+	}
+	csrfToken := request.FormValue("csrf_token")
+	cookie, err := request.Cookie("__Host-henukit_login_csrf")
+	if err != nil || len(csrfToken) < 32 || !hmac.Equal([]byte(cookie.Value), []byte(csrfToken)) {
+		writeError(writer, request, http.StatusForbidden, "CSRF_REJECTED", "login form expired; reload and try again")
+		return "", "", "", false
+	}
+	return csrfToken, safeAccountReturnTo(request.FormValue("return_to")), strings.TrimSpace(request.FormValue("email")), true
+}
+
+func (h *Handler) renderLogin(writer http.ResponseWriter, request *http.Request, view accountLoginView) {
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	writer.Header().Set("Referrer-Policy", "no-referrer")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	if err := accountLoginTemplate.Execute(writer, view); err != nil {
+		h.logger.Error("account_login_template_error", "request_id", requestIDFrom(request.Context()), "error", err)
+	}
+}
+
+func (h *Handler) redirectToLogin(writer http.ResponseWriter, request *http.Request) {
+	location := "/login?return_to=" + url.QueryEscape(request.URL.RequestURI())
+	writer.Header().Set("Cache-Control", "no-store")
+	http.Redirect(writer, request, location, http.StatusFound)
+}
+
+func safeAccountReturnTo(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.Path != contract.AuthorizeRoute || parsed.Fragment != "" {
+		return "/"
+	}
+	return parsed.RequestURI()
+}
+
+func randomBrowserToken() string {
+	value := make([]byte, 24)
+	if _, err := rand.Read(value); err != nil {
+		return "unavailable-browser-token-000000000000"
+	}
+	return base64.RawURLEncoding.EncodeToString(value)
+}
+
 func (h *Handler) requestVerificationCode(writer http.ResponseWriter, request *http.Request) {
 	idempotencyKey := request.Header.Get(contract.IdempotencyKeyHeader)
 	if len(idempotencyKey) < 8 || len(idempotencyKey) > 200 {
@@ -482,6 +597,10 @@ func (h *Handler) requestVerificationCode(writer http.ResponseWriter, request *h
 }
 
 func (h *Handler) verifyVerificationCode(writer http.ResponseWriter, request *http.Request) {
+	if !h.sameOriginBrowserRequest(request) {
+		writeError(writer, request, http.StatusForbidden, "ORIGIN_REJECTED", "verification request origin is not allowed")
+		return
+	}
 	idempotencyKey := request.Header.Get(contract.IdempotencyKeyHeader)
 	if len(idempotencyKey) < 8 || len(idempotencyKey) > 200 {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
@@ -500,7 +619,39 @@ func (h *Handler) verifyVerificationCode(writer http.ResponseWriter, request *ht
 		h.writeFlowError(writer, request, err)
 		return
 	}
-	writeSuccess(writer, request, http.StatusOK, contract.VerificationCodeVerified{VerificationID: verified.VerificationID})
+	response := contract.VerificationCodeVerified{VerificationID: verified.VerificationID}
+	if verified.SessionToken != "" {
+		http.SetCookie(writer, &http.Cookie{
+			Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt,
+			MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		})
+		response.User = &contract.PlatformUser{UserID: verified.UserID, EmailVerified: verified.EmailVerified, Status: verified.UserStatus, CreatedAt: verified.UserCreatedAt}
+		response.SessionExpiresAt = &verified.SessionExpiresAt
+		auditFrom(request.Context()).subjectUserID = maskSubject(verified.UserID)
+	}
+	writeSuccess(writer, request, http.StatusOK, response)
+}
+
+func (h *Handler) sameOriginBrowserRequest(request *http.Request) bool {
+	origin := request.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.User != nil || parsed.Path != "" && parsed.Path != "/" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	expectedScheme := "https"
+	if request.TLS == nil {
+		expectedScheme = "http"
+	}
+	peer := net.ParseIP(remoteIP(request.RemoteAddr))
+	if peer != nil && h.isTrustedProxy(peer) {
+		if forwarded := request.Header.Get("X-Forwarded-Proto"); forwarded == "https" || forwarded == "http" {
+			expectedScheme = forwarded
+		}
+	}
+	return parsed.Scheme == expectedScheme && parsed.Host == request.Host
 }
 
 func decodeStrictJSON(writer http.ResponseWriter, request *http.Request, target any) error {
@@ -546,7 +697,7 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	}
 	cookie, err := request.Cookie(h.cookieName)
 	if err != nil {
-		writeError(writer, request, http.StatusUnauthorized, "SESSION_REQUIRED", "a valid Core Session is required")
+		h.redirectToLogin(writer, request)
 		return
 	}
 	authorization, err := h.flow.Authorize(request.Context(), identity.AuthorizeInput{
@@ -554,6 +705,10 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 		ClientID:         query.ClientID, RedirectURI: query.RedirectURI, CodeChallenge: query.CodeChallenge,
 	})
 	if err != nil {
+		if errors.Is(err, identity.ErrUnauthorized) {
+			h.redirectToLogin(writer, request)
+			return
+		}
 		h.writeFlowError(writer, request, err)
 		return
 	}

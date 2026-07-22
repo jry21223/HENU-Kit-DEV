@@ -13,6 +13,7 @@ type Config struct {
 	DatabaseURL               string
 	RedisURL                  string
 	CoreCookieName            string
+	CoreSessionTTL            time.Duration
 	AuthorizationTTL          time.Duration
 	ExchangeSessionTTL        time.Duration
 	IdempotencyEncryptionKey  []byte
@@ -34,6 +35,7 @@ func Load() (Config, error) {
 		DatabaseURL:               os.Getenv("PLATFORM_CORE_DATABASE_URL"),
 		RedisURL:                  env("PLATFORM_CORE_REDIS_URL", "redis://localhost:6379/0"),
 		CoreCookieName:            env("PLATFORM_CORE_COOKIE_NAME", "__Host-henukit_core_session"),
+		CoreSessionTTL:            durationEnv("PLATFORM_CORE_CORE_SESSION_TTL", 15*24*time.Hour),
 		AuthorizationTTL:          durationEnv("PLATFORM_CORE_AUTHORIZATION_TTL", 90*time.Second),
 		ExchangeSessionTTL:        durationEnv("PLATFORM_CORE_EXCHANGE_SESSION_TTL", 5*time.Minute),
 		IdempotencyTTL:            durationEnv("PLATFORM_CORE_IDEMPOTENCY_TTL", 24*time.Hour),
@@ -62,6 +64,9 @@ func Load() (Config, error) {
 	config.VerificationKey = verificationKey
 	if config.AuthorizationTTL < 60*time.Second || config.AuthorizationTTL > 120*time.Second {
 		return Config{}, errors.New("PLATFORM_CORE_AUTHORIZATION_TTL must be between 60s and 120s")
+	}
+	if config.CoreSessionTTL != 15*24*time.Hour {
+		return Config{}, errors.New("PLATFORM_CORE_CORE_SESSION_TTL must be 360h")
 	}
 	if config.ExchangeSessionTTL <= 0 || config.ExchangeSessionTTL > 15*time.Minute {
 		return Config{}, errors.New("PLATFORM_CORE_EXCHANGE_SESSION_TTL must be greater than zero and at most 15m")

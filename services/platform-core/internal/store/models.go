@@ -49,6 +49,16 @@ type AuthorizationRole struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type EmailIdentity struct {
+	ID              pgtype.UUID        `json:"id"`
+	UserID          pgtype.UUID        `json:"user_id"`
+	EmailLookupHash []byte             `json:"email_lookup_hash"`
+	EmailCiphertext []byte             `json:"email_ciphertext"`
+	VerifiedAt      pgtype.Timestamptz `json:"verified_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type MailDeadLetter struct {
 	ID             pgtype.UUID        `json:"id"`
 	OutboxID       pgtype.UUID        `json:"outbox_id"`
@@ -169,6 +179,18 @@ type OperationsInboxItem struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
+type OperatorBootstrapAuditEvent struct {
+	ID              pgtype.UUID        `json:"id"`
+	TargetUserID    pgtype.UUID        `json:"target_user_id"`
+	ActorUnixUser   string             `json:"actor_unix_user"`
+	RequestID       string             `json:"request_id"`
+	Reason          string             `json:"reason"`
+	PermissionCodes []string           `json:"permission_codes"`
+	ScopeSummary    []byte             `json:"scope_summary"`
+	Changed         bool               `json:"changed"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
 type PermissionCode struct {
 	Code        string             `json:"code"`
 	Description string             `json:"description"`
@@ -240,18 +262,20 @@ type UserRoleGrant struct {
 }
 
 type VerificationCode struct {
-	ID                         pgtype.UUID        `json:"id"`
-	EmailLookupHash            []byte             `json:"email_lookup_hash"`
-	Purpose                    string             `json:"purpose"`
-	RequestKey                 string             `json:"request_key"`
-	RequestFingerprint         []byte             `json:"request_fingerprint"`
-	CodeNonce                  []byte             `json:"code_nonce"`
-	CodeHash                   []byte             `json:"code_hash"`
-	ExpiresAt                  pgtype.Timestamptz `json:"expires_at"`
-	UsedAt                     pgtype.Timestamptz `json:"used_at"`
-	ConsumedRequestKey         pgtype.Text        `json:"consumed_request_key"`
-	ConsumedRequestFingerprint []byte             `json:"consumed_request_fingerprint"`
-	RevokedAt                  pgtype.Timestamptz `json:"revoked_at"`
-	FailedAttempts             int32              `json:"failed_attempts"`
-	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
+	ID                          pgtype.UUID        `json:"id"`
+	EmailLookupHash             []byte             `json:"email_lookup_hash"`
+	Purpose                     string             `json:"purpose"`
+	RequestKey                  string             `json:"request_key"`
+	RequestFingerprint          []byte             `json:"request_fingerprint"`
+	CodeNonce                   []byte             `json:"code_nonce"`
+	CodeHash                    []byte             `json:"code_hash"`
+	ExpiresAt                   pgtype.Timestamptz `json:"expires_at"`
+	UsedAt                      pgtype.Timestamptz `json:"used_at"`
+	ConsumedRequestKey          pgtype.Text        `json:"consumed_request_key"`
+	ConsumedRequestFingerprint  []byte             `json:"consumed_request_fingerprint"`
+	RevokedAt                   pgtype.Timestamptz `json:"revoked_at"`
+	FailedAttempts              int32              `json:"failed_attempts"`
+	CreatedAt                   pgtype.Timestamptz `json:"created_at"`
+	LoginSessionID              pgtype.UUID        `json:"login_session_id"`
+	LoginSessionTokenCiphertext []byte             `json:"login_session_token_ciphertext"`
 }

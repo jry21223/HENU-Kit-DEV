@@ -24,7 +24,7 @@ const (
 	RevokePlatformOperationSessionRoute = "/api/v1/platform-operations/sessions/{session_id}/revocations"
 	UpdatePlatformOperationAccessRoute  = "/api/v1/platform-operations/users/{user_id}/access-updates"
 	PlatformOperationStatusRoute        = "/api/v1/platform-operations/operations/{operation}"
-	SourceSHA256                        = "ecdc1e497eaef073c9b1d667c26a16354da0c82e84a91636760ad689a58025fa"
+	SourceSHA256                        = "5cd3334dc9afd7cb125da31be591eb122b8692affa9997c999949ba8d330d223"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
@@ -217,7 +217,9 @@ type VerifyVerificationCodeRequest struct {
 }
 
 type VerificationCodeVerified struct {
-	VerificationID string `json:"verification_id"`
+	VerificationID   string        `json:"verification_id"`
+	SessionExpiresAt *time.Time    `json:"session_expires_at,omitempty"`
+	User             *PlatformUser `json:"user,omitempty"`
 }
 
 type RecordMailDeliveryRequest struct {

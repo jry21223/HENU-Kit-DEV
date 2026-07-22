@@ -108,6 +108,26 @@ func (q *Queries) ApplyPendingMailDeliveryReceipt(ctx context.Context, messageID
 	return result.RowsAffected(), nil
 }
 
+const attachLoginSessionToVerification = `-- name: AttachLoginSessionToVerification :execrows
+UPDATE verification_codes
+SET login_session_id = $2, login_session_token_ciphertext = $3
+WHERE id = $1 AND used_at IS NOT NULL AND purpose = 'login' AND login_session_id IS NULL
+`
+
+type AttachLoginSessionToVerificationParams struct {
+	ID                          pgtype.UUID `json:"id"`
+	LoginSessionID              pgtype.UUID `json:"login_session_id"`
+	LoginSessionTokenCiphertext []byte      `json:"login_session_token_ciphertext"`
+}
+
+func (q *Queries) AttachLoginSessionToVerification(ctx context.Context, arg AttachLoginSessionToVerificationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, attachLoginSessionToVerification, arg.ID, arg.LoginSessionID, arg.LoginSessionTokenCiphertext)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimMailOutbox = `-- name: ClaimMailOutbox :one
 WITH candidate AS (
     SELECT candidate_job.id
@@ -191,6 +211,71 @@ func (q *Queries) ConsumeVerificationCode(ctx context.Context, arg ConsumeVerifi
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const createCoreSession = `-- name: CreateCoreSession :one
+INSERT INTO sessions (user_id, kind, token_hash, expires_at)
+VALUES ($1, 'core', $2, $3)
+RETURNING id, expires_at
+`
+
+type CreateCoreSessionParams struct {
+	UserID    pgtype.UUID        `json:"user_id"`
+	TokenHash []byte             `json:"token_hash"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+type CreateCoreSessionRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) CreateCoreSession(ctx context.Context, arg CreateCoreSessionParams) (CreateCoreSessionRow, error) {
+	row := q.db.QueryRow(ctx, createCoreSession, arg.UserID, arg.TokenHash, arg.ExpiresAt)
+	var i CreateCoreSessionRow
+	err := row.Scan(&i.ID, &i.ExpiresAt)
+	return i, err
+}
+
+const createEmailIdentity = `-- name: CreateEmailIdentity :exec
+INSERT INTO email_identities (user_id, email_lookup_hash, email_ciphertext, verified_at)
+VALUES ($1, $2, $3, now())
+`
+
+type CreateEmailIdentityParams struct {
+	UserID          pgtype.UUID `json:"user_id"`
+	EmailLookupHash []byte      `json:"email_lookup_hash"`
+	EmailCiphertext []byte      `json:"email_ciphertext"`
+}
+
+func (q *Queries) CreateEmailIdentity(ctx context.Context, arg CreateEmailIdentityParams) error {
+	_, err := q.db.Exec(ctx, createEmailIdentity, arg.UserID, arg.EmailLookupHash, arg.EmailCiphertext)
+	return err
+}
+
+const createEmailLoginUser = `-- name: CreateEmailLoginUser :one
+INSERT INTO users (email_verified, status)
+VALUES (true, 'active')
+RETURNING id, email_verified, status, created_at
+`
+
+type CreateEmailLoginUserRow struct {
+	ID            pgtype.UUID        `json:"id"`
+	EmailVerified bool               `json:"email_verified"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) CreateEmailLoginUser(ctx context.Context) (CreateEmailLoginUserRow, error) {
+	row := q.db.QueryRow(ctx, createEmailLoginUser)
+	var i CreateEmailLoginUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.EmailVerified,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const createVerificationCode = `-- name: CreateVerificationCode :one
@@ -323,20 +408,68 @@ func (q *Queries) FailMailOutbox(ctx context.Context, arg FailMailOutboxParams) 
 }
 
 const getConsumedVerificationReplay = `-- name: GetConsumedVerificationReplay :one
-SELECT id, consumed_request_fingerprint
+SELECT verification_codes.id, verification_codes.consumed_request_fingerprint,
+       verification_codes.login_session_token_ciphertext,
+       sessions.expires_at AS login_session_expires_at,
+       users.id AS login_user_id, users.email_verified AS login_user_email_verified,
+       users.status AS login_user_status, users.created_at AS login_user_created_at
 FROM verification_codes
+LEFT JOIN sessions ON sessions.id = verification_codes.login_session_id
+LEFT JOIN users ON users.id = sessions.user_id
 WHERE consumed_request_key = $1 AND used_at IS NOT NULL
 `
 
 type GetConsumedVerificationReplayRow struct {
-	ID                         pgtype.UUID `json:"id"`
-	ConsumedRequestFingerprint []byte      `json:"consumed_request_fingerprint"`
+	ID                          pgtype.UUID        `json:"id"`
+	ConsumedRequestFingerprint  []byte             `json:"consumed_request_fingerprint"`
+	LoginSessionTokenCiphertext []byte             `json:"login_session_token_ciphertext"`
+	LoginSessionExpiresAt       pgtype.Timestamptz `json:"login_session_expires_at"`
+	LoginUserID                 pgtype.UUID        `json:"login_user_id"`
+	LoginUserEmailVerified      pgtype.Bool        `json:"login_user_email_verified"`
+	LoginUserStatus             pgtype.Text        `json:"login_user_status"`
+	LoginUserCreatedAt          pgtype.Timestamptz `json:"login_user_created_at"`
 }
 
 func (q *Queries) GetConsumedVerificationReplay(ctx context.Context, consumedRequestKey pgtype.Text) (GetConsumedVerificationReplayRow, error) {
 	row := q.db.QueryRow(ctx, getConsumedVerificationReplay, consumedRequestKey)
 	var i GetConsumedVerificationReplayRow
-	err := row.Scan(&i.ID, &i.ConsumedRequestFingerprint)
+	err := row.Scan(
+		&i.ID,
+		&i.ConsumedRequestFingerprint,
+		&i.LoginSessionTokenCiphertext,
+		&i.LoginSessionExpiresAt,
+		&i.LoginUserID,
+		&i.LoginUserEmailVerified,
+		&i.LoginUserStatus,
+		&i.LoginUserCreatedAt,
+	)
+	return i, err
+}
+
+const getEmailIdentityForUpdate = `-- name: GetEmailIdentityForUpdate :one
+SELECT identity.user_id, users.email_verified, users.status, users.created_at
+FROM email_identities AS identity
+JOIN users ON users.id = identity.user_id
+WHERE identity.email_lookup_hash = $1
+FOR UPDATE OF identity, users
+`
+
+type GetEmailIdentityForUpdateRow struct {
+	UserID        pgtype.UUID        `json:"user_id"`
+	EmailVerified bool               `json:"email_verified"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetEmailIdentityForUpdate(ctx context.Context, emailLookupHash []byte) (GetEmailIdentityForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getEmailIdentityForUpdate, emailLookupHash)
+	var i GetEmailIdentityForUpdateRow
+	err := row.Scan(
+		&i.UserID,
+		&i.EmailVerified,
+		&i.Status,
+		&i.CreatedAt,
+	)
 	return i, err
 }
 
@@ -378,7 +511,8 @@ func (q *Queries) GetMailOutboxByVerificationCode(ctx context.Context, verificat
 
 const getVerificationCodeForUpdate = `-- name: GetVerificationCodeForUpdate :one
 SELECT id, code_nonce, code_hash, expires_at, used_at, revoked_at, failed_attempts,
-       consumed_request_key, consumed_request_fingerprint
+       consumed_request_key, consumed_request_fingerprint,
+       login_session_token_ciphertext
 FROM verification_codes
 WHERE email_lookup_hash = $1 AND purpose = $2
 ORDER BY created_at DESC
@@ -392,15 +526,16 @@ type GetVerificationCodeForUpdateParams struct {
 }
 
 type GetVerificationCodeForUpdateRow struct {
-	ID                         pgtype.UUID        `json:"id"`
-	CodeNonce                  []byte             `json:"code_nonce"`
-	CodeHash                   []byte             `json:"code_hash"`
-	ExpiresAt                  pgtype.Timestamptz `json:"expires_at"`
-	UsedAt                     pgtype.Timestamptz `json:"used_at"`
-	RevokedAt                  pgtype.Timestamptz `json:"revoked_at"`
-	FailedAttempts             int32              `json:"failed_attempts"`
-	ConsumedRequestKey         pgtype.Text        `json:"consumed_request_key"`
-	ConsumedRequestFingerprint []byte             `json:"consumed_request_fingerprint"`
+	ID                          pgtype.UUID        `json:"id"`
+	CodeNonce                   []byte             `json:"code_nonce"`
+	CodeHash                    []byte             `json:"code_hash"`
+	ExpiresAt                   pgtype.Timestamptz `json:"expires_at"`
+	UsedAt                      pgtype.Timestamptz `json:"used_at"`
+	RevokedAt                   pgtype.Timestamptz `json:"revoked_at"`
+	FailedAttempts              int32              `json:"failed_attempts"`
+	ConsumedRequestKey          pgtype.Text        `json:"consumed_request_key"`
+	ConsumedRequestFingerprint  []byte             `json:"consumed_request_fingerprint"`
+	LoginSessionTokenCiphertext []byte             `json:"login_session_token_ciphertext"`
 }
 
 func (q *Queries) GetVerificationCodeForUpdate(ctx context.Context, arg GetVerificationCodeForUpdateParams) (GetVerificationCodeForUpdateRow, error) {
@@ -416,6 +551,7 @@ func (q *Queries) GetVerificationCodeForUpdate(ctx context.Context, arg GetVerif
 		&i.FailedAttempts,
 		&i.ConsumedRequestKey,
 		&i.ConsumedRequestFingerprint,
+		&i.LoginSessionTokenCiphertext,
 	)
 	return i, err
 }

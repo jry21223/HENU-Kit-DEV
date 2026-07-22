@@ -4,8 +4,14 @@ FROM verification_codes
 WHERE request_key = $1;
 
 -- name: GetConsumedVerificationReplay :one
-SELECT id, consumed_request_fingerprint
+SELECT verification_codes.id, verification_codes.consumed_request_fingerprint,
+       verification_codes.login_session_token_ciphertext,
+       sessions.expires_at AS login_session_expires_at,
+       users.id AS login_user_id, users.email_verified AS login_user_email_verified,
+       users.status AS login_user_status, users.created_at AS login_user_created_at
 FROM verification_codes
+LEFT JOIN sessions ON sessions.id = verification_codes.login_session_id
+LEFT JOIN users ON users.id = sessions.user_id
 WHERE consumed_request_key = $1 AND used_at IS NOT NULL;
 
 -- name: CreateVerificationCode :one
@@ -24,7 +30,8 @@ RETURNING id;
 
 -- name: GetVerificationCodeForUpdate :one
 SELECT id, code_nonce, code_hash, expires_at, used_at, revoked_at, failed_attempts,
-       consumed_request_key, consumed_request_fingerprint
+       consumed_request_key, consumed_request_fingerprint,
+       login_session_token_ciphertext
 FROM verification_codes
 WHERE email_lookup_hash = $1 AND purpose = $2
 ORDER BY created_at DESC
@@ -42,6 +49,32 @@ RETURNING failed_attempts, revoked_at;
 UPDATE verification_codes
 SET used_at = now(), consumed_request_key = $2, consumed_request_fingerprint = $3
 WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now();
+
+-- name: GetEmailIdentityForUpdate :one
+SELECT identity.user_id, users.email_verified, users.status, users.created_at
+FROM email_identities AS identity
+JOIN users ON users.id = identity.user_id
+WHERE identity.email_lookup_hash = $1
+FOR UPDATE OF identity, users;
+
+-- name: CreateEmailLoginUser :one
+INSERT INTO users (email_verified, status)
+VALUES (true, 'active')
+RETURNING id, email_verified, status, created_at;
+
+-- name: CreateEmailIdentity :exec
+INSERT INTO email_identities (user_id, email_lookup_hash, email_ciphertext, verified_at)
+VALUES ($1, $2, $3, now());
+
+-- name: CreateCoreSession :one
+INSERT INTO sessions (user_id, kind, token_hash, expires_at)
+VALUES ($1, 'core', $2, $3)
+RETURNING id, expires_at;
+
+-- name: AttachLoginSessionToVerification :execrows
+UPDATE verification_codes
+SET login_session_id = $2, login_session_token_ciphertext = $3
+WHERE id = $1 AND used_at IS NOT NULL AND purpose = 'login' AND login_session_id IS NULL;
 
 -- name: FailExhaustedOutboxLeases :exec
 WITH transitioned AS (
