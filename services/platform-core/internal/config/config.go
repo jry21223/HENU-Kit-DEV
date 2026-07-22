@@ -37,7 +37,7 @@ func Load() (Config, error) {
 		CoreCookieName:            env("PLATFORM_CORE_COOKIE_NAME", "__Host-henukit_core_session"),
 		CoreSessionTTL:            durationEnv("PLATFORM_CORE_CORE_SESSION_TTL", 15*24*time.Hour),
 		AuthorizationTTL:          durationEnv("PLATFORM_CORE_AUTHORIZATION_TTL", 90*time.Second),
-		ExchangeSessionTTL:        durationEnv("PLATFORM_CORE_EXCHANGE_SESSION_TTL", 5*time.Minute),
+		ExchangeSessionTTL:        durationEnv("PLATFORM_CORE_EXCHANGE_SESSION_TTL", 8*time.Hour),
 		IdempotencyTTL:            durationEnv("PLATFORM_CORE_IDEMPOTENCY_TTL", 24*time.Hour),
 		StudentEmailDomains:       strings.Split(env("PLATFORM_CORE_STUDENT_EMAIL_DOMAINS", "henu.edu.cn"), ","),
 		VerificationCodeTTL:       durationEnv("PLATFORM_CORE_VERIFICATION_CODE_TTL", 10*time.Minute),
@@ -68,8 +68,8 @@ func Load() (Config, error) {
 	if config.CoreSessionTTL != 15*24*time.Hour {
 		return Config{}, errors.New("PLATFORM_CORE_CORE_SESSION_TTL must be 360h")
 	}
-	if config.ExchangeSessionTTL <= 0 || config.ExchangeSessionTTL > 15*time.Minute {
-		return Config{}, errors.New("PLATFORM_CORE_EXCHANGE_SESSION_TTL must be greater than zero and at most 15m")
+	if config.ExchangeSessionTTL <= 0 || config.ExchangeSessionTTL > 8*time.Hour {
+		return Config{}, errors.New("PLATFORM_CORE_EXCHANGE_SESSION_TTL must be greater than zero and at most 8h")
 	}
 	if config.IdempotencyTTL < 24*time.Hour {
 		return Config{}, errors.New("PLATFORM_CORE_IDEMPOTENCY_TTL must be at least 24h")

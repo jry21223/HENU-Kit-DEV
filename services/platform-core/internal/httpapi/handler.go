@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
@@ -62,6 +63,7 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Post(contract.AuthorizationCheckRoute, handler.checkAuthorization)
 	router.Post(contract.RequestVerificationCodeRoute, handler.requestVerificationCode)
 	router.Post(contract.VerifyVerificationCodeRoute, handler.verifyVerificationCode)
+	router.Post("/api/v1/sessions/revoke", handler.revokeCurrentSession)
 	router.Post(contract.RecordMailDeliveryRoute, handler.recordMailDelivery)
 	router.Get(contract.ListOperationsInboxRoute, handler.listOperationsInboxItems)
 	router.Get(contract.GetOperationsInboxRoute, handler.getOperationsInboxItem)
@@ -73,6 +75,63 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Post(contract.UpdatePlatformOperationAccessRoute, handler.updatePlatformOperationAccess)
 	router.Get(contract.PlatformOperationStatusRoute, handler.getPlatformOperationStatus)
 	return router
+}
+
+func (h *Handler) revokeCurrentSession(writer http.ResponseWriter, request *http.Request) {
+	if !h.sameOriginBrowserRequest(request) {
+		writeError(writer, request, http.StatusForbidden, "ORIGIN_REJECTED", "session revocation origin is not allowed")
+		return
+	}
+	var body struct {
+		AllSessions bool   `json:"all_sessions"`
+		SessionID   string `json:"session_id"`
+	}
+	if err := decodeStrictJSON(writer, request, &body); err != nil || body.SessionID != "" {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "session revocation request is invalid")
+		return
+	}
+	cookie, err := request.Cookie(h.cookieName)
+	if err != nil || len(cookie.Value) < 32 {
+		writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required")
+		return
+	}
+	tokenHash := sha256.Sum256([]byte(cookie.Value))
+	tx, err := h.database.Begin(request.Context())
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	defer func() { _ = tx.Rollback(request.Context()) }()
+	var sessionID, userID string
+	var expiresAt time.Time
+	if err := tx.QueryRow(request.Context(), `SELECT id::text,user_id::text,expires_at FROM sessions WHERE kind='core' AND token_hash=$1 FOR UPDATE`, tokenHash[:]).Scan(&sessionID, &userID, &expiresAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is invalid")
+			return
+		}
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	if !time.Now().Before(expiresAt) {
+		writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_EXPIRED", "Core Session has expired")
+		return
+	}
+	if body.AllSessions {
+		_, err = tx.Exec(request.Context(), `UPDATE sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1`, userID)
+	} else {
+		_, err = tx.Exec(request.Context(), `UPDATE sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE id=$1 OR parent_session_id=$1`, sessionID)
+	}
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	if err := tx.Commit(request.Context()); err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	auditFrom(request.Context()).subjectUserID = maskSubject(userID)
+	writeSuccess(writer, request, http.StatusOK, map[string]bool{"revoked": true})
 }
 
 func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *http.Request) {

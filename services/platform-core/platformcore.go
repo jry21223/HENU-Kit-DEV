@@ -68,10 +68,10 @@ func New(config Config) (http.Handler, error) {
 		return nil, errors.New("authorization code TTL must be between 60s and 120s")
 	}
 	if config.ExchangeSessionTTL <= 0 {
-		config.ExchangeSessionTTL = 5 * time.Minute
+		config.ExchangeSessionTTL = 8 * time.Hour
 	}
-	if config.ExchangeSessionTTL > 15*time.Minute {
-		return nil, errors.New("exchange Session TTL must not exceed 15m")
+	if config.ExchangeSessionTTL > 8*time.Hour {
+		return nil, errors.New("exchange Session TTL must not exceed 8h")
 	}
 	if len(config.IdempotencyEncryptionKey) != 32 {
 		return nil, errors.New("idempotency encryption key must be 32 bytes")

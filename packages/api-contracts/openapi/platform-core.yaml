@@ -347,18 +347,16 @@ paths:
       operationId: revokeSession
       summary: 撤销当前或指定平台会话
       security:
-        - bearerAuth: []
+        - coreSession: []
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                session_id:
-                  type: string
                 all_sessions:
                   type: boolean
                   default: false
@@ -371,6 +369,8 @@ paths:
                 $ref: "#/components/schemas/SuccessEnvelope"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /authorization/check:
     post:
@@ -939,10 +939,6 @@ components:
       type: apiKey
       in: cookie
       name: __Host-henukit_core_session
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: opaque
     clientSecret:
       type: http
       scheme: basic

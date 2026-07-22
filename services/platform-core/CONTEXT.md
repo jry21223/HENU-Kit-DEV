@@ -3,7 +3,7 @@
 ## Owns
 
 - Platform users and their account status.
-- Core Sessions on the account origin and short-lived client exchange Sessions.
+- 15-day absolute Core Sessions on the account origin and revocable eight-hour client exchange Sessions for high-privilege product work.
 - Registered OAuth clients, exact callbacks, PKCE challenges, and single-use Authorization Codes.
 - Permission codes, authorization roles, user Scope grants, authorization revisions, and authorization audit events.
 - Verification-code security facts and the encrypted critical mail Outbox.

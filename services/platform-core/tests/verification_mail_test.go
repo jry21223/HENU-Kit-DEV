@@ -139,6 +139,13 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 			t.Fatalf("idempotent verification replay %d = %d, want 200", replayIndex, replay.StatusCode)
 		}
 	}
+	var issuedSessions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE user_id = (SELECT user_id FROM email_identities WHERE email_lookup_hash = (SELECT email_lookup_hash FROM verification_codes WHERE id = $1))`, verificationID).Scan(&issuedSessions); err != nil {
+		t.Fatalf("count concurrent login sessions: %v", err)
+	}
+	if issuedSessions != 1 {
+		t.Fatalf("concurrent verification and replay issued %d Core Sessions, want exactly 1", issuedSessions)
+	}
 	deliveryJSON := []byte(fmt.Sprintf(`{"message_id":%q,"status":"delivered"}`, sender.messageID))
 	unauthorizedRequest, _ := http.NewRequest(http.MethodPost, server.URL+contract.RecordMailDeliveryRoute, bytes.NewReader(deliveryJSON))
 	unauthorizedRequest.Header.Set("Content-Type", "application/json")
@@ -314,6 +321,30 @@ func TestAccountCenterLoginPageCompletesBrowserSession(t *testing.T) {
 	}
 	if !hasCoreSession {
 		t.Fatal("browser account login did not establish a Core Session")
+	}
+	revokeBody := bytes.NewBufferString(`{"all_sessions":true}`)
+	revokeRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/sessions/revoke", revokeBody)
+	revokeRequest.Header.Set("Content-Type", "application/json")
+	revokeRequest.Header.Set("Origin", server.URL)
+	revoked, err := client.Do(revokeRequest)
+	if err != nil {
+		t.Fatalf("revoke Core Session: %v", err)
+	}
+	revoked.Body.Close()
+	if revoked.StatusCode != http.StatusOK {
+		t.Fatalf("revoke Core Session = %d, want 200", revoked.StatusCode)
+	}
+	var activeSessions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE revoked_at IS NULL`).Scan(&activeSessions); err != nil || activeSessions != 0 {
+		t.Fatalf("active sessions after global revocation = %d err=%v, want 0", activeSessions, err)
+	}
+	afterRevoke, err := client.Get(server.URL + returnTo)
+	if err != nil {
+		t.Fatalf("authorize after Core Session revocation: %v", err)
+	}
+	afterRevoke.Body.Close()
+	if afterRevoke.StatusCode != http.StatusFound || !strings.HasPrefix(afterRevoke.Header.Get("Location"), "/login?return_to=") {
+		t.Fatalf("authorization after revocation = %d %q, want login redirect", afterRevoke.StatusCode, afterRevoke.Header.Get("Location"))
 	}
 }
 

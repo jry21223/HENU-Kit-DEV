@@ -24,7 +24,7 @@ const (
 	RevokePlatformOperationSessionRoute = "/api/v1/platform-operations/sessions/{session_id}/revocations"
 	UpdatePlatformOperationAccessRoute  = "/api/v1/platform-operations/users/{user_id}/access-updates"
 	PlatformOperationStatusRoute        = "/api/v1/platform-operations/operations/{operation}"
-	SourceSHA256                        = "5cd3334dc9afd7cb125da31be591eb122b8692affa9997c999949ba8d330d223"
+	SourceSHA256                        = "07cabc4f3a35261bcaa582d90ac95c23263af52e10b3d2eae4725ef9dff77505"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"

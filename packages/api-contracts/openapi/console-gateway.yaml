@@ -3,7 +3,7 @@ info:
   title: HENUKit Console Gateway API
   version: 0.1.0
 servers:
-  - url: https://console.henukit.cn/api/v1
+  - url: https://console.superhuazai.me/api/v1
 tags:
   - name: Console Authentication
     description: Console-local authorization-code flow and Session boundary.

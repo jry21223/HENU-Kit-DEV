@@ -8,6 +8,7 @@ Independent Go service for platform-owned identity and operations data. The deli
 - an account-center HTML flow at `/login`; successful login verification atomically creates/restores an encrypted Email Identity and issues a non-rolling 15-day Core Session;
 - exact-callback OAuth authorization with S256 PKCE;
 - 60–120 second, hash-only, single-use Authorization Codes;
+- eight-hour product-local exchange Sessions for Console and Workshop high-privilege work, with immediate server-side revocation;
 - server-to-server code exchange protected by Basic client authentication, S256 PKCE, HMAC-SHA256, a five-minute timestamp window, and Redis nonce replay prevention;
 - encrypted idempotent exchange responses retained for at least 24 hours without persisting plaintext Session tokens;
 - PostgreSQL as the durable source of truth and Redis only for short-lived coordination;

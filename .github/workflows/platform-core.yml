@@ -95,6 +95,7 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000010_quizcraft_access.up.sql
           test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT count(*) = 3 FROM permission_codes WHERE code IN ('quizcraft.workshop.read', 'quizcraft.workshop.write', 'quizcraft.workshop.publish') AND status = 'active'")" = t
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000011_email_identity_login.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000011_email_identity_login.up.sql
           test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.email_identities') IS NOT NULL")" = t
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000011_email_identity_login.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000010_quizcraft_access.down.sql
