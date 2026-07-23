@@ -5,9 +5,9 @@
  */
 
 import { hasGateway, fetchFoodVenues } from "@/lib/api/client";
-import type { VenueSummary } from "@/lib/api/types";
+import type { FoodPost } from "@/lib/api/types";
 
-let gatewayVenues = new Map<string, VenueSummary[]>();
+let gatewayPosts = new Map<string, FoodPost[]>();
 
 export async function initFoodGateway(): Promise<void> {
   if (!hasGateway) return;
@@ -15,7 +15,7 @@ export async function initFoodGateway(): Promise<void> {
     try {
       const resp = await fetchFoodVenues(campus);
       if (resp) {
-        gatewayVenues.set(campus, resp.venues);
+        gatewayPosts.set(campus, resp.posts);
       }
     } catch {
       // 静默失败
@@ -23,6 +23,6 @@ export async function initFoodGateway(): Promise<void> {
   }
 }
 
-export function getVenues(campus: string): VenueSummary[] | null {
-  return gatewayVenues.get(campus) ?? null;
+export function getGatewayPosts(campus: string): FoodPost[] | null {
+  return gatewayPosts.get(campus) ?? null;
 }

@@ -11,6 +11,7 @@ import { hasGateway } from "@/lib/api/client";
 import { initGateway } from "@/lib/library/gateway";
 import { initFoodGateway } from "@/lib/food/gateway";
 import { initPracticeGateway } from "@/lib/practice/gateway";
+import { initCampusGateway } from "@/lib/campus/gateway";
 
 let initialized = false;
 
@@ -27,5 +28,6 @@ export async function initAllGateways(): Promise<void> {
     initGateway(),
     initFoodGateway(),
     initPracticeGateway(),
+    initCampusGateway(),
   ]);
 }

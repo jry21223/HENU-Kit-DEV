@@ -94,7 +94,7 @@ func (h *Handler) healthz(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	returnTo := r.URL.Query().Get("return_to")
-	if returnTo == "" || returnTo[0] != '/' {
+	if returnTo == "" || returnTo[0] != '/' || len(returnTo) > 1 && returnTo[1] == '/' {
 		returnTo = "/"
 	}
 
@@ -174,7 +174,11 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true, Secure: true, MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 
-	stateBytes, _ := base64.RawURLEncoding.DecodeString(state)
+	stateBytes, err := base64.RawURLEncoding.DecodeString(state)
+	if err != nil || len(stateBytes) < 16 {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid state"})
+		return
+	}
 	idempotencyKey := hex.EncodeToString(stateBytes[:16])
 	result, err := h.platform.ExchangeCode(r.Context(), code, stored["verifier"], idempotencyKey)
 	if err != nil {

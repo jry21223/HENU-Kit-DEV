@@ -5,22 +5,22 @@
  */
 
 import { hasGateway, fetchPracticeBanks } from "@/lib/api/client";
-import type { BankSummary } from "@/lib/api/types";
+import type { School } from "@/lib/api/types";
 
-let gatewayBanks: BankSummary[] | null = null;
+let gatewaySchools: School[] | null = null;
 
 export async function initPracticeGateway(): Promise<void> {
   if (!hasGateway) return;
   try {
     const resp = await fetchPracticeBanks();
     if (resp) {
-      gatewayBanks = resp.banks;
+      gatewaySchools = resp.schools;
     }
   } catch {
     // 静默失败
   }
 }
 
-export function getGatewayBanks(): BankSummary[] | null {
-  return gatewayBanks;
+export function getGatewaySchools(): School[] | null {
+  return gatewaySchools;
 }

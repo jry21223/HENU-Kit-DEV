@@ -51,6 +51,9 @@ func (db *QuizCraftDB) GetSchools() ([]School, error) {
 		}
 		banks = append(banks, b)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate banks: %w", err)
+	}
 
 	// Group banks into a school/major/subject hierarchy
 	// For now, put all banks under one school with one major
@@ -116,6 +119,7 @@ func (db *QuizCraftDB) GetQuestions(bankKey string) ([]Question, error) {
 	var questions []Question
 	seq := 0
 	for rows.Next() {
+
 		var (
 			sourceID    string
 			chapter     sql.NullString
@@ -186,6 +190,9 @@ func (db *QuizCraftDB) GetQuestions(bankKey string) ([]Question, error) {
 			Explanation: explanation,
 			Accuracy:    accuracy,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate questions: %w", err)
 	}
 
 	if questions == nil {
