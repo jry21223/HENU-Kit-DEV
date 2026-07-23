@@ -180,7 +180,7 @@ func TestIncrementalEventsRequireAMonotonicCaughtUpCursor(t *testing.T) {
 	}
 }
 
-func TestShadowGatePersistsThresholdReportAndBlocksCutover(t *testing.T) {
+func TestOfflineShadowComparisonPersistsImmutableThresholdReport(t *testing.T) {
 	pool := practicePool(t)
 	report := importPracticeBank(t, pool, "migration-shadow-"+uuid.NewString())
 	windowStart := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -452,7 +452,7 @@ func TestCutoverWriteGateKeepsReadsOpenAndRejectsMutations(t *testing.T) {
 	}
 }
 
-func TestAuthenticatedCutoverEvidenceBindsMigrationShadowAndRelease(t *testing.T) {
+func TestAuthenticatedCutoverEvidenceBindsMigrationAndReleaseWithoutTrafficGate(t *testing.T) {
 	pool := practicePool(t)
 	service, err := quizcraft.New(quizcraft.Config{Database: pool})
 	if err != nil {
@@ -466,10 +466,6 @@ func TestAuthenticatedCutoverEvidenceBindsMigrationShadowAndRelease(t *testing.T
 	if err != nil || full.State != "passed" {
 		t.Fatalf("migration evidence = %+v / %v", full, err)
 	}
-	shadowID := uuid.New()
-	if _, err := pool.Exec(context.Background(), `INSERT INTO quizcraft_shadow_gate_reports(id,window_start,window_end,sample_count,mismatch_count,legacy_error_count,mismatch_rate,mismatch_threshold,minimum_sample_count,decision,reasons) VALUES($1,now()-interval '1 hour',now(),1000,0,0,0,0.001,1000,'pass','[]')`, shadowID); err != nil {
-		t.Fatal(err)
-	}
 	secret := "cutover-evidence-secret-at-least-32-bytes"
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), WritesDisabled: true, ReleaseSHA: "actual-binary-sha", CutoverEvidenceSecret: []byte(secret)})
 	if err != nil {
@@ -477,13 +473,13 @@ func TestAuthenticatedCutoverEvidenceBindsMigrationShadowAndRelease(t *testing.T
 	}
 	server := httptest.NewServer(handler)
 	defer server.Close()
-	evidenceURL := fmt.Sprintf("%s/api/v1/cutover-evidence?run_id=%s&source_head=19&shadow_gate_report_id=%s", server.URL, full.RunID, shadowID)
+	evidenceURL := fmt.Sprintf("%s/api/v1/cutover-evidence?run_id=%s&source_head=19", server.URL, full.RunID)
 	status, _ := requestJSON(t, http.MethodGet, evidenceURL, nil, nil)
 	if status != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated evidence = %d", status)
 	}
 	status, body := requestJSON(t, http.MethodGet, evidenceURL, map[string]string{"X-QuizCraft-Cutover-Secret": secret}, nil)
-	if status != http.StatusOK || !bytes.Contains(body, []byte(full.RunID.String())) || !bytes.Contains(body, []byte(shadowID.String())) || !bytes.Contains(body, []byte(`"release_sha":"actual-binary-sha"`)) || !bytes.Contains(body, []byte(`"writes_enabled":false`)) {
+	if status != http.StatusOK || !bytes.Contains(body, []byte(full.RunID.String())) || !bytes.Contains(body, []byte(`"release_sha":"actual-binary-sha"`)) || !bytes.Contains(body, []byte(`"writes_enabled":false`)) || bytes.Contains(body, []byte("shadow_gate")) {
 		t.Fatalf("cutover evidence = %d %s", status, body)
 	}
 }

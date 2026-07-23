@@ -11,6 +11,5 @@ export type CutoverEvidenceEnvelope = {
         release_sha: string;
         migration_run_id: string;
         migration_cursor: number;
-        shadow_gate_report_id: string;
     };
 };

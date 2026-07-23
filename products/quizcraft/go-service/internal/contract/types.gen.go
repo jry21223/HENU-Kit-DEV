@@ -622,12 +622,11 @@ type CreateWorkshopBank struct {
 // CutoverEvidenceEnvelope defines model for CutoverEvidenceEnvelope.
 type CutoverEvidenceEnvelope struct {
 	Data struct {
-		Database           CutoverEvidenceEnvelopeDataDatabase `json:"database"`
-		MigrationCursor    int64                               `json:"migration_cursor"`
-		MigrationRunId     openapi_types.UUID                  `json:"migration_run_id"`
-		ReleaseSha         string                              `json:"release_sha"`
-		ShadowGateReportId openapi_types.UUID                  `json:"shadow_gate_report_id"`
-		WritesEnabled      bool                                `json:"writes_enabled"`
+		Database        CutoverEvidenceEnvelopeDataDatabase `json:"database"`
+		MigrationCursor int64                               `json:"migration_cursor"`
+		MigrationRunId  openapi_types.UUID                  `json:"migration_run_id"`
+		ReleaseSha      string                              `json:"release_sha"`
+		WritesEnabled   bool                                `json:"writes_enabled"`
 	} `json:"data"`
 	RequestId RequestID `json:"request_id"`
 }
@@ -1087,9 +1086,8 @@ type GetBankRankingParamsPeriod string
 
 // GetQuizCraftCutoverEvidenceParams defines parameters for GetQuizCraftCutoverEvidence.
 type GetQuizCraftCutoverEvidenceParams struct {
-	RunId              openapi_types.UUID `form:"run_id" json:"run_id"`
-	SourceHead         int64              `form:"source_head" json:"source_head"`
-	ShadowGateReportId openapi_types.UUID `form:"shadow_gate_report_id" json:"shadow_gate_report_id"`
+	RunId      openapi_types.UUID `form:"run_id" json:"run_id"`
+	SourceHead int64              `form:"source_head" json:"source_head"`
 }
 
 // CreateQuestionFeedbackParams defines parameters for CreateQuestionFeedback.

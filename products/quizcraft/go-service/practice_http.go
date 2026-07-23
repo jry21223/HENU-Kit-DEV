@@ -735,11 +735,6 @@ func (service *practiceHTTP) cutoverEvidence(writer http.ResponseWriter, request
 		writeError(writer, http.StatusBadRequest, "invalid_cutover_evidence", "run_id must be a UUID")
 		return
 	}
-	shadowGateID, err := uuid.Parse(request.URL.Query().Get("shadow_gate_report_id"))
-	if err != nil {
-		writeError(writer, http.StatusBadRequest, "invalid_cutover_evidence", "shadow_gate_report_id must be a UUID")
-		return
-	}
 	expectedHead, err := strconv.ParseInt(request.URL.Query().Get("source_head"), 10, 64)
 	if err != nil || expectedHead < 0 {
 		writeError(writer, http.StatusBadRequest, "invalid_cutover_evidence", "source_head must be a non-negative integer")
@@ -750,18 +745,12 @@ func (service *practiceHTTP) cutoverEvidence(writer http.ResponseWriter, request
 		writeError(writer, http.StatusServiceUnavailable, "migration_evidence_missing", "a passed QuizCraft migration run is required")
 		return
 	}
-	var gateExists bool
-	if err := service.database.QueryRow(request.Context(), `SELECT EXISTS(SELECT 1 FROM quizcraft_shadow_gate_reports g JOIN quizcraft_migration_runs r ON r.id=$2 WHERE g.id=$1 AND g.decision='pass' AND g.window_end<=now() AND g.window_end>=r.completed_at AND g.window_end>=now()-interval '24 hours')`, shadowGateID, runID).Scan(&gateExists); err != nil || !gateExists {
-		writeError(writer, http.StatusServiceUnavailable, "shadow_evidence_missing", "a passing QuizCraft shadow gate is required")
-		return
-	}
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: map[string]any{
-		"database":              "ready",
-		"writes_enabled":        !service.writesDisabled,
-		"release_sha":           service.releaseSHA,
-		"migration_run_id":      runID,
-		"migration_cursor":      cursor,
-		"shadow_gate_report_id": shadowGateID,
+		"database":         "ready",
+		"writes_enabled":   !service.writesDisabled,
+		"release_sha":      service.releaseSHA,
+		"migration_run_id": runID,
+		"migration_cursor": cursor,
 	}})
 }
 
