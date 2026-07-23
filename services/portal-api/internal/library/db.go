@@ -77,6 +77,9 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 			Favs:         0,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate materials: %w", err)
+	}
 
 	if materials == nil {
 		materials = []Material{}

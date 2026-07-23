@@ -3,6 +3,7 @@ package httpapi
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -24,9 +25,18 @@ func NewRouter() chi.Router {
 	r.Use(cors)
 
 	// Database connections (nil = mock mode)
-	quizcraftConn, _ := db.Connect("QUIZCRAFT_DATABASE_URL")
-	studyConn, _ := db.Connect("STUDY_DATABASE_URL")
-	portalConn, _ := db.Connect("PORTAL_DATABASE_URL")
+	quizcraftConn, err := db.Connect("QUIZCRAFT_DATABASE_URL")
+	if err != nil {
+		log.Printf("WARN: QuizCraft DB not connected, using mock data: %v", err)
+	}
+	studyConn, err := db.Connect("STUDY_DATABASE_URL")
+	if err != nil {
+		log.Printf("WARN: Study API DB not connected, using mock data: %v", err)
+	}
+	portalConn, err := db.Connect("PORTAL_DATABASE_URL")
+	if err != nil {
+		log.Printf("WARN: Portal DB not connected, using mock data: %v", err)
+	}
 
 	var practiceSource practiceSource
 	if quizcraftConn != nil {
@@ -190,8 +200,13 @@ func getMaterial(w http.ResponseWriter, r *http.Request, src librarySource) {
 	id := chi.URLParam(r, "id")
 
 	var materials []library.Material
+	var err error
 	if src.studyDB != nil {
-		materials, _ = src.studyDB.GetMaterials()
+		materials, err = src.studyDB.GetMaterials()
+		if err != nil {
+			writeJSON(w, 500, map[string]string{"error": "database_error"})
+			return
+		}
 	} else {
 		materials = library.MockMaterials()
 	}

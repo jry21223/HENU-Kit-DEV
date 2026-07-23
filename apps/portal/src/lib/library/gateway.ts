@@ -28,7 +28,7 @@ export async function initGateway(): Promise<void> {
   try {
     const resp = await fetchLibraryCourses();
     if (resp) {
-      availableIds = new Set(resp.courses.map((c) => c.id));
+      availableIds = new Set(resp.materials.map((m) => m.id));
       gatewayLoaded = true;
     }
   } catch {

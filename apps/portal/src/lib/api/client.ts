@@ -65,19 +65,19 @@ export async function logout(): Promise<void> {
 // ---- Products (read-only) ----
 
 export async function fetchLibraryCourses(): Promise<LibraryCoursesResponse | null> {
-  return apiFetch<LibraryCoursesResponse>("/api/v1/library/courses");
+  return apiFetch<LibraryCoursesResponse>("/api/v1/library/materials");
 }
 
 export async function fetchFoodVenues(
   campus: string
 ): Promise<FoodVenuesResponse | null> {
   return apiFetch<FoodVenuesResponse>(
-    `/api/v1/food/venues?campus=${encodeURIComponent(campus)}`
+    `/api/v1/food/posts?campus=${encodeURIComponent(campus)}`
   );
 }
 
 export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null> {
-  return apiFetch<PracticeBanksResponse>("/api/v1/practice/banks");
+  return apiFetch<PracticeBanksResponse>("/api/v1/practice/schools");
 }
 
 export async function fetchNotices(): Promise<NoticeListResponse | null> {

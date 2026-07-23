@@ -1,11 +1,11 @@
 /**
- * Portal Gateway API types.
- * Matches packages/api-contracts/openapi/portal-gateway.yaml
+ * Portal API response types.
+ * Matches packages/api-contracts/openapi/portal-api.yaml
  */
 
 export interface PortalSession {
   user_id: string;
-  expires_at: string; // ISO 8601
+  expires_at: string;
 }
 
 export interface ErrorEnvelope {
@@ -14,42 +14,127 @@ export interface ErrorEnvelope {
   request_id?: string;
 }
 
-export interface CourseSummary {
+// ─── Library ───────────────────────────────────────────────
+
+export interface Material {
   id: string;
-  name: string;
+  type: "note" | "exam" | "mock" | "path" | "lab";
   subject: string;
-  material_count: number;
+  title: string;
+  author: string;
+  intro: string;
+  toc: string[];
+  pages: string[][];
+  price: number;
+  previewPages: number;
+  rating: number;
+  downloads: number;
+  favs: number;
 }
 
 export interface LibraryCoursesResponse {
-  courses: CourseSummary[];
+  materials: Material[];
   request_id: string;
 }
 
-export interface VenueSummary {
-  id: string;
+// ─── Food ──────────────────────────────────────────────────
+
+export interface PostBlock {
+  type: "h2" | "p" | "quote" | "list" | "img";
+  text?: string;
+  items?: string[];
+  src?: string;
+  ref?: number;
+}
+
+export interface Shop {
   name: string;
-  rating: number;
-  tier: string;
+  lat: number;
+  lng: number;
+}
+
+export interface FoodPost {
+  id: string;
   campus: string;
+  title: string;
+  excerpt: string;
+  blocks: PostBlock[];
+  author: string;
+  likes: number;
+  stars: number;
+  tags: string[];
+  shop: Shop;
+  time: string;
+  hidden: boolean;
+  images?: string[];
+}
+
+export interface FoodComment {
+  id: string;
+  postId: string;
+  author: string;
+  time: string;
+  text: string;
 }
 
 export interface FoodVenuesResponse {
-  campus: string;
-  venues: VenueSummary[];
+  posts: FoodPost[];
   request_id: string;
 }
 
-export interface BankSummary {
+// ─── Practice ──────────────────────────────────────────────
+
+export interface Question {
+  id: string;
+  subject: string;
+  chapter: string;
+  difficulty: number;
+  stem: string;
+  options: [string, string, string, string];
+  answer: number;
+  explanation: string;
+  accuracy: number;
+}
+
+export interface QuizListMeta {
   id: string;
   name: string;
-  subject: string;
-  question_count: number;
+  creator: string;
+  tags: string[];
+  poolKey: string;
+  count: number;
+  completion: number;
+}
+
+export interface Subject {
+  id: string;
+  name: string;
+  lists: QuizListMeta[];
+}
+
+export interface Major {
+  id: string;
+  name: string;
+  subjects: Subject[];
+}
+
+export interface School {
+  id: string;
+  name: string;
+  majors: Major[];
 }
 
 export interface PracticeBanksResponse {
-  banks: BankSummary[];
+  schools: School[];
   request_id: string;
+}
+
+export interface LeaderboardRow {
+  name: string;
+  questions: number;
+  accuracy: number;
+  streak: number;
+  isYou?: boolean;
 }
 
 export interface NoticeSummary {
