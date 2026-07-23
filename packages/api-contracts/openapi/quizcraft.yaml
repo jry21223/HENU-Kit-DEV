@@ -65,7 +65,6 @@ paths:
       parameters:
         - { name: run_id, in: query, required: true, schema: { type: string, format: uuid } }
         - { name: source_head, in: query, required: true, schema: { type: integer, format: int64, minimum: 0 } }
-        - { name: shadow_gate_report_id, in: query, required: true, schema: { type: string, format: uuid } }
       responses:
         '200': { description: Cutover evidence is complete, content: { application/json: { schema: { $ref: '#/components/schemas/CutoverEvidenceEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -516,14 +515,13 @@ components:
         data:
           type: object
           additionalProperties: false
-          required: [database, writes_enabled, release_sha, migration_run_id, migration_cursor, shadow_gate_report_id]
+          required: [database, writes_enabled, release_sha, migration_run_id, migration_cursor]
           properties:
             database: { type: string, const: ready }
             writes_enabled: { type: boolean }
             release_sha: { type: string, minLength: 7, maxLength: 64 }
             migration_run_id: { type: string, format: uuid }
             migration_cursor: { type: integer, format: int64, minimum: 0 }
-            shadow_gate_report_id: { type: string, format: uuid }
     ConsoleSummaryEnvelope:
       type: object
       required: [request_id, data]

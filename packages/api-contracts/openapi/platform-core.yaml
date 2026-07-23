@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
 servers:
-  - url: https://account.henukit.cn/api/v1
+  - url: https://account.superhuazai.me/api/v1
     description: Production account origin
   - url: http://localhost:8081/api/v1
     description: Local development
@@ -142,6 +142,13 @@ paths:
                         properties:
                           verification_id:
                             type: string
+                          user:
+                            description: Present when a login verification creates or restores the account identity.
+                            $ref: "#/components/schemas/PlatformUser"
+                          session_expires_at:
+                            type: string
+                            format: date-time
+                            description: Absolute Core Session expiry; present for login verification and never extended by activity.
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -340,18 +347,16 @@ paths:
       operationId: revokeSession
       summary: 撤销当前或指定平台会话
       security:
-        - bearerAuth: []
+        - coreSession: []
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                session_id:
-                  type: string
                 all_sessions:
                   type: boolean
                   default: false
@@ -364,6 +369,8 @@ paths:
                 $ref: "#/components/schemas/SuccessEnvelope"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /authorization/check:
     post:
@@ -932,10 +939,6 @@ components:
       type: apiKey
       in: cookie
       name: __Host-henukit_core_session
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: opaque
     clientSecret:
       type: http
       scheme: basic

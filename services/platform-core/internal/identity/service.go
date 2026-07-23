@@ -2,15 +2,12 @@ package identity
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"regexp"
 	"strconv"
@@ -58,7 +55,6 @@ type Service struct {
 	coordinator        Coordinator
 	authorizationTTL   time.Duration
 	exchangeSessionTTL time.Duration
-	idempotencyKey     []byte
 	idempotencyTTL     time.Duration
 }
 
@@ -139,8 +135,8 @@ type serviceRequestCredentials struct {
 	NonceNamespace string
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL, idempotencyTTL time.Duration, idempotencyKey []byte) *Service {
-	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, idempotencyTTL: idempotencyTTL, idempotencyKey: idempotencyKey}
+func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL, idempotencyTTL time.Duration) *Service {
+	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, idempotencyTTL: idempotencyTTL}
 }
 
 func (s *Service) authenticateServiceRequest(ctx context.Context, credentials serviceRequestCredentials) error {
@@ -341,13 +337,9 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		SessionExchangeToken: sessionToken, ExpiresAt: expiresAt, UserID: uuidString(user.ID),
 		EmailVerified: user.EmailVerified, UserStatus: user.Status, UserCreatedAt: user.CreatedAt.Time,
 	}
-	ciphertext, err := s.encryptExchange(result)
-	if err != nil {
-		return Exchange{}, err
-	}
 	if err := queries.CreateOAuthExchangeIdempotency(ctx, store.CreateOAuthExchangeIdempotencyParams{
 		ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey, RequestHash: input.BodyHash,
-		ResponseCiphertext: ciphertext, ExpiresAt: pgtype.Timestamptz{Time: time.Now().UTC().Add(s.idempotencyTTL), Valid: true},
+		ExpiresAt: pgtype.Timestamptz{Time: time.Now().UTC().Add(s.idempotencyTTL), Valid: true},
 	}); err != nil {
 		return Exchange{}, err
 	}
@@ -463,8 +455,7 @@ func (s *Service) lookupIdempotency(ctx context.Context, queries *store.Queries,
 	if subtle.ConstantTimeCompare(cached.RequestHash, input.BodyHash) != 1 {
 		return Exchange{}, false, ErrIdempotency
 	}
-	value, err := s.decryptExchange(cached.ResponseCiphertext)
-	return value, err == nil, err
+	return Exchange{}, true, ErrCodeUsed
 }
 
 func (s *Service) acquireWithWait(ctx context.Context, key string, lockTTL, wait time.Duration) (func(context.Context) error, error) {
@@ -498,49 +489,6 @@ func releaseCoordination(release func(context.Context) error) func() {
 		defer cancel()
 		_ = release(releaseContext)
 	}
-}
-
-func (s *Service) encryptExchange(value Exchange) ([]byte, error) {
-	plaintext, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	block, err := aes.NewCipher(s.idempotencyKey)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
-	}
-	return gcm.Seal(nonce, nonce, plaintext, nil), nil
-}
-
-func (s *Service) decryptExchange(ciphertext []byte) (Exchange, error) {
-	block, err := aes.NewCipher(s.idempotencyKey)
-	if err != nil {
-		return Exchange{}, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return Exchange{}, err
-	}
-	if len(ciphertext) < gcm.NonceSize() {
-		return Exchange{}, errors.New("invalid cached exchange")
-	}
-	plaintext, err := gcm.Open(nil, ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():], nil)
-	if err != nil {
-		return Exchange{}, err
-	}
-	var value Exchange
-	if err := json.Unmarshal(plaintext, &value); err != nil {
-		return Exchange{}, err
-	}
-	return value, nil
 }
 
 func randomToken() (string, []byte, error) {

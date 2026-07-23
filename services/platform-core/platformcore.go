@@ -28,6 +28,7 @@ type Config struct {
 	Database                  *pgxpool.Pool
 	Redis                     *redis.Client
 	CoreCookieName            string
+	CoreSessionTTL            time.Duration
 	AuthorizationTTL          time.Duration
 	ExchangeSessionTTL        time.Duration
 	IdempotencyEncryptionKey  []byte
@@ -54,6 +55,12 @@ func New(config Config) (http.Handler, error) {
 	if !strings.HasPrefix(config.CoreCookieName, "__Host-") {
 		return nil, errors.New("core session cookie name must use the __Host- prefix")
 	}
+	if config.CoreSessionTTL <= 0 {
+		config.CoreSessionTTL = 15 * 24 * time.Hour
+	}
+	if config.CoreSessionTTL != 15*24*time.Hour {
+		return nil, errors.New("core Session TTL must be 15 days")
+	}
 	if config.AuthorizationTTL <= 0 {
 		config.AuthorizationTTL = 90 * time.Second
 	}
@@ -61,10 +68,10 @@ func New(config Config) (http.Handler, error) {
 		return nil, errors.New("authorization code TTL must be between 60s and 120s")
 	}
 	if config.ExchangeSessionTTL <= 0 {
-		config.ExchangeSessionTTL = 5 * time.Minute
+		config.ExchangeSessionTTL = 8 * time.Hour
 	}
-	if config.ExchangeSessionTTL > 15*time.Minute {
-		return nil, errors.New("exchange Session TTL must not exceed 15m")
+	if config.ExchangeSessionTTL > 8*time.Hour {
+		return nil, errors.New("exchange Session TTL must not exceed 8h")
 	}
 	if len(config.IdempotencyEncryptionKey) != 32 {
 		return nil, errors.New("idempotency encryption key must be 32 bytes")
@@ -122,10 +129,10 @@ func New(config Config) (http.Handler, error) {
 	_, _ = deviceMAC.Write([]byte("henukit-device-cookie"))
 	deviceKey := deviceMAC.Sum(nil)
 	coordinator := coordination.NewRedis(config.Redis)
-	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL, config.IdempotencyEncryptionKey)
+	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL)
 	inbox := operationsinbox.New(queries, config.Database)
 	platformOperations := platformoperations.New(queries, config.Database, config.Redis)
-	verificationFlow, err := verification.New(queries, config.Database, coordinator, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay)
+	verificationFlow, err := verification.New(queries, config.Database, coordinator, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay, config.CoreSessionTTL)
 	if err != nil {
 		return nil, err
 	}

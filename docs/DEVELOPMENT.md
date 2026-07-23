@@ -76,14 +76,11 @@ HENU Kit 是由河南大学学生自主发起、运营和维护的校园工具�
 - Owner 不能独立验收自己的安全关键实现。
 - 大型迁移先开 Draft PR，先评审结构和风险，再填充实现。
 
-推荐分支：
+规范分支：
 
 ```text
-feat/<area>-<description>
-fix/<area>-<description>
-chore/<area>-<description>
-docs/<description>
-codex/<description>
+feature/<area>/<issue-id>
+fix/<area>/<issue-id>
 ```
 
 ## 5. Commit
@@ -210,7 +207,7 @@ Issue 必须包含：
 ## 9. 身份与会话
 
 - 不通过跨主域共享 Cookie 统一登录。
-- 业务站跳转 `account.henukit.cn` 完成 Authorization Code Flow。
+- 业务站跳转当前已备案域名 `account.superhuazai.me` 完成 Authorization Code Flow。
 - callback、`return_to` 和 client 必须预登记。
 - `state` 防 CSRF。
 - 授权码短期、单次使用，只保存哈希。

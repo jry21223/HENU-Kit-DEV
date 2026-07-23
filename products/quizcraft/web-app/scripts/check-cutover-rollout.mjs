@@ -11,8 +11,8 @@ requireText(client, 'if (QUIZCRAFT_GO_READ_ENABLED)', 'bank reads must have an i
 if ((client.match(/if \(QUIZCRAFT_GO_WRITES_ENABLED\)/g) || []).length < 2) {
   throw new Error('practice session and answer writes must share the explicit write gate');
 }
-requireText(rollout, "VITE_QUIZCRAFT_GO_READ_PERCENT", 'stable read percentage is missing');
 requireText(rollout, "VITE_QUIZCRAFT_GO_WRITES", 'explicit write cutover is missing');
-requireText(rollout, "quizcraft_go_read_cohort", 'read rollout cohort must persist across reloads');
-requireText(rollout, 'QUIZCRAFT_GO_WRITES_ENABLED || hashPercent', 'write cutover must imply Go reads');
-requireText(rollout, "explicitWriteSetting === '1' || (explicitWriteSetting === undefined && legacyAllTraffic)", 'an explicit write=0 must override the legacy shadow flag');
+requireText(rollout, 'QUIZCRAFT_GO_READ_ENABLED = QUIZCRAFT_GO_WRITES_ENABLED', 'reads and writes must switch atomically');
+for (const forbidden of ['READ_PERCENT', 'read_cohort', 'hashPercent', 'legacyAllTraffic']) {
+  if (rollout.includes(forbidden)) throw new Error(`percentage or cohort rollout remains: ${forbidden}`);
+}

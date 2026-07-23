@@ -18,6 +18,9 @@ func TestHTTPSenderMapsProviderAcceptance(t *testing.T) {
 		if request.Header.Get("Idempotency-Key") != "verification:job-001" {
 			t.Error("provider idempotency header is missing")
 		}
+		if request.Header.Get("X-Request-ID") != "req_sender_001" || request.Header.Get("X-Mail-Attempt") != "3" {
+			t.Error("provider audit correlation headers are missing")
+		}
 		var payload struct {
 			Recipient string `json:"recipient"`
 			Template  string `json:"template"`
@@ -43,6 +46,7 @@ func TestHTTPSenderMapsProviderAcceptance(t *testing.T) {
 		IdempotencyKey: "verification:job-001",
 		Recipient:      "student@henu.edu.cn", Code: "123456", Purpose: "login",
 		ExpiresAt: time.Now().UTC().Add(10 * time.Minute), RequestID: "req_sender_001",
+		AttemptCount: 3,
 	})
 	if err != nil || messageID != "provider_accepted_001" {
 		t.Fatalf("provider acceptance = %q err=%v", messageID, err)
@@ -56,6 +60,7 @@ func TestHTTPSenderClassifiesProviderRejection(t *testing.T) {
 		permanent bool
 	}{
 		{name: "bad recipient", status: http.StatusBadRequest, permanent: true},
+		{name: "delivery in progress", status: http.StatusConflict, permanent: false},
 		{name: "rate limited", status: http.StatusTooManyRequests, permanent: false},
 		{name: "provider outage", status: http.StatusServiceUnavailable, permanent: false},
 	} {

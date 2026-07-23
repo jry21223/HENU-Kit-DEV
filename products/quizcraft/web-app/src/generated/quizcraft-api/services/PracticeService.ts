@@ -53,11 +53,9 @@ export class PracticeService {
     public static getQuizCraftCutoverEvidence({
         runId,
         sourceHead,
-        shadowGateReportId,
     }: {
         runId: string,
         sourceHead: number,
-        shadowGateReportId: string,
     }): CancelablePromise<CutoverEvidenceEnvelope> {
         return __request(OpenAPI, {
             method: 'GET',
@@ -65,7 +63,6 @@ export class PracticeService {
             query: {
                 'run_id': runId,
                 'source_head': sourceHead,
-                'shadow_gate_report_id': shadowGateReportId,
             },
             errors: {
                 400: `Invalid request`,
