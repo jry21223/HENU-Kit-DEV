@@ -1,0 +1,344 @@
+openapi: 3.1.0
+info:
+  title: Portal Gateway
+  version: 0.1.0
+  description: >
+    Read-only BFF for HENU Kit Portal (henukit.cn). Authenticates users via
+    Platform Core OAuth and proxies GET requests to product services with
+    verified permissions.
+servers:
+  - url: http://127.0.0.1:8084
+    description: Local development
+  - url: https://henukit.cn
+    description: Production
+
+paths:
+  /api/v1/healthz:
+    get:
+      operationId: healthz
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/v1/auth/login:
+    get:
+      operationId: login
+      summary: Start OAuth code flow with Platform Core
+      security: []
+      parameters:
+        - name: return_to
+          in: query
+          schema:
+            type: string
+            default: /
+      responses:
+        "302":
+          description: Redirect to Platform Core authorize endpoint
+
+  /api/v1/auth/callback:
+    get:
+      operationId: callback
+      summary: OAuth callback — exchange code for Portal Session
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to return_to with session cookie set
+        "400":
+          description: Invalid or expired state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/session:
+    get:
+      operationId: getSession
+      summary: Return current Portal Session
+      responses:
+        "200":
+          description: Authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSession"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/session/logout:
+    post:
+      operationId: logout
+      summary: Clear Portal Session cookie
+      responses:
+        "200":
+          description: Signed out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: signed_out
+
+  /api/v1/library/courses:
+    get:
+      operationId: libraryCourses
+      summary: List available courses
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Course list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCoursesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/food/venues:
+    get:
+      operationId: foodVenues
+      summary: List food venues for a campus
+      security:
+        - portalSession: []
+      parameters:
+        - name: campus
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [minglun, jinming, longzihu]
+      responses:
+        "200":
+          description: Venue list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodVenuesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/practice/banks:
+    get:
+      operationId: practiceBanks
+      summary: List available question banks
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Bank list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PracticeBanksResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/notices:
+    get:
+      operationId: noticeList
+      summary: List published notices
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Notice list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticeListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+components:
+  securitySchemes:
+    portalSession:
+      type: apiKey
+      in: cookie
+      name: __Host-henukit_portal_session
+
+  schemas:
+    PortalSession:
+      type: object
+      required: [user_id, expires_at]
+      properties:
+        user_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        request_id:
+          type: string
+
+    LibraryCoursesResponse:
+      type: object
+      required: [courses, request_id]
+      properties:
+        courses:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseSummary"
+        request_id:
+          type: string
+
+    CourseSummary:
+      type: object
+      required: [id, name, subject, material_count]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        subject:
+          type: string
+        material_count:
+          type: integer
+
+    FoodVenuesResponse:
+      type: object
+      required: [campus, venues, request_id]
+      properties:
+        campus:
+          type: string
+        venues:
+          type: array
+          items:
+            $ref: "#/components/schemas/VenueSummary"
+        request_id:
+          type: string
+
+    VenueSummary:
+      type: object
+      required: [id, name, rating, tier, campus]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        rating:
+          type: number
+          format: double
+        tier:
+          type: string
+        campus:
+          type: string
+
+    PracticeBanksResponse:
+      type: object
+      required: [banks, request_id]
+      properties:
+        banks:
+          type: array
+          items:
+            $ref: "#/components/schemas/BankSummary"
+        request_id:
+          type: string
+
+    BankSummary:
+      type: object
+      required: [id, name, subject, question_count]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        subject:
+          type: string
+        question_count:
+          type: integer
+
+    NoticeListResponse:
+      type: object
+      required: [notices, request_id]
+      properties:
+        notices:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoticeSummary"
+        request_id:
+          type: string
+
+    NoticeSummary:
+      type: object
+      required: [id, title, source, published_at]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        source:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+
+  responses:
+    Unauthorized:
+      description: Not authenticated or session expired
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ServiceUnavailable:
+      description: Product service unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"

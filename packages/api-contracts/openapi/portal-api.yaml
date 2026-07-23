@@ -1,0 +1,732 @@
+openapi: 3.1.0
+info:
+  title: Portal API
+  version: 0.1.0
+  description: >
+    User-facing API for HENU Kit Portal (henukit.cn). All schemas are derived
+    from the Portal frontend mock interfaces — the frontend is the contract truth.
+    This service owns mock data and will later connect to real product databases.
+servers:
+  - url: http://127.0.0.1:8085
+    description: Local development
+  - url: https://api.henukit.cn
+    description: Production
+
+paths:
+  # ─── Library ───────────────────────────────────────────────────
+  /api/v1/library/materials:
+    get:
+      operationId: listMaterials
+      summary: List all materials with optional filters
+      security: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [note, exam, mock, path, lab]
+        - name: subject
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Search in title and intro
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialListResponse"
+
+  /api/v1/library/materials/{id}:
+    get:
+      operationId: getMaterial
+      summary: Get material detail (including pages content)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Food ──────────────────────────────────────────────────────
+  /api/v1/food/posts:
+    get:
+      operationId: listFoodPosts
+      summary: List food posts, optionally filtered by campus
+      security: []
+      parameters:
+        - name: campus
+          in: query
+          schema:
+            type: string
+            enum: [minglun, jinming, longzihu]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodPostListResponse"
+
+  /api/v1/food/posts/{id}:
+    get:
+      operationId: getFoodPost
+      summary: Get food post detail with content blocks
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodPostDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/food/posts/{id}/comments:
+    get:
+      operationId: listFoodComments
+      summary: List comments for a food post
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodCommentListResponse"
+
+  # ─── Practice ──────────────────────────────────────────────────
+  /api/v1/practice/schools:
+    get:
+      operationId: listSchools
+      summary: Get the full school/major/subject/list hierarchy
+      security: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchoolListResponse"
+
+  /api/v1/practice/lists/{id}:
+    get:
+      operationId: getQuizList
+      summary: Get quiz list metadata and its questions
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizListDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/practice/leaderboard:
+    get:
+      operationId: getLeaderboard
+      summary: Get leaderboard for a period
+      security: []
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [week, month, all]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeaderboardResponse"
+
+  /api/v1/practice/stats:
+    get:
+      operationId: getUserStats
+      summary: Get current user practice statistics
+      security: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStatsResponse"
+
+  # ─── Campus ────────────────────────────────────────────────────
+  /api/v1/campus/items:
+    get:
+      operationId: listCampusItems
+      summary: List campus marketplace items
+      security: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [help, sell]
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampusItemListResponse"
+
+  /api/v1/campus/items/{id}:
+    get:
+      operationId: getCampusItem
+      summary: Get campus item detail
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampusItemDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/campus/categories:
+    get:
+      operationId: listCategories
+      summary: List campus item categories
+      security: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryListResponse"
+
+components:
+  schemas:
+    # ─── Library ───────────────────────────────────────────────
+    Material:
+      type: object
+      required: [id, type, subject, title, author, intro, toc, pages, price, previewPages, rating, downloads, favs]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [note, exam, mock, path, lab]
+        subject:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        intro:
+          type: string
+        toc:
+          type: array
+          items:
+            type: string
+        pages:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        price:
+          type: integer
+          minimum: 0
+        previewPages:
+          type: integer
+          minimum: 0
+        rating:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 5
+        downloads:
+          type: integer
+          minimum: 0
+        favs:
+          type: integer
+          minimum: 0
+
+    MaterialListResponse:
+      type: object
+      required: [materials, request_id]
+      properties:
+        materials:
+          type: array
+          items:
+            $ref: "#/components/schemas/Material"
+        request_id:
+          type: string
+
+    MaterialDetailResponse:
+      type: object
+      required: [material, request_id]
+      properties:
+        material:
+          $ref: "#/components/schemas/Material"
+        request_id:
+          type: string
+
+    # ─── Food ─────────────────────────────────────────────────
+    PostBlock:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [h2, p, quote, list, img]
+        text:
+          type: string
+        items:
+          type: array
+          items:
+            type: string
+        src:
+          type: string
+        ref:
+          type: integer
+
+    Shop:
+      type: object
+      required: [name, lat, lng]
+      properties:
+        name:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+
+    FoodPost:
+      type: object
+      required: [id, campus, title, excerpt, blocks, author, likes, stars, tags, shop, time, hidden]
+      properties:
+        id:
+          type: string
+        campus:
+          type: string
+          enum: [minglun, jinming, longzihu]
+        title:
+          type: string
+        excerpt:
+          type: string
+        blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PostBlock"
+        author:
+          type: string
+        likes:
+          type: integer
+        stars:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        shop:
+          $ref: "#/components/schemas/Shop"
+        time:
+          type: string
+        hidden:
+          type: boolean
+        images:
+          type: array
+          items:
+            type: string
+
+    FoodComment:
+      type: object
+      required: [id, postId, author, time, text]
+      properties:
+        id:
+          type: string
+        postId:
+          type: string
+        author:
+          type: string
+        time:
+          type: string
+        text:
+          type: string
+
+    FoodPostListResponse:
+      type: object
+      required: [posts, request_id]
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: "#/components/schemas/FoodPost"
+        request_id:
+          type: string
+
+    FoodPostDetailResponse:
+      type: object
+      required: [post, comments, request_id]
+      properties:
+        post:
+          $ref: "#/components/schemas/FoodPost"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/FoodComment"
+        request_id:
+          type: string
+
+    FoodCommentListResponse:
+      type: object
+      required: [comments, request_id]
+      properties:
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/FoodComment"
+        request_id:
+          type: string
+
+    # ─── Practice ─────────────────────────────────────────────
+    Question:
+      type: object
+      required: [id, subject, chapter, difficulty, stem, options, answer, explanation, accuracy]
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        chapter:
+          type: string
+        difficulty:
+          type: number
+          format: double
+          minimum: 1.0
+          maximum: 10.0
+        stem:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+          minItems: 4
+          maxItems: 4
+        answer:
+          type: integer
+          minimum: 0
+          maximum: 3
+        explanation:
+          type: string
+        accuracy:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    QuizListMeta:
+      type: object
+      required: [id, name, creator, tags, poolKey, count, completion]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        creator:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        poolKey:
+          type: string
+        count:
+          type: integer
+        completion:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    Subject:
+      type: object
+      required: [id, name, lists]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        lists:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuizListMeta"
+
+    Major:
+      type: object
+      required: [id, name, subjects]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        subjects:
+          type: array
+          items:
+            $ref: "#/components/schemas/Subject"
+
+    School:
+      type: object
+      required: [id, name, majors]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        majors:
+          type: array
+          items:
+            $ref: "#/components/schemas/Major"
+
+    LeaderboardRow:
+      type: object
+      required: [name, questions, accuracy, streak]
+      properties:
+        name:
+          type: string
+        questions:
+          type: integer
+        accuracy:
+          type: integer
+        streak:
+          type: integer
+        isYou:
+          type: boolean
+
+    SchoolListResponse:
+      type: object
+      required: [schools, request_id]
+      properties:
+        schools:
+          type: array
+          items:
+            $ref: "#/components/schemas/School"
+        request_id:
+          type: string
+
+    QuizListDetailResponse:
+      type: object
+      required: [list, questions, request_id]
+      properties:
+        list:
+          $ref: "#/components/schemas/QuizListMeta"
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Question"
+        request_id:
+          type: string
+
+    LeaderboardResponse:
+      type: object
+      required: [rows, request_id]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeaderboardRow"
+        request_id:
+          type: string
+
+    UserStatsResponse:
+      type: object
+      required: [totalQuestions, accuracy, streakDays, beatPercent, mastery, weakTop5, request_id]
+      properties:
+        totalQuestions:
+          type: integer
+        accuracy:
+          type: integer
+        streakDays:
+          type: integer
+        beatPercent:
+          type: integer
+        mastery:
+          type: array
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label:
+                type: string
+              value:
+                type: integer
+        weakTop5:
+          type: array
+          items:
+            type: object
+            required: [topic, subject, wrong]
+            properties:
+              topic:
+                type: string
+              subject:
+                type: string
+              wrong:
+                type: integer
+        request_id:
+          type: string
+
+    # ─── Campus ───────────────────────────────────────────────
+    CampusItem:
+      type: object
+      required: [id, type, category, title, desc, price, seller, credit, dealsDone, wants, place, status, time]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [help, sell]
+        category:
+          type: string
+        title:
+          type: string
+        desc:
+          type: string
+        price:
+          type: number
+        seller:
+          type: string
+        credit:
+          type: integer
+        dealsDone:
+          type: integer
+        wants:
+          type: integer
+        place:
+          type: string
+        deadline:
+          type: string
+        status:
+          type: string
+          enum: [open, ongoing, done, hidden]
+        time:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+
+    Category:
+      type: object
+      required: [key, name, code]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+
+    CampusItemListResponse:
+      type: object
+      required: [items, request_id]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampusItem"
+        request_id:
+          type: string
+
+    CampusItemDetailResponse:
+      type: object
+      required: [item, messages, request_id]
+      properties:
+        item:
+          $ref: "#/components/schemas/CampusItem"
+        messages:
+          type: array
+          items:
+            type: object
+            required: [id, itemId, author, time, text]
+            properties:
+              id:
+                type: string
+              itemId:
+                type: string
+              author:
+                type: string
+              time:
+                type: string
+              text:
+                type: string
+        request_id:
+          type: string
+
+    CategoryListResponse:
+      type: object
+      required: [categories, request_id]
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Category"
+        request_id:
+          type: string
+
+    # ─── Common ───────────────────────────────────────────────
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        request_id:
+          type: string
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"

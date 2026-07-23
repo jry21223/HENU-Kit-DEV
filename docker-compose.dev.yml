@@ -17,6 +17,23 @@ services:
       timeout: 5s
       retries: 10
 
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: portal
+      MYSQL_USER: portal
+      MYSQL_PASSWORD: portal
+      MYSQL_ROOT_PASSWORD: root_dev
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     ports:
@@ -95,4 +112,5 @@ services:
 
 volumes:
   postgres_data:
+  mysql_data:
   redis_data:
