@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { USER_STATS, ABILITY_SERIES } from "@/lib/practice/mock";
+import { hasGateway, fetchUserStats } from "@/lib/api/client";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import LineChart from "@/components/practice/charts/line-chart";
 import RadarChart from "@/components/practice/charts/radar-chart";
@@ -17,16 +18,35 @@ const RANGES = [
 
 type Range = (typeof RANGES)[number]["key"];
 
-const CARDS = [
-  { label: "总刷题", value: String(USER_STATS.totalQuestions), unit: "题" },
-  { label: "正确率", value: `${USER_STATS.accuracy}`, unit: "%" },
-  { label: "连续打卡", value: String(USER_STATS.streakDays), unit: "天" },
-  { label: "击败用户", value: `${USER_STATS.beatPercent}`, unit: "%" },
-];
-
 export default function StatsPage() {
   usePageEnter(null);
+  const [stats, setStats] = useState(USER_STATS);
   const [range, setRange] = useState<Range>("d30");
+
+  useEffect(() => {
+    if (!hasGateway) return;
+    let cancelled = false;
+    fetchUserStats().then((resp) => {
+      if (!cancelled && resp) {
+        setStats({
+          totalQuestions: resp.totalQuestions ?? USER_STATS.totalQuestions,
+          accuracy: resp.accuracy ?? USER_STATS.accuracy,
+          streakDays: resp.streakDays ?? USER_STATS.streakDays,
+          beatPercent: resp.beatPercent ?? USER_STATS.beatPercent,
+          mastery: resp.mastery ?? USER_STATS.mastery,
+          weakTop5: resp.weakTop5 ?? USER_STATS.weakTop5,
+        } as typeof USER_STATS);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const CARDS = [
+    { label: "总刷题", value: String(stats.totalQuestions), unit: "题" },
+    { label: "正确率", value: `${stats.accuracy}`, unit: "%" },
+    { label: "连续打卡", value: String(stats.streakDays), unit: "天" },
+    { label: "击败用户", value: `${stats.beatPercent}`, unit: "%" },
+  ];
   const lineWrapRef = useRef<HTMLDivElement>(null);
 
   // 页签切换：折线重绘过渡
@@ -119,7 +139,7 @@ export default function StatsPage() {
               MASTERY / 知识点掌握度
             </p>
             <div className="mt-5 space-y-4">
-              {USER_STATS.mastery.map((m) => (
+              {stats.mastery.map((m) => (
                 <div key={m.label}>
                   <div className="mb-1.5 flex justify-between font-mono text-xs">
                     <span>{m.label}</span>
@@ -144,7 +164,7 @@ export default function StatsPage() {
               WEAK TOP5 / 薄弱点
             </p>
             <ul className="mt-4">
-              {USER_STATS.weakTop5.map((w, i) => (
+              {stats.weakTop5.map((w, i) => (
                 <li key={w.topic} className="flex items-baseline gap-4 border-b border-line py-2.5 last:border-b-0">
                   <span className="font-mono text-xs text-accent">{String(i + 1).padStart(2, "0")}</span>
                   <span className="flex-1 text-sm">{w.topic}</span>

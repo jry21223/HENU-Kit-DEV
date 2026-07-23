@@ -11,9 +11,19 @@ import type {
   PortalSession,
   ErrorEnvelope,
   LibraryCoursesResponse,
-  FoodVenuesResponse,
+  LibraryMaterialsResponse,
+  MaterialDetailResponse,
+  FoodPostListResponse,
+  FoodPostDetailResponse,
+  FoodCommentListResponse,
   PracticeBanksResponse,
+  QuizListDetailResponse,
+  LeaderboardResponse,
+  UserStatsResponse,
   NoticeListResponse,
+  CampusItemListResponse,
+  CampusItemDetailResponse,
+  CategoryListResponse,
 } from "./types";
 
 const GATEWAY_URL =
@@ -43,7 +53,7 @@ async function apiFetch<T>(path: string): Promise<T | null> {
   }
 }
 
-// ---- Auth ----
+// ─── Auth ─────────────────────────────────────────────────
 
 export async function fetchSession(): Promise<PortalSession | null> {
   return apiFetch<PortalSession>("/api/v1/session");
@@ -62,23 +72,107 @@ export async function logout(): Promise<void> {
   });
 }
 
-// ---- Products (read-only) ----
+// ─── Library ──────────────────────────────────────────────
 
-export async function fetchLibraryCourses(): Promise<LibraryCoursesResponse | null> {
-  return apiFetch<LibraryCoursesResponse>("/api/v1/library/materials");
+export async function fetchCourses(): Promise<LibraryCoursesResponse | null> {
+  return apiFetch<LibraryCoursesResponse>("/api/v1/library/courses");
 }
 
-export async function fetchFoodVenues(
-  campus: string
-): Promise<FoodVenuesResponse | null> {
-  return apiFetch<FoodVenuesResponse>(
-    `/api/v1/food/posts?campus=${encodeURIComponent(campus)}`
+export async function fetchCourseMaterials(
+  courseId: string
+): Promise<LibraryMaterialsResponse | null> {
+  return apiFetch<LibraryMaterialsResponse>(
+    `/api/v1/library/courses/${encodeURIComponent(courseId)}/materials`
   );
 }
 
-export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null> {
-  return apiFetch<PracticeBanksResponse>("/api/v1/practice/schools");
+export async function fetchMaterialDetail(
+  id: string
+): Promise<MaterialDetailResponse | null> {
+  return apiFetch<MaterialDetailResponse>(
+    `/api/v1/library/materials/${encodeURIComponent(id)}`
+  );
 }
+
+// ─── Food ─────────────────────────────────────────────────
+
+export async function fetchFoodPosts(
+  campus?: string
+): Promise<FoodPostListResponse | null> {
+  const qs = campus ? `?campus=${encodeURIComponent(campus)}` : "";
+  return apiFetch<FoodPostListResponse>(`/api/v1/food/posts${qs}`);
+}
+
+export async function fetchFoodPostDetail(
+  id: string
+): Promise<FoodPostDetailResponse | null> {
+  return apiFetch<FoodPostDetailResponse>(
+    `/api/v1/food/posts/${encodeURIComponent(id)}`
+  );
+}
+
+export async function fetchFoodComments(
+  postId: string
+): Promise<FoodCommentListResponse | null> {
+  return apiFetch<FoodCommentListResponse>(
+    `/api/v1/food/posts/${encodeURIComponent(postId)}/comments`
+  );
+}
+
+// ─── Practice ─────────────────────────────────────────────
+
+export async function fetchBanks(): Promise<PracticeBanksResponse | null> {
+  return apiFetch<PracticeBanksResponse>("/api/v1/practice/banks");
+}
+
+export async function fetchQuizList(
+  id: string
+): Promise<QuizListDetailResponse | null> {
+  return apiFetch<QuizListDetailResponse>(
+    `/api/v1/practice/lists/${encodeURIComponent(id)}`
+  );
+}
+
+export async function fetchLeaderboard(
+  period: string
+): Promise<LeaderboardResponse | null> {
+  return apiFetch<LeaderboardResponse>(
+    `/api/v1/practice/leaderboard?period=${encodeURIComponent(period)}`
+  );
+}
+
+export async function fetchUserStats(): Promise<UserStatsResponse | null> {
+  return apiFetch<UserStatsResponse>("/api/v1/practice/stats");
+}
+
+// ─── Campus ───────────────────────────────────────────────
+
+export async function fetchCampusItems(
+  typeFilter?: string,
+  categoryFilter?: string
+): Promise<CampusItemListResponse | null> {
+  const params = new URLSearchParams();
+  if (typeFilter) params.set("type", typeFilter);
+  if (categoryFilter) params.set("category", categoryFilter);
+  const qs = params.toString();
+  return apiFetch<CampusItemListResponse>(
+    `/api/v1/campus/items${qs ? "?" + qs : ""}`
+  );
+}
+
+export async function fetchCampusItemDetail(
+  id: string
+): Promise<CampusItemDetailResponse | null> {
+  return apiFetch<CampusItemDetailResponse>(
+    `/api/v1/campus/items/${encodeURIComponent(id)}`
+  );
+}
+
+export async function fetchCategories(): Promise<CategoryListResponse | null> {
+  return apiFetch<CategoryListResponse>("/api/v1/campus/categories");
+}
+
+// ─── Notices ──────────────────────────────────────────────
 
 export async function fetchNotices(): Promise<NoticeListResponse | null> {
   return apiFetch<NoticeListResponse>("/api/v1/notices");

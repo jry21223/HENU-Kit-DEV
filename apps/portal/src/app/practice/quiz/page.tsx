@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { QUIZ_SET } from "@/lib/practice/mock";
+import { hasGateway, fetchQuizList } from "@/lib/api/client";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import DiffBadge from "@/components/practice/diff-badge";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 
-const SET = QUIZ_SET;
-const N = SET.length;
 const OPTION_LABEL = ["A", "B", "C", "D"];
 
 function fmtTime(sec: number) {
@@ -22,6 +21,18 @@ export default function QuizPage() {
   // 形变主线 2 的落点：题干卡
   const cardRef = usePageEnter<HTMLDivElement>("question");
 
+  const [quizSet, setQuizSet] = useState(QUIZ_SET);
+  const N = quizSet.length;
+
+  useEffect(() => {
+    if (!hasGateway) return;
+    let cancelled = false;
+    fetchQuizList("ds-tree").then((resp) => {
+      if (!cancelled && resp?.questions) setQuizSet(resp.questions as typeof QUIZ_SET);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const [idx, setIdx] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -33,7 +44,7 @@ export default function QuizPage() {
   const [finished, setFinished] = useState(false);
   const explainRef = useRef<HTMLDivElement>(null);
 
-  const q = SET[idx];
+  const q = quizSet[idx];
   const correctCount = results.filter((r) => r === true).length;
 
   // 计时器：挂载后启动（初始 0 与 SSR 一致），结算后停止
@@ -102,7 +113,7 @@ export default function QuizPage() {
 
   const weakChapters = Array.from(
     new Set(
-      SET.filter((_, i) => results[i] === false).map((item) => item.chapter)
+      quizSet.filter((_, i) => results[i] === false).map((item) => item.chapter)
     )
   );
 
@@ -284,7 +295,7 @@ export default function QuizPage() {
             INDEX / 跳题
           </p>
           <div className="mt-3 grid grid-cols-4 gap-1.5">
-            {SET.map((_, i) => (
+            {quizSet.map((_, i) => (
               <button
                 key={i}
                 type="button"

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { authStore } from "@/lib/auth/store";
 import { STATIC_MATERIALS, libraryStore } from "@/lib/library/mock";
+import { hasGateway } from "@/lib/api/client";
+import { getMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
 import { cn } from "@/lib/cn";
@@ -13,8 +15,14 @@ export default function ShelfPage() {
   const router = useRouter();
   const { user, ready } = useSyncExternalStore(authStore.subscribe, authStore.get, authStore.getServer);
   const lib = useSyncExternalStore(libraryStore.subscribe, libraryStore.get, libraryStore.getServer);
+  const [materials, setMaterials] = useState(STATIC_MATERIALS);
   const [tab, setTab] = useState<"owned" | "fav">("owned");
   useReveal();
+
+  useEffect(() => {
+    if (!hasGateway) return;
+    setMaterials(getMaterials() as typeof STATIC_MATERIALS);
+  }, []);
 
   useEffect(() => {
     if (ready && !user) router.replace("/account/login?next=/library/shelf");
@@ -30,8 +38,8 @@ export default function ShelfPage() {
     );
   }
 
-  const owned = STATIC_MATERIALS.filter((m) => lib.owned.includes(m.id));
-  const favs = STATIC_MATERIALS.filter((m) => lib.favs.includes(m.id));
+  const owned = materials.filter((m) => lib.owned.includes(m.id));
+  const favs = materials.filter((m) => lib.favs.includes(m.id));
   const list = tab === "owned" ? owned : favs;
 
   return (

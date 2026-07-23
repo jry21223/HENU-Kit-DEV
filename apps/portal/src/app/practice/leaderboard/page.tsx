@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LEADERBOARD } from "@/lib/practice/mock";
+import { hasGateway, fetchLeaderboard } from "@/lib/api/client";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import { gsap, FINE_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
@@ -17,8 +18,24 @@ type Period = (typeof PERIODS)[number]["key"];
 export default function LeaderboardPage() {
   usePageEnter(null);
   const [period, setPeriod] = useState<Period>("week");
+  const [rows, setRows] = useState(LEADERBOARD.week);
   const listRef = useRef<HTMLUListElement>(null);
   const barsRef = useRef<HTMLDivElement>(null);
+
+  // Fetch from gateway when period changes; fall back to mock
+  useEffect(() => {
+    if (!hasGateway) {
+      setRows(LEADERBOARD[period]);
+      return;
+    }
+    let cancelled = false;
+    fetchLeaderboard(period).then((resp) => {
+      if (!cancelled) {
+        setRows(resp?.rows ? (resp.rows as typeof LEADERBOARD.week) : LEADERBOARD[period]);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [period]);
 
   // 页签切换时行入场 stagger + 分布柱生长
   useEffect(() => {
@@ -45,7 +62,6 @@ export default function LeaderboardPage() {
     return () => mm.revert();
   }, [period]);
 
-  const rows = LEADERBOARD[period];
   const maxQ = Math.max(...rows.map((r) => r.questions));
 
   return (

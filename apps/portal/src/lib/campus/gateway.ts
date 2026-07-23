@@ -1,59 +1,38 @@
 /**
  * Campus gateway adapter.
- *
- * Gateway 可用时用 API 数据替换 mock；不可用时完全回退到 mock。
+ * Fetches from API when available, falls back to mock.
  */
 
-import { hasGateway } from "@/lib/api/client";
-import type { Item, Category, DealMessage } from "./mock";
-
-const GATEWAY_URL =
-  typeof window !== "undefined"
-    ? process.env.NEXT_PUBLIC_PORTAL_GATEWAY_URL || ""
-    : "";
-
-async function apiFetch<T>(path: string): Promise<T | null> {
-  if (!hasGateway) return null;
-  try {
-    const res = await fetch(`${GATEWAY_URL}${path}`, {
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
+import {
+  hasGateway,
+  fetchCampusItems,
+  fetchCampusItemDetail,
+  fetchCategories,
+} from "@/lib/api/client";
+import type { CampusItem, CampusMessage, Category } from "@/lib/api/types";
 
 export async function initCampusGateway(): Promise<void> {
-  // 预热：目前 campus 数据来自 portal DB seed，无需额外初始化
+  // Pre-warm: no-op for now
 }
 
-export async function fetchCampusItems(
+export async function getItems(
   typeFilter?: string,
   categoryFilter?: string
-): Promise<Item[] | null> {
-  const params = new URLSearchParams();
-  if (typeFilter) params.set("type", typeFilter);
-  if (categoryFilter) params.set("category", categoryFilter);
-  const qs = params.toString();
-  const resp = await apiFetch<{ items: Item[] }>(
-    `/api/v1/campus/items${qs ? "?" + qs : ""}`
-  );
+): Promise<CampusItem[] | null> {
+  if (!hasGateway) return null;
+  const resp = await fetchCampusItems(typeFilter, categoryFilter);
   return resp?.items ?? null;
 }
 
-export async function fetchCampusItem(
+export async function getItemDetail(
   id: string
-): Promise<{ item: Item; messages: DealMessage[] } | null> {
-  return apiFetch<{ item: Item; messages: DealMessage[] }>(
-    `/api/v1/campus/items/${id}`
-  );
+): Promise<{ item: CampusItem; messages: CampusMessage[] } | null> {
+  if (!hasGateway) return null;
+  return await fetchCampusItemDetail(id);
 }
 
-export async function fetchCategories(): Promise<Category[] | null> {
-  const resp = await apiFetch<{ categories: Category[] }>(
-    `/api/v1/campus/categories`
-  );
+export async function getCategories(): Promise<Category[] | null> {
+  if (!hasGateway) return null;
+  const resp = await fetchCategories();
   return resp?.categories ?? null;
 }

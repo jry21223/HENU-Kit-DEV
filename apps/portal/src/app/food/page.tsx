@@ -1,19 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { CAMPUSES, CAMPUS_KEYS, foodStore } from "@/lib/food/mock";
+import { hasGateway } from "@/lib/api/client";
+import { getGatewayPosts } from "@/lib/food/gateway";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneFood } from "@/components/site-hero/scenes";
 import { useReveal } from "@/components/account/use-reveal";
 
 export default function FoodHomePage() {
   const data = useSyncExternalStore(foodStore.subscribe, foodStore.get, foodStore.getServer);
+  const [posts, setPosts] = useState(data.posts);
   useReveal();
 
+  useEffect(() => {
+    if (!hasGateway) return;
+    const gw = getGatewayPosts();
+    if (gw) setPosts(gw as typeof data.posts);
+  }, []);
+
   const latestOf = (campus: string) =>
-    data.posts.filter((p) => p.campus === campus && !p.hidden)[0];
-  const visible = data.posts.filter((p) => !p.hidden);
+    posts.filter((p) => p.campus === campus && !p.hidden)[0];
+  const visible = posts.filter((p) => !p.hidden);
   const totalLikes = visible.reduce((s, p) => s + p.likes, 0);
 
   return (
@@ -36,7 +45,7 @@ export default function FoodHomePage() {
         <div className="grid gap-4 md:grid-cols-3">
           {CAMPUS_KEYS.map((key) => {
             const campus = CAMPUSES[key];
-            const posts = data.posts.filter((p) => p.campus === key && !p.hidden);
+            const campusPosts = posts.filter((p) => p.campus === key && !p.hidden);
             const latest = latestOf(key);
             return (
               <Link
@@ -50,7 +59,7 @@ export default function FoodHomePage() {
                 </p>
                 <h2 className="mt-4 font-display text-2xl font-bold">{campus.name}</h2>
                 <p className="mt-3 border-t border-line pt-3 font-mono text-[10px] leading-5 tracking-wider text-ink/50">
-                  {posts.length} 篇锐评
+                  {campusPosts.length} 篇锐评
                   <br />
                   {latest ? `最新 · ${latest.title.slice(0, 14)}…` : "暂无内容"}
                 </p>

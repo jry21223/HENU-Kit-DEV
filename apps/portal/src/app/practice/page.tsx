@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SCHOOLS, QuizListMeta } from "@/lib/practice/mock";
+import { hasGateway } from "@/lib/api/client";
+import { getGatewaySchools } from "@/lib/practice/gateway";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import BankHero from "@/components/practice/bank-hero";
@@ -49,13 +51,20 @@ function ListCard({ list, index }: { list: QuizListMeta; index: number }) {
 export default function PracticeBankPage() {
   usePageEnter(null);
 
+  const [schools, setSchools] = useState(SCHOOLS);
   const [schoolId, setSchoolId] = useState(SCHOOLS[0].id);
   const [majorId, setMajorId] = useState(SCHOOLS[0].majors[0].id);
   const [subjectId, setSubjectId] = useState(SCHOOLS[0].majors[0].subjects[0].id);
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
 
-  const school = SCHOOLS.find((s) => s.id === schoolId)!;
+  useEffect(() => {
+    if (!hasGateway) return;
+    const gw = getGatewaySchools();
+    if (gw) setSchools(gw as typeof SCHOOLS);
+  }, []);
+
+  const school = schools.find((s) => s.id === schoolId)!;
   const major = school.majors.find((m) => m.id === majorId)!;
   const subject = major.subjects.find((s) => s.id === subjectId)!;
 
@@ -63,14 +72,14 @@ export default function PracticeBankPage() {
   const searchHits = useMemo(() => {
     if (!searching) return [];
     const q = query.trim();
-    return SCHOOLS.flatMap((s) =>
+    return schools.flatMap((s) =>
       s.majors.flatMap((m) =>
         m.subjects
           .filter((sub) => sub.name.includes(q))
           .map((sub) => ({ subject: sub, school: s.name, major: m.name }))
       )
     );
-  }, [query, searching]);
+  }, [query, searching, schools]);
 
   return (
     <main>
@@ -103,8 +112,8 @@ export default function PracticeBankPage() {
               subjectId={subjectId}
               onSchool={(id) => {
                 setSchoolId(id);
-                setMajorId(SCHOOLS.find((s) => s.id === id)!.majors[0].id);
-                setSubjectId(SCHOOLS.find((s) => s.id === id)!.majors[0].subjects[0].id);
+                setMajorId(schools.find((s) => s.id === id)!.majors[0].id);
+                setSubjectId(schools.find((s) => s.id === id)!.majors[0].subjects[0].id);
               }}
               onMajor={(id) => {
                 setMajorId(id);
@@ -127,8 +136,8 @@ export default function PracticeBankPage() {
                 subjectId={subjectId}
                 onSchool={(id) => {
                   setSchoolId(id);
-                  setMajorId(SCHOOLS.find((s) => s.id === id)!.majors[0].id);
-                  setSubjectId(SCHOOLS.find((s) => s.id === id)!.majors[0].subjects[0].id);
+                  setMajorId(schools.find((s) => s.id === id)!.majors[0].id);
+                  setSubjectId(schools.find((s) => s.id === id)!.majors[0].subjects[0].id);
                 }}
                 onMajor={(id) => {
                   setMajorId(id);

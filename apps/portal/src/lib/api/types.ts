@@ -1,6 +1,7 @@
 /**
  * Portal API response types.
  * Matches packages/api-contracts/openapi/portal-api.yaml
+ * These are the contract between frontend and backend.
  */
 
 export interface PortalSession {
@@ -15,6 +16,18 @@ export interface ErrorEnvelope {
 }
 
 // ─── Library ───────────────────────────────────────────────
+
+export interface CourseSummary {
+  id: string;
+  name: string;
+  subject: string;
+  material_count: number;
+}
+
+export interface LibraryCoursesResponse {
+  courses: CourseSummary[];
+  request_id: string;
+}
 
 export interface Material {
   id: string;
@@ -32,8 +45,13 @@ export interface Material {
   favs: number;
 }
 
-export interface LibraryCoursesResponse {
+export interface LibraryMaterialsResponse {
   materials: Material[];
+  request_id: string;
+}
+
+export interface MaterialDetailResponse {
+  material: Material;
   request_id: string;
 }
 
@@ -77,8 +95,19 @@ export interface FoodComment {
   text: string;
 }
 
-export interface FoodVenuesResponse {
+export interface FoodPostListResponse {
   posts: FoodPost[];
+  request_id: string;
+}
+
+export interface FoodPostDetailResponse {
+  post: FoodPost;
+  comments: FoodComment[];
+  request_id: string;
+}
+
+export interface FoodCommentListResponse {
+  comments: FoodComment[];
   request_id: string;
 }
 
@@ -129,6 +158,12 @@ export interface PracticeBanksResponse {
   request_id: string;
 }
 
+export interface QuizListDetailResponse {
+  list: QuizListMeta;
+  questions: Question[];
+  request_id: string;
+}
+
 export interface LeaderboardRow {
   name: string;
   questions: number;
@@ -136,6 +171,23 @@ export interface LeaderboardRow {
   streak: number;
   isYou?: boolean;
 }
+
+export interface LeaderboardResponse {
+  rows: LeaderboardRow[];
+  request_id: string;
+}
+
+export interface UserStatsResponse {
+  totalQuestions: number;
+  accuracy: number;
+  streakDays: number;
+  beatPercent: number;
+  mastery: { label: string; value: number }[];
+  weakTop5: { topic: string; subject: string; wrong: number }[];
+  request_id: string;
+}
+
+// ─── Notices ───────────────────────────────────────────────
 
 export interface NoticeSummary {
   id: string;
@@ -146,5 +198,55 @@ export interface NoticeSummary {
 
 export interface NoticeListResponse {
   notices: NoticeSummary[];
+  request_id: string;
+}
+
+// ─── Campus ────────────────────────────────────────────────
+
+export interface CampusItem {
+  id: string;
+  type: "help" | "sell";
+  category: string;
+  title: string;
+  desc: string;
+  price: number;
+  seller: string;
+  credit: number;
+  dealsDone: number;
+  wants: number;
+  place: string;
+  deadline?: string;
+  status: "open" | "ongoing" | "done" | "hidden";
+  time: string;
+  images?: string[];
+}
+
+export interface Category {
+  key: string;
+  name: string;
+  code: string;
+}
+
+export interface CampusMessage {
+  id: string;
+  itemId: string;
+  author: string;
+  time: string;
+  text: string;
+}
+
+export interface CampusItemListResponse {
+  items: CampusItem[];
+  request_id: string;
+}
+
+export interface CampusItemDetailResponse {
+  item: CampusItem;
+  messages: CampusMessage[];
+  request_id: string;
+}
+
+export interface CategoryListResponse {
+  categories: Category[];
   request_id: string;
 }

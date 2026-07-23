@@ -1,18 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSyncExternalStore } from "react";
 import { CAMPUSES, CAMPUS_KEYS, CampusKey, foodStore } from "@/lib/food/mock";
+import { hasGateway } from "@/lib/api/client";
+import { getGatewayPosts } from "@/lib/food/gateway";
 import { useReveal } from "@/components/account/use-reveal";
 import { cn } from "@/lib/cn";
 
 export default function FoodLeaderboardPage() {
   const data = useSyncExternalStore(foodStore.subscribe, foodStore.get, foodStore.getServer);
+  const [posts, setPosts] = useState(data.posts);
   const [campus, setCampus] = useState<CampusKey | "all">("all");
   useReveal([campus]);
 
-  const rows = data.posts
+  useEffect(() => {
+    if (!hasGateway) return;
+    const gw = getGatewayPosts();
+    if (gw) setPosts(gw as typeof data.posts);
+  }, []);
+
+  const rows = posts
     .filter((p) => !p.hidden && (campus === "all" || p.campus === campus))
     .slice()
     .sort((a, b) => b.likes - a.likes);

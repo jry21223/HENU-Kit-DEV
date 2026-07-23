@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSyncExternalStore } from "react";
 import {
   MATERIAL_TYPES,
@@ -8,6 +8,8 @@ import {
   STATIC_MATERIALS,
   libraryStore,
 } from "@/lib/library/mock";
+import { hasGateway } from "@/lib/api/client";
+import { getMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneBooks } from "@/components/site-hero/scenes";
@@ -15,17 +17,24 @@ import { useReveal } from "@/components/account/use-reveal";
 import { cn } from "@/lib/cn";
 
 const TYPE_KEYS = Object.keys(MATERIAL_TYPES) as MaterialType[];
-const SUBJECTS = Array.from(new Set(STATIC_MATERIALS.map((m) => m.subject)));
 
 export default function LibraryHomePage() {
   useSyncExternalStore(libraryStore.subscribe, libraryStore.get, libraryStore.getServer);
+  const [materials, setMaterials] = useState(STATIC_MATERIALS);
   const [query, setQuery] = useState("");
   const [type, setType] = useState<MaterialType | "all">("all");
   const [price, setPrice] = useState<"all" | "free" | "paid">("all");
   const [subject, setSubject] = useState("all");
   useReveal();
 
-  const items = STATIC_MATERIALS.filter(
+  useEffect(() => {
+    if (!hasGateway) return;
+    setMaterials(getMaterials() as typeof STATIC_MATERIALS);
+  }, []);
+
+  const subjects = Array.from(new Set(materials.map((m) => m.subject)));
+
+  const items = materials.filter(
     (m) =>
       (type === "all" || m.type === type) &&
       (price === "all" || (price === "free" ? m.price === 0 : m.price > 0)) &&
@@ -33,7 +42,7 @@ export default function LibraryHomePage() {
       (!query.trim() || m.title.includes(query.trim()) || m.subject.includes(query.trim()))
   );
 
-  const totalDownloads = STATIC_MATERIALS.reduce((s, m) => s + m.downloads, 0);
+  const totalDownloads = materials.reduce((s, m) => s + m.downloads, 0);
 
   return (
     <main>
@@ -43,7 +52,7 @@ export default function LibraryHomePage() {
         title="资料库"
         slogan="学长笔记、往年试卷、模拟卷、学习路径、实验报告——免费的尽管拿，收费的先用积分试读。"
         counters={[
-          { label: "收录资料", value: STATIC_MATERIALS.length },
+          { label: "收录资料", value: materials.length },
           { label: "累计下载", value: totalDownloads },
         ]}
         fig="FIG.02 书脊 / SPINES"
@@ -93,7 +102,7 @@ export default function LibraryHomePage() {
             className="border border-line bg-paper px-3 py-1.5 font-mono text-xs text-ink/70 outline-none focus:border-ink"
           >
             <option value="all">全部科目</option>
-            {SUBJECTS.map((s) => (
+            {subjects.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>

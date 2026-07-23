@@ -60,8 +60,11 @@ func NewRouter() chi.Router {
 	})
 
 	// Library
-	r.Get("/api/v1/library/materials", func(w http.ResponseWriter, r *http.Request) {
-		listMaterials(w, r, librarySource)
+	r.Get("/api/v1/library/courses", func(w http.ResponseWriter, r *http.Request) {
+		listCourses(w, r, librarySource)
+	})
+	r.Get("/api/v1/library/courses/{courseId}/materials", func(w http.ResponseWriter, r *http.Request) {
+		listCourseMaterials(w, r, librarySource)
 	})
 	r.Get("/api/v1/library/materials/{id}", func(w http.ResponseWriter, r *http.Request) {
 		getMaterial(w, r, librarySource)
@@ -79,11 +82,16 @@ func NewRouter() chi.Router {
 	})
 
 	// Practice
-	r.Get("/api/v1/practice/schools", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/api/v1/practice/banks", func(w http.ResponseWriter, r *http.Request) {
 		listSchools(w, r, practiceSource)
 	})
 	r.Get("/api/v1/practice/lists/{id}", func(w http.ResponseWriter, r *http.Request) {
 		getQuizList(w, r, practiceSource)
+	})
+
+	// Notices
+	r.Get("/api/v1/notices", func(w http.ResponseWriter, r *http.Request) {
+		listNotices(w, r)
 	})
 	r.Get("/api/v1/practice/leaderboard", func(w http.ResponseWriter, r *http.Request) {
 		getLeaderboard(w, r, practiceSource)
@@ -157,7 +165,8 @@ func cors(next http.Handler) http.Handler {
 
 // --- Library handlers ---
 
-func listMaterials(w http.ResponseWriter, r *http.Request, src librarySource) {
+// listCourses returns courses grouped by subject, matching frontend's LibraryHomePage.
+func listCourses(w http.ResponseWriter, r *http.Request, src librarySource) {
 	var materials []library.Material
 	var err error
 
@@ -171,29 +180,61 @@ func listMaterials(w http.ResponseWriter, r *http.Request, src librarySource) {
 		materials = library.MockMaterials()
 	}
 
-	// Apply filters
-	typeFilter := r.URL.Query().Get("type")
-	subjectFilter := r.URL.Query().Get("subject")
-	qFilter := r.URL.Query().Get("q")
+	// Group by subject → courses
+	type courseAgg struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		Subject       string `json:"subject"`
+		MaterialCount int    `json:"material_count"`
+	}
+	courseMap := map[string]*courseAgg{}
+	for _, m := range materials {
+		c, ok := courseMap[m.Subject]
+		if !ok {
+			c = &courseAgg{ID: strings.ReplaceAll(m.Subject, " ", "-"), Name: m.Subject, Subject: m.Subject}
+			courseMap[m.Subject] = c
+		}
+		c.MaterialCount++
+	}
+	var courses []courseAgg
+	for _, c := range courseMap {
+		courses = append(courses, *c)
+	}
+	if courses == nil {
+		courses = []courseAgg{}
+	}
+	writeJSON(w, 200, map[string]any{"courses": courses, "request_id": w.Header().Get("X-Request-Id")})
+}
 
+// listCourseMaterials returns materials filtered by subject (courseId = subject slug).
+func listCourseMaterials(w http.ResponseWriter, r *http.Request, src librarySource) {
+	courseId := chi.URLParam(r, "courseId")
+
+	var materials []library.Material
+	var err error
+	if src.studyDB != nil {
+		materials, err = src.studyDB.GetMaterials()
+		if err != nil {
+			writeJSON(w, 500, map[string]string{"error": "database_error"})
+			return
+		}
+	} else {
+		materials = library.MockMaterials()
+	}
+
+	// Filter by subject matching courseId (slug → subject)
+	subjectFilter := strings.ReplaceAll(courseId, "-", " ")
 	var filtered []library.Material
 	for _, m := range materials {
-		if typeFilter != "" && m.Type != typeFilter {
-			continue
+		if m.Subject == subjectFilter || m.Subject == courseId {
+			filtered = append(filtered, m)
 		}
-		if subjectFilter != "" && m.Subject != subjectFilter {
-			continue
-		}
-		if qFilter != "" && !strings.Contains(m.Title, qFilter) && !strings.Contains(m.Intro, qFilter) {
-			continue
-		}
-		filtered = append(filtered, m)
 	}
 	if filtered == nil {
 		filtered = []library.Material{}
 	}
-
 	writeJSON(w, 200, map[string]any{"materials": filtered, "request_id": w.Header().Get("X-Request-Id")})
+}
 }
 
 func getMaterial(w http.ResponseWriter, r *http.Request, src librarySource) {
@@ -494,6 +535,13 @@ func getCampusItem(w http.ResponseWriter, r *http.Request, src campusSource) {
 
 func listCategories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"categories": campus.MockCategories(), "request_id": w.Header().Get("X-Request-Id")})
+}
+
+// --- Notices handler ---
+
+func listNotices(w http.ResponseWriter, r *http.Request) {
+	// Notices service doesn't exist yet, return empty list
+	writeJSON(w, 200, map[string]any{"notices": []any{}, "request_id": w.Header().Get("X-Request-Id")})
 }
 
 // --- Helpers ---

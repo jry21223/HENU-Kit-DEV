@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSyncExternalStore } from "react";
 import { CATEGORIES, campusStore, ItemType } from "@/lib/campus/mock";
+import { hasGateway } from "@/lib/api/client";
+import { getItems, getCategories } from "@/lib/campus/gateway";
 import ItemCard from "@/components/campus/item-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneHandshake } from "@/components/site-hero/scenes";
@@ -11,20 +13,33 @@ import { cn } from "@/lib/cn";
 
 export default function MarketPage() {
   const data = useSyncExternalStore(campusStore.subscribe, campusStore.get, campusStore.getServer);
+  const [campusItems, setCampusItems] = useState(data.items);
+  const [categories, setCategories] = useState(CATEGORIES);
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string>("all");
   const [type, setType] = useState<ItemType | "all">("all");
   useReveal();
 
-  const items = data.items.filter(
+  useEffect(() => {
+    if (!hasGateway) return;
+    let cancelled = false;
+    Promise.all([getItems(), getCategories()]).then(([itemsResp, catsResp]) => {
+      if (cancelled) return;
+      if (itemsResp) setCampusItems(itemsResp as typeof data.items);
+      if (catsResp) setCategories(catsResp as typeof CATEGORIES);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const items = campusItems.filter(
     (it) =>
       it.status !== "hidden" &&
       (cat === "all" || it.category === cat) &&
       (type === "all" || it.type === type) &&
       (!query.trim() || it.title.includes(query.trim()))
   );
-  const openCount = data.items.filter((i) => i.status !== "hidden").length;
-  const doneCount = data.items.filter((i) => i.status === "done").length + data.deals.filter((d) => d.status === "done").length;
+  const openCount = campusItems.filter((i) => i.status !== "hidden").length;
+  const doneCount = campusItems.filter((i) => i.status === "done").length + data.deals.filter((d) => d.status === "done").length;
 
   return (
     <main>
@@ -78,7 +93,7 @@ export default function MarketPage() {
           >
             全部
           </button>
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <button
               key={c.key}
               type="button"

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { authStore } from "@/lib/auth/store";
 import { campusStore } from "@/lib/campus/mock";
+import { hasGateway } from "@/lib/api/client";
+import { getItems } from "@/lib/campus/gateway";
 import { useReveal } from "@/components/account/use-reveal";
 import { cn } from "@/lib/cn";
 
@@ -21,8 +23,18 @@ export default function DealsPage() {
   const router = useRouter();
   const { user, ready } = useSyncExternalStore(authStore.subscribe, authStore.get, authStore.getServer);
   const data = useSyncExternalStore(campusStore.subscribe, campusStore.get, campusStore.getServer);
+  const [campusItems, setCampusItems] = useState(data.items);
   const [tab, setTab] = useState<"mine" | "taken">("mine");
   useReveal();
+
+  useEffect(() => {
+    if (!hasGateway) return;
+    let cancelled = false;
+    getItems().then((resp) => {
+      if (!cancelled && resp) setCampusItems(resp as typeof data.items);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (ready && !user) router.replace("/account/login?next=/campus/deals");
@@ -38,7 +50,7 @@ export default function DealsPage() {
     );
   }
 
-  const mine = data.items.filter((i) => i.isMine);
+  const mine = campusItems.filter((i) => i.isMine);
 
   return (
     <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
@@ -131,7 +143,7 @@ export default function DealsPage() {
             </p>
           ) : (
             data.deals.map((d) => {
-              const item = data.items.find((i) => i.id === d.itemId);
+              const item = campusItems.find((i) => i.id === d.itemId);
               return (
                 <div key={d.id} className="border border-ink/25 p-5">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
