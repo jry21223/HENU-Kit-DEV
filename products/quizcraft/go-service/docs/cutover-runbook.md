@@ -33,10 +33,10 @@ Record release/reconciliation and backup metadata in a root-owned, non-group/wor
 Load `CUTOVER_EVIDENCE_SECRET`, the dedicated operator Session, source database URLs, isolated restore-admin URL, real test mailbox address, Console origin, log start time, migration run ID, source head, release SHA, and legacy source hash from root-owned environment files. `GO_BASE_URL` and `LEGACY_BASE_URL` must be loopback origins that bypass public maintenance; `PUBLIC_BASE_URL` is the public origin. Run the gate from an interactive terminal so the mailbox owner can enter the current emailed code at the hidden prompt. Do not place the code or other secrets in environment variables, shell history, or arguments.
 
 ```bash
-VITE_QUIZCRAFT_GO_WRITES=1 pnpm --filter quizcraft-web build:ops
+VITE_QUIZCRAFT_GO_WRITES=1 pnpm --filter quiz-app build:ops
 
-sudo --preserve-env=CONFIRM_CUTOVER_SWITCH,GO_BASE_URL,LEGACY_BASE_URL,PUBLIC_BASE_URL,CUTOVER_E2E_BASE_URL,CUTOVER_WEB_APP_DIR,PLATFORM_ACCOUNT_ORIGIN,CONSOLE_ORIGIN,EXPECTED_RELEASE_SHA,EXPECTED_LEGACY_READ_ONLY,CUTOVER_EVIDENCE_SECRET,CUTOVER_GATE_EVIDENCE_FILE,EXPECTED_MIGRATION_RUN_ID,EXPECTED_SOURCE_HEAD,LEGACY_SERVER_PATH,EXPECTED_LEGACY_SHA256,LEGACY_DATABASE_URL,GO_DATABASE_URL,CUTOVER_RESTORE_ADMIN_URL,CUTOVER_TEST_EMAIL,CUTOVER_LOG_SINCE,PLATFORM_CLIENT_SECRET,QUIZCRAFT_OPERATOR_SESSION \
-  /opt/quizcraft-go/current/scripts/switch-cutover-release.sh \
+sudo --preserve-env=CONFIRM_CUTOVER_SWITCH,GO_BASE_URL,LEGACY_BASE_URL,PUBLIC_BASE_URL,CUTOVER_E2E_BASE_URL,CUTOVER_WEB_APP_DIR,PLATFORM_ACCOUNT_ORIGIN,CONSOLE_ORIGIN,EXPECTED_RELEASE_SHA,EXPECTED_LEGACY_READ_ONLY,CUTOVER_EVIDENCE_SECRET,CUTOVER_GATE_EVIDENCE_FILE,EXPECTED_MIGRATION_RUN_ID,EXPECTED_SOURCE_HEAD,LEGACY_SERVER_PATH,EXPECTED_LEGACY_SHA256,LEGACY_DATABASE_URL,CUTOVER_RESTORE_ADMIN_URL,CUTOVER_TEST_EMAIL,CUTOVER_LOG_SINCE,PLATFORM_CLIENT_SECRET,QUIZCRAFT_OPERATOR_SESSION \
+  /opt/quizcraft-go/releases/current/scripts/switch-cutover-release.sh \
   activate-writes "$EXPECTED_RELEASE_SHA" "$EXPECTED_RELEASE_SHA-writes"
 ```
 

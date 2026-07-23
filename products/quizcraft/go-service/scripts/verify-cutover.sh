@@ -19,7 +19,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${CUTOVER_E2E_BASE_URL:?set a maintenance-bypass origin serving the staged browser bundle and Go API}"
 : "${CUTOVER_WEB_APP_DIR:?set the immutable web-app release directory with Playwright installed}"
 : "${PLATFORM_ACCOUNT_ORIGIN:?set the Platform Core account origin}"
-: "${GO_DATABASE_URL:?export the live Go database URL without printing it}"
+: "${CONSOLE_ORIGIN:?set the Console origin}"
+: "${CUTOVER_TEST_EMAIL:?set the real mailbox address used for cutover verification}"
 : "${CUTOVER_RESTORE_ADMIN_URL:?set the isolated PostgreSQL admin used for temporary restore databases}"
 : "${LEGACY_PYTHON:=/opt/quizcraft-cn/.venv/bin/python}"
 
@@ -254,7 +255,10 @@ PY
 fi
 
 if [[ "$EXPECTED_WRITES_ENABLED" == "false" ]]; then
-  if ! PLATFORM_ACCOUNT_ORIGIN="$PLATFORM_ACCOUNT_ORIGIN" python3 "$platform_core_verifier" >"$cutover_tmp/platform-core.log" 2>&1; then
+  if ! PLATFORM_ACCOUNT_ORIGIN="$PLATFORM_ACCOUNT_ORIGIN" \
+    CONSOLE_ORIGIN="$CONSOLE_ORIGIN" \
+    CUTOVER_TEST_EMAIL="$CUTOVER_TEST_EMAIL" \
+    python3 "$platform_core_verifier" >"$cutover_tmp/platform-core.log" 2>&1; then
     echo "real-mail Platform Core login/OAuth/revocation verification failed" >&2
     exit 1
   fi
