@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"io"
 )
 
 type Codec struct {
@@ -33,7 +34,7 @@ func New(master []byte, purpose string) (*Codec, error) {
 
 func (c *Codec) Seal(plaintext []byte) ([]byte, error) {
 	nonce := make([]byte, c.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, err
 	}
 	return c.aead.Seal(nonce, nonce, plaintext, nil), nil

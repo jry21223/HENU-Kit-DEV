@@ -525,7 +525,7 @@ var accountLoginTemplate = template.Must(template.New("account-login").Parse(`<!
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HENU Kit 账号中心</title><style>
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f7fb;color:#172033;font:16px/1.5 system-ui,sans-serif}.card{width:min(390px,calc(100% - 32px));box-sizing:border-box;background:#fff;border:1px solid #dfe5ef;border-radius:18px;padding:28px;box-shadow:0 14px 40px #27364d18}h1{margin:0 0 8px;font-size:24px}p{color:#5d687a}label{display:block;margin:20px 0 6px;font-weight:650}input{width:100%;box-sizing:border-box;border:1px solid #bdc7d6;border-radius:10px;padding:12px;font:inherit}button{width:100%;margin-top:18px;border:0;border-radius:10px;padding:12px;background:#2457d6;color:#fff;font:inherit;font-weight:700}.error{color:#b42318}.hint{font-size:13px}
-</style></head><body><main class="card"><h1>HENU Kit 账号中心</h1>
+</style></head><body><main class="card"><h1>HENU Kit 账号中心</h1><p class="hint">学生自主运营 · 非河南大学官方项目</p>
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列，请查收学校邮箱。</p>{{else}}<p>使用河南大学邮箱登录。</p>{{end}}
 <form method="post" action="{{if .CodeRequested}}/login/verify{{else}}/login/code{{end}}">
 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="return_to" value="{{.ReturnTo}}">
@@ -541,9 +541,20 @@ type accountLoginView struct {
 
 func (h *Handler) loginPage(writer http.ResponseWriter, request *http.Request) {
 	returnTo := safeAccountReturnTo(request.URL.Query().Get("return_to"))
-	csrfToken := randomBrowserToken()
+	csrfToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "login_csrf")
+		return
+	}
+	_, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "login_device")
+		return
+	}
 	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: csrfToken, Path: "/", MaxAge: 10 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	_ = h.deviceID(writer, request)
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
 	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo})
 }
 
@@ -552,13 +563,33 @@ func (h *Handler) loginRequestCode(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "login_device")
+		return
+	}
+	idempotencyToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "login_request_idempotency")
+		return
+	}
 	accepted, err := h.verification.Request(request.Context(), verification.RequestInput{
-		Email: email, Purpose: "login", ClientID: "account-center", DeviceID: h.deviceID(writer, request), ClientIP: h.clientIP(request),
-		IdempotencyKey: "login_request_" + randomBrowserToken(), RequestID: requestIDFrom(request.Context()),
+		Email: email, Purpose: "login", ClientID: "account-center", DeviceID: deviceID, ClientIP: h.clientIP(request),
+		IdempotencyKey: "login_request_" + idempotencyToken, RequestID: requestIDFrom(request.Context()),
 	})
 	if err != nil {
+		if errors.Is(err, verification.ErrRandomSource) {
+			h.writeRandomSourceError(writer, request, "login_verification_request")
+			return
+		}
+		if deviceCookie != nil {
+			http.SetCookie(writer, deviceCookie)
+		}
 		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
 		return
+	}
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
 	}
 	writer.Header().Set("X-Verification-Expires", accepted.ExpiresAt.Format(time.RFC3339))
 	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true})
@@ -570,10 +601,27 @@ func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	code := strings.TrimSpace(request.FormValue("code"))
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "login_device")
+		return
+	}
+	idempotencyToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "login_verify_idempotency")
+		return
+	}
 	verified, err := h.verification.Verify(request.Context(), verification.VerifyInput{
-		Email: email, Code: code, Purpose: "login", IdempotencyKey: "login_verify_" + randomBrowserToken(),
-		DeviceID: h.deviceID(writer, request), ClientIP: h.clientIP(request),
+		Email: email, Code: code, Purpose: "login", IdempotencyKey: "login_verify_" + idempotencyToken,
+		DeviceID: deviceID, ClientIP: h.clientIP(request),
 	})
+	if errors.Is(err, verification.ErrRandomSource) {
+		h.writeRandomSourceError(writer, request, "login_verification")
+		return
+	}
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
 	if err != nil || verified.SessionToken == "" {
 		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true, Error: "验证码无效、已过期或登录暂不可用。"})
 		return
@@ -624,12 +672,12 @@ func safeAccountReturnTo(value string) string {
 	return parsed.RequestURI()
 }
 
-func randomBrowserToken() string {
+func randomBrowserToken() (string, error) {
 	value := make([]byte, 24)
-	if _, err := rand.Read(value); err != nil {
-		return "unavailable-browser-token-000000000000"
+	if _, err := io.ReadFull(rand.Reader, value); err != nil {
+		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(value)
+	return base64.RawURLEncoding.EncodeToString(value), nil
 }
 
 func (h *Handler) requestVerificationCode(writer http.ResponseWriter, request *http.Request) {
@@ -643,14 +691,29 @@ func (h *Handler) requestVerificationCode(writer http.ResponseWriter, request *h
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
 		return
 	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "verification_request_device")
+		return
+	}
 	accepted, err := h.verification.Request(request.Context(), verification.RequestInput{
 		Email: body.Email, Purpose: body.Purpose, ClientID: optionalString(body.ClientID),
-		DeviceID: h.deviceID(writer, request), ClientIP: h.clientIP(request),
+		DeviceID: deviceID, ClientIP: h.clientIP(request),
 		IdempotencyKey: idempotencyKey, RequestID: requestIDFrom(request.Context()),
 	})
 	if err != nil {
+		if errors.Is(err, verification.ErrRandomSource) {
+			h.writeRandomSourceError(writer, request, "verification_request")
+			return
+		}
+		if deviceCookie != nil {
+			http.SetCookie(writer, deviceCookie)
+		}
 		h.writeFlowError(writer, request, err)
 		return
+	}
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
 	}
 	writeSuccess(writer, request, http.StatusAccepted, contract.VerificationCodeAccepted{ExpiresAt: accepted.ExpiresAt, ResendAfter: accepted.ResendAfter})
 }
@@ -670,13 +733,28 @@ func (h *Handler) verifyVerificationCode(writer http.ResponseWriter, request *ht
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
 		return
 	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "verification_verify_device")
+		return
+	}
 	verified, err := h.verification.Verify(request.Context(), verification.VerifyInput{
 		Email: body.Email, Code: body.Code, Purpose: body.Purpose, IdempotencyKey: idempotencyKey,
-		DeviceID: h.deviceID(writer, request), ClientIP: h.clientIP(request),
+		DeviceID: deviceID, ClientIP: h.clientIP(request),
 	})
 	if err != nil {
+		if errors.Is(err, verification.ErrRandomSource) {
+			h.writeRandomSourceError(writer, request, "verification_verify")
+			return
+		}
+		if deviceCookie != nil {
+			http.SetCookie(writer, deviceCookie)
+		}
 		h.writeFlowError(writer, request, err)
 		return
+	}
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
 	}
 	response := contract.VerificationCodeVerified{VerificationID: verified.VerificationID}
 	if verified.SessionToken != "" {
@@ -898,6 +976,8 @@ func (h *Handler) checkAuthorization(writer http.ResponseWriter, request *http.R
 
 func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Request, err error) {
 	switch {
+	case errors.Is(err, verification.ErrRandomSource):
+		h.writeRandomSourceError(writer, request, "verification")
 	case errors.Is(err, verification.ErrCodeExpired):
 		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_EXPIRED", "verification code expired")
 	case errors.Is(err, verification.ErrCodeAlreadyUsed):
@@ -943,6 +1023,11 @@ func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Reque
 	}
 }
 
+func (h *Handler) writeRandomSourceError(writer http.ResponseWriter, request *http.Request, operation string) {
+	h.logger.Error("security_random_source_unavailable", "request_id", requestIDFrom(request.Context()), "operation", operation)
+	writeError(writer, request, http.StatusServiceUnavailable, "RANDOM_SOURCE_UNAVAILABLE", "temporarily unavailable")
+}
+
 func writeSuccess(writer http.ResponseWriter, request *http.Request, status int, data any) {
 	writeJSON(writer, status, contract.SuccessEnvelope[any]{Data: data, RequestID: requestIDFrom(request.Context())})
 }
@@ -961,7 +1046,7 @@ func writeJSON(writer http.ResponseWriter, status int, payload any) {
 
 func requestID() string {
 	bytes := make([]byte, 12)
-	if _, err := rand.Read(bytes); err != nil {
+	if _, err := io.ReadFull(rand.Reader, bytes); err != nil {
 		return "req_unavailable"
 	}
 	return "req_" + strings.TrimRight(base64.RawURLEncoding.EncodeToString(bytes), "=")
@@ -1081,7 +1166,7 @@ func (h *Handler) isTrustedProxy(address net.IP) bool {
 	return false
 }
 
-func (h *Handler) deviceID(writer http.ResponseWriter, request *http.Request) string {
+func (h *Handler) deviceID(request *http.Request) (string, *http.Cookie, error) {
 	const name = "__Host-henukit_device"
 	if cookie, err := request.Cookie(name); err == nil {
 		parts := strings.Split(cookie.Value, ".")
@@ -1091,17 +1176,16 @@ func (h *Handler) deviceID(writer http.ResponseWriter, request *http.Request) st
 			mac := hmac.New(sha256.New, h.deviceKey)
 			_, _ = mac.Write(identifier)
 			if decodeIDErr == nil && decodeSignatureErr == nil && len(identifier) == 16 && hmac.Equal(signature, mac.Sum(nil)) {
-				return parts[0]
+				return parts[0], nil, nil
 			}
 		}
 	}
 	identifier := make([]byte, 16)
-	if _, err := rand.Read(identifier); err != nil {
-		return "device-unavailable"
+	if _, err := io.ReadFull(rand.Reader, identifier); err != nil {
+		return "", nil, err
 	}
 	mac := hmac.New(sha256.New, h.deviceKey)
 	_, _ = mac.Write(identifier)
 	value := base64.RawURLEncoding.EncodeToString(identifier) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	http.SetCookie(writer, &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: 365 * 24 * 60 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	return base64.RawURLEncoding.EncodeToString(identifier)
+	return base64.RawURLEncoding.EncodeToString(identifier), &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: 365 * 24 * 60 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode}, nil
 }
