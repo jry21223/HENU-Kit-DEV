@@ -1,11 +1,13 @@
 version: 1
 repository:
-  current_name: final-review-platform
+  current_name: HENU-Kit-DEV
   target_name: HENUKitDev
   public_project_repository: HENU-Kit
   public_project_repository_policy: preserve
   default_branch: main
   unofficial_notice: 学生自主运营 · 非河南大学官方项目
+  historical_source_policy: git_history_only
+  public_project_snapshot_policy: removed_from_worktree
 
 modules:
   - id: portal
@@ -128,18 +130,6 @@ modules:
     current_path: packages/api-contracts
     owner: platform
     status: foundation
-
-  - id: public_project_repository_snapshot
-    kind: imported_reference
-    source_repository: jry21223/HENU-Kit
-    source_branch: main
-    source_commit: 85154e1e1eea25d212e4b8f0591a912c527587e8
-    current_path: archive/henukit-planning
-    owner: product
-    status: imported_reference
-    notes:
-      - 原公开 HENU-Kit 仓库继续保留原名和公开入口职责
-      - 此目录仅记录导入时快照，不替代公开仓库
 
 data_owners:
   platform_identity: platform_core
