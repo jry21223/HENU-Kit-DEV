@@ -1,0 +1,62 @@
+name: Pull Request Governance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  branch-name:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require a conventional branch name
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_REF" =~ ^(feature|fix)/[a-z0-9][a-z0-9-]*/hc-[0-9]+$ ]] || {
+            echo "Branch '$HEAD_REF' must match feature/<area>/hc-<issue> or fix/<area>/hc-<issue>." >&2
+            exit 1
+          }
+
+  independent-review:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require current-commit independent approvals
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" > reviews.json
+          python3 - "$PR_AUTHOR" "$HEAD_SHA" <<'PY'
+          import json
+          import sys
+
+          author, head_sha = sys.argv[1:]
+          pages = json.load(open("reviews.json", encoding="utf-8"))
+          reviews = [review for page in pages for review in page]
+          latest = {}
+          for review in sorted(reviews, key=lambda item: (item.get("submitted_at") or "", item.get("id") or 0)):
+              login = review.get("user", {}).get("login")
+              if login and review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                  latest[login] = review
+          approved = {
+              login for login, review in latest.items()
+              if review.get("state") == "APPROVED"
+              and review.get("commit_id") == head_sha
+              and login != author
+          }
+          if len(approved) < 2:
+              raise SystemExit(
+                  "The current commit requires at least two distinct non-author approvals."
+              )
+          PY
