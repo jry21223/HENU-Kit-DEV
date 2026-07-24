@@ -110,7 +110,12 @@ func (h Handler) CreateTask(ctx *gin.Context) {
 			status = http.StatusNotFound
 			code = response.CodeNotFound
 		}
-		response.Error(ctx, status, code, err.Error(), nil)
+		// Map known error strings to safe user-facing codes; default to generic message.
+		errCode := "task_creation_failed"
+		if _, ok := err.(errString); ok {
+			errCode = err.Error()
+		}
+		response.Error(ctx, status, code, errCode, nil)
 		return
 	}
 
@@ -197,7 +202,12 @@ func (h Handler) PublishDraft(ctx *gin.Context) {
 
 	questionDraft, err := parseQuestionDraft(draft.DraftContent)
 	if err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		// parseQuestionDraft returns safe errString values; map to a safe code.
+		errCode := "invalid_draft_content"
+		if _, ok := err.(errString); ok {
+			errCode = err.Error()
+		}
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, errCode, nil)
 		return
 	}
 

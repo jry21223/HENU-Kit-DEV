@@ -14,7 +14,8 @@ func main() {
 		addr = ":8085"
 	}
 
-	handler := httpapi.NewRouter()
+	handler, cleanup := httpapi.NewRouter()
+	defer cleanup()
 
 	log.Printf("portal-api listening on %s", addr)
 

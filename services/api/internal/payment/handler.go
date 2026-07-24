@@ -134,13 +134,13 @@ func (h Handler) WeChatNative(ctx *gin.Context) {
 
 	payCfg := normalizedWeChatConfig(h.cfg.WeChatPay)
 	if err := ValidateWeChatNativeConfig(h.cfg.Environment, payCfg); err != nil {
-		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, err.Error(), nil)
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, wechatConfigErrorCode(err), nil)
 		return
 	}
 	if payCfg.Mode == wechatModeLive {
 		result, err := createLiveNativePayment(ctx.Request.Context(), payCfg, order, coursePackage)
 		if err != nil {
-			response.Error(ctx, http.StatusBadGateway, response.CodeInternalServer, err.Error(), nil)
+			response.Error(ctx, http.StatusBadGateway, response.CodeInternalServer, "payment_provider_unavailable", nil)
 			return
 		}
 		if err := h.markOrderPaying(order.ID, result.CodeURL, result.ExpiresAt); err != nil {
@@ -220,12 +220,12 @@ func (h Handler) WeChatClose(ctx *gin.Context) {
 
 	payCfg := normalizedWeChatConfig(h.cfg.WeChatPay)
 	if err := ValidateWeChatNativeConfig(h.cfg.Environment, payCfg); err != nil {
-		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, err.Error(), nil)
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, wechatConfigErrorCode(err), nil)
 		return
 	}
 	if payCfg.Mode == wechatModeLive && order.Status == model.OrderPaying {
 		if err := closeLiveNativeOrder(ctx.Request.Context(), payCfg, order); err != nil {
-			response.Error(ctx, http.StatusBadGateway, response.CodeInternalServer, err.Error(), nil)
+			response.Error(ctx, http.StatusBadGateway, response.CodeInternalServer, "payment_provider_unavailable", nil)
 			return
 		}
 	}
@@ -249,7 +249,7 @@ func (h Handler) WeChatClose(ctx *gin.Context) {
 func (h Handler) WeChatNotify(ctx *gin.Context) {
 	payCfg := normalizedWeChatConfig(h.cfg.WeChatPay)
 	if err := ValidateWeChatNativeConfig(h.cfg.Environment, payCfg); err != nil {
-		wechatNotifyFailure(ctx, err.Error(), http.StatusBadRequest)
+		wechatNotifyFailure(ctx, wechatConfigErrorCode(err), http.StatusBadRequest)
 		return
 	}
 	if payCfg.Mode == wechatModeLive {
@@ -629,4 +629,18 @@ func wechatNotifyFailure(ctx *gin.Context, message string, status int) {
 		"code":    "FAIL",
 		"message": message,
 	})
+}
+
+// wechatConfigErrorCode maps ValidateWeChatNativeConfig errors to safe user-facing codes.
+func wechatConfigErrorCode(err error) string {
+	switch {
+	case errors.Is(err, ErrWeChatMockForbiddenProduction):
+		return "payment_config_invalid"
+	case errors.Is(err, ErrWeChatLiveConfigMissing):
+		return "payment_config_missing"
+	case errors.Is(err, ErrInvalidWeChatMode):
+		return "payment_config_invalid"
+	default:
+		return "payment_config_error"
+	}
 }

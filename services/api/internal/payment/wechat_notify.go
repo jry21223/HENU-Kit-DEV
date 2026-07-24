@@ -91,8 +91,27 @@ func (h Handler) handleLiveNotify(ctx *gin.Context, payCfg config.WeChatPayConfi
 	}
 	result, err := h.processLiveNotify(ctx, payCfg, body)
 	if err != nil {
-		wechatNotifyFailure(ctx, err.Error(), http.StatusBadRequest)
+		// Map known errors to safe codes; do not leak internal details.
+		wechatNotifyFailure(ctx, wechatLiveNotifyErrorCode(err), http.StatusBadRequest)
 		return
 	}
 	wechatNotifySuccess(ctx, result)
+}
+
+// wechatLiveNotifyErrorCode maps processLiveNotify errors to safe user-facing codes.
+func wechatLiveNotifyErrorCode(err error) string {
+	switch {
+	case errors.Is(err, ErrWeChatNotifyDecryptFailed):
+		return "notify_decrypt_failed"
+	case errors.Is(err, ErrWeChatNotifyInvalid):
+		return "notify_invalid"
+	case errors.Is(err, ErrWeChatNotifyAppMismatch):
+		return "notify_appid_mismatch"
+	case errors.Is(err, ErrWeChatNotifyMchMismatch):
+		return "notify_mchid_mismatch"
+	case errors.Is(err, ErrInvalidSignature):
+		return "notify_signature_invalid"
+	default:
+		return "notify_processing_failed"
+	}
 }

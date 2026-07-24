@@ -1,7 +1,8 @@
 package httpapi
 
 import (
-	"database/sql"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -19,7 +20,8 @@ import (
 
 // NewRouter builds the chi router with all Portal API routes.
 // Connects to real databases when env vars are set, falls back to mock data.
-func NewRouter() chi.Router {
+// Returns the router and a cleanup function that closes database connections.
+func NewRouter() (chi.Router, func()) {
 	r := chi.NewRouter()
 	r.Use(requestID)
 	r.Use(cors)
@@ -111,7 +113,18 @@ func NewRouter() chi.Router {
 		listCategories(w, r)
 	})
 
-	return r
+	cleanup := func() {
+		if quizcraftConn != nil {
+			quizcraftConn.Close()
+		}
+		if studyConn != nil {
+			studyConn.Close()
+		}
+		if portalConn != nil {
+			portalConn.Close()
+		}
+	}
+	return r, cleanup
 }
 
 // --- Data sources (nil = use mock) ---
@@ -138,7 +151,12 @@ func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Request-Id")
 		if id == "" {
-			id = "req-" + strings.ReplaceAll(r.URL.Path, "/", "-")
+			buf := make([]byte, 16)
+			if _, err := rand.Read(buf); err == nil {
+				id = "req-" + hex.EncodeToString(buf)
+			} else {
+				id = "req-fallback"
+			}
 		}
 		w.Header().Set("X-Request-Id", id)
 		next.ServeHTTP(w, r)
@@ -148,13 +166,19 @@ func requestID(next http.Handler) http.Handler {
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := os.Getenv("PORTAL_ORIGIN")
-		if origin == "" {
-			origin = "*"
+		if origin == "" || origin == "*" {
+			// Wildcard origin is incompatible with Allow-Credentials; use the request Origin as a safe default.
+			origin = r.Header.Get("Origin")
+			if origin == "" {
+				origin = "*"
+			}
 		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-Id")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		if origin != "*" {
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)
 			return
@@ -173,7 +197,8 @@ func listCourses(w http.ResponseWriter, r *http.Request, src librarySource) {
 	if src.studyDB != nil {
 		materials, err = src.studyDB.GetMaterials()
 		if err != nil {
-			writeJSON(w, 500, map[string]string{"error": "database_error", "detail": err.Error()})
+			log.Printf("ERROR: listCourses: %v", err)
+			writeJSON(w, 500, map[string]string{"error": "database_error"})
 			return
 		}
 	} else {
@@ -235,7 +260,6 @@ func listCourseMaterials(w http.ResponseWriter, r *http.Request, src librarySour
 	}
 	writeJSON(w, 200, map[string]any{"materials": filtered, "request_id": w.Header().Get("X-Request-Id")})
 }
-}
 
 func getMaterial(w http.ResponseWriter, r *http.Request, src librarySource) {
 	id := chi.URLParam(r, "id")
@@ -272,7 +296,8 @@ func listFoodPosts(w http.ResponseWriter, r *http.Request, src foodSource) {
 	if src.portalDB != nil {
 		posts, err = src.portalDB.GetPosts(campusFilter)
 		if err != nil {
-			writeJSON(w, 500, map[string]string{"error": "database_error", "detail": err.Error()})
+			log.Printf("ERROR: listFoodPosts: %v", err)
+			writeJSON(w, 500, map[string]string{"error": "database_error"})
 			return
 		}
 	} else {
@@ -365,7 +390,8 @@ func listSchools(w http.ResponseWriter, r *http.Request, src practiceSource) {
 	if src.quizcraftDB != nil {
 		schools, err := src.quizcraftDB.GetSchools()
 		if err != nil {
-			writeJSON(w, 500, map[string]string{"error": "database_error", "detail": err.Error()})
+			log.Printf("ERROR: listSchools: %v", err)
+			writeJSON(w, 500, map[string]string{"error": "database_error"})
 			return
 		}
 		writeJSON(w, 200, map[string]any{"schools": schools, "request_id": w.Header().Get("X-Request-Id")})
@@ -380,7 +406,8 @@ func getQuizList(w http.ResponseWriter, r *http.Request, src practiceSource) {
 	if src.quizcraftDB != nil {
 		questions, err := src.quizcraftDB.GetQuestions(id)
 		if err != nil {
-			writeJSON(w, 500, map[string]string{"error": "database_error", "detail": err.Error()})
+			log.Printf("ERROR: getQuizList: %v", err)
+			writeJSON(w, 500, map[string]string{"error": "database_error"})
 			return
 		}
 		// Find the list metadata from schools
@@ -461,7 +488,8 @@ func listCampusItems(w http.ResponseWriter, r *http.Request, src campusSource) {
 	if src.portalDB != nil {
 		items, err := src.portalDB.GetItems(typeFilter, categoryFilter, qFilter)
 		if err != nil {
-			writeJSON(w, 500, map[string]string{"error": "database_error", "detail": err.Error()})
+			log.Printf("ERROR: listCampusItems: %v", err)
+			writeJSON(w, 500, map[string]string{"error": "database_error"})
 			return
 		}
 		writeJSON(w, 200, map[string]any{"items": items, "request_id": w.Header().Get("X-Request-Id")})

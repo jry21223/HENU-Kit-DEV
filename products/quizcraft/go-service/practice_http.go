@@ -815,7 +815,7 @@ func (service *practiceHTTP) createSession(writer http.ResponseWriter, request *
 	var input createSessionRequest
 	raw, err := decodeBody(request, &input)
 	if err != nil {
-		writeError(writer, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(writer, http.StatusBadRequest, "invalid_request", "request body is not valid JSON")
 		return
 	}
 	if input.BankID == uuid.Nil || input.BankVersionID == uuid.Nil || !validPracticeMode(input.Mode) || input.Mode == "favorites" {

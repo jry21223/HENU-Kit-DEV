@@ -25,6 +25,9 @@ var (
 	ErrWeChatNativeRequestFailed = errors.New("wechat_native_request_failed")
 	ErrWeChatCloseRequestFailed  = errors.New("wechat_close_request_failed")
 	ErrWeChatResponseInvalid     = errors.New("wechat_response_invalid")
+
+	// Shared HTTP client for WeChat Pay API calls with connection pooling.
+	wechatHTTPClient = &http.Client{Timeout: 10 * time.Second}
 )
 
 type weChatNativeResult struct {
@@ -106,8 +109,7 @@ func createLiveNativePayment(ctx context.Context, payCfg config.WeChatPayConfig,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "final-review-platform/0.1 wechat-pay-native")
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := wechatHTTPClient.Do(req)
 	if err != nil {
 		return weChatNativeResult{}, err
 	}
@@ -174,8 +176,7 @@ func closeLiveNativeOrder(ctx context.Context, payCfg config.WeChatPayConfig, or
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "final-review-platform/0.1 wechat-pay-native")
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := wechatHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
