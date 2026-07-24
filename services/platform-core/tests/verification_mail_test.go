@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -366,7 +368,7 @@ func TestAccountCenterLoginPageCompletesBrowserSession(t *testing.T) {
 	}
 	loginBody, _ := io.ReadAll(login.Body)
 	login.Body.Close()
-	if login.StatusCode != http.StatusOK || !bytes.Contains(loginBody, []byte("HENU Kit 账号中心")) || !bytes.Contains(loginBody, []byte(`name="email"`)) {
+	if login.StatusCode != http.StatusOK || !bytes.Contains(loginBody, []byte("HENU Kit 账号中心")) || !bytes.Contains(loginBody, []byte("学生自主运营 · 非河南大学官方项目")) || !bytes.Contains(loginBody, []byte(`name="email"`)) {
 		t.Fatalf("invalid account login page = %d %s", login.StatusCode, loginBody)
 	}
 	accountURL, _ := url.Parse(server.URL)
@@ -457,6 +459,204 @@ func TestAccountCenterLoginPageCompletesBrowserSession(t *testing.T) {
 	if afterRevoke.StatusCode != http.StatusFound || !strings.HasPrefix(afterRevoke.Header.Get("Location"), "/login?return_to=") {
 		t.Fatalf("authorization after revocation = %d %q, want login redirect", afterRevoke.StatusCode, afterRevoke.Header.Get("Location"))
 	}
+}
+
+func TestAccountCenterLoginFailsClosedWhenRandomSourceUnavailable(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	var logs bytes.Buffer
+	server := newVerificationServerWithLogger(t, pool, redisClient, slog.New(slog.NewJSONHandler(&logs, nil)))
+	client := clientForDevice(server, "random-failure-browser")
+	primeHTTPConnection(t, server, client)
+
+	originalReader := rand.Reader
+	t.Cleanup(func() { rand.Reader = originalReader })
+	rand.Reader = failingRandomReader{}
+	response, err := client.Get(server.URL + "/login")
+	if err != nil {
+		t.Fatalf("open account login with failed random source: %v", err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("account login with failed random source = %d %s, want 503", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte(`"code":"RANDOM_SOURCE_UNAVAILABLE"`)) || bytes.Contains(body, []byte("random source failed")) {
+		t.Fatalf("random failure response was unstable or sensitive: %s", body)
+	}
+	if response.Header.Get("Set-Cookie") != "" || len(client.Jar.Cookies(mustURL(t, server.URL))) != 0 {
+		t.Fatal("random failure issued a browser cookie")
+	}
+	if !strings.Contains(logs.String(), "security_random_source_unavailable") || strings.Contains(logs.String(), "random source failed") || strings.Contains(logs.String(), testStudentEmail) {
+		t.Fatalf("random failure log was not structured and redacted: %s", logs.String())
+	}
+}
+
+func TestAccountCenterLoginFailsClosedWhenDeviceRandomSourceUnavailable(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	var logs bytes.Buffer
+	server := newVerificationServerWithLogger(t, pool, redisClient, slog.New(slog.NewJSONHandler(&logs, nil)))
+	client := clientForDevice(server, "random-failure-device")
+	primeHTTPConnection(t, server, client)
+
+	originalReader := rand.Reader
+	t.Cleanup(func() { rand.Reader = originalReader })
+	rand.Reader = &randomReadsThenFail{successfulReads: 2}
+	response, err := client.Get(server.URL + "/login")
+	if err != nil {
+		t.Fatalf("open account login with failed device random source: %v", err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	assertRandomFailureResponse(t, response, body, logs.String())
+	if response.Header.Get("Set-Cookie") != "" || len(client.Jar.Cookies(mustURL(t, server.URL))) != 0 {
+		t.Fatal("device random failure issued a browser cookie")
+	}
+}
+
+func TestAccountCenterLoginCodeRequestFailsClosedWhenIdempotencyRandomFails(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	var logs bytes.Buffer
+	server := newVerificationServerWithLogger(t, pool, redisClient, slog.New(slog.NewJSONHandler(&logs, nil)))
+	client := clientForDevice(server, "random-failure-request")
+	csrf := openLoginAndCSRF(t, server, client)
+	primeHTTPConnection(t, server, client)
+
+	originalReader := rand.Reader
+	t.Cleanup(func() { rand.Reader = originalReader })
+	rand.Reader = failingRandomReader{}
+	response, err := client.PostForm(server.URL+"/login/code", url.Values{
+		"csrf_token": {csrf}, "return_to": {"/"}, "email": {testStudentEmail},
+	})
+	if err != nil {
+		t.Fatalf("request login code with failed random source: %v", err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	assertRandomFailureResponse(t, response, body, logs.String())
+	if response.Header.Get("Set-Cookie") != "" {
+		t.Fatal("failed login code request issued a cookie")
+	}
+	var verificationCount, outboxCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*), (SELECT count(*) FROM mail_outbox) FROM verification_codes`).Scan(&verificationCount, &outboxCount); err != nil {
+		t.Fatalf("count failed login code side effects: %v", err)
+	}
+	if verificationCount != 0 || outboxCount != 0 {
+		t.Fatalf("failed login code request created verification=%d outbox=%d", verificationCount, outboxCount)
+	}
+}
+
+func TestAccountCenterLoginVerificationFailsClosedWhenIdempotencyRandomFails(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	var logs bytes.Buffer
+	server := newVerificationServerWithLogger(t, pool, redisClient, slog.New(slog.NewJSONHandler(&logs, nil)))
+	client := clientForDevice(server, "random-failure-verify")
+	csrf := openLoginAndCSRF(t, server, client)
+
+	requestCode, err := client.PostForm(server.URL+"/login/code", url.Values{
+		"csrf_token": {csrf}, "return_to": {"/"}, "email": {testStudentEmail},
+	})
+	if err != nil {
+		t.Fatalf("request login code: %v", err)
+	}
+	requestCode.Body.Close()
+	sender := &captureSender{messageID: "provider_random_failure_verify"}
+	worker, err := mailworker.New(store.New(pool), sender, "worker_random_failure_verify", testVerificationEncryptionKey, time.Minute, time.Second)
+	if err != nil {
+		t.Fatalf("create verification worker: %v", err)
+	}
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver verification code: outcome=%+v err=%v", outcome, err)
+	}
+	primeHTTPConnection(t, server, client)
+
+	originalReader := rand.Reader
+	t.Cleanup(func() { rand.Reader = originalReader })
+	rand.Reader = failingRandomReader{}
+	response, err := client.PostForm(server.URL+"/login/verify", url.Values{
+		"csrf_token": {csrf}, "return_to": {"/"}, "email": {testStudentEmail}, "code": {sender.lastMessage().Code},
+	})
+	if err != nil {
+		t.Fatalf("verify login code with failed random source: %v", err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	assertRandomFailureResponse(t, response, body, logs.String())
+	if response.Header.Get("Set-Cookie") != "" {
+		t.Fatal("failed login verification issued a cookie")
+	}
+	var usedCount, sessionCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE used_at IS NOT NULL), (SELECT count(*) FROM sessions) FROM verification_codes`).Scan(&usedCount, &sessionCount); err != nil {
+		t.Fatalf("count failed login verification side effects: %v", err)
+	}
+	if usedCount != 0 || sessionCount != 0 {
+		t.Fatalf("failed login verification consumed code=%d or created sessions=%d", usedCount, sessionCount)
+	}
+}
+
+func openLoginAndCSRF(t *testing.T, server *httptest.Server, client *http.Client) string {
+	t.Helper()
+	login, err := client.Get(server.URL + "/login")
+	if err != nil {
+		t.Fatalf("open account login: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, login.Body)
+	login.Body.Close()
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("open account login = %d, want 200", login.StatusCode)
+	}
+	for _, cookie := range client.Jar.Cookies(mustURL(t, server.URL)) {
+		if cookie.Name == "__Host-henukit_login_csrf" {
+			return cookie.Value
+		}
+	}
+	t.Fatal("account login did not set a CSRF cookie")
+	return ""
+}
+
+func primeHTTPConnection(t *testing.T, server *httptest.Server, client *http.Client) {
+	t.Helper()
+	response, err := client.Get(server.URL + "/health")
+	if err != nil {
+		t.Fatalf("prime account-center HTTP connection: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	response.Body.Close()
+}
+
+func assertRandomFailureResponse(t *testing.T, response *http.Response, body []byte, logs string) {
+	t.Helper()
+	if response.StatusCode != http.StatusServiceUnavailable || !bytes.Contains(body, []byte(`"code":"RANDOM_SOURCE_UNAVAILABLE"`)) || bytes.Contains(body, []byte("random source failed")) {
+		t.Fatalf("random failure response = %d %s", response.StatusCode, body)
+	}
+	if !strings.Contains(logs, "security_random_source_unavailable") || strings.Contains(logs, "random source failed") || strings.Contains(logs, testStudentEmail) {
+		t.Fatalf("random failure log was not structured and redacted: %s", logs)
+	}
+}
+
+type failingRandomReader struct{}
+
+func (failingRandomReader) Read([]byte) (int, error) {
+	return 0, errors.New("random source failed")
+}
+
+type randomReadsThenFail struct {
+	successfulReads int
+}
+
+func (r *randomReadsThenFail) Read(buffer []byte) (int, error) {
+	if r.successfulReads == 0 {
+		return 0, errors.New("random source failed")
+	}
+	r.successfulReads--
+	return len(buffer), nil
 }
 
 func TestInitialOperatorGrantUsesLeastPrivilegeScopesAndAudit(t *testing.T) {
@@ -988,11 +1188,15 @@ func (s *captureSender) lastMessage() mailworker.Message {
 }
 
 func newVerificationServer(t *testing.T, pool *pgxpool.Pool, redisClient *redis.Client) *httptest.Server {
+	return newVerificationServerWithLogger(t, pool, redisClient, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func newVerificationServerWithLogger(t *testing.T, pool *pgxpool.Pool, redisClient *redis.Client, logger *slog.Logger) *httptest.Server {
 	t.Helper()
 	handler, err := platformcore.New(platformcore.Config{
 		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
 		VerificationEncryptionKey: testVerificationEncryptionKey, StudentEmailDomains: []string{"henu.edu.cn"},
-		TrustedProxyCIDRs: []string{"127.0.0.0/8", "::1/128"},
+		TrustedProxyCIDRs: []string{"127.0.0.0/8", "::1/128"}, Logger: logger,
 	})
 	if err != nil {
 		t.Fatalf("create platform core: %v", err)
@@ -1000,6 +1204,15 @@ func newVerificationServer(t *testing.T, pool *pgxpool.Pool, redisClient *redis.
 	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
 	return server
+}
+
+func mustURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse URL %q: %v", raw, err)
+	}
+	return parsed
 }
 
 func requestVerificationCode(t *testing.T, server *httptest.Server, idempotencyKey string) *http.Response {

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"io"
 	"math/big"
 	"net/mail"
 	"strings"
@@ -32,6 +33,7 @@ var (
 	ErrCodeExpired     = errors.New("verification code expired")
 	ErrCodeAlreadyUsed = errors.New("verification code was already used")
 	ErrRateLimited     = errors.New("verification attempts are rate limited")
+	ErrRandomSource    = errors.New("verification random source unavailable")
 )
 
 type Coordinator interface {
@@ -138,18 +140,18 @@ func (s *Service) Request(ctx context.Context, input RequestInput) (Accepted, er
 	}
 	code, err := randomCode()
 	if err != nil {
-		return Accepted{}, err
+		return Accepted{}, ErrRandomSource
 	}
 	nonce := make([]byte, 16)
-	if _, err := rand.Read(nonce); err != nil {
-		return Accepted{}, err
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return Accepted{}, ErrRandomSource
 	}
 	codeHash := s.digest("code", nonce, []byte(code))
 	now := time.Now().UTC()
 	expiresAt := now.Add(s.codeTTL)
 	recipientCiphertext, payloadCiphertext, err := s.mailCodec.Encode(email, verificationmail.Payload{Code: code, Purpose: input.Purpose, ExpiresAt: expiresAt})
 	if err != nil {
-		return Accepted{}, err
+		return Accepted{}, ErrRandomSource
 	}
 	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -287,7 +289,7 @@ func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, erro
 			}
 			emailCiphertext, err := s.emailCodec.Seal([]byte(email))
 			if err != nil {
-				return Verified{}, err
+				return Verified{}, ErrRandomSource
 			}
 			if err := queries.CreateEmailIdentity(ctx, store.CreateEmailIdentityParams{UserID: created.ID, EmailLookupHash: emailHash, EmailCiphertext: emailCiphertext}); err != nil {
 				return Verified{}, err
@@ -302,8 +304,8 @@ func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, erro
 			result.EmailVerified, result.UserStatus, result.UserCreatedAt = identity.EmailVerified, identity.Status, identity.CreatedAt.Time
 		}
 		tokenBytes := make([]byte, 32)
-		if _, err := rand.Read(tokenBytes); err != nil {
-			return Verified{}, err
+		if _, err := io.ReadFull(rand.Reader, tokenBytes); err != nil {
+			return Verified{}, ErrRandomSource
 		}
 		result.SessionToken = base64.RawURLEncoding.EncodeToString(tokenBytes)
 		tokenHash := sha256.Sum256([]byte(result.SessionToken))
