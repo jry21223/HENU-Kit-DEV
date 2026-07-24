@@ -105,7 +105,7 @@ func (h Handler) CreateRule(ctx *gin.Context) {
 	code := strings.TrimSpace(*req.Code)
 	description := optionalTrim(req.Description)
 	if err := validateRuleInput(code, description); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safePointsError(err), nil)
 		return
 	}
 	enabled := true
@@ -155,7 +155,7 @@ func (h Handler) UpdateRule(ctx *gin.Context) {
 	if req.Code != nil {
 		code := strings.TrimSpace(*req.Code)
 		if err := validateRuleCode(code); err != nil {
-			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safePointsError(err), nil)
 			return
 		}
 		updates["code"] = code
@@ -238,4 +238,11 @@ type errString string
 
 func (e errString) Error() string {
 	return string(e)
+}
+
+func safePointsError(err error) string {
+	if es, ok := err.(errString); ok {
+		return string(es)
+	}
+	return "validation_failed"
 }

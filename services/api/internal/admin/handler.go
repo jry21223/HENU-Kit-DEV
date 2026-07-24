@@ -45,6 +45,13 @@ var (
 	errPackageReferenceNotFound  = errors.New("package_reference_not_found")
 	errPackageReferenceMismatch  = errors.New("package_reference_mismatch")
 	errPackageItemUnsupported    = errors.New("package_item_unsupported")
+	errPaymentIncidentNotOpen    = errors.New("payment_incident_not_open")
+	errUnsafeStorageKey          = errUnsafeStorageKey
+	errUnsupportedFileType       = errUnsupportedFileType
+	errFileNotFound              = errFileNotFound
+	errInvalidFile               = errInvalidFile
+	errInvalidFileContent        = errInvalidFileContent
+	errUnsafeFileName            = errUnsafeFileName
 )
 
 var allowedUploadExtensions = map[string]bool{
@@ -1074,7 +1081,7 @@ func (h Handler) ResolvePaymentIncident(ctx *gin.Context) {
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return errors.New("payment_incident_not_open")
+			return errPaymentIncidentNotOpen
 		}
 		return audit.Record(ctx, tx, "payment_incident."+status, "payment_incident", incident.ID, map[string]interface{}{
 			"orderId":       incident.OrderID,
@@ -1085,7 +1092,7 @@ func (h Handler) ResolvePaymentIncident(ctx *gin.Context) {
 		})
 	})
 	if err != nil {
-		if err.Error() == "payment_incident_not_open" {
+		if errors.Is(err, errPaymentIncidentNotOpen) {
 			response.Error(ctx, http.StatusConflict, response.CodeConflict, "payment_incident_not_open", nil)
 			return
 		}
@@ -3341,11 +3348,11 @@ func isGrantableMaterialAccess(accessLevel string) bool {
 func safeUploadFileName(header *multipart.FileHeader) (string, string, error) {
 	name := strings.TrimSpace(header.Filename)
 	if name == "" || strings.ContainsAny(name, `/\`) || name != filepath.Base(name) {
-		return "", "", errors.New("unsafe_file_name")
+		return "", "", errUnsafeFileName
 	}
 	ext := strings.ToLower(filepath.Ext(name))
 	if !allowedUploadExtensions[ext] {
-		return "", "", errors.New("unsupported_file_type")
+		return "", "", errUnsupportedFileType
 	}
 	return name, ext, nil
 }
@@ -3354,22 +3361,22 @@ func validateUploadContent(file multipart.File, ext string) error {
 	buffer := make([]byte, 512)
 	n, err := file.Read(buffer)
 	if err != nil && err != io.EOF {
-		return errors.New("invalid_file")
+		return errInvalidFile
 	}
 	content := buffer[:n]
 	if ext == ".pdf" && !bytes.HasPrefix(content, []byte("%PDF")) {
-		return errors.New("invalid_file_content")
+		return errInvalidFileContent
 	}
 	if ext == ".txt" || ext == ".md" {
 		if bytes.Contains(content, []byte{0}) {
-			return errors.New("invalid_file_content")
+			return errInvalidFileContent
 		}
 	}
 	if ext == ".docx" &&
 		!bytes.HasPrefix(content, []byte("PK\x03\x04")) &&
 		!bytes.HasPrefix(content, []byte("PK\x05\x06")) &&
 		!bytes.HasPrefix(content, []byte("PK\x07\x08")) {
-		return errors.New("invalid_file_content")
+		return errInvalidFileContent
 	}
 	return nil
 }
@@ -3377,21 +3384,21 @@ func validateUploadContent(file multipart.File, ext string) error {
 func (h Handler) validateMaterialStorageReference(storageKey string, displayName string) (string, int64, error) {
 	path, err := adminSafeStoragePath(h.uploadDir, storageKey)
 	if err != nil {
-		return "", 0, errors.New("unsafe_storage_key")
+		return "", 0, errUnsafeStorageKey
 	}
 	ext := strings.ToLower(filepath.Ext(storageKey))
 	if !allowedUploadExtensions[ext] {
-		return "", 0, errors.New("unsupported_file_type")
+		return "", 0, errUnsupportedFileType
 	}
 	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", 0, errors.New("file_not_found")
+			return "", 0, errFileNotFound
 		}
 		return "", 0, err
 	}
 	if info.IsDir() {
-		return "", 0, errors.New("file_not_found")
+		return "", 0, errFileNotFound
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -3406,10 +3413,10 @@ func (h Handler) validateMaterialStorageReference(storageKey string, displayName
 		fileName = filepath.Base(storageKey)
 	}
 	if fileName == "" || strings.ContainsAny(fileName, `/\`) || fileName != filepath.Base(fileName) {
-		return "", 0, errors.New("unsafe_file_name")
+		return "", 0, errUnsafeFileName
 	}
 	if strings.ToLower(filepath.Ext(fileName)) != ext {
-		return "", 0, errors.New("unsupported_file_type")
+		return "", 0, errUnsupportedFileType
 	}
 	return fileName, info.Size(), nil
 }
@@ -3427,12 +3434,13 @@ func writeMaterialFileValidationError(ctx *gin.Context, err error, fallback stri
 		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "material_not_found", nil)
 		return
 	}
-	switch err.Error() {
-	case "unsafe_storage_key", "unsupported_file_type", "file_not_found", "invalid_file", "invalid_file_content", "unsafe_file_name":
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
-	default:
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, fallback, nil)
+	for _, sentinel := range []error{errUnsafeStorageKey, errUnsupportedFileType, errFileNotFound, errInvalidFile, errInvalidFileContent, errUnsafeFileName} {
+		if errors.Is(err, sentinel) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, sentinel.Error(), nil)
+			return
+		}
 	}
+	response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, fallback, nil)
 }
 
 func hasUnsafePath(value string) bool {

@@ -180,8 +180,8 @@ func (h Handler) Refresh(ctx *gin.Context) {
 }
 
 func (h Handler) Logout(ctx *gin.Context) {
-	clearCookie(ctx, "access_token")
-	clearCookie(ctx, "refresh_token")
+	h.clearCookie(ctx, "access_token")
+	h.clearCookie(ctx, "refresh_token")
 	response.OK(ctx, gin.H{"ok": true})
 }
 
@@ -248,8 +248,8 @@ func (h Handler) issueSession(ctx *gin.Context, user model.User) {
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "token_issue_failed", nil)
 		return
 	}
-	setCookie(ctx, "access_token", accessToken, accessExpiresAt)
-	setCookie(ctx, "refresh_token", refreshToken, refreshExpiresAt)
+	h.setCookie(ctx, "access_token", accessToken, accessExpiresAt)
+	h.setCookie(ctx, "refresh_token", refreshToken, refreshExpiresAt)
 	response.OK(ctx, gin.H{
 		"user":        publicUser(user),
 		"tokenType":   "Bearer",
@@ -373,13 +373,17 @@ func publicUser(user model.User) gin.H {
 	}
 }
 
-func setCookie(ctx *gin.Context, name string, value string, expiresAt time.Time) {
-	maxAge := int(time.Until(expiresAt).Seconds())
-	ctx.SetSameSite(http.SameSiteLaxMode)
-	ctx.SetCookie(name, value, maxAge, "/", "", false, true)
+func (h Handler) cookieSecure() bool {
+	return strings.EqualFold(strings.TrimSpace(h.cfg.Environment), "production")
 }
 
-func clearCookie(ctx *gin.Context, name string) {
+func (h Handler) setCookie(ctx *gin.Context, name string, value string, expiresAt time.Time) {
+	maxAge := int(time.Until(expiresAt).Seconds())
 	ctx.SetSameSite(http.SameSiteLaxMode)
-	ctx.SetCookie(name, "", -1, "/", "", false, true)
+	ctx.SetCookie(name, value, maxAge, "/", "", h.cookieSecure(), true)
+}
+
+func (h Handler) clearCookie(ctx *gin.Context, name string) {
+	ctx.SetSameSite(http.SameSiteLaxMode)
+	ctx.SetCookie(name, "", -1, "/", "", h.cookieSecure(), true)
 }

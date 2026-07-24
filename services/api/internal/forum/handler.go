@@ -227,7 +227,7 @@ func (h Handler) ResubmitPost(ctx *gin.Context) {
 	title := strings.TrimSpace(req.Title)
 	content := strings.TrimSpace(req.Content)
 	if err := validatePostTextInput(title, content); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 
@@ -299,7 +299,7 @@ func (h Handler) ResubmitReply(ctx *gin.Context) {
 	}
 	content := strings.TrimSpace(req.Content)
 	if err := validateReplyInput(content); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 
@@ -365,7 +365,7 @@ func (h Handler) Create(ctx *gin.Context) {
 		postType = "normal"
 	}
 	if err := validatePostInput(boardID, title, content, postType, rewardPoints); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 	var board model.ForumBoard
@@ -419,7 +419,7 @@ func (h Handler) CreateReply(ctx *gin.Context) {
 	}
 	content := strings.TrimSpace(req.Content)
 	if err := validateReplyInput(content); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 	var post model.ForumPost

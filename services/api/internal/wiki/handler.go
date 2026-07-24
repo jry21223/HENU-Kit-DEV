@@ -222,7 +222,7 @@ func (h Handler) ResubmitEntry(ctx *gin.Context) {
 	summary := strings.TrimSpace(req.Summary)
 	courseID := strings.TrimSpace(req.CourseID)
 	if err := validateEntryInput(title, slug, content, summary); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 
@@ -301,7 +301,7 @@ func (h Handler) ResubmitProposal(ctx *gin.Context) {
 	content := strings.TrimSpace(req.Content)
 	summary := strings.TrimSpace(req.Summary)
 	if err := validateProposalInput(title, content, summary); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 
@@ -371,7 +371,7 @@ func (h Handler) Create(ctx *gin.Context) {
 	summary := strings.TrimSpace(req.Summary)
 	courseID := strings.TrimSpace(req.CourseID)
 	if err := validateEntryInput(title, slug, content, summary); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 	var courseIDPtr *string
@@ -431,7 +431,7 @@ func (h Handler) CreateProposal(ctx *gin.Context) {
 	content := strings.TrimSpace(req.Content)
 	summary := strings.TrimSpace(req.Summary)
 	if err := validateProposalInput(title, content, summary); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 	var entry model.WikiEntry
@@ -509,7 +509,7 @@ func (h Handler) CreateCreatorApplication(ctx *gin.Context) {
 	sampleTitle := strings.TrimSpace(req.SampleTitle)
 	sampleBody := strings.TrimSpace(req.SampleBody)
 	if err := validateCreatorApplicationInput(reason, sampleTitle, sampleBody); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 

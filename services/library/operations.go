@@ -42,11 +42,11 @@ func (h *service) command(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, err := legacyCommandRoute(input); err != nil {
-		writeError(w, r, http.StatusBadRequest, "INVALID_COMMAND", err.Error())
+		writeError(w, r, http.StatusBadRequest, "INVALID_COMMAND", "command is outside the Library boundary")
 		return
 	}
 	if _, err := filteredPayload(input.Kind, input.Payload); err != nil {
-		writeError(w, r, http.StatusBadRequest, "INVALID_COMMAND", err.Error())
+		writeError(w, r, http.StatusBadRequest, "INVALID_COMMAND", "invalid command payload")
 		return
 	}
 	if input.Kind != "course_create" && input.Kind != "material_create" {

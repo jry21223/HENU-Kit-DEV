@@ -216,7 +216,7 @@ func (h Handler) Redeem(ctx *gin.Context) {
 			"expiresAt":    membership.ExpiresAt,
 		})
 	}); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safeMemberError(err, "redeem_failed"), nil)
 		return
 	}
 
@@ -347,7 +347,7 @@ func (h Handler) Grant(ctx *gin.Context) {
 			"note":       note,
 		})
 	}); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safeMemberError(err, "grant_failed"), nil)
 		return
 	}
 	response.OK(ctx, gin.H{"membership": membership, "created": created})
@@ -394,7 +394,7 @@ func (h Handler) Revoke(ctx *gin.Context) {
 			"reason":     reason,
 		})
 	}); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safeMemberError(err, "revoke_failed"), nil)
 		return
 	}
 	response.OK(ctx, gin.H{"membership": membership})
@@ -535,4 +535,14 @@ type errString string
 
 func (e errString) Error() string {
 	return string(e)
+}
+
+// safeMemberError returns a safe user-facing error code.
+// If the error is an errString (domain error), its value is safe to return.
+// Otherwise, returns the generic fallback to avoid leaking internal details.
+func safeMemberError(err error, fallback string) string {
+	if es, ok := err.(errString); ok {
+		return string(es)
+	}
+	return fallback
 }

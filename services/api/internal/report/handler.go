@@ -55,7 +55,7 @@ func (h Handler) Create(ctx *gin.Context) {
 	reason := strings.TrimSpace(req.Reason)
 	description := strings.TrimSpace(req.Description)
 	if err := validateCreateReportInput(targetType, targetID, reason, description); err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "validation_failed", nil)
 		return
 	}
 	if err := h.ensureReportTargetVisible(targetType, targetID); err != nil {

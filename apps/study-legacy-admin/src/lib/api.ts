@@ -1,3 +1,4 @@
+// Dev-only fallback: production builds MUST set VITE_API_BASE_URL at build time.
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
 const tokenKey = "final-review-admin-token";
 

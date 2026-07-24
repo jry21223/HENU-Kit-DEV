@@ -3,6 +3,7 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -42,7 +43,8 @@ import (
 
 func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib.Client) *gin.Engine {
 	if err := config.ValidateHTTPConfig(cfg); err != nil {
-		panic(err)
+		slog.Error("startup: invalid HTTP config", "error", err)
+		os.Exit(1)
 	}
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -65,7 +67,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	leaderboardHandler := leaderboard.NewHandler(db)
 	tokenManager, err := auth.NewTokenManager(cfg)
 	if err != nil {
-		panic(err)
+		slog.Error("startup: failed to create token manager", "error", err)
+		os.Exit(1)
 	}
 	authHandler := auth.NewHandler(cfg, db, tokenManager)
 	authMiddleware := auth.NewMiddleware(db, tokenManager)
@@ -281,10 +284,6 @@ func NewRouter(cfg config.Config, log *slog.Logger, db *gorm.DB, cache *redislib
 	review.GET("/reports", reportHandler.AdminReports)
 	review.POST("/reports/:id/resolve", reportHandler.Resolve)
 	review.POST("/reports/:id/reject", reportHandler.Reject)
-
-	v1.GET("/protected-example", authMiddleware.RequireAuth(), authMiddleware.RequireNotFrozen(), func(ctx *gin.Context) {
-		response.OK(ctx, gin.H{"ok": true})
-	})
 
 	router.NoRoute(func(ctx *gin.Context) {
 		response.Error(ctx, http.StatusNotFound, response.CodeNotFound, "not_found", nil)

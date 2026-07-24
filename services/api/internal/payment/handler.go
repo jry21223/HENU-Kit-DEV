@@ -549,7 +549,9 @@ func (h Handler) recordPaymentIncident(input paymentIncidentInput) error {
 	if err := h.db.Create(&incident).Error; err != nil {
 		return err
 	}
-	_, _ = paymentincident.SendAlert(context.Background(), h.cfg.PaymentIncidentAlerts, h.cfg.Environment, paymentincident.EventOpened, incident)
+	alertCtx, alertCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer alertCancel()
+	_, _ = paymentincident.SendAlert(alertCtx, h.cfg.PaymentIncidentAlerts, h.cfg.Environment, paymentincident.EventOpened, incident)
 	return nil
 }
 

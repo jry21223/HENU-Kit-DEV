@@ -1044,7 +1044,11 @@ func (service *practiceHTTP) submitAnswer(writer http.ResponseWriter, request *h
 		return
 	}
 	writeRawJSON(writer, http.StatusOK, encoded)
-	go service.compareLegacy(context.Background(), sessionID, input.QuestionID, question.BankKey, question.SourceQuestionID, input.Answer, result)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		service.compareLegacy(ctx, sessionID, input.QuestionID, question.BankKey, question.SourceQuestionID, input.Answer, result)
+	}()
 }
 
 func (service *practiceHTTP) learningState(writer http.ResponseWriter, request *http.Request) {

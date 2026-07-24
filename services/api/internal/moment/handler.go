@@ -34,6 +34,22 @@ const (
 	mediaStatusAttached     = "attached"
 )
 
+var errImageAlreadyUsed = errors.New("image_already_used")
+
+// safeMomentError returns a safe user-facing error code for known domain errors.
+func safeMomentError(err error, fallback string) string {
+	if errors.Is(err, errImageAlreadyUsed) {
+		return "image_already_used"
+	}
+	// Known validation error strings from validateImages / safeMomentImageFileName / validateMomentImageContent.
+	switch err.Error() {
+	case "image_url_too_long", "invalid_image_url", "duplicate_image", "image_not_found",
+		"unsafe_file_name", "unsupported_image_type", "invalid_image_content":
+		return err.Error()
+	}
+	return fallback
+}
+
 type Handler struct {
 	db        *gorm.DB
 	uploadDir string
@@ -88,7 +104,7 @@ func (h Handler) List(ctx *gin.Context) {
 	currentUser, _ := auth.CurrentUser(ctx)
 	limit, err := parseLimit(ctx.Query("limit"), 50, 100)
 	if err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
 		return
 	}
 	var moments []model.Moment
@@ -139,7 +155,7 @@ func (h Handler) Create(ctx *gin.Context) {
 	}
 	imageAssets, images, err := h.validateImages(req.Images, user.ID)
 	if err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safeMomentError(err, "invalid_images"), nil)
 		return
 	}
 	moment := model.Moment{
@@ -161,13 +177,13 @@ func (h Handler) Create(ctx *gin.Context) {
 				return update.Error
 			}
 			if update.RowsAffected != 1 {
-				return errors.New("image_already_used")
+				return errImageAlreadyUsed
 			}
 		}
 		return nil
 	}); err != nil {
-		if err.Error() == "image_already_used" {
-			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		if errors.Is(err, errImageAlreadyUsed) {
+			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "image_already_used", nil)
 			return
 		}
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "create_failed", nil)
@@ -200,12 +216,12 @@ func (h Handler) UploadImage(ctx *gin.Context) {
 	}
 	originalName, ext, err := safeMomentImageFileName(header)
 	if err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safeMomentError(err, "invalid_image"), nil)
 		return
 	}
 	contentType, err := validateMomentImageContent(file, ext)
 	if err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safeMomentError(err, "invalid_image"), nil)
 		return
 	}
 

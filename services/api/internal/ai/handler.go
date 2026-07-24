@@ -258,12 +258,13 @@ func (h Handler) PublishDraft(ctx *gin.Context) {
 		})
 	})
 	if err != nil {
-		if err.Error() == "course_not_found" {
-			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "course_not_found", nil)
-			return
-		}
-		if err.Error() == "draft_already_published" {
-			response.Error(ctx, http.StatusConflict, response.CodeConflict, "draft_already_published", nil)
+		if es, ok := err.(errString); ok {
+			code := string(es)
+			status := http.StatusBadRequest
+			if code == "draft_already_published" {
+				status = http.StatusConflict
+			}
+			response.Error(ctx, status, response.CodeInternalServer, code, nil)
 			return
 		}
 		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "publish_failed", nil)

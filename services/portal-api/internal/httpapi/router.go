@@ -164,20 +164,16 @@ func requestID(next http.Handler) http.Handler {
 }
 
 func cors(next http.Handler) http.Handler {
+	allowed := parseAllowedOrigins()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := os.Getenv("PORTAL_ORIGIN")
-		if origin == "" || origin == "*" {
-			// Wildcard origin is incompatible with Allow-Credentials; use the request Origin as a safe default.
-			origin = r.Header.Get("Origin")
-			if origin == "" {
-				origin = "*"
-			}
-		}
+		requestOrigin := r.Header.Get("Origin")
+		origin := resolveOrigin(requestOrigin, allowed)
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-Id")
 		if origin != "*" {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)
@@ -185,6 +181,42 @@ func cors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// parseAllowedOrigins builds the CORS origin whitelist from environment variables.
+// PORTAL_ALLOWED_ORIGINS (comma-separated) takes precedence; PORTAL_ORIGIN is the legacy single-origin fallback.
+func parseAllowedOrigins() []string {
+	raw := os.Getenv("PORTAL_ALLOWED_ORIGINS")
+	if raw == "" {
+		raw = os.Getenv("PORTAL_ORIGIN")
+	}
+	if raw == "" || raw == "*" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		o := strings.TrimSpace(p)
+		if o != "" && o != "*" {
+			origins = append(origins, o)
+		}
+	}
+	return origins
+}
+
+// resolveOrigin picks the Access-Control-Allow-Origin value.
+// If the whitelist is empty, returns "*" (no credentials allowed).
+// If the request Origin is in the whitelist, reflects it back; otherwise returns the first allowed origin.
+func resolveOrigin(requestOrigin string, allowed []string) string {
+	if len(allowed) == 0 {
+		return "*"
+	}
+	for _, o := range allowed {
+		if strings.EqualFold(o, requestOrigin) {
+			return requestOrigin
+		}
+	}
+	return allowed[0]
 }
 
 // --- Library handlers ---

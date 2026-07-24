@@ -1,3 +1,4 @@
+// Dev-only fallback: production builds MUST set NEXT_PUBLIC_API_BASE_URL at build time.
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
 export type ApiEnvelope<T> = {

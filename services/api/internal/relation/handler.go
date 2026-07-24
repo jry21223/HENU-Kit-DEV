@@ -103,7 +103,7 @@ func (h Handler) Following(ctx *gin.Context) {
 	}
 	users, err := h.relatedUsers(ctx.Query("limit"), "user_id = ? AND type = ?", "target_id", user.ID, TypeFollow)
 	if err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safeRelationError(err), nil)
 		return
 	}
 	response.OK(ctx, gin.H{"users": users})
@@ -117,7 +117,7 @@ func (h Handler) Followers(ctx *gin.Context) {
 	}
 	users, err := h.relatedUsers(ctx.Query("limit"), "target_id = ? AND type = ?", "user_id", user.ID, TypeFollow)
 	if err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, safeRelationError(err), nil)
 		return
 	}
 	response.OK(ctx, gin.H{"users": users})
@@ -131,7 +131,7 @@ func (h Handler) Friends(ctx *gin.Context) {
 	}
 	limit, err := parseLimit(ctx.Query("limit"), 50, 200)
 	if err != nil {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, err.Error(), nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_limit", nil)
 		return
 	}
 	var relations []model.UserRelation
@@ -242,4 +242,16 @@ func parseLimit(value string, fallback int, max int) (int, error) {
 		return 0, errors.New("invalid_limit")
 	}
 	return limit, nil
+}
+
+// safeRelationError returns a safe user-facing error code.
+// Known validation errors are passed through; database errors are masked.
+func safeRelationError(err error) string {
+	msg := err.Error()
+	switch msg {
+	case "invalid_limit":
+		return msg
+	default:
+		return "query_failed"
+	}
 }
