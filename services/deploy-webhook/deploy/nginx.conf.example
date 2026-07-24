@@ -1,0 +1,23 @@
+# Define this in the http {} block when rate limiting is desired:
+# limit_req_zone $binary_remote_addr zone=github_webhook:10m rate=30r/m;
+
+location = /webhooks/github {
+    client_max_body_size 1m;
+    proxy_pass http://127.0.0.1:10087;
+    proxy_http_version 1.1;
+    proxy_request_buffering on;
+    proxy_buffering off;
+    proxy_connect_timeout 3s;
+    proxy_read_timeout 15s;
+    proxy_send_timeout 15s;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # limit_req zone=github_webhook burst=10 nodelay;
+}
+
+# Keep operational status loopback-only or protect it with your admin network.
+location = /webhooks/healthz {
+    proxy_pass http://127.0.0.1:10087/healthz;
+}

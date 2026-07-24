@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "run as root" >&2
+  exit 77
+fi
+sha="${1:-}"
+[[ "$sha" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || {
+  echo "usage: henukit-approve-release <full-sha>" >&2
+  exit 64
+}
+config_file="${HENUKIT_DEPLOY_CONFIG:-/etc/henukit-deploy/deploy.env}"
+[[ -f "$config_file" ]] || {
+  echo "missing deploy config: $config_file" >&2
+  exit 78
+}
+# shellcheck disable=SC1090
+source "$config_file"
+approval_dir="${HENUKIT_APPROVAL_DIR:-/etc/henukit-deploy/approved-shas}"
+mkdir -p "$approval_dir"
+chmod 0750 "$approval_dir"
+printf '%s\n' "$sha" > "$approval_dir/$sha"
+chown root:henukit-deploy "$approval_dir/$sha"
+chmod 0440 "$approval_dir/$sha"
+echo "approved release $sha"
+
+state_dir="${HENUKIT_DEPLOY_STATE_DIR:-/var/lib/henukit-deploy-webhook}"
+webhook_env="/etc/henukit-deploy/webhook.env"
+max_queue=100
+retention=720h
+if [[ -f "$webhook_env" ]]; then
+  # shellcheck disable=SC1090
+  source "$webhook_env"
+  max_queue="${HENUKIT_WEBHOOK_MAX_QUEUE:-100}"
+  retention="${HENUKIT_WEBHOOK_PROCESSED_RETENTION:-720h}"
+fi
+if id henukit-deploy >/dev/null 2>&1 && [[ -x /usr/local/bin/henukit-deploy-webhook ]]; then
+  if runuser -u henukit-deploy -- env \
+    HENUKIT_WEBHOOK_STATE_DIR="$state_dir" \
+    HENUKIT_WEBHOOK_MAX_QUEUE="$max_queue" \
+    HENUKIT_WEBHOOK_PROCESSED_RETENTION="$retention" \
+    /usr/local/bin/henukit-deploy-webhook retry "$sha"; then
+    systemctl start --no-block henukit-deploy-runner.service
+    echo "requeued the newest failed delivery for $sha"
+  else
+    echo "approval recorded; no matching failed delivery was requeued, so redeliver the GitHub event or push a newer commit" >&2
+  fi
+fi

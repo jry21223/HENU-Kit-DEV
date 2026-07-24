@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+phase="${1:?phase is required}"
+incoming_dir="${HENUKIT_STUDY_INCOMING_DIR:-/opt/final-review-study/incoming}"
+deploy_command="${HENUKIT_STUDY_DEPLOY_COMMAND:-/usr/local/bin/final-review-study-deploy}"
+artifact="$incoming_dir/final-review-study-${HENUKIT_RELEASE_SHA}.tar.gz"
+
+case "$phase" in
+  prepare)
+    cd "$HENUKIT_RELEASE_DIR"
+    command -v go >/dev/null
+    command -v pnpm >/dev/null
+    mkdir -p "$incoming_dir" .deploy/release/bin
+    pnpm install --frozen-lockfile
+    pnpm run test:ops
+    (cd services/api && go build -trimpath -ldflags='-s -w' -o ../../.deploy/release/bin/final-review-api ./cmd/server)
+    (cd services/worker && go build -trimpath -ldflags='-s -w' -o ../../.deploy/release/bin/final-review-worker ./cmd/worker)
+    pnpm run build:web
+    pnpm run build:study-legacy-admin
+    mkdir -p .deploy/release/web/apps/web/.next
+    cp -a apps/web/.next/standalone/. .deploy/release/web/
+    cp -a apps/web/.next/static .deploy/release/web/apps/web/.next/static
+    cp -a apps/web/public .deploy/release/web/apps/web/public
+    cp -a apps/study-legacy-admin/dist .deploy/release/admin
+    test -x .deploy/release/bin/final-review-api
+    test -x .deploy/release/bin/final-review-worker
+    test -f .deploy/release/web/apps/web/server.js
+    test -f .deploy/release/web/apps/web/public/deploy-probe.txt
+    test -f .deploy/release/admin/index.html
+    tar -C .deploy/release -czf "$artifact" .
+    ;;
+  activate)
+    test -x "$deploy_command"
+    sudo -n "$deploy_command" "$HENUKIT_RELEASE_SHA" "$artifact"
+    ;;
+  verify)
+    curl --fail --retry 5 --retry-all-errors --retry-delay 3 --max-time 20 \
+      "${HENUKIT_STUDY_READY_URL:-https://study.superhuazai.me/api/v1/readyz}"
+    curl --fail --retry 5 --retry-all-errors --retry-delay 3 --max-time 20 --output /dev/null \
+      "${HENUKIT_STUDY_WEB_URL:-https://study.superhuazai.me/}"
+    curl --fail --retry 5 --retry-all-errors --retry-delay 3 --max-time 20 --output /dev/null \
+      "${HENUKIT_STUDY_PROBE_URL:-https://study.superhuazai.me/deploy-probe.txt}"
+    ;;
+  rollback)
+    if [[ -n "${HENUKIT_STUDY_ROLLBACK_COMMAND:-}" && -n "${HENUKIT_PREVIOUS_RELEASE_SHA:-}" ]]; then
+      /usr/bin/bash -Eeuo pipefail -c "$HENUKIT_STUDY_ROLLBACK_COMMAND"
+    fi
+    ;;
+  *)
+    echo "unsupported hook phase: $phase" >&2
+    exit 64
+    ;;
+esac

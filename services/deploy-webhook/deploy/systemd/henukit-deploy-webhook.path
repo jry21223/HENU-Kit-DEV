@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch HENU Kit webhook deployment queue
+After=henukit-deploy-webhook.service
+
+[Path]
+PathExistsGlob=/var/lib/henukit-deploy-webhook/queue/*.json
+PathExists=/var/lib/henukit-deploy-webhook/running.json
+Unit=henukit-deploy-runner.service
+
+[Install]
+WantedBy=multi-user.target
