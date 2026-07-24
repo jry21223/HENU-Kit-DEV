@@ -25,3 +25,12 @@ test("production verification probes the homepage and a public asset", () => {
     /https:\/\/study\.superhuazai\.me\/deploy-probe\.txt/,
   );
 });
+
+test("push deployment is path-scoped and can be disabled after webhook cutover", () => {
+  assert.match(workflow, /paths:\s*[\s\S]*apps\/web\/\*\*/);
+  assert.match(workflow, /services\/api\/\*\*/);
+  assert.match(workflow, /if: vars\.HENUKIT_DEPLOY_MODE != 'webhook'/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /- \.github\/workflows\/deploy-study\.yml/);
+  assert.doesNotMatch(workflow, /- scripts\/ops\/\*\*/);
+});

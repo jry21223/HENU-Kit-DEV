@@ -3,6 +3,15 @@ name: Deploy study platform
 on:
   push:
     branches: [main]
+    paths:
+      - apps/web/**
+      - apps/study-legacy-admin/**
+      - services/api/**
+      - services/worker/**
+      - packages/design-tokens/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
   workflow_dispatch:
 
 permissions:
@@ -14,6 +23,11 @@ concurrency:
 
 jobs:
   deploy:
+    # Keep the existing SSH publisher as a break-glass fallback until the
+    # server-side webhook has passed Ping, controlled push, readiness, and
+    # rollback verification. Set repository variable HENUKIT_DEPLOY_MODE to
+    # "webhook" only after that cutover; this prevents double deployment.
+    if: vars.HENUKIT_DEPLOY_MODE != 'webhook'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: study-production

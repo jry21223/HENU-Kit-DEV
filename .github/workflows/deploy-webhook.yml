@@ -1,0 +1,90 @@
+name: Deploy webhook
+
+on:
+  pull_request:
+    paths:
+      - services/deploy-webhook/**
+      - docs/operations/github-webhook-deploy.md
+      - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
+      - docs/operations/README.md
+      - docs/operations/PRODUCTION_RELEASE_REPORT-2026-07-24.md
+      - henukit.modules.yaml
+      - .github/workflows/deploy-webhook.yml
+      - .github/workflows/deploy-study.yml
+      - scripts/ops/tests/deploy-study-workflow.test.mjs
+  push:
+    branches: [main]
+    paths:
+      - services/deploy-webhook/**
+      - docs/operations/github-webhook-deploy.md
+      - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
+      - docs/operations/README.md
+      - docs/operations/PRODUCTION_RELEASE_REPORT-2026-07-24.md
+      - henukit.modules.yaml
+      - .github/workflows/deploy-webhook.yml
+      - .github/workflows/deploy-study.yml
+      - scripts/ops/tests/deploy-study-workflow.test.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-webhook-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/deploy-webhook
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/deploy-webhook/go.mod
+          cache-dependency-path: services/deploy-webhook/go.mod
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Race tests
+        run: go test -race -count=1 ./...
+      - name: Build static receiver
+        run: CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/henukit-deploy-webhook ./cmd/server
+      - name: Vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
+  packaging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install packaging validators
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Validate Study workflow guard
+        run: node --test scripts/ops/tests/deploy-study-workflow.test.mjs
+      - name: Validate shell scripts
+        run: |
+          set -euo pipefail
+          shellcheck \
+            services/deploy-webhook/deploy/henukit-deploy \
+            services/deploy-webhook/deploy/henukit-approve-release \
+            services/deploy-webhook/deploy/install.sh \
+            services/deploy-webhook/deploy/hooks/10-command.example \
+            services/deploy-webhook/deploy/hooks/20-study.example
+          bash -n services/deploy-webhook/deploy/henukit-deploy
+          bash -n services/deploy-webhook/deploy/henukit-approve-release
+          bash -n services/deploy-webhook/deploy/install.sh
+          bash -n services/deploy-webhook/deploy/hooks/10-command.example
+          bash -n services/deploy-webhook/deploy/hooks/20-study.example
+      - name: Validate systemd units
+        run: |
+          sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook
+          systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
+      - name: Reject committed deployment secrets
+        run: |
+          set -euo pipefail
+          ! grep -R --line-number --fixed-strings 'BEGIN OPENSSH PRIVATE KEY' services/deploy-webhook
+          ! find services/deploy-webhook -type f \( -name 'webhook-secret' -o -name 'id_ed25519' \) -print -quit | grep .

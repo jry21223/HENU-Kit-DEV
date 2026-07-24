@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 027
+
+log() {
+  local level="$1"
+  local message="$2"
+  shift 2
+  printf 'level=%q message=%q' "$level" "$message"
+  while (( "$#" )); do
+    printf ' %q' "$1"
+    shift
+  done
+  printf '\n'
+}
+
+die() {
+  log error "$1"
+  exit "${2:-1}"
+}
+
+sha=""
+delivery=""
+repository=""
+ref=""
+while (( "$#" )); do
+  case "$1" in
+    --sha) sha="${2:-}"; shift 2 ;;
+    --delivery) delivery="${2:-}"; shift 2 ;;
+    --repository) repository="${2:-}"; shift 2 ;;
+    --ref) ref="${2:-}"; shift 2 ;;
+    *) die "unknown argument: $1" 64 ;;
+  esac
+done
+
+[[ "$sha" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || die "invalid target SHA" 64
+[[ "$delivery" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,127}$ ]] || die "invalid delivery ID" 64
+[[ "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "invalid repository" 64
+[[ "$ref" =~ ^refs/heads/[A-Za-z0-9._/-]+$ ]] || die "invalid ref" 64
+
+config_file="${HENUKIT_DEPLOY_CONFIG:-/etc/henukit-deploy/deploy.env}"
+[[ -f "$config_file" ]] || die "deploy config not found: $config_file" 78
+expected_config_owner="${HENUKIT_CONFIG_OWNER_UID:-0}"
+config_owner="$(stat -c '%u' "$config_file")"
+config_mode="$(stat -c '%a' "$config_file")"
+[[ "$config_owner" == "$expected_config_owner" ]] || die "deploy config has an unexpected owner" 78
+if (( (8#$config_mode & 8#022) != 0 )); then
+  die "deploy config must not be writable by group or other" 78
+fi
+# The configuration is deliberately a root-owned shell environment file.
+# shellcheck disable=SC1090
+source "$config_file"
+
+repo_dir="${HENUKIT_REPO_DIR:-/opt/henukit/repository}"
+releases_dir="${HENUKIT_RELEASES_DIR:-/opt/henukit/releases}"
+current_link="${HENUKIT_CURRENT_LINK:-/opt/henukit/current}"
+hook_dir="${HENUKIT_DEPLOY_HOOK_DIR:-/etc/henukit-deploy/hooks.d}"
+state_dir="${HENUKIT_DEPLOY_STATE_DIR:-/var/lib/henukit-deploy-webhook}"
+approval_dir="${HENUKIT_APPROVAL_DIR:-/etc/henukit-deploy/approved-shas}"
+remote="${HENUKIT_GIT_REMOTE:-origin}"
+branch="${HENUKIT_GIT_BRANCH:-main}"
+expected_remote_url="${HENUKIT_EXPECTED_REMOTE_URL:-}"
+allowed_repository="${HENUKIT_ALLOWED_REPOSITORY:-jry21223/HENU-Kit-DEV}"
+keep_releases="${HENUKIT_KEEP_RELEASES:-5}"
+approval_mode="${HENUKIT_REQUIRE_APPROVAL:-high-risk}"
+allow_first_auto="${HENUKIT_ALLOW_FIRST_AUTO_DEPLOY:-0}"
+lock_file="${HENUKIT_DEPLOY_LOCK_FILE:-/run/lock/henukit-deploy.lock}"
+
+[[ "$repository" == "$allowed_repository" ]] || die "repository is not allowed" 65
+[[ "$ref" == "refs/heads/$branch" ]] || die "ref is not allowed" 65
+[[ -n "$expected_remote_url" ]] || die "HENUKIT_EXPECTED_REMOTE_URL is required" 78
+[[ "$keep_releases" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_KEEP_RELEASES must be positive" 78
+case "$approval_mode" in always|high-risk|never) ;; *) die "invalid HENUKIT_REQUIRE_APPROVAL" 78 ;; esac
+
+mkdir -p "$releases_dir" "$state_dir" "$approval_dir" "$(dirname "$current_link")" "$(dirname "$lock_file")"
+exec 9>"$lock_file"
+flock 9
+
+[[ -d "$repo_dir/.git" ]] || die "repository checkout missing at $repo_dir; install a read-only deploy key and clone first" 78
+repo_owner="$(stat -c '%u' "$repo_dir")"
+[[ "$repo_owner" == "$(id -u)" ]] || die "repository checkout must be owned by the deploy user" 78
+actual_remote_url="$(git -C "$repo_dir" remote get-url "$remote")"
+[[ "$actual_remote_url" == "$expected_remote_url" ]] || die "repository remote URL does not match root-owned policy" 78
+
+git -C "$repo_dir" fetch --prune --no-tags "$remote" \
+  "+refs/heads/$branch:refs/remotes/$remote/$branch"
+remote_sha="$(git -C "$repo_dir" rev-parse "refs/remotes/$remote/$branch")"
+if [[ "$remote_sha" != "$sha" ]]; then
+  log info "stale delivery ignored" "delivery=$delivery" "requested_sha=$sha" "current_remote_sha=$remote_sha"
+  exit 0
+fi
+git -C "$repo_dir" cat-file -e "$sha^{commit}"
+
+previous_sha=""
+previous_release=""
+if [[ -f "$state_dir/deployed-sha" ]]; then
+  previous_sha="$(tr -d '\r\n' < "$state_dir/deployed-sha")"
+fi
+if [[ -L "$current_link" ]]; then
+  previous_release="$(readlink -f "$current_link")"
+fi
+if [[ "$previous_sha" == "$sha" && -n "$previous_release" ]]; then
+  log info "release already active" "sha=$sha" "delivery=$delivery"
+  exit 0
+fi
+
+release_dir="$releases_dir/$sha"
+if [[ ! -d "$release_dir" ]]; then
+  git -C "$repo_dir" worktree prune
+  git -C "$repo_dir" worktree add --detach "$release_dir" "$sha"
+else
+  existing_release_sha="$(git -C "$release_dir" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$existing_release_sha" == "$sha" ]] || die "existing release directory does not match target SHA" 78
+fi
+# A retry always starts from the exact committed tree; build outputs and any
+# abandoned files from a failed attempt are removed from this immutable release.
+git -C "$release_dir" reset --hard "$sha" >/dev/null
+git -C "$release_dir" clean -ffdqx
+printf '%s\n' "$sha" > "$release_dir/REVISION"
+chmod 0444 "$release_dir/REVISION"
+
+mapfile -t hooks < <(find "$hook_dir" -maxdepth 1 -type f -perm -u+x -print 2>/dev/null | LC_ALL=C sort)
+(( ${#hooks[@]} > 0 )) || die "no executable deployment hooks found in $hook_dir" 78
+expected_hook_owner="${HENUKIT_HOOK_OWNER_UID:-0}"
+for hook in "${hooks[@]}"; do
+  hook_owner="$(stat -c '%u' "$hook")"
+  hook_mode="$(stat -c '%a' "$hook")"
+  [[ "$hook_owner" == "$expected_hook_owner" ]] || die "deployment hook has an unexpected owner: $hook" 78
+  if (( (8#$hook_mode & 8#022) != 0 )); then
+    die "deployment hook must not be writable by group or other: $hook" 78
+  fi
+done
+
+requires_approval=0
+approval_reason=""
+if [[ "$approval_mode" == "always" ]]; then
+  requires_approval=1
+  approval_reason="policy_always"
+elif [[ "$approval_mode" == "high-risk" ]]; then
+  if [[ -z "$previous_sha" ]]; then
+    if [[ "$allow_first_auto" != "1" ]]; then
+      requires_approval=1
+      approval_reason="first_release"
+    fi
+  elif ! git -C "$repo_dir" cat-file -e "$previous_sha^{commit}" 2>/dev/null; then
+    requires_approval=1
+    approval_reason="previous_sha_unavailable"
+  else
+    while IFS= read -r changed_path; do
+      case "$changed_path" in
+        .github/*|infra/*|docker-compose*.yml|packages/api-contracts/*|*/migrations/*|services/deploy-webhook/*|services/platform-core/*|services/api/internal/auth/*|services/api/internal/payment*|products/quizcraft/go-service/scripts/switch-*|products/quizcraft/go-service/deploy/*)
+          requires_approval=1
+          approval_reason="high_risk_path:$changed_path"
+          break
+          ;;
+      esac
+    done < <(git -C "$repo_dir" diff --name-only "$previous_sha" "$sha")
+  fi
+fi
+
+approval_file="$approval_dir/$sha"
+if (( requires_approval )); then
+  approved=0
+  if [[ -f "$approval_file" ]]; then
+    approval_owner="$(stat -c '%u' "$approval_file")"
+    expected_approval_owner="${HENUKIT_APPROVAL_OWNER_UID:-0}"
+    approval_mode_bits="$(stat -c '%a' "$approval_file")"
+    approval_value="$(tr -d '\r\n' < "$approval_file")"
+    if [[ "$approval_owner" == "$expected_approval_owner" ]] && (( (8#$approval_mode_bits & 8#022) == 0 )) && [[ "$approval_value" == "$sha" ]]; then
+      approved=1
+    fi
+  fi
+  if (( ! approved )); then
+    printf '%s\n' "$sha" > "$state_dir/staged-sha"
+    log error "release staged but manual approval is required" "sha=$sha" "reason=$approval_reason" "approval_file=$approval_file"
+    exit 78
+  fi
+fi
+
+export HENUKIT_RELEASE_SHA="$sha"
+export HENUKIT_RELEASE_DIR="$release_dir"
+export HENUKIT_PREVIOUS_RELEASE_SHA="$previous_sha"
+export HENUKIT_PREVIOUS_RELEASE_DIR="$previous_release"
+export HENUKIT_DELIVERY_ID="$delivery"
+export HENUKIT_REPOSITORY="$repository"
+export HENUKIT_RELEASE_REF="$ref"
+export HENUKIT_DEPLOY_CONFIG="$config_file"
+
+run_phase() {
+  local phase="$1"
+  local hook
+  for hook in "${hooks[@]}"; do
+    log info "running deployment hook" "phase=$phase" "hook=$(basename "$hook")" "sha=$sha"
+    "$hook" "$phase"
+  done
+}
+
+rollback_hooks() {
+  local index hook
+  set +e
+  for (( index=${#hooks[@]}-1; index>=0; index-- )); do
+    hook="${hooks[$index]}"
+    log warn "running rollback hook" "hook=$(basename "$hook")" "sha=$sha" "previous_sha=$previous_sha"
+    "$hook" rollback
+  done
+  set -e
+}
+
+activated=0
+on_error() {
+  local status=$?
+  local line="${BASH_LINENO[0]:-unknown}"
+  log error "release failed" "sha=$sha" "delivery=$delivery" "line=$line" "exit=$status"
+  if (( activated )); then
+    rollback_hooks
+  fi
+  exit "$status"
+}
+trap on_error ERR
+
+run_phase prepare
+activated=1
+run_phase activate
+run_phase verify
+trap - ERR
+
+next_link="${current_link}.next"
+ln -sfn "$release_dir" "$next_link"
+mv -Tf "$next_link" "$current_link"
+printf '%s\n' "$sha" > "$state_dir/deployed-sha.tmp"
+mv -f "$state_dir/deployed-sha.tmp" "$state_dir/deployed-sha"
+rm -f "$state_dir/staged-sha"
+
+# Keep a bounded number of immutable worktrees. The active and immediately
+# previous releases are never removed in this pass.
+mapfile -t release_candidates < <(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | awk '{print $2}')
+kept=0
+for candidate in "${release_candidates[@]}"; do
+  if [[ "$candidate" == "$release_dir" || ( -n "$previous_release" && "$candidate" == "$previous_release" ) ]]; then
+    continue
+  fi
+  kept=$((kept + 1))
+  if (( kept >= keep_releases )); then
+    git -C "$repo_dir" worktree remove --force "$candidate" || true
+  fi
+done
+git -C "$repo_dir" worktree prune
+
+log info "release activated" "sha=$sha" "delivery=$delivery" "previous_sha=$previous_sha"

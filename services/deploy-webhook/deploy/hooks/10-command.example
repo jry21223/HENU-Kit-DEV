@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+phase="${1:?phase is required}"
+
+# These command strings come only from the root-owned deploy.env file. No HTTP
+# payload field is interpolated into the shell program; validated release data
+# is exposed through environment variables.
+case "$phase" in
+  prepare)
+    command="${HENUKIT_PREPARE_COMMAND:-}"
+    ;;
+  activate)
+    command="${HENUKIT_ACTIVATE_COMMAND:-}"
+    [[ -n "$command" ]] || {
+      echo "HENUKIT_ACTIVATE_COMMAND is required" >&2
+      exit 78
+    }
+    ;;
+  verify)
+    command="${HENUKIT_VERIFY_COMMAND:-}"
+    ;;
+  rollback)
+    command="${HENUKIT_ROLLBACK_COMMAND:-}"
+    ;;
+  *)
+    echo "unsupported hook phase: $phase" >&2
+    exit 64
+    ;;
+esac
+
+if [[ -n "$command" ]]; then
+  cd "$HENUKIT_RELEASE_DIR"
+  /usr/bin/bash -Eeuo pipefail -c "$command"
+fi

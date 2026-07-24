@@ -1,11 +1,12 @@
 # 生产发布总检查表
 
-> 生成日期：2026-07-24  
-> 清理前代码基线：`main@0ae8e9e50010adf192c6d26ca5d7b126bb285b88`  
-> 用途：作为 HENU Kit 全套服务上线前唯一的 Go/No-Go 汇总入口。  
-> 重要：GitHub Issue 因发布前清理被关闭，只表示任务已收敛到本检查表；**不表示验收条件已经完成，也不构成生产批准**。
+> 更新日期：2026-07-24
+> Webhook 开发前代码基线：`main@83c5b7c99fc4a333695e0d59e73c45bc5b9105a8`
+> Webhook 实施票：`#103`；候选分支：`feature/infra/hc-103`
+> 用途：作为 HENU Kit 全套服务上线前唯一的 Go/No-Go 汇总入口。
+> 重要：Issue 关闭、PR 合并、Webhook 收到 `2xx` 或 CI 成功，都**不表示生产发布已经完成**。没有绑定最终 Release SHA 的服务器、数据、恢复、浏览器、真实依赖与观察证据时，结论必须是 **NO-GO**。
 
-## 1. 本次仓库清理边界
+## 1. 仓库清理边界
 
 ### 已从默认分支工作树移除
 
@@ -24,25 +25,27 @@
 - 数据库备份、Migration 历史、生产 Runbook、审计和回滚证据。
 - Git 历史中的所有已删除文件。
 
-## 2. GitHub Issue 收敛说明
+## 2. GitHub Tracker 与实施证据
 
 ### 已有实现证据
 
 - `#77`：由已合并 PR `#83` 完成；包含 Session 凭据只存 Hash、24 小时清理路径、`henu.edu.cn` 固定边界、并发/重放测试和 Migration 证据。
 - `#87`：由已合并 PR `#92` 完成；登录安全随机源不可用时 Fail Closed，并补充正式非官方声明。
 
-### 仍是上线硬门禁，但不再分散维护为开放 Issue
+### 已收敛但仍是生产硬门禁
 
 - `#44 / #79 / #80 / #81`：QuizCraft 技术停写、最终对账、旧库只读、跨浏览器/移动端验证、全量切换及七天冷备。
 - `#45 / #88 / #89 / #90`：可信 Reviewer 身份、高风险 PR 隔离和最终累计发布复审。
 - `#93`：Portal 安全与绿色基线。
 - `#94–#101`：Portal 的 Library、Practice、Food、Campus、Notice 真实数据与契约迁移。
+- `#103`：安全的 GitHub Webhook 自动同步与精确 SHA 发布代理；代码完成后仍需服务器安装、HTTPS、Deploy Key、Hook、Ping/Push、回滚和观察证据。
 
-关闭这些 Issue 是发布前 Tracker 整理，不是“已完成”声明。下列对应检查未全部通过时必须判定 **NO-GO**。
+关闭历史 Issue 只是 Tracker 整理，不是“已完成”声明。下列对应检查未全部通过时必须判定 **NO-GO**。
 
 ## 3. 发布候选固定
 
-- [ ] 记录最终 `main` 完整 SHA：`______________________________`
+- [ ] 记录最终 `main` 完整 SHA：`________________________________________`
+- [ ] 记录最终 PR、Required Checks、独立 Developer/Tester Review 与人工批准证据。
 - [ ] 每个部署单元的 Artifact/Image 均绑定精确 SHA，不使用 `latest` 作为发布证据。
 - [ ] 记录 Portal、Console、Platform Core、Platform Worker、Study Web、Study Admin、Study API、Study Worker、Quiz Web、Quiz API/Go Service、Notice、Food、Library、Portal API、Portal Gateway 的实际部署版本。
 - [ ] 发布说明列出本次包含与不包含的模块、Migration、Feature Flag、切流顺序和回滚边界。
@@ -126,13 +129,39 @@
 
 - [ ] Staging 部署使用与生产相同的不可变 Artifact，并完成 Readiness、Contract、Smoke 和 E2E。
 - [ ] 生产变更经人工批准，按单一部署单元逐步执行。
-- [ ] Nginx、systemd/容器编排、环境变量、Secrets、Deploy Key、Webhook 和服务器 Remote 已核验。
+- [ ] Nginx、Systemd/容器编排、环境变量、Secrets、Deploy Key、Webhook 和服务器 Remote 已核验。
 - [ ] 发布前后记录 5xx、延迟、登录成功率、队列积压、数据库连接、邮件错误和关键业务成功率。
 - [ ] Readiness 失败或 5xx 超阈值立即停止放量并回滚对应部署单元。
 - [ ] 应用回滚不回滚向前兼容 Migration；数据库恢复只在明确 Runbook 条件下执行。
 - [ ] 生产 Smoke 与监控观察期结束后才允许标记发布完成。
 
-## 12. 最终审批记录
+## 12. GitHub Webhook 自动同步与发布检查
+
+### 代码和配置
+
+- [ ] `services/deploy-webhook` 的格式、Vet、Race Test、构建、漏洞扫描、ShellCheck、Systemd 校验和 Secret 扫描全部通过。
+- [ ] GitHub 官方 HMAC-SHA256 测试向量通过；错误签名、错误仓库、错误分支、非法 SHA、超大 Payload 均 fail closed。
+- [ ] 仅 `push` 到 `main` 入队；Ping 只验证连通性，Issue/PR/Review/Label 等事件不执行部署。
+- [ ] Receiver 只监听 loopback；公网只通过 HTTPS Nginx 暴露精确 Webhook 路径。
+- [ ] Receiver 与 Runner 分进程；HTTP 进程不执行部署命令，Runner 只调用固定绝对路径并以独立参数传递已验证元数据。
+- [ ] Webhook Secret、只读 Deploy Key、known_hosts、部署配置、批准文件和 Hooks 的 Owner/Mode 检查通过，仓库无私钥或当前 Secret。
+- [ ] 远端 URL、仓库、分支与 SHA 同时匹配 root-owned 策略；活动工作区不执行 `git pull`、stash 或请求控制的 shell。
+- [ ] 发布目录为精确 SHA 的不可变 Git worktree；重试前恢复到干净提交树。
+
+### 服务器实测
+
+- [ ] `henukit-deploy-webhook.service` 启动并通过 loopback `/healthz`、`/readyz`。
+- [ ] GitHub Webhook 已启用 SSL verification，Content type 为 `application/json`，只订阅 Push；Ping Delivery 为 2xx。
+- [ ] 受控 Push 在 30 秒内收到 `202`，持久队列由 Systemd 异步串行消费。
+- [ ] 重复成功 Delivery 不重复部署；失败 Delivery 在批准或 Redeliver 后可恢复；服务/主机重启可恢复 `running.json`。
+- [ ] 连续 Push 会忽略过期 SHA，只部署仍等于 `origin/main` 的最新精确 SHA。
+- [ ] 每个本次启用的部署单元均存在 root-owned `prepare / activate / verify / rollback` Hook，并完成失败注入与回滚演练。
+- [ ] 首次发布和高风险路径默认要求完整 SHA 人工批准；批准不能使用分支名、短 SHA 或 `latest`。
+- [ ] `/statusz`、`deployed-sha`、`/opt/henukit/current/REVISION`、各服务版本接口与实际运行 Artifact SHA 完全一致。
+- [ ] 服务器 Webhook 验证完成后才设置 `HENUKIT_DEPLOY_MODE=webhook`，确认没有与 GitHub Actions 双重部署；break-glass `workflow_dispatch` 可用。
+- [ ] Webhook 故障、GitHub 不可达、Deploy Key 失效、Hook 失败和 Nginx 故障均有可执行人工发布/回滚入口。
+
+## 13. 最终审批记录
 
 | 项目 | 负责人 | 证据位置 | 结论/时间 |
 |---|---|---|---|
@@ -142,23 +171,26 @@
 | Data/Migration Review |  |  |  |
 | Browser/Mobile Test |  |  |  |
 | Backup/Restore |  |  |  |
+| Webhook Live Activation |  |  |  |
 | Staging Acceptance |  |  |  |
 | Production Approval |  |  |  |
 | Post-deploy Observation |  |  |  |
 
-## 13. 停止条件
+## 14. 停止条件
 
 出现任一情况立即判定 **NO-GO**：
 
 - 上述必需检查存在未完成、无证据或与最终 Release SHA 不一致。
 - 仅有 CI 成功，没有实际部署、恢复、对账、浏览器或生产 Smoke 证据。
+- Webhook 代码已合并但服务器尚未安装，或只收到 Ping/202 而没有 Hook、运行 SHA、Readiness 与回滚证据。
+- 自动部署会绕过独立评审、生产人工批准、备份恢复、Migration 或 QuizCraft 写入承诺点。
 - 发现敏感信息泄漏、错误身份信任、伪成功/伪数据或无法验证的数据库写入。
 - 计划在同一窗口执行破坏性 Migration、仓库改名和 DNS/流量切换。
 - 活跃回滚单元、Migration、备份、生产数据或审计证据被当作“旧文件”删除。
 
-## 14. 历史内容恢复
+## 15. 历史内容恢复
 
-清理的源码和文档仍在 Git 历史中。需要取证或临时恢复时，从本次清理提交的父提交检出：
+清理的源码和文档仍在 Git 历史中。需要取证或临时恢复时，从清理提交的父提交检出：
 
 ```bash
 git checkout <cleanup-parent-sha> -- legacy/v1-next-prisma

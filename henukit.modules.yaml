@@ -119,6 +119,19 @@ modules:
     deploy_unit: platform-core-worker
     status: planned
 
+  - id: deploy_webhook
+    kind: deployment_service
+    current_path: services/deploy-webhook
+    target_path: services/deploy-webhook
+    owner: infra
+    deploy_unit: deploy-webhook
+    status: release_candidate
+    exposure: loopback_only
+    notes:
+      - GitHub push receiver and persistent deployment queue
+      - Deploys only an exact current origin/main SHA through root-owned hooks
+      - Does not replace production approval, Migration, backup, restore, or cutover gates
+
   - id: design_tokens
     kind: shared_package
     current_path: packages/design-tokens
