@@ -60,6 +60,11 @@ artifacts/
 /tmp/
 /temp/
 
+# Local course material library (PDFs, raw assets, operator workspace).
+# Never commit this tree; create it on disk with libraryctl when needed:
+#   node scripts/libraryctl/libraryctl.mjs init-root --root ./资料库
+资料库/
+
 # Local databases, dumps, and backups
 *.db
 *.sqlite
