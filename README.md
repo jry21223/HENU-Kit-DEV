@@ -8,13 +8,14 @@ HENU Kit 是由河南大学学生自主发起并维护的统一校园工具系�
 
 ## 文档入口
 
-- [`docs/README.md`](docs/README.md)：文档中心，区分当前规范、运行维护和历史归档。
+- [`docs/README.md`](docs/README.md)：文档中心，区分当前规范、运行维护和历史定位说明。
+- [`docs/operations/PRODUCTION_RELEASE_CHECKLIST.md`](docs/operations/PRODUCTION_RELEASE_CHECKLIST.md)：全套服务上线前唯一的 Go/No-Go 汇总检查表。
 - [`CONTEXT-MAP.md`](CONTEXT-MAP.md)：当前领域上下文、规范词汇及各实现上下文的归属。
 - [`docs/development/henukit-console-executable-spec.md`](docs/development/henukit-console-executable-spec.md)：HENUKit Console 与 QuizCraft 重构的当前执行规格。
 - [`docs/development/implementation-plan.md`](docs/development/implementation-plan.md)：面向 1–2 名开发、1–2 名测试的实施计划。
 - [`docs/development/go-no-go-checklist.md`](docs/development/go-no-go-checklist.md)：启动决策、第一周行动和停止条件。
 
-新开发者应从文档中心进入，不再直接使用散落的旧 V2 文档作为当前规范。
+新开发者应从文档中心进入，不再直接使用散落或已从工作树移除的旧 V1/V2 文档作为当前规范。
 
 ## 仓库分工
 
@@ -46,20 +47,20 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 
 ## 当前迁移状态
 
-本仓库当前仍包含原“一站式学习平台 V2”的全部代码：
+本仓库当前仍包含原“一站式学习平台 V2”的主要运行代码：
 
 - `apps/web`：Next.js 学习平台 Web，迁移期间收敛为资料库 Web。
 - `apps/study-legacy-admin`：物理隔离的旧 Study Vue 管理后台，保留原路由、行为、部署入口与回滚能力。
-- `apps/console`：独立 HENUKit Console；已交付无旧依赖的响应式六模块 Mock Overview，真实 Gateway、会话、授权与产品数据接入仍待后续任务完成。
+- `apps/console`：独立 HENUKit Console；已交付无旧依赖的响应式六模块 Mock Overview，真实 Gateway、会话、授权与产品数据接入仍待发布验收。
 - `services/api`：Go Gin/GORM API，当前同时包含账号、资料、刷题、社区、支付、AI 等能力。
 - `services/worker`：Go + Redis Streams Worker。
-- `legacy/v1-next-prisma`：V1 归档。
+- `legacy/v1-next-prisma`：旧 V1 可执行源码已从当前工作树移除，只保留定位说明；完整历史仍在 Git 中。
 
 Monorepo Foundation 新增或导入：
 
 - `apps/portal`：HENU Kit 主站入口。
-- `products/quizcraft`：从 `jry21223/quizcraft-cn` 导入的完整 QuizCraft 产品代码，第一阶段保持 FastAPI + React/Vite 原样运行。
-- `services/platform-core`：独立 Go Platform Core；已交付已有 Core Session 的 S256 授权码签发、单次服务端交换和短期 exchange Session，邮箱登录、角色/Scope 与会话管理仍待后续任务完成。
+- `products/quizcraft`：从 `jry21223/quizcraft-cn` 导入的完整 QuizCraft 产品代码，当前仍是运行与迁移事实，不能当作普通历史目录删除。
+- `services/platform-core`：独立 Go Platform Core；已交付已有 Core Session 的 S256 授权码签发、单次服务端交换和短期 exchange Session，并持续加固邮箱登录、角色/Scope 与会话管理。
 - `packages/design-tokens`：Kit 墨绿、纸白、Kit 麦金等跨前端框架设计变量。
 - `packages/api-contracts`：OpenAPI 3.1、错误码、事件 schema 和生成产物。
 
@@ -74,7 +75,7 @@ Monorepo Foundation 新增或导入：
 
 ## 迁移原则
 
-1. **不在第一步删除现有能力。** 先识别真实依赖、数据规模和线上使用情况，再决定保留、隐藏、冻结、迁移、替代或最终删除。
+1. **不把活跃兼容或回滚单元当成历史文件删除。** 先识别真实依赖、数据规模和线上使用情况，再决定保留、隐藏、冻结、迁移、替代或最终删除。
 2. **保持线上学习平台可回滚。** 目录移动、域名迁移、数据库变更和认证切换分别进行，不能绑成一次发布。
 3. **QuizCraft 逐接口迁移。** 第一阶段继续使用 FastAPI；新 Go 平台核心只接管公共能力。题库读取、作答、排行榜和题库工坊按契约测试、影子流量、双读/双算和功能开关逐批迁移。
 4. **数据 Owner 唯一。** 用户归平台核心，资料归资料库，题目和作答归 QuizCraft，业务模块不得直接读取平台核心数据库。
@@ -115,6 +116,7 @@ cd ../worker && go test ./...
 
 ## 生产安全
 
+- 上线前逐项完成 [`生产发布总检查表`](docs/operations/PRODUCTION_RELEASE_CHECKLIST.md)；关闭 Issue 或 CI 通过都不等于生产批准。
 - 不提交邮箱验证码、Token、Cookie、JWT 私钥、支付密钥、LLM Key 或真实课程资料。
 - 不允许业务模块直接连接平台核心数据库。
 - 不通过跨主域共享 Cookie 实现统一登录。
