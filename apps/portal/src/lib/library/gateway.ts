@@ -1,68 +1,135 @@
 /**
  * Library gateway adapter.
  *
- * 当 Portal Gateway 可用时，用 API 数据补充 mock 数据；
- * 不可用时完全回退到 mock。
- *
- * 页面组件通过 libraryStore 交互，不需要知道数据来源。
+ * Gateway/API 可用时加载真实 materials；
+ * mock 仅在 NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1 且非 require-gateway 时可用。
+ * 生产环境禁止静默回退 STATIC_MATERIALS。
  */
 
-import { hasGateway, fetchLibraryCourses } from "@/lib/api/client";
+import {
+  fetchLibraryCourses,
+  fetchLibraryMaterials,
+  hasGateway,
+  mockAllowed,
+  PortalApiError,
+} from "@/lib/api/client";
+import type { Material as ApiMaterial } from "@/lib/api/types";
 import {
   STATIC_MATERIALS,
   getMaterial,
   type Material,
 } from "./mock";
 
-/** 是否已从 Gateway 拉取过数据 */
 let gatewayLoaded = false;
-/** Gateway 返回的课程 ID 集合（用于标记可用性） */
 let availableIds = new Set<string>();
+let cachedMaterials: Material[] | null = null;
+let lastError: string | null = null;
 
-/**
- * 初始化：如果 Gateway 可用，拉取课程列表并记录可用 ID。
- * 在客户端首次订阅时调用。
- */
+function toMaterial(m: ApiMaterial): Material {
+  return {
+    id: m.id,
+    type: m.type,
+    subject: m.subject,
+    title: m.title,
+    author: m.author,
+    intro: m.intro,
+    toc: m.toc ?? [],
+    pages: m.pages ?? [],
+    price: m.price,
+    previewPages: m.previewPages,
+    rating: m.rating,
+    downloads: m.downloads,
+    favs: m.favs,
+  };
+}
+
+export function getLibraryGatewayError(): string | null {
+  return lastError;
+}
+
 export async function initGateway(): Promise<void> {
-  if (!hasGateway || gatewayLoaded) return;
-  try {
-    const resp = await fetchLibraryCourses();
-    if (resp) {
-      availableIds = new Set(resp.courses.map((c) => c.id));
+  if (gatewayLoaded) return;
+
+  if (!hasGateway) {
+    if (mockAllowed) {
+      cachedMaterials = STATIC_MATERIALS;
       gatewayLoaded = true;
+      lastError = null;
+      return;
     }
-  } catch {
-    // 静默失败，继续用 mock
+    lastError =
+      "Gateway 未配置。生产环境禁止 mock；请设置 NEXT_PUBLIC_PORTAL_GATEWAY_URL。";
+    return;
+  }
+
+  try {
+    // Prefer full materials list (portal-api); courses used as availability hint.
+    const [materialsResp, coursesResp] = await Promise.all([
+      fetchLibraryMaterials().catch((e) => {
+        throw e;
+      }),
+      fetchLibraryCourses().catch(() => null),
+    ]);
+
+    cachedMaterials = materialsResp.materials.map(toMaterial);
+    if (coursesResp) {
+      availableIds = new Set(coursesResp.courses.map((c) => c.id));
+    } else {
+      availableIds = new Set(cachedMaterials.map((m) => m.id));
+    }
+    gatewayLoaded = true;
+    lastError = null;
+  } catch (e) {
+    lastError =
+      e instanceof PortalApiError
+        ? e.message
+        : e instanceof Error
+          ? e.message
+          : "加载资料库失败";
+    // Never silent-fallback to STATIC_MATERIALS in production
+    if (mockAllowed) {
+      cachedMaterials = STATIC_MATERIALS;
+      gatewayLoaded = true;
+    } else {
+      cachedMaterials = null;
+      gatewayLoaded = false;
+    }
   }
 }
 
 /**
- * 获取资料列表（Gateway 模式下只返回 Gateway 确认可用的资料）。
+ * 获取资料列表。
+ * - gateway 已加载：API 数据
+ * - mock 允许：STATIC_MATERIALS
+ * - 否则空数组（页面应展示 error banner）
  */
 export function getMaterials(): Material[] {
-  if (hasGateway && gatewayLoaded && availableIds.size > 0) {
-    return STATIC_MATERIALS.filter((m) => availableIds.has(m.id));
-  }
-  return STATIC_MATERIALS;
+  if (cachedMaterials) return cachedMaterials;
+  if (mockAllowed) return STATIC_MATERIALS;
+  return [];
 }
 
-/**
- * 获取单个资料（始终从 mock 获取，因为 API 不返回完整内容）。
- */
 export function getMaterialOrFallback(id: string): Material | undefined {
-  return getMaterial(id);
+  if (cachedMaterials) {
+    return cachedMaterials.find((m) => m.id === id) ?? getMaterial(id);
+  }
+  if (mockAllowed) return getMaterial(id);
+  return cachedMaterials?.find((m) => m.id === id);
 }
 
-/**
- * Gateway 模式下的收藏操作。
- * 当前回退到本地 store；未来对接 Gateway 写接口。
- */
+export function isLibraryReady(): boolean {
+  return gatewayLoaded || mockAllowed;
+}
+
 export function toggleFavViaGateway(
   id: string,
   currentFavs: string[]
 ): string[] {
-  // TODO: 当 Gateway 收藏接口就绪时，改为 API 调用
   return currentFavs.includes(id)
     ? currentFavs.filter((f) => f !== id)
     : [...currentFavs, id];
+}
+
+export function getAvailableCourseIds(): Set<string> {
+  return availableIds;
 }

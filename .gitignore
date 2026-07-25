@@ -104,3 +104,4 @@ Desktop.ini
 !.vscode/settings.example.json
 *.swp
 *.swo
+.ace-tool/

@@ -4,8 +4,9 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
-import { authStore } from "@/lib/auth/store";
+import { hasGateway, redirectToLogin } from "@/lib/api/client";
 import { EMAIL_DEMO_CODE } from "@/lib/auth/mock";
+import { authStore, isMockAuthEnabled } from "@/lib/auth/store";
 import { useReveal } from "@/components/account/use-reveal";
 import CodeField from "@/components/account/code-field";
 import { cn } from "@/lib/cn";
@@ -47,9 +48,54 @@ function Field({
   );
 }
 
-/** 验证码行（共享组件见 components/account/code-field.tsx） */
+function GatewayLogin() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const next = params.get("next") || "/account";
+  const { user, ready } = useSyncExternalStore(
+    authStore.subscribe,
+    authStore.get,
+    authStore.getServer
+  );
+  useReveal();
 
-function LoginForm() {
+  useEffect(() => {
+    if (ready && user) router.replace(next);
+  }, [ready, user, next, router]);
+
+  return (
+    <main className="bg-blueprint flex min-h-svh items-center justify-center px-5 py-16">
+      <div data-enter className="w-full max-w-md border border-ink bg-paper p-8 md:p-10">
+        <div className="flex items-baseline justify-between">
+          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            <span className="text-accent">ACC-01</span>
+            <span className="mx-2">/</span>
+            AUTH
+          </p>
+          <Link href="/" className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent">
+            ← henukit
+          </Link>
+        </div>
+        <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">统一登录</h1>
+        <p className="mt-3 font-mono text-xs leading-6 tracking-wider text-ink/55">
+          生产环境使用 Portal Gateway OAuth，不再提供本地 mock 登录或演示验证码。
+        </p>
+        <button
+          type="button"
+          onClick={() => redirectToLogin(next)}
+          className="mt-8 w-full border border-ink bg-ink py-3.5 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+        >
+          前往统一认证 →
+        </button>
+        <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/40">
+          {hasGateway ? "Gateway 已配置" : "请配置 NEXT_PUBLIC_PORTAL_GATEWAY_URL"}
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function MockLoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next");
@@ -70,7 +116,6 @@ function LoginForm() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
 
-  // 已登录访问登录页 → 回控制台
   useEffect(() => {
     if (ready && user) router.replace(next || "/account");
   }, [ready, user, next, router]);
@@ -80,7 +125,7 @@ function LoginForm() {
     const needCode = tab === "register" || mode === "code";
     if (tab === "login" && mode === "password" && !name.trim()) errs.name = "请输入账号名";
     if (needCode && !EMAIL_RE.test(email)) errs.email = "邮箱格式不正确";
-    if (needCode && code !== EMAIL_DEMO_CODE) errs.code = "验证码不正确（演示码 427819）";
+    if (needCode && code !== EMAIL_DEMO_CODE) errs.code = "验证码不正确";
     if ((tab === "register" || mode === "password") && pwd.length < 6) errs.pwd = "密码至少 6 位";
     if (tab === "register") {
       if (!name.trim()) errs.name = "请输入账号名";
@@ -90,7 +135,6 @@ function LoginForm() {
     if (Object.keys(errs).length) return;
 
     setPending(true);
-    // mock 假延迟
     setTimeout(() => {
       if (tab === "register") authStore.register(name.trim(), email.trim());
       else authStore.login(mode === "code" ? email.split("@")[0] : name.trim());
@@ -105,7 +149,7 @@ function LoginForm() {
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
             <span className="text-accent">ACC-01</span>
             <span className="mx-2">/</span>
-            AUTH
+            AUTH · MOCK
           </p>
           <Link href="/" className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent">
             ← henukit
@@ -115,7 +159,6 @@ function LoginForm() {
           {tab === "login" ? "登录" : "注册"}
         </h1>
 
-        {/* 页签 */}
         <div className="mt-6 flex border border-line">
           {(["login", "register"] as const).map((t) => (
             <button
@@ -135,7 +178,6 @@ function LoginForm() {
           ))}
         </div>
 
-        {/* 登录形态切换 */}
         {tab === "login" && (
           <div className="mt-4 flex gap-2">
             {(["password", "code"] as const).map((m) => (
@@ -196,11 +238,16 @@ function LoginForm() {
           <Link href="/account/recover" className="hover:text-accent">
             忘记密码 →
           </Link>
-          <span>v1 预览 · 任意账号可登录</span>
+          <span>本地 mock · NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1</span>
         </div>
       </div>
     </main>
   );
+}
+
+function LoginForm() {
+  if (isMockAuthEnabled()) return <MockLoginForm />;
+  return <GatewayLogin />;
 }
 
 export default function LoginPage() {

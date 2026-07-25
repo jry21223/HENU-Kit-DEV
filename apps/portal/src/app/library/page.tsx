@@ -1,21 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSyncExternalStore } from "react";
+import {
+  formatPortalError,
+  fetchLibraryMaterials,
+  mockAllowed,
+} from "@/lib/api/client";
+import type { Material as ApiMaterial } from "@/lib/api/types";
 import {
   MATERIAL_TYPES,
   MaterialType,
   STATIC_MATERIALS,
   libraryStore,
+  type Material,
 } from "@/lib/library/mock";
+import {
+  getLibraryGatewayError,
+  getMaterials,
+  initGateway,
+} from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneBooks } from "@/components/site-hero/scenes";
 import { useReveal } from "@/components/account/use-reveal";
+import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
 
 const TYPE_KEYS = Object.keys(MATERIAL_TYPES) as MaterialType[];
-const SUBJECTS = Array.from(new Set(STATIC_MATERIALS.map((m) => m.subject)));
+
+function toMaterial(m: ApiMaterial): Material {
+  return {
+    id: m.id,
+    type: m.type,
+    subject: m.subject,
+    title: m.title,
+    author: m.author,
+    intro: m.intro,
+    toc: m.toc ?? [],
+    pages: m.pages ?? [],
+    price: m.price,
+    previewPages: m.previewPages,
+    rating: m.rating,
+    downloads: m.downloads,
+    favs: m.favs,
+  };
+}
+
+type LoadState = "loading" | "ready" | "error";
 
 export default function LibraryHomePage() {
   useSyncExternalStore(libraryStore.subscribe, libraryStore.get, libraryStore.getServer);
@@ -23,17 +55,70 @@ export default function LibraryHomePage() {
   const [type, setType] = useState<MaterialType | "all">("all");
   const [price, setPrice] = useState<"all" | "free" | "paid">("all");
   const [subject, setSubject] = useState("all");
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [error, setError] = useState<string | null>(null);
   useReveal();
 
-  const items = STATIC_MATERIALS.filter(
+  const load = useCallback(async () => {
+    setLoadState("loading");
+    setError(null);
+    try {
+      // Direct list endpoint first (portal-api materials).
+      const resp = await fetchLibraryMaterials();
+      setMaterials(resp.materials.map(toMaterial));
+      setLoadState("ready");
+      return;
+    } catch (e) {
+      // Fall through to gateway cache / mock (dev only).
+      try {
+        await initGateway();
+        const cached = getMaterials();
+        if (cached.length > 0) {
+          setMaterials(cached);
+          setLoadState("ready");
+          return;
+        }
+        if (mockAllowed) {
+          setMaterials(STATIC_MATERIALS);
+          setLoadState("ready");
+          return;
+        }
+        setMaterials([]);
+        setError(
+          getLibraryGatewayError() ||
+            formatPortalError(e) ||
+            "资料库接口不可用，生产环境已禁用 mock 回退。"
+        );
+        setLoadState("error");
+      } catch (e2) {
+        setMaterials([]);
+        setError(formatPortalError(e2));
+        setLoadState("error");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const subjects = useMemo(
+    () => Array.from(new Set(materials.map((m) => m.subject))),
+    [materials]
+  );
+
+  const items = materials.filter(
     (m) =>
       (type === "all" || m.type === type) &&
       (price === "all" || (price === "free" ? m.price === 0 : m.price > 0)) &&
       (subject === "all" || m.subject === subject) &&
-      (!query.trim() || m.title.includes(query.trim()) || m.subject.includes(query.trim()))
+      (!query.trim() ||
+        m.title.includes(query.trim()) ||
+        m.subject.includes(query.trim()))
   );
 
-  const totalDownloads = STATIC_MATERIALS.reduce((s, m) => s + m.downloads, 0);
+  const totalDownloads = materials.reduce((s, m) => s + m.downloads, 0);
 
   return (
     <main>
@@ -43,7 +128,7 @@ export default function LibraryHomePage() {
         title="资料库"
         slogan="学长笔记、往年试卷、模拟卷、学习路径、实验报告——免费的尽管拿，收费的先用积分试读。"
         counters={[
-          { label: "收录资料", value: STATIC_MATERIALS.length },
+          { label: "收录资料", value: materials.length },
           { label: "累计下载", value: totalDownloads },
         ]}
         fig="FIG.02 书脊 / SPINES"
@@ -51,6 +136,10 @@ export default function LibraryHomePage() {
       />
 
       <div className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+        {loadState === "error" && error && (
+          <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
+        )}
+
         {/* 搜索 + 筛选行 */}
         <div data-enter className="flex flex-wrap items-center gap-2">
           <input
@@ -93,7 +182,7 @@ export default function LibraryHomePage() {
             className="border border-line bg-paper px-3 py-1.5 font-mono text-xs text-ink/70 outline-none focus:border-ink"
           >
             <option value="all">全部科目</option>
-            {SUBJECTS.map((s) => (
+            {subjects.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
@@ -101,10 +190,12 @@ export default function LibraryHomePage() {
 
         {/* 书架网格 */}
         <div data-enter className="mt-8">
-          {items.length === 0 ? (
-            <p className="border border-dashed border-ink/30 px-5 py-16 text-center font-mono text-xs tracking-[0.3em] text-ink/40">
-              无匹配资料 / NO RESULT
-            </p>
+          {loadState === "loading" ? (
+            <LoadingBlock label="加载资料" />
+          ) : loadState === "error" ? (
+            <EmptyBlock label="接口不可用" />
+          ) : items.length === 0 ? (
+            <EmptyBlock label="无匹配资料" />
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {items.map((m) => (

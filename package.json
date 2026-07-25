@@ -5,7 +5,9 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev": "docker compose -f docker-compose.dev.yml up --build",
-    "build": "pnpm run build:web && pnpm run build:portal && pnpm run build:console && pnpm run build:quizcraft",
+    "dev:henukit": "docker compose -f docker-compose.henukit.yml --env-file .env.henukit up --build",
+    "build:henukit": "pnpm run build:portal && pnpm run build:console && pnpm run build:quizcraft",
+    "build": "pnpm run build:portal && pnpm run build:console && pnpm run build:quizcraft",
     "build:all": "pnpm run build && pnpm run build:study-legacy-admin",
     "build:web": "pnpm --filter @final-review/web run build",
     "build:portal": "pnpm --filter @henukit/portal run build",

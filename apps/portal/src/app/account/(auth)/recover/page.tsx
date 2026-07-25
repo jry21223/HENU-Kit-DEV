@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { gsap, FINE_MOTION } from "@/lib/gsap";
+import { EMAIL_DEMO_CODE } from "@/lib/auth/mock";
+import { isMockAuthEnabled } from "@/lib/auth/store";
+import { hasGateway, redirectToLogin } from "@/lib/api/client";
 import { cn } from "@/lib/cn";
 
-const DEMO_CODE = "427819";
 const STEPS = ["验证账号", "验证码", "新密码"];
 
 export default function RecoverPage() {
+  const mockAuth = isMockAuthEnabled();
   const [step, setStep] = useState(0);
   const [account, setAccount] = useState("");
   const [code, setCode] = useState("");
@@ -19,7 +22,6 @@ export default function RecoverPage() {
   const [done, setDone] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // 步骤切换：淡入 + y 位移
   useEffect(() => {
     const mm = gsap.matchMedia();
     mm.add(FINE_MOTION, () => {
@@ -34,12 +36,43 @@ export default function RecoverPage() {
     return () => mm.revert();
   }, [step, done]);
 
+  if (!mockAuth) {
+    return (
+      <main className="bg-blueprint flex min-h-svh items-center justify-center px-5 py-16">
+        <div className="w-full max-w-md border border-ink bg-paper p-8 md:p-10">
+          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            <span className="text-accent">ACC-02</span>
+            <span className="mx-2">/</span>
+            RECOVER
+          </p>
+          <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">找回密码</h1>
+          <p className="mt-3 font-mono text-xs leading-6 tracking-wider text-ink/55">
+            生产环境不提供本地演示找回流程。请通过统一认证重置账号，或联系管理员。
+          </p>
+          <button
+            type="button"
+            onClick={() => (hasGateway ? redirectToLogin("/account/login") : undefined)}
+            className="mt-8 w-full border border-ink bg-ink py-3.5 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+          >
+            前往统一认证 →
+          </button>
+          <Link
+            href="/account/login"
+            className="mt-4 inline-block font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent"
+          >
+            ← 返回登录
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   const nextStep = () => {
     setError("");
     if (step === 0) {
       if (!account.trim()) return setError("请输入账号名或绑定邮箱");
     } else if (step === 1) {
-      if (code !== DEMO_CODE) return setError("验证码不正确（演示码 427819）");
+      if (code !== EMAIL_DEMO_CODE) return setError("验证码不正确");
     } else if (step === 2) {
       if (pwd.length < 6) return setError("新密码至少 6 位");
       if (pwd2 !== pwd) return setError("两次输入的密码不一致");
@@ -59,7 +92,7 @@ export default function RecoverPage() {
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
             <span className="text-accent">ACC-02</span>
             <span className="mx-2">/</span>
-            RECOVER
+            RECOVER · MOCK
           </p>
           <Link href="/account/login" className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent">
             ← 返回登录
@@ -67,7 +100,6 @@ export default function RecoverPage() {
         </div>
         <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">找回密码</h1>
 
-        {/* 步骤条 */}
         <div className="mt-6 flex items-center gap-2">
           {STEPS.map((label, i) => (
             <div key={label} className="flex flex-1 items-center gap-2">
@@ -133,7 +165,7 @@ export default function RecoverPage() {
                     className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm tracking-[0.5em] outline-none placeholder:tracking-normal placeholder:text-ink/30 focus:border-ink"
                   />
                   <p className="mt-2 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/50">
-                    v1 预览不发送真实验证码，演示码：<span className="text-accent">{DEMO_CODE}</span>
+                    本地 mock 演示码：<span className="text-accent">{EMAIL_DEMO_CODE}</span>
                   </p>
                 </div>
               )}
