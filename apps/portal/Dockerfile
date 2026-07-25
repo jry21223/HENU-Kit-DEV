@@ -12,8 +12,13 @@ COPY products/quizcraft/web-app/package.json ./products/quizcraft/web-app/packag
 RUN pnpm install --frozen-lockfile --filter @henukit/portal...
 
 FROM pnpm AS builder
+# Prefer full gateway origin; BASE_URL keeps reverse-proxy path default.
+ARG NEXT_PUBLIC_PORTAL_GATEWAY_URL=
 ARG NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL=/api
+ARG NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1
+ENV NEXT_PUBLIC_PORTAL_GATEWAY_URL=$NEXT_PUBLIC_PORTAL_GATEWAY_URL
 ENV NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL=$NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL
+ENV NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=$NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/portal/node_modules ./apps/portal/node_modules
 COPY . .

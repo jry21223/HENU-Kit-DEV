@@ -26,9 +26,17 @@ export function allowMock(): boolean {
   return process.env.NEXT_PUBLIC_PORTAL_ALLOW_MOCK === "1";
 }
 
-/** Raw configured gateway URL (may be empty at build time). */
+/**
+ * Raw configured gateway URL (may be empty at build time).
+ * Accepts NEXT_PUBLIC_PORTAL_GATEWAY_URL (preferred) or
+ * NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL (Dockerfile / reverse-proxy path).
+ */
 export function gatewayUrlRaw(): string {
-  return (process.env.NEXT_PUBLIC_PORTAL_GATEWAY_URL || "").replace(/\/$/, "");
+  const raw =
+    process.env.NEXT_PUBLIC_PORTAL_GATEWAY_URL ||
+    process.env.NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL ||
+    "";
+  return raw.replace(/\/$/, "");
 }
 
 /**

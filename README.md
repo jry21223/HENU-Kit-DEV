@@ -28,14 +28,16 @@ HENU Kit 是由河南大学学生自主发起并维护的统一校园工具系�
 
 HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产品跳转体验。各子产品可以独立部署、使用不同技术栈，但必须遵守统一的产品边界和平台契约。
 
-- **主站**：`henukit.cn`，负责统一品牌、入口、导航、状态和公告。
-- **资料库**：当前为 `study.superhuazai.me`，后续可迁移到 `study.henukit.cn`；只负责课程、资料检索、预览、下载、投稿、审核和纠错。
-- **刷题**：当前独立 QuizCraft，后续可迁移到 `quiz.henukit.cn`；它是唯一刷题产品，负责题库、练习、作答、错题、进度、排行榜、反馈和题库工坊。
-- **校园生活**：美食榜单等轻量校园工具。
-- **运营控制台**：`apps/console`（HENUKit Console）是 **唯一** 生产运营 / 管理入口；通过 Console Gateway 聚合会话与各模块摘要。
-- **平台核心**：统一账户、邮件、通知、事件、用户统计、服务间认证和 API 契约，不作为首页一级入口。
+默认产品路径（`docker-compose.henukit.yml` / `pnpm run dev:henukit`）：
 
-**生产 admin 仅 Console。** `apps/study-legacy-admin` 已从产品入口与默认构建路径退役，仅保留紧急回滚；`pnpm run build` 不再包含它，需要时使用 `pnpm run build:study-legacy-admin` 或 `pnpm run build:all`。Study 专用发布见 `deploy-study.yml`；HENU Kit 产物构建见 `deploy-henukit.yml`。
+- **Portal 公共入口**（`apps/portal`）：主站公开面，统一品牌、导航与跨产品跳转；经 Portal Gateway 访问业务数据。
+- **Console 管理入口**（`apps/console`）：**唯一**运营/管理后台；经 Console Gateway 访问受权限保护的运营接口。
+- **QuizCraft 刷题**（`products/quizcraft`）：唯一刷题产品，题库、练习、作答、错题、进度、排行榜、反馈与题库工坊。
+- **Study API 资料库后端**（`services/api`）：课程/资料数据 owner，作为 library backend 保留；不再作为默认公开产品面的双入口。
+- **校园生活**：美食榜单等轻量校园工具（Portal 内模块）。
+- **平台核心**（`services/platform-core`）：统一账户、邮件、通知、事件、用户统计、服务间认证和 API 契约，不作为首页一级入口。
+
+**生产 admin 仅 Console。** `apps/study-legacy-admin` 已从产品入口与默认构建路径退役（`retired_keep_source`），仅保留紧急回滚；`pnpm run build` 不再包含它，需要时使用 `pnpm run build:study-legacy-admin` 或 `pnpm run build:all`。Study 专用发布见 `deploy-study.yml`；HENU Kit 全栈见 `docker-compose.henukit.yml`。
 
 资料库不再开发或展示第二套刷题流程。资料页中的“去刷题”只负责携带课程上下文跳转到 QuizCraft。
 

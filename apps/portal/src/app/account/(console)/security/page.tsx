@@ -128,8 +128,33 @@ export default function SecurityPage() {
               key={d.id}
               className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line py-4"
             >
-              <p className="font-mono text-sm">{d.name}</p>
-              <p className="font-mono text-[10px] tracking-wider text-ink/50">{d.meta}</p>
+              <div className="min-w-52">
+                <p className="text-sm font-medium">
+                  {d.name}
+                  {d.current && (
+                    <span className="ml-2 border border-ink px-1.5 py-0.5 font-mono text-[10px]">
+                      当前设备
+                    </span>
+                  )}
+                </p>
+                <p className="mt-1 font-mono text-[10px] text-ink/50">
+                  {d.place} · {d.ip}
+                </p>
+              </div>
+              <p className="font-mono text-xs text-ink/60">{d.active}</p>
+              <button
+                type="button"
+                disabled={d.current}
+                onClick={() => accountStore.removeDevice(d.id)}
+                className={cn(
+                  "ml-auto border px-4 py-1.5 font-mono text-xs tracking-widest transition-colors",
+                  d.current
+                    ? "cursor-not-allowed border-line text-ink/30"
+                    : "border-ink/40 hover:border-accent hover:text-accent"
+                )}
+              >
+                下线
+              </button>
             </div>
           ))}
         </div>

@@ -8,7 +8,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     CGO_ENABLED=0 /usr/local/go/bin/go build -trimpath -ldflags="-s -w" -o /out/portal-gateway ./cmd/server
 
 FROM mirror.gcr.io/library/alpine:3.22
-RUN addgroup -S portal && adduser -S -G portal portal
+RUN apk add --no-cache ca-certificates && addgroup -S portal && adduser -S -G portal portal
 COPY --from=build /out/portal-gateway /usr/local/bin/portal-gateway
 USER portal
 EXPOSE 8084
