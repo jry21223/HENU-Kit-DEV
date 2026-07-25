@@ -119,6 +119,48 @@ services:
     expose:
       - "8081"
 
+  # Mail delivery: outbox consumer + local SMTP bridge (Aliyun DirectMail etc.)
+  platform-smtp-provider:
+    build:
+      context: ./services/platform-core
+      dockerfile: Dockerfile.smtp-provider
+    environment:
+      PLATFORM_CORE_SMTP_ALLOW_DOCKER: "1"
+      PLATFORM_CORE_SMTP_PROVIDER_ADDRESS: ${PLATFORM_CORE_SMTP_PROVIDER_ADDRESS:-0.0.0.0:18081}
+      PLATFORM_CORE_SMTP_PROVIDER_ID: ${PLATFORM_CORE_SMTP_PROVIDER_ID:-aliyun-directmail}
+      PLATFORM_CORE_SMTP_LEDGER_DIR: /var/lib/henukit-smtp-provider
+      PLATFORM_CORE_MAIL_PROVIDER_TOKEN: ${PLATFORM_CORE_MAIL_PROVIDER_TOKEN:-replace-mail-provider-token-32chars-min!!}
+      PLATFORM_CORE_MAIL_PROVIDER_KEY_ID: ${PLATFORM_CORE_MAIL_PROVIDER_KEY_ID:-mail-provider-active}
+      # Fill after Aliyun DirectMail console setup (see docs/operations/aliyun-directmail-setup.md)
+      PLATFORM_CORE_SMTP_ADDRESS: ${PLATFORM_CORE_SMTP_ADDRESS:-smtpdm.aliyun.com:465}
+      PLATFORM_CORE_SMTP_USERNAME: ${PLATFORM_CORE_SMTP_USERNAME:-}
+      PLATFORM_CORE_SMTP_PASSWORD: ${PLATFORM_CORE_SMTP_PASSWORD:-}
+      PLATFORM_CORE_SMTP_FROM: ${PLATFORM_CORE_SMTP_FROM:-noreply@notify.superhuazai.me}
+    volumes:
+      - henukit_smtp_ledger:/var/lib/henukit-smtp-provider
+    # Do NOT publish 18081 to the host in production.
+    expose:
+      - "18081"
+    restart: unless-stopped
+
+  platform-mail-worker:
+    build:
+      context: ./services/platform-core
+      dockerfile: Dockerfile.worker
+    environment:
+      PLATFORM_CORE_DATABASE_URL: ${PLATFORM_CORE_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/platform?sslmode=disable}
+      PLATFORM_CORE_VERIFICATION_KEY: ${PLATFORM_CORE_VERIFICATION_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
+      PLATFORM_CORE_MAIL_PROVIDER_ENDPOINT: ${PLATFORM_CORE_MAIL_PROVIDER_ENDPOINT:-http://platform-smtp-provider:18081/internal/send}
+      PLATFORM_CORE_MAIL_PROVIDER_TOKEN: ${PLATFORM_CORE_MAIL_PROVIDER_TOKEN:-replace-mail-provider-token-32chars-min!!}
+      PLATFORM_CORE_MAIL_WORKER_ID: ${PLATFORM_CORE_MAIL_WORKER_ID:-platform-mail-worker-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      platform-smtp-provider:
+        condition: service_started
+    restart: unless-stopped
+
+
   portal-api:
     build:
       context: ./services/portal-api
@@ -305,3 +347,4 @@ services:
 volumes:
   henukit_postgres_data:
   henukit_redis_data:
+  henukit_smtp_ledger:
