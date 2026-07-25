@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// PortalDB reads from the portal_campus_* tables (MySQL or PostgreSQL).
+// PortalDB reads from the portal_campus_* tables.
 type PortalDB struct {
 	conn *sql.DB
 }
@@ -16,27 +16,34 @@ func NewPortalDB(conn *sql.DB) *PortalDB {
 	return &PortalDB{conn: conn}
 }
 
-// GetItems returns campus items with optional filters.
+// GetItems returns campus items with optional filters (PostgreSQL placeholders).
 func (db *PortalDB) GetItems(typeFilter, categoryFilter, qFilter string) ([]Item, error) {
 	query := `
-		SELECT id, type, category, title, desc, price, seller, credit,
+		SELECT id, type, category, title, "desc", price, seller, credit,
 		       deals_done, wants, place, deadline, status, time, images
 		FROM portal_campus_items
 		WHERE status != 'hidden'
 	`
 	var args []any
-
+	n := 0
 	if typeFilter != "" {
-		query += " AND type = ?"
+		n++
+		query += fmt.Sprintf(" AND type = $%d", n)
 		args = append(args, typeFilter)
 	}
 	if categoryFilter != "" {
-		query += " AND category = ?"
+		n++
+		query += fmt.Sprintf(" AND category = $%d", n)
 		args = append(args, categoryFilter)
 	}
 	if qFilter != "" {
-		query += " AND (title LIKE ? OR desc LIKE ?)"
-		args = append(args, "%"+qFilter+"%", "%"+qFilter+"%")
+		n++
+		a := n
+		n++
+		b := n
+		query += fmt.Sprintf(` AND (title ILIKE $%d OR "desc" ILIKE $%d)`, a, b)
+		like := "%" + qFilter + "%"
+		args = append(args, like, like)
 	}
 	query += " ORDER BY created_at DESC"
 
@@ -57,7 +64,7 @@ func (db *PortalDB) GetItems(typeFilter, categoryFilter, qFilter string) ([]Item
 		); err != nil {
 			return nil, fmt.Errorf("scan item: %w", err)
 		}
-		json.Unmarshal(imagesJSON, &it.Images)
+		_ = json.Unmarshal(imagesJSON, &it.Images)
 		items = append(items, it)
 	}
 	if items == nil {
@@ -71,9 +78,9 @@ func (db *PortalDB) GetItem(id string) (*Item, error) {
 	var it Item
 	var imagesJSON []byte
 	err := db.conn.QueryRow(`
-		SELECT id, type, category, title, desc, price, seller, credit,
+		SELECT id, type, category, title, "desc", price, seller, credit,
 		       deals_done, wants, place, deadline, status, time, images
-		FROM portal_campus_items WHERE id = ?
+		FROM portal_campus_items WHERE id = $1
 	`, id).Scan(
 		&it.ID, &it.Type, &it.Category, &it.Title, &it.Desc,
 		&it.Price, &it.Seller, &it.Credit, &it.DealsDone,
@@ -85,7 +92,7 @@ func (db *PortalDB) GetItem(id string) (*Item, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query item: %w", err)
 	}
-	json.Unmarshal(imagesJSON, &it.Images)
+	_ = json.Unmarshal(imagesJSON, &it.Images)
 	return &it, nil
 }
 
@@ -93,7 +100,7 @@ func (db *PortalDB) GetItem(id string) (*Item, error) {
 func (db *PortalDB) GetMessages(itemID string) ([]DealMessage, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, item_id, author, time, text
-		FROM portal_campus_messages WHERE item_id = ? ORDER BY created_at
+		FROM portal_campus_messages WHERE item_id = $1 ORDER BY created_at
 	`, itemID)
 	if err != nil {
 		return nil, fmt.Errorf("query messages: %w", err)

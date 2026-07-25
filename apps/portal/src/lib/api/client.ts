@@ -218,9 +218,18 @@ export async function fetchSession(): Promise<PortalSession | null> {
 }
 
 export function redirectToLogin(returnTo = "/") {
-  const base = resolveBaseUrl();
   if (typeof window === "undefined") return;
-  window.location.href = `${base}/api/v1/auth/login?return_to=${encodeURIComponent(returnTo)}`;
+  // Prefer same-origin absolute path so nginx can proxy /api → portal-gateway.
+  // resolveBaseUrl() may be "" (same-origin) or an absolute origin.
+  const base = (() => {
+    try {
+      return resolveBaseUrl();
+    } catch {
+      return "";
+    }
+  })();
+  const target = `${base}/api/v1/auth/login?return_to=${encodeURIComponent(returnTo)}`;
+  window.location.assign(target);
 }
 
 export async function logout(): Promise<void> {

@@ -23,11 +23,11 @@ func (db *PortalDB) GetPosts(campusFilter string) ([]Post, error) {
 		SELECT id, campus, title, excerpt, blocks, author, likes, stars, tags,
 		       shop_name, shop_lat, shop_lng, time, hidden, images
 		FROM portal_food_posts
-		WHERE hidden = 0
+		WHERE hidden = false
 	`
 	var args []any
 	if campusFilter != "" {
-		query += " AND campus = ?"
+		query += " AND campus = $1"
 		args = append(args, campusFilter)
 	}
 	query += " ORDER BY created_at DESC"
@@ -80,7 +80,7 @@ func (db *PortalDB) GetPost(id string) (*Post, error) {
 	err := db.conn.QueryRow(`
 		SELECT id, campus, title, excerpt, blocks, author, likes, stars, tags,
 		       shop_name, shop_lat, shop_lng, time, hidden, images
-		FROM portal_food_posts WHERE id = ?
+		FROM portal_food_posts WHERE id = $1
 	`, id).Scan(
 		&p.ID, &p.Campus, &p.Title, &p.Excerpt, &blocksJSON,
 		&p.Author, &p.Likes, &p.Stars, &tagsJSON,
@@ -110,11 +110,11 @@ func (db *PortalDB) GetVenues(campusFilter string) ([]Venue, error) {
 		       COALESCE(AVG(stars), 0) AS rating,
 		       COUNT(*) AS post_count
 		FROM portal_food_posts
-		WHERE hidden = 0 AND shop_name <> ''
+		WHERE hidden = false AND shop_name <> ''
 	`
 	var args []any
 	if campusFilter != "" {
-		query += " AND campus = ?"
+		query += " AND campus = $1"
 		args = append(args, campusFilter)
 	}
 	query += " GROUP BY shop_name, campus ORDER BY rating DESC, shop_name"
@@ -184,7 +184,7 @@ func venueTier(rating float64, postCount int) string {
 func (db *PortalDB) GetComments(postID string) ([]Comment, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, post_id, author, time, text
-		FROM portal_food_comments WHERE post_id = ? ORDER BY created_at
+		FROM portal_food_comments WHERE post_id = $1 ORDER BY created_at
 	`, postID)
 	if err != nil {
 		return nil, fmt.Errorf("query comments: %w", err)

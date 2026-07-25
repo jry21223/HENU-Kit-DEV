@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"net/url"
 	"strconv"
 	"strings"
@@ -35,6 +36,7 @@ import (
 )
 
 type Handler struct {
+	publicPathPrefix string
 	flow           *identity.Service
 	verification   *verification.Service
 	inbox          *operationsinbox.Service
@@ -50,7 +52,7 @@ type Handler struct {
 }
 
 func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
-	handler := &Handler{flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
+	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -129,7 +131,7 @@ func (h *Handler) revokeCurrentSession(writer http.ResponseWriter, request *http
 		h.writeFlowError(writer, request, err)
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode})
 	auditFrom(request.Context()).subjectUserID = maskSubject(userID)
 	writeSuccess(writer, request, http.StatusOK, map[string]bool{"revoked": true})
 }
@@ -527,7 +529,7 @@ var accountLoginTemplate = template.Must(template.New("account-login").Parse(`<!
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f7fb;color:#172033;font:16px/1.5 system-ui,sans-serif}.card{width:min(390px,calc(100% - 32px));box-sizing:border-box;background:#fff;border:1px solid #dfe5ef;border-radius:18px;padding:28px;box-shadow:0 14px 40px #27364d18}h1{margin:0 0 8px;font-size:24px}p{color:#5d687a}label{display:block;margin:20px 0 6px;font-weight:650}input{width:100%;box-sizing:border-box;border:1px solid #bdc7d6;border-radius:10px;padding:12px;font:inherit}button{width:100%;margin-top:18px;border:0;border-radius:10px;padding:12px;background:#2457d6;color:#fff;font:inherit;font-weight:700}.error{color:#b42318}.hint{font-size:13px}
 </style></head><body><main class="card"><h1>HENU Kit 账号中心</h1><p class="hint">学生自主运营 · 非河南大学官方项目</p>
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列，请查收学校邮箱。</p>{{else}}<p>使用河南大学邮箱登录。</p>{{end}}
-<form method="post" action="{{if .CodeRequested}}/login/verify{{else}}/login/code{{end}}">
+<form method="post" action="{{.PathPrefix}}{{if .CodeRequested}}/login/verify{{else}}/login/code{{end}}">
 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="return_to" value="{{.ReturnTo}}">
 <label for="email">学校邮箱</label><input id="email" name="email" type="email" value="{{.Email}}" autocomplete="email" required {{if .CodeRequested}}readonly{{end}}>
 {{if .CodeRequested}}<label for="code">6 位验证码</label><input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required autofocus>{{end}}
@@ -535,7 +537,7 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f7f
 </form><p class="hint">当前仅允许 henu.edu.cn 邮箱。会话绝对有效期为 15 天。</p></main></body></html>`))
 
 type accountLoginView struct {
-	CSRFToken, ReturnTo, Email, Error string
+	CSRFToken, ReturnTo, Email, Error, PathPrefix string
 	CodeRequested                     bool
 }
 
@@ -551,11 +553,11 @@ func (h *Handler) loginPage(writer http.ResponseWriter, request *http.Request) {
 		h.writeRandomSourceError(writer, request, "login_device")
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: csrfToken, Path: "/", MaxAge: 10 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(writer, &http.Cookie{Name: "henukit_login_csrf", Value: csrfToken, Path: "/", MaxAge: 10 * 60, HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode})
 	if deviceCookie != nil {
 		http.SetCookie(writer, deviceCookie)
 	}
-	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo})
+	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, PathPrefix: h.publicPathPrefix})
 }
 
 func (h *Handler) loginRequestCode(writer http.ResponseWriter, request *http.Request) {
@@ -585,14 +587,14 @@ func (h *Handler) loginRequestCode(writer http.ResponseWriter, request *http.Req
 		if deviceCookie != nil {
 			http.SetCookie(writer, deviceCookie)
 		}
-		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
+		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, PathPrefix: h.publicPathPrefix, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
 		return
 	}
 	if deviceCookie != nil {
 		http.SetCookie(writer, deviceCookie)
 	}
 	writer.Header().Set("X-Verification-Expires", accepted.ExpiresAt.Format(time.RFC3339))
-	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true})
+	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, PathPrefix: h.publicPathPrefix, CodeRequested: true})
 }
 
 func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Request) {
@@ -623,11 +625,11 @@ func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Requ
 		http.SetCookie(writer, deviceCookie)
 	}
 	if err != nil || verified.SessionToken == "" {
-		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true, Error: "验证码无效、已过期或登录暂不可用。"})
+		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, PathPrefix: h.publicPathPrefix, CodeRequested: true, Error: "验证码无效、已过期或登录暂不可用。"})
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt, MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt, MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(writer, &http.Cookie{Name: "henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode})
 	auditFrom(request.Context()).subjectUserID = maskSubject(verified.UserID)
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
@@ -639,7 +641,7 @@ func (h *Handler) parseLoginForm(writer http.ResponseWriter, request *http.Reque
 		return "", "", "", false
 	}
 	csrfToken := request.FormValue("csrf_token")
-	cookie, err := request.Cookie("__Host-henukit_login_csrf")
+	cookie, err := request.Cookie("henukit_login_csrf")
 	if err != nil || len(csrfToken) < 32 || !hmac.Equal([]byte(cookie.Value), []byte(csrfToken)) {
 		writeError(writer, request, http.StatusForbidden, "CSRF_REJECTED", "login form expired; reload and try again")
 		return "", "", "", false
@@ -659,7 +661,7 @@ func (h *Handler) renderLogin(writer http.ResponseWriter, request *http.Request,
 }
 
 func (h *Handler) redirectToLogin(writer http.ResponseWriter, request *http.Request) {
-	location := "/login?return_to=" + url.QueryEscape(request.URL.RequestURI())
+	location := h.publicPathPrefix + "/login?return_to=" + url.QueryEscape(request.URL.RequestURI())
 	writer.Header().Set("Cache-Control", "no-store")
 	http.Redirect(writer, request, location, http.StatusFound)
 }
@@ -760,7 +762,7 @@ func (h *Handler) verifyVerificationCode(writer http.ResponseWriter, request *ht
 	if verified.SessionToken != "" {
 		http.SetCookie(writer, &http.Cookie{
 			Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt,
-			MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+			MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode,
 		})
 	}
 	if verified.UserID != "" {
@@ -830,7 +832,8 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	callback, err := url.Parse(query.RedirectURI)
-	if err != nil || callback.Scheme != "https" || callback.Host == "" || callback.User != nil || callback.Fragment != "" {
+	localHTTP := err == nil && callback.Scheme == "http" && (callback.Hostname() == "localhost" || callback.Hostname() == "127.0.0.1")
+	if err != nil || callback.Host == "" || callback.User != nil || callback.Fragment != "" || (callback.Scheme != "https" && !localHTTP) {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
 		return
 	}
@@ -853,7 +856,7 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	}
 	http.SetCookie(writer, &http.Cookie{
 		Name: h.cookieName, Value: cookie.Value, Path: "/", Expires: authorization.SessionExpires,
-		MaxAge: max(1, int(time.Until(authorization.SessionExpires).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		MaxAge: max(1, int(time.Until(authorization.SessionExpires).Seconds())), HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode,
 	})
 	callbackQuery := callback.Query()
 	callbackQuery.Set("code", authorization.Code)
@@ -1187,5 +1190,5 @@ func (h *Handler) deviceID(request *http.Request) (string, *http.Cookie, error) 
 	mac := hmac.New(sha256.New, h.deviceKey)
 	_, _ = mac.Write(identifier)
 	value := base64.RawURLEncoding.EncodeToString(identifier) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	return base64.RawURLEncoding.EncodeToString(identifier), &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: 365 * 24 * 60 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode}, nil
+	return base64.RawURLEncoding.EncodeToString(identifier), &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: 365 * 24 * 60 * 60, HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode}, nil
 }

@@ -4,258 +4,293 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
-import { hasGateway, redirectToLogin } from "@/lib/api/client";
-import { EMAIL_DEMO_CODE } from "@/lib/auth/mock";
-import { authStore, isMockAuthEnabled } from "@/lib/auth/store";
-import { useReveal } from "@/components/account/use-reveal";
-import CodeField from "@/components/account/code-field";
+import { AuthShell } from "@/components/account/auth-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AccountCenterError,
+  bootstrapAccountLogin,
+  portalOAuthStartUrl,
+  requestLoginCode,
+  verifyLoginCode,
+} from "@/lib/auth/account-center";
+import { authStore } from "@/lib/auth/store";
 import { cn } from "@/lib/cn";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = /^[^\s@]+@henu\.edu\.cn$/i;
 
-function Field({
-  label,
-  type = "text",
-  value,
-  onChange,
-  error,
-  placeholder,
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="mt-1 font-mono text-[10px] text-accent">{message}</p>;
+}
+
+function EmailCodeAuth({
+  mode,
+  nextPath,
 }: {
-  label: string;
-  type?: string;
-  value: string;
-  onChange: (v: string) => void;
-  error?: string;
-  placeholder?: string;
+  mode: "login" | "register";
+  nextPath: string;
 }) {
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState<"email" | "code">("email");
+  const [csrf, setCsrf] = useState("");
+  const [oauthReturnTo, setOauthReturnTo] = useState(() =>
+    portalOAuthStartUrl(nextPath)
+  );
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [cd, setCd] = useState(0);
+
+  useEffect(() => {
+    if (cd <= 0) return;
+    const t = window.setTimeout(() => setCd((c) => c - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [cd]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const returnTo = portalOAuthStartUrl(nextPath);
+    setOauthReturnTo(returnTo);
+    bootstrapAccountLogin(returnTo)
+      .then((b) => {
+        if (!cancelled) setCsrf(b.csrfToken);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [nextPath]);
+
+  const ensureCsrf = async () => {
+    if (csrf) return csrf;
+    const b = await bootstrapAccountLogin(oauthReturnTo);
+    setCsrf(b.csrfToken);
+    return b.csrfToken;
+  };
+
+  const onSend = async () => {
+    setError("");
+    setInfo("");
+    const normalized = email.trim().toLowerCase();
+    if (!EMAIL_RE.test(normalized)) {
+      setError("请使用 @henu.edu.cn 学校邮箱");
+      return;
+    }
+    setPending(true);
+    try {
+      const token = await ensureCsrf();
+      const result = await requestLoginCode({
+        csrfToken: token,
+        email: normalized,
+        returnTo: oauthReturnTo,
+      });
+      setCsrf(result.csrfToken);
+      setStep("code");
+      setCd(60);
+      setInfo(
+        mode === "register"
+          ? "验证码已发送。首次验证将自动创建账号。"
+          : "验证码已进入发送队列，请查收学校邮箱。"
+      );
+    } catch (e) {
+      setError(
+        e instanceof AccountCenterError ? e.message : "发送失败，请稍后重试"
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const onVerify = async () => {
+    setError("");
+    setInfo("");
+    if (!/^\d{6}$/.test(code.trim())) {
+      setError("请输入 6 位数字验证码");
+      return;
+    }
+    setPending(true);
+    try {
+      const token = await ensureCsrf();
+      const { redirectedTo } = await verifyLoginCode({
+        csrfToken: token,
+        email: email.trim().toLowerCase(),
+        code: code.trim(),
+        returnTo: oauthReturnTo,
+      });
+      const target =
+        redirectedTo && redirectedTo.startsWith("/")
+          ? redirectedTo
+          : oauthReturnTo;
+      window.location.assign(target);
+    } catch (e) {
+      setError(
+        e instanceof AccountCenterError ? e.message : "验证失败，请重试"
+      );
+      setPending(false);
+    }
+  };
+
   return (
-    <div>
-      <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={cn(
-          "w-full border-b bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/30",
-          error ? "border-accent" : "border-ink/30 focus:border-ink"
-        )}
-      />
-      {error && <p className="mt-1 font-mono text-[10px] text-accent">{error}</p>}
+    <div className="space-y-5">
+      <p className="font-mono text-xs leading-6 tracking-wider text-ink/55">
+        {mode === "register"
+          ? "使用河南大学邮箱验证码完成注册并登录。无密码，首次验证即开通账号。"
+          : "使用河南大学邮箱验证码登录。无密码，验证码单次有效。"}
+      </p>
+
+      <div>
+        <Label htmlFor="auth-email">学校邮箱</Label>
+        <Input
+          id="auth-email"
+          type="email"
+          autoComplete="email"
+          placeholder="name@henu.edu.cn"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </div>
+
+      {step === "code" && (
+        <div>
+          <Label htmlFor="auth-code">6 位验证码</Label>
+          <div className="flex items-end gap-3">
+            <Input
+              id="auth-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="••••••"
+              value={code}
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              className="tracking-[0.4em]"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={cd > 0 || pending}
+              onClick={() => void onSend()}
+              className="shrink-0"
+            >
+              {cd > 0 ? `${cd}s` : "重发"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {info ? (
+        <p className="font-mono text-[11px] leading-5 tracking-wider text-ink/50">
+          {info}
+        </p>
+      ) : null}
+      <FieldError message={error} />
+
+      {step === "email" ? (
+        <Button
+          type="button"
+          className="w-full"
+          disabled={pending}
+          onClick={() => void onSend()}
+        >
+          {pending ? "发送中…" : "发送验证码"}
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          className="w-full"
+          disabled={pending}
+          onClick={() => void onVerify()}
+        >
+          {pending
+            ? "验证中…"
+            : mode === "register"
+              ? "验证并注册"
+              : "登录并继续"}
+        </Button>
+      )}
+
+      <p className="font-mono text-[10px] leading-5 tracking-wider text-ink/40">
+        仅允许 <span className="text-ink/60">henu.edu.cn</span> 邮箱 · 会话 15
+        天 · 学生自主运营 · 非河南大学官方项目
+      </p>
     </div>
   );
 }
 
-function GatewayLogin() {
+function LoginRegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/account";
+  const nextRaw = params.get("next") || "/account";
+  const nextPath = nextRaw.startsWith("/") ? nextRaw : "/account";
+  const initialTab = params.get("tab") === "register" ? "register" : "login";
+
   const { user, ready } = useSyncExternalStore(
     authStore.subscribe,
     authStore.get,
     authStore.getServer
   );
-  useReveal();
 
   useEffect(() => {
-    if (ready && user) router.replace(next);
-  }, [ready, user, next, router]);
+    if (ready && user) router.replace(nextPath);
+  }, [ready, user, nextPath, router]);
 
   return (
-    <main className="bg-blueprint flex min-h-svh items-center justify-center px-5 py-16">
-      <div data-enter className="w-full max-w-md border border-ink bg-paper p-8 md:p-10">
-        <div className="flex items-baseline justify-between">
-          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">ACC-01</span>
-            <span className="mx-2">/</span>
-            AUTH
-          </p>
-          <Link href="/" className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent">
-            ← henukit
-          </Link>
-        </div>
-        <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">统一登录</h1>
-        <p className="mt-3 font-mono text-xs leading-6 tracking-wider text-ink/55">
-          生产环境使用 Portal Gateway OAuth，不再提供本地 mock 登录或演示验证码。
-        </p>
-        <button
-          type="button"
-          onClick={() => redirectToLogin(next)}
-          className="mt-8 w-full border border-ink bg-ink py-3.5 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
-        >
-          前往统一认证 →
-        </button>
-        <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/40">
-          {hasGateway
-            ? "Gateway 模式（绝对地址或同域 /api）"
-            : "请配置 NEXT_PUBLIC_PORTAL_GATEWAY_URL，或设置 NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1 使用同域 /api"}
-        </p>
-      </div>
-    </main>
-  );
-}
+    <AuthShell code="ACC-01" title="统一登录">
+      <Tabs defaultValue={initialTab} className="mt-6">
+        <TabsList className="w-full">
+          <TabsTrigger value="login" className="flex-1">
+            登录
+          </TabsTrigger>
+          <TabsTrigger value="register" className="flex-1">
+            注册
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="login">
+          <EmailCodeAuth mode="login" nextPath={nextPath} />
+        </TabsContent>
+        <TabsContent value="register">
+          <EmailCodeAuth mode="register" nextPath={nextPath} />
+        </TabsContent>
+      </Tabs>
 
-function MockLoginForm() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const next = params.get("next");
-  const { user, ready } = useSyncExternalStore(
-    authStore.subscribe,
-    authStore.get,
-    authStore.getServer
-  );
-  useReveal();
-
-  const [tab, setTab] = useState<"login" | "register">("login");
-  const [mode, setMode] = useState<"password" | "code">("password");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [pwd, setPwd] = useState("");
-  const [pwd2, setPwd2] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    if (ready && user) router.replace(next || "/account");
-  }, [ready, user, next, router]);
-
-  const submit = () => {
-    const errs: Record<string, string> = {};
-    const needCode = tab === "register" || mode === "code";
-    if (tab === "login" && mode === "password" && !name.trim()) errs.name = "请输入账号名";
-    if (needCode && !EMAIL_RE.test(email)) errs.email = "邮箱格式不正确";
-    if (needCode && code !== EMAIL_DEMO_CODE) errs.code = "验证码不正确";
-    if ((tab === "register" || mode === "password") && pwd.length < 6) errs.pwd = "密码至少 6 位";
-    if (tab === "register") {
-      if (!name.trim()) errs.name = "请输入账号名";
-      if (pwd2 !== pwd) errs.pwd2 = "两次输入的密码不一致";
-    }
-    setErrors(errs);
-    if (Object.keys(errs).length) return;
-
-    setPending(true);
-    setTimeout(() => {
-      if (tab === "register") authStore.register(name.trim(), email.trim());
-      else authStore.login(mode === "code" ? email.split("@")[0] : name.trim());
-      router.push(next || "/account");
-    }, 500);
-  };
-
-  return (
-    <main className="bg-blueprint flex min-h-svh items-center justify-center px-5 py-16">
-      <div data-enter className="w-full max-w-md border border-ink bg-paper p-8 md:p-10">
-        <div className="flex items-baseline justify-between">
-          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">ACC-01</span>
-            <span className="mx-2">/</span>
-            AUTH · MOCK
-          </p>
-          <Link href="/" className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent">
-            ← henukit
-          </Link>
-        </div>
-        <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">
-          {tab === "login" ? "登录" : "注册"}
-        </h1>
-
-        <div className="mt-6 flex border border-line">
-          {(["login", "register"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                setTab(t);
-                setErrors({});
-              }}
-              className={cn(
-                "flex-1 py-2 font-mono text-xs tracking-widest transition-colors",
-                tab === t ? "bg-ink text-paper" : "text-ink/50 hover:text-ink"
-              )}
-            >
-              {t === "login" ? "登录" : "注册"}
-            </button>
-          ))}
-        </div>
-
-        {tab === "login" && (
-          <div className="mt-4 flex gap-2">
-            {(["password", "code"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  setMode(m);
-                  setErrors({});
-                }}
-                className={cn(
-                  "border px-3 py-1.5 font-mono text-[11px] transition-colors",
-                  mode === m ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-                )}
-              >
-                {m === "password" ? "密码登录" : "验证码登录"}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-6 space-y-5">
-          {tab === "register" && (
-            <Field label="账号 / NAME" value={name} onChange={setName} error={errors.name} placeholder="学号或昵称" />
-          )}
-          {tab === "login" && mode === "password" && (
-            <Field label="账号 / NAME" value={name} onChange={setName} error={errors.name} placeholder="学号或昵称" />
-          )}
-          {(tab === "register" || mode === "code") && (
-            <Field label="邮箱 / EMAIL" type="email" value={email} onChange={setEmail} error={errors.email} placeholder="name@stu.henu.edu.cn" />
-          )}
-          {(tab === "register" || mode === "code") && (
-            <CodeField email={email} value={code} onChange={setCode} error={errors.code} />
-          )}
-          {(tab === "register" || mode === "password") && (
-            <Field label="密码 / PASSWORD" type="password" value={pwd} onChange={setPwd} error={errors.pwd} placeholder="至少 6 位" />
-          )}
-          {tab === "register" && (
-            <Field label="确认密码 / CONFIRM" type="password" value={pwd2} onChange={setPwd2} error={errors.pwd2} />
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={submit}
-          disabled={pending}
+      <div className="mt-8 flex items-center justify-between border-t border-line pt-4">
+        <Link
+          href="/account/recover"
           className={cn(
-            "mt-8 w-full border py-3.5 font-mono text-sm tracking-widest transition-colors",
-            pending
-              ? "cursor-wait border-line text-ink/40"
-              : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
+            "font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent"
           )}
         >
-          {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
-        </button>
-
-        <div className="mt-4 flex justify-between font-mono text-[10px] tracking-wider text-ink/50">
-          <Link href="/account/recover" className="hover:text-accent">
-            忘记密码 →
-          </Link>
-          <span>本地 mock · NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1</span>
-        </div>
+          无法收到验证码？
+        </Link>
+        <Link
+          href="/"
+          className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent"
+        >
+          回首页
+        </Link>
       </div>
-    </main>
+    </AuthShell>
   );
-}
-
-function LoginForm() {
-  if (isMockAuthEnabled()) return <MockLoginForm />;
-  return <GatewayLogin />;
 }
 
 export default function LoginPage() {
   return (
-    <Suspense>
-      <LoginForm />
+    <Suspense
+      fallback={
+        <main className="bg-blueprint flex min-h-svh items-center justify-center">
+          <p className="font-mono text-xs tracking-widest text-ink/40">
+            加载中…
+          </p>
+        </main>
+      }
+    >
+      <LoginRegisterForm />
     </Suspense>
   );
 }

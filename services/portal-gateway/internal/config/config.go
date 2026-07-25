@@ -15,6 +15,7 @@ type Config struct {
 	ListenAddr string
 
 	PlatformCoreURL   string
+		PlatformCorePublicURL string
 	PlatformClientID  string
 	PlatformSecret    string
 	PlatformKeyID     string
@@ -47,6 +48,7 @@ func FromEnv() (Config, error) {
 	cfg := Config{
 		ListenAddr:        envOrDefault("LISTEN_ADDR", ":8084"),
 		PlatformCoreURL:   mustEnv("PLATFORM_CORE_URL"),
+			PlatformCorePublicURL: envOrDefault("PLATFORM_CORE_PUBLIC_URL", ""),
 		PlatformClientID:  mustEnv("PLATFORM_CLIENT_ID"),
 		PlatformSecret:    mustEnv("PLATFORM_CLIENT_SECRET"),
 		PlatformKeyID:     mustEnv("PLATFORM_KEY_ID"),
