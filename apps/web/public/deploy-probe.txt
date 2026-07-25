@@ -1,2 +1,2 @@
 HENU Kit Study web public assets are available.
-deploy-webhook-smoke: 2026-07-25T02:10Z sha-probe-1
+deploy-webhook-prod: 2026-07-25T02:20Z formal-study-hook
