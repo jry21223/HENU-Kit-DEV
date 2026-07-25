@@ -11,6 +11,7 @@ import PlatformOperationsView from "@/components/PlatformOperationsView.vue";
 import StatusBadge from "@/components/ui/StatusBadge.vue";
 import UiButton from "@/components/ui/UiButton.vue";
 import { moduleSummaries, type ModuleSummary } from "@/data/modules";
+import { consolePath, isConsolePath } from "@/lib/base-path";
 import { consoleLoginHref, fetchConsoleOverview, fetchConsoleSession, logoutConsoleSession, type ConsoleOverview, type ConsoleSession } from "@/lib/console-gateway";
 
 const icons = {
@@ -23,10 +24,14 @@ const icons = {
 };
 
 const query = new URLSearchParams(window.location.search);
-const isPlatformOperations = window.location.pathname === "/operations";
-const isNoticeOperations = window.location.pathname === "/notices";
-const isLibraryOperations = window.location.pathname === "/library";
-const isFoodOperations = window.location.pathname === "/food";
+const isPlatformOperations = isConsolePath("/operations");
+const isNoticeOperations = isConsolePath("/notices");
+const isLibraryOperations = isConsolePath("/library");
+const isFoodOperations = isConsolePath("/food");
+const operationsHref = consolePath("/operations");
+const noticesHref = consolePath("/notices");
+const libraryHref = consolePath("/library");
+const foodHref = consolePath("/food");
 const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
 const authState = ref<"loading" | "authenticated" | "signed_out" | "denied" | "unavailable">("loading");
@@ -108,12 +113,12 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
       </div>
 
       <nav class="mt-4 grid gap-1 px-3" aria-label="产品模块">
-        <a v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" href="/operations" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10">
+        <a v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" :href="operationsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10">
           <ShieldCheck :size="17" aria-hidden="true" />平台运营工作台
         </a>
-        <a v-if="consoleSession?.access_context.permissions.includes('notice.read')" href="/notices" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Bell :size="17" aria-hidden="true" />通知审核与分发</a>
-        <a v-if="consoleSession?.access_context.permissions.includes('library.read')" href="/library" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><BookOpen :size="17" aria-hidden="true" />资料库运营</a>
-        <a v-if="consoleSession?.access_context.permissions.includes('food.read')" href="/food" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Utensils :size="17" aria-hidden="true" />Food 运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('notice.read')" :href="noticesHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Bell :size="17" aria-hidden="true" />通知审核与分发</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('library.read')" :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><BookOpen :size="17" aria-hidden="true" />资料库运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('food.read')" :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Utensils :size="17" aria-hidden="true" />Food 运营</a>
         <a
           v-for="module in moduleSummaries"
           :key="module.id"
@@ -149,10 +154,10 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
                 </DialogClose>
               </div>
               <nav class="mt-6 grid gap-2" aria-label="移动端产品模块">
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" as-child><a href="/operations" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><ShieldCheck :size="18" />平台运营工作台</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('notice.read')" as-child><a href="/notices" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Bell :size="18" />通知审核与分发</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('library.read')" as-child><a href="/library" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><BookOpen :size="18" />资料库运营</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('food.read')" as-child><a href="/food" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Utensils :size="18" />Food 运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" as-child><a :href="operationsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><ShieldCheck :size="18" />平台运营工作台</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('notice.read')" as-child><a :href="noticesHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Bell :size="18" />通知审核与分发</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('library.read')" as-child><a :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><BookOpen :size="18" />资料库运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('food.read')" as-child><a :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Utensils :size="18" />Food 运营</a></DialogClose>
                 <DialogClose v-for="module in moduleSummaries" :key="module.id" as-child>
                   <a :href="`#module-${module.id}`" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white/85 hover:bg-white/10">
                     <component :is="icons[module.id]" :size="18" aria-hidden="true" />{{ module.name }}

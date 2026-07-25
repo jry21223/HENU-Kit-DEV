@@ -54,8 +54,30 @@ func FromEnv() (Config, error) {
 	if config.ListenAddr == "" {
 		config.ListenAddr = ":8082"
 	}
-	if config.PlatformCoreURL == "" || config.PlatformAuthorize == "" || config.ClientID == "" || config.ClientSecret == "" || config.KeyID == "" || config.RedirectURI == "" || config.RedisAddr == "" {
-		return Config{}, errors.New("console gateway configuration is incomplete")
+	var missing []string
+	if config.PlatformCoreURL == "" {
+		missing = append(missing, "PLATFORM_CORE_URL")
+	}
+	if config.PlatformAuthorize == "" {
+		missing = append(missing, "PLATFORM_ACCOUNT_ORIGIN")
+	}
+	if config.ClientID == "" {
+		missing = append(missing, "PLATFORM_CLIENT_ID")
+	}
+	if config.ClientSecret == "" {
+		missing = append(missing, "PLATFORM_CLIENT_SECRET")
+	}
+	if config.KeyID == "" {
+		missing = append(missing, "PLATFORM_KEY_ID")
+	}
+	if config.RedirectURI == "" {
+		missing = append(missing, "CONSOLE_REDIRECT_URI")
+	}
+	if config.RedisAddr == "" {
+		missing = append(missing, "REDIS_ADDR")
+	}
+	if len(missing) > 0 {
+		return Config{}, errors.New("console gateway configuration is incomplete; set " + strings.Join(missing, ", "))
 	}
 	return config, nil
 }

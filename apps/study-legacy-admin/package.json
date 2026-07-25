@@ -2,6 +2,7 @@
   "name": "@henukit/study-legacy-admin",
   "version": "0.1.0",
   "private": true,
+  "description": "RETIRED from HENU Kit deploy — emergency break-glass only. Production admin is apps/console.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
