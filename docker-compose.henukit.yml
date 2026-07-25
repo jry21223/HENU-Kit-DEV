@@ -142,11 +142,11 @@ services:
       LISTEN_ADDR: ${PORTAL_GATEWAY_LISTEN_ADDR:-:8084}
       PLATFORM_CORE_URL: ${PLATFORM_CORE_URL:-http://platform-core:8081}
       PLATFORM_CLIENT_ID: ${PLATFORM_CLIENT_ID:-portal-gateway}
-      PLATFORM_CLIENT_SECRET: ${PLATFORM_CLIENT_SECRET:-replace-portal-platform-client-secret}
+      PLATFORM_CLIENT_SECRET: ${PLATFORM_CLIENT_SECRET:-replace-platform-client-secret-32bytes-min!!}
       PLATFORM_KEY_ID: ${PLATFORM_KEY_ID:-portal-gateway-key}
       PORTAL_REDIRECT_URI: ${PORTAL_REDIRECT_URI:-http://localhost:8088/api/v1/auth/callback}
       # raw 32-byte string (gateway does not base64-decode this value)
-      PORTAL_SESSION_KEY: ${PORTAL_SESSION_KEY:-henukit-portal-session-key-32byt}
+      PORTAL_SESSION_KEY: ${PORTAL_SESSION_KEY:-0123456789abcdef0123456789abcdef}
       REDIS_URL: ${PORTAL_GATEWAY_REDIS_URL:-redis://redis:6379/2}
       PORTAL_API_URL: ${PORTAL_API_URL:-http://portal-api:8085}
       LIBRARY_SERVICE_URL: ${LIBRARY_SERVICE_URL:-http://portal-api:8085}
@@ -154,16 +154,16 @@ services:
       PRACTICE_SERVICE_URL: ${PRACTICE_SERVICE_URL:-http://portal-api:8085}
       NOTICE_SERVICE_URL: ${NOTICE_SERVICE_URL:-http://portal-api:8085}
       LIBRARY_CLIENT_ID: ${LIBRARY_CLIENT_ID:-portal-library}
-      LIBRARY_CLIENT_SECRET: ${LIBRARY_CLIENT_SECRET:-replace-library-secret}
+      LIBRARY_CLIENT_SECRET: ${LIBRARY_CLIENT_SECRET:-replace-library-client-secret-32bytes-min!!}
       LIBRARY_KEY_ID: ${LIBRARY_KEY_ID:-library-key}
       FOOD_CLIENT_ID: ${FOOD_CLIENT_ID:-portal-food}
-      FOOD_CLIENT_SECRET: ${FOOD_CLIENT_SECRET:-replace-food-secret}
+      FOOD_CLIENT_SECRET: ${FOOD_CLIENT_SECRET:-replace-food-client-secret-32bytes-min!!}
       FOOD_KEY_ID: ${FOOD_KEY_ID:-food-key}
       PRACTICE_CLIENT_ID: ${PRACTICE_CLIENT_ID:-portal-practice}
-      PRACTICE_CLIENT_SECRET: ${PRACTICE_CLIENT_SECRET:-replace-practice-secret}
+      PRACTICE_CLIENT_SECRET: ${PRACTICE_CLIENT_SECRET:-replace-practice-client-secret-32bytes-min!!}
       PRACTICE_KEY_ID: ${PRACTICE_KEY_ID:-practice-key}
       NOTICE_CLIENT_ID: ${NOTICE_CLIENT_ID:-portal-notice}
-      NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:-replace-notice-secret}
+      NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:-replace-notice-client-secret-32bytes-min!!}
       NOTICE_KEY_ID: ${NOTICE_KEY_ID:-notice-key}
       PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
     depends_on:
@@ -183,7 +183,7 @@ services:
       args:
         NEXT_PUBLIC_PORTAL_GATEWAY_URL: ${NEXT_PUBLIC_PORTAL_GATEWAY_URL:-}
         NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL: ${NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL:-/api}
-        NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: ${NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY:-0}
+        NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: ${NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY:-1}
     environment:
       NODE_ENV: production
       PORT: 3001
@@ -208,30 +208,30 @@ services:
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       PORTAL_SUMMARY_URL: ${PORTAL_SUMMARY_URL:-}
       PORTAL_SUMMARY_CLIENT_ID: ${PORTAL_SUMMARY_CLIENT_ID:-console-gateway-portal}
-      PORTAL_SUMMARY_CLIENT_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:-replace-portal-summary-secret}
+      PORTAL_SUMMARY_CLIENT_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:-replace-portal-summary-client-secret-32bytes-min!!}
       PORTAL_SUMMARY_KEY_ID: ${PORTAL_SUMMARY_KEY_ID:-portal-summary-key}
       PLATFORM_SUMMARY_URL: ${PLATFORM_SUMMARY_URL:-}
       PLATFORM_SUMMARY_CLIENT_ID: ${PLATFORM_SUMMARY_CLIENT_ID:-console-gateway-platform}
-      PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:-replace-platform-summary-secret}
+      PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:-replace-platform-summary-client-secret-32bytes-min!!}
       PLATFORM_SUMMARY_KEY_ID: ${PLATFORM_SUMMARY_KEY_ID:-platform-summary-key}
       NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
       NOTICE_API_URL: ${NOTICE_API_URL:-}
       LIBRARY_API_URL: ${LIBRARY_API_URL:-http://study-api:8080}
       FOOD_API_URL: ${FOOD_API_URL:-}
       NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
-      NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-secret}
+      NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
       NOTICE_SUMMARY_KEY_ID: ${NOTICE_SUMMARY_KEY_ID:-notice-summary-key}
       LIBRARY_SUMMARY_URL: ${LIBRARY_SUMMARY_URL:-}
       LIBRARY_SUMMARY_CLIENT_ID: ${LIBRARY_SUMMARY_CLIENT_ID:-console-gateway-library}
-      LIBRARY_SUMMARY_CLIENT_SECRET: ${LIBRARY_SUMMARY_CLIENT_SECRET:-replace-library-summary-secret}
+      LIBRARY_SUMMARY_CLIENT_SECRET: ${LIBRARY_SUMMARY_CLIENT_SECRET:-replace-library-summary-client-secret-32bytes-min!!}
       LIBRARY_SUMMARY_KEY_ID: ${LIBRARY_SUMMARY_KEY_ID:-library-summary-key}
       QUIZCRAFT_SUMMARY_URL: ${QUIZCRAFT_SUMMARY_URL:-}
       QUIZCRAFT_SUMMARY_CLIENT_ID: ${QUIZCRAFT_SUMMARY_CLIENT_ID:-console-gateway-quizcraft}
-      QUIZCRAFT_SUMMARY_CLIENT_SECRET: ${QUIZCRAFT_SUMMARY_CLIENT_SECRET:-replace-quizcraft-summary-secret}
+      QUIZCRAFT_SUMMARY_CLIENT_SECRET: ${QUIZCRAFT_SUMMARY_CLIENT_SECRET:-replace-quizcraft-summary-client-secret-32bytes-min!!}
       QUIZCRAFT_SUMMARY_KEY_ID: ${QUIZCRAFT_SUMMARY_KEY_ID:-quizcraft-summary-key}
       FOOD_SUMMARY_URL: ${FOOD_SUMMARY_URL:-}
       FOOD_SUMMARY_CLIENT_ID: ${FOOD_SUMMARY_CLIENT_ID:-console-gateway-food}
-      FOOD_SUMMARY_CLIENT_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:-replace-food-summary-secret}
+      FOOD_SUMMARY_CLIENT_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:-replace-food-summary-client-secret-32bytes-min!!}
       FOOD_SUMMARY_KEY_ID: ${FOOD_SUMMARY_KEY_ID:-food-summary-key}
     depends_on:
       redis:

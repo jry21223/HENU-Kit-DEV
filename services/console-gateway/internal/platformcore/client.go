@@ -95,7 +95,9 @@ func New(baseURL, clientID, clientSecret, keyID string, client *http.Client) (*C
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" || clientID == "" || clientSecret == "" || keyID == "" {
 		return nil, errors.New("invalid platform core client configuration")
 	}
-	loopback := parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || net.ParseIP(parsed.Hostname()).IsLoopback())
+	host := parsed.Hostname()
+	ip := net.ParseIP(host)
+	loopback := parsed.Scheme == "http" && (host == "localhost" || host == "platform-core" || strings.HasSuffix(host, ".local") || (ip != nil && ip.IsLoopback()))
 	if parsed.Scheme != "https" && !loopback {
 		return nil, errors.New("platform core URL must use HTTPS outside loopback development")
 	}

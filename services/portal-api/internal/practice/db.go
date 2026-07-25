@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 )
 
 // QuizCraftDB reads from the real QuizCraft database.
@@ -223,6 +224,10 @@ func (db *QuizCraftDB) GetBanks() ([]Bank, error) {
 		ORDER BY b.bank_key
 	`)
 	if err != nil {
+		// First-boot / FastAPI-only deployments may not have Go quizcraft_* tables yet.
+		if strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "undefined_table") {
+			return []Bank{}, nil
+		}
 		return nil, fmt.Errorf("query banks: %w", err)
 	}
 	defer rows.Close()
