@@ -145,23 +145,21 @@ async function apiFetch<T>(
   path: string,
   init?: RequestInit
 ): Promise<T | null> {
-  const base = baseUrlOrEmpty();
-
-  if (!base) {
-    if (requireGateway()) {
-      throw new PortalConfigError(
-        "NEXT_PUBLIC_PORTAL_GATEWAY_URL is required in production / require-gateway mode"
-      );
-    }
+  // Same-origin: empty base + path `/api/v1/...` (nginx proxies /api to gateway).
+  // Absolute: base = https://host, path still starts with /api/v1.
+  if (!hasGatewayConfigured()) {
     if (allowMock()) return null;
     throw new PortalConfigError(
-      "Gateway is not configured. Set NEXT_PUBLIC_PORTAL_GATEWAY_URL or NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1 for local mock."
+      "Gateway is not configured. Set NEXT_PUBLIC_PORTAL_GATEWAY_URL, or NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1 for same-origin /api, or NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1 for local mock."
     );
   }
 
+  const base = baseUrlOrEmpty();
+  const url = `${base}${path}`;
+
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, {
+    res = await fetch(url, {
       credentials: "include",
       ...init,
       headers: {
@@ -213,14 +211,9 @@ async function apiFetchRequired<T>(path: string, init?: RequestInit): Promise<T>
 // ---- Auth ----
 
 export async function fetchSession(): Promise<PortalSession | null> {
-  if (!hasGatewayConfigured()) {
-    if (requireGateway()) {
-      throw new PortalConfigError(
-        "NEXT_PUBLIC_PORTAL_GATEWAY_URL is required for real sessions"
-      );
-    }
-    return null;
-  }
+  // Mock-only mode (no gateway URL and not require-gateway).
+  if (!hasGatewayConfigured()) return null;
+  // Absolute origin or same-origin (empty base + REQUIRE_GATEWAY=1).
   return apiFetch<PortalSession>("/api/v1/session");
 }
 

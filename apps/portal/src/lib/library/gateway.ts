@@ -111,10 +111,10 @@ export function getMaterials(): Material[] {
 
 export function getMaterialOrFallback(id: string): Material | undefined {
   if (cachedMaterials) {
-    return cachedMaterials.find((m) => m.id === id) ?? getMaterial(id);
+    return cachedMaterials.find((m) => m.id === id);
   }
   if (mockAllowed) return getMaterial(id);
-  return cachedMaterials?.find((m) => m.id === id);
+  return undefined;
 }
 
 export function isLibraryReady(): boolean {

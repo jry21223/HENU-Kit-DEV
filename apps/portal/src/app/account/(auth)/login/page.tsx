@@ -88,7 +88,9 @@ function GatewayLogin() {
           前往统一认证 →
         </button>
         <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/40">
-          {hasGateway ? "Gateway 已配置" : "请配置 NEXT_PUBLIC_PORTAL_GATEWAY_URL"}
+          {hasGateway
+            ? "Gateway 模式（绝对地址或同域 /api）"
+            : "请配置 NEXT_PUBLIC_PORTAL_GATEWAY_URL，或设置 NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1 使用同域 /api"}
         </p>
       </div>
     </main>

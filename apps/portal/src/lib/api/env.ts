@@ -3,6 +3,10 @@
  *
  * Production / require-gateway mode must never treat mock as source of truth.
  * Mock is only for local/dev when explicitly allowed.
+ *
+ * Same-origin deploy (nginx /api → portal-gateway): leave
+ * NEXT_PUBLIC_PORTAL_GATEWAY_URL empty and set REQUIRE_GATEWAY=1 so fetches
+ * use absolute paths like /api/v1/... on the current host.
  */
 
 export function isProductionRuntime(): boolean {
@@ -27,39 +31,28 @@ export function allowMock(): boolean {
 }
 
 /**
- * Raw configured gateway URL (may be empty at build time).
- * Accepts NEXT_PUBLIC_PORTAL_GATEWAY_URL (preferred) or
- * NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL (Dockerfile / reverse-proxy path).
+ * Gateway base URL (no trailing slash).
+ * Empty string = same-origin (/api/v1/... via nginx).
  */
 export function gatewayUrlRaw(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_PORTAL_GATEWAY_URL ||
-    process.env.NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL ||
-    "";
-  return raw.replace(/\/$/, "");
-}
-
-/**
- * Whether a gateway base URL is configured.
- * Empty string at build is OK for static generation; runtime callers
- * must assert via assertGatewayConfigured() when requireGateway().
- */
-export function hasGatewayConfigured(): boolean {
-  return gatewayUrlRaw() !== "";
-}
-
-/**
- * Throw when production/require-gateway needs a URL but none is set.
- * Safe to call from client data loaders; avoid at module top-level so
- * `next build` can complete without a real URL (placeholder allowed).
- */
-export function assertGatewayConfigured(context = "portal"): string {
-  const url = gatewayUrlRaw();
-  if (url) return url;
-  if (requireGateway()) {
-    throw new Error(
-      `[${context}] NEXT_PUBLIC_PORTAL_GATEWAY_URL is required when NODE_ENV=production or NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1`
-    );
+  if (typeof process.env.NEXT_PUBLIC_PORTAL_GATEWAY_URL === "string") {
+    return process.env.NEXT_PUBLIC_PORTAL_GATEWAY_URL.replace(/\/$/, "");
   }
   return "";
+}
+
+/** Whether API calls should go to a real gateway (including same-origin). */
+export function hasGatewayConfigured(): boolean {
+  if (gatewayUrlRaw() !== "") return true;
+  if (requireGateway()) return true;
+  return false;
+}
+
+/** Returns base URL (may be ""). Throws only when neither gateway nor mock is allowed. */
+export function assertGatewayConfigured(context = "portal"): string {
+  if (hasGatewayConfigured()) return gatewayUrlRaw();
+  if (allowMock()) return "";
+  throw new Error(
+    `[${context}] NEXT_PUBLIC_PORTAL_GATEWAY_URL is required (or set NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1 for same-origin /api, or NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1 for local mock).`
+  );
 }
