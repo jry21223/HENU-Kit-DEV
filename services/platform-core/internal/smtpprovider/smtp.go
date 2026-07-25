@@ -14,19 +14,31 @@ import (
 type SMTPMailer struct {
 	address, host, username, password, from string
 	timeout                                 time.Duration
+	implicitTLS                             bool
 }
 
 func NewSMTPMailer(address, username, password, from string, timeout time.Duration) (*SMTPMailer, error) {
-	host, _, err := net.SplitHostPort(address)
+	host, port, err := net.SplitHostPort(address)
 	if err != nil || host == "" || username == "" || password == "" || from == "" || timeout <= 0 || strings.ContainsAny(from, "\r\n") {
 		return nil, errors.New("SMTP address, credentials, sender, and timeout are required")
 	}
-	return &SMTPMailer{address: address, host: host, username: username, password: password, from: from, timeout: timeout}, nil
+	// Port 465 is SMTPS (implicit TLS). Port 587/25 typically use STARTTLS.
+	implicitTLS := port == "465"
+	return &SMTPMailer{address: address, host: host, username: username, password: password, from: from, timeout: timeout, implicitTLS: implicitTLS}, nil
 }
 
 func (mailer *SMTPMailer) Send(ctx context.Context, message Mail) error {
 	dialer := net.Dialer{Timeout: mailer.timeout}
-	connection, err := dialer.DialContext(ctx, "tcp", mailer.address)
+	var (
+		connection net.Conn
+		err        error
+	)
+	if mailer.implicitTLS {
+		tlsDialer := &tls.Dialer{NetDialer: &dialer, Config: &tls.Config{MinVersion: tls.VersionTLS12, ServerName: mailer.host}}
+		connection, err = tlsDialer.DialContext(ctx, "tcp", mailer.address)
+	} else {
+		connection, err = dialer.DialContext(ctx, "tcp", mailer.address)
+	}
 	if err != nil {
 		return err
 	}
@@ -36,11 +48,13 @@ func (mailer *SMTPMailer) Send(ctx context.Context, message Mail) error {
 		return err
 	}
 	defer client.Close()
-	if ok, _ := client.Extension("STARTTLS"); !ok {
-		return errors.New("SMTP server does not support STARTTLS")
-	}
-	if err := client.StartTLS(&tls.Config{MinVersion: tls.VersionTLS12, ServerName: mailer.host}); err != nil {
-		return err
+	if !mailer.implicitTLS {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			return errors.New("SMTP server does not support STARTTLS")
+		}
+		if err := client.StartTLS(&tls.Config{MinVersion: tls.VersionTLS12, ServerName: mailer.host}); err != nil {
+			return err
+		}
 	}
 	if err := client.Auth(smtp.PlainAuth("", mailer.username, mailer.password, mailer.host)); err != nil {
 		return err

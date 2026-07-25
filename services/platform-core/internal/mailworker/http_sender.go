@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
+	"strings"
 )
 
 type HTTPSender struct {
@@ -22,10 +25,26 @@ func NewHTTPSender(endpoint, token string, client *http.Client) (*HTTPSender, er
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || token == "" || client == nil {
 		return nil, errors.New("mail provider endpoint, token, and HTTP client are required")
 	}
-	if parsed.Scheme != "https" && parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
+	// Production must use HTTPS. Docker Compose may use http://service:port on the
+	// internal network when PLATFORM_CORE_SMTP_ALLOW_DOCKER=1 (single-label host or private IP).
+	if parsed.Scheme != "https" && !allowInsecureMailProviderHost(parsed.Hostname()) {
 		return nil, errors.New("mail provider endpoint must use HTTPS")
 	}
 	return &HTTPSender{endpoint: endpoint, token: token, client: client}, nil
+}
+
+func allowInsecureMailProviderHost(host string) bool {
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate()
+	}
+	// Compose service DNS names have no dots (e.g. platform-smtp-provider).
+	if os.Getenv("PLATFORM_CORE_SMTP_ALLOW_DOCKER") == "1" && host != "" && !strings.Contains(host, ".") {
+		return true
+	}
+	return false
 }
 
 func (s *HTTPSender) Send(ctx context.Context, message Message) (string, error) {

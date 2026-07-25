@@ -1,5 +1,11 @@
 FROM node:22-alpine AS pnpm
-RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
+ENV npm_config_registry=https://registry.npmmirror.com
+RUN corepack enable && corepack prepare pnpm@11.9.0 --activate \
+ && pnpm config set registry https://registry.npmmirror.com \
+ && pnpm config set fetch-retries 5 \
+ && pnpm config set fetch-retry-mintimeout 20000 \
+ && pnpm config set fetch-retry-maxtimeout 120000 \
+ && pnpm config set network-concurrency 4
 WORKDIR /app
 
 FROM pnpm AS deps
@@ -10,7 +16,8 @@ COPY apps/web/package.json ./apps/web/package.json
 COPY apps/study-legacy-admin/package.json ./apps/study-legacy-admin/package.json
 COPY products/quizcraft/web-app/package.json ./products/quizcraft/web-app/package.json
 COPY packages/design-tokens ./packages/design-tokens
-RUN pnpm install --frozen-lockfile --filter @henukit/console...
+RUN node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.pnpm=p.pnpm||{};p.pnpm.supportedArchitectures={os:["linux","current"],cpu:["x64","current"],libc:["musl","current"]};fs.writeFileSync("package.json",JSON.stringify(p,null,2));' \
+ && pnpm install --frozen-lockfile --filter @henukit/console...
 
 FROM pnpm AS builder
 ARG VITE_BASE_PATH=/console/

@@ -153,6 +153,8 @@ services:
       PLATFORM_CORE_MAIL_PROVIDER_ENDPOINT: ${PLATFORM_CORE_MAIL_PROVIDER_ENDPOINT:-http://platform-smtp-provider:18081/internal/send}
       PLATFORM_CORE_MAIL_PROVIDER_TOKEN: ${PLATFORM_CORE_MAIL_PROVIDER_TOKEN:-replace-mail-provider-token-32chars-min!!}
       PLATFORM_CORE_MAIL_WORKER_ID: ${PLATFORM_CORE_MAIL_WORKER_ID:-platform-mail-worker-1}
+      # Allow http://platform-smtp-provider on the compose network (see mailworker.NewHTTPSender).
+      PLATFORM_CORE_SMTP_ALLOW_DOCKER: ${PLATFORM_CORE_SMTP_ALLOW_DOCKER:-1}
     depends_on:
       postgres:
         condition: service_healthy
