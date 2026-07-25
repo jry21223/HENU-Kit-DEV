@@ -33,6 +33,7 @@ pnpm-debug.log*
 .env.*
 !.env.example
 !.env.production.example
+!.env.henukit.example
 .envrc
 *.pem
 *.key

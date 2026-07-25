@@ -98,7 +98,30 @@ Monorepo Foundation 新增或导入：
 
 ## 开发入口
 
-迁移期间原学习平台命令继续有效：
+### 推荐：完整 HENU Kit 栈
+
+```bash
+cp .env.henukit.example .env.henukit
+pnpm run dev:henukit
+# 或: docker compose -f docker-compose.henukit.yml --env-file .env.henukit up --build
+```
+
+本地边缘入口默认 `http://localhost:8088`：
+
+| 路径 | 服务 |
+|------|------|
+| `/` | Portal 公共站 |
+| `/api/` | Portal Gateway |
+| `/console/` | Console 管理台 |
+| `/quiz/` | QuizCraft Web |
+| `/quiz-api/` | QuizCraft API |
+| `/study-api/` | Study API（library backend / debug） |
+
+构建镜像：`pnpm run build:henukit`。
+
+### 兼容：Study-only 遗留栈
+
+迁移期间原学习平台命令仍可用（**非默认产品路径**）：
 
 ```bash
 cp .env.example .env
