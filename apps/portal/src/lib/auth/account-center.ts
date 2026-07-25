@@ -125,7 +125,8 @@ export async function requestLoginCode(input: {
   returnTo: string;
 }): Promise<{ csrfToken: string }> {
   const email = input.email.trim().toLowerCase();
-  if (!email.endsWith("@henu.edu.cn")) {
+  // Domain is fixed by UI; still reject accidental non-HENU addresses.
+  if (!email.endsWith("@henu.edu.cn") || email.indexOf("@") !== email.lastIndexOf("@")) {
     throw new AccountCenterError("仅支持 @henu.edu.cn 邮箱", "SEND_FAILED");
   }
 

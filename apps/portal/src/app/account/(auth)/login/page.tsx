@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { AuthShell } from "@/components/account/auth-shell";
+import { HenuEmailField } from "@/components/account/henu-email-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,10 +17,12 @@ import {
   requestLoginCode,
   verifyLoginCode,
 } from "@/lib/auth/account-center";
+import {
+  isValidHenuLocalPart,
+  toHenuEmail,
+} from "@/lib/auth/henu-email";
 import { authStore } from "@/lib/auth/store";
 import { cn } from "@/lib/cn";
-
-const EMAIL_RE = /^[^\s@]+@henu\.edu\.cn$/i;
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -33,7 +36,7 @@ function EmailCodeAuth({
   mode: "login" | "register";
   nextPath: string;
 }) {
-  const [email, setEmail] = useState("");
+  const [localPart, setLocalPart] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
   const [csrf, setCsrf] = useState("");
@@ -44,6 +47,7 @@ function EmailCodeAuth({
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [cd, setCd] = useState(0);
+  const fullEmail = toHenuEmail(localPart);
 
   useEffect(() => {
     if (cd <= 0) return;
@@ -75,11 +79,11 @@ function EmailCodeAuth({
   const onSend = async () => {
     setError("");
     setInfo("");
-    const normalized = email.trim().toLowerCase();
-    if (!EMAIL_RE.test(normalized)) {
-      setError("请使用 @henu.edu.cn 学校邮箱");
+    if (!isValidHenuLocalPart(localPart)) {
+      setError("请输入邮箱前缀（将自动补全 @henu.edu.cn）");
       return;
     }
+    const normalized = fullEmail;
     setPending(true);
     try {
       const token = await ensureCsrf();
@@ -93,8 +97,8 @@ function EmailCodeAuth({
       setCd(60);
       setInfo(
         mode === "register"
-          ? "验证码已发送。首次验证将自动创建账号。"
-          : "验证码已进入发送队列，请查收学校邮箱。"
+          ? `验证码已发送至 ${normalized}。首次验证将自动创建账号。`
+          : `验证码已进入发送队列（${normalized}），请查收学校邮箱。`
       );
     } catch (e) {
       setError(
@@ -117,7 +121,7 @@ function EmailCodeAuth({
       const token = await ensureCsrf();
       const { redirectedTo } = await verifyLoginCode({
         csrfToken: token,
-        email: email.trim().toLowerCase(),
+        email: fullEmail,
         code: code.trim(),
         returnTo: oauthReturnTo,
       });
@@ -142,17 +146,12 @@ function EmailCodeAuth({
           : "使用河南大学邮箱验证码登录。无密码，验证码单次有效。"}
       </p>
 
-      <div>
-        <Label htmlFor="auth-email">学校邮箱</Label>
-        <Input
-          id="auth-email"
-          type="email"
-          autoComplete="email"
-          placeholder="name@henu.edu.cn"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-      </div>
+      <HenuEmailField
+        id="auth-email"
+        value={localPart}
+        onChange={setLocalPart}
+        disabled={step === "code" && pending}
+      />
 
       {step === "code" && (
         <div>
@@ -216,7 +215,7 @@ function EmailCodeAuth({
       )}
 
       <p className="font-mono text-[10px] leading-5 tracking-wider text-ink/40">
-        仅允许 <span className="text-ink/60">henu.edu.cn</span> 邮箱 · 会话 15
+        后缀固定 <span className="text-ink/60">@henu.edu.cn</span> · 会话 15
         天 · 学生自主运营 · 非河南大学官方项目
       </p>
     </div>

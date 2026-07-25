@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AuthShell } from "@/components/account/auth-shell";
+import { HenuEmailField } from "@/components/account/henu-email-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +14,11 @@ import {
   requestLoginCode,
   verifyLoginCode,
 } from "@/lib/auth/account-center";
+import {
+  isValidHenuLocalPart,
+  toHenuEmail,
+} from "@/lib/auth/henu-email";
 
-const EMAIL_RE = /^[^\s@]+@henu\.edu\.cn$/i;
 const STEPS = ["验证邮箱", "输入验证码", "完成"] as const;
 
 /**
@@ -24,13 +28,14 @@ const STEPS = ["验证邮箱", "输入验证码", "完成"] as const;
  */
 export default function RecoverPage() {
   const [step, setStep] = useState(0);
-  const [email, setEmail] = useState("");
+  const [localPart, setLocalPart] = useState("");
   const [code, setCode] = useState("");
   const [csrf, setCsrf] = useState("");
   const [returnTo] = useState(() => portalOAuthStartUrl("/account"));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [cd, setCd] = useState(0);
+  const fullEmail = toHenuEmail(localPart);
 
   useEffect(() => {
     if (cd <= 0) return;
@@ -59,9 +64,8 @@ export default function RecoverPage() {
 
   const onSend = async () => {
     setError("");
-    const normalized = email.trim().toLowerCase();
-    if (!EMAIL_RE.test(normalized)) {
-      setError("请使用 @henu.edu.cn 学校邮箱");
+    if (!isValidHenuLocalPart(localPart)) {
+      setError("请输入邮箱前缀（将自动补全 @henu.edu.cn）");
       return;
     }
     setPending(true);
@@ -69,7 +73,7 @@ export default function RecoverPage() {
       const token = await ensureCsrf();
       const result = await requestLoginCode({
         csrfToken: token,
-        email: normalized,
+        email: fullEmail,
         returnTo,
       });
       setCsrf(result.csrfToken);
@@ -91,7 +95,7 @@ export default function RecoverPage() {
       const token = await ensureCsrf();
       const { redirectedTo } = await verifyLoginCode({
         csrfToken: token,
-        email: email.trim().toLowerCase(),
+        email: fullEmail,
         code: code.trim(),
         returnTo,
       });
@@ -136,16 +140,12 @@ export default function RecoverPage() {
       <div className="mt-8 space-y-5">
         {step === 0 && (
           <>
-            <div>
-              <Label htmlFor="recover-email">学校邮箱</Label>
-              <Input
-                id="recover-email"
-                type="email"
-                placeholder="name@henu.edu.cn"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+            <HenuEmailField
+              id="recover-email"
+              value={localPart}
+              onChange={setLocalPart}
+              autoFocus
+            />
             {error && (
               <p className="font-mono text-[10px] text-accent">{error}</p>
             )}
@@ -163,7 +163,7 @@ export default function RecoverPage() {
         {step === 1 && (
           <>
             <p className="font-mono text-[11px] text-ink/50">
-              已发送至 <span className="text-ink">{email}</span>
+              已发送至 <span className="text-ink">{fullEmail}</span>
             </p>
             <div>
               <Label htmlFor="recover-code">6 位验证码</Label>
