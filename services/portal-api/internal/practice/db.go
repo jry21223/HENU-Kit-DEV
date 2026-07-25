@@ -210,42 +210,87 @@ func (db *QuizCraftDB) getCompletion(bankID string) int {
 	return int(math.Round(avg.Float64))
 }
 
+// GetBanks returns flat question-bank cards for the portal catalog.
+func (db *QuizCraftDB) GetBanks() ([]Bank, error) {
+	rows, err := db.conn.Query(`
+		SELECT b.id::text, b.name, b.bank_key,
+		       COUNT(bvq.question_id)::int AS question_count
+		FROM quizcraft_banks b
+		JOIN quizcraft_bank_versions bv ON bv.bank_id = b.id AND bv.id = b.active_version_id
+		LEFT JOIN quizcraft_bank_version_questions bvq ON bvq.bank_version_id = bv.id
+		WHERE bv.sealed_at IS NOT NULL
+		GROUP BY b.id, b.name, b.bank_key
+		ORDER BY b.bank_key
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query banks: %w", err)
+	}
+	defer rows.Close()
+
+	var banks []Bank
+	for rows.Next() {
+		var b Bank
+		var bankKey string
+		if err := rows.Scan(&b.ID, &b.Name, &bankKey, &b.QuestionCount); err != nil {
+			return nil, fmt.Errorf("scan bank: %w", err)
+		}
+		b.Subject = bankKey
+		banks = append(banks, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate banks: %w", err)
+	}
+	if banks == nil {
+		banks = []Bank{}
+	}
+	return banks, nil
+}
+
 // GetLeaderboard returns ranking data from QuizCraft.
-// For now returns mock since the ranking tables need a running QuizCraft service to populate.
-func (db *QuizCraftDB) GetLeaderboard(period string) []LeaderboardRow {
-	// Try to read from quizcraft_ranking_settlement_events
+// Empty standings are a valid empty list; DB errors are returned to the caller.
+// Never falls back to mock data.
+func (db *QuizCraftDB) GetLeaderboard(period string) ([]LeaderboardRow, error) {
+	_ = period
 	rows, err := db.conn.Query(`
 		SELECT standings FROM quizcraft_ranking_settlement_events
 		WHERE scope = 'overall'
 		ORDER BY created_at DESC LIMIT 1
 	`)
 	if err != nil {
-		return MockLeaderboard(period)
+		return nil, fmt.Errorf("query leaderboard: %w", err)
 	}
 	defer rows.Close()
 
-	if rows.Next() {
-		var standingsJSON []byte
-		if err := rows.Scan(&standingsJSON); err == nil {
-			var standings []struct {
-				UserID   string `json:"user_id"`
-				Nickname string `json:"nickname"`
-				Score    int    `json:"score"`
-			}
-			if json.Unmarshal(standingsJSON, &standings) == nil && len(standings) > 0 {
-				var result []LeaderboardRow
-				for _, s := range standings {
-					result = append(result, LeaderboardRow{
-						Name:      s.Nickname,
-						Questions: s.Score,
-						Accuracy:  80,
-						Streak:    0,
-					})
-				}
-				return result
-			}
-		}
+	if !rows.Next() {
+		return []LeaderboardRow{}, nil
 	}
 
-	return MockLeaderboard(period)
+	var standingsJSON []byte
+	if err := rows.Scan(&standingsJSON); err != nil {
+		return nil, fmt.Errorf("scan leaderboard: %w", err)
+	}
+
+	var standings []struct {
+		UserID   string `json:"user_id"`
+		Nickname string `json:"nickname"`
+		Score    int    `json:"score"`
+	}
+	if err := json.Unmarshal(standingsJSON, &standings); err != nil {
+		return nil, fmt.Errorf("decode leaderboard standings: %w", err)
+	}
+
+	result := make([]LeaderboardRow, 0, len(standings))
+	for _, s := range standings {
+		name := s.Nickname
+		if name == "" {
+			name = s.UserID
+		}
+		result = append(result, LeaderboardRow{
+			Name:      name,
+			Questions: s.Score,
+			Accuracy:  0,
+			Streak:    0,
+		})
+	}
+	return result, nil
 }

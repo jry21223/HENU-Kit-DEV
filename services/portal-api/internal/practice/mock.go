@@ -54,6 +54,37 @@ type LeaderboardRow struct {
 	IsYou     bool   `json:"isYou,omitempty"`
 }
 
+// Bank is the portal-gateway practice bank card.
+type Bank struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Subject       string `json:"subject"`
+	QuestionCount int    `json:"question_count"`
+}
+
+// MockBanks flattens mock school hierarchy into bank cards (mock mode only).
+func MockBanks() []Bank {
+	var banks []Bank
+	for _, school := range MockSchools() {
+		for _, major := range school.Majors {
+			for _, subject := range major.Subjects {
+				for _, list := range subject.Lists {
+					banks = append(banks, Bank{
+						ID:            list.ID,
+						Name:          list.Name,
+						Subject:       subject.Name,
+						QuestionCount: list.Count,
+					})
+				}
+			}
+		}
+	}
+	if banks == nil {
+		banks = []Bank{}
+	}
+	return banks
+}
+
 // MockSchools returns the full hierarchy matching the frontend SCHOOLS.
 func MockSchools() []School {
 	return []School{

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // PortalDB reads from the portal_food_* tables (MySQL or PostgreSQL).
@@ -99,6 +100,84 @@ func (db *PortalDB) GetPost(id string) (*Post, error) {
 		p.Tags = []string{}
 	}
 	return &p, nil
+}
+
+// GetVenues derives venue cards from portal_food_posts shops.
+// Empty tables return an empty list (200), never mock venues.
+func (db *PortalDB) GetVenues(campusFilter string) ([]Venue, error) {
+	query := `
+		SELECT shop_name, campus,
+		       COALESCE(AVG(stars), 0) AS rating,
+		       COUNT(*) AS post_count
+		FROM portal_food_posts
+		WHERE hidden = 0 AND shop_name <> ''
+	`
+	var args []any
+	if campusFilter != "" {
+		query += " AND campus = ?"
+		args = append(args, campusFilter)
+	}
+	query += " GROUP BY shop_name, campus ORDER BY rating DESC, shop_name"
+
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query venues: %w", err)
+	}
+	defer rows.Close()
+
+	var venues []Venue
+	for rows.Next() {
+		var (
+			name      string
+			campus    string
+			rating    float64
+			postCount int
+		)
+		if err := rows.Scan(&name, &campus, &rating, &postCount); err != nil {
+			return nil, fmt.Errorf("scan venue: %w", err)
+		}
+		venues = append(venues, Venue{
+			ID:     venueID(campus, name),
+			Name:   name,
+			Rating: rating,
+			Tier:   venueTier(rating, postCount),
+			Campus: campus,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate venues: %w", err)
+	}
+	if venues == nil {
+		venues = []Venue{}
+	}
+	return venues, nil
+}
+
+func venueID(campus, name string) string {
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		case r >= '0' && r <= '9':
+			return r
+		default:
+			return '-'
+		}
+	}, campus+"-"+name)
+	return strings.Trim(strings.ReplaceAll(safe, "--", "-"), "-")
+}
+
+func venueTier(rating float64, postCount int) string {
+	switch {
+	case rating >= 4.5 && postCount >= 3:
+		return "featured"
+	case rating >= 4.0:
+		return "recommended"
+	default:
+		return "standard"
+	}
 }
 
 // GetComments returns comments for a post.
