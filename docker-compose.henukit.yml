@@ -98,9 +98,10 @@ services:
       PLATFORM_CORE_ADDRESS: ${PLATFORM_CORE_ADDRESS:-:8081}
       PLATFORM_CORE_DATABASE_URL: ${PLATFORM_CORE_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/platform?sslmode=disable}
       PLATFORM_CORE_REDIS_URL: ${PLATFORM_CORE_REDIS_URL:-redis://redis:6379/0}
-      PLATFORM_CORE_IDEMPOTENCY_KEY: ${PLATFORM_CORE_IDEMPOTENCY_KEY:-0123456789abcdef0123456789abcdef}
-      PLATFORM_CORE_VERIFICATION_KEY: ${PLATFORM_CORE_VERIFICATION_KEY:-fedcba9876543210fedcba9876543210}
-      PLATFORM_CORE_MAIL_DELIVERY_TOKEN: ${PLATFORM_CORE_MAIL_DELIVERY_TOKEN:-mail-delivery-token-change-me-32b!}
+      # base64 of exactly 32 raw bytes (dev placeholders only)
+      PLATFORM_CORE_IDEMPOTENCY_KEY: ${PLATFORM_CORE_IDEMPOTENCY_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
+      PLATFORM_CORE_VERIFICATION_KEY: ${PLATFORM_CORE_VERIFICATION_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
+      PLATFORM_CORE_MAIL_DELIVERY_TOKEN: ${PLATFORM_CORE_MAIL_DELIVERY_TOKEN:-Wld9pvxGjnWc_54pv7SliNmbZELBYpFHsX1vaqpK4co}
       PLATFORM_CORE_MAIL_DELIVERY_KEY_ID: ${PLATFORM_CORE_MAIL_DELIVERY_KEY_ID:-mail-provider-active}
       PLATFORM_CORE_STUDENT_EMAIL_DOMAINS: ${PLATFORM_CORE_STUDENT_EMAIL_DOMAINS:-henu.edu.cn}
       PLATFORM_CORE_CORE_SESSION_TTL: ${PLATFORM_CORE_CORE_SESSION_TTL:-360h}
@@ -122,10 +123,11 @@ services:
       context: ./services/portal-api
     environment:
       LISTEN_ADDR: ${PORTAL_API_LISTEN_ADDR:-:8085}
-      PORTAL_API_MODE: ${PORTAL_API_MODE:-live}
+      # mock keeps first boot working without product migrations applied
+      PORTAL_API_MODE: ${PORTAL_API_MODE:-mock}
       PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
-      QUIZCRAFT_DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/quizcraft?sslmode=disable}
-      STUDY_DATABASE_URL: ${STUDY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/study?sslmode=disable}
+      QUIZCRAFT_DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:-}
+      STUDY_DATABASE_URL: ${STUDY_DATABASE_URL:-}
       PORTAL_DATABASE_URL: ${PORTAL_DATABASE_URL:-}
     depends_on:
       postgres:
@@ -143,7 +145,8 @@ services:
       PLATFORM_CLIENT_SECRET: ${PLATFORM_CLIENT_SECRET:-replace-portal-platform-client-secret}
       PLATFORM_KEY_ID: ${PLATFORM_KEY_ID:-portal-gateway-key}
       PORTAL_REDIRECT_URI: ${PORTAL_REDIRECT_URI:-http://localhost:8088/api/v1/auth/callback}
-      PORTAL_SESSION_KEY: ${PORTAL_SESSION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      # raw 32-byte string (gateway does not base64-decode this value)
+      PORTAL_SESSION_KEY: ${PORTAL_SESSION_KEY:-henukit-portal-session-key-32byt}
       REDIS_URL: ${PORTAL_GATEWAY_REDIS_URL:-redis://redis:6379/2}
       PORTAL_API_URL: ${PORTAL_API_URL:-http://portal-api:8085}
       LIBRARY_SERVICE_URL: ${LIBRARY_SERVICE_URL:-http://portal-api:8085}
@@ -178,7 +181,9 @@ services:
       context: .
       dockerfile: apps/portal/Dockerfile
       args:
+        NEXT_PUBLIC_PORTAL_GATEWAY_URL: ${NEXT_PUBLIC_PORTAL_GATEWAY_URL:-}
         NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL: ${NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL:-/api}
+        NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: ${NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY:-0}
     environment:
       NODE_ENV: production
       PORT: 3001
