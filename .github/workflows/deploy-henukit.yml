@@ -2,7 +2,8 @@ name: Build HENU Kit release artifacts
 
 # Compile production Docker images in GitHub Actions. Production hosts consume
 # these fixed-SHA artifacts with docker load and never compile source in place.
-# Study remains a separate deploy unit and is intentionally excluded.
+# Legacy Study and standalone QuizCraft runtimes are intentionally excluded;
+# Portal consumes their preserved databases through its integrated APIs.
 
 on:
   pull_request:
@@ -63,7 +64,7 @@ jobs:
             dockerfile: apps/console/Dockerfile
             build_args: |-
               VITE_BASE_PATH=/console/
-              VITE_QUIZCRAFT_WORKSHOP_URL=/quiz/extract
+              VITE_QUIZCRAFT_WORKSHOP_URL=
           - name: console-gateway
             image: henukit-console-gateway
             context: services/console-gateway
@@ -102,19 +103,6 @@ jobs:
             context: services/portal-gateway
             dockerfile: services/portal-gateway/Dockerfile
             build_args: ""
-          - name: quizcraft-api
-            image: henukit-quizcraft-api
-            context: products/quizcraft
-            dockerfile: products/quizcraft/Dockerfile
-            build_args: ""
-          - name: quizcraft-web
-            image: henukit-quizcraft-web
-            context: .
-            dockerfile: products/quizcraft/web-app/Dockerfile
-            build_args: |-
-              VITE_BASE_PATH=/quiz/
-              VITE_API_BASE_URL=/quiz-api/api
-              VITE_APP_MODE=full
     steps:
       - uses: actions/checkout@v4
 
@@ -174,13 +162,14 @@ jobs:
         run: |
           set -euo pipefail
           runtime="release/runtime"
-          install -d "$runtime/infra/nginx" "$runtime/migrations/platform-core"
+          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/migrations/platform-core"
           docker compose \
             -f docker-compose.henukit.yml \
             -f docker-compose.henukit.prebuilt.yml \
             config --no-interpolate --no-path-resolution > "$runtime/docker-compose.henukit.release.yml"
           cp infra/nginx/henukit.conf.example "$runtime/infra/nginx/"
           cp services/platform-core/db/migrations/*.up.sql "$runtime/migrations/platform-core/"
+          install -m 0555 scripts/ops/deploy-henukit-artifact.sh "$runtime/bin/deploy-henukit-artifact.sh"
           printf '%s\n' "$GITHUB_SHA" > "$runtime/RELEASE_SHA"
           tar -C "$runtime" -czf "release/henukit-runtime-${GITHUB_SHA}.tar.gz" .
           cd release

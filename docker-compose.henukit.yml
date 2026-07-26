@@ -1,6 +1,6 @@
 # HENU Kit primary full-stack compose.
-# Study-only stacks in docker-compose.yml / docker-compose.dev.yml remain for
-# legacy library compatibility; this file is the default public+ops surface.
+# Study-only stacks in docker-compose.yml / docker-compose.dev.yml remain
+# available for legacy maintenance; this file is the default public+ops surface.
 #
 # Usage:
 #   cp .env.henukit.example .env.henukit
@@ -10,9 +10,8 @@
 #   /            Portal
 #   /api/        Portal Gateway
 #   /console/    Console (ops)
-#   /quiz/       QuizCraft web
-#   /quiz-api/   QuizCraft API
-#   /study-api/  Study API (debug)
+#   /library     Portal integrated materials
+#   /practice    Portal integrated practice
 
 name: henukit
 
@@ -45,51 +44,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
-
-  study-api:
-    build:
-      context: ./services/api
-    environment:
-      APP_ENV: development
-      API_PORT: ${STUDY_API_PORT:-8080}
-      DATABASE_URL: ${STUDY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/study?sslmode=disable}
-      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-      CORS_ALLOWED_ORIGINS: ${STUDY_CORS_ALLOWED_ORIGINS:-http://localhost:8088}
-      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
-      LLM_MODE: ${LLM_MODE:-mock}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    expose:
-      - "8080"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz | grep '\"ready\":true' || wget -qO- http://localhost:8080/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
-  study-worker:
-    build:
-      context: ./services/worker
-    profiles: ["worker"]
-    environment:
-      APP_ENV: development
-      DATABASE_URL: ${STUDY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/study?sslmode=disable}
-      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-      LLM_MODE: ${LLM_MODE:-mock}
-      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-9090}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/readyz | grep '\"ready\":true' || true"]
-      interval: 15s
-      timeout: 5s
-      retries: 6
 
   platform-core:
     build:
@@ -267,7 +221,7 @@ services:
       PLATFORM_SUMMARY_KEY_ID: ${PLATFORM_SUMMARY_KEY_ID:-platform-summary-key}
       NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
       NOTICE_API_URL: ${NOTICE_API_URL:-}
-      LIBRARY_API_URL: ${LIBRARY_API_URL:-http://study-api:8080}
+      LIBRARY_API_URL: ${LIBRARY_API_URL:-}
       FOOD_API_URL: ${FOOD_API_URL:-}
       NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
       NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
@@ -300,39 +254,9 @@ services:
       dockerfile: apps/console/Dockerfile
       args:
         VITE_BASE_PATH: ${VITE_CONSOLE_BASE_PATH:-/console/}
-        VITE_QUIZCRAFT_WORKSHOP_URL: ${VITE_QUIZCRAFT_WORKSHOP_URL:-/quiz/extract}
+        VITE_QUIZCRAFT_WORKSHOP_URL: ${VITE_QUIZCRAFT_WORKSHOP_URL:-}
     depends_on:
       - console-gateway
-    expose:
-      - "80"
-
-  quizcraft-api:
-    build:
-      context: ./products/quizcraft
-      dockerfile: Dockerfile
-    environment:
-      APP_HOST: ${QUIZCRAFT_APP_HOST:-0.0.0.0}
-      APP_PORT: ${QUIZCRAFT_APP_PORT:-10086}
-      DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/quizcraft?sslmode=disable}
-      CORS_ORIGINS: ${QUIZCRAFT_CORS_ORIGINS:-http://localhost:8088}
-      ADMIN_TOKEN: ${QUIZCRAFT_ADMIN_TOKEN:-dev-only-quizcraft-admin-token}
-      QUIZCRAFT_READ_ONLY: ${QUIZCRAFT_READ_ONLY:-0}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    expose:
-      - "10086"
-
-  quizcraft-web:
-    build:
-      context: .
-      dockerfile: products/quizcraft/web-app/Dockerfile
-      args:
-        VITE_BASE_PATH: ${VITE_BASE_PATH:-/quiz/}
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/quiz-api/api}
-        VITE_APP_MODE: ${VITE_APP_MODE:-full}
-    depends_on:
-      - quizcraft-api
     expose:
       - "80"
 
@@ -343,9 +267,6 @@ services:
       - portal-gateway
       - console
       - console-gateway
-      - quizcraft-web
-      - quizcraft-api
-      - study-api
     ports:
       # The host TLS terminator is the only trusted source of forwarded
       # protocol metadata. Do not expose this hop directly to the network.

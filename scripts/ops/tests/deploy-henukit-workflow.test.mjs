@@ -8,7 +8,7 @@ const workflow = readFileSync(
   "utf8",
 );
 
-test("CI builds every HENU production image and no Study image", () => {
+test("CI builds the primary HENU runtime without legacy Study or QuizCraft images", () => {
   const expectedImages = [
     "henukit-console",
     "henukit-console-gateway",
@@ -18,14 +18,14 @@ test("CI builds every HENU production image and no Study image", () => {
     "henukit-portal",
     "henukit-portal-api",
     "henukit-portal-gateway",
-    "henukit-quizcraft-api",
-    "henukit-quizcraft-web",
   ];
 
   for (const image of expectedImages) {
     assert.match(workflow, new RegExp(`image: ${image.replaceAll("-", "\\-")}`));
   }
   assert.doesNotMatch(workflow, /image: henukit-study/);
+  assert.doesNotMatch(workflow, /image: henukit-quizcraft/);
+  assert.doesNotMatch(workflow, /VITE_QUIZCRAFT_WORKSHOP_URL=\/quiz/);
 });
 
 test("every Docker image artifact includes an independent SHA-256 checksum", () => {
@@ -48,7 +48,6 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "CONSOLE_SESSION_KEY",
       "FOOD_CLIENT_SECRET",
       "FOOD_SUMMARY_CLIENT_SECRET",
-      "LIBRARY_API_URL",
       "LIBRARY_CLIENT_SECRET",
       "LIBRARY_SUMMARY_CLIENT_SECRET",
       "NOTICE_CLIENT_SECRET",
@@ -69,7 +68,6 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "POSTGRES_PASSWORD",
       "POSTGRES_USER",
       "PRACTICE_CLIENT_SECRET",
-      "QUIZCRAFT_ADMIN_TOKEN",
       "QUIZCRAFT_SUMMARY_CLIENT_SECRET",
     ].map((name) => [name, "test-required-value"]),
   );
@@ -111,8 +109,6 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-portal",
     "henukit-portal-api",
     "henukit-portal-gateway",
-    "henukit-quizcraft-api",
-    "henukit-quizcraft-web",
   ];
 
   for (const image of expectedImages) {
@@ -129,7 +125,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     false,
   );
   assert.equal(
-    Object.keys(config.services).some((service) => service.startsWith("study")),
+    Object.keys(config.services).some((service) => /^(study|quizcraft)/.test(service)),
     false,
   );
   assert.equal(
@@ -145,6 +141,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     workflow,
     /config --no-interpolate --no-path-resolution > "\$runtime\/docker-compose\.henukit\.release\.yml"[\s\S]*infra\/nginx\/henukit\.conf\.example/,
   );
+  assert.match(workflow, /install -m 0555 scripts\/ops\/deploy-henukit-artifact\.sh/);
+  assert.match(workflow, /migrations\/platform-core/);
   assert.doesNotMatch(
     workflow,
     /cp docker-compose\.henukit\.yml|cp docker-compose\.henukit\.prebuilt\.yml|init-henukit-dbs\.sh/,

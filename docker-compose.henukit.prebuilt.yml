@@ -1,5 +1,6 @@
 # Production overlay for fixed-SHA GitHub Actions image artifacts.
-# It disables every HENU source build and removes Study from the release model.
+# It disables every HENU source build. Legacy Study and standalone QuizCraft
+# runtimes are intentionally absent; Portal keeps their databases as data sources.
 services:
   portal:
     image: henukit-portal:${RELEASE_SHA:?RELEASE_SHA is required}
@@ -11,19 +12,6 @@ services:
     build: !reset null
     pull_policy: never
     mem_limit: 64m
-  quizcraft-web:
-    image: henukit-quizcraft-web:${RELEASE_SHA:?RELEASE_SHA is required}
-    build: !reset null
-    pull_policy: never
-    mem_limit: 64m
-  quizcraft-api:
-    image: henukit-quizcraft-api:${RELEASE_SHA:?RELEASE_SHA is required}
-    build: !reset null
-    pull_policy: never
-    mem_limit: 256m
-    environment:
-      DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:?QUIZCRAFT_DATABASE_URL is required}
-      ADMIN_TOKEN: ${QUIZCRAFT_ADMIN_TOKEN:?QUIZCRAFT_ADMIN_TOKEN is required}
   platform-core:
     image: henukit-platform-core:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null
@@ -84,7 +72,6 @@ services:
     environment:
       PLATFORM_CLIENT_SECRET: ${CONSOLE_PLATFORM_CLIENT_SECRET:?CONSOLE_PLATFORM_CLIENT_SECRET is required}
       CONSOLE_SESSION_KEY: ${CONSOLE_SESSION_KEY:?CONSOLE_SESSION_KEY is required}
-      LIBRARY_API_URL: ${LIBRARY_API_URL:?LIBRARY_API_URL is required}
       PORTAL_SUMMARY_CLIENT_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:?PORTAL_SUMMARY_CLIENT_SECRET is required}
       PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:?PLATFORM_SUMMARY_CLIENT_SECRET is required}
       NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:?NOTICE_SUMMARY_CLIENT_SECRET is required}
@@ -111,8 +98,4 @@ services:
       - portal-gateway
       - console
       - console-gateway
-      - quizcraft-web
-      - quizcraft-api
     mem_limit: 32m
-  study-api: !reset null
-  study-worker: !reset null
