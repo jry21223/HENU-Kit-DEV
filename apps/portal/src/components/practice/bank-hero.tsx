@@ -71,13 +71,19 @@ const TICKER = [
 const VARIANT_META: Record<BankHeroVariant, { fig: string; blurb: string }> = {
   A: {
     fig: "FIG.01 知识点结构 / KNOWLEDGE MESH",
-    blurb: "掌握度驱动 · 环/核/公转",
+    blurb: "掌握度驱动 · 进度弧/核/公转",
   },
   B: {
     fig: "FIG.01 答题卡叠层 / ANSWER SHEETS",
     blurb: "题册剖面 + 勾选",
   },
 };
+
+/** Ellipse circumference approx for stroke-dash progress (rx, ry). */
+function ellipsePerim(rx: number, ry: number) {
+  // Ramanujan approximation
+  return Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)));
+}
 
 const SPARK_PATH = "M0 34 L28 30 L56 33 L84 22 L112 26 L140 14 L168 18 L196 6";
 const SPARK_LEN = 240;
@@ -86,9 +92,14 @@ function formatNum(n: number) {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-/** reduced-motion：A 晶体轮廓，环透明度示意掌握度 */
+/** reduced-motion：A 晶体轮廓 + 进度弧（与 3D 同一编码） */
 function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
   const rings = mastery.subjects.slice(0, 3);
+  const acc = mastery.accuracy / 100;
+  const cov =
+    rings.length === 0
+      ? 0
+      : rings.reduce((a, s) => a + s.value, 0) / rings.length / 100;
   return (
     <svg
       viewBox="0 0 200 240"
@@ -97,34 +108,65 @@ function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
       fill="none"
       stroke="currentColor"
     >
-      <polygon points="100,28 168,78 148,168 52,168 32,78" strokeWidth="1.2" />
+      {/* Outer cage opacity → coverage */}
+      <polygon
+        points="100,28 168,78 148,168 52,168 32,78"
+        strokeWidth="1.2"
+        opacity={0.2 + cov * 0.55}
+      />
       <polygon
         points="100,58 140,88 128,142 72,142 60,88"
         strokeWidth="1"
-        opacity={0.25 + (mastery.accuracy / 100) * 0.5}
+        opacity={0.12 + cov * 0.4}
       />
+      {/* Nucleus → accuracy */}
       <circle
         cx="100"
         cy="110"
-        r={6 + (mastery.accuracy / 100) * 10}
+        r={5 + acc * 12}
         className="stroke-accent"
-        strokeWidth="1.4"
+        strokeWidth="1.5"
+        opacity={0.45 + acc * 0.5}
       />
       {rings.map((s, i) => {
-        const t = s.value / 100;
+        const t = Math.min(1, Math.max(0, s.value / 100));
         const weak = s.value < 60;
+        const rx = 48 + i * 16;
+        const ry = 18 + i * 6;
+        const perim = ellipsePerim(rx, ry);
+        const filled = Math.max(perim * 0.04, perim * t);
         return (
-          <ellipse
-            key={s.label}
-            cx="100"
-            cy="118"
-            rx={48 + i * 16}
-            ry={18 + i * 6}
-            strokeWidth={1 + t * 2}
-            opacity={0.2 + t * 0.65}
-            className={weak ? "stroke-accent" : undefined}
-            strokeDasharray={weak ? "4 4" : undefined}
-          />
+          <g key={s.label}>
+            {/* full track */}
+            <ellipse
+              cx="100"
+              cy="118"
+              rx={rx}
+              ry={ry}
+              strokeWidth="0.8"
+              opacity={0.14}
+            />
+            {/* progress arc */}
+            <ellipse
+              cx="100"
+              cy="118"
+              rx={rx}
+              ry={ry}
+              strokeWidth={1.4 + t * 1.2}
+              opacity={0.35 + t * 0.55}
+              className={weak ? "stroke-accent" : undefined}
+              strokeDasharray={`${filled} ${perim}`}
+              strokeLinecap="butt"
+              transform="rotate(-90 100 118)"
+            />
+            {/* start tick */}
+            <path
+              d={`M${100 + rx - 1} 118 h6`}
+              strokeWidth="1.2"
+              className={weak ? "stroke-accent" : undefined}
+              opacity={0.55}
+            />
+          </g>
         );
       })}
       <path d="M100 18 v-12 M94 12 h12" className="stroke-accent" />
@@ -253,11 +295,12 @@ export default function BankHero({
   );
 
   const meta = VARIANT_META[variant];
+  // Match VariantA orbit cube mapping (quiet secondary cue)
   const cubeHint = Math.min(
-    5,
+    4,
     Math.max(
       0,
-      Math.floor(mastery.streakDays / 7) + (mastery.streakDays > 0 ? 1 : 0)
+      Math.floor(mastery.streakDays / 10) + (mastery.streakDays > 0 ? 1 : 0)
     )
   );
 
@@ -385,28 +428,46 @@ export default function BankHero({
                   </button>
                 ))}
               </div>
-              <ul className="border border-line bg-paper/85 px-2.5 py-2 backdrop-blur-sm">
+              <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
                 {ringSubjects.map((s, i) => {
                   const weak = s.value < 60;
+                  const t = Math.min(100, Math.max(0, s.value));
                   return (
                     <li
                       key={s.label}
-                      className="flex items-center justify-between gap-3 font-mono text-[10px] tracking-wide"
+                      className="flex items-center gap-2 py-0.5 font-mono text-[10px] tracking-wide"
                     >
-                      <span className="text-ink/45">
-                        R{i + 1}
-                        <span className="mx-1.5 text-ink/25">·</span>
+                      <span className="w-5 shrink-0 text-ink/35">R{i + 1}</span>
+                      <span className="w-16 shrink-0 truncate text-ink/50">
                         {s.label}
                       </span>
-                      <span className={weak ? "text-accent" : "text-ink/70"}>
-                        {s.value}%{weak ? " 弱" : ""}
+                      {/* diagram-style gauge: track + fill */}
+                      <span
+                        aria-hidden
+                        className="relative h-[3px] min-w-0 flex-1 bg-ink/10"
+                      >
+                        <span
+                          className={cn(
+                            "absolute inset-y-0 left-0",
+                            weak ? "bg-accent" : "bg-ink/55"
+                          )}
+                          style={{ width: `${t}%` }}
+                        />
+                      </span>
+                      <span
+                        className={cn(
+                          "w-9 shrink-0 text-right tabular-nums",
+                          weak ? "text-accent" : "text-ink/65"
+                        )}
+                      >
+                        {t}%
                       </span>
                     </li>
                   );
                 })}
                 <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
                   <span>
-                    核 {mastery.accuracy}% · 连打 {mastery.streakDays}d → 方块{" "}
+                    核 {mastery.accuracy}% · 连打 {mastery.streakDays}d · 块{" "}
                     {cubeHint}
                   </span>
                   <span>{mastery.totalQuestions} 题</span>
