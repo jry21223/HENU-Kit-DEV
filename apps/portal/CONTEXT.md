@@ -17,13 +17,13 @@
 - Library material files, downloads, or business data (owned by Study API).
 - Food submissions, anomaly tickets, or tier adjustments (owned by Food service).
 - Campus market transaction data (owned by campus_life).
-- Account database, authentication, or mail delivery (owned by Platform Core).
+- Account Center pages, registration, authentication credentials, account recovery, or mail delivery (owned by Platform Core).
 - Any business backend or database access.
 - Console operations dashboard (owned by apps/console).
 
 ## Current boundary
 
-Portal V1 is a frontend-only prototype with mock data. All stores are in-memory singletons using `useSyncExternalStore`. Authentication is simulated (any username + 6-char password, demo code `427819`). Session persists to `localStorage` under key `henukit.session`. No real API integration exists yet.
+Portal is transitioning from its frontend-only prototype to real Portal Gateway data and Session integration. Its pre-launch account pages still contain product-local mock authentication and an interim Account Center form adapter; neither is valid production authentication. ADR-0014 makes Account Center the sole registration and login UI, leaving Portal with account entry points and its own OAuth-established Portal Session only.
 
 ## Design language
 
@@ -36,6 +36,7 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 ## Key terms
 
 - **Portal Configuration**: Content and navigation changes through Git, review, and CI/CD. Console has no content editor.
+- **Account entry**: A Portal navigation point that starts Portal Gateway OAuth. The authorization flow may continue through Account Center, but Portal never starts a separate credential flow, collects credentials, or decides whether authentication succeeded.
 - **Module section**: A full-viewport homepage block for each product (Library, Practice, Food, Campus).
 - **Sub-site**: A top-level route group (/library, /practice, /food, /campus) with its own layout and navigation.
 - **Deterministic SSR**: Seeded randomness (mulberry32) and picsum seed URLs ensure server/client output match.

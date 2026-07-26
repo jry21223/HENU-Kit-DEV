@@ -35,7 +35,7 @@
 ### 已收敛但仍是生产硬门禁
 
 - `#44 / #79 / #80 / #81`：QuizCraft 技术停写、最终对账、旧库只读、跨浏览器/移动端验证、全量切换及七天冷备。
-- `#45 / #88 / #89 / #90`：可信 Reviewer 身份、高风险 PR 隔离和最终累计发布复审。
+- `#45 / #88 / #89 / #90`：当前 SHA 的可信审查证据、高风险 PR 隔离和最终累计发布复审。
 - `#93`：Portal 安全与绿色基线。
 - `#94–#101`：Portal 的 Library、Practice、Food、Campus、Notice 真实数据与契约迁移。
 - `#103`：安全的 GitHub Webhook 自动同步与精确 SHA 发布代理；代码完成后仍需服务器安装、HTTPS、Deploy Key、Hook、Ping/Push、回滚和观察证据。
@@ -45,7 +45,7 @@
 ## 3. 发布候选固定
 
 - [ ] 记录最终 `main` 完整 SHA：`________________________________________`
-- [ ] 记录最终 PR、Required Checks、独立 Developer/Tester Review 与人工批准证据。
+- [ ] 记录最终 PR、Required Checks、当前 SHA 的 Standards / Spec 双轴 Review 与人工批准证据。
 - [ ] 每个部署单元的 Artifact/Image 均绑定精确 SHA，不使用 `latest` 作为发布证据。
 - [ ] 记录 Portal、Console、Platform Core、Platform Worker、Study Web、Study Admin、Study API、Study Worker、Quiz Web、Quiz API/Go Service、Notice、Food、Library、Portal API、Portal Gateway 的实际部署版本。
 - [ ] 发布说明列出本次包含与不包含的模块、Migration、Feature Flag、切流顺序和回滚边界。
@@ -59,7 +59,7 @@
 - [ ] 所有 OpenAPI 3.1、JSON Schema、生成代码漂移和 breaking-change 检查通过。
 - [ ] Compose、Dockerfile、镜像构建和镜像漏洞扫描通过。
 - [ ] Secret Scan、敏感日志扫描、大文件和许可证检查通过。
-- [ ] 仓库治理使用可信权限或受保护配置识别 Reviewer；审批正文自报角色不能单独授予审核资格。
+- [ ] 外部 Reviewer 为推荐增强项而非单人维护硬门禁；若记录外部审批，必须使用可信 GitHub 身份且绑定当前 SHA。
 - [ ] 高风险 PR 只包含一个主要风险类别，并明确影响单元、发布顺序和回滚边界。
 
 ## 5. 数据库、Migration 与恢复检查
@@ -183,7 +183,7 @@
 - 上述必需检查存在未完成、无证据或与最终 Release SHA 不一致。
 - 仅有 CI 成功，没有实际部署、恢复、对账、浏览器或生产 Smoke 证据。
 - Webhook 代码已合并但服务器尚未安装，或只收到 Ping/202 而没有 Hook、运行 SHA、Readiness 与回滚证据。
-- 自动部署会绕过独立评审、生产人工批准、备份恢复、Migration 或 QuizCraft 写入承诺点。
+- 自动部署会绕过当前 SHA 的双轴审查证据、生产人工批准、备份恢复、Migration 或 QuizCraft 写入承诺点。
 - 发现敏感信息泄漏、错误身份信任、伪成功/伪数据或无法验证的数据库写入。
 - 计划在同一窗口执行破坏性 Migration、仓库改名和 DNS/流量切换。
 - 活跃回滚单元、Migration、备份、生产数据或审计证据被当作“旧文件”删除。

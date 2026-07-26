@@ -192,6 +192,14 @@ type OperatorBootstrapAuditEvent struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 }
 
+type PasswordCredential struct {
+	UserID        pgtype.UUID        `json:"user_id"`
+	Verifier      string             `json:"verifier"`
+	PolicyVersion int32              `json:"policy_version"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type PermissionCode struct {
 	Code        string             `json:"code"`
 	Description string             `json:"description"`
@@ -245,6 +253,7 @@ type User struct {
 	Status                string             `json:"status"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
 	AuthorizationRevision int64              `json:"authorization_revision"`
+	DisplayName           pgtype.Text        `json:"display_name"`
 }
 
 type UserRoleGrant struct {

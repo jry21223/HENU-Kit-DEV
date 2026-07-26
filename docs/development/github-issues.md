@@ -28,7 +28,7 @@
 | P1-04 | Phase 1 | OpenAPI 3.1 与 Event Envelope 骨架 | 开发A | 测试A | 2d / 1d | P1-02 | Lint、Mock、生成代码和最小接口契约可消费 |
 | P1-05 | Phase 1 | 路径过滤 PR CI、Branch Protection、CODEOWNERS | 开发B | 测试B | 3.5d / 1.5d | P0-04 | 至少 8 组路径矩阵；共享包触发全部消费者 |
 | P1-06 | Phase 1 | Portal Shell | 开发B | 测试B | 2d / 1d | P1-05 | 三个一级入口、状态占位、360px 和非官方声明通过 |
-| P2-01 | Phase 2 | Users/Email Identity/Role/Membership/Entitlement Schema | 开发A | 测试A+非作者开发 | 4d / 2.5d | P1-03 | 多角色和 VIP 独立；唯一约束、Migration 和回滚通过 |
+| P2-01 | Phase 2 | Users/Email Identity/Role/Membership/Entitlement Schema | 开发A | 测试A+双轴审查 | 4d / 2.5d | P1-03 | 多角色和 VIP 独立；唯一约束、Migration 和回滚通过 |
 | P2-02 | Phase 2 | 邮箱/IP/设备限流 | 开发A | 测试A | 1.5d / 1d | P2-01 | 并发阈值、Redis 故障 Fail Closed、日志脱敏通过 |
 | P2-03 | Phase 2 | Events/Outbox 幂等接收基础 | 开发A | 测试A | 2d / 1d | P1-03,P1-04 | 重复 Event 一条；事务故障无部分提交 |
 | P2-04 | Phase 2 | 验证码请求事务与 Outbox | 开发A | 测试A | 2d / 1d | P2-02,P2-03 | 202、不暴露账号；Code Hash/Event/Outbox 同事务 |
