@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -118,14 +119,17 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	state := randomBytes(32)
-	verifier := randomBytes(32)
+	// RFC 7636: code_verifier is a high-entropy string; code_challenge is
+	// BASE64URL(SHA256(ASCII(code_verifier))). Hash the same string we store
+	// and later send as code_verifier — never the raw pre-encoding bytes.
+	verifier := base64.RawURLEncoding.EncodeToString(randomBytes(32))
 	browserNonce := randomBytes(32)
 
 	stateHash := sha256Hex(state)
 	browserHash := sha256Hex(browserNonce)
 
 	payload, _ := json.Marshal(map[string]string{
-		"verifier":  base64.RawURLEncoding.EncodeToString(verifier),
+		"verifier":  verifier,
 		"return_to": returnTo,
 	})
 	key := fmt.Sprintf("portal:oauth-state:%s:%s", stateHash, browserHash)
@@ -142,8 +146,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   300,
 	})
 
-	challenge := sha256Sum(verifier)
-	codeChallenge := base64.RawURLEncoding.EncodeToString(challenge)
+	codeChallenge := s256Challenge(verifier)
 
 	redirectURL := fmt.Sprintf(
 		"%s/api/v1/oauth/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
@@ -158,24 +161,24 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 	if code == "" || state == "" {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "missing code or state"})
+		writeError(w, r, http.StatusBadRequest, "missing code or state")
 		return
 	}
 
 	cookies := h.browserCookies(r)
 	cookie, err := r.Cookie(cookies.oauth)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "missing oauth cookie"})
+		writeError(w, r, http.StatusBadRequest, "missing oauth cookie")
 		return
 	}
 	browserNonce, err := base64.RawURLEncoding.DecodeString(cookie.Value)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid oauth cookie"})
+		writeError(w, r, http.StatusBadRequest, "invalid oauth cookie")
 		return
 	}
 	stateBytes, err := base64.RawURLEncoding.DecodeString(state)
 	if err != nil || len(stateBytes) != 32 {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid or expired state"})
+		writeError(w, r, http.StatusBadRequest, "invalid or expired state")
 		return
 	}
 
@@ -185,13 +188,13 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 
 	data, err := h.redis.GetDel(r.Context(), key).Bytes()
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid or expired state"})
+		writeError(w, r, http.StatusBadRequest, "invalid or expired state")
 		return
 	}
 
 	var stored map[string]string
 	if err := json.Unmarshal(data, &stored); err != nil {
-		writeJSON(w, http.StatusInternalServerError, contract.ErrorEnvelope{Error: "corrupt state"})
+		writeError(w, r, http.StatusInternalServerError, "corrupt state")
 		return
 	}
 
@@ -203,11 +206,17 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	idempotencyKey := hex.EncodeToString(stateBytes[:16])
 	result, err := h.platform.ExchangeCode(r.Context(), code, stored["verifier"], idempotencyKey)
 	if err != nil {
+		category := "exchange_error"
+		status := http.StatusInternalServerError
+		message := "exchange error"
 		if err == platformcore.ErrUnauthorized {
-			writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "exchange failed"})
-			return
+			category = "unauthorized"
+			status = http.StatusUnauthorized
+			message = "exchange failed"
 		}
-		writeJSON(w, http.StatusInternalServerError, contract.ErrorEnvelope{Error: "exchange error"})
+		// Redacted: never log code, verifier, cookies, email, or secrets.
+		log.Printf("portal-gateway oauth exchange failed request_id=%s category=%s", requestIDOf(w, r), category)
+		writeError(w, r, status, message)
 		return
 	}
 
@@ -215,7 +224,7 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		UserID: result.UserID, ExchangeToken: result.SessionExchangeToken, ExpiresAt: result.ExpiresAt,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, contract.ErrorEnvelope{Error: "session encode error"})
+		writeError(w, r, http.StatusInternalServerError, "session encode error")
 		return
 	}
 
@@ -300,6 +309,29 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+func writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
+	writeJSON(w, status, contract.ErrorEnvelope{
+		Error:     message,
+		RequestID: requestIDOf(w, r),
+	})
+}
+
+func requestIDOf(w http.ResponseWriter, r *http.Request) string {
+	if id := strings.TrimSpace(w.Header().Get("X-Request-Id")); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(r.Header.Get("X-Request-Id")); id != "" {
+		return id
+	}
+	return ""
+}
+
+// s256Challenge is BASE64URL(SHA256(ASCII(code_verifier))) per RFC 7636 / Platform Core.
+func s256Challenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
 func uuid() string {
 	b := make([]byte, 16)
 	rand.Read(b)
@@ -317,11 +349,6 @@ func randomBytes(n int) []byte {
 func sha256Hex(data []byte) string {
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("%x", h[:])
-}
-
-func sha256Sum(data []byte) []byte {
-	h := sha256.Sum256(data)
-	return h[:]
 }
 
 func firstNonEmpty(values ...string) string {
