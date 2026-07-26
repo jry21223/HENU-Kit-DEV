@@ -103,6 +103,12 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000012_auth_credential_retention.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000012_auth_credential_retention.up.sql
           test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT count(*)=3 AND bool_and(convalidated) FROM pg_constraint WHERE conname IN ('verification_codes_secret_retention_shape','mail_outbox_payload_retention_shape','oauth_exchange_response_discarded')")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000013_password_registration.up.sql
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.password_credentials') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='display_name') AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='verification_codes_purpose_check' AND pg_get_constraintdef(oid) LIKE '%register%')")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000013_password_registration.down.sql
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT to_regclass('public.password_credentials') IS NULL AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='display_name')")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000013_password_registration.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000013_password_registration.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000012_auth_credential_retention.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000011_email_identity_login.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000010_quizcraft_access.down.sql
@@ -128,6 +134,7 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000010_quizcraft_access.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000011_email_identity_login.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000012_auth_credential_retention.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000013_password_registration.up.sql
 
       - name: Verify generated SQL and OpenAPI
         run: |

@@ -19,6 +19,7 @@ import (
 	"henukit.dev/platform-core/internal/httpapi"
 	"henukit.dev/platform-core/internal/identity"
 	"henukit.dev/platform-core/internal/operationsinbox"
+	"henukit.dev/platform-core/internal/password"
 	"henukit.dev/platform-core/internal/platformoperations"
 	"henukit.dev/platform-core/internal/store"
 	"henukit.dev/platform-core/internal/verification"
@@ -43,6 +44,10 @@ type Config struct {
 	MailDeliveryRetiringToken string
 	MailDeliveryRetiringKeyID string
 	TrustedProxyCIDRs         []string
+	PasswordMemoryKiB         uint32
+	PasswordIterations        uint32
+	PasswordParallelism       uint8
+	PasswordHashConcurrency   int
 }
 
 func New(config Config) (http.Handler, error) {
@@ -129,10 +134,27 @@ func New(config Config) (http.Handler, error) {
 	_, _ = deviceMAC.Write([]byte("henukit-device-cookie"))
 	deviceKey := deviceMAC.Sum(nil)
 	coordinator := coordination.NewRedis(config.Redis)
+	passwordParameters := password.DefaultParameters()
+	if config.PasswordMemoryKiB > 0 {
+		passwordParameters.MemoryKiB = config.PasswordMemoryKiB
+	}
+	if config.PasswordIterations > 0 {
+		passwordParameters.Iterations = config.PasswordIterations
+	}
+	if config.PasswordParallelism > 0 {
+		passwordParameters.Parallelism = config.PasswordParallelism
+	}
+	if config.PasswordHashConcurrency <= 0 {
+		config.PasswordHashConcurrency = 2
+	}
+	passwordManager, err := password.New(passwordParameters, config.PasswordHashConcurrency)
+	if err != nil {
+		return nil, err
+	}
 	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL)
 	inbox := operationsinbox.New(queries, config.Database)
 	platformOperations := platformoperations.New(queries, config.Database, config.Redis)
-	verificationFlow, err := verification.New(queries, config.Database, coordinator, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay, config.CoreSessionTTL)
+	verificationFlow, err := verification.New(queries, config.Database, coordinator, passwordManager, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay, config.CoreSessionTTL)
 	if err != nil {
 		return nil, err
 	}

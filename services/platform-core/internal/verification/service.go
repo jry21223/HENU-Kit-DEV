@@ -17,23 +17,28 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"henukit.dev/platform-core/internal/password"
 	"henukit.dev/platform-core/internal/securebox"
 	"henukit.dev/platform-core/internal/store"
 	"henukit.dev/platform-core/internal/verificationmail"
 )
 
 var (
-	ErrInvalid         = errors.New("verification request is invalid")
-	ErrDependency      = errors.New("verification dependency unavailable")
-	ErrIdempotency     = errors.New("idempotency key conflicts with another request")
-	ErrCodeInvalid     = errors.New("verification code is invalid")
-	ErrCodeExpired     = errors.New("verification code expired")
-	ErrCodeAlreadyUsed = errors.New("verification code was already used")
-	ErrRateLimited     = errors.New("verification attempts are rate limited")
-	ErrRandomSource    = errors.New("verification random source unavailable")
+	ErrInvalid              = errors.New("verification request is invalid")
+	ErrDependency           = errors.New("verification dependency unavailable")
+	ErrIdempotency          = errors.New("idempotency key conflicts with another request")
+	ErrCodeInvalid          = errors.New("verification code is invalid")
+	ErrCodeExpired          = errors.New("verification code expired")
+	ErrCodeAlreadyUsed      = errors.New("verification code was already used")
+	ErrRateLimited          = errors.New("verification attempts are rate limited")
+	ErrRandomSource         = errors.New("verification random source unavailable")
+	ErrAlreadyRegistered    = errors.New("email identity is already registered")
+	ErrRegistrationRequired = errors.New("registration is required")
+	ErrAuthentication       = errors.New("authentication failed")
 )
 
 type Coordinator interface {
@@ -51,6 +56,8 @@ type Service struct {
 	codeTTL        time.Duration
 	resendDelay    time.Duration
 	coreSessionTTL time.Duration
+	passwords      *password.Manager
+	dummyVerifier  string
 }
 
 type RequestInput struct {
@@ -87,8 +94,17 @@ type Verified struct {
 	SessionExpiresAt time.Time
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, masterKey []byte, allowedDomains []string, codeTTL, resendDelay, coreSessionTTL time.Duration) (*Service, error) {
-	if queries == nil || database == nil || coordinator == nil || len(masterKey) != 32 {
+type RegisterInput struct {
+	Email, Code, DisplayName, Password string
+	IdempotencyKey, DeviceID, ClientIP string
+}
+
+type PasswordLoginInput struct {
+	Email, Password, DeviceID, ClientIP string
+}
+
+func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, passwordManager *password.Manager, masterKey []byte, allowedDomains []string, codeTTL, resendDelay, coreSessionTTL time.Duration) (*Service, error) {
+	if queries == nil || database == nil || coordinator == nil || passwordManager == nil || len(masterKey) != 32 {
 		return nil, errors.New("verification dependencies and a 32-byte key are required")
 	}
 	if codeTTL < 5*time.Minute || codeTTL > 10*time.Minute || resendDelay < 60*time.Second {
@@ -108,10 +124,15 @@ func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator
 	if err != nil {
 		return nil, err
 	}
+	dummyVerifier, err := passwordManager.Hash(context.Background(), "dummy password credential")
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
 		queries: queries, database: database, coordinator: coordinator, secretKey: append([]byte(nil), masterKey...),
 		mailCodec: mailCodec, emailCodec: emailCodec, allowedDomains: map[string]struct{}{"henu.edu.cn": {}},
 		codeTTL: codeTTL, resendDelay: resendDelay, coreSessionTTL: coreSessionTTL,
+		passwords: passwordManager, dummyVerifier: dummyVerifier,
 	}, nil
 }
 
@@ -206,7 +227,9 @@ func (s *Service) rateLimited(ctx context.Context, emailHash []byte, deviceID, c
 
 func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, error) {
 	email, err := s.normalizeEmail(input.Email)
-	if err != nil || !validPurpose(input.Purpose) || len(input.Code) != 6 || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 || input.DeviceID == "" || input.ClientIP == "" {
+	if err != nil || !validPurpose(input.Purpose) || input.Purpose == "register" ||
+		len(input.Code) != 6 || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 ||
+		input.DeviceID == "" || input.ClientIP == "" {
 		return Verified{}, ErrInvalid
 	}
 	emailHash := s.digest("email", []byte(email))
@@ -265,6 +288,20 @@ func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, erro
 		}
 		return Verified{}, ErrCodeInvalid
 	}
+	result := Verified{VerificationID: uuidString(verification.ID)}
+	var loginIdentity store.GetEmailIdentityForUpdateRow
+	if input.Purpose == "login" {
+		loginIdentity, err = queries.GetEmailIdentityForUpdate(ctx, emailHash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Verified{}, ErrRegistrationRequired
+		}
+		if err != nil {
+			return Verified{}, err
+		}
+		if loginIdentity.Status != "active" {
+			return Verified{}, ErrInvalid
+		}
+	}
 	rows, err := queries.ConsumeVerificationCode(ctx, store.ConsumeVerificationCodeParams{
 		ID: verification.ID, ConsumedRequestKey: pgtype.Text{String: input.IdempotencyKey, Valid: true},
 		ConsumedRequestFingerprint: requestFingerprint,
@@ -275,43 +312,14 @@ func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, erro
 	if rows != 1 {
 		return Verified{}, ErrCodeAlreadyUsed
 	}
-	result := Verified{VerificationID: uuidString(verification.ID)}
 	if input.Purpose == "login" {
-		identity, identityErr := queries.GetEmailIdentityForUpdate(ctx, emailHash)
-		if identityErr != nil && !errors.Is(identityErr, pgx.ErrNoRows) {
-			return Verified{}, identityErr
+		var sessionTokenHash []byte
+		result.SessionToken, sessionTokenHash, result.SessionExpiresAt, err = s.newCoreSession()
+		if err != nil {
+			return Verified{}, err
 		}
-		var userID pgtype.UUID
-		if errors.Is(identityErr, pgx.ErrNoRows) {
-			created, err := queries.CreateEmailLoginUser(ctx)
-			if err != nil {
-				return Verified{}, err
-			}
-			emailCiphertext, err := s.emailCodec.Seal([]byte(email))
-			if err != nil {
-				return Verified{}, ErrRandomSource
-			}
-			if err := queries.CreateEmailIdentity(ctx, store.CreateEmailIdentityParams{UserID: created.ID, EmailLookupHash: emailHash, EmailCiphertext: emailCiphertext}); err != nil {
-				return Verified{}, err
-			}
-			userID = created.ID
-			result.EmailVerified, result.UserStatus, result.UserCreatedAt = created.EmailVerified, created.Status, created.CreatedAt.Time
-		} else {
-			if identity.Status != "active" {
-				return Verified{}, ErrInvalid
-			}
-			userID = identity.UserID
-			result.EmailVerified, result.UserStatus, result.UserCreatedAt = identity.EmailVerified, identity.Status, identity.CreatedAt.Time
-		}
-		tokenBytes := make([]byte, 32)
-		if _, err := io.ReadFull(rand.Reader, tokenBytes); err != nil {
-			return Verified{}, ErrRandomSource
-		}
-		result.SessionToken = base64.RawURLEncoding.EncodeToString(tokenBytes)
-		tokenHash := sha256.Sum256([]byte(result.SessionToken))
-		result.SessionExpiresAt = time.Now().UTC().Add(s.coreSessionTTL)
 		session, err := queries.CreateCoreSession(ctx, store.CreateCoreSessionParams{
-			UserID: userID, TokenHash: tokenHash[:],
+			UserID: loginIdentity.UserID, TokenHash: sessionTokenHash,
 			ExpiresAt: pgtype.Timestamptz{Time: result.SessionExpiresAt, Valid: true},
 		})
 		if err != nil {
@@ -326,12 +334,225 @@ func (s *Service) Verify(ctx context.Context, input VerifyInput) (Verified, erro
 			}
 			return Verified{}, ErrCodeAlreadyUsed
 		}
-		result.UserID = uuidString(userID)
+		result.UserID = uuidString(loginIdentity.UserID)
+		result.EmailVerified, result.UserStatus, result.UserCreatedAt =
+			loginIdentity.EmailVerified, loginIdentity.Status, loginIdentity.CreatedAt.Time
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Verified{}, err
 	}
 	return result, nil
+}
+
+func (s *Service) Register(ctx context.Context, input RegisterInput) (Verified, error) {
+	email, err := s.normalizeEmail(input.Email)
+	displayName := strings.TrimSpace(input.DisplayName)
+	if err != nil || input.DeviceID == "" || input.ClientIP == "" ||
+		len(input.Code) != 6 || len(input.IdempotencyKey) < 8 || len(input.IdempotencyKey) > 200 ||
+		displayName == "" || len([]rune(displayName)) > 80 || password.Validate(email, input.Password) != nil {
+		return Verified{}, ErrInvalid
+	}
+	emailHash := s.digest("email", []byte(email))
+	limited, err := s.verifyRateLimited(ctx, emailHash, input.DeviceID, input.ClientIP)
+	if err != nil {
+		return Verified{}, err
+	}
+	if limited {
+		return Verified{}, ErrRateLimited
+	}
+	verifier, err := s.passwords.Hash(ctx, input.Password)
+	if err != nil {
+		return Verified{}, ErrDependency
+	}
+	emailCiphertext, err := s.emailCodec.Seal([]byte(email))
+	if err != nil {
+		return Verified{}, ErrRandomSource
+	}
+	sessionToken, tokenHash, sessionExpiresAt, err := s.newCoreSession()
+	if err != nil {
+		return Verified{}, err
+	}
+	requestFingerprint := s.digest("register", emailHash, []byte(input.Code), []byte(displayName))
+	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Verified{}, err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	queries := s.queries.WithTx(tx)
+	verification, err := queries.GetVerificationCodeForUpdate(ctx, store.GetVerificationCodeForUpdateParams{
+		EmailLookupHash: emailHash, Purpose: "register",
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Verified{}, ErrCodeInvalid
+		}
+		return Verified{}, err
+	}
+	if verification.UsedAt.Valid {
+		return Verified{}, ErrCodeAlreadyUsed
+	}
+	if verification.RevokedAt.Valid {
+		return Verified{}, ErrCodeInvalid
+	}
+	if !time.Now().UTC().Before(verification.ExpiresAt.Time) {
+		return Verified{}, ErrCodeExpired
+	}
+	expectedHash := s.digest("code", verification.CodeNonce, []byte(input.Code))
+	if subtle.ConstantTimeCompare(expectedHash, verification.CodeHash) != 1 {
+		if _, err := queries.RegisterFailedVerificationAttempt(ctx, verification.ID); err != nil {
+			return Verified{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return Verified{}, err
+		}
+		return Verified{}, ErrCodeInvalid
+	}
+	if _, err := queries.GetEmailIdentityForUpdate(ctx, emailHash); err == nil {
+		return Verified{}, ErrAlreadyRegistered
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return Verified{}, err
+	}
+	created, err := queries.CreateRegisteredUser(ctx, pgtype.Text{String: displayName, Valid: true})
+	if err != nil {
+		return Verified{}, err
+	}
+	if err := queries.CreateEmailIdentity(ctx, store.CreateEmailIdentityParams{
+		UserID: created.ID, EmailLookupHash: emailHash, EmailCiphertext: emailCiphertext,
+	}); err != nil {
+		if isUniqueViolation(err) {
+			return Verified{}, ErrAlreadyRegistered
+		}
+		return Verified{}, err
+	}
+	if err := queries.CreatePasswordCredential(ctx, store.CreatePasswordCredentialParams{
+		UserID: created.ID, Verifier: verifier, PolicyVersion: password.PolicyVersion,
+	}); err != nil {
+		return Verified{}, err
+	}
+	session, err := queries.CreateCoreSession(ctx, store.CreateCoreSessionParams{
+		UserID: created.ID, TokenHash: tokenHash,
+		ExpiresAt: pgtype.Timestamptz{Time: sessionExpiresAt, Valid: true},
+	})
+	if err != nil {
+		return Verified{}, err
+	}
+	rows, err := queries.ConsumeVerificationCode(ctx, store.ConsumeVerificationCodeParams{
+		ID: verification.ID, ConsumedRequestKey: pgtype.Text{String: input.IdempotencyKey, Valid: true},
+		ConsumedRequestFingerprint: requestFingerprint,
+	})
+	if err != nil || rows != 1 {
+		if err != nil {
+			return Verified{}, err
+		}
+		return Verified{}, ErrCodeAlreadyUsed
+	}
+	attached, err := queries.AttachLoginSessionToVerification(ctx, store.AttachLoginSessionToVerificationParams{
+		ID: verification.ID, LoginSessionID: session.ID,
+	})
+	if err != nil || attached != 1 {
+		if err != nil {
+			return Verified{}, err
+		}
+		return Verified{}, ErrCodeAlreadyUsed
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Verified{}, err
+	}
+	return Verified{
+		VerificationID: uuidString(verification.ID), UserID: uuidString(created.ID),
+		EmailVerified: created.EmailVerified, UserStatus: created.Status, UserCreatedAt: created.CreatedAt.Time,
+		SessionToken: sessionToken, SessionExpiresAt: sessionExpiresAt,
+	}, nil
+}
+
+func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (Verified, error) {
+	email, err := s.normalizeEmail(input.Email)
+	if err != nil || !password.AcceptableInput(input.Password) || input.DeviceID == "" || input.ClientIP == "" {
+		return Verified{}, ErrAuthentication
+	}
+	emailHash := s.digest("email", []byte(email))
+	for _, dimension := range []string{
+		"email:" + hex.EncodeToString(emailHash),
+		"device:" + hex.EncodeToString(s.digest("device", []byte(input.DeviceID))),
+		"ip:" + hex.EncodeToString(s.digest("ip", []byte(input.ClientIP))),
+	} {
+		allowed, allowErr := s.coordinator.Allow(ctx, "platform-core:password-login:"+dimension, 100, time.Hour)
+		if allowErr != nil {
+			return Verified{}, ErrDependency
+		}
+		if !allowed {
+			return Verified{}, ErrRateLimited
+		}
+	}
+	credential, err := s.queries.GetPasswordLoginCredential(ctx, emailHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		_, _, _ = s.passwords.Verify(ctx, input.Password, s.dummyVerifier)
+		return Verified{}, ErrAuthentication
+	}
+	if err != nil {
+		return Verified{}, err
+	}
+	valid, needsRehash, err := s.passwords.Verify(ctx, input.Password, credential.Verifier)
+	if err != nil {
+		return Verified{}, ErrDependency
+	}
+	if !valid || credential.Status != "active" {
+		return Verified{}, ErrAuthentication
+	}
+	var upgradedVerifier string
+	if needsRehash || credential.PolicyVersion != password.PolicyVersion {
+		upgradedVerifier, err = s.passwords.Hash(ctx, input.Password)
+		if err != nil {
+			return Verified{}, ErrDependency
+		}
+	}
+	sessionToken, tokenHash, sessionExpiresAt, err := s.newCoreSession()
+	if err != nil {
+		return Verified{}, err
+	}
+	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Verified{}, err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	queries := s.queries.WithTx(tx)
+	if _, err := queries.CreateCoreSession(ctx, store.CreateCoreSessionParams{
+		UserID: credential.UserID, TokenHash: tokenHash,
+		ExpiresAt: pgtype.Timestamptz{Time: sessionExpiresAt, Valid: true},
+	}); err != nil {
+		return Verified{}, err
+	}
+	if upgradedVerifier != "" {
+		if _, err := queries.UpgradePasswordCredential(ctx, store.UpgradePasswordCredentialParams{
+			UserID: credential.UserID, NewVerifier: upgradedVerifier,
+			PolicyVersion: password.PolicyVersion, OldVerifier: credential.Verifier,
+		}); err != nil {
+			return Verified{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Verified{}, err
+	}
+	return Verified{
+		UserID: uuidString(credential.UserID), EmailVerified: credential.EmailVerified,
+		UserStatus: credential.Status, UserCreatedAt: credential.CreatedAt.Time,
+		SessionToken: sessionToken, SessionExpiresAt: sessionExpiresAt,
+	}, nil
+}
+
+func (s *Service) newCoreSession() (string, []byte, time.Time, error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, tokenBytes); err != nil {
+		return "", nil, time.Time{}, ErrRandomSource
+	}
+	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
+	tokenHash := sha256.Sum256([]byte(token))
+	return token, tokenHash[:], time.Now().UTC().Add(s.coreSessionTTL), nil
+}
+
+func isUniqueViolation(err error) bool {
+	var postgresError *pgconn.PgError
+	return errors.As(err, &postgresError) && postgresError.Code == "23505"
 }
 
 func verifiedReplay(purpose string, replay store.GetConsumedVerificationReplayRow) (Verified, error) {
@@ -407,7 +628,7 @@ func randomCode() (string, error) {
 }
 
 func validPurpose(value string) bool {
-	return value == "login" || value == "bind_email" || value == "security"
+	return value == "register" || value == "login" || value == "bind_email" || value == "security"
 }
 
 func uuidString(value pgtype.UUID) string {

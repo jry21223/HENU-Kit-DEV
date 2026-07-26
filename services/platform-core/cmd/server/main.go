@@ -48,6 +48,8 @@ func main() {
 		MailDeliveryWebhookToken: settings.MailDeliveryWebhookToken,
 		MailDeliveryActiveKeyID:  settings.MailDeliveryActiveKeyID, MailDeliveryRetiringToken: settings.MailDeliveryRetiringToken, MailDeliveryRetiringKeyID: settings.MailDeliveryRetiringKeyID,
 		TrustedProxyCIDRs: settings.TrustedProxyCIDRs,
+		PasswordMemoryKiB: settings.PasswordMemoryKiB, PasswordIterations: settings.PasswordIterations,
+		PasswordParallelism: settings.PasswordParallelism, PasswordHashConcurrency: settings.PasswordHashConcurrency,
 	})
 	if err != nil {
 		logger.Error("server initialization failed", "error", err.Error())

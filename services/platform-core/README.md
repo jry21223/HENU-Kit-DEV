@@ -5,7 +5,8 @@ Provision the QuizCraft OAuth redirect and rotatable HMAC client key after apply
 Independent Go service for platform-owned identity and operations data. The delivered HC-05 through HC-08 slices implement:
 
 - host-only Core Session validation;
-- an account-center HTML flow at `/login`; successful login verification atomically creates/restores an encrypted Email Identity and issues a non-rolling 15-day Core Session;
+- Account Center registration at `/register`; it atomically verifies the HENU mailbox, creates the encrypted Email Identity and Argon2id password credential, consumes the code, and issues one non-rolling 15-day Core Session;
+- password and email-code login at `/login`; neither login path creates an account, and successful password authentication upgrades stale Argon2id parameters;
 - exact-callback OAuth authorization with S256 PKCE;
 - 60–120 second, hash-only, single-use Authorization Codes;
 - eight-hour product-local exchange Sessions for Console and Workshop high-privilege work, with immediate server-side revocation;
@@ -31,6 +32,15 @@ It does not own Console Gateway sessions or product-local sessions. Legacy QuizC
 Production configuration is environment-only. Copy key names from `.env.example`; use distinct Platform Core PostgreSQL credentials, an authenticated `rediss://` URL, and separate random 32-byte idempotency and verification keys. The service never logs connection URLs, credentials, request bodies, email addresses, verification codes, authorization codes, or Session tokens.
 
 Production login is code-locked to the single `henu.edu.cn` domain. `PLATFORM_CORE_STUDENT_EMAIL_DOMAINS` remains an explicit deployment assertion and the process refuses to start if it contains any other value. Run `go run ./cmd/auth-retention-cleanup` at least hourly with the Platform Core database URL: it atomically removes expired OAuth exchange idempotency responses and scrubs verification hashes, nonces, and request/consume idempotency facts after 24 hours while retaining non-secret mail and login audit relationships.
+
+Passwords are counted as 10–128 Unicode code points and are never trimmed,
+truncated, or normalized. Platform Core rejects the exact normalized email
+local-part and a versioned weak-password set. It stores only salted,
+versioned Argon2id PHC verifiers. The default parameters are 64 MiB, three
+iterations, parallelism one, with at most two concurrent hashes. Calibrate
+these values on each production host so one hash takes roughly 150–300 ms
+under representative load, while preserving the accepted bounds enforced at
+startup. Never reduce them merely to make tests faster.
 
 `POST /api/v1/oauth/token` requires `Idempotency-Key`, `X-Service-Id`, `X-Key-Id`, `X-Timestamp`, `X-Nonce`, and `X-Signature`. The signature is base64url HMAC-SHA256 over `METHOD`, the actual `PATH_AND_QUERY`, timestamp, nonce, and lowercase hexadecimal `SHA256(BODY)`, separated by newlines. Each OAuth client key progresses through `active`, `retiring`, and `revoked`; only the first two states authenticate during a rotation window.
 

@@ -58,6 +58,10 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Get("/login", handler.loginPage)
 	router.Post("/login/code", handler.loginRequestCode)
 	router.Post("/login/verify", handler.loginVerifyCode)
+	router.Post("/login/password", handler.loginPassword)
+	router.Get("/register", handler.registerPage)
+	router.Post("/register/code", handler.registerRequestCode)
+	router.Post("/register", handler.registerAccount)
 	router.Get(contract.AuthorizeRoute, handler.authorize)
 	router.Post(contract.TokenRoute, handler.exchange)
 	router.Post(contract.AuthorizationCheckRoute, handler.checkAuthorization)
@@ -532,11 +536,133 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f7f
 <label for="email">学校邮箱</label><input id="email" name="email" type="email" value="{{.Email}}" autocomplete="email" required {{if .CodeRequested}}readonly{{end}}>
 {{if .CodeRequested}}<label for="code">6 位验证码</label><input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required autofocus>{{end}}
 <button type="submit">{{if .CodeRequested}}登录并继续{{else}}发送验证码{{end}}</button>
-</form><p class="hint">当前仅允许 henu.edu.cn 邮箱。会话绝对有效期为 15 天。</p></main></body></html>`))
+	</form><p class="hint">当前仅允许 henu.edu.cn 邮箱。会话绝对有效期为 15 天。</p></main></body></html>`))
+
+var accountRegisterTemplate = template.Must(template.New("account-register").Parse(`<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>注册 HENU Kit</title></head><body><main><h1>注册 HENU Kit</h1>
+{{if .Error}}<p role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列，请查收学校邮箱。</p>{{end}}
+<form method="post" action="{{if .CodeRequested}}/register{{else}}/register/code{{end}}">
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<label for="email">学校邮箱</label><input id="email" name="email" type="email" value="{{.Email}}" required {{if .CodeRequested}}readonly{{end}}>
+{{if .CodeRequested}}
+<label for="display_name">展示名</label><input id="display_name" name="display_name" maxlength="80" required>
+<label for="code">6 位验证码</label><input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" required>
+<label for="password">密码</label><input id="password" name="password" type="password" minlength="10" maxlength="128" required>
+{{end}}
+<button type="submit">{{if .CodeRequested}}注册并登录{{else}}发送验证码{{end}}</button>
+</form><p>学生自主运营 · 非河南大学官方项目</p></main></body></html>`))
 
 type accountLoginView struct {
 	CSRFToken, ReturnTo, Email, Error string
 	CodeRequested                     bool
+}
+
+type accountRegisterView struct {
+	CSRFToken, Email, Error string
+	CodeRequested           bool
+}
+
+func (h *Handler) registerPage(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "register_csrf")
+		return
+	}
+	_, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "register_device")
+		return
+	}
+	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: csrfToken, Path: "/", MaxAge: 10 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken})
+}
+
+func (h *Handler) registerRequestCode(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "register_device")
+		return
+	}
+	idempotencyToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "register_request_idempotency")
+		return
+	}
+	_, err = h.verification.Request(request.Context(), verification.RequestInput{
+		Email: email, Purpose: "register", ClientID: "account-center", DeviceID: deviceID,
+		ClientIP: h.clientIP(request), IdempotencyKey: "register_request_" + idempotencyToken,
+		RequestID: requestIDFrom(request.Context()),
+	})
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	if err != nil {
+		h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, Email: email, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
+		return
+	}
+	h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, Email: email, CodeRequested: true})
+}
+
+func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "register_device")
+		return
+	}
+	idempotencyToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "register_idempotency")
+		return
+	}
+	registered, err := h.verification.Register(request.Context(), verification.RegisterInput{
+		Email: email, Code: strings.TrimSpace(request.FormValue("code")),
+		DisplayName: request.FormValue("display_name"), Password: request.FormValue("password"),
+		IdempotencyKey: "register_" + idempotencyToken, DeviceID: deviceID, ClientIP: h.clientIP(request),
+	})
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	if errors.Is(err, verification.ErrRandomSource) {
+		h.writeRandomSourceError(writer, request, "registration")
+		return
+	}
+	if err != nil || registered.SessionToken == "" {
+		message := "注册失败，请检查验证码和注册信息后重试。"
+		if errors.Is(err, verification.ErrAlreadyRegistered) {
+			message = "该邮箱已注册，请登录或找回密码。"
+		}
+		h.renderRegister(writer, request, accountRegisterView{
+			CSRFToken: csrfToken, Email: email, CodeRequested: true, Error: message,
+		})
+		return
+	}
+	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: registered.SessionToken, Path: "/", Expires: registered.SessionExpiresAt, MaxAge: max(1, int(time.Until(registered.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	auditFrom(request.Context()).subjectUserID = maskSubject(registered.UserID)
+	http.Redirect(writer, request, "/", http.StatusSeeOther)
+}
+
+func (h *Handler) renderRegister(writer http.ResponseWriter, request *http.Request, view accountRegisterView) {
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	writer.Header().Set("Referrer-Policy", "no-referrer")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	if err := accountRegisterTemplate.Execute(writer, view); err != nil {
+		h.logger.Error("account_register_template_error", "request_id", requestIDFrom(request.Context()), "error", err)
+	}
 }
 
 func (h *Handler) loginPage(writer http.ResponseWriter, request *http.Request) {
@@ -629,6 +755,40 @@ func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Requ
 	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt, MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	auditFrom(request.Context()).subjectUserID = maskSubject(verified.UserID)
+	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
+}
+
+func (h *Handler) loginPassword(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, returnTo, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "password_login_device")
+		return
+	}
+	loggedIn, err := h.verification.PasswordLogin(request.Context(), verification.PasswordLoginInput{
+		Email: email, Password: request.FormValue("password"),
+		DeviceID: deviceID, ClientIP: h.clientIP(request),
+	})
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	if errors.Is(err, verification.ErrRandomSource) {
+		h.writeRandomSourceError(writer, request, "password_login")
+		return
+	}
+	if err != nil || loggedIn.SessionToken == "" {
+		h.renderLogin(writer, request, accountLoginView{
+			CSRFToken: csrfToken, ReturnTo: returnTo, Email: email,
+			Error: "邮箱或密码错误，或登录暂不可用。",
+		})
+		return
+	}
+	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: loggedIn.SessionToken, Path: "/", Expires: loggedIn.SessionExpiresAt, MaxAge: max(1, int(time.Until(loggedIn.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	auditFrom(request.Context()).subjectUserID = maskSubject(loggedIn.UserID)
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
 
@@ -984,6 +1144,12 @@ func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, request, http.StatusConflict, "VERIFICATION_CODE_ALREADY_USED", "verification code was already used")
 	case errors.Is(err, verification.ErrCodeInvalid):
 		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_INVALID", "verification code is invalid")
+	case errors.Is(err, verification.ErrRegistrationRequired):
+		writeError(writer, request, http.StatusConflict, "REGISTRATION_REQUIRED", "email identity must be registered before login")
+	case errors.Is(err, verification.ErrAlreadyRegistered):
+		writeError(writer, request, http.StatusConflict, "ACCOUNT_ALREADY_REGISTERED", "email identity is already registered")
+	case errors.Is(err, verification.ErrAuthentication):
+		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
 	case errors.Is(err, verification.ErrIdempotency):
 		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
 	case errors.Is(err, verification.ErrDependency):

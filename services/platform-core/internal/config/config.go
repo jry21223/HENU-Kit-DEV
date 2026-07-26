@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,9 +28,16 @@ type Config struct {
 	MailDeliveryRetiringToken string
 	MailDeliveryRetiringKeyID string
 	TrustedProxyCIDRs         []string
+	PasswordMemoryKiB         uint32
+	PasswordIterations        uint32
+	PasswordParallelism       uint8
+	PasswordHashConcurrency   int
 }
 
 func Load() (Config, error) {
+	passwordMemoryKiB := intEnv("PLATFORM_CORE_PASSWORD_MEMORY_KIB", 64*1024)
+	passwordIterations := intEnv("PLATFORM_CORE_PASSWORD_ITERATIONS", 3)
+	passwordParallelism := intEnv("PLATFORM_CORE_PASSWORD_PARALLELISM", 1)
 	config := Config{
 		Address:                   env("PLATFORM_CORE_ADDRESS", ":8081"),
 		DatabaseURL:               os.Getenv("PLATFORM_CORE_DATABASE_URL"),
@@ -47,6 +55,10 @@ func Load() (Config, error) {
 		MailDeliveryRetiringToken: os.Getenv("PLATFORM_CORE_MAIL_DELIVERY_RETIRING_TOKEN"),
 		MailDeliveryRetiringKeyID: os.Getenv("PLATFORM_CORE_MAIL_DELIVERY_RETIRING_KEY_ID"),
 		TrustedProxyCIDRs:         splitNonEmpty(os.Getenv("PLATFORM_CORE_TRUSTED_PROXY_CIDRS")),
+		PasswordMemoryKiB:         uint32(passwordMemoryKiB),
+		PasswordIterations:        uint32(passwordIterations),
+		PasswordParallelism:       uint8(passwordParallelism),
+		PasswordHashConcurrency:   intEnv("PLATFORM_CORE_PASSWORD_HASH_CONCURRENCY", 2),
 	}
 	if config.DatabaseURL == "" {
 		return Config{}, errors.New("PLATFORM_CORE_DATABASE_URL is required")
@@ -89,6 +101,12 @@ func Load() (Config, error) {
 	if (config.MailDeliveryRetiringToken == "") != (config.MailDeliveryRetiringKeyID == "") || (config.MailDeliveryRetiringToken != "" && len(config.MailDeliveryRetiringToken) < 32) {
 		return Config{}, errors.New("retiring mail delivery key id and 32-character token must be configured together")
 	}
+	if passwordMemoryKiB < 32*1024 || passwordMemoryKiB > 1024*1024 ||
+		passwordIterations < 1 || passwordIterations > 10 ||
+		passwordParallelism < 1 || passwordParallelism > 16 ||
+		config.PasswordHashConcurrency < 1 || config.PasswordHashConcurrency > 32 {
+		return Config{}, errors.New("password Argon2id parameters are outside the accepted security bounds")
+	}
 	return config, nil
 }
 
@@ -105,6 +123,18 @@ func durationEnv(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return -1
+	}
+	return parsed
+}
+
+func intEnv(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return -1
 	}
