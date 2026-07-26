@@ -68,6 +68,12 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Get("/register", handler.registerPage)
 	router.Post("/register/code", handler.registerRequestCode)
 	router.Post("/register", handler.registerAccount)
+	router.Get("/recover", handler.recoverPage)
+	router.Post("/recover/code", handler.recoverRequestCode)
+	router.Post("/recover", handler.recoverPassword)
+	router.Get("/account/security", handler.securityPage)
+	router.Post("/account/security/code", handler.securityRequestCode)
+	router.Post("/account/security/password", handler.securityChangePassword)
 	router.Get(contract.AuthorizeRoute, handler.authorize)
 	router.Post(contract.TokenRoute, handler.exchange)
 	router.Post(contract.AuthorizationCheckRoute, handler.checkAuthorization)
@@ -560,12 +566,36 @@ var accountRegisterTemplate = template.Must(template.New("account-register").Par
 <button type="submit">{{if .CodeRequested}}注册并登录{{else}}发送验证码{{end}}</button>
 </form><p>学生自主运营 · 非河南大学官方项目</p></main></body></html>`))
 
+var accountRecoverTemplate = template.Must(template.New("account-recover").Parse(`<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>找回密码</title></head>
+<body><main><h1>找回密码</h1>{{if .Error}}<p role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列。</p>{{end}}
+<form method="post" action="{{if .CodeRequested}}/recover{{else}}/recover/code{{end}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<label>学校邮箱<input name="email" type="email" value="{{.Email}}" required {{if .CodeRequested}}readonly{{end}}></label>
+{{if .CodeRequested}}<label>验证码<input name="code" inputmode="numeric" pattern="[0-9]{6}" required></label>
+<label>新密码<input name="password" type="password" minlength="10" maxlength="128" required></label>{{end}}
+<button type="submit">{{if .CodeRequested}}重置密码并登录{{else}}发送验证码{{end}}</button></form></main></body></html>`))
+
+var accountSecurityTemplate = template.Must(template.New("account-security").Parse(`<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>账号安全</title></head>
+<body><main><h1>账号安全</h1>{{if .Error}}<p role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列。</p>{{end}}
+<form method="post" action="{{if .CodeRequested}}/account/security/password{{else}}/account/security/code{{end}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<label>学校邮箱<input name="email" type="email" value="{{.Email}}" required {{if .CodeRequested}}readonly{{end}}></label>
+{{if .CodeRequested}}<label>当前密码<input name="current_password" type="password" required></label>
+<label>验证码<input name="code" inputmode="numeric" pattern="[0-9]{6}" required></label>
+<label>新密码<input name="new_password" type="password" minlength="10" maxlength="128" required></label>{{end}}
+<button type="submit">{{if .CodeRequested}}更改密码{{else}}发送验证码{{end}}</button></form></main></body></html>`))
+
 type accountLoginView struct {
 	CSRFToken, ReturnTo, Email, Error string
 	CodeRequested                     bool
 }
 
 type accountRegisterView struct {
+	CSRFToken, Email, Error string
+	CodeRequested           bool
+}
+
+type accountCredentialView struct {
 	CSRFToken, Email, Error string
 	CodeRequested           bool
 }
@@ -671,6 +701,222 @@ func (h *Handler) renderRegister(writer http.ResponseWriter, request *http.Reque
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	if err := accountRegisterTemplate.Execute(writer, view); err != nil {
 		h.logger.Error("account_register_template_error", "request_id", requestIDFrom(request.Context()), "error", err)
+	}
+}
+
+func (h *Handler) recoverPage(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "recover_csrf")
+		return
+	}
+	_, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "recover_device")
+		return
+	}
+	profile := h.browserCookies(request)
+	http.SetCookie(writer, h.browserCookie(profile.csrf, csrfToken, 10*60, time.Time{}, profile.secure))
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	h.renderCredentialPage(writer, request, accountRecoverTemplate, accountCredentialView{CSRFToken: csrfToken})
+}
+
+func (h *Handler) recoverRequestCode(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "recover_device")
+		return
+	}
+	idempotencyToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "recover_request_idempotency")
+		return
+	}
+	_, err = h.verification.Request(request.Context(), verification.RequestInput{
+		Email: email, Purpose: "security", ClientID: "account-center", DeviceID: deviceID,
+		ClientIP: h.clientIP(request), IdempotencyKey: "recover_request_" + idempotencyToken,
+		RequestID: requestIDFrom(request.Context()),
+	})
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	view := accountCredentialView{CSRFToken: csrfToken, Email: email, CodeRequested: true}
+	if err != nil {
+		view.CodeRequested, view.Error = false, "无法发送验证码，请检查邮箱或稍后重试。"
+	}
+	h.renderCredentialPage(writer, request, accountRecoverTemplate, view)
+}
+
+func (h *Handler) recoverPassword(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "recover_device")
+		return
+	}
+	idempotencyToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "recover_idempotency")
+		return
+	}
+	recovered, err := h.verification.RecoverPassword(request.Context(), verification.PasswordRecoveryInput{
+		Email: email, Code: strings.TrimSpace(request.FormValue("code")), Password: request.FormValue("password"),
+		IdempotencyKey: "recover_" + idempotencyToken, DeviceID: deviceID, ClientIP: h.clientIP(request),
+	})
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	if errors.Is(err, verification.ErrRandomSource) {
+		h.writeRandomSourceError(writer, request, "recover")
+		return
+	}
+	if err != nil || recovered.SessionToken == "" {
+		h.renderCredentialPage(writer, request, accountRecoverTemplate, accountCredentialView{
+			CSRFToken: csrfToken, Email: email, CodeRequested: true,
+			Error: "无法重置密码，请检查验证码和新密码后重试。",
+		})
+		return
+	}
+	profile := h.browserCookies(request)
+	http.SetCookie(writer, h.browserCookie(profile.core, recovered.SessionToken, max(1, int(time.Until(recovered.SessionExpiresAt).Seconds())), recovered.SessionExpiresAt, profile.secure))
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
+	auditFrom(request.Context()).subjectUserID = maskSubject(recovered.UserID)
+	http.Redirect(writer, request, "/account/security", http.StatusSeeOther)
+}
+
+func (h *Handler) securityPage(writer http.ResponseWriter, request *http.Request) {
+	profile := h.browserCookies(request)
+	coreCookie, err := request.Cookie(profile.core)
+	if err != nil {
+		h.redirectToLogin(writer, request)
+		return
+	}
+	session, err := h.verification.CoreSession(request.Context(), coreCookie.Value)
+	if err != nil {
+		h.redirectToLogin(writer, request)
+		return
+	}
+	csrfToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "security_csrf")
+		return
+	}
+	_, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "security_device")
+		return
+	}
+	http.SetCookie(writer, h.browserCookie(profile.csrf, csrfToken, 10*60, time.Time{}, profile.secure))
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(session.UserID)
+	h.renderCredentialPage(writer, request, accountSecurityTemplate, accountCredentialView{CSRFToken: csrfToken})
+}
+
+func (h *Handler) securityRequestCode(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	profile := h.browserCookies(request)
+	coreCookie, err := request.Cookie(profile.core)
+	if err != nil {
+		h.redirectToLogin(writer, request)
+		return
+	}
+	session, err := h.verification.CoreSession(request.Context(), coreCookie.Value)
+	if err != nil {
+		h.redirectToLogin(writer, request)
+		return
+	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "security_device")
+		return
+	}
+	idempotencyToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "security_request_idempotency")
+		return
+	}
+	_, err = h.verification.Request(request.Context(), verification.RequestInput{
+		Email: email, Purpose: "security", ClientID: "account-center", DeviceID: deviceID,
+		ClientIP: h.clientIP(request), IdempotencyKey: "security_request_" + idempotencyToken,
+		RequestID: requestIDFrom(request.Context()),
+	})
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(session.UserID)
+	view := accountCredentialView{CSRFToken: csrfToken, Email: email, CodeRequested: true}
+	if err != nil {
+		view.CodeRequested, view.Error = false, "无法发送验证码，请检查邮箱或稍后重试。"
+	}
+	h.renderCredentialPage(writer, request, accountSecurityTemplate, view)
+}
+
+func (h *Handler) securityChangePassword(writer http.ResponseWriter, request *http.Request) {
+	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return
+	}
+	profile := h.browserCookies(request)
+	coreCookie, err := request.Cookie(profile.core)
+	if err != nil {
+		h.redirectToLogin(writer, request)
+		return
+	}
+	deviceID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "security_device")
+		return
+	}
+	idempotencyToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "security_change_idempotency")
+		return
+	}
+	changed, err := h.verification.ChangePassword(request.Context(), verification.PasswordChangeInput{
+		Email: email, Code: strings.TrimSpace(request.FormValue("code")),
+		CurrentPassword: request.FormValue("current_password"), NewPassword: request.FormValue("new_password"),
+		CoreSessionToken: coreCookie.Value, IdempotencyKey: "security_change_" + idempotencyToken,
+		DeviceID: deviceID, ClientIP: h.clientIP(request),
+	})
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	if err != nil {
+		message := "无法更改密码，请检查当前密码、验证码和新密码。"
+		if errors.Is(err, verification.ErrChallengeRequired) {
+			message = "密码尝试过多，请先使用邮箱验证码登录后再试。"
+		}
+		h.renderCredentialPage(writer, request, accountSecurityTemplate, accountCredentialView{
+			CSRFToken: csrfToken, Email: email, CodeRequested: true, Error: message,
+		})
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(changed.UserID)
+	http.Redirect(writer, request, "/account/security?password_changed=1", http.StatusSeeOther)
+}
+
+func (h *Handler) renderCredentialPage(writer http.ResponseWriter, request *http.Request, page *template.Template, view accountCredentialView) {
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	writer.Header().Set("Referrer-Policy", "no-referrer")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	if err := page.Execute(writer, view); err != nil {
+		h.logger.Error("account_credential_template_error", "request_id", requestIDFrom(request.Context()), "error", err)
 	}
 }
 
@@ -791,9 +1037,13 @@ func (h *Handler) loginPassword(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	if err != nil || loggedIn.SessionToken == "" {
+		message := "邮箱或密码错误，或登录暂不可用。"
+		if errors.Is(err, verification.ErrChallengeRequired) {
+			message = "密码尝试过多，请改用邮箱验证码登录。"
+		}
 		h.renderLogin(writer, request, accountLoginView{
 			CSRFToken: csrfToken, ReturnTo: returnTo, Email: email,
-			Error: "邮箱或密码错误，或登录暂不可用。",
+			Error: message,
 		})
 		return
 	}
@@ -1152,6 +1402,8 @@ func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, request, http.StatusConflict, "ACCOUNT_ALREADY_REGISTERED", "email identity is already registered")
 	case errors.Is(err, verification.ErrAuthentication):
 		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
+	case errors.Is(err, verification.ErrChallengeRequired):
+		writeError(writer, request, http.StatusTooManyRequests, "EMAIL_CODE_LOGIN_REQUIRED", "email-code login is required")
 	case errors.Is(err, verification.ErrIdempotency):
 		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
 	case errors.Is(err, verification.ErrDependency):

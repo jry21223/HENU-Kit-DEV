@@ -498,6 +498,59 @@ func (q *Queries) GetConsumedVerificationReplay(ctx context.Context, consumedReq
 	return i, err
 }
 
+const getCoreSessionByTokenHash = `-- name: GetCoreSessionByTokenHash :one
+SELECT sessions.id, sessions.user_id, sessions.expires_at, users.status
+FROM sessions
+JOIN users ON users.id = sessions.user_id
+WHERE sessions.kind = 'core' AND sessions.token_hash = $1 AND sessions.revoked_at IS NULL
+`
+
+type GetCoreSessionByTokenHashRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	Status    string             `json:"status"`
+}
+
+func (q *Queries) GetCoreSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetCoreSessionByTokenHashRow, error) {
+	row := q.db.QueryRow(ctx, getCoreSessionByTokenHash, tokenHash)
+	var i GetCoreSessionByTokenHashRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.Status,
+	)
+	return i, err
+}
+
+const getCoreSessionForUpdate = `-- name: GetCoreSessionForUpdate :one
+SELECT sessions.id, sessions.user_id, sessions.expires_at, users.status
+FROM sessions
+JOIN users ON users.id = sessions.user_id
+WHERE sessions.kind = 'core' AND sessions.token_hash = $1 AND sessions.revoked_at IS NULL
+FOR UPDATE OF sessions, users
+`
+
+type GetCoreSessionForUpdateRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	Status    string             `json:"status"`
+}
+
+func (q *Queries) GetCoreSessionForUpdate(ctx context.Context, tokenHash []byte) (GetCoreSessionForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getCoreSessionForUpdate, tokenHash)
+	var i GetCoreSessionForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.Status,
+	)
+	return i, err
+}
+
 const getEmailIdentityForUpdate = `-- name: GetEmailIdentityForUpdate :one
 SELECT identity.user_id, users.email_verified, users.status, users.created_at
 FROM email_identities AS identity
@@ -558,6 +611,25 @@ func (q *Queries) GetMailOutboxByVerificationCode(ctx context.Context, verificat
 		&i.FailedAt,
 		&i.LastErrorCode,
 	)
+	return i, err
+}
+
+const getPasswordCredentialForUpdate = `-- name: GetPasswordCredentialForUpdate :one
+SELECT verifier, policy_version
+FROM password_credentials
+WHERE user_id = $1
+FOR UPDATE
+`
+
+type GetPasswordCredentialForUpdateRow struct {
+	Verifier      string `json:"verifier"`
+	PolicyVersion int32  `json:"policy_version"`
+}
+
+func (q *Queries) GetPasswordCredentialForUpdate(ctx context.Context, userID pgtype.UUID) (GetPasswordCredentialForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getPasswordCredentialForUpdate, userID)
+	var i GetPasswordCredentialForUpdateRow
+	err := row.Scan(&i.Verifier, &i.PolicyVersion)
 	return i, err
 }
 
@@ -796,6 +868,26 @@ func (q *Queries) RegisterFailedVerificationAttempt(ctx context.Context, id pgty
 	return i, err
 }
 
+const replacePasswordCredential = `-- name: ReplacePasswordCredential :execrows
+UPDATE password_credentials
+SET verifier = $2, policy_version = $3, updated_at = now()
+WHERE user_id = $1
+`
+
+type ReplacePasswordCredentialParams struct {
+	UserID        pgtype.UUID `json:"user_id"`
+	Verifier      string      `json:"verifier"`
+	PolicyVersion int32       `json:"policy_version"`
+}
+
+func (q *Queries) ReplacePasswordCredential(ctx context.Context, arg ReplacePasswordCredentialParams) (int64, error) {
+	result, err := q.db.Exec(ctx, replacePasswordCredential, arg.UserID, arg.Verifier, arg.PolicyVersion)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const requeueMailOutbox = `-- name: RequeueMailOutbox :one
 WITH target AS (
     SELECT dead_letter.id AS dead_letter_id, job.id AS outbox_id
@@ -885,6 +977,39 @@ func (q *Queries) RetryMailOutbox(ctx context.Context, arg RetryMailOutboxParams
 		arg.LastErrorCode,
 		arg.OutboxID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeAllUserSessions = `-- name: RevokeAllUserSessions :execrows
+UPDATE sessions
+SET revoked_at = COALESCE(revoked_at, now())
+WHERE user_id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeAllUserSessions(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeAllUserSessions, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeOtherUserSessions = `-- name: RevokeOtherUserSessions :execrows
+UPDATE sessions
+SET revoked_at = COALESCE(revoked_at, now())
+WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL
+`
+
+type RevokeOtherUserSessionsParams struct {
+	UserID pgtype.UUID `json:"user_id"`
+	ID     pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUserSessionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeOtherUserSessions, arg.UserID, arg.ID)
 	if err != nil {
 		return 0, err
 	}
