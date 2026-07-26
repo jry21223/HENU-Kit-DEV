@@ -556,7 +556,7 @@ var accountRegisterTemplate = template.Must(template.New("account-register").Par
 <title>注册 HENU Kit</title></head><body><main><h1>注册 HENU Kit</h1>
 {{if .Error}}<p role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列，请查收学校邮箱。</p>{{end}}
 <form method="post" action="{{if .CodeRequested}}/register{{else}}/register/code{{end}}">
-<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="return_to" value="{{.ReturnTo}}">
 <label for="email">学校邮箱</label><input id="email" name="email" type="email" value="{{.Email}}" required {{if .CodeRequested}}readonly{{end}}>
 {{if .CodeRequested}}
 <label for="display_name">展示名</label><input id="display_name" name="display_name" maxlength="80" required>
@@ -591,8 +591,8 @@ type accountLoginView struct {
 }
 
 type accountRegisterView struct {
-	CSRFToken, Email, Error string
-	CodeRequested           bool
+	CSRFToken, ReturnTo, Email, Error string
+	CodeRequested                     bool
 }
 
 type accountCredentialView struct {
@@ -601,6 +601,7 @@ type accountCredentialView struct {
 }
 
 func (h *Handler) registerPage(writer http.ResponseWriter, request *http.Request) {
+	returnTo := safeRegistrationReturnTo(request.URL.Query().Get("return_to"))
 	csrfToken, err := randomBrowserToken()
 	if err != nil {
 		h.writeRandomSourceError(writer, request, "register_csrf")
@@ -616,11 +617,11 @@ func (h *Handler) registerPage(writer http.ResponseWriter, request *http.Request
 	if deviceCookie != nil {
 		http.SetCookie(writer, deviceCookie)
 	}
-	h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken})
+	h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, ReturnTo: returnTo})
 }
 
 func (h *Handler) registerRequestCode(writer http.ResponseWriter, request *http.Request) {
-	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	csrfToken, returnTo, email, ok := h.parseRegistrationForm(writer, request)
 	if !ok {
 		return
 	}
@@ -643,14 +644,14 @@ func (h *Handler) registerRequestCode(writer http.ResponseWriter, request *http.
 		http.SetCookie(writer, deviceCookie)
 	}
 	if err != nil {
-		h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, Email: email, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
+		h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
 		return
 	}
-	h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, Email: email, CodeRequested: true})
+	h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true})
 }
 
 func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Request) {
-	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	csrfToken, returnTo, email, ok := h.parseRegistrationForm(writer, request)
 	if !ok {
 		return
 	}
@@ -682,7 +683,7 @@ func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Requ
 			message = "该邮箱已注册，请登录或找回密码。"
 		}
 		h.renderRegister(writer, request, accountRegisterView{
-			CSRFToken: csrfToken, Email: email, CodeRequested: true, Error: message,
+			CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true, Error: message,
 		})
 		return
 	}
@@ -690,7 +691,7 @@ func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Requ
 	http.SetCookie(writer, h.browserCookie(profile.core, registered.SessionToken, max(1, int(time.Until(registered.SessionExpiresAt).Seconds())), registered.SessionExpiresAt, profile.secure))
 	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(registered.UserID)
-	http.Redirect(writer, request, "/", http.StatusSeeOther)
+	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
 
 func (h *Handler) renderRegister(writer http.ResponseWriter, request *http.Request, view accountRegisterView) {
@@ -1069,6 +1070,14 @@ func (h *Handler) parseLoginForm(writer http.ResponseWriter, request *http.Reque
 	return csrfToken, safeAccountReturnTo(request.FormValue("return_to")), strings.TrimSpace(request.FormValue("email")), true
 }
 
+func (h *Handler) parseRegistrationForm(writer http.ResponseWriter, request *http.Request) (string, string, string, bool) {
+	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
+	if !ok {
+		return "", "", "", false
+	}
+	return csrfToken, safeRegistrationReturnTo(request.FormValue("return_to")), email, true
+}
+
 func (h *Handler) renderLogin(writer http.ResponseWriter, request *http.Request, view accountLoginView) {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
@@ -1092,6 +1101,16 @@ func safeAccountReturnTo(value string) string {
 		return "/"
 	}
 	return parsed.RequestURI()
+}
+
+func safeRegistrationReturnTo(value string) string {
+	if value == "" {
+		return "/account/security"
+	}
+	if safe := safeAccountReturnTo(value); safe != "/" {
+		return safe
+	}
+	return "/account/security"
 }
 
 func randomBrowserToken() (string, error) {

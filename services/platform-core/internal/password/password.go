@@ -10,6 +10,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -41,6 +42,14 @@ type Manager struct {
 	parameters Parameters
 	slots      chan struct{}
 	random     io.Reader
+}
+
+// Reservation owns one Argon2 capacity slot. Password authentication reserves
+// capacity before opening a database transaction so requests cannot wait for
+// memory while holding scarce database connections.
+type Reservation struct {
+	manager *Manager
+	once    sync.Once
 }
 
 func New(parameters Parameters, maxConcurrent int) (*Manager, error) {
@@ -100,6 +109,57 @@ func (m *Manager) Verify(ctx context.Context, value, verifier string) (bool, boo
 	actual := argon2.IDKey([]byte(value), salt, parameters.Iterations, parameters.MemoryKiB, parameters.Parallelism, uint32(len(expected)))
 	valid := subtle.ConstantTimeCompare(actual, expected) == 1
 	return valid, valid && parameters != m.parameters, nil
+}
+
+// TryReserve acquires Argon2 capacity without queuing. Callers that would hold
+// another scarce dependency while hashing must fail closed when capacity is
+// already saturated.
+func (m *Manager) TryReserve() (*Reservation, error) {
+	select {
+	case m.slots <- struct{}{}:
+		return &Reservation{manager: m}, nil
+	default:
+		return nil, ErrDependency
+	}
+}
+
+func (reservation *Reservation) Hash(value string) (string, error) {
+	if reservation == nil || reservation.manager == nil {
+		return "", ErrDependency
+	}
+	salt := make([]byte, reservation.manager.parameters.SaltLength)
+	if _, err := io.ReadFull(reservation.manager.random, salt); err != nil {
+		return "", ErrDependency
+	}
+	hash := argon2.IDKey(
+		[]byte(value),
+		salt,
+		reservation.manager.parameters.Iterations,
+		reservation.manager.parameters.MemoryKiB,
+		reservation.manager.parameters.Parallelism,
+		reservation.manager.parameters.KeyLength,
+	)
+	return encode(reservation.manager.parameters, salt, hash), nil
+}
+
+func (reservation *Reservation) Verify(value, verifier string) (bool, bool, error) {
+	if reservation == nil || reservation.manager == nil {
+		return false, false, ErrDependency
+	}
+	parameters, salt, expected, err := decode(verifier)
+	if err != nil {
+		return false, false, ErrDependency
+	}
+	actual := argon2.IDKey([]byte(value), salt, parameters.Iterations, parameters.MemoryKiB, parameters.Parallelism, uint32(len(expected)))
+	valid := subtle.ConstantTimeCompare(actual, expected) == 1
+	return valid, valid && parameters != reservation.manager.parameters, nil
+}
+
+func (reservation *Reservation) Release() {
+	if reservation == nil || reservation.manager == nil {
+		return
+	}
+	reservation.once.Do(reservation.manager.release)
 }
 
 func (m *Manager) acquire(ctx context.Context) error {
