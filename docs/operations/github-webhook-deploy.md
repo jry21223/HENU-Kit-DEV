@@ -4,6 +4,10 @@
 > 目标分支：`main`
 > 结论边界：Webhook 负责安全接收、同步、排队和执行既定发布 Hook；它不替代数据库、Migration、真实邮箱、浏览器、备份恢复和人工生产批准。
 
+> 当前 HENU Kit 全站生产发布应优先使用
+> [固定制品监听器](./henukit-artifact-deployment.md#server-side-github-actions-watcher)。
+> 本文保留的是旧的源码/Webhook Hook 方案，不应重新启用其服务器端编译路径。
+
 ## 1. 设计目标
 
 每次 `main` 更新后，GitHub 向服务器发送 `push` Webhook。服务器在 30 秒内完成签名和边界校验并返回 `202`，随后由 Systemd 异步、串行地处理部署。

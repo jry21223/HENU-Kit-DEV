@@ -162,14 +162,16 @@ jobs:
         run: |
           set -euo pipefail
           runtime="release/runtime"
-          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/migrations/platform-core"
+          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/migrations/platform-core"
           docker compose \
             -f docker-compose.henukit.yml \
             -f docker-compose.henukit.prebuilt.yml \
             config --no-interpolate --no-path-resolution > "$runtime/docker-compose.henukit.release.yml"
           cp infra/nginx/henukit.conf.example "$runtime/infra/nginx/"
+          cp infra/systemd/henukit-actions-watch.service "$runtime/infra/systemd/"
           cp services/platform-core/db/migrations/*.up.sql "$runtime/migrations/platform-core/"
           install -m 0555 scripts/ops/deploy-henukit-artifact.sh "$runtime/bin/deploy-henukit-artifact.sh"
+          install -m 0555 scripts/ops/watch-henukit-actions.sh "$runtime/bin/watch-henukit-actions.sh"
           printf '%s\n' "$GITHUB_SHA" > "$runtime/RELEASE_SHA"
           tar -C "$runtime" -czf "release/henukit-runtime-${GITHUB_SHA}.tar.gz" .
           cd release
