@@ -1,12 +1,11 @@
 "use client";
 
 /**
- * Recover — original multi-step shell, email code via real mail channel.
- * Product has no password reset API yet; re-auth by henu email code then OAuth.
+ * Existing recovery shell wired to Platform Core password recovery.
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
 import { useReveal } from "@/components/account/use-reveal";
 import { Button } from "@/components/ui/button";
@@ -14,10 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   AccountCenterError,
-  bootstrapAccountLogin,
+  bootstrapPasswordRecovery,
   portalOAuthStartUrl,
-  requestLoginCode,
-  verifyLoginCode,
+  recoverPassword,
+  requestRecoveryCode,
 } from "@/lib/auth/account-center";
 import {
   isValidHenuLocalPart,
@@ -25,14 +24,17 @@ import {
 } from "@/lib/auth/henu-email";
 import { cn } from "@/lib/cn";
 
-const STEPS = ["验证邮箱", "输入验证码", "完成"] as const;
+const STEPS = ["验证邮箱", "重置密码", "完成"] as const;
 
 export default function RecoverPage() {
   useReveal();
   const [step, setStep] = useState(0);
   const [localPart, setLocalPart] = useState("");
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [csrf, setCsrf] = useState("");
+  const csrfBootstrap = useRef<Promise<string> | null>(null);
   const [returnTo] = useState(() => portalOAuthStartUrl("/account"));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -45,23 +47,23 @@ export default function RecoverPage() {
     return () => window.clearTimeout(t);
   }, [cd]);
 
-  useEffect(() => {
-    let cancelled = false;
-    bootstrapAccountLogin(returnTo)
-      .then((b) => {
-        if (!cancelled) setCsrf(b.csrfToken);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [returnTo]);
-
   const ensureCsrf = async () => {
     if (csrf) return csrf;
-    const b = await bootstrapAccountLogin(returnTo);
-    setCsrf(b.csrfToken);
-    return b.csrfToken;
+    if (!csrfBootstrap.current) {
+      csrfBootstrap.current = bootstrapPasswordRecovery().then(
+        (result) => result.csrfToken
+      );
+    }
+    const pendingBootstrap = csrfBootstrap.current;
+    try {
+      const token = await pendingBootstrap;
+      setCsrf(token);
+      return token;
+    } finally {
+      if (csrfBootstrap.current === pendingBootstrap) {
+        csrfBootstrap.current = null;
+      }
+    }
   };
 
   const onSend = async () => {
@@ -73,15 +75,17 @@ export default function RecoverPage() {
     setPending(true);
     try {
       const token = await ensureCsrf();
-      const result = await requestLoginCode({
+      const result = await requestRecoveryCode({
         csrfToken: token,
         email: fullEmail,
-        returnTo,
       });
       setCsrf(result.csrfToken);
       setStep(1);
       setCd(60);
     } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
       setError(
         e instanceof AccountCenterError
           ? e.message
@@ -98,19 +102,30 @@ export default function RecoverPage() {
       setError("请输入 6 位数字验证码");
       return;
     }
+    if (Array.from(password).length < 10) {
+      setError("新密码至少 10 个字符");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError("两次输入的新密码不一致");
+      return;
+    }
     setPending(true);
     try {
       const token = await ensureCsrf();
-      await verifyLoginCode({
+      await recoverPassword({
         csrfToken: token,
         email: fullEmail,
         code: code.trim(),
-        returnTo,
+        password,
       });
       setStep(2);
       // Always continue via Portal Gateway OAuth after core session is set.
       window.setTimeout(() => window.location.assign(returnTo), 500);
     } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
       setError(
         e instanceof AccountCenterError ? e.message : "验证失败，请重试"
       );
@@ -138,10 +153,10 @@ export default function RecoverPage() {
           </Link>
         </div>
         <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">
-          找回 / 重新验证
+          找回密码
         </h1>
         <p className="mt-3 font-mono text-xs leading-6 tracking-wider text-ink/55">
-          通过学校邮箱验证码重新进入账号（验证码走真实发信通道）。密码重置接口尚未提供。
+          验证学校邮箱后设置新密码；完成后旧会话会全部失效，并自动登录当前设备。
         </p>
 
         <ol className="mt-6 flex flex-wrap gap-y-1">
@@ -217,6 +232,27 @@ export default function RecoverPage() {
                   </Button>
                 </div>
               </div>
+              <div>
+                <Label htmlFor="recover-password">新密码</Label>
+                <Input
+                  id="recover-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="至少 10 个字符"
+                />
+              </div>
+              <div>
+                <Label htmlFor="recover-password-confirm">确认新密码</Label>
+                <Input
+                  id="recover-password-confirm"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordConfirm}
+                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                />
+              </div>
               {error ? (
                 <p className="font-mono text-[10px] text-accent">{error}</p>
               ) : null}
@@ -226,7 +262,7 @@ export default function RecoverPage() {
                 disabled={pending}
                 onClick={() => void onVerify()}
               >
-                {pending ? "验证中…" : "验证并进入"}
+                {pending ? "重置中…" : "重置密码并登录"}
               </Button>
             </>
           )}

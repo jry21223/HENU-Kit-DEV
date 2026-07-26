@@ -4,12 +4,12 @@
  * Portal login — restored dual-mode UI (password + email code) from the
  * original HENUKIT account page, with real Platform Core mail channel for codes.
  *
- * - 密码登录 / 注册：仍走本地 authStore（后端尚无密码登录 API）
- * - 验证码登录 / 注册发码：走 /account-auth → Platform Core → mail outbox
+ * Existing Portal UI; every production credential flow is owned by Platform
+ * Core through the same-origin /account-auth route.
  */
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
@@ -20,8 +20,12 @@ import { Label } from "@/components/ui/label";
 import {
   AccountCenterError,
   bootstrapAccountLogin,
+  bootstrapAccountRegister,
+  passwordLogin,
   portalOAuthStartUrl,
+  registerAccount,
   requestLoginCode,
+  requestRegistrationCode,
   verifyLoginCode,
 } from "@/lib/auth/account-center";
 import {
@@ -72,8 +76,7 @@ function Field({
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const nextRaw = params.get("next") || "/account";
-  const nextPath = nextRaw.startsWith("/") ? nextRaw : "/account";
+  const requestedNext = params.get("next");
 
   const { user, ready } = useSyncExternalStore(
     authStore.subscribe,
@@ -94,12 +97,15 @@ function LoginForm() {
   const [info, setInfo] = useState("");
   const [cd, setCd] = useState(0);
   const [csrf, setCsrf] = useState("");
-  const [oauthReturnTo, setOauthReturnTo] = useState(() =>
-    portalOAuthStartUrl(nextPath)
-  );
+  const csrfBootstrap = useRef<Promise<string> | null>(null);
+  const defaultNext = tab === "register" ? "/account/security" : "/account";
+  const nextPath =
+    requestedNext?.startsWith("/") ? requestedNext : defaultNext;
+  const oauthReturnTo = portalOAuthStartUrl(nextPath);
 
   const fullEmail = toHenuEmail(localPart);
   const needCode = tab === "register" || mode === "code";
+  const passwordLength = Array.from(pwd).length;
 
   useEffect(() => {
     if (ready && user) router.replace(nextPath);
@@ -111,27 +117,25 @@ function LoginForm() {
     return () => window.clearTimeout(t);
   }, [cd]);
 
-  // Warm CSRF when email-code path may be used
-  useEffect(() => {
-    if (!needCode) return;
-    let cancelled = false;
-    const returnTo = portalOAuthStartUrl(nextPath);
-    setOauthReturnTo(returnTo);
-    bootstrapAccountLogin(returnTo)
-      .then((b) => {
-        if (!cancelled) setCsrf(b.csrfToken);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [needCode, nextPath]);
-
   const ensureCsrf = async () => {
     if (csrf) return csrf;
-    const b = await bootstrapAccountLogin(oauthReturnTo);
-    setCsrf(b.csrfToken);
-    return b.csrfToken;
+    if (!csrfBootstrap.current) {
+      csrfBootstrap.current = (
+        tab === "register"
+          ? bootstrapAccountRegister(oauthReturnTo)
+          : bootstrapAccountLogin(oauthReturnTo)
+      ).then((result) => result.csrfToken);
+    }
+    const pendingBootstrap = csrfBootstrap.current;
+    try {
+      const token = await pendingBootstrap;
+      setCsrf(token);
+      return token;
+    } finally {
+      if (csrfBootstrap.current === pendingBootstrap) {
+        csrfBootstrap.current = null;
+      }
+    }
   };
 
   const sendCode = async () => {
@@ -144,15 +148,25 @@ function LoginForm() {
     setPending(true);
     try {
       const token = await ensureCsrf();
-      const result = await requestLoginCode({
-        csrfToken: token,
-        email: fullEmail,
-        returnTo: oauthReturnTo,
-      });
+      const result =
+        tab === "register"
+          ? await requestRegistrationCode({
+              csrfToken: token,
+              email: fullEmail,
+              returnTo: oauthReturnTo,
+            })
+          : await requestLoginCode({
+              csrfToken: token,
+              email: fullEmail,
+              returnTo: oauthReturnTo,
+            });
       setCsrf(result.csrfToken);
       setCd(60);
       setInfo(`验证码已进入发送队列（${fullEmail}），请查收学校邮箱。`);
     } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
       setErrors({
         email:
           e instanceof AccountCenterError
@@ -168,66 +182,68 @@ function LoginForm() {
     const errs: Record<string, string> = {};
     setInfo("");
 
-    if (tab === "login" && mode === "password" && !name.trim()) {
-      errs.name = "请输入账号名";
-    }
-    if (needCode && !isValidHenuLocalPart(localPart)) {
+    if (!isValidHenuLocalPart(localPart)) {
       errs.email = "请输入邮箱前缀（自动补全 @henu.edu.cn）";
     }
     if (needCode && !/^\d{6}$/.test(code.trim())) {
       errs.code = "请输入 6 位数字验证码";
     }
-    // 密码仅用于“密码登录预览”；注册/验证码登录不要求密码后端。
-    if (tab === "login" && mode === "password" && pwd.length < 6) {
-      errs.pwd = "密码至少 6 位（预览校验）";
+    if ((tab === "register" || mode === "password") && passwordLength < 10) {
+      errs.pwd = "密码至少 10 个字符";
     }
     if (tab === "register" && !name.trim()) {
-      errs.name = "请输入账号名（展示用）";
+      errs.name = "请输入展示名";
+    }
+    if (tab === "register" && pwd2 !== pwd) {
+      errs.pwd2 = "两次输入的密码不一致";
     }
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
     setPending(true);
 
-    // —— 验证码路径：真实 Platform Core 发信 + 校验 + Portal OAuth ——
-    if (needCode) {
-      try {
-        const token = await ensureCsrf();
+    try {
+      const token = await ensureCsrf();
+      if (tab === "register") {
+        await registerAccount({
+          csrfToken: token,
+          displayName: name.trim(),
+          email: fullEmail,
+          code: code.trim(),
+          password: pwd,
+          returnTo: oauthReturnTo,
+        });
+      } else if (mode === "code") {
         await verifyLoginCode({
           csrfToken: token,
           email: fullEmail,
           code: code.trim(),
-          // Platform Core only preserves OAuth authorize return_to; portal login
-          // path is rewritten to "/". Always continue via Portal Gateway OAuth.
           returnTo: oauthReturnTo,
         });
-        // Optional: keep local display name for account shell
-        try {
-          authStore.register(name.trim() || localPart, fullEmail);
-        } catch {
-          /* store may be gateway-only */
-        }
-        // Establish Portal session (PKCE) after core session cookie is set.
-        window.location.assign(oauthReturnTo);
-        return;
-      } catch (e) {
-        setErrors({
-          code:
-            e instanceof AccountCenterError
-              ? e.message
-              : "验证码无效或邮件通道未就绪",
+      } else {
+        await passwordLogin({
+          csrfToken: token,
+          email: fullEmail,
+          password: pwd,
+          returnTo: oauthReturnTo,
         });
-        setPending(false);
-        return;
       }
+      window.location.assign(oauthReturnTo);
+    } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
+      const message =
+        e instanceof AccountCenterError
+          ? e.message
+          : "认证暂不可用，请稍后重试";
+      setErrors(
+        tab === "login" && mode === "password"
+          ? { pwd: message }
+          : { code: message }
+      );
+      setPending(false);
     }
-
-    // —— 密码登录路径：UI 保留；后端尚无密码 API，仅本地会话（预览）——
-    // 注册 / 验证码模式已在 needCode 分支返回；此处仅可能是 login+password。
-    window.setTimeout(() => {
-      authStore.login(name.trim());
-      router.push(nextPath);
-    }, 400);
   };
 
   return (
@@ -253,7 +269,7 @@ function LoginForm() {
           {tab === "login" ? "登录" : "注册"}
         </h1>
         <p className="mt-2 font-mono text-[11px] leading-5 tracking-wider text-ink/50">
-          注册/登录均用邮箱验证码（真实通道）。密码登录仅为界面预览，后端尚未接入。
+          首次注册需验证学校邮箱并设置密码；之后可用密码或验证码登录。
         </p>
 
         {/* 登录 / 注册 */}
@@ -262,8 +278,10 @@ function LoginForm() {
             <button
               key={t}
               type="button"
+              disabled={pending}
               onClick={() => {
                 setTab(t);
+                setCsrf("");
                 if (t === "register") setMode("code");
                 setErrors({});
                 setInfo("");
@@ -315,25 +333,11 @@ function LoginForm() {
               autoComplete="username"
             />
           )}
-          {tab === "login" && mode === "password" && (
-            <Field
-              id="login-name"
-              label="账号 / NAME"
-              value={name}
-              onChange={setName}
-              error={errors.name}
-              placeholder="学号或昵称"
-              autoComplete="username"
-            />
-          )}
-
-          {needCode && (
-            <HenuEmailField
-              id="auth-email"
-              value={localPart}
-              onChange={setLocalPart}
-            />
-          )}
+          <HenuEmailField
+            id="auth-email"
+            value={localPart}
+            onChange={setLocalPart}
+          />
           {errors.email ? (
             <p className="-mt-3 font-mono text-[10px] text-accent">
               {errors.email}
@@ -383,16 +387,29 @@ function LoginForm() {
             </div>
           )}
 
-          {tab === "login" && mode === "password" && (
+          {(tab === "register" || mode === "password") && (
             <Field
               id="auth-pwd"
-              label="密码 / PASSWORD（仅预览）"
+              label="密码 / PASSWORD"
               type="password"
               value={pwd}
               onChange={setPwd}
               error={errors.pwd}
-              placeholder="至少 6 位（后端暂未接密码）"
-              autoComplete="current-password"
+              placeholder="至少 10 个字符"
+              autoComplete={
+                tab === "register" ? "new-password" : "current-password"
+              }
+            />
+          )}
+          {tab === "register" && (
+            <Field
+              id="auth-pwd-confirm"
+              label="确认密码 / CONFIRM"
+              type="password"
+              value={pwd2}
+              onChange={setPwd2}
+              error={errors.pwd2}
+              autoComplete="new-password"
             />
           )}
         </div>

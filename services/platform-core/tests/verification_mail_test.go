@@ -60,6 +60,7 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 	}
 	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "lifecycle-registration-seed"))
 
 	response := requestVerificationCode(t, server, "request_verification_001")
 	responseBody, _ := io.ReadAll(response.Body)
@@ -192,6 +193,45 @@ func TestVerificationCodeAndOutboxLifecycle(t *testing.T) {
 	}
 }
 
+func TestLoginVerificationRequiresRegistrationWithoutConsumingCode(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+
+	requested := requestVerificationCode(t, server, "request_unregistered_login_001")
+	requested.Body.Close()
+	if requested.StatusCode != http.StatusAccepted {
+		t.Fatalf("request unregistered login code = %d, want 202", requested.StatusCode)
+	}
+	sender := &captureSender{messageID: "provider_unregistered_login_001"}
+	worker, err := mailworker.New(store.New(pool), sender, "worker_unregistered_login", testVerificationEncryptionKey, time.Minute, time.Second)
+	if err != nil {
+		t.Fatalf("create unregistered-login mail worker: %v", err)
+	}
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver unregistered login code: outcome=%+v err=%v", outcome, err)
+	}
+	verified := verifyCode(t, server, sender.lastMessage().Code, "verify_unregistered_login_001")
+	body, _ := io.ReadAll(verified.Body)
+	verified.Body.Close()
+	if verified.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte(`"code":"REGISTRATION_REQUIRED"`)) {
+		t.Fatalf("verify unregistered login = %d %s, want registration required", verified.StatusCode, body)
+	}
+	var users, sessions, consumed int
+	if err := pool.QueryRow(ctx, `
+		SELECT
+			(SELECT count(*) FROM users),
+			(SELECT count(*) FROM sessions),
+			(SELECT count(*) FROM verification_codes WHERE used_at IS NOT NULL)
+	`).Scan(&users, &sessions, &consumed); err != nil {
+		t.Fatalf("read unregistered-login facts: %v", err)
+	}
+	if users != 0 || sessions != 0 || consumed != 0 {
+		t.Fatalf("unregistered login facts users=%d sessions=%d consumed=%d", users, sessions, consumed)
+	}
+}
+
 func TestProductionLoginDomainCannotBeExpandedByConfiguration(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
@@ -211,6 +251,7 @@ func TestAuthRetentionCleanupScrubsVerificationAndIdempotencySecretsAfterTwentyF
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
 	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "retention-registration-seed"))
 	response := requestVerificationCode(t, server, "request_retention_stale")
 	response.Body.Close()
 	if response.StatusCode != http.StatusAccepted {
@@ -266,11 +307,12 @@ func TestAuthRetentionCleanupScrubsVerificationAndIdempotencySecretsAfterTwentyF
 	}
 }
 
-func TestLoginVerificationBootstrapsStableIdentityAndFifteenDayCoreSession(t *testing.T) {
+func TestLoginVerificationUsesStableRegisteredIdentityAndFifteenDayCoreSession(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
 	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "login-registration-seed"))
 
 	login := func(requestKey, verifyKey, messageID string) (string, time.Time) {
 		response := requestVerificationCode(t, server, requestKey)
@@ -303,7 +345,7 @@ func TestLoginVerificationBootstrapsStableIdentityAndFifteenDayCoreSession(t *te
 			t.Fatalf("decode login response: %v", err)
 		}
 		if envelope.Data.VerificationID == "" || envelope.Data.User.UserID == "" || !envelope.Data.User.EmailVerified || envelope.Data.User.Status != "active" {
-			t.Fatalf("incomplete login bootstrap response: %+v", envelope.Data)
+			t.Fatalf("incomplete registered login response: %+v", envelope.Data)
 		}
 		remaining := time.Until(envelope.Data.SessionExpires)
 		if remaining < 14*24*time.Hour+23*time.Hour || remaining > 15*24*time.Hour+time.Minute {
@@ -350,6 +392,7 @@ func TestAccountCenterLoginPageCompletesBrowserSession(t *testing.T) {
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
 	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "browser-registration-seed"))
 	client := clientForDevice(server, "browser-login-device")
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
@@ -664,6 +707,7 @@ func TestInitialOperatorGrantUsesLeastPrivilegeScopesAndAudit(t *testing.T) {
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
 	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "operator-registration-seed"))
 	requested := requestVerificationCode(t, server, "request_operator_login_001")
 	requested.Body.Close()
 	sender := &captureSender{messageID: "provider_operator_login_001"}

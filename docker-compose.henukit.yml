@@ -105,6 +105,8 @@ services:
       PLATFORM_CORE_MAIL_DELIVERY_KEY_ID: ${PLATFORM_CORE_MAIL_DELIVERY_KEY_ID:-mail-provider-active}
       PLATFORM_CORE_STUDENT_EMAIL_DOMAINS: ${PLATFORM_CORE_STUDENT_EMAIL_DOMAINS:-henu.edu.cn}
       PLATFORM_CORE_PUBLIC_PATH_PREFIX: ${PLATFORM_CORE_PUBLIC_PATH_PREFIX:-/account-auth}
+      PLATFORM_CORE_TRUSTED_PROXY_CIDRS: ${PLATFORM_CORE_TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
+      PLATFORM_CORE_LOCAL_COOKIE_NAME: ${PLATFORM_CORE_LOCAL_COOKIE_NAME:-henukit_core_session_local}
       PLATFORM_CORE_CORE_SESSION_TTL: ${PLATFORM_CORE_CORE_SESSION_TTL:-360h}
       PLATFORM_CORE_AUTHORIZATION_TTL: ${PLATFORM_CORE_AUTHORIZATION_TTL:-90s}
       PLATFORM_CORE_EXCHANGE_SESSION_TTL: ${PLATFORM_CORE_EXCHANGE_SESSION_TTL:-8h}
@@ -342,7 +344,9 @@ services:
       - quizcraft-api
       - study-api
     ports:
-      - "8088:80"
+      # The host TLS terminator is the only trusted source of forwarded
+      # protocol metadata. Do not expose this hop directly to the network.
+      - "127.0.0.1:${HENUKIT_EDGE_PORT:-8088}:80"
     volumes:
       - ./infra/nginx/henukit.conf.example:/etc/nginx/conf.d/default.conf:ro
 

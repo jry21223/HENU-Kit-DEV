@@ -17,13 +17,13 @@
 - Library material files, downloads, or business data (owned by Study API).
 - Food submissions, anomaly tickets, or tier adjustments (owned by Food service).
 - Campus market transaction data (owned by campus_life).
-- Account database, authentication, or mail delivery (owned by Platform Core).
+- Credential validation, account records, Core Sessions, recovery policy, or mail delivery (owned by Platform Core).
 - Any business backend or database access.
 - Console operations dashboard (owned by apps/console).
 
 ## Current boundary
 
-Portal V1 is a frontend-only prototype with mock data. All stores are in-memory singletons using `useSyncExternalStore`. Authentication is simulated (any username + 6-char password, demo code `427819`). Session persists to `localStorage` under key `henukit.session`. No real API integration exists yet.
+Portal owns the public account page presentation at `/account/login`, `/account/recover`, and `/account/security`. These existing pages submit same-origin forms through `/account-auth` to Platform Core; Portal never validates credentials or treats a local response as authenticated. Successful login, registration, and recovery continue through OAuth so Portal Gateway establishes the Portal Session. Production mock authentication is prohibited. See ADR-0014.
 
 ## Design language
 
@@ -36,6 +36,8 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 ## Key terms
 
 - **Portal Configuration**: Content and navigation changes through Git, review, and CI/CD. Console has no content editor.
+- **Account page**: Existing Portal presentation that collects credential form input and sends it unchanged through the same-origin `/account-auth` bridge. Platform Core alone decides success and establishes the Core Session.
+- **Account entry**: A Portal navigation point that starts Portal Gateway OAuth. After Platform Core accepts a credential flow, Portal continues that OAuth flow to establish its own Gateway Session.
 - **Module section**: A full-viewport homepage block for each product (Library, Practice, Food, Campus).
 - **Sub-site**: A top-level route group (/library, /practice, /food, /campus) with its own layout and navigation.
 - **Deterministic SSR**: Seeded randomness (mulberry32) and picsum seed URLs ensure server/client output match.

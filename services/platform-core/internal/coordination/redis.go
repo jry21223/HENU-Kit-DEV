@@ -47,6 +47,32 @@ return 1`
 	return result == 1, nil
 }
 
+func (r *Redis) FailureCount(ctx context.Context, key string) (int64, error) {
+	value, err := r.client.Get(ctx, key).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+	}
+	return value, err
+}
+
+func (r *Redis) RecordFailure(ctx context.Context, key string, window time.Duration) (int64, error) {
+	if key == "" || window <= 0 {
+		return 0, errors.New("failure key and window are required")
+	}
+	const script = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then redis.call("PEXPIRE", KEYS[1], ARGV[1]) end
+return count`
+	return r.client.Eval(ctx, script, []string{key}, window.Milliseconds()).Int64()
+}
+
+func (r *Redis) Clear(ctx context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	return r.client.Del(ctx, keys...).Err()
+}
+
 func (r *Redis) Acquire(ctx context.Context, key string, ttl time.Duration) (func(context.Context) error, error) {
 	tokenBytes := make([]byte, 24)
 	if _, err := rand.Read(tokenBytes); err != nil {

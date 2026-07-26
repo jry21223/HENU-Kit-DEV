@@ -5,7 +5,10 @@ Provision the QuizCraft OAuth redirect and rotatable HMAC client key after apply
 Independent Go service for platform-owned identity and operations data. The delivered HC-05 through HC-08 slices implement:
 
 - host-only Core Session validation;
-- an account-center HTML flow at `/login`; successful login verification atomically creates/restores an encrypted Email Identity and issues a non-rolling 15-day Core Session;
+- Account Center registration at `/register`; it atomically verifies the HENU mailbox, creates the encrypted Email Identity and Argon2id password credential, consumes the code, and issues one non-rolling 15-day Core Session;
+- password and email-code login at `/login`; neither login path creates an account, and successful password authentication upgrades stale Argon2id parameters;
+- email-code password recovery at `/recover`, which atomically replaces the credential, revokes every old Core and exchange Session, consumes the code, and issues exactly one new Core Session;
+- authenticated password changes at `/account/security`, which require the current password plus a fresh email code, retain only the current Core Session, and revoke every other Core and exchange Session;
 - exact-callback OAuth authorization with S256 PKCE;
 - 60–120 second, hash-only, single-use Authorization Codes;
 - eight-hour product-local exchange Sessions for Console and Workshop high-privilege work, with immediate server-side revocation;
@@ -22,7 +25,7 @@ Independent Go service for platform-owned identity and operations data. The deli
 - transactional PostgreSQL verification facts plus critical-priority mail Outbox jobs, with Redis used only for fail-closed email/IP/device hourly, daily, and resend limits;
 - single-use verification with attempt limits and idempotent success replay under concurrent requests;
 - an independently deployable mail worker with lease recovery, bounded provider timeouts, exponential retry, immutable transition audits, dead letters, controlled operator requeue, provider acceptance and separate delivery confirmation states.
-- a loopback-only SMTP Provider with Bearer authentication, STARTTLS, and a root-owned idempotency ledger;
+- a network-isolated SMTP Provider with Bearer authentication, implicit TLS on port 465 or mandatory STARTTLS on submission ports, multipart plain/HTML verification mail, and a root-owned idempotency ledger;
 - Operations Inbox creation, product-scoped querying, assignment, priority, SLA and status updates using source-resource references only;
 - durable write idempotency, optimistic versions, transactional append-only operations audits, and server-side permission plus Scope enforcement.
 
@@ -30,7 +33,31 @@ It does not own Console Gateway sessions or product-local sessions. Legacy QuizC
 
 Production configuration is environment-only. Copy key names from `.env.example`; use distinct Platform Core PostgreSQL credentials, an authenticated `rediss://` URL, and separate random 32-byte idempotency and verification keys. The service never logs connection URLs, credentials, request bodies, email addresses, verification codes, authorization codes, or Session tokens.
 
+Authentication cookies follow ADR-0015. Direct TLS, or an exact
+`X-Forwarded-Proto: https` supplied by a peer in
+`PLATFORM_CORE_TRUSTED_PROXY_CIDRS`, selects the Secure `__Host-` cookie
+family. Direct local HTTP selects the separate non-`__Host-` name configured
+by `PLATFORM_CORE_LOCAL_COOKIE_NAME`. Session issuance, rotation, revocation,
+CSRF, and device cookies all use the same per-request decision; forwarding
+headers from untrusted peers cannot enable production cookies.
+
 Production login is code-locked to the single `henu.edu.cn` domain. `PLATFORM_CORE_STUDENT_EMAIL_DOMAINS` remains an explicit deployment assertion and the process refuses to start if it contains any other value. Run `go run ./cmd/auth-retention-cleanup` at least hourly with the Platform Core database URL: it atomically removes expired OAuth exchange idempotency responses and scrubs verification hashes, nonces, and request/consume idempotency facts after 24 hours while retaining non-secret mail and login audit relationships.
+
+Passwords are counted as 10–128 Unicode code points and are never trimmed,
+truncated, or normalized. Platform Core rejects the exact normalized email
+local-part and a versioned weak-password set. It stores only salted,
+versioned Argon2id PHC verifiers. The default parameters are 64 MiB, three
+iterations, parallelism one, with at most two concurrent hashes. Calibrate
+these values on each production host so one hash takes roughly 150–300 ms
+under representative load, while preserving the accepted bounds enforced at
+startup. Never reduce them merely to make tests faster.
+
+Failed password authentication is counted across email, trusted client IP, and
+signed device-cookie axes. Five failures in 15 minutes, ten in an hour, or
+twenty in a day require a successful email-code login before password
+authentication or password changes resume. Successful password or email-code
+login clears these temporary counters. Redis failure rejects password login,
+recovery, and credential changes rather than bypassing this boundary.
 
 `POST /api/v1/oauth/token` requires `Idempotency-Key`, `X-Service-Id`, `X-Key-Id`, `X-Timestamp`, `X-Nonce`, and `X-Signature`. The signature is base64url HMAC-SHA256 over `METHOD`, the actual `PATH_AND_QUERY`, timestamp, nonce, and lowercase hexadecimal `SHA256(BODY)`, separated by newlines. Each OAuth client key progresses through `active`, `retiring`, and `revoked`; only the first two states authenticate during a rotation window.
 
@@ -38,7 +65,7 @@ Production login is code-locked to the single `henu.edu.cn` domain. `PLATFORM_CO
 
 `POST /api/v1/auth/email-codes` and `/api/v1/auth/email-codes/verify` require `Idempotency-Key`. Platform Core issues a signed, `HttpOnly`, `Secure` device cookie instead of trusting a browser-supplied device ID; both request and verification attempts use email/IP/device hourly and daily limits. Rate-limited send requests return the same privacy-preserving `202` shape but create no verification or Outbox row, verification-attempt limits return `429`, and Redis failure returns `503` (fail closed). Client IP comes from the socket peer unless it is in `PLATFORM_CORE_TRUSTED_PROXY_CIDRS`; trusted proxy chains are stripped from right to left so an appended client-controlled `X-Forwarded-For` prefix is not trusted.
 
-A verification request `202` means only that processing was accepted; it does not prove provider acceptance or delivery. `cmd/mail-worker` claims jobs with `FOR UPDATE SKIP LOCKED`, refuses expired payloads, sends the decrypted payload only to the configured HTTP Provider, and records every transition without email addresses or codes. The production Provider is `cmd/smtp-provider`, bound to `127.0.0.1`, and reads SMTP credentials only from its root-owned environment. Its structured delivery audit records request/result/error classification, duration, attempt/retry counts, and non-secret Provider/Key IDs; it never records recipients, codes, credentials, message bodies, idempotency keys, or raw SMTP errors. `POST /api/v1/mail/deliveries` requires HMAC, a five-minute timestamp window, Redis-backed single-use Nonce, and an active or retiring Key ID. Receipts are persisted before reconciliation, so an early provider callback is applied after the matching Outbox acceptance instead of being lost. A failed job can be requeued deliberately with `cmd/mail-worker -requeue-outbox ... -request-id ... -actor-id ... -reason ...`; the dead letter and database-protected append-only operator audit remain durable. Build the worker and provider with `Dockerfile.worker` and `Dockerfile.smtp-provider`.
+A verification request `202` means only that processing was accepted; it does not prove provider acceptance or delivery. `cmd/mail-worker` claims jobs with `FOR UPDATE SKIP LOCKED`, refuses expired payloads, sends the decrypted payload only to the configured HTTP Provider, and records every transition without email addresses or codes. The production Provider is `cmd/smtp-provider`: bind it to loopback for a host deployment, or expose it only on the private Compose network without publishing its port. It reads SMTP credentials only from its protected environment. Its structured delivery audit records request/result/error classification, duration, attempt/retry counts, and non-secret Provider/Key IDs; it never records recipients, codes, credentials, message bodies, idempotency keys, or raw SMTP errors. `POST /api/v1/mail/deliveries` requires HMAC, a five-minute timestamp window, Redis-backed single-use Nonce, and an active or retiring Key ID. Receipts are persisted before reconciliation, so an early provider callback is applied after the matching Outbox acceptance instead of being lost. A failed job can be requeued deliberately with `cmd/mail-worker -requeue-outbox ... -request-id ... -actor-id ... -reason ...`; the dead letter and database-protected append-only operator audit remain durable. Build the worker and provider with `Dockerfile.worker` and `Dockerfile.smtp-provider`.
 
 After the first operator signs in normally, run `cmd/grant-initial-operator` as root with `-email`, `-request-id`, and `-reason`. It grants `platform.operations.read/write` at platform Scope and `quizcraft.workshop.read/write/publish` at QuizCraft product Scope. It never creates a global superadmin and never requires manual SQL.
 
