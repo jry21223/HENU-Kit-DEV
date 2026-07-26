@@ -890,8 +890,8 @@ func TestVerificationRateLimitAndRedisLossDoNotLoseOutbox(t *testing.T) {
 	}
 	limited := requestVerificationCode(t, server, "request_rate_limit_002")
 	limited.Body.Close()
-	if limited.StatusCode != http.StatusAccepted {
-		t.Fatalf("rate-limited request = %d, want privacy-preserving 202", limited.StatusCode)
+	if limited.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited request = %d, want 429", limited.StatusCode)
 	}
 	var codes, jobs int
 	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM verification_codes), (SELECT count(*) FROM mail_outbox)`).Scan(&codes, &jobs); err != nil || codes != 1 || jobs != 1 {

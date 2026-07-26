@@ -149,6 +149,11 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     workflow,
     /cp docker-compose\.henukit\.yml|cp docker-compose\.henukit\.prebuilt\.yml|init-henukit-dbs\.sh/,
   );
+  assert.match(
+    workflow,
+    /cp services\/platform-core\/db\/migrations\/\*\.up\.sql/,
+    "the fixed-SHA runtime must carry the registration migration",
+  );
 });
 
 test("production Compose fails closed without release identity and secrets", () => {
