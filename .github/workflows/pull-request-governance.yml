@@ -20,3 +20,29 @@ jobs:
             echo "Branch '$HEAD_REF' must match feature/<area>/hc-<issue> or fix/<area>/hc-<issue>." >&2
             exit 1
           }
+
+  review-evidence:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require current-commit Standards and Spec evidence
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+
+          body = os.environ.get("PR_BODY", "")
+          head_sha = os.environ["HEAD_SHA"]
+          expected = {
+              "Review-Head": head_sha,
+              "Standards-Review": "0 findings",
+              "Spec-Review": "0 findings",
+          }
+          for field, value in expected.items():
+              match = re.search(rf"(?mi)^{re.escape(field)}:\s*`?([^`\r\n]+)`?\s*$", body)
+              if not match or match.group(1).strip().lower() != value.lower():
+                  raise SystemExit(f"PR body must contain `{field}: {value}` for the current commit.")
+          PY

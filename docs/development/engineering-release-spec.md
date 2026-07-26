@@ -13,6 +13,7 @@
 - 一个 PR 只做一类变化：业务行为、Migration、目录移动、部署变更和仓库改名必须分开。
 - Draft PR 可跳过生产批准，不能跳过 Repo Governance 和受影响模块 CI。
 - 单人维护时不强制非作者 Review；安全关键和数据迁移 PR 必须在当前 SHA 上完成 Standards / Spec 双轴审查、受影响模块 CI、失败路径测试和可执行回滚。存在协作者时仍推荐外部 Review，但不作为不可满足的合并条件。
+- PR 正文必须以 `Review-Head`、`Standards-Review`、`Spec-Review` 记录当前完整 SHA 与双轴零发现；新提交会使旧证据自动失效。
 
 ## 2. 代码归属
 

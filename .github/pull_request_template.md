@@ -72,6 +72,11 @@
 - [ ] Standards review 无未解决发现
 - [ ] Spec review 无未解决发现
 
+<!-- 双轴审查完成后填写；Review-Head 必须是当前完整 SHA。 -->
+Review-Head: `pending`
+Standards-Review: pending
+Spec-Review: pending
+
 ## 发布
 
 <!-- 环境、顺序、灰度比例、Migration 和监控。 -->
