@@ -1,4 +1,5 @@
-import { expect, Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 const MODULE_ROUTES = ["/campus", "/food", "/library", "/practice"] as const;
 const VIEWPORTS = [360, 390, 430, 768] as const;
