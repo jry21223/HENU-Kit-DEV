@@ -148,6 +148,13 @@ jobs:
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/platform-core.yaml
           if [ "${{ github.event_name }}" = "pull_request" ] && ! git diff --quiet "origin/${{ github.base_ref }}" -- packages/api-contracts/openapi/platform-core.yaml; then
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/platform-core.yaml" > /tmp/platform-core-base.yaml
+            # kin-openapi cannot decode OpenAPI 3.1 boolean schemas. Normalize
+            # the three legacy false schemas to their equivalent object form.
+            sed -i \
+              -e 's/^            product_code: false$/            product_code:\n              not: {}/' \
+              -e 's/^            resource_type: false$/            resource_type:\n              not: {}/' \
+              -e 's/^            resource_id: false$/            resource_id:\n              not: {}/' \
+              /tmp/platform-core-base.yaml
             if ! go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/platform-core-base.yaml packages/api-contracts/openapi/platform-core.yaml; then
               base_version="$(awk '/^  version:/ { print $2; exit }' /tmp/platform-core-base.yaml)"
               head_version="$(awk '/^  version:/ { print $2; exit }' packages/api-contracts/openapi/platform-core.yaml)"
