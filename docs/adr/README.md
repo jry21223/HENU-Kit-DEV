@@ -18,6 +18,7 @@
 12. [`0012-quizcraft-react-frontend-go-backend.md`](./0012-quizcraft-react-frontend-go-backend.md) — QuizCraft React 前端与 Go 后端重构。
 13. [`0013-quizcraft-maintenance-window-full-cutover.md`](./0013-quizcraft-maintenance-window-full-cutover.md) — 无人使用维护期内执行技术停写和一次性全量切换。
 14. [`0014-account-center-registration-and-password-credentials.md`](./0014-account-center-registration-and-password-credentials.md) — Account Center 注册、密码凭证与首次自动登录边界。
+15. [`0015-authentication-cookie-and-trusted-proxy-boundary.md`](./0015-authentication-cookie-and-trusted-proxy-boundary.md) — 认证 Cookie 与可信 HTTPS 代理边界。
 
 ## 使用规则
 

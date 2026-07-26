@@ -22,6 +22,6 @@ HENU Kit will make a password credential mandatory for first registration while 
 - Registration-code requests do not reveal whether an Email Identity exists. After a valid code proves mailbox control, duplicate registration is rejected without changing the existing User, Display Name, or Password Credential.
 - Password reset requires a fresh Email Verification Code, revokes all old Core and exchange Sessions, and issues one new Core Session. An authenticated password change requires both the current password and recent email verification, revokes other devices, and retains the current Session.
 - Password failures are throttled by Email Identity, IP, and device. Escalation requires email-code login rather than permanently locking the account. Redis or credential-verification dependencies fail closed.
-- Production authentication cookies use the `__Host-` prefix with `HttpOnly`, `Secure`, and `SameSite=Lax`; forwarded HTTPS is trusted only from configured proxies. Local HTTP uses distinct non-`__Host-` cookie names.
+- Authentication-cookie transport and trusted-proxy handling follow ADR-0015.
 - No passwordless-account compatibility path is required before the first public launch. Product-local mock authentication and Portal-side parsing of Account Center HTML are removed before production acceptance.
 - MFA, username login, phone login, third-party identity providers, and native-client JSON registration are outside the first release.
