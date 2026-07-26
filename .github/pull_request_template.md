@@ -55,7 +55,7 @@
 - [ ] 日志不包含完整邮箱、验证码、Token、Cookie 或密钥
 - [ ] callback / return_to / CORS 使用白名单
 - [ ] 写接口幂等与并发路径已设计
-- [ ] 安全关键实现由非作者评审
+- [ ] 安全关键实现附 Standards / Spec 双轴审查与实际失败路径测试
 
 ## 验证
 
@@ -69,6 +69,13 @@
 - [ ] E2E / Smoke
 - [ ] 移动端人工测试
 - [ ] 失败、并发和重试路径
+- [ ] Standards review 无未解决发现
+- [ ] Spec review 无未解决发现
+
+<!-- 双轴审查完成后填写；Review-Head 必须是当前完整 SHA。 -->
+Review-Head: `pending`
+Standards-Review: pending
+Spec-Review: pending
 
 ## 发布
 
