@@ -506,6 +506,20 @@ func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (
 	if !password.AcceptableInput(input.Password) {
 		return Verified{}, s.recordPasswordFailure(ctx, failureKeys)
 	}
+	reservation, err := s.passwords.TryReserve()
+	if err != nil {
+		return Verified{}, ErrDependency
+	}
+	defer reservation.Release()
+	// Recheck after reserving capacity so retries observe failures recorded by
+	// earlier requests before they are allowed to touch PostgreSQL.
+	challenged, err = s.passwordChallengeRequired(ctx, failureKeys)
+	if err != nil {
+		return Verified{}, ErrDependency
+	}
+	if challenged {
+		return Verified{}, ErrChallengeRequired
+	}
 	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Verified{}, err
@@ -517,7 +531,7 @@ func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (
 	queries := s.queries.WithTx(tx)
 	identity, err := queries.GetEmailIdentityForUpdate(ctx, emailHash)
 	if errors.Is(err, pgx.ErrNoRows) {
-		_, _, _ = s.passwords.Verify(ctx, input.Password, s.dummyVerifier)
+		_, _, _ = reservation.Verify(input.Password, s.dummyVerifier)
 		_ = tx.Rollback(ctx)
 		return Verified{}, s.recordPasswordFailure(ctx, failureKeys)
 	}
@@ -526,14 +540,14 @@ func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (
 	}
 	credential, err := queries.GetPasswordCredentialForUpdate(ctx, identity.UserID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		_, _, _ = s.passwords.Verify(ctx, input.Password, s.dummyVerifier)
+		_, _, _ = reservation.Verify(input.Password, s.dummyVerifier)
 		_ = tx.Rollback(ctx)
 		return Verified{}, s.recordPasswordFailure(ctx, failureKeys)
 	}
 	if err != nil {
 		return Verified{}, err
 	}
-	valid, needsRehash, err := s.passwords.Verify(ctx, input.Password, credential.Verifier)
+	valid, needsRehash, err := reservation.Verify(input.Password, credential.Verifier)
 	if err != nil {
 		return Verified{}, ErrDependency
 	}
@@ -543,7 +557,7 @@ func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (
 	}
 	var upgradedVerifier string
 	if needsRehash || credential.PolicyVersion != password.PolicyVersion {
-		upgradedVerifier, err = s.passwords.Hash(ctx, input.Password)
+		upgradedVerifier, err = reservation.Hash(input.Password)
 		if err != nil {
 			return Verified{}, ErrDependency
 		}

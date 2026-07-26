@@ -95,6 +95,29 @@ func TestManagerFailsClosedWhenHashSlotWaitIsCanceled(t *testing.T) {
 	}
 }
 
+func TestManagerReservationFailsFastWhenArgon2CapacityIsFull(t *testing.T) {
+	manager, err := New(Parameters{
+		MemoryKiB: 32 * 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
+	}, 1)
+	if err != nil {
+		t.Fatalf("create password manager: %v", err)
+	}
+	reservation, err := manager.TryReserve()
+	if err != nil {
+		t.Fatalf("reserve Argon2 capacity: %v", err)
+	}
+	if _, err := manager.TryReserve(); !errors.Is(err, ErrDependency) {
+		t.Fatalf("saturated reservation error = %v, want dependency failure", err)
+	}
+	reservation.Release()
+	reservation.Release()
+	available, err := manager.TryReserve()
+	if err != nil {
+		t.Fatalf("reserve released capacity: %v", err)
+	}
+	available.Release()
+}
+
 func BenchmarkArgon2idDefault(b *testing.B) {
 	manager, err := New(DefaultParameters(), 1)
 	if err != nil {

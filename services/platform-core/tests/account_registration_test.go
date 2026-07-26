@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,7 @@ import (
 )
 
 var csrfValuePattern = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+var returnToValuePattern = regexp.MustCompile(`name="return_to" value="([^"]*)"`)
 
 func submitPasswordLogin(t *testing.T, server *httptest.Server, deviceID, email, passwordValue string) *http.Response {
 	t.Helper()
@@ -332,8 +334,17 @@ func TestAccountCenterRegistrationAtomicallyCreatesCredentialAndSession(t *testi
 		t.Fatalf("submit registration: %v", err)
 	}
 	registered.Body.Close()
-	if registered.StatusCode != http.StatusSeeOther || registered.Header.Get("Location") != "/" {
-		t.Fatalf("registration completion = %d %q, want 303 to account root", registered.StatusCode, registered.Header.Get("Location"))
+	if registered.StatusCode != http.StatusSeeOther || registered.Header.Get("Location") != "/account/security" {
+		t.Fatalf("registration completion = %d %q, want 303 to account security", registered.StatusCode, registered.Header.Get("Location"))
+	}
+	account, err := client.Get(server.URL + "/account/security")
+	if err != nil {
+		t.Fatalf("open account home after registration: %v", err)
+	}
+	accountBody, _ := io.ReadAll(account.Body)
+	account.Body.Close()
+	if account.StatusCode != http.StatusOK || !strings.Contains(string(accountBody), "账号安全") {
+		t.Fatalf("account security after registration = %d %s, want authenticated page", account.StatusCode, accountBody)
 	}
 
 	var users, identities, credentials, sessions, consumed int
@@ -363,6 +374,65 @@ func TestAccountCenterRegistrationAtomicallyCreatesCredentialAndSession(t *testi
 	}
 	if !hasCoreSession {
 		t.Fatal("registration did not establish a Core Session cookie")
+	}
+}
+
+func TestRegistrationPreservesOnlyValidatedOAuthReturnTarget(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "oauth-registration-device")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	returnTo := "/api/v1/oauth/authorize?response_type=code&client_id=portal-gateway&redirect_uri=https%3A%2F%2Fsuperhuazai.me%2Fapi%2Fv1%2Fauth%2Fcallback&state=state-value&code_challenge=challenge-value&code_challenge_method=S256"
+
+	page, err := client.Get(server.URL + "/register?return_to=" + url.QueryEscape(returnTo))
+	if err != nil {
+		t.Fatalf("open OAuth registration page: %v", err)
+	}
+	pageBody, _ := io.ReadAll(page.Body)
+	page.Body.Close()
+	csrf := csrfValuePattern.FindSubmatch(pageBody)
+	preserved := returnToValuePattern.FindSubmatch(pageBody)
+	if len(csrf) != 2 || len(preserved) != 2 || html.UnescapeString(string(preserved[1])) != returnTo {
+		t.Fatalf("OAuth registration form did not preserve validated return target: %s", pageBody)
+	}
+	requested, err := client.PostForm(server.URL+"/register/code", url.Values{
+		"csrf_token": {string(csrf[1])}, "email": {testStudentEmail}, "return_to": {returnTo},
+	})
+	if err != nil {
+		t.Fatalf("request OAuth registration code: %v", err)
+	}
+	requested.Body.Close()
+	sender := &captureSender{messageID: "provider_oauth_registration"}
+	worker, err := mailworker.New(store.New(pool), sender, "worker_oauth_registration", testVerificationEncryptionKey, time.Minute, time.Second)
+	if err != nil {
+		t.Fatalf("create OAuth registration worker: %v", err)
+	}
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver OAuth registration code: outcome=%+v err=%v", outcome, err)
+	}
+	registered, err := client.PostForm(server.URL+"/register", url.Values{
+		"csrf_token": {string(csrf[1])}, "display_name": {"OAuth 新生"}, "email": {testStudentEmail},
+		"code": {sender.lastMessage().Code}, "password": {"oauth registration password"}, "return_to": {returnTo},
+	})
+	if err != nil {
+		t.Fatalf("complete OAuth registration: %v", err)
+	}
+	registered.Body.Close()
+	if registered.StatusCode != http.StatusSeeOther || registered.Header.Get("Location") != returnTo {
+		t.Fatalf("OAuth registration = %d %q, want 303 to validated authorize target", registered.StatusCode, registered.Header.Get("Location"))
+	}
+
+	unsafe, err := server.Client().Get(server.URL + "/register?return_to=" + url.QueryEscape("https://evil.example/steal"))
+	if err != nil {
+		t.Fatalf("open registration with external return target: %v", err)
+	}
+	unsafeBody, _ := io.ReadAll(unsafe.Body)
+	unsafe.Body.Close()
+	unsafeReturn := returnToValuePattern.FindSubmatch(unsafeBody)
+	if len(unsafeReturn) != 2 || html.UnescapeString(string(unsafeReturn[1])) != "/account/security" {
+		t.Fatalf("external registration return target was not rejected: %s", unsafeBody)
 	}
 }
 
