@@ -142,6 +142,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     /config --no-interpolate --no-path-resolution > "\$runtime\/docker-compose\.henukit\.release\.yml"[\s\S]*infra\/nginx\/henukit\.conf\.example/,
   );
   assert.match(workflow, /install -m 0555 scripts\/ops\/deploy-henukit-artifact\.sh/);
+  assert.match(workflow, /install -m 0555 scripts\/ops\/watch-henukit-actions\.sh/);
+  assert.match(workflow, /infra\/systemd\/henukit-actions-watch\.service/);
   assert.match(workflow, /migrations\/platform-core/);
   assert.doesNotMatch(
     workflow,

@@ -1,0 +1,26 @@
+[Unit]
+Description=Deploy successful HENU Kit GitHub Actions artifacts
+Documentation=https://github.com/jry21223/HENU-Kit-DEV/blob/main/docs/operations/henukit-artifact-deployment.md
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0077
+EnvironmentFile=/etc/henukit/actions-watch.env
+LoadCredential=github-token:/etc/henukit/github-actions-read.token
+Environment=GH_TOKEN_FILE=%d/github-token
+ExecStart=/usr/local/sbin/watch-henukit-actions --watch
+Restart=on-failure
+RestartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/henukit-staging /opt/henukit-releases /opt/henukit-backups /var/lib/henukit-actions-watch
+
+[Install]
+WantedBy=multi-user.target

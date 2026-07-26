@@ -1,0 +1,489 @@
+#!/usr/bin/env bash
+# Watch successful main-branch GitHub Actions builds and deploy their fixed-SHA
+# artifacts directly on the production host. This script never compiles source.
+set -Eeuo pipefail
+
+program="watch-henukit-actions"
+mode=""
+
+usage() {
+  cat >&2 <<'EOF'
+usage: watch-henukit-actions.sh --once|--watch
+
+Required configuration:
+  HENUKIT_ENV_FILE       Existing production Compose environment file
+  GH_TOKEN_FILE          Root-only GitHub token file (Actions: Read, Contents: Read)
+
+Optional configuration:
+  HENUKIT_REPO           GitHub repository (default: jry21223/HENU-Kit-DEV)
+  HENUKIT_WORKFLOW       Workflow file (default: deploy-henukit.yml)
+  HENUKIT_BRANCH         Watched branch (default: main)
+  HENUKIT_STAGING_ROOT   Verified artifact cache (default: /opt/henukit-staging)
+  HENUKIT_RELEASE_ROOT   Extracted releases (default: /opt/henukit-releases)
+  HENUKIT_BACKUP_ROOT    Platform backups (default: /opt/henukit-backups)
+  HENUKIT_STATE_ROOT     Watcher state and lock (default: /var/lib/henukit-actions-watch)
+  HENUKIT_POLL_SECONDS   Watch interval (default: 60)
+  HENUKIT_PUBLIC_BASE_URL Public smoke-test base URL
+EOF
+}
+
+log() {
+  printf '%s: %s\n' "$program" "$*"
+}
+
+die() {
+  printf '%s: %s\n' "$program" "$*" >&2
+  exit 1
+}
+
+if [[ $# -ne 1 || ( "$1" != "--once" && "$1" != "--watch" ) ]]; then
+  usage
+  exit 64
+fi
+mode="$1"
+
+repo="${HENUKIT_REPO:-jry21223/HENU-Kit-DEV}"
+workflow="${HENUKIT_WORKFLOW:-deploy-henukit.yml}"
+branch="${HENUKIT_BRANCH:-main}"
+env_file="${HENUKIT_ENV_FILE:-}"
+token_file="${GH_TOKEN_FILE:-/etc/henukit/github-actions-read.token}"
+staging_root="${HENUKIT_STAGING_ROOT:-/opt/henukit-staging}"
+release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
+backup_root="${HENUKIT_BACKUP_ROOT:-/opt/henukit-backups}"
+state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
+poll_seconds="${HENUKIT_POLL_SECONDS:-60}"
+public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://superhuazai.me}"
+postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
+migration="${HENUKIT_PLATFORM_MIGRATION:-}"
+
+images=(
+  henukit-console
+  henukit-console-gateway
+  henukit-platform-core
+  henukit-platform-mail-worker
+  henukit-platform-smtp-provider
+  henukit-portal
+  henukit-portal-api
+  henukit-portal-gateway
+)
+
+[[ -n "$env_file" && -r "$env_file" ]] || die "HENUKIT_ENV_FILE must point to a readable production environment file"
+[[ -r "$token_file" && -f "$token_file" ]] || die "GH_TOKEN_FILE must point to a readable regular file"
+[[ "$poll_seconds" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_POLL_SECONDS must be a positive integer"
+[[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
+[[ "$branch" =~ ^[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_BRANCH contains unsupported characters"
+command -v gh >/dev/null 2>&1 || die "gh CLI is required"
+command -v docker >/dev/null 2>&1 || die "docker is required"
+command -v flock >/dev/null 2>&1 || die "flock is required"
+command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
+command -v tar >/dev/null 2>&1 || die "tar is required"
+
+token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || stat -f '%Lp' "$token_file")"
+token_owner="$(stat -c '%u' "$token_file" 2>/dev/null || stat -f '%u' "$token_file")"
+[[ "$token_mode" == "600" || "$token_mode" == "400" ]] || die "GitHub token file mode must be 0600 or 0400"
+[[ "$token_owner" == "$(id -u)" ]] || die "GitHub token file must be owned by the watcher user"
+GH_TOKEN="$(tr -d '\r\n' < "$token_file")"
+[[ -n "$GH_TOKEN" ]] || die "GitHub token file is empty"
+export GH_TOKEN
+
+install -d -m 0700 \
+  "$staging_root" "$release_root" "$backup_root" "$state_root" \
+  "$state_root/approvals" "$state_root/approvals/consumed" "$state_root/prepared"
+scratch_dirs=()
+restore_database=""
+exec 9>"$state_root/watcher.lock"
+flock -n 9 || die "another watcher process holds $state_root/watcher.lock"
+cleanup() {
+  local scratch
+  if [[ "$restore_database" =~ ^henukit_verify_[0-9a-f]{8}_[0-9]+$ ]]; then
+    docker exec "$postgres_container" sh -ceu \
+      'dropdb --if-exists -U "$POSTGRES_USER" "$1"' sh "$restore_database" \
+      >/dev/null 2>&1 || true
+  fi
+  for scratch in "${scratch_dirs[@]-}"; do
+    if [[ "$scratch" == "$staging_root/."*.incoming.* ||
+          "$scratch" == "$release_root/."*.incoming.* ]]; then
+      rm -rf -- "$scratch"
+    fi
+  done
+}
+trap cleanup EXIT
+
+expected_name() {
+  local candidate="$1"
+  local release_sha="$2"
+  local image
+  for image in "${images[@]}"; do
+    if [[ "$candidate" == "${image}-${release_sha}.docker.tar.gz" ||
+          "$candidate" == "${image}-${release_sha}.docker.tar.gz.sha256" ]]; then
+      return 0
+    fi
+  done
+  [[ "$candidate" == "henukit-runtime-${release_sha}.tar.gz" ||
+     "$candidate" == "henukit-runtime-${release_sha}.tar.gz.sha256" ]]
+}
+
+verify_artifact_dir() {
+  local artifact_dir="$1"
+  local release_sha="$2"
+  local image name file base directory
+
+  [[ -s "$artifact_dir/RELEASE_SHA" ]] || die "artifact set has no RELEASE_SHA marker"
+  while IFS= read -r -d '' file; do
+    die "artifact set contains symbolic link $(basename "$file")"
+  done < <(find "$artifact_dir" -type l -print0)
+  while IFS= read -r -d '' directory; do
+    die "artifact set contains unexpected directory $(basename "$directory")"
+  done < <(find "$artifact_dir" -mindepth 1 -type d -print0)
+  while IFS= read -r -d '' file; do
+    base="$(basename "$file")"
+    if [[ "$base" == "RELEASE_SHA" ]]; then
+      [[ "$(tr -d '[:space:]' < "$file")" == "$release_sha" ]] ||
+        die "artifact cache RELEASE_SHA does not match"
+    else
+      expected_name "$base" "$release_sha" || die "unexpected artifact file $base"
+    fi
+  done < <(find "$artifact_dir" -type f -print0)
+
+  for image in "${images[@]}"; do
+    name="${image}-${release_sha}.docker.tar.gz"
+    [[ -s "$artifact_dir/$name" ]] || die "artifact set is missing $name"
+    [[ -s "$artifact_dir/$name.sha256" ]] || die "artifact set is missing $name.sha256"
+  done
+  name="henukit-runtime-${release_sha}.tar.gz"
+  [[ -s "$artifact_dir/$name" ]] || die "artifact set is missing $name"
+  [[ -s "$artifact_dir/$name.sha256" ]] || die "artifact set is missing $name.sha256"
+
+  (
+    cd "$artifact_dir"
+    for image in "${images[@]}"; do
+      sha256sum -c "${image}-${release_sha}.docker.tar.gz.sha256" || exit 1
+    done
+    sha256sum -c "henukit-runtime-${release_sha}.tar.gz.sha256" || exit 1
+  ) >&2 || die "artifact checksum verification failed"
+}
+
+download_artifacts() {
+  local run_id="$1"
+  local release_sha="$2"
+  local final_dir="$staging_root/$release_sha"
+  local incoming file base target
+
+  if [[ -d "$final_dir" ]]; then
+    verify_artifact_dir "$final_dir" "$release_sha"
+    downloaded_artifact_dir="$final_dir"
+    return
+  fi
+
+  incoming="$(mktemp -d "$staging_root/.${release_sha}.incoming.XXXXXX")"
+  scratch_dirs+=("$incoming")
+  gh run download "$run_id" --repo "$repo" --dir "$incoming" >&2
+
+  while IFS= read -r -d '' file; do
+    base="$(basename "$file")"
+    expected_name "$base" "$release_sha" || die "unexpected artifact file $base"
+    target="$incoming/$base"
+    if [[ "$file" != "$target" ]]; then
+      [[ ! -e "$target" ]] || die "duplicate artifact file $base"
+      mv "$file" "$target"
+    fi
+  done < <(find "$incoming" -type f -print0)
+  find "$incoming" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+
+  printf '%s\n' "$release_sha" > "$incoming/RELEASE_SHA"
+  verify_artifact_dir "$incoming" "$release_sha"
+  mv "$incoming" "$final_dir"
+  downloaded_artifact_dir="$final_dir"
+}
+
+active_release_matches() {
+  local release_sha="$1"
+  local running image
+  running="$(docker ps --format '{{.Image}}')"
+  for image in "${images[@]}"; do
+    grep -Fqx "${image}:${release_sha}" <<<"$running" || return 1
+  done
+}
+
+current_release_sha() {
+  local running image line found_sha image_sha
+  running="$(docker ps --format '{{.Image}}')" || return 1
+  found_sha=""
+  for image in "${images[@]}"; do
+    line="$(grep -E "^${image}:[0-9a-f]{40}$" <<<"$running" | head -n 1)" || return 1
+    image_sha="${line##*:}"
+    if [[ -z "$found_sha" ]]; then
+      found_sha="$image_sha"
+    elif [[ "$image_sha" != "$found_sha" ]]; then
+      return 1
+    fi
+  done
+  printf '%s\n' "$found_sha"
+}
+
+verify_active_release() {
+  local release_sha="$1"
+  active_release_matches "$release_sha" || return 1
+  curl --fail --silent --show-error "$public_base_url/api/v1/healthz" >/dev/null || return 1
+  curl --fail --silent --show-error "$public_base_url/" >/dev/null || return 1
+  curl --fail --silent --show-error "$public_base_url/practice" >/dev/null || return 1
+  curl --fail --silent --show-error "$public_base_url/library" >/dev/null || return 1
+  [[ "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/quiz/")" == "404" ]] ||
+    return 1
+  [[ "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/study-api/healthz")" == "404" ]] ||
+    return 1
+}
+
+record_activation() {
+  local release_sha="$1"
+  local temporary="$state_root/.last-activated-sha.$$"
+  printf '%s\n' "$release_sha" > "$temporary"
+  chmod 0600 "$temporary"
+  mv "$temporary" "$state_root/last-activated-sha"
+}
+
+prepare_backup() {
+  local release_sha="$1"
+  local refresh="${2:-no}"
+  local marker="$state_root/prepared/$release_sha"
+  local timestamp backup_file backup_sha backup_size database_version restored_counts
+  local marker_incoming
+
+  if [[ "$refresh" != "yes" && -s "$marker" ]]; then
+    backup_file="$(tr -d '\r\n' < "$marker")"
+    [[ "$backup_file" == "$backup_root/"* ]] || die "prepared backup path is outside HENUKIT_BACKUP_ROOT"
+    [[ -s "$backup_file" && -s "$backup_file.sha256" && -s "$backup_file.meta" ]] ||
+      die "prepared backup evidence is incomplete"
+    (cd "$backup_root" && sha256sum -c "$(basename "$backup_file").sha256") >&2 ||
+      die "prepared backup checksum verification failed"
+    prepared_backup_file="$backup_file"
+    return
+  fi
+
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  backup_file="$backup_root/platform-${timestamp}-${release_sha:0:12}-$$.dump"
+  log "creating Platform database backup $backup_file"
+  docker exec "$postgres_container" sh -ceu \
+    'pg_dump -U "$POSTGRES_USER" -d platform -Fc' > "$backup_file"
+  [[ -s "$backup_file" ]] || die "Platform database backup is empty"
+  chmod 0600 "$backup_file"
+  (
+    cd "$backup_root"
+    sha256sum "$(basename "$backup_file")" > "$(basename "$backup_file").sha256"
+  )
+  backup_sha="$(awk '{print $1}' "$backup_file.sha256")"
+  backup_size="$(wc -c < "$backup_file" | tr -d '[:space:]')"
+  database_version="$(
+    docker exec "$postgres_container" sh -ceu \
+      'psql -U "$POSTGRES_USER" -d platform -Atqc "SHOW server_version"'
+  )"
+
+  restore_database="henukit_verify_${release_sha:0:8}_$$"
+  docker exec "$postgres_container" sh -ceu \
+    'createdb -U "$POSTGRES_USER" -T template0 "$1"' sh "$restore_database"
+  docker exec -i "$postgres_container" sh -ceu \
+    'pg_restore --exit-on-error --no-owner --no-privileges -U "$POSTGRES_USER" -d "$1"' \
+    sh "$restore_database" < "$backup_file"
+  restored_counts="$(
+    docker exec "$postgres_container" sh -ceu \
+      'psql -U "$POSTGRES_USER" -d "$1" -Atqc "$2"' \
+      sh "$restore_database" \
+      "SELECT (SELECT count(*) FROM users)::text || ',' || (SELECT count(*) FROM oauth_clients)::text || ',' || (SELECT count(*) FROM sessions)::text"
+  )"
+  [[ "$restored_counts" =~ ^[0-9]+,[0-9]+,[0-9]+$ ]] ||
+    die "isolated restore key-table count check failed"
+  docker exec "$postgres_container" sh -ceu \
+    'dropdb -U "$POSTGRES_USER" "$1"' sh "$restore_database"
+  restore_database=""
+
+  {
+    printf 'release_sha=%s\n' "$release_sha"
+    printf 'created_at_utc=%s\n' "$timestamp"
+    printf 'sha256=%s\n' "$backup_sha"
+    printf 'size_bytes=%s\n' "$backup_size"
+    printf 'postgres_version=%s\n' "$database_version"
+    printf 'restored_counts_users_oauth_clients_sessions=%s\n' "$restored_counts"
+  } > "$backup_file.meta"
+  chmod 0600 "$backup_file.sha256" "$backup_file.meta"
+
+  marker_incoming="$state_root/prepared/.${release_sha}.$$"
+  printf '%s\n' "$backup_file" > "$marker_incoming"
+  chmod 0600 "$marker_incoming"
+  mv "$marker_incoming" "$marker"
+  prepared_backup_file="$backup_file"
+}
+
+release_is_approved() {
+  local release_sha="$1"
+  local approval="$state_root/approvals/$release_sha"
+  local approval_mode approval_owner
+  [[ -f "$approval" && -r "$approval" ]] || return 1
+  approval_mode="$(stat -c '%a' "$approval" 2>/dev/null || stat -f '%Lp' "$approval")"
+  approval_owner="$(stat -c '%u' "$approval" 2>/dev/null || stat -f '%u' "$approval")"
+  [[ "$approval_mode" == "600" || "$approval_mode" == "400" ]] || return 1
+  [[ "$approval_owner" == "$(id -u)" ]] || return 1
+  [[ "$(tr -d '\r\n' < "$approval")" == "$release_sha" ]]
+}
+
+consume_approval() {
+  local release_sha="$1"
+  local approval="$state_root/approvals/$release_sha"
+  local consumed="$state_root/approvals/consumed/${release_sha}.$(date -u +%Y%m%dT%H%M%SZ).$$"
+  release_is_approved "$release_sha" || die "exact-SHA approval disappeared before activation"
+  mv "$approval" "$consumed"
+  chmod 0400 "$consumed"
+}
+
+github_branch_head() {
+  gh api "repos/$repo/branches/$branch" --jq '.commit.sha'
+}
+
+rollback_release() {
+  local previous_sha="$1"
+  local previous_dir="$release_root/$previous_sha"
+  local previous_helper="$previous_dir/bin/deploy-henukit-artifact.sh"
+  [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  [[ "$(tr -d '[:space:]' < "$previous_dir/RELEASE_SHA" 2>/dev/null)" == "$previous_sha" ]] ||
+    return 1
+  [[ -x "$previous_helper" ]] || return 1
+  log "rolling back to release $previous_sha"
+  "$previous_helper" "$previous_dir" "$env_file" || return 1
+  verify_active_release "$previous_sha"
+}
+
+rollback_release_is_ready() {
+  local previous_sha="$1"
+  local previous_dir="$release_root/$previous_sha"
+  [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  [[ "$(tr -d '[:space:]' < "$previous_dir/RELEASE_SHA" 2>/dev/null)" == "$previous_sha" ]] ||
+    return 1
+  [[ -x "$previous_dir/bin/deploy-henukit-artifact.sh" ]] || return 1
+  verify_active_release "$previous_sha"
+}
+
+deploy_release() {
+  local run_id="$1"
+  local release_sha="$2"
+  local run_url="$3"
+  local artifact_dir runtime_archive release_dir release_incoming
+  local image helper previous_sha activation_status
+
+  [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "GitHub returned an invalid release SHA"
+
+  if active_release_matches "$release_sha"; then
+    verify_active_release "$release_sha" || die "active release failed public health verification"
+    record_activation "$release_sha"
+    log "release $release_sha is already active"
+    return
+  fi
+
+  log "downloading successful main artifact set from $run_url"
+  downloaded_artifact_dir=""
+  download_artifacts "$run_id" "$release_sha"
+  artifact_dir="$downloaded_artifact_dir"
+  runtime_archive="$artifact_dir/henukit-runtime-${release_sha}.tar.gz"
+  release_dir="$release_root/$release_sha"
+
+  if [[ ! -d "$release_dir" ]]; then
+    release_incoming="$(mktemp -d "$release_root/.${release_sha}.incoming.XXXXXX")"
+    scratch_dirs+=("$release_incoming")
+    tar -xzf "$runtime_archive" -C "$release_incoming"
+    [[ "$(tr -d '[:space:]' < "$release_incoming/RELEASE_SHA")" == "$release_sha" ]] ||
+      die "runtime RELEASE_SHA does not match the workflow run"
+    [[ -x "$release_incoming/bin/deploy-henukit-artifact.sh" ]] ||
+      die "runtime artifact has no executable deployment helper"
+    mv "$release_incoming" "$release_dir"
+  fi
+  [[ "$(tr -d '[:space:]' < "$release_dir/RELEASE_SHA")" == "$release_sha" ]] ||
+    die "release directory SHA does not match the workflow run"
+  [[ -x "$release_dir/bin/deploy-henukit-artifact.sh" ]] ||
+    die "release directory has no executable deployment helper"
+
+  if ! release_is_approved "$release_sha"; then
+    prepared_backup_file=""
+    prepare_backup "$release_sha"
+    log "release $release_sha prepared with verified backup $prepared_backup_file"
+    log "release $release_sha awaits exact-SHA approval at $state_root/approvals/$release_sha"
+    return
+  fi
+
+  previous_sha="$(current_release_sha 2>/dev/null || true)"
+  rollback_release_is_ready "$previous_sha" ||
+    die "no healthy fixed-SHA rollback release is ready; refusing production activation"
+  prepared_backup_file=""
+  prepare_backup "$release_sha" yes
+  log "release $release_sha has a fresh verified pre-activation backup $prepared_backup_file"
+  [[ "$(github_branch_head)" == "$release_sha" ]] ||
+    die "GitHub branch head changed during preparation; refusing stale activation"
+  consume_approval "$release_sha"
+  for image in "${images[@]}"; do
+    log "loading ${image}:${release_sha}"
+    gzip -dc "$artifact_dir/${image}-${release_sha}.docker.tar.gz" | docker load >/dev/null
+  done
+
+  helper="$release_dir/bin/deploy-henukit-artifact.sh"
+  set +e
+  if [[ -n "$migration" ]]; then
+    "$helper" "$release_dir" "$env_file" "$migration"
+    activation_status=$?
+  else
+    "$helper" "$release_dir" "$env_file"
+    activation_status=$?
+  fi
+  set -e
+  if [[ "$activation_status" -ne 0 ]]; then
+    rollback_release "$previous_sha" ||
+      die "release activation failed and rollback to $previous_sha also failed"
+    die "release activation failed; rolled back to $previous_sha"
+  fi
+
+  if ! verify_active_release "$release_sha"; then
+    rollback_release "$previous_sha" ||
+      die "release verification failed and rollback to $previous_sha also failed"
+    die "release verification failed; rolled back to $previous_sha"
+  fi
+  record_activation "$release_sha"
+  log "release $release_sha activated and deterministic smoke checks passed; manual acceptance remains"
+}
+
+check_once() {
+  local run_row run_id release_sha run_status run_conclusion run_url branch_head
+  run_row="$(
+    gh run list \
+      --repo "$repo" \
+      --workflow "$workflow" \
+      --branch "$branch" \
+      --event push \
+      --limit 20 \
+      --json databaseId,headSha,status,conclusion,url \
+      --jq 'first(.[]) | [(.databaseId|tostring),.headSha,.status,.conclusion,.url] | @tsv'
+  )"
+  if [[ -z "$run_row" ]]; then
+    log "no completed successful $workflow run found on $branch"
+    return
+  fi
+  IFS=$'\t' read -r run_id release_sha run_status run_conclusion run_url <<<"$run_row"
+  [[ "$run_id" =~ ^[0-9]+$ ]] || die "GitHub returned an invalid workflow run id"
+  if [[ "$run_status" != "completed" || "$run_conclusion" != "success" ]]; then
+    log "latest $branch workflow run $run_id is not successfully completed; refusing stale artifacts"
+    return
+  fi
+  branch_head="$(github_branch_head)"
+  [[ "$branch_head" =~ ^[0-9a-f]{40}$ ]] || die "GitHub returned an invalid $branch head SHA"
+  if [[ "$branch_head" != "$release_sha" ]]; then
+    log "successful run SHA is no longer current $branch; refusing stale artifacts"
+    return
+  fi
+  deploy_release "$run_id" "$release_sha" "$run_url"
+}
+
+if [[ "$mode" == "--once" ]]; then
+  check_once
+  exit 0
+fi
+
+log "watching $repo $workflow on $branch every ${poll_seconds}s"
+while true; do
+  check_once
+  sleep "$poll_seconds"
+done
