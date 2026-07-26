@@ -74,42 +74,6 @@ server {
     proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
-  # QuizCraft product
-  location /quiz/ {
-    set $quiz_web_upstream quizcraft-web:80;
-    proxy_pass http://$quiz_web_upstream;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
-  }
-
-  location /quiz-api/ {
-    set $quiz_api_upstream quizcraft-api:10086;
-    rewrite ^/quiz-api/(.*)$ /$1 break;
-    proxy_pass http://$quiz_api_upstream;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-  }
-
-  # Study materials API (backend/debug)
-  location /study-api/ {
-    set $study_api_upstream study-api:8080;
-    rewrite ^/study-api/(.*)$ /$1 break;
-    proxy_pass http://$study_api_upstream;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
-  }
-
   # Platform Core account center (browser login UI)
   location /account-auth/ {
     set $platform_core_upstream platform-core:8081;
