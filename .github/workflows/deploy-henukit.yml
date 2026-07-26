@@ -34,13 +34,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - name: Enable pnpm
-        run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - name: Install Portal dependencies
         run: pnpm install --frozen-lockfile --filter @henukit/portal...
       - name: Install Chromium
