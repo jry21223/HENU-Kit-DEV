@@ -3,6 +3,9 @@
 
 resolver 127.0.0.11 valid=10s ipv6=off;
 
+# docker-compose binds this edge to host loopback only. The host TLS
+# terminator is therefore the trusted upstream that may supply this header;
+# direct local HTTP requests omit it and fall back to $scheme.
 map $http_x_forwarded_proto $henukit_forwarded_proto {
   default $http_x_forwarded_proto;
   "" $scheme;

@@ -76,8 +76,7 @@ function Field({
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const nextRaw = params.get("next") || "/account";
-  const nextPath = nextRaw.startsWith("/") ? nextRaw : "/account";
+  const requestedNext = params.get("next");
 
   const { user, ready } = useSyncExternalStore(
     authStore.subscribe,
@@ -98,6 +97,9 @@ function LoginForm() {
   const [info, setInfo] = useState("");
   const [cd, setCd] = useState(0);
   const [csrf, setCsrf] = useState("");
+  const defaultNext = tab === "register" ? "/account/security" : "/account";
+  const nextPath =
+    requestedNext?.startsWith("/") ? requestedNext : defaultNext;
   const oauthReturnTo = portalOAuthStartUrl(nextPath);
 
   const fullEmail = toHenuEmail(localPart);

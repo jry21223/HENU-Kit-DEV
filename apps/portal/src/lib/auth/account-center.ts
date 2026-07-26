@@ -101,7 +101,12 @@ async function bootstrapAccountForm(
 async function postAccountForm(
   path: AccountFormPath,
   fields: Record<string, string>
-): Promise<{ html: string; redirectedTo: string | null; status: number }> {
+): Promise<{
+  html: string;
+  redirected: boolean;
+  redirectedTo: string | null;
+  status: number;
+}> {
   const body = new URLSearchParams(fields);
   let res: Response;
   try {
@@ -122,6 +127,13 @@ async function postAccountForm(
     );
   }
 
+  // Chromium intentionally hides status and Location for a manual redirect,
+  // exposing only an opaque redirect response. These same-origin form actions
+  // redirect only after Platform Core has accepted the operation.
+  if (res.type === "opaqueredirect" && res.status === 0) {
+    return { html: "", redirected: true, redirectedTo: null, status: 0 };
+  }
+
   if (res.status === 403) {
     throw new AccountCenterError("登录表单已过期，请刷新页面", "CSRF");
   }
@@ -129,17 +141,26 @@ async function postAccountForm(
   // Successful verify issues 303 to return_to
   if (res.status >= 300 && res.status < 400) {
     const loc = res.headers.get("Location");
-    return { html: "", redirectedTo: loc, status: res.status };
+    return {
+      html: "",
+      redirected: true,
+      redirectedTo: loc,
+      status: res.status,
+    };
   }
 
   const html = await res.text();
-  return { html, redirectedTo: null, status: res.status };
+  return { html, redirected: false, redirectedTo: null, status: res.status };
 }
 
 function acceptedFormResult(result: {
   html: string;
+  redirected: boolean;
   status: number;
 }): string | null {
+  if (result.redirected) {
+    return null;
+  }
   if (result.status < 200 || result.status >= 400) {
     return extractError(result.html) || `账号操作失败（${result.status}）`;
   }
@@ -222,14 +243,17 @@ export async function verifyLoginCode(input: {
     throw new AccountCenterError("请输入 6 位数字验证码", "VERIFY_FAILED");
   }
 
-  const { html, redirectedTo, status } = await postAccountForm("/login/verify", {
-    csrf_token: input.csrfToken,
-    email,
-    code,
-    return_to: input.returnTo,
-  });
+  const { html, redirected, redirectedTo, status } = await postAccountForm(
+    "/login/verify",
+    {
+      csrf_token: input.csrfToken,
+      email,
+      code,
+      return_to: input.returnTo,
+    }
+  );
 
-  if (redirectedTo) {
+  if (redirected) {
     return { redirectedTo };
   }
 
@@ -257,7 +281,7 @@ export async function passwordLogin(input: {
     return_to: input.returnTo,
   });
   const error = acceptedFormResult(result);
-  if (error || result.status < 300) {
+  if (error || !result.redirected) {
     throw new AccountCenterError(
       error || "邮箱或密码错误，或登录暂不可用",
       "VERIFY_FAILED"
@@ -302,7 +326,7 @@ export async function registerAccount(input: {
     return_to: input.returnTo,
   });
   const error = acceptedFormResult(result);
-  if (error || result.status < 300) {
+  if (error || !result.redirected) {
     throw new AccountCenterError(
       error || "注册失败，请检查验证码和注册信息后重试",
       "VERIFY_FAILED"
@@ -341,7 +365,7 @@ export async function recoverPassword(input: {
     password: input.password,
   });
   const error = acceptedFormResult(result);
-  if (error || result.status < 300) {
+  if (error || !result.redirected) {
     throw new AccountCenterError(
       error || "无法重置密码，请检查验证码和新密码后重试",
       "VERIFY_FAILED"
@@ -382,7 +406,7 @@ export async function changePassword(input: {
     new_password: input.newPassword,
   });
   const error = acceptedFormResult(result);
-  if (error || result.status < 300) {
+  if (error || !result.redirected) {
     throw new AccountCenterError(
       error || "无法更改密码，请检查当前密码、验证码和新密码",
       "VERIFY_FAILED"
