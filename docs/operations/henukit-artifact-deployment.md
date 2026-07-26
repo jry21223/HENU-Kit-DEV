@@ -33,9 +33,12 @@ HENU Kit production is deployed from the Docker images and runtime tarball built
    curl --fail --silent --show-error https://superhuazai.me/
    curl --fail --silent --show-error https://superhuazai.me/practice
    curl --fail --silent --show-error https://superhuazai.me/library
-   test "$(curl -s -o /dev/null -w '%{http_code}' https://superhuazai.me/quiz/)" = 404
-   test "$(curl -s -o /dev/null -w '%{http_code}' https://superhuazai.me/study-api/healthz)" = 404
+   test "$(curl --location --max-redirs 3 -s -o /dev/null -w '%{http_code}' https://superhuazai.me/quiz/)" = 404
+   test "$(curl --location --max-redirs 3 -s -o /dev/null -w '%{http_code}' https://superhuazai.me/study-api/healthz)" = 404
    ```
+
+   Retirement probes follow at most three canonical redirects and require the
+   final response to be `404`; an intermediate redirect is not itself a pass.
 
    Auth and mail acceptance requires a real `@henu.edu.cn` registration flow on the deployed SHA: request a fresh registration code (`purpose=register`), confirm that it arrives in the actual mailbox, complete registration, and confirm that the OAuth redirect creates an authenticated Portal session (`GET /api/v1/session` returns `200`). Do not reuse a previously failed code or record the code value in logs.
 
