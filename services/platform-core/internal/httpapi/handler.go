@@ -557,7 +557,7 @@ var accountRegisterTemplate = template.Must(template.New("account-register").Par
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>注册 HENU Kit</title></head><body><main><h1>注册 HENU Kit</h1>
 {{if .Error}}<p role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列，请查收学校邮箱。</p>{{end}}
-<form method="post" action="{{if .CodeRequested}}/register{{else}}/register/code{{end}}">
+<form method="post" action="{{.PathPrefix}}{{if .CodeRequested}}/register{{else}}/register/code{{end}}">
 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="return_to" value="{{.ReturnTo}}">
 <label for="email">学校邮箱</label><input id="email" name="email" type="email" value="{{.Email}}" required {{if .CodeRequested}}readonly{{end}}>
 {{if .CodeRequested}}
@@ -571,7 +571,7 @@ var accountRegisterTemplate = template.Must(template.New("account-register").Par
 var accountRecoverTemplate = template.Must(template.New("account-recover").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>找回密码</title></head>
 <body><main><h1>找回密码</h1>{{if .Error}}<p role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列。</p>{{end}}
-<form method="post" action="{{if .CodeRequested}}/recover{{else}}/recover/code{{end}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<form method="post" action="{{.PathPrefix}}{{if .CodeRequested}}/recover{{else}}/recover/code{{end}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 <label>学校邮箱<input name="email" type="email" value="{{.Email}}" required {{if .CodeRequested}}readonly{{end}}></label>
 {{if .CodeRequested}}<label>验证码<input name="code" inputmode="numeric" pattern="[0-9]{6}" required></label>
 <label>新密码<input name="password" type="password" minlength="10" maxlength="128" required></label>{{end}}
@@ -580,7 +580,7 @@ var accountRecoverTemplate = template.Must(template.New("account-recover").Parse
 var accountSecurityTemplate = template.Must(template.New("account-security").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>账号安全</title></head>
 <body><main><h1>账号安全</h1>{{if .Error}}<p role="alert">{{.Error}}</p>{{else if .CodeRequested}}<p>验证码已进入发送队列。</p>{{end}}
-<form method="post" action="{{if .CodeRequested}}/account/security/password{{else}}/account/security/code{{end}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<form method="post" action="{{.PathPrefix}}{{if .CodeRequested}}/account/security/password{{else}}/account/security/code{{end}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 <label>学校邮箱<input name="email" type="email" value="{{.Email}}" required {{if .CodeRequested}}readonly{{end}}></label>
 {{if .CodeRequested}}<label>当前密码<input name="current_password" type="password" required></label>
 <label>验证码<input name="code" inputmode="numeric" pattern="[0-9]{6}" required></label>
@@ -593,13 +593,13 @@ type accountLoginView struct {
 }
 
 type accountRegisterView struct {
-	CSRFToken, ReturnTo, Email, Error string
-	CodeRequested                     bool
+	CSRFToken, ReturnTo, Email, Error, PathPrefix string
+	CodeRequested                                 bool
 }
 
 type accountCredentialView struct {
-	CSRFToken, Email, Error string
-	CodeRequested           bool
+	CSRFToken, Email, Error, PathPrefix string
+	CodeRequested                       bool
 }
 
 func (h *Handler) registerPage(writer http.ResponseWriter, request *http.Request) {
@@ -697,6 +697,7 @@ func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Requ
 }
 
 func (h *Handler) renderRegister(writer http.ResponseWriter, request *http.Request, view accountRegisterView) {
+	view.PathPrefix = h.publicPathPrefix
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
@@ -913,6 +914,7 @@ func (h *Handler) securityChangePassword(writer http.ResponseWriter, request *ht
 }
 
 func (h *Handler) renderCredentialPage(writer http.ResponseWriter, request *http.Request, page *template.Template, view accountCredentialView) {
+	view.PathPrefix = h.publicPathPrefix
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")

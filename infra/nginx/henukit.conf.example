@@ -3,6 +3,11 @@
 
 resolver 127.0.0.11 valid=10s ipv6=off;
 
+map $http_x_forwarded_proto $henukit_forwarded_proto {
+  default $http_x_forwarded_proto;
+  "" $scheme;
+}
+
 server {
   listen 80;
   server_name _;
@@ -16,7 +21,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
   # Platform Core OAuth (must win over /api/ → portal-gateway).
@@ -29,7 +34,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
   # Portal gateway BFF (/api/v1/*)
@@ -40,7 +45,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
   # Sole admin console UI
@@ -51,7 +56,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
   # Console gateway (ops API) — optional; fails soft if down
@@ -63,7 +68,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
   # QuizCraft product
@@ -74,7 +79,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
   location /quiz-api/ {
@@ -85,7 +90,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
   }
@@ -99,7 +104,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
   # Platform Core account center (browser login UI)
@@ -111,7 +116,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
 }

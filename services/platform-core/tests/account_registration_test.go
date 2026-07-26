@@ -436,6 +436,38 @@ func TestRegistrationPreservesOnlyValidatedOAuthReturnTarget(t *testing.T) {
 	}
 }
 
+func TestAccountCenterPublicPrefixKeepsFormsAndAuthRedirectsOnProxyRoute(t *testing.T) {
+	t.Setenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX", "/account-auth")
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+
+	for _, path := range []string{"/register", "/recover"} {
+		response, err := server.Client().Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("open %s: %v", path, err)
+		}
+		body, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if !strings.Contains(string(body), `action="/account-auth`+path) {
+			t.Fatalf("%s form omitted public prefix: %s", path, body)
+		}
+	}
+
+	client := server.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	security, err := client.Get(server.URL + "/account/security")
+	if err != nil {
+		t.Fatalf("open unauthenticated security page: %v", err)
+	}
+	security.Body.Close()
+	if security.StatusCode != http.StatusFound ||
+		!strings.HasPrefix(security.Header.Get("Location"), "/account-auth/login?return_to=") {
+		t.Fatalf("security redirect = %d %q, want prefixed login", security.StatusCode, security.Header.Get("Location"))
+	}
+}
+
 func TestAccountCenterRegistrationAndLogoutUseDistinctLocalHTTPCookies(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
