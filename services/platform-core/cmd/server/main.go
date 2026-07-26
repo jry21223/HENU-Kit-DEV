@@ -38,7 +38,7 @@ func main() {
 	redisClient := redis.NewClient(redisOptions)
 	defer func() { _ = redisClient.Close() }()
 	handler, err := platformcore.New(platformcore.Config{
-		Database: database, Redis: redisClient, CoreCookieName: settings.CoreCookieName,
+		Database: database, Redis: redisClient, CoreCookieName: settings.CoreCookieName, LocalCoreCookieName: settings.LocalCoreCookieName,
 		CoreSessionTTL:   settings.CoreSessionTTL,
 		AuthorizationTTL: settings.AuthorizationTTL, ExchangeSessionTTL: settings.ExchangeSessionTTL,
 		IdempotencyEncryptionKey: settings.IdempotencyEncryptionKey, Logger: logger,
@@ -48,6 +48,8 @@ func main() {
 		MailDeliveryWebhookToken: settings.MailDeliveryWebhookToken,
 		MailDeliveryActiveKeyID:  settings.MailDeliveryActiveKeyID, MailDeliveryRetiringToken: settings.MailDeliveryRetiringToken, MailDeliveryRetiringKeyID: settings.MailDeliveryRetiringKeyID,
 		TrustedProxyCIDRs: settings.TrustedProxyCIDRs,
+		PasswordMemoryKiB: settings.PasswordMemoryKiB, PasswordIterations: settings.PasswordIterations,
+		PasswordParallelism: settings.PasswordParallelism, PasswordHashConcurrency: settings.PasswordHashConcurrency,
 	})
 	if err != nil {
 		logger.Error("server initialization failed", "error", err.Error())

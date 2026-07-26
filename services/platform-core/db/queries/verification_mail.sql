@@ -60,9 +60,31 @@ INSERT INTO users (email_verified, status)
 VALUES (true, 'active')
 RETURNING id, email_verified, status, created_at;
 
+-- name: CreateRegisteredUser :one
+INSERT INTO users (email_verified, status, display_name)
+VALUES (true, 'active', $1)
+RETURNING id, email_verified, status, created_at, display_name;
+
 -- name: CreateEmailIdentity :exec
 INSERT INTO email_identities (user_id, email_lookup_hash, email_ciphertext, verified_at)
 VALUES ($1, $2, $3, now());
+
+-- name: CreatePasswordCredential :exec
+INSERT INTO password_credentials (user_id, verifier, policy_version)
+VALUES ($1, $2, $3);
+
+-- name: GetPasswordLoginCredential :one
+SELECT identity.user_id, users.email_verified, users.status, users.created_at,
+       credential.verifier, credential.policy_version
+FROM email_identities AS identity
+JOIN users ON users.id = identity.user_id
+JOIN password_credentials AS credential ON credential.user_id = users.id
+WHERE identity.email_lookup_hash = $1;
+
+-- name: UpgradePasswordCredential :execrows
+UPDATE password_credentials
+SET verifier = sqlc.arg(new_verifier), policy_version = sqlc.arg(policy_version), updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND verifier = sqlc.arg(old_verifier);
 
 -- name: CreateCoreSession :one
 INSERT INTO sessions (user_id, kind, token_hash, expires_at)
@@ -72,7 +94,7 @@ RETURNING id, expires_at;
 -- name: AttachLoginSessionToVerification :execrows
 UPDATE verification_codes
 SET login_session_id = $2, login_session_token_ciphertext = ''::bytea
-WHERE id = $1 AND used_at IS NOT NULL AND purpose = 'login' AND login_session_id IS NULL;
+WHERE id = $1 AND used_at IS NOT NULL AND purpose IN ('register', 'login') AND login_session_id IS NULL;
 
 -- name: ScrubExpiredVerificationSecrets :execrows
 UPDATE verification_codes
