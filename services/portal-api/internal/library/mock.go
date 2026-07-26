@@ -2,19 +2,45 @@ package library
 
 // Material matches the frontend Material interface exactly.
 type Material struct {
-	ID            string     `json:"id"`
-	Type          string     `json:"type"` // note|exam|mock|path|lab
-	Subject       string     `json:"subject"`
-	Title         string     `json:"title"`
-	Author        string     `json:"author"`
-	Intro         string     `json:"intro"`
-	TOC           []string   `json:"toc"`
-	Pages         [][]string `json:"pages"`
-	Price         int        `json:"price"`
-	PreviewPages  int        `json:"previewPages"`
-	Rating        float64    `json:"rating"`
-	Downloads     int        `json:"downloads"`
-	Favs          int        `json:"favs"`
+	ID           string     `json:"id"`
+	Type         string     `json:"type"` // note|exam|mock|path|lab
+	Subject      string     `json:"subject"`
+	Title        string     `json:"title"`
+	Author       string     `json:"author"`
+	Intro        string     `json:"intro"`
+	TOC          []string   `json:"toc"`
+	Pages        [][]string `json:"pages"`
+	Price        int        `json:"price"`
+	PreviewPages int        `json:"previewPages"`
+	Rating       float64    `json:"rating"`
+	Downloads    int        `json:"downloads"`
+	Favs         int        `json:"favs"`
+}
+
+// Course is the portal-gateway catalog course card.
+type Course struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Subject       string `json:"subject"`
+	MaterialCount int    `json:"material_count"`
+}
+
+// MockCourses aggregates mock materials into course cards (mock mode only).
+func MockCourses() []Course {
+	counts := map[string]int{}
+	for _, m := range MockMaterials() {
+		counts[m.Subject]++
+	}
+	courses := make([]Course, 0, len(counts))
+	for subject, n := range counts {
+		courses = append(courses, Course{
+			ID:            "mock-" + subject,
+			Name:          subject,
+			Subject:       subject,
+			MaterialCount: n,
+		})
+	}
+	return courses
 }
 
 // MockMaterials returns all mock materials matching the frontend data.

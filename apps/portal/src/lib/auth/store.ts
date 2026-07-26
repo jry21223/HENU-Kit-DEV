@@ -1,16 +1,19 @@
 /**
  * 认证 store（支持真实 Gateway 和 mock 两种模式）。
  *
- * 当 NEXT_PUBLIC_PORTAL_GATEWAY_URL 环境变量存在时，
- * 使用 Portal Gateway 的 OAuth 认证流程；
- * 否则回退到 mock 模式（任意用户名 + 6 位密码）。
- *
- * 模块级单例 + useSyncExternalStore：server snapshot 恒为未登录常量，
- * 首次订阅时从 localStorage 恢复会话或从 Gateway 获取 session，
- * SSR/水合无差异。所有写操作只发生在事件回调里。
+ * - Gateway 已配置：仅使用真实 session（OAuth / cookie）
+ * - NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1 或 production：禁用 mock 登录
+ * - 本地 mock 仅当 NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1 且未 require gateway
  */
 
-import { hasGateway, fetchSession, redirectToLogin, logout as apiLogout } from "@/lib/api/client";
+import {
+  fetchSession,
+  hasGateway,
+  logout as apiLogout,
+  mockAllowed,
+  redirectToLogin,
+} from "@/lib/api/client";
+import { requireGateway } from "@/lib/api/env";
 import { initAllGateways } from "@/lib/gateway-init";
 
 export interface AuthUser {
@@ -40,25 +43,37 @@ function init() {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
 
-  if (hasGateway) {
-    // 真实 Gateway 模式：从 Gateway 获取 session
-    fetchSession().then((session) => {
-      if (session) {
-        state = {
-          user: { name: session.user_id, uid: session.user_id, email: "" },
-          ready: true,
-        };
-        // 认证成功后，并行拉取各模块数据
-        initAllGateways();
-      } else {
+  // Always warm product gateways on client boot (independent of login).
+  void initAllGateways();
+
+  if (hasGateway || requireGateway()) {
+    // 真实 Gateway 模式：只认 session；失败即未登录
+    fetchSession()
+      .then((session) => {
+        if (session) {
+          state = {
+            user: { name: session.user_id, uid: session.user_id, email: "" },
+            ready: true,
+          };
+        } else {
+          state = { user: null, ready: true };
+        }
+        emit();
+      })
+      .catch(() => {
         state = { user: null, ready: true };
-      }
-      emit();
-    });
+        emit();
+      });
     return;
   }
 
-  // Mock 模式：从 localStorage 恢复
+  // Mock 模式（仅 allowMock）
+  if (!mockAllowed) {
+    state = { user: null, ready: true };
+    emit();
+    return;
+  }
+
   let user: AuthUser | null = null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -91,6 +106,11 @@ function uidOf(name: string) {
   return String(20260000 + h);
 }
 
+/** Mock 登录是否可用（UI 可据此隐藏演示码 / 本地登录表单） */
+export function isMockAuthEnabled(): boolean {
+  return mockAllowed && !hasGateway && !requireGateway();
+}
+
 export const authStore = {
   subscribe(listener: () => void) {
     listeners.add(listener);
@@ -104,20 +124,24 @@ export const authStore = {
 
   /** 登录 */
   login(name: string) {
-    if (hasGateway) {
-      // 真实模式：重定向到 Gateway OAuth
+    if (hasGateway || requireGateway()) {
       redirectToLogin();
       return;
     }
-    // Mock 模式
+    if (!mockAllowed) {
+      throw new Error("Mock login is disabled. Configure portal gateway.");
+    }
     setUser({ name, uid: uidOf(name), email: "" });
   },
 
-  /** 注册（mock） */
+  /** 注册（mock only） */
   register(name: string, email: string) {
-    if (hasGateway) {
+    if (hasGateway || requireGateway()) {
       redirectToLogin();
       return;
+    }
+    if (!mockAllowed) {
+      throw new Error("Mock register is disabled. Configure portal gateway.");
     }
     setUser({ name, uid: uidOf(name), email });
   },

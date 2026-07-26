@@ -1,3 +1,6 @@
+# LEGACY Study-only production example (web + study-legacy-admin).
+# Primary HENU Kit full-stack compose is docker-compose.henukit.yml.
+# Prefer that file for Portal public + Console admin + QuizCraft + Study API.
 name: final-review-platform-prod
 
 services:

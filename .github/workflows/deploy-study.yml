@@ -1,5 +1,10 @@
 name: Deploy study platform
 
+# Study product deploy only (web + study-legacy-admin break-glass + study API/worker).
+# HENU Kit production operator UI is Console — see deploy-henukit.yml.
+# study-legacy-admin remains in this artifact for emergency rollback, not as the
+# default HENU Kit admin surface.
+
 on:
   push:
     branches: [main]

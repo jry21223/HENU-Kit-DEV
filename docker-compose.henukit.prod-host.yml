@@ -1,0 +1,16 @@
+# Host-side production overlay for superhuazai.me (115.191.22.22)
+# - bind DB/redis/admin ports to loopback only
+# - edge on 127.0.0.1:8088 for host nginx reverse proxy
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+  redis:
+    ports: !override
+      - "127.0.0.1:6379:6379"
+  console-gateway:
+    ports: !override
+      - "127.0.0.1:8082:8082"
+  nginx:
+    ports: !override
+      - "127.0.0.1:8088:80"

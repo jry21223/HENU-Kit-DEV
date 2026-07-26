@@ -17,8 +17,14 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	listenAddress := env("PLATFORM_CORE_SMTP_PROVIDER_ADDRESS", "127.0.0.1:18081")
 	host, _, err := net.SplitHostPort(listenAddress)
-	if err != nil || !net.ParseIP(host).IsLoopback() {
-		logger.Error("SMTP provider must listen on an explicit loopback address")
+	allowDocker := os.Getenv("PLATFORM_CORE_SMTP_ALLOW_DOCKER") == "1"
+	ip := net.ParseIP(host)
+	// Default: loopback only (host process). Docker compose may bind 0.0.0.0
+	// when PLATFORM_CORE_SMTP_ALLOW_DOCKER=1 so mail-worker can reach it on the
+	// internal network; do not expose this port on the public host.
+	okBind := err == nil && ip != nil && (ip.IsLoopback() || (allowDocker && (ip.IsUnspecified() || ip.IsPrivate())))
+	if !okBind {
+		logger.Error("SMTP provider must listen on loopback, or 0.0.0.0/private with PLATFORM_CORE_SMTP_ALLOW_DOCKER=1")
 		os.Exit(1)
 	}
 	mailer, err := smtpprovider.NewSMTPMailer(

@@ -1,0 +1,143 @@
+name: Deploy HENU Kit artifacts
+
+# Builds production-facing HENU Kit artifacts (portal + console + gateways).
+# Server-side deploy is intentionally TODO until secrets and host cutover are ready.
+# Study-only deploys remain in deploy-study.yml and must not treat legacy admin as
+# the HENU Kit operator UI.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/portal/**
+      - apps/console/**
+      - services/console-gateway/**
+      - services/portal-summary/**
+      - services/platform-core/**
+      - packages/api-contracts/**
+      - packages/design-tokens/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/deploy-henukit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: henukit-artifacts
+  cancel-in-progress: false
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: portal
+            filter: "@henukit/portal"
+            artifact_path: apps/portal/.next
+          - name: console
+            filter: "@henukit/console"
+            artifact_path: apps/console/dist
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install and build ${{ matrix.name }}
+        env:
+          # Optional subpath deploy for Console; leave empty for domain root.
+          VITE_BASE_PATH: ${{ vars.HENUKIT_CONSOLE_BASE_PATH || '' }}
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm --filter ${{ matrix.filter }} run build
+          test -e "${{ matrix.artifact_path }}"
+
+      - name: Upload ${{ matrix.name }} artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: henukit-${{ matrix.name }}-${{ github.sha }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+  build-gateways:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: console-gateway
+            workdir: services/console-gateway
+            package: ./cmd/server
+            binary: console-gateway
+          - name: portal-summary
+            workdir: services/portal-summary
+            package: ./cmd/server
+            binary: portal-summary
+          - name: platform-core
+            workdir: services/platform-core
+            package: ./cmd/server
+            binary: platform-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.workdir }}/go.mod
+          cache-dependency-path: ${{ matrix.workdir }}/go.sum
+
+      - name: Build ${{ matrix.name }}
+        working-directory: ${{ matrix.workdir }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/release/bin"
+          go build -trimpath -ldflags='-s -w' -o "$GITHUB_WORKSPACE/release/bin/${{ matrix.binary }}" ${{ matrix.package }}
+          test -x "$GITHUB_WORKSPACE/release/bin/${{ matrix.binary }}"
+
+      - name: Upload ${{ matrix.name }} binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: henukit-${{ matrix.name }}-${{ github.sha }}
+          path: release/bin/${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 14
+
+  # TODO: server deploy after artifact build.
+  # Expected repository secrets / variables (names only — do not commit values):
+  #   secrets.HENUKIT_DEPLOY_SSH_KEY
+  #   secrets.HENUKIT_DEPLOY_KNOWN_HOSTS
+  #   secrets.HENUKIT_DEPLOY_HOST
+  #   secrets.HENUKIT_DEPLOY_PORT
+  #   secrets.HENUKIT_DEPLOY_USER
+  #   secrets.HENUKIT_CONSOLE_SESSION_KEY
+  #   secrets.HENUKIT_PLATFORM_CLIENT_SECRET
+  #   vars.HENUKIT_PLATFORM_CORE_URL
+  #   vars.HENUKIT_CONSOLE_BASE_PATH   # e.g. /console/ when hosting under a subpath
+  #   vars.HENUKIT_DEPLOY_MODE         # set to "enabled" only after cutover
+  deploy:
+    if: vars.HENUKIT_DEPLOY_MODE == 'enabled'
+    needs: [build-frontend, build-gateways]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: henukit-production
+    steps:
+      - name: Server deploy not yet implemented
+        run: |
+          set -euo pipefail
+          echo "Artifacts built. Wire scp/ssh (or webhook) using HENUKIT_DEPLOY_* secrets before enabling this job."
+          exit 1

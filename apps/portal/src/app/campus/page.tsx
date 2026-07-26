@@ -1,30 +1,133 @@
 "use client";
 
-import { useState } from "react";
-import { useSyncExternalStore } from "react";
-import { CATEGORIES, campusStore, ItemType } from "@/lib/campus/mock";
+import { useCallback, useEffect, useState } from "react";
+import {
+  fetchCampusCategories,
+  fetchCampusItems,
+  formatPortalError,
+  mockAllowed,
+} from "@/lib/api/client";
+import type { CampusCategory, CampusItem } from "@/lib/api/types";
+import {
+  CATEGORIES,
+  campusStore,
+  ItemType,
+  type Item,
+  type Category,
+} from "@/lib/campus/mock";
+import {
+  getCampusGatewayError,
+  getGatewayCategories,
+  getGatewayItems,
+  initCampusGateway,
+} from "@/lib/campus/gateway";
 import ItemCard from "@/components/campus/item-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneHandshake } from "@/components/site-hero/scenes";
 import { useReveal } from "@/components/account/use-reveal";
+import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
 
+type LoadState = "loading" | "ready" | "error";
+
+function toItem(it: CampusItem): Item {
+  return {
+    id: it.id,
+    type: it.type,
+    category: it.category,
+    title: it.title,
+    desc: it.desc,
+    price: it.price,
+    seller: it.seller,
+    credit: it.credit,
+    dealsDone: it.dealsDone,
+    wants: it.wants,
+    place: it.place,
+    deadline: it.deadline,
+    status: it.status,
+    time: it.time,
+    images: it.images,
+  };
+}
+
+function toCategories(cats: CampusCategory[] | null): Category[] {
+  if (!cats?.length) return CATEGORIES;
+  return cats.map((c) => ({ key: c.key, name: c.name, code: c.code }));
+}
+
 export default function MarketPage() {
-  const data = useSyncExternalStore(campusStore.subscribe, campusStore.get, campusStore.getServer);
+  const [items, setItems] = useState<Item[]>([]);
+  const [categories, setCategories] = useState<Category[]>(CATEGORIES);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string>("all");
   const [type, setType] = useState<ItemType | "all">("all");
   useReveal();
 
-  const items = data.items.filter(
+  const load = useCallback(async () => {
+    setLoadState("loading");
+    setError(null);
+    try {
+      const [itemsResp, catsResp] = await Promise.all([
+        fetchCampusItems(),
+        fetchCampusCategories().catch(() => null),
+      ]);
+      setItems(itemsResp.items.map(toItem));
+      setCategories(toCategories(catsResp?.categories ?? null));
+      setLoadState("ready");
+    } catch (e) {
+      try {
+        await initCampusGateway();
+        const cached = getGatewayItems();
+        const cats = getGatewayCategories();
+        if (cached?.length) {
+          setItems(cached.map(toItem));
+          setCategories(toCategories(cats));
+          setLoadState("ready");
+          return;
+        }
+        if (mockAllowed) {
+          const data = campusStore.get();
+          setItems(data.items);
+          setCategories(CATEGORIES);
+          setLoadState("ready");
+          return;
+        }
+        setItems([]);
+        setError(
+          getCampusGatewayError() ||
+            formatPortalError(e) ||
+            "互助平台接口不可用，生产环境已禁用 mock 回退。"
+        );
+        setLoadState("error");
+      } catch (e2) {
+        if (mockAllowed) {
+          setItems(campusStore.get().items);
+          setCategories(CATEGORIES);
+          setLoadState("ready");
+          return;
+        }
+        setError(formatPortalError(e2));
+        setLoadState("error");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  const filtered = items.filter(
     (it) =>
       it.status !== "hidden" &&
       (cat === "all" || it.category === cat) &&
       (type === "all" || it.type === type) &&
       (!query.trim() || it.title.includes(query.trim()))
   );
-  const openCount = data.items.filter((i) => i.status !== "hidden").length;
-  const doneCount = data.items.filter((i) => i.status === "done").length + data.deals.filter((d) => d.status === "done").length;
+  const openCount = items.filter((i) => i.status !== "hidden").length;
+  const doneCount = items.filter((i) => i.status === "done").length;
 
   return (
     <main>
@@ -42,7 +145,10 @@ export default function MarketPage() {
       />
 
       <div className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
-        {/* 搜索 + 分类 + 类型 */}
+        {loadState === "error" && error && (
+          <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
+        )}
+
         <div data-enter className="flex flex-wrap items-center gap-2">
           <input
             value={query}
@@ -78,7 +184,7 @@ export default function MarketPage() {
           >
             全部
           </button>
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <button
               key={c.key}
               type="button"
@@ -93,15 +199,16 @@ export default function MarketPage() {
           ))}
         </div>
 
-        {/* 双列瀑布流 */}
         <div data-enter className="mt-8">
-          {items.length === 0 ? (
-            <p className="border border-dashed border-ink/30 px-5 py-16 text-center font-mono text-xs tracking-[0.3em] text-ink/40">
-              无匹配单子 / NO RESULT
-            </p>
+          {loadState === "loading" ? (
+            <LoadingBlock label="加载互助单" />
+          ) : loadState === "error" ? (
+            <EmptyBlock label="接口不可用" />
+          ) : filtered.length === 0 ? (
+            <EmptyBlock label="无匹配单子" />
           ) : (
             <div className="columns-1 gap-4 sm:columns-2">
-              {items.map((it) => (
+              {filtered.map((it) => (
                 <ItemCard key={it.id} item={it} />
               ))}
             </div>
@@ -111,4 +218,3 @@ export default function MarketPage() {
     </main>
   );
 }
-

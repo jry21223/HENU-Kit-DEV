@@ -1,6 +1,22 @@
 # Console Gateway
 
-Console Gateway is the independently deployable authentication and controlled-access edge for HENUKit Console. It has no PostgreSQL connection, business migrations, or product database credentials.
+Console Gateway is the independently deployable authentication and controlled-access edge for HENUKit Console (the sole production operator UI). It has no PostgreSQL connection, business migrations, or product database credentials.
+
+## Local / Compose env
+
+Copy `.env.example` and set at least:
+
+| Variable | Role |
+| --- | --- |
+| `PLATFORM_CORE_URL` | Base URL of Platform Core (required; no hardcoded host in the binary) |
+| `PLATFORM_ACCOUNT_ORIGIN` | Browser-facing account origin used for authorize redirects |
+| `PLATFORM_CLIENT_ID` / `PLATFORM_CLIENT_SECRET` / `PLATFORM_KEY_ID` | OAuth client credentials provisioned for this Gateway |
+| `CONSOLE_REDIRECT_URI` | Exact callback URL registered with Platform Core |
+| `CONSOLE_SESSION_KEY` | Base64 encoding of exactly 32 random bytes |
+| `REDIS_ADDR` | Redis used for OAuth state and short-lived summary cache |
+| `LISTEN_ADDR` | Optional; defaults to `:8082` |
+
+Module summary URLs and per-module HMAC secrets are optional at process start; missing summaries degrade the Overview response instead of blocking boot. Compose/test Redis is available via `compose.test.yml`.
 
 The Gateway stores one-time OAuth state, PKCE verifier, and the validated same-origin return path in Redis for five minutes. A separate short-lived host-only HttpOnly/Secure/SameSite=Lax cookie binds that state to the browser that initiated login, preventing callback forwarding from swapping a victim into another account. After the exact callback, the Gateway exchanges the single-use code with Platform Core over authenticated HMAC, then creates an encrypted Console Session cookie with the same host-only security attributes. `GET /api/v1/session` revalidates `console.overview.read` with Platform Core on every request, so account, grant, and Session revocation are not hidden by a Gateway authorization cache.
 

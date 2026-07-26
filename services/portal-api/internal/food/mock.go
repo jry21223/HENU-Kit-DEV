@@ -33,6 +33,15 @@ type Post struct {
 	Images   []string    `json:"images,omitempty"`
 }
 
+// Venue is a food venue card derived from real posts (never invented shops).
+type Venue struct {
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	Rating float64 `json:"rating"`
+	Tier   string  `json:"tier"`
+	Campus string  `json:"campus"`
+}
+
 // Comment matches the frontend Comment interface.
 type Comment struct {
 	ID     string `json:"id"`

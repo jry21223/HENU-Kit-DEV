@@ -1,3 +1,6 @@
+# LEGACY Study-only stack (library web + study-legacy-admin).
+# Primary public+ops surface is docker-compose.henukit.yml
+# (Portal / Console / QuizCraft / Study API as library backend).
 services:
   postgres:
     image: postgres:17-alpine

@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { EMAIL_DEMO_CODE } from "@/lib/auth/mock";
+import { isMockAuthEnabled } from "@/lib/auth/store";
 import { useEmailCode } from "@/components/account/use-email-code";
 import { cn } from "@/lib/cn";
 
-/** 验证码行：输入框 + 发送按钮（60s 倒计时）+ 演示码提示 */
+/** 验证码行：输入框 + 发送按钮（60s 倒计时）；演示码仅 mock 模式展示 */
 export default function CodeField({
   email,
   value,
@@ -19,6 +20,7 @@ export default function CodeField({
 }) {
   const { cd, send } = useEmailCode();
   const [sendErr, setSendErr] = useState("");
+  const showDemo = isMockAuthEnabled();
 
   return (
     <div>
@@ -50,9 +52,11 @@ export default function CodeField({
           {cd > 0 ? `${cd}s 后重发` : "发送验证码"}
         </button>
       </div>
-      <p className="mt-1 font-mono text-[10px] text-ink/40">
-        演示码：<span className="text-accent">{EMAIL_DEMO_CODE}</span>
-      </p>
+      {showDemo && (
+        <p className="mt-1 font-mono text-[10px] text-ink/40">
+          演示码：<span className="text-accent">{EMAIL_DEMO_CODE}</span>
+        </p>
+      )}
       {(error || sendErr) && (
         <p className="mt-1 font-mono text-[10px] text-accent">{error || sendErr}</p>
       )}

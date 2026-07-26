@@ -15,6 +15,41 @@ func NewStudyDB(conn *sql.DB) *StudyDB {
 	return &StudyDB{conn: conn}
 }
 
+// GetCourses aggregates published courses and material counts from Study DB.
+func (db *StudyDB) GetCourses() ([]Course, error) {
+	rows, err := db.conn.Query(`
+		SELECT c.id::text, c.name, c.name AS subject,
+		       COUNT(m.id) FILTER (
+		         WHERE m.status = 'published' AND m.deleted_at IS NULL
+		       )::int AS material_count
+		FROM courses c
+		LEFT JOIN materials m ON m.course_id = c.id
+		WHERE c.status = 'published' AND c.deleted_at IS NULL
+		GROUP BY c.id, c.name
+		ORDER BY c.name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query courses: %w", err)
+	}
+	defer rows.Close()
+
+	var courses []Course
+	for rows.Next() {
+		var c Course
+		if err := rows.Scan(&c.ID, &c.Name, &c.Subject, &c.MaterialCount); err != nil {
+			return nil, fmt.Errorf("scan course: %w", err)
+		}
+		courses = append(courses, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate courses: %w", err)
+	}
+	if courses == nil {
+		courses = []Course{}
+	}
+	return courses, nil
+}
+
 // GetMaterials returns materials from the Study API database.
 // Joins with courses to get subject info.
 func (db *StudyDB) GetMaterials() ([]Material, error) {

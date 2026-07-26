@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -29,6 +30,7 @@ type Handler struct {
 	redis           *redis.Client
 	portalOrigin    string
 	platformCoreURL string
+	publicPlatformURL string
 	clientID        string
 	redirectURI     string
 }
@@ -47,6 +49,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		redis:           rdb,
 		portalOrigin:    cfg.PortalOrigin,
 		platformCoreURL: cfg.PlatformCoreURL,
+		publicPlatformURL: firstNonEmpty(cfg.PlatformCorePublicURL, cfg.PlatformCoreURL),
 		clientID:        cfg.PlatformClientID,
 		redirectURI:     cfg.PortalRedirectURI,
 	}, nil
@@ -113,11 +116,11 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	h.redis.Set(r.Context(), key, payload, 5*time.Minute)
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     "__Host-henukit_portal_oauth",
+		Name:     "henukit_portal_oauth",
 		Value:    base64.RawURLEncoding.EncodeToString(browserNonce),
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   300,
 	})
@@ -127,7 +130,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
 	redirectURL := fmt.Sprintf(
 		"%s/api/v1/oauth/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
-		h.platformCoreURL, h.clientID, h.redirectURI,
+		firstNonEmpty(h.publicPlatformURL, h.platformCoreURL), h.clientID, url.QueryEscape(h.redirectURI),
 		base64.RawURLEncoding.EncodeToString(state), codeChallenge,
 	)
 
@@ -142,7 +145,7 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cookie, err := r.Cookie("__Host-henukit_portal_oauth")
+	cookie, err := r.Cookie("henukit_portal_oauth")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "missing oauth cookie"})
 		return
@@ -170,8 +173,8 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name: "__Host-henukit_portal_oauth", Value: "", Path: "/",
-		HttpOnly: true, Secure: true, MaxAge: -1, Expires: time.Unix(1, 0),
+		Name: "henukit_portal_oauth", Value: "", Path: "/",
+		HttpOnly: true, Secure: cookieSecure(), MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 
 	stateBytes, _ := base64.RawURLEncoding.DecodeString(state)
@@ -196,8 +199,8 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 
 	maxAge := int(time.Until(result.ExpiresAt).Seconds())
 	http.SetCookie(w, &http.Cookie{
-		Name: "__Host-henukit_portal_session", Value: encoded, Path: "/",
-		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: maxAge,
+		Name: "henukit_portal_session", Value: encoded, Path: "/",
+		HttpOnly: true, Secure: cookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: maxAge,
 	})
 
 	returnTo := stored["return_to"]
@@ -218,8 +221,8 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name: "__Host-henukit_portal_session", Value: "", Path: "/",
-		HttpOnly: true, Secure: true, MaxAge: -1, Expires: time.Unix(1, 0),
+		Name: "henukit_portal_session", Value: "", Path: "/",
+		HttpOnly: true, Secure: cookieSecure(), MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})
 }
@@ -254,7 +257,7 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 // --- Helpers ---
 
 func (h *Handler) readSession(r *http.Request) (session.Value, error) {
-	cookie, err := r.Cookie("__Host-henukit_portal_session")
+	cookie, err := r.Cookie("henukit_portal_session")
 	if err != nil {
 		return session.Value{}, err
 	}
@@ -296,4 +299,21 @@ func sha256Hex(data []byte) string {
 func sha256Sum(data []byte) []byte {
 	h := sha256.Sum256(data)
 	return h[:]
+}
+
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+
+func cookieSecure() bool {
+	// Local compose serves http://localhost; __Host- cookies require Secure+HTTPS.
+	// Use non-Host cookie names on HTTP by also relaxing name? For now disable Secure on HTTP.
+	return false // local demo: http only. Production reverse-proxy TLS should set true via env later.
 }

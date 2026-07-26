@@ -1,14 +1,16 @@
-import { SCHOOLS } from "@/lib/practice/mock";
+import { SCHOOLS, type School } from "@/lib/practice/mock";
 import { cn } from "@/lib/cn";
 
 /**
  * 学院→专业→科目 分组筛选（侧边栏与移动面板共用）。
  * 选中项：橙色左边条 + 加粗；逻辑状态由父组件持有。
+ * schools 可由 API 注入；缺省回退 mock（仅本地 dev allow-mock 场景）。
  */
 export default function BankFilter({
   schoolId,
   majorId,
   subjectId,
+  schools = SCHOOLS,
   onSchool,
   onMajor,
   onSubject,
@@ -16,12 +18,14 @@ export default function BankFilter({
   schoolId: string;
   majorId: string;
   subjectId: string;
+  schools?: School[];
   onSchool: (id: string) => void;
   onMajor: (id: string) => void;
   onSubject: (id: string) => void;
 }) {
-  const school = SCHOOLS.find((s) => s.id === schoolId) ?? SCHOOLS[0];
-  const major = school.majors.find((m) => m.id === majorId) ?? school.majors[0];
+  const list = schools.length > 0 ? schools : SCHOOLS;
+  const school = list.find((s) => s.id === schoolId) ?? list[0];
+  const major = school?.majors.find((m) => m.id === majorId) ?? school?.majors[0];
 
   const itemCls = (active: boolean) =>
     cn(
@@ -31,13 +35,21 @@ export default function BankFilter({
         : "border-transparent text-ink/55 hover:border-ink/30 hover:text-ink"
     );
 
+  if (!school || !major) {
+    return (
+      <p className="font-mono text-[10px] tracking-[0.3em] text-ink/40">
+        暂无筛选数据
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-7">
       <div>
         <p className="mb-2 font-mono text-[10px] tracking-[0.3em] text-ink/40">
           S / 学院
         </p>
-        {SCHOOLS.map((s) => (
+        {list.map((s) => (
           <button key={s.id} type="button" onClick={() => onSchool(s.id)} className={itemCls(s.id === schoolId)}>
             {s.name}
           </button>

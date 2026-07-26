@@ -1,0 +1,356 @@
+# HENU Kit primary full-stack compose.
+# Study-only stacks in docker-compose.yml / docker-compose.dev.yml remain for
+# legacy library compatibility; this file is the default public+ops surface.
+#
+# Usage:
+#   cp .env.henukit.example .env.henukit
+#   docker compose -f docker-compose.henukit.yml --env-file .env.henukit up --build
+#
+# Edge: http://localhost:8088
+#   /            Portal
+#   /api/        Portal Gateway
+#   /console/    Console (ops)
+#   /quiz/       QuizCraft web
+#   /quiz-api/   QuizCraft API
+#   /study-api/  Study API (debug)
+
+name: henukit
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-henukit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-henukit_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - henukit_postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init-henukit-dbs.sh:/docker-entrypoint-initdb.d/01-init-henukit-dbs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - henukit_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  study-api:
+    build:
+      context: ./services/api
+    environment:
+      APP_ENV: development
+      API_PORT: ${STUDY_API_PORT:-8080}
+      DATABASE_URL: ${STUDY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/study?sslmode=disable}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      CORS_ALLOWED_ORIGINS: ${STUDY_CORS_ALLOWED_ORIGINS:-http://localhost:8088}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      LLM_MODE: ${LLM_MODE:-mock}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz | grep '\"ready\":true' || wget -qO- http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  study-worker:
+    build:
+      context: ./services/worker
+    profiles: ["worker"]
+    environment:
+      APP_ENV: development
+      DATABASE_URL: ${STUDY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/study?sslmode=disable}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      LLM_MODE: ${LLM_MODE:-mock}
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-9090}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/readyz | grep '\"ready\":true' || true"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+
+  platform-core:
+    build:
+      context: ./services/platform-core
+    environment:
+      PLATFORM_CORE_ADDRESS: ${PLATFORM_CORE_ADDRESS:-:8081}
+      PLATFORM_CORE_DATABASE_URL: ${PLATFORM_CORE_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/platform?sslmode=disable}
+      PLATFORM_CORE_REDIS_URL: ${PLATFORM_CORE_REDIS_URL:-redis://redis:6379/0}
+      # base64 of exactly 32 raw bytes (dev placeholders only)
+      PLATFORM_CORE_IDEMPOTENCY_KEY: ${PLATFORM_CORE_IDEMPOTENCY_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
+      PLATFORM_CORE_VERIFICATION_KEY: ${PLATFORM_CORE_VERIFICATION_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
+      PLATFORM_CORE_MAIL_DELIVERY_TOKEN: ${PLATFORM_CORE_MAIL_DELIVERY_TOKEN:-Wld9pvxGjnWc_54pv7SliNmbZELBYpFHsX1vaqpK4co}
+      PLATFORM_CORE_MAIL_DELIVERY_KEY_ID: ${PLATFORM_CORE_MAIL_DELIVERY_KEY_ID:-mail-provider-active}
+      PLATFORM_CORE_STUDENT_EMAIL_DOMAINS: ${PLATFORM_CORE_STUDENT_EMAIL_DOMAINS:-henu.edu.cn}
+      PLATFORM_CORE_PUBLIC_PATH_PREFIX: ${PLATFORM_CORE_PUBLIC_PATH_PREFIX:-/account-auth}
+      PLATFORM_CORE_TRUSTED_PROXY_CIDRS: ${PLATFORM_CORE_TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
+      PLATFORM_CORE_LOCAL_COOKIE_NAME: ${PLATFORM_CORE_LOCAL_COOKIE_NAME:-henukit_core_session_local}
+      PLATFORM_CORE_CORE_SESSION_TTL: ${PLATFORM_CORE_CORE_SESSION_TTL:-360h}
+      PLATFORM_CORE_AUTHORIZATION_TTL: ${PLATFORM_CORE_AUTHORIZATION_TTL:-90s}
+      PLATFORM_CORE_EXCHANGE_SESSION_TTL: ${PLATFORM_CORE_EXCHANGE_SESSION_TTL:-8h}
+      PLATFORM_CORE_IDEMPOTENCY_TTL: ${PLATFORM_CORE_IDEMPOTENCY_TTL:-24h}
+      PLATFORM_CORE_VERIFICATION_CODE_TTL: ${PLATFORM_CORE_VERIFICATION_CODE_TTL:-10m}
+      PLATFORM_CORE_VERIFICATION_RESEND_DELAY: ${PLATFORM_CORE_VERIFICATION_RESEND_DELAY:-60s}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8081"
+
+  # Mail delivery: outbox consumer + local SMTP bridge (Aliyun DirectMail etc.)
+  platform-smtp-provider:
+    build:
+      context: ./services/platform-core
+      dockerfile: Dockerfile.smtp-provider
+    environment:
+      PLATFORM_CORE_SMTP_ALLOW_DOCKER: "1"
+      PLATFORM_CORE_SMTP_PROVIDER_ADDRESS: ${PLATFORM_CORE_SMTP_PROVIDER_ADDRESS:-0.0.0.0:18081}
+      PLATFORM_CORE_SMTP_PROVIDER_ID: ${PLATFORM_CORE_SMTP_PROVIDER_ID:-aliyun-directmail}
+      PLATFORM_CORE_SMTP_LEDGER_DIR: /var/lib/henukit-smtp-provider
+      PLATFORM_CORE_MAIL_PROVIDER_TOKEN: ${PLATFORM_CORE_MAIL_PROVIDER_TOKEN:-replace-mail-provider-token-32chars-min!!}
+      PLATFORM_CORE_MAIL_PROVIDER_KEY_ID: ${PLATFORM_CORE_MAIL_PROVIDER_KEY_ID:-mail-provider-active}
+      # Fill after Aliyun DirectMail console setup (see docs/operations/aliyun-directmail-setup.md)
+      PLATFORM_CORE_SMTP_ADDRESS: ${PLATFORM_CORE_SMTP_ADDRESS:-smtpdm.aliyun.com:465}
+      PLATFORM_CORE_SMTP_USERNAME: ${PLATFORM_CORE_SMTP_USERNAME:-}
+      PLATFORM_CORE_SMTP_PASSWORD: ${PLATFORM_CORE_SMTP_PASSWORD:-}
+      PLATFORM_CORE_SMTP_FROM: ${PLATFORM_CORE_SMTP_FROM:-noreply@notify.superhuazai.me}
+    volumes:
+      - henukit_smtp_ledger:/var/lib/henukit-smtp-provider
+    # Do NOT publish 18081 to the host in production.
+    expose:
+      - "18081"
+    restart: unless-stopped
+
+  platform-mail-worker:
+    build:
+      context: ./services/platform-core
+      dockerfile: Dockerfile.worker
+    environment:
+      PLATFORM_CORE_DATABASE_URL: ${PLATFORM_CORE_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/platform?sslmode=disable}
+      PLATFORM_CORE_VERIFICATION_KEY: ${PLATFORM_CORE_VERIFICATION_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
+      PLATFORM_CORE_MAIL_PROVIDER_ENDPOINT: ${PLATFORM_CORE_MAIL_PROVIDER_ENDPOINT:-http://platform-smtp-provider:18081/internal/send}
+      PLATFORM_CORE_MAIL_PROVIDER_TOKEN: ${PLATFORM_CORE_MAIL_PROVIDER_TOKEN:-replace-mail-provider-token-32chars-min!!}
+      PLATFORM_CORE_MAIL_WORKER_ID: ${PLATFORM_CORE_MAIL_WORKER_ID:-platform-mail-worker-1}
+      # Allow http://platform-smtp-provider on the compose network (see mailworker.NewHTTPSender).
+      PLATFORM_CORE_SMTP_ALLOW_DOCKER: ${PLATFORM_CORE_SMTP_ALLOW_DOCKER:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      platform-smtp-provider:
+        condition: service_started
+    restart: unless-stopped
+
+
+  portal-api:
+    build:
+      context: ./services/portal-api
+    environment:
+      LISTEN_ADDR: ${PORTAL_API_LISTEN_ADDR:-:8085}
+      # mock keeps first boot working without product migrations applied
+      PORTAL_API_MODE: ${PORTAL_API_MODE:-live}
+      PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
+      QUIZCRAFT_DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/quizcraft?sslmode=disable}
+      STUDY_DATABASE_URL: ${STUDY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/study?sslmode=disable}
+      PORTAL_DATABASE_URL: ${PORTAL_DATABASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8085"
+
+  portal-gateway:
+    build:
+      context: ./services/portal-gateway
+    environment:
+      LISTEN_ADDR: ${PORTAL_GATEWAY_LISTEN_ADDR:-:8084}
+      PLATFORM_CORE_URL: ${PLATFORM_CORE_URL:-http://platform-core:8081}
+      PLATFORM_CORE_PUBLIC_URL: ${PLATFORM_CORE_PUBLIC_URL:-http://localhost:8088/account-auth}
+      PLATFORM_CLIENT_ID: ${PLATFORM_CLIENT_ID:-portal-gateway}
+      PLATFORM_CLIENT_SECRET: ${PLATFORM_CLIENT_SECRET:-replace-platform-client-secret-32bytes-min!!}
+      PLATFORM_KEY_ID: ${PLATFORM_KEY_ID:-portal-gateway-key}
+      PORTAL_REDIRECT_URI: ${PORTAL_REDIRECT_URI:-http://localhost:8088/api/v1/auth/callback}
+      # raw 32-byte string (gateway does not base64-decode this value)
+      PORTAL_SESSION_KEY: ${PORTAL_SESSION_KEY:-0123456789abcdef0123456789abcdef}
+      REDIS_URL: ${PORTAL_GATEWAY_REDIS_URL:-redis://redis:6379/2}
+      PORTAL_API_URL: ${PORTAL_API_URL:-http://portal-api:8085}
+      LIBRARY_SERVICE_URL: ${LIBRARY_SERVICE_URL:-http://portal-api:8085}
+      FOOD_SERVICE_URL: ${FOOD_SERVICE_URL:-http://portal-api:8085}
+      PRACTICE_SERVICE_URL: ${PRACTICE_SERVICE_URL:-http://portal-api:8085}
+      NOTICE_SERVICE_URL: ${NOTICE_SERVICE_URL:-http://portal-api:8085}
+      LIBRARY_CLIENT_ID: ${LIBRARY_CLIENT_ID:-portal-library}
+      LIBRARY_CLIENT_SECRET: ${LIBRARY_CLIENT_SECRET:-replace-library-client-secret-32bytes-min!!}
+      LIBRARY_KEY_ID: ${LIBRARY_KEY_ID:-library-key}
+      FOOD_CLIENT_ID: ${FOOD_CLIENT_ID:-portal-food}
+      FOOD_CLIENT_SECRET: ${FOOD_CLIENT_SECRET:-replace-food-client-secret-32bytes-min!!}
+      FOOD_KEY_ID: ${FOOD_KEY_ID:-food-key}
+      PRACTICE_CLIENT_ID: ${PRACTICE_CLIENT_ID:-portal-practice}
+      PRACTICE_CLIENT_SECRET: ${PRACTICE_CLIENT_SECRET:-replace-practice-client-secret-32bytes-min!!}
+      PRACTICE_KEY_ID: ${PRACTICE_KEY_ID:-practice-key}
+      NOTICE_CLIENT_ID: ${NOTICE_CLIENT_ID:-portal-notice}
+      NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:-replace-notice-client-secret-32bytes-min!!}
+      NOTICE_KEY_ID: ${NOTICE_KEY_ID:-notice-key}
+      PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
+    depends_on:
+      redis:
+        condition: service_healthy
+      portal-api:
+        condition: service_started
+      platform-core:
+        condition: service_started
+    expose:
+      - "8084"
+
+  portal:
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
+      args:
+        NEXT_PUBLIC_PORTAL_GATEWAY_URL: ${NEXT_PUBLIC_PORTAL_GATEWAY_URL:-}
+        NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL: ${NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL:-/api}
+        NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: ${NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY:-1}
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      - portal-gateway
+    expose:
+      - "3001"
+
+  console-gateway:
+    build:
+      context: ./services/console-gateway
+    environment:
+      LISTEN_ADDR: ${CONSOLE_GATEWAY_LISTEN_ADDR:-:8082}
+      PLATFORM_CORE_URL: ${PLATFORM_CORE_URL:-http://platform-core:8081}
+      PLATFORM_ACCOUNT_ORIGIN: ${PLATFORM_CORE_URL:-http://platform-core:8081}
+      PLATFORM_CLIENT_ID: ${CONSOLE_PLATFORM_CLIENT_ID:-console-gateway}
+      PLATFORM_CLIENT_SECRET: ${CONSOLE_PLATFORM_CLIENT_SECRET:-replace-console-gateway-client-secret}
+      PLATFORM_KEY_ID: ${CONSOLE_PLATFORM_KEY_ID:-console-gateway-key}
+      CONSOLE_REDIRECT_URI: ${CONSOLE_REDIRECT_URI:-http://localhost:8088/console-api/v1/auth/callback}
+      CONSOLE_SESSION_KEY: ${CONSOLE_SESSION_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      PORTAL_SUMMARY_URL: ${PORTAL_SUMMARY_URL:-}
+      PORTAL_SUMMARY_CLIENT_ID: ${PORTAL_SUMMARY_CLIENT_ID:-console-gateway-portal}
+      PORTAL_SUMMARY_CLIENT_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:-replace-portal-summary-client-secret-32bytes-min!!}
+      PORTAL_SUMMARY_KEY_ID: ${PORTAL_SUMMARY_KEY_ID:-portal-summary-key}
+      PLATFORM_SUMMARY_URL: ${PLATFORM_SUMMARY_URL:-}
+      PLATFORM_SUMMARY_CLIENT_ID: ${PLATFORM_SUMMARY_CLIENT_ID:-console-gateway-platform}
+      PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:-replace-platform-summary-client-secret-32bytes-min!!}
+      PLATFORM_SUMMARY_KEY_ID: ${PLATFORM_SUMMARY_KEY_ID:-platform-summary-key}
+      NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
+      NOTICE_API_URL: ${NOTICE_API_URL:-}
+      LIBRARY_API_URL: ${LIBRARY_API_URL:-http://study-api:8080}
+      FOOD_API_URL: ${FOOD_API_URL:-}
+      NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
+      NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
+      NOTICE_SUMMARY_KEY_ID: ${NOTICE_SUMMARY_KEY_ID:-notice-summary-key}
+      LIBRARY_SUMMARY_URL: ${LIBRARY_SUMMARY_URL:-}
+      LIBRARY_SUMMARY_CLIENT_ID: ${LIBRARY_SUMMARY_CLIENT_ID:-console-gateway-library}
+      LIBRARY_SUMMARY_CLIENT_SECRET: ${LIBRARY_SUMMARY_CLIENT_SECRET:-replace-library-summary-client-secret-32bytes-min!!}
+      LIBRARY_SUMMARY_KEY_ID: ${LIBRARY_SUMMARY_KEY_ID:-library-summary-key}
+      QUIZCRAFT_SUMMARY_URL: ${QUIZCRAFT_SUMMARY_URL:-}
+      QUIZCRAFT_SUMMARY_CLIENT_ID: ${QUIZCRAFT_SUMMARY_CLIENT_ID:-console-gateway-quizcraft}
+      QUIZCRAFT_SUMMARY_CLIENT_SECRET: ${QUIZCRAFT_SUMMARY_CLIENT_SECRET:-replace-quizcraft-summary-client-secret-32bytes-min!!}
+      QUIZCRAFT_SUMMARY_KEY_ID: ${QUIZCRAFT_SUMMARY_KEY_ID:-quizcraft-summary-key}
+      FOOD_SUMMARY_URL: ${FOOD_SUMMARY_URL:-}
+      FOOD_SUMMARY_CLIENT_ID: ${FOOD_SUMMARY_CLIENT_ID:-console-gateway-food}
+      FOOD_SUMMARY_CLIENT_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:-replace-food-summary-client-secret-32bytes-min!!}
+      FOOD_SUMMARY_KEY_ID: ${FOOD_SUMMARY_KEY_ID:-food-summary-key}
+    depends_on:
+      redis:
+        condition: service_healthy
+      platform-core:
+        condition: service_started
+    ports:
+      - "8082:8082"
+    expose:
+      - "8082"
+
+  console:
+    build:
+      context: .
+      dockerfile: apps/console/Dockerfile
+      args:
+        VITE_BASE_PATH: ${VITE_CONSOLE_BASE_PATH:-/console/}
+        VITE_QUIZCRAFT_WORKSHOP_URL: ${VITE_QUIZCRAFT_WORKSHOP_URL:-/quiz/extract}
+    depends_on:
+      - console-gateway
+    expose:
+      - "80"
+
+  quizcraft-api:
+    build:
+      context: ./products/quizcraft
+      dockerfile: Dockerfile
+    environment:
+      APP_HOST: ${QUIZCRAFT_APP_HOST:-0.0.0.0}
+      APP_PORT: ${QUIZCRAFT_APP_PORT:-10086}
+      DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/quizcraft?sslmode=disable}
+      CORS_ORIGINS: ${QUIZCRAFT_CORS_ORIGINS:-http://localhost:8088}
+      ADMIN_TOKEN: ${QUIZCRAFT_ADMIN_TOKEN:-dev-only-quizcraft-admin-token}
+      QUIZCRAFT_READ_ONLY: ${QUIZCRAFT_READ_ONLY:-0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "10086"
+
+  quizcraft-web:
+    build:
+      context: .
+      dockerfile: products/quizcraft/web-app/Dockerfile
+      args:
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/quiz/}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/quiz-api/api}
+        VITE_APP_MODE: ${VITE_APP_MODE:-full}
+    depends_on:
+      - quizcraft-api
+    expose:
+      - "80"
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - portal
+      - portal-gateway
+      - console
+      - console-gateway
+      - quizcraft-web
+      - quizcraft-api
+      - study-api
+    ports:
+      # The host TLS terminator is the only trusted source of forwarded
+      # protocol metadata. Do not expose this hop directly to the network.
+      - "127.0.0.1:${HENUKIT_EDGE_PORT:-8088}:80"
+    volumes:
+      - ./infra/nginx/henukit.conf.example:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  henukit_postgres_data:
+  henukit_redis_data:
+  henukit_smtp_ledger:

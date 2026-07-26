@@ -33,6 +33,7 @@ pnpm-debug.log*
 .env.*
 !.env.example
 !.env.production.example
+!.env.henukit.example
 .envrc
 *.pem
 *.key
@@ -104,3 +105,4 @@ Desktop.ini
 !.vscode/settings.example.json
 *.swp
 *.swo
+.ace-tool/

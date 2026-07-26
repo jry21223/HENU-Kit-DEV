@@ -17,7 +17,9 @@ modules:
     owner: portal
     deploy_unit: portal-web
     target_domain: henukit.cn
-    status: active_development
+    status: active
+    notes:
+      - Primary public product surface via docker-compose.henukit.yml
 
   - id: study_web
     kind: web_app
@@ -35,7 +37,10 @@ modules:
     target_path: apps/study-legacy-admin
     owner: study
     deploy_unit: study-admin
-    status: legacy_preserved
+    status: retired_keep_source
+    notes:
+      - Source kept for rollback and historical Study admin behavior
+      - Not a default deploy target; Console is the only ops admin entry
 
   - id: console
     kind: web_app
@@ -43,7 +48,9 @@ modules:
     target_path: apps/console
     owner: platform
     deploy_unit: henukit-console
-    status: mock_foundation
+    status: active
+    notes:
+      - Primary ops/admin UI; dual Study admin entry is retired from product path
 
   - id: study_api
     kind: go_service

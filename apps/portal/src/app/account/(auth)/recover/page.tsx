@@ -1,183 +1,284 @@
 "use client";
 
+/**
+ * Existing recovery shell wired to Platform Core password recovery.
+ */
+
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { gsap, FINE_MOTION } from "@/lib/gsap";
+import { HenuEmailField } from "@/components/account/henu-email-field";
+import { useReveal } from "@/components/account/use-reveal";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  AccountCenterError,
+  bootstrapPasswordRecovery,
+  portalOAuthStartUrl,
+  recoverPassword,
+  requestRecoveryCode,
+} from "@/lib/auth/account-center";
+import {
+  isValidHenuLocalPart,
+  toHenuEmail,
+} from "@/lib/auth/henu-email";
 import { cn } from "@/lib/cn";
 
-const DEMO_CODE = "427819";
-const STEPS = ["验证账号", "验证码", "新密码"];
+const STEPS = ["验证邮箱", "重置密码", "完成"] as const;
 
 export default function RecoverPage() {
+  useReveal();
   const [step, setStep] = useState(0);
-  const [account, setAccount] = useState("");
+  const [localPart, setLocalPart] = useState("");
   const [code, setCode] = useState("");
-  const [pwd, setPwd] = useState("");
-  const [pwd2, setPwd2] = useState("");
-  const [error, setError] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [csrf, setCsrf] = useState("");
+  const csrfBootstrap = useRef<Promise<string> | null>(null);
+  const [returnTo] = useState(() => portalOAuthStartUrl("/account"));
   const [pending, setPending] = useState(false);
-  const [done, setDone] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState("");
+  const [cd, setCd] = useState(0);
+  const fullEmail = toHenuEmail(localPart);
 
-  // 步骤切换：淡入 + y 位移
   useEffect(() => {
-    const mm = gsap.matchMedia();
-    mm.add(FINE_MOTION, () => {
-      gsap.from(panelRef.current, {
-        y: 14,
-        autoAlpha: 0,
-        duration: 0.4,
-        ease: "power2.out",
-        clearProps: "all",
-      });
-    });
-    return () => mm.revert();
-  }, [step, done]);
+    if (cd <= 0) return;
+    const t = window.setTimeout(() => setCd((c) => c - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [cd]);
 
-  const nextStep = () => {
+  const ensureCsrf = async () => {
+    if (csrf) return csrf;
+    if (!csrfBootstrap.current) {
+      csrfBootstrap.current = bootstrapPasswordRecovery().then(
+        (result) => result.csrfToken
+      );
+    }
+    const pendingBootstrap = csrfBootstrap.current;
+    try {
+      const token = await pendingBootstrap;
+      setCsrf(token);
+      return token;
+    } finally {
+      if (csrfBootstrap.current === pendingBootstrap) {
+        csrfBootstrap.current = null;
+      }
+    }
+  };
+
+  const onSend = async () => {
     setError("");
-    if (step === 0) {
-      if (!account.trim()) return setError("请输入账号名或绑定邮箱");
-    } else if (step === 1) {
-      if (code !== DEMO_CODE) return setError("验证码不正确（演示码 427819）");
-    } else if (step === 2) {
-      if (pwd.length < 6) return setError("新密码至少 6 位");
-      if (pwd2 !== pwd) return setError("两次输入的密码不一致");
+    if (!isValidHenuLocalPart(localPart)) {
+      setError("请输入邮箱前缀（自动补全 @henu.edu.cn）");
+      return;
     }
     setPending(true);
-    setTimeout(() => {
+    try {
+      const token = await ensureCsrf();
+      const result = await requestRecoveryCode({
+        csrfToken: token,
+        email: fullEmail,
+      });
+      setCsrf(result.csrfToken);
+      setStep(1);
+      setCd(60);
+    } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
+      setError(
+        e instanceof AccountCenterError
+          ? e.message
+          : "发送失败（请确认邮件通道已配置）"
+      );
+    } finally {
       setPending(false);
-      if (step === 2) setDone(true);
-      else setStep((s) => s + 1);
-    }, 400);
+    }
+  };
+
+  const onVerify = async () => {
+    setError("");
+    if (!/^\d{6}$/.test(code.trim())) {
+      setError("请输入 6 位数字验证码");
+      return;
+    }
+    if (Array.from(password).length < 10) {
+      setError("新密码至少 10 个字符");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError("两次输入的新密码不一致");
+      return;
+    }
+    setPending(true);
+    try {
+      const token = await ensureCsrf();
+      await recoverPassword({
+        csrfToken: token,
+        email: fullEmail,
+        code: code.trim(),
+        password,
+      });
+      setStep(2);
+      // Always continue via Portal Gateway OAuth after core session is set.
+      window.setTimeout(() => window.location.assign(returnTo), 500);
+    } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
+      setError(
+        e instanceof AccountCenterError ? e.message : "验证失败，请重试"
+      );
+      setPending(false);
+    }
   };
 
   return (
     <main className="bg-blueprint flex min-h-svh items-center justify-center px-5 py-16">
-      <div className="w-full max-w-md border border-ink bg-paper p-8 md:p-10">
+      <div
+        data-enter
+        className="w-full max-w-md border border-ink bg-paper p-8 md:p-10"
+      >
         <div className="flex items-baseline justify-between">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
             <span className="text-accent">ACC-02</span>
             <span className="mx-2">/</span>
             RECOVER
           </p>
-          <Link href="/account/login" className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent">
-            ← 返回登录
+          <Link
+            href="/account/login"
+            className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent"
+          >
+            ← 登录
           </Link>
         </div>
-        <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">找回密码</h1>
+        <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">
+          找回密码
+        </h1>
+        <p className="mt-3 font-mono text-xs leading-6 tracking-wider text-ink/55">
+          验证学校邮箱后设置新密码；完成后旧会话会全部失效，并自动登录当前设备。
+        </p>
 
-        {/* 步骤条 */}
-        <div className="mt-6 flex items-center gap-2">
+        <ol className="mt-6 flex flex-wrap gap-y-1">
           {STEPS.map((label, i) => (
-            <div key={label} className="flex flex-1 items-center gap-2">
-              <span
-                className={cn(
-                  "flex h-6 w-6 shrink-0 items-center justify-center border font-mono text-[10px]",
-                  i < step || done
-                    ? "border-ink bg-ink text-paper"
-                    : i === step
-                      ? "border-accent text-accent"
-                      : "border-line text-ink/40"
-                )}
-              >
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <span className={cn("font-mono text-[10px] tracking-wider", i === step && !done ? "text-ink" : "text-ink/40")}>
-                {label}
-              </span>
-              {i < STEPS.length - 1 && <span className="h-px flex-1 bg-line" />}
-            </div>
+            <li
+              key={label}
+              className={cn(
+                "font-mono text-[10px] tracking-widest",
+                i === step
+                  ? "text-accent"
+                  : i < step
+                    ? "text-ink/50"
+                    : "text-ink/25"
+              )}
+            >
+              {String(i + 1).padStart(2, "0")} {label}
+              {i < STEPS.length - 1 ? (
+                <span className="mx-2 text-ink/20">/</span>
+              ) : null}
+            </li>
           ))}
-        </div>
+        </ol>
 
-        <div ref={panelRef} className="mt-8">
-          {done ? (
-            <div>
-              <p className="border border-ink bg-ink px-4 py-3 font-mono text-sm text-paper">
-                ✓ 密码已重置
-              </p>
-              <p className="mt-3 text-sm text-ink/60">请使用新密码重新登录。</p>
-              <Link
-                href="/account/login"
-                className="mt-6 inline-block border border-ink px-7 py-3 font-mono text-sm tracking-widest transition-colors hover:border-accent hover:text-accent"
-              >
-                返回登录 →
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {step === 0 && (
-                <div>
-                  <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
-                    账号 / 绑定邮箱
-                  </label>
-                  <input
-                    value={account}
-                    onChange={(e) => setAccount(e.target.value)}
-                    placeholder="学号 / 昵称 / 邮箱"
-                    className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
-                  />
-                </div>
-              )}
-              {step === 1 && (
-                <div>
-                  <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
-                    验证码
-                  </label>
-                  <input
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    placeholder="6 位数字"
-                    maxLength={6}
-                    className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm tracking-[0.5em] outline-none placeholder:tracking-normal placeholder:text-ink/30 focus:border-ink"
-                  />
-                  <p className="mt-2 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/50">
-                    v1 预览不发送真实验证码，演示码：<span className="text-accent">{DEMO_CODE}</span>
-                  </p>
-                </div>
-              )}
-              {step === 2 && (
-                <>
-                  <div>
-                    <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
-                      新密码
-                    </label>
-                    <input
-                      type="password"
-                      value={pwd}
-                      onChange={(e) => setPwd(e.target.value)}
-                      placeholder="至少 6 位"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
-                      确认新密码
-                    </label>
-                    <input
-                      type="password"
-                      value={pwd2}
-                      onChange={(e) => setPwd2(e.target.value)}
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none focus:border-ink"
-                    />
-                  </div>
-                </>
-              )}
-              {error && <p className="font-mono text-xs text-accent">{error}</p>}
-              <button
+        <div className="mt-8 space-y-5">
+          {step === 0 && (
+            <>
+              <HenuEmailField
+                id="recover-email"
+                value={localPart}
+                onChange={setLocalPart}
+                autoFocus
+              />
+              {error ? (
+                <p className="font-mono text-[10px] text-accent">{error}</p>
+              ) : null}
+              <Button
                 type="button"
-                onClick={nextStep}
+                className="w-full"
                 disabled={pending}
-                className={cn(
-                  "w-full border py-3.5 font-mono text-sm tracking-widest transition-colors",
-                  pending
-                    ? "cursor-wait border-line text-ink/40"
-                    : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
-                )}
+                onClick={() => void onSend()}
               >
-                {pending ? "处理中…" : step === 2 ? "重置密码" : "下一步 →"}
-              </button>
+                {pending ? "发送中…" : "发送验证码"}
+              </Button>
+            </>
+          )}
+
+          {step === 1 && (
+            <>
+              <p className="font-mono text-[11px] text-ink/50">
+                已发送至 <span className="text-ink">{fullEmail}</span>
+              </p>
+              <div>
+                <Label htmlFor="recover-code">6 位验证码</Label>
+                <div className="flex items-end gap-3">
+                  <Input
+                    id="recover-code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) =>
+                      setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                    className="tracking-[0.35em]"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={cd > 0 || pending}
+                    onClick={() => void onSend()}
+                  >
+                    {cd > 0 ? `${cd}s` : "重发"}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="recover-password">新密码</Label>
+                <Input
+                  id="recover-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="至少 10 个字符"
+                />
+              </div>
+              <div>
+                <Label htmlFor="recover-password-confirm">确认新密码</Label>
+                <Input
+                  id="recover-password-confirm"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordConfirm}
+                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                />
+              </div>
+              {error ? (
+                <p className="font-mono text-[10px] text-accent">{error}</p>
+              ) : null}
+              <Button
+                type="button"
+                className="w-full"
+                disabled={pending}
+                onClick={() => void onVerify()}
+              >
+                {pending ? "重置中…" : "重置密码并登录"}
+              </Button>
+            </>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-3">
+              <p className="font-mono text-sm text-ink">
+                验证成功，正在进入账号…
+              </p>
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => window.location.assign(returnTo)}
+              >
+                继续 →
+              </Button>
             </div>
           )}
         </div>

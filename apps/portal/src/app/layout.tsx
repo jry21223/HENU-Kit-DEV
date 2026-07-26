@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
+import GatewayBootstrap from "@/components/gateway-bootstrap";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -29,7 +30,10 @@ export default function RootLayout({
       lang="zh-CN"
       className={`${spaceGrotesk.variable} ${plexMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        <GatewayBootstrap />
+        {children}
+      </body>
     </html>
   );
 }

@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Required for multi-stage Docker image (apps/portal/Dockerfile).
+  output: "standalone",
 };
 
 export default nextConfig;

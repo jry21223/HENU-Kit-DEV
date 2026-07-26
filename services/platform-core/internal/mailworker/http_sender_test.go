@@ -78,3 +78,19 @@ func TestHTTPSenderClassifiesProviderRejection(t *testing.T) {
 		})
 	}
 }
+
+func TestNewHTTPSenderAllowsDockerComposeHTTP(t *testing.T) {
+	t.Setenv("PLATFORM_CORE_SMTP_ALLOW_DOCKER", "1")
+	sender, err := NewHTTPSender("http://platform-smtp-provider:18081/internal/send", "provider-secret", &http.Client{Timeout: time.Second})
+	if err != nil || sender == nil {
+		t.Fatalf("compose service HTTP should be allowed when PLATFORM_CORE_SMTP_ALLOW_DOCKER=1: %v", err)
+	}
+
+	t.Setenv("PLATFORM_CORE_SMTP_ALLOW_DOCKER", "")
+	if _, err := NewHTTPSender("http://platform-smtp-provider:18081/internal/send", "provider-secret", &http.Client{Timeout: time.Second}); err == nil {
+		t.Fatal("compose service HTTP must be rejected without PLATFORM_CORE_SMTP_ALLOW_DOCKER")
+	}
+	if _, err := NewHTTPSender("http://smtp.example.com/internal/send", "provider-secret", &http.Client{Timeout: time.Second}); err == nil {
+		t.Fatal("public HTTP endpoints must stay rejected")
+	}
+}
