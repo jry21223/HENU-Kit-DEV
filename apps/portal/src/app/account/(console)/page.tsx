@@ -13,9 +13,13 @@ export default function AccountOverviewPage() {
 
   if (!user) return null;
 
+  const membershipLabel = data.membership.lifetime
+    ? "终身"
+    : data.membership.plan;
+
   const cards = [
     { label: "积分余额", value: String(data.balance), href: "/account/wallet", mono: "C-01" },
-    { label: "会员到期", value: `${data.membership.daysLeft} 天`, href: "/account/membership", mono: "C-02" },
+    { label: "会员", value: membershipLabel, href: "/account/membership", mono: "C-02" },
     { label: "未读通知", value: String(unreadNotices(data)), href: "/account/notifications", mono: "C-03" },
     { label: "进行中工单", value: String(openTickets(data)), href: "/account/tickets", mono: "C-04" },
   ];
@@ -62,7 +66,7 @@ export default function AccountOverviewPage() {
       </div>
 
       <p data-enter className="mt-8 font-mono text-[10px] tracking-[0.3em] text-ink/40">
-        v1 预览 · 数据为会话内示例，刷新后重置
+        积分 / 通知 / 工单待服务端接入 · 当前为空态（非演示数据）
       </p>
     </div>
   );
