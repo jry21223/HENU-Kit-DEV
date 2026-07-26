@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/portal-gateway/internal/config"
+	"henukit.dev/portal-gateway/internal/contract"
 )
 
 func TestOAuthCallbackConsumesStateCreatedByLogin(t *testing.T) {
@@ -77,5 +79,15 @@ func TestOAuthCallbackConsumesStateCreatedByLogin(t *testing.T) {
 
 	if callbackRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("callback status = %d, body = %s; want code exchange response", callbackRecorder.Code, strings.TrimSpace(callbackRecorder.Body.String()))
+	}
+	var envelope contract.ErrorEnvelope
+	if err := json.Unmarshal(callbackRecorder.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("callback error json: %v body=%s", err, callbackRecorder.Body.String())
+	}
+	if envelope.RequestID == "" {
+		t.Fatal("exchange failure must include non-empty request_id")
+	}
+	if envelope.Error != "exchange failed" {
+		t.Fatalf("error = %q", envelope.Error)
 	}
 }
