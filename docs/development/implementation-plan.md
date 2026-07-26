@@ -207,5 +207,5 @@
 - 正常、失败、重复、并发和权限路径已测试。
 - 日志含 `request_id` 且无敏感信息。
 - Feature Flag、回滚方式和数据清理方式明确。
-- 非作者完成 Review；安全关键项由测试人员验收。
+- 当前 SHA 完成 Standards / Spec 双轴 Review；安全关键项具备独立的失败路径测试和回滚证据。
 - CI 全绿，staging smoke 通过，文档和运行命令已更新。

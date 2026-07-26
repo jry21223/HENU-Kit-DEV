@@ -45,7 +45,7 @@
 ## 3. 发布候选固定
 
 - [ ] 记录最终 `main` 完整 SHA：`________________________________________`
-- [ ] 记录最终 PR、Required Checks、独立 Developer/Tester Review 与人工批准证据。
+- [ ] 记录最终 PR、Required Checks、当前 SHA 的 Standards / Spec 双轴 Review 与人工批准证据。
 - [ ] 每个部署单元的 Artifact/Image 均绑定精确 SHA，不使用 `latest` 作为发布证据。
 - [ ] 记录 Portal、Console、Platform Core、Platform Worker、Study Web、Study Admin、Study API、Study Worker、Quiz Web、Quiz API/Go Service、Notice、Food、Library、Portal API、Portal Gateway 的实际部署版本。
 - [ ] 发布说明列出本次包含与不包含的模块、Migration、Feature Flag、切流顺序和回滚边界。
@@ -59,7 +59,7 @@
 - [ ] 所有 OpenAPI 3.1、JSON Schema、生成代码漂移和 breaking-change 检查通过。
 - [ ] Compose、Dockerfile、镜像构建和镜像漏洞扫描通过。
 - [ ] Secret Scan、敏感日志扫描、大文件和许可证检查通过。
-- [ ] 仓库治理使用可信权限或受保护配置识别 Reviewer；审批正文自报角色不能单独授予审核资格。
+- [ ] 外部 Reviewer 为推荐增强项而非单人维护硬门禁；若记录外部审批，必须使用可信 GitHub 身份且绑定当前 SHA。
 - [ ] 高风险 PR 只包含一个主要风险类别，并明确影响单元、发布顺序和回滚边界。
 
 ## 5. 数据库、Migration 与恢复检查
