@@ -2,8 +2,7 @@ name: Deploy HENU Kit artifacts
 
 # Builds production-facing HENU Kit artifacts (portal + console + gateways).
 # Server-side deploy is intentionally TODO until secrets and host cutover are ready.
-# Study-only deploys remain in deploy-study.yml and must not treat legacy admin as
-# the HENU Kit operator UI.
+# Study is a separate deploy unit and is not published by this workflow.
 
 on:
   push:
