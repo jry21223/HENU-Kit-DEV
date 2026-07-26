@@ -208,7 +208,7 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encoded, err := h.sessionCodec.Encode(session.Value{
-		UserID: result.UserID, ExchangeToken: result.SessionExchangeTkn, ExpiresAt: result.ExpiresAt,
+		UserID: result.UserID, ExchangeToken: result.SessionExchangeToken, ExpiresAt: result.ExpiresAt,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, contract.ErrorEnvelope{Error: "session encode error"})

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,35 +27,38 @@ func NewSigner(clientID, clientSecret, keyID string) *Signer {
 }
 
 // Sign adds authentication headers to an HTTP request.
+// Canonical string matches platform-core / console-gateway:
+//
+//	METHOD\nRequestURI\ntimestamp\nnonce\nhex(SHA256(body))
+//
+// Nonce and signature use base64.RawURLEncoding.
 func (s *Signer) Sign(req *http.Request) error {
 	nonce := make([]byte, 24)
 	if _, err := rand.Read(nonce); err != nil {
 		return fmt.Errorf("rand.Read: %w", err)
 	}
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	nonceB64 := base64.StdEncoding.EncodeToString(nonce)
+	nonceB64 := base64.RawURLEncoding.EncodeToString(nonce)
 
-	var bodyHash string
+	var body []byte
 	if req.Body != nil {
-		body, err := io.ReadAll(req.Body)
+		var err error
+		body, err = io.ReadAll(req.Body)
 		if err != nil {
 			return fmt.Errorf("read body: %w", err)
 		}
-		req.Body.Close()
-		hash := sha256.Sum256(body)
-		bodyHash = base64.StdEncoding.EncodeToString(hash[:])
+		_ = req.Body.Close()
 		req.Body = io.NopCloser(bytes.NewReader(body))
-	} else {
-		hash := sha256.Sum256(nil)
-		bodyHash = base64.StdEncoding.EncodeToString(hash[:])
 	}
+	hash := sha256.Sum256(body)
+	bodyHash := hex.EncodeToString(hash[:])
 
 	canonical := fmt.Sprintf("%s\n%s\n%s\n%s\n%s",
-		req.Method, req.URL.Path, timestamp, nonceB64, bodyHash)
+		req.Method, req.URL.RequestURI(), timestamp, nonceB64, bodyHash)
 
 	mac := hmac.New(sha256.New, []byte(s.clientSecret))
 	mac.Write([]byte(canonical))
-	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 
 	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString(
 		[]byte(s.clientID+":"+s.clientSecret)))

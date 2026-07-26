@@ -37,4 +37,6 @@ HENU Kit production is deployed from the Docker images and runtime tarball built
    test "$(curl -s -o /dev/null -w '%{http_code}' https://superhuazai.me/study-api/healthz)" = 404
    ```
 
+   Auth and mail acceptance requires a real `@henu.edu.cn` registration flow on the deployed SHA: request a fresh registration code (`purpose=register`), confirm that it arrives in the actual mailbox, complete registration, and confirm that the OAuth redirect creates an authenticated Portal session (`GET /api/v1/session` returns `200`). Do not reuse a previously failed code or record the code value in logs.
+
 Do not delete PostgreSQL databases, Docker volumes, or the retained QuizCraft/Study data as part of this runtime retirement. `--remove-orphans` removes old service containers only; any container that remains causes the helper to fail closed.
