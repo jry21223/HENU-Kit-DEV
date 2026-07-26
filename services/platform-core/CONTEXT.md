@@ -7,7 +7,8 @@
 - Registered OAuth clients, exact callbacks, PKCE challenges, and single-use Authorization Codes.
 - Permission codes, authorization roles, user Scope grants, authorization revisions, and authorization audit events.
 - Verification-code security facts and the encrypted critical mail Outbox.
-- Normalized Email Identity lookup hashes, encrypted email content, and atomic login bootstrap.
+- Normalized Email Identity lookup hashes, encrypted email content, Display Names, HENU Kit Password Credentials, and atomic registration.
+- The Account Center registration, login, recovery, and credential-management boundary.
 - Operations Inbox coordination metadata and immutable source-resource references; source product content remains with its owner.
 - PostgreSQL identity facts and Redis-based short-lived coordination for this context.
 
@@ -19,4 +20,30 @@
 
 ## Current boundary
 
-HC-05 through HC-08 establish identity authorization, verified-email mail delivery, and reference-only Operations Inbox coordination. Email login now atomically creates or restores one Email Identity and issues a 15-day absolute Core Session at the `account.superhuazai.me` origin. HC-12 adds `platform.operations.read` and `platform.operations.write`, both requiring platform Scope, plus a bounded operational snapshot and audited mutation APIs for Session revocation and optimistic account status/role/Scope replacement. The root-only initial-operator CLI grants only Platform Operations and QuizCraft Workshop scopes and writes an immutable audit. Durable idempotency records distinguish replay, conflicting payloads, and unknown outcomes; append-only operation audits accompany the existing authorization audits. Responses omit Session hashes/tokens, recipient ciphertext, provider identifiers, mail secrets, verification secrets, and source-product content.
+HC-05 through HC-08 establish identity authorization, verified-email mail delivery, and reference-only Operations Inbox coordination. The pre-launch implementation can create or restore an Email Identity from an email code alone; ADR-0014 supersedes that behavior as a release boundary, so it is not valid public Registration until a HENU Kit Password Credential and Display Name commit atomically with the Core Session. HC-12 adds `platform.operations.read` and `platform.operations.write`, both requiring platform Scope, plus a bounded operational snapshot and audited mutation APIs for Session revocation and optimistic account status/role/Scope replacement. The root-only initial-operator CLI grants only Platform Operations and QuizCraft Workshop scopes and writes an immutable audit. Durable idempotency records distinguish replay, conflicting payloads, and unknown outcomes; append-only operation audits accompany the existing authorization audits. Responses omit Session hashes/tokens, recipient ciphertext, provider identifiers, mail secrets, verification secrets, and source-product content.
+
+## Language
+
+**Account Center**:
+The sole user-facing boundary for registration, login, account recovery, and authentication-credential management across HENU Kit products.
+_Avoid_: Portal login, product registration
+
+**Registration**:
+The atomic establishment of a Platform User, verified Email Identity, Display Name, HENU Kit Password Credential, and Core Session. If any part fails, no registration is established and the Email Verification Code remains unconsumed.
+_Avoid_: Passwordless signup, partial registration
+
+**Email Identity**:
+The normalized HENU mailbox identity that uniquely identifies a Platform User and remains the only login identifier.
+_Avoid_: Username, account name
+
+**Display Name**:
+A non-unique, mutable presentation label that is never authentication or authorization evidence.
+_Avoid_: Username, login name
+
+**HENU Kit Password Credential**:
+The Platform Core-owned password verifier required to establish Registration and available for later password login. It is distinct from the user's school-mailbox password, which HENU Kit never receives.
+_Avoid_: Email password, mailbox password
+
+**Email Verification Code**:
+A short-lived proof of control over an Email Identity, used for Registration, code login, account recovery, and recent verification of high-risk credential changes.
+_Avoid_: Email password, permanent login code
