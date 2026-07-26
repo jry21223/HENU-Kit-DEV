@@ -82,8 +82,8 @@ func TestExchangeCodeSendsClientIDAndDecodesEnvelope(t *testing.T) {
 	if result.UserID != "171f1c6f-7b10-4c92-91a2-b39bf5af5302" {
 		t.Fatalf("UserID = %q", result.UserID)
 	}
-	if result.SessionExchangeTkn != "exchange_token_with_at_least_32_characters" {
-		t.Fatalf("SessionExchangeTkn = %q", result.SessionExchangeTkn)
+	if result.SessionExchangeToken != "exchange_token_with_at_least_32_characters" {
+		t.Fatalf("SessionExchangeToken = %q", result.SessionExchangeToken)
 	}
 	if !result.ExpiresAt.Equal(expiresAt) {
 		t.Fatalf("ExpiresAt = %v want %v", result.ExpiresAt, expiresAt)

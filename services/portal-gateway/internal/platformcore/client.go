@@ -16,6 +16,7 @@ import (
 type Client struct {
 	baseURL     string
 	redirectURI string
+	clientID    string
 	httpClient  *http.Client
 	signer      *serviceauth.Signer
 }
@@ -25,6 +26,7 @@ func NewClient(baseURL, redirectURI, clientID, clientSecret, keyID string) *Clie
 	return &Client{
 		baseURL:     baseURL,
 		redirectURI: redirectURI,
+		clientID:    clientID,
 		httpClient:  &http.Client{Timeout: 10 * time.Second},
 		signer:      serviceauth.NewSigner(clientID, clientSecret, keyID),
 	}
@@ -32,9 +34,9 @@ func NewClient(baseURL, redirectURI, clientID, clientSecret, keyID string) *Clie
 
 // ExchangeResult is the response from Platform Core's token exchange.
 type ExchangeResult struct {
-	UserID             string    `json:"user_id"`
-	SessionExchangeTkn string    `json:"session_exchange_token"`
-	ExpiresAt          time.Time `json:"expires_at"`
+	UserID               string    `json:"user_id"`
+	SessionExchangeToken string    `json:"session_exchange_token"`
+	ExpiresAt            time.Time `json:"expires_at"`
 }
 
 // ExchangeCode exchanges an authorization code for a session exchange token.
@@ -43,7 +45,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 		"grant_type":    "authorization_code",
 		"code":          code,
 		"redirect_uri":  c.redirectURI,
-		"client_id":     c.signer.ClientID(),
+		"client_id":     c.clientID,
 		"code_verifier": verifier,
 	})
 
@@ -88,9 +90,9 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 	}
 
 	return ExchangeResult{
-		UserID:             envelope.Data.User.UserID,
-		SessionExchangeTkn: envelope.Data.SessionExchangeToken,
-		ExpiresAt:          envelope.Data.ExpiresAt,
+		UserID:               envelope.Data.User.UserID,
+		SessionExchangeToken: envelope.Data.SessionExchangeToken,
+		ExpiresAt:            envelope.Data.ExpiresAt,
 	}, nil
 }
 

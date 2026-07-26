@@ -26,11 +26,6 @@ func NewSigner(clientID, clientSecret, keyID string) *Signer {
 	return &Signer{clientID: clientID, clientSecret: clientSecret, keyID: keyID}
 }
 
-// ClientID returns the service client identifier used for Basic auth and body.client_id.
-func (s *Signer) ClientID() string {
-	return s.clientID
-}
-
 // Sign adds authentication headers to an HTTP request.
 // Canonical string matches platform-core / console-gateway:
 //

@@ -24,10 +24,6 @@ func TestSignCanonicalUsesHexBodyHashAndRawURLEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := signer.ClientID(); got != "portal-gateway" {
-		t.Fatalf("ClientID() = %q", got)
-	}
-
 	// Body must remain readable after signing.
 	gotBody, err := io.ReadAll(req.Body)
 	if err != nil {
