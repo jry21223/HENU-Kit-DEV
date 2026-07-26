@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -505,9 +506,28 @@ func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (
 	if !password.AcceptableInput(input.Password) {
 		return Verified{}, s.recordPasswordFailure(ctx, failureKeys)
 	}
-	credential, err := s.queries.GetPasswordLoginCredential(ctx, emailHash)
+	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Verified{}, err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := lockCredentialScope(ctx, tx, emailHash); err != nil {
+		return Verified{}, err
+	}
+	queries := s.queries.WithTx(tx)
+	identity, err := queries.GetEmailIdentityForUpdate(ctx, emailHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		_, _, _ = s.passwords.Verify(ctx, input.Password, s.dummyVerifier)
+		_ = tx.Rollback(ctx)
+		return Verified{}, s.recordPasswordFailure(ctx, failureKeys)
+	}
+	if err != nil {
+		return Verified{}, err
+	}
+	credential, err := queries.GetPasswordCredentialForUpdate(ctx, identity.UserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		_, _, _ = s.passwords.Verify(ctx, input.Password, s.dummyVerifier)
+		_ = tx.Rollback(ctx)
 		return Verified{}, s.recordPasswordFailure(ctx, failureKeys)
 	}
 	if err != nil {
@@ -517,7 +537,8 @@ func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (
 	if err != nil {
 		return Verified{}, ErrDependency
 	}
-	if !valid || credential.Status != "active" {
+	if !valid || identity.Status != "active" {
+		_ = tx.Rollback(ctx)
 		return Verified{}, s.recordPasswordFailure(ctx, failureKeys)
 	}
 	var upgradedVerifier string
@@ -534,23 +555,19 @@ func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (
 	if err != nil {
 		return Verified{}, err
 	}
-	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return Verified{}, err
-	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
-	queries := s.queries.WithTx(tx)
 	if _, err := queries.CreateCoreSession(ctx, store.CreateCoreSessionParams{
-		UserID: credential.UserID, TokenHash: tokenHash,
+		UserID: identity.UserID, TokenHash: tokenHash,
 		ExpiresAt: pgtype.Timestamptz{Time: sessionExpiresAt, Valid: true},
 	}); err != nil {
 		return Verified{}, err
 	}
 	if upgradedVerifier != "" {
-		if _, err := queries.UpgradePasswordCredential(ctx, store.UpgradePasswordCredentialParams{
-			UserID: credential.UserID, NewVerifier: upgradedVerifier,
-			PolicyVersion: password.PolicyVersion, OldVerifier: credential.Verifier,
-		}); err != nil {
+		if rows, err := queries.ReplacePasswordCredential(ctx, store.ReplacePasswordCredentialParams{
+			UserID: identity.UserID, Verifier: upgradedVerifier, PolicyVersion: password.PolicyVersion,
+		}); err != nil || rows != 1 {
+			if err == nil {
+				return Verified{}, ErrDependency
+			}
 			return Verified{}, err
 		}
 	}
@@ -558,8 +575,8 @@ func (s *Service) PasswordLogin(ctx context.Context, input PasswordLoginInput) (
 		return Verified{}, err
 	}
 	return Verified{
-		UserID: uuidString(credential.UserID), EmailVerified: credential.EmailVerified,
-		UserStatus: credential.Status, UserCreatedAt: credential.CreatedAt.Time,
+		UserID: uuidString(identity.UserID), EmailVerified: identity.EmailVerified,
+		UserStatus: identity.Status, UserCreatedAt: identity.CreatedAt.Time,
 		SessionToken: sessionToken, SessionExpiresAt: sessionExpiresAt,
 	}, nil
 }
@@ -610,14 +627,10 @@ func (s *Service) RecoverPassword(ctx context.Context, input PasswordRecoveryInp
 		return Verified{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	queries := s.queries.WithTx(tx)
-	verification, err := s.validateVerificationCodeForUpdate(ctx, queries, emailHash, "security", input.Code)
-	if err != nil {
-		if errors.Is(err, ErrCodeInvalid) {
-			_ = tx.Commit(ctx)
-		}
+	if err := lockCredentialScope(ctx, tx, emailHash); err != nil {
 		return Verified{}, err
 	}
+	queries := s.queries.WithTx(tx)
 	identity, err := queries.GetEmailIdentityForUpdate(ctx, emailHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Verified{}, ErrAuthentication
@@ -627,6 +640,19 @@ func (s *Service) RecoverPassword(ctx context.Context, input PasswordRecoveryInp
 	}
 	if identity.Status != "active" {
 		return Verified{}, ErrAuthentication
+	}
+	if _, err := queries.GetPasswordCredentialForUpdate(ctx, identity.UserID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Verified{}, ErrAuthentication
+		}
+		return Verified{}, err
+	}
+	verification, err := s.validateVerificationCodeForUpdate(ctx, queries, emailHash, "security", input.Code)
+	if err != nil {
+		if errors.Is(err, ErrCodeInvalid) {
+			_ = tx.Commit(ctx)
+		}
+		return Verified{}, err
 	}
 	if rows, err := queries.ReplacePasswordCredential(ctx, store.ReplacePasswordCredentialParams{
 		UserID: identity.UserID, Verifier: verifier, PolicyVersion: password.PolicyVersion,
@@ -703,9 +729,23 @@ func (s *Service) ChangePassword(ctx context.Context, input PasswordChangeInput)
 		return Verified{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := lockCredentialScope(ctx, tx, emailHash); err != nil {
+		return Verified{}, err
+	}
 	queries := s.queries.WithTx(tx)
-	session, err := queries.GetCoreSessionForUpdate(ctx, sessionHash[:])
+	identity, err := queries.GetEmailIdentityForUpdate(ctx, emailHash)
 	if errors.Is(err, pgx.ErrNoRows) {
+		return Verified{}, ErrAuthentication
+	}
+	if err != nil {
+		return Verified{}, err
+	}
+	credential, err := queries.GetPasswordCredentialForUpdate(ctx, identity.UserID)
+	if err != nil {
+		return Verified{}, err
+	}
+	session, err := queries.GetCoreSessionForUpdate(ctx, sessionHash[:])
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && identity.UserID != session.UserID {
 		return Verified{}, ErrAuthentication
 	}
 	if err != nil {
@@ -713,17 +753,6 @@ func (s *Service) ChangePassword(ctx context.Context, input PasswordChangeInput)
 	}
 	if session.Status != "active" || !time.Now().UTC().Before(session.ExpiresAt.Time) {
 		return Verified{}, ErrAuthentication
-	}
-	identity, err := queries.GetEmailIdentityForUpdate(ctx, emailHash)
-	if errors.Is(err, pgx.ErrNoRows) || err == nil && identity.UserID != session.UserID {
-		return Verified{}, ErrAuthentication
-	}
-	if err != nil {
-		return Verified{}, err
-	}
-	credential, err := queries.GetPasswordCredentialForUpdate(ctx, session.UserID)
-	if err != nil {
-		return Verified{}, err
 	}
 	valid, _, err := s.passwords.Verify(ctx, input.CurrentPassword, credential.Verifier)
 	if err != nil {
@@ -774,6 +803,19 @@ func (s *Service) ChangePassword(ctx context.Context, input PasswordChangeInput)
 		EmailVerified: identity.EmailVerified, UserStatus: identity.Status, UserCreatedAt: identity.CreatedAt.Time,
 		SessionExpiresAt: session.ExpiresAt.Time,
 	}, nil
+}
+
+// lockCredentialScope serializes every password authentication or mutation for
+// one Email Identity before any durable identity, credential, verification, or
+// Session row is locked. This prevents a verified old password from issuing a
+// Session after a reset and gives recovery/change one consistent lock root.
+func lockCredentialScope(ctx context.Context, tx pgx.Tx, emailHash []byte) error {
+	if len(emailHash) < 8 {
+		return ErrDependency
+	}
+	lockID := int64(binary.BigEndian.Uint64(emailHash[:8]))
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, lockID)
+	return err
 }
 
 func (s *Service) validateVerificationCodeForUpdate(ctx context.Context, queries *store.Queries, emailHash []byte, purpose, code string) (store.GetVerificationCodeForUpdateRow, error) {

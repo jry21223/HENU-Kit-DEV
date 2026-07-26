@@ -2,7 +2,9 @@ package tests
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/binary"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -316,4 +318,153 @@ func TestPasswordRecoveryFailsClosedWhenRedisIsUnavailable(t *testing.T) {
 		t.Fatalf("Redis-failed recovery mutated verifier/session/code: changed=%t sessions=%d consumed=%d",
 			verifier != originalVerifier, sessions, consumed)
 	}
+}
+
+func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "serialized-recovery-seed"))
+
+	currentClient := clientForDevice(server, "serialized-change-device")
+	currentLogin := submitPasswordLogin(t, server, "serialized-change-device", testStudentEmail, "correct horse 电池 staple")
+	currentLogin.Body.Close()
+	if currentLogin.StatusCode != http.StatusSeeOther {
+		t.Fatalf("create Session for queued change = %d, want 303", currentLogin.StatusCode)
+	}
+	securityPage, err := currentClient.Get(server.URL + "/account/security")
+	if err != nil {
+		t.Fatalf("open queued security page: %v", err)
+	}
+	securityBody, _ := io.ReadAll(securityPage.Body)
+	securityPage.Body.Close()
+	securityCSRF := csrfValuePattern.FindSubmatch(securityBody)
+	if len(securityCSRF) != 2 {
+		t.Fatal("queued security page omitted CSRF token")
+	}
+	recoveryClient := clientForDevice(server, "serialized-recovery-device")
+	recoveryCSRF, code := prepareCredentialCode(t, ctx, pool, server, recoveryClient, "/recover", "/recover/code")
+	loginClient := clientForDevice(server, "serialized-old-login-device")
+	loginClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	loginPage, err := loginClient.Get(server.URL + "/login")
+	if err != nil {
+		t.Fatalf("open queued login page: %v", err)
+	}
+	loginBody, _ := io.ReadAll(loginPage.Body)
+	loginPage.Body.Close()
+	loginCSRF := csrfValuePattern.FindSubmatch(loginBody)
+	if len(loginCSRF) != 2 {
+		t.Fatal("queued login page omitted CSRF token")
+	}
+
+	lockTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin credential lock holder: %v", err)
+	}
+	defer func() { _ = lockTx.Rollback(ctx) }()
+	if _, err := lockTx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, testCredentialLockID(testStudentEmail)); err != nil {
+		t.Fatalf("hold credential scope: %v", err)
+	}
+
+	type httpResult struct {
+		response *http.Response
+		err      error
+	}
+	recoveryResult := make(chan httpResult, 1)
+	go func() {
+		response, requestErr := recoveryClient.PostForm(server.URL+"/recover", url.Values{
+			"csrf_token": {recoveryCSRF}, "email": {testStudentEmail}, "code": {code},
+			"password": {"serialized recovered password"},
+		})
+		recoveryResult <- httpResult{response: response, err: requestErr}
+	}()
+	waitForCredentialLockWaiters(t, ctx, pool, 1)
+
+	changeResult := make(chan httpResult, 1)
+	go func() {
+		response, requestErr := currentClient.PostForm(server.URL+"/account/security/password", url.Values{
+			"csrf_token": {string(securityCSRF[1])}, "email": {testStudentEmail}, "code": {code},
+			"current_password": {"correct horse 电池 staple"}, "new_password": {"queued changed password"},
+		})
+		changeResult <- httpResult{response: response, err: requestErr}
+	}()
+	waitForCredentialLockWaiters(t, ctx, pool, 2)
+
+	loginResult := make(chan httpResult, 1)
+	go func() {
+		response, requestErr := loginClient.PostForm(server.URL+"/login/password", url.Values{
+			"csrf_token": {string(loginCSRF[1])}, "email": {testStudentEmail},
+			"password": {"correct horse 电池 staple"}, "return_to": {"/"},
+		})
+		loginResult <- httpResult{response: response, err: requestErr}
+	}()
+	waitForCredentialLockWaiters(t, ctx, pool, 3)
+	if err := lockTx.Commit(ctx); err != nil {
+		t.Fatalf("release credential scope: %v", err)
+	}
+
+	recovered := <-recoveryResult
+	if recovered.err != nil {
+		t.Fatalf("complete queued recovery: %v", recovered.err)
+	}
+	recovered.response.Body.Close()
+	if recovered.response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("queued recovery = %d, want 303", recovered.response.StatusCode)
+	}
+	changed := <-changeResult
+	if changed.err != nil {
+		t.Fatalf("complete queued password change: %v", changed.err)
+	}
+	changedBody, _ := io.ReadAll(changed.response.Body)
+	changed.response.Body.Close()
+	if changed.response.StatusCode != http.StatusOK || !strings.Contains(string(changedBody), "无法更改密码") {
+		t.Fatalf("password change after recovery = %d %s, want generic rejection", changed.response.StatusCode, changedBody)
+	}
+	oldLogin := <-loginResult
+	if oldLogin.err != nil {
+		t.Fatalf("complete queued old-password login: %v", oldLogin.err)
+	}
+	oldLoginBody, _ := io.ReadAll(oldLogin.response.Body)
+	oldLogin.response.Body.Close()
+	if oldLogin.response.StatusCode != http.StatusOK || !strings.Contains(string(oldLoginBody), "邮箱或密码错误") {
+		t.Fatalf("old-password login after recovery = %d %s, want generic rejection", oldLogin.response.StatusCode, oldLoginBody)
+	}
+	var activeCore int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE kind='core' AND revoked_at IS NULL`).Scan(&activeCore); err != nil {
+		t.Fatalf("count serialized recovery sessions: %v", err)
+	}
+	if activeCore != 1 {
+		t.Fatalf("serialized recovery left %d active Core Sessions, want 1", activeCore)
+	}
+}
+
+func testCredentialLockID(email string) int64 {
+	mac := hmac.New(sha256.New, testVerificationEncryptionKey)
+	_, _ = mac.Write([]byte("henukit-verification:email"))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write([]byte(email))
+	return int64(binary.BigEndian.Uint64(mac.Sum(nil)[:8]))
+}
+
+func waitForCredentialLockWaiters(t *testing.T, ctx context.Context, pool *pgxpool.Pool, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var count int
+		err := pool.QueryRow(ctx, `
+			SELECT count(*)
+			FROM pg_stat_activity
+			WHERE wait_event_type = 'Lock' AND wait_event = 'advisory'
+			  AND query LIKE 'SELECT pg_advisory_xact_lock%'
+		`).Scan(&count)
+		if err != nil {
+			t.Fatalf("inspect credential lock waiters: %v", err)
+		}
+		if count >= want {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("credential lock waiters did not reach %d", want)
 }
