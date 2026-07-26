@@ -7,6 +7,8 @@ Independent Go service for platform-owned identity and operations data. The deli
 - host-only Core Session validation;
 - Account Center registration at `/register`; it atomically verifies the HENU mailbox, creates the encrypted Email Identity and Argon2id password credential, consumes the code, and issues one non-rolling 15-day Core Session;
 - password and email-code login at `/login`; neither login path creates an account, and successful password authentication upgrades stale Argon2id parameters;
+- email-code password recovery at `/recover`, which atomically replaces the credential, revokes every old Core and exchange Session, consumes the code, and issues exactly one new Core Session;
+- authenticated password changes at `/account/security`, which require the current password plus a fresh email code, retain only the current Core Session, and revoke every other Core and exchange Session;
 - exact-callback OAuth authorization with S256 PKCE;
 - 60–120 second, hash-only, single-use Authorization Codes;
 - eight-hour product-local exchange Sessions for Console and Workshop high-privilege work, with immediate server-side revocation;
@@ -49,6 +51,13 @@ iterations, parallelism one, with at most two concurrent hashes. Calibrate
 these values on each production host so one hash takes roughly 150–300 ms
 under representative load, while preserving the accepted bounds enforced at
 startup. Never reduce them merely to make tests faster.
+
+Failed password authentication is counted across email, trusted client IP, and
+signed device-cookie axes. Five failures in 15 minutes, ten in an hour, or
+twenty in a day require a successful email-code login before password
+authentication or password changes resume. Successful password or email-code
+login clears these temporary counters. Redis failure rejects password login,
+recovery, and credential changes rather than bypassing this boundary.
 
 `POST /api/v1/oauth/token` requires `Idempotency-Key`, `X-Service-Id`, `X-Key-Id`, `X-Timestamp`, `X-Nonce`, and `X-Signature`. The signature is base64url HMAC-SHA256 over `METHOD`, the actual `PATH_AND_QUERY`, timestamp, nonce, and lowercase hexadecimal `SHA256(BODY)`, separated by newlines. Each OAuth client key progresses through `active`, `retiring`, and `revoked`; only the first two states authenticate during a rotation window.
 

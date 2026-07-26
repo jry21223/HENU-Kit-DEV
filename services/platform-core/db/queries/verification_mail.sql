@@ -86,6 +86,40 @@ UPDATE password_credentials
 SET verifier = sqlc.arg(new_verifier), policy_version = sqlc.arg(policy_version), updated_at = now()
 WHERE user_id = sqlc.arg(user_id) AND verifier = sqlc.arg(old_verifier);
 
+-- name: GetPasswordCredentialForUpdate :one
+SELECT verifier, policy_version
+FROM password_credentials
+WHERE user_id = $1
+FOR UPDATE;
+
+-- name: ReplacePasswordCredential :execrows
+UPDATE password_credentials
+SET verifier = $2, policy_version = $3, updated_at = now()
+WHERE user_id = $1;
+
+-- name: GetCoreSessionByTokenHash :one
+SELECT sessions.id, sessions.user_id, sessions.expires_at, users.status
+FROM sessions
+JOIN users ON users.id = sessions.user_id
+WHERE sessions.kind = 'core' AND sessions.token_hash = $1 AND sessions.revoked_at IS NULL;
+
+-- name: GetCoreSessionForUpdate :one
+SELECT sessions.id, sessions.user_id, sessions.expires_at, users.status
+FROM sessions
+JOIN users ON users.id = sessions.user_id
+WHERE sessions.kind = 'core' AND sessions.token_hash = $1 AND sessions.revoked_at IS NULL
+FOR UPDATE OF sessions, users;
+
+-- name: RevokeAllUserSessions :execrows
+UPDATE sessions
+SET revoked_at = COALESCE(revoked_at, now())
+WHERE user_id = $1 AND revoked_at IS NULL;
+
+-- name: RevokeOtherUserSessions :execrows
+UPDATE sessions
+SET revoked_at = COALESCE(revoked_at, now())
+WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL;
+
 -- name: CreateCoreSession :one
 INSERT INTO sessions (user_id, kind, token_hash, expires_at)
 VALUES ($1, 'core', $2, $3)
