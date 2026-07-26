@@ -1,0 +1,118 @@
+# Production overlay for fixed-SHA GitHub Actions image artifacts.
+# It disables every HENU source build and removes Study from the release model.
+services:
+  portal:
+    image: henukit-portal:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 256m
+  console:
+    image: henukit-console:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 64m
+  quizcraft-web:
+    image: henukit-quizcraft-web:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 64m
+  quizcraft-api:
+    image: henukit-quizcraft-api:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 256m
+    environment:
+      DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:?QUIZCRAFT_DATABASE_URL is required}
+      ADMIN_TOKEN: ${QUIZCRAFT_ADMIN_TOKEN:?QUIZCRAFT_ADMIN_TOKEN is required}
+  platform-core:
+    image: henukit-platform-core:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 192m
+    environment:
+      PLATFORM_CORE_DATABASE_URL: ${PLATFORM_CORE_DATABASE_URL:?PLATFORM_CORE_DATABASE_URL is required}
+      PLATFORM_CORE_REDIS_URL: ${PLATFORM_CORE_REDIS_URL:?PLATFORM_CORE_REDIS_URL is required}
+      PLATFORM_CORE_IDEMPOTENCY_KEY: ${PLATFORM_CORE_IDEMPOTENCY_KEY:?PLATFORM_CORE_IDEMPOTENCY_KEY is required}
+      PLATFORM_CORE_VERIFICATION_KEY: ${PLATFORM_CORE_VERIFICATION_KEY:?PLATFORM_CORE_VERIFICATION_KEY is required}
+      PLATFORM_CORE_MAIL_DELIVERY_TOKEN: ${PLATFORM_CORE_MAIL_DELIVERY_TOKEN:?PLATFORM_CORE_MAIL_DELIVERY_TOKEN is required}
+  platform-mail-worker:
+    image: henukit-platform-mail-worker:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 64m
+    environment:
+      PLATFORM_CORE_DATABASE_URL: ${PLATFORM_CORE_DATABASE_URL:?PLATFORM_CORE_DATABASE_URL is required}
+      PLATFORM_CORE_VERIFICATION_KEY: ${PLATFORM_CORE_VERIFICATION_KEY:?PLATFORM_CORE_VERIFICATION_KEY is required}
+      PLATFORM_CORE_MAIL_PROVIDER_TOKEN: ${PLATFORM_CORE_MAIL_PROVIDER_TOKEN:?PLATFORM_CORE_MAIL_PROVIDER_TOKEN is required}
+  platform-smtp-provider:
+    image: henukit-platform-smtp-provider:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 64m
+    environment:
+      PLATFORM_CORE_MAIL_PROVIDER_TOKEN: ${PLATFORM_CORE_MAIL_PROVIDER_TOKEN:?PLATFORM_CORE_MAIL_PROVIDER_TOKEN is required}
+      PLATFORM_CORE_SMTP_ADDRESS: ${PLATFORM_CORE_SMTP_ADDRESS:?PLATFORM_CORE_SMTP_ADDRESS is required}
+      PLATFORM_CORE_SMTP_USERNAME: ${PLATFORM_CORE_SMTP_USERNAME:?PLATFORM_CORE_SMTP_USERNAME is required}
+      PLATFORM_CORE_SMTP_PASSWORD: ${PLATFORM_CORE_SMTP_PASSWORD:?PLATFORM_CORE_SMTP_PASSWORD is required}
+      PLATFORM_CORE_SMTP_FROM: ${PLATFORM_CORE_SMTP_FROM:?PLATFORM_CORE_SMTP_FROM is required}
+  portal-api:
+    image: henukit-portal-api:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 96m
+    environment:
+      QUIZCRAFT_DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:?QUIZCRAFT_DATABASE_URL is required}
+      STUDY_DATABASE_URL: ${STUDY_DATABASE_URL:?STUDY_DATABASE_URL is required}
+  portal-gateway:
+    image: henukit-portal-gateway:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 128m
+    environment:
+      PLATFORM_CLIENT_SECRET: ${PLATFORM_CLIENT_SECRET:?PLATFORM_CLIENT_SECRET is required}
+      PORTAL_SESSION_KEY: ${PORTAL_SESSION_KEY:?PORTAL_SESSION_KEY is required}
+      LIBRARY_CLIENT_SECRET: ${LIBRARY_CLIENT_SECRET:?LIBRARY_CLIENT_SECRET is required}
+      FOOD_CLIENT_SECRET: ${FOOD_CLIENT_SECRET:?FOOD_CLIENT_SECRET is required}
+      PRACTICE_CLIENT_SECRET: ${PRACTICE_CLIENT_SECRET:?PRACTICE_CLIENT_SECRET is required}
+      NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:?NOTICE_CLIENT_SECRET is required}
+  console-gateway:
+    image: henukit-console-gateway:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    ports: !override []
+    mem_limit: 96m
+    environment:
+      PLATFORM_CLIENT_SECRET: ${CONSOLE_PLATFORM_CLIENT_SECRET:?CONSOLE_PLATFORM_CLIENT_SECRET is required}
+      CONSOLE_SESSION_KEY: ${CONSOLE_SESSION_KEY:?CONSOLE_SESSION_KEY is required}
+      LIBRARY_API_URL: ${LIBRARY_API_URL:?LIBRARY_API_URL is required}
+      PORTAL_SUMMARY_CLIENT_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:?PORTAL_SUMMARY_CLIENT_SECRET is required}
+      PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:?PLATFORM_SUMMARY_CLIENT_SECRET is required}
+      NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:?NOTICE_SUMMARY_CLIENT_SECRET is required}
+      LIBRARY_SUMMARY_CLIENT_SECRET: ${LIBRARY_SUMMARY_CLIENT_SECRET:?LIBRARY_SUMMARY_CLIENT_SECRET is required}
+      QUIZCRAFT_SUMMARY_CLIENT_SECRET: ${QUIZCRAFT_SUMMARY_CLIENT_SECRET:?QUIZCRAFT_SUMMARY_CLIENT_SECRET is required}
+      FOOD_SUMMARY_CLIENT_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:?FOOD_SUMMARY_CLIENT_SECRET is required}
+  postgres:
+    ports: !override []
+    mem_limit: 256m
+    volumes: !override
+      - henukit_postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+  redis:
+    ports: !override []
+    mem_limit: 64m
+  nginx:
+    ports: !override
+      - "127.0.0.1:8088:80"
+    depends_on: !override
+      - portal
+      - portal-gateway
+      - console
+      - console-gateway
+      - quizcraft-web
+      - quizcraft-api
+    mem_limit: 32m
+  study-api: !reset null
+  study-worker: !reset null
