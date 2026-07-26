@@ -35,22 +35,28 @@ import (
 )
 
 type Handler struct {
-	flow           *identity.Service
-	verification   *verification.Service
-	inbox          *operationsinbox.Service
-	platformOps    *platformoperations.Service
-	queries        *store.Queries
-	database       *pgxpool.Pool
-	redis          *redis.Client
-	cookieName     string
-	logger         *slog.Logger
-	deliveryKeys   map[string][]byte
-	deviceKey      []byte
-	trustedProxies []*net.IPNet
+	flow            *identity.Service
+	verification    *verification.Service
+	inbox           *operationsinbox.Service
+	platformOps     *platformoperations.Service
+	queries         *store.Queries
+	database        *pgxpool.Pool
+	redis           *redis.Client
+	cookieName      string
+	localCookieName string
+	logger          *slog.Logger
+	deliveryKeys    map[string][]byte
+	deviceKey       []byte
+	trustedProxies  []*net.IPNet
 }
 
-func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
-	handler := &Handler{flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
+type browserCookieProfile struct {
+	core, csrf, device string
+	secure             bool
+}
+
+func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
+	handler := &Handler{flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -94,7 +100,8 @@ func (h *Handler) revokeCurrentSession(writer http.ResponseWriter, request *http
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "session revocation request is invalid")
 		return
 	}
-	cookie, err := request.Cookie(h.cookieName)
+	profile := h.browserCookies(request)
+	cookie, err := request.Cookie(profile.core)
 	if err != nil || len(cookie.Value) < 32 {
 		writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required")
 		return
@@ -133,7 +140,7 @@ func (h *Handler) revokeCurrentSession(writer http.ResponseWriter, request *http
 		h.writeFlowError(writer, request, err)
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.core, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(userID)
 	writeSuccess(writer, request, http.StatusOK, map[string]bool{"revoked": true})
 }
@@ -574,7 +581,8 @@ func (h *Handler) registerPage(writer http.ResponseWriter, request *http.Request
 		h.writeRandomSourceError(writer, request, "register_device")
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: csrfToken, Path: "/", MaxAge: 10 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	profile := h.browserCookies(request)
+	http.SetCookie(writer, h.browserCookie(profile.csrf, csrfToken, 10*60, time.Time{}, profile.secure))
 	if deviceCookie != nil {
 		http.SetCookie(writer, deviceCookie)
 	}
@@ -648,8 +656,9 @@ func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Requ
 		})
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: registered.SessionToken, Path: "/", Expires: registered.SessionExpiresAt, MaxAge: max(1, int(time.Until(registered.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	profile := h.browserCookies(request)
+	http.SetCookie(writer, h.browserCookie(profile.core, registered.SessionToken, max(1, int(time.Until(registered.SessionExpiresAt).Seconds())), registered.SessionExpiresAt, profile.secure))
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(registered.UserID)
 	http.Redirect(writer, request, "/", http.StatusSeeOther)
 }
@@ -677,7 +686,8 @@ func (h *Handler) loginPage(writer http.ResponseWriter, request *http.Request) {
 		h.writeRandomSourceError(writer, request, "login_device")
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: csrfToken, Path: "/", MaxAge: 10 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	profile := h.browserCookies(request)
+	http.SetCookie(writer, h.browserCookie(profile.csrf, csrfToken, 10*60, time.Time{}, profile.secure))
 	if deviceCookie != nil {
 		http.SetCookie(writer, deviceCookie)
 	}
@@ -752,8 +762,9 @@ func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Requ
 		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true, Error: "验证码无效、已过期或登录暂不可用。"})
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt, MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	profile := h.browserCookies(request)
+	http.SetCookie(writer, h.browserCookie(profile.core, verified.SessionToken, max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), verified.SessionExpiresAt, profile.secure))
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(verified.UserID)
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
@@ -786,8 +797,9 @@ func (h *Handler) loginPassword(writer http.ResponseWriter, request *http.Reques
 		})
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{Name: h.cookieName, Value: loggedIn.SessionToken, Path: "/", Expires: loggedIn.SessionExpiresAt, MaxAge: max(1, int(time.Until(loggedIn.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(writer, &http.Cookie{Name: "__Host-henukit_login_csrf", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	profile := h.browserCookies(request)
+	http.SetCookie(writer, h.browserCookie(profile.core, loggedIn.SessionToken, max(1, int(time.Until(loggedIn.SessionExpiresAt).Seconds())), loggedIn.SessionExpiresAt, profile.secure))
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(loggedIn.UserID)
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
@@ -799,7 +811,7 @@ func (h *Handler) parseLoginForm(writer http.ResponseWriter, request *http.Reque
 		return "", "", "", false
 	}
 	csrfToken := request.FormValue("csrf_token")
-	cookie, err := request.Cookie("__Host-henukit_login_csrf")
+	cookie, err := request.Cookie(h.browserCookies(request).csrf)
 	if err != nil || len(csrfToken) < 32 || !hmac.Equal([]byte(cookie.Value), []byte(csrfToken)) {
 		writeError(writer, request, http.StatusForbidden, "CSRF_REJECTED", "login form expired; reload and try again")
 		return "", "", "", false
@@ -918,10 +930,8 @@ func (h *Handler) verifyVerificationCode(writer http.ResponseWriter, request *ht
 	}
 	response := contract.VerificationCodeVerified{VerificationID: verified.VerificationID}
 	if verified.SessionToken != "" {
-		http.SetCookie(writer, &http.Cookie{
-			Name: h.cookieName, Value: verified.SessionToken, Path: "/", Expires: verified.SessionExpiresAt,
-			MaxAge: max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-		})
+		profile := h.browserCookies(request)
+		http.SetCookie(writer, h.browserCookie(profile.core, verified.SessionToken, max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), verified.SessionExpiresAt, profile.secure))
 	}
 	if verified.UserID != "" {
 		response.User = &contract.PlatformUser{UserID: verified.UserID, EmailVerified: verified.EmailVerified, Status: verified.UserStatus, CreatedAt: verified.UserCreatedAt}
@@ -940,15 +950,9 @@ func (h *Handler) sameOriginBrowserRequest(request *http.Request) bool {
 	if err != nil || parsed.User != nil || parsed.Path != "" && parsed.Path != "/" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return false
 	}
-	expectedScheme := "https"
-	if request.TLS == nil {
-		expectedScheme = "http"
-	}
-	peer := net.ParseIP(remoteIP(request.RemoteAddr))
-	if peer != nil && h.isTrustedProxy(peer) {
-		if forwarded := request.Header.Get("X-Forwarded-Proto"); forwarded == "https" || forwarded == "http" {
-			expectedScheme = forwarded
-		}
+	expectedScheme := "http"
+	if h.externallyHTTPS(request) {
+		expectedScheme = "https"
 	}
 	return parsed.Scheme == expectedScheme && parsed.Host == request.Host
 }
@@ -994,7 +998,8 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
 		return
 	}
-	cookie, err := request.Cookie(h.cookieName)
+	profile := h.browserCookies(request)
+	cookie, err := request.Cookie(profile.core)
 	if err != nil {
 		h.redirectToLogin(writer, request)
 		return
@@ -1011,10 +1016,7 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 		h.writeFlowError(writer, request, err)
 		return
 	}
-	http.SetCookie(writer, &http.Cookie{
-		Name: h.cookieName, Value: cookie.Value, Path: "/", Expires: authorization.SessionExpires,
-		MaxAge: max(1, int(time.Until(authorization.SessionExpires).Seconds())), HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-	})
+	http.SetCookie(writer, h.browserCookie(profile.core, cookie.Value, max(1, int(time.Until(authorization.SessionExpires).Seconds())), authorization.SessionExpires, profile.secure))
 	callbackQuery := callback.Query()
 	callbackQuery.Set("code", authorization.Code)
 	callbackQuery.Set("state", query.State)
@@ -1332,9 +1334,42 @@ func (h *Handler) isTrustedProxy(address net.IP) bool {
 	return false
 }
 
+func (h *Handler) externallyHTTPS(request *http.Request) bool {
+	if request.TLS != nil {
+		return true
+	}
+	peer := net.ParseIP(remoteIP(request.RemoteAddr))
+	return peer != nil && h.isTrustedProxy(peer) &&
+		strings.EqualFold(strings.TrimSpace(request.Header.Get("X-Forwarded-Proto")), "https")
+}
+
+func (h *Handler) browserCookies(request *http.Request) browserCookieProfile {
+	if h.externallyHTTPS(request) {
+		return browserCookieProfile{
+			core: h.cookieName, csrf: "__Host-henukit_login_csrf",
+			device: "__Host-henukit_device", secure: true,
+		}
+	}
+	return browserCookieProfile{
+		core: h.localCookieName, csrf: h.localCookieName + "_csrf",
+		device: h.localCookieName + "_device",
+	}
+}
+
+func (h *Handler) browserCookie(name, value string, maxAge int, expires time.Time, secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name: name, Value: value, Path: "/", Expires: expires, MaxAge: maxAge,
+		HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
+	}
+}
+
+func (h *Handler) expiredBrowserCookie(name string, secure bool) *http.Cookie {
+	return h.browserCookie(name, "", -1, time.Unix(1, 0), secure)
+}
+
 func (h *Handler) deviceID(request *http.Request) (string, *http.Cookie, error) {
-	const name = "__Host-henukit_device"
-	if cookie, err := request.Cookie(name); err == nil {
+	profile := h.browserCookies(request)
+	if cookie, err := request.Cookie(profile.device); err == nil {
 		parts := strings.Split(cookie.Value, ".")
 		if len(parts) == 2 {
 			identifier, decodeIDErr := base64.RawURLEncoding.DecodeString(parts[0])
@@ -1353,5 +1388,5 @@ func (h *Handler) deviceID(request *http.Request) (string, *http.Cookie, error) 
 	mac := hmac.New(sha256.New, h.deviceKey)
 	_, _ = mac.Write(identifier)
 	value := base64.RawURLEncoding.EncodeToString(identifier) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	return base64.RawURLEncoding.EncodeToString(identifier), &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: 365 * 24 * 60 * 60, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode}, nil
+	return base64.RawURLEncoding.EncodeToString(identifier), h.browserCookie(profile.device, value, 365*24*60*60, time.Time{}, profile.secure), nil
 }

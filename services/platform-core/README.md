@@ -31,6 +31,14 @@ It does not own Console Gateway sessions or product-local sessions. Legacy QuizC
 
 Production configuration is environment-only. Copy key names from `.env.example`; use distinct Platform Core PostgreSQL credentials, an authenticated `rediss://` URL, and separate random 32-byte idempotency and verification keys. The service never logs connection URLs, credentials, request bodies, email addresses, verification codes, authorization codes, or Session tokens.
 
+Authentication cookies follow ADR-0015. Direct TLS, or an exact
+`X-Forwarded-Proto: https` supplied by a peer in
+`PLATFORM_CORE_TRUSTED_PROXY_CIDRS`, selects the Secure `__Host-` cookie
+family. Direct local HTTP selects the separate non-`__Host-` name configured
+by `PLATFORM_CORE_LOCAL_COOKIE_NAME`. Session issuance, rotation, revocation,
+CSRF, and device cookies all use the same per-request decision; forwarding
+headers from untrusted peers cannot enable production cookies.
+
 Production login is code-locked to the single `henu.edu.cn` domain. `PLATFORM_CORE_STUDENT_EMAIL_DOMAINS` remains an explicit deployment assertion and the process refuses to start if it contains any other value. Run `go run ./cmd/auth-retention-cleanup` at least hourly with the Platform Core database URL: it atomically removes expired OAuth exchange idempotency responses and scrubs verification hashes, nonces, and request/consume idempotency facts after 24 hours while retaining non-secret mail and login audit relationships.
 
 Passwords are counted as 10–128 Unicode code points and are never trimmed,

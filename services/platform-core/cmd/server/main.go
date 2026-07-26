@@ -38,7 +38,7 @@ func main() {
 	redisClient := redis.NewClient(redisOptions)
 	defer func() { _ = redisClient.Close() }()
 	handler, err := platformcore.New(platformcore.Config{
-		Database: database, Redis: redisClient, CoreCookieName: settings.CoreCookieName,
+		Database: database, Redis: redisClient, CoreCookieName: settings.CoreCookieName, LocalCoreCookieName: settings.LocalCoreCookieName,
 		CoreSessionTTL:   settings.CoreSessionTTL,
 		AuthorizationTTL: settings.AuthorizationTTL, ExchangeSessionTTL: settings.ExchangeSessionTTL,
 		IdempotencyEncryptionKey: settings.IdempotencyEncryptionKey, Logger: logger,

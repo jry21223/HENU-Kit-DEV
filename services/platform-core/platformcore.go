@@ -29,6 +29,7 @@ type Config struct {
 	Database                  *pgxpool.Pool
 	Redis                     *redis.Client
 	CoreCookieName            string
+	LocalCoreCookieName       string
 	CoreSessionTTL            time.Duration
 	AuthorizationTTL          time.Duration
 	ExchangeSessionTTL        time.Duration
@@ -59,6 +60,13 @@ func New(config Config) (http.Handler, error) {
 	}
 	if !strings.HasPrefix(config.CoreCookieName, "__Host-") {
 		return nil, errors.New("core session cookie name must use the __Host- prefix")
+	}
+	if config.LocalCoreCookieName == "" {
+		config.LocalCoreCookieName = "henukit_core_session_local"
+	}
+	if strings.HasPrefix(config.LocalCoreCookieName, "__Host-") ||
+		(&http.Cookie{Name: config.LocalCoreCookieName, Value: "valid"}).Valid() != nil {
+		return nil, errors.New("local core session cookie name must be a valid non-__Host- name")
 	}
 	if config.CoreSessionTTL <= 0 {
 		config.CoreSessionTTL = 15 * 24 * time.Hour
@@ -162,5 +170,5 @@ func New(config Config) (http.Handler, error) {
 	if config.MailDeliveryRetiringToken != "" {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
-	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
+	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
 }

@@ -14,6 +14,7 @@ type Config struct {
 	DatabaseURL               string
 	RedisURL                  string
 	CoreCookieName            string
+	LocalCoreCookieName       string
 	CoreSessionTTL            time.Duration
 	AuthorizationTTL          time.Duration
 	ExchangeSessionTTL        time.Duration
@@ -43,6 +44,7 @@ func Load() (Config, error) {
 		DatabaseURL:               os.Getenv("PLATFORM_CORE_DATABASE_URL"),
 		RedisURL:                  env("PLATFORM_CORE_REDIS_URL", "redis://localhost:6379/0"),
 		CoreCookieName:            env("PLATFORM_CORE_COOKIE_NAME", "__Host-henukit_core_session"),
+		LocalCoreCookieName:       env("PLATFORM_CORE_LOCAL_COOKIE_NAME", "henukit_core_session_local"),
 		CoreSessionTTL:            durationEnv("PLATFORM_CORE_CORE_SESSION_TTL", 15*24*time.Hour),
 		AuthorizationTTL:          durationEnv("PLATFORM_CORE_AUTHORIZATION_TTL", 90*time.Second),
 		ExchangeSessionTTL:        durationEnv("PLATFORM_CORE_EXCHANGE_SESSION_TTL", 8*time.Hour),

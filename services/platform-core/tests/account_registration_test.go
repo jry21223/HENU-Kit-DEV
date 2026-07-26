@@ -366,6 +366,112 @@ func TestAccountCenterRegistrationAtomicallyCreatesCredentialAndSession(t *testi
 	}
 }
 
+func TestAccountCenterRegistrationAndLogoutUseDistinctLocalHTTPCookies(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	handler, err := platformcore.New(platformcore.Config{
+		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
+		VerificationEncryptionKey: testVerificationEncryptionKey, StudentEmailDomains: []string{"henu.edu.cn"},
+		LocalCoreCookieName: "henukit_test_core_local",
+	})
+	if err != nil {
+		t.Fatalf("create local HTTP Platform Core: %v", err)
+	}
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	client, csrfToken, code := prepareRegistrationCode(t, ctx, pool, server, "local-http-registration-device")
+
+	registered, err := client.PostForm(server.URL+"/register", url.Values{
+		"csrf_token": {csrfToken}, "display_name": {"本地开发"}, "email": {testStudentEmail},
+		"code": {code}, "password": {"correct horse 电池 staple"},
+	})
+	if err != nil {
+		t.Fatalf("submit local HTTP registration: %v", err)
+	}
+	registered.Body.Close()
+	if registered.StatusCode != http.StatusSeeOther {
+		t.Fatalf("local HTTP registration = %d, want 303", registered.StatusCode)
+	}
+	var issuedLocalSession bool
+	for _, cookie := range registered.Cookies() {
+		if strings.HasPrefix(cookie.Name, "__Host-") || cookie.Secure {
+			t.Fatalf("local HTTP registration issued production cookie: %+v", cookie)
+		}
+		issuedLocalSession = issuedLocalSession || cookie.Name == "henukit_test_core_local" && cookie.Value != ""
+	}
+	if !issuedLocalSession {
+		t.Fatal("local HTTP registration did not issue the configured local Core Session cookie")
+	}
+
+	logoutRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/sessions/revoke", strings.NewReader(`{"all_sessions":false}`))
+	logoutRequest.Header.Set("Content-Type", "application/json")
+	logoutRequest.Header.Set("Origin", server.URL)
+	logoutResponse, err := client.Do(logoutRequest)
+	if err != nil {
+		t.Fatalf("logout local HTTP session: %v", err)
+	}
+	logoutResponse.Body.Close()
+	if logoutResponse.StatusCode != http.StatusOK {
+		t.Fatalf("local HTTP logout = %d, want 200", logoutResponse.StatusCode)
+	}
+	var clearedLocalSession bool
+	for _, cookie := range logoutResponse.Cookies() {
+		clearedLocalSession = clearedLocalSession ||
+			cookie.Name == "henukit_test_core_local" && cookie.MaxAge < 0 && !cookie.Secure
+	}
+	if !clearedLocalSession {
+		t.Fatal("local HTTP logout did not clear the same configured local Core Session cookie")
+	}
+}
+
+func TestCookieTransportTrustsForwardedHTTPSOnlyFromConfiguredProxy(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	for _, test := range []struct {
+		name           string
+		trustedProxies []string
+		wantSecure     bool
+		wantCSRFName   string
+	}{
+		{name: "configured proxy", trustedProxies: []string{"127.0.0.0/8"}, wantSecure: true, wantCSRFName: "__Host-henukit_login_csrf"},
+		{name: "untrusted peer", wantSecure: false, wantCSRFName: "henukit_proxy_test_local_csrf"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler, err := platformcore.New(platformcore.Config{
+				Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
+				VerificationEncryptionKey: testVerificationEncryptionKey, StudentEmailDomains: []string{"henu.edu.cn"},
+				LocalCoreCookieName: "henukit_proxy_test_local", TrustedProxyCIDRs: test.trustedProxies,
+			})
+			if err != nil {
+				t.Fatalf("create proxy-cookie Platform Core: %v", err)
+			}
+			server := httptest.NewServer(handler)
+			t.Cleanup(server.Close)
+			request, _ := http.NewRequest(http.MethodGet, server.URL+"/login", nil)
+			request.Header.Set("X-Forwarded-Proto", "https")
+			response, err := server.Client().Do(request)
+			if err != nil {
+				t.Fatalf("open proxy-cookie login: %v", err)
+			}
+			response.Body.Close()
+			var foundCSRF bool
+			for _, cookie := range response.Cookies() {
+				if cookie.Name == test.wantCSRFName {
+					foundCSRF = true
+					if cookie.Secure != test.wantSecure || !cookie.HttpOnly || cookie.Path != "/" || cookie.Domain != "" {
+						t.Fatalf("unexpected proxy-cookie attributes: %+v", cookie)
+					}
+				}
+			}
+			if !foundCSRF {
+				t.Fatalf("login omitted expected CSRF cookie %q: %+v", test.wantCSRFName, response.Cookies())
+			}
+		})
+	}
+}
+
 func TestAccountCenterPasswordLoginCreatesCoreSession(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
