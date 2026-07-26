@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -23,16 +25,19 @@ import (
 
 // Handler is the Portal Gateway HTTP handler.
 type Handler struct {
-	sessionCodec    *session.Codec
-	platform        *platformcore.Client
-	portalAPI       *http.Client
-	portalAPIURL    string
-	redis           *redis.Client
-	portalOrigin    string
-	platformCoreURL string
-	publicPlatformURL string
-	clientID        string
-	redirectURI     string
+	sessionCodec       *session.Codec
+	platform           *platformcore.Client
+	portalAPI          *http.Client
+	portalAPIURL       string
+	redis              *redis.Client
+	portalOrigin       string
+	platformCoreURL    string
+	publicPlatformURL  string
+	clientID           string
+	redirectURI        string
+	localOAuthCookie   string
+	localSessionCookie string
+	trustedProxies     []*net.IPNet
 }
 
 // New creates a Handler from config.
@@ -41,17 +46,28 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("session.NewCodec: %w", err)
 	}
+	trustedProxies := make([]*net.IPNet, 0, len(cfg.TrustedProxyCIDRs))
+	for _, value := range cfg.TrustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy CIDR %q", value)
+		}
+		trustedProxies = append(trustedProxies, network)
+	}
 	return &Handler{
-		sessionCodec:    codec,
-		platform:        platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID),
-		portalAPI:       &http.Client{Timeout: 10 * time.Second},
-		portalAPIURL:    cfg.PortalAPIURL,
-		redis:           rdb,
-		portalOrigin:    cfg.PortalOrigin,
-		platformCoreURL: cfg.PlatformCoreURL,
-		publicPlatformURL: firstNonEmpty(cfg.PlatformCorePublicURL, cfg.PlatformCoreURL),
-		clientID:        cfg.PlatformClientID,
-		redirectURI:     cfg.PortalRedirectURI,
+		sessionCodec:       codec,
+		platform:           platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID),
+		portalAPI:          &http.Client{Timeout: 10 * time.Second},
+		portalAPIURL:       cfg.PortalAPIURL,
+		redis:              rdb,
+		portalOrigin:       cfg.PortalOrigin,
+		platformCoreURL:    cfg.PlatformCoreURL,
+		publicPlatformURL:  firstNonEmpty(cfg.PlatformCorePublicURL, cfg.PlatformCoreURL),
+		clientID:           cfg.PlatformClientID,
+		redirectURI:        cfg.PortalRedirectURI,
+		localOAuthCookie:   firstNonEmpty(cfg.LocalOAuthCookieName, "henukit_portal_oauth_local"),
+		localSessionCookie: firstNonEmpty(cfg.LocalSessionCookieName, "henukit_portal_session_local"),
+		trustedProxies:     trustedProxies,
 	}, nil
 }
 
@@ -115,12 +131,13 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	key := fmt.Sprintf("portal:oauth-state:%s:%s", stateHash, browserHash)
 	h.redis.Set(r.Context(), key, payload, 5*time.Minute)
 
+	cookies := h.browserCookies(r)
 	http.SetCookie(w, &http.Cookie{
-		Name:     "henukit_portal_oauth",
+		Name:     cookies.oauth,
 		Value:    base64.RawURLEncoding.EncodeToString(browserNonce),
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   cookies.secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   300,
 	})
@@ -145,7 +162,8 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cookie, err := r.Cookie("henukit_portal_oauth")
+	cookies := h.browserCookies(r)
+	cookie, err := r.Cookie(cookies.oauth)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "missing oauth cookie"})
 		return
@@ -173,8 +191,8 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name: "henukit_portal_oauth", Value: "", Path: "/",
-		HttpOnly: true, Secure: cookieSecure(), MaxAge: -1, Expires: time.Unix(1, 0),
+		Name: cookies.oauth, Value: "", Path: "/",
+		HttpOnly: true, Secure: cookies.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 
 	stateBytes, _ := base64.RawURLEncoding.DecodeString(state)
@@ -199,8 +217,8 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 
 	maxAge := int(time.Until(result.ExpiresAt).Seconds())
 	http.SetCookie(w, &http.Cookie{
-		Name: "henukit_portal_session", Value: encoded, Path: "/",
-		HttpOnly: true, Secure: cookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: maxAge,
+		Name: cookies.session, Value: encoded, Path: "/",
+		HttpOnly: true, Secure: cookies.secure, SameSite: http.SameSiteLaxMode, MaxAge: maxAge,
 	})
 
 	returnTo := stored["return_to"]
@@ -220,9 +238,10 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	cookies := h.browserCookies(r)
 	http.SetCookie(w, &http.Cookie{
-		Name: "henukit_portal_session", Value: "", Path: "/",
-		HttpOnly: true, Secure: cookieSecure(), MaxAge: -1, Expires: time.Unix(1, 0),
+		Name: cookies.session, Value: "", Path: "/",
+		HttpOnly: true, Secure: cookies.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})
 }
@@ -257,7 +276,7 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 // --- Helpers ---
 
 func (h *Handler) readSession(r *http.Request) (session.Value, error) {
-	cookie, err := r.Cookie("henukit_portal_session")
+	cookie, err := r.Cookie(h.browserCookies(r).session)
 	if err != nil {
 		return session.Value{}, err
 	}
@@ -301,7 +320,6 @@ func sha256Sum(data []byte) []byte {
 	return h[:]
 }
 
-
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {
@@ -311,9 +329,45 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+type browserCookieProfile struct {
+	oauth   string
+	session string
+	secure  bool
+}
 
-func cookieSecure() bool {
-	// Local compose serves http://localhost; __Host- cookies require Secure+HTTPS.
-	// Use non-Host cookie names on HTTP by also relaxing name? For now disable Secure on HTTP.
-	return false // local demo: http only. Production reverse-proxy TLS should set true via env later.
+func (h *Handler) browserCookies(r *http.Request) browserCookieProfile {
+	if h.externallyHTTPS(r) {
+		return browserCookieProfile{
+			oauth: "__Host-henukit_portal_oauth", session: "__Host-henukit_portal_session", secure: true,
+		}
+	}
+	return browserCookieProfile{
+		oauth: h.localOAuthCookie, session: h.localSessionCookie,
+	}
+}
+
+func (h *Handler) externallyHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	peer := net.ParseIP(remoteIP(r.RemoteAddr))
+	return peer != nil && h.isTrustedProxy(peer) &&
+		strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
+}
+
+func (h *Handler) isTrustedProxy(address net.IP) bool {
+	for _, network := range h.trustedProxies {
+		if network.Contains(address) {
+			return true
+		}
+	}
+	return false
+}
+
+func remoteIP(remoteAddress string) string {
+	host, _, err := net.SplitHostPort(remoteAddress)
+	if err == nil && host != "" {
+		return host
+	}
+	return remoteAddress
 }
