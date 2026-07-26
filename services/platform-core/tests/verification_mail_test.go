@@ -890,8 +890,8 @@ func TestVerificationRateLimitAndRedisLossDoNotLoseOutbox(t *testing.T) {
 	}
 	limited := requestVerificationCode(t, server, "request_rate_limit_002")
 	limited.Body.Close()
-	if limited.StatusCode != http.StatusAccepted {
-		t.Fatalf("rate-limited request = %d, want privacy-preserving 202", limited.StatusCode)
+	if limited.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited request = %d, want 429", limited.StatusCode)
 	}
 	var codes, jobs int
 	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM verification_codes), (SELECT count(*) FROM mail_outbox)`).Scan(&codes, &jobs); err != nil || codes != 1 || jobs != 1 {
@@ -985,8 +985,12 @@ func TestVerificationAppliesIPAndDeviceTimeBuckets(t *testing.T) {
 			fmt.Sprintf("ip-limit-%02d@henu.edu.cn", index), "login", "portal",
 			fmt.Sprintf("device-ip-%02d", index), fmt.Sprintf("request_ip_limit_%02d", index))
 		response.Body.Close()
-		if response.StatusCode != http.StatusAccepted {
-			t.Fatalf("IP bucket request %d = %d, want 202", index, response.StatusCode)
+		want := http.StatusAccepted
+		if index == 30 {
+			want = http.StatusTooManyRequests
+		}
+		if response.StatusCode != want {
+			t.Fatalf("IP bucket request %d = %d, want %d", index, response.StatusCode, want)
 		}
 	}
 	var rows int
@@ -1000,8 +1004,12 @@ func TestVerificationAppliesIPAndDeviceTimeBuckets(t *testing.T) {
 			fmt.Sprintf("device-limit-%02d@henu.edu.cn", index), "login", "portal",
 			"shared-device-001", fmt.Sprintf("request_device_limit_%02d", index))
 		response.Body.Close()
-		if response.StatusCode != http.StatusAccepted {
-			t.Fatalf("device bucket request %d = %d, want 202", index, response.StatusCode)
+		want := http.StatusAccepted
+		if index == 10 {
+			want = http.StatusTooManyRequests
+		}
+		if response.StatusCode != want {
+			t.Fatalf("device bucket request %d = %d, want %d", index, response.StatusCode, want)
 		}
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM verification_codes`).Scan(&rows); err != nil || rows != 10 {

@@ -177,8 +177,7 @@ func (s *Service) Request(ctx context.Context, input RequestInput) (Accepted, er
 		return Accepted{}, err
 	}
 	if limited {
-		now := time.Now().UTC()
-		return Accepted{ExpiresAt: now.Add(s.codeTTL), ResendAfter: now.Add(s.resendDelay)}, nil
+		return Accepted{}, ErrRateLimited
 	}
 	code, err := randomCode()
 	if err != nil {
