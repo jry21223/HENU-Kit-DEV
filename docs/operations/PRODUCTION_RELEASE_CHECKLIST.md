@@ -127,8 +127,11 @@
 
 ## 11. 部署、监控与回滚检查
 
+> **HENU Kit 生产部署契约**（详见 [`henukit-artifact-deployment.md`](./henukit-artifact-deployment.md)）：仅允许 **GitHub Actions 编译固定 SHA 镜像 → 下载并校验 artifact → 主机 `docker load` + `deploy-henukit-artifact.sh`**。生产主机禁止对发布单元执行 `docker compose build` / 源码编译。
+
+- [ ] 选定一次成功的 `Build HENU Kit release artifacts` 运行，记录完整 40 位 `RELEASE_SHA`；用 `download-henukit-artifacts.sh` 或等价方式下载全部镜像与 runtime 包并完成 `sha256sum -c`。
 - [ ] Staging 部署使用与生产相同的不可变 Artifact，并完成 Readiness、Contract、Smoke 和 E2E。
-- [ ] 生产变更经人工批准，按单一部署单元逐步执行。
+- [ ] 生产变更经人工批准，按单一部署单元逐步执行；激活仅通过 `deploy-henukit-artifact.sh`（无主机 `docker build`）。
 - [ ] Nginx、Systemd/容器编排、环境变量、Secrets、Deploy Key、Webhook 和服务器 Remote 已核验。
 - [ ] 发布前后记录 5xx、延迟、登录成功率、队列积压、数据库连接、邮件错误和关键业务成功率。
 - [ ] Readiness 失败或 5xx 超阈值立即停止放量并回滚对应部署单元。

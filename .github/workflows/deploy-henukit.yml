@@ -170,6 +170,7 @@ jobs:
           cp infra/nginx/henukit.conf.example "$runtime/infra/nginx/"
           cp services/platform-core/db/migrations/*.up.sql "$runtime/migrations/platform-core/"
           install -m 0555 scripts/ops/deploy-henukit-artifact.sh "$runtime/bin/deploy-henukit-artifact.sh"
+          install -m 0555 scripts/ops/download-henukit-artifacts.sh "$runtime/bin/download-henukit-artifacts.sh"
           printf '%s\n' "$GITHUB_SHA" > "$runtime/RELEASE_SHA"
           tar -C "$runtime" -czf "release/henukit-runtime-${GITHUB_SHA}.tar.gz" .
           cd release

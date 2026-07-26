@@ -89,6 +89,33 @@ func TestProviderAuthenticatesAndDeduplicatesAcceptedMail(t *testing.T) {
 	}
 }
 
+func TestProviderAcceptsRegisterPurpose(t *testing.T) {
+	mailer := &captureMailer{}
+	handler, err := newTestProvider(filepath.Join(t.TempDir(), "ledger"), mailer, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+	body := []byte(`{"recipient":"student@henu.edu.cn","template":"henukit_verification_code","variables":{"code":"123456","purpose":"register","expires_at":"2099-07-22T12:00:00Z"},"request_id":"req_register_001","idempotency_key":"verification:job-register-001"}`)
+	request := httptest.NewRequest(http.MethodPost, "/internal/send", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer provider-token-at-least-32-characters")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "verification:job-register-001")
+	request.Header.Set("X-Request-ID", "req_register_001")
+	request.Header.Set("X-Mail-Attempt", "1")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("register purpose = %d body=%q, want 200 (not invalid_request)", response.Code, response.Body.String())
+	}
+	if mailer.calls != 1 {
+		t.Fatalf("register purpose sent %d messages, want 1", mailer.calls)
+	}
+	var accepted map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &accepted); err != nil || accepted["message_id"] == "" {
+		t.Fatalf("register purpose response = %q, want accepted message_id", response.Body.String())
+	}
+}
+
 func TestProviderAuditsInvalidRequestWithoutSensitiveContent(t *testing.T) {
 	var logs bytes.Buffer
 	handler, err := newTestProvider(filepath.Join(t.TempDir(), "ledger"), &captureMailer{}, &logs)

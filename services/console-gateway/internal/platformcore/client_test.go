@@ -32,7 +32,7 @@ func TestClientSignsExchangeAndNeverPlacesTokenInURL(t *testing.T) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{
-			"user":                   map[string]string{"id": "171f1c6f-7b10-4c92-91a2-b39bf5af5302"},
+			"user":                   map[string]string{"user_id": "171f1c6f-7b10-4c92-91a2-b39bf5af5302"},
 			"session_exchange_token": "exchange_token_with_at_least_32_characters", "expires_at": time.Now().Add(5 * time.Minute),
 		}})
 	}))
@@ -42,8 +42,28 @@ func TestClientSignsExchangeAndNeverPlacesTokenInURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	exchange, err := client.ExchangeCode(t.Context(), "authorization-code", "https://console.example/callback", strings.Repeat("v", 43), "idem_test_exchange")
-	if err != nil || exchange.UserID == "" || exchange.ExchangeToken == "" {
+	if err != nil || exchange.UserID != "171f1c6f-7b10-4c92-91a2-b39bf5af5302" || exchange.ExchangeToken == "" {
 		t.Fatalf("exchange = %+v, err=%v", exchange, err)
+	}
+}
+
+func TestExchangeCodeRejectsLegacyUserIDField(t *testing.T) {
+	const secret = "test-console-client-secret-with-entropy"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{
+			"user":                   map[string]string{"id": "171f1c6f-7b10-4c92-91a2-b39bf5af5302"},
+			"session_exchange_token": "exchange_token_with_at_least_32_characters",
+			"expires_at":             time.Now().Add(5 * time.Minute),
+		}})
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "console-gateway", secret, "active-key", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ExchangeCode(t.Context(), "authorization-code", "https://console.example/callback", strings.Repeat("v", 43), "idem_test_exchange"); err == nil {
+		t.Fatal("expected exchange to reject PlatformUser payload using legacy id field")
 	}
 }
 
