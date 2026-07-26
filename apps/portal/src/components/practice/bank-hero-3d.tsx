@@ -3,7 +3,7 @@
 /**
  * Practice bank hero 3D — A/B variants (no GLB).
  *
- * A  Knowledge mesh: icosahedron + rings + orbiting cubes (homepage language)
+ * A  Knowledge mesh driven by mastery snapshot (rings / core / orbit)
  * B  Answer sheet: stacked cards + check marks + pencil (quiz metaphor)
  */
 
@@ -17,6 +17,38 @@ const ACCENT = "#ff4d00";
 const PAPER = "#f2f0ea";
 
 export type BankHeroVariant = "A" | "B";
+
+/** 0–100 subject mastery row (same shape as USER_STATS.mastery). */
+export type MasterySubject = {
+  label: string;
+  value: number;
+};
+
+/** Snapshot that drives Variant A. */
+export type MasterySnapshot = {
+  subjects: MasterySubject[];
+  /** Overall accuracy 0–100 → nucleus size / brightness */
+  accuracy: number;
+  /** Streak days → orbiting cube count */
+  streakDays: number;
+  /** Total answered → outer mesh density feel via opacity */
+  totalQuestions: number;
+};
+
+export const EMPTY_MASTERY: MasterySnapshot = {
+  subjects: [],
+  accuracy: 0,
+  streakDays: 0,
+  totalQuestions: 0,
+};
+
+function clamp01(n: number) {
+  return Math.min(1, Math.max(0, n));
+}
+
+function pct(n: number) {
+  return clamp01(n / 100);
+}
 
 /** Slow yaw + pointer lean — same feel as homepage hero-3d. */
 function Rig({
@@ -46,11 +78,11 @@ function Rig({
 }
 
 function OrbitingCubes({
-  count = 3,
+  count,
   radius = 1.85,
   speed = 0.28,
 }: {
-  count?: number;
+  count: number;
   radius?: number;
   speed?: number;
 }) {
@@ -58,19 +90,19 @@ function OrbitingCubes({
   useFrame((_, delta) => {
     if (group.current) group.current.rotation.y += delta * speed;
   });
-  const cubes = useMemo(
-    () =>
-      Array.from({ length: count }, (_, i) => {
-        const angle = (Math.PI * 2 * i) / count;
-        return {
-          angle,
-          y: (i % 2 === 0 ? 0.35 : -0.4) + (i - 1) * 0.12,
-          size: 0.11 + (i % 3) * 0.04,
-          r: radius + (i % 2) * 0.18,
-        };
-      }),
-    [count, radius]
-  );
+  const cubes = useMemo(() => {
+    const n = Math.max(0, Math.min(6, Math.round(count)));
+    return Array.from({ length: n }, (_, i) => {
+      const angle = n === 0 ? 0 : (Math.PI * 2 * i) / n;
+      return {
+        angle,
+        y: (i % 2 === 0 ? 0.35 : -0.4) + (i - 1) * 0.12,
+        size: 0.11 + (i % 3) * 0.04,
+        r: radius + (i % 2) * 0.18,
+      };
+    });
+  }, [count, radius]);
+  if (cubes.length === 0) return null;
   return (
     <group ref={group}>
       {cubes.map((c, i) => (
@@ -90,59 +122,145 @@ function OrbitingCubes({
   );
 }
 
-/* ─── Variant A: Knowledge mesh ───────────────────────────────────────── */
+/* ─── Variant A: mastery-driven knowledge mesh ────────────────────────── */
 
-function KnowledgeCore() {
+function KnowledgeCore({
+  accuracy,
+  coverage,
+}: {
+  accuracy: number;
+  /** average subject mastery 0–1 */
+  coverage: number;
+}) {
+  const acc = pct(accuracy);
+  // Nucleus grows with accuracy; outer cage densifies with coverage
+  const nucleusScale = 0.1 + acc * 0.22;
+  const outerOpacity = 0.18 + coverage * 0.35;
+  const innerOpacity = 0.12 + coverage * 0.28;
+  const innerScale = 0.48 + coverage * 0.2;
+
   return (
-    <Float speed={1.2} rotationIntensity={0.2} floatIntensity={0.55}>
-      {/* Outer wireframe crystal — knowledge network */}
+    <Float speed={1.0 + acc * 0.6} rotationIntensity={0.15 + acc * 0.15} floatIntensity={0.4 + acc * 0.35}>
       <mesh>
-        <icosahedronGeometry args={[1.15, 1]} />
-        <meshBasicMaterial wireframe color={INK} transparent opacity={0.42} />
+        <icosahedronGeometry args={[1.15, coverage > 0.55 ? 1 : 0]} />
+        <meshBasicMaterial
+          wireframe
+          color={INK}
+          transparent
+          opacity={outerOpacity}
+        />
       </mesh>
-      {/* Inner denser shell */}
-      <mesh scale={0.62}>
+      <mesh scale={innerScale}>
         <icosahedronGeometry args={[1.15, 0]} />
-        <meshBasicMaterial wireframe color={INK} transparent opacity={0.28} />
+        <meshBasicMaterial
+          wireframe
+          color={INK}
+          transparent
+          opacity={innerOpacity}
+        />
       </mesh>
-      {/* Accent nucleus */}
-      <mesh scale={0.22}>
+      <mesh scale={nucleusScale}>
         <octahedronGeometry args={[1, 0]} />
-        <meshBasicMaterial wireframe color={ACCENT} transparent opacity={0.9} />
+        <meshBasicMaterial
+          wireframe
+          color={ACCENT}
+          transparent
+          opacity={0.45 + acc * 0.5}
+        />
       </mesh>
     </Float>
   );
 }
 
-function MasteryRings() {
+/**
+ * One ring per subject (max 3).
+ * - radius tier fixed (readable stack)
+ * - tube thickness + opacity scale with mastery %
+ * - weak (<60) → accent; else ink
+ * - spin speed slightly higher when stronger
+ */
+function MasteryRings({ subjects }: { subjects: MasterySubject[] }) {
   const group = useRef<THREE.Group>(null);
+  const top = useMemo(() => {
+    // Keep original order (matches stats list) but only first 3 for visual stack
+    return subjects.slice(0, 3).map((s, i) => ({
+      ...s,
+      value: Math.min(100, Math.max(0, s.value)),
+      baseR: 1.4 + i * 0.28,
+    }));
+  }, [subjects]);
+
+  const avg =
+    top.length === 0
+      ? 0
+      : top.reduce((a, s) => a + s.value, 0) / top.length / 100;
+
   useFrame((_, delta) => {
     if (!group.current) return;
-    group.current.rotation.z += delta * 0.08;
-    group.current.rotation.x += delta * 0.03;
+    // Stronger overall mastery → slightly snappier ring precession
+    group.current.rotation.z += delta * (0.05 + avg * 0.1);
+    group.current.rotation.x += delta * (0.02 + avg * 0.04);
   });
+
+  if (top.length === 0) {
+    // Empty state: faint placeholder ring
+    return (
+      <group rotation={[Math.PI / 2.6, 0.2, 0]}>
+        <mesh>
+          <torusGeometry args={[1.6, 0.01, 8, 64]} />
+          <meshBasicMaterial color={INK} transparent opacity={0.12} />
+        </mesh>
+      </group>
+    );
+  }
+
   return (
     <group ref={group} rotation={[Math.PI / 2.6, 0.2, 0]}>
-      {[1.45, 1.7, 1.95].map((r, i) => (
-        <mesh key={r} rotation={[i * 0.18, i * 0.35, 0]}>
-          <torusGeometry args={[r, 0.012, 8, 64]} />
-          <meshBasicMaterial
-            color={i === 1 ? ACCENT : INK}
-            transparent
-            opacity={i === 1 ? 0.75 : 0.22}
-          />
-        </mesh>
-      ))}
+      {top.map((s, i) => {
+        const t = pct(s.value);
+        const weak = s.value < 60;
+        const tube = 0.008 + t * 0.022;
+        const opacity = 0.12 + t * 0.7;
+        return (
+          <mesh
+            key={s.label}
+            rotation={[i * 0.16, i * 0.32, 0]}
+            // scale out slightly with mastery so strong subjects read larger
+            scale={0.88 + t * 0.18}
+          >
+            <torusGeometry args={[s.baseR, tube, 10, 72]} />
+            <meshBasicMaterial
+              color={weak ? ACCENT : INK}
+              transparent
+              opacity={opacity}
+            />
+          </mesh>
+        );
+      })}
     </group>
   );
 }
 
-function VariantA() {
+function VariantA({ mastery }: { mastery: MasterySnapshot }) {
+  const coverage = useMemo(() => {
+    const list = mastery.subjects;
+    if (!list.length) return 0;
+    return list.reduce((a, s) => a + s.value, 0) / list.length / 100;
+  }, [mastery.subjects]);
+
+  // streak → cubes: 0 days = 0, ~7d = 1, ~14d = 2 … cap 5
+  const cubeCount = Math.min(
+    5,
+    Math.max(0, Math.floor(mastery.streakDays / 7) + (mastery.streakDays > 0 ? 1 : 0))
+  );
+  // more answered → slightly wider orbit
+  const orbitR = 2.0 + Math.min(0.4, mastery.totalQuestions / 2000);
+
   return (
-    <Rig spin={0.12}>
-      <KnowledgeCore />
-      <MasteryRings />
-      <OrbitingCubes count={3} radius={2.15} />
+    <Rig spin={0.1 + coverage * 0.08}>
+      <KnowledgeCore accuracy={mastery.accuracy} coverage={coverage} />
+      <MasteryRings subjects={mastery.subjects} />
+      <OrbitingCubes count={cubeCount} radius={orbitR} speed={0.2 + coverage * 0.15} />
     </Rig>
   );
 }
@@ -162,29 +280,24 @@ function Sheet({
 }) {
   return (
     <group position={[0, y, depth]} rotation={[0.08, 0.35, rotZ]}>
-      {/* Card body — thin box, wireframe paper face */}
       <mesh>
         <boxGeometry args={[1.7, 2.15, 0.04]} />
         <meshBasicMaterial wireframe color={INK} transparent opacity={0.38} />
       </mesh>
-      {/* Soft fill so stack reads as solid paper, not pure cage */}
       <mesh position={[0, 0, -0.005]}>
         <boxGeometry args={[1.62, 2.05, 0.01]} />
         <meshBasicMaterial color={PAPER} transparent opacity={0.55} />
       </mesh>
-      {/* Header rule */}
       <mesh position={[0, 0.85, 0.03]}>
         <boxGeometry args={[1.35, 0.02, 0.01]} />
         <meshBasicMaterial color={accentEdge ? ACCENT : INK} />
       </mesh>
-      {/* Answer lines */}
       {[-0.35, -0.05, 0.25, 0.55].map((ly, i) => (
         <mesh key={ly} position={[0.1, ly, 0.03]}>
           <boxGeometry args={[1.1 - i * 0.08, 0.012, 0.008]} />
           <meshBasicMaterial color={INK} transparent opacity={0.25} />
         </mesh>
       ))}
-      {/* Checkbox column */}
       {[-0.35, -0.05, 0.25].map((cy, i) => (
         <group key={cy} position={[-0.62, cy, 0.04]}>
           <mesh>
@@ -192,7 +305,6 @@ function Sheet({
             <meshBasicMaterial wireframe color={INK} transparent opacity={0.5} />
           </mesh>
           {i < 2 ? (
-            // Check mark as two thin boxes
             <group position={[0, 0, 0.02]} rotation={[0, 0, -0.4]}>
               <mesh position={[-0.02, -0.02, 0]}>
                 <boxGeometry args={[0.06, 0.015, 0.008]} />
@@ -223,17 +335,14 @@ function Pencil() {
       position={[1.15, -0.2, 0.55]}
       rotation={[0.2, 0, -0.55]}
     >
-      {/* Shaft */}
       <mesh>
         <cylinderGeometry args={[0.045, 0.045, 1.35, 6]} />
         <meshBasicMaterial wireframe color={INK} transparent opacity={0.55} />
       </mesh>
-      {/* Tip */}
       <mesh position={[0, -0.78, 0]}>
         <coneGeometry args={[0.045, 0.22, 6]} />
         <meshBasicMaterial wireframe color={ACCENT} transparent opacity={0.9} />
       </mesh>
-      {/* Eraser cap */}
       <mesh position={[0, 0.72, 0]}>
         <cylinderGeometry args={[0.05, 0.05, 0.12, 6]} />
         <meshBasicMaterial color={ACCENT} transparent opacity={0.7} />
@@ -263,9 +372,11 @@ function VariantB() {
 export default function BankHero3D({
   active = true,
   variant = "A",
+  mastery = EMPTY_MASTERY,
 }: {
   active?: boolean;
   variant?: BankHeroVariant;
+  mastery?: MasterySnapshot;
 }) {
   return (
     <Canvas
@@ -276,10 +387,9 @@ export default function BankHero3D({
       className="!pointer-events-none"
       style={{ background: "transparent" }}
     >
-      {/* Soft paper/ink hemisphere keeps industrial light without GLB materials */}
       <hemisphereLight args={[PAPER, INK, 0.35]} />
       <ambientLight intensity={0.55} />
-      {variant === "A" ? <VariantA /> : <VariantB />}
+      {variant === "A" ? <VariantA mastery={mastery} /> : <VariantB />}
     </Canvas>
   );
 }

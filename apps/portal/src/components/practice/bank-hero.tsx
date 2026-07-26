@@ -1,14 +1,58 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
-import type { BankHeroVariant } from "@/components/practice/bank-hero-3d";
+import { USER_STATS } from "@/lib/practice/mock";
+import type {
+  BankHeroVariant,
+  MasterySnapshot,
+} from "@/components/practice/bank-hero-3d";
 
 const BankHero3D = dynamic(() => import("@/components/practice/bank-hero-3d"), {
   ssr: false,
 });
+
+/** Live mock from practice stats — default source of truth for Variant A. */
+const MOCK_MASTERY: MasterySnapshot = {
+  subjects: USER_STATS.mastery.map((m) => ({
+    label: m.label,
+    value: m.value,
+  })),
+  accuracy: USER_STATS.accuracy,
+  streakDays: USER_STATS.streakDays,
+  totalQuestions: USER_STATS.totalQuestions,
+};
+
+/** Preview extremes so the mastery binding is obvious without editing mock.ts */
+const PRESETS: Record<"weak" | "mock" | "strong", MasterySnapshot> = {
+  weak: {
+    subjects: [
+      { label: "数据结构", value: 38 },
+      { label: "高等数学A", value: 42 },
+      { label: "操作系统", value: 31 },
+      { label: "线性代数", value: 28 },
+    ],
+    accuracy: 41,
+    streakDays: 2,
+    totalQuestions: 64,
+  },
+  mock: MOCK_MASTERY,
+  strong: {
+    subjects: [
+      { label: "数据结构", value: 94 },
+      { label: "高等数学A", value: 91 },
+      { label: "操作系统", value: 88 },
+      { label: "线性代数", value: 86 },
+    ],
+    accuracy: 93,
+    streakDays: 48,
+    totalQuestions: 2100,
+  },
+};
+
+type PresetKey = keyof typeof PRESETS;
 
 const COUNTERS = [
   { label: "全站总刷题", value: 128436 },
@@ -24,13 +68,10 @@ const TICKER = [
   "你 今天的刷题数超过了 83% 的同学",
 ];
 
-const VARIANT_META: Record<
-  BankHeroVariant,
-  { fig: string; blurb: string }
-> = {
+const VARIANT_META: Record<BankHeroVariant, { fig: string; blurb: string }> = {
   A: {
     fig: "FIG.01 知识点结构 / KNOWLEDGE MESH",
-    blurb: "线框晶体 + 掌握度环",
+    blurb: "掌握度驱动 · 环/核/公转",
   },
   B: {
     fig: "FIG.01 答题卡叠层 / ANSWER SHEETS",
@@ -38,7 +79,6 @@ const VARIANT_META: Record<
   },
 };
 
-// 迷你折线（固定路径，循环重绘）
 const SPARK_PATH = "M0 34 L28 30 L56 33 L84 22 L112 26 L140 14 L168 18 L196 6";
 const SPARK_LEN = 240;
 
@@ -46,8 +86,9 @@ function formatNum(n: number) {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-/** reduced-motion：A 晶体轮廓 */
-function StaticMeshA() {
+/** reduced-motion：A 晶体轮廓，环透明度示意掌握度 */
+function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
+  const rings = mastery.subjects.slice(0, 3);
   return (
     <svg
       viewBox="0 0 200 240"
@@ -60,31 +101,37 @@ function StaticMeshA() {
       <polygon
         points="100,58 140,88 128,142 72,142 60,88"
         strokeWidth="1"
-        opacity="0.55"
+        opacity={0.25 + (mastery.accuracy / 100) * 0.5}
       />
-      <circle cx="100" cy="110" r="10" className="stroke-accent" strokeWidth="1.4" />
-      <ellipse
+      <circle
         cx="100"
-        cy="118"
-        rx="62"
-        ry="22"
-        strokeDasharray="4 6"
-        opacity="0.45"
+        cy="110"
+        r={6 + (mastery.accuracy / 100) * 10}
+        className="stroke-accent"
+        strokeWidth="1.4"
       />
-      <ellipse
-        cx="100"
-        cy="118"
-        rx="78"
-        ry="30"
-        strokeDasharray="2 8"
-        opacity="0.3"
-      />
+      {rings.map((s, i) => {
+        const t = s.value / 100;
+        const weak = s.value < 60;
+        return (
+          <ellipse
+            key={s.label}
+            cx="100"
+            cy="118"
+            rx={48 + i * 16}
+            ry={18 + i * 6}
+            strokeWidth={1 + t * 2}
+            opacity={0.2 + t * 0.65}
+            className={weak ? "stroke-accent" : undefined}
+            strokeDasharray={weak ? "4 4" : undefined}
+          />
+        );
+      })}
       <path d="M100 18 v-12 M94 12 h12" className="stroke-accent" />
     </svg>
   );
 }
 
-/** reduced-motion：B 答题卡轮廓 */
 function StaticMeshB() {
   return (
     <svg
@@ -111,7 +158,6 @@ function StaticMeshB() {
           <path d={`M96 ${103 + i * 20} h40`} opacity="0.45" />
         </g>
       ))}
-      {/* pencil */}
       <g transform="translate(150 150) rotate(-35)">
         <rect x="0" y="0" width="8" height="54" />
         <path d="M0 54 L4 66 L8 54" className="stroke-accent" />
@@ -133,6 +179,10 @@ export default function BankHero({
   const tickerRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(true);
   const [variant, setVariant] = useState<BankHeroVariant>("A");
+  const [preset, setPreset] = useState<PresetKey>("mock");
+
+  const mastery = useMemo(() => PRESETS[preset], [preset]);
+  const ringSubjects = mastery.subjects.slice(0, 3);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -203,6 +253,13 @@ export default function BankHero({
   );
 
   const meta = VARIANT_META[variant];
+  const cubeHint = Math.min(
+    5,
+    Math.max(
+      0,
+      Math.floor(mastery.streakDays / 7) + (mastery.streakDays > 0 ? 1 : 0)
+    )
+  );
 
   return (
     <section
@@ -211,7 +268,6 @@ export default function BankHero({
       className="relative flex min-h-[68vh] flex-col overflow-hidden"
     >
       <div className="mx-auto grid w-full max-w-[1440px] flex-1 lg:grid-cols-2">
-        {/* 左：文案 + 搜索 + 动态数据 */}
         <div className="flex flex-col justify-center px-5 py-14 md:px-8 lg:pr-12">
           <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
             <span className="text-accent">01</span>
@@ -275,16 +331,14 @@ export default function BankHero({
           </div>
         </div>
 
-        {/* 右：3D A/B 预览 */}
         <div className="bg-blueprint relative min-h-72 border-t border-line lg:border-l lg:border-t-0">
           <span
             aria-hidden
-            className="absolute left-4 top-4 z-10 max-w-[70%] font-mono text-[10px] tracking-[0.25em] text-ink/40"
+            className="absolute left-4 top-4 z-10 max-w-[55%] font-mono text-[10px] tracking-[0.25em] text-ink/40"
           >
             {meta.fig}
           </span>
 
-          {/* A/B switch — preview only; remove after pick */}
           <div className="absolute right-4 top-4 z-20 flex border border-line bg-paper/90 backdrop-blur-sm">
             {(["A", "B"] as const).map((v) => (
               <button
@@ -305,30 +359,95 @@ export default function BankHero({
             ))}
           </div>
 
-          <span
-            aria-hidden
-            className="absolute bottom-4 left-4 z-10 font-mono text-[10px] tracking-wider text-ink/35"
-          >
-            PREVIEW · {meta.blurb}
-          </span>
-          <span
-            aria-hidden
-            className="absolute bottom-4 right-4 z-10 font-mono text-accent"
-          >
-            +
-          </span>
+          {/* Mastery legend + preset scrubber (A only, preview) */}
+          {variant === "A" ? (
+            <div className="absolute bottom-4 left-4 right-4 z-20 space-y-2">
+              <div className="flex flex-wrap gap-1">
+                {(
+                  [
+                    ["weak", "薄弱"],
+                    ["mock", "Mock"],
+                    ["strong", "学霸"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPreset(key)}
+                    className={cn(
+                      "border px-2 py-0.5 font-mono text-[10px] tracking-wider transition-colors",
+                      preset === key
+                        ? "border-ink bg-ink text-paper"
+                        : "border-line bg-paper/80 text-ink/55 hover:border-ink/40 hover:text-ink"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <ul className="border border-line bg-paper/85 px-2.5 py-2 backdrop-blur-sm">
+                {ringSubjects.map((s, i) => {
+                  const weak = s.value < 60;
+                  return (
+                    <li
+                      key={s.label}
+                      className="flex items-center justify-between gap-3 font-mono text-[10px] tracking-wide"
+                    >
+                      <span className="text-ink/45">
+                        R{i + 1}
+                        <span className="mx-1.5 text-ink/25">·</span>
+                        {s.label}
+                      </span>
+                      <span className={weak ? "text-accent" : "text-ink/70"}>
+                        {s.value}%{weak ? " 弱" : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
+                  <span>
+                    核 {mastery.accuracy}% · 连打 {mastery.streakDays}d → 方块{" "}
+                    {cubeHint}
+                  </span>
+                  <span>{mastery.totalQuestions} 题</span>
+                </li>
+              </ul>
+            </div>
+          ) : (
+            <>
+              <span
+                aria-hidden
+                className="absolute bottom-4 left-4 z-10 font-mono text-[10px] tracking-wider text-ink/35"
+              >
+                PREVIEW · {meta.blurb}
+              </span>
+              <span
+                aria-hidden
+                className="absolute bottom-4 right-4 z-10 font-mono text-accent"
+              >
+                +
+              </span>
+            </>
+          )}
 
           {reduced ? (
             <div className="absolute inset-0 p-14 opacity-70">
-              {variant === "A" ? <StaticMeshA /> : <StaticMeshB />}
+              {variant === "A" ? (
+                <StaticMeshA mastery={mastery} />
+              ) : (
+                <StaticMeshB />
+              )}
             </div>
           ) : (
-            <BankHero3D active={active} variant={variant} />
+            <BankHero3D
+              active={active}
+              variant={variant}
+              mastery={mastery}
+            />
           )}
         </div>
       </div>
 
-      {/* 底部滚动 ticker */}
       <div className="relative border-t border-line py-2.5">
         <div className="overflow-hidden">
           <div ref={tickerRef} className="flex w-max will-change-transform">
