@@ -13,7 +13,7 @@ import {
 } from "@/lib/api/client";
 import type { FoodPost, VenueSummary } from "@/lib/api/types";
 
-let gatewayVenues = new Map<string, VenueSummary[]>();
+const gatewayVenues = new Map<string, VenueSummary[]>();
 let gatewayPosts: FoodPost[] | null = null;
 let lastError: string | null = null;
 let loaded = false;
