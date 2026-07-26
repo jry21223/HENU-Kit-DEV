@@ -5,17 +5,14 @@ import dynamic from "next/dynamic";
 import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 import { USER_STATS } from "@/lib/practice/mock";
-import type {
-  BankHeroVariant,
-  MasterySnapshot,
-} from "@/components/practice/bank-hero-3d";
+import type { MasterySnapshot } from "@/components/practice/bank-hero-3d";
 
 const BankHero3D = dynamic(() => import("@/components/practice/bank-hero-3d"), {
   ssr: false,
 });
 
-/** Live mock from practice stats — default source of truth for Variant A. */
-const MOCK_MASTERY: MasterySnapshot = {
+/** Mastery snapshot from practice mock (same source as /practice/stats). */
+const MASTERY: MasterySnapshot = {
   subjects: USER_STATS.mastery.map((m) => ({
     label: m.label,
     value: m.value,
@@ -24,35 +21,6 @@ const MOCK_MASTERY: MasterySnapshot = {
   streakDays: USER_STATS.streakDays,
   totalQuestions: USER_STATS.totalQuestions,
 };
-
-/** Preview extremes so the mastery binding is obvious without editing mock.ts */
-const PRESETS: Record<"weak" | "mock" | "strong", MasterySnapshot> = {
-  weak: {
-    subjects: [
-      { label: "数据结构", value: 38 },
-      { label: "高等数学A", value: 42 },
-      { label: "操作系统", value: 31 },
-      { label: "线性代数", value: 28 },
-    ],
-    accuracy: 41,
-    streakDays: 2,
-    totalQuestions: 64,
-  },
-  mock: MOCK_MASTERY,
-  strong: {
-    subjects: [
-      { label: "数据结构", value: 94 },
-      { label: "高等数学A", value: 91 },
-      { label: "操作系统", value: 88 },
-      { label: "线性代数", value: 86 },
-    ],
-    accuracy: 93,
-    streakDays: 48,
-    totalQuestions: 2100,
-  },
-};
-
-type PresetKey = keyof typeof PRESETS;
 
 const COUNTERS = [
   { label: "全站总刷题", value: 128436 },
@@ -68,20 +36,8 @@ const TICKER = [
   "你 今天的刷题数超过了 83% 的同学",
 ];
 
-const VARIANT_META: Record<BankHeroVariant, { fig: string; blurb: string }> = {
-  A: {
-    fig: "FIG.01 知识点结构 / KNOWLEDGE MESH",
-    blurb: "掌握度驱动 · 进度弧/核/公转",
-  },
-  B: {
-    fig: "FIG.01 答题卡叠层 / ANSWER SHEETS",
-    blurb: "题册剖面 + 勾选",
-  },
-};
-
 /** Ellipse circumference approx for stroke-dash progress (rx, ry). */
 function ellipsePerim(rx: number, ry: number) {
-  // Ramanujan approximation
   return Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)));
 }
 
@@ -92,8 +48,8 @@ function formatNum(n: number) {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-/** reduced-motion：A 晶体轮廓 + 进度弧（与 3D 同一编码） */
-function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
+/** reduced-motion：晶体轮廓 + 进度弧（与 3D 同一编码） */
+function StaticKnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
   const rings = mastery.subjects.slice(0, 3);
   const acc = mastery.accuracy / 100;
   const cov =
@@ -108,7 +64,6 @@ function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
       fill="none"
       stroke="currentColor"
     >
-      {/* Outer cage opacity → coverage */}
       <polygon
         points="100,28 168,78 148,168 52,168 32,78"
         strokeWidth="1.2"
@@ -119,7 +74,6 @@ function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
         strokeWidth="1"
         opacity={0.12 + cov * 0.4}
       />
-      {/* Nucleus → accuracy */}
       <circle
         cx="100"
         cy="110"
@@ -137,7 +91,6 @@ function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
         const filled = Math.max(perim * 0.04, perim * t);
         return (
           <g key={s.label}>
-            {/* full track */}
             <ellipse
               cx="100"
               cy="118"
@@ -146,7 +99,6 @@ function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
               strokeWidth="0.8"
               opacity={0.14}
             />
-            {/* progress arc */}
             <ellipse
               cx="100"
               cy="118"
@@ -159,7 +111,6 @@ function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
               strokeLinecap="butt"
               transform="rotate(-90 100 118)"
             />
-            {/* start tick */}
             <path
               d={`M${100 + rx - 1} 118 h6`}
               strokeWidth="1.2"
@@ -170,41 +121,6 @@ function StaticMeshA({ mastery }: { mastery: MasterySnapshot }) {
         );
       })}
       <path d="M100 18 v-12 M94 12 h12" className="stroke-accent" />
-    </svg>
-  );
-}
-
-function StaticMeshB() {
-  return (
-    <svg
-      viewBox="0 0 200 240"
-      aria-hidden
-      className="h-full w-full text-ink/40"
-      fill="none"
-      stroke="currentColor"
-    >
-      <rect x="48" y="36" width="96" height="128" rx="2" opacity="0.35" />
-      <rect x="56" y="48" width="96" height="128" rx="2" opacity="0.55" />
-      <rect x="64" y="60" width="96" height="128" rx="2" strokeWidth="1.2" />
-      <path d="M78 78 h68" className="stroke-accent" strokeWidth="1.2" />
-      {[0, 1, 2, 3].map((i) => (
-        <g key={i}>
-          <rect x="78" y={98 + i * 20} width="10" height="10" />
-          {i < 2 ? (
-            <path
-              d={`M80 ${104 + i * 20} l3 3 l6 -7`}
-              className="stroke-accent"
-              strokeWidth="1.4"
-            />
-          ) : null}
-          <path d={`M96 ${103 + i * 20} h40`} opacity="0.45" />
-        </g>
-      ))}
-      <g transform="translate(150 150) rotate(-35)">
-        <rect x="0" y="0" width="8" height="54" />
-        <path d="M0 54 L4 66 L8 54" className="stroke-accent" />
-      </g>
-      <path d="M100 28 v-14 M94 20 h12" className="stroke-accent" />
     </svg>
   );
 }
@@ -220,11 +136,16 @@ export default function BankHero({
   const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const tickerRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(true);
-  const [variant, setVariant] = useState<BankHeroVariant>("A");
-  const [preset, setPreset] = useState<PresetKey>("mock");
 
-  const mastery = useMemo(() => PRESETS[preset], [preset]);
+  const mastery = useMemo(() => MASTERY, []);
   const ringSubjects = mastery.subjects.slice(0, 3);
+  const cubeHint = Math.min(
+    4,
+    Math.max(
+      0,
+      Math.floor(mastery.streakDays / 10) + (mastery.streakDays > 0 ? 1 : 0)
+    )
+  );
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -292,16 +213,6 @@ export default function BankHero({
       return () => mm.revert();
     },
     { scope: sectionRef }
-  );
-
-  const meta = VARIANT_META[variant];
-  // Match VariantA orbit cube mapping (quiet secondary cue)
-  const cubeHint = Math.min(
-    4,
-    Math.max(
-      0,
-      Math.floor(mastery.streakDays / 10) + (mastery.streakDays > 0 ? 1 : 0)
-    )
   );
 
   return (
@@ -374,137 +285,74 @@ export default function BankHero({
           </div>
         </div>
 
+        {/* 右：掌握度驱动的知识体 3D */}
         <div className="bg-blueprint relative min-h-72 border-t border-line lg:border-l lg:border-t-0">
           <span
             aria-hidden
-            className="absolute left-4 top-4 z-10 max-w-[55%] font-mono text-[10px] tracking-[0.25em] text-ink/40"
+            className="absolute left-4 top-4 z-10 max-w-[70%] font-mono text-[10px] tracking-[0.25em] text-ink/40"
           >
-            {meta.fig}
+            FIG.01 知识点结构 / KNOWLEDGE MESH
+          </span>
+          <span
+            aria-hidden
+            className="absolute right-4 top-4 z-10 font-mono text-accent"
+          >
+            +
           </span>
 
-          <div className="absolute right-4 top-4 z-20 flex border border-line bg-paper/90 backdrop-blur-sm">
-            {(["A", "B"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setVariant(v)}
-                className={cn(
-                  "px-2.5 py-1 font-mono text-[10px] tracking-widest transition-colors",
-                  variant === v
-                    ? "bg-ink text-paper"
-                    : "text-ink/50 hover:text-ink"
-                )}
-                aria-pressed={variant === v}
-                title={VARIANT_META[v].blurb}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-
-          {/* Mastery legend + preset scrubber (A only, preview) */}
-          {variant === "A" ? (
-            <div className="absolute bottom-4 left-4 right-4 z-20 space-y-2">
-              <div className="flex flex-wrap gap-1">
-                {(
-                  [
-                    ["weak", "薄弱"],
-                    ["mock", "Mock"],
-                    ["strong", "学霸"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setPreset(key)}
-                    className={cn(
-                      "border px-2 py-0.5 font-mono text-[10px] tracking-wider transition-colors",
-                      preset === key
-                        ? "border-ink bg-ink text-paper"
-                        : "border-line bg-paper/80 text-ink/55 hover:border-ink/40 hover:text-ink"
-                    )}
+          <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20">
+            <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
+              {ringSubjects.map((s, i) => {
+                const weak = s.value < 60;
+                const t = Math.min(100, Math.max(0, s.value));
+                return (
+                  <li
+                    key={s.label}
+                    className="flex items-center gap-2 py-0.5 font-mono text-[10px] tracking-wide"
                   >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
-                {ringSubjects.map((s, i) => {
-                  const weak = s.value < 60;
-                  const t = Math.min(100, Math.max(0, s.value));
-                  return (
-                    <li
-                      key={s.label}
-                      className="flex items-center gap-2 py-0.5 font-mono text-[10px] tracking-wide"
+                    <span className="w-5 shrink-0 text-ink/35">R{i + 1}</span>
+                    <span className="w-16 shrink-0 truncate text-ink/50">
+                      {s.label}
+                    </span>
+                    <span
+                      aria-hidden
+                      className="relative h-[3px] min-w-0 flex-1 bg-ink/10"
                     >
-                      <span className="w-5 shrink-0 text-ink/35">R{i + 1}</span>
-                      <span className="w-16 shrink-0 truncate text-ink/50">
-                        {s.label}
-                      </span>
-                      {/* diagram-style gauge: track + fill */}
-                      <span
-                        aria-hidden
-                        className="relative h-[3px] min-w-0 flex-1 bg-ink/10"
-                      >
-                        <span
-                          className={cn(
-                            "absolute inset-y-0 left-0",
-                            weak ? "bg-accent" : "bg-ink/55"
-                          )}
-                          style={{ width: `${t}%` }}
-                        />
-                      </span>
                       <span
                         className={cn(
-                          "w-9 shrink-0 text-right tabular-nums",
-                          weak ? "text-accent" : "text-ink/65"
+                          "absolute inset-y-0 left-0",
+                          weak ? "bg-accent" : "bg-ink/55"
                         )}
-                      >
-                        {t}%
-                      </span>
-                    </li>
-                  );
-                })}
-                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
-                  <span>
-                    核 {mastery.accuracy}% · 连打 {mastery.streakDays}d · 块{" "}
-                    {cubeHint}
-                  </span>
-                  <span>{mastery.totalQuestions} 题</span>
-                </li>
-              </ul>
-            </div>
-          ) : (
-            <>
-              <span
-                aria-hidden
-                className="absolute bottom-4 left-4 z-10 font-mono text-[10px] tracking-wider text-ink/35"
-              >
-                PREVIEW · {meta.blurb}
-              </span>
-              <span
-                aria-hidden
-                className="absolute bottom-4 right-4 z-10 font-mono text-accent"
-              >
-                +
-              </span>
-            </>
-          )}
+                        style={{ width: `${t}%` }}
+                      />
+                    </span>
+                    <span
+                      className={cn(
+                        "w-9 shrink-0 text-right tabular-nums",
+                        weak ? "text-accent" : "text-ink/65"
+                      )}
+                    >
+                      {t}%
+                    </span>
+                  </li>
+                );
+              })}
+              <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
+                <span>
+                  核 {mastery.accuracy}% · 连打 {mastery.streakDays}d · 块{" "}
+                  {cubeHint}
+                </span>
+                <span>{mastery.totalQuestions} 题</span>
+              </li>
+            </ul>
+          </div>
 
           {reduced ? (
             <div className="absolute inset-0 p-14 opacity-70">
-              {variant === "A" ? (
-                <StaticMeshA mastery={mastery} />
-              ) : (
-                <StaticMeshB />
-              )}
+              <StaticKnowledgeMesh mastery={mastery} />
             </div>
           ) : (
-            <BankHero3D
-              active={active}
-              variant={variant}
-              mastery={mastery}
-            />
+            <BankHero3D active={active} mastery={mastery} />
           )}
         </div>
       </div>

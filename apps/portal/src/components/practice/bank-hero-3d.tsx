@@ -1,14 +1,12 @@
 "use client";
 
 /**
- * Practice bank hero 3D — A/B variants (no GLB).
+ * Practice bank hero 3D — mastery-driven knowledge mesh (no GLB).
  *
- * A  Knowledge mesh driven by mastery snapshot
- *    - subject rings: faint full track + progress arc (arc = mastery %)
- *    - nucleus: accuracy → size / brightness
- *    - outer cage: coverage average → density / opacity
- *    - orbit cubes: streak (quiet secondary cue)
- * B  Answer sheet: stacked cards + check marks + pencil (quiz metaphor)
+ * - subject rings: faint full track + progress arc (arc = mastery %)
+ * - nucleus: accuracy → size / brightness
+ * - outer cage: coverage average → density / opacity
+ * - orbit cubes: streak (quiet secondary cue)
  */
 
 import { useEffect, useMemo, useRef } from "react";
@@ -25,15 +23,13 @@ const LERP = 6.5;
 /** Rebuild torus arc only when display % moves ≥ this */
 const ARC_REBUILD_STEP = 0.012;
 
-export type BankHeroVariant = "A" | "B";
-
 /** 0–100 subject mastery row (same shape as USER_STATS.mastery). */
 export type MasterySubject = {
   label: string;
   value: number;
 };
 
-/** Snapshot that drives Variant A. */
+/** Snapshot that drives the knowledge mesh. */
 export type MasterySnapshot = {
   subjects: MasterySubject[];
   /** Overall accuracy 0–100 → nucleus size / brightness */
@@ -144,8 +140,6 @@ function OrbitingCubes({
   );
 }
 
-/* ─── Variant A: mastery-driven knowledge mesh ────────────────────────── */
-
 function KnowledgeCore({
   accuracy,
   coverage,
@@ -174,29 +168,16 @@ function KnowledgeCore({
     c.acc = damp(c.acc, t.acc, delta);
     c.cov = damp(c.cov, t.cov, delta);
 
-    // Accuracy → solid-ish nucleus; coverage → cage scale/opacity (separate channels)
     const nucleusScale = 0.12 + c.acc * 0.28;
     const midScale = 0.42 + c.cov * 0.28;
     const outerScale = 0.92 + c.cov * 0.18;
 
-    if (nucleusRef.current) {
-      nucleusRef.current.scale.setScalar(nucleusScale);
-    }
-    if (midRef.current) {
-      midRef.current.scale.setScalar(midScale);
-    }
-    if (outerRef.current) {
-      outerRef.current.scale.setScalar(outerScale);
-    }
-    if (nucleusMat.current) {
-      nucleusMat.current.opacity = 0.5 + c.acc * 0.48;
-    }
-    if (midMat.current) {
-      midMat.current.opacity = 0.1 + c.cov * 0.32;
-    }
-    if (outerMat.current) {
-      outerMat.current.opacity = 0.14 + c.cov * 0.38;
-    }
+    if (nucleusRef.current) nucleusRef.current.scale.setScalar(nucleusScale);
+    if (midRef.current) midRef.current.scale.setScalar(midScale);
+    if (outerRef.current) outerRef.current.scale.setScalar(outerScale);
+    if (nucleusMat.current) nucleusMat.current.opacity = 0.5 + c.acc * 0.48;
+    if (midMat.current) midMat.current.opacity = 0.1 + c.cov * 0.32;
+    if (outerMat.current) outerMat.current.opacity = 0.14 + c.cov * 0.38;
   });
 
   const acc0 = pct(accuracy);
@@ -208,7 +189,6 @@ function KnowledgeCore({
       rotationIntensity={0.12 + acc0 * 0.12}
       floatIntensity={0.35 + acc0 * 0.4}
     >
-      {/* Outer cage — coverage */}
       <mesh ref={outerRef}>
         <icosahedronGeometry args={[1.15, detail]} />
         <meshBasicMaterial
@@ -219,7 +199,6 @@ function KnowledgeCore({
           opacity={0.14 + coverage * 0.38}
         />
       </mesh>
-      {/* Mid cage — coverage (secondary shell) */}
       <mesh ref={midRef} scale={0.42 + coverage * 0.28}>
         <icosahedronGeometry args={[1.15, 0]} />
         <meshBasicMaterial
@@ -230,7 +209,6 @@ function KnowledgeCore({
           opacity={0.1 + coverage * 0.32}
         />
       </mesh>
-      {/* Nucleus — accuracy only */}
       <mesh ref={nucleusRef} scale={0.12 + acc0 * 0.28}>
         <octahedronGeometry args={[1, 0]} />
         <meshBasicMaterial
@@ -248,9 +226,9 @@ function KnowledgeCore({
 /**
  * Single subject ring:
  * - full faint track (always complete)
- * - progress arc = 2π × mastery (the readable encoding)
+ * - progress arc = 2π × mastery
  * - weak (<60) → accent fill; else ink
- * - tube / opacity / arc lerped on preset change
+ * - tube / opacity / arc lerped when mastery changes
  */
 function SubjectRing({
   label,
@@ -280,11 +258,10 @@ function SubjectRing({
     const t = curT.current;
     const weak = t < 0.6;
 
-    // Rebuild arc geometry only on stepped changes (not every frame)
     if (
       builtT.current < 0 ||
       Math.abs(t - builtT.current) >= ARC_REBUILD_STEP ||
-      (builtT.current < 0.6) !== weak
+      builtT.current < 0.6 !== weak
     ) {
       builtT.current = t;
       const mesh = progressMesh.current;
@@ -306,8 +283,7 @@ function SubjectRing({
       tickMat.current.opacity = 0.4 + t * 0.45;
     }
     if (group.current) {
-      const s = 0.94 + t * 0.1;
-      group.current.scale.setScalar(s);
+      group.current.scale.setScalar(0.94 + t * 0.1);
     }
   });
 
@@ -318,12 +294,10 @@ function SubjectRing({
 
   return (
     <group ref={group} rotation={tilt} userData={{ label }}>
-      {/* Full track — engineering gauge backdrop */}
       <mesh>
         <torusGeometry args={[baseR, 0.006, 6, 72]} />
         <meshBasicMaterial color={INK} transparent opacity={0.1} />
       </mesh>
-      {/* Progress arc — mastery fill */}
       <mesh ref={progressMesh}>
         <torusGeometry args={[baseR, tube0, 10, 96, arc0]} />
         <meshBasicMaterial
@@ -333,7 +307,6 @@ function SubjectRing({
           opacity={0.35 + t0 * 0.55}
         />
       </mesh>
-      {/* Start tick — blueprint crosshair at arc origin */}
       <mesh position={[baseR, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
         <boxGeometry args={[0.09, 0.012, 0.012]} />
         <meshBasicMaterial
@@ -376,7 +349,6 @@ function MasteryRings({ subjects }: { subjects: MasterySubject[] }) {
     if (!group.current) return;
     avgCur.current = damp(avgCur.current, avgTarget.current, delta);
     const avg = avgCur.current;
-    // Stronger mastery → slightly snappier precession
     group.current.rotation.z += delta * (0.045 + avg * 0.12);
     group.current.rotation.x += delta * (0.018 + avg * 0.045);
   });
@@ -407,14 +379,13 @@ function MasteryRings({ subjects }: { subjects: MasterySubject[] }) {
   );
 }
 
-function VariantA({ mastery }: { mastery: MasterySnapshot }) {
+function KnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
   const coverage = useMemo(() => {
     const list = mastery.subjects;
     if (!list.length) return 0;
     return list.reduce((a, s) => a + s.value, 0) / list.length / 100;
   }, [mastery.subjects]);
 
-  // streak → cubes: quiet secondary; 0 / 1 / 2 / 3 / 4 max
   const cubeCount = Math.min(
     4,
     Math.max(
@@ -437,117 +408,11 @@ function VariantA({ mastery }: { mastery: MasterySnapshot }) {
   );
 }
 
-/* ─── Variant B: Answer sheet stack ───────────────────────────────────── */
-
-function Sheet({
-  y,
-  rotZ,
-  depth,
-  accentEdge = false,
-}: {
-  y: number;
-  rotZ: number;
-  depth: number;
-  accentEdge?: boolean;
-}) {
-  return (
-    <group position={[0, y, depth]} rotation={[0.08, 0.35, rotZ]}>
-      <mesh>
-        <boxGeometry args={[1.7, 2.15, 0.04]} />
-        <meshBasicMaterial wireframe color={INK} transparent opacity={0.38} />
-      </mesh>
-      <mesh position={[0, 0, -0.005]}>
-        <boxGeometry args={[1.62, 2.05, 0.01]} />
-        <meshBasicMaterial color={PAPER} transparent opacity={0.55} />
-      </mesh>
-      <mesh position={[0, 0.85, 0.03]}>
-        <boxGeometry args={[1.35, 0.02, 0.01]} />
-        <meshBasicMaterial color={accentEdge ? ACCENT : INK} />
-      </mesh>
-      {[-0.35, -0.05, 0.25, 0.55].map((ly, i) => (
-        <mesh key={ly} position={[0.1, ly, 0.03]}>
-          <boxGeometry args={[1.1 - i * 0.08, 0.012, 0.008]} />
-          <meshBasicMaterial color={INK} transparent opacity={0.25} />
-        </mesh>
-      ))}
-      {[-0.35, -0.05, 0.25].map((cy, i) => (
-        <group key={cy} position={[-0.62, cy, 0.04]}>
-          <mesh>
-            <boxGeometry args={[0.14, 0.14, 0.01]} />
-            <meshBasicMaterial wireframe color={INK} transparent opacity={0.5} />
-          </mesh>
-          {i < 2 ? (
-            <group position={[0, 0, 0.02]} rotation={[0, 0, -0.4]}>
-              <mesh position={[-0.02, -0.02, 0]}>
-                <boxGeometry args={[0.06, 0.015, 0.008]} />
-                <meshBasicMaterial color={ACCENT} />
-              </mesh>
-              <mesh position={[0.03, 0.01, 0]} rotation={[0, 0, 1.1]}>
-                <boxGeometry args={[0.1, 0.015, 0.008]} />
-                <meshBasicMaterial color={ACCENT} />
-              </mesh>
-            </group>
-          ) : null}
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function Pencil() {
-  const ref = useRef<THREE.Group>(null);
-  useFrame((state) => {
-    if (!ref.current) return;
-    ref.current.position.y =
-      -0.15 + Math.sin(state.clock.elapsedTime * 1.1) * 0.06;
-  });
-  return (
-    <group
-      ref={ref}
-      position={[1.15, -0.2, 0.55]}
-      rotation={[0.2, 0, -0.55]}
-    >
-      <mesh>
-        <cylinderGeometry args={[0.045, 0.045, 1.35, 6]} />
-        <meshBasicMaterial wireframe color={INK} transparent opacity={0.55} />
-      </mesh>
-      <mesh position={[0, -0.78, 0]}>
-        <coneGeometry args={[0.045, 0.22, 6]} />
-        <meshBasicMaterial wireframe color={ACCENT} transparent opacity={0.9} />
-      </mesh>
-      <mesh position={[0, 0.72, 0]}>
-        <cylinderGeometry args={[0.05, 0.05, 0.12, 6]} />
-        <meshBasicMaterial color={ACCENT} transparent opacity={0.7} />
-      </mesh>
-    </group>
-  );
-}
-
-function VariantB() {
-  return (
-    <Rig spin={0.1}>
-      <Float speed={0.9} rotationIntensity={0.12} floatIntensity={0.35}>
-        <group position={[0, 0.05, 0]}>
-          <Sheet y={0.18} rotZ={-0.12} depth={-0.25} />
-          <Sheet y={0.05} rotZ={0.04} depth={0} />
-          <Sheet y={-0.08} rotZ={0.14} depth={0.28} accentEdge />
-          <Pencil />
-        </group>
-      </Float>
-      <OrbitingCubes count={2} radius={2.35} speed={0.2} />
-    </Rig>
-  );
-}
-
-/* ─── Canvas shell ────────────────────────────────────────────────────── */
-
 export default function BankHero3D({
   active = true,
-  variant = "A",
   mastery = EMPTY_MASTERY,
 }: {
   active?: boolean;
-  variant?: BankHeroVariant;
   mastery?: MasterySnapshot;
 }) {
   return (
@@ -561,7 +426,7 @@ export default function BankHero3D({
     >
       <hemisphereLight args={[PAPER, INK, 0.35]} />
       <ambientLight intensity={0.55} />
-      {variant === "A" ? <VariantA mastery={mastery} /> : <VariantB />}
+      <KnowledgeMesh mastery={mastery} />
     </Canvas>
   );
 }
