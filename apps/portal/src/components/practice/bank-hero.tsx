@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
+import { cn } from "@/lib/cn";
+import type { BankHeroVariant } from "@/components/practice/bank-hero-3d";
 
 const BankHero3D = dynamic(() => import("@/components/practice/bank-hero-3d"), {
   ssr: false,
@@ -22,22 +24,99 @@ const TICKER = [
   "你 今天的刷题数超过了 83% 的同学",
 ];
 
+const VARIANT_META: Record<
+  BankHeroVariant,
+  { fig: string; blurb: string }
+> = {
+  A: {
+    fig: "FIG.01 知识点结构 / KNOWLEDGE MESH",
+    blurb: "线框晶体 + 掌握度环",
+  },
+  B: {
+    fig: "FIG.01 答题卡叠层 / ANSWER SHEETS",
+    blurb: "题册剖面 + 勾选",
+  },
+};
+
 // 迷你折线（固定路径，循环重绘）
 const SPARK_PATH = "M0 34 L28 30 L56 33 L84 22 L112 26 L140 14 L168 18 L196 6";
-const SPARK_LEN = 240; // 略大于实际路径长，保证完整覆盖
+const SPARK_LEN = 240;
 
 function formatNum(n: number) {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-/** reduced-motion 时替代 3D 的静态石膏几何占位 */
-function StaticPlaster() {
+/** reduced-motion：A 晶体轮廓 */
+function StaticMeshA() {
   return (
-    <svg viewBox="0 0 200 240" aria-hidden className="h-full w-full text-ink/40" fill="none" stroke="currentColor">
-      <ellipse cx="100" cy="92" rx="52" ry="64" />
-      <path d="M76 150 h48 l6 34 h-60 z" />
-      <path d="M60 184 h80 M52 206 h96 M44 228 h112" strokeDasharray="3 5" />
-      <path d="M100 28 v-16 M92 16 h16" className="stroke-accent" />
+    <svg
+      viewBox="0 0 200 240"
+      aria-hidden
+      className="h-full w-full text-ink/40"
+      fill="none"
+      stroke="currentColor"
+    >
+      <polygon points="100,28 168,78 148,168 52,168 32,78" strokeWidth="1.2" />
+      <polygon
+        points="100,58 140,88 128,142 72,142 60,88"
+        strokeWidth="1"
+        opacity="0.55"
+      />
+      <circle cx="100" cy="110" r="10" className="stroke-accent" strokeWidth="1.4" />
+      <ellipse
+        cx="100"
+        cy="118"
+        rx="62"
+        ry="22"
+        strokeDasharray="4 6"
+        opacity="0.45"
+      />
+      <ellipse
+        cx="100"
+        cy="118"
+        rx="78"
+        ry="30"
+        strokeDasharray="2 8"
+        opacity="0.3"
+      />
+      <path d="M100 18 v-12 M94 12 h12" className="stroke-accent" />
+    </svg>
+  );
+}
+
+/** reduced-motion：B 答题卡轮廓 */
+function StaticMeshB() {
+  return (
+    <svg
+      viewBox="0 0 200 240"
+      aria-hidden
+      className="h-full w-full text-ink/40"
+      fill="none"
+      stroke="currentColor"
+    >
+      <rect x="48" y="36" width="96" height="128" rx="2" opacity="0.35" />
+      <rect x="56" y="48" width="96" height="128" rx="2" opacity="0.55" />
+      <rect x="64" y="60" width="96" height="128" rx="2" strokeWidth="1.2" />
+      <path d="M78 78 h68" className="stroke-accent" strokeWidth="1.2" />
+      {[0, 1, 2, 3].map((i) => (
+        <g key={i}>
+          <rect x="78" y={98 + i * 20} width="10" height="10" />
+          {i < 2 ? (
+            <path
+              d={`M80 ${104 + i * 20} l3 3 l6 -7`}
+              className="stroke-accent"
+              strokeWidth="1.4"
+            />
+          ) : null}
+          <path d={`M96 ${103 + i * 20} h40`} opacity="0.45" />
+        </g>
+      ))}
+      {/* pencil */}
+      <g transform="translate(150 150) rotate(-35)">
+        <rect x="0" y="0" width="8" height="54" />
+        <path d="M0 54 L4 66 L8 54" className="stroke-accent" />
+      </g>
+      <path d="M100 28 v-14 M94 20 h12" className="stroke-accent" />
     </svg>
   );
 }
@@ -52,8 +131,8 @@ export default function BankHero({
   const sectionRef = useRef<HTMLElement>(null);
   const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const tickerRef = useRef<HTMLDivElement>(null);
-  // Hero 有任何一部分在视窗内才驱动 3D 渲染循环
   const [active, setActive] = useState(true);
+  const [variant, setVariant] = useState<BankHeroVariant>("A");
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -76,7 +155,6 @@ export default function BankHero({
     () => false
   );
 
-  // 计数滚动 + 折线循环重绘 + ticker 无缝滚动（均挂载后启动）
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
@@ -124,6 +202,8 @@ export default function BankHero({
     { scope: sectionRef }
   );
 
+  const meta = VARIANT_META[variant];
+
   return (
     <section
       ref={sectionRef}
@@ -138,7 +218,10 @@ export default function BankHero({
             <span className="mx-2">/</span>
             QUESTION BANK
           </p>
-          <h1 data-enter className="mt-4 font-display text-6xl font-bold tracking-tight md:text-7xl">
+          <h1
+            data-enter
+            className="mt-4 font-display text-6xl font-bold tracking-tight md:text-7xl"
+          >
             题库
           </h1>
           <p data-enter className="mt-5 max-w-md text-sm leading-7 text-ink/70">
@@ -158,7 +241,6 @@ export default function BankHero({
             />
           </div>
 
-          {/* 动态数据区 */}
           <div data-enter className="mt-10 flex flex-wrap items-end gap-x-10 gap-y-6">
             {COUNTERS.map((c, i) => (
               <div key={c.label}>
@@ -166,29 +248,82 @@ export default function BankHero({
                   {c.label}
                 </p>
                 <p className="mt-1 font-display text-3xl font-bold tabular-nums">
-                  <span ref={(el) => { counterRefs.current[i] = el; }}>0</span>
+                  <span
+                    ref={(el) => {
+                      counterRefs.current[i] = el;
+                    }}
+                  >
+                    0
+                  </span>
                 </p>
               </div>
             ))}
-            <svg viewBox="0 0 196 40" aria-hidden className="h-10 w-48 text-ink/60" fill="none">
+            <svg
+              viewBox="0 0 196 40"
+              aria-hidden
+              className="h-10 w-48 text-ink/60"
+              fill="none"
+            >
               <path d="M0 38 H196" className="stroke-line" />
-              <path data-spark d={SPARK_PATH} className="stroke-accent" strokeWidth="1.5" />
+              <path
+                data-spark
+                d={SPARK_PATH}
+                className="stroke-accent"
+                strokeWidth="1.5"
+              />
             </svg>
           </div>
         </div>
 
-        {/* 右：3D 石膏头 */}
+        {/* 右：3D A/B 预览 */}
         <div className="bg-blueprint relative min-h-72 border-t border-line lg:border-l lg:border-t-0">
-          <span aria-hidden className="absolute left-4 top-4 z-10 font-mono text-[10px] tracking-[0.3em] text-ink/40">
-            FIG.01 古典胸像 / MARBLE BUST
+          <span
+            aria-hidden
+            className="absolute left-4 top-4 z-10 max-w-[70%] font-mono text-[10px] tracking-[0.25em] text-ink/40"
+          >
+            {meta.fig}
           </span>
-          <span aria-hidden className="absolute bottom-4 right-4 z-10 font-mono text-accent">+</span>
+
+          {/* A/B switch — preview only; remove after pick */}
+          <div className="absolute right-4 top-4 z-20 flex border border-line bg-paper/90 backdrop-blur-sm">
+            {(["A", "B"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVariant(v)}
+                className={cn(
+                  "px-2.5 py-1 font-mono text-[10px] tracking-widest transition-colors",
+                  variant === v
+                    ? "bg-ink text-paper"
+                    : "text-ink/50 hover:text-ink"
+                )}
+                aria-pressed={variant === v}
+                title={VARIANT_META[v].blurb}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+
+          <span
+            aria-hidden
+            className="absolute bottom-4 left-4 z-10 font-mono text-[10px] tracking-wider text-ink/35"
+          >
+            PREVIEW · {meta.blurb}
+          </span>
+          <span
+            aria-hidden
+            className="absolute bottom-4 right-4 z-10 font-mono text-accent"
+          >
+            +
+          </span>
+
           {reduced ? (
             <div className="absolute inset-0 p-14 opacity-70">
-              <StaticPlaster />
+              {variant === "A" ? <StaticMeshA /> : <StaticMeshB />}
             </div>
           ) : (
-            <BankHero3D active={active} />
+            <BankHero3D active={active} variant={variant} />
           )}
         </div>
       </div>
@@ -198,11 +333,22 @@ export default function BankHero({
         <div className="overflow-hidden">
           <div ref={tickerRef} className="flex w-max will-change-transform">
             {[0, 1].map((dup) => (
-              <div key={dup} className="flex shrink-0 items-center" aria-hidden={dup === 1}>
+              <div
+                key={dup}
+                className="flex shrink-0 items-center"
+                aria-hidden={dup === 1}
+              >
                 {TICKER.map((t, i) => (
-                  <span key={`${dup}-${i}`} className="flex items-center whitespace-nowrap">
-                    <span className="px-5 font-mono text-[11px] tracking-wider text-ink/60">{t}</span>
-                    <span aria-hidden className="text-[9px] text-accent">+</span>
+                  <span
+                    key={`${dup}-${i}`}
+                    className="flex items-center whitespace-nowrap"
+                  >
+                    <span className="px-5 font-mono text-[11px] tracking-wider text-ink/60">
+                      {t}
+                    </span>
+                    <span aria-hidden className="text-[9px] text-accent">
+                      +
+                    </span>
                   </span>
                 ))}
               </div>
