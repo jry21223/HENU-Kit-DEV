@@ -9,7 +9,7 @@ const variantClass: Record<ButtonVariant, string> = {
   ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
 };
 
-type ButtonLinkProps = ComponentPropsWithoutRef<typeof Link> & {
+type ButtonLinkProps = Omit<ComponentPropsWithoutRef<typeof Link>, "key" | "ref"> & {
   children: ReactNode;
   variant?: ButtonVariant;
 };
