@@ -173,8 +173,13 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid oauth cookie"})
 		return
 	}
+	stateBytes, err := base64.RawURLEncoding.DecodeString(state)
+	if err != nil || len(stateBytes) != 32 {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid or expired state"})
+		return
+	}
 
-	stateHash := sha256Hex([]byte(state))
+	stateHash := sha256Hex(stateBytes)
 	browserHash := sha256Hex(browserNonce)
 	key := fmt.Sprintf("portal:oauth-state:%s:%s", stateHash, browserHash)
 
@@ -195,7 +200,6 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true, Secure: cookies.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 
-	stateBytes, _ := base64.RawURLEncoding.DecodeString(state)
 	idempotencyKey := hex.EncodeToString(stateBytes[:16])
 	result, err := h.platform.ExchangeCode(r.Context(), code, stored["verifier"], idempotencyKey)
 	if err != nil {
