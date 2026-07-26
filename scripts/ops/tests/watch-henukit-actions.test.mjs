@@ -26,6 +26,7 @@ function fixture({
   approved = true,
   badChecksum = false,
   branchSha = releaseSha,
+  canonicalQuizRedirect = false,
   failTargetHealth = false,
   previousSha = "b".repeat(40),
   runConclusion = "success",
@@ -181,6 +182,12 @@ if [[ "$FAKE_FAIL_TARGET_HEALTH" == "1" &&
   exit 22
 fi
 if [[ "$*" == *"--write-out"* ]]; then
+  if [[ "$FAKE_CANONICAL_QUIZ_REDIRECT" == "1" &&
+        "$*" == *"https://example.test/quiz/"* &&
+        "$*" != *"--location"* ]]; then
+    printf '308'
+    exit 0
+  fi
   printf '404'
 fi
 `,
@@ -196,6 +203,7 @@ fi
       FAKE_ACTIVE_FILE: active,
       FAKE_BAD_CHECKSUM: badChecksum ? "1" : "0",
       FAKE_BRANCH_SHA: branchSha,
+      FAKE_CANONICAL_QUIZ_REDIRECT: canonicalQuizRedirect ? "1" : "0",
       FAKE_CALL_LOG: log,
       FAKE_FAIL_TARGET_HEALTH: failTargetHealth ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
@@ -238,6 +246,20 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
   execFileSync(script, ["--once"], { env: setup.env });
   const secondCalls = readFileSync(setup.log, "utf8");
   assert.equal((secondCalls.match(/^deploy /gm) ?? []).length, 1);
+});
+
+test("one-shot accepts the canonical retired Quiz redirect when its final response is 404", () => {
+  const setup = fixture({ canonicalQuizRedirect: true });
+
+  const output = execFileSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.match(
+    output,
+    new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
+  );
 });
 
 test("one-shot does nothing when no main workflow run has completed successfully", () => {

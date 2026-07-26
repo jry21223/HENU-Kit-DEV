@@ -228,9 +228,9 @@ verify_active_release() {
   curl --fail --silent --show-error "$public_base_url/" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/practice" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/library" >/dev/null || return 1
-  [[ "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/quiz/")" == "404" ]] ||
+  [[ "$(curl --location --max-redirs 3 --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/quiz/")" == "404" ]] ||
     return 1
-  [[ "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/study-api/healthz")" == "404" ]] ||
+  [[ "$(curl --location --max-redirs 3 --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/study-api/healthz")" == "404" ]] ||
     return 1
 }
 
