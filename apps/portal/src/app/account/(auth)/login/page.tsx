@@ -9,7 +9,7 @@
  */
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
@@ -97,6 +97,7 @@ function LoginForm() {
   const [info, setInfo] = useState("");
   const [cd, setCd] = useState(0);
   const [csrf, setCsrf] = useState("");
+  const csrfBootstrap = useRef<Promise<string> | null>(null);
   const defaultNext = tab === "register" ? "/account/security" : "/account";
   const nextPath =
     requestedNext?.startsWith("/") ? requestedNext : defaultNext;
@@ -116,30 +117,25 @@ function LoginForm() {
     return () => window.clearTimeout(t);
   }, [cd]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const bootstrap =
-      tab === "register"
-        ? bootstrapAccountRegister(oauthReturnTo)
-        : bootstrapAccountLogin(oauthReturnTo);
-    bootstrap
-      .then((b) => {
-        if (!cancelled) setCsrf(b.csrfToken);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, oauthReturnTo]);
-
   const ensureCsrf = async () => {
     if (csrf) return csrf;
-    const b =
-      tab === "register"
-        ? await bootstrapAccountRegister(oauthReturnTo)
-        : await bootstrapAccountLogin(oauthReturnTo);
-    setCsrf(b.csrfToken);
-    return b.csrfToken;
+    if (!csrfBootstrap.current) {
+      csrfBootstrap.current = (
+        tab === "register"
+          ? bootstrapAccountRegister(oauthReturnTo)
+          : bootstrapAccountLogin(oauthReturnTo)
+      ).then((result) => result.csrfToken);
+    }
+    const pendingBootstrap = csrfBootstrap.current;
+    try {
+      const token = await pendingBootstrap;
+      setCsrf(token);
+      return token;
+    } finally {
+      if (csrfBootstrap.current === pendingBootstrap) {
+        csrfBootstrap.current = null;
+      }
+    }
   };
 
   const sendCode = async () => {
@@ -168,6 +164,9 @@ function LoginForm() {
       setCd(60);
       setInfo(`验证码已进入发送队列（${fullEmail}），请查收学校邮箱。`);
     } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
       setErrors({
         email:
           e instanceof AccountCenterError
@@ -231,6 +230,9 @@ function LoginForm() {
       }
       window.location.assign(oauthReturnTo);
     } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
       const message =
         e instanceof AccountCenterError
           ? e.message
@@ -276,6 +278,7 @@ function LoginForm() {
             <button
               key={t}
               type="button"
+              disabled={pending}
               onClick={() => {
                 setTab(t);
                 setCsrf("");

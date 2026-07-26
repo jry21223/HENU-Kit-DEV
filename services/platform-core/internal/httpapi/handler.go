@@ -57,6 +57,8 @@ type browserCookieProfile struct {
 	secure             bool
 }
 
+const explicitFormResponseHeader = "X-Henukit-Form-Response"
+
 func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
 	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
 	router := chi.NewRouter()
@@ -877,6 +879,10 @@ func (h *Handler) securityChangePassword(writer http.ResponseWriter, request *ht
 	profile := h.browserCookies(request)
 	coreCookie, err := request.Cookie(profile.core)
 	if err != nil {
+		if request.Header.Get(explicitFormResponseHeader) == "status" {
+			writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required")
+			return
+		}
 		h.redirectToLogin(writer, request)
 		return
 	}
@@ -910,6 +916,11 @@ func (h *Handler) securityChangePassword(writer http.ResponseWriter, request *ht
 		return
 	}
 	auditFrom(request.Context()).subjectUserID = maskSubject(changed.UserID)
+	if request.Header.Get(explicitFormResponseHeader) == "status" {
+		writer.Header().Set("Cache-Control", "no-store")
+		writer.WriteHeader(http.StatusNoContent)
+		return
+	}
 	http.Redirect(writer, request, "/account/security?password_changed=1", http.StatusSeeOther)
 }
 

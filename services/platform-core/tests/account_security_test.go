@@ -85,6 +85,21 @@ func seedOtherSessions(t *testing.T, ctx context.Context, pool *pgxpool.Pool, us
 	}
 }
 
+func postExplicitCredentialForm(t *testing.T, client *http.Client, endpoint string, values url.Values) *http.Response {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(values.Encode()))
+	if err != nil {
+		t.Fatalf("create explicit credential request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("X-Henukit-Form-Response", "status")
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("submit explicit credential request: %v", err)
+	}
+	return response
+}
+
 func TestPasswordRecoveryRevokesEveryOldSessionAndIssuesOneNewCoreSession(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
@@ -158,16 +173,13 @@ func TestAuthenticatedPasswordChangeRetainsOnlyCurrentCoreSession(t *testing.T) 
 	}
 	seedOtherSessions(t, ctx, pool, userID)
 	csrfToken, code := prepareCredentialCode(t, ctx, pool, server, currentClient, "/account/security", "/account/security/code")
-	response, err := currentClient.PostForm(server.URL+"/account/security/password", url.Values{
+	response := postExplicitCredentialForm(t, currentClient, server.URL+"/account/security/password", url.Values{
 		"csrf_token": {csrfToken}, "email": {testStudentEmail}, "code": {code},
 		"current_password": {"correct horse 电池 staple"}, "new_password": {"changed horse 电池 staple"},
 	})
-	if err != nil {
-		t.Fatalf("change password: %v", err)
-	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther {
-		t.Fatalf("change password = %d, want 303", response.StatusCode)
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("explicit password change = %d, want 204", response.StatusCode)
 	}
 	var activeCore, activeExchange int
 	if err := pool.QueryRow(ctx, `
@@ -193,6 +205,35 @@ func TestAuthenticatedPasswordChangeRetainsOnlyCurrentCoreSession(t *testing.T) 
 	login.Body.Close()
 	if login.StatusCode != http.StatusSeeOther {
 		t.Fatalf("changed password login = %d, want 303", login.StatusCode)
+	}
+}
+
+func TestExplicitPasswordChangeRejectsMissingCoreSessionWithoutRedirect(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "expired-core-session")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+
+	page, err := client.Get(server.URL + "/login")
+	if err != nil {
+		t.Fatalf("open login form for CSRF: %v", err)
+	}
+	body, _ := io.ReadAll(page.Body)
+	page.Body.Close()
+	csrf := csrfValuePattern.FindSubmatch(body)
+	if len(csrf) != 2 {
+		t.Fatal("login form omitted CSRF token")
+	}
+
+	response := postExplicitCredentialForm(t, client, server.URL+"/account/security/password", url.Values{
+		"csrf_token": {string(csrf[1])}, "email": {testStudentEmail}, "code": {"123456"},
+		"current_password": {"current password"}, "new_password": {"new password value"},
+	})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized || response.Header.Get("Location") != "" {
+		t.Fatalf("missing Core Session = %d location=%q, want non-redirecting 401", response.StatusCode, response.Header.Get("Location"))
 	}
 }
 

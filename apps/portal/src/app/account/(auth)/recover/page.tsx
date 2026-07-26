@@ -5,7 +5,7 @@
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
 import { useReveal } from "@/components/account/use-reveal";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ export default function RecoverPage() {
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [csrf, setCsrf] = useState("");
+  const csrfBootstrap = useRef<Promise<string> | null>(null);
   const [returnTo] = useState(() => portalOAuthStartUrl("/account"));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -46,23 +47,23 @@ export default function RecoverPage() {
     return () => window.clearTimeout(t);
   }, [cd]);
 
-  useEffect(() => {
-    let cancelled = false;
-    bootstrapPasswordRecovery()
-      .then((b) => {
-        if (!cancelled) setCsrf(b.csrfToken);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [returnTo]);
-
   const ensureCsrf = async () => {
     if (csrf) return csrf;
-    const b = await bootstrapPasswordRecovery();
-    setCsrf(b.csrfToken);
-    return b.csrfToken;
+    if (!csrfBootstrap.current) {
+      csrfBootstrap.current = bootstrapPasswordRecovery().then(
+        (result) => result.csrfToken
+      );
+    }
+    const pendingBootstrap = csrfBootstrap.current;
+    try {
+      const token = await pendingBootstrap;
+      setCsrf(token);
+      return token;
+    } finally {
+      if (csrfBootstrap.current === pendingBootstrap) {
+        csrfBootstrap.current = null;
+      }
+    }
   };
 
   const onSend = async () => {
@@ -82,6 +83,9 @@ export default function RecoverPage() {
       setStep(1);
       setCd(60);
     } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
       setError(
         e instanceof AccountCenterError
           ? e.message
@@ -119,6 +123,9 @@ export default function RecoverPage() {
       // Always continue via Portal Gateway OAuth after core session is set.
       window.setTimeout(() => window.location.assign(returnTo), 500);
     } catch (e) {
+      if (e instanceof AccountCenterError && e.code === "CSRF") {
+        setCsrf("");
+      }
       setError(
         e instanceof AccountCenterError ? e.message : "验证失败，请重试"
       );

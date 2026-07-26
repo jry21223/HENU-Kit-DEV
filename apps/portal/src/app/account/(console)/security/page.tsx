@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSyncExternalStore } from "react";
 import { authStore } from "@/lib/auth/store";
 import {
@@ -27,27 +27,8 @@ export default function SecurityPage() {
   const [ok, setOk] = useState(false);
   const [pending, setPending] = useState(false);
   const [csrf, setCsrf] = useState("");
+  const csrfBootstrap = useRef<Promise<string> | null>(null);
   const [cd, setCd] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    bootstrapAccountSecurity()
-      .then((result) => {
-        if (!cancelled) setCsrf(result.csrfToken);
-      })
-      .catch((cause) => {
-        if (!cancelled) {
-          setError(
-            cause instanceof AccountCenterError
-              ? cause.message
-              : "账号安全服务暂不可用，请重新登录"
-          );
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (cd <= 0) return;
@@ -57,9 +38,21 @@ export default function SecurityPage() {
 
   const ensureCsrf = async () => {
     if (csrf) return csrf;
-    const result = await bootstrapAccountSecurity();
-    setCsrf(result.csrfToken);
-    return result.csrfToken;
+    if (!csrfBootstrap.current) {
+      csrfBootstrap.current = bootstrapAccountSecurity().then(
+        (result) => result.csrfToken
+      );
+    }
+    const pendingBootstrap = csrfBootstrap.current;
+    try {
+      const token = await pendingBootstrap;
+      setCsrf(token);
+      return token;
+    } finally {
+      if (csrfBootstrap.current === pendingBootstrap) {
+        csrfBootstrap.current = null;
+      }
+    }
   };
 
   const sendCode = async () => {
@@ -78,6 +71,9 @@ export default function SecurityPage() {
       setCsrf(result.csrfToken);
       setCd(60);
     } catch (cause) {
+      if (cause instanceof AccountCenterError && cause.code === "CSRF") {
+        setCsrf("");
+      }
       setError(
         cause instanceof AccountCenterError
           ? cause.message
@@ -113,6 +109,9 @@ export default function SecurityPage() {
       setNewPwd2("");
       setCode("");
     } catch (cause) {
+      if (cause instanceof AccountCenterError && cause.code === "CSRF") {
+        setCsrf("");
+      }
       setPending(false);
       setError(
         cause instanceof AccountCenterError

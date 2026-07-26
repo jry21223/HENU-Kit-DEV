@@ -7,6 +7,7 @@
  */
 
 const ACCOUNT_AUTH_BASE = "/account-auth";
+const EXPLICIT_FORM_RESPONSE_HEADER = "X-Henukit-Form-Response";
 
 export class AccountCenterError extends Error {
   constructor(
@@ -116,6 +117,9 @@ async function postAccountForm(
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "text/html",
+        ...(path === "/account/security/password"
+          ? { [EXPLICIT_FORM_RESPONSE_HEADER]: "status" }
+          : {}),
       },
       body,
       redirect: "manual",
@@ -406,7 +410,13 @@ export async function changePassword(input: {
     new_password: input.newPassword,
   });
   const error = acceptedFormResult(result);
-  if (error || !result.redirected) {
+  if (result.status === 401) {
+    throw new AccountCenterError(
+      "登录状态已过期，请重新登录后再修改密码",
+      "VERIFY_FAILED"
+    );
+  }
+  if (error || result.redirected || result.status !== 204) {
     throw new AccountCenterError(
       error || "无法更改密码，请检查当前密码、验证码和新密码",
       "VERIFY_FAILED"
