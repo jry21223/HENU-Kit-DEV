@@ -36,7 +36,7 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 ## Key terms
 
 - **Portal Configuration**: Content and navigation changes through Git, review, and CI/CD. Console has no content editor.
-- **Account entry**: A Portal navigation point that starts Account Center or Portal Gateway OAuth. It does not collect credentials or decide whether authentication succeeded.
+- **Account entry**: A Portal navigation point that starts Portal Gateway OAuth. The authorization flow may continue through Account Center, but Portal never starts a separate credential flow, collects credentials, or decides whether authentication succeeded.
 - **Module section**: A full-viewport homepage block for each product (Library, Practice, Food, Campus).
 - **Sub-site**: A top-level route group (/library, /practice, /food, /campus) with its own layout and navigation.
 - **Deterministic SSR**: Seeded randomness (mulberry32) and picsum seed URLs ensure server/client output match.
