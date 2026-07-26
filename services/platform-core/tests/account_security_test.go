@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
@@ -366,6 +367,11 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 	if _, err := lockTx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, testCredentialLockID(testStudentEmail)); err != nil {
 		t.Fatalf("hold credential scope: %v", err)
 	}
+	observer, err := pgx.Connect(ctx, pool.Config().ConnString())
+	if err != nil {
+		t.Fatalf("open independent lock observer: %v", err)
+	}
+	defer func() { _ = observer.Close(ctx) }()
 
 	type httpResult struct {
 		response *http.Response
@@ -379,7 +385,7 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 		})
 		recoveryResult <- httpResult{response: response, err: requestErr}
 	}()
-	waitForCredentialLockWaiters(t, ctx, pool, 1)
+	waitForCredentialLockWaiters(t, ctx, observer, 1)
 
 	changeResult := make(chan httpResult, 1)
 	go func() {
@@ -389,7 +395,7 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 		})
 		changeResult <- httpResult{response: response, err: requestErr}
 	}()
-	waitForCredentialLockWaiters(t, ctx, pool, 2)
+	waitForCredentialLockWaiters(t, ctx, observer, 2)
 
 	loginResult := make(chan httpResult, 1)
 	go func() {
@@ -399,7 +405,7 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 		})
 		loginResult <- httpResult{response: response, err: requestErr}
 	}()
-	waitForCredentialLockWaiters(t, ctx, pool, 3)
+	waitForCredentialLockWaiters(t, ctx, observer, 3)
 	if err := lockTx.Commit(ctx); err != nil {
 		t.Fatalf("release credential scope: %v", err)
 	}
@@ -447,12 +453,12 @@ func testCredentialLockID(email string) int64 {
 	return int64(binary.BigEndian.Uint64(mac.Sum(nil)[:8]))
 }
 
-func waitForCredentialLockWaiters(t *testing.T, ctx context.Context, pool *pgxpool.Pool, want int) {
+func waitForCredentialLockWaiters(t *testing.T, ctx context.Context, observer *pgx.Conn, want int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		var count int
-		err := pool.QueryRow(ctx, `
+		err := observer.QueryRow(ctx, `
 			SELECT count(*)
 			FROM pg_stat_activity
 			WHERE wait_event_type = 'Lock' AND wait_event = 'advisory'
