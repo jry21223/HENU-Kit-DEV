@@ -247,10 +247,10 @@ function LoginForm() {
   };
 
   return (
-    <main className="bg-blueprint flex min-h-svh items-center justify-center px-5 py-16">
+    <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
       <div
         data-enter
-        className="w-full max-w-md border border-ink bg-paper p-8 md:p-10"
+        className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10"
       >
         <div className="flex items-baseline justify-between">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
@@ -347,7 +347,7 @@ function LoginForm() {
           {needCode && (
             <div>
               <Label htmlFor="auth-code">邮箱验证码</Label>
-              <div className="flex items-end gap-3">
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end sm:gap-3">
                 <Input
                   id="auth-code"
                   inputMode="numeric"
@@ -369,7 +369,7 @@ function LoginForm() {
                   size="sm"
                   disabled={pending || cd > 0}
                   onClick={() => void sendCode()}
-                  className="shrink-0"
+                  className="w-full shrink-0 sm:w-auto"
                 >
                   {cd > 0 ? `${cd}s` : "发送验证码"}
                 </Button>
@@ -423,7 +423,7 @@ function LoginForm() {
           {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
         </Button>
 
-        <div className="mt-4 flex justify-between font-mono text-[10px] tracking-wider text-ink/50">
+        <div className="mt-4 flex flex-col gap-2 font-mono text-[10px] tracking-wider text-ink/50 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/account/recover" className="hover:text-accent">
             忘记密码 / 收不到验证码 →
           </Link>

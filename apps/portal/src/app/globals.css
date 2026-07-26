@@ -54,6 +54,16 @@ body {
   color: transparent;
 }
 
+/* 横向导航在小屏可滑动，但不占用视觉空间。 */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* 整屏模块标记：md+ 由 GSAP Observer 接管滚动切换（见 snap-scroll.tsx），
    snap-align 仅为语义标记；小屏为普通滚动 */
 .snap-screen {

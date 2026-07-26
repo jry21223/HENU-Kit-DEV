@@ -27,6 +27,27 @@ jobs:
       - name: Verify artifact and runtime boundaries
         run: node --test scripts/ops/tests/deploy-henukit-workflow.test.mjs
 
+  portal-responsive:
+    name: portal-responsive
+    needs: validate-release-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.9.0 --activate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install Portal dependencies
+        run: pnpm install --frozen-lockfile --filter @henukit/portal...
+      - name: Install Chromium
+        run: pnpm --filter @henukit/portal exec playwright install --with-deps chromium
+      - name: Verify responsive Portal layout
+        run: pnpm --filter @henukit/portal test:e2e:responsive
+
   build-image:
     name: image-${{ matrix.name }}
     needs: validate-release-contract

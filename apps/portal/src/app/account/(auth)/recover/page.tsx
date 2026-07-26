@@ -134,10 +134,10 @@ export default function RecoverPage() {
   };
 
   return (
-    <main className="bg-blueprint flex min-h-svh items-center justify-center px-5 py-16">
+    <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
       <div
         data-enter
-        className="w-full max-w-md border border-ink bg-paper p-8 md:p-10"
+        className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10"
       >
         <div className="flex items-baseline justify-between">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
@@ -210,7 +210,7 @@ export default function RecoverPage() {
               </p>
               <div>
                 <Label htmlFor="recover-code">6 位验证码</Label>
-                <div className="flex items-end gap-3">
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end sm:gap-3">
                   <Input
                     id="recover-code"
                     inputMode="numeric"
@@ -227,6 +227,7 @@ export default function RecoverPage() {
                     size="sm"
                     disabled={cd > 0 || pending}
                     onClick={() => void onSend()}
+                    className="w-full sm:w-auto"
                   >
                     {cd > 0 ? `${cd}s` : "重发"}
                   </Button>
