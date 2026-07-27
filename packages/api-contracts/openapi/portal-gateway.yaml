@@ -95,8 +95,7 @@ paths:
     post:
       operationId: logout
       summary: Clear Portal Session cookie
-      security:
-        - portalSession: []
+      security: []
       responses:
         "200":
           description: Signed out
