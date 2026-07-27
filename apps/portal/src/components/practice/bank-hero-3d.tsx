@@ -1,73 +1,420 @@
 "use client";
 
-import { Suspense, useMemo, useRef } from "react";
+/**
+ * Practice bank hero 3D — mastery-driven knowledge mesh (no GLB).
+ *
+ * - subject rings: faint full track + progress arc (arc = mastery %)
+ * - nucleus: accuracy → size / brightness
+ * - outer cage: coverage average → density / opacity
+ * - orbit cubes: streak (quiet secondary cue)
+ */
+
+import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { Float } from "@react-three/drei";
 import * as THREE from "three";
+import {
+  averageMastery,
+  deriveMasteryVisuals,
+  EMPTY_MASTERY,
+  masteryPercent,
+  type MasterySnapshot,
+  type MasterySubject,
+} from "@/components/practice/bank-hero-mastery";
 
-const PLASTER = "#e9e4da"; // 哑光石膏白（微暖）
+const INK = "#161513";
+const ACCENT = "#ff4d00";
+const PAPER = "#f2f0ea";
 
-/** Poly Haven marble_bust_01（CC0）古典大理石胸像：材质覆盖为哑光石膏，归一化尺寸并居中 */
-function PlasterHead() {
-  const { scene } = useGLTF("/models/plaster-bust.glb");
-  const normalized = useMemo(() => {
-    const mat = new THREE.MeshStandardMaterial({
-      color: PLASTER,
-      roughness: 0.9,
-      metalness: 0,
-    });
-    scene.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = mat;
-    });
-    // useGLTF 按 URL 全局缓存 scene：二次挂载时对象带着上次设置的缩放。
-    // 必须先复位再测量，否则归一化系数叠加错误，模型会变得巨大。
-    scene.scale.setScalar(1);
-    scene.position.set(0, 0, 0);
-    scene.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(scene);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    // 归一化到 2.4 个单位高：视口可见高约 2.89（cam z=4.2, fov=38），占约 83%
-    const s = 2.4 / size.y;
-    scene.scale.setScalar(s);
-    scene.position.set(-center.x * s, -center.y * s - 0.15, -center.z * s);
-    return scene;
-  }, [scene]);
-  return <primitive object={normalized} />;
+/** Lerp speed ≈ settle in ~0.55s at 60fps */
+const LERP = 6.5;
+/** Rebuild torus arc only when display % moves ≥ this */
+const ARC_REBUILD_STEP = 0.012;
+
+function pct(n: number) {
+  return masteryPercent(n);
 }
 
-/** 缓慢自转 + 鼠标 lerp 微偏转（沿用首页 hero-3d 的 Rig 思路） */
-function Rig({ children }: { children: React.ReactNode }) {
+function damp(current: number, target: number, delta: number, speed = LERP) {
+  return THREE.MathUtils.damp(current, target, speed, delta);
+}
+
+/** Slow yaw + pointer lean — same feel as homepage hero-3d. */
+function Rig({
+  children,
+  spin = 0.14,
+}: {
+  children: React.ReactNode;
+  spin?: number;
+}) {
   const group = useRef<THREE.Group>(null);
   useFrame((state, delta) => {
     const g = group.current;
     if (!g) return;
-    g.rotation.y += delta * 0.22;
-    g.rotation.x = THREE.MathUtils.lerp(g.rotation.x, state.pointer.y * -0.1, 0.05);
-    g.rotation.z = THREE.MathUtils.lerp(g.rotation.z, state.pointer.x * 0.05, 0.05);
+    g.rotation.y += delta * spin;
+    g.rotation.x = THREE.MathUtils.lerp(
+      g.rotation.x,
+      state.pointer.y * -0.12,
+      0.05
+    );
+    g.rotation.z = THREE.MathUtils.lerp(
+      g.rotation.z,
+      state.pointer.x * 0.06,
+      0.05
+    );
   });
   return <group ref={group}>{children}</group>;
 }
 
-export default function BankHero3D({ active = true }: { active?: boolean }) {
+/**
+ * Streak cue only — kept small/quiet so rings stay primary.
+ * Cap 4; smaller wire cubes outside the ring stack.
+ */
+function OrbitingCubes({
+  count,
+  radius = 2.15,
+  speed = 0.22,
+}: {
+  count: number;
+  radius?: number;
+  speed?: number;
+}) {
+  const group = useRef<THREE.Group>(null);
+  const targetRadius = useRef(radius);
+  const currentRadius = useRef(radius);
+
+  useEffect(() => {
+    targetRadius.current = radius;
+  }, [radius]);
+
+  const cubes = useMemo(() => {
+    const n = Math.max(0, Math.min(4, Math.round(count)));
+    return Array.from({ length: n }, (_, i) => ({
+      angle: n === 0 ? 0 : (Math.PI * 2 * i) / n,
+      y: (i % 2 === 0 ? 0.55 : -0.55) + (i - 1) * 0.08,
+      size: 0.07 + (i % 2) * 0.025,
+      radiusOffset: (i % 2) * 0.12,
+    }));
+  }, [count]);
+
+  useFrame((_, delta) => {
+    const orbit = group.current;
+    if (!orbit) return;
+    orbit.rotation.y += delta * speed;
+    currentRadius.current = damp(
+      currentRadius.current,
+      targetRadius.current,
+      delta
+    );
+    orbit.children.forEach((child, index) => {
+      const cube = cubes[index];
+      if (!cube) return;
+      const displayedRadius = currentRadius.current + cube.radiusOffset;
+      child.position.set(
+        Math.cos(cube.angle) * displayedRadius,
+        cube.y,
+        Math.sin(cube.angle) * displayedRadius
+      );
+    });
+  });
+
+  if (cubes.length === 0) return null;
+  return (
+    <group ref={group}>
+      {cubes.map((c, i) => (
+        <mesh
+          key={i}
+          position={[
+            Math.cos(c.angle) * (radius + c.radiusOffset),
+            c.y,
+            Math.sin(c.angle) * (radius + c.radiusOffset),
+          ]}
+        >
+          <boxGeometry args={[c.size, c.size, c.size]} />
+          <meshBasicMaterial
+            wireframe
+            color={ACCENT}
+            transparent
+            opacity={0.55}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function KnowledgeCore({
+  accuracy,
+  coverage,
+}: {
+  accuracy: number;
+  /** average subject mastery 0–1 */
+  coverage: number;
+}) {
+  const outerRef = useRef<THREE.Mesh>(null);
+  const midRef = useRef<THREE.Mesh>(null);
+  const nucleusRef = useRef<THREE.Mesh>(null);
+  const outerMat = useRef<THREE.MeshBasicMaterial>(null);
+  const midMat = useRef<THREE.MeshBasicMaterial>(null);
+  const nucleusMat = useRef<THREE.MeshBasicMaterial>(null);
+
+  const target = useRef({ acc: pct(accuracy), cov: coverage });
+  const cur = useRef({ acc: pct(accuracy), cov: coverage });
+
+  useEffect(() => {
+    target.current = { acc: pct(accuracy), cov: coverage };
+  }, [accuracy, coverage]);
+
+  useFrame((_, delta) => {
+    const t = target.current;
+    const c = cur.current;
+    c.acc = damp(c.acc, t.acc, delta);
+    c.cov = damp(c.cov, t.cov, delta);
+
+    const nucleusScale = 0.12 + c.acc * 0.28;
+    const midScale = 0.42 + c.cov * 0.28;
+    const outerScale = 0.92 + c.cov * 0.18;
+
+    if (nucleusRef.current) nucleusRef.current.scale.setScalar(nucleusScale);
+    if (midRef.current) midRef.current.scale.setScalar(midScale);
+    if (outerRef.current) outerRef.current.scale.setScalar(outerScale);
+    if (nucleusMat.current) nucleusMat.current.opacity = 0.5 + c.acc * 0.48;
+    if (midMat.current) midMat.current.opacity = 0.1 + c.cov * 0.32;
+    if (outerMat.current) outerMat.current.opacity = 0.14 + c.cov * 0.38;
+  });
+
+  const acc0 = pct(accuracy);
+  const detail = coverage > 0.55 ? 1 : 0;
+
+  return (
+    <Float
+      speed={1.0 + acc0 * 0.55}
+      rotationIntensity={0.12 + acc0 * 0.12}
+      floatIntensity={0.35 + acc0 * 0.4}
+    >
+      <mesh ref={outerRef}>
+        <icosahedronGeometry args={[1.15, detail]} />
+        <meshBasicMaterial
+          ref={outerMat}
+          wireframe
+          color={INK}
+          transparent
+          opacity={0.14 + coverage * 0.38}
+        />
+      </mesh>
+      <mesh ref={midRef} scale={0.42 + coverage * 0.28}>
+        <icosahedronGeometry args={[1.15, 0]} />
+        <meshBasicMaterial
+          ref={midMat}
+          wireframe
+          color={INK}
+          transparent
+          opacity={0.1 + coverage * 0.32}
+        />
+      </mesh>
+      <mesh ref={nucleusRef} scale={0.12 + acc0 * 0.28}>
+        <octahedronGeometry args={[1, 0]} />
+        <meshBasicMaterial
+          ref={nucleusMat}
+          wireframe
+          color={ACCENT}
+          transparent
+          opacity={0.5 + acc0 * 0.48}
+        />
+      </mesh>
+    </Float>
+  );
+}
+
+/**
+ * Single subject ring:
+ * - full faint track (always complete)
+ * - progress arc = 2π × mastery
+ * - weak (<60) → accent fill; else ink
+ * - tube / opacity / arc lerped when mastery changes
+ */
+function SubjectRing({
+  label,
+  value,
+  baseR,
+  tilt,
+}: {
+  label: string;
+  value: number;
+  baseR: number;
+  tilt: [number, number, number];
+}) {
+  const group = useRef<THREE.Group>(null);
+  const progressMesh = useRef<THREE.Mesh>(null);
+  const progressMat = useRef<THREE.MeshBasicMaterial>(null);
+  const tickMat = useRef<THREE.MeshBasicMaterial>(null);
+  const targetT = useRef(pct(value));
+  const curT = useRef(pct(value));
+  const builtT = useRef(-1);
+
+  useEffect(() => {
+    targetT.current = pct(value);
+  }, [value]);
+
+  useFrame((_, delta) => {
+    curT.current = damp(curT.current, targetT.current, delta);
+    const t = curT.current;
+    const weak = t < 0.6;
+
+    if (
+      builtT.current < 0 ||
+      Math.abs(t - builtT.current) >= ARC_REBUILD_STEP ||
+      builtT.current < 0.6 !== weak
+    ) {
+      builtT.current = t;
+      const mesh = progressMesh.current;
+      if (mesh) {
+        const prev = mesh.geometry;
+        const arc = Math.max(0.04, Math.PI * 2 * Math.max(0.02, t));
+        const tube = 0.014 + t * 0.016;
+        mesh.geometry = new THREE.TorusGeometry(baseR, tube, 10, 96, arc);
+        prev.dispose();
+      }
+    }
+
+    if (progressMat.current) {
+      progressMat.current.color.set(weak ? ACCENT : INK);
+      progressMat.current.opacity = 0.35 + t * 0.55;
+    }
+    if (tickMat.current) {
+      tickMat.current.color.set(weak ? ACCENT : INK);
+      tickMat.current.opacity = 0.4 + t * 0.45;
+    }
+    if (group.current) {
+      group.current.scale.setScalar(0.94 + t * 0.1);
+    }
+  });
+
+  const t0 = pct(value);
+  const weak0 = value < 60;
+  const arc0 = Math.max(0.04, Math.PI * 2 * Math.max(0.02, t0));
+  const tube0 = 0.014 + t0 * 0.016;
+
+  return (
+    <group ref={group} rotation={tilt} userData={{ label }}>
+      <mesh>
+        <torusGeometry args={[baseR, 0.006, 6, 72]} />
+        <meshBasicMaterial color={INK} transparent opacity={0.1} />
+      </mesh>
+      <mesh ref={progressMesh}>
+        <torusGeometry args={[baseR, tube0, 10, 96, arc0]} />
+        <meshBasicMaterial
+          ref={progressMat}
+          color={weak0 ? ACCENT : INK}
+          transparent
+          opacity={0.35 + t0 * 0.55}
+        />
+      </mesh>
+      <mesh position={[baseR, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <boxGeometry args={[0.09, 0.012, 0.012]} />
+        <meshBasicMaterial
+          ref={tickMat}
+          color={weak0 ? ACCENT : INK}
+          transparent
+          opacity={0.55}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+function MasteryRings({ subjects }: { subjects: MasterySubject[] }) {
+  const group = useRef<THREE.Group>(null);
+  const top = useMemo(() => {
+    return subjects.slice(0, 3).map((s, i) => ({
+      label: s.label,
+      value: Math.min(100, Math.max(0, s.value)),
+      baseR: 1.38 + i * 0.3,
+      tilt: [i * 0.14, i * 0.28, 0] as [number, number, number],
+    }));
+  }, [subjects]);
+
+  const avgTarget = useRef(
+    averageMastery(top)
+  );
+  const avgCur = useRef(averageMastery(top));
+
+  useEffect(() => {
+    avgTarget.current = averageMastery(top);
+  }, [top]);
+
+  useFrame((_, delta) => {
+    if (!group.current) return;
+    avgCur.current = damp(avgCur.current, avgTarget.current, delta);
+    const avg = avgCur.current;
+    group.current.rotation.z += delta * (0.045 + avg * 0.12);
+    group.current.rotation.x += delta * (0.018 + avg * 0.045);
+  });
+
+  if (top.length === 0) {
+    return (
+      <group rotation={[Math.PI / 2.6, 0.2, 0]}>
+        <mesh>
+          <torusGeometry args={[1.6, 0.01, 8, 64]} />
+          <meshBasicMaterial color={INK} transparent opacity={0.12} />
+        </mesh>
+      </group>
+    );
+  }
+
+  return (
+    <group ref={group} rotation={[Math.PI / 2.6, 0.2, 0]}>
+      {top.map((s) => (
+        <SubjectRing
+          key={s.label}
+          label={s.label}
+          value={s.value}
+          baseR={s.baseR}
+          tilt={s.tilt}
+        />
+      ))}
+    </group>
+  );
+}
+
+function KnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
+  const { coverage, cubeCount, orbitRadius } = useMemo(
+    () => deriveMasteryVisuals(mastery),
+    [mastery]
+  );
+
+  return (
+    <Rig spin={0.09 + coverage * 0.07}>
+      <KnowledgeCore accuracy={mastery.accuracy} coverage={coverage} />
+      <MasteryRings subjects={mastery.subjects} />
+      <OrbitingCubes
+        count={cubeCount}
+        radius={orbitRadius}
+        speed={0.16 + coverage * 0.12}
+      />
+    </Rig>
+  );
+}
+
+export default function BankHero3D({
+  active = true,
+  mastery = EMPTY_MASTERY,
+}: {
+  active?: boolean;
+  mastery?: MasterySnapshot;
+}) {
   return (
     <Canvas
       frameloop={active ? "always" : "never"}
-      camera={{ position: [0, 0.15, 4.2], fov: 38 }}
+      camera={{ position: [0, 0.1, 4.4], fov: 38 }}
       dpr={[1, 1.8]}
       gl={{ antialias: true, alpha: true }}
       className="!pointer-events-none"
       style={{ background: "transparent" }}
     >
-      {/* 素描石膏的明暗：环境底光 + 主光 + 暖色轮廓光 */}
-      <hemisphereLight args={["#f2f0ea", "#161513", 0.5]} />
-      <directionalLight position={[3.5, 4, 5]} intensity={1.2} />
-      <directionalLight position={[-4, 1.5, -3]} intensity={0.35} color="#ffd9c7" />
-      <Suspense fallback={null}>
-        <Rig>
-          <PlasterHead />
-        </Rig>
-      </Suspense>
+      <hemisphereLight args={[PAPER, INK, 0.35]} />
+      <ambientLight intensity={0.55} />
+      <KnowledgeMesh mastery={mastery} />
     </Canvas>
   );
 }
