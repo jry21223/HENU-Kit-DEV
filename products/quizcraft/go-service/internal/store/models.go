@@ -172,15 +172,17 @@ type QuizcraftMigrationExceptionResolution struct {
 }
 
 type QuizcraftMigrationRun struct {
-	ID                  uuid.UUID          `json:"id"`
-	SourceName          string             `json:"source_name"`
-	SourceCutoffEventID int64              `json:"source_cutoff_event_id"`
-	CaughtUpEventID     int64              `json:"caught_up_event_id"`
-	State               string             `json:"state"`
-	Report              []byte             `json:"report"`
-	ReportSha256        string             `json:"report_sha256"`
-	StartedAt           pgtype.Timestamptz `json:"started_at"`
-	CompletedAt         pgtype.Timestamptz `json:"completed_at"`
+	ID                   uuid.UUID          `json:"id"`
+	SourceName           string             `json:"source_name"`
+	SourceCutoffEventID  int64              `json:"source_cutoff_event_id"`
+	CaughtUpEventID      int64              `json:"caught_up_event_id"`
+	State                string             `json:"state"`
+	Report               []byte             `json:"report"`
+	ReportSha256         string             `json:"report_sha256"`
+	StartedAt            pgtype.Timestamptz `json:"started_at"`
+	CompletedAt          pgtype.Timestamptz `json:"completed_at"`
+	SourceSnapshotSha256 string             `json:"source_snapshot_sha256"`
+	ResumeAttemptCount   int32              `json:"resume_attempt_count"`
 }
 
 type QuizcraftPracticeAttempt struct {

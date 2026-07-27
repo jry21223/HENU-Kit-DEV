@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 )
 
 func TestFullMigrationReconcilesContentQuarantinesFeedbackAndSnapshotsRanking(t *testing.T) {
-	pool := practicePool(t)
+	pool := migrationPool(t)
 	service, err := quizcraft.New(quizcraft.Config{Database: pool})
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +41,7 @@ func TestFullMigrationReconcilesContentQuarantinesFeedbackAndSnapshotsRanking(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.State != "blocked" || !report.ContentReconciled || report.Source.BankCount != 1 || report.Source.QuestionCount != 4 || report.Source.AnsweredCount != 4 || report.Source.TypeCounts["single"] != 1 || report.Source.ChapterCounts["ch01"] != 3 || report.Source.AnswerSHA256 == "" || report.Source.AnswerSHA256 != report.Target.AnswerSHA256 || report.Source.ContentSHA256 == "" || report.Source.ContentSHA256 != report.Target.ContentSHA256 {
+	if report.State != "blocked" || !report.ContentReconciled || len(report.Discrepancies) != 0 || report.Source.BankCount != 1 || report.Source.QuestionCount != 4 || report.Source.AnsweredCount != 4 || report.Source.TypeCounts["single"] != 1 || report.Source.ChapterCounts["ch01"] != 3 || report.Source.AnswerSHA256 == "" || report.Source.AnswerSHA256 != report.Target.AnswerSHA256 || report.Source.ContentSHA256 == "" || report.Source.ContentSHA256 != report.Target.ContentSHA256 {
 		t.Fatalf("reconciliation report = %+v", report)
 	}
 	if report.FeedbackSourceCount != 2 || report.FeedbackMigratedCount != 1 || report.FeedbackExceptionCount != 1 || report.LegacyRankingEntryCount != 1 || report.MappedLegacyUserCount != 0 {
@@ -93,8 +94,122 @@ func TestFullMigrationReconcilesContentQuarantinesFeedbackAndSnapshotsRanking(t 
 	}
 }
 
+func TestFullMigrationRejectsAUsedTargetBeforeCreatingAMigrationRun(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO quizcraft_banks(id,bank_key,name) VALUES($1,'existing-target-fact','Existing target fact')`, uuid.New()); err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.RunFullMigration(ctx, quizcraft.LegacySnapshot{
+		SourceName:    "legacy-existing-target",
+		CutoffEventID: 1,
+		Banks:         []quizcraft.LegacyBank{{BankKey: "migration-existing-target", Document: json.RawMessage(validBank)}},
+		Rankings:      json.RawMessage(`[]`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "empty quizcraft_v2 target") {
+		t.Fatalf("non-empty target was accepted: %v", err)
+	}
+	var runs int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM quizcraft_migration_runs`).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 0 {
+		t.Fatalf("non-empty target created %d migration runs", runs)
+	}
+}
+
+func TestFullMigrationPersistsFieldLevelContentDiscrepancies(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `CREATE OR REPLACE FUNCTION quizcraft_test_corrupt_migrated_answer() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.type='single' THEN NEW.answer='"corrupted"'::jsonb; END IF; RETURN NEW; END $$`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `CREATE TRIGGER quizcraft_test_corrupt_migrated_answer BEFORE INSERT ON quizcraft_question_versions FOR EACH ROW EXECUTE FUNCTION quizcraft_test_corrupt_migrated_answer()`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS quizcraft_test_corrupt_migrated_answer ON quizcraft_question_versions; DROP FUNCTION IF EXISTS quizcraft_test_corrupt_migrated_answer()`)
+	})
+
+	bankKey := "migration-discrepancy-" + uuid.NewString()
+	report, err := service.RunFullMigration(ctx, quizcraft.LegacySnapshot{
+		SourceName:    "legacy-discrepancy",
+		CutoffEventID: 1,
+		Banks:         []quizcraft.LegacyBank{{BankKey: bankKey, Document: json.RawMessage(validBank)}},
+		Rankings:      json.RawMessage(`[]`),
+	})
+	if err != nil || report.State != "blocked" || report.ContentReconciled {
+		t.Fatalf("corrupted migration report = %+v / %v", report, err)
+	}
+	found := false
+	for _, discrepancy := range report.Discrepancies {
+		if discrepancy.Code == "question_answer_sha256_mismatch" && discrepancy.BankKey == bankKey && discrepancy.SourceQuestionID == "q0001" && discrepancy.Expected != "" && discrepancy.Actual != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("field-level answer discrepancy missing from %+v", report.Discrepancies)
+	}
+	var persistedReport []byte
+	if err := pool.QueryRow(ctx, `SELECT report FROM quizcraft_migration_runs WHERE id=$1`, report.RunID).Scan(&persistedReport); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(persistedReport, []byte(`"question_answer_sha256_mismatch"`)) {
+		t.Fatalf("persisted discrepancy report = %s", persistedReport)
+	}
+}
+
+func TestFullMigrationPersistsAnUnexpectedTargetBankDiscrepancy(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	service, err := quizcraft.New(quizcraft.Config{Database: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `CREATE OR REPLACE FUNCTION quizcraft_test_add_unexpected_target_facts() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.bank_key <> 'unexpected-target-bank' THEN INSERT INTO quizcraft_bank_versions(id,bank_id,name,source_version,source_sha256,content_sha256,import_report) VALUES('00000000-0000-0000-0000-000000000161',NEW.id,'Unexpected inactive version','',repeat('a',64),repeat('b',64),'{}'::jsonb); INSERT INTO quizcraft_questions(id,bank_id,source_question_id) VALUES('00000000-0000-0000-0000-000000000162',NEW.id,'unexpected-question'); INSERT INTO quizcraft_question_versions(id,bank_id,question_id,type,chapter_id,chapter_name,content,options,answer,analysis,content_sha256) VALUES('00000000-0000-0000-0000-000000000163',NEW.id,'00000000-0000-0000-0000-000000000162','single','unexpected','Unexpected','Unexpected target content','["A","B"]'::jsonb,'0'::jsonb,'',repeat('c',64)); INSERT INTO quizcraft_bank_version_questions(bank_id,bank_version_id,question_id,question_version_id,position) VALUES(NEW.id,'00000000-0000-0000-0000-000000000161','00000000-0000-0000-0000-000000000162','00000000-0000-0000-0000-000000000163',99); INSERT INTO quizcraft_banks(id,bank_key,name) VALUES('00000000-0000-0000-0000-000000000164','unexpected-target-bank','Unexpected target bank') ON CONFLICT(bank_key) DO NOTHING; END IF; RETURN NEW; END $$`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `CREATE TRIGGER quizcraft_test_add_unexpected_target_facts AFTER INSERT ON quizcraft_banks FOR EACH ROW EXECUTE FUNCTION quizcraft_test_add_unexpected_target_facts()`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS quizcraft_test_add_unexpected_target_facts ON quizcraft_banks; DROP FUNCTION IF EXISTS quizcraft_test_add_unexpected_target_facts()`)
+	})
+
+	report, err := service.RunFullMigration(ctx, quizcraft.LegacySnapshot{
+		SourceName:    "legacy-unexpected-target-bank",
+		CutoffEventID: 1,
+		Banks:         []quizcraft.LegacyBank{{BankKey: "migration-unexpected-" + uuid.NewString(), Document: json.RawMessage(validBank)}},
+		Rankings:      json.RawMessage(`[]`),
+	})
+	if err != nil || report.State != "blocked" || report.ContentReconciled {
+		t.Fatalf("unexpected target migration report = %+v / %v", report, err)
+	}
+	remaining := map[string]bool{
+		"unexpected_bank":             true,
+		"unexpected_bank_version":     true,
+		"unexpected_question":         true,
+		"unexpected_question_version": true,
+		"unexpected_membership":       true,
+	}
+	for _, discrepancy := range report.Discrepancies {
+		delete(remaining, discrepancy.Code)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("unexpected target fact discrepancies missing %v from %+v", remaining, report.Discrepancies)
+	}
+}
+
 func TestFullMigrationPreservesRetiredArchivedFeedbackWithoutInventingAQuestionReference(t *testing.T) {
-	pool := practicePool(t)
+	pool := migrationPool(t)
 	service, err := quizcraft.New(quizcraft.Config{Database: pool})
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +241,7 @@ func TestFullMigrationPreservesRetiredArchivedFeedbackWithoutInventingAQuestionR
 }
 
 func TestArchivedFeedbackEventResolvesAnExistingMissingReferenceException(t *testing.T) {
-	pool := practicePool(t)
+	pool := migrationPool(t)
 	service, err := quizcraft.New(quizcraft.Config{Database: pool})
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +267,7 @@ func TestArchivedFeedbackEventResolvesAnExistingMissingReferenceException(t *tes
 }
 
 func TestIncrementalEventsRequireAMonotonicCaughtUpCursor(t *testing.T) {
-	pool := practicePool(t)
+	pool := migrationPool(t)
 	service, err := quizcraft.New(quizcraft.Config{Database: pool})
 	if err != nil {
 		t.Fatal(err)
@@ -324,7 +439,7 @@ func TestLegacyPostgresSourceReadsProductionTablesAndEventLog(t *testing.T) {
 }
 
 func TestBankEventRetriesFeedbackExceptionsWithoutAFeedbackRewrite(t *testing.T) {
-	pool := practicePool(t)
+	pool := migrationPool(t)
 	service, err := quizcraft.New(quizcraft.Config{Database: pool})
 	if err != nil {
 		t.Fatal(err)
@@ -453,7 +568,7 @@ func TestCutoverWriteGateKeepsReadsOpenAndRejectsMutations(t *testing.T) {
 }
 
 func TestAuthenticatedCutoverEvidenceBindsMigrationAndReleaseWithoutTrafficGate(t *testing.T) {
-	pool := practicePool(t)
+	pool := migrationPool(t)
 	service, err := quizcraft.New(quizcraft.Config{Database: pool})
 	if err != nil {
 		t.Fatal(err)

@@ -68,28 +68,47 @@ jobs:
       - name: Verify migration round trip and recovery
         run: |
           set -euo pipefail
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -c "CREATE TABLE baseline_probe(id integer PRIMARY KEY); INSERT INTO baseline_probe VALUES(1)"
+          # The Go test suite deliberately uses an isolated disposable schema.
+          # Migration commands must reject this non-V2 target, but the raw,
+          # idempotent schema fixture still has to be present before tests run.
           for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
-          for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
-          test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT to_regclass('public.quizcraft_banks') IS NOT NULL AND to_regclass('public.quizcraft_practice_attempts') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
-          pg_dump -h localhost -U quizcraft -d quizcraft_test --format=custom --file=/tmp/quizcraft-recovery.dump
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -c "INSERT INTO quizcraft_banks(id,bank_key,name) VALUES('00000000-0000-0000-0000-000000000007','computer_fundamentals','Legacy underscore probe')"
-          if psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000007_legacy_bank_keys.down.sql; then exit 1; fi
-          test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT bank_key FROM quizcraft_banks WHERE id='00000000-0000-0000-0000-000000000007'")" = computer_fundamentals
-          test "$(psql -h localhost -U quizcraft -d quizcraft_test -Atc "SELECT count(*) FROM pg_constraint WHERE conrelid='quizcraft_banks'::regclass AND conname='quizcraft_banks_bank_key_check'")" = 1
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -c "DELETE FROM quizcraft_banks WHERE id='00000000-0000-0000-0000-000000000007'"
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000008_legacy_feedback_archives.down.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000007_legacy_bank_keys.down.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000006_reconciliation.down.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000005_workshop_feedback.down.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000004_ranking.down.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000003_favorites.down.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000002_practice_core.down.sql
-          psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000001_quizcraft_content.down.sql
-          for migration in products/quizcraft/go-service/db/migrations/*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_test -v ON_ERROR_STOP=1 -f "$migration"; done
+          createdb -h localhost -U quizcraft quizcraft_v2
+          for migration in products/quizcraft/go-service/db/migrations/00000[1-8]_*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f "$migration"; done
+          (
+            cd products/quizcraft/go-service
+            QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:quizcraft@localhost:5432/quizcraft_v2?sslmode=disable' go run ./cmd/migrate
+            QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:quizcraft@localhost:5432/quizcraft_v2?sslmode=disable' go run ./cmd/migrate
+            if QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:quizcraft@localhost:5432/quizcraft_test?sslmode=disable' go run ./cmd/migrate; then exit 1; fi
+            psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -c "INSERT INTO quizcraft_banks(id,bank_key,name) VALUES('00000000-0000-0000-0000-000000000159','backup-restore-evidence','Backup restore evidence')"
+            QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:quizcraft@localhost:5432/quizcraft_v2?sslmode=disable' QUIZCRAFT_RESTORE_ADMIN_URL='postgres://quizcraft:quizcraft@localhost:5432/postgres?sslmode=disable' go run ./cmd/backuprestore -backup-directory /tmp/quizcraft-v2-recovery-drill
+            psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -c "DELETE FROM quizcraft_banks WHERE id='00000000-0000-0000-0000-000000000159'"
+          )
+          test "$(psql -h localhost -U quizcraft -d quizcraft_v2 -Atc "SELECT (SELECT count(*) FROM quizcraft_schema_migrations)=9 AND to_regclass('public.quizcraft_banks') IS NOT NULL AND to_regclass('public.quizcraft_practice_attempts') IS NOT NULL")" = t
+          pg_dump -h localhost -U quizcraft -d quizcraft_v2 --format=custom --file=/tmp/quizcraft-recovery.dump
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -c "INSERT INTO quizcraft_banks(id,bank_key,name) VALUES('00000000-0000-0000-0000-000000000007','computer_fundamentals','Legacy underscore probe')"
+          if psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000007_legacy_bank_keys.down.sql; then exit 1; fi
+          test "$(psql -h localhost -U quizcraft -d quizcraft_v2 -Atc "SELECT bank_key FROM quizcraft_banks WHERE id='00000000-0000-0000-0000-000000000007'")" = computer_fundamentals
+          test "$(psql -h localhost -U quizcraft -d quizcraft_v2 -Atc "SELECT count(*) FROM pg_constraint WHERE conrelid='quizcraft_banks'::regclass AND conname='quizcraft_banks_bank_key_check'")" = 1
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -c "DELETE FROM quizcraft_banks WHERE id='00000000-0000-0000-0000-000000000007'"
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000009_resumable_migration_artifacts.down.sql
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000008_legacy_feedback_archives.down.sql
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000007_legacy_bank_keys.down.sql
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000006_reconciliation.down.sql
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000005_workshop_feedback.down.sql
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000004_ranking.down.sql
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000003_favorites.down.sql
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000002_practice_core.down.sql
+          psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f products/quizcraft/go-service/db/migrations/000001_quizcraft_content.down.sql
+          for migration in products/quizcraft/go-service/db/migrations/00000[1-8]_*.up.sql; do psql -h localhost -U quizcraft -d quizcraft_v2 -v ON_ERROR_STOP=1 -f "$migration"; done
+          (
+            cd products/quizcraft/go-service
+            QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:quizcraft@localhost:5432/quizcraft_v2?sslmode=disable' go run ./cmd/migrate
+          )
+          test "$(psql -h localhost -U quizcraft -d quizcraft_v2 -Atc "SELECT count(*) FROM quizcraft_schema_migrations WHERE version='000009'")" = 1
           createdb -h localhost -U quizcraft quizcraft_recovery
           pg_restore -h localhost -U quizcraft -d quizcraft_recovery --no-owner /tmp/quizcraft-recovery.dump
-          test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL AND to_regclass('public.quizcraft_practice_sessions') IS NOT NULL AND to_regclass('public.quizcraft_favorites') IS NOT NULL AND to_regclass('public.quizcraft_practice_session_claims') IS NOT NULL AND to_regclass('public.quizcraft_ranking_profiles') IS NOT NULL AND to_regclass('public.quizcraft_ranking_settlement_events') IS NOT NULL AND to_regclass('public.quizcraft_workshop_audit_events') IS NOT NULL AND to_regclass('public.quizcraft_feedbacks') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_outbox') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_deliveries') IS NOT NULL AND to_regclass('public.quizcraft_service_nonces') IS NOT NULL AND to_regclass('public.quizcraft_migration_runs') IS NOT NULL AND to_regclass('public.quizcraft_migration_exceptions') IS NOT NULL AND to_regclass('public.quizcraft_migration_exception_resolutions') IS NOT NULL AND to_regclass('public.quizcraft_legacy_feedback_archives') IS NOT NULL AND to_regclass('public.quizcraft_legacy_feedback_state_events') IS NOT NULL AND to_regclass('public.quizcraft_legacy_ranking_snapshots') IS NOT NULL AND to_regclass('public.quizcraft_migration_event_receipts') IS NOT NULL AND to_regclass('public.quizcraft_shadow_gate_reports') IS NOT NULL")" = t
+          test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL AND to_regclass('public.quizcraft_practice_sessions') IS NOT NULL AND to_regclass('public.quizcraft_favorites') IS NOT NULL AND to_regclass('public.quizcraft_practice_session_claims') IS NOT NULL AND to_regclass('public.quizcraft_ranking_profiles') IS NOT NULL AND to_regclass('public.quizcraft_ranking_settlement_events') IS NOT NULL AND to_regclass('public.quizcraft_workshop_audit_events') IS NOT NULL AND to_regclass('public.quizcraft_feedbacks') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_outbox') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_deliveries') IS NOT NULL AND to_regclass('public.quizcraft_service_nonces') IS NOT NULL AND to_regclass('public.quizcraft_migration_runs') IS NOT NULL AND to_regclass('public.quizcraft_migration_exceptions') IS NOT NULL AND to_regclass('public.quizcraft_migration_exception_resolutions') IS NOT NULL AND to_regclass('public.quizcraft_legacy_feedback_archives') IS NOT NULL AND to_regclass('public.quizcraft_legacy_feedback_state_events') IS NOT NULL AND to_regclass('public.quizcraft_legacy_ranking_snapshots') IS NOT NULL AND to_regclass('public.quizcraft_migration_event_receipts') IS NOT NULL AND to_regclass('public.quizcraft_shadow_gate_reports') IS NOT NULL AND to_regclass('public.quizcraft_schema_migrations') IS NOT NULL")" = t
+          dropdb -h localhost -U quizcraft quizcraft_v2
       - name: Verify QuizCraft contract
         run: |
           set -euo pipefail
@@ -110,16 +129,23 @@ jobs:
           test ! -s /tmp/gofmt.diff
           go vet ./...
           go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
           go test -race -count=1 ./...
           go build -o /tmp/quizcraft-importbank ./cmd/importbank
           go build -ldflags "-X main.buildReleaseSHA=${GITHUB_SHA}" -o /tmp/quizcraft-server ./cmd/server
           strings /tmp/quizcraft-server | grep -F "$GITHUB_SHA"
           go build -o /tmp/quizcraft-settleranking ./cmd/settleranking
           go build -o /tmp/quizcraft-reconcile ./cmd/reconcile
+          go build -o /tmp/quizcraft-migrate ./cmd/migrate
+          go build -o /tmp/quizcraft-backuprestore ./cmd/backuprestore
           DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft' /tmp/quizcraft-importbank -h 2>&1 | tee /tmp/importbank-help.txt
           ! grep -F 'DO_NOT_PRINT' /tmp/importbank-help.txt
-          DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft' LEGACY_DATABASE_URL='postgres://legacy:DO_NOT_PRINT_LEGACY@localhost/legacy' /tmp/quizcraft-reconcile -h 2>&1 | tee /tmp/reconcile-help.txt
+          QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft_v2' LEGACY_DATABASE_URL='postgres://legacy:DO_NOT_PRINT_LEGACY@localhost/legacy' /tmp/quizcraft-reconcile -h 2>&1 | tee /tmp/reconcile-help.txt
           ! grep -E 'DO_NOT_PRINT|DO_NOT_PRINT_LEGACY' /tmp/reconcile-help.txt
+          QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft_v2' /tmp/quizcraft-migrate -h 2>&1 | tee /tmp/migrate-help.txt
+          ! grep -F 'DO_NOT_PRINT' /tmp/migrate-help.txt
+          QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft_v2' QUIZCRAFT_RESTORE_ADMIN_URL='postgres://restore:DO_NOT_PRINT_RESTORE@localhost/postgres' /tmp/quizcraft-backuprestore -h 2>&1 | tee /tmp/backuprestore-help.txt
+          ! grep -E 'DO_NOT_PRINT|DO_NOT_PRINT_RESTORE' /tmp/backuprestore-help.txt
       - name: Verify existing FastAPI remains intact
         run: |
           python -m pip install -r products/quizcraft/requirements.txt pytest
@@ -144,3 +170,7 @@ jobs:
           products/quizcraft/go-service/scripts/test-switch-cutover-release.sh
       - name: Build shadow image
         run: docker build --build-arg RELEASE_SHA=${{ github.sha }} -t henukit-quizcraft:${{ github.sha }} products/quizcraft/go-service
+      - name: Scan repository and shadow image
+        run: |
+          docker run --rm -v "$PWD:/workspace" aquasec/trivy:0.70.0 fs --scanners secret --exit-code 1 /workspace
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.70.0 image --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 henukit-quizcraft:${{ github.sha }}
