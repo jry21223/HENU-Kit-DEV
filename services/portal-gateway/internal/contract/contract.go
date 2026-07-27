@@ -16,7 +16,7 @@ type ModuleSummary struct {
 // LibraryCoursesResponse represents available courses.
 type LibraryCoursesResponse struct {
 	Courses   []CourseSummary `json:"courses"`
-	RequestID string         `json:"request_id"`
+	RequestID string          `json:"request_id"`
 }
 
 type CourseSummary struct {
@@ -34,11 +34,11 @@ type FoodVenuesResponse struct {
 }
 
 type VenueSummary struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Rating  float64 `json:"rating"`
-	Tier    string  `json:"tier"`
-	Campus  string  `json:"campus"`
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	Rating float64 `json:"rating"`
+	Tier   string  `json:"tier"`
+	Campus string  `json:"campus"`
 }
 
 // PracticeBanksResponse represents available question banks.
@@ -61,15 +61,15 @@ type NoticeListResponse struct {
 }
 
 type NoticeSummary struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Source    string     `json:"source"`
-	Published time.Time  `json:"published_at"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Source    string    `json:"source"`
+	Published time.Time `json:"published_at"`
 }
 
 // ErrorEnvelope is the standard error response.
 type ErrorEnvelope struct {
-	Error   string `json:"error"`
-	Detail  string `json:"detail,omitempty"`
+	Error     string `json:"error"`
+	Detail    string `json:"detail,omitempty"`
 	RequestID string `json:"request_id"`
 }
