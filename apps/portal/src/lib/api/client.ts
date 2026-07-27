@@ -25,6 +25,7 @@ import type {
   NoticeListResponse,
   PortalSession,
   PracticeBanksResponse,
+  PracticeStatsResponse,
   SchoolListResponse,
 } from "./types";
 
@@ -281,6 +282,10 @@ export async function fetchFoodPosts(campus?: string): Promise<FoodPostListRespo
 
 export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null> {
   return apiFetch<PracticeBanksResponse>("/api/v1/practice/banks");
+}
+
+export async function fetchPracticeStats(): Promise<PracticeStatsResponse> {
+  return apiFetchRequired<PracticeStatsResponse>("/api/v1/practice/stats");
 }
 
 export async function fetchPracticeSchools(): Promise<SchoolListResponse> {

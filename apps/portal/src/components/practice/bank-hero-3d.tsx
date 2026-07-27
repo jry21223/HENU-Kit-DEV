@@ -13,6 +13,14 @@ import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Float } from "@react-three/drei";
 import * as THREE from "three";
+import {
+  averageMastery,
+  deriveMasteryVisuals,
+  EMPTY_MASTERY,
+  masteryPercent,
+  type MasterySnapshot,
+  type MasterySubject,
+} from "@/components/practice/bank-hero-mastery";
 
 const INK = "#161513";
 const ACCENT = "#ff4d00";
@@ -23,36 +31,8 @@ const LERP = 6.5;
 /** Rebuild torus arc only when display % moves ≥ this */
 const ARC_REBUILD_STEP = 0.012;
 
-/** 0–100 subject mastery row (same shape as USER_STATS.mastery). */
-export type MasterySubject = {
-  label: string;
-  value: number;
-};
-
-/** Snapshot that drives the knowledge mesh. */
-export type MasterySnapshot = {
-  subjects: MasterySubject[];
-  /** Overall accuracy 0–100 → nucleus size / brightness */
-  accuracy: number;
-  /** Streak days → orbiting cube count */
-  streakDays: number;
-  /** Total answered → orbit radius slightly */
-  totalQuestions: number;
-};
-
-export const EMPTY_MASTERY: MasterySnapshot = {
-  subjects: [],
-  accuracy: 0,
-  streakDays: 0,
-  totalQuestions: 0,
-};
-
-function clamp01(n: number) {
-  return Math.min(1, Math.max(0, n));
-}
-
 function pct(n: number) {
-  return clamp01(n / 100);
+  return masteryPercent(n);
 }
 
 function damp(current: number, target: number, delta: number, speed = LERP) {
@@ -100,21 +80,44 @@ function OrbitingCubes({
   speed?: number;
 }) {
   const group = useRef<THREE.Group>(null);
-  useFrame((_, delta) => {
-    if (group.current) group.current.rotation.y += delta * speed;
-  });
+  const targetRadius = useRef(radius);
+  const currentRadius = useRef(radius);
+
+  useEffect(() => {
+    targetRadius.current = radius;
+  }, [radius]);
+
   const cubes = useMemo(() => {
     const n = Math.max(0, Math.min(4, Math.round(count)));
-    return Array.from({ length: n }, (_, i) => {
-      const angle = n === 0 ? 0 : (Math.PI * 2 * i) / n;
-      return {
-        angle,
-        y: (i % 2 === 0 ? 0.55 : -0.55) + (i - 1) * 0.08,
-        size: 0.07 + (i % 2) * 0.025,
-        r: radius + (i % 2) * 0.12,
-      };
+    return Array.from({ length: n }, (_, i) => ({
+      angle: n === 0 ? 0 : (Math.PI * 2 * i) / n,
+      y: (i % 2 === 0 ? 0.55 : -0.55) + (i - 1) * 0.08,
+      size: 0.07 + (i % 2) * 0.025,
+      radiusOffset: (i % 2) * 0.12,
+    }));
+  }, [count]);
+
+  useFrame((_, delta) => {
+    const orbit = group.current;
+    if (!orbit) return;
+    orbit.rotation.y += delta * speed;
+    currentRadius.current = damp(
+      currentRadius.current,
+      targetRadius.current,
+      delta
+    );
+    orbit.children.forEach((child, index) => {
+      const cube = cubes[index];
+      if (!cube) return;
+      const displayedRadius = currentRadius.current + cube.radiusOffset;
+      child.position.set(
+        Math.cos(cube.angle) * displayedRadius,
+        cube.y,
+        Math.sin(cube.angle) * displayedRadius
+      );
     });
-  }, [count, radius]);
+  });
+
   if (cubes.length === 0) return null;
   return (
     <group ref={group}>
@@ -122,9 +125,9 @@ function OrbitingCubes({
         <mesh
           key={i}
           position={[
-            Math.cos(c.angle) * c.r,
+            Math.cos(c.angle) * (radius + c.radiusOffset),
             c.y,
-            Math.sin(c.angle) * c.r,
+            Math.sin(c.angle) * (radius + c.radiusOffset),
           ]}
         >
           <boxGeometry args={[c.size, c.size, c.size]} />
@@ -332,17 +335,12 @@ function MasteryRings({ subjects }: { subjects: MasterySubject[] }) {
   }, [subjects]);
 
   const avgTarget = useRef(
-    top.length === 0
-      ? 0
-      : top.reduce((a, s) => a + s.value, 0) / top.length / 100
+    averageMastery(top)
   );
-  const avgCur = useRef(avgTarget.current);
+  const avgCur = useRef(averageMastery(top));
 
   useEffect(() => {
-    avgTarget.current =
-      top.length === 0
-        ? 0
-        : top.reduce((a, s) => a + s.value, 0) / top.length / 100;
+    avgTarget.current = averageMastery(top);
   }, [top]);
 
   useFrame((_, delta) => {
@@ -380,20 +378,10 @@ function MasteryRings({ subjects }: { subjects: MasterySubject[] }) {
 }
 
 function KnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
-  const coverage = useMemo(() => {
-    const list = mastery.subjects;
-    if (!list.length) return 0;
-    return list.reduce((a, s) => a + s.value, 0) / list.length / 100;
-  }, [mastery.subjects]);
-
-  const cubeCount = Math.min(
-    4,
-    Math.max(
-      0,
-      Math.floor(mastery.streakDays / 10) + (mastery.streakDays > 0 ? 1 : 0)
-    )
+  const { coverage, cubeCount, orbitRadius } = useMemo(
+    () => deriveMasteryVisuals(mastery),
+    [mastery]
   );
-  const orbitR = 2.2 + Math.min(0.35, mastery.totalQuestions / 2500);
 
   return (
     <Rig spin={0.09 + coverage * 0.07}>
@@ -401,7 +389,7 @@ function KnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
       <MasteryRings subjects={mastery.subjects} />
       <OrbitingCubes
         count={cubeCount}
-        radius={orbitR}
+        radius={orbitRadius}
         speed={0.16 + coverage * 0.12}
       />
     </Rig>

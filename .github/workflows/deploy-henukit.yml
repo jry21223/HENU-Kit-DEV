@@ -44,6 +44,8 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install Portal dependencies
         run: pnpm install --frozen-lockfile --filter @henukit/portal...
+      - name: Verify Portal unit contracts
+        run: pnpm --filter @henukit/portal test:unit
       - name: Install Chromium
         run: pnpm --filter @henukit/portal exec playwright install --with-deps chromium
       - name: Verify responsive Portal layout

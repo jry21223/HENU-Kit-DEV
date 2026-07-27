@@ -4,23 +4,17 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import dynamic from "next/dynamic";
 import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
-import { USER_STATS } from "@/lib/practice/mock";
-import type { MasterySnapshot } from "@/components/practice/bank-hero-3d";
+import { fetchPracticeStats } from "@/lib/api/client";
+import {
+  deriveMasteryVisuals,
+  EMPTY_MASTERY,
+  masteryPercent,
+  type MasterySnapshot,
+} from "@/components/practice/bank-hero-mastery";
 
 const BankHero3D = dynamic(() => import("@/components/practice/bank-hero-3d"), {
   ssr: false,
 });
-
-/** Mastery snapshot from practice mock (same source as /practice/stats). */
-const MASTERY: MasterySnapshot = {
-  subjects: USER_STATS.mastery.map((m) => ({
-    label: m.label,
-    value: m.value,
-  })),
-  accuracy: USER_STATS.accuracy,
-  streakDays: USER_STATS.streakDays,
-  totalQuestions: USER_STATS.totalQuestions,
-};
 
 const COUNTERS = [
   { label: "全站总刷题", value: 128436 },
@@ -50,12 +44,14 @@ function formatNum(n: number) {
 
 /** reduced-motion：晶体轮廓 + 进度弧（与 3D 同一编码） */
 function StaticKnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
-  const rings = mastery.subjects.slice(0, 3);
-  const acc = mastery.accuracy / 100;
-  const cov =
-    rings.length === 0
-      ? 0
-      : rings.reduce((a, s) => a + s.value, 0) / rings.length / 100;
+  const {
+    ringSubjects: rings,
+    coverage,
+    cubeCount,
+    orbitRadius,
+  } = deriveMasteryVisuals(mastery);
+  const acc = masteryPercent(mastery.accuracy);
+  const staticOrbitRadius = 56 + ((orbitRadius - 2.2) / 0.35) * 12;
   return (
     <svg
       viewBox="0 0 200 240"
@@ -67,12 +63,12 @@ function StaticKnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
       <polygon
         points="100,28 168,78 148,168 52,168 32,78"
         strokeWidth="1.2"
-        opacity={0.2 + cov * 0.55}
+        opacity={0.2 + coverage * 0.55}
       />
       <polygon
         points="100,58 140,88 128,142 72,142 60,88"
         strokeWidth="1"
-        opacity={0.12 + cov * 0.4}
+        opacity={0.12 + coverage * 0.4}
       />
       <circle
         cx="100"
@@ -83,7 +79,7 @@ function StaticKnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
         opacity={0.45 + acc * 0.5}
       />
       {rings.map((s, i) => {
-        const t = Math.min(1, Math.max(0, s.value / 100));
+        const t = masteryPercent(s.value);
         const weak = s.value < 60;
         const rx = 48 + i * 16;
         const ry = 18 + i * 6;
@@ -120,6 +116,22 @@ function StaticKnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
           </g>
         );
       })}
+      {Array.from({ length: cubeCount }, (_, index) => {
+        const angle = (Math.PI * 2 * index) / cubeCount;
+        const x = 100 + Math.cos(angle) * staticOrbitRadius;
+        const y = 110 + Math.sin(angle) * staticOrbitRadius * 0.42;
+        return (
+          <rect
+            key={index}
+            x={x - 2.5}
+            y={y - 2.5}
+            width="5"
+            height="5"
+            className="stroke-accent"
+            opacity="0.55"
+          />
+        );
+      })}
       <path d="M100 18 v-12 M94 12 h12" className="stroke-accent" />
     </svg>
   );
@@ -136,16 +148,39 @@ export default function BankHero({
   const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const tickerRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(true);
-
-  const mastery = useMemo(() => MASTERY, []);
-  const ringSubjects = mastery.subjects.slice(0, 3);
-  const cubeHint = Math.min(
-    4,
-    Math.max(
-      0,
-      Math.floor(mastery.streakDays / 10) + (mastery.streakDays > 0 ? 1 : 0)
-    )
+  const [mastery, setMastery] = useState<MasterySnapshot>(EMPTY_MASTERY);
+  const [masteryState, setMasteryState] = useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
+  const { ringSubjects, cubeCount } = useMemo(
+    () => deriveMasteryVisuals(mastery),
+    [mastery]
   );
+
+  useEffect(() => {
+    let current = true;
+
+    fetchPracticeStats()
+      .then((stats) => {
+        if (!current) return;
+        setMastery({
+          subjects: stats.mastery,
+          accuracy: stats.accuracy,
+          streakDays: stats.streakDays,
+          totalQuestions: stats.totalQuestions,
+        });
+        setMasteryState("ready");
+      })
+      .catch(() => {
+        if (!current) return;
+        setMastery(EMPTY_MASTERY);
+        setMasteryState("unavailable");
+      });
+
+    return () => {
+      current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -302,7 +337,14 @@ export default function BankHero({
 
           <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20">
             <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
-              {ringSubjects.map((s, i) => {
+              {masteryState !== "ready" ? (
+                <li className="py-1 font-mono text-[10px] tracking-wide text-ink/50">
+                  {masteryState === "loading"
+                    ? "正在读取掌握度数据…"
+                    : "掌握度数据尚未接入"}
+                </li>
+              ) : null}
+              {masteryState === "ready" && ringSubjects.map((s, i) => {
                 const weak = s.value < 60;
                 const t = Math.min(100, Math.max(0, s.value));
                 return (
@@ -337,13 +379,15 @@ export default function BankHero({
                   </li>
                 );
               })}
-              <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
-                <span>
-                  核 {mastery.accuracy}% · 连打 {mastery.streakDays}d · 块{" "}
-                  {cubeHint}
-                </span>
-                <span>{mastery.totalQuestions} 题</span>
-              </li>
+              {masteryState === "ready" ? (
+                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
+                  <span>
+                    核 {mastery.accuracy}% · 连打 {mastery.streakDays}d · 块{" "}
+                    {cubeCount}
+                  </span>
+                  <span>{mastery.totalQuestions} 题</span>
+                </li>
+              ) : null}
             </ul>
           </div>
 
