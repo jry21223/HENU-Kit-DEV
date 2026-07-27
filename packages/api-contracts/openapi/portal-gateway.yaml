@@ -75,6 +75,8 @@ paths:
     get:
       operationId: getSession
       summary: Return current Portal Session
+      security:
+        - portalSession: []
       responses:
         "200":
           description: Authenticated session
@@ -93,6 +95,8 @@ paths:
     post:
       operationId: logout
       summary: Clear Portal Session cookie
+      security:
+        - portalSession: []
       responses:
         "200":
           description: Signed out

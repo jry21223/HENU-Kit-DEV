@@ -30,6 +30,10 @@ jobs:
           go-version-file: services/portal-gateway/go.mod
           cache-dependency-path: services/portal-gateway/go.sum
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Verify generated OpenAPI types
         working-directory: services/portal-gateway
         run: |
@@ -38,6 +42,8 @@ jobs:
           git diff --exit-code -- \
             internal/contract/portal_session.generated.go \
             ../../apps/portal/src/lib/api/portal-session.generated.ts
+          npx --yes --package=@redocly/cli@2.39.0 \
+            redocly lint ../../packages/api-contracts/openapi/portal-gateway.yaml
 
       - name: Vet and test
         working-directory: services/portal-gateway
