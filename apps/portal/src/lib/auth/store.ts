@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/client";
 import { requireGateway } from "@/lib/api/env";
 import { initAllGateways } from "@/lib/gateway-init";
+import { publicDisplayName } from "./display-name";
 
 export interface AuthUser {
   name: string;
@@ -52,7 +53,11 @@ function init() {
       .then((session) => {
         if (session) {
           state = {
-            user: { name: session.user_id, uid: session.user_id, email: "" },
+            user: {
+              name: publicDisplayName(session.display_name),
+              uid: session.user_id,
+              email: "",
+            },
             ready: true,
           };
         } else {

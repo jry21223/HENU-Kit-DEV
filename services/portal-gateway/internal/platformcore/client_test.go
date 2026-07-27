@@ -62,7 +62,8 @@ func TestExchangeCodeSendsClientIDAndDecodesEnvelope(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": map[string]any{
 				"user": map[string]string{
-					"user_id": "171f1c6f-7b10-4c92-91a2-b39bf5af5302",
+					"user_id":      "171f1c6f-7b10-4c92-91a2-b39bf5af5302",
+					"display_name": "小河同学",
 				},
 				"session_exchange_token": "exchange_token_with_at_least_32_characters",
 				"expires_at":             expiresAt,
@@ -81,6 +82,9 @@ func TestExchangeCodeSendsClientIDAndDecodesEnvelope(t *testing.T) {
 	}
 	if result.UserID != "171f1c6f-7b10-4c92-91a2-b39bf5af5302" {
 		t.Fatalf("UserID = %q", result.UserID)
+	}
+	if result.DisplayName != "小河同学" {
+		t.Fatalf("DisplayName = %q, want exchange display name", result.DisplayName)
 	}
 	if result.SessionExchangeToken != "exchange_token_with_at_least_32_characters" {
 		t.Fatalf("SessionExchangeToken = %q", result.SessionExchangeToken)

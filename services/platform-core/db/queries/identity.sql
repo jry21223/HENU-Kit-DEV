@@ -52,7 +52,7 @@ INSERT INTO sessions (
 RETURNING id, expires_at;
 
 -- name: GetPlatformUser :one
-SELECT id, email_verified, status, created_at FROM users WHERE id = $1;
+SELECT id, email_verified, status, created_at, display_name FROM users WHERE id = $1;
 
 -- name: GetExchangeSessionAuthorizationContext :one
 SELECT s.id, s.user_id, s.client_id,

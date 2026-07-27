@@ -75,6 +75,8 @@ paths:
     get:
       operationId: getSession
       summary: Return current Portal Session
+      security:
+        - portalSession: []
       responses:
         "200":
           description: Authenticated session
@@ -93,6 +95,7 @@ paths:
     post:
       operationId: logout
       summary: Clear Portal Session cookie
+      security: []
       responses:
         "200":
           description: Signed out
@@ -206,6 +209,10 @@ components:
       properties:
         user_id:
           type: string
+        display_name:
+          type: string
+          description: Registration display name when available; clients should not treat user_id as a human label.
+          maxLength: 80
         expires_at:
           type: string
           format: date-time

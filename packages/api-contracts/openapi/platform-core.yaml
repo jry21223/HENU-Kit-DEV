@@ -1044,6 +1044,10 @@ components:
       properties:
         user_id:
           type: string
+        display_name:
+          type: string
+          description: Public profile label chosen at registration; may be empty for legacy rows.
+          maxLength: 80
         email_verified:
           type: boolean
         status:

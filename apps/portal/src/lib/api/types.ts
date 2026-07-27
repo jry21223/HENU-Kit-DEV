@@ -4,10 +4,7 @@
  * and portal-api.yaml (materials, posts, schools, campus).
  */
 
-export interface PortalSession {
-  user_id: string;
-  expires_at: string; // ISO 8601
-}
+export type { PortalSession } from "./portal-session.generated";
 
 export interface ErrorEnvelope {
   error: string;

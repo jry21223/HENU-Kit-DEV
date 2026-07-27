@@ -1,0 +1,53 @@
+name: Portal Gateway
+
+on:
+  pull_request:
+    paths:
+      - services/portal-gateway/**
+      - apps/portal/src/lib/api/portal-session.generated.ts
+      - packages/api-contracts/openapi/portal-gateway.yaml
+      - .github/workflows/portal-gateway.yml
+  push:
+    branches: [main]
+    paths:
+      - services/portal-gateway/**
+      - apps/portal/src/lib/api/portal-session.generated.ts
+      - packages/api-contracts/openapi/portal-gateway.yaml
+      - .github/workflows/portal-gateway.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/portal-gateway/go.mod
+          cache-dependency-path: services/portal-gateway/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify generated OpenAPI types
+        working-directory: services/portal-gateway
+        run: |
+          set -euo pipefail
+          go run ./cmd/contractgen
+          git diff --exit-code -- \
+            internal/contract/portal_session.generated.go \
+            ../../apps/portal/src/lib/api/portal-session.generated.ts
+          npx --yes --package=@redocly/cli@2.39.0 \
+            redocly lint ../../packages/api-contracts/openapi/portal-gateway.yaml
+
+      - name: Vet and test
+        working-directory: services/portal-gateway
+        run: |
+          set -euo pipefail
+          go vet ./...
+          go test -race -count=1 ./...

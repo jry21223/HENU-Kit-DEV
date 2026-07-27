@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"henukit.dev/portal-gateway/internal/serviceauth"
@@ -35,6 +36,7 @@ func NewClient(baseURL, redirectURI, clientID, clientSecret, keyID string) *Clie
 // ExchangeResult is the response from Platform Core's token exchange.
 type ExchangeResult struct {
 	UserID               string    `json:"user_id"`
+	DisplayName          string    `json:"display_name,omitempty"`
 	SessionExchangeToken string    `json:"session_exchange_token"`
 	ExpiresAt            time.Time `json:"expires_at"`
 }
@@ -76,7 +78,8 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 	var envelope struct {
 		Data struct {
 			User struct {
-				UserID string `json:"user_id"`
+				UserID      string `json:"user_id"`
+				DisplayName string `json:"display_name"`
 			} `json:"user"`
 			SessionExchangeToken string    `json:"session_exchange_token"`
 			ExpiresAt            time.Time `json:"expires_at"`
@@ -91,6 +94,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 
 	return ExchangeResult{
 		UserID:               envelope.Data.User.UserID,
+		DisplayName:          strings.TrimSpace(envelope.Data.User.DisplayName),
 		SessionExchangeToken: envelope.Data.SessionExchangeToken,
 		ExpiresAt:            envelope.Data.ExpiresAt,
 	}, nil

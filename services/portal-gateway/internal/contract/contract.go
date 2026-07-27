@@ -1,14 +1,8 @@
-// Package contract defines Portal Gateway API types.
-// Generated from packages/api-contracts/openapi/portal-gateway.yaml
+// Package contract defines Portal Gateway API types that are not generated
+// from the public OpenAPI schema.
 package contract
 
 import "time"
-
-// PortalSession is the authenticated user context returned to the browser.
-type PortalSession struct {
-	UserID    string    `json:"user_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-}
 
 // ModuleSummary is a read-only product summary for Portal's module cards.
 type ModuleSummary struct {
@@ -22,7 +16,7 @@ type ModuleSummary struct {
 // LibraryCoursesResponse represents available courses.
 type LibraryCoursesResponse struct {
 	Courses   []CourseSummary `json:"courses"`
-	RequestID string         `json:"request_id"`
+	RequestID string          `json:"request_id"`
 }
 
 type CourseSummary struct {
@@ -40,11 +34,11 @@ type FoodVenuesResponse struct {
 }
 
 type VenueSummary struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Rating  float64 `json:"rating"`
-	Tier    string  `json:"tier"`
-	Campus  string  `json:"campus"`
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	Rating float64 `json:"rating"`
+	Tier   string  `json:"tier"`
+	Campus string  `json:"campus"`
 }
 
 // PracticeBanksResponse represents available question banks.
@@ -67,15 +61,15 @@ type NoticeListResponse struct {
 }
 
 type NoticeSummary struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Source    string     `json:"source"`
-	Published time.Time  `json:"published_at"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Source    string    `json:"source"`
+	Published time.Time `json:"published_at"`
 }
 
 // ErrorEnvelope is the standard error response.
 type ErrorEnvelope struct {
-	Error   string `json:"error"`
-	Detail  string `json:"detail,omitempty"`
+	Error     string `json:"error"`
+	Detail    string `json:"detail,omitempty"`
 	RequestID string `json:"request_id"`
 }

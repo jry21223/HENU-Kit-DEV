@@ -221,7 +221,8 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encoded, err := h.sessionCodec.Encode(session.Value{
-		UserID: result.UserID, ExchangeToken: result.SessionExchangeToken, ExpiresAt: result.ExpiresAt,
+		UserID: result.UserID, DisplayName: result.DisplayName,
+		ExchangeToken: result.SessionExchangeToken, ExpiresAt: result.ExpiresAt,
 	})
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "session encode error")
@@ -247,7 +248,13 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
 		return
 	}
-	writeJSON(w, http.StatusOK, contract.PortalSession{UserID: v.UserID, ExpiresAt: v.ExpiresAt})
+	var displayName *string
+	if v.DisplayName != "" {
+		displayName = &v.DisplayName
+	}
+	writeJSON(w, http.StatusOK, contract.PortalSession{
+		UserID: v.UserID, DisplayName: displayName, ExpiresAt: v.ExpiresAt,
+	})
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {

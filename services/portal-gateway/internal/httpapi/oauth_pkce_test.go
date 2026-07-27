@@ -58,7 +58,10 @@ func TestOAuthPKCEChallengeMatchesVerifierAndSetsSession(t *testing.T) {
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(map[string]any{
 			"data": map[string]any{
-				"user":                   map[string]string{"user_id": "171f1c6f-7b10-4c92-91a2-b39bf5af5302"},
+				"user": map[string]string{
+					"user_id":      "171f1c6f-7b10-4c92-91a2-b39bf5af5302",
+					"display_name": "小河同学",
+				},
 				"session_exchange_token": "exchange_token_with_at_least_32_characters",
 				"expires_at":             expiresAt,
 			},
@@ -138,6 +141,22 @@ func TestOAuthPKCEChallengeMatchesVerifierAndSetsSession(t *testing.T) {
 	}
 	if tokenCalls.Load() != 1 {
 		t.Fatalf("token endpoint calls = %d, want 1", tokenCalls.Load())
+	}
+
+	sessionRequest := httptest.NewRequest(http.MethodGet, "https://portal.example/api/v1/session", nil)
+	sessionRequest.TLS = &tls.ConnectionState{}
+	sessionRequest.AddCookie(sessionCookie)
+	sessionRecorder := httptest.NewRecorder()
+	handler.Router().ServeHTTP(sessionRecorder, sessionRequest)
+	if sessionRecorder.Code != http.StatusOK {
+		t.Fatalf("session status = %d body=%s", sessionRecorder.Code, sessionRecorder.Body.String())
+	}
+	var portalSession contract.PortalSession
+	if err := json.Unmarshal(sessionRecorder.Body.Bytes(), &portalSession); err != nil {
+		t.Fatalf("decode session response: %v", err)
+	}
+	if portalSession.DisplayName == nil || *portalSession.DisplayName != "小河同学" {
+		t.Fatalf("session display_name = %v, want exchange display name", portalSession.DisplayName)
 	}
 
 	// Replay the same state/cookie: Redis state was GetDel'd — must fail closed without a second token call.

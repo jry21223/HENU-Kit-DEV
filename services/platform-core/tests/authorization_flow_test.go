@@ -79,6 +79,9 @@ func TestAuthorizationCodeIsSingleUseAndCreatesDurableSession(t *testing.T) {
 	}
 	var payload struct {
 		Data struct {
+			User struct {
+				DisplayName string `json:"display_name"`
+			} `json:"user"`
 			SessionExchangeToken string `json:"session_exchange_token"`
 		} `json:"data"`
 	}
@@ -88,6 +91,9 @@ func TestAuthorizationCodeIsSingleUseAndCreatesDurableSession(t *testing.T) {
 	first.Body.Close()
 	if len(payload.Data.SessionExchangeToken) < 32 {
 		t.Fatal("exchange token is missing or too short")
+	}
+	if payload.Data.User.DisplayName != "OAuth 测试用户" {
+		t.Fatalf("exchange display_name = %q, want registration display name", payload.Data.User.DisplayName)
 	}
 	if first.Header.Get("Access-Control-Allow-Origin") != "" {
 		t.Fatal("server-to-server exchange must not opt into browser cross-origin access")
@@ -499,7 +505,7 @@ func seedIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	retiringSecretHash := sha256.Sum256([]byte(testRetiringSecret))
 	revokedSecretHash := sha256.Sum256([]byte(testRevokedSecret))
 	tokenHash := sha256.Sum256([]byte(testCoreToken))
-	if _, err := pool.Exec(ctx, `INSERT INTO users (id, email_verified, status) VALUES ($1, true, 'active')`, userID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO users (id, email_verified, status, display_name) VALUES ($1, true, 'active', 'OAuth 测试用户')`, userID); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ($1, $2)`, testClientID, []string{testRedirectURI}); err != nil {

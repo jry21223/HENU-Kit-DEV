@@ -417,7 +417,7 @@ func (q *Queries) GetOAuthExchangeIdempotency(ctx context.Context, arg GetOAuthE
 }
 
 const getPlatformUser = `-- name: GetPlatformUser :one
-SELECT id, email_verified, status, created_at FROM users WHERE id = $1
+SELECT id, email_verified, status, created_at, display_name FROM users WHERE id = $1
 `
 
 type GetPlatformUserRow struct {
@@ -425,6 +425,7 @@ type GetPlatformUserRow struct {
 	EmailVerified bool               `json:"email_verified"`
 	Status        string             `json:"status"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	DisplayName   pgtype.Text        `json:"display_name"`
 }
 
 func (q *Queries) GetPlatformUser(ctx context.Context, id pgtype.UUID) (GetPlatformUserRow, error) {
@@ -435,6 +436,7 @@ func (q *Queries) GetPlatformUser(ctx context.Context, id pgtype.UUID) (GetPlatf
 		&i.EmailVerified,
 		&i.Status,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }

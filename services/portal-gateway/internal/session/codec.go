@@ -15,6 +15,7 @@ const associatedData = "henukit-portal-session-v1"
 // Value is the session payload stored in the encrypted cookie.
 type Value struct {
 	UserID        string    `json:"user_id"`
+	DisplayName   string    `json:"display_name,omitempty"`
 	ExchangeToken string    `json:"exchange_token"`
 	ExpiresAt     time.Time `json:"expires_at"`
 }

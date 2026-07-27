@@ -1361,8 +1361,15 @@ func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	audit.subjectUserID = maskSubject(exchange.UserID)
+	var displayName *string
+	if exchange.DisplayName != "" {
+		displayName = &exchange.DisplayName
+	}
 	writeSuccess(writer, request, http.StatusOK, contract.ExchangeAuthorizationCodeResponse{
-		User:                 contract.PlatformUser{UserID: exchange.UserID, EmailVerified: exchange.EmailVerified, Status: exchange.UserStatus, CreatedAt: exchange.UserCreatedAt},
+		User: contract.PlatformUser{
+			UserID: exchange.UserID, DisplayName: displayName,
+			EmailVerified: exchange.EmailVerified, Status: exchange.UserStatus, CreatedAt: exchange.UserCreatedAt,
+		},
 		SessionExchangeToken: exchange.SessionExchangeToken, ExpiresAt: exchange.ExpiresAt,
 	})
 }

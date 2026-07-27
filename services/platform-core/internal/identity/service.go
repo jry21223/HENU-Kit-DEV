@@ -91,6 +91,7 @@ type Exchange struct {
 	SessionExchangeToken string
 	ExpiresAt            time.Time
 	UserID               string
+	DisplayName          string
 	EmailVerified        bool
 	UserStatus           string
 	UserCreatedAt        time.Time
@@ -333,9 +334,13 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 	if err != nil {
 		return Exchange{}, err
 	}
+	displayName := ""
+	if user.DisplayName.Valid {
+		displayName = strings.TrimSpace(user.DisplayName.String)
+	}
 	result := Exchange{
 		SessionExchangeToken: sessionToken, ExpiresAt: expiresAt, UserID: uuidString(user.ID),
-		EmailVerified: user.EmailVerified, UserStatus: user.Status, UserCreatedAt: user.CreatedAt.Time,
+		DisplayName: displayName, EmailVerified: user.EmailVerified, UserStatus: user.Status, UserCreatedAt: user.CreatedAt.Time,
 	}
 	if err := queries.CreateOAuthExchangeIdempotency(ctx, store.CreateOAuthExchangeIdempotencyParams{
 		ClientID: input.ClientID, IdempotencyKey: input.IdempotencyKey, RequestHash: input.BodyHash,
