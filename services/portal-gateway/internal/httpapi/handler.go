@@ -248,8 +248,12 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
 		return
 	}
+	var displayName *string
+	if v.DisplayName != "" {
+		displayName = &v.DisplayName
+	}
 	writeJSON(w, http.StatusOK, contract.PortalSession{
-		UserID: v.UserID, DisplayName: v.DisplayName, ExpiresAt: v.ExpiresAt,
+		UserID: v.UserID, DisplayName: displayName, ExpiresAt: v.ExpiresAt,
 	})
 }
 

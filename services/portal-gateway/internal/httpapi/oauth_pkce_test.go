@@ -155,8 +155,8 @@ func TestOAuthPKCEChallengeMatchesVerifierAndSetsSession(t *testing.T) {
 	if err := json.Unmarshal(sessionRecorder.Body.Bytes(), &portalSession); err != nil {
 		t.Fatalf("decode session response: %v", err)
 	}
-	if portalSession.DisplayName != "小河同学" {
-		t.Fatalf("session display_name = %q, want exchange display name", portalSession.DisplayName)
+	if portalSession.DisplayName == nil || *portalSession.DisplayName != "小河同学" {
+		t.Fatalf("session display_name = %v, want exchange display name", portalSession.DisplayName)
 	}
 
 	// Replay the same state/cookie: Redis state was GetDel'd — must fail closed without a second token call.

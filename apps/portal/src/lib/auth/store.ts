@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/client";
 import { requireGateway } from "@/lib/api/env";
 import { initAllGateways } from "@/lib/gateway-init";
+import { publicDisplayName } from "./display-name";
 
 export interface AuthUser {
   name: string;
@@ -108,13 +109,6 @@ function uidOf(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 90000;
   return String(20260000 + h);
-}
-
-/** Prefer registration display_name; never expose an internal user ID as a label. */
-export function publicDisplayName(displayName: string | undefined): string {
-  const trimmed = displayName?.trim();
-  if (trimmed) return trimmed;
-  return "用户";
 }
 
 /** Mock 登录是否可用（UI 可据此隐藏演示码 / 本地登录表单） */

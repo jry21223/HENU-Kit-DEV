@@ -1,15 +1,8 @@
-// Package contract defines Portal Gateway API types.
-// Generated from packages/api-contracts/openapi/portal-gateway.yaml
+// Package contract defines Portal Gateway API types that are not generated
+// from the public OpenAPI schema.
 package contract
 
 import "time"
-
-// PortalSession is the authenticated user context returned to the browser.
-type PortalSession struct {
-	UserID      string    `json:"user_id"`
-	DisplayName string    `json:"display_name,omitempty"`
-	ExpiresAt   time.Time `json:"expires_at"`
-}
 
 // ModuleSummary is a read-only product summary for Portal's module cards.
 type ModuleSummary struct {

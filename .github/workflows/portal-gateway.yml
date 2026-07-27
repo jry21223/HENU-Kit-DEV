@@ -1,0 +1,47 @@
+name: Portal Gateway
+
+on:
+  pull_request:
+    paths:
+      - services/portal-gateway/**
+      - apps/portal/src/lib/api/portal-session.generated.ts
+      - packages/api-contracts/openapi/portal-gateway.yaml
+      - .github/workflows/portal-gateway.yml
+  push:
+    branches: [main]
+    paths:
+      - services/portal-gateway/**
+      - apps/portal/src/lib/api/portal-session.generated.ts
+      - packages/api-contracts/openapi/portal-gateway.yaml
+      - .github/workflows/portal-gateway.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/portal-gateway/go.mod
+          cache-dependency-path: services/portal-gateway/go.sum
+
+      - name: Verify generated OpenAPI types
+        working-directory: services/portal-gateway
+        run: |
+          set -euo pipefail
+          go run ./cmd/contractgen
+          git diff --exit-code -- \
+            internal/contract/portal_session.generated.go \
+            ../../apps/portal/src/lib/api/portal-session.generated.ts
+
+      - name: Vet and test
+        working-directory: services/portal-gateway
+        run: |
+          set -euo pipefail
+          go vet ./...
+          go test -race -count=1 ./...
