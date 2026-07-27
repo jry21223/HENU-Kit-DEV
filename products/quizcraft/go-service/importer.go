@@ -49,6 +49,8 @@ type ImportedQuestion struct {
 	SourceQuestionID  string `json:"source_question_id"`
 	QuestionID        string `json:"question_id"`
 	QuestionVersionID string `json:"question_version_id"`
+	Type              string `json:"type"`
+	ChapterID         string `json:"chapter_id"`
 	ContentSHA256     string `json:"content_sha256"`
 	AnswerSHA256      string `json:"answer_sha256"`
 }
@@ -249,7 +251,8 @@ func (s *Service) importJSON(ctx context.Context, bankKey string, source []byte,
 		})
 		report.Questions = append(report.Questions, ImportedQuestion{
 			SourceQuestionID: sourceID, QuestionID: questionID.String(),
-			QuestionVersionID: versionID.String(), ContentSHA256: contentHash, AnswerSHA256: answerHash,
+			QuestionVersionID: versionID.String(), Type: kind, ChapterID: chapterID,
+			ContentSHA256: contentHash, AnswerSHA256: answerHash,
 		})
 	}
 

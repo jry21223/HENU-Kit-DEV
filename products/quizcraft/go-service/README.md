@@ -1,15 +1,17 @@
 # QuizCraft Go Contract and Import Baseline
 
+> 学生自主运营 · 非河南大学官方项目
+
 This directory is the parallel Go/PostgreSQL foundation for QuizCraft. HC-16 freezes the five-domain API contract and provides deterministic, explicit JSON imports; it does not replace or proxy the existing FastAPI runtime.
 
 HC-17 adds the Practice Core shadow HTTP process. It serves guest sessions, server-side scoring for all four question types, and authenticated progress/wrong-question state while FastAPI remains live. Set `QUIZCRAFT_LEGACY_BASE_URL` and the matching `QUIZCRAFT_LEGACY_COMPARE_SECRET` / FastAPI `QUIZCRAFT_SHADOW_COMPARE_SECRET` to record bounded comparisons through the side-effect-free legacy `/api/practice/shadow-compare` route; legacy errors never change the new API response or legacy statistics.
 
 HC-18 and HC-19 add authenticated per-bank favorites and public rankings derived from immutable Practice Attempts. Ranking defaults to the current UTC Monday-to-Monday week and exposes only the controlled nickname, system avatar, and correct-answer count of opted-in profiles. The four allowed avatars are `scholar-blue`, `coder-green`, `reader-amber`, and `owl-purple`.
 
-The historical bootstrap importer is no longer an activation path. `cmd/importbank` now exits with a migration message so an operator cannot bypass Workshop review. Apply migrations, start the service, then use the authenticated Workshop import endpoint:
+The historical bootstrap importer is no longer an activation path. `cmd/importbank` now exits with a migration message so an operator cannot bypass Workshop review. Apply the versioned migration command, start the service, then use the authenticated Workshop import endpoint:
 
 ```bash
-for migration in db/migrations/*.up.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"; done
+QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' go run ./cmd/migrate
 go run ./cmd/server
 ```
 
@@ -60,31 +62,67 @@ The pinned generator emits Go contract types under `internal/contract` and a fet
 
 Before the legacy service receives any migration-window writes, deploy its updated `db_storage.py` and run the normal `init_schema()` startup path. Bank, feedback, and ranking writes then append `quizcraft_migration_events` in the same PostgreSQL transaction. Event payloads preserve legacy subjects only as legacy snapshot keys; they never create Platform Core users or `quizcraft_ranking_profiles`.
 
-Apply every target migration to a physically separate, empty temporary QuizCraft database. Then run the full PostgreSQL-to-PostgreSQL migration:
+Create the target as the independently owned `quizcraft_v2` database; it must not reuse the legacy database name, database OID, or credentials. The operator commands accept only `QUIZCRAFT_V2_DATABASE_URL` whose configured and connected database name is exactly `quizcraft_v2`; they do not use the runtime service's generic `DATABASE_URL`. Apply the ordered schema artifacts with the idempotent migration command. It records each source SHA-256 and fails closed if an already-applied file changes:
 
 ```bash
-DATABASE_URL='postgres://.../quizcraft_temp' \
-LEGACY_DATABASE_URL='postgres://.../quizcraft_legacy' \
-go run ./cmd/reconcile -mode full -source-name quizcraft-legacy-production
+QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' go run ./cmd/migrate
+QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' go run ./cmd/migrate # reports only skipped artifacts
 ```
 
-The JSON report independently records bank/question/answered counts, question types, chapters, canonical answer SHA-256, and content SHA-256 for the source import and stored target rows. Resolvable feedback is copied with stable bank/question/version references and no guessed user mapping. Unresolvable feedback produces an immutable exception fact and blocks the report. Legacy standings are stored as an immutable snapshot; `GET /api/v1/rankings/legacy` exposes only rank, display name, correct count, and total, never a legacy subject key.
+An existing released V2 schema that was manually applied through `000008` is adopted only on PostgreSQL 16 when its columns, constraints, indexes, non-internal triggers, and trigger functions match the frozen released catalog fingerprint; the report records those immutable checksums as `adopted` and applies only `000009`. A partial or altered untracked schema fails before a migration-history table is created.
+
+Freeze a read-only legacy snapshot before the full import. The artifact includes the source database identity and a content checksum, and is create-only so it can be reused after an interruption. Then run the full PostgreSQL-to-PostgreSQL migration:
+
+```bash
+LEGACY_DATABASE_URL='postgres://.../quizcraft_legacy' \
+go run ./cmd/reconcile -mode snapshot \
+  -source-name quizcraft-legacy-production \
+  -snapshot-file /root/quizcraft-migration/legacy-snapshot.json
+
+QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' \
+go run ./cmd/reconcile -mode full \
+  -snapshot-file /root/quizcraft-migration/legacy-snapshot.json
+```
+
+`full` holds one target-wide advisory lock and rejects a target containing any V2 business fact, so an interrupted run must use `resume` with the same artifact instead of beginning another full import. The JSON report independently records bank/question/answered counts, question types, chapters, canonical answer SHA-256, content SHA-256, source snapshot SHA-256, and zero/unresolved exception state. It also compares every V2 bank, active and inactive bank version, question, question version, and immutable membership to the frozen import facts. Resolvable feedback is copied with stable bank/question/version references and no guessed user mapping. Unresolvable feedback produces an immutable exception fact and blocks the report. Legacy standings are stored as an immutable snapshot; `GET /api/v1/rankings/legacy` exposes only rank, display name, correct count, and total, never a legacy subject key.
+
+If the import process is interrupted after it has emitted a `run_id`, run the same immutable artifact again. It rejects a changed snapshot and preserves the original stable IDs instead of creating a second run:
+
+```bash
+QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' \
+go run ./cmd/reconcile -mode resume -run-id '<run UUID>' \
+  -snapshot-file /root/quizcraft-migration/legacy-snapshot.json
+```
 
 Use the returned `run_id` to catch up the transactional legacy event log. The command accepts increasing PostgreSQL sequence IDs (rolled-back transactions may leave numeric gaps), advances an audited cursor, and exits non-zero while lag or unresolved exceptions remain:
 
 ```bash
+QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' \
+LEGACY_DATABASE_URL='postgres://.../quizcraft_legacy' \
 go run ./cmd/reconcile -mode catch-up -run-id '<run UUID>'
 ```
 
 Finally evaluate a fixed, observed shadow window. Both mismatches and legacy errors count toward the rate, insufficient samples block, and every decision is immutable:
 
 ```bash
+QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' \
 go run ./cmd/reconcile -mode shadow-gate \
   -window-start '2026-07-20T00:00:00Z' \
   -window-end '2026-07-21T00:00:00Z' \
   -minimum-samples 1000 \
   -mismatch-threshold 0.001
 ```
+
+Before any maintenance-window cutover, run a separate backup/restore rehearsal. It retains the custom-format dump for audit, restores it into a generated database, verifies each required table's row count and deterministic content summary against the source, then drops only that generated restore database:
+
+```bash
+QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' \
+QUIZCRAFT_RESTORE_ADMIN_URL='postgres://.../postgres' \
+go run ./cmd/backuprestore \
+  -backup-directory /root/quizcraft-migration/backups
+```
+
+The artifact commands create no Practice Session, Answer, learning-state, favorite, ranking, or Portal routing fact. They prepare evidence only; Portal reads and the Go write promise remain controlled by the separate cutover ticket and runbook. See [`docs/migration-artifacts.md`](docs/migration-artifacts.md) for the operator sequence and recovery boundary.
 
 A zero exit status means only that reconciliation/catch-up/shadow evidence passed. It does not authorize production traffic movement; gradual reads, write cutover, rollback snapshots, and the legacy read-only observation window belong to the separate cutover workflow.
 

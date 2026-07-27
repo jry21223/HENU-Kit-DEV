@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,19 +55,33 @@ type ReconciliationMetrics struct {
 	ContentSHA256 string         `json:"content_sha256"`
 }
 
+// MigrationDiscrepancy is durable, field-level evidence that a frozen legacy
+// snapshot does not match the V2 content it produced. Values are stable IDs or
+// hashes only; no answer content or legacy user identity is exposed in the
+// reconciliation report.
+type MigrationDiscrepancy struct {
+	Code             string `json:"code"`
+	BankKey          string `json:"bank_key,omitempty"`
+	SourceQuestionID string `json:"source_question_id,omitempty"`
+	Expected         string `json:"expected,omitempty"`
+	Actual           string `json:"actual,omitempty"`
+}
+
 type MigrationReport struct {
-	RunID                   uuid.UUID             `json:"run_id"`
-	Source                  ReconciliationMetrics `json:"source"`
-	Target                  ReconciliationMetrics `json:"target"`
-	Differences             []string              `json:"differences"`
-	ContentReconciled       bool                  `json:"content_reconciled"`
-	FeedbackSourceCount     int                   `json:"feedback_source_count"`
-	FeedbackMigratedCount   int                   `json:"feedback_migrated_count"`
-	FeedbackExceptionCount  int                   `json:"feedback_exception_count"`
-	LegacyRankingEntryCount int                   `json:"legacy_ranking_entry_count"`
-	MappedLegacyUserCount   int                   `json:"mapped_legacy_user_count"`
-	CutoffEventID           int64                 `json:"cutoff_event_id"`
-	State                   string                `json:"state"`
+	RunID                   uuid.UUID              `json:"run_id"`
+	SourceSnapshotSHA256    string                 `json:"source_snapshot_sha256"`
+	Source                  ReconciliationMetrics  `json:"source"`
+	Target                  ReconciliationMetrics  `json:"target"`
+	Differences             []string               `json:"differences"`
+	Discrepancies           []MigrationDiscrepancy `json:"discrepancies"`
+	ContentReconciled       bool                   `json:"content_reconciled"`
+	FeedbackSourceCount     int                    `json:"feedback_source_count"`
+	FeedbackMigratedCount   int                    `json:"feedback_migrated_count"`
+	FeedbackExceptionCount  int                    `json:"feedback_exception_count"`
+	LegacyRankingEntryCount int                    `json:"legacy_ranking_entry_count"`
+	MappedLegacyUserCount   int                    `json:"mapped_legacy_user_count"`
+	CutoffEventID           int64                  `json:"cutoff_event_id"`
+	State                   string                 `json:"state"`
 }
 
 type LegacyEvent struct {
@@ -103,53 +118,116 @@ type ShadowGateReport struct {
 	Reasons            []string  `json:"reasons"`
 }
 
+type migrationImport struct {
+	BankKey string
+	Report  ImportReport
+}
+
 func (s *Service) RunFullMigration(ctx context.Context, snapshot LegacySnapshot) (MigrationReport, error) {
-	snapshot.SourceName = strings.TrimSpace(snapshot.SourceName)
-	if snapshot.SourceName == "" || snapshot.CutoffEventID < 0 {
-		return MigrationReport{}, errors.New("migration source and non-negative cutoff event are required")
-	}
-	runID := uuid.New()
-	if _, err := s.database.Exec(ctx, `INSERT INTO quizcraft_migration_runs(id,source_name,source_cutoff_event_id,caught_up_event_id,state) VALUES($1,$2,$3,$3,'running')`, runID, snapshot.SourceName, snapshot.CutoffEventID); err != nil {
+	var err error
+	snapshot, err = validatedSnapshot(snapshot)
+	if err != nil {
 		return MigrationReport{}, err
 	}
+	snapshotSHA256, err := snapshotChecksum(snapshot)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	release, err := s.holdFullMigrationLock(ctx)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	defer release()
+	if err := RequireEmptyTarget(ctx, s.database); err != nil {
+		return MigrationReport{}, fmt.Errorf("new full migration requires an empty quizcraft_v2 target: %w", err)
+	}
+	runID := uuid.New()
+	if _, err := s.database.Exec(ctx, `INSERT INTO quizcraft_migration_runs(id,source_name,source_cutoff_event_id,caught_up_event_id,source_snapshot_sha256,resume_attempt_count,state) VALUES($1,$2,$3,$3,$4,1,'running')`, runID, snapshot.SourceName, snapshot.CutoffEventID, snapshotSHA256); err != nil {
+		return MigrationReport{}, err
+	}
+	return s.runFullMigration(ctx, runID, snapshot, snapshotSHA256)
+}
 
-	reports := make([]struct {
-		key    string
-		report ImportReport
-	}, 0, len(snapshot.Banks))
+// ResumeFullMigration repeats a previously interrupted full import from the
+// same immutable snapshot artifact. Stable IDs and immutable memberships make
+// repeated imports safe; a changed snapshot is rejected instead of silently
+// mixing two legacy states into one migration run.
+func (s *Service) ResumeFullMigration(ctx context.Context, runID uuid.UUID, snapshot LegacySnapshot) (MigrationReport, error) {
+	if runID == uuid.Nil {
+		return MigrationReport{}, errors.New("migration run ID is required for resume")
+	}
+	var err error
+	snapshot, err = validatedSnapshot(snapshot)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	snapshotSHA256, err := snapshotChecksum(snapshot)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	release, err := s.holdFullMigrationLock(ctx)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	defer release()
+
+	var sourceName, storedChecksum, state string
+	var cutoffEventID int64
+	if err := s.database.QueryRow(ctx, `SELECT source_name,source_cutoff_event_id,source_snapshot_sha256,state FROM quizcraft_migration_runs WHERE id=$1`, runID).Scan(&sourceName, &cutoffEventID, &storedChecksum, &state); err != nil {
+		return MigrationReport{}, err
+	}
+	if sourceName != snapshot.SourceName || cutoffEventID != snapshot.CutoffEventID || storedChecksum == "" || storedChecksum != snapshotSHA256 {
+		return MigrationReport{}, errors.New("resume snapshot does not match the original migration run")
+	}
+	if state == "passed" {
+		return MigrationReport{}, errors.New("passed migration runs cannot be resumed")
+	}
+	if state != "running" && state != "blocked" {
+		return MigrationReport{}, fmt.Errorf("migration run is not resumable from state %q", state)
+	}
+	result, err := s.database.Exec(ctx, `UPDATE quizcraft_migration_runs SET state='running',completed_at=NULL,resume_attempt_count=resume_attempt_count+1 WHERE id=$1 AND state IN ('running','blocked')`, runID)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	if result.RowsAffected() != 1 {
+		return MigrationReport{}, errors.New("migration run changed while resume was being prepared")
+	}
+	return s.runFullMigration(ctx, runID, snapshot, snapshotSHA256)
+}
+
+func (s *Service) runFullMigration(ctx context.Context, runID uuid.UUID, snapshot LegacySnapshot, snapshotSHA256 string) (MigrationReport, error) {
+
+	reports := make([]migrationImport, 0, len(snapshot.Banks))
 	for _, bank := range snapshot.Banks {
 		report, err := s.importJSON(ctx, bank.BankKey, bank.Document, importOptions{activate: true})
 		if err != nil {
-			return MigrationReport{}, s.blockMigrationRun(ctx, runID, fmt.Errorf("import legacy bank %s: %w", bank.BankKey, err))
+			return s.failedMigrationReport(ctx, runID, snapshotSHA256, fmt.Errorf("import legacy bank %s: %w", bank.BankKey, err))
 		}
-		reports = append(reports, struct {
-			key    string
-			report ImportReport
-		}{key: bank.BankKey, report: report})
+		reports = append(reports, migrationImport{BankKey: bank.BankKey, Report: report})
 	}
 
 	migrated, exceptions, err := s.migrateLegacyFeedback(ctx, runID, snapshot.SourceName, snapshot.CutoffEventID, snapshot.Feedback)
 	if err != nil {
-		return MigrationReport{}, s.blockMigrationRun(ctx, runID, err)
+		return s.failedMigrationReport(ctx, runID, snapshotSHA256, err)
 	}
 	if err := s.database.QueryRow(ctx, `SELECT count(*) FROM quizcraft_migration_exceptions e LEFT JOIN quizcraft_migration_exception_resolutions r ON r.exception_id=e.id WHERE e.run_id=$1 AND r.exception_id IS NULL`, runID).Scan(&exceptions); err != nil {
-		return MigrationReport{}, s.blockMigrationRun(ctx, runID, err)
+		return s.failedMigrationReport(ctx, runID, snapshotSHA256, err)
 	}
 	rankingCount, err := s.storeLegacyRankingSnapshot(ctx, runID, snapshot.CutoffEventID, snapshot.Rankings)
 	if err != nil {
-		return MigrationReport{}, s.blockMigrationRun(ctx, runID, err)
+		return s.failedMigrationReport(ctx, runID, snapshotSHA256, err)
 	}
 	sourceMetrics := metricsFromImportReports(reports)
-	bankKeys := make([]string, 0, len(reports))
-	for _, item := range reports {
-		bankKeys = append(bankKeys, item.key)
-	}
-	targetMetrics, err := s.currentContentMetrics(ctx, bankKeys)
+	targetMetrics, err := s.currentContentMetrics(ctx)
 	if err != nil {
-		return MigrationReport{}, s.blockMigrationRun(ctx, runID, err)
+		return s.failedMigrationReport(ctx, runID, snapshotSHA256, err)
 	}
-	differences := compareMetrics(sourceMetrics, targetMetrics)
-	contentReconciled := len(differences) == 0
+	discrepancies, err := s.reconcileContentFacts(ctx, reports, sourceMetrics, targetMetrics)
+	if err != nil {
+		return s.failedMigrationReport(ctx, runID, snapshotSHA256, err)
+	}
+	differences := discrepancyCodes(discrepancies)
+	contentReconciled := len(discrepancies) == 0
 	if exceptions > 0 {
 		differences = append(differences, "unresolved_feedback_references")
 	}
@@ -157,12 +235,35 @@ func (s *Service) RunFullMigration(ctx context.Context, snapshot LegacySnapshot)
 	if len(differences) > 0 {
 		state = "blocked"
 	}
-	report := MigrationReport{RunID: runID, Source: sourceMetrics, Target: targetMetrics, Differences: differences, ContentReconciled: contentReconciled, FeedbackSourceCount: len(snapshot.Feedback), FeedbackMigratedCount: migrated, FeedbackExceptionCount: exceptions, LegacyRankingEntryCount: rankingCount, MappedLegacyUserCount: 0, CutoffEventID: snapshot.CutoffEventID, State: state}
+	report := MigrationReport{RunID: runID, SourceSnapshotSHA256: snapshotSHA256, Source: sourceMetrics, Target: targetMetrics, Differences: differences, Discrepancies: discrepancies, ContentReconciled: contentReconciled, FeedbackSourceCount: len(snapshot.Feedback), FeedbackMigratedCount: migrated, FeedbackExceptionCount: exceptions, LegacyRankingEntryCount: rankingCount, MappedLegacyUserCount: 0, CutoffEventID: snapshot.CutoffEventID, State: state}
 	encoded, _ := json.Marshal(report)
 	if _, err := s.database.Exec(ctx, `UPDATE quizcraft_migration_runs SET state=$2,report=$3,report_sha256=$4,completed_at=now() WHERE id=$1 AND state='running'`, runID, state, encoded, sha256Hex(encoded)); err != nil {
-		return MigrationReport{}, err
+		return MigrationReport{RunID: runID, SourceSnapshotSHA256: snapshotSHA256, State: "blocked"}, err
 	}
 	return report, nil
+}
+
+func (s *Service) failedMigrationReport(ctx context.Context, runID uuid.UUID, snapshotSHA256 string, cause error) (MigrationReport, error) {
+	return MigrationReport{RunID: runID, SourceSnapshotSHA256: snapshotSHA256, Differences: []string{"migration_execution_failed"}, State: "blocked"}, s.blockMigrationRun(ctx, runID, cause)
+}
+
+// holdFullMigrationLock serializes all new and resumed full imports. A lock
+// scoped only to a generated run ID lets two initial imports pass the empty
+// target check concurrently and mix their source snapshots in one V2 target.
+func (s *Service) holdFullMigrationLock(ctx context.Context) (func(), error) {
+	connection, err := s.database.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	lockKey := "quizcraft-v2-full-migration"
+	if _, err := connection.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1,0))`, lockKey); err != nil {
+		connection.Release()
+		return nil, err
+	}
+	return func() {
+		_, _ = connection.Exec(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1,0))`, lockKey)
+		connection.Release()
+	}, nil
 }
 
 func (s *Service) blockMigrationRun(ctx context.Context, runID uuid.UUID, cause error) error {
@@ -171,25 +272,22 @@ func (s *Service) blockMigrationRun(ctx context.Context, runID uuid.UUID, cause 
 	return cause
 }
 
-func metricsFromImportReports(reports []struct {
-	key    string
-	report ImportReport
-}) ReconciliationMetrics {
+func metricsFromImportReports(reports []migrationImport) ReconciliationMetrics {
 	metrics := ReconciliationMetrics{BankCount: len(reports), TypeCounts: map[string]int{}, ChapterCounts: map[string]int{}}
 	hashes := make([]string, 0, len(reports))
 	answerHashes := make([]string, 0)
 	for _, item := range reports {
-		metrics.QuestionCount += item.report.QuestionCount
-		metrics.AnsweredCount += item.report.AnsweredCount
-		for key, count := range item.report.TypeCounts {
+		metrics.QuestionCount += item.Report.QuestionCount
+		metrics.AnsweredCount += item.Report.AnsweredCount
+		for key, count := range item.Report.TypeCounts {
 			metrics.TypeCounts[key] += count
 		}
-		for key, count := range item.report.ChapterCounts {
+		for key, count := range item.Report.ChapterCounts {
 			metrics.ChapterCounts[key] += count
 		}
-		hashes = append(hashes, item.key+":"+item.report.ContentSHA256)
-		for _, question := range item.report.Questions {
-			answerHashes = append(answerHashes, item.key+":"+question.SourceQuestionID+":"+question.AnswerSHA256)
+		hashes = append(hashes, item.BankKey+":"+item.Report.ContentSHA256)
+		for _, question := range item.Report.Questions {
+			answerHashes = append(answerHashes, item.BankKey+":"+question.SourceQuestionID+":"+question.AnswerSHA256)
 		}
 	}
 	sort.Strings(hashes)
@@ -199,9 +297,9 @@ func metricsFromImportReports(reports []struct {
 	return metrics
 }
 
-func (s *Service) currentContentMetrics(ctx context.Context, bankKeys []string) (ReconciliationMetrics, error) {
+func (s *Service) currentContentMetrics(ctx context.Context) (ReconciliationMetrics, error) {
 	metrics := ReconciliationMetrics{TypeCounts: map[string]int{}, ChapterCounts: map[string]int{}}
-	rows, err := s.database.Query(ctx, `SELECT b.bank_key,bv.content_sha256,q.source_question_id,qv.type,qv.chapter_id,qv.answer FROM quizcraft_banks b JOIN quizcraft_bank_versions bv ON bv.id=b.active_version_id JOIN quizcraft_bank_version_questions m ON m.bank_version_id=bv.id JOIN quizcraft_questions q ON q.id=m.question_id JOIN quizcraft_question_versions qv ON qv.id=m.question_version_id WHERE b.bank_key=ANY($1::text[]) ORDER BY b.bank_key,m.position`, bankKeys)
+	rows, err := s.database.Query(ctx, `SELECT b.bank_key,bv.content_sha256,q.source_question_id,qv.type,qv.chapter_id,qv.answer FROM quizcraft_banks b JOIN quizcraft_bank_versions bv ON bv.id=b.active_version_id JOIN quizcraft_bank_version_questions m ON m.bank_version_id=bv.id JOIN quizcraft_questions q ON q.id=m.question_id JOIN quizcraft_question_versions qv ON qv.id=m.question_version_id ORDER BY b.bank_key,m.position`)
 	if err != nil {
 		return metrics, err
 	}
@@ -241,6 +339,437 @@ func (s *Service) currentContentMetrics(ctx context.Context, bankKeys []string) 
 	metrics.AnswerSHA256 = sha256Hex([]byte(strings.Join(answerHashes, "\n")))
 	metrics.ContentSHA256 = sha256Hex([]byte(strings.Join(hashes, "\n")))
 	return metrics, nil
+}
+
+// contentFacts is the complete V2 content universe that #159 reconciles. It
+// deliberately includes inactive bank and question versions: aggregate active
+// metrics alone cannot show whether a previous or injected target fact exists.
+type contentFacts struct {
+	Banks            map[string]contentBankFact
+	BankVersions     map[string]contentBankVersionFact
+	Questions        map[string]contentQuestionFact
+	QuestionVersions map[string]contentQuestionVersionFact
+	Memberships      map[string]contentMembershipFact
+}
+
+type contentBankFact struct {
+	ID, BankKey, ActiveVersionID string
+}
+
+type contentBankVersionFact struct {
+	ID, BankID, SourceSHA256, ContentSHA256 string
+}
+
+type contentQuestionFact struct {
+	ID, BankID, SourceQuestionID string
+}
+
+type contentQuestionVersionFact struct {
+	ID, BankID, QuestionID, Type, ChapterID, ContentSHA256, AnswerSHA256 string
+}
+
+type contentMembershipFact struct {
+	BankID, BankVersionID, QuestionID, QuestionVersionID string
+	Position                                             int
+}
+
+func newContentFacts() contentFacts {
+	return contentFacts{
+		Banks:            map[string]contentBankFact{},
+		BankVersions:     map[string]contentBankVersionFact{},
+		Questions:        map[string]contentQuestionFact{},
+		QuestionVersions: map[string]contentQuestionVersionFact{},
+		Memberships:      map[string]contentMembershipFact{},
+	}
+}
+
+func membershipFactKey(bankVersionID, questionID string) string {
+	return bankVersionID + "\x00" + questionID
+}
+
+func expectedContentFacts(reports []migrationImport) contentFacts {
+	facts := newContentFacts()
+	for _, item := range reports {
+		bank := contentBankFact{ID: item.Report.BankID, BankKey: item.BankKey, ActiveVersionID: item.Report.BankVersionID}
+		facts.Banks[bank.ID] = bank
+		facts.BankVersions[item.Report.BankVersionID] = contentBankVersionFact{
+			ID:            item.Report.BankVersionID,
+			BankID:        item.Report.BankID,
+			SourceSHA256:  item.Report.SourceSHA256,
+			ContentSHA256: item.Report.ContentSHA256,
+		}
+		for position, question := range item.Report.Questions {
+			facts.Questions[question.QuestionID] = contentQuestionFact{ID: question.QuestionID, BankID: item.Report.BankID, SourceQuestionID: question.SourceQuestionID}
+			facts.QuestionVersions[question.QuestionVersionID] = contentQuestionVersionFact{
+				ID:            question.QuestionVersionID,
+				BankID:        item.Report.BankID,
+				QuestionID:    question.QuestionID,
+				Type:          question.Type,
+				ChapterID:     question.ChapterID,
+				ContentSHA256: question.ContentSHA256,
+				AnswerSHA256:  question.AnswerSHA256,
+			}
+			membership := contentMembershipFact{BankID: item.Report.BankID, BankVersionID: item.Report.BankVersionID, QuestionID: question.QuestionID, QuestionVersionID: question.QuestionVersionID, Position: position + 1}
+			facts.Memberships[membershipFactKey(membership.BankVersionID, membership.QuestionID)] = membership
+		}
+	}
+	return facts
+}
+
+func (s *Service) loadTargetContentFacts(ctx context.Context) (contentFacts, error) {
+	facts := newContentFacts()
+	rows, err := s.database.Query(ctx, `SELECT id::text,bank_key,COALESCE(active_version_id::text,'') FROM quizcraft_banks ORDER BY id`)
+	if err != nil {
+		return facts, err
+	}
+	for rows.Next() {
+		var fact contentBankFact
+		if err := rows.Scan(&fact.ID, &fact.BankKey, &fact.ActiveVersionID); err != nil {
+			rows.Close()
+			return facts, err
+		}
+		facts.Banks[fact.ID] = fact
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return facts, err
+	}
+	rows.Close()
+
+	rows, err = s.database.Query(ctx, `SELECT id::text,bank_id::text,source_sha256,content_sha256 FROM quizcraft_bank_versions ORDER BY id`)
+	if err != nil {
+		return facts, err
+	}
+	for rows.Next() {
+		var fact contentBankVersionFact
+		if err := rows.Scan(&fact.ID, &fact.BankID, &fact.SourceSHA256, &fact.ContentSHA256); err != nil {
+			rows.Close()
+			return facts, err
+		}
+		facts.BankVersions[fact.ID] = fact
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return facts, err
+	}
+	rows.Close()
+
+	rows, err = s.database.Query(ctx, `SELECT id::text,bank_id::text,source_question_id FROM quizcraft_questions ORDER BY id`)
+	if err != nil {
+		return facts, err
+	}
+	for rows.Next() {
+		var fact contentQuestionFact
+		if err := rows.Scan(&fact.ID, &fact.BankID, &fact.SourceQuestionID); err != nil {
+			rows.Close()
+			return facts, err
+		}
+		facts.Questions[fact.ID] = fact
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return facts, err
+	}
+	rows.Close()
+
+	rows, err = s.database.Query(ctx, `SELECT id::text,bank_id::text,question_id::text,type,chapter_id,content_sha256,answer FROM quizcraft_question_versions ORDER BY id`)
+	if err != nil {
+		return facts, err
+	}
+	for rows.Next() {
+		var fact contentQuestionVersionFact
+		var answer []byte
+		if err := rows.Scan(&fact.ID, &fact.BankID, &fact.QuestionID, &fact.Type, &fact.ChapterID, &fact.ContentSHA256, &answer); err != nil {
+			rows.Close()
+			return facts, err
+		}
+		answerHash, err := canonicalJSONSHA256(answer)
+		if err != nil {
+			rows.Close()
+			return facts, err
+		}
+		fact.AnswerSHA256 = answerHash
+		facts.QuestionVersions[fact.ID] = fact
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return facts, err
+	}
+	rows.Close()
+
+	rows, err = s.database.Query(ctx, `SELECT bank_id::text,bank_version_id::text,question_id::text,question_version_id::text,position FROM quizcraft_bank_version_questions ORDER BY bank_version_id,question_id`)
+	if err != nil {
+		return facts, err
+	}
+	for rows.Next() {
+		var fact contentMembershipFact
+		if err := rows.Scan(&fact.BankID, &fact.BankVersionID, &fact.QuestionID, &fact.QuestionVersionID, &fact.Position); err != nil {
+			rows.Close()
+			return facts, err
+		}
+		facts.Memberships[membershipFactKey(fact.BankVersionID, fact.QuestionID)] = fact
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return facts, err
+	}
+	rows.Close()
+	return facts, nil
+}
+
+func canonicalJSONSHA256(value []byte) (string, error) {
+	var decoded any
+	if err := json.Unmarshal(value, &decoded); err != nil {
+		return "", err
+	}
+	canonical, err := json.Marshal(decoded)
+	if err != nil {
+		return "", err
+	}
+	return sha256Hex(canonical), nil
+}
+
+// reconcileContentFacts compares a frozen source import with every V2 content
+// fact, including inactive versions. This makes extra, missing, or mismatched
+// stable identities and membership relationships durable migration exceptions.
+func (s *Service) reconcileContentFacts(ctx context.Context, reports []migrationImport, source, target ReconciliationMetrics) ([]MigrationDiscrepancy, error) {
+	expected := expectedContentFacts(reports)
+	actual, err := s.loadTargetContentFacts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	discrepancies := append(metricDiscrepancies(source, target), contentFactDiscrepancies(expected, actual)...)
+	sort.Slice(discrepancies, func(left, right int) bool {
+		leftKey := discrepancies[left].Code + "\x00" + discrepancies[left].BankKey + "\x00" + discrepancies[left].SourceQuestionID + "\x00" + discrepancies[left].Expected + "\x00" + discrepancies[left].Actual
+		rightKey := discrepancies[right].Code + "\x00" + discrepancies[right].BankKey + "\x00" + discrepancies[right].SourceQuestionID + "\x00" + discrepancies[right].Expected + "\x00" + discrepancies[right].Actual
+		return leftKey < rightKey
+	})
+	return discrepancies, nil
+}
+
+func contentFactDiscrepancies(expected, actual contentFacts) []MigrationDiscrepancy {
+	discrepancies := []MigrationDiscrepancy{}
+	for _, id := range sortedMapKeys(expected.Banks) {
+		want := expected.Banks[id]
+		got, found := actual.Banks[id]
+		if !found {
+			if actualID, found := bankIDForKey(actual, want.BankKey); found {
+				discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "bank_id_mismatch", BankKey: want.BankKey, Expected: want.ID, Actual: actualID})
+			} else {
+				discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "bank_missing", BankKey: want.BankKey, Expected: want.ID})
+			}
+			continue
+		}
+		if got.BankKey != want.BankKey {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "bank_key_mismatch", BankKey: want.BankKey, Expected: want.BankKey, Actual: got.BankKey})
+		}
+		if got.ActiveVersionID != want.ActiveVersionID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "bank_version_id_mismatch", BankKey: want.BankKey, Expected: want.ActiveVersionID, Actual: got.ActiveVersionID})
+		}
+	}
+	for _, id := range sortedMapKeys(actual.Banks) {
+		got := actual.Banks[id]
+		if _, expectedID := expected.Banks[id]; !expectedID {
+			if _, stableIDMismatch := bankIDForKey(expected, got.BankKey); !stableIDMismatch {
+				discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "unexpected_bank", BankKey: got.BankKey, Actual: got.ID})
+			}
+		}
+	}
+
+	for _, id := range sortedMapKeys(expected.BankVersions) {
+		want := expected.BankVersions[id]
+		got, found := actual.BankVersions[id]
+		bankKey := bankKeyForID(expected, want.BankID)
+		if !found {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "bank_version_missing", BankKey: bankKey, Expected: want.ID})
+			continue
+		}
+		if got.BankID != want.BankID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "bank_version_bank_id_mismatch", BankKey: bankKey, Expected: want.BankID, Actual: got.BankID})
+		}
+		if got.SourceSHA256 != want.SourceSHA256 {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "bank_source_sha256_mismatch", BankKey: bankKey, Expected: want.SourceSHA256, Actual: got.SourceSHA256})
+		}
+		if got.ContentSHA256 != want.ContentSHA256 {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "bank_content_sha256_mismatch", BankKey: bankKey, Expected: want.ContentSHA256, Actual: got.ContentSHA256})
+		}
+	}
+	for _, id := range sortedMapKeys(actual.BankVersions) {
+		if _, found := expected.BankVersions[id]; !found {
+			got := actual.BankVersions[id]
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "unexpected_bank_version", BankKey: bankKeyForID(actual, got.BankID), Actual: got.ID})
+		}
+	}
+
+	for _, id := range sortedMapKeys(expected.Questions) {
+		want := expected.Questions[id]
+		got, found := actual.Questions[id]
+		bankKey := bankKeyForID(expected, want.BankID)
+		if !found {
+			if actualID, found := questionIDForBankAndSource(actual, want.BankID, want.SourceQuestionID); found {
+				discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_id_mismatch", BankKey: bankKey, SourceQuestionID: want.SourceQuestionID, Expected: want.ID, Actual: actualID})
+			} else {
+				discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_missing", BankKey: bankKey, SourceQuestionID: want.SourceQuestionID, Expected: want.ID})
+			}
+			continue
+		}
+		if got.BankID != want.BankID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_bank_id_mismatch", BankKey: bankKey, SourceQuestionID: want.SourceQuestionID, Expected: want.BankID, Actual: got.BankID})
+		}
+		if got.SourceQuestionID != want.SourceQuestionID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_source_question_id_mismatch", BankKey: bankKey, SourceQuestionID: want.SourceQuestionID, Expected: want.SourceQuestionID, Actual: got.SourceQuestionID})
+		}
+	}
+	for _, id := range sortedMapKeys(actual.Questions) {
+		if _, found := expected.Questions[id]; !found {
+			got := actual.Questions[id]
+			if _, stableIDMismatch := questionIDForBankAndSource(expected, got.BankID, got.SourceQuestionID); !stableIDMismatch {
+				discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "unexpected_question", BankKey: bankKeyForID(actual, got.BankID), SourceQuestionID: got.SourceQuestionID, Actual: got.ID})
+			}
+		}
+	}
+
+	for _, id := range sortedMapKeys(expected.QuestionVersions) {
+		want := expected.QuestionVersions[id]
+		got, found := actual.QuestionVersions[id]
+		bankKey := bankKeyForID(expected, want.BankID)
+		sourceQuestionID := sourceQuestionIDForID(expected, want.QuestionID)
+		if !found {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_version_missing", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.ID})
+			continue
+		}
+		if got.BankID != want.BankID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_version_bank_id_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.BankID, Actual: got.BankID})
+		}
+		if got.QuestionID != want.QuestionID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_version_question_id_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.QuestionID, Actual: got.QuestionID})
+		}
+		if got.Type != want.Type {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_type_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.Type, Actual: got.Type})
+		}
+		if got.ChapterID != want.ChapterID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_chapter_id_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.ChapterID, Actual: got.ChapterID})
+		}
+		if got.ContentSHA256 != want.ContentSHA256 {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_content_sha256_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.ContentSHA256, Actual: got.ContentSHA256})
+		}
+		if got.AnswerSHA256 != want.AnswerSHA256 {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_answer_sha256_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.AnswerSHA256, Actual: got.AnswerSHA256})
+		}
+	}
+	for _, id := range sortedMapKeys(actual.QuestionVersions) {
+		if _, found := expected.QuestionVersions[id]; !found {
+			got := actual.QuestionVersions[id]
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "unexpected_question_version", BankKey: bankKeyForID(actual, got.BankID), SourceQuestionID: sourceQuestionIDForID(actual, got.QuestionID), Actual: got.ID})
+		}
+	}
+
+	for _, key := range sortedMapKeys(expected.Memberships) {
+		want := expected.Memberships[key]
+		got, found := actual.Memberships[key]
+		bankKey := bankKeyForID(expected, want.BankID)
+		sourceQuestionID := sourceQuestionIDForID(expected, want.QuestionID)
+		if !found {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "membership_missing", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.QuestionVersionID})
+			continue
+		}
+		if got.BankID != want.BankID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "membership_bank_id_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.BankID, Actual: got.BankID})
+		}
+		if got.QuestionVersionID != want.QuestionVersionID {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "membership_question_version_id_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: want.QuestionVersionID, Actual: got.QuestionVersionID})
+		}
+		if got.Position != want.Position {
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "question_position_mismatch", BankKey: bankKey, SourceQuestionID: sourceQuestionID, Expected: strconv.Itoa(want.Position), Actual: strconv.Itoa(got.Position)})
+		}
+	}
+	for _, key := range sortedMapKeys(actual.Memberships) {
+		if _, found := expected.Memberships[key]; !found {
+			got := actual.Memberships[key]
+			discrepancies = append(discrepancies, MigrationDiscrepancy{Code: "unexpected_membership", BankKey: bankKeyForID(actual, got.BankID), SourceQuestionID: sourceQuestionIDForID(actual, got.QuestionID), Actual: got.QuestionVersionID})
+		}
+	}
+	return discrepancies
+}
+
+func sortedMapKeys[T any](values map[string]T) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func bankIDForKey(facts contentFacts, bankKey string) (string, bool) {
+	for id, bank := range facts.Banks {
+		if bank.BankKey == bankKey {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+func bankKeyForID(facts contentFacts, bankID string) string {
+	return facts.Banks[bankID].BankKey
+}
+
+func questionIDForBankAndSource(facts contentFacts, bankID, sourceQuestionID string) (string, bool) {
+	for id, question := range facts.Questions {
+		if question.BankID == bankID && question.SourceQuestionID == sourceQuestionID {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+func sourceQuestionIDForID(facts contentFacts, questionID string) string {
+	return facts.Questions[questionID].SourceQuestionID
+}
+
+func metricDiscrepancies(source, target ReconciliationMetrics) []MigrationDiscrepancy {
+	codes := compareMetrics(source, target)
+	discrepancies := make([]MigrationDiscrepancy, 0, len(codes))
+	for _, code := range codes {
+		discrepancies = append(discrepancies, MigrationDiscrepancy{Code: code, Expected: metricValue(source, code), Actual: metricValue(target, code)})
+	}
+	return discrepancies
+}
+
+func metricValue(metrics ReconciliationMetrics, code string) string {
+	switch code {
+	case "bank_count":
+		return strconv.Itoa(metrics.BankCount)
+	case "question_count":
+		return strconv.Itoa(metrics.QuestionCount)
+	case "answered_count":
+		return strconv.Itoa(metrics.AnsweredCount)
+	case "type_counts":
+		encoded, _ := json.Marshal(metrics.TypeCounts)
+		return string(encoded)
+	case "chapter_counts":
+		encoded, _ := json.Marshal(metrics.ChapterCounts)
+		return string(encoded)
+	case "answer_sha256":
+		return metrics.AnswerSHA256
+	case "content_sha256":
+		return metrics.ContentSHA256
+	default:
+		return ""
+	}
+}
+
+func discrepancyCodes(discrepancies []MigrationDiscrepancy) []string {
+	seen := map[string]bool{}
+	for _, item := range discrepancies {
+		seen[item.Code] = true
+	}
+	codes := make([]string, 0, len(seen))
+	for code := range seen {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+	return codes
 }
 
 func compareMetrics(source, target ReconciliationMetrics) []string {

@@ -50,6 +50,13 @@ func RequireEmptyTarget(ctx context.Context, database *pgxpool.Pool) error {
 	}
 	rows.Close()
 	for _, name := range tables {
+		// Schema migration history is operator metadata, not a V2 business fact.
+		// A target must receive that history before full import can be resumed, so
+		// treating it as imported content would make cmd/migrate and full
+		// reconciliation mutually exclusive.
+		if name.table == "quizcraft_schema_migrations" {
+			continue
+		}
 		var hasFacts bool
 		query := `SELECT EXISTS(SELECT 1 FROM ` + pgx.Identifier{name.schema, name.table}.Sanitize() + ` LIMIT 1)`
 		if err := database.QueryRow(ctx, query).Scan(&hasFacts); err != nil {
@@ -62,7 +69,7 @@ func RequireEmptyTarget(ctx context.Context, database *pgxpool.Pool) error {
 	return nil
 }
 
-func databaseIdentity(ctx context.Context, database *pgxpool.Pool) (string, error) {
+func databaseIdentity(ctx context.Context, database databaseQueryRower) (string, error) {
 	var systemIdentifier, databaseOID string
 	err := database.QueryRow(ctx, `SELECT c.system_identifier::text,d.oid::text FROM pg_control_system() c JOIN pg_database d ON d.datname=current_database()`).Scan(&systemIdentifier, &databaseOID)
 	return systemIdentifier + "/" + databaseOID, err
