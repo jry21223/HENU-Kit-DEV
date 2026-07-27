@@ -123,7 +123,7 @@ func (provider *Provider) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	expiresAt, parseErr := time.Parse(time.RFC3339, payload.Variables.ExpiresAt)
 	address, addressErr := mail.ParseAddress(payload.Recipient)
 	headerKey := request.Header.Get("Idempotency-Key")
-	validPurpose := payload.Variables.Purpose == "login" || payload.Variables.Purpose == "bind_email" || payload.Variables.Purpose == "security"
+	validPurpose := payload.Variables.Purpose == "register" || payload.Variables.Purpose == "login" || payload.Variables.Purpose == "bind_email" || payload.Variables.Purpose == "security"
 	if parseErr != nil || addressErr != nil || address.Address != payload.Recipient || payload.Template != "henukit_verification_code" || len(payload.Variables.Code) != 6 || !validPurpose || !auditIdentifierPattern.MatchString(payload.RequestID) || (requestID != "" && payload.RequestID != requestID) || payload.IdempotencyKey != headerKey || !idempotencyPattern.MatchString(headerKey) {
 		provider.audit(requestID, "rejected", "INVALID_REQUEST", attempt, startedAt)
 		writeProviderError(writer, http.StatusBadRequest, "invalid_request")

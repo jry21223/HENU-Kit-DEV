@@ -55,9 +55,9 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
           <div className="flex items-baseline gap-4">
             <Link
               href="/"
-              className="font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent"
+              className="font-display text-base font-bold tracking-tight text-ink transition-colors hover:text-accent"
             >
-              ← henukit
+              ← henukit<span className="text-accent">®</span>
             </Link>
             <span className="font-display text-base font-bold tracking-tight">
               ACCOUNT<span className="text-accent">®</span>

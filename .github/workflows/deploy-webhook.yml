@@ -10,8 +10,6 @@ on:
       - docs/operations/PRODUCTION_RELEASE_REPORT-2026-07-24.md
       - henukit.modules.yaml
       - .github/workflows/deploy-webhook.yml
-      - .github/workflows/deploy-study.yml
-      - scripts/ops/tests/deploy-study-workflow.test.mjs
   push:
     branches: [main]
     paths:
@@ -22,8 +20,6 @@ on:
       - docs/operations/PRODUCTION_RELEASE_REPORT-2026-07-24.md
       - henukit.modules.yaml
       - .github/workflows/deploy-webhook.yml
-      - .github/workflows/deploy-study.yml
-      - scripts/ops/tests/deploy-study-workflow.test.mjs
 
 permissions:
   contents: read
@@ -63,8 +59,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install packaging validators
         run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Validate Study workflow guard
-        run: node --test scripts/ops/tests/deploy-study-workflow.test.mjs
       - name: Validate shell scripts
         run: |
           set -euo pipefail

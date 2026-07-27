@@ -4,6 +4,10 @@
 > 目标分支：`main`
 > 结论边界：Webhook 负责安全接收、同步、排队和执行既定发布 Hook；它不替代数据库、Migration、真实邮箱、浏览器、备份恢复和人工生产批准。
 
+> 当前 HENU Kit 全站生产发布应优先使用
+> [固定制品监听器](./henukit-artifact-deployment.md#server-side-github-actions-watcher)。
+> 本文保留的是旧的源码/Webhook Hook 方案，不应重新启用其服务器端编译路径。
+
 ## 1. 设计目标
 
 每次 `main` 更新后，GitHub 向服务器发送 `push` Webhook。服务器在 30 秒内完成签名和边界校验并返回 `202`，随后由 Systemd 异步、串行地处理部署。
@@ -274,15 +278,9 @@ readlink -f /opt/henukit/current
 - 所有部署单元 readiness/业务 smoke 通过；
 - 5xx、延迟、登录、邮件、队列和数据库指标没有越过回滚阈值。
 
-## 11. 与现有 GitHub Actions Study 部署切换
+## 11. Study 发布边界
 
-现有 `.github/workflows/deploy-study.yml` 保留为 break-glass fallback，并限制为 Study 相关路径。只有服务器 Webhook 已完成以下验证后，才设置仓库变量：
-
-```text
-HENUKIT_DEPLOY_MODE=webhook
-```
-
-设置后，Actions 的 Study deploy job 不再自动运行，避免同一 commit 被 GitHub Actions 与服务器 Webhook 双重部署。手工 `workflow_dispatch` 仍可作为回退入口；恢复 Actions 自动发布时删除或修改该变量。
+仓库不再提供 Study 的 GitHub Actions 自动部署工作流。HENU Kit 的构建与发布不得触发或携带 Study Web、Study Legacy Admin、Study Legacy API 或 Worker。若未来恢复 Study 发布，必须作为独立变更重新定义制品、目标环境、回滚和验收门禁。
 
 ## 12. 故障与回滚
 
@@ -294,7 +292,7 @@ HENUKIT_DEPLOY_MODE=webhook
 - `prepare` 失败：不执行在线切换。
 - `activate`/`verify` 失败：按逆序调用全部 Hook 的 `rollback`。
 - 某次部署失败：记录到 `failed/` 和 `last-failure.json`；后续修复 push 仍可继续处理。
-- Webhook 故障：使用现有 GitHub Actions `workflow_dispatch` 或服务专用人工 Runbook。
+- Webhook 故障：使用服务专用、已验证的人工 Runbook；不得借用已移除的 Study 发布入口。
 
 禁止通过删除失败记录、修改 `deployed-sha` 或把 `HENUKIT_REQUIRE_APPROVAL` 临时设为 `never` 来伪造成功。
 
@@ -309,7 +307,7 @@ HENUKIT_DEPLOY_MODE=webhook
 - 每个 deploy unit 的 prepare/activate/verify/rollback 行为；
 - 数据库备份恢复、Migration、Nginx、Systemd、域名和证书 Runbook；
 - 最近成功生产 SHA、最近回滚 SHA和观察期证据；
-- Break-glass GitHub Actions 与人工发布入口。
+- Break-glass 人工发布入口。
 
 ## 14. 上线判定
 

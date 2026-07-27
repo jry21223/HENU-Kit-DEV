@@ -1,143 +1,189 @@
-name: Deploy HENU Kit artifacts
+name: Build HENU Kit release artifacts
 
-# Builds production-facing HENU Kit artifacts (portal + console + gateways).
-# Server-side deploy is intentionally TODO until secrets and host cutover are ready.
-# Study-only deploys remain in deploy-study.yml and must not treat legacy admin as
-# the HENU Kit operator UI.
+# Compile production Docker images in GitHub Actions. Production hosts consume
+# these fixed-SHA artifacts with docker load and never compile source in place.
+# Legacy Study and standalone QuizCraft runtimes are intentionally excluded;
+# Portal consumes their preserved databases through its integrated APIs.
 
 on:
+  pull_request:
   push:
     branches: [main]
-    paths:
-      - apps/portal/**
-      - apps/console/**
-      - services/console-gateway/**
-      - services/portal-summary/**
-      - services/platform-core/**
-      - packages/api-contracts/**
-      - packages/design-tokens/**
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .github/workflows/deploy-henukit.yml
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: henukit-artifacts
+  group: henukit-artifacts-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build-frontend:
+  validate-release-contract:
+    name: release-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: portal
-            filter: "@henukit/portal"
-            artifact_path: apps/portal/.next
-          - name: console
-            filter: "@henukit/console"
-            artifact_path: apps/console/dist
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Verify artifact and runtime boundaries
+        run: node --test scripts/ops/tests/deploy-henukit-workflow.test.mjs
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.9.0
-
+  portal-responsive:
+    name: portal-responsive
+    needs: validate-release-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+      - name: Install Portal dependencies
+        run: pnpm install --frozen-lockfile --filter @henukit/portal...
+      - name: Install Chromium
+        run: pnpm --filter @henukit/portal exec playwright install --with-deps chromium
+      - name: Verify responsive Portal layout
+        run: pnpm --filter @henukit/portal test:e2e:responsive
 
-      - name: Install and build ${{ matrix.name }}
-        env:
-          # Optional subpath deploy for Console; leave empty for domain root.
-          VITE_BASE_PATH: ${{ vars.HENUKIT_CONSOLE_BASE_PATH || '' }}
-        run: |
-          set -euo pipefail
-          pnpm install --frozen-lockfile
-          pnpm --filter ${{ matrix.filter }} run build
-          test -e "${{ matrix.artifact_path }}"
-
-      - name: Upload ${{ matrix.name }} artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: henukit-${{ matrix.name }}-${{ github.sha }}
-          path: ${{ matrix.artifact_path }}
-          if-no-files-found: error
-          retention-days: 14
-
-  build-gateways:
+  build-image:
+    name: image-${{ matrix.name }}
+    needs: validate-release-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         include:
+          - name: console
+            image: henukit-console
+            context: .
+            dockerfile: apps/console/Dockerfile
+            build_args: |-
+              VITE_BASE_PATH=/console/
+              VITE_QUIZCRAFT_WORKSHOP_URL=
           - name: console-gateway
-            workdir: services/console-gateway
-            package: ./cmd/server
-            binary: console-gateway
-          - name: portal-summary
-            workdir: services/portal-summary
-            package: ./cmd/server
-            binary: portal-summary
+            image: henukit-console-gateway
+            context: services/console-gateway
+            dockerfile: services/console-gateway/Dockerfile
+            build_args: ""
           - name: platform-core
-            workdir: services/platform-core
-            package: ./cmd/server
-            binary: platform-core
+            image: henukit-platform-core
+            context: services/platform-core
+            dockerfile: services/platform-core/Dockerfile
+            build_args: ""
+          - name: platform-mail-worker
+            image: henukit-platform-mail-worker
+            context: services/platform-core
+            dockerfile: services/platform-core/Dockerfile.worker
+            build_args: ""
+          - name: platform-smtp-provider
+            image: henukit-platform-smtp-provider
+            context: services/platform-core
+            dockerfile: services/platform-core/Dockerfile.smtp-provider
+            build_args: ""
+          - name: portal
+            image: henukit-portal
+            context: .
+            dockerfile: apps/portal/Dockerfile
+            build_args: |-
+              NEXT_PUBLIC_PORTAL_GATEWAY_URL=
+              NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL=/api
+              NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1
+          - name: portal-api
+            image: henukit-portal-api
+            context: services/portal-api
+            dockerfile: services/portal-api/Dockerfile
+            build_args: ""
+          - name: portal-gateway
+            image: henukit-portal-gateway
+            context: services/portal-gateway
+            dockerfile: services/portal-gateway/Dockerfile
+            build_args: ""
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: ${{ matrix.workdir }}/go.mod
-          cache-dependency-path: ${{ matrix.workdir }}/go.sum
-
-      - name: Build ${{ matrix.name }}
-        working-directory: ${{ matrix.workdir }}
+      - name: Build fixed-SHA image
+        env:
+          IMAGE: ${{ matrix.image }}
+          CONTEXT: ${{ matrix.context }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          BUILD_ARGS: ${{ matrix.build_args }}
         run: |
           set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/release/bin"
-          go build -trimpath -ldflags='-s -w' -o "$GITHUB_WORKSPACE/release/bin/${{ matrix.binary }}" ${{ matrix.package }}
-          test -x "$GITHUB_WORKSPACE/release/bin/${{ matrix.binary }}"
+          args=()
+          while IFS= read -r arg; do
+            if [[ -n "$arg" ]]; then
+              args+=(--build-arg "$arg")
+            fi
+          done <<< "$BUILD_ARGS"
+          docker build \
+            "${args[@]}" \
+            --file "$DOCKERFILE" \
+            --tag "$IMAGE:$GITHUB_SHA" \
+            "$CONTEXT"
+          test "$(docker image inspect "$IMAGE:$GITHUB_SHA" --format '{{.Architecture}}')" = "amd64"
 
-      - name: Upload ${{ matrix.name }} binary
+      - name: Export Docker image
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cd release
+          docker save "$IMAGE:$GITHUB_SHA" |
+            gzip -1 > "${IMAGE}-${GITHUB_SHA}.docker.tar.gz"
+          test -s "${IMAGE}-${GITHUB_SHA}.docker.tar.gz"
+          sha256sum "${IMAGE}-${GITHUB_SHA}.docker.tar.gz" > "${IMAGE}-${GITHUB_SHA}.docker.tar.gz.sha256"
+
+      - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: henukit-${{ matrix.name }}-${{ github.sha }}
-          path: release/bin/${{ matrix.binary }}
+          name: ${{ matrix.image }}-${{ github.sha }}
+          path: |-
+            release/${{ matrix.image }}-${{ github.sha }}.docker.tar.gz
+            release/${{ matrix.image }}-${{ github.sha }}.docker.tar.gz.sha256
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
 
-  # TODO: server deploy after artifact build.
-  # Expected repository secrets / variables (names only — do not commit values):
-  #   secrets.HENUKIT_DEPLOY_SSH_KEY
-  #   secrets.HENUKIT_DEPLOY_KNOWN_HOSTS
-  #   secrets.HENUKIT_DEPLOY_HOST
-  #   secrets.HENUKIT_DEPLOY_PORT
-  #   secrets.HENUKIT_DEPLOY_USER
-  #   secrets.HENUKIT_CONSOLE_SESSION_KEY
-  #   secrets.HENUKIT_PLATFORM_CLIENT_SECRET
-  #   vars.HENUKIT_PLATFORM_CORE_URL
-  #   vars.HENUKIT_CONSOLE_BASE_PATH   # e.g. /console/ when hosting under a subpath
-  #   vars.HENUKIT_DEPLOY_MODE         # set to "enabled" only after cutover
-  deploy:
-    if: vars.HENUKIT_DEPLOY_MODE == 'enabled'
-    needs: [build-frontend, build-gateways]
+  package-runtime:
+    name: runtime-config
+    needs: validate-release-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    environment: henukit-production
+    timeout-minutes: 10
     steps:
-      - name: Server deploy not yet implemented
+      - uses: actions/checkout@v4
+
+      - name: Package fixed-SHA runtime configuration
         run: |
           set -euo pipefail
-          echo "Artifacts built. Wire scp/ssh (or webhook) using HENUKIT_DEPLOY_* secrets before enabling this job."
-          exit 1
+          runtime="release/runtime"
+          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/migrations/platform-core"
+          docker compose \
+            -f docker-compose.henukit.yml \
+            -f docker-compose.henukit.prebuilt.yml \
+            config --no-interpolate --no-path-resolution > "$runtime/docker-compose.henukit.release.yml"
+          cp infra/nginx/henukit.conf.example "$runtime/infra/nginx/"
+          cp infra/systemd/henukit-actions-watch.service "$runtime/infra/systemd/"
+          cp services/platform-core/db/migrations/*.up.sql "$runtime/migrations/platform-core/"
+          install -m 0555 scripts/ops/deploy-henukit-artifact.sh "$runtime/bin/deploy-henukit-artifact.sh"
+          install -m 0555 scripts/ops/watch-henukit-actions.sh "$runtime/bin/watch-henukit-actions.sh"
+          printf '%s\n' "$GITHUB_SHA" > "$runtime/RELEASE_SHA"
+          tar -C "$runtime" -czf "release/henukit-runtime-${GITHUB_SHA}.tar.gz" .
+          cd release
+          sha256sum "henukit-runtime-${GITHUB_SHA}.tar.gz" > "henukit-runtime-${GITHUB_SHA}.tar.gz.sha256"
+
+      - name: Upload runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: henukit-runtime-${{ github.sha }}
+          path: |-
+            release/henukit-runtime-${{ github.sha }}.tar.gz
+            release/henukit-runtime-${{ github.sha }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

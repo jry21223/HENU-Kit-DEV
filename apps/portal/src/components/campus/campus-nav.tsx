@@ -15,16 +15,21 @@ export default function CampusNav() {
   const pathname = usePathname();
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-paper">
-      <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-5 md:px-8">
-        <div className="flex items-baseline gap-4">
+      <div className="mx-auto flex min-h-14 max-w-[1440px] flex-wrap items-center px-5 md:flex-nowrap md:justify-between md:px-8">
+        <div className="flex h-14 w-full items-center justify-between md:h-auto md:w-auto md:justify-start md:gap-4">
+          <div className="flex items-baseline gap-4">
           <Link href="/" className="font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent">
             ← henukit
           </Link>
           <span className="font-display text-base font-bold tracking-tight">
             CAMPUS<span className="text-accent">®</span>
           </span>
+          </div>
+          <div className="md:hidden">
+            <AccountEntry compact />
+          </div>
         </div>
-        <nav className="flex items-center gap-5 md:gap-8">
+        <nav className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto border-t border-line px-5 py-2 scrollbar-none md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0 md:py-0">
           {TABS.map((tab) => {
             const active = tab.match(pathname);
             return (
@@ -48,8 +53,10 @@ export default function CampusNav() {
               </Link>
             );
           })}
-          <span aria-hidden className="hidden h-4 w-px bg-ink/20 sm:block" />
-          <AccountEntry compact />
+          <span aria-hidden className="hidden h-4 w-px bg-ink/20 md:block" />
+          <span className="hidden md:block">
+            <AccountEntry compact />
+          </span>
         </nav>
       </div>
     </header>
