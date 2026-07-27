@@ -65,3 +65,61 @@ test.describe("Portal mobile layout", () => {
     });
   }
 });
+
+test.describe("Practice hero mastery data states", () => {
+  test("renders authenticated practice stats", async ({ page }) => {
+    await page.route("**/api/v1/practice/stats", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          totalQuestions: 42,
+          accuracy: 75,
+          streakDays: 11,
+          beatPercent: 60,
+          mastery: [{ label: "数据结构", value: 81 }],
+          weakTop5: [],
+          request_id: "test-success",
+        }),
+      }),
+    );
+
+    await page.goto("/practice");
+    await expect(page.getByText("数据结构", { exact: true })).toBeVisible();
+    await expect(page.getByText("81%", { exact: true })).toBeVisible();
+    await expect(page.getByText("42 题", { exact: true })).toBeVisible();
+  });
+
+  test("distinguishes empty stats from an unavailable source", async ({ page }) => {
+    await page.route("**/api/v1/practice/stats", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          totalQuestions: 0,
+          accuracy: 0,
+          streakDays: 0,
+          beatPercent: 0,
+          mastery: [],
+          weakTop5: [],
+          request_id: "test-empty",
+        }),
+      }),
+    );
+    await page.goto("/practice");
+    await expect(page.getByText("暂无掌握度数据", { exact: true })).toBeVisible();
+
+    await page.route("**/api/v1/practice/stats", (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "stats_unavailable",
+          request_id: "test-error",
+        }),
+      }),
+    );
+    await page.reload();
+    await expect(page.getByText("掌握度数据尚未接入", { exact: true })).toBeVisible();
+  });
+});

@@ -150,7 +150,7 @@ export default function BankHero({
   const [active, setActive] = useState(true);
   const [mastery, setMastery] = useState<MasterySnapshot>(EMPTY_MASTERY);
   const [masteryState, setMasteryState] = useState<
-    "loading" | "ready" | "unavailable"
+    "loading" | "ready" | "empty" | "unavailable"
   >("loading");
   const { ringSubjects, cubeCount } = useMemo(
     () => deriveMasteryVisuals(mastery),
@@ -169,7 +169,7 @@ export default function BankHero({
           streakDays: stats.streakDays,
           totalQuestions: stats.totalQuestions,
         });
-        setMasteryState("ready");
+        setMasteryState(stats.mastery.length > 0 ? "ready" : "empty");
       })
       .catch(() => {
         if (!current) return;
@@ -341,7 +341,9 @@ export default function BankHero({
                 <li className="py-1 font-mono text-[10px] tracking-wide text-ink/50">
                   {masteryState === "loading"
                     ? "正在读取掌握度数据…"
-                    : "掌握度数据尚未接入"}
+                    : masteryState === "empty"
+                      ? "暂无掌握度数据"
+                      : "掌握度数据尚未接入"}
                 </li>
               ) : null}
               {masteryState === "ready" && ringSubjects.map((s, i) => {

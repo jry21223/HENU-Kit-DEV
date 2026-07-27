@@ -172,6 +172,26 @@ paths:
         "502":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/practice/stats:
+    get:
+      operationId: practiceStats
+      summary: Get the authenticated user's practice statistics
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Current user's practice statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStatsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/notices:
     get:
       operationId: noticeList
@@ -297,6 +317,43 @@ components:
           type: string
         question_count:
           type: integer
+
+    UserStatsResponse:
+      type: object
+      required: [totalQuestions, accuracy, streakDays, beatPercent, mastery, weakTop5, request_id]
+      properties:
+        totalQuestions:
+          type: integer
+        accuracy:
+          type: integer
+        streakDays:
+          type: integer
+        beatPercent:
+          type: integer
+        mastery:
+          type: array
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label:
+                type: string
+              value:
+                type: integer
+        weakTop5:
+          type: array
+          items:
+            type: object
+            required: [topic, subject, wrong]
+            properties:
+              topic:
+                type: string
+              subject:
+                type: string
+              wrong:
+                type: integer
+        request_id:
+          type: string
 
     NoticeListResponse:
       type: object

@@ -533,6 +533,13 @@ func getLeaderboard(w http.ResponseWriter, r *http.Request, src practiceSource, 
 }
 
 func getUserStats(w http.ResponseWriter, r *http.Request, mode string) {
+	if strings.TrimSpace(r.Header.Get("X-Actor-User-Id")) == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"error":      "not_authenticated",
+			"request_id": requestIDOf(w),
+		})
+		return
+	}
 	// No real user-stats source is wired yet. Live must not invent metrics.
 	if mode == db.ModeLive {
 		writeServiceUnavailable(w, "stats_unavailable", "user stats source is not configured")

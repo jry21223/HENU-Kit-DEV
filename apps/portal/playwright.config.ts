@@ -11,13 +11,16 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: "http://127.0.0.1:3001",
+    baseURL: "http://localhost:3001",
     ...devices["Desktop Chrome"],
     trace: "retain-on-failure",
   },
   webServer: {
     command: "pnpm --filter @henukit/portal dev",
-    url: "http://127.0.0.1:3001",
+    url: "http://localhost:3001",
+    env: {
+      NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: "1",
+    },
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

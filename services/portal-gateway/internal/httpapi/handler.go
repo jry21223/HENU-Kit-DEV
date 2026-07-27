@@ -86,6 +86,7 @@ func (h *Handler) Router() chi.Router {
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/food/*", h.proxyToPortalAPI)
+	r.Get("/api/v1/practice/stats", h.proxyAuthenticatedToPortalAPI)
 	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/notices", h.proxyToPortalAPI)
@@ -262,6 +263,22 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 // --- Proxy to portal-api ---
 
 func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
+	h.proxyToPortalAPIAs(w, r, "")
+}
+
+func (h *Handler) proxyAuthenticatedToPortalAPI(w http.ResponseWriter, r *http.Request) {
+	v, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{
+			Error:     "not authenticated",
+			RequestID: requestIDOf(w, r),
+		})
+		return
+	}
+	h.proxyToPortalAPIAs(w, r, v.UserID)
+}
+
+func (h *Handler) proxyToPortalAPIAs(w http.ResponseWriter, r *http.Request, actorUserID string) {
 	targetURL := h.portalAPIURL + r.URL.Path
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
@@ -273,6 +290,9 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Header.Set("X-Request-Id", w.Header().Get("X-Request-Id"))
+	if actorUserID != "" {
+		req.Header.Set("X-Actor-User-Id", actorUserID)
+	}
 
 	resp, err := h.portalAPI.Do(req)
 	if err != nil {

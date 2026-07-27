@@ -71,10 +71,18 @@ func TestNewRouterMockNoDSN(t *testing.T) {
 
 	// live-only paths still work in mock with fixtures where allowed
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/practice/stats", nil)
+	req.Header.Set("X-Actor-User-Id", "user-1")
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("mock stats should return 200, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/practice/stats", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous stats should return 401, got %d", rec.Code)
 	}
 }
 
