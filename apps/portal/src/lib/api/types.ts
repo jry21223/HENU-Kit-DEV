@@ -6,6 +6,8 @@
 
 export interface PortalSession {
   user_id: string;
+  /** Registration display name when present; do not treat user_id as a label. */
+  display_name?: string;
   expires_at: string; // ISO 8601
 }
 

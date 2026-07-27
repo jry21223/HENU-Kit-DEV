@@ -206,6 +206,10 @@ components:
       properties:
         user_id:
           type: string
+        display_name:
+          type: string
+          description: Registration display name when available; clients should not treat user_id as a human label.
+          maxLength: 80
         expires_at:
           type: string
           format: date-time

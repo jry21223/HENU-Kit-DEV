@@ -6,8 +6,9 @@ import "time"
 
 // PortalSession is the authenticated user context returned to the browser.
 type PortalSession struct {
-	UserID    string    `json:"user_id"`
-	ExpiresAt time.Time `json:"expires_at"`
+	UserID      string    `json:"user_id"`
+	DisplayName string    `json:"display_name,omitempty"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 // ModuleSummary is a read-only product summary for Portal's module cards.

@@ -148,6 +148,7 @@ type ExchangeAuthorizationCodeRequest struct {
 
 type PlatformUser struct {
 	UserID        string    `json:"user_id"`
+	DisplayName   string    `json:"display_name,omitempty"`
 	EmailVerified bool      `json:"email_verified"`
 	Status        string    `json:"status"`
 	CreatedAt     time.Time `json:"created_at"`
