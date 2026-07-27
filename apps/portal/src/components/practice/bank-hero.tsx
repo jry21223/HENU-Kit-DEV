@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import dynamic from "next/dynamic";
 import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
-import { fetchPracticeStats } from "@/lib/api/client";
 import {
   deriveMasteryVisuals,
   EMPTY_MASTERY,
@@ -148,39 +147,11 @@ export default function BankHero({
   const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const tickerRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(true);
-  const [mastery, setMastery] = useState<MasterySnapshot>(EMPTY_MASTERY);
-  const [masteryState, setMasteryState] = useState<
-    "loading" | "ready" | "unavailable"
-  >("loading");
+  const mastery = EMPTY_MASTERY;
   const { ringSubjects, cubeCount } = useMemo(
     () => deriveMasteryVisuals(mastery),
     [mastery]
   );
-
-  useEffect(() => {
-    let current = true;
-
-    fetchPracticeStats()
-      .then((stats) => {
-        if (!current) return;
-        setMastery({
-          subjects: stats.mastery,
-          accuracy: stats.accuracy,
-          streakDays: stats.streakDays,
-          totalQuestions: stats.totalQuestions,
-        });
-        setMasteryState("ready");
-      })
-      .catch(() => {
-        if (!current) return;
-        setMastery(EMPTY_MASTERY);
-        setMasteryState("unavailable");
-      });
-
-    return () => {
-      current = false;
-    };
-  }, []);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -337,14 +308,10 @@ export default function BankHero({
 
           <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20">
             <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
-              {masteryState !== "ready" ? (
-                <li className="py-1 font-mono text-[10px] tracking-wide text-ink/50">
-                  {masteryState === "loading"
-                    ? "正在读取掌握度数据…"
-                    : "掌握度数据尚未接入"}
-                </li>
-              ) : null}
-              {masteryState === "ready" && ringSubjects.map((s, i) => {
+              <li className="py-1 font-mono text-[10px] tracking-wide text-ink/50">
+                掌握度数据尚未接入
+              </li>
+              {ringSubjects.map((s, i) => {
                 const weak = s.value < 60;
                 const t = Math.min(100, Math.max(0, s.value));
                 return (
@@ -379,7 +346,7 @@ export default function BankHero({
                   </li>
                 );
               })}
-              {masteryState === "ready" ? (
+              {ringSubjects.length > 0 ? (
                 <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
                   <span>
                     核 {mastery.accuracy}% · 连打 {mastery.streakDays}d · 块{" "}

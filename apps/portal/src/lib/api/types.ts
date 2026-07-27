@@ -138,23 +138,6 @@ export interface PracticeBanksResponse {
   request_id: string;
 }
 
-export interface PracticeStatsResponse {
-  totalQuestions: number;
-  accuracy: number;
-  streakDays: number;
-  beatPercent: number;
-  mastery: Array<{
-    label: string;
-    value: number;
-  }>;
-  weakTop5: Array<{
-    topic: string;
-    subject: string;
-    wrong: number;
-  }>;
-  request_id: string;
-}
-
 export interface QuizListMeta {
   id: string;
   name: string;
