@@ -53,7 +53,7 @@ function init() {
         if (session) {
           state = {
             user: {
-              name: publicDisplayName(session.display_name, session.user_id),
+              name: publicDisplayName(session.display_name),
               uid: session.user_id,
               email: "",
             },
@@ -110,17 +110,11 @@ function uidOf(name: string) {
   return String(20260000 + h);
 }
 
-/** Prefer registration display_name; never show raw UUID as the primary label. */
-export function publicDisplayName(
-  displayName: string | undefined,
-  userId: string
-): string {
+/** Prefer registration display_name; never expose an internal user ID as a label. */
+export function publicDisplayName(displayName: string | undefined): string {
   const trimmed = displayName?.trim();
   if (trimmed) return trimmed;
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-    return `用户 ${userId.slice(0, 8)}`;
-  }
-  return userId || "用户";
+  return "用户";
 }
 
 /** Mock 登录是否可用（UI 可据此隐藏演示码 / 本地登录表单） */

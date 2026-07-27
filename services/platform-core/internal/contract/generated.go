@@ -24,7 +24,7 @@ const (
 	RevokePlatformOperationSessionRoute = "/api/v1/platform-operations/sessions/{session_id}/revocations"
 	UpdatePlatformOperationAccessRoute  = "/api/v1/platform-operations/users/{user_id}/access-updates"
 	PlatformOperationStatusRoute        = "/api/v1/platform-operations/operations/{operation}"
-	SourceSHA256                        = "13adeda24ba81aac700d26d728ea41637a7deed78144dd4d9db49c1113cf5f45"
+	SourceSHA256                        = "a7f3f0cac813f6c87c513f052b9e1b039140f8449dca11dbf668ef53039ac6ba"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
@@ -148,10 +148,10 @@ type ExchangeAuthorizationCodeRequest struct {
 
 type PlatformUser struct {
 	UserID        string    `json:"user_id"`
-	DisplayName   string    `json:"display_name,omitempty"`
 	EmailVerified bool      `json:"email_verified"`
 	Status        string    `json:"status"`
 	CreatedAt     time.Time `json:"created_at"`
+	DisplayName   *string   `json:"display_name,omitempty"`
 }
 
 type ExchangeAuthorizationCodeResponse struct {

@@ -20,7 +20,7 @@ Portal Gateway is a read-only BFF. It authenticates users via Platform Core OAut
 
 ## Key terms
 
-- **Portal Session**: An encrypted cookie containing UserID, ExchangeToken, and ExpiresAt. Distinct from Console Session and Core Session.
+- **Portal Session**: An encrypted cookie containing UserID, the login-time Display Name snapshot, ExchangeToken, and ExpiresAt. The snapshot is presentation-only and refreshes on the next OAuth login; Platform Core remains the Display Name source of truth. Distinct from Console Session and Core Session.
 - **Exchange token**: A Platform Core session exchange token, stored server-side in the encrypted cookie, forwarded to Platform Core for permission checks.
 - **Portal permission**: A permission code prefixed with `portal.*` (e.g., `portal.library.read`), distinct from Console's `console.*` permissions.
 
