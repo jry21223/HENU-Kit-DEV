@@ -174,8 +174,7 @@ paths:
     get:
       operationId: getUserStats
       summary: Get current user practice statistics
-      security:
-        - actorUser: []
+      security: []
       responses:
         "200":
           content:
@@ -243,13 +242,6 @@ paths:
                 $ref: "#/components/schemas/CategoryListResponse"
 
 components:
-  securitySchemes:
-    actorUser:
-      type: apiKey
-      in: header
-      name: X-Actor-User-Id
-      description: Verified user identity injected by Portal Gateway; never accepted from browsers.
-
   schemas:
     # ─── Library ───────────────────────────────────────────────
     Material:
