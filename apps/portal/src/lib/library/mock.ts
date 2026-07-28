@@ -25,7 +25,10 @@ export interface Material {
   author: string; // 上传学长
   intro: string;
   toc: string[];
-  pages: string[][]; // 每页 = 段落数组
+  // Paid static entries retain only preview pages. Full pages belong to the
+  // future entitlement-aware Library owner and must never be bundled here.
+  pages: string[][]; // 已发布的每页 = 段落数组
+  pageCount?: number; // 完整资料页数元数据；付费静态资料只保留试读正文
   price: number; // 0 = 免费（积分）
   previewPages: number; // 收费资料的免费试读页数
   rating: number; // 0-5
@@ -228,6 +231,9 @@ const MATERIALS: Material[] = [
   },
 
   // ---- 收费 ----
+  // Static catalog entries deliberately contain preview-only body text. The
+  // metadata retains their real page count so the reader can present a lock
+  // wall without shipping content that has no server-side entitlement owner.
   {
     id: "paid-math-exam25", type: "exam", subject: "高等数学A",
     title: "高等数学A · 2025 期末试卷 + 逐题详解", author: "刘助教",
@@ -240,23 +246,8 @@ const MATERIALS: Material[] = [
       pg("3. 反常积分 ∫(1→+∞) 1/x² dx = ____。",
          "4. 级数 Σ(n=1→∞) 1/(n²+n) 的和为 ____。",
          "5. 曲线 y = x² 与 y = 2 - x² 围成图形的面积为 ____。"),
-      pg("二、计算题（每题 8 分，共 40 分）",
-         "1. 求 lim(x→0) [1/x - 1/(e^x - 1)]。",
-         "2. 计算 ∫₀^π x·sin x dx。",
-         "3. 判断级数 Σ (-1)ⁿ/√n 的敛散性，若收敛指出绝对还是条件收敛。"),
-      pg("4. 求由 y = √x、x 轴与 x = 4 围成的图形绕 x 轴旋转一周的体积。",
-         "5. 求幂级数 Σ n·xⁿ 的收敛域与和函数。"),
-      pg("三、应用题（12 分）",
-         "某酒厂酿新酒，若现售收入 k 元，窖藏 t 年后收入为 k·e^(√t) 元。设年利率为 r（连续复利），问窖藏多少年出售使收入的现值最大？"),
-      pg("四、证明题（每题 14 分，共 28 分）",
-         "1. 证明：x>0 时，x - x³/6 < sin x < x。",
-         "2. 设 f 在 [0,1] 上连续，∫₀¹ f(x)dx = 0，证明存在 ξ∈(0,1) 使 f(ξ) = 2ξ·∫₀¹ t·f(t) dt…"),
-      pg("逐题详解（节选）：填空 1. 分子 ~ (x²/2)·x² = x⁴/2，答案 1/2。",
-         "计算 4. V = π∫₀⁴ (√x)² dx = π·[x²/2]₀⁴ = 8π。应用题：现值 A(t) = k·e^(√t - rt)，令 A′(t)=0 得 t = 1/(4r²)。"),
-      pg("详解续：证明 1. 构造 f(x) = x - sin x，f′(x) = 1 - cos x ≥ 0 得右半；再构造 g(x) = sin x - x + x³/6，求导两次证单调。",
-         "全卷高频失分点：反常积分收敛判断漏写极限过程、幂级数收敛域漏讨论端点。"),
     ],
-    price: 60, previewPages: 2, rating: 4.9, downloads: 2876, favs: 924,
+    pageCount: 8, price: 60, previewPages: 2, rating: 4.9, downloads: 2876, favs: 924,
   },
   {
     id: "paid-ds-3years", type: "exam", subject: "数据结构",
@@ -270,16 +261,8 @@ const MATERIALS: Material[] = [
          "应用题 2. 对序列 {38,65,97,76,13,27} 建堆并写出初始大顶堆。"),
       pg("2024 A 卷见本库免费页（free-ds-exam24）。",
          "2024 B 卷考点：BFS 生成树、折半查找判定树、希尔排序增量序列。"),
-      pg("2025 A 卷（节选）：应用题 1. 画出下图（邻接矩阵给出）的 Prim 生成树全过程，并写出总权值。",
-         "应用题 2. 给定 AVL 插入序列 {16,3,7,11,9,26,18}，画出每步插入后的平衡调整。"),
-      pg("2025 B 卷新增考点：关键路径求最早/最晚发生时间（AOV 网）。",
-         "算法设计 2. 设计算法求无向图中距顶点 v 距离为 k 的所有顶点（BFS 变形）。"),
-      pg("三年考点对比：树 35%→32%→28%，图 25%→30%→34%，排序查找稳定 24%。",
-         "结论：2026 备考应把图的四大算法（DFS/BFS/MST/最短路）练到肌肉记忆。"),
-      pg("答案要点（2025 A 应用题 1）：Prim 顺序 v1→v3→v6→v4→v2→v5，总权值 23。",
-         "AVL 答案要点：插入 9 时先 LR 旋转，插入 26 后 RR 旋转一次。"),
     ],
-    price: 80, previewPages: 3, rating: 4.9, downloads: 3122, favs: 1105,
+    pageCount: 7, price: 80, previewPages: 3, rating: 4.9, downloads: 3122, favs: 1105,
   },
   {
     id: "paid-la-eigen", type: "note", subject: "线性代数",
@@ -291,16 +274,8 @@ const MATERIALS: Material[] = [
          "高频结论：Σλᵢ = tr(A)，∏λᵢ = |A|。"),
       pg("相似：B = P⁻¹AP 则 A、B 有相同特征值/迹/行列式/秩。",
          "A 可对角化 ⟺ A 有 n 个线性无关特征向量 ⟺ 每个特征值的代数重数 = 几何重数。"),
-      pg("实对称三大性质：特征值全为实数；不同特征值的特征向量正交；必可正交相似对角化。",
-         "求正交矩阵 Q 的步骤：求特征向量 → 同一特征值内施密特正交化 → 单位化 → 拼成 Q。"),
-      pg("阶梯训练 1-2（基础）：求 A = [[2,1],[1,2]] 的特征值与特征向量。",
-         "解：λ₁=1, α₁=(1,-1)ᵀ；λ₂=3, α₂=(1,1)ᵀ。"),
-      pg("训练 3-5（进阶）：已知三阶矩阵 A 的特征值 1,2,3，求 |A³ - 5A² + 6E|。",
-         "思路：特征多项式在特征值处取值，(1-5+6)(8-20+6)(27-45+6) = 2×(-6)×(-12) = 144。"),
-      pg("训练 6-8（综合）：实对称矩阵正交对角化全流程 + 二次型化标准形。",
-         "二次型 f = xᵀAx 经正交变换 x=Qy 化为 λ₁y₁² + λ₂y₂² + λ₃y₃²，正定 ⟺ 全部 λᵢ > 0。"),
     ],
-    price: 45, previewPages: 2, rating: 4.7, downloads: 1654, favs: 431,
+    pageCount: 6, price: 45, previewPages: 2, rating: 4.7, downloads: 1654, favs: 431,
   },
   {
     id: "paid-phy-em-labs", type: "lab", subject: "大学物理",
@@ -312,14 +287,8 @@ const MATERIALS: Material[] = [
          "对称测量法消除副效应：分别测 +I+B、+I-B、-I-B、-I+B 四组取平均。"),
       pg("数据（节选）：I = 10.00 mA，B 从 0 到 300 mT 每 50 mT 一点，U_H 线性度 R² = 0.9998。",
          "不确定度主要来自电压表分辨率，合成约 1.2%。"),
-      pg("篇二 示波器：观测正弦波测 Vpp 与周期 T，f = 1/T；利萨如图形测未知频率 fx/fy = ny/nx。",
-         "易错：探头 ×10 档时读数要乘 10；触发源选错波形滚动。"),
-      pg("篇三 螺线管：轴线上 B = (μ₀nI/2)(cosβ₁ - cosβ₂)，中心处近似 μ₀nI。",
-         "实测中心 B = 4.52 mT（理论 4.40 mT），相对偏差 2.7%，端部约为中心一半，验证分布曲线。"),
-      pg("篇四 RLC：谐振频率 f₀ = 1/(2π√(LC))，实测 f₀ = 5.02 kHz，Q 值由 f₀/Δf 求得 8.3。",
-         "四篇均含完整数据表与坐标纸作图扫描说明，可直接当格式模板。"),
     ],
-    price: 50, previewPages: 2, rating: 4.6, downloads: 987, favs: 203,
+    pageCount: 5, price: 50, previewPages: 2, rating: 4.6, downloads: 987, favs: 203,
   },
   {
     id: "paid-math-5mocks", type: "mock", subject: "高等数学A",
@@ -333,14 +302,8 @@ const MATERIALS: Material[] = [
          "计算节选：求 y = x²·ln x 的二阶导数。"),
       pg("卷二（基础+）节选：求 lim(x→0) (sin 3x)/(tan 5x)；计算 ∫₀¹ x/(1+x²) dx。",
          "应用：求 y = x³ - 3x² + 2 的极值与拐点。"),
-      pg("卷三（中等）节选：用泰勒公式求 lim(x→0) (e^x - 1 - x - x²/2)/x³。",
-         "证明：方程 x⁵ + x - 1 = 0 在 (0,1) 内有且仅有一个实根。"),
-      pg("卷四（中等+）节选：判断 Σ n!/nⁿ 的敛散性（比值法）。",
-         "应用：求抛物线 y² = 2x 与直线 y = x - 4 围成图形的面积（对 y 积分更简）。"),
-      pg("卷五（拔高）节选：设 f 二阶可导，证明泰勒中值定理 n=1 情形。",
-         "答案速查在末页，建议打印后手写批注。"),
     ],
-    price: 70, previewPages: 3, rating: 4.8, downloads: 2210, favs: 687,
+    pageCount: 6, price: 70, previewPages: 3, rating: 4.8, downloads: 2210, favs: 687,
   },
   {
     id: "paid-la-sprint", type: "path", subject: "线性代数",
@@ -351,16 +314,8 @@ const MATERIALS: Material[] = [
       pg("总策略：线代 70% 是计算题，计算全对 = 75 分起步。证明题只背 4 个模板（线性无关、可对角化、正定、秩不等式）。",
          "每天投入 4 小时：2h 知识点 + 1.5h 真题 + 0.5h 错题。"),
       pg("D1 行列式：性质 5 条（换行变号、提公因子、拆行、倍加不变、三角形=对角积）；三阶对角线法则；含参行列式因式分解套路。"),
-      pg("D2 矩阵：乘法顺序反转两公式（转置/逆）；初等行变换求逆（A|E)→(E|A⁻¹)；伴随矩阵 AA* = |A|E。",
-         "当天真题：2024 填空 1-5。"),
-      pg("D3 向量组：线性相关 ⟺ 存在非零解 ⟺ r < 向量个数；极大无关组求法（列变换成行阶梯）。",
-         "模板 1：证线性无关——设 k₁α₁+…+kₛαₛ=0，证全为 0。"),
-      pg("D4 方程组：r(A) 与 r(A|b) 比较判解；基础解系含 n-r 个解向量；通解 = 特解 + 齐次通解。",
-         "含参讨论是压轴常客：先 |A|≠0 唯一解，再讨论 |A|=0 两种情形。"),
-      pg("D5 特征值 + D6 二次型：见本库《特征值专题突破笔记》前 3 页；正定判据：顺序主子式全正。",
-         "D7：用 2025 真题全真模考 2 小时，晚上只过错题。"),
     ],
-    price: 30, previewPages: 2, rating: 4.5, downloads: 1308, favs: 296,
+    pageCount: 6, price: 30, previewPages: 2, rating: 4.5, downloads: 1308, favs: 296,
   },
   {
     id: "paid-cet6-writing", type: "note", subject: "大学英语",
@@ -374,12 +329,8 @@ const MATERIALS: Material[] = [
          "（举例）A case in point is that ...（对比）Unlike A, B ...（因果）Consequently, ..."),
       pg("主体论证（高分句式）：It is universally acknowledged that ...（强调句）It is not the load that breaks you down, but the way you carry it.",
          "（倒装）Only in this way can we ...（独立主格）All things considered, ..."),
-      pg("结尾段（总结）：From what has been discussed above, we may safely draw the conclusion that ...",
-         "（建议）It is high time that we took effective measures to ...（展望）Only in this way can we embrace a brighter future."),
-      pg("闪光替换：important → crucial/vital；more and more → an increasing number of；very → remarkably；think → hold the view that；good → beneficial。",
-         "全篇 50 句建议按题型抄在两张 A4 纸上，考前一周每天默写一遍。"),
     ],
-    price: 40, previewPages: 3, rating: 4.6, downloads: 1517, favs: 354,
+    pageCount: 5, price: 40, previewPages: 3, rating: 4.6, downloads: 1517, favs: 354,
   },
   {
     id: "paid-ds-lab", type: "lab", subject: "数据结构",
@@ -391,14 +342,8 @@ const MATERIALS: Material[] = [
          "评分点：内存释放完整、边界（空表/单结点）处理正确。"),
       pg("核心代码（节选）：逆置——p = L->next; L->next = NULL; while(p){ q = p->next; p->next = L->next; L->next = p; p = q; }",
          "注意先断链再逐个前插，避免成环。"),
-      pg("实验二要求：顺序栈实现（含溢出判断），并完成中缀表达式求值（只含 + - * / 与个位数操作数）。",
-         "结构体：typedef struct { int data[MAXSIZE]; int top; } SqStack;"),
-      pg("表达式求值：两个栈（操作数/运算符），扫描到运算符时与栈顶比较优先级，高于则入栈，否则弹栈计算。",
-         "测试用例：3+4*2 = 11；(3+4)*2 的括号扩展留作思考题。"),
-      pg("测试结论：全部 12 个用例通过；链表操作时间复杂度 O(n)、栈操作 O(1)；实验报告被教师当堂展示。",
-         "附：常见扣分点——free 缺失、top 初始值混乱（0 或 -1 均可但要自洽）。"),
     ],
-    price: 35, previewPages: 2, rating: 4.7, downloads: 876, favs: 167,
+    pageCount: 5, price: 35, previewPages: 2, rating: 4.7, downloads: 876, favs: 167,
   },
 ];
 

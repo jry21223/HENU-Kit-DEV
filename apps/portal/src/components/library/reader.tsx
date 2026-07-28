@@ -16,9 +16,12 @@ export default function Reader({ id }: { id: string }) {
   const dirRef = useRef(1);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const total = material?.pages.length ?? 0;
+  const total = material?.pageCount ?? material?.pages.length ?? 0;
   const free = !material || material.price === 0;
-  const locked = !free && material ? page >= material.previewPages : false;
+  const visiblePages = material && !free
+    ? Math.min(material.previewPages, material.pages.length)
+    : total;
+  const locked = !free && page >= visiblePages;
 
   const goto = (next: number) => {
     const clamped = Math.max(0, Math.min(total - 1, next));
@@ -96,7 +99,7 @@ export default function Reader({ id }: { id: string }) {
               试读到此为止 · PREVIEW ENDS
             </p>
             <p className="mt-3 max-w-sm text-sm leading-7 text-ink/70">
-              本文共 {total} 页，前 {material.previewPages} 页已免费试读。
+              本文共 {total} 页，前 {visiblePages} 页已免费试读。
               积分兑换将在真实账户服务接通后开放，当前不会通过本地余额或会话状态解锁全文。
             </p>
             <p className="mt-6 font-display text-4xl font-bold">

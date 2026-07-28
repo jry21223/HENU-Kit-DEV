@@ -52,7 +52,7 @@ export default function ItemDetail({ id }: { id: string }) {
           <div>
             <p className="font-display text-2xl font-bold leading-snug">{material.title}</p>
             <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">
-              {material.pages.length} 页 · {material.subject}
+              {material.pageCount ?? material.pages.length} 页 · {material.subject}
             </p>
           </div>
         </div>
