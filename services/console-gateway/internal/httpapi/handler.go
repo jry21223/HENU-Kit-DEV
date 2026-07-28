@@ -94,7 +94,11 @@ type flowState struct {
 func New(platformOrigin, clientID, redirectURI string, platform platformClient, notice noticeClient, overview overviewClient, redisClient *redis.Client, codec *session.Codec, logger *slog.Logger, ownerClients ...any) (http.Handler, error) {
 	origin, err := url.Parse(platformOrigin)
 	redirect, redirectErr := url.Parse(redirectURI)
-	originOK := err == nil && origin.Host != "" && origin.User == nil && (origin.Path == "" || origin.Path == "/") && origin.RawQuery == "" && origin.Fragment == "" && (origin.Scheme == "https" || origin.Hostname() == "localhost" || origin.Hostname() == "127.0.0.1" || origin.Hostname() == "platform-core")
+	originHost := ""
+	if origin != nil {
+		originHost = strings.TrimRight(origin.Hostname(), ".")
+	}
+	originOK := err == nil && origin.Host != "" && origin.User == nil && origin.RawQuery == "" && origin.Fragment == "" && !strings.EqualFold(originHost, "platform-core") && (origin.Scheme == "https" || originHost == "localhost" || originHost == "127.0.0.1")
 	redirectOK := redirectErr == nil && redirect.Host != "" && (redirect.Scheme == "https" || redirect.Hostname() == "localhost" || redirect.Hostname() == "127.0.0.1")
 	if !originOK || !redirectOK || clientID == "" || platform == nil || overview == nil || redisClient == nil || codec == nil {
 		return nil, errors.New("invalid console gateway handler configuration")
