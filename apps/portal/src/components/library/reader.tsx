@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   MATERIAL_TYPES,
   getMaterial,
@@ -9,10 +9,19 @@ import {
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 
+const subscribeToHydration = () => () => {};
+const hydratedSnapshot = () => true;
+const serverHydrationSnapshot = () => false;
+
 export default function Reader({ id }: { id: string }) {
   const material = getMaterial(id);
 
   const [page, setPage] = useState(0);
+  const isInteractive = useSyncExternalStore(
+    subscribeToHydration,
+    hydratedSnapshot,
+    serverHydrationSnapshot
+  );
   const dirRef = useRef(1);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -22,12 +31,16 @@ export default function Reader({ id }: { id: string }) {
     ? Math.min(material.previewPages, material.pages.length)
     : total;
   const locked = !free && page >= visiblePages;
+  const previousDisabled = !isInteractive || page === 0;
+  const nextDisabled = !isInteractive || page === total - 1;
 
-  const goto = (next: number) => {
-    const clamped = Math.max(0, Math.min(total - 1, next));
-    if (clamped === page) return;
-    dirRef.current = clamped > page ? 1 : -1;
-    setPage(clamped);
+  const movePage = (nextForCurrentPage: (current: number) => number) => {
+    setPage((current) => {
+      const next = Math.max(0, Math.min(total - 1, nextForCurrentPage(current)));
+      if (next === current) return current;
+      dirRef.current = next > current ? 1 : -1;
+      return next;
+    });
   };
 
   // 键盘翻页
@@ -137,11 +150,11 @@ export default function Reader({ id }: { id: string }) {
       <div className="flex items-center justify-between border-t border-line pt-4">
         <button
           type="button"
-          onClick={() => goto(page - 1)}
-          disabled={page === 0}
+          onClick={() => movePage((current) => current - 1)}
+          disabled={previousDisabled}
           className={cn(
             "border px-6 py-2.5 font-mono text-xs tracking-widest transition-colors",
-            page === 0 ? "cursor-not-allowed border-line text-ink/30" : "border-ink/40 hover:border-ink"
+            previousDisabled ? "cursor-not-allowed border-line text-ink/30" : "border-ink/40 hover:border-ink"
           )}
         >
           ← 上一页
@@ -149,11 +162,11 @@ export default function Reader({ id }: { id: string }) {
         <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">← / → 键翻页</p>
         <button
           type="button"
-          onClick={() => goto(page + 1)}
-          disabled={page === total - 1}
+          onClick={() => movePage((current) => current + 1)}
+          disabled={nextDisabled}
           className={cn(
             "border px-6 py-2.5 font-mono text-xs tracking-widest transition-colors",
-            page === total - 1
+            nextDisabled
               ? "cursor-not-allowed border-line text-ink/30"
               : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
           )}

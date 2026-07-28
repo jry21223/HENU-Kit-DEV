@@ -99,8 +99,11 @@ test("paid Library materials never use Account session mocks as a purchase or sh
   await expect(page.getByRole("button", { name: /积分购买|登录后购买/ })).toHaveCount(0);
 
   await page.goto("/library/read/paid-math-exam25", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "下一页 →" }).click();
-  await page.getByRole("button", { name: "下一页 →" }).click();
+  const nextPage = page.getByRole("button", { name: "下一页 →" });
+  await expect(nextPage).toBeEnabled();
+  await nextPage.click();
+  await nextPage.click();
+  await expect(page.getByText("3 / 8", { exact: true })).toBeVisible();
   await expect(page.locator('[data-library-purchase-state="unavailable"]')).toBeVisible();
   await expect(page.getByText("不会通过本地余额或会话状态解锁全文")).toBeVisible();
   await expect(page.getByRole("button", { name: /积分购买|登录后购买/ })).toHaveCount(0);
