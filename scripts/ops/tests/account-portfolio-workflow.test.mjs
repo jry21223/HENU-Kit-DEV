@@ -14,15 +14,30 @@ test("Account Portfolio CI enforces Go vulnerability and image scans", () => {
   assert.match(workflow, /go build -o \/tmp\/account-portfolio-healthcheck \.\/cmd\/healthcheck/);
 });
 
+function assertUsesPostgres17BackupClients(candidate) {
+  const flattenedShell = candidate.replace(/\\\r?\n\s*/g, " ");
+
+  assert.match(
+    flattenedShell,
+    /docker run --rm --network host -e PGPASSWORD="\$PGPASSWORD" postgres:17-alpine\s+pg_dump/
+  );
+  assert.match(
+    flattenedShell,
+    /docker run --rm --network host -e PGPASSWORD="\$PGPASSWORD"\s+-v \/tmp\/account-portfolio-recovery\.dump:\/tmp\/account-portfolio-recovery\.dump:ro\s+postgres:17-alpine\s+pg_restore/
+  );
+  assert.doesNotMatch(flattenedShell, /^\s*pg_dump\b/m);
+  assert.doesNotMatch(flattenedShell, /^\s*pg_restore\b/m);
+}
+
 test("Account Portfolio recovery uses PostgreSQL 17 backup clients", () => {
-  assert.match(
-    workflow,
-    /docker run --rm --network host -e PGPASSWORD="\$PGPASSWORD" postgres:17-alpine\s+\\?\s*pg_dump/
+  assertUsesPostgres17BackupClients(workflow);
+});
+
+test("Account Portfolio recovery rejects bare runner backup clients", () => {
+  assert.throws(() =>
+    assertUsesPostgres17BackupClients(`${workflow}\n          pg_dump -h 127.0.0.1 -U account_portfolio`),
   );
-  assert.match(
-    workflow,
-    /docker run --rm --network host -e PGPASSWORD="\$PGPASSWORD"\s+\\?\s*-v \/tmp\/account-portfolio-recovery\.dump:\/tmp\/account-portfolio-recovery\.dump:ro\s+\\?\s*postgres:17-alpine\s+\\?\s*pg_restore/
+  assert.throws(() =>
+    assertUsesPostgres17BackupClients(`${workflow}\n          pg_restore -h 127.0.0.1 -U account_portfolio`),
   );
-  assert.doesNotMatch(workflow, /^\s+pg_dump -h localhost/m);
-  assert.doesNotMatch(workflow, /^\s+pg_restore -h localhost/m);
 });
