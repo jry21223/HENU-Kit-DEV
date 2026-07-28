@@ -16,6 +16,7 @@ import {
 } from "./env";
 import type {
 	AccountCreateTicketInput,
+	AccountMembershipResponse,
 	AccountNotificationResponse,
 	AccountNotificationsResponse,
 	AccountSummaryResponse,
@@ -258,6 +259,13 @@ export async function logout(): Promise<void> {
  */
 export async function fetchAccountSummary(): Promise<AccountSummaryResponse> {
   return apiFetchRequired<AccountSummaryResponse>("/api/v1/account/summary");
+}
+
+/** Reads only the signed-in user's durable membership entitlement. */
+export async function fetchAccountMembership(): Promise<AccountMembershipResponse> {
+  return apiFetchRequired<AccountMembershipResponse>("/api/v1/account/membership", {
+    cache: "no-store",
+  });
 }
 
 /** Reads only the signed-in user's durable notifications. */
