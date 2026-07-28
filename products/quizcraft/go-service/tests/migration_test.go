@@ -55,6 +55,13 @@ func TestFullMigrationReconcilesContentQuarantinesFeedbackAndSnapshotsRanking(t 
 	if actorUserID != nil || actorKey != "legacy-unmapped" || legacyStatus != "resolved" || note != "旧后台已处理" {
 		t.Fatalf("legacy feedback identity/status = %v/%s/%s/%s", actorUserID, actorKey, legacyStatus, note)
 	}
+	var projectedStatus, projectedSource string
+	if err := pool.QueryRow(context.Background(), `SELECT s.status,s.source FROM quizcraft_feedbacks f JOIN quizcraft_feedback_status_facts s ON s.feedback_id=f.id WHERE f.legacy_feedback_id='feedback-1'`).Scan(&projectedStatus, &projectedSource); err != nil {
+		t.Fatalf("legacy feedback status fact = %v", err)
+	}
+	if projectedStatus != "resolved" || projectedSource != "legacy_migration" {
+		t.Fatalf("legacy feedback status fact = %q/%q", projectedStatus, projectedSource)
+	}
 	var reason string
 	if err := pool.QueryRow(context.Background(), `SELECT reason_code FROM quizcraft_migration_exceptions WHERE run_id=$1 AND legacy_record_id='feedback-2'`, report.RunID).Scan(&reason); err != nil || reason != "missing_question_reference" {
 		t.Fatalf("migration exception = %q / %v", reason, err)
@@ -562,6 +569,10 @@ func TestCutoverWriteGateKeepsReadsOpenAndRejectsMutations(t *testing.T) {
 	})
 	if status != http.StatusServiceUnavailable || !bytes.Contains(body, []byte(`"code":"writes_disabled"`)) {
 		t.Fatalf("disabled write = %d %s", status, body)
+	}
+	status, body = requestJSON(t, http.MethodGet, server.URL+"/api/v1/feedback", nil, nil)
+	if status != http.StatusServiceUnavailable || !bytes.Contains(body, []byte(`"code":"writes_disabled"`)) {
+		t.Fatalf("disabled feedback status read = %d %s", status, body)
 	}
 	var sessions int
 	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_practice_sessions WHERE bank_id=$1`, uuid.MustParse(report.BankID)).Scan(&sessions); err != nil || sessions != 0 {

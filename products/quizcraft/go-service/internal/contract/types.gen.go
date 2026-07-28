@@ -110,6 +110,60 @@ func (e DifficultPracticeSelectionMode) Valid() bool {
 	}
 }
 
+// Defines values for FeedbackStatusCategory.
+const (
+	FeedbackStatusCategoryAmbiguous   FeedbackStatusCategory = "ambiguous"
+	FeedbackStatusCategoryOther       FeedbackStatusCategory = "other"
+	FeedbackStatusCategoryOutdated    FeedbackStatusCategory = "outdated"
+	FeedbackStatusCategoryTypo        FeedbackStatusCategory = "typo"
+	FeedbackStatusCategoryWrongAnswer FeedbackStatusCategory = "wrong_answer"
+)
+
+// Valid indicates whether the value is a known member of the FeedbackStatusCategory enum.
+func (e FeedbackStatusCategory) Valid() bool {
+	switch e {
+	case FeedbackStatusCategoryAmbiguous:
+		return true
+	case FeedbackStatusCategoryOther:
+		return true
+	case FeedbackStatusCategoryOutdated:
+		return true
+	case FeedbackStatusCategoryTypo:
+		return true
+	case FeedbackStatusCategoryWrongAnswer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FeedbackStatusStatus.
+const (
+	FeedbackStatusStatusArchived   FeedbackStatusStatus = "archived"
+	FeedbackStatusStatusBlocked    FeedbackStatusStatus = "blocked"
+	FeedbackStatusStatusInProgress FeedbackStatusStatus = "in_progress"
+	FeedbackStatusStatusPending    FeedbackStatusStatus = "pending"
+	FeedbackStatusStatusResolved   FeedbackStatusStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the FeedbackStatusStatus enum.
+func (e FeedbackStatusStatus) Valid() bool {
+	switch e {
+	case FeedbackStatusStatusArchived:
+		return true
+	case FeedbackStatusStatusBlocked:
+		return true
+	case FeedbackStatusStatusInProgress:
+		return true
+	case FeedbackStatusStatusPending:
+		return true
+	case FeedbackStatusStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthEnvelopeDataStatus.
 const (
 	HealthEnvelopeDataStatusOk HealthEnvelopeDataStatus = "ok"
@@ -145,22 +199,22 @@ func (e NonChoicePracticeQuestionType) Valid() bool {
 
 // Defines values for OperationState.
 const (
-	Pending   OperationState = "pending"
-	Rejected  OperationState = "rejected"
-	Succeeded OperationState = "succeeded"
-	Unknown   OperationState = "unknown"
+	OperationStatePending   OperationState = "pending"
+	OperationStateRejected  OperationState = "rejected"
+	OperationStateSucceeded OperationState = "succeeded"
+	OperationStateUnknown   OperationState = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the OperationState enum.
 func (e OperationState) Valid() bool {
 	switch e {
-	case Pending:
+	case OperationStatePending:
 		return true
-	case Rejected:
+	case OperationStateRejected:
 		return true
-	case Succeeded:
+	case OperationStateSucceeded:
 		return true
-	case Unknown:
+	case OperationStateUnknown:
 		return true
 	default:
 		return false
@@ -685,6 +739,38 @@ type FavoriteQuestion struct {
 type FavoritesOverviewEnvelope struct {
 	Data      []FavoriteFolder `json:"data"`
 	RequestId RequestID        `json:"request_id"`
+}
+
+// FeedbackStatus defines model for FeedbackStatus.
+type FeedbackStatus struct {
+	BankId            openapi_types.UUID     `json:"bank_id"`
+	Category          FeedbackStatusCategory `json:"category"`
+	CreatedAt         time.Time              `json:"created_at"`
+	FeedbackId        openapi_types.UUID     `json:"feedback_id"`
+	QuestionId        openapi_types.UUID     `json:"question_id"`
+	QuestionVersionId openapi_types.UUID     `json:"question_version_id"`
+	Status            FeedbackStatusStatus   `json:"status"`
+	UpdatedAt         time.Time              `json:"updated_at"`
+}
+
+// FeedbackStatusCategory defines model for FeedbackStatus.Category.
+type FeedbackStatusCategory string
+
+// FeedbackStatusStatus defines model for FeedbackStatus.Status.
+type FeedbackStatusStatus string
+
+// FeedbackStatusEnvelope defines model for FeedbackStatusEnvelope.
+type FeedbackStatusEnvelope struct {
+	Data      FeedbackStatus `json:"data"`
+	RequestId RequestID      `json:"request_id"`
+}
+
+// FeedbackStatusListEnvelope defines model for FeedbackStatusListEnvelope.
+type FeedbackStatusListEnvelope struct {
+	Data struct {
+		Items []FeedbackStatus `json:"items"`
+	} `json:"data"`
+	RequestId RequestID `json:"request_id"`
 }
 
 // HealthEnvelope defines model for HealthEnvelope.

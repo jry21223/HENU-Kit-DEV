@@ -44,7 +44,7 @@ func TestVersionedMigrationArtifactsApplyOnceAndRejectChangedSource(t *testing.T
 		t.Fatalf("repeated migration report = %+v", second)
 	}
 
-	downSource, err := os.ReadFile("../db/migrations/000009_resumable_migration_artifacts.down.sql")
+	downSource, err := os.ReadFile("../db/migrations/000010_feedback_status_facts.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestVersionedMigrationArtifactsApplyOnceAndRejectChangedSource(t *testing.T
 	if err != nil {
 		t.Fatalf("reapply tracked migration after rollback: %v", err)
 	}
-	if len(reapplied.Applied) != 1 || reapplied.Applied[0].Version != "000009" || len(reapplied.Skipped) != historyCount-1 {
+	if len(reapplied.Applied) != 1 || reapplied.Applied[0].Version != "000010" || len(reapplied.Skipped) != historyCount-1 {
 		t.Fatalf("reapplied migration report = %+v", reapplied)
 	}
 
@@ -84,15 +84,15 @@ func TestVersionedMigrationArtifactsAdoptTheReleasedPreHistoryBaseline(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(report.Adopted) != 8 || len(report.Applied) != 1 || report.Applied[0].Version != "000009" || len(report.Skipped) != 0 {
+	if len(report.Adopted) != 8 || len(report.Applied) != 2 || report.Applied[0].Version != "000009" || report.Applied[1].Version != "000010" || len(report.Skipped) != 0 {
 		t.Fatalf("pre-history adoption report = %+v", report)
 	}
 	var historyCount int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM quizcraft_schema_migrations`).Scan(&historyCount); err != nil {
 		t.Fatal(err)
 	}
-	if historyCount != 9 {
-		t.Fatalf("adopted migration history count = %d, want 9", historyCount)
+	if historyCount != 10 {
+		t.Fatalf("adopted migration history count = %d, want 10", historyCount)
 	}
 }
 
@@ -156,7 +156,7 @@ func TestVersionedMigrationArtifactsAdoptTheReleasedBaselineWithUnrelatedSchemaO
 		t.Fatal(err)
 	}
 	report, err := quizcraft.ApplyVersionedMigrations(ctx, pool, "../db/migrations")
-	if err != nil || len(report.Adopted) != 8 || len(report.Applied) != 1 || report.Applied[0].Version != "000009" {
+	if err != nil || len(report.Adopted) != 8 || len(report.Applied) != 2 || report.Applied[0].Version != "000009" || report.Applied[1].Version != "000010" {
 		t.Fatalf("baseline adoption with unrelated object = %+v / %v", report, err)
 	}
 }

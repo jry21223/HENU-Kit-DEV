@@ -5,6 +5,7 @@ const bankVersionId = '22222222-2222-5222-8222-222222222222';
 const questionId = '33333333-3333-5333-8333-333333333333';
 const questionVersionId = '44444444-4444-5444-8444-444444444444';
 const sessionId = '55555555-5555-4555-8555-555555555555';
+const feedbackId = '66666666-6666-4666-8666-666666666666';
 
 test('React uses the generated Practice client for a guest session', async ({ page }) => {
   const calls: string[] = [];
@@ -91,8 +92,13 @@ test('React uses the generated Practice client for a guest session', async ({ pa
     }
     if (request.method() === 'POST' && request.url().endsWith('/api/v1/feedback')) {
       expect(request.headers()['idempotency-key']).toBeTruthy();
-      expect(request.postDataJSON()).toEqual({ bank_id: bankId, question_id: questionId, question_version_id: questionVersionId, category: 'other', detail: '解析需要补充边界条件' });
-      await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_feedback', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'req_feedback', resource_id: sessionId } }) });
+      expect(request.postDataJSON()).toEqual({ bank_id: bankId, question_id: questionId, question_version_id: questionVersionId, category: 'wrong_answer', detail: '解析需要补充边界条件' });
+      await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_feedback', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'req_feedback', resource_id: feedbackId } }) });
+      return;
+    }
+    if (request.method() === 'GET' && request.url().endsWith(`/api/v1/feedback/${feedbackId}/status`)) {
+      expect((await request.allHeaders()).cookie).toContain('quizcraft_anonymous=server-issued-anonymous-session');
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_feedback_status', data: { feedback_id: feedbackId, bank_id: bankId, question_id: questionId, question_version_id: questionVersionId, category: 'wrong_answer', status: 'pending', created_at: '2026-07-28T00:00:00Z', updated_at: '2026-07-28T00:00:00Z' } }) });
       return;
     }
     await route.abort();
@@ -107,16 +113,187 @@ test('React uses the generated Practice client for a guest session', async ({ pa
   await page.getByRole('button', { name: '提交答案' }).click();
   await expect(page.getByText('服务端判题')).toBeVisible();
   await page.getByRole('button', { name: '反馈本题' }).click();
+  await page.getByLabel('反馈类型').selectOption('wrong_answer');
   await page.getByLabel('反馈建议').fill('解析需要补充边界条件');
   await page.getByRole('button', { name: '提交反馈' }).click();
-  await expect(page.getByText('反馈提交成功，感谢你的建议！')).toBeVisible();
+  await expect(page.getByText('反馈已保存，当前状态：已受理。')).toBeVisible();
   expect(calls.filter((call) => call.startsWith('POST '))).toEqual([
     'POST /api/v1/practice/sessions',
     `POST /api/v1/practice/sessions/${sessionId}/answers`,
     'POST /api/v1/feedback',
   ]);
+  expect(calls).toContain(`GET /api/v1/feedback/${feedbackId}/status`);
   expect(calls.filter((call) => call === 'GET /api/v1/banks').length).toBeGreaterThanOrEqual(1);
   expect(calls.every((call) => call.includes('/api/v1/'))).toBe(true);
+});
+
+test('feedback retry keeps its idempotency key after a transient write failure and browser refresh', async ({ page }) => {
+  const feedbackKeys: string[] = [];
+  let feedbackRequests = 0;
+  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && request.url().endsWith('/api/v1/banks')) {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          request_id: 'req_feedback_retry_banks',
+          data: [{
+            bank_id: bankId,
+            bank_version_id: bankVersionId,
+            bank_key: 'browser-bank',
+            name: '反馈重试题库',
+            content_sha256: 'c'.repeat(64),
+            question_count: 1,
+            chapters: [{ id: 'ch01', name: '第一章' }],
+          }],
+        }),
+      });
+      return;
+    }
+    if (request.method() === 'POST' && request.url().endsWith('/api/v1/practice/sessions')) {
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        headers: { 'set-cookie': 'quizcraft_anonymous=feedback-retry-session; Path=/; HttpOnly; SameSite=Lax' },
+        body: JSON.stringify({
+          request_id: 'req_feedback_retry_session',
+          data: {
+            session_id: sessionId,
+            bank_id: bankId,
+            bank_version_id: bankVersionId,
+            mode: 'random',
+            excluded_unavailable_count: 0,
+            questions: [{
+              question_id: questionId,
+              question_version_id: questionVersionId,
+              type: 'single',
+              chapter_id: 'ch01',
+              chapter: '第一章',
+              content: '反馈失败后重试必须保持同一幂等键',
+              options: ['1', '2'],
+            }],
+          },
+        }),
+      });
+      return;
+    }
+    if (request.method() === 'POST' && request.url().endsWith('/api/v1/feedback')) {
+      feedbackRequests += 1;
+      feedbackKeys.push(request.headers()['idempotency-key']);
+      expect((await request.allHeaders()).cookie).toContain('quizcraft_anonymous=feedback-retry-session');
+      if (feedbackRequests === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ request_id: 'req_feedback_retry_failed', error: { code: 'database_unavailable', message: 'unavailable' } }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ request_id: 'req_feedback_retry_accepted', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'req_feedback_retry_accepted', resource_id: feedbackId } }),
+      });
+      return;
+    }
+    if (request.method() === 'GET' && request.url().endsWith(`/api/v1/feedback/${feedbackId}/status`)) {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ request_id: 'req_feedback_retry_status', data: { feedback_id: feedbackId, bank_id: bankId, question_id: questionId, question_version_id: questionVersionId, category: 'other', status: 'pending', created_at: '2026-07-28T00:00:00Z', updated_at: '2026-07-28T00:00:00Z' } }),
+      });
+      return;
+    }
+    await route.abort();
+  });
+
+  await page.goto('/practice');
+  await page.getByRole('button', { name: '开始练习' }).click();
+  await expect(page.getByRole('heading', { name: '反馈失败后重试必须保持同一幂等键' })).toBeVisible();
+  await page.getByRole('button', { name: '反馈本题' }).click();
+  await page.getByLabel('反馈建议').fill('第一次请求暂时失败后必须安全重试');
+  await page.getByRole('button', { name: '提交反馈' }).click();
+  await expect(page.getByRole('alert')).toHaveText('提交反馈暂时失败，请保持页面并重试。');
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '反馈失败后重试必须保持同一幂等键' })).toBeVisible();
+  await page.getByRole('button', { name: '反馈本题' }).click();
+  await expect(page.getByLabel('反馈建议')).toHaveValue('第一次请求暂时失败后必须安全重试');
+  await page.getByRole('button', { name: '提交反馈' }).click();
+  await expect(page.getByText('反馈已保存，当前状态：已受理。')).toBeVisible();
+  expect(feedbackKeys).toHaveLength(2);
+  expect(feedbackKeys[0]).toBeTruthy();
+  expect(feedbackKeys[1]).toBe(feedbackKeys[0]);
+});
+
+test('saved feedback remains recoverable when a status refresh temporarily fails', async ({ page }) => {
+  let statusReads = 0;
+  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET' && path === '/api/v1/feedback') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          request_id: 'req_feedback_history',
+          data: {
+            items: [{
+              feedback_id: feedbackId,
+              bank_id: bankId,
+              question_id: questionId,
+              question_version_id: questionVersionId,
+              category: 'typo',
+              status: 'pending',
+              created_at: '2026-07-28T00:00:00Z',
+              updated_at: '2026-07-28T00:00:00Z',
+            }],
+          },
+        }),
+      });
+      return;
+    }
+    if (request.method() === 'GET' && path === `/api/v1/feedback/${feedbackId}/status`) {
+      statusReads += 1;
+      if (statusReads === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ request_id: 'req_feedback_status_unavailable', error: { code: 'feedback_status_unavailable', message: 'unavailable' } }),
+        });
+        return;
+      }
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          request_id: 'req_feedback_status_resolved',
+          data: {
+            feedback_id: feedbackId,
+            bank_id: bankId,
+            question_id: questionId,
+            question_version_id: questionVersionId,
+            category: 'typo',
+            status: 'resolved',
+            created_at: '2026-07-28T00:00:00Z',
+            updated_at: '2026-07-28T00:05:00Z',
+          },
+        }),
+      });
+      return;
+    }
+    await route.abort();
+  });
+
+  await page.goto('/feedback');
+  await expect(page.getByRole('heading', { name: '我的反馈' })).toBeVisible();
+  await expect(page.getByText(feedbackId)).toBeVisible();
+  await expect(page.getByText('已受理')).toBeVisible();
+
+  const refresh = page.getByRole('button', { name: `刷新反馈 ${feedbackId}` });
+  await refresh.click();
+  await expect(page.getByRole('alert')).toHaveText('处理状态暂时无法读取，已保留上次保存的状态。');
+  await expect(page.getByText(feedbackId)).toBeVisible();
+  await refresh.click();
+  await expect(page.getByText('已解决')).toBeVisible();
+  expect(statusReads).toBe(2);
 });
 
 test('answer retry keeps its idempotency key after a browser refresh', async ({ page }) => {

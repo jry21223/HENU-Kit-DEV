@@ -1,8 +1,10 @@
-import { FormEvent, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare, ArrowLeft, Send } from 'lucide-react';
+import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react';
+import type { FeedbackStatus } from '@/generated/quizcraft-api';
 import { feedbackApi } from '@/api/client';
-import { QUIZCRAFT_GO_SHADOW_ENABLED } from '@/api/quizcraftShadowClient';
+import { QUIZCRAFT_GO_SHADOW_ENABLED, shadowFeedbackApi } from '@/api/quizcraftShadowClient';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { feedbackErrorMessage, feedbackStatusLabel } from '@/utils/feedbackStatus';
 
 type FeedbackLocationState = {
   questionIndex?: unknown;
@@ -12,7 +14,7 @@ type FeedbackLocationState = {
 };
 
 const parseQuestionIndex = (value: unknown): number | null => {
-  const raw = typeof value === 'string' ? Number(value) : Number(value);
+  const raw = Number(value);
   return Number.isInteger(raw) && raw > 0 ? raw : null;
 };
 
@@ -28,7 +30,186 @@ const readLastFeedbackQuestionIndex = () => {
   }
 };
 
+const statusClass = (status: FeedbackStatus['status']) => {
+  switch (status) {
+    case 'resolved':
+      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+    case 'blocked':
+      return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+    case 'archived':
+      return 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
+    default:
+      return 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300';
+  }
+};
+
+const categoryLabel = (category: FeedbackStatus['category']) => {
+  switch (category) {
+    case 'wrong_answer':
+      return '答案或解析错误';
+    case 'ambiguous':
+      return '题意或选项歧义';
+    case 'typo':
+      return '错别字或排版问题';
+    case 'outdated':
+      return '内容已过时';
+    case 'other':
+      return '其他建议';
+  }
+};
+
+const formatTime = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(parsed);
+};
+
 export default function Feedback() {
+  if (!QUIZCRAFT_GO_SHADOW_ENABLED) {
+    return <LegacyFeedbackForm />;
+  }
+
+  return <FeedbackHistory />;
+}
+
+function FeedbackHistory() {
+  const [items, setItems] = useState<FeedbackStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [refreshingID, setRefreshingID] = useState<string | null>(null);
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      setItems(await shadowFeedbackApi.listStatuses());
+    } catch (error) {
+      setLoadError(feedbackErrorMessage(error, '反馈记录暂时无法读取，请稍后重试。'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const refreshStatus = async (feedbackID: string) => {
+    if (refreshingID) return;
+    setRefreshingID(feedbackID);
+    setItemErrors((current) => {
+      const next = { ...current };
+      delete next[feedbackID];
+      return next;
+    });
+    try {
+      const current = await shadowFeedbackApi.status(feedbackID);
+      setItems((existing) => existing.map((item) => (
+        item.feedback_id === feedbackID ? current : item
+      )));
+    } catch (error) {
+      setItemErrors((current) => ({
+        ...current,
+        [feedbackID]: feedbackErrorMessage(error, '处理状态暂时无法读取，已保留上次保存的状态。'),
+      }));
+    } finally {
+      setRefreshingID(null);
+    }
+  };
+
+  return (
+    <section className="mx-auto max-w-3xl space-y-5">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-slate-100">
+            <MessageSquare className="h-6 w-6 text-primary-500" />
+            我的反馈
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            这里显示服务端保存的纠错记录；可按条刷新处理状态。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          重新加载
+        </button>
+      </header>
+
+      {loading && (
+        <div role="status" className="flex items-center justify-center gap-2 rounded-2xl border border-gray-100 bg-white p-10 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          正在读取已保存的反馈…
+        </div>
+      )}
+
+      {!loading && loadError && (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{loadError}</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && !loadError && items.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center dark:border-slate-700 dark:bg-slate-800">
+          <CheckCircle2 className="mx-auto h-7 w-7 text-gray-400" />
+          <h2 className="mt-3 font-semibold text-gray-800 dark:text-slate-100">还没有已保存的反馈</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">提交题目纠错后，会在这里显示处理进度。</p>
+        </div>
+      )}
+
+      {!loading && !loadError && items.length > 0 && (
+        <ol className="space-y-3" aria-label="已保存的反馈">
+          {items.map((item) => (
+            <li key={item.feedback_id} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-gray-800 dark:text-slate-100">{categoryLabel(item.category)}</p>
+                  <p className="mt-1 break-all text-xs text-gray-500 dark:text-slate-400">反馈编号：{item.feedback_id}</p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(item.status)}`}>
+                  {feedbackStatusLabel(item.status)}
+                </span>
+              </div>
+              <dl className="mt-3 grid gap-1 text-xs text-gray-500 dark:text-slate-400 sm:grid-cols-2">
+                <div><dt className="inline">提交时间：</dt><dd className="inline">{formatTime(item.created_at)}</dd></div>
+                <div><dt className="inline">状态更新：</dt><dd className="inline">{formatTime(item.updated_at)}</dd></div>
+                <div className="break-all sm:col-span-2"><dt className="inline">题目版本：</dt><dd className="inline">{item.question_version_id}</dd></div>
+              </dl>
+              {itemErrors[item.feedback_id] && (
+                <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">{itemErrors[item.feedback_id]}</p>
+              )}
+              <div className="mt-3">
+                <button
+                  type="button"
+                  aria-label={`刷新反馈 ${item.feedback_id}`}
+                  onClick={() => void refreshStatus(item.feedback_id)}
+                  disabled={refreshingID !== null}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshingID === item.feedback_id ? 'animate-spin' : ''}`} />
+                  刷新处理状态
+                </button>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function LegacyFeedbackForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -54,16 +235,12 @@ export default function Feedback() {
     event.preventDefault();
 
     const normalizedSuggestion = suggestion.trim();
-    if (!questionIndex || questionIndex <= 0) {
+    if (!questionIndex) {
       setError('未获取到有效题目索引，请从题目页点击“反馈本题”提交');
       return;
     }
     if (!normalizedSuggestion) {
       setError('建议改正内容不能为空');
-      return;
-    }
-    if (QUIZCRAFT_GO_SHADOW_ENABLED) {
-      setError('请从刷题页点击“反馈本题”，以携带稳定题库、题目和版本引用');
       return;
     }
 
@@ -78,8 +255,8 @@ export default function Feedback() {
       });
       setMessage('反馈提交成功，感谢你的建议！');
       setSuggestion('');
-    } catch (err) {
-      setError((err as Error).message || '提交失败');
+    } catch (submitError) {
+      setError(feedbackErrorMessage(submitError, '提交反馈暂时失败，请保持页面并重试。'));
     } finally {
       setSubmitting(false);
     }
@@ -142,8 +319,8 @@ export default function Feedback() {
             </p>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          {message && <p className="text-sm text-green-600">{message}</p>}
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          {message && <p role="status" className="text-sm text-green-600">{message}</p>}
 
           <div className="flex items-center gap-3">
             <button

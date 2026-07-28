@@ -33,6 +33,16 @@ type platformExchange struct {
 	ExpiresAt     time.Time
 }
 
+type platformInboxItem struct {
+	ID                 string    `json:"id"`
+	SourceProductCode  string    `json:"source_product_code"`
+	SourceResourceType string    `json:"source_resource_type"`
+	SourceResourceID   string    `json:"source_resource_id"`
+	Status             string    `json:"status"`
+	Version            int64     `json:"version"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
 func newPlatformClient(rawURL, clientID, secret, keyID string, client *http.Client) (*platformClient, error) {
 	parsed, err := url.Parse(strings.TrimRight(rawURL, "/"))
 	loopback := err == nil && parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || net.ParseIP(parsed.Hostname()).IsLoopback())
@@ -150,6 +160,34 @@ func (client *platformClient) createInboxItem(ctx context.Context, token, idempo
 		return uuid.Nil, errors.New("invalid operations Inbox response")
 	}
 	return envelope.Data.ID, nil
+}
+
+func (client *platformClient) getInboxItem(ctx context.Context, token string, itemID uuid.UUID, productCode, resourceType, resourceID string) (platformInboxItem, error) {
+	query := url.Values{}
+	query.Set("source_product_code", productCode)
+	query.Set("source_resource_type", resourceType)
+	query.Set("source_resource_id", resourceID)
+	request, err := client.signedRequest(ctx, http.MethodGet, "/api/v1/operations-inbox/items/"+url.PathEscape(itemID.String())+"?"+query.Encode(), nil)
+	if err != nil {
+		return platformInboxItem{}, err
+	}
+	request.Header.Set("X-Session-Exchange-Token", token)
+	response, err := client.httpClient.Do(request)
+	if err != nil {
+		return platformInboxItem{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		return platformInboxItem{}, fmt.Errorf("operations Inbox status returned %d", response.StatusCode)
+	}
+	var envelope struct {
+		Data platformInboxItem `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope); err != nil || envelope.Data.ID != itemID.String() || envelope.Data.Version < 1 || envelope.Data.UpdatedAt.IsZero() || envelope.Data.Status == "" {
+		return platformInboxItem{}, errors.New("invalid operations Inbox status response")
+	}
+	return envelope.Data, nil
 }
 
 var (

@@ -33,9 +33,13 @@ import { useQuizStore } from "@/stores/quizStore";
 import { feedbackApi, practiceApi } from "@/api/client";
 import {
   QUIZCRAFT_GO_SHADOW_ENABLED,
+  clearPendingShadowFeedback,
+  createQuizcraftIdempotencyKey,
   getActiveShadowBankId,
   getActiveShadowQuestionVersionId,
+  getPendingShadowFeedback,
   isQuizcraftAuthenticationError,
+  persistPendingShadowFeedback,
   redirectToQuizcraftLogin,
   shadowFavoritesApi,
   shadowFeedbackApi,
@@ -53,8 +57,12 @@ import {
   runAnswerSubmission,
   type AnswerSubmissionFailure,
 } from "@/utils/answerSubmission";
+import { feedbackErrorMessage, feedbackStatusLabel } from "@/utils/feedbackStatus";
 import { getQuestionOptionKey } from "./quizCardState";
+import type { FeedbackStatus, QuestionFeedback } from "@/generated/quizcraft-api";
 import type { PracticeState, Question, QuestionType } from "@/types";
+
+type FeedbackCategory = QuestionFeedback["category"];
 
 const normalizeBlankAnswer = (answer: unknown): string =>
   String(answer ?? "").replace(/\s+/g, " ").trim();
@@ -561,7 +569,11 @@ type QuizUiState = {
   elapsedTime: number;
   isSliding: boolean;
   visualCurrentIndex: number;
+  feedbackCategory: FeedbackCategory;
   feedbackSuggestion: string;
+  feedbackRequestKey: string | null;
+  feedbackID: string | null;
+  feedbackStatus: FeedbackStatus | null;
   feedbackSubmitting: boolean;
   feedbackMessage: string;
   feedbackError: string;
@@ -579,7 +591,11 @@ const initialQuizUiState: QuizUiState = {
   elapsedTime: 0,
   isSliding: false,
   visualCurrentIndex: 0,
+  feedbackCategory: "other",
   feedbackSuggestion: "",
+  feedbackRequestKey: null,
+  feedbackID: null,
+  feedbackStatus: null,
   feedbackSubmitting: false,
   feedbackMessage: "",
   feedbackError: "",
@@ -848,7 +864,11 @@ function useQuizController() {
     elapsedTime,
     isSliding,
     visualCurrentIndex,
+    feedbackCategory,
     feedbackSuggestion,
+    feedbackRequestKey,
+    feedbackID,
+    feedbackStatus,
     favoriteSubmitting,
     favoriteError,
     feedbackSubmitting,
@@ -1083,8 +1103,22 @@ function useQuizController() {
   const submissionLocked = answerSubmitting || pendingAnswer !== null;
 
   const openFeedbackModal = () => {
+    const questionVersionId = QUIZCRAFT_GO_SHADOW_ENABLED
+      ? getActiveShadowQuestionVersionId(activeQuestion.id)
+      : undefined;
+    const pendingFeedback = activeBankId && questionVersionId
+      ? getPendingShadowFeedback({
+          bank_id: activeBankId,
+          question_id: activeQuestion.id,
+          question_version_id: questionVersionId,
+        })
+      : null;
     setUi({
-      feedbackSuggestion: "",
+      feedbackCategory: pendingFeedback?.category || "other",
+      feedbackSuggestion: pendingFeedback?.detail || "",
+      feedbackRequestKey: pendingFeedback?.idempotencyKey || null,
+      feedbackID: null,
+      feedbackStatus: null,
       feedbackMessage: "",
       feedbackError: "",
     });
@@ -1106,17 +1140,13 @@ function useQuizController() {
       return;
     }
 
-    setUi({
-      feedbackSubmitting: true,
-      feedbackError: "",
-      feedbackMessage: "",
-    });
-    try {
-      if (QUIZCRAFT_GO_SHADOW_ENABLED) {
-        const questionVersionId = getActiveShadowQuestionVersionId(activeQuestion.id);
-        if (!activeBankId || !questionVersionId) throw new Error("缺少稳定题目版本引用，请重新进入练习");
-        await shadowFeedbackApi.submit({ bank_id: activeBankId, question_id: activeQuestion.id, question_version_id: questionVersionId, category: "other", detail: normalizedSuggestion });
-      } else {
+    if (!QUIZCRAFT_GO_SHADOW_ENABLED) {
+      setUi({
+        feedbackSubmitting: true,
+        feedbackError: "",
+        feedbackMessage: "",
+      });
+      try {
         await feedbackApi.submit({
           question_index: feedbackQuestionIndex,
           question_bank: activeBankKey || undefined,
@@ -1124,15 +1154,127 @@ function useQuizController() {
           question_content: activeQuestion.content,
           suggestion: normalizedSuggestion,
         });
+        setUi({
+          feedbackMessage: "反馈提交成功，感谢你的建议！",
+          feedbackSuggestion: "",
+        });
+      } catch (error) {
+        setUi({ feedbackError: feedbackErrorMessage(error, "提交反馈暂时失败，请保持页面并重试。") });
+      } finally {
+        setUi({ feedbackSubmitting: false });
+      }
+      return;
+    }
+
+    const questionVersionId = getActiveShadowQuestionVersionId(activeQuestion.id);
+    if (!activeBankId || !questionVersionId) {
+      setUi({ feedbackError: "缺少稳定题目版本引用，请重新进入练习" });
+      return;
+    }
+    const idempotencyKey = feedbackRequestKey || createQuizcraftIdempotencyKey();
+    const pendingFeedback = {
+      bank_id: activeBankId,
+      question_id: activeQuestion.id,
+      question_version_id: questionVersionId,
+      category: feedbackCategory,
+      detail: normalizedSuggestion,
+      idempotencyKey,
+    };
+    try {
+      if (!persistPendingShadowFeedback(pendingFeedback)) {
+        throw new Error("无法保存当前影子练习的安全重试凭据");
+      }
+    } catch {
+      setUi({ feedbackError: "浏览器无法保存安全重试凭据，请检查会话存储后重试。" });
+      return;
+    }
+    setUi({
+      feedbackSubmitting: true,
+      feedbackRequestKey: idempotencyKey,
+      feedbackError: "",
+      feedbackMessage: "",
+    });
+    try {
+      const feedbackPayload = {
+        bank_id: pendingFeedback.bank_id,
+        question_id: pendingFeedback.question_id,
+        question_version_id: pendingFeedback.question_version_id,
+        category: pendingFeedback.category,
+        detail: pendingFeedback.detail,
+      };
+      const accepted = await shadowFeedbackApi.submit(feedbackPayload, idempotencyKey);
+      const feedbackId = accepted.data.resource_id;
+      if (!feedbackId) {
+        throw new Error("反馈已接收但未返回可恢复编号，请使用相同内容重试");
+      }
+      try {
+        clearPendingShadowFeedback(pendingFeedback);
+      } catch {
+        // The accepted server write is authoritative even if local retry cleanup fails.
       }
       setUi({
-        feedbackMessage: "反馈提交成功，感谢你的建议！",
+        feedbackID: feedbackId,
+        feedbackStatus: null,
         feedbackSuggestion: "",
+        feedbackRequestKey: null,
       });
+      try {
+        const feedback = await shadowFeedbackApi.status(feedbackId);
+        setUi({
+          feedbackStatus: feedback,
+          feedbackMessage: `反馈已保存，当前状态：${feedbackStatusLabel(feedback.status)}。`,
+        });
+      } catch {
+        // The accepted write is durable even if the follow-up status read is unavailable.
+        setUi({
+          feedbackMessage: "反馈已保存，但处理状态暂时不可用。",
+          feedbackError: "请重试读取状态，或到“我的反馈”查看已保存的记录。",
+        });
+      }
     } catch (error) {
-      setUi({ feedbackError: (error as Error).message || "提交失败" });
+      setUi({ feedbackError: feedbackErrorMessage(error, "提交反馈暂时失败，请保持页面并重试。") });
     } finally {
       setUi({ feedbackSubmitting: false });
+    }
+  };
+
+  const retryFeedbackStatus = async () => {
+    if (!feedbackID || feedbackSubmitting) return;
+    setUi({ feedbackSubmitting: true, feedbackError: "", feedbackMessage: "" });
+    try {
+      const feedback = await shadowFeedbackApi.status(feedbackID);
+      setUi({
+        feedbackStatus: feedback,
+        feedbackMessage: `当前状态：${feedbackStatusLabel(feedback.status)}。`,
+      });
+    } catch {
+      setUi({
+        feedbackMessage: "反馈已保存，但处理状态暂时不可用。",
+        feedbackError: "请稍后重试，或到“我的反馈”查看已保存的记录。",
+      });
+    } finally {
+      setUi({ feedbackSubmitting: false });
+    }
+  };
+
+  const openFeedbackHistory = () => {
+    if (feedbackSubmitting) return;
+    feedbackDialogRef.current?.close();
+    navigate("/feedback");
+  };
+
+  const clearPendingFeedbackForCurrentQuestion = () => {
+    if (!QUIZCRAFT_GO_SHADOW_ENABLED || !activeBankId || !activeQuestion) return;
+    const questionVersionId = getActiveShadowQuestionVersionId(activeQuestion.id);
+    if (!questionVersionId) return;
+    try {
+      clearPendingShadowFeedback({
+        bank_id: activeBankId,
+        question_id: activeQuestion.id,
+        question_version_id: questionVersionId,
+      });
+    } catch {
+      // A changed draft will overwrite the same session entry before its next write.
     }
   };
 
@@ -1543,9 +1685,12 @@ function useQuizController() {
     elapsedTime,
     feedbackDialogRef,
     feedbackError,
+    feedbackID,
     feedbackMessage,
     feedbackQuestionIndex,
+    feedbackStatus,
     feedbackSubmitting,
+    feedbackCategory,
     feedbackSuggestion,
     favoriteError,
     favoriteQuestionIds: ui.serverFavoriteIds,
@@ -1563,13 +1708,36 @@ function useQuizController() {
     isSliding,
     nextQuestionRef,
     openFeedbackModal,
+    openFeedbackHistory,
     practice,
     prevQuestion,
     progress,
     resetSwipeState,
+    retryFeedbackStatus,
     retryAnswerSubmission,
     selectedAnswer,
-    setFeedbackSuggestion: (value: string) => setUi({ feedbackSuggestion: value }),
+    setFeedbackSuggestion: (value: string) => {
+      if (value !== feedbackSuggestion) clearPendingFeedbackForCurrentQuestion();
+      setUi({
+        feedbackSuggestion: value,
+        feedbackRequestKey: null,
+        feedbackID: null,
+        feedbackStatus: null,
+        feedbackError: "",
+        feedbackMessage: "",
+      });
+    },
+    setFeedbackCategory: (value: FeedbackCategory) => {
+      if (value !== feedbackCategory) clearPendingFeedbackForCurrentQuestion();
+      setUi({
+        feedbackCategory: value,
+        feedbackRequestKey: null,
+        feedbackID: null,
+        feedbackStatus: null,
+        feedbackError: "",
+        feedbackMessage: "",
+      });
+    },
     setSelectedAnswer: (value: any) => {
       if (showResult || submissionLocked) return;
       setUi({ selectedAnswer: value });
@@ -1643,6 +1811,26 @@ function QuizFeedbackDialog({ controller }: { controller: QuizController }) {
       </div>
 
       <form onSubmit={controller.handleFeedbackSubmit} className="space-y-3">
+        {QUIZCRAFT_GO_SHADOW_ENABLED && (
+          <div>
+            <label htmlFor="quiz-feedback-category" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
+              反馈类型
+            </label>
+            <select
+              id="quiz-feedback-category"
+              value={controller.feedbackCategory}
+              onChange={(event) => controller.setFeedbackCategory(event.target.value as FeedbackCategory)}
+              disabled={controller.feedbackSubmitting}
+              className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-primary-300 focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              <option value="wrong_answer">正确答案或解析错误</option>
+              <option value="ambiguous">题意或选项歧义</option>
+              <option value="typo">错别字或排版问题</option>
+              <option value="outdated">内容已过时</option>
+              <option value="other">其他建议</option>
+            </select>
+          </div>
+        )}
         <label htmlFor="quiz-feedback-suggestion" className="sr-only">
           反馈建议
         </label>
@@ -1661,8 +1849,35 @@ function QuizFeedbackDialog({ controller }: { controller: QuizController }) {
           <span>{controller.feedbackSuggestion.length}/2000</span>
         </div>
 
-        {controller.feedbackError && <p className="text-sm text-red-600">{controller.feedbackError}</p>}
-        {controller.feedbackMessage && <p className="text-sm text-green-600">{controller.feedbackMessage}</p>}
+        {controller.feedbackError && <p role="alert" className="text-sm text-red-600">{controller.feedbackError}</p>}
+        {controller.feedbackMessage && <p role="status" className="text-sm text-green-600">{controller.feedbackMessage}</p>}
+
+        {controller.feedbackID && (
+          <div className="rounded-xl border border-primary-100 bg-primary-50 p-3 text-xs text-primary-800 dark:border-primary-900/70 dark:bg-primary-900/20 dark:text-primary-200">
+            <p className="break-all">
+              已保存反馈编号：{controller.feedbackID}
+              {controller.feedbackStatus && ` · ${feedbackStatusLabel(controller.feedbackStatus.status)}`}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={controller.retryFeedbackStatus}
+                disabled={controller.feedbackSubmitting}
+                className="rounded-lg border border-primary-200 bg-white px-2.5 py-1.5 font-medium text-primary-700 transition-colors hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-700 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
+              >
+                重试读取状态
+              </button>
+              <button
+                type="button"
+                onClick={controller.openFeedbackHistory}
+                disabled={controller.feedbackSubmitting}
+                className="rounded-lg border border-primary-200 bg-white px-2.5 py-1.5 font-medium text-primary-700 transition-colors hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-700 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
+              >
+                查看我的反馈
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-3 pt-1">
           <button

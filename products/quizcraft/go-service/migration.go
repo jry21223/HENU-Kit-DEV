@@ -857,6 +857,14 @@ func (s *Service) migrateLegacyFeedback(ctx context.Context, runID uuid.UUID, so
 		if err != nil {
 			return migrated, exceptions, err
 		}
+		statusOccurredAt := createdAt
+		if item.ResolvedAt != nil {
+			statusOccurredAt = item.ResolvedAt.UTC()
+		}
+		statusEventID := "legacy-migration:" + feedbackID.String() + ":" + strconv.FormatInt(sourceEventID, 10)
+		if _, err := s.database.Exec(ctx, `INSERT INTO quizcraft_feedback_status_facts(id,feedback_id,status,source,source_event_id,occurred_at) VALUES($1,$2,$3,'legacy_migration',$4,$5) ON CONFLICT(feedback_id,source_event_id) DO NOTHING`, stableID(quizcraftNamespace, "legacy-feedback-status:"+feedbackID.String()+":"+strconv.FormatInt(sourceEventID, 10)), feedbackID, status, statusEventID, statusOccurredAt); err != nil {
+			return migrated, exceptions, err
+		}
 		if _, err := s.database.Exec(ctx, `INSERT INTO quizcraft_legacy_feedback_state_events(id,run_id,legacy_feedback_id,source_event_id,status,resolved_at,resolution_note) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,legacy_feedback_id,source_event_id) DO NOTHING`, uuid.New(), runID, item.LegacyID, sourceEventID, status, item.ResolvedAt, item.ResolutionNote); err != nil {
 			return migrated, exceptions, err
 		}
