@@ -204,7 +204,8 @@ services:
     environment:
       LISTEN_ADDR: ${CONSOLE_GATEWAY_LISTEN_ADDR:-:8082}
       PLATFORM_CORE_URL: ${PLATFORM_CORE_URL:-http://platform-core:8081}
-      PLATFORM_ACCOUNT_ORIGIN: ${PLATFORM_CORE_URL:-http://platform-core:8081}
+      # Browser-facing Account Center URL. Do not use the private Docker URL above.
+      PLATFORM_ACCOUNT_ORIGIN: ${PLATFORM_ACCOUNT_ORIGIN:-http://localhost:8088/account-auth}
       PLATFORM_CLIENT_ID: ${CONSOLE_PLATFORM_CLIENT_ID:-console-gateway}
       PLATFORM_CLIENT_SECRET: ${CONSOLE_PLATFORM_CLIENT_SECRET:-replace-console-gateway-client-secret}
       PLATFORM_KEY_ID: ${CONSOLE_PLATFORM_KEY_ID:-console-gateway-key}

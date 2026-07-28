@@ -9,7 +9,7 @@ Copy `.env.example` and set at least:
 | Variable | Role |
 | --- | --- |
 | `PLATFORM_CORE_URL` | Base URL of Platform Core (required; no hardcoded host in the binary) |
-| `PLATFORM_ACCOUNT_ORIGIN` | Browser-facing account origin used for authorize redirects |
+| `PLATFORM_ACCOUNT_ORIGIN` | Browser-facing Account Center base URL (may include `/account-auth`) used for authorize redirects |
 | `PLATFORM_CLIENT_ID` / `PLATFORM_CLIENT_SECRET` / `PLATFORM_KEY_ID` | OAuth client credentials provisioned for this Gateway |
 | `CONSOLE_REDIRECT_URI` | Exact callback URL registered with Platform Core |
 | `CONSOLE_SESSION_KEY` | Base64 encoding of exactly 32 random bytes |

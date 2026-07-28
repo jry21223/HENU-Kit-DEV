@@ -205,7 +205,10 @@ func integrationRedis(t *testing.T) *redis.Client {
 	if address == "" {
 		t.Skip("CONSOLE_GATEWAY_TEST_REDIS_ADDR is required")
 	}
-	client := redis.NewClient(&redis.Options{Addr: address})
+	client := redis.NewClient(&redis.Options{
+		Addr: address,
+		DB:   2, // Keep package-level cleanup separate from HTTP API tests.
+	})
 	if err := client.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}

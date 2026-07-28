@@ -71,35 +71,38 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "QUIZCRAFT_SUMMARY_CLIENT_SECRET",
     ].map((name) => [name, "test-required-value"]),
   );
-  const config = JSON.parse(
-    execFileSync(
-      "docker",
-      [
-        "compose",
-        "-f",
-        "docker-compose.henukit.yml",
-        "-f",
-        "docker-compose.henukit.prebuilt.yml",
-        "config",
-        "--format",
-        "json",
-        "--no-path-resolution",
-      ],
-      {
-        cwd: repoRoot,
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          ...requiredEnvironment,
-          PLATFORM_CORE_DATABASE_URL: "postgres://test",
-          PLATFORM_CORE_REDIS_URL: "redis://test",
-          QUIZCRAFT_DATABASE_URL: "postgres://test",
-          RELEASE_SHA: releaseSha,
-          STUDY_DATABASE_URL: "postgres://test",
+  const renderRuntimeConfig = (overrides = {}) =>
+    JSON.parse(
+      execFileSync(
+        "docker",
+        [
+          "compose",
+          "-f",
+          "docker-compose.henukit.yml",
+          "-f",
+          "docker-compose.henukit.prebuilt.yml",
+          "config",
+          "--format",
+          "json",
+          "--no-path-resolution",
+        ],
+        {
+          cwd: repoRoot,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            ...requiredEnvironment,
+            PLATFORM_CORE_DATABASE_URL: "postgres://test",
+            PLATFORM_CORE_REDIS_URL: "redis://test",
+            QUIZCRAFT_DATABASE_URL: "postgres://test",
+            RELEASE_SHA: releaseSha,
+            STUDY_DATABASE_URL: "postgres://test",
+            ...overrides,
+          },
         },
-      },
-    ),
-  );
+      ),
+    );
+  const config = renderRuntimeConfig();
   const expectedImages = [
     "henukit-console",
     "henukit-console-gateway",
@@ -131,6 +134,24 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   assert.equal(
     config.services.nginx.volumes[0].source,
     "./infra/nginx/henukit.conf.example",
+  );
+  assert.equal(
+    config.services["console-gateway"].environment.PLATFORM_ACCOUNT_ORIGIN,
+    "http://localhost:8088/account-auth",
+    "the local Console login must use the browser-facing Account Center path",
+  );
+  assert.notEqual(
+    config.services["console-gateway"].environment.PLATFORM_ACCOUNT_ORIGIN,
+    config.services["console-gateway"].environment.PLATFORM_CORE_URL,
+    "the Console browser redirect must not receive the private Core URL",
+  );
+  const publicConfig = renderRuntimeConfig({
+    PLATFORM_ACCOUNT_ORIGIN: "https://henukit.cn/account-auth",
+  });
+  assert.equal(
+    publicConfig.services["console-gateway"].environment.PLATFORM_ACCOUNT_ORIGIN,
+    "https://henukit.cn/account-auth",
+    "production can provide the public Account Center URL explicitly",
   );
   assert.doesNotMatch(
     JSON.stringify(config),

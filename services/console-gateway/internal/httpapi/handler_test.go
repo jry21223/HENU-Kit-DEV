@@ -375,7 +375,7 @@ func TestRequestContextReplacesContractInvalidRequestID(t *testing.T) {
 	}
 }
 
-func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testing.T) {
+func TestConsoleAuthorizationCodeFlowUsesPublicAccountCenterAndConformsToContract(t *testing.T) {
 	redisClient := testRedis(t)
 	codec, err := session.New([]byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {
@@ -384,7 +384,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testi
 	fake := &fakePlatform{exchange: platformcore.Exchange{
 		UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: "exchange_token_with_at_least_32_characters", ExpiresAt: time.Now().Add(5 * time.Minute),
 	}}
-	handler, err := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler, err := New("https://henukit.cn/account-auth", "console-gateway", "https://henukit.cn/console-api/v1/auth/callback", fake, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +415,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testi
 		t.Fatalf("invalid browser-bound OAuth cookie: %+v", login.Cookies())
 	}
 	authorize, err := url.Parse(login.Header.Get("Location"))
-	if err != nil || authorize.Host != "account.henukit.test" || authorize.Query().Get("code_challenge_method") != "S256" || len(authorize.Query().Get("code_challenge")) != 43 {
+	if err != nil || authorize.Host != "henukit.cn" || authorize.Path != "/account-auth/api/v1/oauth/authorize" || authorize.Query().Get("redirect_uri") != "https://henukit.cn/console-api/v1/auth/callback" || authorize.Query().Get("code_challenge_method") != "S256" || len(authorize.Query().Get("code_challenge")) != 43 {
 		t.Fatalf("invalid authorize redirect: %s (%v)", login.Header.Get("Location"), err)
 	}
 	state := authorize.Query().Get("state")
@@ -453,7 +453,7 @@ func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testi
 	if sessionValue == nil || !sessionValue.HttpOnly || !sessionValue.Secure || sessionValue.SameSite != http.SameSiteLaxMode || sessionValue.Path != "/" {
 		t.Fatalf("invalid Console Session cookie: %+v", callback.Cookies())
 	}
-	if fake.exchangeCalls != 1 || len(fake.verifier) != 43 || !strings.HasPrefix(fake.idempotencyKey, "idem_console_") {
+	if fake.exchangeCalls != 1 || fake.redirect != "https://henukit.cn/console-api/v1/auth/callback" || len(fake.verifier) != 43 || !strings.HasPrefix(fake.idempotencyKey, "idem_console_") {
 		t.Fatalf("unexpected exchange call: %+v", fake)
 	}
 
@@ -492,6 +492,21 @@ func TestConsoleAuthorizationCodeFlowAndAccessContextConformsToContract(t *testi
 	}
 	if err := json.NewDecoder(overviewResponse.Body).Decode(&overviewEnvelope); err != nil || overviewResponse.StatusCode != http.StatusOK || len(overviewEnvelope.Data.Modules) != 6 {
 		t.Fatalf("overview conformance = %d %+v (%v)", overviewResponse.StatusCode, overviewEnvelope.Data, err)
+	}
+}
+
+func TestConsoleRejectsPrivateDockerAccountCenterURL(t *testing.T) {
+	codec, err := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { _ = redisClient.Close() })
+	for _, accountCenterURL := range []string{"http://platform-core:8081", "https://platform-core:8081/account-auth", "https://platform-core.:8081/account-auth"} {
+		handler, err := New(accountCenterURL, "console-gateway", "https://henukit.cn/console-api/v1/auth/callback", &fakePlatform{}, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+		if err == nil || handler != nil {
+			t.Fatalf("New(%q) = %v, %v; want private Docker Account Center URL rejected", accountCenterURL, handler, err)
+		}
 	}
 }
 
@@ -557,7 +572,10 @@ func testRedis(t *testing.T) *redis.Client {
 	if address == "" {
 		t.Skip("CONSOLE_GATEWAY_TEST_REDIS_ADDR is required")
 	}
-	client := redis.NewClient(&redis.Options{Addr: address})
+	client := redis.NewClient(&redis.Options{
+		Addr: address,
+		DB:   1, // Keep package-level cleanup separate from overview tests.
+	})
 	if err := client.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatalf("flush Redis: %v", err)
 	}
