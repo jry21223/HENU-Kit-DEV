@@ -9,7 +9,9 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	quizcraft "henukit.dev/quizcraft"
 )
@@ -149,6 +151,57 @@ func TestFavoritesPracticeStaysInsideBankAndUnfavoriteIsIdempotent(t *testing.T)
 	if listStatus != http.StatusOK || len(list.Data) != 0 {
 		t.Fatalf("favorites after delete = %d %s", listStatus, listBody)
 	}
+}
+
+func TestFavoritesPersistAcrossIndependentSignedInDevices(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "favorites-devices-"+uuid.NewString())
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	userID := uuid.NewString()
+	deviceA := "quizcraft_session=" + favoriteDeviceToken(t, userID, "device-a")
+	deviceB := "quizcraft_session=" + favoriteDeviceToken(t, userID, "device-b")
+	otherUser := "quizcraft_session=" + favoriteDeviceToken(t, uuid.NewString(), "device-c")
+	question := report.Questions[0]
+	mutationPath := fmt.Sprintf("%s/api/v1/banks/%s/favorites/%s", server.URL, report.BankID, question.QuestionID)
+	if status, body := requestJSON(t, http.MethodPut, mutationPath, map[string]string{"Cookie": deviceA, "Idempotency-Key": "favorite-device-a-write-001"}, nil); status != http.StatusOK {
+		t.Fatalf("device A favorite = %d %s", status, body)
+	}
+
+	listPath := fmt.Sprintf("%s/api/v1/banks/%s/favorites", server.URL, report.BankID)
+	if status, body := requestJSON(t, http.MethodGet, listPath, map[string]string{"Cookie": deviceB}, nil); status != http.StatusOK || !bytes.Contains(body, []byte(question.QuestionID)) {
+		t.Fatalf("device B did not receive the server favorite = %d %s", status, body)
+	}
+	if status, body := requestJSON(t, http.MethodGet, listPath, map[string]string{"Cookie": otherUser}, nil); status != http.StatusOK || bytes.Contains(body, []byte(question.QuestionID)) {
+		t.Fatalf("other user observed another user's favorite = %d %s", status, body)
+	}
+	if status, body := requestJSON(t, http.MethodDelete, mutationPath, map[string]string{"Cookie": deviceB, "Idempotency-Key": "favorite-device-b-delete-001"}, nil); status != http.StatusOK {
+		t.Fatalf("device B unfavorite = %d %s", status, body)
+	}
+	if status, body := requestJSON(t, http.MethodGet, listPath, map[string]string{"Cookie": deviceA}, nil); status != http.StatusOK || bytes.Contains(body, []byte(question.QuestionID)) {
+		t.Fatalf("device A retained a deleted favorite = %d %s", status, body)
+	}
+}
+
+func favoriteDeviceToken(t *testing.T, userID, deviceID string) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": userID,
+		"iss": "quizcraft-session",
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"aud": "quizcraft",
+		"jti": deviceID,
+	})
+	signed, err := token.SignedString([]byte(practiceAuthSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signed
 }
 
 func TestGuestPracticeSessionCanBeClaimedAfterLoginWithOriginalAnonymousCookie(t *testing.T) {

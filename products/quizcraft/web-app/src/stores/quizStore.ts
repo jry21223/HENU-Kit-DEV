@@ -39,10 +39,6 @@ interface QuizState {
   addWrongQuestion: (questionId: string) => void;
   removeWrongQuestion: (questionId: string) => void;
   
-  // 收藏
-  starredQuestions: string[];
-  toggleStar: (questionId: string) => void;
-  isStarred: (questionId: string) => boolean;
 }
 
 const valueEquals = (left: any, right: any): boolean => {
@@ -67,7 +63,6 @@ export const useQuizStore = create<QuizState>()(
       practice: null,
       history: [],
       wrongQuestions: [],
-      starredQuestions: [],
       
       // 题库操作
       setBanks: (banks) => set({ banks }),
@@ -211,19 +206,6 @@ export const useQuizStore = create<QuizState>()(
         set({ wrongQuestions: wrongQuestions.filter((id) => id !== questionId) });
       },
       
-      // 收藏
-      toggleStar: (questionId) => {
-        const { starredQuestions } = get();
-        if (starredQuestions.includes(questionId)) {
-          set({ starredQuestions: starredQuestions.filter((id) => id !== questionId) });
-        } else {
-          set({ starredQuestions: [...starredQuestions, questionId] });
-        }
-      },
-      
-      isStarred: (questionId) => {
-        return get().starredQuestions.includes(questionId);
-      },
     }),
     {
       name: 'quiz-storage',
@@ -232,7 +214,6 @@ export const useQuizStore = create<QuizState>()(
         user: state.user,
         history: state.history,
         wrongQuestions: state.wrongQuestions,
-        starredQuestions: state.starredQuestions,
         practice: state.practice,
       }),
     }

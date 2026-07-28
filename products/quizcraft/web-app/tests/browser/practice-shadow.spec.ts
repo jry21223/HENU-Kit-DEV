@@ -384,6 +384,41 @@ test('favorites use the generated server client and never merge guest browser st
   expect(persistedStars).toEqual([]);
 });
 
+test('favorite write failure stays visible and never falls back to browser storage', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === '/api/v1/banks') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'banks', data: [{ bank_id: bankId, bank_version_id: bankVersionId, bank_key: 'browser-bank', name: '浏览器影子题库', content_sha256: 'a'.repeat(64), question_count: 1, chapters: [{ id: 'ch01', name: '第一章' }] }] }) });
+      return;
+    }
+    if (url.pathname === '/api/v1/practice/sessions') {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ request_id: 'session', data: { session_id: sessionId, bank_id: bankId, bank_version_id: bankVersionId, mode: 'random', excluded_unavailable_count: 0, questions: [{ question_id: questionId, question_version_id: questionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '失败后不能伪造收藏', options: ['是', '否'] }] } }) });
+      return;
+    }
+    if (url.pathname === `/api/v1/banks/${bankId}/favorites`) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'favorites', data: [] }) });
+      return;
+    }
+    if (url.pathname === `/api/v1/banks/${bankId}/favorites/${questionId}`) {
+      expect(request.method()).toBe('PUT');
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ request_id: 'unavailable', error: { code: 'database_unavailable', message: 'unavailable' } }) });
+      return;
+    }
+    await route.abort();
+  });
+
+  await page.goto('/practice');
+  await page.getByRole('button', { name: '开始练习' }).click();
+  await expect(page.getByRole('heading', { name: '失败后不能伪造收藏' })).toBeVisible();
+  await page.getByRole('button', { name: '收藏本题' }).click();
+  await expect(page.getByRole('status')).toHaveText('收藏操作暂时失败，请稍后重试');
+  await expect(page.getByRole('button', { name: '收藏本题' })).toBeVisible();
+  const persistedStars = await page.evaluate(() => JSON.parse(localStorage.getItem('quiz-storage') || '{}')?.state?.starredQuestions || []);
+  expect(persistedStars).toEqual([]);
+});
+
 test('favorites overview starts a bank-scoped favorites practice', async ({ page }) => {
   const calls: string[] = [];
   await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
@@ -414,6 +449,25 @@ test('favorites overview starts a bank-scoped favorites practice', async ({ page
   await expect(page).toHaveURL(/\/quiz$/);
   await expect(page.getByRole('heading', { name: '只来自当前题库' })).toBeVisible();
   expect(calls).toContain(`POST /api/v1/banks/${bankId}/favorites/practice-sessions`);
+});
+
+test('favorites overview distinguishes an unavailable service from a login requirement', async ({ page }) => {
+  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/v1/banks') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'banks', data: [] }) });
+      return;
+    }
+    if (url.pathname === '/api/v1/favorites') {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ request_id: 'unavailable', error: { code: 'database_unavailable', message: 'unavailable' } }) });
+      return;
+    }
+    await route.abort();
+  });
+
+  await page.goto('/favorites');
+  await expect(page.getByRole('alert')).toHaveText('收藏夹暂时无法加载，请稍后重试');
+  await expect(page.getByRole('link', { name: '登录后查看收藏夹' })).toHaveCount(0);
 });
 
 test('ranking defaults to overall weekly, exposes four views, and supports opt out', async ({ page }) => {

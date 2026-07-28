@@ -231,7 +231,7 @@ type ProgressDotsProps = {
   currentIndex: number;
   answers: Record<string, any>;
   results: Record<string, boolean>;
-  starredQuestions: string[];
+  favoriteQuestionIds: string[];
   disabled: boolean;
   onJump: (index: number) => void;
 };
@@ -280,13 +280,13 @@ const ProgressDots = memo(function ProgressDots({
   currentIndex,
   answers,
   results,
-  starredQuestions,
+  favoriteQuestionIds,
   disabled,
   onJump,
 }: ProgressDotsProps) {
   const starredSet = useMemo(
-    () => new Set(starredQuestions),
-    [starredQuestions],
+    () => new Set(favoriteQuestionIds),
+    [favoriteQuestionIds],
   );
 
   if (!questions.length) {
@@ -567,6 +567,7 @@ type QuizUiState = {
   feedbackError: string;
   serverFavoriteIds: string[];
   favoriteSubmitting: boolean;
+  favoriteError: string;
 };
 
 const initialQuizUiState: QuizUiState = {
@@ -584,6 +585,7 @@ const initialQuizUiState: QuizUiState = {
   feedbackError: "",
   serverFavoriteIds: [],
   favoriteSubmitting: false,
+  favoriteError: "",
 };
 
 const mergeQuizUiState = (
@@ -832,8 +834,6 @@ function useQuizController() {
     answerQuestion,
     jumpToQuestion,
     finishPractice,
-    toggleStar,
-    starredQuestions,
     banks,
     setUser,
   } = useQuizStore();
@@ -850,6 +850,7 @@ function useQuizController() {
     visualCurrentIndex,
     feedbackSuggestion,
     favoriteSubmitting,
+    favoriteError,
     feedbackSubmitting,
     feedbackMessage,
     feedbackError,
@@ -910,11 +911,24 @@ function useQuizController() {
     if (!QUIZCRAFT_GO_SHADOW_ENABLED || !activeBankId) return;
     let cancelled = false;
     const mutationVersion = favoriteMutationVersionRef.current;
+    setUi({ serverFavoriteIds: [], favoriteError: "" });
     void shadowFavoritesApi.list(activeBankId).then((items) => {
       if (!cancelled && mutationVersion === favoriteMutationVersionRef.current) {
-        setUi({ serverFavoriteIds: items.filter((item) => item.available).map((item) => item.question_id) });
+        setUi({
+          serverFavoriteIds: items.filter((item) => item.available).map((item) => item.question_id),
+          favoriteError: "",
+        });
       }
-    }).catch(() => undefined);
+    }).catch((error) => {
+      if (!cancelled && mutationVersion === favoriteMutationVersionRef.current) {
+        setUi({
+          serverFavoriteIds: [],
+          favoriteError: isQuizcraftAuthenticationError(error)
+            ? "登录后才能查看和管理收藏"
+            : "收藏状态加载失败，请稍后重试",
+        });
+      }
+    });
     return () => { cancelled = true; };
   }, [activeBankId]);
 
@@ -945,9 +959,18 @@ function useQuizController() {
       url.searchParams.delete('favorite_bank_id');
       window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     }).catch((error) => {
-      setUi({ favoriteSubmitting: false });
+      setUi({
+        favoriteSubmitting: false,
+        favoriteError: isQuizcraftAuthenticationError(error)
+          ? "登录后才能收藏题目"
+          : "收藏操作暂时失败，请稍后重试",
+      });
       if (isQuizcraftAuthenticationError(error)) {
-        redirectToQuizcraftLogin(pendingBankId, pendingQuestionId, browserIntent.favorite!);
+        try {
+          redirectToQuizcraftLogin(pendingBankId, pendingQuestionId, browserIntent.favorite!);
+        } catch {
+          setUi({ favoriteError: "登录入口暂不可用，请稍后重试" });
+        }
       }
     });
   }, [activeBankId, activeQuestionId, ui.serverFavoriteIds]);
@@ -1476,30 +1499,35 @@ function useQuizController() {
     setUi({ selectedAnswer: value });
   };
 
-  const starred = QUIZCRAFT_GO_SHADOW_ENABLED
-    ? ui.serverFavoriteIds.includes(activeQuestion.id)
-    : starredQuestions.includes(activeQuestion.id);
+  const favorited = ui.serverFavoriteIds.includes(activeQuestion.id);
 
-  const handleToggleStar = () => {
-    if (!QUIZCRAFT_GO_SHADOW_ENABLED) {
-      toggleStar(activeQuestion.id);
-      return;
-    }
+  const handleToggleFavorite = () => {
+    if (!QUIZCRAFT_GO_SHADOW_ENABLED) return;
     if (!activeBankId || ui.favoriteSubmitting) return;
-    const nextFavorite = !starred;
+    const nextFavorite = !favorited;
     favoriteMutationVersionRef.current += 1;
-    setUi({ favoriteSubmitting: true });
+    setUi({ favoriteSubmitting: true, favoriteError: "" });
     void shadowFavoritesApi.set(activeBankId, activeQuestion.id, nextFavorite).then(() => {
       setUi({
         favoriteSubmitting: false,
+        favoriteError: "",
         serverFavoriteIds: nextFavorite
           ? Array.from(new Set([...ui.serverFavoriteIds, activeQuestion.id]))
           : ui.serverFavoriteIds.filter((id) => id !== activeQuestion.id),
       });
     }).catch((error) => {
-      setUi({ favoriteSubmitting: false });
+      setUi({
+        favoriteSubmitting: false,
+        favoriteError: isQuizcraftAuthenticationError(error)
+          ? "登录后才能收藏题目"
+          : "收藏操作暂时失败，请稍后重试",
+      });
       if (isQuizcraftAuthenticationError(error)) {
-        redirectToQuizcraftLogin(activeBankId, activeQuestion.id, nextFavorite);
+        try {
+          redirectToQuizcraftLogin(activeBankId, activeQuestion.id, nextFavorite);
+        } catch {
+          setUi({ favoriteError: "登录入口暂不可用，请稍后重试" });
+        }
       }
     });
   };
@@ -1519,6 +1547,8 @@ function useQuizController() {
     feedbackQuestionIndex,
     feedbackSubmitting,
     feedbackSuggestion,
+    favoriteError,
+    favoriteQuestionIds: ui.serverFavoriteIds,
     favoriteSubmitting,
     handleCardTouchEnd,
     handleCardTouchMove,
@@ -1546,9 +1576,8 @@ function useQuizController() {
     },
     showResult,
     submissionLocked,
-    starred,
-    starredQuestions,
-    toggleStar: handleToggleStar,
+    favorited,
+    toggleFavorite: handleToggleFavorite,
     trackX,
     visualIndex,
     viewportRef,
@@ -1681,17 +1710,24 @@ function QuizProgressHeader({ controller }: { controller: QuizController }) {
             <Timer className="w-4 h-4" />
             <span>{formatTime(controller.elapsedTime)}</span>
           </div>
-          <button
-            type="button"
-            onClick={controller.toggleStar}
-            disabled={controller.favoriteSubmitting}
-            className={`p-1.5 rounded-lg transition-colors ${controller.starred ? "text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20" : "text-gray-400 dark:text-slate-500 hover:bg-gray-100 dark:hover:bg-slate-700"}`}
-            aria-label={controller.starred ? "取消收藏本题" : "收藏本题"}
-          >
-            <Flag className={`w-4 h-4 ${controller.starred ? "fill-current" : ""}`} />
-          </button>
+          {QUIZCRAFT_GO_SHADOW_ENABLED && (
+            <button
+              type="button"
+              onClick={controller.toggleFavorite}
+              disabled={controller.favoriteSubmitting}
+              className={`p-1.5 rounded-lg transition-colors ${controller.favorited ? "text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20" : "text-gray-400 dark:text-slate-500 hover:bg-gray-100 dark:hover:bg-slate-700"}`}
+              aria-label={controller.favorited ? "取消收藏本题" : "收藏本题"}
+            >
+              <Flag className={`w-4 h-4 ${controller.favorited ? "fill-current" : ""}`} />
+            </button>
+          )}
         </div>
       </div>
+      {controller.favoriteError && (
+        <p role="status" className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-200">
+          {controller.favoriteError}
+        </p>
+      )}
       <div className="h-1.5 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
         <div
           className="h-full bg-primary-500 dark:bg-primary-400 transition-all duration-[120ms]"
@@ -1806,7 +1842,7 @@ function QuizFooterControls({ controller }: { controller: QuizController }) {
         currentIndex={controller.visualIndex}
         answers={controller.practice.answers}
         results={controller.practice.results}
-        starredQuestions={controller.starredQuestions}
+        favoriteQuestionIds={controller.favoriteQuestionIds}
         disabled={controller.submissionLocked}
         onJump={controller.handleJump}
       />
