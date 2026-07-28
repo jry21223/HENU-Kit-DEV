@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify artifact and runtime boundaries
-        run: node --test scripts/ops/tests/deploy-henukit-workflow.test.mjs
+        run: node --test scripts/ops/tests/deploy-henukit-workflow.test.mjs scripts/ops/tests/account-portfolio-workflow.test.mjs
 
   portal-responsive:
     name: portal-responsive
@@ -52,6 +52,8 @@ jobs:
         run: pnpm --filter @henukit/portal exec playwright install --with-deps chromium
       - name: Verify responsive Portal layout
         run: pnpm --filter @henukit/portal test:e2e:responsive
+      - name: Verify Account Portfolio browser behavior
+        run: pnpm --filter @henukit/portal test:e2e:account
 
   build-image:
     name: image-${{ matrix.name }}

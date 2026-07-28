@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useReveal } from "@/components/account/use-reveal";
 import { fetchAccountSummary } from "@/lib/api/client";
 import type { AccountSummaryResponse } from "@/lib/api/types";
-import { authStore } from "@/lib/auth/store";
+import { authStore, type AuthUser } from "@/lib/auth/store";
 
 type SummaryState =
   | { kind: "loading" }
@@ -14,22 +13,37 @@ type SummaryState =
 
 export default function AccountOverviewPage() {
   const { user } = useSyncExternalStore(authStore.subscribe, authStore.get, authStore.getServer);
+
+  // A change of authenticated subject must not reuse the prior subject's
+  // account result while the new read is in flight. uid is only a React key;
+  // it is never rendered as a public identifier.
+  if (!user) return null;
+  return <AccountOverviewContent key={user.uid} user={user} />;
+}
+
+function AccountOverviewContent({ user }: { user: AuthUser }) {
   const [state, setState] = useState<SummaryState>({ kind: "loading" });
+  const requestVersion = useRef(0);
   useReveal();
 
   const loadSummary = useCallback(() => {
+    const version = ++requestVersion.current;
     void fetchAccountSummary().then(
-      (summary) => setState({ kind: "success", summary }),
-      () => setState({ kind: "error" })
+      (summary) => {
+        if (version === requestVersion.current) setState({ kind: "success", summary });
+      },
+      () => {
+        if (version === requestVersion.current) setState({ kind: "error" });
+      }
     );
   }, []);
 
   useEffect(() => {
-    if (!user) return;
     void loadSummary();
-  }, [loadSummary, user]);
-
-  if (!user) return null;
+    return () => {
+      requestVersion.current += 1;
+    };
+  }, [loadSummary]);
 
   const data = state.kind === "success" ? state.summary.data : null;
   const membershipLabel = data
@@ -41,10 +55,10 @@ export default function AccountOverviewPage() {
       : "账户状态加载中";
   const cards = data
     ? [
-        { label: "积分余额", value: String(data.points_balance), href: "/account/wallet", mono: "C-01" },
-        { label: "会员", value: membershipLabel, href: "/account/membership", mono: "C-02" },
-        { label: "未读通知", value: String(data.unread_notification_count), href: "/account/notifications", mono: "C-03" },
-        { label: "进行中工单", value: String(data.open_ticket_count), href: "/account/tickets", mono: "C-04" },
+        { label: "积分余额", value: String(data.points_balance), mono: "C-01" },
+        { label: "会员", value: membershipLabel, mono: "C-02" },
+        { label: "未读通知", value: String(data.unread_notification_count), mono: "C-03" },
+        { label: "进行中工单", value: String(data.open_ticket_count), mono: "C-04" },
       ]
     : [];
 
@@ -102,18 +116,17 @@ export default function AccountOverviewPage() {
         <section data-account-summary-state="success" aria-live="polite">
           <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
             {cards.map((card) => (
-              <Link
+              <div
                 key={card.mono}
-                href={card.href}
                 data-enter
-                className="group border border-ink/25 p-5 transition-colors hover:border-ink"
+                className="border border-ink/25 p-5"
               >
                 <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
                   {card.mono} / {card.label}
                 </p>
-                <p className="mt-3 font-display text-3xl font-bold group-hover:text-accent">{card.value}</p>
-                <p className="mt-2 font-mono text-[10px] text-ink/40 transition-colors group-hover:text-accent">查看 →</p>
-              </Link>
+                <p className="mt-3 font-display text-3xl font-bold">{card.value}</p>
+                <p className="mt-2 font-mono text-[10px] text-ink/40">详情功能分批接入中</p>
+              </div>
             ))}
           </div>
 

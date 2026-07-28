@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run src/lib/auth/display-name.test.ts src/lib/api/account-portfolio.test.ts",
     "test:unit": "node --experimental-strip-types --test src/components/practice/bank-hero-mastery.test.mjs",
-    "test:e2e:responsive": "playwright test tests/responsive.spec.ts"
+    "test:e2e:responsive": "playwright test tests/responsive.spec.ts",
+    "test:e2e:account": "playwright test tests/account-portfolio.spec.ts"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

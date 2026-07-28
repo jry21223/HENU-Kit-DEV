@@ -168,8 +168,9 @@ components:
       name: X-Actor-User-Id
       description: >-
         Portal Gateway authenticates with Basic credentials plus a signed,
-        timestamped nonce and a trusted actor header. It is not a browser
-        authentication scheme.
+        timestamped nonce and a trusted actor header. For Account Portfolio,
+        the actor is the sixth and final line of the HMAC canonical request;
+        it is not a browser authentication scheme.
   parameters:
     ServiceID:
       name: X-Service-Id

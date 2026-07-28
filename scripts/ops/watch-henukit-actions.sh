@@ -20,7 +20,7 @@ Optional configuration:
   HENUKIT_BRANCH         Watched branch (default: main)
   HENUKIT_STAGING_ROOT   Verified artifact cache (default: /opt/henukit-staging)
   HENUKIT_RELEASE_ROOT   Extracted releases (default: /opt/henukit-releases)
-  HENUKIT_BACKUP_ROOT    Platform backups (default: /opt/henukit-backups)
+  HENUKIT_BACKUP_ROOT    Platform and Account Portfolio backups (default: /opt/henukit-backups)
   HENUKIT_STATE_ROOT     Watcher state and lock (default: /var/lib/henukit-actions-watch)
   HENUKIT_POLL_SECONDS   Watch interval (default: 60)
   HENUKIT_PUBLIC_BASE_URL Public smoke-test base URL
@@ -54,8 +54,20 @@ state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
 poll_seconds="${HENUKIT_POLL_SECONDS:-60}"
 public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://superhuazai.me}"
 postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
+account_portfolio_container="${HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER:-henukit-account-portfolio-1}"
 migration="${HENUKIT_PLATFORM_MIGRATION:-}"
 
+base_images=(
+  henukit-console
+  henukit-console-gateway
+  henukit-platform-core
+  henukit-platform-mail-worker
+  henukit-platform-smtp-provider
+  henukit-portal
+  henukit-portal-api
+  henukit-portal-gateway
+)
+account_portfolio_image="henukit-account-portfolio"
 images=(
   henukit-console
   henukit-console-gateway
@@ -64,7 +76,7 @@ images=(
   henukit-platform-smtp-provider
   henukit-portal
   henukit-portal-api
-  henukit-account-portfolio
+  "$account_portfolio_image"
   henukit-portal-gateway
 )
 
@@ -92,6 +104,7 @@ install -d -m 0700 \
   "$state_root/approvals" "$state_root/approvals/consumed" "$state_root/prepared"
 scratch_dirs=()
 restore_database=""
+restore_account_database=""
 exec 9>"$state_root/watcher.lock"
 flock -n 9 || die "another watcher process holds $state_root/watcher.lock"
 cleanup() {
@@ -99,6 +112,11 @@ cleanup() {
   if [[ "$restore_database" =~ ^henukit_verify_[0-9a-f]{8}_[0-9]+$ ]]; then
     docker exec "$postgres_container" sh -ceu \
       'dropdb --if-exists -U "$POSTGRES_USER" "$1"' sh "$restore_database" \
+      >/dev/null 2>&1 || true
+  fi
+  if [[ "$restore_account_database" =~ ^henukit_account_verify_[0-9a-f]{8}_[0-9]+$ ]]; then
+    docker exec "$postgres_container" sh -ceu \
+      'dropdb --if-exists -U "$POSTGRES_USER" "$1"' sh "$restore_account_database" \
       >/dev/null 2>&1 || true
   fi
   for scratch in "${scratch_dirs[@]-}"; do
@@ -199,18 +217,42 @@ download_artifacts() {
 
 active_release_matches() {
   local release_sha="$1"
-  local running image
+  local running image account_portfolio_state
   running="$(docker ps --format '{{.Image}}')"
-  for image in "${images[@]}"; do
+  for image in "${base_images[@]}"; do
     grep -Fqx "${image}:${release_sha}" <<<"$running" || return 1
   done
+  if release_uses_account_portfolio "$release_sha"; then
+    account_portfolio_state=0
+  else
+    account_portfolio_state=$?
+  fi
+  case "$account_portfolio_state" in
+    0) grep -Fqx "${account_portfolio_image}:${release_sha}" <<<"$running" || return 1 ;;
+    1) ;;
+    *) return 1 ;;
+  esac
+}
+
+release_uses_account_portfolio() {
+  local release_sha="$1"
+  local compose_file="$release_root/$release_sha/docker-compose.henukit.release.yml"
+  [[ -r "$compose_file" ]] || return 2
+  grep -Eq '^[[:space:]]{2}account-portfolio:[[:space:]]*$' "$compose_file"
+}
+
+account_portfolio_is_healthy() {
+  [[ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$account_portfolio_container" 2>/dev/null)" == "healthy" ]]
 }
 
 current_release_sha() {
   local running image line found_sha image_sha
   running="$(docker ps --format '{{.Image}}')" || return 1
   found_sha=""
-  for image in "${images[@]}"; do
+  # The first Account Portfolio release must be able to roll back to the
+  # preceding eight-image runtime. Its presence is verified separately from
+  # the stable base image set using that release's extracted Compose contract.
+  for image in "${base_images[@]}"; do
     line="$(grep -E "^${image}:[0-9a-f]{40}$" <<<"$running" | head -n 1)" || return 1
     image_sha="${line##*:}"
     if [[ -z "$found_sha" ]]; then
@@ -224,7 +266,18 @@ current_release_sha() {
 
 verify_active_release() {
   local release_sha="$1"
+  local account_portfolio_state
   active_release_matches "$release_sha" || return 1
+  if release_uses_account_portfolio "$release_sha"; then
+    account_portfolio_state=0
+  else
+    account_portfolio_state=$?
+  fi
+  case "$account_portfolio_state" in
+    0) account_portfolio_is_healthy || return 1 ;;
+    1) ;;
+    *) return 1 ;;
+  esac
   curl --fail --silent --show-error "$public_base_url/api/v1/healthz" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/practice" >/dev/null || return 1
@@ -243,11 +296,31 @@ record_activation() {
   mv "$temporary" "$state_root/last-activated-sha"
 }
 
+ensure_account_portfolio_database() {
+  # A long-lived PostgreSQL volume skips docker-entrypoint init scripts on
+  # later releases. Creating this empty owner database before its backup makes
+  # the first Account Portfolio cutover recoverable without deleting it on a
+  # rollback to the preceding runtime.
+  docker exec "$postgres_container" sh -ceu '
+    if ! psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc \
+      "SELECT 1 FROM pg_database WHERE datname = '\''account_portfolio'\''" | grep -qx 1; then
+      createdb -U "$POSTGRES_USER" account_portfolio
+    fi
+  '
+}
+
+account_portfolio_schema_is_present() {
+  docker exec "$postgres_container" sh -ceu \
+    'psql -U "$POSTGRES_USER" -d account_portfolio -Atqc "$1"' sh \
+    "SELECT to_regclass('public.account_portfolio_accounts') IS NOT NULL AND to_regclass('public.account_portfolio_points') IS NOT NULL AND to_regclass('public.account_portfolio_memberships') IS NOT NULL AND to_regclass('public.account_portfolio_point_ledger') IS NOT NULL AND to_regclass('public.account_portfolio_notifications') IS NOT NULL AND to_regclass('public.account_portfolio_tickets') IS NOT NULL AND to_regclass('public.account_portfolio_ticket_messages') IS NOT NULL AND to_regclass('public.account_portfolio_membership_orders') IS NOT NULL AND to_regclass('public.account_portfolio_service_nonces') IS NOT NULL AND to_regclass('public.account_portfolio_schema_migrations') IS NOT NULL"
+}
+
 prepare_backup() {
   local release_sha="$1"
   local refresh="${2:-no}"
   local marker="$state_root/prepared/$release_sha"
   local timestamp backup_file backup_sha backup_size database_version restored_counts
+  local account_backup_file account_backup_sha account_backup_size account_schema_present account_restored_counts
   local marker_incoming
 
   if [[ "$refresh" != "yes" && -s "$marker" ]]; then
@@ -255,14 +328,22 @@ prepare_backup() {
     [[ "$backup_file" == "$backup_root/"* ]] || die "prepared backup path is outside HENUKIT_BACKUP_ROOT"
     [[ -s "$backup_file" && -s "$backup_file.sha256" && -s "$backup_file.meta" ]] ||
       die "prepared backup evidence is incomplete"
+    account_backup_file="$(awk -F= '$1 == "account_portfolio_backup" { print substr($0, index($0, "=") + 1); exit }' "$backup_file.meta")"
+    [[ "$account_backup_file" == "$backup_root/"* ]] || die "prepared Account Portfolio backup evidence is incomplete"
+    [[ -s "$account_backup_file" && -s "$account_backup_file.sha256" ]] ||
+      die "prepared Account Portfolio backup evidence is incomplete"
     (cd "$backup_root" && sha256sum -c "$(basename "$backup_file").sha256") >&2 ||
       die "prepared backup checksum verification failed"
+    (cd "$backup_root" && sha256sum -c "$(basename "$account_backup_file").sha256") >&2 ||
+      die "prepared Account Portfolio backup checksum verification failed"
     prepared_backup_file="$backup_file"
+    prepared_account_portfolio_backup_file="$account_backup_file"
     return
   fi
 
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   backup_file="$backup_root/platform-${timestamp}-${release_sha:0:12}-$$.dump"
+  account_backup_file="$backup_root/account-portfolio-${timestamp}-${release_sha:0:12}-$$.dump"
   log "creating Platform database backup $backup_file"
   docker exec "$postgres_container" sh -ceu \
     'pg_dump -U "$POSTGRES_USER" -d platform -Fc' > "$backup_file"
@@ -278,6 +359,22 @@ prepare_backup() {
     docker exec "$postgres_container" sh -ceu \
       'psql -U "$POSTGRES_USER" -d platform -Atqc "SHOW server_version"'
   )"
+
+  ensure_account_portfolio_database
+  account_schema_present="$(account_portfolio_schema_is_present)"
+  [[ "$account_schema_present" == "t" || "$account_schema_present" == "f" ]] ||
+    die "Account Portfolio schema presence check returned an invalid value"
+  log "creating Account Portfolio database backup $account_backup_file"
+  docker exec "$postgres_container" sh -ceu \
+    'pg_dump -U "$POSTGRES_USER" -d account_portfolio -Fc' > "$account_backup_file"
+  [[ -s "$account_backup_file" ]] || die "Account Portfolio database backup is empty"
+  chmod 0600 "$account_backup_file"
+  (
+    cd "$backup_root"
+    sha256sum "$(basename "$account_backup_file")" > "$(basename "$account_backup_file").sha256"
+  )
+  account_backup_sha="$(awk '{print $1}' "$account_backup_file.sha256")"
+  account_backup_size="$(wc -c < "$account_backup_file" | tr -d '[:space:]')"
 
   restore_database="henukit_verify_${release_sha:0:8}_$$"
   docker exec "$postgres_container" sh -ceu \
@@ -297,6 +394,35 @@ prepare_backup() {
     'dropdb -U "$POSTGRES_USER" "$1"' sh "$restore_database"
   restore_database=""
 
+  restore_account_database="henukit_account_verify_${release_sha:0:8}_$$"
+  docker exec "$postgres_container" sh -ceu \
+    'createdb -U "$POSTGRES_USER" -T template0 "$1"' sh "$restore_account_database"
+  docker exec -i "$postgres_container" sh -ceu \
+    'pg_restore --exit-on-error --no-owner --no-privileges -U "$POSTGRES_USER" -d "$1"' \
+    sh "$restore_account_database" < "$account_backup_file"
+  if [[ "$account_schema_present" == "t" ]]; then
+    account_restored_counts="$(
+      docker exec "$postgres_container" sh -ceu \
+        'psql -U "$POSTGRES_USER" -d "$1" -Atqc "$2"' \
+        sh "$restore_account_database" \
+        "SELECT (SELECT count(*) FROM account_portfolio_accounts)::text || ',' || (SELECT count(*) FROM account_portfolio_points)::text || ',' || (SELECT count(*) FROM account_portfolio_memberships)::text || ',' || (SELECT count(*) FROM account_portfolio_point_ledger)::text || ',' || (SELECT count(*) FROM account_portfolio_notifications)::text || ',' || (SELECT count(*) FROM account_portfolio_tickets)::text || ',' || (SELECT count(*) FROM account_portfolio_ticket_messages)::text || ',' || (SELECT count(*) FROM account_portfolio_membership_orders)::text || ',' || (SELECT count(*) FROM account_portfolio_service_nonces)::text || ',' || (SELECT count(*) FROM account_portfolio_schema_migrations)::text"
+    )"
+    [[ "$account_restored_counts" =~ ^[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+$ ]] ||
+      die "isolated Account Portfolio restore count check failed"
+  else
+    account_restored_counts="$(
+      docker exec "$postgres_container" sh -ceu \
+        'psql -U "$POSTGRES_USER" -d "$1" -Atqc "$2"' \
+        sh "$restore_account_database" \
+        "SELECT to_regclass('public.account_portfolio_accounts') IS NOT NULL"
+    )"
+    [[ "$account_restored_counts" == "f" ]] ||
+      die "isolated empty Account Portfolio database restore check failed"
+  fi
+  docker exec "$postgres_container" sh -ceu \
+    'dropdb -U "$POSTGRES_USER" "$1"' sh "$restore_account_database"
+  restore_account_database=""
+
   {
     printf 'release_sha=%s\n' "$release_sha"
     printf 'created_at_utc=%s\n' "$timestamp"
@@ -304,14 +430,20 @@ prepare_backup() {
     printf 'size_bytes=%s\n' "$backup_size"
     printf 'postgres_version=%s\n' "$database_version"
     printf 'restored_counts_users_oauth_clients_sessions=%s\n' "$restored_counts"
+    printf 'account_portfolio_backup=%s\n' "$account_backup_file"
+    printf 'account_portfolio_sha256=%s\n' "$account_backup_sha"
+    printf 'account_portfolio_size_bytes=%s\n' "$account_backup_size"
+    printf 'account_portfolio_schema_before_release=%s\n' "$account_schema_present"
+    printf 'account_portfolio_restored_counts=%s\n' "$account_restored_counts"
   } > "$backup_file.meta"
-  chmod 0600 "$backup_file.sha256" "$backup_file.meta"
+  chmod 0600 "$backup_file.sha256" "$account_backup_file.sha256" "$backup_file.meta"
 
   marker_incoming="$state_root/prepared/.${release_sha}.$$"
   printf '%s\n' "$backup_file" > "$marker_incoming"
   chmod 0600 "$marker_incoming"
   mv "$marker_incoming" "$marker"
   prepared_backup_file="$backup_file"
+  prepared_account_portfolio_backup_file="$account_backup_file"
 }
 
 release_is_approved() {

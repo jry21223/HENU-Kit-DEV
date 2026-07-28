@@ -101,7 +101,18 @@ func FromEnv() (Config, error) {
 	if err := validateLocalCookieNames(cfg.LocalOAuthCookieName, cfg.LocalSessionCookieName); err != nil {
 		return Config{}, err
 	}
+	if os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(cfg.AccountPortfolioAuth.ClientSecret) {
+		return Config{}, fmt.Errorf("ACCOUNT_PORTFOLIO_CLIENT_SECRET is a deployment placeholder")
+	}
 	return cfg, nil
+}
+
+func isPlaceholderSecret(secret string) bool {
+	value := strings.ToLower(strings.TrimSpace(secret))
+	return strings.HasPrefix(value, "replace-") ||
+		strings.HasPrefix(value, "change-me") ||
+		strings.HasPrefix(value, "example-") ||
+		strings.Contains(value, "placeholder")
 }
 
 func validateLocalCookieNames(oauth, session string) error {

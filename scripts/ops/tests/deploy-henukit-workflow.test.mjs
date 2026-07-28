@@ -29,6 +29,10 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
   assert.doesNotMatch(workflow, /VITE_QUIZCRAFT_WORKSHOP_URL=\/quiz/);
 });
 
+test("CI runs the Account Portfolio browser behavior spec", () => {
+  assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:account/);
+});
+
 test("every Docker image artifact includes an independent SHA-256 checksum", () => {
   assert.match(
     workflow,
@@ -150,6 +154,16 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["console-gateway"].environment.PLATFORM_ACCOUNT_ORIGIN,
     config.services["console-gateway"].environment.PLATFORM_CORE_URL,
     "the Console browser redirect must not receive the private Core URL",
+  );
+  assert.equal(
+    config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET,
+    "1",
+    "production Account Portfolio must reject the default client-secret placeholder",
+  );
+  assert.equal(
+    config.services["portal-gateway"].environment.ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET,
+    "1",
+    "production Portal Gateway must reject the default Account Portfolio client-secret placeholder",
   );
   const publicConfig = renderRuntimeConfig({
     PLATFORM_ACCOUNT_ORIGIN: "https://henukit.cn/account-auth",

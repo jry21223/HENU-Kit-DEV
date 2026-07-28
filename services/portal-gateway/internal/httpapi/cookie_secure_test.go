@@ -69,6 +69,9 @@ func TestLogoutUsesHTTPSCookieProfile(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	handler.logout(recorder, request)
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("logout Cache-Control = %q, want no-store", got)
+	}
 
 	cookies := recorder.Result().Cookies()
 	if len(cookies) != 1 {
@@ -78,6 +81,35 @@ func TestLogoutUsesHTTPSCookieProfile(t *testing.T) {
 	if cookie.Name != "__Host-henukit_portal_session" || !cookie.Secure || !cookie.HttpOnly ||
 		cookie.Path != "/" || cookie.SameSite != http.SameSiteLaxMode || cookie.MaxAge != -1 {
 		t.Fatalf("logout cookie = %+v", cookie)
+	}
+}
+
+func TestSessionResponsesAreNotCacheable(t *testing.T) {
+	codec, err := session.NewCodec([]byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := &Handler{sessionCodec: codec, localSessionCookie: "local_session"}
+
+	unauthenticated := httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/session", nil)
+	unauthenticatedRecorder := httptest.NewRecorder()
+	handler.getSession(unauthenticatedRecorder, unauthenticated)
+	if unauthenticatedRecorder.Code != http.StatusUnauthorized || unauthenticatedRecorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("unauthenticated session response = status %d Cache-Control %q, want 401/no-store", unauthenticatedRecorder.Code, unauthenticatedRecorder.Header().Get("Cache-Control"))
+	}
+
+	encoded, err := codec.Encode(session.Value{
+		UserID: "11111111-1111-4111-8111-111111111111", ExchangeToken: strings.Repeat("x", 32), ExpiresAt: time.Now().Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authenticated := httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/session", nil)
+	authenticated.AddCookie(&http.Cookie{Name: "local_session", Value: encoded})
+	authenticatedRecorder := httptest.NewRecorder()
+	handler.getSession(authenticatedRecorder, authenticated)
+	if authenticatedRecorder.Code != http.StatusOK || authenticatedRecorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("authenticated session response = status %d Cache-Control %q, want 200/no-store", authenticatedRecorder.Code, authenticatedRecorder.Header().Get("Cache-Control"))
 	}
 }
 

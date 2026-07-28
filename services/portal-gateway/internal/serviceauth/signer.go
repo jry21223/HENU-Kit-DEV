@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -26,13 +27,30 @@ func NewSigner(clientID, clientSecret, keyID string) *Signer {
 	return &Signer{clientID: clientID, clientSecret: clientSecret, keyID: keyID}
 }
 
-// Sign adds authentication headers to an HTTP request.
+// Sign adds the standard authentication headers to an HTTP request.
 // Canonical string matches platform-core / console-gateway:
 //
 //	METHOD\nRequestURI\ntimestamp\nnonce\nhex(SHA256(body))
 //
 // Nonce and signature use base64.RawURLEncoding.
 func (s *Signer) Sign(req *http.Request) error {
+	return s.sign(req, "")
+}
+
+// SignWithActor binds a trusted actor value to a request for an owner that
+// treats that header as its authorization subject. It intentionally uses a
+// separate canonical form so existing product service contracts keep their
+// established five-line signature format.
+func (s *Signer) SignWithActor(req *http.Request, actorUserID string) error {
+	actorUserID = strings.TrimSpace(actorUserID)
+	if actorUserID == "" {
+		return fmt.Errorf("actor is required for bound service authentication")
+	}
+	req.Header.Set("X-Actor-User-Id", actorUserID)
+	return s.sign(req, actorUserID)
+}
+
+func (s *Signer) sign(req *http.Request, actorUserID string) error {
 	nonce := make([]byte, 24)
 	if _, err := rand.Read(nonce); err != nil {
 		return fmt.Errorf("rand.Read: %w", err)
@@ -53,8 +71,11 @@ func (s *Signer) Sign(req *http.Request) error {
 	hash := sha256.Sum256(body)
 	bodyHash := hex.EncodeToString(hash[:])
 
-	canonical := fmt.Sprintf("%s\n%s\n%s\n%s\n%s",
-		req.Method, req.URL.RequestURI(), timestamp, nonceB64, bodyHash)
+	canonicalParts := []string{req.Method, req.URL.RequestURI(), timestamp, nonceB64, bodyHash}
+	if actorUserID != "" {
+		canonicalParts = append(canonicalParts, actorUserID)
+	}
+	canonical := strings.Join(canonicalParts, "\n")
 
 	mac := hmac.New(sha256.New, []byte(s.clientSecret))
 	mac.Write([]byte(canonical))

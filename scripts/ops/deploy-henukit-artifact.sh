@@ -48,6 +48,24 @@ ensure_account_portfolio_database() {
   '
 }
 
+ensure_postgres_ready() {
+  local attempt
+  "${compose[@]}" up -d postgres
+  for attempt in $(seq 1 30); do
+    if "${compose[@]}" exec -T postgres sh -ceu 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null'; then
+      return 0
+    fi
+    sleep 1
+  done
+  die "PostgreSQL did not become ready for Account Portfolio database provisioning"
+}
+
+# Platform Core migrations and the Account Portfolio database bootstrap both
+# execute through postgres. A fresh host has no running container yet, so this
+# readiness gate must run before either operation.
+echo "Ensuring PostgreSQL is ready"
+ensure_postgres_ready
+
 if [[ -n "$migration_arg" ]]; then
   migration_dir="$(cd "$runtime_dir/migrations/platform-core" 2>/dev/null && pwd -P)" || die "migration directory is missing"
   if [[ "$migration_arg" = /* ]]; then
@@ -63,9 +81,9 @@ if [[ -n "$migration_arg" ]]; then
   "${compose[@]}" exec -T postgres sh -ceu 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d platform -f -' < "$migration_path"
 fi
 
-echo "Activating HENU Kit release $release_sha"
 echo "Ensuring Account Portfolio database exists"
 ensure_account_portfolio_database
+echo "Activating HENU Kit release $release_sha"
 "${compose[@]}" up -d --remove-orphans
 
 legacy_names='^(henukit-)?(study-api|study-worker|quizcraft-api|quizcraft-web)(-|$)'

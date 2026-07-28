@@ -13,7 +13,7 @@ HENU Kit production is deployed from the Docker images and runtime tarball built
    docker load < henukit-<image>-<sha>.docker.tar.gz
    ```
 
-3. Extract the runtime tarball into a new release directory. Keep the existing `.env.henukit` outside that directory and make a read-only backup of the `platform` database before applying a migration.
+3. Extract the runtime tarball into a new release directory. Keep the existing `.env.henukit` outside that directory and make read-only, checksum-verified backups of both the `platform` and `account_portfolio` databases before applying a migration or enabling Account Portfolio traffic. The first Account Portfolio release may safely create an otherwise empty `account_portfolio` database before taking that baseline backup; rollback never drops that database or its volume.
 4. If the release contains a not-yet-applied Platform Core migration, pass its exact numbered filename to the release helper. The helper validates the file is inside the artifact, applies it with `ON_ERROR_STOP`, then starts the fixed-SHA Compose file with `--remove-orphans`:
 
    ```bash
@@ -56,12 +56,14 @@ It deploys only the newest completed, successful `push` run of
 1. downloads the exact full-SHA artifact set with `gh`;
 2. rejects missing, duplicate, unexpected, or checksum-invalid files;
 3. verifies the runtime `RELEASE_SHA`;
-4. creates a custom-format `platform` database backup, records its checksum,
-   size and PostgreSQL version, and restores it into an isolated temporary
-   database with key-table count checks;
-5. loads all eight fixed-SHA Docker images;
+4. creates custom-format `platform` and `account_portfolio` database backups,
+   records their checksums, sizes and PostgreSQL version, and restores each
+   into isolated temporary databases with key-table and Account durable-fact
+   count checks. On the first Account Portfolio release it records and
+   restores an explicit empty-database baseline before schema creation;
+5. loads all nine fixed-SHA Docker images;
 6. calls the existing `deploy-henukit-artifact.sh`;
-7. verifies all eight running image tags and the public health routes, rolling
+7. verifies all nine running image tags, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
 
@@ -100,8 +102,28 @@ only watcher configuration; application secrets stay in the referenced file:
 sudo sh -c 'umask 077; cat > /etc/henukit/actions-watch.env' <<'EOF'
 HENUKIT_ENV_FILE=/opt/henukit/.env.henukit
 HENUKIT_PUBLIC_BASE_URL=https://superhuazai.me
+# Override only when Docker Compose uses a non-default container name.
+HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER=henukit-account-portfolio-1
 EOF
 ```
+
+### First 8-to-9 image Account Portfolio cutover
+
+The old eight-image watcher cannot accept the ninth Account Portfolio artifact.
+Before preparing the first Account Portfolio release, install the updated
+watcher from a verified candidate runtime as shown above, but do not create its
+approval file yet. The updated watcher accepts an eight-image rollback baseline
+only when that baseline's already-extracted
+`docker-compose.henukit.release.yml` explicitly lacks `account-portfolio`; it
+still requires all nine images and a healthy Account Portfolio container for
+the candidate. This prevents a partially broken new release from being treated
+as a legacy baseline.
+
+The initial `--once` run creates and restore-tests an empty
+`account_portfolio` database if the old PostgreSQL volume does not contain one.
+That database is retained across a rollback to the eight-image release; never
+drop it as part of a rollback. Record both backup files and the metadata before
+creating the exact-SHA approval.
 
 Run one foreground check first, then enable continuous polling:
 
@@ -111,6 +133,8 @@ sudo GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
   /usr/local/sbin/watch-henukit-actions --once
 sudo cat /var/lib/henukit-actions-watch/prepared/<full-main-sha>
 sudo cat /opt/henukit-backups/platform-<timestamp>-<sha>-<pid>.dump.meta
+sudo awk -F= '$1 == "account_portfolio_backup" { print $2 }' \
+  /opt/henukit-backups/platform-<timestamp>-<sha>-<pid>.dump.meta
 ```
 
 Before creating the approval file, record all production gates for that same
@@ -148,8 +172,9 @@ requires a new explicit approval before the failed SHA can be attempted again.
 
 The process polls every 60 seconds by default and uses a kernel `flock` to
 prevent overlapping deployments; the lock is released even after a crash or
-power loss. A release already active on all eight image tags is an idempotent
-health-checked no-op. A failed check exits the process, and Systemd retries it
+power loss. A release already active on all nine image tags is an idempotent
+health-checked no-op. During the one-time 8-to-9 transition, the explicitly
+legacy eight-image baseline remains a valid rollback target. A failed check exits the process, and Systemd retries it
 after 30 seconds. Activation or public verification failure invokes the
 previous fixed-SHA release helper and verifies the rollback before exiting.
 The activation record is deliberately not a production-acceptance claim: the

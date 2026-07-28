@@ -62,3 +62,37 @@ describe("fetchAccountSummary", () => {
     await expect(fetchAccountSummary()).rejects.toBeInstanceOf(PortalHttpError);
   });
 });
+
+describe("fetchSession", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
+    vi.stubEnv("NODE_ENV", "test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("never permits browser caches to retain a Portal Session response", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          user_id: "11111111-1111-4111-8111-111111111111",
+          display_name: "小河同学",
+          expires_at: "2030-01-01T00:00:00Z",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { fetchSession } = await import("./client");
+    await expect(fetchSession()).resolves.toMatchObject({ display_name: "小河同学" });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/session",
+      expect.objectContaining({ cache: "no-store", credentials: "include" })
+    );
+  });
+});

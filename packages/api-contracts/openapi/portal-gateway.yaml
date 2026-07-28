@@ -123,6 +123,8 @@ paths:
                 $ref: "#/components/schemas/AccountSummaryResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
@@ -141,6 +143,8 @@ paths:
                 $ref: "#/components/schemas/AccountPointsResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
@@ -159,6 +163,8 @@ paths:
                 $ref: "#/components/schemas/AccountMembershipResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
@@ -177,6 +183,8 @@ paths:
                 $ref: "#/components/schemas/AccountNotificationsResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
@@ -195,6 +203,8 @@ paths:
                 $ref: "#/components/schemas/AccountTicketsResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
@@ -213,6 +223,8 @@ paths:
                 $ref: "#/components/schemas/AccountMembershipOrdersResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 

@@ -18,6 +18,12 @@ import (
 //go:embed db/migrations/*.up.sql
 var migrationFiles embed.FS
 
+// migrationAdvisoryLock serializes migrations across independently started
+// Account Portfolio replicas. A database transaction alone is not enough here:
+// two fresh replicas could both observe an absent version before either writes
+// its migration record.
+const migrationAdvisoryLock int64 = 807_115_374_019
+
 // ApplyMigrations applies each numbered Account Portfolio migration exactly
 // once. The migrations themselves remain idempotent so a restored database
 // without metadata can be reconciled safely before the version is recorded.
@@ -25,7 +31,20 @@ func ApplyMigrations(ctx context.Context, database *pgxpool.Pool) error {
 	if database == nil {
 		return fmt.Errorf("account portfolio database is required")
 	}
-	if _, err := database.Exec(ctx, `
+	connection, err := database.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_, _ = connection.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLock)
+		connection.Release()
+	}()
+	if _, err := connection.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationAdvisoryLock); err != nil {
+		return fmt.Errorf("lock migrations: %w", err)
+	}
+	if _, err := connection.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS account_portfolio_schema_migrations (
 			version TEXT PRIMARY KEY,
 			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -45,7 +64,7 @@ func ApplyMigrations(ctx context.Context, database *pgxpool.Pool) error {
 			return fmt.Errorf("invalid migration path %q", path)
 		}
 		var applied bool
-		if err := database.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version=$1)`, version).Scan(&applied); err != nil {
+		if err := connection.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version=$1)`, version).Scan(&applied); err != nil {
 			return fmt.Errorf("read migration %s: %w", version, err)
 		}
 		if applied {
@@ -55,7 +74,7 @@ func ApplyMigrations(ctx context.Context, database *pgxpool.Pool) error {
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", version, err)
 		}
-		tx, err := database.Begin(ctx)
+		tx, err := connection.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", version, err)
 		}

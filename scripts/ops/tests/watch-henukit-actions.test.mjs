@@ -23,11 +23,14 @@ function writeExecutable(path, body) {
 }
 
 function fixture({
+  accountPortfolioSchemaPresent = true,
   approved = true,
   badChecksum = false,
   branchSha = releaseSha,
   canonicalQuizRedirect = false,
+  failTargetAccountPortfolioHealth = false,
   failTargetHealth = false,
+  previousHasAccountPortfolio = true,
   previousSha = "b".repeat(40),
   runConclusion = "success",
   runStatus = "completed",
@@ -60,6 +63,10 @@ function fixture({
     const previousRelease = join(releases, previousSha);
     mkdirSync(join(previousRelease, "bin"), { recursive: true });
     writeFileSync(join(previousRelease, "RELEASE_SHA"), `${previousSha}\n`);
+    writeFileSync(
+      join(previousRelease, "docker-compose.henukit.release.yml"),
+      `services:\n${previousHasAccountPortfolio ? "  account-portfolio:\n" : ""}`,
+    );
     writeExecutable(
       join(previousRelease, "bin", "deploy-henukit-artifact.sh"),
       `#!/usr/bin/env bash
@@ -123,7 +130,7 @@ runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
 mkdir -p "$runtime_artifact" "$runtime_tree/bin"
 printf '%s\\n' "$FAKE_RELEASE_SHA" > "$runtime_tree/RELEASE_SHA"
-printf 'services: {}\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
+printf 'services:\\n  account-portfolio:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
 cat > "$runtime_tree/bin/deploy-henukit-artifact.sh" <<'HELPER'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -158,12 +165,27 @@ printf 'docker %s\\n' "$*" >> "$FAKE_CALL_LOG"
 if [[ "$1" == "ps" ]]; then
   if [[ -s "$FAKE_ACTIVE_FILE" ]]; then
     sha="$(cat "$FAKE_ACTIVE_FILE")"
-    for image in henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-api henukit-account-portfolio henukit-portal-gateway; do
+    for image in henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-api henukit-portal-gateway; do
       printf '%s:%s\\n' "$image" "$sha"
     done
+    if [[ "$sha" == "$FAKE_RELEASE_SHA" || "$FAKE_PREVIOUS_HAS_ACCOUNT_PORTFOLIO" == "1" ]]; then
+      printf 'henukit-account-portfolio:%s\\n' "$sha"
+    fi
+  fi
+elif [[ "$1" == "inspect" ]]; then
+  if [[ "$FAKE_FAIL_TARGET_ACCOUNT_PORTFOLIO_HEALTH" == "1" &&
+        -s "$FAKE_ACTIVE_FILE" &&
+        "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" ]]; then
+    printf 'unhealthy\n'
+  else
+    printf 'healthy\n'
   fi
 elif [[ "$1" == "exec" && "$*" == *"pg_dump"* ]]; then
   printf 'verified-platform-backup\\n'
+elif [[ "$1" == "exec" && "$*" == *"to_regclass('public.account_portfolio_accounts')"* ]]; then
+  printf '%s\\n' "$FAKE_ACCOUNT_PORTFOLIO_SCHEMA_PRESENT"
+elif [[ "$1" == "exec" && "$*" == *"account_portfolio_ticket_messages"* ]]; then
+  printf '1,1,1,0,0,0,0,0,0,1\\n'
 elif [[ "$1" == "exec" && "$*" == *"SHOW server_version"* ]]; then
   printf '16.3\\n'
 elif [[ "$1" == "exec" && "$*" == *"count(*) FROM users"* ]]; then
@@ -202,11 +224,14 @@ fi
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       FAKE_ACTIVE_FILE: active,
+      FAKE_ACCOUNT_PORTFOLIO_SCHEMA_PRESENT: accountPortfolioSchemaPresent ? "t" : "f",
       FAKE_BAD_CHECKSUM: badChecksum ? "1" : "0",
       FAKE_BRANCH_SHA: branchSha,
       FAKE_CANONICAL_QUIZ_REDIRECT: canonicalQuizRedirect ? "1" : "0",
       FAKE_CALL_LOG: log,
+      FAKE_FAIL_TARGET_ACCOUNT_PORTFOLIO_HEALTH: failTargetAccountPortfolioHealth ? "1" : "0",
       FAKE_FAIL_TARGET_HEALTH: failTargetHealth ? "1" : "0",
+      FAKE_PREVIOUS_HAS_ACCOUNT_PORTFOLIO: previousHasAccountPortfolio ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
       FAKE_NO_SUCCESS: "0",
       FAKE_RUN_CONCLUSION: runConclusion,
@@ -360,4 +385,63 @@ test("failed public verification restores and verifies the previous fixed-SHA re
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
   assert.equal((calls.match(/^deploy /gm) ?? []).length, 2);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+});
+
+test("failed Account Portfolio health restores and verifies the previous fixed-SHA release", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failTargetAccountPortfolioHealth: true, previousSha });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /rolled back/);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  assert.match(calls, /docker inspect .*henukit-account-portfolio-1/);
+  assert.equal((calls.match(/^deploy /gm) ?? []).length, 2);
+});
+
+test("first Account Portfolio rollout accepts a legacy eight-image release and records an empty-database recovery baseline", () => {
+  const setup = fixture({
+    accountPortfolioSchemaPresent: false,
+    previousHasAccountPortfolio: false,
+  });
+
+  const output = execFileSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.match(
+    output,
+    new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
+  );
+  assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump.*account_portfolio/);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 9);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), releaseSha);
+});
+
+test("first Account Portfolio rollout rolls back to a legacy eight-image release after failed verification", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    accountPortfolioSchemaPresent: false,
+    failTargetHealth: true,
+    previousHasAccountPortfolio: false,
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /rolled back/);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  assert.equal((calls.match(/^deploy /gm) ?? []).length, 2);
 });

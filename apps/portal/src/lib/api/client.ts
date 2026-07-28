@@ -215,7 +215,7 @@ export async function fetchSession(): Promise<PortalSession | null> {
   // Mock-only mode (no gateway URL and not require-gateway).
   if (!hasGatewayConfigured()) return null;
   // Absolute origin or same-origin (empty base + REQUIRE_GATEWAY=1).
-  return apiFetch<PortalSession>("/api/v1/session");
+	return apiFetch<PortalSession>("/api/v1/session", { cache: "no-store" });
 }
 
 export function redirectToLogin(returnTo = "/") {

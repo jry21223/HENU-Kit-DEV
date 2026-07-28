@@ -153,6 +153,12 @@ services:
         condition: service_healthy
     expose:
       - "8097"
+    healthcheck:
+      test: ["CMD", "/account-portfolio-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
   portal-gateway:
     build:
@@ -201,7 +207,7 @@ services:
       platform-core:
         condition: service_started
       account-portfolio:
-        condition: service_started
+        condition: service_healthy
     expose:
       - "8084"
 

@@ -26,6 +26,11 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
 			return
 		}
+		userID := r.Header.Get("X-Actor-User-Id")
+		if uuid.Validate(userID) != nil {
+			writeError(w, r, http.StatusUnauthorized, "INVALID_ACTOR", "actor context is invalid")
+			return
+		}
 
 		timestamp, err := strconv.ParseInt(r.Header.Get("X-Timestamp"), 10, 64)
 		if err != nil || abs(h.now().Unix()-timestamp) > int64(nonceTTL/time.Second) {
@@ -46,7 +51,7 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		digest := sha256.Sum256(body)
-		canonical := strings.Join([]string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}, "\n")
+		canonical := strings.Join([]string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:]), userID}, "\n")
 		mac := hmac.New(sha256.New, []byte(secret))
 		_, _ = mac.Write([]byte(canonical))
 		if !hmac.Equal([]byte(r.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
@@ -72,11 +77,6 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		userID := r.Header.Get("X-Actor-User-Id")
-		if uuid.Validate(userID) != nil {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_ACTOR", "actor context is invalid")
-			return
-		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID})))
 	})
 }

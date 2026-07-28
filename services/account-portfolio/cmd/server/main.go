@@ -23,6 +23,9 @@ func main() {
 	if databaseURL == "" || clientID == "" || keyID == "" || secret == "" {
 		log.Fatal("Account Portfolio configuration is incomplete")
 	}
+	if os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(secret) {
+		log.Fatal("Account Portfolio service secret is a deployment placeholder")
+	}
 
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
@@ -65,4 +68,12 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func isPlaceholderSecret(secret string) bool {
+	value := strings.ToLower(strings.TrimSpace(secret))
+	return strings.HasPrefix(value, "replace-") ||
+		strings.HasPrefix(value, "change-me") ||
+		strings.HasPrefix(value, "example-") ||
+		strings.Contains(value, "placeholder")
 }

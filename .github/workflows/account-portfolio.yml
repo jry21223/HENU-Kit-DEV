@@ -86,9 +86,14 @@ jobs:
           test ! -s /tmp/gofmt.diff
           go vet ./...
           go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
           go test -race -count=1 ./...
           go build -o /tmp/account-portfolio ./cmd/server
           go build -o /tmp/account-portfolio-migrate ./cmd/migrate
+          go build -o /tmp/account-portfolio-healthcheck ./cmd/healthcheck
 
-      - name: Build image
-        run: docker build -t henukit-account-portfolio:${{ github.sha }} services/account-portfolio
+      - name: Build and scan Account Portfolio image
+        run: |
+          docker build -t henukit-account-portfolio:${{ github.sha }} services/account-portfolio
+          docker run --rm -v "$PWD:/workspace" aquasec/trivy:0.70.0 fs --scanners secret --exit-code 1 /workspace
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.70.0 image --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 henukit-account-portfolio:${{ github.sha }}

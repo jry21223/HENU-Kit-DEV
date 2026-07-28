@@ -73,6 +73,28 @@ func TestAccountSummaryDoesNotFallbackWhenOwnerIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestAccountSummaryRejectsInvalidOwnerResponseInsteadOfShowingAccountData(t *testing.T) {
+	owner := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"data":       []string{"not an account object"},
+			"request_id": "req_invalid_owner",
+		})
+	}))
+	defer owner.Close()
+
+	handler := newAccountPortfolioHandler(t, owner.URL)
+	request := authenticatedAccountRequest(t, handler, "/api/v1/account/summary")
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, request)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("summary status = %d, want 502: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "not an account object") || strings.Contains(response.Body.String(), `"points_balance":0`) {
+		t.Fatalf("summary returned invalid or fallback account data: %s", response.Body.String())
+	}
+}
+
 func TestAccountSummaryRejectsMissingPortalSession(t *testing.T) {
 	handler := newAccountPortfolioHandler(t, "http://127.0.0.1:1")
 	request := httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/account/summary", nil)
@@ -103,7 +125,7 @@ func TestEveryAccountReadRouteUsesTheAuthenticatedOwnerBoundary(t *testing.T) {
 				}
 				writer.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(writer).Encode(map[string]any{
-					"data":       map[string]string{"owner_route": path},
+					"data":       validAccountOwnerData(path),
 					"request_id": "req_account_owner",
 				})
 			}))
@@ -113,10 +135,35 @@ func TestEveryAccountReadRouteUsesTheAuthenticatedOwnerBoundary(t *testing.T) {
 			request := authenticatedAccountRequest(t, handler, path)
 			response := httptest.NewRecorder()
 			handler.Router().ServeHTTP(response, request)
-			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), path) {
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"data"`) {
 				t.Fatalf("%s response = %d: %s", path, response.Code, response.Body.String())
 			}
 		})
+	}
+}
+
+func validAccountOwnerData(path string) map[string]any {
+	switch path {
+	case "/api/v1/account/summary":
+		return map[string]any{
+			"points_balance":            0,
+			"plan":                      "free",
+			"lifetime":                  false,
+			"unread_notification_count": 0,
+			"open_ticket_count":         0,
+		}
+	case "/api/v1/account/points":
+		return map[string]any{"balance": 0, "entries": []any{}}
+	case "/api/v1/account/membership":
+		return map[string]any{"plan": "free", "lifetime": false}
+	case "/api/v1/account/notifications":
+		return map[string]any{"notifications": []any{}}
+	case "/api/v1/account/tickets":
+		return map[string]any{"tickets": []any{}}
+	case "/api/v1/account/membership-orders":
+		return map[string]any{"orders": []any{}}
+	default:
+		panic("unknown Account Portfolio route " + path)
 	}
 }
 

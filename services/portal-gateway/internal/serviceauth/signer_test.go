@@ -101,3 +101,43 @@ func TestSignEmptyBodyHashesEmptySlice(t *testing.T) {
 		t.Fatalf("empty-body signature mismatch got=%s want=%s", got, want)
 	}
 }
+
+func TestSignWithActorBindsActorToCanonicalRequest(t *testing.T) {
+	const secret = "portal-client-secret-with-enough-entropy"
+	const actor = "11111111-1111-4111-8111-111111111111"
+	signer := NewSigner("portal-gateway", secret, "active-key")
+	req, err := http.NewRequest(http.MethodGet, "https://account.example/api/v1/account/summary", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := signer.SignWithActor(req, actor); err != nil {
+		t.Fatal(err)
+	}
+	if got := req.Header.Get("X-Actor-User-Id"); got != actor {
+		t.Fatalf("actor header = %q, want %q", got, actor)
+	}
+	digest := sha256.Sum256(nil)
+	canonical := strings.Join([]string{
+		http.MethodGet,
+		req.URL.RequestURI(),
+		req.Header.Get("X-Timestamp"),
+		req.Header.Get("X-Nonce"),
+		hex.EncodeToString(digest[:]),
+		actor,
+	}, "\n")
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(canonical))
+	want := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if got := req.Header.Get("X-Signature"); got != want {
+		t.Fatalf("actor-bound signature mismatch got=%s want=%s", got, want)
+	}
+
+	tamperedActor := "22222222-2222-4222-8222-222222222222"
+	req.Header.Set("X-Actor-User-Id", tamperedActor)
+	tamperedCanonical := strings.TrimSuffix(canonical, actor) + tamperedActor
+	tamperedMAC := hmac.New(sha256.New, []byte(secret))
+	_, _ = tamperedMAC.Write([]byte(tamperedCanonical))
+	if req.Header.Get("X-Signature") == base64.RawURLEncoding.EncodeToString(tamperedMAC.Sum(nil)) {
+		t.Fatal("signature remained valid after actor mutation")
+	}
+}

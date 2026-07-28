@@ -155,6 +155,25 @@ func TestAccountEndpointsRejectBrowserSuppliedOrReplayedIdentity(t *testing.T) {
 	if second.StatusCode != http.StatusConflict {
 		t.Fatalf("replayed request status = %d, want 409: %s", second.StatusCode, readBody(t, second))
 	}
+
+	tampered, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/account/summary", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered.Header.Set("X-Actor-User-Id", "55555555-5555-4555-8555-555555555555")
+	tampered.Header.Set("X-Request-Id", "req_tampered_actor")
+	sign(t, tampered, "nonce-tampered-actor")
+	// A network peer must not be able to replace the actor after Portal Gateway
+	// has signed the request.
+	tampered.Header.Set("X-Actor-User-Id", "66666666-6666-4666-8666-666666666666")
+	response, err = server.Client().Do(tampered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("tampered signed actor status = %d, want 401", response.StatusCode)
+	}
 }
 
 func TestHealthFailsClosedWhenDatabaseIsUnavailable(t *testing.T) {
@@ -226,6 +245,7 @@ func sign(t *testing.T, request *http.Request, nonce string) {
 		timestamp,
 		nonce,
 		hex.EncodeToString(digest[:]),
+		request.Header.Get("X-Actor-User-Id"),
 	}, "\n")
 	mac := hmac.New(sha256.New, []byte(serviceSecret))
 	_, _ = mac.Write([]byte(canonical))

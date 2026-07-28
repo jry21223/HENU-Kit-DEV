@@ -267,6 +267,7 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
 	v, err := h.readSession(r)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
@@ -282,6 +283,7 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
 	cookies := h.browserCookies(r)
 	http.SetCookie(w, &http.Cookie{
 		Name: cookies.session, Value: "", Path: "/",
@@ -331,8 +333,7 @@ func (h *Handler) accountMembershipOrders(w http.ResponseWriter, r *http.Request
 func (h *Handler) accountRead(w http.ResponseWriter, r *http.Request, read accountRead) {
 	// Account facts are private and must not be stored by a browser or
 	// intermediary while the Portal Session remains active.
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	setPrivateResponseHeaders(w)
 	value, err := h.readSession(r)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
@@ -408,6 +409,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+func setPrivateResponseHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, message string) {

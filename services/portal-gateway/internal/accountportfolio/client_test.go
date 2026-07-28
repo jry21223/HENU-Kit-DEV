@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -116,7 +117,7 @@ func TestReadMethodsUseTheDeclaredOwnerRoutes(t *testing.T) {
 				assertSignedOwnerRequest(t, request)
 				writer.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(writer).Encode(map[string]any{
-					"data":       map[string]string{"route": test.path},
+					"data":       validOwnerData(test.path),
 					"request_id": "req_owner",
 				})
 			}))
@@ -131,10 +132,81 @@ func TestReadMethodsUseTheDeclaredOwnerRoutes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(string(data), test.path) {
-				t.Fatalf("owner data = %s", data)
+			if len(data) == 0 {
+				t.Fatal("owner returned no validated data")
 			}
 		})
+	}
+}
+
+func TestReadMethodsRejectIncompleteOwnerPayloads(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		read func(*Client) (json.RawMessage, error)
+	}{
+		{name: "summary", path: SummaryPath, read: func(client *Client) (json.RawMessage, error) {
+			return client.Summary(context.Background(), "11111111-1111-4111-8111-111111111111", "req_summary")
+		}},
+		{name: "points", path: PointsPath, read: func(client *Client) (json.RawMessage, error) {
+			return client.Points(context.Background(), "11111111-1111-4111-8111-111111111111", "req_points")
+		}},
+		{name: "membership", path: MembershipPath, read: func(client *Client) (json.RawMessage, error) {
+			return client.Membership(context.Background(), "11111111-1111-4111-8111-111111111111", "req_membership")
+		}},
+		{name: "notifications", path: NotificationsPath, read: func(client *Client) (json.RawMessage, error) {
+			return client.Notifications(context.Background(), "11111111-1111-4111-8111-111111111111", "req_notifications")
+		}},
+		{name: "tickets", path: TicketsPath, read: func(client *Client) (json.RawMessage, error) {
+			return client.Tickets(context.Background(), "11111111-1111-4111-8111-111111111111", "req_tickets")
+		}},
+		{name: "membership orders", path: MembershipOrdersPath, read: func(client *Client) (json.RawMessage, error) {
+			return client.MembershipOrders(context.Background(), "11111111-1111-4111-8111-111111111111", "req_orders")
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assertSignedOwnerRequest(t, request)
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = writer.Write([]byte(`{"data":{},"request_id":"req_owner"}`))
+			}))
+			defer server.Close()
+			client, err := NewClient(server.URL, testClientID, testSecret, testKeyID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.httpClient = server.Client()
+			data, err := test.read(client)
+			if !errors.Is(err, ErrInvalid) || len(data) != 0 {
+				t.Fatalf("%s incomplete owner result data=%s err=%v, want ErrInvalid with no data", test.path, data, err)
+			}
+		})
+	}
+}
+
+func validOwnerData(path string) map[string]any {
+	switch path {
+	case SummaryPath:
+		return map[string]any{
+			"points_balance":            0,
+			"plan":                      "free",
+			"lifetime":                  false,
+			"unread_notification_count": 0,
+			"open_ticket_count":         0,
+		}
+	case PointsPath:
+		return map[string]any{"balance": 0, "entries": []any{}}
+	case MembershipPath:
+		return map[string]any{"plan": "free", "lifetime": false}
+	case NotificationsPath:
+		return map[string]any{"notifications": []any{}}
+	case TicketsPath:
+		return map[string]any{"tickets": []any{}}
+	case MembershipOrdersPath:
+		return map[string]any{"orders": []any{}}
+	default:
+		panic("unknown Account Portfolio route " + path)
 	}
 }
 
@@ -147,7 +219,7 @@ func assertSignedOwnerRequest(t *testing.T, request *http.Request) {
 	timestamp := request.Header.Get("X-Timestamp")
 	nonce := request.Header.Get("X-Nonce")
 	digest := sha256.Sum256(nil)
-	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
+	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:]), request.Header.Get("X-Actor-User-Id")}, "\n")
 	mac := hmac.New(sha256.New, []byte(testSecret))
 	_, _ = mac.Write([]byte(canonical))
 	if timestamp == "" || nonce == "" || request.Header.Get("X-Signature") != base64.RawURLEncoding.EncodeToString(mac.Sum(nil)) {

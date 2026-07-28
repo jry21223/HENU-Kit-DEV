@@ -27,9 +27,9 @@ const (
 )
 
 var (
-	ErrUnauthorized = errors.New("Account Portfolio rejected the authenticated actor")
-	ErrUnavailable  = errors.New("Account Portfolio is unavailable")
-	ErrInvalid      = errors.New("Account Portfolio returned an invalid response")
+	ErrUnauthorized = errors.New("account portfolio rejected the authenticated actor")
+	ErrUnavailable  = errors.New("account portfolio is unavailable")
+	ErrInvalid      = errors.New("account portfolio returned an invalid response")
 )
 
 // Client is a typed internal boundary for Account Portfolio reads.
@@ -85,9 +85,8 @@ func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (
 	if err != nil {
 		return nil, fmt.Errorf("create Account Portfolio request: %w", ErrUnavailable)
 	}
-	request.Header.Set("X-Actor-User-Id", actorUserID)
 	request.Header.Set("X-Request-Id", requestID)
-	if err := c.signer.Sign(request); err != nil {
+	if err := c.signer.SignWithActor(request, actorUserID); err != nil {
 		return nil, fmt.Errorf("sign Account Portfolio request: %w", ErrUnavailable)
 	}
 
@@ -102,7 +101,7 @@ func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (
 		return nil, ErrUnauthorized
 	default:
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
-		return nil, fmt.Errorf("Account Portfolio status %d: %w", response.StatusCode, ErrUnavailable)
+		return nil, fmt.Errorf("account portfolio status %d: %w", response.StatusCode, ErrUnavailable)
 	}
 
 	var envelope struct {
@@ -112,8 +111,7 @@ func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (
 	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&envelope); err != nil || len(envelope.Data) == 0 || string(envelope.Data) == "null" || strings.TrimSpace(envelope.RequestID) == "" {
 		return nil, ErrInvalid
 	}
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(envelope.Data, &object); err != nil || object == nil {
+	if err := validateData(path, envelope.Data); err != nil {
 		return nil, ErrInvalid
 	}
 	return envelope.Data, nil
