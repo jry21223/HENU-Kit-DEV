@@ -248,7 +248,9 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		router.With(service.authenticatePortalCatalog).Get("/api/v1/banks", service.listBanks)
 	}
 	writes := router.With(service.requireWritesEnabled)
+	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
 	writes.Post("/api/v1/feedback", service.createFeedback)
+	writes.Get("/api/v1/feedback/{feedback_id}/status", service.getFeedbackStatus)
 	router.Get("/api/v1/workshop/banks", service.listWorkshopBanks)
 	router.Get("/api/v1/workshop/catalog", service.listWorkshopCatalog)
 	writes.Post("/api/v1/workshop/banks", service.createWorkshopBank)

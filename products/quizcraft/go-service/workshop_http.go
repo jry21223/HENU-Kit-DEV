@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,6 +63,12 @@ type questionFeedbackRequest struct {
 	QuestionVersionID uuid.UUID `json:"question_version_id"`
 	Category          string    `json:"category"`
 	Detail            string    `json:"detail"`
+}
+
+type feedbackStatusProjection struct {
+	FeedbackID, BankID, QuestionID, QuestionVersionID uuid.UUID
+	Category, Status                                  string
+	CreatedAt, UpdatedAt                              time.Time
 }
 
 type workshopHTTPError struct {
@@ -699,6 +706,10 @@ func (service *practiceHTTP) createFeedback(writer http.ResponseWriter, request 
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft feedback is temporarily unavailable")
 		return
 	}
+	if _, err := tx.Exec(request.Context(), `INSERT INTO quizcraft_feedback_status_facts(id,feedback_id,status,source,source_event_id,occurred_at) VALUES($1,$2,'pending','submission','submitted',now())`, uuid.New(), feedbackID); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft feedback is temporarily unavailable")
+		return
+	}
 	priority := "normal"
 	if input.Category == "wrong_answer" {
 		priority = "high"
@@ -735,6 +746,131 @@ func (service *practiceHTTP) createFeedback(writer http.ResponseWriter, request 
 		}
 	}
 	writeRawJSON(writer, http.StatusAccepted, encoded)
+}
+
+func (service *practiceHTTP) getFeedbackStatus(writer http.ResponseWriter, request *http.Request) {
+	feedbackID, err := uuid.Parse(chi.URLParam(request, "feedback_id"))
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "invalid_feedback_id", "feedback_id must be a UUID")
+		return
+	}
+	actor, status, err := service.actor(writer, request)
+	if err != nil {
+		writeError(writer, status, "invalid_session", err.Error())
+		return
+	}
+	_, err = service.loadFeedbackStatus(request.Context(), feedbackID, actor.key)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Treat a foreign identifier as absent so feedback IDs cannot be enumerated.
+			writeError(writer, http.StatusNotFound, "feedback_not_found", "feedback was not found")
+		} else {
+			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft feedback is temporarily unavailable")
+		}
+		return
+	}
+	if err := service.syncFeedbackStatusFromInbox(request.Context(), feedbackID); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "feedback_status_unavailable", "feedback was saved but its processing status is temporarily unavailable")
+		return
+	}
+	feedback, err := service.loadFeedbackStatus(request.Context(), feedbackID, actor.key)
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft feedback is temporarily unavailable")
+		return
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: feedbackStatusResponse(feedback)})
+}
+
+func (service *practiceHTTP) listFeedbackStatuses(writer http.ResponseWriter, request *http.Request) {
+	actor, status, err := service.actor(writer, request)
+	if err != nil {
+		writeError(writer, status, "invalid_session", err.Error())
+		return
+	}
+	rows, err := service.database.Query(request.Context(), `SELECT f.id,f.bank_id,f.question_id,f.question_version_id,f.category,s.status,f.created_at,s.recorded_at FROM quizcraft_feedbacks f JOIN LATERAL (SELECT status,recorded_at FROM quizcraft_feedback_status_facts WHERE feedback_id=f.id ORDER BY CASE WHEN source='operations_inbox' THEN 1 ELSE 0 END DESC,source_version DESC NULLS LAST,recorded_at DESC,occurred_at DESC,id DESC LIMIT 1) s ON true WHERE f.actor_key=$1 ORDER BY f.created_at DESC,f.id DESC LIMIT 100`, actor.key)
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft feedback is temporarily unavailable")
+		return
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var feedback feedbackStatusProjection
+		if err := rows.Scan(&feedback.FeedbackID, &feedback.BankID, &feedback.QuestionID, &feedback.QuestionVersionID, &feedback.Category, &feedback.Status, &feedback.CreatedAt, &feedback.UpdatedAt); err != nil {
+			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft feedback is temporarily unavailable")
+			return
+		}
+		items = append(items, feedbackStatusResponse(feedback))
+	}
+	if err := rows.Err(); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft feedback is temporarily unavailable")
+		return
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: map[string]any{"items": items}})
+}
+
+func (service *practiceHTTP) loadFeedbackStatus(ctx context.Context, feedbackID uuid.UUID, actorKey string) (feedbackStatusProjection, error) {
+	var feedback feedbackStatusProjection
+	err := service.database.QueryRow(ctx, `SELECT f.id,f.bank_id,f.question_id,f.question_version_id,f.category,s.status,f.created_at,s.recorded_at FROM quizcraft_feedbacks f JOIN LATERAL (SELECT status,recorded_at FROM quizcraft_feedback_status_facts WHERE feedback_id=f.id ORDER BY CASE WHEN source='operations_inbox' THEN 1 ELSE 0 END DESC,source_version DESC NULLS LAST,recorded_at DESC,occurred_at DESC,id DESC LIMIT 1) s ON true WHERE f.id=$1 AND f.actor_key=$2`, feedbackID, actorKey).Scan(&feedback.FeedbackID, &feedback.BankID, &feedback.QuestionID, &feedback.QuestionVersionID, &feedback.Category, &feedback.Status, &feedback.CreatedAt, &feedback.UpdatedAt)
+	return feedback, err
+}
+
+func (service *practiceHTTP) syncFeedbackStatusFromInbox(ctx context.Context, feedbackID uuid.UUID) error {
+	if service.platform == nil || service.inboxExchangeToken == "" {
+		return nil
+	}
+	var platformItemID uuid.UUID
+	err := service.database.QueryRow(ctx, `SELECT d.platform_item_id FROM quizcraft_feedback_inbox_outbox o JOIN quizcraft_feedback_inbox_deliveries d ON d.outbox_id=o.id WHERE o.feedback_id=$1 AND d.platform_item_id IS NOT NULL`, feedbackID).Scan(&platformItemID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	item, err := service.platform.getInboxItem(ctx, service.inboxExchangeToken, platformItemID, "quizcraft", "feedback", feedbackID.String())
+	if err != nil {
+		return err
+	}
+	if item.SourceProductCode != "quizcraft" || item.SourceResourceType != "feedback" || item.SourceResourceID != feedbackID.String() {
+		return errors.New("operations inbox returned a mismatched feedback reference")
+	}
+	feedbackStatus, ok := feedbackStatusFromInbox(item.Status)
+	if !ok {
+		return errors.New("operations inbox returned an invalid feedback status")
+	}
+	eventID := "operations-inbox:" + item.ID + ":" + strconv.FormatInt(item.Version, 10)
+	_, err = service.database.Exec(ctx, `INSERT INTO quizcraft_feedback_status_facts(id,feedback_id,status,source,source_event_id,source_version,occurred_at) SELECT $1,$2,$3,'operations_inbox',$4,$5,$6 WHERE NOT EXISTS (SELECT 1 FROM quizcraft_feedback_status_facts WHERE feedback_id=$2 AND source='operations_inbox' AND source_version>$5) ON CONFLICT(feedback_id,source_event_id) DO NOTHING`, uuid.New(), feedbackID, feedbackStatus, eventID, item.Version, item.UpdatedAt.UTC())
+	return err
+}
+
+func feedbackStatusFromInbox(value string) (string, bool) {
+	switch value {
+	case "open":
+		return "pending", true
+	case "in_progress":
+		return "in_progress", true
+	case "blocked":
+		return "blocked", true
+	case "resolved":
+		return "resolved", true
+	case "cancelled":
+		return "archived", true
+	default:
+		return "", false
+	}
+}
+
+func feedbackStatusResponse(feedback feedbackStatusProjection) map[string]any {
+	return map[string]any{
+		"feedback_id":         feedback.FeedbackID,
+		"bank_id":             feedback.BankID,
+		"question_id":         feedback.QuestionID,
+		"question_version_id": feedback.QuestionVersionID,
+		"category":            feedback.Category,
+		"status":              feedback.Status,
+		"created_at":          feedback.CreatedAt.UTC(),
+		"updated_at":          feedback.UpdatedAt.UTC(),
+	}
 }
 
 func validFeedbackCategory(value string) bool {

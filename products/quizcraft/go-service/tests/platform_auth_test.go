@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -74,6 +75,109 @@ func TestFeedbackOutboxDeliversReferenceOnlyToPlatformCore(t *testing.T) {
 		case <-deadline:
 			t.Fatalf("only %d/%d feedback references were delivered to Operations Inbox", index, feedbackCount)
 		}
+	}
+}
+
+func TestFeedbackStatusProjectsOperationsInboxStateAndListsOwnedFeedback(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "feedback-status-projection-"+uuid.NewString())
+	const platformItemID = "33333333-3333-4333-8333-333333333333"
+	projected := make(chan struct{}, 1)
+	var inboxStatusReads atomic.Int32
+	platform := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("X-Session-Exchange-Token") != strings.Repeat("i", 40) || request.Header.Get("X-Signature") == "" || request.Header.Get("X-Service-Id") != "quizcraft" {
+			writer.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch request.URL.Path {
+		case "/api/v1/operations-inbox/items":
+			if request.Method != http.MethodPost {
+				writer.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			writer.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]string{"id": platformItemID}})
+		case "/api/v1/operations-inbox/items/" + platformItemID:
+			if request.Method != http.MethodGet || request.URL.Query().Get("source_product_code") != "quizcraft" || request.URL.Query().Get("source_resource_type") != "feedback" || request.URL.Query().Get("source_resource_id") == "" {
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			select {
+			case projected <- struct{}{}:
+			default:
+			}
+			status := "resolved"
+			version := int64(3)
+			updatedAt := "2026-07-28T00:05:00Z"
+			if inboxStatusReads.Add(1) > 1 {
+				// Simulate a stale in-flight read arriving after the newer state.
+				status = "blocked"
+				version = 2
+				updatedAt = "2026-07-28T00:04:00Z"
+			}
+			_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{
+				"id": platformItemID, "source_product_code": "quizcraft", "source_resource_type": "feedback", "source_resource_id": request.URL.Query().Get("source_resource_id"),
+				"priority": "high", "status": status, "version": version, "created_at": "2026-07-28T00:00:00Z", "updated_at": updatedAt,
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer platform.Close()
+	workerContext, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), PlatformCoreURL: platform.URL,
+		PlatformClientID: "quizcraft", PlatformClientSecret: strings.Repeat("s", 40), PlatformKeyID: "key-1",
+		PublicURL: "https://quizcraft.henukit.test", SessionEncryptionKey: []byte("0123456789abcdef0123456789abcdef"),
+		InboxExchangeToken: strings.Repeat("i", 40), WorkerContext: workerContext,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	userID := uuid.NewString()
+	auth := "quizcraft_session=" + practiceToken(t, userID)
+	payload := map[string]any{"bank_id": report.BankID, "question_id": report.Questions[0].QuestionID, "question_version_id": report.Questions[0].QuestionVersionID, "category": "wrong_answer", "detail": "状态应来自 Operations Inbox"}
+	createStatus, createBody := requestJSON(t, http.MethodPost, server.URL+"/api/v1/feedback", map[string]string{"Cookie": auth, "Idempotency-Key": "feedback-status-projection-001"}, payload)
+	if createStatus != http.StatusAccepted {
+		t.Fatalf("create feedback = %d %s", createStatus, createBody)
+	}
+	feedbackID := operationResourceID(t, createBody)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var deliveredCount int
+		if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_feedback_inbox_outbox o JOIN quizcraft_feedback_inbox_deliveries d ON d.outbox_id=o.id WHERE o.feedback_id=$1 AND d.platform_item_id=$2`, feedbackID, platformItemID).Scan(&deliveredCount); err != nil {
+			t.Fatal(err)
+		}
+		if deliveredCount == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("current feedback's Operations Inbox delivery was not recorded")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	status, statusBody := requestJSON(t, http.MethodGet, server.URL+"/api/v1/feedback/"+feedbackID+"/status", map[string]string{"Cookie": auth}, nil)
+	if status != http.StatusOK || !bytes.Contains(statusBody, []byte(`"status":"resolved"`)) {
+		t.Fatalf("projected feedback status = %d %s", status, statusBody)
+	}
+	select {
+	case <-projected:
+	case <-time.After(5 * time.Second):
+		t.Fatal("feedback status did not read Operations Inbox")
+	}
+	staleStatus, staleBody := requestJSON(t, http.MethodGet, server.URL+"/api/v1/feedback/"+feedbackID+"/status", map[string]string{"Cookie": auth}, nil)
+	if staleStatus != http.StatusOK || !bytes.Contains(staleBody, []byte(`"status":"resolved"`)) {
+		t.Fatalf("a stale Operations Inbox read regressed feedback status = %d %s", staleStatus, staleBody)
+	}
+	listStatus, listBody := requestJSON(t, http.MethodGet, server.URL+"/api/v1/feedback", map[string]string{"Cookie": auth}, nil)
+	if listStatus != http.StatusOK || !bytes.Contains(listBody, []byte(`"feedback_id":"`+feedbackID+`"`)) || !bytes.Contains(listBody, []byte(`"status":"resolved"`)) {
+		t.Fatalf("recoverable owned feedback list = %d %s", listStatus, listBody)
+	}
+	if _, err := pool.Exec(context.Background(), `UPDATE quizcraft_feedback_status_facts SET status='pending' WHERE feedback_id=$1`, feedbackID); err == nil {
+		t.Fatal("feedback status fact mutation succeeded")
 	}
 }
 

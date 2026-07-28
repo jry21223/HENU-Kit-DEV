@@ -44,13 +44,15 @@ func main() {
 		}
 	}
 	required := map[string]string{
-		"ListBanksRoute":      "listPracticeBanks",
-		"CreateSessionRoute":  "createPracticeSession",
-		"SubmitAnswerRoute":   "submitPracticeAnswer",
-		"ListFavoritesRoute":  "listFavoriteQuestions",
-		"OverallRankingRoute": "getOverallRanking",
-		"CreateFeedbackRoute": "createQuestionFeedback",
-		"WorkshopImportRoute": "importWorkshopBank",
+		"ListBanksRoute":            "listPracticeBanks",
+		"CreateSessionRoute":        "createPracticeSession",
+		"SubmitAnswerRoute":         "submitPracticeAnswer",
+		"ListFavoritesRoute":        "listFavoriteQuestions",
+		"OverallRankingRoute":       "getOverallRanking",
+		"CreateFeedbackRoute":       "createQuestionFeedback",
+		"ListFeedbackStatusesRoute": "listQuestionFeedbackStatuses",
+		"FeedbackStatusRoute":       "getQuestionFeedbackStatus",
+		"WorkshopImportRoute":       "importWorkshopBank",
 	}
 	keys := make([]string, 0, len(required))
 	for constant, operationID := range required {

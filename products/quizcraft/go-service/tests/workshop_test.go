@@ -156,6 +156,18 @@ func TestFeedbackPersistsStableReferenceAndMetadataOnlyInboxFact(t *testing.T) {
 	}
 	feedbackID := operationResourceID(t, body)
 	initialOperationID := operationID(t, body)
+	statusRead, statusBody := requestJSON(t, http.MethodGet, server.URL+"/api/v1/feedback/"+feedbackID+"/status", map[string]string{"Cookie": auth}, nil)
+	if statusRead != http.StatusOK || !bytes.Contains(statusBody, []byte(`"feedback_id":"`+feedbackID+`"`)) || !bytes.Contains(statusBody, []byte(`"status":"pending"`)) || !bytes.Contains(statusBody, []byte(`"question_version_id":"`+report.Questions[0].QuestionVersionID+`"`)) {
+		t.Fatalf("feedback status = %d %s", statusRead, statusBody)
+	}
+	statusList, statusListBody := requestJSON(t, http.MethodGet, server.URL+"/api/v1/feedback", map[string]string{"Cookie": auth}, nil)
+	if statusList != http.StatusOK || !bytes.Contains(statusListBody, []byte(`"feedback_id":"`+feedbackID+`"`)) || !bytes.Contains(statusListBody, []byte(`"status":"pending"`)) {
+		t.Fatalf("owned feedback statuses = %d %s", statusList, statusListBody)
+	}
+	foreignStatus, _ := requestJSON(t, http.MethodGet, server.URL+"/api/v1/feedback/"+feedbackID+"/status", map[string]string{"Cookie": "quizcraft_session=" + practiceToken(t, uuid.NewString())}, nil)
+	if foreignStatus != http.StatusNotFound {
+		t.Fatalf("foreign actor read feedback status = %d", foreignStatus)
+	}
 	replayStatus, replayBody := requestJSON(t, http.MethodPost, server.URL+"/api/v1/feedback", map[string]string{"Cookie": auth, "Idempotency-Key": "stable-feedback-create-001"}, payload)
 	if replayStatus != status || !bytes.Equal(replayBody, body) {
 		t.Fatalf("feedback replay = %d %s", replayStatus, replayBody)

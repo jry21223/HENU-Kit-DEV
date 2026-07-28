@@ -266,6 +266,15 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/feedback:
+    get:
+      summary: List the caller-owned correction processing statuses
+      tags: [Feedback]
+      operationId: listQuestionFeedbackStatuses
+      security: [{}, { userSession: [] }, { userSessionCookie: [] }]
+      responses:
+        '200': { description: Persisted caller-owned correction statuses, content: { application/json: { schema: { $ref: '#/components/schemas/FeedbackStatusListEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
     post:
       summary: Submit a correction linked to stable content identity
       tags: [Feedback]
@@ -276,7 +285,25 @@ paths:
       responses:
         '202': { description: Feedback write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/feedback/{feedback_id}/status:
+    get:
+      summary: Read the caller-owned correction processing status
+      tags: [Feedback]
+      operationId: getQuestionFeedbackStatus
+      security: [{}, { userSession: [] }, { userSessionCookie: [] }]
+      parameters:
+        - name: feedback_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Caller-owned correction status, content: { application/json: { schema: { $ref: '#/components/schemas/FeedbackStatusEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/workshop/banks:
     get:
@@ -746,6 +773,37 @@ components:
         question_version_id: { type: string, format: uuid }
         category: { type: string, enum: [wrong_answer, ambiguous, typo, outdated, other] }
         detail: { type: string, minLength: 1, maxLength: 4000 }
+    FeedbackStatusEnvelope:
+      type: object
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/FeedbackStatus' } }
+    FeedbackStatusListEnvelope:
+      type: object
+      required: [request_id, data]
+      properties:
+        request_id: { $ref: '#/components/schemas/RequestID' }
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              maxItems: 100
+              items: { $ref: '#/components/schemas/FeedbackStatus' }
+    FeedbackStatus:
+      type: object
+      additionalProperties: false
+      required: [feedback_id, bank_id, question_id, question_version_id, category, status, created_at, updated_at]
+      properties:
+        feedback_id: { type: string, format: uuid }
+        bank_id: { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        category: { type: string, enum: [wrong_answer, ambiguous, typo, outdated, other] }
+        status: { type: string, enum: [pending, in_progress, blocked, resolved, archived] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     CreateWorkshopBank:
       type: object
       required: [bank_key, name]

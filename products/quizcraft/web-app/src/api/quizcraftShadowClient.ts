@@ -29,12 +29,22 @@ export { QUIZCRAFT_GO_READ_ENABLED, QUIZCRAFT_GO_WRITES_ENABLED };
 export const QUIZCRAFT_GO_SHADOW_ENABLED = QUIZCRAFT_GO_WRITES_ENABLED;
 
 const bankRegistry = new Map<string, BankVersion>();
+type QuizcraftFeedbackReference = Pick<
+  QuestionFeedback,
+  'bank_id' | 'question_id' | 'question_version_id'
+>;
+
+export type PendingQuizcraftFeedback = QuestionFeedback & {
+  idempotencyKey: string;
+};
+
 type ShadowPracticeSession = {
   id: string;
   bankId: string;
   bankKey: string;
   versions: Map<string, string>;
   pendingKeys: Map<string, string>;
+  pendingFeedback: Map<string, PendingQuizcraftFeedback>;
 };
 
 let activeSession: ShadowPracticeSession | null = null;
@@ -48,6 +58,7 @@ const persistActiveSession = (session: ShadowPracticeSession) => {
       bankKey: session.bankKey,
       versions: Array.from(session.versions.entries()),
       pendingKeys: Array.from(session.pendingKeys.entries()),
+      pendingFeedback: Array.from(session.pendingFeedback.entries()),
     }));
   }
 };
@@ -61,6 +72,7 @@ const restoreActiveSession = (): ShadowPracticeSession | null => {
       bankKey?: string;
       versions?: Array<[string, string]>;
       pendingKeys?: Array<[string, string]>;
+      pendingFeedback?: Array<[string, PendingQuizcraftFeedback]>;
     };
     if (!stored.id || !stored.bankId || !stored.bankKey || !Array.isArray(stored.versions)) return null;
     activeSession = {
@@ -69,6 +81,7 @@ const restoreActiveSession = (): ShadowPracticeSession | null => {
       bankKey: stored.bankKey,
       versions: new Map(stored.versions),
       pendingKeys: new Map(stored.pendingKeys || []),
+      pendingFeedback: new Map(stored.pendingFeedback || []),
     };
   } catch {
     return null;
@@ -82,6 +95,8 @@ const randomKey = () => {
   }
   return `qc-${Date.now()}-${Math.random().toString(36).slice(2)}-request`;
 };
+
+export const createQuizcraftIdempotencyKey = () => randomKey();
 
 const configureGeneratedClient = () => {
   OpenAPI.BASE = (import.meta.env.VITE_QUIZCRAFT_GO_API_BASE_URL || '').replace(/\/+$/, '');
@@ -171,6 +186,7 @@ export const shadowPracticeApi = {
         ]),
       ),
       pendingKeys: new Map(),
+      pendingFeedback: new Map(),
     });
     return {
       questions: response.data.questions.map(toQuestion),
@@ -224,10 +240,57 @@ export const quizcraftLoginHref = (returnTo: string) => {
 export const getActiveShadowBankId = () => restoreActiveSession()?.bankId;
 export const getActiveShadowQuestionVersionId = (questionId: string) => restoreActiveSession()?.versions.get(questionId);
 
+const pendingFeedbackKey = (reference: QuizcraftFeedbackReference) => [
+  reference.bank_id,
+  reference.question_id,
+  reference.question_version_id,
+].join(':');
+
+export const getPendingShadowFeedback = (
+  reference: QuizcraftFeedbackReference,
+): PendingQuizcraftFeedback | null => {
+  const session = restoreActiveSession();
+  if (!session || session.bankId !== reference.bank_id) return null;
+  return session.pendingFeedback.get(pendingFeedbackKey(reference)) || null;
+};
+
+export const persistPendingShadowFeedback = (
+  pending: PendingQuizcraftFeedback,
+): boolean => {
+  const session = restoreActiveSession();
+  if (
+    !session
+    || session.bankId !== pending.bank_id
+    || session.versions.get(pending.question_id) !== pending.question_version_id
+  ) {
+    return false;
+  }
+  session.pendingFeedback.set(pendingFeedbackKey(pending), pending);
+  persistActiveSession(session);
+  return true;
+};
+
+export const clearPendingShadowFeedback = (
+  reference: QuizcraftFeedbackReference,
+) => {
+  const session = restoreActiveSession();
+  if (!session || session.bankId !== reference.bank_id) return;
+  session.pendingFeedback.delete(pendingFeedbackKey(reference));
+  persistActiveSession(session);
+};
+
 export const shadowFeedbackApi = {
-  async submit(input: QuestionFeedback) {
+  async submit(input: QuestionFeedback, idempotencyKey = randomKey()) {
     configureGeneratedClient();
-    return FeedbackService.createQuestionFeedback({ idempotencyKey: randomKey(), requestBody: input });
+    return FeedbackService.createQuestionFeedback({ idempotencyKey, requestBody: input });
+  },
+  async status(feedbackId: string) {
+    configureGeneratedClient();
+    return (await FeedbackService.getQuestionFeedbackStatus({ feedbackId })).data;
+  },
+  async listStatuses() {
+    configureGeneratedClient();
+    return (await FeedbackService.listQuestionFeedbackStatuses()).data.items;
   },
 };
 
@@ -332,6 +395,7 @@ export const shadowFavoritesApi = {
         ]),
       ),
       pendingKeys: new Map(),
+      pendingFeedback: new Map(),
     });
     return {
       questions: response.data.questions.map(toQuestion),

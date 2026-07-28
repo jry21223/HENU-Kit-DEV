@@ -39,6 +39,7 @@ const navItems = QUIZCRAFT_GO_SHADOW_ENABLED
   ? [
       ...baseNavItems.slice(0, IS_OPS_MODE ? 1 : 2),
       { path: '/favorites', icon: Heart, label: '收藏' },
+      { path: '/feedback', icon: MessageSquare, label: '我的反馈' },
       ...baseNavItems.slice(IS_OPS_MODE ? 1 : 2),
     ]
   : baseNavItems;

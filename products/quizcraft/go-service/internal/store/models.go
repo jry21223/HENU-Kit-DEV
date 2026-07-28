@@ -83,6 +83,17 @@ type QuizcraftFeedbackInboxOutbox struct {
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
+type QuizcraftFeedbackStatusFact struct {
+	ID            uuid.UUID          `json:"id"`
+	FeedbackID    uuid.UUID          `json:"feedback_id"`
+	Status        string             `json:"status"`
+	Source        string             `json:"source"`
+	SourceEventID string             `json:"source_event_id"`
+	SourceVersion pgtype.Int8        `json:"source_version"`
+	OccurredAt    pgtype.Timestamptz `json:"occurred_at"`
+	RecordedAt    pgtype.Timestamptz `json:"recorded_at"`
+}
+
 type QuizcraftIdempotencyResult struct {
 	ActorKey       string             `json:"actor_key"`
 	OperationKind  string             `json:"operation_kind"`
