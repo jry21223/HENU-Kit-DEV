@@ -72,11 +72,13 @@ func TestRouterKeepsQuizCraftV2RankingsDarkBeforeCutover(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recorder := httptest.NewRecorder()
-	handler.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/rankings/overall", nil))
+	for _, path := range []string{"/api/v1/rankings/overall", "/api/v1/banks/data-structures/rankings"} {
+		recorder := httptest.NewRecorder()
+		handler.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://portal.test"+path, nil))
 
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("public V2 ranking response = %d, want 404", recorder.Code)
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("public V2 ranking response for %s = %d, want 404", path, recorder.Code)
+		}
 	}
 	if portalAPICalls.Load() != 0 || quizCraftCalls.Load() != 0 {
 		t.Fatalf("before #166 public V2 ranking route calls = portal-api:%d QuizCraft:%d", portalAPICalls.Load(), quizCraftCalls.Load())

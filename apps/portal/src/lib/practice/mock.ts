@@ -393,49 +393,6 @@ export function questionStatus(listId: string, seq: number): 0 | 1 | 2 {
   return 0;
 }
 
-// ---------------------------------------------------------------- 排行榜
-
-export interface LeaderboardRow {
-  name: string;
-  questions: number;
-  accuracy: number;
-  streak: number;
-  isYou?: boolean;
-}
-
-export const LEADERBOARD: Record<"week" | "month" | "all", LeaderboardRow[]> = {
-  week: [
-    { name: "卷王本王", questions: 342, accuracy: 88, streak: 21 },
-    { name: "图书馆常驻人口", questions: 317, accuracy: 85, streak: 14 },
-    { name: "早八不迟到", questions: 295, accuracy: 82, streak: 9 },
-    { name: "代码炼丹师", questions: 268, accuracy: 79, streak: 16 },
-    { name: "你", questions: 231, accuracy: 81, streak: 12, isYou: true },
-    { name: "咖啡续命中", questions: 210, accuracy: 74, streak: 6 },
-    { name: "考研上岸ing", questions: 187, accuracy: 77, streak: 11 },
-    { name: "摸鱼第一名", questions: 152, accuracy: 68, streak: 4 },
-  ],
-  month: [
-    { name: "图书馆常驻人口", questions: 1286, accuracy: 86, streak: 30 },
-    { name: "卷王本王", questions: 1194, accuracy: 87, streak: 21 },
-    { name: "考研上岸ing", questions: 1053, accuracy: 80, streak: 26 },
-    { name: "代码炼丹师", questions: 967, accuracy: 78, streak: 16 },
-    { name: "早八不迟到", questions: 912, accuracy: 81, streak: 13 },
-    { name: "你", questions: 845, accuracy: 80, streak: 12, isYou: true },
-    { name: "咖啡续命中", questions: 763, accuracy: 73, streak: 8 },
-    { name: "高数必过", questions: 701, accuracy: 75, streak: 10 },
-  ],
-  all: [
-    { name: "卷王本王", questions: 8642, accuracy: 89, streak: 61 },
-    { name: "图书馆常驻人口", questions: 8217, accuracy: 87, streak: 45 },
-    { name: "考研上岸ing", questions: 7980, accuracy: 84, streak: 58 },
-    { name: "你", questions: 6531, accuracy: 82, streak: 34, isYou: true },
-    { name: "代码炼丹师", questions: 6104, accuracy: 80, streak: 29 },
-    { name: "早八不迟到", questions: 5867, accuracy: 83, streak: 22 },
-    { name: "高数必过", questions: 5233, accuracy: 77, streak: 18 },
-    { name: "咖啡续命中", questions: 4902, accuracy: 74, streak: 15 },
-  ],
-};
-
 // ---------------------------------------------------------------- 用户数据面板
 
 export const USER_STATS = {
