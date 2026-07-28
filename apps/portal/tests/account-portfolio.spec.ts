@@ -95,7 +95,7 @@ for (const viewport of [
   test(`${viewport.name} wallet renders the real paged immutable ledger without point consumption features`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockSession(page);
-    const nextCursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNy0yOFQwMDowMDowMFoiLCJpZCI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYIn0";
+    const nextCursor = "plc1.b9Nl4wX2vJm9_0DK-cW1H3s9pQm8aXoZr2LtE5yYv7g";
     let initialRequests = 0;
     let pageRequests = 0;
     await page.route("**/api/v1/account/points**", async (route) => {

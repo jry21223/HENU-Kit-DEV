@@ -1,10 +1,14 @@
 package tests
 
 import (
+	"bytes"
+	"encoding/base64"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type pointLedgerEntryResponse struct {
@@ -325,6 +329,81 @@ func TestPointLedgerPaginationIsSourceOfTruthAndFactsCannotBeMutated(t *testing.
 	}
 	if _, err := pool.Exec(t.Context(), `DELETE FROM account_portfolio_point_adjustment_audits WHERE target_user_id=$1`, ownerID); err == nil {
 		t.Fatal("immutable point adjustment audit accepted a DELETE")
+	}
+}
+
+func TestPointLedgerCursorIsOpaqueBoundToItsOwnerAndExpires(t *testing.T) {
+	clock := time.Date(2026, time.July, 28, 12, 0, 0, 0, time.UTC)
+	server, pool := newAccountPortfolioServerWithConsoleAt(t, func() time.Time { return clock })
+	defer server.Close()
+	defer pool.Close()
+
+	const ownerID = "e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1"
+	const otherOwnerID = "f2f2f2f2-f2f2-42f2-82f2-f2f2f2f2f2f2"
+	const operatorID = "a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3"
+	for index := 0; index < 3; index++ {
+		response := sendConsoleJSONAt(t, server.URL, http.MethodPost, operatorID, "/api/v1/console/points/adjustments", "nonce-opaque-cursor-"+strconv.Itoa(index), "idem_opaque_cursor_"+strconv.Itoa(index), `{"user_id":"e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1","amount":1,"reason":"Opaque cursor fixture."}`, clock)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("cursor fixture adjustment %d status = %d: %s", index, response.StatusCode, responseText(t, response))
+		}
+		_ = responseText(t, response)
+	}
+
+	first := sendOwnerJSONAt(t, server.URL, http.MethodGet, ownerID, "/api/v1/account/points?limit=2", "nonce-opaque-cursor-first", "", "", clock)
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first opaque-cursor page status = %d: %s", first.StatusCode, responseText(t, first))
+	}
+	var firstPage pointsResponse
+	decodeResponse(t, first, &firstPage)
+	if len(firstPage.Data.Entries) != 2 || firstPage.Data.NextCursor == nil || *firstPage.Data.NextCursor == "" {
+		t.Fatalf("first opaque-cursor page = %+v, want two facts and a continuation", firstPage.Data)
+	}
+	cursor := *firstPage.Data.NextCursor
+	if !strings.HasPrefix(cursor, "plc1.") {
+		t.Fatalf("point cursor = %q, want versioned opaque plc1 token", cursor)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(cursor, "plc1."))
+	if err != nil {
+		t.Fatalf("opaque point cursor was not base64url ciphertext: %v", err)
+	}
+	if bytes.Contains(raw, []byte(firstPage.Data.Entries[1].ID)) || bytes.Contains(raw, []byte(firstPage.Data.Entries[1].CreatedAt)) || bytes.Contains(raw, []byte(ownerID)) {
+		t.Fatalf("opaque point cursor leaks owner or sort boundary: %q", raw)
+	}
+
+	second := sendOwnerJSONAt(t, server.URL, http.MethodGet, ownerID, "/api/v1/account/points?limit=2&cursor="+cursor, "nonce-opaque-cursor-second", "", "", clock)
+	if second.StatusCode != http.StatusOK {
+		t.Fatalf("legitimate opaque cursor status = %d, want 200: %s", second.StatusCode, responseText(t, second))
+	}
+	var secondPage pointsResponse
+	decodeResponse(t, second, &secondPage)
+	if len(secondPage.Data.Entries) != 1 || secondPage.Data.NextCursor != nil {
+		t.Fatalf("legitimate opaque cursor page = %+v, want final one-fact page", secondPage.Data)
+	}
+
+	tamperedCharacter := "A"
+	if cursor[len("plc1.")] == 'A' {
+		tamperedCharacter = "B"
+	}
+	tampered := cursor[:len("plc1.")] + tamperedCharacter + cursor[len("plc1.")+1:]
+	for _, test := range []struct {
+		name, actorID, candidate string
+	}{
+		{name: "cross-user", actorID: otherOwnerID, candidate: cursor},
+		{name: "tampered", actorID: ownerID, candidate: tampered},
+		{name: "legacy", actorID: ownerID, candidate: base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-28T12:00:00Z","id":"11111111-1111-4111-8111-111111111111"}`))},
+	} {
+		response := sendOwnerJSONAt(t, server.URL, http.MethodGet, test.actorID, "/api/v1/account/points?limit=2&cursor="+test.candidate, "nonce-opaque-cursor-"+test.name, "", "", clock)
+		body := responseText(t, response)
+		if response.StatusCode != http.StatusBadRequest || !strings.Contains(body, `"code":"INVALID_REQUEST"`) {
+			t.Fatalf("%s point cursor status/body = %d/%s, want uniform INVALID_REQUEST 400", test.name, response.StatusCode, body)
+		}
+	}
+
+	clock = clock.Add(15 * time.Minute)
+	expired := sendOwnerJSONAt(t, server.URL, http.MethodGet, ownerID, "/api/v1/account/points?limit=2&cursor="+cursor, "nonce-opaque-cursor-expired", "", "", clock)
+	body := responseText(t, expired)
+	if expired.StatusCode != http.StatusBadRequest || !strings.Contains(body, `"code":"INVALID_REQUEST"`) {
+		t.Fatalf("expired point cursor status/body = %d/%s, want uniform INVALID_REQUEST 400", expired.StatusCode, body)
 	}
 }
 

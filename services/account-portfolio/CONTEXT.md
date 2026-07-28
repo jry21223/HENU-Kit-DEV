@@ -144,7 +144,9 @@ Point Ledger entry. It is not a Portal wallet response.
 _Avoid_: Editable audit note, public operator history
 
 **Point Ledger Cursor**:
-An opaque continuation token for the user-owned, descending immutable ledger
-page. Portal forwards it as an uninspected bounded query value; clients do not
-derive it from an identifier or timestamp.
+An owner-issued `plc1.` AES-256-GCM continuation token for the user-owned,
+descending immutable ledger page. It encrypts and authenticates the owner and
+sorting boundary, expires after ten minutes, and uses Account Portfolio's
+independent cursor key. Portal forwards it only as an uninspected bounded
+query value; clients do not derive it from an identifier or timestamp.
 _Avoid_: Offset pagination, exposed audit identifier

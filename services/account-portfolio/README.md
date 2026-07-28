@@ -35,8 +35,11 @@ verified callback can recover a crashed dispatcher.
 Set `ACCOUNT_PORTFOLIO_DATABASE_URL`, `ACCOUNT_PORTFOLIO_SERVICE_CLIENT_ID`,
 `ACCOUNT_PORTFOLIO_SERVICE_KEY_ID`, and `ACCOUNT_PORTFOLIO_SERVICE_SECRET`,
 plus the Console caller's `ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID`,
-`ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID`, and `ACCOUNT_PORTFOLIO_CONSOLE_SECRET`,
-then run:
+`ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID`, and `ACCOUNT_PORTFOLIO_CONSOLE_SECRET`.
+Also set `ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY` to a separately stored Base64
+encoding of exactly 32 random bytes (for example, `openssl rand -base64 32`).
+It is the Owner-only AES-256-GCM key for point-ledger continuation tokens; do
+not reuse a gateway credential, return it, or log it. Then run:
 
 ```bash
 go run ./cmd/server

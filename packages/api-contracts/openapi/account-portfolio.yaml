@@ -66,7 +66,7 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque continuation cursor returned by the previous page.
+          description: Versioned opaque encrypted continuation cursor returned by the previous page; it is owner-bound and expires shortly.
           schema: { type: string, minLength: 1, maxLength: 512 }
         - name: limit
           in: query

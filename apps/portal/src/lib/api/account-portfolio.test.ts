@@ -86,7 +86,7 @@ describe("fetchAccountSummary", () => {
   });
 
   it("reads a real bounded point-ledger page and preserves the opaque continuation cursor", async () => {
-    const cursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNy0yOFQwMDowMDowMFoiLCJpZCI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYIn0";
+    const cursor = "plc1.b9Nl4wX2vJm9_0DK-cW1H3s9pQm8aXoZr2LtE5yYv7g";
     const fetch = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({

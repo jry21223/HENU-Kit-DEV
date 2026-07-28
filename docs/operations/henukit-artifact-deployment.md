@@ -13,7 +13,7 @@ HENU Kit production is deployed from the Docker images and runtime tarball built
    docker load < henukit-<image>-<sha>.docker.tar.gz
    ```
 
-3. Extract the runtime tarball into a new release directory. Keep the existing `.env.henukit` outside that directory and make read-only, checksum-verified backups of both the `platform` and `account_portfolio` databases before applying a migration or enabling Account Portfolio traffic. The first Account Portfolio release may safely create an otherwise empty `account_portfolio` database before taking that baseline backup; rollback never drops that database or its volume.
+3. Extract the runtime tarball into a new release directory. Keep the existing `.env.henukit` outside that directory and make read-only, checksum-verified backups of both the `platform` and `account_portfolio` databases before applying a migration or enabling Account Portfolio traffic. The first Account Portfolio release may safely create an otherwise empty `account_portfolio` database before taking that baseline backup; rollback never drops that database or its volume. Before activation, place a unique `ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY=$(openssl rand -base64 32)` in that root-owned environment file. It is decoded to exactly 32 bytes only inside Account Portfolio, must not equal any Portal or Console credential, and must never be copied to logs, browser responses, or the release artifact.
 4. If the release contains a not-yet-applied Platform Core migration, pass its exact numbered filename to the release helper. The helper validates the file is inside the artifact, applies it with `ON_ERROR_STOP`, then starts the fixed-SHA Compose file with `--remove-orphans`:
 
    ```bash

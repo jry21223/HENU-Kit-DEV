@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -48,7 +47,11 @@ type Config struct {
 	// PaymentProvider is nil in every production configuration until the
 	// separately authorized provider Spike supplies a real implementation.
 	PaymentProvider PaymentProvider
-	Now             func() time.Time
+	// PointCursorKey is the independently configured AES-256-GCM key that
+	// encrypts private Point Ledger continuation boundaries. It never crosses
+	// the Owner HTTP boundary.
+	PointCursorKey []byte
+	Now            func() time.Time
 }
 
 type service struct {
@@ -57,6 +60,7 @@ type service struct {
 	consoleClientID string
 	clientKeys      map[string]map[string]string
 	paymentProvider PaymentProvider
+	pointCursors    *pointCursorCodec
 	now             func() time.Time
 }
 
@@ -150,6 +154,13 @@ func New(config Config) (http.Handler, error) {
 	if config.Database == nil || strings.TrimSpace(config.ClientID) == "" || !validClientKeys(config.Keys) {
 		return nil, errors.New("account portfolio database and service credentials are required")
 	}
+	pointCursors, err := newPointCursorCodec(config.PointCursorKey)
+	if err != nil {
+		return nil, errors.New("account portfolio point cursor encryption key is invalid")
+	}
+	if pointCursorKeyReusesServiceSecret(config.PointCursorKey, config.Keys, config.ConsoleKeys) {
+		return nil, errors.New("account portfolio point cursor encryption key must be independent from service credentials")
+	}
 	consoleConfigured := strings.TrimSpace(config.ConsoleClientID) != "" || len(config.ConsoleKeys) != 0
 	if consoleConfigured && (strings.TrimSpace(config.ConsoleClientID) == "" || config.ConsoleClientID == config.ClientID || !validClientKeys(config.ConsoleKeys) || sharedServiceSecret(config.Keys, config.ConsoleKeys)) {
 		return nil, errors.New("account portfolio Console service credentials are invalid")
@@ -165,7 +176,7 @@ func New(config Config) (http.Handler, error) {
 	if consoleConfigured {
 		clientKeys[config.ConsoleClientID] = config.ConsoleKeys
 	}
-	h := &service{database: config.Database, clientID: config.ClientID, consoleClientID: config.ConsoleClientID, clientKeys: clientKeys, paymentProvider: config.PaymentProvider, now: now}
+	h := &service{database: config.Database, clientID: config.ClientID, consoleClientID: config.ConsoleClientID, clientKeys: clientKeys, paymentProvider: config.PaymentProvider, pointCursors: pointCursors, now: now}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, h.health)
@@ -218,6 +229,17 @@ func sharedServiceSecret(first, second map[string]string) bool {
 	return false
 }
 
+func pointCursorKeyReusesServiceSecret(pointCursorKey []byte, keySets ...map[string]string) bool {
+	for _, keys := range keySets {
+		for _, secret := range keys {
+			if subtle.ConstantTimeCompare(pointCursorKey, []byte(secret)) == 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (h *service) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
@@ -260,7 +282,7 @@ func (h *service) points(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, cursor, failure := pointPage(r)
+	limit, cursor, failure := h.pointPage(r, userID)
 	if failure != nil {
 		writeCommandFailure(w, r, failure)
 		return
@@ -295,7 +317,11 @@ func (h *service) points(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(data.Entries) == limit {
-			encoded := encodePointCursor(data.Entries[len(data.Entries)-1])
+			encoded, err := h.pointCursors.encode(userID, data.Entries[len(data.Entries)-1], h.now().UTC())
+			if err != nil {
+				writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio points are unavailable")
+				return
+			}
 			data.NextCursor = &encoded
 			break
 		}
@@ -1367,7 +1393,7 @@ func idempotencyKey(r *http.Request) (string, *commandFailure) {
 	return key, nil
 }
 
-func pointPage(r *http.Request) (int, *pointCursor, *commandFailure) {
+func (h *service) pointPage(r *http.Request, userID string) (int, *pointCursor, *commandFailure) {
 	query := r.URL.Query()
 	for key := range query {
 		if key != "limit" && key != "cursor" {
@@ -1400,28 +1426,11 @@ func pointPage(r *http.Request) (int, *pointCursor, *commandFailure) {
 	if len(rawCursor) > 512 {
 		return 0, nil, invalidCommand("point page cursor is invalid")
 	}
-	encoded, err := base64.RawURLEncoding.DecodeString(rawCursor)
+	cursor, err := h.pointCursors.decode(rawCursor, userID, h.now().UTC())
 	if err != nil {
 		return 0, nil, invalidCommand("point page cursor is invalid")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
-	var cursor pointCursor
-	if err := decoder.Decode(&cursor); err != nil || decoder.Decode(&struct{}{}) != io.EOF || uuid.Validate(cursor.ID) != nil || cursor.CreatedAt.IsZero() {
-		return 0, nil, invalidCommand("point page cursor is invalid")
-	}
-	cursor.CreatedAt = cursor.CreatedAt.UTC()
 	return limit, &cursor, nil
-}
-
-func encodePointCursor(entry pointLedgerEntryView) string {
-	encoded, err := json.Marshal(pointCursor{CreatedAt: entry.CreatedAt.UTC(), ID: entry.ID})
-	if err != nil {
-		// pointLedgerEntryView is built from database values validated by UUID and
-		// timestamptz columns, so JSON encoding cannot fail in normal operation.
-		return ""
-	}
-	return base64.RawURLEncoding.EncodeToString(encoded)
 }
 
 func ticketReference(id string) string {

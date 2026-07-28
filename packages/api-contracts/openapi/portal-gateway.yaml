@@ -138,7 +138,7 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque continuation cursor returned by the preceding point-ledger page.
+          description: Versioned opaque encrypted continuation cursor returned by the preceding point-ledger page; Portal forwards it without inspection.
           schema:
             type: string
             minLength: 1

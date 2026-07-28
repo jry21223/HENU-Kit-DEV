@@ -57,6 +57,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID",
       "ACCOUNT_PORTFOLIO_CONSOLE_SECRET",
       "ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID",
+      "ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY",
       "FOOD_CLIENT_SECRET",
       "FOOD_SUMMARY_CLIENT_SECRET",
       "LIBRARY_CLIENT_SECRET",
@@ -177,6 +178,26 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_CONSOLE_SECRET,
     "test-required-value",
     "production Account Portfolio must require the distinct Console caller secret",
+  );
+  assert.equal(
+    config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY,
+    "test-required-value",
+    "production Account Portfolio must require its independent encrypted point-cursor key",
+  );
+  assert.equal(
+    Object.hasOwn(config.services["portal-gateway"].environment, "ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY"),
+    false,
+    "the point-cursor key must stay in the Account Portfolio owner environment",
+  );
+  assert.equal(
+    Object.hasOwn(config.services["console-gateway"].environment, "ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY"),
+    false,
+    "Console must not receive the point-cursor key",
+  );
+  assert.throws(
+    () => renderRuntimeConfig({ ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY: "" }),
+    /ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY is required/,
+    "production Compose must fail closed without the independent point-cursor key",
   );
   assert.equal(
     config.services["console-gateway"].environment.ACCOUNT_PORTFOLIO_CONSOLE_SECRET,

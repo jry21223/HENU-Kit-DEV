@@ -144,7 +144,7 @@ func TestEveryAccountReadRouteUsesTheAuthenticatedOwnerBoundary(t *testing.T) {
 }
 
 func TestAccountPointsForwardsBoundedPageWithItsSignedQuery(t *testing.T) {
-	const cursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNy0yOFQwMDowMDowMFoiLCJpZCI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYIn0"
+	const cursor = "plc1.b9Nl4wX2vJm9_0DK-cW1H3s9pQm8aXoZr2LtE5yYv7g"
 	owner := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/account/points" || request.URL.RawQuery != "cursor="+cursor+"&limit=2" {
 			t.Fatalf("owner point page = %s?%s", request.URL.Path, request.URL.RawQuery)

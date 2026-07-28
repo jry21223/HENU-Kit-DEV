@@ -142,7 +142,7 @@ func TestReadMethodsUseTheDeclaredOwnerRoutes(t *testing.T) {
 
 func TestPointsPageSignsItsQueryButValidatesAgainstTheStaticOwnerRoute(t *testing.T) {
 	const actorID = "11111111-1111-4111-8111-111111111111"
-	const cursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNy0yOFQwMDowMDowMFoiLCJpZCI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYIn0"
+	const cursor = "plc1.b9Nl4wX2vJm9_0DK-cW1H3s9pQm8aXoZr2LtE5yYv7g"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet || request.URL.Path != PointsPath || request.URL.RawQuery != "cursor="+cursor+"&limit=7" {
 			t.Fatalf("owner point page = %s %s?%s", request.Method, request.URL.Path, request.URL.RawQuery)

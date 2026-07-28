@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -23,6 +26,10 @@ func main() {
 	consoleClientID := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID")
 	consoleKeyID := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID")
 	consoleSecret := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_SECRET")
+	pointCursorKey, err := pointCursorKeyFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
 	if databaseURL == "" || clientID == "" || keyID == "" || secret == "" {
 		log.Fatal("Account Portfolio configuration is incomplete")
 	}
@@ -55,6 +62,7 @@ func main() {
 		Keys:            map[string]string{keyID: secret},
 		ConsoleClientID: consoleClientID,
 		ConsoleKeys:     consoleKeys,
+		PointCursorKey:  pointCursorKey,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -84,6 +92,21 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func pointCursorKeyFromEnv() ([]byte, error) {
+	encoded := os.Getenv("ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY")
+	if strings.TrimSpace(encoded) == "" || strings.TrimSpace(encoded) != encoded {
+		return nil, errors.New("ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY must be base64 for exactly 32 bytes that are not all zero")
+	}
+	key, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(key) != 32 || bytes.Equal(key, make([]byte, 32)) {
+		return nil, errors.New("ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY must be base64 for exactly 32 bytes that are not all zero")
+	}
+	if os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(string(key)) {
+		return nil, errors.New("ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY is a deployment placeholder")
+	}
+	return key, nil
 }
 
 func isPlaceholderSecret(secret string) bool {
