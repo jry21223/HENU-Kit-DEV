@@ -21,6 +21,7 @@ type serviceAuthRequirement struct {
 	unavailableCode    string
 	label              string
 	requiredPermission string
+	actorBound         bool
 }
 
 func (service *practiceHTTP) authenticateSignedGET(requirement serviceAuthRequirement, next http.Handler) http.Handler {
@@ -51,7 +52,16 @@ func (service *practiceHTTP) authenticateSignedGET(requirement serviceAuthRequir
 			return
 		}
 		digest := sha256.Sum256(nil)
-		canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}, "\n")
+		canonicalParts := []string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
+		if requirement.actorBound {
+			actor := strings.TrimSpace(request.Header.Get("X-Actor-User-Id"))
+			if actor == "" {
+				writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" actor is missing from the signed request")
+				return
+			}
+			canonicalParts = append(canonicalParts, actor)
+		}
+		canonical := strings.Join(canonicalParts, "\n")
 		mac := hmac.New(sha256.New, []byte(secret))
 		_, _ = mac.Write([]byte(canonical))
 		if !hmac.Equal([]byte(request.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
@@ -92,6 +102,17 @@ func (service *practiceHTTP) authenticatePortalCatalog(next http.Handler) http.H
 		unavailableCode:    "catalog_auth_unavailable",
 		label:              "catalog",
 		requiredPermission: "portal.practice.read",
+	}, next)
+}
+
+func (service *practiceHTTP) authenticatePortalPersonalStats(next http.Handler) http.Handler {
+	return service.authenticateSignedGET(serviceAuthRequirement{
+		clientID:           service.catalogClientID,
+		keys:               service.catalogKeys,
+		unavailableCode:    "catalog_auth_unavailable",
+		label:              "personal statistics",
+		requiredPermission: "portal.practice.read",
+		actorBound:         true,
 	}, next)
 }
 

@@ -169,6 +169,7 @@ export class PracticeService {
     }
     /**
      * Read one authenticated user's fact-derived Practice statistics for Portal
+     * The trusted Portal actor header is bound into the signed service request and cannot be substituted in transit.
      * @returns PersonalPracticeStatsEnvelope Persistent stats and mastery rebuilt from immutable Practice attempts
      * @throws ApiError
      */

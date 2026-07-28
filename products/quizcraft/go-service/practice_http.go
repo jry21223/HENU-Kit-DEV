@@ -262,7 +262,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	router.With(service.authenticateConsoleSummary).Get("/api/v1/console-summary", service.consoleSummary)
 	if service.catalogClientID != "" {
 		router.With(service.authenticatePortalCatalog).Get("/api/v1/banks", service.listBanks)
-		router.With(service.authenticatePortalCatalog).Get("/api/v1/stats", service.personalStats)
+		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/stats", service.personalStats)
 	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)

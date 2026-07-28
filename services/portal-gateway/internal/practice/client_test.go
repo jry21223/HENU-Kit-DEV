@@ -277,15 +277,15 @@ func testCatalogClient(t *testing.T, server *httptest.Server) *Client {
 
 func assertCatalogRequest(t *testing.T, request *http.Request, wantActor, wantRequestID string) {
 	t.Helper()
-	assertPortalReadRequest(t, request, ListPracticeBanksPath, wantActor, wantRequestID)
+	assertPortalReadRequest(t, request, ListPracticeBanksPath, wantActor, wantRequestID, false)
 }
 
 func assertStatsRequest(t *testing.T, request *http.Request, wantActor, wantRequestID string) {
 	t.Helper()
-	assertPortalReadRequest(t, request, GetPersonalPracticeStatsPath, wantActor, wantRequestID)
+	assertPortalReadRequest(t, request, GetPersonalPracticeStatsPath, wantActor, wantRequestID, true)
 }
 
-func assertPortalReadRequest(t *testing.T, request *http.Request, wantPath, wantActor, wantRequestID string) {
+func assertPortalReadRequest(t *testing.T, request *http.Request, wantPath, wantActor, wantRequestID string, actorBound bool) {
 	t.Helper()
 	if request.Method != http.MethodGet || request.URL.Path != wantPath {
 		t.Fatalf("Core request = %s %s, want GET %s", request.Method, request.URL.Path, wantPath)
@@ -306,7 +306,11 @@ func assertPortalReadRequest(t *testing.T, request *http.Request, wantPath, want
 	timestamp := request.Header.Get("X-Timestamp")
 	nonce := request.Header.Get("X-Nonce")
 	digest := sha256.Sum256(nil)
-	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
+	canonicalParts := []string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:])}
+	if actorBound {
+		canonicalParts = append(canonicalParts, wantActor)
+	}
+	canonical := strings.Join(canonicalParts, "\n")
 	mac := hmac.New(sha256.New, []byte(testCatalogSecret))
 	_, _ = mac.Write([]byte(canonical))
 	wantSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))

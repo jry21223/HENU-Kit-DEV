@@ -146,12 +146,11 @@ func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID strin
 	if err != nil {
 		return PersonalPracticeStatsEnvelope{}, ErrStatsUnavailable
 	}
-	req.Header.Set("X-Actor-User-Id", actorUserID)
 	req.Header.Set("X-Request-Id", requestID)
 	req.Header.Set("X-Permission-Code", CatalogReadPermission)
 	req.Header.Set("X-Scope-Kind", "product")
 	req.Header.Set("X-Product-Code", "quizcraft")
-	if err := c.signer.Sign(req); err != nil {
+	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
 		return PersonalPracticeStatsEnvelope{}, fmt.Errorf("stats sign: %w", ErrStatsUnavailable)
 	}
 

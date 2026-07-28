@@ -131,6 +131,13 @@ func TestPracticeHTTPPersonalStatsAggregatesImmutableAttempts(t *testing.T) {
 		t.Fatalf("guest personal stats = %d %s", guestStatus, guestBody)
 	}
 
+	tampered := newPersonalStatsRequest(t, server.URL, userID)
+	tampered.Header.Set("X-Actor-User-Id", uuid.NewString())
+	tamperedStatus, tamperedBody := sendCatalogRequest(t, tampered)
+	if tamperedStatus != http.StatusUnauthorized || bytes.Contains(tamperedBody, []byte(`"data"`)) {
+		t.Fatalf("tampered personal stats actor = %d %s", tamperedStatus, tamperedBody)
+	}
+
 	beforeRepair, err := quizcraft.ReconcileLearningState(context.Background(), pool)
 	if err != nil {
 		t.Fatal(err)
@@ -174,6 +181,11 @@ func correctAnswerFor(question practiceQuestionResponse) any {
 
 func requestPersonalStats(t *testing.T, baseURL, actor string) (int, []byte) {
 	t.Helper()
+	return sendCatalogRequest(t, newPersonalStatsRequest(t, baseURL, actor))
+}
+
+func newPersonalStatsRequest(t *testing.T, baseURL, actor string) *http.Request {
+	t.Helper()
 	request, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/stats", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +197,7 @@ func requestPersonalStats(t *testing.T, baseURL, actor string) (int, []byte) {
 	nonceText := base64.RawURLEncoding.EncodeToString(nonce)
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	digest := sha256.Sum256(nil)
-	canonical := strings.Join([]string{http.MethodGet, request.URL.RequestURI(), timestamp, nonceText, hex.EncodeToString(digest[:])}, "\n")
+	canonical := strings.Join([]string{http.MethodGet, request.URL.RequestURI(), timestamp, nonceText, hex.EncodeToString(digest[:]), actor}, "\n")
 	mac := hmac.New(sha256.New, []byte(portalCatalogSecret))
 	_, _ = mac.Write([]byte(canonical))
 	request.SetBasicAuth(portalCatalogClientID, portalCatalogSecret)
@@ -199,5 +211,5 @@ func requestPersonalStats(t *testing.T, baseURL, actor string) (int, []byte) {
 	request.Header.Set("X-Product-Code", "quizcraft")
 	request.Header.Set("X-Actor-User-Id", actor)
 	request.Header.Set("X-Request-Id", "req_personal_stats_test")
-	return sendCatalogRequest(t, request)
+	return request
 }

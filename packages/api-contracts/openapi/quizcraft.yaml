@@ -137,6 +137,7 @@ paths:
   /api/v1/stats:
     get:
       summary: Read one authenticated user's fact-derived Practice statistics for Portal
+      description: The trusted Portal actor header is bound into the signed service request and cannot be substituted in transit.
       tags: [Practice]
       operationId: getPersonalPracticeStats
       security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
