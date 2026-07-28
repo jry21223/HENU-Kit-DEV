@@ -46,7 +46,7 @@ func TestPracticeHTTPPersonalStatsAggregatesImmutableAttempts(t *testing.T) {
 	}
 	darkServer := httptest.NewServer(darkHandler)
 	defer darkServer.Close()
-	if status, _ := requestJSON(t, http.MethodGet, darkServer.URL+"/api/v1/portal/practice/stats", nil, nil); status != http.StatusNotFound {
+	if status, _ := requestJSON(t, http.MethodGet, darkServer.URL+"/api/v1/stats", nil, nil); status != http.StatusNotFound {
 		t.Fatalf("unconfigured V2 personal-stats route = %d, want 404", status)
 	}
 
@@ -126,11 +126,18 @@ func TestPracticeHTTPPersonalStatsAggregatesImmutableAttempts(t *testing.T) {
 		t.Fatalf("new user received non-zero or non-empty stats: %+v", newUser.Data)
 	}
 
-	guestStatus, guestBody := requestPersonalStats(t, server.URL, "anonymous")
-	if guestStatus != http.StatusUnauthorized || bytes.Contains(guestBody, []byte(`"data"`)) {
-		t.Fatalf("guest personal stats = %d %s", guestStatus, guestBody)
+	for _, actor := range []string{"anonymous", "not-a-uuid", uuid.Nil.String()} {
+		status, body := requestPersonalStats(t, server.URL, actor)
+		if status != http.StatusUnauthorized || bytes.Contains(body, []byte(`"data"`)) {
+			t.Fatalf("invalid personal-stats actor %q = %d %s", actor, status, body)
+		}
 	}
-
+	missingActor := newPersonalStatsRequest(t, server.URL, userID)
+	missingActor.Header.Del("X-Actor-User-Id")
+	missingStatus, missingBody := sendCatalogRequest(t, missingActor)
+	if missingStatus != http.StatusUnauthorized || bytes.Contains(missingBody, []byte(`"data"`)) {
+		t.Fatalf("missing personal-stats actor = %d %s", missingStatus, missingBody)
+	}
 	tamperedActor := newPersonalStatsRequest(t, server.URL, userID)
 	tamperedActor.Header.Set("X-Actor-User-Id", uuid.NewString())
 	tamperedStatus, tamperedBody := sendCatalogRequest(t, tamperedActor)
@@ -186,7 +193,7 @@ func requestPersonalStats(t *testing.T, baseURL, actor string) (int, []byte) {
 
 func newPersonalStatsRequest(t *testing.T, baseURL, actor string) *http.Request {
 	t.Helper()
-	request, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/portal/practice/stats", nil)
+	request, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/stats", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

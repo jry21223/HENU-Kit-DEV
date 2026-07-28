@@ -440,40 +440,15 @@ func testCatalogClient(t *testing.T, server *httptest.Server) *Client {
 }
 
 func assertCatalogRequest(t *testing.T, request *http.Request, wantActor, wantRequestID string) {
-	assertPortalReadRequest(t, request, wantActor, wantRequestID, ListPracticeBanksPath)
+	assertPortalReadRequest(t, request, wantActor, wantRequestID, ListPracticeBanksPath, false)
 }
 
 func assertStatsRequest(t *testing.T, request *http.Request, wantActor, wantRequestID string) {
 	t.Helper()
-	if request.Method != http.MethodGet || request.URL.Path != GetPersonalPracticeStatsPath {
-		t.Fatalf("Core request = %s %s, want GET %s", request.Method, request.URL.Path, GetPersonalPracticeStatsPath)
-	}
-	if got := request.Header.Get("X-Actor-User-Id"); got != wantActor {
-		t.Fatalf("X-Actor-User-Id = %q, want %q", got, wantActor)
-	}
-	if got := request.Header.Get("X-Request-Id"); got != wantRequestID {
-		t.Fatalf("X-Request-Id = %q, want %q", got, wantRequestID)
-	}
-	if request.Header.Get("X-Permission-Code") != CatalogReadPermission || request.Header.Get("X-Scope-Kind") != "product" || request.Header.Get("X-Product-Code") != "quizcraft" {
-		t.Fatalf("personal stats permission headers = permission=%q scope=%q product=%q", request.Header.Get("X-Permission-Code"), request.Header.Get("X-Scope-Kind"), request.Header.Get("X-Product-Code"))
-	}
-	user, password, ok := request.BasicAuth()
-	if !ok || user != testCatalogClientID || password != testCatalogSecret || request.Header.Get("X-Service-Id") != testCatalogClientID || request.Header.Get("X-Key-Id") != testCatalogKeyID {
-		t.Fatal("personal stats request omitted valid service authentication")
-	}
-	timestamp := request.Header.Get("X-Timestamp")
-	nonce := request.Header.Get("X-Nonce")
-	digest := sha256.Sum256(nil)
-	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:]), wantActor}, "\n")
-	mac := hmac.New(sha256.New, []byte(testCatalogSecret))
-	_, _ = mac.Write([]byte(canonical))
-	wantSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	if timestamp == "" || nonce == "" || request.Header.Get("X-Signature") != wantSignature {
-		t.Fatal("personal stats request actor-bound signature is invalid")
-	}
+	assertPortalReadRequest(t, request, wantActor, wantRequestID, GetPersonalPracticeStatsPath, true)
 }
 
-func assertPortalReadRequest(t *testing.T, request *http.Request, wantActor, wantRequestID, wantPath string) {
+func assertPortalReadRequest(t *testing.T, request *http.Request, wantActor, wantRequestID, wantPath string, actorBound ...bool) {
 	t.Helper()
 	if request.Method != http.MethodGet || request.URL.Path != wantPath {
 		t.Fatalf("Core request = %s %s, want GET %s", request.Method, request.URL.Path, wantPath)
@@ -494,7 +469,11 @@ func assertPortalReadRequest(t *testing.T, request *http.Request, wantActor, wan
 	timestamp := request.Header.Get("X-Timestamp")
 	nonce := request.Header.Get("X-Nonce")
 	digest := sha256.Sum256(nil)
-	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
+	canonicalParts := []string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:])}
+	if len(actorBound) == 1 && actorBound[0] {
+		canonicalParts = append(canonicalParts, wantActor)
+	}
+	canonical := strings.Join(canonicalParts, "\n")
 	mac := hmac.New(sha256.New, []byte(testCatalogSecret))
 	_, _ = mac.Write([]byte(canonical))
 	wantSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))

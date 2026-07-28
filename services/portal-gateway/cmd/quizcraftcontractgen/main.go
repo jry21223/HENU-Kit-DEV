@@ -103,14 +103,6 @@ var catalogSecurityRequirements = []catalogSecurityRequirement{
 	{name: "portalCatalogProduct", kind: "apiKey", in: "header", header: "X-Product-Code"},
 }
 
-var portalPersonalStatsSecurityRequirements = []catalogSecurityRequirement{
-	{name: "portalCatalogBasic", kind: "http", scheme: "basic"},
-	{name: "portalPersonalStatsSignature", kind: "apiKey", in: "header", header: "X-Signature"},
-	{name: "portalCatalogPermission", kind: "apiKey", in: "header", header: "X-Permission-Code"},
-	{name: "portalCatalogScope", kind: "apiKey", in: "header", header: "X-Scope-Kind"},
-	{name: "portalCatalogProduct", kind: "apiKey", in: "header", header: "X-Product-Code"},
-}
-
 var portalPracticeCommandSecurityRequirements = []catalogSecurityRequirement{
 	{name: "portalPracticeBasic", kind: "http", scheme: "basic"},
 	{name: "portalPracticeSignature", kind: "apiKey", in: "header", header: "X-Signature"},
@@ -133,13 +125,12 @@ func main() {
 	createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation := requireOperation(spec.Paths, "createPortalPracticeSession")
 	submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation := requireOperation(spec.Paths, "submitPortalPracticeAnswer")
 	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope")
-	validatePortalPersonalStatsOperation(statsPath, statsMethod, statsOperation)
+	validatePortalReadOperation("getPersonalPracticeStats", statsMethod, statsOperation, "PersonalPracticeStatsEnvelope")
 	validatePortalReadOperation("getOverallRanking", overallRankingMethod, overallRankingOperation, "RankingEnvelope")
 	validatePortalReadOperation("getBankRanking", bankRankingMethod, bankRankingOperation, "RankingEnvelope")
 	validatePortalPracticeCommandOperation("createPortalPracticeSession", createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation, "201", "PracticeSessionEnvelope")
 	validatePortalPracticeCommandOperation("submitPortalPracticeAnswer", submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation, "200", "AnswerResultEnvelope")
 	validateCatalogSecurity(spec.Components.SecuritySchemes)
-	validatePortalPersonalStatsSecurity(spec.Components.SecuritySchemes)
 	validatePortalPracticeCommandSecurity(spec.Components.SecuritySchemes)
 	validateCatalogSchema(spec.Components.Schemas)
 	validateRankingSchema(spec.Components.Schemas)
@@ -204,29 +195,6 @@ func validatePortalReadOperation(operationID, method string, operation operation
 	}
 }
 
-func validatePortalPersonalStatsOperation(path, method string, operation operation) {
-	if method != "get" || !operation.Internal || path != "/api/v1/portal/practice/stats" {
-		fail(fmt.Errorf("getPersonalPracticeStats must be an internal actor-bound Portal stats GET"))
-	}
-	response, ok := operation.Responses["200"]
-	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/PersonalPracticeStatsEnvelope" {
-		fail(fmt.Errorf("getPersonalPracticeStats 200 response must be PersonalPracticeStatsEnvelope"))
-	}
-	for _, status := range []string{"401", "403", "409", "503"} {
-		if _, ok := operation.Responses[status]; !ok {
-			fail(fmt.Errorf("getPersonalPracticeStats must document %s", status))
-		}
-	}
-	if len(operation.Security) != 1 || len(operation.Security[0]) != len(portalPersonalStatsSecurityRequirements) {
-		fail(fmt.Errorf("getPersonalPracticeStats must require actor-bound Portal stats security"))
-	}
-	for _, requirement := range portalPersonalStatsSecurityRequirements {
-		if scopes, found := operation.Security[0][requirement.name]; !found || len(scopes) != 0 {
-			fail(fmt.Errorf("getPersonalPracticeStats is missing security scheme %s", requirement.name))
-		}
-	}
-}
-
 func validatePortalPracticeCommandOperation(operationID, path, method string, operation operation, successStatus, envelope string) {
 	if method != "post" || !operation.Internal || !strings.HasPrefix(path, "/api/v1/portal/practice/") {
 		fail(fmt.Errorf("%s must be an internal Portal practice POST", operationID))
@@ -262,15 +230,6 @@ func validateCatalogSecurity(schemes map[string]securityScheme) {
 		scheme, found := schemes[requirement.name]
 		if !found || scheme.Type != requirement.kind || scheme.Scheme != requirement.scheme || scheme.In != requirement.in || scheme.Name != requirement.header {
 			fail(fmt.Errorf("%s security scheme does not match the Portal read client", requirement.name))
-		}
-	}
-}
-
-func validatePortalPersonalStatsSecurity(schemes map[string]securityScheme) {
-	for _, requirement := range portalPersonalStatsSecurityRequirements {
-		scheme, found := schemes[requirement.name]
-		if !found || scheme.Type != requirement.kind || scheme.Scheme != requirement.scheme || scheme.In != requirement.in || scheme.Name != requirement.header {
-			fail(fmt.Errorf("%s security scheme does not match the actor-bound Portal stats client", requirement.name))
 		}
 	}
 }

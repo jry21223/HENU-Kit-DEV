@@ -179,13 +179,13 @@ paths:
         '200': { description: Persistent account learning state, content: { application/json: { schema: { $ref: '#/components/schemas/LearningStateEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
-  /api/v1/portal/practice/stats:
+  /api/v1/stats:
     get:
-      x-internal: true
-      summary: Read one signed-in Portal user's actor-bound fact-derived Practice statistics
+      summary: Read one authenticated user's fact-derived Practice statistics for Portal
+      description: The trusted Portal actor header is bound into the signed service request and cannot be substituted in transit.
       tags: [Practice]
       operationId: getPersonalPracticeStats
-      security: [{ portalCatalogBasic: [], portalPersonalStatsSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
       responses:
         '200': { description: Persistent stats and mastery rebuilt from immutable Practice attempts, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalPracticeStatsEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -558,7 +558,6 @@ components:
     summarySignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
     portalCatalogBasic: { type: http, scheme: basic, description: Dedicated Portal Gateway to QuizCraft read service credential for catalog, ranking, and actor-bound personal statistics. }
     portalCatalogSignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
-    portalPersonalStatsSignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, body digest, and the signed-in X-Actor-User-Id." }
     portalCatalogPermission: { type: apiKey, in: header, name: X-Permission-Code, description: Must be portal.practice.read after Portal Gateway authorization. }
     portalCatalogScope: { type: apiKey, in: header, name: X-Scope-Kind, description: Must be product. }
     portalCatalogProduct: { type: apiKey, in: header, name: X-Product-Code, description: Must be quizcraft. }

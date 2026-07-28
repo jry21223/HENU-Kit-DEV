@@ -211,6 +211,9 @@ func validateCatalog(result BankListEnvelope) error {
 // statistics. Empty totals and an empty mastery list are valid success states;
 // no legacy or mock-shaped response is ever accepted as a fallback.
 func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID string) (PersonalPracticeStatsEnvelope, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" {
+		return PersonalPracticeStatsEnvelope{}, ErrStatsUnavailable
+	}
 	actorUserID = strings.TrimSpace(actorUserID)
 	if !validUUID(actorUserID) {
 		return PersonalPracticeStatsEnvelope{}, ErrStatsUnauthorized

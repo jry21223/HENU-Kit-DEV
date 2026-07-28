@@ -26,6 +26,7 @@ type serviceAuthRequirement struct {
 	unavailableCode    string
 	label              string
 	requiredPermission string
+	actorBound         bool
 }
 
 const maxPortalPracticeCommandBodyBytes = 2 << 20
@@ -41,20 +42,6 @@ type portalPracticeCommandIdentity struct {
 
 func portalPracticeCommandIdentityFromContext(ctx context.Context) (portalPracticeCommandIdentity, bool) {
 	identity, ok := ctx.Value(portalPracticeCommandContextKey{}).(portalPracticeCommandIdentity)
-	return identity, ok
-}
-
-type portalPersonalStatsContextKey struct{}
-
-// portalPersonalStatsIdentity exists only after a signed six-part Portal read
-// has bound this user ID to the request. personalStats must never read a bare
-// browser- or intermediary-supplied actor header.
-type portalPersonalStatsIdentity struct {
-	userID uuid.UUID
-}
-
-func portalPersonalStatsIdentityFromContext(ctx context.Context) (portalPersonalStatsIdentity, bool) {
-	identity, ok := ctx.Value(portalPersonalStatsContextKey{}).(portalPersonalStatsIdentity)
 	return identity, ok
 }
 
@@ -86,7 +73,18 @@ func (service *practiceHTTP) authenticateSignedGET(requirement serviceAuthRequir
 			return
 		}
 		digest := sha256.Sum256(nil)
-		canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}, "\n")
+		canonicalParts := []string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
+		if requirement.actorBound {
+			// Only personal stats opts into this branch. The strict parser keeps
+			// malformed and guest actors out before any fact query, while the
+			// original header text remains the sixth canonical HMAC line.
+			if _, err := portalActorUserID(request); err != nil {
+				writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" actor is invalid")
+				return
+			}
+			canonicalParts = append(canonicalParts, request.Header.Get("X-Actor-User-Id"))
+		}
+		canonical := strings.Join(canonicalParts, "\n")
 		mac := hmac.New(sha256.New, []byte(secret))
 		_, _ = mac.Write([]byte(canonical))
 		if !hmac.Equal([]byte(request.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
@@ -130,77 +128,15 @@ func (service *practiceHTTP) authenticatePortalRead(next http.Handler) http.Hand
 	}, next)
 }
 
-// authenticatePortalPersonalStats is deliberately narrower than the generic
-// catalog/ranking read middleware. The sixth HMAC line binds the Portal user
-// UUID, so a signed service request cannot be retargeted to another account by
-// replacing X-Actor-User-Id in transit.
 func (service *practiceHTTP) authenticatePortalPersonalStats(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet || request.ContentLength != 0 {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal personal stats accepts signed GET requests without a body")
-			return
-		}
-		if service.catalogClientID == "" || len(service.catalogKeys) == 0 {
-			writeError(writer, http.StatusServiceUnavailable, "portal_read_auth_unavailable", "QuizCraft Portal personal stats authentication is not configured")
-			return
-		}
-
-		clientID, basicSecret, basic := request.BasicAuth()
-		keyID := request.Header.Get("X-Key-Id")
-		secret, knownKey := service.catalogKeys[keyID]
-		if !basic || clientID != service.catalogClientID || request.Header.Get("X-Service-Id") != clientID || !knownKey || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal personal stats service credentials are invalid")
-			return
-		}
-		timestampText := request.Header.Get("X-Timestamp")
-		timestamp, err := strconv.ParseInt(timestampText, 10, 64)
-		if err != nil || absInt64(service.now().Unix()-timestamp) > int64((5*time.Minute)/time.Second) {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal personal stats service timestamp is invalid")
-			return
-		}
-		nonce := request.Header.Get("X-Nonce")
-		decodedNonce, err := base64.RawURLEncoding.DecodeString(nonce)
-		if err != nil || len(decodedNonce) != 24 {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal personal stats service nonce is invalid")
-			return
-		}
-		if request.Header.Get("X-Permission-Code") != "portal.practice.read" || request.Header.Get("X-Scope-Kind") != "product" || request.Header.Get("X-Product-Code") != "quizcraft" {
-			writeError(writer, http.StatusForbidden, "permission_denied", "QuizCraft Portal personal stats permission or scope is denied")
-			return
-		}
-
-		actorHeader := request.Header.Get("X-Actor-User-Id")
-		if len(request.Header.Values("X-Actor-User-Id")) != 1 || actorHeader == "" || strings.TrimSpace(actorHeader) != actorHeader {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal personal stats actor is invalid")
-			return
-		}
-		actorID, err := uuid.Parse(actorHeader)
-		if err != nil || actorID == uuid.Nil {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal personal stats actor is invalid")
-			return
-		}
-
-		digest := sha256.Sum256(nil)
-		canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestampText, nonce, hex.EncodeToString(digest[:]), actorHeader}, "\n")
-		mac := hmac.New(sha256.New, []byte(secret))
-		_, _ = mac.Write([]byte(canonical))
-		if !hmac.Equal([]byte(request.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal personal stats service signature is invalid")
-			return
-		}
-
-		result, err := service.database.Exec(request.Context(), `INSERT INTO quizcraft_service_nonces(client_id,key_id,nonce) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, clientID, keyID, nonce)
-		if err != nil {
-			writeError(writer, http.StatusServiceUnavailable, "portal_read_auth_unavailable", "QuizCraft Portal personal stats replay protection is temporarily unavailable")
-			return
-		}
-		if result.RowsAffected() != 1 {
-			writeError(writer, http.StatusConflict, "service_replay", "QuizCraft Portal personal stats service nonce was already used")
-			return
-		}
-		_, _ = service.database.Exec(request.Context(), `DELETE FROM quizcraft_service_nonces WHERE received_at < now()-interval '10 minutes'`)
-		next.ServeHTTP(writer, request.WithContext(context.WithValue(request.Context(), portalPersonalStatsContextKey{}, portalPersonalStatsIdentity{userID: actorID})))
-	})
+	return service.authenticateSignedGET(serviceAuthRequirement{
+		clientID:           service.catalogClientID,
+		keys:               service.catalogKeys,
+		unavailableCode:    "catalog_auth_unavailable",
+		label:              "personal statistics",
+		requiredPermission: "portal.practice.read",
+		actorBound:         true,
+	}, next)
 }
 
 // authenticatePortalCommand authorizes the two internal Portal -> QuizCraft

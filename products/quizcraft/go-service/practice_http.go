@@ -292,10 +292,10 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		portalRead.Get("/api/v1/banks", service.listBanks)
 		portalRead.Get("/api/v1/rankings/overall", service.overallRanking)
 		portalRead.Get("/api/v1/banks/{bank_id}/rankings", service.bankRanking)
-		// Personal statistics are account facts, unlike the public catalog and
-		// rankings. Keep them on a narrow internal path whose actor is included
-		// in the service HMAC rather than trusting a free-standing header.
-		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/stats", service.personalStats)
+		// This is the one read endpoint whose signed identity is an account
+		// subject. authenticatePortalPersonalStats validates the six-part HMAC;
+		// catalog and rankings remain on their established five-part contract.
+		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/stats", service.personalStats)
 	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
@@ -1172,12 +1172,11 @@ func (service *practiceHTTP) learningState(writer http.ResponseWriter, request *
 }
 
 func (service *practiceHTTP) personalStats(writer http.ResponseWriter, request *http.Request) {
-	identity, authenticated := portalPersonalStatsIdentityFromContext(request.Context())
-	if !authenticated {
+	userID, err := portalActorUserID(request)
+	if err != nil {
 		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read persistent Practice statistics")
 		return
 	}
-	userID := identity.userID
 
 	tx, err := service.database.BeginTx(request.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -1235,6 +1234,22 @@ func (service *practiceHTTP) personalStats(writer http.ResponseWriter, request *
 		})
 	}
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: stats})
+}
+
+// portalActorUserID is called only after authenticatePortalPersonalStats has
+// verified a six-part signature over this exact header. It intentionally
+// refuses all guest, nil, duplicate, and malformed values before stats query
+// execution.
+func portalActorUserID(request *http.Request) (uuid.UUID, error) {
+	values := request.Header.Values("X-Actor-User-Id")
+	if len(values) != 1 || values[0] == "" || strings.TrimSpace(values[0]) != values[0] || values[0] == "anonymous" {
+		return uuid.Nil, errors.New("portal actor is not signed in")
+	}
+	userID, err := uuid.Parse(values[0])
+	if err != nil || userID == uuid.Nil {
+		return uuid.Nil, errors.New("portal actor user ID is invalid")
+	}
+	return userID, nil
 }
 
 var practiceStatsLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
