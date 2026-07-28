@@ -21,6 +21,7 @@ const (
 	consoleKeyID    = "account-console-key"
 	operatorID      = "11111111-1111-4111-8111-111111111111"
 	ticketID        = "22222222-2222-4222-8222-222222222222"
+	membershipUserID = "33333333-3333-4333-8333-333333333333"
 )
 
 func TestConsoleTicketCallsUseActorBoundSignaturesAndExactOwnerRoutes(t *testing.T) {
@@ -112,6 +113,126 @@ func TestConsoleTicketCallsUseActorBoundSignaturesAndExactOwnerRoutes(t *testing
 	}
 }
 
+func TestConsoleMembershipCallsUseActorBoundSignaturesAndExactOwnerRoutes(t *testing.T) {
+	tests := []struct {
+		name     string
+		method   string
+		path     string
+		body     string
+		response map[string]any
+		invoke   func(*Client) (json.RawMessage, error)
+		wantKey  string
+	}{
+		{
+			name:     "membership lookup",
+			method:   http.MethodGet,
+			path:     MembershipPath(membershipUserID),
+			response: map[string]any{"membership": testMembership("free", false, 1)},
+			invoke: func(client *Client) (json.RawMessage, error) {
+				return client.Membership(WithRequestID(context.Background(), "req_membership_lookup"), operatorID, membershipUserID)
+			},
+		},
+		{
+			name:     "lifetime grant",
+			method:   http.MethodPost,
+			path:     MembershipGrantsPath(membershipUserID),
+			body:     "{\n  \"reason\": \"Verified support entitlement.\", \"expected_version\": 1\n}",
+			response: map[string]any{"membership": testMembership("lifetime", true, 2)},
+			invoke: func(client *Client) (json.RawMessage, error) {
+				return client.Grant(WithRequestID(context.Background(), "req_membership_grant"), operatorID, membershipUserID, "idem_membership_grant", []byte("{\n  \"reason\": \"Verified support entitlement.\", \"expected_version\": 1\n}"))
+			},
+			wantKey: "idem_membership_grant",
+		},
+		{
+			name:     "lifetime revocation",
+			method:   http.MethodPost,
+			path:     MembershipRevocationsPath(membershipUserID),
+			body:     `{"reason":"Membership correction","expected_version":2}`,
+			response: map[string]any{"membership": testMembership("free", false, 3)},
+			invoke: func(client *Client) (json.RawMessage, error) {
+				return client.Revoke(WithRequestID(context.Background(), "req_membership_revocation"), operatorID, membershipUserID, "idem_membership_revoke", []byte(`{"reason":"Membership correction","expected_version":2}`))
+			},
+			wantKey: "idem_membership_revoke",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.Method != test.method || request.URL.Path != test.path {
+					t.Fatalf("owner request = %s %s, want %s %s", request.Method, request.URL.Path, test.method, test.path)
+				}
+				if request.Header.Get("X-Actor-User-Id") != operatorID || request.Header.Get("X-Request-Id") == "" {
+					t.Fatalf("owner actor/request id = %q/%q", request.Header.Get("X-Actor-User-Id"), request.Header.Get("X-Request-Id"))
+				}
+				if request.Header.Get("Idempotency-Key") != test.wantKey {
+					t.Fatalf("owner idempotency key = %q, want %q", request.Header.Get("Idempotency-Key"), test.wantKey)
+				}
+				assertActorBoundSignature(t, request)
+				body, err := io.ReadAll(request.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(body) != test.body {
+					t.Fatalf("owner body = %q, want exact %q", body, test.body)
+				}
+				writer.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(writer).Encode(map[string]any{"data": test.response, "request_id": "req_account_owner"})
+			}))
+			defer server.Close()
+
+			client, err := New(server.URL, consoleClientID, consoleSecret, consoleKeyID, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := test.invoke(client)
+			if err != nil || len(data) == 0 {
+				t.Fatalf("account membership call data=%s err=%v", data, err)
+			}
+		})
+	}
+}
+
+func TestConsoleMembershipClientRejectsMalformedOrInternalOwnerFields(t *testing.T) {
+	tests := []struct {
+		name string
+		data map[string]any
+	}{
+		{
+			name: "internal operator identity",
+			data: map[string]any{"membership": map[string]any{
+				"plan": "lifetime", "lifetime": true, "version": 2, "actor_user_id": operatorID,
+			}},
+		},
+		{
+			name: "internal target identity",
+			data: map[string]any{"membership": testMembership("free", false, 1), "user_id": membershipUserID},
+		},
+		{
+			name: "inconsistent entitlement",
+			data: map[string]any{"membership": testMembership("free", true, 1)},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(writer).Encode(map[string]any{"data": test.data, "request_id": "req_account_owner"})
+			}))
+			defer server.Close()
+			client, err := New(server.URL, consoleClientID, consoleSecret, consoleKeyID, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := client.Membership(WithRequestID(context.Background(), "req_membership_invalid"), operatorID, membershipUserID)
+			if !errors.Is(err, ErrInvalid) || len(data) != 0 {
+				t.Fatalf("invalid membership owner success data=%s err=%v, want ErrInvalid and no data", data, err)
+			}
+		})
+	}
+}
+
 func TestConsoleTicketClientRejectsOwnerConflictWithoutAFalseSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assertActorBoundSignature(t, request)
@@ -178,6 +299,10 @@ func testTicket() map[string]any {
 		"created_at": "2026-07-28T00:00:00Z",
 		"updated_at": "2026-07-28T00:00:00Z",
 	}
+}
+
+func testMembership(plan string, lifetime bool, version int) map[string]any {
+	return map[string]any{"plan": plan, "lifetime": lifetime, "version": version}
 }
 
 func assertActorBoundSignature(t *testing.T, request *http.Request) {
