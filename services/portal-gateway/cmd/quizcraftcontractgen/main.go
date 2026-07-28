@@ -103,6 +103,14 @@ var catalogSecurityRequirements = []catalogSecurityRequirement{
 	{name: "portalCatalogProduct", kind: "apiKey", in: "header", header: "X-Product-Code"},
 }
 
+var portalPersonalStatsSecurityRequirements = []catalogSecurityRequirement{
+	{name: "portalCatalogBasic", kind: "http", scheme: "basic"},
+	{name: "portalPersonalStatsSignature", kind: "apiKey", in: "header", header: "X-Signature"},
+	{name: "portalCatalogPermission", kind: "apiKey", in: "header", header: "X-Permission-Code"},
+	{name: "portalCatalogScope", kind: "apiKey", in: "header", header: "X-Scope-Kind"},
+	{name: "portalCatalogProduct", kind: "apiKey", in: "header", header: "X-Product-Code"},
+}
+
 var portalPracticeCommandSecurityRequirements = []catalogSecurityRequirement{
 	{name: "portalPracticeBasic", kind: "http", scheme: "basic"},
 	{name: "portalPracticeSignature", kind: "apiKey", in: "header", header: "X-Signature"},
@@ -119,22 +127,26 @@ func main() {
 	fail(yaml.Unmarshal(source, &spec))
 
 	catalogPath, catalogMethod, catalogOperation := requireOperation(spec.Paths, "listPracticeBanks")
+	statsPath, statsMethod, statsOperation := requireOperation(spec.Paths, "getPersonalPracticeStats")
 	overallRankingPath, overallRankingMethod, overallRankingOperation := requireOperation(spec.Paths, "getOverallRanking")
 	bankRankingPath, bankRankingMethod, bankRankingOperation := requireOperation(spec.Paths, "getBankRanking")
 	createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation := requireOperation(spec.Paths, "createPortalPracticeSession")
 	submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation := requireOperation(spec.Paths, "submitPortalPracticeAnswer")
 	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope")
+	validatePortalPersonalStatsOperation(statsPath, statsMethod, statsOperation)
 	validatePortalReadOperation("getOverallRanking", overallRankingMethod, overallRankingOperation, "RankingEnvelope")
 	validatePortalReadOperation("getBankRanking", bankRankingMethod, bankRankingOperation, "RankingEnvelope")
 	validatePortalPracticeCommandOperation("createPortalPracticeSession", createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation, "201", "PracticeSessionEnvelope")
 	validatePortalPracticeCommandOperation("submitPortalPracticeAnswer", submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation, "200", "AnswerResultEnvelope")
 	validateCatalogSecurity(spec.Components.SecuritySchemes)
+	validatePortalPersonalStatsSecurity(spec.Components.SecuritySchemes)
 	validatePortalPracticeCommandSecurity(spec.Components.SecuritySchemes)
 	validateCatalogSchema(spec.Components.Schemas)
 	validateRankingSchema(spec.Components.Schemas)
+	validatePersonalStatsSchema(spec.Components.Schemas)
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
-	generated, err := format.Source([]byte(render(catalogPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, digest)))
+	generated, err := format.Source([]byte(render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, digest)))
 	fail(err)
 	fail(os.WriteFile(*outputPath, generated, 0o644))
 }
@@ -165,13 +177,13 @@ func requireOperation(paths map[string]map[string]operation, operationID string)
 	return pathsWithOperation[0].path, pathsWithOperation[0].method, pathsWithOperation[0].operation
 }
 
-func validatePortalReadOperation(operationID, method string, operation operation, envelope string) {
+func validatePortalReadOperation(operationID, method string, operation operation, responseSchema string) {
 	if method != "get" {
 		fail(fmt.Errorf("%s must use GET, found %s", operationID, method))
 	}
 	response, ok := operation.Responses["200"]
-	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/"+envelope {
-		fail(fmt.Errorf("%s 200 response must be %s", operationID, envelope))
+	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/"+responseSchema {
+		fail(fmt.Errorf("%s 200 response must be %s", operationID, responseSchema))
 	}
 	if unauthorized, ok := operation.Responses["401"]; !ok || unauthorized.Ref != "#/components/responses/Unauthorized" {
 		fail(fmt.Errorf("%s must document unauthorized Portal reads", operationID))
@@ -188,6 +200,29 @@ func validatePortalReadOperation(operationID, method string, operation operation
 	for _, requirement := range catalogSecurityRequirements {
 		if scopes, found := operation.Security[0][requirement.name]; !found || len(scopes) != 0 {
 			fail(fmt.Errorf("%s is missing security scheme %s", operationID, requirement.name))
+		}
+	}
+}
+
+func validatePortalPersonalStatsOperation(path, method string, operation operation) {
+	if method != "get" || !operation.Internal || path != "/api/v1/portal/practice/stats" {
+		fail(fmt.Errorf("getPersonalPracticeStats must be an internal actor-bound Portal stats GET"))
+	}
+	response, ok := operation.Responses["200"]
+	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/PersonalPracticeStatsEnvelope" {
+		fail(fmt.Errorf("getPersonalPracticeStats 200 response must be PersonalPracticeStatsEnvelope"))
+	}
+	for _, status := range []string{"401", "403", "409", "503"} {
+		if _, ok := operation.Responses[status]; !ok {
+			fail(fmt.Errorf("getPersonalPracticeStats must document %s", status))
+		}
+	}
+	if len(operation.Security) != 1 || len(operation.Security[0]) != len(portalPersonalStatsSecurityRequirements) {
+		fail(fmt.Errorf("getPersonalPracticeStats must require actor-bound Portal stats security"))
+	}
+	for _, requirement := range portalPersonalStatsSecurityRequirements {
+		if scopes, found := operation.Security[0][requirement.name]; !found || len(scopes) != 0 {
+			fail(fmt.Errorf("getPersonalPracticeStats is missing security scheme %s", requirement.name))
 		}
 	}
 }
@@ -227,6 +262,15 @@ func validateCatalogSecurity(schemes map[string]securityScheme) {
 		scheme, found := schemes[requirement.name]
 		if !found || scheme.Type != requirement.kind || scheme.Scheme != requirement.scheme || scheme.In != requirement.in || scheme.Name != requirement.header {
 			fail(fmt.Errorf("%s security scheme does not match the Portal read client", requirement.name))
+		}
+	}
+}
+
+func validatePortalPersonalStatsSecurity(schemes map[string]securityScheme) {
+	for _, requirement := range portalPersonalStatsSecurityRequirements {
+		scheme, found := schemes[requirement.name]
+		if !found || scheme.Type != requirement.kind || scheme.Scheme != requirement.scheme || scheme.In != requirement.in || scheme.Name != requirement.header {
+			fail(fmt.Errorf("%s security scheme does not match the actor-bound Portal stats client", requirement.name))
 		}
 	}
 }
@@ -303,6 +347,32 @@ func validateRankingSchema(schemas map[string]schema) {
 	}
 }
 
+func validatePersonalStatsSchema(schemas map[string]schema) {
+	requireObject(schemas, "PersonalPracticeStatsEnvelope", []string{"request_id", "data"})
+	envelope := schemas["PersonalPracticeStatsEnvelope"]
+	if data := envelope.Properties["data"]; data.Ref != "#/components/schemas/PersonalPracticeStats" {
+		fail(fmt.Errorf("PersonalPracticeStatsEnvelope.data must be PersonalPracticeStats"))
+	}
+
+	requireObject(schemas, "PersonalPracticeStats", []string{"total_answers", "correct_answers", "accuracy", "streak_days", "mastery"})
+	stats := schemas["PersonalPracticeStats"]
+	for _, property := range []string{"total_answers", "correct_answers", "accuracy", "streak_days"} {
+		requireProperty(stats, property, "integer")
+	}
+	mastery, ok := stats.Properties["mastery"]
+	if !ok || mastery.Type != "array" || mastery.Items == nil || mastery.Items.Ref != "#/components/schemas/MasterySubject" {
+		fail(fmt.Errorf("PersonalPracticeStats.mastery must be an array of MasterySubject"))
+	}
+
+	requireObject(schemas, "MasterySubject", []string{"bank_id", "label", "value", "total_questions", "correct_questions"})
+	subject := schemas["MasterySubject"]
+	requireProperty(subject, "bank_id", "string")
+	requireProperty(subject, "label", "string")
+	for _, property := range []string{"value", "total_questions", "correct_questions"} {
+		requireProperty(subject, property, "integer")
+	}
+}
+
 func requireObject(schemas map[string]schema, name string, required []string) {
 	value, ok := schemas[name]
 	if !ok {
@@ -344,13 +414,14 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-func render(catalogPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, digest string) string {
+func render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, digest string) string {
 	return fmt.Sprintf(`// Code generated by cmd/quizcraftcontractgen from quizcraft.yaml; DO NOT EDIT.
 package practice
 
 const QuizCraftCatalogContractSHA256 = %q
 const QuizCraftRankingContractSHA256 = QuizCraftCatalogContractSHA256
 const ListPracticeBanksPath = %q
+const GetPersonalPracticeStatsPath = %q
 const OverallRankingPath = %q
 const BankRankingPath = %q
 const CreatePortalPracticeSessionPath = %q
@@ -408,7 +479,29 @@ type RankingEntry struct {
 	SystemAvatar       string `+"`json:\"system_avatar\"`"+`
 	CorrectAnswerCount int64  `+"`json:\"correct_answer_count\"`"+`
 }
-	`, digest, catalogPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath)
+// PersonalPracticeStatsEnvelope is one authenticated Portal user's
+// fact-derived QuizCraft statistics. It never represents a mock response.
+type PersonalPracticeStatsEnvelope struct {
+	RequestID string                `+"`json:\"request_id\"`"+`
+	Data      PersonalPracticeStats `+"`json:\"data\"`"+`
+}
+
+type PersonalPracticeStats struct {
+	TotalAnswers   int64            `+"`json:\"total_answers\"`"+`
+	CorrectAnswers int64            `+"`json:\"correct_answers\"`"+`
+	Accuracy       int              `+"`json:\"accuracy\"`"+`
+	StreakDays     int              `+"`json:\"streak_days\"`"+`
+	Mastery        []MasterySubject `+"`json:\"mastery\"`"+`
+}
+
+type MasterySubject struct {
+	BankID           string `+"`json:\"bank_id\"`"+`
+	Label            string `+"`json:\"label\"`"+`
+	Value            int    `+"`json:\"value\"`"+`
+	TotalQuestions   int64  `+"`json:\"total_questions\"`"+`
+	CorrectQuestions int64  `+"`json:\"correct_questions\"`"+`
+}
+`, digest, catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath)
 }
 
 func fail(err error) {

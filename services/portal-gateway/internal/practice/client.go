@@ -41,6 +41,11 @@ var (
 	ErrRankingForbidden    = ErrPortalReadForbidden
 	ErrRankingUnavailable  = ErrPortalReadUnavailable
 	ErrInvalidRanking      = ErrInvalidPortalRead
+
+	ErrStatsUnauthorized = ErrPortalReadUnauthorized
+	ErrStatsForbidden    = ErrPortalReadForbidden
+	ErrStatsUnavailable  = ErrPortalReadUnavailable
+	ErrInvalidStats      = ErrInvalidPortalRead
 )
 
 // Client is an internal, read-only client for QuizCraft catalog and ranking
@@ -200,6 +205,127 @@ func validateCatalog(result BankListEnvelope) error {
 		}
 	}
 	return nil
+}
+
+// PersonalStats reads one signed-in Portal user's fact-derived Practice
+// statistics. Empty totals and an empty mastery list are valid success states;
+// no legacy or mock-shaped response is ever accepted as a fallback.
+func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID string) (PersonalPracticeStatsEnvelope, error) {
+	actorUserID = strings.TrimSpace(actorUserID)
+	if !validUUID(actorUserID) {
+		return PersonalPracticeStatsEnvelope{}, ErrStatsUnauthorized
+	}
+	resp, err := c.actorBoundPersonalStats(ctx, actorUserID, requestID)
+	if err != nil {
+		return PersonalPracticeStatsEnvelope{}, err
+	}
+	defer resp.Body.Close()
+
+	var raw struct {
+		RequestID string          `json:"request_id"`
+		Data      json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&raw); err != nil {
+		return PersonalPracticeStatsEnvelope{}, fmt.Errorf("stats decode: %w", ErrInvalidStats)
+	}
+	if strings.TrimSpace(raw.RequestID) == "" || len(raw.Data) == 0 || string(raw.Data) == "null" {
+		return PersonalPracticeStatsEnvelope{}, ErrInvalidStats
+	}
+	var result PersonalPracticeStatsEnvelope
+	if err := json.Unmarshal(raw.Data, &result.Data); err != nil {
+		return PersonalPracticeStatsEnvelope{}, ErrInvalidStats
+	}
+	result.RequestID = raw.RequestID
+	if err := validatePersonalStats(result); err != nil {
+		return PersonalPracticeStatsEnvelope{}, err
+	}
+	return result, nil
+}
+
+// actorBoundPersonalStats is intentionally separate from portalRead. Catalog
+// and ranking are public/read-shared facts; personal statistics are one
+// account's data, so the Core rejects a request unless the actor UUID is the
+// sixth HMAC canonical line.
+func (c *Client) actorBoundPersonalStats(ctx context.Context, actorUserID, requestID string) (*http.Response, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
+		return nil, ErrStatsUnauthorized
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+GetPersonalPracticeStatsPath, nil)
+	if err != nil {
+		return nil, ErrStatsUnavailable
+	}
+	req.Header.Set("X-Request-Id", requestID)
+	req.Header.Set("X-Permission-Code", PortalReadPermission)
+	req.Header.Set("X-Scope-Kind", "product")
+	req.Header.Set("X-Product-Code", "quizcraft")
+	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
+		return nil, fmt.Errorf("Portal personal stats sign: %w", ErrStatsUnavailable)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Portal personal stats request: %w", ErrStatsUnavailable)
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return resp, nil
+	case http.StatusUnauthorized:
+		_ = resp.Body.Close()
+		return nil, ErrStatsUnauthorized
+	case http.StatusForbidden:
+		_ = resp.Body.Close()
+		return nil, ErrStatsForbidden
+	default:
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("Portal personal stats status %d: %w", resp.StatusCode, ErrStatsUnavailable)
+	}
+}
+
+func validatePersonalStats(result PersonalPracticeStatsEnvelope) error {
+	stats := result.Data
+	if strings.TrimSpace(result.RequestID) == "" || stats.TotalAnswers < 0 || stats.CorrectAnswers < 0 || stats.CorrectAnswers > stats.TotalAnswers || stats.Accuracy < 0 || stats.Accuracy > 100 || stats.Accuracy != roundedPercent(stats.CorrectAnswers, stats.TotalAnswers) || stats.StreakDays < 0 || stats.Mastery == nil {
+		return ErrInvalidStats
+	}
+	seenBanks := make(map[string]struct{}, len(stats.Mastery))
+	for _, subject := range stats.Mastery {
+		if !validUUID(subject.BankID) || strings.TrimSpace(subject.Label) == "" || subject.Value < 0 || subject.Value > 100 || subject.TotalQuestions < 0 || subject.CorrectQuestions < 0 || subject.CorrectQuestions > subject.TotalQuestions || subject.Value != roundedPercent(subject.CorrectQuestions, subject.TotalQuestions) {
+			return ErrInvalidStats
+		}
+		if _, exists := seenBanks[subject.BankID]; exists {
+			return ErrInvalidStats
+		}
+		seenBanks[subject.BankID] = struct{}{}
+	}
+	return nil
+}
+
+func roundedPercent(numerator, denominator int64) int {
+	if numerator <= 0 || denominator <= 0 {
+		return 0
+	}
+	value := (numerator*100 + denominator/2) / denominator
+	if value > 100 {
+		return 100
+	}
+	return int(value)
+}
+
+func validUUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for index, char := range value {
+		if index == 8 || index == 13 || index == 18 || index == 23 {
+			if char != '-' {
+				return false
+			}
+			continue
+		}
+		if !(char >= '0' && char <= '9') && !(char >= 'a' && char <= 'f') && !(char >= 'A' && char <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeRankingPeriod(period RankingPeriod) (RankingPeriod, error) {

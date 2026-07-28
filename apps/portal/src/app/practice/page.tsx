@@ -22,6 +22,7 @@ import {
   getPracticeGatewayError,
   initPracticeGateway,
 } from "@/lib/practice/gateway";
+import { usePersonalPracticeStats } from "@/lib/practice/personal-stats";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import BankHero from "@/components/practice/bank-hero";
@@ -137,6 +138,7 @@ type LoadState = "loading" | "ready" | "error";
 
 export default function PracticeBankPage() {
   usePageEnter(null);
+  const { state: masteryState } = usePersonalPracticeStats();
 
   const [schools, setSchools] = useState<School[]>([]);
   const [banks, setBanks] = useState<BankSummary[]>([]);
@@ -300,6 +302,7 @@ export default function PracticeBankPage() {
         query={query}
         onQueryChange={setQuery}
         catalogMode={quizCraftCatalogIsEnabled}
+        masteryState={masteryState}
       />
 
       <div data-block className="border-t border-line">

@@ -148,6 +148,22 @@ type answerResult struct {
 	Analysis          string    `json:"analysis"`
 }
 
+type masterySubject struct {
+	BankID           uuid.UUID `json:"bank_id"`
+	Label            string    `json:"label"`
+	Value            int       `json:"value"`
+	TotalQuestions   int64     `json:"total_questions"`
+	CorrectQuestions int64     `json:"correct_questions"`
+}
+
+type personalPracticeStats struct {
+	TotalAnswers   int64            `json:"total_answers"`
+	CorrectAnswers int64            `json:"correct_answers"`
+	Accuracy       int              `json:"accuracy"`
+	StreakDays     int              `json:"streak_days"`
+	Mastery        []masterySubject `json:"mastery"`
+}
+
 type responseEnvelope struct {
 	RequestID string `json:"request_id"`
 	Data      any    `json:"data"`
@@ -276,6 +292,10 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		portalRead.Get("/api/v1/banks", service.listBanks)
 		portalRead.Get("/api/v1/rankings/overall", service.overallRanking)
 		portalRead.Get("/api/v1/banks/{bank_id}/rankings", service.bankRanking)
+		// Personal statistics are account facts, unlike the public catalog and
+		// rankings. Keep them on a narrow internal path whose actor is included
+		// in the service HMAC rather than trusting a free-standing header.
+		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/stats", service.personalStats)
 	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
@@ -1149,6 +1169,118 @@ func (service *practiceHTTP) learningState(writer http.ResponseWriter, request *
 		items = append(items, map[string]any{"bank_id": row.BankID, "question_id": row.QuestionID, "question_version_id": row.QuestionVersionID, "wrong": row.Wrong, "attempt_count": row.AttemptCount, "correct_count": row.CorrectCount, "updated_at": row.UpdatedAt.Time.UTC().Format(time.RFC3339Nano)})
 	}
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: items})
+}
+
+func (service *practiceHTTP) personalStats(writer http.ResponseWriter, request *http.Request) {
+	identity, authenticated := portalPersonalStatsIdentityFromContext(request.Context())
+	if !authenticated {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read persistent Practice statistics")
+		return
+	}
+	userID := identity.userID
+
+	tx, err := service.database.BeginTx(request.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft statistics are temporarily unavailable")
+		return
+	}
+	defer func() { _ = tx.Rollback(request.Context()) }()
+
+	queries := store.New(tx)
+	actor := uuid.NullUUID{UUID: userID, Valid: true}
+	totals, err := queries.GetPersonalPracticeTotals(request.Context(), actor)
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft statistics are temporarily unavailable")
+		return
+	}
+	rows, err := queries.ListPersonalMasteryFacts(request.Context(), actor)
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft statistics are temporarily unavailable")
+		return
+	}
+	days, err := queries.ListPersonalPracticeDays(request.Context(), actor)
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft statistics are temporarily unavailable")
+		return
+	}
+	if err := tx.Commit(request.Context()); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft statistics are temporarily unavailable")
+		return
+	}
+
+	streakDays, err := consecutivePracticeDays(days, service.now())
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "invalid_practice_statistics", "stored Practice activity day is invalid")
+		return
+	}
+	stats := personalPracticeStats{
+		TotalAnswers:   totals.TotalAnswers,
+		CorrectAnswers: totals.CorrectAnswers,
+		Accuracy:       roundedPercent(totals.CorrectAnswers, totals.TotalAnswers),
+		StreakDays:     streakDays,
+		Mastery:        make([]masterySubject, 0, len(rows)),
+	}
+	for _, row := range rows {
+		label := strings.TrimSpace(row.Label)
+		if label == "" || row.TotalQuestions < 0 || row.CorrectQuestions < 0 {
+			writeError(writer, http.StatusServiceUnavailable, "invalid_practice_statistics", "stored Practice mastery is invalid")
+			return
+		}
+		stats.Mastery = append(stats.Mastery, masterySubject{
+			BankID:           row.BankID,
+			Label:            label,
+			Value:            roundedPercent(row.CorrectQuestions, row.TotalQuestions),
+			TotalQuestions:   row.TotalQuestions,
+			CorrectQuestions: row.CorrectQuestions,
+		})
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: stats})
+}
+
+var practiceStatsLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
+
+func consecutivePracticeDays(days []string, now time.Time) (int, error) {
+	if len(days) == 0 {
+		return 0, nil
+	}
+	today := midnightInPracticeStatsLocation(now)
+	expected := today
+	first, err := time.ParseInLocation(time.DateOnly, days[0], practiceStatsLocation)
+	if err != nil {
+		return 0, err
+	}
+	if first.Before(today) {
+		expected = today.AddDate(0, 0, -1)
+	}
+	streak := 0
+	for _, raw := range days {
+		day, err := time.ParseInLocation(time.DateOnly, raw, practiceStatsLocation)
+		if err != nil {
+			return 0, err
+		}
+		if !day.Equal(expected) {
+			break
+		}
+		streak++
+		expected = expected.AddDate(0, 0, -1)
+	}
+	return streak, nil
+}
+
+func midnightInPracticeStatsLocation(value time.Time) time.Time {
+	local := value.In(practiceStatsLocation)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, practiceStatsLocation)
+}
+
+func roundedPercent(numerator, denominator int64) int {
+	if numerator <= 0 || denominator <= 0 {
+		return 0
+	}
+	value := (numerator*100 + denominator/2) / denominator
+	if value > 100 {
+		return 100
+	}
+	return int(value)
 }
 
 func (service *practiceHTTP) actor(writer http.ResponseWriter, request *http.Request) (practiceActor, int, error) {

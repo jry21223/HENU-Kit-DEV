@@ -83,6 +83,15 @@ func (q *Queries) ClaimGuestPracticeSession(ctx context.Context, arg ClaimGuestP
 	return result.RowsAffected(), nil
 }
 
+const clearLearningState = `-- name: ClearLearningState :exec
+DELETE FROM quizcraft_learning_state
+`
+
+func (q *Queries) ClearLearningState(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearLearningState)
+	return err
+}
+
 const countFavoritesForBank = `-- name: CountFavoritesForBank :one
 SELECT count(*)::bigint
 FROM quizcraft_favorites
@@ -236,6 +245,67 @@ func (q *Queries) GetIdempotencyResult(ctx context.Context, arg GetIdempotencyRe
 	return i, err
 }
 
+const getLearningStateReconciliation = `-- name: GetLearningStateReconciliation :one
+WITH aggregates AS (
+  SELECT user_id,bank_id,question_id,
+         count(*)::bigint AS attempt_count,
+         count(*) FILTER (WHERE correct)::bigint AS correct_count,
+         max(submitted_at) AS updated_at
+  FROM quizcraft_practice_attempts
+  WHERE user_id IS NOT NULL
+  GROUP BY user_id,bank_id,question_id
+),
+latest AS (
+  SELECT DISTINCT ON (user_id,bank_id,question_id)
+         user_id,bank_id,question_id,question_version_id,(NOT correct) AS wrong
+  FROM quizcraft_practice_attempts
+  WHERE user_id IS NOT NULL
+  ORDER BY user_id,bank_id,question_id,submitted_at DESC,id DESC
+),
+expected AS (
+  SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,
+         latest.question_version_id,latest.wrong,aggregates.attempt_count,
+         aggregates.correct_count,aggregates.updated_at
+  FROM aggregates
+  JOIN latest USING (user_id,bank_id,question_id)
+),
+compared AS (
+  SELECT expected.user_id AS expected_user_id,
+         actual.user_id AS actual_user_id,
+         expected.question_version_id AS expected_question_version_id,
+         actual.question_version_id AS actual_question_version_id,
+         expected.wrong AS expected_wrong,actual.wrong AS actual_wrong,
+         expected.attempt_count AS expected_attempt_count,actual.attempt_count AS actual_attempt_count,
+         expected.correct_count AS expected_correct_count,actual.correct_count AS actual_correct_count,
+         expected.updated_at AS expected_updated_at,actual.updated_at AS actual_updated_at
+  FROM expected
+  FULL OUTER JOIN quizcraft_learning_state actual
+    ON actual.user_id=expected.user_id AND actual.bank_id=expected.bank_id AND actual.question_id=expected.question_id
+)
+SELECT count(*) FILTER (WHERE expected_user_id IS NOT NULL AND actual_user_id IS NULL)::bigint AS missing_rows,
+       count(*) FILTER (WHERE expected_user_id IS NULL AND actual_user_id IS NOT NULL)::bigint AS extra_rows,
+       count(*) FILTER (WHERE expected_user_id IS NOT NULL AND actual_user_id IS NOT NULL AND
+         (expected_question_version_id IS DISTINCT FROM actual_question_version_id OR
+          expected_wrong IS DISTINCT FROM actual_wrong OR
+          expected_attempt_count IS DISTINCT FROM actual_attempt_count OR
+          expected_correct_count IS DISTINCT FROM actual_correct_count OR
+          expected_updated_at IS DISTINCT FROM actual_updated_at))::bigint AS mismatched_rows
+FROM compared
+`
+
+type GetLearningStateReconciliationRow struct {
+	MissingRows    int64 `json:"missing_rows"`
+	ExtraRows      int64 `json:"extra_rows"`
+	MismatchedRows int64 `json:"mismatched_rows"`
+}
+
+func (q *Queries) GetLearningStateReconciliation(ctx context.Context) (GetLearningStateReconciliationRow, error) {
+	row := q.db.QueryRow(ctx, getLearningStateReconciliation)
+	var i GetLearningStateReconciliationRow
+	err := row.Scan(&i.MissingRows, &i.ExtraRows, &i.MismatchedRows)
+	return i, err
+}
+
 const getOperationResult = `-- name: GetOperationResult :one
 SELECT resource_id, response_body
 FROM quizcraft_idempotency_results
@@ -257,6 +327,25 @@ func (q *Queries) GetOperationResult(ctx context.Context, arg GetOperationResult
 	row := q.db.QueryRow(ctx, getOperationResult, arg.ActorKey, arg.OperationKind, arg.IdempotencyKey)
 	var i GetOperationResultRow
 	err := row.Scan(&i.ResourceID, &i.ResponseBody)
+	return i, err
+}
+
+const getPersonalPracticeTotals = `-- name: GetPersonalPracticeTotals :one
+SELECT count(*)::bigint AS total_answers,
+       count(*) FILTER (WHERE correct)::bigint AS correct_answers
+FROM quizcraft_practice_attempts
+WHERE user_id=$1
+`
+
+type GetPersonalPracticeTotalsRow struct {
+	TotalAnswers   int64 `json:"total_answers"`
+	CorrectAnswers int64 `json:"correct_answers"`
+}
+
+func (q *Queries) GetPersonalPracticeTotals(ctx context.Context, userID uuid.NullUUID) (GetPersonalPracticeTotalsRow, error) {
+	row := q.db.QueryRow(ctx, getPersonalPracticeTotals, userID)
+	var i GetPersonalPracticeTotalsRow
+	err := row.Scan(&i.TotalAnswers, &i.CorrectAnswers)
 	return i, err
 }
 
@@ -803,6 +892,92 @@ func (q *Queries) ListOverallRankingWindow(ctx context.Context, arg ListOverallR
 	return items, nil
 }
 
+const listPersonalMasteryFacts = `-- name: ListPersonalMasteryFacts :many
+WITH active_questions AS (
+  SELECT b.id AS bank_id,b.name,m.question_id
+  FROM quizcraft_banks b
+  JOIN quizcraft_bank_versions bv ON bv.id=b.active_version_id AND bv.bank_id=b.id AND bv.sealed_at IS NOT NULL
+  JOIN quizcraft_bank_version_questions m ON m.bank_id=b.id AND m.bank_version_id=bv.id
+),
+bank_totals AS (
+  SELECT bank_id,name AS label,count(*)::bigint AS total_questions
+  FROM active_questions
+  GROUP BY bank_id,name
+),
+personal_activity AS (
+  SELECT active.bank_id,
+         count(DISTINCT active.question_id) FILTER (WHERE attempt.correct)::bigint AS correct_questions
+  FROM active_questions active
+  JOIN quizcraft_practice_attempts attempt
+    ON attempt.bank_id=active.bank_id AND attempt.question_id=active.question_id
+  WHERE attempt.user_id=$1
+  GROUP BY active.bank_id
+)
+SELECT totals.bank_id,totals.label,totals.total_questions,activity.correct_questions
+FROM bank_totals totals
+JOIN personal_activity activity ON activity.bank_id=totals.bank_id
+ORDER BY totals.label,totals.bank_id
+`
+
+type ListPersonalMasteryFactsRow struct {
+	BankID           uuid.UUID `json:"bank_id"`
+	Label            string    `json:"label"`
+	TotalQuestions   int64     `json:"total_questions"`
+	CorrectQuestions int64     `json:"correct_questions"`
+}
+
+func (q *Queries) ListPersonalMasteryFacts(ctx context.Context, userID uuid.NullUUID) ([]ListPersonalMasteryFactsRow, error) {
+	rows, err := q.db.Query(ctx, listPersonalMasteryFacts, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPersonalMasteryFactsRow{}
+	for rows.Next() {
+		var i ListPersonalMasteryFactsRow
+		if err := rows.Scan(
+			&i.BankID,
+			&i.Label,
+			&i.TotalQuestions,
+			&i.CorrectQuestions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPersonalPracticeDays = `-- name: ListPersonalPracticeDays :many
+SELECT DISTINCT ((submitted_at AT TIME ZONE 'Asia/Shanghai')::date)::text AS activity_day
+FROM quizcraft_practice_attempts
+WHERE user_id=$1
+ORDER BY activity_day DESC
+`
+
+func (q *Queries) ListPersonalPracticeDays(ctx context.Context, userID uuid.NullUUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listPersonalPracticeDays, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var activity_day string
+		if err := rows.Scan(&activity_day); err != nil {
+			return nil, err
+		}
+		items = append(items, activity_day)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPracticeQuestions = `-- name: ListPracticeQuestions :many
 SELECT m.question_id,m.question_version_id,qv.type,qv.chapter_id,qv.chapter_name,qv.content,COALESCE(qv.options,'null'::jsonb) AS options
 FROM quizcraft_bank_version_questions m
@@ -982,6 +1157,35 @@ SELECT pg_advisory_xact_lock(hashtextextended($1,0))
 
 func (q *Queries) LockSubmission(ctx context.Context, hashtextextended string) error {
 	_, err := q.db.Exec(ctx, lockSubmission, hashtextextended)
+	return err
+}
+
+const rebuildLearningStateFromAttempts = `-- name: RebuildLearningStateFromAttempts :exec
+WITH aggregates AS (
+  SELECT user_id,bank_id,question_id,
+         count(*)::bigint AS attempt_count,
+         count(*) FILTER (WHERE correct)::bigint AS correct_count,
+         max(submitted_at) AS updated_at
+  FROM quizcraft_practice_attempts
+  WHERE user_id IS NOT NULL
+  GROUP BY user_id,bank_id,question_id
+),
+latest AS (
+  SELECT DISTINCT ON (user_id,bank_id,question_id)
+         user_id,bank_id,question_id,question_version_id,(NOT correct) AS wrong
+  FROM quizcraft_practice_attempts
+  WHERE user_id IS NOT NULL
+  ORDER BY user_id,bank_id,question_id,submitted_at DESC,id DESC
+)
+INSERT INTO quizcraft_learning_state(user_id,bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,updated_at)
+SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,latest.question_version_id,
+       latest.wrong,aggregates.attempt_count,aggregates.correct_count,aggregates.updated_at
+FROM aggregates
+JOIN latest USING (user_id,bank_id,question_id)
+`
+
+func (q *Queries) RebuildLearningStateFromAttempts(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, rebuildLearningStateFromAttempts)
 	return err
 }
 

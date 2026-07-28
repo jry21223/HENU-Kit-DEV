@@ -22,6 +22,7 @@ const (
 	testCatalogClientID = "portal-gateway"
 	testCatalogSecret   = "portal-catalog-secret-with-enough-entropy"
 	testCatalogKeyID    = "portal-catalog-key-1"
+	testStatsUserID     = "5f03dac8-7f7f-4513-9dcd-e4cc5f592c85"
 )
 
 func TestBanksUsesGeneratedQuizCraftCatalogContract(t *testing.T) {
@@ -337,6 +338,86 @@ func TestBanksReturnsDependencyFailureWithoutLeakingCredentials(t *testing.T) {
 	}
 }
 
+func TestPersonalStatsUsesGeneratedQuizCraftContract(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertStatsRequest(t, request, testStatsUserID, "req_stats_success")
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(PersonalPracticeStatsEnvelope{
+			RequestID: "req_core_stats",
+			Data: PersonalPracticeStats{
+				TotalAnswers: 12, CorrectAnswers: 9, Accuracy: 75, StreakDays: 3,
+				Mastery: []MasterySubject{{
+					BankID: "10ca9b18-c303-4b7a-ab14-1241e41b665a", Label: "计算机基础", Value: 50, TotalQuestions: 4, CorrectQuestions: 2,
+				}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	result, err := testCatalogClient(t, server).PersonalStats(context.Background(), testStatsUserID, "req_stats_success")
+	if err != nil {
+		t.Fatalf("PersonalStats() error = %v", err)
+	}
+	if result.RequestID != "req_core_stats" || result.Data.TotalAnswers != 12 || result.Data.CorrectAnswers != 9 || result.Data.Accuracy != 75 || result.Data.StreakDays != 3 || len(result.Data.Mastery) != 1 {
+		t.Fatalf("PersonalStats() = %+v", result)
+	}
+}
+
+func TestPersonalStatsAcceptsTrueZeroButRejectsMockShape(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{
+			name: "true empty personal stats",
+			body: `{"request_id":"req_empty_stats","data":{"total_answers":0,"correct_answers":0,"accuracy":0,"streak_days":0,"mastery":[]}}`,
+		},
+		{
+			name:    "legacy mock response is not personal stats",
+			body:    `{"request_id":"req_mock_stats","stats":{"total":486,"mastery":[{"label":"示例"}]}}`,
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assertStatsRequest(t, request, testStatsUserID, "req_stats_"+strings.ReplaceAll(test.name, " ", "_"))
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = writer.Write([]byte(test.body))
+			}))
+			defer server.Close()
+
+			result, err := testCatalogClient(t, server).PersonalStats(context.Background(), testStatsUserID, "req_stats_"+strings.ReplaceAll(test.name, " ", "_"))
+			if test.wantErr {
+				if !errors.Is(err, ErrInvalidStats) || result.RequestID != "" || result.Data.Mastery != nil {
+					t.Fatalf("PersonalStats() = %+v, %v; want malformed mock error", result, err)
+				}
+				return
+			}
+			if err != nil || result.RequestID != "req_empty_stats" || result.Data.TotalAnswers != 0 || result.Data.Mastery == nil || len(result.Data.Mastery) != 0 {
+				t.Fatalf("PersonalStats() true empty = %+v, %v", result, err)
+			}
+		})
+	}
+}
+
+func TestPersonalStatsRejectsAnonymousOrMalformedActorWithoutCallingCore(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer server.Close()
+
+	for _, actor := range []string{"", AnonymousCatalogActor, "user-123"} {
+		if _, err := testCatalogClient(t, server).PersonalStats(context.Background(), actor, "req_bad_actor"); !errors.Is(err, ErrStatsUnauthorized) {
+			t.Fatalf("PersonalStats(%q) error = %v, want ErrStatsUnauthorized", actor, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("PersonalStats called Core for invalid actors %d times", calls)
+	}
+}
+
 func TestGeneratedQuizCraftCatalogContractMatchesOpenAPI(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packages", "api-contracts", "openapi", "quizcraft.yaml"))
 	if err != nil {
@@ -360,6 +441,36 @@ func testCatalogClient(t *testing.T, server *httptest.Server) *Client {
 
 func assertCatalogRequest(t *testing.T, request *http.Request, wantActor, wantRequestID string) {
 	assertPortalReadRequest(t, request, wantActor, wantRequestID, ListPracticeBanksPath)
+}
+
+func assertStatsRequest(t *testing.T, request *http.Request, wantActor, wantRequestID string) {
+	t.Helper()
+	if request.Method != http.MethodGet || request.URL.Path != GetPersonalPracticeStatsPath {
+		t.Fatalf("Core request = %s %s, want GET %s", request.Method, request.URL.Path, GetPersonalPracticeStatsPath)
+	}
+	if got := request.Header.Get("X-Actor-User-Id"); got != wantActor {
+		t.Fatalf("X-Actor-User-Id = %q, want %q", got, wantActor)
+	}
+	if got := request.Header.Get("X-Request-Id"); got != wantRequestID {
+		t.Fatalf("X-Request-Id = %q, want %q", got, wantRequestID)
+	}
+	if request.Header.Get("X-Permission-Code") != CatalogReadPermission || request.Header.Get("X-Scope-Kind") != "product" || request.Header.Get("X-Product-Code") != "quizcraft" {
+		t.Fatalf("personal stats permission headers = permission=%q scope=%q product=%q", request.Header.Get("X-Permission-Code"), request.Header.Get("X-Scope-Kind"), request.Header.Get("X-Product-Code"))
+	}
+	user, password, ok := request.BasicAuth()
+	if !ok || user != testCatalogClientID || password != testCatalogSecret || request.Header.Get("X-Service-Id") != testCatalogClientID || request.Header.Get("X-Key-Id") != testCatalogKeyID {
+		t.Fatal("personal stats request omitted valid service authentication")
+	}
+	timestamp := request.Header.Get("X-Timestamp")
+	nonce := request.Header.Get("X-Nonce")
+	digest := sha256.Sum256(nil)
+	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:]), wantActor}, "\n")
+	mac := hmac.New(sha256.New, []byte(testCatalogSecret))
+	_, _ = mac.Write([]byte(canonical))
+	wantSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if timestamp == "" || nonce == "" || request.Header.Get("X-Signature") != wantSignature {
+		t.Fatal("personal stats request actor-bound signature is invalid")
+	}
 }
 
 func assertPortalReadRequest(t *testing.T, request *http.Request, wantActor, wantRequestID, wantPath string) {

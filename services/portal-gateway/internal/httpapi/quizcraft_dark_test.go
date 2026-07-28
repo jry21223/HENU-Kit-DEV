@@ -48,11 +48,16 @@ func TestRouterKeepsQuizCraftCatalogDarkBeforeCutover(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recorder := httptest.NewRecorder()
-	handler.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/practice/banks", nil))
+	banks := httptest.NewRecorder()
+	handler.Router().ServeHTTP(banks, httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/practice/banks", nil))
+	if banks.Code != http.StatusOK || banks.Body.String() != `{"banks":[],"request_id":"req_legacy_portal"}` {
+		t.Fatalf("dark bank response = %d %s", banks.Code, banks.Body.String())
+	}
 
-	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"banks":[],"request_id":"req_legacy_portal"}` {
-		t.Fatalf("public catalog response = %d %s", recorder.Code, recorder.Body.String())
+	stats := httptest.NewRecorder()
+	handler.Router().ServeHTTP(stats, httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/practice/stats", nil))
+	if stats.Code != http.StatusServiceUnavailable || stats.Header().Get("Cache-Control") != "no-store" || stats.Body.String() == `{"banks":[],"request_id":"req_legacy_portal"}` {
+		t.Fatalf("dark stats response = %d headers=%v body=%s", stats.Code, stats.Header(), stats.Body.String())
 	}
 	if portalAPICalls.Load() != 1 || quizCraftCalls.Load() != 0 {
 		t.Fatalf("before #166 public route calls = portal-api:%d QuizCraft:%d", portalAPICalls.Load(), quizCraftCalls.Load())
