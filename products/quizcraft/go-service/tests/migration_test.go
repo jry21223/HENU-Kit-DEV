@@ -537,10 +537,12 @@ func TestCutoverWriteGateKeepsReadsOpenAndRejectsMutations(t *testing.T) {
 	pool := practicePool(t)
 	report := importPracticeBank(t, pool, "cutover-gate-"+uuid.NewString())
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
-		Database:       pool,
-		AuthHMACSecret: []byte(practiceAuthSecret),
-		WritesDisabled: true,
-		ReleaseSHA:     "cutover-test-sha",
+		Database:        pool,
+		AuthHMACSecret:  []byte(practiceAuthSecret),
+		CatalogClientID: portalCatalogClientID,
+		CatalogKeys:     map[string]string{portalCatalogKeyID: portalCatalogSecret},
+		WritesDisabled:  true,
+		ReleaseSHA:      "cutover-test-sha",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -551,7 +553,7 @@ func TestCutoverWriteGateKeepsReadsOpenAndRejectsMutations(t *testing.T) {
 	if status != http.StatusOK || !bytes.Contains(readiness, []byte(`"status":"ok"`)) || bytes.Contains(readiness, []byte("release_sha")) {
 		t.Fatalf("readiness = %d %s", status, readiness)
 	}
-	status, _ = requestJSON(t, http.MethodGet, server.URL+"/api/v1/banks", nil, nil)
+	status, _ = requestCatalog(t, server.URL, "portal.practice.read")
 	if status != http.StatusOK {
 		t.Fatalf("read path was gated: %d", status)
 	}

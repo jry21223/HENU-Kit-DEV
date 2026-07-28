@@ -15,27 +15,39 @@ import (
 
 var consoleRequestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
 
-func (service *practiceHTTP) authenticateConsoleSummary(next http.Handler) http.Handler {
+type serviceAuthRequirement struct {
+	clientID           string
+	keys               map[string]string
+	unavailableCode    string
+	label              string
+	requiredPermission string
+}
+
+func (service *practiceHTTP) authenticateSignedGET(requirement serviceAuthRequirement, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if service.summaryClientID == "" || len(service.summaryKeys) == 0 {
-			writeError(writer, http.StatusServiceUnavailable, "summary_auth_unavailable", "QuizCraft summary authentication is not configured")
+		if request.Method != http.MethodGet || request.ContentLength != 0 {
+			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" accepts signed GET requests without a body")
+			return
+		}
+		if requirement.clientID == "" || len(requirement.keys) == 0 {
+			writeError(writer, http.StatusServiceUnavailable, requirement.unavailableCode, "QuizCraft "+requirement.label+" authentication is not configured")
 			return
 		}
 		clientID, basicSecret, basic := request.BasicAuth()
-		secret, knownKey := service.summaryKeys[request.Header.Get("X-Key-Id")]
-		if !basic || clientID != service.summaryClientID || request.Header.Get("X-Service-Id") != clientID || !knownKey || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "summary service credentials are invalid")
+		secret, knownKey := requirement.keys[request.Header.Get("X-Key-Id")]
+		if !basic || clientID != requirement.clientID || request.Header.Get("X-Service-Id") != clientID || !knownKey || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
+			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" service credentials are invalid")
 			return
 		}
 		timestamp, err := strconv.ParseInt(request.Header.Get("X-Timestamp"), 10, 64)
 		if err != nil || absInt64(service.now().Unix()-timestamp) > int64((5*time.Minute)/time.Second) {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "summary service timestamp is invalid")
+			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" service timestamp is invalid")
 			return
 		}
 		nonce := request.Header.Get("X-Nonce")
 		decoded, err := base64.RawURLEncoding.DecodeString(nonce)
 		if err != nil || len(decoded) != 24 {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "summary service nonce is invalid")
+			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" service nonce is invalid")
 			return
 		}
 		digest := sha256.Sum256(nil)
@@ -43,21 +55,44 @@ func (service *practiceHTTP) authenticateConsoleSummary(next http.Handler) http.
 		mac := hmac.New(sha256.New, []byte(secret))
 		_, _ = mac.Write([]byte(canonical))
 		if !hmac.Equal([]byte(request.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "summary service signature is invalid")
+			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" service signature is invalid")
+			return
+		}
+		if requirement.requiredPermission != "" && (request.Header.Get("X-Permission-Code") != requirement.requiredPermission || request.Header.Get("X-Scope-Kind") != "product" || request.Header.Get("X-Product-Code") != "quizcraft") {
+			writeError(writer, http.StatusForbidden, "permission_denied", "QuizCraft "+requirement.label+" permission or scope is denied")
 			return
 		}
 		result, err := service.database.Exec(request.Context(), `INSERT INTO quizcraft_service_nonces(client_id,key_id,nonce) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, clientID, request.Header.Get("X-Key-Id"), nonce)
 		if err != nil {
-			writeError(writer, http.StatusServiceUnavailable, "summary_auth_unavailable", "summary replay protection is temporarily unavailable")
+			writeError(writer, http.StatusServiceUnavailable, requirement.unavailableCode, "QuizCraft "+requirement.label+" replay protection is temporarily unavailable")
 			return
 		}
 		if result.RowsAffected() != 1 {
-			writeError(writer, http.StatusConflict, "service_replay", "summary service nonce was already used")
+			writeError(writer, http.StatusConflict, "service_replay", "QuizCraft "+requirement.label+" service nonce was already used")
 			return
 		}
 		_, _ = service.database.Exec(request.Context(), `DELETE FROM quizcraft_service_nonces WHERE received_at < now()-interval '10 minutes'`)
 		next.ServeHTTP(writer, request)
 	})
+}
+
+func (service *practiceHTTP) authenticateConsoleSummary(next http.Handler) http.Handler {
+	return service.authenticateSignedGET(serviceAuthRequirement{
+		clientID:        service.summaryClientID,
+		keys:            service.summaryKeys,
+		unavailableCode: "summary_auth_unavailable",
+		label:           "summary",
+	}, next)
+}
+
+func (service *practiceHTTP) authenticatePortalCatalog(next http.Handler) http.Handler {
+	return service.authenticateSignedGET(serviceAuthRequirement{
+		clientID:           service.catalogClientID,
+		keys:               service.catalogKeys,
+		unavailableCode:    "catalog_auth_unavailable",
+		label:              "catalog",
+		requiredPermission: "portal.practice.read",
+	}, next)
 }
 
 func (service *practiceHTTP) consoleSummary(writer http.ResponseWriter, request *http.Request) {

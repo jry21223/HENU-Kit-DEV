@@ -82,13 +82,15 @@ paths:
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks:
     get:
-      summary: List published practice banks
+      summary: List published practice banks through the internal Portal catalog contract
       tags: [Practice]
       operationId: listPracticeBanks
-      security: []
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
       responses:
         '200': { description: Published banks, content: { application/json: { schema: { $ref: '#/components/schemas/BankListEnvelope' } } } }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/practice/sessions:
     post:
@@ -462,6 +464,11 @@ components:
     workshopSessionCookie: { type: apiKey, in: cookie, name: __Host-quizcraft_session, description: Encrypted HttpOnly Secure local session holding the server-only Platform Core exchange session. Every Workshop request is authorized live by the backend. }
     summaryBasic: { type: http, scheme: basic, description: Dedicated Console Gateway to QuizCraft service credential. }
     summarySignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
+    portalCatalogBasic: { type: http, scheme: basic, description: Dedicated Portal Gateway to QuizCraft catalog service credential. }
+    portalCatalogSignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
+    portalCatalogPermission: { type: apiKey, in: header, name: X-Permission-Code, description: Must be portal.practice.read after Portal Gateway authorization. }
+    portalCatalogScope: { type: apiKey, in: header, name: X-Scope-Kind, description: Must be product. }
+    portalCatalogProduct: { type: apiKey, in: header, name: X-Product-Code, description: Must be quizcraft. }
     cutoverEvidence: { type: apiKey, in: header, name: X-QuizCraft-Cutover-Secret, description: Dedicated operator-only secret for release evidence. }
   parameters:
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 160 } }
@@ -477,6 +484,7 @@ components:
     Forbidden: { description: Permission code or product Scope denied, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     NotFound: { description: Resource or operation is unknown to this actor, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     Conflict: { description: Idempotency payload or optimistic version conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    ServiceReplay: { description: Dedicated service request nonce was already used, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     ServiceUnavailable: { description: PostgreSQL or a required service is unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   schemas:
     RequestID: { type: string, pattern: '^req_[A-Za-z0-9_-]+$', maxLength: 120 }

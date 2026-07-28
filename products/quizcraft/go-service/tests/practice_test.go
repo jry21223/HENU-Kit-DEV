@@ -58,13 +58,18 @@ type apiEnvelope[T any] struct {
 func TestPracticeHTTPGuestFourTypesAndReplayProtection(t *testing.T) {
 	pool := practicePool(t)
 	report := importPracticeBank(t, pool, "practice-four-types-"+uuid.NewString())
-	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		Database:        pool,
+		AuthHMACSecret:  []byte(practiceAuthSecret),
+		CatalogClientID: portalCatalogClientID,
+		CatalogKeys:     map[string]string{portalCatalogKeyID: portalCatalogSecret},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(handler)
 	defer server.Close()
-	listStatus, listBody := requestJSON(t, http.MethodGet, server.URL+"/api/v1/banks", nil, nil)
+	listStatus, listBody := requestCatalog(t, server.URL, "portal.practice.read")
 	if listStatus != http.StatusOK || !bytes.Contains(listBody, []byte(report.BankID)) || !bytes.Contains(listBody, []byte(`"question_count":4`)) || !bytes.Contains(listBody, []byte(`"chapters"`)) {
 		t.Fatalf("bank list = %d %s", listStatus, listBody)
 	}

@@ -6,6 +6,7 @@ on:
       - services/portal-gateway/**
       - apps/portal/src/lib/api/portal-session.generated.ts
       - packages/api-contracts/openapi/portal-gateway.yaml
+      - packages/api-contracts/openapi/quizcraft.yaml
       - .github/workflows/portal-gateway.yml
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - services/portal-gateway/**
       - apps/portal/src/lib/api/portal-session.generated.ts
       - packages/api-contracts/openapi/portal-gateway.yaml
+      - packages/api-contracts/openapi/quizcraft.yaml
       - .github/workflows/portal-gateway.yml
 
 permissions:
@@ -39,8 +41,10 @@ jobs:
         run: |
           set -euo pipefail
           go run ./cmd/contractgen
+          go run ./cmd/quizcraftcontractgen
           git diff --exit-code -- \
             internal/contract/portal_session.generated.go \
+            internal/practice/contract_generated.go \
             ../../apps/portal/src/lib/api/portal-session.generated.ts
           npx --yes --package=@redocly/cli@2.39.0 \
             redocly lint ../../packages/api-contracts/openapi/portal-gateway.yaml
