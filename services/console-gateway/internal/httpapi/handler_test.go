@@ -39,6 +39,7 @@ type fakePlatform struct {
 	libraryPermissions []string
 	foodPermissions    []string
 	accountPermissions []string
+	accountErrors      map[string]error
 }
 
 type fakeOverview struct{}
@@ -59,11 +60,11 @@ type fakeFood struct {
 }
 
 type fakeAccountPortfolio struct {
-	actor, key                string
-	queue, detail, result     json.RawMessage
-	replyBody, transitionBody []byte
-	err                       error
-	replyCalls                int
+	actor, key, membershipUserID                         string
+	queue, detail, result, membership                    json.RawMessage
+	replyBody, transitionBody, grantBody, revokeBody     []byte
+	err                                                  error
+	replyCalls, grantCalls, revokeCalls, membershipCalls int
 }
 
 func (f *fakeAccountPortfolio) Tickets(_ context.Context, actor string) (json.RawMessage, error) {
@@ -81,6 +82,18 @@ func (f *fakeAccountPortfolio) Reply(_ context.Context, actor, _, key string, bo
 func (f *fakeAccountPortfolio) Transition(_ context.Context, actor, _, key string, body []byte) (json.RawMessage, error) {
 	f.actor, f.key, f.transitionBody = actor, key, append([]byte(nil), body...)
 	return f.result, f.err
+}
+func (f *fakeAccountPortfolio) Membership(_ context.Context, actor, userID string) (json.RawMessage, error) {
+	f.actor, f.membershipUserID, f.membershipCalls = actor, userID, f.membershipCalls+1
+	return f.membership, f.err
+}
+func (f *fakeAccountPortfolio) Grant(_ context.Context, actor, userID, key string, body []byte) (json.RawMessage, error) {
+	f.actor, f.membershipUserID, f.key, f.grantBody, f.grantCalls = actor, userID, key, append([]byte(nil), body...), f.grantCalls+1
+	return f.membership, f.err
+}
+func (f *fakeAccountPortfolio) Revoke(_ context.Context, actor, userID, key string, body []byte) (json.RawMessage, error) {
+	f.actor, f.membershipUserID, f.key, f.revokeBody, f.revokeCalls = actor, userID, key, append([]byte(nil), body...), f.revokeCalls+1
+	return f.membership, f.err
 }
 
 func (f *fakeFood) Workspace(_ context.Context, actor string) (json.RawMessage, error) {
@@ -202,6 +215,9 @@ func (fake *fakePlatform) CheckAccount(_ context.Context, token, permission stri
 		return platformcore.ErrUnauthorized
 	}
 	fake.accountPermissions = append(fake.accountPermissions, permission)
+	if err, ok := fake.accountErrors[permission]; ok {
+		return err
+	}
 	return fake.checkErr
 }
 
@@ -497,6 +513,132 @@ func TestAccountTicketGatewayRejectsInvalidKeyAndMapsOwnerConflictWithoutSuccess
 	response.Body.Close()
 	if response.StatusCode != http.StatusConflict || owner.replyCalls != 1 {
 		t.Fatalf("conflicting Account reply = %d calls=%d, want 409 and one owner call", response.StatusCode, owner.replyCalls)
+	}
+}
+
+func TestAccountMembershipForwardingUsesExactPermissionAndVerifiedServerSessionOperator(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	operatorID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	targetUserID := "33333333-3333-4333-8333-333333333333"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeAccountPortfolio{membership: json.RawMessage(`{"membership":{"plan":"free","lifetime":false,"version":1}}`)}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: operatorID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	lookup, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/account/memberships/"+targetUserID, nil)
+	lookup.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	lookup.Header.Set("X-Actor-User-Id", "44444444-4444-4444-8444-444444444444")
+	response, err := server.Client().Do(lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.actor != operatorID || owner.membershipUserID != targetUserID || owner.membershipCalls != 1 {
+		t.Fatalf("membership lookup status/actor/target/calls=%d/%s/%s/%d", response.StatusCode, owner.actor, owner.membershipUserID, owner.membershipCalls)
+	}
+
+	grantRaw := "{\n  \"reason\": \"Verified support entitlement.\", \"expected_version\": 1\n}"
+	grant, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/memberships/"+targetUserID+"/grants", strings.NewReader(grantRaw))
+	grant.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	grant.Header.Set("Content-Type", "application/json")
+	grant.Header.Set("Idempotency-Key", "idem_membership_grant")
+	grant.Header.Set("X-Actor-User-Id", "44444444-4444-4444-8444-444444444444")
+	response, err = server.Client().Do(grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.actor != operatorID || owner.membershipUserID != targetUserID || owner.key != "idem_membership_grant" || string(owner.grantBody) != grantRaw || owner.grantCalls != 1 {
+		t.Fatalf("membership grant status/actor/target/key/body/calls=%d/%s/%s/%q/%q/%d", response.StatusCode, owner.actor, owner.membershipUserID, owner.key, owner.grantBody, owner.grantCalls)
+	}
+
+	malicious, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/memberships/"+targetUserID+"/grants", strings.NewReader(`{"reason":"spoof","expected_version":1,"actor_user_id":"44444444-4444-4444-8444-444444444444"}`))
+	malicious.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	malicious.Header.Set("Content-Type", "application/json")
+	malicious.Header.Set("Idempotency-Key", "idem_membership_spoof")
+	response, err = server.Client().Do(malicious)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest || owner.grantCalls != 1 {
+		t.Fatalf("browser-chosen membership actor status/calls=%d/%d, want 400 and no owner call", response.StatusCode, owner.grantCalls)
+	}
+
+	revokeRaw := `{"reason":"Membership correction","expected_version":2}`
+	revoke, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/memberships/"+targetUserID+"/revocations", strings.NewReader(revokeRaw))
+	revoke.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	revoke.Header.Set("Content-Type", "application/json")
+	revoke.Header.Set("Idempotency-Key", "idem_membership_revoke")
+	response, err = server.Client().Do(revoke)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.actor != operatorID || owner.membershipUserID != targetUserID || owner.key != "idem_membership_revoke" || string(owner.revokeBody) != revokeRaw || owner.revokeCalls != 1 {
+		t.Fatalf("membership revoke status/actor/target/key/body/calls=%d/%s/%s/%q/%q/%d", response.StatusCode, owner.actor, owner.membershipUserID, owner.key, owner.revokeBody, owner.revokeCalls)
+	}
+
+	owner.err = accountportfolioapi.ErrConflict
+	conflict, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/memberships/"+targetUserID+"/grants", strings.NewReader(`{"reason":"stale retry","expected_version":1}`))
+	conflict.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	conflict.Header.Set("Content-Type", "application/json")
+	conflict.Header.Set("Idempotency-Key", "idem_membership_conflict")
+	response, err = server.Client().Do(conflict)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusConflict || owner.grantCalls != 2 {
+		t.Fatalf("conflicting membership grant status/calls=%d/%d, want 409 and one owner call", response.StatusCode, owner.grantCalls)
+	}
+
+	wantPermissions := []string{"account.membership.write", "account.membership.write", "account.membership.write", "account.membership.write"}
+	if strings.Join(platform.accountPermissions, ",") != strings.Join(wantPermissions, ",") {
+		t.Fatalf("membership permission checks=%v, want %v", platform.accountPermissions, wantPermissions)
+	}
+}
+
+func TestConsoleSessionAdvertisesMembershipPermissionOnlyAfterVerifiedCheck(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{
+		exchange: platformcore.Exchange{ExchangeToken: token},
+		accountErrors: map[string]error{
+			"account.tickets.read":       platformcore.ErrForbidden,
+			"account.tickets.reply":      platformcore.ErrForbidden,
+			"account.tickets.transition": platformcore.ErrForbidden,
+		},
+	}
+	owner := &fakeAccountPortfolio{}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/session", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var envelope struct {
+		Data contract.ConsoleSession `json:"data"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("Console membership Session response=%d err=%v", response.StatusCode, err)
+	}
+	permissions := strings.Join(envelope.Data.AccessContext.Permissions, ",")
+	if !strings.Contains(permissions, "account.membership.write") {
+		t.Fatalf("Console Session omitted verified membership permission: %v", envelope.Data.AccessContext.Permissions)
+	}
+	if strings.Contains(permissions, "account.tickets.read") || strings.Contains(permissions, "account.tickets.reply") || strings.Contains(permissions, "account.tickets.transition") {
+		t.Fatalf("Console Session advertised unverified account permissions: %v", envelope.Data.AccessContext.Permissions)
 	}
 }
 

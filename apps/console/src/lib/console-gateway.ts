@@ -1,8 +1,18 @@
-// Code generated from console-gateway.yaml (SHA256 bc87c591cc27348662acd6010b6ffed1a69f65a4cacd17682f16f09bf0f8ce3c); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 418778025096749b31652f8063bb8b8b6fb9793d927aedbed1888460c797a5d0); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
   verified_at: string;
+}
+
+export interface ConsoleAccountMembership {
+  lifetime: boolean;
+  plan: "free" | "lifetime";
+  version: number;
+}
+
+export interface ConsoleAccountMembershipEnvelope {
+  membership: ConsoleAccountMembership;
 }
 
 export interface ConsoleAccountTicket {
@@ -43,6 +53,11 @@ export interface ConsoleAccountTicketMessage {
 
 export interface ConsoleAccountTicketQueue {
   tickets: Array<ConsoleAccountTicket>;
+}
+
+export interface ConsoleMembershipMutationRequest {
+  expected_version: number;
+  reason: string;
 }
 
 export interface ConsoleModuleMetric {
@@ -509,6 +524,14 @@ function isConsoleAccessContext(value: unknown): value is ConsoleAccessContext {
   return isRecord(value) && "permissions" in value && Array.isArray(value["permissions"]) && value["permissions"].every((item) => typeof item === "string") && "scopes" in value && Array.isArray(value["scopes"]) && value["scopes"].every((item) => isConsoleScope(item)) && "verified_at" in value && isDateTime(value["verified_at"]) && Object.keys(value).every((key) => ["permissions","scopes","verified_at"].includes(key));
 }
 
+function isConsoleAccountMembership(value: unknown): value is ConsoleAccountMembership {
+  return isRecord(value) && "lifetime" in value && typeof value["lifetime"] === "boolean" && "plan" in value && typeof value["plan"] === "string" && ["free","lifetime"].includes(value["plan"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["lifetime","plan","version"].includes(key)) && true && (!(isRecord(value) && "plan" in value && value["plan"] === "free") || isRecord(value) && "lifetime" in value && value["lifetime"] === false) && true && (!(isRecord(value) && "plan" in value && value["plan"] === "lifetime") || isRecord(value) && "lifetime" in value && value["lifetime"] === true);
+}
+
+function isConsoleAccountMembershipEnvelope(value: unknown): value is ConsoleAccountMembershipEnvelope {
+  return isRecord(value) && "membership" in value && isConsoleAccountMembership(value["membership"]) && Object.keys(value).every((key) => ["membership"].includes(key));
+}
+
 function isConsoleAccountTicket(value: unknown): value is ConsoleAccountTicket {
   return isRecord(value) && "category" in value && typeof value["category"] === "string" && value["category"].length <= 80 && new RegExp("^[a-z][a-z0-9_-]*$").test(value["category"]) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["category","created_at","id","reference","status","title","updated_at","version"].includes(key));
 }
@@ -531,6 +554,10 @@ function isConsoleAccountTicketMessage(value: unknown): value is ConsoleAccountT
 
 function isConsoleAccountTicketQueue(value: unknown): value is ConsoleAccountTicketQueue {
   return isRecord(value) && "tickets" in value && Array.isArray(value["tickets"]) && value["tickets"].length <= 500 && value["tickets"].every((item) => isConsoleAccountTicket(item)) && Object.keys(value).every((key) => ["tickets"].includes(key));
+}
+
+function isConsoleMembershipMutationRequest(value: unknown): value is ConsoleMembershipMutationRequest {
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
 }
 
 function isConsoleModuleMetric(value: unknown): value is ConsoleModuleMetric {
@@ -1003,6 +1030,51 @@ export async function resolveFoodOperation(operation: FoodCommandKind, idempoten
     if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unavailable" };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unavailable" }; }
+}
+
+export type AccountMembershipReadResult =
+  | { state: "authenticated"; membership: ConsoleAccountMembership }
+  | { state: "signed_out" | "denied" | "not_found" | "invalid" | "unavailable" };
+
+export async function fetchAccountMembership(userID: string): Promise<AccountMembershipReadResult> {
+  try {
+    const response = await fetch("/api/v1/account/memberships/{user_id}".replace("{user_id}", encodeURIComponent(userID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountMembershipEnvelope(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", membership: envelope.data.membership };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type AccountMembershipWriteResult =
+  | { state: "succeeded"; membership: ConsoleAccountMembership }
+  | { state: "signed_out" | "denied" | "not_found" | "conflict" | "invalid" | "unavailable" };
+
+async function writeAccountMembership(path: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
+  try {
+    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountMembershipEnvelope(envelope.data)) return { state: "unavailable" };
+    return { state: "succeeded", membership: envelope.data.membership };
+  } catch { return { state: "unavailable" }; }
+}
+
+export function grantAccountMembership(userID: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
+  return writeAccountMembership("/api/v1/account/memberships/{user_id}/grants".replace("{user_id}", encodeURIComponent(userID)), input, idempotencyKey);
+}
+
+export function revokeAccountMembership(userID: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
+  return writeAccountMembership("/api/v1/account/memberships/{user_id}/revocations".replace("{user_id}", encodeURIComponent(userID)), input, idempotencyKey);
 }
 
 export type AccountTicketQueueResult = { state: "authenticated"; queue: ConsoleAccountTicketQueue } | { state: "signed_out" | "denied" | "unavailable" };

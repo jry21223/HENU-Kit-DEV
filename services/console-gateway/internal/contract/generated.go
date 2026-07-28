@@ -4,39 +4,52 @@ package contract
 import "time"
 
 const (
-	HealthRoute                   = "/api/v1/healthz"
-	LoginRoute                    = "/api/v1/auth/login"
-	CallbackRoute                 = "/api/v1/auth/callback"
-	SessionRoute                  = "/api/v1/session"
-	OverviewRoute                 = "/api/v1/overview"
-	OperationsRoute               = "/api/v1/operations"
-	RevokeSessionRoute            = "/api/v1/operations/sessions/{session_id}/revocations"
-	UpdateAccessRoute             = "/api/v1/operations/users/{user_id}/access-updates"
-	OperationStatusRoute          = "/api/v1/operations/results/{operation}"
-	NoticeSnapshotRoute           = "/api/v1/notices"
-	NoticeSourceRoute             = "/api/v1/notices/sources"
-	NoticeVersionRoute            = "/api/v1/notices/sources/{source_id}/versions"
-	NoticeReviewRoute             = "/api/v1/notices/versions/{version_id}/reviews"
-	NoticeDistributionRoute       = "/api/v1/notices/versions/{version_id}/distributions"
-	NoticeOperationRoute          = "/api/v1/notices/operations/{operation}"
-	LibraryWorkspaceRoute         = "/api/v1/library"
-	LibraryCommandRoute           = "/api/v1/library/commands"
-	LibraryOperationRoute         = "/api/v1/library/operations/{operation}"
-	FoodWorkspaceRoute            = "/api/v1/food"
-	FoodCommandRoute              = "/api/v1/food/commands"
-	FoodOperationRoute            = "/api/v1/food/operations/{operation}"
-	AccountTicketsRoute           = "/api/v1/account/tickets"
-	AccountTicketRoute            = "/api/v1/account/tickets/{ticket_id}"
-	AccountTicketRepliesRoute     = "/api/v1/account/tickets/{ticket_id}/replies"
-	AccountTicketTransitionsRoute = "/api/v1/account/tickets/{ticket_id}/transitions"
-	LogoutRoute                   = "/api/v1/session/logout"
-	SourceSHA256                  = "bc87c591cc27348662acd6010b6ffed1a69f65a4cacd17682f16f09bf0f8ce3c"
+	HealthRoute                       = "/api/v1/healthz"
+	LoginRoute                        = "/api/v1/auth/login"
+	CallbackRoute                     = "/api/v1/auth/callback"
+	SessionRoute                      = "/api/v1/session"
+	OverviewRoute                     = "/api/v1/overview"
+	OperationsRoute                   = "/api/v1/operations"
+	RevokeSessionRoute                = "/api/v1/operations/sessions/{session_id}/revocations"
+	UpdateAccessRoute                 = "/api/v1/operations/users/{user_id}/access-updates"
+	OperationStatusRoute              = "/api/v1/operations/results/{operation}"
+	NoticeSnapshotRoute               = "/api/v1/notices"
+	NoticeSourceRoute                 = "/api/v1/notices/sources"
+	NoticeVersionRoute                = "/api/v1/notices/sources/{source_id}/versions"
+	NoticeReviewRoute                 = "/api/v1/notices/versions/{version_id}/reviews"
+	NoticeDistributionRoute           = "/api/v1/notices/versions/{version_id}/distributions"
+	NoticeOperationRoute              = "/api/v1/notices/operations/{operation}"
+	LibraryWorkspaceRoute             = "/api/v1/library"
+	LibraryCommandRoute               = "/api/v1/library/commands"
+	LibraryOperationRoute             = "/api/v1/library/operations/{operation}"
+	FoodWorkspaceRoute                = "/api/v1/food"
+	FoodCommandRoute                  = "/api/v1/food/commands"
+	FoodOperationRoute                = "/api/v1/food/operations/{operation}"
+	AccountMembershipRoute            = "/api/v1/account/memberships/{user_id}"
+	AccountMembershipGrantsRoute      = "/api/v1/account/memberships/{user_id}/grants"
+	AccountMembershipRevocationsRoute = "/api/v1/account/memberships/{user_id}/revocations"
+	AccountTicketsRoute               = "/api/v1/account/tickets"
+	AccountTicketRoute                = "/api/v1/account/tickets/{ticket_id}"
+	AccountTicketRepliesRoute         = "/api/v1/account/tickets/{ticket_id}/replies"
+	AccountTicketTransitionsRoute     = "/api/v1/account/tickets/{ticket_id}/transitions"
+	LogoutRoute                       = "/api/v1/session/logout"
+	SourceSHA256                      = "418778025096749b31652f8063bb8b8b6fb9793d927aedbed1888460c797a5d0"
 )
 
 type ConsoleAccessContext struct {
 	Permissions []string       `json:"permissions"`
 	Scopes      []ConsoleScope `json:"scopes"`
 	VerifiedAt  time.Time      `json:"verified_at"`
+}
+
+type ConsoleAccountMembership struct {
+	Lifetime bool   `json:"lifetime"`
+	Plan     string `json:"plan"`
+	Version  int64  `json:"version"`
+}
+
+type ConsoleAccountMembershipEnvelope struct {
+	Membership ConsoleAccountMembership `json:"membership"`
 }
 
 type ConsoleAccountTicket struct {
@@ -77,6 +90,11 @@ type ConsoleAccountTicketMessage struct {
 
 type ConsoleAccountTicketQueue struct {
 	Tickets []ConsoleAccountTicket `json:"tickets"`
+}
+
+type ConsoleMembershipMutationRequest struct {
+	ExpectedVersion int64  `json:"expected_version"`
+	Reason          string `json:"reason"`
 }
 
 type ConsoleModuleMetric struct {

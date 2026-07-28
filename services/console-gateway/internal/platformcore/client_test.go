@@ -75,7 +75,7 @@ func TestCheckAccountUsesOnlyAllowlistedPermissionAndAccountPortfolioProductScop
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body.PermissionCode != "account.tickets.reply" || body.Scope.Kind != "product" || body.Scope.ProductCode != "account-portfolio" {
+		if (body.PermissionCode != "account.tickets.reply" && body.PermissionCode != "account.membership.write") || body.Scope.Kind != "product" || body.Scope.ProductCode != "account-portfolio" {
 			t.Fatalf("Account authorization body = %+v", body)
 		}
 		writer.WriteHeader(http.StatusOK)
@@ -85,10 +85,12 @@ func TestCheckAccountUsesOnlyAllowlistedPermissionAndAccountPortfolioProductScop
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.CheckAccount(t.Context(), "exchange_token_with_at_least_32_characters", "account.tickets.reply"); err != nil {
-		t.Fatalf("CheckAccount() error = %v", err)
+	for _, permission := range []string{"account.tickets.reply", "account.membership.write"} {
+		if err := client.CheckAccount(t.Context(), "exchange_token_with_at_least_32_characters", permission); err != nil {
+			t.Fatalf("CheckAccount(%q) error = %v", permission, err)
+		}
 	}
-	if err := client.CheckAccount(t.Context(), "exchange_token_with_at_least_32_characters", "account.membership.write"); err != ErrInvalid {
+	if err := client.CheckAccount(t.Context(), "exchange_token_with_at_least_32_characters", "account.points.write"); err != ErrInvalid {
 		t.Fatalf("CheckAccount() unsupported permission = %v, want ErrInvalid", err)
 	}
 }

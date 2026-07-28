@@ -24,8 +24,8 @@ import (
 var (
 	ErrUnauthorized = errors.New("account portfolio rejected the Console actor")
 	ErrForbidden    = errors.New("account portfolio denied the Console caller")
-	ErrConflict     = errors.New("account portfolio ticket command conflicted")
-	ErrNotFound     = errors.New("account portfolio ticket was not found")
+	ErrConflict     = errors.New("account portfolio command conflicted")
+	ErrNotFound     = errors.New("account portfolio resource was not found")
 	ErrInvalid      = errors.New("account portfolio request or response is invalid")
 	ErrUnavailable  = errors.New("account portfolio is unavailable")
 )
@@ -71,6 +71,18 @@ func TicketPath(ticketID string) string {
 	return strings.ReplaceAll(TicketPathTemplate, "{ticket_id}", url.PathEscape(ticketID))
 }
 
+func MembershipPath(userID string) string {
+	return strings.ReplaceAll(MembershipPathTemplate, "{user_id}", url.PathEscape(userID))
+}
+
+func MembershipGrantsPath(userID string) string {
+	return strings.ReplaceAll(MembershipGrantsPathTemplate, "{user_id}", url.PathEscape(userID))
+}
+
+func MembershipRevocationsPath(userID string) string {
+	return strings.ReplaceAll(MembershipRevocationsPathTemplate, "{user_id}", url.PathEscape(userID))
+}
+
 func TicketRepliesPath(ticketID string) string {
 	return strings.ReplaceAll(TicketRepliesPathTemplate, "{ticket_id}", url.PathEscape(ticketID))
 }
@@ -90,29 +102,53 @@ func (c *Client) Ticket(ctx context.Context, actorUserID, ticketID string) (json
 	return c.get(ctx, TicketPath(ticketID), actorUserID, validateTicketDetail)
 }
 
+// Membership reads an initialized target Account Portfolio membership. The
+// target is placed only in the signed path; the operator remains the verified
+// Console Session actor.
+func (c *Client) Membership(ctx context.Context, actorUserID, userID string) (json.RawMessage, error) {
+	if !validUUID(userID) {
+		return nil, ErrInvalid
+	}
+	return c.get(ctx, MembershipPath(userID), actorUserID, validateMembershipEnvelope)
+}
+
+func (c *Client) Grant(ctx context.Context, actorUserID, userID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	if !validUUID(userID) {
+		return nil, ErrInvalid
+	}
+	return c.command(ctx, MembershipGrantsPath(userID), actorUserID, idempotencyKey, raw, validateMembershipEnvelope)
+}
+
+func (c *Client) Revoke(ctx context.Context, actorUserID, userID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	if !validUUID(userID) {
+		return nil, ErrInvalid
+	}
+	return c.command(ctx, MembershipRevocationsPath(userID), actorUserID, idempotencyKey, raw, validateMembershipEnvelope)
+}
+
 func (c *Client) Reply(ctx context.Context, actorUserID, ticketID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
 	if !validUUID(ticketID) {
 		return nil, ErrInvalid
 	}
-	return c.command(ctx, TicketRepliesPath(ticketID), actorUserID, idempotencyKey, raw)
+	return c.command(ctx, TicketRepliesPath(ticketID), actorUserID, idempotencyKey, raw, validateTicketCommand)
 }
 
 func (c *Client) Transition(ctx context.Context, actorUserID, ticketID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
 	if !validUUID(ticketID) {
 		return nil, ErrInvalid
 	}
-	return c.command(ctx, TicketTransitionsPath(ticketID), actorUserID, idempotencyKey, raw)
+	return c.command(ctx, TicketTransitionsPath(ticketID), actorUserID, idempotencyKey, raw, validateTicketCommand)
 }
 
 func (c *Client) get(ctx context.Context, path, actorUserID string, validate responseValidator) (json.RawMessage, error) {
 	return c.call(ctx, http.MethodGet, path, actorUserID, "", nil, http.StatusOK, validate)
 }
 
-func (c *Client) command(ctx context.Context, path, actorUserID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
-	if !validIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > 64<<10 {
+func (c *Client) command(ctx context.Context, path, actorUserID, idempotencyKey string, raw []byte, validate responseValidator) (json.RawMessage, error) {
+	if !validIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > 64<<10 || validate == nil {
 		return nil, ErrInvalid
 	}
-	return c.call(ctx, http.MethodPost, path, actorUserID, idempotencyKey, raw, http.StatusOK, validateTicketCommand)
+	return c.call(ctx, http.MethodPost, path, actorUserID, idempotencyKey, raw, http.StatusOK, validate)
 }
 
 type responseValidator func(json.RawMessage) error
