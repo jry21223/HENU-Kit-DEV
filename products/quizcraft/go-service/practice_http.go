@@ -398,7 +398,7 @@ func (service *practiceHTTP) updateRankingProfile(writer http.ResponseWriter, re
 	var input rankingProfileRequest
 	raw, err := decodeBody(request, &input)
 	nickname, validNickname := normalizeRankingNickname(input.Nickname)
-	if err != nil || !validNickname || !validSystemAvatar(input.SystemAvatar) {
+	if err != nil || !jsonFieldPresent(raw, "nickname") || !validNickname || !validSystemAvatar(input.SystemAvatar) {
 		writeError(writer, http.StatusBadRequest, "invalid_ranking_profile", "nickname or system avatar is not allowed")
 		return
 	}

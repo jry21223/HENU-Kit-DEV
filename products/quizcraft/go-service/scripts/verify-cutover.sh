@@ -22,6 +22,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${CONSOLE_ORIGIN:?set the Console origin}"
 : "${CUTOVER_TEST_EMAIL:?set the real mailbox address used for cutover verification}"
 : "${CUTOVER_RESTORE_ADMIN_URL:?set the isolated PostgreSQL admin used for temporary restore databases}"
+: "${QUIZCRAFT_GO_ENV_FILE:=/etc/quizcraft-go.env}"
 : "${LEGACY_PYTHON:=/opt/quizcraft-cn/.venv/bin/python}"
 
 [[ "$EXPECTED_WRITES_ENABLED" =~ ^(true|false)$ ]]
@@ -33,6 +34,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 test "$(stat -c '%u' "$CUTOVER_GATE_EVIDENCE_FILE")" = 0
 gate_permissions="$(stat -c '%a' "$CUTOVER_GATE_EVIDENCE_FILE")"
 test $(( 8#$gate_permissions & 8#077 )) -eq 0
+[[ -f "$QUIZCRAFT_GO_ENV_FILE" ]]
+test "$(stat -c '%u' "$QUIZCRAFT_GO_ENV_FILE")" = 0
+go_environment_permissions="$(stat -c '%a' "$QUIZCRAFT_GO_ENV_FILE")"
+test $(( 8#$go_environment_permissions & 8#022 )) -eq 0
 require_root_executable() {
   local path="$1" permissions
   [[ -f "$path" && -x "$path" ]]
@@ -45,10 +50,12 @@ browser_verifier="$script_dir/verify-browser-cutover.mjs"
 platform_core_verifier="$script_dir/verify-platform-core-cutover.py"
 log_verifier="$script_dir/verify-cutover-logs.sh"
 restore_verifier="$script_dir/verify-backup-restores.py"
+portal_read_config_writer="$script_dir/write-portal-read-request-config.py"
 require_root_executable "$browser_verifier"
 require_root_executable "$platform_core_verifier"
 require_root_executable "$log_verifier"
 require_root_executable "$restore_verifier"
+require_root_executable "$portal_read_config_writer"
 : "${QUIZCRAFT_OPERATOR_SESSION:?set a dedicated cutover operator session with Workshop read permission}"
 [[ "$QUIZCRAFT_OPERATOR_SESSION" =~ ^[A-Za-z0-9._~-]{32,}$ ]]
 
@@ -61,10 +68,18 @@ if [[ "$EXPECTED_WRITES_ENABLED" == "true" ]]; then
   printf 'cookie = "__Host-quizcraft_session=%s"\n' "$QUIZCRAFT_OPERATOR_SESSION" > "$cutover_tmp/operator.curl"
   chmod 600 "$cutover_tmp/operator.curl"
 fi
+write_portal_read_config() {
+  local request_uri="$1" output="$2"
+  "$portal_read_config_writer" \
+    --environment-file "$QUIZCRAFT_GO_ENV_FILE" \
+    --request-uri "$request_uri" \
+    --output "$output"
+}
 
 curl --fail --silent --show-error --max-time 10 "$GO_BASE_URL/readyz" > "$cutover_tmp/readiness.json"
 curl --fail --silent --show-error --max-time 10 "$LEGACY_BASE_URL/api/healthz" > "$cutover_tmp/legacy-health.json"
-curl --fail --silent --show-error --max-time 10 "$GO_BASE_URL/api/v1/banks" > "$cutover_tmp/banks.json"
+write_portal_read_config "/api/v1/banks" "$cutover_tmp/portal-read-banks.curl"
+curl --fail --silent --show-error --max-time 10 --config "$cutover_tmp/portal-read-banks.curl" "$GO_BASE_URL/api/v1/banks" > "$cutover_tmp/banks.json"
 curl --fail --silent --show-error --max-time 10 --config "$cutover_tmp/evidence.curl" \
   "$GO_BASE_URL/api/v1/cutover-evidence?run_id=$EXPECTED_MIGRATION_RUN_ID&source_head=$EXPECTED_SOURCE_HEAD" \
   > "$cutover_tmp/evidence.json"
@@ -223,7 +238,8 @@ PY
     "$GO_BASE_URL/api/v1/feedback" > "$cutover_tmp/feedback.json"
   python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; assert data["state"] == "succeeded" and data["resource_id"]' "$cutover_tmp/feedback.json"
 
-  curl --fail --silent --show-error --max-time 10 \
+  write_portal_read_config "/api/v1/rankings/overall?period=weekly" "$cutover_tmp/portal-read-ranking.curl"
+  curl --fail --silent --show-error --max-time 10 --config "$cutover_tmp/portal-read-ranking.curl" \
     "$GO_BASE_URL/api/v1/rankings/overall?period=weekly" > "$cutover_tmp/ranking.json"
   python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; assert data["scope"] == "overall" and data["period"] == "weekly" and isinstance(data["entries"], list)' "$cutover_tmp/ranking.json"
 

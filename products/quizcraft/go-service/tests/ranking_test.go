@@ -122,6 +122,44 @@ func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T)
 	}
 }
 
+func TestRankingProfileRejectsOmittedNicknameWithoutOverwritingExistingProfile(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "ranking-nickname-required-"+uuid.NewString())
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		Database:        pool,
+		AuthHMACSecret:  []byte(practiceAuthSecret),
+		CatalogClientID: portalCatalogClientID,
+		CatalogKeys:     map[string]string{portalCatalogKeyID: portalCatalogSecret},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	auth := "quizcraft_session=" + practiceToken(t, uuid.NewString())
+	sessionID, question := createRankingSession(t, server.URL, auth, report, "ranking-nickname-required-session")
+	answerStatus, answerBody := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, sessionID), map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-nickname-required-answer"}, map[string]any{"question_id": question.QuestionID, "question_version_id": question.QuestionVersionID, "answer": 1})
+	if answerStatus != http.StatusOK || !bytes.Contains(answerBody, []byte(`"correct":true`)) {
+		t.Fatalf("ranking answer = %d %s", answerStatus, answerBody)
+	}
+
+	initialStatus, initialBody := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-nickname-required-initial"}, map[string]any{"visible": true, "nickname": "保留昵称", "system_avatar": "scholar-blue"})
+	if initialStatus != http.StatusOK {
+		t.Fatalf("initial ranking profile = %d %s", initialStatus, initialBody)
+	}
+
+	omittedStatus, omittedBody := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-nickname-required-omitted"}, map[string]any{"visible": false, "system_avatar": "scholar-blue"})
+	if omittedStatus != http.StatusBadRequest || !bytes.Contains(omittedBody, []byte(`"code":"invalid_ranking_profile"`)) {
+		t.Fatalf("nickname-omitted ranking profile = %d %s", omittedStatus, omittedBody)
+	}
+
+	rankingStatus, rankingBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_nickname_required")
+	if rankingStatus != http.StatusOK || !bytes.Contains(rankingBody, []byte(`"nickname":"保留昵称"`)) {
+		t.Fatalf("nickname-omitted profile overwrote existing public identity = %d %s", rankingStatus, rankingBody)
+	}
+}
+
 func TestRankingProfileRejectsIdentifierShapedNicknames(t *testing.T) {
 	pool := practicePool(t)
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
