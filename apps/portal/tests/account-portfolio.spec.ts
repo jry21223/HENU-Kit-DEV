@@ -75,7 +75,6 @@ test("account overview renders a recoverable error when Account Portfolio is una
 test("unimplemented Account Portfolio pages still fail closed rather than exposing session mocks", async ({ page }) => {
   await mockSession(page);
   const pages = [
-    { path: "/account/wallet", title: "积分钱包", absentAction: "每日签到" },
     { path: "/account/posts", title: "我的文章", absentAction: "去发布" },
     { path: "/account/deals", title: "我的交易", absentAction: "完整管理" },
   ];
@@ -87,6 +86,76 @@ test("unimplemented Account Portfolio pages still fail closed rather than exposi
     await expect(page.getByText("不会展示或修改任何会话内数据")).toBeVisible();
     await expect(page.getByText(item.absentAction, { exact: false })).toHaveCount(0);
   }
+});
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 1000 },
+  { name: "390px", width: 390, height: 844 },
+]) {
+  test(`${viewport.name} wallet renders the real paged immutable ledger without point consumption features`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mockSession(page);
+    const nextCursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNy0yOFQwMDowMDowMFoiLCJpZCI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYIn0";
+    let initialRequests = 0;
+    let pageRequests = 0;
+    await page.route("**/api/v1/account/points**", async (route) => {
+      const url = new URL(route.request().url());
+      expect(url.searchParams.get("limit")).toBe("20");
+      const cursor = url.searchParams.get("cursor");
+      if (cursor === null) initialRequests += 1;
+      else {
+        expect(cursor).toBe(nextCursor);
+        pageRequests += 1;
+      }
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: cursor === null
+            ? {
+                balance: 100,
+                entries: [{ id: "11111111-1111-4111-8111-111111111111", amount: 120, reason: "人工核验后的补偿积分", created_at: "2026-07-28T00:00:00Z" }],
+                next_cursor: nextCursor,
+              }
+            : {
+                balance: 100,
+                entries: [{ id: "22222222-2222-4222-8222-222222222222", amount: -20, reason: "重复记账复核扣减", created_at: "2026-07-27T00:00:00Z" }],
+                next_cursor: null,
+              },
+          request_id: `req_wallet_${initialRequests + pageRequests}`,
+        }),
+      });
+    });
+
+    await page.goto("/account/wallet", { waitUntil: "domcontentloaded" });
+    await expect(page.locator('[data-account-points-state="success"]')).toBeVisible();
+    await expect(page.getByRole("heading", { name: "积分钱包" })).toBeVisible();
+    await expect(page.locator('[data-account-points-state="success"]')).toContainText("100");
+    await expect(page.getByText("人工核验后的补偿积分")).toBeVisible();
+    await page.getByRole("button", { name: "加载更多记录" }).click();
+    await expect(page.getByText("重复记账复核扣减")).toBeVisible();
+    await expect(page.getByRole("button", { name: "加载更多记录" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /签到|购买|消费/ })).toHaveCount(0);
+    expect(initialRequests).toBeGreaterThanOrEqual(1);
+    expect(pageRequests).toBe(1);
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+}
+
+test("wallet exposes a recoverable owner failure instead of a local balance", async ({ page }) => {
+  await mockSession(page);
+  await page.route("**/api/v1/account/points**", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "account_portfolio_unavailable", request_id: "req_wallet_down" }),
+    });
+  });
+
+  await page.goto("/account/wallet", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-account-points-state="error"]')).toBeVisible();
+  await expect(page.getByText("账户服务不可用时，不会以本地余额或会话数据替代真实积分账本。")).toBeVisible();
+  await expect(page.getByText("当前积分余额")).toHaveCount(0);
 });
 
 for (const viewport of [

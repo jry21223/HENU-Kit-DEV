@@ -1,9 +1,10 @@
 /**
  * 账号控制台本地 store。
  *
- * 生产默认 **空诚实态**：积分 0、免费会员、无通知/工单/流水/设备列表。
- * 不再预置 345 积分、假会员天数、示例通知等演示数据。
- * 签到 / 会话内开通终身会员等仍仅内存态（未接真实支付与积分服务）。
+ * 生产默认 **空诚实态**：免费会员、无通知/工单/设备列表。
+ * 不再预置假会员天数、示例通知等演示数据。
+ * 积分事实只由 Account Portfolio 的持久化账本提供；这里不保留签到
+ * 加分、积分消费或本地流水状态。
  */
 
 // ---------------------------------------------------------------- 类型
@@ -15,13 +16,6 @@ export interface Device {
   ip: string;
   active: string;
   current?: boolean;
-}
-
-export interface Txn {
-  id: string;
-  time: string;
-  item: string;
-  amount: number; // 正获得 / 负消耗
 }
 
 export interface Membership {
@@ -89,9 +83,6 @@ export const FREE_MEMBERSHIP: Membership = {
 // ---------------------------------------------------------------- 会话内 store（空初始）
 
 export interface AccountData {
-  balance: number;
-  signedToday: boolean;
-  txns: Txn[];
   devices: Device[];
   membership: Membership;
   tickets: Ticket[];
@@ -99,9 +90,6 @@ export interface AccountData {
 }
 
 const EMPTY: AccountData = {
-  balance: 0,
-  signedToday: false,
-  txns: [],
   devices: [],
   membership: FREE_MEMBERSHIP,
   tickets: [],
@@ -130,41 +118,6 @@ export const accountStore = {
   get: (): AccountData => state,
   /** SSR 与首屏一致：空态，避免 hydration 闪出假数据 */
   getServer: (): AccountData => EMPTY,
-
-  signIn() {
-    if (state.signedToday) return;
-    set({
-      balance: state.balance + 10,
-      signedToday: true,
-      txns: [
-        {
-          id: `t-sign-${state.txns.length}`,
-          time: "刚刚",
-          item: "每日签到",
-          amount: 10,
-        },
-        ...state.txns,
-      ],
-    });
-  },
-
-  /** 积分消费（资料购买等）：余额不足返回 false，成功追加流水 */
-  spendPoints(amount: number, item: string): boolean {
-    if (state.balance < amount) return false;
-    set({
-      balance: state.balance - amount,
-      txns: [
-        {
-          id: `t-spend-${state.txns.length}`,
-          time: "刚刚",
-          item,
-          amount: -amount,
-        },
-        ...state.txns,
-      ],
-    });
-    return true;
-  },
 
   removeDevice(id: string) {
     set({ devices: state.devices.filter((d) => d.id !== id) });

@@ -126,6 +126,13 @@ func (c *Client) Revoke(ctx context.Context, actorUserID, userID, idempotencyKey
 	return c.command(ctx, MembershipRevocationsPath(userID), actorUserID, idempotencyKey, raw, validateMembershipEnvelope)
 }
 
+// Adjust appends one signed Console operator point adjustment. The target user
+// stays inside the JSON command body; the authenticated Console Session actor
+// is bound independently by the private owner signature.
+func (c *Client) Adjust(ctx context.Context, actorUserID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	return c.command(ctx, PointAdjustmentsPath, actorUserID, idempotencyKey, raw, validatePointAdjustment)
+}
+
 func (c *Client) Reply(ctx context.Context, actorUserID, ticketID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
 	if !validUUID(ticketID) {
 		return nil, ErrInvalid

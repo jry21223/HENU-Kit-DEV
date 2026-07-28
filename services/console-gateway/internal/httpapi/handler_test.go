@@ -61,10 +61,12 @@ type fakeFood struct {
 
 type fakeAccountPortfolio struct {
 	actor, key, membershipUserID                         string
-	queue, detail, result, membership                    json.RawMessage
+	queue, detail, result, membership, points            json.RawMessage
 	replyBody, transitionBody, grantBody, revokeBody     []byte
+	pointAdjustmentBody                                  []byte
 	err                                                  error
 	replyCalls, grantCalls, revokeCalls, membershipCalls int
+	pointAdjustmentCalls                                 int
 }
 
 func (f *fakeAccountPortfolio) Tickets(_ context.Context, actor string) (json.RawMessage, error) {
@@ -94,6 +96,10 @@ func (f *fakeAccountPortfolio) Grant(_ context.Context, actor, userID, key strin
 func (f *fakeAccountPortfolio) Revoke(_ context.Context, actor, userID, key string, body []byte) (json.RawMessage, error) {
 	f.actor, f.membershipUserID, f.key, f.revokeBody, f.revokeCalls = actor, userID, key, append([]byte(nil), body...), f.revokeCalls+1
 	return f.membership, f.err
+}
+func (f *fakeAccountPortfolio) Adjust(_ context.Context, actor, key string, body []byte) (json.RawMessage, error) {
+	f.actor, f.key, f.pointAdjustmentBody, f.pointAdjustmentCalls = actor, key, append([]byte(nil), body...), f.pointAdjustmentCalls+1
+	return f.points, f.err
 }
 
 func (f *fakeFood) Workspace(_ context.Context, actor string) (json.RawMessage, error) {
@@ -603,6 +609,111 @@ func TestAccountMembershipForwardingUsesExactPermissionAndVerifiedServerSessionO
 	}
 }
 
+func TestAccountPointAdjustmentUsesExactPermissionAndVerifiedServerSessionOperator(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	operatorID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeAccountPortfolio{points: json.RawMessage(`{"balance":120,"entry":{"id":"55555555-5555-4555-8555-555555555555","amount":120,"reason":"Verified support correction.","created_at":"2026-07-28T00:00:00Z"}}`)}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: operatorID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	raw := "{\n  \"user_id\": \"33333333-3333-4333-8333-333333333333\", \"amount\": 120, \"reason\": \"Verified support correction.\"\n}"
+	adjustment, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/points/adjustments", strings.NewReader(raw))
+	adjustment.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	adjustment.Header.Set("Content-Type", "application/json")
+	adjustment.Header.Set("Idempotency-Key", "idem_account_points_adjust")
+	adjustment.Header.Set("X-Actor-User-Id", "44444444-4444-4444-8444-444444444444")
+	response, err := server.Client().Do(adjustment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.actor != operatorID || owner.key != "idem_account_points_adjust" || string(owner.pointAdjustmentBody) != raw || owner.pointAdjustmentCalls != 1 {
+		t.Fatalf("point adjustment status/actor/key/body/calls=%d/%s/%q/%q/%d", response.StatusCode, owner.actor, owner.key, owner.pointAdjustmentBody, owner.pointAdjustmentCalls)
+	}
+	if strings.Join(platform.accountPermissions, ",") != "account.points.adjust" {
+		t.Fatalf("point adjustment permission checks=%v, want exact account.points.adjust", platform.accountPermissions)
+	}
+
+	malicious, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/points/adjustments", strings.NewReader(`{"user_id":"33333333-3333-4333-8333-333333333333","amount":120,"reason":"spoof","operator_user_id":"44444444-4444-4444-8444-444444444444"}`))
+	malicious.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	malicious.Header.Set("Content-Type", "application/json")
+	malicious.Header.Set("Idempotency-Key", "idem_account_points_spoof")
+	response, err = server.Client().Do(malicious)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest || owner.pointAdjustmentCalls != 1 {
+		t.Fatalf("browser-chosen point operator status/calls=%d/%d, want 400 and no owner call", response.StatusCode, owner.pointAdjustmentCalls)
+	}
+
+	owner.err = accountportfolioapi.ErrConflict
+	conflict, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/points/adjustments", strings.NewReader(`{"user_id":"33333333-3333-4333-8333-333333333333","amount":-1,"reason":"stale retry"}`))
+	conflict.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	conflict.Header.Set("Content-Type", "application/json")
+	conflict.Header.Set("Idempotency-Key", "idem_account_points_conflict")
+	response, err = server.Client().Do(conflict)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusConflict || owner.pointAdjustmentCalls != 2 {
+		t.Fatalf("conflicting point adjustment status/calls=%d/%d, want 409 and one owner call", response.StatusCode, owner.pointAdjustmentCalls)
+	}
+	if strings.Join(platform.accountPermissions, ",") != "account.points.adjust,account.points.adjust" {
+		t.Fatalf("point adjustment permission history=%v, want two verified checks", platform.accountPermissions)
+	}
+
+}
+
+func TestAccountPointAdjustmentRejectsUnsafeAmountsBeforeAuthorizationOrForwarding(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeAccountPortfolio{}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	for _, rejected := range []struct {
+		name string
+		body string
+	}{
+		{name: "zero", body: `{"user_id":"33333333-3333-4333-8333-333333333333","amount":0,"reason":"Zero must not be forwarded."}`},
+		{name: "positive beyond JavaScript-safe range", body: `{"user_id":"33333333-3333-4333-8333-333333333333","amount":9007199254740992,"reason":"Unsafe positive must not be forwarded."}`},
+		{name: "negative beyond JavaScript-safe range", body: `{"user_id":"33333333-3333-4333-8333-333333333333","amount":-9007199254740992,"reason":"Unsafe negative must not be forwarded."}`},
+		{name: "fractional", body: `{"user_id":"33333333-3333-4333-8333-333333333333","amount":1.5,"reason":"Fractional value must not be forwarded."}`},
+	} {
+		t.Run(rejected.name, func(t *testing.T) {
+			request, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/points/adjustments", strings.NewReader(rejected.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Idempotency-Key", "idem_account_points_invalid_"+strings.ReplaceAll(rejected.name, " ", "_"))
+			response, err := server.Client().Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("%s status = %d, want 400", rejected.name, response.StatusCode)
+			}
+		})
+	}
+	if owner.pointAdjustmentCalls != 0 || len(platform.accountPermissions) != 0 {
+		t.Fatalf("invalid point commands forwarded/capability-checked = %d/%v, want 0/no checks", owner.pointAdjustmentCalls, platform.accountPermissions)
+	}
+}
+
 func TestConsoleSessionAdvertisesMembershipPermissionOnlyAfterVerifiedCheck(t *testing.T) {
 	redisClient := testRedis(t)
 	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
@@ -610,6 +721,7 @@ func TestConsoleSessionAdvertisesMembershipPermissionOnlyAfterVerifiedCheck(t *t
 	platform := &fakePlatform{
 		exchange: platformcore.Exchange{ExchangeToken: token},
 		accountErrors: map[string]error{
+			"account.points.adjust":      platformcore.ErrForbidden,
 			"account.tickets.read":       platformcore.ErrForbidden,
 			"account.tickets.reply":      platformcore.ErrForbidden,
 			"account.tickets.transition": platformcore.ErrForbidden,
@@ -637,7 +749,47 @@ func TestConsoleSessionAdvertisesMembershipPermissionOnlyAfterVerifiedCheck(t *t
 	if !strings.Contains(permissions, "account.membership.write") {
 		t.Fatalf("Console Session omitted verified membership permission: %v", envelope.Data.AccessContext.Permissions)
 	}
-	if strings.Contains(permissions, "account.tickets.read") || strings.Contains(permissions, "account.tickets.reply") || strings.Contains(permissions, "account.tickets.transition") {
+	if strings.Contains(permissions, "account.points.adjust") || strings.Contains(permissions, "account.tickets.read") || strings.Contains(permissions, "account.tickets.reply") || strings.Contains(permissions, "account.tickets.transition") {
+		t.Fatalf("Console Session advertised unverified account permissions: %v", envelope.Data.AccessContext.Permissions)
+	}
+}
+
+func TestConsoleSessionAdvertisesPointAdjustmentPermissionOnlyAfterVerifiedCheck(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{
+		exchange: platformcore.Exchange{ExchangeToken: token},
+		accountErrors: map[string]error{
+			"account.membership.write":   platformcore.ErrForbidden,
+			"account.tickets.read":       platformcore.ErrForbidden,
+			"account.tickets.reply":      platformcore.ErrForbidden,
+			"account.tickets.transition": platformcore.ErrForbidden,
+		},
+	}
+	owner := &fakeAccountPortfolio{}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/session", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var envelope struct {
+		Data contract.ConsoleSession `json:"data"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("Console point Session response=%d err=%v", response.StatusCode, err)
+	}
+	permissions := strings.Join(envelope.Data.AccessContext.Permissions, ",")
+	if !strings.Contains(permissions, "account.points.adjust") {
+		t.Fatalf("Console Session omitted verified point adjustment permission: %v", envelope.Data.AccessContext.Permissions)
+	}
+	if strings.Contains(permissions, "account.membership.write") || strings.Contains(permissions, "account.tickets.read") || strings.Contains(permissions, "account.tickets.reply") || strings.Contains(permissions, "account.tickets.transition") {
 		t.Fatalf("Console Session advertised unverified account permissions: %v", envelope.Data.AccessContext.Permissions)
 	}
 }

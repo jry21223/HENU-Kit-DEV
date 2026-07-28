@@ -1,4 +1,4 @@
-// Code generated from account-portfolio.yaml (SHA256 a5729e5c4a1003748f3e0014db9690e951346b6aa462d3d23f943d06ba80bff1); DO NOT EDIT.
+// Code generated from account-portfolio.yaml (SHA256 acfe4d07a3ed443e5f9ce414647d862851ac056a39ccbe4cea37db54107c951c); DO NOT EDIT.
 package contract
 
 const (
@@ -17,6 +17,7 @@ const (
 	ConsoleMembershipRoute            = "/api/v1/console/memberships/{user_id}"
 	ConsoleMembershipGrantsRoute      = "/api/v1/console/memberships/{user_id}/grants"
 	ConsoleMembershipRevocationsRoute = "/api/v1/console/memberships/{user_id}/revocations"
+	ConsolePointAdjustmentsRoute      = "/api/v1/console/points/adjustments"
 	ConsoleTicketsRoute               = "/api/v1/console/tickets"
 	ConsoleTicketRoute                = "/api/v1/console/tickets/{ticket_id}"
 	ConsoleTicketRepliesRoute         = "/api/v1/console/tickets/{ticket_id}/replies"

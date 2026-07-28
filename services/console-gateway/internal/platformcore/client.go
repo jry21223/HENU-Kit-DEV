@@ -188,7 +188,7 @@ func (c *Client) CheckFood(ctx context.Context, exchangeToken, permissionCode st
 // check for points or payment state.
 func (c *Client) CheckAccount(ctx context.Context, exchangeToken, permissionCode string) error {
 	switch permissionCode {
-	case "account.membership.write", "account.tickets.read", "account.tickets.reply", "account.tickets.transition":
+	case "account.membership.write", "account.points.adjust", "account.tickets.read", "account.tickets.reply", "account.tickets.transition":
 	default:
 		return ErrInvalid
 	}

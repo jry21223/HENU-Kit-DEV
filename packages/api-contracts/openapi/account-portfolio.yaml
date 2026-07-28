@@ -63,6 +63,16 @@ paths:
         - $ref: '#/components/parameters/Timestamp'
         - $ref: '#/components/parameters/Nonce'
         - $ref: '#/components/parameters/ActorUserID'
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation cursor returned by the previous page.
+          schema: { type: string, minLength: 1, maxLength: 512 }
+        - name: limit
+          in: query
+          required: false
+          description: Number of immutable ledger entries to return.
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
         '200':
           description: Points account
@@ -70,6 +80,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PointsEnvelope'
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/ReplayDetected' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
@@ -387,6 +398,33 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/CommandConflict' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/points/adjustments:
+    post:
+      operationId: adjustConsoleAccountPoints
+      summary: Append one authorized operator point credit or debit for a target user
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsolePointAdjustmentRequest' }
+      responses:
+        '200':
+          description: Durable balance and appended ledger entry, or the original idempotent result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsolePointAdjustmentEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /api/v1/console/tickets:
     get:
       operationId: getConsoleAccountTickets
@@ -634,7 +672,7 @@ components:
       type: object
       required: [points_balance, plan, lifetime, unread_notification_count, open_ticket_count]
       properties:
-        points_balance: { type: integer, format: int64, minimum: 0 }
+        points_balance: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 }
         plan: { type: string, enum: [free, lifetime] }
         lifetime: { type: boolean }
         unread_notification_count: { type: integer, minimum: 0 }
@@ -645,19 +683,27 @@ components:
       properties:
         data:
           type: object
-          required: [balance, entries]
+          additionalProperties: false
+          required: [balance, entries, next_cursor]
           properties:
-            balance: { type: integer, format: int64, minimum: 0 }
+            balance: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 }
             entries:
               type: array
               items: { $ref: '#/components/schemas/PointLedgerEntry' }
+            next_cursor:
+              type: [string, 'null']
+              maxLength: 512
         request_id: { type: string }
     PointLedgerEntry:
       type: object
+      additionalProperties: false
       required: [id, amount, reason, created_at]
       properties:
         id: { type: string, format: uuid }
-        amount: { type: integer, format: int64 }
+        amount:
+          oneOf:
+            - { type: integer, format: int64, minimum: -9007199254740991, maximum: -1 }
+            - { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
         reason: { type: string }
         created_at: { type: string, format: date-time }
     MembershipEnvelope:
@@ -700,6 +746,29 @@ components:
           required: [membership]
           properties:
             membership: { $ref: '#/components/schemas/ConsoleMembership' }
+        request_id: { type: string }
+    ConsolePointAdjustmentRequest:
+      type: object
+      additionalProperties: false
+      required: [user_id, amount, reason]
+      properties:
+        user_id: { type: string, format: uuid }
+        amount:
+          oneOf:
+            - { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
+            - { type: integer, format: int64, minimum: -9007199254740991, maximum: -1 }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    ConsolePointAdjustmentEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [balance, entry]
+          properties:
+            balance: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 }
+            entry: { $ref: '#/components/schemas/PointLedgerEntry' }
         request_id: { type: string }
     MembershipMutationRequest:
       type: object

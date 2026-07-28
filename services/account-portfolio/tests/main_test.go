@@ -167,7 +167,7 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("initial ApplyMigrations() = %v", err)
 	}
 
-	for _, migration := range []string{"000004_membership_order_payment_kernel.down.sql", "000003_membership_entitlements.down.sql", "000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
+	for _, migration := range []string{"000005_admin_point_adjustments.down.sql", "000004_membership_order_payment_kernel.down.sql", "000003_membership_entitlements.down.sql", "000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
 		down, err := os.ReadFile(filepath.Join("..", "db", "migrations", migration))
 		if err != nil {
 			t.Fatal(err)
@@ -180,7 +180,7 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("reconcile after rollback = %v", err)
 	}
 
-	var accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded bool
+	var accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, pointAdjustmentAuditsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded, pointAdjustmentsVersionRecorded bool
 	if err := pool.QueryRow(ctx, `
 		SELECT
 			to_regclass('account_portfolio_accounts') IS NOT NULL,
@@ -188,15 +188,17 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 			to_regclass('account_portfolio_membership_events') IS NOT NULL,
 			to_regclass('account_portfolio_payment_order_intents') IS NOT NULL,
 			to_regclass('account_portfolio_payment_facts') IS NOT NULL,
+			to_regclass('account_portfolio_point_adjustment_audits') IS NOT NULL,
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000001_account_portfolio'),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000002_support_ticket_commands'),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000003_membership_entitlements'),
-			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000004_membership_order_payment_kernel')
-	`).Scan(&accountTable, &commandsTable, &membershipEventsTable, &paymentIntentsTable, &paymentFactsTable, &initialVersionRecorded, &supportCommandsVersionRecorded, &membershipEntitlementsVersionRecorded, &paymentKernelVersionRecorded); err != nil {
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000004_membership_order_payment_kernel'),
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000005_admin_point_adjustments')
+	`).Scan(&accountTable, &commandsTable, &membershipEventsTable, &paymentIntentsTable, &paymentFactsTable, &pointAdjustmentAuditsTable, &initialVersionRecorded, &supportCommandsVersionRecorded, &membershipEntitlementsVersionRecorded, &paymentKernelVersionRecorded, &pointAdjustmentsVersionRecorded); err != nil {
 		t.Fatal(err)
 	}
-	if !accountTable || !commandsTable || !membershipEventsTable || !paymentIntentsTable || !paymentFactsTable || !initialVersionRecorded || !supportCommandsVersionRecorded || !membershipEntitlementsVersionRecorded || !paymentKernelVersionRecorded {
-		t.Fatalf("reconciled schema account_table=%t commands_table=%t membership_events_table=%t payment_intents_table=%t payment_facts_table=%t initial_version=%t support_commands_version=%t membership_entitlements_version=%t payment_kernel_version=%t, want all true", accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded)
+	if !accountTable || !commandsTable || !membershipEventsTable || !paymentIntentsTable || !paymentFactsTable || !pointAdjustmentAuditsTable || !initialVersionRecorded || !supportCommandsVersionRecorded || !membershipEntitlementsVersionRecorded || !paymentKernelVersionRecorded || !pointAdjustmentsVersionRecorded {
+		t.Fatalf("reconciled schema account_table=%t commands_table=%t membership_events_table=%t payment_intents_table=%t payment_facts_table=%t point_adjustment_audits_table=%t initial_version=%t support_commands_version=%t membership_entitlements_version=%t payment_kernel_version=%t point_adjustments_version=%t, want all true", accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, pointAdjustmentAuditsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded, pointAdjustmentsVersionRecorded)
 	}
 }
 
@@ -316,6 +318,206 @@ func TestMembershipEntitlementMigrationPreservesPreexistingMembership(t *testing
 	}
 }
 
+func TestPointAdjustmentMigrationReconcilesPreexistingProjectionIntoOneImmutableOpeningFact(t *testing.T) {
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+
+	schema := fmt.Sprintf("account_portfolio_points_reconcile_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+	}()
+
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+		t.Fatalf("initial ApplyMigrations() = %v", err)
+	}
+
+	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000005_admin_point_adjustments.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("rollback point adjustment migration = %v", err)
+	}
+
+	const ownerID = "f1f1f1f1-f1f1-41f1-81f1-f1f1f1f1f1f1"
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_accounts(user_id) VALUES($1)`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_points(user_id, balance) VALUES($1, 73)`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+		t.Fatalf("ApplyMigrations() after pre-ledger projection = %v", err)
+	}
+
+	var balance, ledgerTotal int64
+	var entries int
+	var reason, key string
+	if err := pool.QueryRow(ctx, `
+		SELECT
+			(SELECT balance FROM account_portfolio_points WHERE user_id=$1),
+			(SELECT COALESCE(SUM(amount), 0) FROM account_portfolio_point_ledger WHERE user_id=$1),
+			(SELECT count(*) FROM account_portfolio_point_ledger WHERE user_id=$1),
+			(SELECT reason FROM account_portfolio_point_ledger WHERE user_id=$1),
+			(SELECT idempotency_key FROM account_portfolio_point_ledger WHERE user_id=$1)
+	`, ownerID).Scan(&balance, &ledgerTotal, &entries, &reason, &key); err != nil {
+		t.Fatal(err)
+	}
+	if balance != 73 || ledgerTotal != 73 || entries != 1 || reason != "Legacy balance reconciliation" || key != "legacy_points_reconciliation:"+ownerID {
+		t.Fatalf("reconciled point projection balance/ledger/entries/reason/key = %d/%d/%d/%q/%q, want 73/73/1/opening fact", balance, ledgerTotal, entries, reason, key)
+	}
+}
+
+func TestPointAdjustmentMigrationRejectsUnsafePreexistingProjectionDuringLedgerRebuild(t *testing.T) {
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+
+	schema := fmt.Sprintf("account_portfolio_points_unsafe_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+	}()
+
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+		t.Fatalf("initial ApplyMigrations() = %v", err)
+	}
+
+	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000005_admin_point_adjustments.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("rollback point adjustment migration = %v", err)
+	}
+
+	const ownerID = "f4f4f4f4-f4f4-44f4-84f4-f4f4f4f4f4f4"
+	const unsafeBalance = int64(9_007_199_254_740_992)
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_accounts(user_id) VALUES($1)`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_points(user_id, balance) VALUES($1, $2)`, ownerID, unsafeBalance); err != nil {
+		t.Fatal(err)
+	}
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err == nil {
+		t.Fatal("ApplyMigrations() accepted an unsafe preexisting point projection")
+	}
+
+	var auditTable, versionRecorded bool
+	var ledgerEntries int
+	if err := pool.QueryRow(ctx, `
+		SELECT
+			to_regclass('account_portfolio_point_adjustment_audits') IS NOT NULL,
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000005_admin_point_adjustments'),
+			(SELECT count(*) FROM account_portfolio_point_ledger WHERE user_id=$1)
+	`, ownerID).Scan(&auditTable, &versionRecorded, &ledgerEntries); err != nil {
+		t.Fatal(err)
+	}
+	if auditTable || versionRecorded || ledgerEntries != 0 {
+		t.Fatalf("unsafe rebuild left audit_table/version_recorded/ledger_entries = %t/%t/%d, want false/false/0", auditTable, versionRecorded, ledgerEntries)
+	}
+}
+
+func TestPointAdjustmentMigrationRejectsNegativePreexistingLedgerWithoutRecordingItsVersion(t *testing.T) {
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+
+	schema := fmt.Sprintf("account_portfolio_points_negative_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+	}()
+
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+		t.Fatalf("initial ApplyMigrations() = %v", err)
+	}
+
+	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000005_admin_point_adjustments.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("rollback point adjustment migration = %v", err)
+	}
+
+	const ownerID = "f2f2f2f2-f2f2-42f2-82f2-f2f2f2f2f2f2"
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_accounts(user_id) VALUES($1)`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_points(user_id) VALUES($1)`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO account_portfolio_point_ledger(id, user_id, amount, reason, idempotency_key)
+		VALUES('f3f3f3f3-f3f3-43f3-83f3-f3f3f3f3f3f3', $1, -1, 'inconsistent pre-rollout ledger', 'negative_pre_rollout_ledger')
+	`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err == nil {
+		t.Fatal("ApplyMigrations() accepted a negative preexisting point ledger")
+	}
+
+	var auditTable, versionRecorded bool
+	if err := pool.QueryRow(ctx, `
+		SELECT
+			to_regclass('account_portfolio_point_adjustment_audits') IS NOT NULL,
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000005_admin_point_adjustments')
+	`).Scan(&auditTable, &versionRecorded); err != nil {
+		t.Fatal(err)
+	}
+	if auditTable || versionRecorded {
+		t.Fatalf("failed reconciliation left audit_table/version_recorded = %t/%t, want false/false", auditTable, versionRecorded)
+	}
+}
+
 func clearAccountPortfolio(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(), `
@@ -331,6 +533,7 @@ func clearAccountPortfolio(t *testing.T, pool *pgxpool.Pool) {
 			account_portfolio_payment_facts,
 			account_portfolio_payment_order_intents,
 			account_portfolio_membership_orders,
+			account_portfolio_point_adjustment_audits,
 			account_portfolio_point_ledger,
 			account_portfolio_memberships,
 			account_portfolio_points,

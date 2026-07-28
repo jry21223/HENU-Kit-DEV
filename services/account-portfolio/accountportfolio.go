@@ -8,11 +8,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +31,11 @@ var (
 	idempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 	ticketCategoryPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 )
+
+// maxPublicPointValue keeps every numeric point fact exactly representable by
+// Portal and Console JavaScript clients. Point JSON values are never rounded
+// across the owner boundary.
+const maxPublicPointValue int64 = 9_007_199_254_740_991
 
 // Config contains only private service-to-service configuration. Browser
 // clients always go through Portal Gateway and never receive these values.
@@ -112,6 +119,24 @@ type ticketRecord struct {
 	UserID string
 }
 
+type pointLedgerEntryView struct {
+	ID        string    `json:"id"`
+	Amount    int64     `json:"amount"`
+	Reason    string    `json:"reason"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type pointsView struct {
+	Balance    int64                  `json:"balance"`
+	Entries    []pointLedgerEntryView `json:"entries"`
+	NextCursor *string                `json:"next_cursor"`
+}
+
+type pointCursor struct {
+	CreatedAt time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+}
+
 type commandFailure struct {
 	status  int
 	code    string
@@ -161,6 +186,7 @@ func New(config Config) (http.Handler, error) {
 		protected.Get(contract.ConsoleMembershipRoute, h.consoleMembership)
 		protected.Post(contract.ConsoleMembershipGrantsRoute, h.grantConsoleMembership)
 		protected.Post(contract.ConsoleMembershipRevocationsRoute, h.revokeConsoleMembership)
+		protected.Post(contract.ConsolePointAdjustmentsRoute, h.adjustConsolePoints)
 		protected.Get(contract.ConsoleTicketsRoute, h.consoleTickets)
 		protected.Get(contract.ConsoleTicketRoute, h.consoleTicket)
 		protected.Post(contract.ConsoleTicketRepliesRoute, h.replyConsoleTicket)
@@ -215,14 +241,13 @@ func (h *service) summary(w http.ResponseWriter, r *http.Request) {
 		OpenTicketCount         int    `json:"open_ticket_count"`
 	}
 	err := h.database.QueryRow(r.Context(), `
-		SELECT p.balance, m.plan,
+		SELECT COALESCE((SELECT SUM(l.amount) FROM account_portfolio_point_ledger l WHERE l.user_id=$1), 0), m.plan,
 			(SELECT count(*) FROM account_portfolio_notifications WHERE user_id=$1 AND read_at IS NULL),
 			(SELECT count(*) FROM account_portfolio_tickets WHERE user_id=$1 AND status <> 'resolved')
-		FROM account_portfolio_points p
-		JOIN account_portfolio_memberships m ON m.user_id = p.user_id
-		WHERE p.user_id=$1
+		FROM account_portfolio_memberships m
+		WHERE m.user_id=$1
 	`, userID).Scan(&data.PointsBalance, &data.Plan, &data.UnreadNotificationCount, &data.OpenTicketCount)
-	if err != nil {
+	if err != nil || data.PointsBalance < 0 || data.PointsBalance > maxPublicPointValue {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio summary is unavailable")
 		return
 	}
@@ -235,31 +260,44 @@ func (h *service) points(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	type entry struct {
-		ID        string    `json:"id"`
-		Amount    int64     `json:"amount"`
-		Reason    string    `json:"reason"`
-		CreatedAt time.Time `json:"created_at"`
+	limit, cursor, failure := pointPage(r)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
 	}
-	data := struct {
-		Balance int64   `json:"balance"`
-		Entries []entry `json:"entries"`
-	}{Entries: make([]entry, 0)}
-	if err := h.database.QueryRow(r.Context(), `SELECT balance FROM account_portfolio_points WHERE user_id=$1`, userID).Scan(&data.Balance); err != nil {
+	data := pointsView{Entries: make([]pointLedgerEntryView, 0)}
+	if err := h.database.QueryRow(r.Context(), `SELECT COALESCE(SUM(amount), 0) FROM account_portfolio_point_ledger WHERE user_id=$1`, userID).Scan(&data.Balance); err != nil || data.Balance < 0 || data.Balance > maxPublicPointValue {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio points are unavailable")
 		return
 	}
-	rows, err := h.database.Query(r.Context(), `SELECT id, amount, reason, created_at FROM account_portfolio_point_ledger WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 100`, userID)
+	query := `SELECT id, amount, reason, created_at FROM account_portfolio_point_ledger WHERE user_id=$1`
+	args := []any{userID}
+	if cursor != nil {
+		query += ` AND (created_at, id) < ($2, $3)`
+		args = append(args, cursor.CreatedAt, cursor.ID)
+	}
+	query += ` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args)+1)
+	args = append(args, limit+1)
+	rows, err := h.database.Query(r.Context(), query, args...)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio points are unavailable")
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var value entry
+		var value pointLedgerEntryView
 		if err := rows.Scan(&value.ID, &value.Amount, &value.Reason, &value.CreatedAt); err != nil {
 			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio points are unavailable")
 			return
+		}
+		if value.Amount < -maxPublicPointValue || value.Amount > maxPublicPointValue || value.Amount == 0 {
+			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio points are unavailable")
+			return
+		}
+		if len(data.Entries) == limit {
+			encoded := encodePointCursor(data.Entries[len(data.Entries)-1])
+			data.NextCursor = &encoded
+			break
 		}
 		data.Entries = append(data.Entries, value)
 	}
@@ -478,6 +516,116 @@ func (h *service) mutateConsoleMembership(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeData(w, r, status, payload)
+}
+
+// adjustConsolePoints is deliberately a Console-only command. The target user
+// comes from the signed Console body, while the operator comes only from the
+// separately authenticated Console Gateway actor header.
+func (h *service) adjustConsolePoints(w http.ResponseWriter, r *http.Request) {
+	operator, ok := h.prepareConsole(w, r)
+	if !ok {
+		return
+	}
+	var input struct {
+		UserID string `json:"user_id"`
+		Amount int64  `json:"amount"`
+		Reason string `json:"reason"`
+	}
+	raw, failure := decodeCommand(r, &input)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	input.UserID = strings.TrimSpace(input.UserID)
+	input.Reason = strings.TrimSpace(input.Reason)
+	if uuid.Validate(input.UserID) != nil || input.Amount < -maxPublicPointValue || input.Amount > maxPublicPointValue || input.Amount == 0 || len([]rune(input.Reason)) == 0 || len([]rune(input.Reason)) > 1000 {
+		writeCommandFailure(w, r, invalidCommand("point adjustment is invalid"))
+		return
+	}
+	key, failure := idempotencyKey(r)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	payload, status, failure := h.executeCommand(r.Context(), operator.clientID, operator.userID, "point_adjustment", r.URL.Path, key, raw, http.StatusOK, func(tx pgx.Tx) (any, *commandFailure) {
+		if err := ensureAccountTx(r.Context(), tx, input.UserID); err != nil {
+			return nil, dependencyFailure("Account Portfolio points are unavailable")
+		}
+		var projection int64
+		if err := tx.QueryRow(r.Context(), `
+			SELECT balance
+			FROM account_portfolio_points
+			WHERE user_id=$1
+			FOR UPDATE
+		`, input.UserID).Scan(&projection); err != nil {
+			return nil, dependencyFailure("Account Portfolio points are unavailable")
+		}
+		var balance int64
+		if err := tx.QueryRow(r.Context(), `
+			SELECT COALESCE(SUM(amount), 0)
+			FROM account_portfolio_point_ledger
+			WHERE user_id=$1
+		`, input.UserID).Scan(&balance); err != nil || balance < 0 || balance > maxPublicPointValue {
+			return nil, dependencyFailure("Account Portfolio points are unavailable")
+		}
+		if projection != balance {
+			if _, err := tx.Exec(r.Context(), `UPDATE account_portfolio_points SET balance=$2, updated_at=$3 WHERE user_id=$1`, input.UserID, balance, h.now().UTC()); err != nil {
+				return nil, dependencyFailure("Account Portfolio points are unavailable")
+			}
+		}
+		newBalance, failure := adjustedPointBalance(balance, input.Amount)
+		if failure != nil {
+			return nil, failure
+		}
+		now := h.now().UTC()
+		auditID := uuid.NewString()
+		entry := pointLedgerEntryView{ID: uuid.NewString(), Amount: input.Amount, Reason: input.Reason, CreatedAt: now}
+		if _, err := tx.Exec(r.Context(), `
+			INSERT INTO account_portfolio_point_adjustment_audits(id, operator_user_id, target_user_id, amount, reason, idempotency_key, created_at)
+			VALUES($1, $2, $3, $4, $5, $6, $7)
+		`, auditID, operator.userID, input.UserID, input.Amount, input.Reason, key, now); err != nil {
+			return nil, dependencyFailure("Account Portfolio point adjustment audit is unavailable")
+		}
+		if _, err := tx.Exec(r.Context(), `
+			INSERT INTO account_portfolio_point_ledger(id, user_id, amount, reason, actor_user_id, audit_id, created_at)
+			VALUES($1, $2, $3, $4, $5, $6, $7)
+		`, entry.ID, input.UserID, input.Amount, input.Reason, operator.userID, auditID, now); err != nil {
+			return nil, dependencyFailure("Account Portfolio point ledger is unavailable")
+		}
+		if _, err := tx.Exec(r.Context(), `
+			UPDATE account_portfolio_points
+			SET balance=$2, updated_at=$3
+			WHERE user_id=$1
+		`, input.UserID, newBalance, now); err != nil {
+			return nil, dependencyFailure("Account Portfolio points are unavailable")
+		}
+		if failure := h.createPointNotification(r.Context(), tx, entry.ID, input.UserID, input.Amount, newBalance, now); failure != nil {
+			return nil, failure
+		}
+		return map[string]any{"balance": newBalance, "entry": entry}, nil
+	})
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	writeData(w, r, status, payload)
+}
+
+func adjustedPointBalance(balance, amount int64) (int64, *commandFailure) {
+	if balance < 0 || balance > maxPublicPointValue || amount < -maxPublicPointValue || amount > maxPublicPointValue || amount == 0 {
+		return 0, invalidCommand("point adjustment is outside its supported range")
+	}
+	if amount > 0 {
+		if balance > maxPublicPointValue-amount {
+			return 0, invalidCommand("point balance would exceed its supported range")
+		}
+		return balance + amount, nil
+	}
+	debit := -amount
+	if balance < debit {
+		return 0, &commandFailure{status: http.StatusConflict, code: "INSUFFICIENT_POINTS", message: "point debit exceeds the available balance"}
+	}
+	return balance - debit, nil
 }
 
 func (h *service) consoleTickets(w http.ResponseWriter, r *http.Request) {
@@ -1098,6 +1246,20 @@ func (h *service) createMembershipNotification(ctx context.Context, tx pgx.Tx, e
 	return nil
 }
 
+func (h *service) createPointNotification(ctx context.Context, tx pgx.Tx, ledgerID, userID string, amount, balance int64, createdAt time.Time) *commandFailure {
+	delta := strconv.FormatInt(amount, 10)
+	if amount > 0 {
+		delta = "+" + delta
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO account_portfolio_notifications(id, user_id, title, body, kind, point_ledger_id, created_at)
+		VALUES($1, $2, '积分余额已调整', $3, 'points_adjusted', $4, $5)
+	`, uuid.NewString(), userID, "你的积分已调整 "+delta+"，当前余额为 "+strconv.FormatInt(balance, 10)+"。", ledgerID, createdAt); err != nil {
+		return dependencyFailure("Account Portfolio point notification delivery is unavailable")
+	}
+	return nil
+}
+
 func allowedTicketTransition(from, to string) bool {
 	return (from == "open" && (to == "in_progress" || to == "resolved")) || (from == "in_progress" && to == "resolved")
 }
@@ -1203,6 +1365,63 @@ func idempotencyKey(r *http.Request) (string, *commandFailure) {
 		return "", &commandFailure{status: http.StatusBadRequest, code: "INVALID_IDEMPOTENCY_KEY", message: "Idempotency-Key is required"}
 	}
 	return key, nil
+}
+
+func pointPage(r *http.Request) (int, *pointCursor, *commandFailure) {
+	query := r.URL.Query()
+	for key := range query {
+		if key != "limit" && key != "cursor" {
+			return 0, nil, invalidCommand("point page query is invalid")
+		}
+	}
+	if len(query["limit"]) > 1 || len(query["cursor"]) > 1 {
+		return 0, nil, invalidCommand("point page query is invalid")
+	}
+	limit := 20
+	if values, exists := query["limit"]; exists {
+		rawLimit := values[0]
+		if rawLimit == "" || strings.TrimSpace(rawLimit) != rawLimit {
+			return 0, nil, invalidCommand("point page limit is invalid")
+		}
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 || parsed > 50 {
+			return 0, nil, invalidCommand("point page limit is invalid")
+		}
+		limit = parsed
+	}
+	values, exists := query["cursor"]
+	if !exists {
+		return limit, nil, nil
+	}
+	rawCursor := values[0]
+	if rawCursor == "" || strings.TrimSpace(rawCursor) != rawCursor {
+		return 0, nil, invalidCommand("point page cursor is invalid")
+	}
+	if len(rawCursor) > 512 {
+		return 0, nil, invalidCommand("point page cursor is invalid")
+	}
+	encoded, err := base64.RawURLEncoding.DecodeString(rawCursor)
+	if err != nil {
+		return 0, nil, invalidCommand("point page cursor is invalid")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	var cursor pointCursor
+	if err := decoder.Decode(&cursor); err != nil || decoder.Decode(&struct{}{}) != io.EOF || uuid.Validate(cursor.ID) != nil || cursor.CreatedAt.IsZero() {
+		return 0, nil, invalidCommand("point page cursor is invalid")
+	}
+	cursor.CreatedAt = cursor.CreatedAt.UTC()
+	return limit, &cursor, nil
+}
+
+func encodePointCursor(entry pointLedgerEntryView) string {
+	encoded, err := json.Marshal(pointCursor{CreatedAt: entry.CreatedAt.UTC(), ID: entry.ID})
+	if err != nil {
+		// pointLedgerEntryView is built from database values validated by UUID and
+		// timestamptz columns, so JSON encoding cannot fail in normal operation.
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(encoded)
 }
 
 func ticketReference(id string) string {
@@ -1321,6 +1540,13 @@ func (h *service) ensureAccount(ctx context.Context, userID string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := ensureAccountTx(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func ensureAccountTx(ctx context.Context, tx pgx.Tx, userID string) error {
 	for _, statement := range []string{
 		`INSERT INTO account_portfolio_accounts(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING`,
 		`INSERT INTO account_portfolio_points(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING`,
@@ -1330,7 +1556,7 @@ func (h *service) ensureAccount(ctx context.Context, userID string) error {
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (h *service) requestContext(next http.Handler) http.Handler {

@@ -140,6 +140,42 @@ func TestReadMethodsUseTheDeclaredOwnerRoutes(t *testing.T) {
 	}
 }
 
+func TestPointsPageSignsItsQueryButValidatesAgainstTheStaticOwnerRoute(t *testing.T) {
+	const actorID = "11111111-1111-4111-8111-111111111111"
+	const cursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNy0yOFQwMDowMDowMFoiLCJpZCI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYIn0"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != PointsPath || request.URL.RawQuery != "cursor="+cursor+"&limit=7" {
+			t.Fatalf("owner point page = %s %s?%s", request.Method, request.URL.Path, request.URL.RawQuery)
+		}
+		if request.Header.Get("X-Actor-User-Id") != actorID {
+			t.Fatalf("owner actor = %q", request.Header.Get("X-Actor-User-Id"))
+		}
+		assertSignedOwnerRequest(t, request)
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"data": map[string]any{
+				"balance": 12,
+				"entries": []any{map[string]any{
+					"id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "amount": 12, "reason": "adjusted", "created_at": "2026-07-28T00:00:00Z",
+				}},
+				"next_cursor": nil,
+			},
+			"request_id": "req_owner",
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, testClientID, testSecret, testKeyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.httpClient = server.Client()
+	data, err := client.PointsPage(context.Background(), actorID, "req_points_page", cursor, 7)
+	if err != nil || !strings.Contains(string(data), `"next_cursor":null`) {
+		t.Fatalf("PointsPage() data=%s err=%v", data, err)
+	}
+}
+
 func TestReadMethodsRejectIncompleteOwnerPayloads(t *testing.T) {
 	tests := []struct {
 		name string
@@ -295,7 +331,7 @@ func validOwnerData(path string) map[string]any {
 			"open_ticket_count":         0,
 		}
 	case PointsPath:
-		return map[string]any{"balance": 0, "entries": []any{}}
+		return map[string]any{"balance": 0, "entries": []any{}, "next_cursor": nil}
 	case MembershipPath:
 		return map[string]any{"plan": "free", "lifetime": false}
 	case NotificationsPath:

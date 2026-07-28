@@ -15,11 +15,12 @@ import {
   requireGateway,
 } from "./env";
 import type {
-	AccountCreateTicketInput,
-	AccountMembershipResponse,
-	AccountNotificationResponse,
-	AccountNotificationsResponse,
-	AccountSummaryResponse,
+  AccountCreateTicketInput,
+  AccountMembershipResponse,
+  AccountNotificationResponse,
+  AccountNotificationsResponse,
+  AccountPointsResponse,
+  AccountSummaryResponse,
 	AccountTicketDetailResponse,
 	AccountTicketFollowUpInput,
 	AccountTicketResponse,
@@ -259,6 +260,22 @@ export async function logout(): Promise<void> {
  */
 export async function fetchAccountSummary(): Promise<AccountSummaryResponse> {
   return apiFetchRequired<AccountSummaryResponse>("/api/v1/account/summary");
+}
+
+/** Reads one cursor page of the signed-in user's immutable point ledger. */
+export async function fetchAccountPoints(cursor?: string): Promise<AccountPointsResponse> {
+  if (cursor !== undefined && (cursor.length === 0 || cursor.length > 512 || cursor.trim() !== cursor)) {
+    throw new PortalApiError("Invalid account point-ledger cursor", {
+      code: "PORTAL_INVALID_POINTS_CURSOR",
+      path: "/api/v1/account/points",
+    });
+  }
+  const query = new URLSearchParams({ limit: "20" });
+  if (cursor !== undefined) query.set("cursor", cursor);
+  return apiFetchRequired<AccountPointsResponse>(
+    `/api/v1/account/points?${query.toString()}`,
+    { cache: "no-store" }
+  );
 }
 
 /** Reads only the signed-in user's durable membership entitlement. */

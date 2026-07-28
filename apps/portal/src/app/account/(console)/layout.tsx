@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 const MENU = [
   { href: "/account", index: "A-01", label: "概览", exact: true },
   { href: "/account/security", index: "A-02", label: "安全设置" },
+  { href: "/account/wallet", index: "A-03", label: "积分钱包" },
   { href: "/account/tickets", index: "A-05", label: "工单" },
   { href: "/account/notifications", index: "A-06", label: "系统通知" },
 ];

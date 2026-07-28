@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 418778025096749b31652f8063bb8b8b6fb9793d927aedbed1888460c797a5d0); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 cefd9efdf3a09f135cc4289eb6b605ca6289510def54a512ab5d3a448e390465); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -13,6 +13,11 @@ export interface ConsoleAccountMembership {
 
 export interface ConsoleAccountMembershipEnvelope {
   membership: ConsoleAccountMembership;
+}
+
+export interface ConsoleAccountPointAdjustmentResult {
+  balance: number;
+  entry: ConsolePointLedgerEntry;
 }
 
 export interface ConsoleAccountTicket {
@@ -84,6 +89,19 @@ export interface ConsoleOperatorReplyRequest {
 export interface ConsoleOverview {
   generated_at: string;
   modules: Array<ConsoleModuleSummary>;
+}
+
+export interface ConsolePointAdjustmentRequest {
+  amount: number;
+  reason: string;
+  user_id: string;
+}
+
+export interface ConsolePointLedgerEntry {
+  amount: number;
+  created_at: string;
+  id: string;
+  reason: string;
 }
 
 export interface ConsoleScope {
@@ -525,15 +543,19 @@ function isConsoleAccessContext(value: unknown): value is ConsoleAccessContext {
 }
 
 function isConsoleAccountMembership(value: unknown): value is ConsoleAccountMembership {
-  return isRecord(value) && "lifetime" in value && typeof value["lifetime"] === "boolean" && "plan" in value && typeof value["plan"] === "string" && ["free","lifetime"].includes(value["plan"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["lifetime","plan","version"].includes(key)) && true && (!(isRecord(value) && "plan" in value && value["plan"] === "free") || isRecord(value) && "lifetime" in value && value["lifetime"] === false) && true && (!(isRecord(value) && "plan" in value && value["plan"] === "lifetime") || isRecord(value) && "lifetime" in value && value["lifetime"] === true);
+  return isRecord(value) && "lifetime" in value && typeof value["lifetime"] === "boolean" && "plan" in value && typeof value["plan"] === "string" && ["free","lifetime"].includes(value["plan"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["lifetime","plan","version"].includes(key)) && true && (!(isRecord(value) && "plan" in value && value["plan"] === "free") || isRecord(value) && "lifetime" in value && value["lifetime"] === false) && true && (!(isRecord(value) && "plan" in value && value["plan"] === "lifetime") || isRecord(value) && "lifetime" in value && value["lifetime"] === true);
 }
 
 function isConsoleAccountMembershipEnvelope(value: unknown): value is ConsoleAccountMembershipEnvelope {
   return isRecord(value) && "membership" in value && isConsoleAccountMembership(value["membership"]) && Object.keys(value).every((key) => ["membership"].includes(key));
 }
 
+function isConsoleAccountPointAdjustmentResult(value: unknown): value is ConsoleAccountPointAdjustmentResult {
+  return isRecord(value) && "balance" in value && typeof value["balance"] === "number" && Number.isSafeInteger(value["balance"]) && value["balance"] >= 0 && value["balance"] <= 9.007199254740991e+15 && "entry" in value && isConsolePointLedgerEntry(value["entry"]) && Object.keys(value).every((key) => ["balance","entry"].includes(key));
+}
+
 function isConsoleAccountTicket(value: unknown): value is ConsoleAccountTicket {
-  return isRecord(value) && "category" in value && typeof value["category"] === "string" && value["category"].length <= 80 && new RegExp("^[a-z][a-z0-9_-]*$").test(value["category"]) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["category","created_at","id","reference","status","title","updated_at","version"].includes(key));
+  return isRecord(value) && "category" in value && typeof value["category"] === "string" && value["category"].length <= 80 && new RegExp("^[a-z][a-z0-9_-]*$").test(value["category"]) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["category","created_at","id","reference","status","title","updated_at","version"].includes(key));
 }
 
 function isConsoleAccountTicketCommandResult(value: unknown): value is ConsoleAccountTicketCommandResult {
@@ -557,7 +579,7 @@ function isConsoleAccountTicketQueue(value: unknown): value is ConsoleAccountTic
 }
 
 function isConsoleMembershipMutationRequest(value: unknown): value is ConsoleMembershipMutationRequest {
-  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
 }
 
 function isConsoleModuleMetric(value: unknown): value is ConsoleModuleMetric {
@@ -569,15 +591,23 @@ function isConsoleModuleSummary(value: unknown): value is ConsoleModuleSummary {
 }
 
 function isConsoleOperatorReplyRequest(value: unknown): value is ConsoleOperatorReplyRequest {
-  return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length <= 5000 && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && Object.keys(value).every((key) => ["body","expected_version"].includes(key));
+  return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length >= 1 && value["body"].length <= 5000 && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && Object.keys(value).every((key) => ["body","expected_version"].includes(key));
 }
 
 function isConsoleOverview(value: unknown): value is ConsoleOverview {
   return isRecord(value) && "generated_at" in value && isDateTime(value["generated_at"]) && "modules" in value && Array.isArray(value["modules"]) && value["modules"].length >= 6 && value["modules"].length <= 6 && value["modules"].every((item) => isConsoleModuleSummary(item)) && Array.isArray(value["modules"]) && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "portal").length >= 1 && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "portal").length <= 1 && Array.isArray(value["modules"]) && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "platform").length >= 1 && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "platform").length <= 1 && Array.isArray(value["modules"]) && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "notice").length >= 1 && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "notice").length <= 1 && Array.isArray(value["modules"]) && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "library").length >= 1 && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "library").length <= 1 && Array.isArray(value["modules"]) && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "quizcraft").length >= 1 && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "quizcraft").length <= 1 && Array.isArray(value["modules"]) && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "food").length >= 1 && value["modules"].filter((item) => isRecord(item) && "id" in item && item["id"] === "food").length <= 1 && Object.keys(value).every((key) => ["generated_at","modules"].includes(key));
 }
 
+function isConsolePointAdjustmentRequest(value: unknown): value is ConsolePointAdjustmentRequest {
+  return isRecord(value) && "amount" in value && true && ([(typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= 1 && value["amount"] <= 9.007199254740991e+15), (typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= -9.007199254740991e+15 && value["amount"] <= -1)].filter(Boolean).length === 1) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && "user_id" in value && isUUID(value["user_id"]) && Object.keys(value).every((key) => ["amount","reason","user_id"].includes(key));
+}
+
+function isConsolePointLedgerEntry(value: unknown): value is ConsolePointLedgerEntry {
+  return isRecord(value) && "amount" in value && true && ([(typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= -9.007199254740991e+15 && value["amount"] <= -1), (typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= 1 && value["amount"] <= 9.007199254740991e+15)].filter(Boolean).length === 1) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["amount","created_at","id","reason"].includes(key));
+}
+
 function isConsoleScope(value: unknown): value is ConsoleScope {
-  return isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["platform","product"].includes(value["kind"]) && (!("product_code" in value) || typeof value["product_code"] === "string" && value["product_code"].length <= 80) && Object.keys(value).every((key) => ["kind","product_code"].includes(key)) && true && (!(isRecord(value) && "kind" in value && value["kind"] === "product") || isRecord(value) && "product_code" in value && typeof value["product_code"] === "string" && value["product_code"].length <= 80);
+  return isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["platform","product"].includes(value["kind"]) && (!("product_code" in value) || typeof value["product_code"] === "string" && value["product_code"].length >= 1 && value["product_code"].length <= 80) && Object.keys(value).every((key) => ["kind","product_code"].includes(key)) && true && (!(isRecord(value) && "kind" in value && value["kind"] === "product") || isRecord(value) && "product_code" in value && typeof value["product_code"] === "string" && value["product_code"].length >= 1 && value["product_code"].length <= 80);
 }
 
 function isConsoleSession(value: unknown): value is ConsoleSession {
@@ -585,7 +615,7 @@ function isConsoleSession(value: unknown): value is ConsoleSession {
 }
 
 function isConsoleTicketTransitionRequest(value: unknown): value is ConsoleTicketTransitionRequest {
-  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && "status" in value && typeof value["status"] === "string" && ["in_progress","resolved"].includes(value["status"]) && Object.keys(value).every((key) => ["expected_version","status"].includes(key));
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "status" in value && typeof value["status"] === "string" && ["in_progress","resolved"].includes(value["status"]) && Object.keys(value).every((key) => ["expected_version","status"].includes(key));
 }
 
 function isCorrectionReviewCommand(value: unknown): value is CorrectionReviewCommand {
@@ -613,11 +643,11 @@ function isCourseUpdateCommand(value: unknown): value is CourseUpdateCommand {
 }
 
 function isCreateNoticeSourceRequest(value: unknown): value is CreateNoticeSourceRequest {
-  return isRecord(value) && "canonical_url" in value && typeof value["canonical_url"] === "string" && new RegExp("^https://").test(value["canonical_url"]) && "code" in value && typeof value["code"] === "string" && new RegExp("^[a-z0-9][a-z0-9-]{1,62}$").test(value["code"]) && "name" in value && typeof value["name"] === "string" && value["name"].length <= 120 && Object.keys(value).every((key) => ["canonical_url","code","name"].includes(key));
+  return isRecord(value) && "canonical_url" in value && typeof value["canonical_url"] === "string" && new RegExp("^https://").test(value["canonical_url"]) && "code" in value && typeof value["code"] === "string" && new RegExp("^[a-z0-9][a-z0-9-]{1,62}$").test(value["code"]) && "name" in value && typeof value["name"] === "string" && value["name"].length >= 1 && value["name"].length <= 120 && Object.keys(value).every((key) => ["canonical_url","code","name"].includes(key));
 }
 
 function isCreateNoticeVersionRequest(value: unknown): value is CreateNoticeVersionRequest {
-  return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length <= 100000 && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && new RegExp("^https://").test(value["source_url"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && Object.keys(value).every((key) => ["body","source_published_at","source_url","title"].includes(key));
+  return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length >= 1 && value["body"].length <= 100000 && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && new RegExp("^https://").test(value["source_url"]) && "title" in value && typeof value["title"] === "string" && value["title"].length >= 1 && value["title"].length <= 200 && Object.keys(value).every((key) => ["body","source_published_at","source_url","title"].includes(key));
 }
 
 function isEmptyPayload(value: unknown): value is EmptyPayload {
@@ -633,11 +663,11 @@ function isErrorObject(value: unknown): value is ErrorObject {
 }
 
 function isFoodAnomalyTicket(value: unknown): value is FoodAnomalyTicket {
-  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "details" in value && typeof value["details"] === "string" && value["details"].length <= 2000 && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["duplicate","spam","quality","location"].includes(value["kind"]) && "severity" in value && typeof value["severity"] === "string" && ["low","medium","high"].includes(value["severity"]) && "status" in value && typeof value["status"] === "string" && ["open","resolved","dismissed"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["created_at","details","id","kind","severity","status","updated_at","venue_name","version"].includes(key));
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "details" in value && typeof value["details"] === "string" && value["details"].length <= 2000 && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["duplicate","spam","quality","location"].includes(value["kind"]) && "severity" in value && typeof value["severity"] === "string" && ["low","medium","high"].includes(value["severity"]) && "status" in value && typeof value["status"] === "string" && ["open","resolved","dismissed"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","details","id","kind","severity","status","updated_at","venue_name","version"].includes(key));
 }
 
 function isFoodCommand(value: unknown): value is FoodCommand {
-  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && "kind" in value && isFoodCommandKind(value["kind"]) && "payload" in value && isRecord(value["payload"]) && "note" in value["payload"] && typeof value["payload"]["note"] === "string" && value["payload"]["note"].length <= 1000 && Object.keys(value["payload"]).every((key) => ["note"].includes(key)) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "kind" in value && isFoodCommandKind(value["kind"]) && "payload" in value && isRecord(value["payload"]) && "note" in value["payload"] && typeof value["payload"]["note"] === "string" && value["payload"]["note"].length >= 2 && value["payload"]["note"].length <= 1000 && Object.keys(value["payload"]).every((key) => ["note"].includes(key)) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
 }
 
 function isFoodCommandKind(value: unknown): value is FoodCommandKind {
@@ -645,15 +675,15 @@ function isFoodCommandKind(value: unknown): value is FoodCommandKind {
 }
 
 function isFoodOperationResult(value: unknown): value is FoodOperationResult {
-  return isRecord(value) && "operation" in value && isFoodCommandKind(value["operation"]) && (!("resource_id" in value) || isUUID(value["resource_id"])) && "state" in value && typeof value["state"] === "string" && ["succeeded","unknown"].includes(value["state"]) && (!("version" in value) || typeof value["version"] === "number" && Number.isSafeInteger(value["version"])) && Object.keys(value).every((key) => ["operation","resource_id","state","version"].includes(key));
+  return isRecord(value) && "operation" in value && isFoodCommandKind(value["operation"]) && (!("resource_id" in value) || isUUID(value["resource_id"])) && "state" in value && typeof value["state"] === "string" && ["succeeded","unknown"].includes(value["state"]) && (!("version" in value) || typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1) && Object.keys(value).every((key) => ["operation","resource_id","state","version"].includes(key));
 }
 
 function isFoodSubmission(value: unknown): value is FoodSubmission {
-  return isRecord(value) && "description" in value && typeof value["description"] === "string" && value["description"].length <= 2000 && "id" in value && isUUID(value["id"]) && "item_name" in value && typeof value["item_name"] === "string" && value["item_name"].length <= 160 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "submitted_at" in value && isDateTime(value["submitted_at"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["description","id","item_name","status","submitted_at","updated_at","venue_name","version"].includes(key));
+  return isRecord(value) && "description" in value && typeof value["description"] === "string" && value["description"].length <= 2000 && "id" in value && isUUID(value["id"]) && "item_name" in value && typeof value["item_name"] === "string" && value["item_name"].length <= 160 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "submitted_at" in value && isDateTime(value["submitted_at"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["description","id","item_name","status","submitted_at","updated_at","venue_name","version"].includes(key));
 }
 
 function isFoodTierAdjustment(value: unknown): value is FoodTierAdjustment {
-  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "current_tier" in value && typeof value["current_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["current_tier"]) && "id" in value && isUUID(value["id"]) && "proposed_tier" in value && typeof value["proposed_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["proposed_tier"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length <= 2000 && "status" in value && typeof value["status"] === "string" && ["pending","confirmed","rejected"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["created_at","current_tier","id","proposed_tier","reason","status","updated_at","venue_name","version"].includes(key));
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "current_tier" in value && typeof value["current_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["current_tier"]) && "id" in value && isUUID(value["id"]) && "proposed_tier" in value && typeof value["proposed_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["proposed_tier"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length <= 2000 && "status" in value && typeof value["status"] === "string" && ["pending","confirmed","rejected"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","current_tier","id","proposed_tier","reason","status","updated_at","venue_name","version"].includes(key));
 }
 
 function isFoodWorkspace(value: unknown): value is FoodWorkspace {
@@ -681,7 +711,7 @@ function isLibraryDownload(value: unknown): value is LibraryDownload {
 }
 
 function isLibraryMaterial(value: unknown): value is LibraryMaterial {
-  return isRecord(value) && "access_level" in value && typeof value["access_level"] === "string" && ["public","authenticated","restricted"].includes(value["access_level"]) && "course_id" in value && isUUID(value["course_id"]) && "file_name" in value && typeof value["file_name"] === "string" && value["file_name"].length <= 255 && "file_size" in value && typeof value["file_size"] === "number" && Number.isSafeInteger(value["file_size"]) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && "type" in value && typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["access_level","course_id","file_name","file_size","id","status","title","type","updated_at"].includes(key));
+  return isRecord(value) && "access_level" in value && typeof value["access_level"] === "string" && ["public","authenticated","restricted"].includes(value["access_level"]) && "course_id" in value && isUUID(value["course_id"]) && "file_name" in value && typeof value["file_name"] === "string" && value["file_name"].length <= 255 && "file_size" in value && typeof value["file_size"] === "number" && Number.isSafeInteger(value["file_size"]) && value["file_size"] >= 0 && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && "type" in value && typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["access_level","course_id","file_name","file_size","id","status","title","type","updated_at"].includes(key));
 }
 
 function isLibraryOperationResult(value: unknown): value is LibraryOperationResult {
@@ -701,7 +731,7 @@ function isMaterialCreateCommand(value: unknown): value is MaterialCreateCommand
 }
 
 function isMaterialCreatePayload(value: unknown): value is MaterialCreatePayload {
-  return isRecord(value) && (!("accessLevel" in value) || typeof value["accessLevel"] === "string" && ["free","login_required"].includes(value["accessLevel"])) && "courseId" in value && isUUID(value["courseId"]) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("fileName" in value) || typeof value["fileName"] === "string" && value["fileName"].length <= 255) && (!("fileSize" in value) || typeof value["fileSize"] === "number" && Number.isSafeInteger(value["fileSize"])) && (!("previewContent" in value) || typeof value["previewContent"] === "string" && value["previewContent"].length <= 20000) && (!("status" in value) || typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"])) && "storageKey" in value && typeof value["storageKey"] === "string" && value["storageKey"].length <= 512 && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && (!("type" in value) || typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"])) && Object.keys(value).every((key) => ["accessLevel","courseId","description","fileName","fileSize","previewContent","status","storageKey","title","type"].includes(key));
+  return isRecord(value) && (!("accessLevel" in value) || typeof value["accessLevel"] === "string" && ["free","login_required"].includes(value["accessLevel"])) && "courseId" in value && isUUID(value["courseId"]) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("fileName" in value) || typeof value["fileName"] === "string" && value["fileName"].length <= 255) && (!("fileSize" in value) || typeof value["fileSize"] === "number" && Number.isSafeInteger(value["fileSize"]) && value["fileSize"] >= 0) && (!("previewContent" in value) || typeof value["previewContent"] === "string" && value["previewContent"].length <= 20000) && (!("status" in value) || typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"])) && "storageKey" in value && typeof value["storageKey"] === "string" && value["storageKey"].length <= 512 && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && (!("type" in value) || typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"])) && Object.keys(value).every((key) => ["accessLevel","courseId","description","fileName","fileSize","previewContent","status","storageKey","title","type"].includes(key));
 }
 
 function isMaterialUpdateCommand(value: unknown): value is MaterialUpdateCommand {
@@ -713,15 +743,15 @@ function isMaterialUpdatePayload(value: unknown): value is MaterialUpdatePayload
 }
 
 function isNoticeAudience(value: unknown): value is NoticeAudience {
-  return isRecord(value) && (!("kind" in value) || typeof value["kind"] === "string" && ["all_students","college","role"].includes(value["kind"])) && (!("value" in value) || typeof value["value"] === "string" && value["value"].length <= 120) && Object.keys(value).every((key) => ["kind","value"].includes(key)) && ((isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["all_students"].includes(value["kind"]) && Object.keys(value).every((key) => ["kind"].includes(key))) || (isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["college","role"].includes(value["kind"]) && "value" in value && typeof value["value"] === "string" && value["value"].length <= 120 && Object.keys(value).every((key) => ["kind","value"].includes(key))));
+  return isRecord(value) && (!("kind" in value) || typeof value["kind"] === "string" && ["all_students","college","role"].includes(value["kind"])) && (!("value" in value) || typeof value["value"] === "string" && value["value"].length >= 1 && value["value"].length <= 120) && Object.keys(value).every((key) => ["kind","value"].includes(key)) && ((isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["all_students"].includes(value["kind"]) && Object.keys(value).every((key) => ["kind"].includes(key))) || (isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["college","role"].includes(value["kind"]) && "value" in value && typeof value["value"] === "string" && value["value"].length >= 1 && value["value"].length <= 120 && Object.keys(value).every((key) => ["kind","value"].includes(key))));
 }
 
 function isNoticeDistributionRequest(value: unknown): value is NoticeDistributionRequest {
-  return isRecord(value) && "audience" in value && isNoticeAudience(value["audience"]) && "channel" in value && typeof value["channel"] === "string" && ["in_app","email"].includes(value["channel"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && Object.keys(value).every((key) => ["audience","channel","expected_revision"].includes(key));
+  return isRecord(value) && "audience" in value && isNoticeAudience(value["audience"]) && "channel" in value && typeof value["channel"] === "string" && ["in_app","email"].includes(value["channel"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && value["expected_revision"] >= 1 && Object.keys(value).every((key) => ["audience","channel","expected_revision"].includes(key));
 }
 
 function isNoticeReviewRequest(value: unknown): value is NoticeReviewRequest {
-  return isRecord(value) && "decision" in value && typeof value["decision"] === "string" && ["approved","rejected"].includes(value["decision"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && (!("note" in value) || typeof value["note"] === "string" && value["note"].length <= 1000) && Object.keys(value).every((key) => ["decision","expected_revision","note"].includes(key));
+  return isRecord(value) && "decision" in value && typeof value["decision"] === "string" && ["approved","rejected"].includes(value["decision"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && value["expected_revision"] >= 1 && (!("note" in value) || typeof value["note"] === "string" && value["note"].length <= 1000) && Object.keys(value).every((key) => ["decision","expected_revision","note"].includes(key));
 }
 
 function isNoticeSnapshot(value: unknown): value is NoticeSnapshot {
@@ -733,7 +763,7 @@ function isNoticeSource(value: unknown): value is NoticeSource {
 }
 
 function isNoticeVersion(value: unknown): value is NoticeVersion {
-  return isRecord(value) && "body" in value && typeof value["body"] === "string" && "content_hash" in value && typeof value["content_hash"] === "string" && new RegExp("^[a-f0-9]{64}$").test(value["content_hash"]) && "created_at" in value && isDateTime(value["created_at"]) && "distribution_count" in value && typeof value["distribution_count"] === "number" && Number.isSafeInteger(value["distribution_count"]) && (!("distribution_status" in value) || typeof value["distribution_status"] === "string" && ["queued","processing","delivered","failed"].includes(value["distribution_status"])) && "id" in value && isUUID(value["id"]) && "revision" in value && typeof value["revision"] === "number" && Number.isSafeInteger(value["revision"]) && "source" in value && isNoticeSource(value["source"]) && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && "state" in value && typeof value["state"] === "string" && ["pending_review","approved","rejected","distributed"].includes(value["state"]) && "title" in value && typeof value["title"] === "string" && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["body","content_hash","created_at","distribution_count","distribution_status","id","revision","source","source_published_at","source_url","state","title","version"].includes(key));
+  return isRecord(value) && "body" in value && typeof value["body"] === "string" && "content_hash" in value && typeof value["content_hash"] === "string" && new RegExp("^[a-f0-9]{64}$").test(value["content_hash"]) && "created_at" in value && isDateTime(value["created_at"]) && "distribution_count" in value && typeof value["distribution_count"] === "number" && Number.isSafeInteger(value["distribution_count"]) && value["distribution_count"] >= 0 && (!("distribution_status" in value) || typeof value["distribution_status"] === "string" && ["queued","processing","delivered","failed"].includes(value["distribution_status"])) && "id" in value && isUUID(value["id"]) && "revision" in value && typeof value["revision"] === "number" && Number.isSafeInteger(value["revision"]) && value["revision"] >= 1 && "source" in value && isNoticeSource(value["source"]) && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && "state" in value && typeof value["state"] === "string" && ["pending_review","approved","rejected","distributed"].includes(value["state"]) && "title" in value && typeof value["title"] === "string" && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["body","content_hash","created_at","distribution_count","distribution_status","id","revision","source","source_published_at","source_url","state","title","version"].includes(key));
 }
 
 function isPlatformAccessGrantInput(value: unknown): value is PlatformAccessGrantInput {
@@ -741,11 +771,11 @@ function isPlatformAccessGrantInput(value: unknown): value is PlatformAccessGran
 }
 
 function isPlatformOperationResult(value: unknown): value is PlatformOperationResult {
-  return isRecord(value) && "operation" in value && typeof value["operation"] === "string" && ["session_revoke","access_update"].includes(value["operation"]) && (!("resource_id" in value) || isUUID(value["resource_id"])) && (!("resource_version" in value) || typeof value["resource_version"] === "number" && Number.isSafeInteger(value["resource_version"])) && "status" in value && typeof value["status"] === "string" && ["succeeded","unknown"].includes(value["status"]) && Object.keys(value).every((key) => ["operation","resource_id","resource_version","status"].includes(key));
+  return isRecord(value) && "operation" in value && typeof value["operation"] === "string" && ["session_revoke","access_update"].includes(value["operation"]) && (!("resource_id" in value) || isUUID(value["resource_id"])) && (!("resource_version" in value) || typeof value["resource_version"] === "number" && Number.isSafeInteger(value["resource_version"]) && value["resource_version"] >= 1) && "status" in value && typeof value["status"] === "string" && ["succeeded","unknown"].includes(value["status"]) && Object.keys(value).every((key) => ["operation","resource_id","resource_version","status"].includes(key));
 }
 
 function isPlatformOperationsAccount(value: unknown): value is PlatformOperationsAccount {
-  return isRecord(value) && "authorization_revision" in value && typeof value["authorization_revision"] === "number" && Number.isSafeInteger(value["authorization_revision"]) && "created_at" in value && isDateTime(value["created_at"]) && "email_verified" in value && typeof value["email_verified"] === "boolean" && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["authorization_revision","created_at","email_verified","grants","id","status"].includes(key));
+  return isRecord(value) && "authorization_revision" in value && typeof value["authorization_revision"] === "number" && Number.isSafeInteger(value["authorization_revision"]) && value["authorization_revision"] >= 1 && "created_at" in value && isDateTime(value["created_at"]) && "email_verified" in value && typeof value["email_verified"] === "boolean" && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["authorization_revision","created_at","email_verified","grants","id","status"].includes(key));
 }
 
 function isPlatformOperationsAuditEvent(value: unknown): value is PlatformOperationsAuditEvent {
@@ -757,11 +787,11 @@ function isPlatformOperationsDependencies(value: unknown): value is PlatformOper
 }
 
 function isPlatformOperationsInboxItem(value: unknown): value is PlatformOperationsInboxItem {
-  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && (!("owner_user_id" in value) || isUUID(value["owner_user_id"])) && "priority" in value && typeof value["priority"] === "string" && ["low","normal","high","urgent"].includes(value["priority"]) && (!("sla_due_at" in value) || isDateTime(value["sla_due_at"])) && "source_product_code" in value && typeof value["source_product_code"] === "string" && "source_resource_id" in value && typeof value["source_resource_id"] === "string" && "source_resource_type" in value && typeof value["source_resource_type"] === "string" && (!("source_resource_url" in value) || typeof value["source_resource_url"] === "string") && "status" in value && typeof value["status"] === "string" && ["open","in_progress","blocked","resolved","archived"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["created_at","id","owner_user_id","priority","sla_due_at","source_product_code","source_resource_id","source_resource_type","source_resource_url","status","updated_at","version"].includes(key));
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && (!("owner_user_id" in value) || isUUID(value["owner_user_id"])) && "priority" in value && typeof value["priority"] === "string" && ["low","normal","high","urgent"].includes(value["priority"]) && (!("sla_due_at" in value) || isDateTime(value["sla_due_at"])) && "source_product_code" in value && typeof value["source_product_code"] === "string" && "source_resource_id" in value && typeof value["source_resource_id"] === "string" && "source_resource_type" in value && typeof value["source_resource_type"] === "string" && (!("source_resource_url" in value) || typeof value["source_resource_url"] === "string") && "status" in value && typeof value["status"] === "string" && ["open","in_progress","blocked","resolved","archived"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","id","owner_user_id","priority","sla_due_at","source_product_code","source_resource_id","source_resource_type","source_resource_url","status","updated_at","version"].includes(key));
 }
 
 function isPlatformOperationsMailStatus(value: unknown): value is PlatformOperationsMailStatus {
-  return isRecord(value) && "accepted" in value && typeof value["accepted"] === "number" && Number.isSafeInteger(value["accepted"]) && "dead_letters" in value && typeof value["dead_letters"] === "number" && Number.isSafeInteger(value["dead_letters"]) && "delivered" in value && typeof value["delivered"] === "number" && Number.isSafeInteger(value["delivered"]) && "failed" in value && typeof value["failed"] === "number" && Number.isSafeInteger(value["failed"]) && "pending" in value && typeof value["pending"] === "number" && Number.isSafeInteger(value["pending"]) && "processing" in value && typeof value["processing"] === "number" && Number.isSafeInteger(value["processing"]) && "retry_due" in value && typeof value["retry_due"] === "number" && Number.isSafeInteger(value["retry_due"]) && Object.keys(value).every((key) => ["accepted","dead_letters","delivered","failed","pending","processing","retry_due"].includes(key));
+  return isRecord(value) && "accepted" in value && typeof value["accepted"] === "number" && Number.isSafeInteger(value["accepted"]) && value["accepted"] >= 0 && "dead_letters" in value && typeof value["dead_letters"] === "number" && Number.isSafeInteger(value["dead_letters"]) && value["dead_letters"] >= 0 && "delivered" in value && typeof value["delivered"] === "number" && Number.isSafeInteger(value["delivered"]) && value["delivered"] >= 0 && "failed" in value && typeof value["failed"] === "number" && Number.isSafeInteger(value["failed"]) && value["failed"] >= 0 && "pending" in value && typeof value["pending"] === "number" && Number.isSafeInteger(value["pending"]) && value["pending"] >= 0 && "processing" in value && typeof value["processing"] === "number" && Number.isSafeInteger(value["processing"]) && value["processing"] >= 0 && "retry_due" in value && typeof value["retry_due"] === "number" && Number.isSafeInteger(value["retry_due"]) && value["retry_due"] >= 0 && Object.keys(value).every((key) => ["accepted","dead_letters","delivered","failed","pending","processing","retry_due"].includes(key));
 }
 
 function isPlatformOperationsSession(value: unknown): value is PlatformOperationsSession {
@@ -793,7 +823,7 @@ function isSuccessEnvelope(value: unknown): value is SuccessEnvelope {
 }
 
 function isUpdatePlatformAccessRequest(value: unknown): value is UpdatePlatformAccessRequest {
-  return isRecord(value) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["expected_revision","grants","status"].includes(key));
+  return isRecord(value) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && value["expected_revision"] >= 1 && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["expected_revision","grants","status"].includes(key));
 }
 
 export type ConsoleSessionResult =
@@ -1075,6 +1105,24 @@ export function grantAccountMembership(userID: string, input: ConsoleMembershipM
 
 export function revokeAccountMembership(userID: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
   return writeAccountMembership("/api/v1/account/memberships/{user_id}/revocations".replace("{user_id}", encodeURIComponent(userID)), input, idempotencyKey);
+}
+
+export type AccountPointAdjustmentWriteResult =
+  | { state: "succeeded"; result: ConsoleAccountPointAdjustmentResult }
+  | { state: "signed_out" | "denied" | "conflict" | "invalid" | "unavailable" };
+
+export async function adjustAccountPoints(input: ConsolePointAdjustmentRequest, idempotencyKey: string): Promise<AccountPointAdjustmentWriteResult> {
+  try {
+    const response = await fetch("/api/v1/account/points/adjustments", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountPointAdjustmentResult(envelope.data)) return { state: "unavailable" };
+    return { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unavailable" }; }
 }
 
 export type AccountTicketQueueResult = { state: "authenticated"; queue: ConsoleAccountTicketQueue } | { state: "signed_out" | "denied" | "unavailable" };

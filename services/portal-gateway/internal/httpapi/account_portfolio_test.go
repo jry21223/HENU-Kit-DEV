@@ -143,6 +143,83 @@ func TestEveryAccountReadRouteUsesTheAuthenticatedOwnerBoundary(t *testing.T) {
 	}
 }
 
+func TestAccountPointsForwardsBoundedPageWithItsSignedQuery(t *testing.T) {
+	const cursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNy0yOFQwMDowMDowMFoiLCJpZCI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYIn0"
+	owner := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v1/account/points" || request.URL.RawQuery != "cursor="+cursor+"&limit=2" {
+			t.Fatalf("owner point page = %s?%s", request.URL.Path, request.URL.RawQuery)
+		}
+		if request.Header.Get("X-Actor-User-Id") != "11111111-1111-4111-8111-111111111111" {
+			t.Fatalf("owner actor = %q", request.Header.Get("X-Actor-User-Id"))
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"data": map[string]any{
+				"balance": 9,
+				"entries": []any{map[string]any{
+					"id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "amount": 9, "reason": "operator adjustment", "created_at": "2026-07-28T00:00:00Z",
+				}},
+				"next_cursor": "opaque-next-page",
+			},
+			"request_id": "req_points_owner",
+		})
+	}))
+	defer owner.Close()
+
+	handler := newAccountPortfolioHandler(t, owner.URL)
+	request := authenticatedAccountRequest(t, handler, "/api/v1/account/points?limit=2&cursor="+cursor)
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("point page response = %d %#v: %s", response.Code, response.Header(), response.Body.String())
+	}
+	for _, want := range []string{`"balance":9`, `"next_cursor":"opaque-next-page"`, `"reason":"operator adjustment"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Fatalf("point page omitted %s: %s", want, response.Body.String())
+		}
+	}
+}
+
+func TestAccountPointsRejectsInvalidPaginationBeforeContactingOwner(t *testing.T) {
+	for _, path := range []string{
+		"/api/v1/account/points?limit=0",
+		"/api/v1/account/points?limit=2&limit=3",
+		"/api/v1/account/points?cursor=",
+		"/api/v1/account/points?unexpected=1",
+	} {
+		t.Run(path, func(t *testing.T) {
+			called := false
+			owner := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				called = true
+				writer.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer owner.Close()
+
+			handler := newAccountPortfolioHandler(t, owner.URL)
+			response := httptest.NewRecorder()
+			handler.Router().ServeHTTP(response, authenticatedAccountRequest(t, handler, path))
+			if response.Code != http.StatusBadRequest || called {
+				t.Fatalf("invalid point page status/called = %d/%t: %s", response.Code, called, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestAccountPointsRejectsAnOwnerResponseThatLeaksPrivateAuditIdentity(t *testing.T) {
+	owner := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"data":{"balance":1,"entries":[{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","amount":1,"reason":"adjusted","created_at":"2026-07-28T00:00:00Z","operator_user_id":"22222222-2222-4222-8222-222222222222"}],"next_cursor":null},"request_id":"req_points_owner"}`))
+	}))
+	defer owner.Close()
+
+	handler := newAccountPortfolioHandler(t, owner.URL)
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, authenticatedAccountRequest(t, handler, "/api/v1/account/points"))
+	if response.Code != http.StatusBadGateway || strings.Contains(response.Body.String(), "operator_user_id") {
+		t.Fatalf("private owner point response = %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestAccountTicketAndNotificationCommandsUsePortalSessionActor(t *testing.T) {
 	const ticketID = "22222222-2222-4222-8222-222222222222"
 	const notificationID = "33333333-3333-4333-8333-333333333333"
@@ -278,7 +355,7 @@ func validAccountOwnerData(path string) map[string]any {
 			"open_ticket_count":         0,
 		}
 	case "/api/v1/account/points":
-		return map[string]any{"balance": 0, "entries": []any{}}
+		return map[string]any{"balance": 0, "entries": []any{}, "next_cursor": nil}
 	case "/api/v1/account/membership":
 		return map[string]any{"plan": "free", "lifetime": false}
 	case "/api/v1/account/notifications":

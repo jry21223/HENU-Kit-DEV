@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -302,6 +303,41 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 type accountRead func(context.Context, string, string) (json.RawMessage, error)
 type accountCommand func(context.Context, string, string, string, []byte) (json.RawMessage, error)
 
+type pointsPage struct {
+	cursor string
+	limit  int
+}
+
+func accountPointsPage(r *http.Request) (pointsPage, error) {
+	query := r.URL.Query()
+	for key := range query {
+		if key != "cursor" && key != "limit" {
+			return pointsPage{}, errors.New("unknown point page query")
+		}
+	}
+	if len(query["cursor"]) > 1 || len(query["limit"]) > 1 {
+		return pointsPage{}, errors.New("duplicate point page query")
+	}
+	page := pointsPage{limit: 20}
+	if values, exists := query["cursor"]; exists {
+		page.cursor = values[0]
+		if page.cursor == "" || len(page.cursor) > 512 || strings.TrimSpace(page.cursor) != page.cursor {
+			return pointsPage{}, errors.New("invalid point cursor")
+		}
+	}
+	if values, exists := query["limit"]; exists {
+		if values[0] == "" || strings.TrimSpace(values[0]) != values[0] {
+			return pointsPage{}, errors.New("invalid point page limit")
+		}
+		limit, err := strconv.Atoi(values[0])
+		if err != nil || limit < 1 || limit > 50 {
+			return pointsPage{}, errors.New("invalid point page limit")
+		}
+		page.limit = limit
+	}
+	return page, nil
+}
+
 func (h *Handler) accountSummary(w http.ResponseWriter, r *http.Request) {
 	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
 		return h.accountPortfolio.Summary(ctx, actorUserID, requestID)
@@ -310,7 +346,11 @@ func (h *Handler) accountSummary(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) accountPoints(w http.ResponseWriter, r *http.Request) {
 	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
-		return h.accountPortfolio.Points(ctx, actorUserID, requestID)
+		page, err := accountPointsPage(r)
+		if err != nil {
+			return nil, accountportfolio.ErrBadRequest
+		}
+		return h.accountPortfolio.PointsPage(ctx, actorUserID, requestID, page.cursor, page.limit)
 	})
 }
 

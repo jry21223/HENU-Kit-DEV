@@ -84,6 +84,41 @@ describe("fetchAccountSummary", () => {
       expect.objectContaining({ cache: "no-store", credentials: "include" })
     );
   });
+
+  it("reads a real bounded point-ledger page and preserves the opaque continuation cursor", async () => {
+    const cursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNy0yOFQwMDowMDowMFoiLCJpZCI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYIn0";
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            balance: 90,
+            entries: [{ id: "11111111-1111-4111-8111-111111111111", amount: 30, reason: "运营补偿", created_at: "2026-07-28T00:00:00Z" }],
+            next_cursor: cursor,
+          },
+          request_id: "req_points",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { fetchAccountPoints } = await import("./client");
+    await expect(fetchAccountPoints()).resolves.toMatchObject({
+      data: { balance: 90, entries: [expect.objectContaining({ amount: 30 })], next_cursor: cursor },
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/account/points?limit=20",
+      expect.objectContaining({ cache: "no-store", credentials: "include" })
+    );
+  });
+
+  it("fails locally for an invalid point-ledger cursor instead of issuing a different request", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const { fetchAccountPoints, PortalApiError } = await import("./client");
+    await expect(fetchAccountPoints(" ")).rejects.toBeInstanceOf(PortalApiError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("Account Portfolio ticket and notification commands", () => {
