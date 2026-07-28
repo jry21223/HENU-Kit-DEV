@@ -72,7 +72,7 @@ func New(config Config) (http.Handler, error) {
 	var accountPortfolioClient *accountportfolio.Client
 	if config.AccountPortfolioAPIURL != "" {
 		if config.AccountPortfolioCredentials.ClientSecret == config.ClientSecret {
-			return nil, fmt.Errorf("Account Portfolio secret must be separate from Platform Core OAuth credentials")
+			return nil, fmt.Errorf("account portfolio secret must be separate from Platform Core OAuth credentials")
 		}
 		accountPortfolioClient, err = accountportfolio.New(config.AccountPortfolioAPIURL, config.AccountPortfolioCredentials.ClientID, config.AccountPortfolioCredentials.ClientSecret, config.AccountPortfolioCredentials.KeyID, config.HTTPClient)
 		if err != nil {

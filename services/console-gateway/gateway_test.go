@@ -43,8 +43,8 @@ func TestNewRejectsAccountPortfolioConsoleSecretReusedFromPlatformCore(t *testin
 		AccountPortfolioAPIURL:      "https://account-portfolio.internal",
 		AccountPortfolioCredentials: overview.Credentials{ClientID: "console-gateway", ClientSecret: platformSecret, KeyID: "account-console-key"},
 	}
-	if _, err := New(config); err == nil || !strings.Contains(err.Error(), "Account Portfolio secret") {
-		t.Fatalf("New() error = %v, want Account Portfolio secret separation failure", err)
+	if _, err := New(config); err == nil || !strings.Contains(err.Error(), "account portfolio secret") {
+		t.Fatalf("New() error = %v, want account portfolio secret separation failure", err)
 	}
 	config.AccountPortfolioCredentials.ClientSecret = "account-portfolio-console-secret-with-entropy"
 	if _, err := New(config); err != nil {

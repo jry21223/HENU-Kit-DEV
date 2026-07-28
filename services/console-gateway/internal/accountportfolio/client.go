@@ -159,7 +159,7 @@ func (c *Client) call(ctx context.Context, method, path, actorUserID, idempotenc
 		return nil, ErrConflict
 	default:
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
-		return nil, fmt.Errorf("Account Portfolio returned %d: %w", response.StatusCode, ErrUnavailable)
+		return nil, fmt.Errorf("account portfolio returned %d: %w", response.StatusCode, ErrUnavailable)
 	}
 	var envelope struct {
 		Data      json.RawMessage `json:"data"`
