@@ -134,6 +134,18 @@ paths:
         '200': { description: Persistent account learning state, content: { application/json: { schema: { $ref: '#/components/schemas/LearningStateEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/stats:
+    get:
+      summary: Read one authenticated user's fact-derived Practice statistics for Portal
+      tags: [Practice]
+      operationId: getPersonalPracticeStats
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
+      responses:
+        '200': { description: Persistent stats and mastery rebuilt from immutable Practice attempts, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalPracticeStatsEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/operations/{operation_kind}:
     get:
       summary: Resolve an idempotent write after an unknown outcome
@@ -704,6 +716,28 @@ components:
         attempt_count: { type: integer, format: int64, minimum: 1 }
         correct_count: { type: integer, format: int64, minimum: 0 }
         updated_at: { type: string, format: date-time }
+    MasterySubject:
+      type: object
+      additionalProperties: false
+      required: [bank_id, label, value, total_questions, correct_questions]
+      properties:
+        bank_id: { type: string, format: uuid }
+        label: { type: string, minLength: 1, maxLength: 240 }
+        value: { type: integer, minimum: 0, maximum: 100, description: Correct stable questions divided by the active bank question count. }
+        total_questions: { type: integer, format: int64, minimum: 0, description: Current active stable questions in this bank. }
+        correct_questions: { type: integer, format: int64, minimum: 0, description: Active stable questions answered correctly at least once by this user. }
+    PersonalPracticeStats:
+      type: object
+      additionalProperties: false
+      required: [total_answers, correct_answers, accuracy, streak_days, mastery]
+      properties:
+        total_answers: { type: integer, format: int64, minimum: 0, description: Count of immutable scored attempts owned by this user. }
+        correct_answers: { type: integer, format: int64, minimum: 0, description: Correct immutable scored attempts owned by this user. }
+        accuracy: { type: integer, minimum: 0, maximum: 100, description: Rounded correct_answers divided by total_answers. }
+        streak_days: { type: integer, minimum: 0, description: Consecutive Asia/Shanghai calendar days ending today or yesterday with at least one scored attempt. }
+        mastery:
+          type: array
+          items: { $ref: '#/components/schemas/MasterySubject' }
     FavoriteFolder:
       type: object
       required: [bank_id, bank_name, available_count, unavailable_count]
@@ -966,6 +1000,11 @@ components:
       type: object
       required: [request_id, data]
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/LearningStateItem' } } }
+    PersonalPracticeStatsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/PersonalPracticeStats' } }
     OperationEnvelope:
       type: object
       required: [request_id, data]

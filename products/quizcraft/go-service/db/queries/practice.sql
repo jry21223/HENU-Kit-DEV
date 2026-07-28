@@ -98,6 +98,117 @@ FROM quizcraft_learning_state
 WHERE user_id=$1
 ORDER BY updated_at DESC;
 
+-- name: GetLearningStateReconciliation :one
+WITH aggregates AS (
+  SELECT user_id,bank_id,question_id,
+         count(*)::bigint AS attempt_count,
+         count(*) FILTER (WHERE correct)::bigint AS correct_count,
+         max(submitted_at) AS updated_at
+  FROM quizcraft_practice_attempts
+  WHERE user_id IS NOT NULL
+  GROUP BY user_id,bank_id,question_id
+),
+latest AS (
+  SELECT DISTINCT ON (user_id,bank_id,question_id)
+         user_id,bank_id,question_id,question_version_id,(NOT correct) AS wrong
+  FROM quizcraft_practice_attempts
+  WHERE user_id IS NOT NULL
+  ORDER BY user_id,bank_id,question_id,submitted_at DESC,id DESC
+),
+expected AS (
+  SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,
+         latest.question_version_id,latest.wrong,aggregates.attempt_count,
+         aggregates.correct_count,aggregates.updated_at
+  FROM aggregates
+  JOIN latest USING (user_id,bank_id,question_id)
+),
+compared AS (
+  SELECT expected.user_id AS expected_user_id,
+         actual.user_id AS actual_user_id,
+         expected.question_version_id AS expected_question_version_id,
+         actual.question_version_id AS actual_question_version_id,
+         expected.wrong AS expected_wrong,actual.wrong AS actual_wrong,
+         expected.attempt_count AS expected_attempt_count,actual.attempt_count AS actual_attempt_count,
+         expected.correct_count AS expected_correct_count,actual.correct_count AS actual_correct_count,
+         expected.updated_at AS expected_updated_at,actual.updated_at AS actual_updated_at
+  FROM expected
+  FULL OUTER JOIN quizcraft_learning_state actual
+    ON actual.user_id=expected.user_id AND actual.bank_id=expected.bank_id AND actual.question_id=expected.question_id
+)
+SELECT count(*) FILTER (WHERE expected_user_id IS NOT NULL AND actual_user_id IS NULL)::bigint AS missing_rows,
+       count(*) FILTER (WHERE expected_user_id IS NULL AND actual_user_id IS NOT NULL)::bigint AS extra_rows,
+       count(*) FILTER (WHERE expected_user_id IS NOT NULL AND actual_user_id IS NOT NULL AND
+         (expected_question_version_id IS DISTINCT FROM actual_question_version_id OR
+          expected_wrong IS DISTINCT FROM actual_wrong OR
+          expected_attempt_count IS DISTINCT FROM actual_attempt_count OR
+          expected_correct_count IS DISTINCT FROM actual_correct_count OR
+          expected_updated_at IS DISTINCT FROM actual_updated_at))::bigint AS mismatched_rows
+FROM compared;
+
+-- name: ClearLearningState :exec
+DELETE FROM quizcraft_learning_state;
+
+-- name: RebuildLearningStateFromAttempts :exec
+WITH aggregates AS (
+  SELECT user_id,bank_id,question_id,
+         count(*)::bigint AS attempt_count,
+         count(*) FILTER (WHERE correct)::bigint AS correct_count,
+         max(submitted_at) AS updated_at
+  FROM quizcraft_practice_attempts
+  WHERE user_id IS NOT NULL
+  GROUP BY user_id,bank_id,question_id
+),
+latest AS (
+  SELECT DISTINCT ON (user_id,bank_id,question_id)
+         user_id,bank_id,question_id,question_version_id,(NOT correct) AS wrong
+  FROM quizcraft_practice_attempts
+  WHERE user_id IS NOT NULL
+  ORDER BY user_id,bank_id,question_id,submitted_at DESC,id DESC
+)
+INSERT INTO quizcraft_learning_state(user_id,bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,updated_at)
+SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,latest.question_version_id,
+       latest.wrong,aggregates.attempt_count,aggregates.correct_count,aggregates.updated_at
+FROM aggregates
+JOIN latest USING (user_id,bank_id,question_id);
+
+-- name: GetPersonalPracticeTotals :one
+SELECT count(*)::bigint AS total_answers,
+       count(*) FILTER (WHERE correct)::bigint AS correct_answers
+FROM quizcraft_practice_attempts
+WHERE user_id=$1;
+
+-- name: ListPersonalPracticeDays :many
+SELECT DISTINCT ((submitted_at AT TIME ZONE 'Asia/Shanghai')::date)::text AS activity_day
+FROM quizcraft_practice_attempts
+WHERE user_id=$1
+ORDER BY activity_day DESC;
+
+-- name: ListPersonalMasteryFacts :many
+WITH active_questions AS (
+  SELECT b.id AS bank_id,b.name,m.question_id
+  FROM quizcraft_banks b
+  JOIN quizcraft_bank_versions bv ON bv.id=b.active_version_id AND bv.bank_id=b.id AND bv.sealed_at IS NOT NULL
+  JOIN quizcraft_bank_version_questions m ON m.bank_id=b.id AND m.bank_version_id=bv.id
+),
+bank_totals AS (
+  SELECT bank_id,name AS label,count(*)::bigint AS total_questions
+  FROM active_questions
+  GROUP BY bank_id,name
+),
+personal_activity AS (
+  SELECT active.bank_id,
+         count(DISTINCT active.question_id) FILTER (WHERE attempt.correct)::bigint AS correct_questions
+  FROM active_questions active
+  JOIN quizcraft_practice_attempts attempt
+    ON attempt.bank_id=active.bank_id AND attempt.question_id=active.question_id
+  WHERE attempt.user_id=$1
+  GROUP BY active.bank_id
+)
+SELECT totals.bank_id,totals.label,totals.total_questions,activity.correct_questions
+FROM bank_totals totals
+JOIN personal_activity activity ON activity.bank_id=totals.bank_id
+ORDER BY totals.label,totals.bank_id;
+
 -- name: InsertShadowComparison :exec
 INSERT INTO quizcraft_shadow_comparisons(id,session_id,question_id,new_response,legacy_response,outcome,detail)
 VALUES($1,$2,$3,$4,$5,$6,$7);

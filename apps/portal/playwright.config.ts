@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const quizCraftV2Reads =
+  process.env.PLAYWRIGHT_ENABLE_QUIZCRAFT_V2_READS === "1" ? "1" : "0";
+const port = quizCraftV2Reads === "1" ? 3101 : 3001;
+
 export default defineConfig({
   testDir: "./tests",
   timeout: 45_000,
@@ -11,18 +15,19 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: "http://127.0.0.1:3001",
+    baseURL: `http://localhost:${port}`,
     ...devices["Desktop Chrome"],
     trace: "retain-on-failure",
   },
   webServer: [
     {
-      command: "pnpm --filter @henukit/portal dev",
-      url: "http://127.0.0.1:3001",
+      command: `pnpm --filter @henukit/portal exec next dev -p ${port}`,
+      url: `http://127.0.0.1:${port}`,
       env: {
         ...process.env,
         NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: "1",
         NEXT_PUBLIC_PORTAL_ALLOW_MOCK: "0",
+        NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS: quizCraftV2Reads,
       },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

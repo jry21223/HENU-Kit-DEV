@@ -32,6 +32,7 @@ import type {
   LibraryCoursesResponse,
   MaterialListResponse,
   NoticeListResponse,
+  PersonalPracticeStatsEnvelope,
   PortalSession,
   PracticeBanksResponse,
   SchoolListResponse,
@@ -376,6 +377,14 @@ export async function fetchFoodPosts(campus?: string): Promise<FoodPostListRespo
 
 export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null> {
   return apiFetch<PracticeBanksResponse>("/api/v1/practice/banks");
+}
+
+/**
+ * Fetches V2 fact-derived personal Practice stats. Callers must first check
+ * quizCraftV2ReadsEnabled(); this strict path has no local/mock success mode.
+ */
+export async function fetchPersonalPracticeStats(): Promise<PersonalPracticeStatsEnvelope> {
+  return apiFetchRequired<PersonalPracticeStatsEnvelope>("/api/v1/practice/stats");
 }
 
 export async function fetchPracticeSchools(): Promise<SchoolListResponse> {

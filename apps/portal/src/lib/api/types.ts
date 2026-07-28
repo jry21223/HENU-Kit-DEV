@@ -4,7 +4,12 @@
  * and portal-api.yaml (materials, posts, schools, campus).
  */
 
-export type { PortalSession } from "./portal-session.generated";
+export type {
+  MasterySubject,
+  PersonalPracticeStats,
+  PersonalPracticeStatsEnvelope,
+  PortalSession,
+} from "./portal-session.generated";
 
 export interface ErrorEnvelope {
   error: string;

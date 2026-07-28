@@ -3,10 +3,31 @@ package contract
 
 import "time"
 
-const PortalSessionSourceSHA256 = "0d349a6f91fdcc8391a56ebac230937c677a80b1d92e0100a5e6ed7e59bfb77d"
+const PortalSessionSourceSHA256 = "be5076e8c17a174ad03c61ba68199122b07ea7d03fedc4bff41813233dade66e"
 
 type PortalSession struct {
 	DisplayName *string   `json:"display_name,omitempty"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	UserID      string    `json:"user_id"`
+}
+
+type MasterySubject struct {
+	BankID           string `json:"bank_id"`
+	Label            string `json:"label"`
+	Value            int    `json:"value"`
+	TotalQuestions   int64  `json:"total_questions"`
+	CorrectQuestions int64  `json:"correct_questions"`
+}
+
+type PersonalPracticeStats struct {
+	TotalAnswers   int64            `json:"total_answers"`
+	CorrectAnswers int64            `json:"correct_answers"`
+	Accuracy       int              `json:"accuracy"`
+	StreakDays     int              `json:"streak_days"`
+	Mastery        []MasterySubject `json:"mastery"`
+}
+
+type PersonalPracticeStatsEnvelope struct {
+	RequestID string                `json:"request_id"`
+	Data      PersonalPracticeStats `json:"data"`
 }

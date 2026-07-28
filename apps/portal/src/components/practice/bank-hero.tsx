@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
-import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
+import { REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 import {
+  toMasterySnapshot,
+  type PersonalPracticeStatsState,
+} from "@/lib/practice/personal-stats";
+import {
   deriveMasteryVisuals,
-  EMPTY_MASTERY,
   masteryPercent,
   type MasterySnapshot,
 } from "@/components/practice/bank-hero-mastery";
@@ -15,30 +18,9 @@ const BankHero3D = dynamic(() => import("@/components/practice/bank-hero-3d"), {
   ssr: false,
 });
 
-const COUNTERS = [
-  { label: "全站总刷题", value: 128436 },
-  { label: "今日答题", value: 1024 },
-];
-
-const TICKER = [
-  "卷王本王 刚答对了 数据结构 · Q-07",
-  "早八不迟到 完成了 高等数学A · 极限与连续",
-  "考研上岸ing 连对 12 题",
-  "图书馆常驻人口 刚答错了 线性代数 · Q-06",
-  "代码炼丹师 收藏了 数据结构 · 树与图专题",
-  "你 今天的刷题数超过了 83% 的同学",
-];
-
 /** Ellipse circumference approx for stroke-dash progress (rx, ry). */
 function ellipsePerim(rx: number, ry: number) {
   return Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)));
-}
-
-const SPARK_PATH = "M0 34 L28 30 L56 33 L84 22 L112 26 L140 14 L168 18 L196 6";
-const SPARK_LEN = 240;
-
-function formatNum(n: number) {
-  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /** reduced-motion：晶体轮廓 + 进度弧（与 3D 同一编码） */
@@ -139,19 +121,43 @@ function StaticKnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
 export default function BankHero({
   query,
   onQueryChange,
+  masteryState,
 }: {
   query: string;
   onQueryChange: (v: string) => void;
+  masteryState: PersonalPracticeStatsState;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
-  const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
-  const tickerRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(true);
-  const mastery = EMPTY_MASTERY;
+  const personalData =
+    masteryState.status === "ready" || masteryState.status === "empty"
+      ? masteryState.data
+      : undefined;
+  const mastery = useMemo(
+    () => toMasterySnapshot(personalData),
+    [personalData]
+  );
   const { ringSubjects, cubeCount } = useMemo(
     () => deriveMasteryVisuals(mastery),
     [mastery]
   );
+
+  const stateMessage = useMemo(() => {
+    switch (masteryState.status) {
+      case "disabled":
+        return "QuizCraft V2 数据将在确认切换后读取；当前未展示示例数据。";
+      case "loading":
+        return "正在同步已确认的作答事实…";
+      case "unauthenticated":
+        return "登录后可查看跨设备同步的掌握度。";
+      case "error":
+        return "真实学习数据暂不可用，未使用示例数据填充。";
+      case "empty":
+        return "尚无已确认作答事实；从第一题开始建立你的图谱。";
+      case "ready":
+        return "图谱由已确认的 QuizCraft 作答事实驱动。";
+    }
+  }, [masteryState.status]);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -174,53 +180,6 @@ export default function BankHero({
     () => false
   );
 
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(FINE_MOTION, () => {
-        COUNTERS.forEach((c, i) => {
-          const el = counterRefs.current[i];
-          if (!el) return;
-          const obj = { v: 0 };
-          gsap.to(obj, {
-            v: c.value,
-            duration: 2,
-            delay: 0.3 + i * 0.2,
-            ease: "power2.out",
-            onUpdate: () => {
-              el.textContent = formatNum(obj.v);
-            },
-          });
-        });
-        gsap.fromTo(
-          "[data-spark]",
-          { strokeDasharray: SPARK_LEN, strokeDashoffset: SPARK_LEN },
-          {
-            strokeDashoffset: -SPARK_LEN,
-            duration: 3.2,
-            repeat: -1,
-            repeatDelay: 0.8,
-            ease: "power1.inOut",
-          }
-        );
-        gsap.to(tickerRef.current, {
-          xPercent: -50,
-          ease: "none",
-          duration: 26,
-          repeat: -1,
-        });
-      });
-      mm.add("(prefers-reduced-motion: reduce)", () => {
-        COUNTERS.forEach((c, i) => {
-          const el = counterRefs.current[i];
-          if (el) el.textContent = formatNum(c.value);
-        });
-      });
-      return () => mm.revert();
-    },
-    { scope: sectionRef }
-  );
-
   return (
     <section
       ref={sectionRef}
@@ -241,8 +200,8 @@ export default function BankHero({
             题库
           </h1>
           <p data-enter className="mt-5 max-w-md text-sm leading-7 text-ink/70">
-            按学院、专业、科目逐级定位题单；真题讲解、掌握度追踪、
-            排行榜——数据在流动，像工地一样热火朝天。
+            按学院、专业、科目逐级定位题单；掌握度只消费服务端确认的
+            作答事实，在数据尚未切换或不可用时保持诚实的空态。
           </p>
 
           <div data-enter className="mt-8 w-full max-w-md">
@@ -257,37 +216,29 @@ export default function BankHero({
             />
           </div>
 
-          <div data-enter className="mt-10 flex flex-wrap items-end gap-x-10 gap-y-6">
-            {COUNTERS.map((c, i) => (
-              <div key={c.label}>
-                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
-                  {c.label}
-                </p>
-                <p className="mt-1 font-display text-3xl font-bold tabular-nums">
-                  <span
-                    ref={(el) => {
-                      counterRefs.current[i] = el;
-                    }}
-                  >
-                    0
-                  </span>
-                </p>
-              </div>
-            ))}
-            <svg
-              viewBox="0 0 196 40"
-              aria-hidden
-              className="h-10 w-48 text-ink/60"
-              fill="none"
+          <div data-enter className="mt-10 grid max-w-md grid-cols-2 gap-4">
+            <div className="border border-line px-4 py-3">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/40">
+                已确认作答
+              </p>
+              <p className="mt-1 font-display text-3xl font-bold tabular-nums">
+                {personalData ? personalData.total_answers : "—"}
+              </p>
+            </div>
+            <div className="border border-line px-4 py-3">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/40">
+                正确率
+              </p>
+              <p className="mt-1 font-display text-3xl font-bold tabular-nums">
+                {personalData ? `${personalData.accuracy}%` : "—"}
+              </p>
+            </div>
+            <p
+              data-testid="practice-hero-stats-state"
+              className="col-span-2 font-mono text-[10px] leading-5 text-ink/50"
             >
-              <path d="M0 38 H196" className="stroke-line" />
-              <path
-                data-spark
-                d={SPARK_PATH}
-                className="stroke-accent"
-                strokeWidth="1.5"
-              />
-            </svg>
+              {stateMessage}
+            </p>
           </div>
         </div>
 
@@ -308,8 +259,8 @@ export default function BankHero({
 
           <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20">
             <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
-              <li className="py-1 font-mono text-[10px] tracking-wide text-ink/50">
-                掌握度数据尚未接入
+              <li className="py-1 font-mono text-[10px] leading-5 tracking-wide text-ink/50">
+                {stateMessage}
               </li>
               {ringSubjects.map((s, i) => {
                 const weak = s.value < 60;
@@ -349,10 +300,10 @@ export default function BankHero({
               {ringSubjects.length > 0 ? (
                 <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
                   <span>
-                    核 {mastery.accuracy}% · 连打 {mastery.streakDays}d · 块{" "}
+                    核 {mastery.accuracy}% · 连续 {mastery.streakDays}d · 块{" "}
                     {cubeCount}
                   </span>
-                  <span>{mastery.totalQuestions} 题</span>
+                  <span>{mastery.totalQuestions} 次</span>
                 </li>
               ) : null}
             </ul>
@@ -369,30 +320,10 @@ export default function BankHero({
       </div>
 
       <div className="relative border-t border-line py-2.5">
-        <div className="overflow-hidden">
-          <div ref={tickerRef} className="flex w-max will-change-transform">
-            {[0, 1].map((dup) => (
-              <div
-                key={dup}
-                className="flex shrink-0 items-center"
-                aria-hidden={dup === 1}
-              >
-                {TICKER.map((t, i) => (
-                  <span
-                    key={`${dup}-${i}`}
-                    className="flex items-center whitespace-nowrap"
-                  >
-                    <span className="px-5 font-mono text-[11px] tracking-wider text-ink/60">
-                      {t}
-                    </span>
-                    <span aria-hidden className="text-[9px] text-accent">
-                      +
-                    </span>
-                  </span>
-                ))}
-              </div>
-            ))}
-          </div>
+        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-5 font-mono text-[10px] tracking-[0.2em] text-ink/50 md:px-8">
+          <span className="text-accent">DATA</span>
+          <span aria-hidden>+</span>
+          <span>REAL PRACTICE FACTS ONLY</span>
         </div>
       </div>
     </section>

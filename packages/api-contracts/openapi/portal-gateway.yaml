@@ -451,6 +451,31 @@ paths:
         "502":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/practice/stats:
+    get:
+      operationId: personalPracticeStats
+      summary: Read the signed-in user's fact-derived QuizCraft Practice statistics
+      description: >
+        This endpoint is served by QuizCraft V2 only when the explicit
+        Portal V2-read cutover flag is enabled. Before that deployment window,
+        Portal clients must not treat a response as V2 data or synthesize a
+        success fallback.
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Persistent stats derived from immutable QuizCraft Practice attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalPracticeStatsEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/notices:
     get:
       operationId: noticeList
@@ -893,6 +918,61 @@ components:
           type: string
         question_count:
           type: integer
+
+    MasterySubject:
+      type: object
+      required: [bank_id, label, value, total_questions, correct_questions]
+      properties:
+        bank_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        value:
+          type: integer
+          minimum: 0
+          maximum: 100
+        total_questions:
+          type: integer
+          format: int64
+          minimum: 0
+        correct_questions:
+          type: integer
+          format: int64
+          minimum: 0
+
+    PersonalPracticeStats:
+      type: object
+      required: [total_answers, correct_answers, accuracy, streak_days, mastery]
+      properties:
+        total_answers:
+          type: integer
+          format: int64
+          minimum: 0
+        correct_answers:
+          type: integer
+          format: int64
+          minimum: 0
+        accuracy:
+          type: integer
+          minimum: 0
+          maximum: 100
+        streak_days:
+          type: integer
+          minimum: 0
+        mastery:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterySubject"
+
+    PersonalPracticeStatsEnvelope:
+      type: object
+      required: [request_id, data]
+      properties:
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/PersonalPracticeStats"
 
     NoticeListResponse:
       type: object

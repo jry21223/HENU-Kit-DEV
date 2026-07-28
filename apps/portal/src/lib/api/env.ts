@@ -31,6 +31,15 @@ export function allowMock(): boolean {
 }
 
 /**
+ * QuizCraft V2 personal-data reads are dark until the server-side Gateway flag
+ * is enabled in the #166 cutover window. This client flag never enables a
+ * server route by itself; it only prevents the browser from probing it early.
+ */
+export function quizCraftV2ReadsEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS === "1";
+}
+
+/**
  * Gateway base URL (no trailing slash).
  * Empty string = same-origin (/api/v1/... via nginx).
  */

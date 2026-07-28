@@ -870,6 +870,21 @@ type LegacyRankingPage struct {
 	} `json:"entries"`
 }
 
+// MasterySubject defines model for MasterySubject.
+type MasterySubject struct {
+	BankId openapi_types.UUID `json:"bank_id"`
+
+	// CorrectQuestions Active stable questions answered correctly at least once by this user.
+	CorrectQuestions int64  `json:"correct_questions"`
+	Label            string `json:"label"`
+
+	// TotalQuestions Current active stable questions in this bank.
+	TotalQuestions int64 `json:"total_questions"`
+
+	// Value Correct stable questions divided by the active bank question count.
+	Value int `json:"value"`
+}
+
 // NonChoicePracticeQuestion defines model for NonChoicePracticeQuestion.
 type NonChoicePracticeQuestion struct {
 	Chapter           string                        `json:"chapter"`
@@ -903,6 +918,28 @@ type OperationEnvelope struct {
 
 // OperationKind defines model for OperationKind.
 type OperationKind string
+
+// PersonalPracticeStats defines model for PersonalPracticeStats.
+type PersonalPracticeStats struct {
+	// Accuracy Rounded correct_answers divided by total_answers.
+	Accuracy int `json:"accuracy"`
+
+	// CorrectAnswers Correct immutable scored attempts owned by this user.
+	CorrectAnswers int64            `json:"correct_answers"`
+	Mastery        []MasterySubject `json:"mastery"`
+
+	// StreakDays Consecutive Asia/Shanghai calendar days ending today or yesterday with at least one scored attempt.
+	StreakDays int `json:"streak_days"`
+
+	// TotalAnswers Count of immutable scored attempts owned by this user.
+	TotalAnswers int64 `json:"total_answers"`
+}
+
+// PersonalPracticeStatsEnvelope defines model for PersonalPracticeStatsEnvelope.
+type PersonalPracticeStatsEnvelope struct {
+	Data      PersonalPracticeStats `json:"data"`
+	RequestId RequestID             `json:"request_id"`
+}
 
 // PracticeQuestion defines model for PracticeQuestion.
 type PracticeQuestion struct {

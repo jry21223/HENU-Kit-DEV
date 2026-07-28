@@ -15,6 +15,7 @@ import {
   getPracticeGatewayError,
   initPracticeGateway,
 } from "@/lib/practice/gateway";
+import { usePersonalPracticeStats } from "@/lib/practice/personal-stats";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import BankHero from "@/components/practice/bank-hero";
@@ -84,6 +85,7 @@ type LoadState = "loading" | "ready" | "error";
 
 export default function PracticeBankPage() {
   usePageEnter(null);
+  const { state: masteryState } = usePersonalPracticeStats();
 
   const [schools, setSchools] = useState<School[]>([]);
   const [banks, setBanks] = useState<BankSummary[]>([]);
@@ -212,7 +214,11 @@ export default function PracticeBankPage() {
 
   return (
     <main>
-      <BankHero query={query} onQueryChange={setQuery} />
+      <BankHero
+        query={query}
+        onQueryChange={setQuery}
+        masteryState={masteryState}
+      />
 
       <div data-block className="border-t border-line">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-3 md:px-8">
