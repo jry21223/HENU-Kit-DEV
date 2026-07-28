@@ -10,6 +10,12 @@ Gateway contract and never receive service credentials or an actor identifier
 they can assert themselves. Console Gateway is the only operator caller and
 must use a credential distinct from Portal Gateway's.
 
+The ¥9.9 lifetime Membership Order kernel is durable, but the process does not
+read a payment Provider credential or enable a real Provider. A missing
+Provider returns an explicit unavailable result and creates neither an order
+nor an entitlement. Portal keeps the purchase surface closed until a separate
+Provider Spike and authorization establish a compliant browser boundary.
+
 ## Run
 
 Set `ACCOUNT_PORTFOLIO_DATABASE_URL`, `ACCOUNT_PORTFOLIO_SERVICE_CLIENT_ID`,

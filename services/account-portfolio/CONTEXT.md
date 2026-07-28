@@ -32,6 +32,15 @@ and creates one user notification in the same transaction. It never creates
 an Account Portfolio account for an arbitrary target and never imports legacy
 Study membership state.
 
+HC-171 adds the durable Membership Order kernel. Its state machine may record
+`created`, `pending_payment`, `paid`, `closed`, `failed`, and `refunded`, but a
+Membership Entitlement changes only in the same transaction as a
+Provider-verified payment fact. The production process has no enabled payment
+Provider; Fake Provider behavior exists only for contract and lifecycle tests.
+Provider callbacks record bounded audit codes and payload digests, never raw
+signatures, secrets, or payment payloads. ADR-0017 still keeps membership-order
+commands out of Portal Gateway, so the browser purchase surface remains closed.
+
 ## Language
 
 **Support Ticket**:
@@ -76,3 +85,21 @@ The positive version of a Membership Entitlement. Console grant and revocation
 commands must present the current revision; stale or repeated state changes
 fail without creating an event or notification.
 _Avoid_: Timestamp-only concurrency, last-write-wins
+
+**Membership Order**:
+A durable request for the single ¥9.9 lifetime product. Its local state is
+separate from Provider protocol state and can advance only through the
+controlled order lifecycle.
+_Avoid_: QR code, successful payment, temporary checkout
+
+**Verified Payment Fact**:
+An immutable Provider-verified notification correlated to one Membership Order.
+It is the only payment evidence that may grant or revoke a Membership
+Entitlement, and replay or stale facts do not repeat an entitlement change.
+_Avoid_: Browser success callback, unsigned provider payload, session flag
+
+**Payment Provider**:
+An isolated adapter responsible for signing, creating and querying external
+orders, verifying notifications, and refund protocol behavior. No real Payment
+Provider is enabled without a separate Spike and later authorization.
+_Avoid_: Portal API, browser secret, mock purchase success

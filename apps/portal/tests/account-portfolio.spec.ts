@@ -110,6 +110,7 @@ for (const viewport of [
     await expect(page.locator('[data-account-membership-state="success"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "终身会员" })).toBeVisible();
     await expect(page.getByText("权益已由 Account Portfolio 持久化确认，可跨设备读取。", { exact: true })).toBeVisible();
+    await expect(page.getByText("支付 Provider 尚未启用", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: /开通|支付/ })).toHaveCount(0);
     await expect(page.getByText(sessionUserID, { exact: true })).toHaveCount(0);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
