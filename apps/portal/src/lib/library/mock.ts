@@ -1,10 +1,9 @@
 /**
- * 资料库 mock 数据层 + libraryStore（useSyncExternalStore 单例，同既有 store 模式）。
- * 字面量数据，SSR/客户端一致；收藏/购买仅会话内存态，刷新还原。
- * 购买走账号积分（accountStore.spendPoints），钱包余额/流水实时联动。
+ * 资料库静态展示数据。
+ * 字面量数据，SSR/客户端一致；不保存任何用户拥有、收藏或购买状态。
+ * 付费资料的积分兑换必须等 Account Portfolio 的真实写接口落地后再开放；
+ * 当前只允许免费阅读和付费资料试读，绝不把本地状态当作购买结果。
  */
-
-import { accountStore } from "@/lib/auth/mock";
 
 // ---------------------------------------------------------------- 类型
 
@@ -409,62 +408,3 @@ export const STATIC_MATERIALS = MATERIALS;
 export function getMaterial(id: string) {
   return MATERIALS.find((m) => m.id === id);
 }
-
-// ---------------------------------------------------------------- libraryStore
-
-export interface LibraryData {
-  favs: string[];
-  owned: string[];
-}
-
-const INITIAL: LibraryData = { favs: [], owned: [] };
-
-let state: LibraryData = INITIAL;
-const listeners = new Set<() => void>();
-
-function emit() {
-  listeners.forEach((l) => l());
-}
-
-function set(patch: Partial<LibraryData>) {
-  state = { ...state, ...patch };
-  emit();
-}
-
-export type PurchaseResult = "ok" | "no-points" | "already";
-
-export const libraryStore = {
-  subscribe(listener: () => void) {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
-  },
-  get: (): LibraryData => state,
-  getServer: (): LibraryData => INITIAL,
-
-  isOwned(id: string) {
-    const m = getMaterial(id);
-    return !!m && (m.price === 0 || state.owned.includes(id));
-  },
-
-  toggleFav(id: string) {
-    set({
-      favs: state.favs.includes(id)
-        ? state.favs.filter((f) => f !== id)
-        : [...state.favs, id],
-    });
-  },
-
-  /** 积分购买：校验余额 → accountStore 扣分 → 记录已购 */
-  purchase(id: string): PurchaseResult {
-    const m = getMaterial(id);
-    if (!m || m.price === 0) return "already";
-    if (state.owned.includes(id)) return "already";
-    if (!accountStore.spendPoints(m.price, `购买资料 · ${m.title.slice(0, 16)}`)) {
-      return "no-points";
-    }
-    set({ owned: [...state.owned, id] });
-    return "ok";
-  },
-};

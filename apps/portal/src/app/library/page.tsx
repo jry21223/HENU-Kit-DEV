@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSyncExternalStore } from "react";
 import {
   formatPortalError,
   fetchLibraryMaterials,
@@ -12,7 +11,6 @@ import {
   MATERIAL_TYPES,
   MaterialType,
   STATIC_MATERIALS,
-  libraryStore,
   type Material,
 } from "@/lib/library/mock";
 import {
@@ -50,7 +48,6 @@ function toMaterial(m: ApiMaterial): Material {
 type LoadState = "loading" | "ready" | "error";
 
 export default function LibraryHomePage() {
-  useSyncExternalStore(libraryStore.subscribe, libraryStore.get, libraryStore.getServer);
   const [query, setQuery] = useState("");
   const [type, setType] = useState<MaterialType | "all">("all");
   const [price, setPrice] = useState<"all" | "free" | "paid">("all");
@@ -127,7 +124,7 @@ export default function LibraryHomePage() {
         index="01"
         en="LIBRARY"
         title="资料库"
-        slogan="学长笔记、往年试卷、模拟卷、学习路径、实验报告——免费的尽管拿，收费的先用积分试读。"
+        slogan="学长笔记、往年试卷、模拟卷、学习路径、实验报告——免费资料可直接阅读，收费资料可试读，积分兑换将在真实账户服务接通后开放。"
         counters={[
           { label: "收录资料", value: materials.length },
           { label: "累计下载", value: totalDownloads },

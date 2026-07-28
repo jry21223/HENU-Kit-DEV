@@ -79,6 +79,8 @@ test("unimplemented Account Portfolio pages fail closed rather than exposing ses
     { path: "/account/membership", title: "会员", absentAction: "开通" },
     { path: "/account/notifications", title: "系统通知", absentAction: "全部已读" },
     { path: "/account/tickets", title: "工单", absentAction: "新建工单" },
+    { path: "/account/posts", title: "我的文章", absentAction: "去发布" },
+    { path: "/account/deals", title: "我的交易", absentAction: "完整管理" },
   ];
 
   for (const item of pages) {
@@ -88,4 +90,22 @@ test("unimplemented Account Portfolio pages fail closed rather than exposing ses
     await expect(page.getByText("不会展示或修改任何会话内数据")).toBeVisible();
     await expect(page.getByText(item.absentAction, { exact: false })).toHaveCount(0);
   }
+});
+
+test("paid Library materials never use Account session mocks as a purchase or shelf result", async ({ page }) => {
+  await page.goto("/library/item/paid-math-exam25", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-library-purchase-state="unavailable"]')).toBeVisible();
+  await expect(page.locator('[data-library-favorite-state="unavailable"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: /积分购买|登录后购买/ })).toHaveCount(0);
+
+  await page.goto("/library/read/paid-math-exam25", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "下一页 →" }).click();
+  await page.getByRole("button", { name: "下一页 →" }).click();
+  await expect(page.locator('[data-library-purchase-state="unavailable"]')).toBeVisible();
+  await expect(page.getByText("不会通过本地余额或会话状态解锁全文")).toBeVisible();
+  await expect(page.getByRole("button", { name: /积分购买|登录后购买/ })).toHaveCount(0);
+
+  await page.goto("/library/shelf", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-library-shelf-state="unavailable"]')).toBeVisible();
+  await expect(page.getByText("不会展示任何个人书架内容")).toBeVisible();
 });

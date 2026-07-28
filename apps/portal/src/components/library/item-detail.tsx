@@ -2,25 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useSyncExternalStore } from "react";
 import {
   MATERIAL_TYPES,
   Material,
   STATIC_MATERIALS,
-  libraryStore,
 } from "@/lib/library/mock";
 import MaterialCard from "@/components/library/material-card";
-import { usePurchase } from "@/components/library/use-purchase";
 import { useReveal } from "@/components/account/use-reveal";
-import { cn } from "@/lib/cn";
 
 export default function ItemDetail({ id }: { id: string }) {
   const material = STATIC_MATERIALS.find((m) => m.id === id);
-  const lib = useSyncExternalStore(libraryStore.subscribe, libraryStore.get, libraryStore.getServer);
-  const { buy, balance, user } = usePurchase();
   useReveal();
   const [tocOpen, setTocOpen] = useState(false);
-  const [msg, setMsg] = useState("");
   const [downloaded, setDownloaded] = useState(false);
 
   if (!material) {
@@ -36,19 +29,10 @@ export default function ItemDetail({ id }: { id: string }) {
 
   const t = MATERIAL_TYPES[material.type];
   const free = material.price === 0;
-  const owned = free || lib.owned.includes(id);
-  const fav = lib.favs.includes(id);
   const related = STATIC_MATERIALS.filter(
     (m) => m.id !== id && (m.subject === material.subject || m.type === material.type)
   ).slice(0, 3);
   const toc = tocOpen ? material.toc : material.toc.slice(0, 6);
-
-  const onBuy = () => {
-    const r = buy(id, `/library/item/${id}`);
-    if (r === "ok") setMsg("✓ 购买成功，已解锁全文");
-    else if (r === "no-points") setMsg("积分不足，请先去钱包签到攒积分");
-    else if (r === "already") setMsg("已拥有该资料");
-  };
 
   return (
     <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
@@ -84,7 +68,7 @@ export default function ItemDetail({ id }: { id: string }) {
             {material.title}
           </h1>
           <p data-enter className="mt-3 font-mono text-[11px] tracking-wider text-ink/50">
-            {material.author} · ★ {material.rating.toFixed(1)} · ↓ {material.downloads} · 收藏 {material.favs + (fav ? 1 : 0)}
+            {material.author} · ★ {material.rating.toFixed(1)} · ↓ {material.downloads} · 收藏 {material.favs}
           </p>
           <p data-enter className="mt-5 max-w-xl text-sm leading-7 text-ink/75">
             {material.intro}
@@ -130,13 +114,6 @@ export default function ItemDetail({ id }: { id: string }) {
                   {downloaded ? "已加入下载队列（mock）" : "下载 · PDF（mock）"}
                 </button>
               </>
-            ) : owned ? (
-              <Link
-                href={`/library/read/${id}`}
-                className="border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
-              >
-                继续阅读 →
-              </Link>
             ) : (
               <>
                 <Link
@@ -145,36 +122,21 @@ export default function ItemDetail({ id }: { id: string }) {
                 >
                   免费试读 {material.previewPages} 页
                 </Link>
-                <button
-                  type="button"
-                  onClick={onBuy}
-                  className="border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+                <p
+                  data-library-purchase-state="unavailable"
+                  className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/55"
                 >
-                  积分购买 {material.price}（余额 {user ? balance : "—"}）
-                </button>
+                  积分兑换暂未开放
+                </p>
               </>
             )}
-            <button
-              type="button"
-              onClick={() => libraryStore.toggleFav(id)}
-              className={cn(
-                "border px-5 py-3 font-mono text-sm transition-colors",
-                fav ? "border-accent text-accent" : "border-ink/30 hover:border-ink"
-              )}
+            <p
+              data-library-favorite-state="unavailable"
+              className="border border-ink/30 px-5 py-3 font-mono text-sm text-ink/55"
             >
-              {fav ? "★ 已收藏" : "☆ 收藏"}
-            </button>
-          </div>
-          {msg && (
-            <p className={cn("mt-3 font-mono text-xs", msg.startsWith("✓") ? "text-ink" : "text-accent")}>
-              {msg}
-              {msg.includes("积分不足") && (
-                <Link href="/account/wallet" className="ml-2 underline">
-                  去钱包 →
-                </Link>
-              )}
+              收藏功能接入中
             </p>
-          )}
+          </div>
         </div>
       </div>
 

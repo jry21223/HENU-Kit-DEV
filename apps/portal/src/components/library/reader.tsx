@@ -2,30 +2,23 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useSyncExternalStore } from "react";
 import {
   MATERIAL_TYPES,
   getMaterial,
-  libraryStore,
 } from "@/lib/library/mock";
-import { usePurchase } from "@/components/library/use-purchase";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 
 export default function Reader({ id }: { id: string }) {
   const material = getMaterial(id);
-  const lib = useSyncExternalStore(libraryStore.subscribe, libraryStore.get, libraryStore.getServer);
-  const { buy, balance, user } = usePurchase();
 
   const [page, setPage] = useState(0);
-  const [msg, setMsg] = useState("");
   const dirRef = useRef(1);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const total = material?.pages.length ?? 0;
   const free = !material || material.price === 0;
-  const owned = free || lib.owned.includes(id);
-  const locked = !free && !owned && material ? page >= material.previewPages : false;
+  const locked = !free && material ? page >= material.previewPages : false;
 
   const goto = (next: number) => {
     const clamped = Math.max(0, Math.min(total - 1, next));
@@ -71,12 +64,6 @@ export default function Reader({ id }: { id: string }) {
     );
   }
 
-  const onBuy = () => {
-    const r = buy(id, `/library/read/${id}`);
-    if (r === "ok") setMsg("");
-    else if (r === "no-points") setMsg("积分不足，请先去钱包签到攒积分");
-  };
-
   const progress = ((page + 1) / total) * 100;
 
   return (
@@ -110,35 +97,25 @@ export default function Reader({ id }: { id: string }) {
             </p>
             <p className="mt-3 max-w-sm text-sm leading-7 text-ink/70">
               本文共 {total} 页，前 {material.previewPages} 页已免费试读。
-              购买后可阅读全文。
+              积分兑换将在真实账户服务接通后开放，当前不会通过本地余额或会话状态解锁全文。
             </p>
             <p className="mt-6 font-display text-4xl font-bold">
               {material.price}
               <span className="ml-1 font-mono text-xs font-normal text-ink/50">积分</span>
             </p>
-            <p className="mt-1 font-mono text-[10px] text-ink/50">
-              当前余额：{user ? balance : "未登录"}
-            </p>
-            <button
-              type="button"
-              onClick={onBuy}
-              className="mt-6 border border-ink bg-ink px-8 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+            <p
+              data-library-purchase-state="unavailable"
+              className="mt-6 border border-ink/30 px-8 py-3 font-mono text-sm tracking-widest text-ink/55"
             >
-              {user ? "积分购买 · 解锁全文" : "登录后购买"}
-            </button>
-            {msg && (
-              <p className="mt-3 font-mono text-xs text-accent">
-                {msg}
-                <Link href="/account/wallet" className="ml-2 underline">去钱包 →</Link>
-              </p>
-            )}
+              积分兑换暂未开放
+            </p>
           </div>
         ) : (
           /* 正文页 */
           <article>
             <p className="font-mono text-[10px] tracking-[0.3em] text-ink/40">
               PAGE {String(page + 1).padStart(2, "0")}
-              {!free && !owned && (
+              {!free && (
                 <span className="ml-3 border border-accent/60 px-1.5 py-0.5 text-accent">试读页</span>
               )}
             </p>
