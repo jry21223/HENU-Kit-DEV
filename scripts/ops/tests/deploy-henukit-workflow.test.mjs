@@ -60,6 +60,35 @@ test("Portal V2 read flag is an explicit production build input and stays dark i
   );
 });
 
+test("development Compose forwards an explicit Portal V2 read build flag", () => {
+  const config = JSON.parse(
+    execFileSync(
+      "docker",
+      [
+        "compose",
+        "-f",
+        "docker-compose.henukit.yml",
+        "config",
+        "--format",
+        "json",
+        "--no-path-resolution",
+      ],
+      {
+        cwd: new URL("../../../", import.meta.url),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS: "1",
+        },
+      },
+    ),
+  );
+  assert.equal(
+    config.services.portal.build.args.NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS,
+    "1",
+  );
+});
+
 test("every Docker image artifact includes an independent SHA-256 checksum", () => {
   assert.match(
     workflow,
