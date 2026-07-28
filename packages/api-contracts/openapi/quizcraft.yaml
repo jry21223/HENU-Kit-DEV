@@ -137,10 +137,16 @@ paths:
   /api/v1/stats:
     get:
       summary: Read one authenticated user's fact-derived Practice statistics for Portal
-      description: The trusted Portal actor header is bound into the signed service request and cannot be substituted in transit.
+      description: The trusted Portal actor header is bound as the sixth line of the signed service request and cannot be substituted in transit.
       tags: [Practice]
       operationId: getPersonalPracticeStats
-      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [], portalCatalogActor: [] }]
+      parameters:
+        - name: X-Actor-User-Id
+          in: header
+          required: true
+          description: UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+          schema: { type: string, format: uuid }
       responses:
         '200': { description: Persistent stats and mastery rebuilt from immutable Practice attempts, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalPracticeStatsEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -510,6 +516,7 @@ components:
     portalCatalogPermission: { type: apiKey, in: header, name: X-Permission-Code, description: Must be portal.practice.read after Portal Gateway authorization. }
     portalCatalogScope: { type: apiKey, in: header, name: X-Scope-Kind, description: Must be product. }
     portalCatalogProduct: { type: apiKey, in: header, name: X-Product-Code, description: Must be quizcraft. }
+    portalCatalogActor: { type: apiKey, in: header, name: X-Actor-User-Id, description: "Required UUID Portal actor, included as the sixth line after the body digest in the HMAC-SHA256 canonical request." }
     cutoverEvidence: { type: apiKey, in: header, name: X-QuizCraft-Cutover-Secret, description: Dedicated operator-only secret for release evidence. }
   parameters:
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 160 } }

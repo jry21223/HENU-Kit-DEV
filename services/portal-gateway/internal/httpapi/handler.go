@@ -48,7 +48,10 @@ type Handler struct {
 	trustedProxies     []*net.IPNet
 }
 
-var accountIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+var (
+	accountIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+	portalRequestIDPattern       = regexp.MustCompile(`^req_[A-Za-z0-9_-]{1,116}$`)
+)
 
 // New creates a Handler from config.
 func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
@@ -145,9 +148,9 @@ func (h *Handler) Router() chi.Router {
 
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-Id")
-		if id == "" {
-			id = uuid()
+		id := strings.TrimSpace(r.Header.Get("X-Request-Id"))
+		if !portalRequestIDPattern.MatchString(id) {
+			id = "req_" + strings.ReplaceAll(uuid(), "-", "")
 		}
 		w.Header().Set("X-Request-Id", id)
 		next.ServeHTTP(w, r)
@@ -502,8 +505,6 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 		switch {
 		case errors.Is(err, practice.ErrStatsUnauthorized):
 			writeError(w, r, http.StatusUnauthorized, "not authenticated")
-		case errors.Is(err, practice.ErrStatsForbidden):
-			writeError(w, r, http.StatusForbidden, "practice access denied")
 		default:
 			writeError(w, r, http.StatusServiceUnavailable, "practice statistics are temporarily unavailable")
 		}

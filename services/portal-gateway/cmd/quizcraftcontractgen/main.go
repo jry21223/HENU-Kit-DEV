@@ -16,6 +16,14 @@ type operation struct {
 	OperationID string                `yaml:"operationId"`
 	Responses   map[string]response   `yaml:"responses"`
 	Security    []map[string][]string `yaml:"security"`
+	Parameters  []parameter           `yaml:"parameters"`
+}
+
+type parameter struct {
+	Name     string `yaml:"name"`
+	In       string `yaml:"in"`
+	Required bool   `yaml:"required"`
+	Schema   schema `yaml:"schema"`
 }
 
 type response struct {
@@ -58,6 +66,7 @@ func (value *schemaType) UnmarshalYAML(node *yaml.Node) error {
 
 type schema struct {
 	Type       schemaType        `yaml:"type"`
+	Format     string            `yaml:"format"`
 	Required   []string          `yaml:"required"`
 	Properties map[string]schema `yaml:"properties"`
 	Items      *schema           `yaml:"items"`
@@ -88,6 +97,11 @@ var catalogSecurityRequirements = []catalogSecurityRequirement{
 	{name: "portalCatalogProduct", kind: "apiKey", in: "header", header: "X-Product-Code"},
 }
 
+var personalStatsSecurityRequirements = append(
+	append([]catalogSecurityRequirement{}, catalogSecurityRequirements...),
+	catalogSecurityRequirement{name: "portalCatalogActor", kind: "apiKey", in: "header", header: "X-Actor-User-Id"},
+)
+
 func main() {
 	contractPath := flag.String("contract", "../../packages/api-contracts/openapi/quizcraft.yaml", "QuizCraft OpenAPI contract")
 	outputPath := flag.String("output", "internal/practice/contract_generated.go", "generated Go output")
@@ -100,9 +114,10 @@ func main() {
 
 	catalogPath, catalogMethod, catalogOperation := requireOperation(spec.Paths, "listPracticeBanks")
 	statsPath, statsMethod, statsOperation := requireOperation(spec.Paths, "getPersonalPracticeStats")
-	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope")
-	validatePortalReadOperation("getPersonalPracticeStats", statsMethod, statsOperation, "PersonalPracticeStatsEnvelope")
-	validateCatalogSecurity(spec.Components.SecuritySchemes)
+	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope", catalogSecurityRequirements)
+	validatePortalReadOperation("getPersonalPracticeStats", statsMethod, statsOperation, "PersonalPracticeStatsEnvelope", personalStatsSecurityRequirements)
+	validatePersonalStatsActorBinding(statsOperation)
+	validateCatalogSecurity(spec.Components.SecuritySchemes, personalStatsSecurityRequirements)
 	validateCatalogSchema(spec.Components.Schemas)
 	validatePersonalStatsSchema(spec.Components.Schemas)
 
@@ -138,7 +153,7 @@ func requireOperation(paths map[string]map[string]operation, operationID string)
 	return pathsWithOperation[0].path, pathsWithOperation[0].method, pathsWithOperation[0].operation
 }
 
-func validatePortalReadOperation(operationID, method string, operation operation, responseSchema string) {
+func validatePortalReadOperation(operationID, method string, operation operation, responseSchema string, requirements []catalogSecurityRequirement) {
 	if method != "get" {
 		fail(fmt.Errorf("%s must use GET, found %s", operationID, method))
 	}
@@ -149,18 +164,27 @@ func validatePortalReadOperation(operationID, method string, operation operation
 	if conflict, ok := operation.Responses["409"]; !ok || conflict.Ref != "#/components/responses/ServiceReplay" {
 		fail(fmt.Errorf("%s must document the service replay conflict", operationID))
 	}
-	if len(operation.Security) != 1 || len(operation.Security[0]) != len(catalogSecurityRequirements) {
+	if len(operation.Security) != 1 || len(operation.Security[0]) != len(requirements) {
 		fail(fmt.Errorf("%s must require the complete Portal catalog security requirement", operationID))
 	}
-	for _, requirement := range catalogSecurityRequirements {
+	for _, requirement := range requirements {
 		if scopes, found := operation.Security[0][requirement.name]; !found || len(scopes) != 0 {
 			fail(fmt.Errorf("%s is missing security scheme %s", operationID, requirement.name))
 		}
 	}
 }
 
-func validateCatalogSecurity(schemes map[string]securityScheme) {
-	for _, requirement := range catalogSecurityRequirements {
+func validatePersonalStatsActorBinding(operation operation) {
+	for _, parameter := range operation.Parameters {
+		if parameter.Name == "X-Actor-User-Id" && parameter.In == "header" && parameter.Required && parameter.Schema.Type == "string" && parameter.Schema.Format == "uuid" {
+			return
+		}
+	}
+	fail(fmt.Errorf("getPersonalPracticeStats must require UUID X-Actor-User-Id header binding"))
+}
+
+func validateCatalogSecurity(schemes map[string]securityScheme, requirements []catalogSecurityRequirement) {
+	for _, requirement := range requirements {
 		scheme, found := schemes[requirement.name]
 		if !found || scheme.Type != requirement.kind || scheme.Scheme != requirement.scheme || scheme.In != requirement.in || scheme.Name != requirement.header {
 			fail(fmt.Errorf("%s security scheme does not match the Portal catalog client", requirement.name))

@@ -7,6 +7,14 @@ const workflow = readFileSync(
   new URL("../../../.github/workflows/deploy-henukit.yml", import.meta.url),
   "utf8",
 );
+const portalDockerfile = readFileSync(
+  new URL("../../../apps/portal/Dockerfile", import.meta.url),
+  "utf8",
+);
+const developmentCompose = readFileSync(
+  new URL("../../../docker-compose.henukit.yml", import.meta.url),
+  "utf8",
+);
 
 test("CI builds the primary HENU runtime without legacy Study or QuizCraft images", () => {
   const expectedImages = [
@@ -31,6 +39,25 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
 
 test("CI runs the Account Portfolio browser behavior spec", () => {
   assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:account/);
+});
+
+test("Portal V2 read flag is an explicit production build input and stays dark in ordinary artifacts", () => {
+  assert.match(
+    portalDockerfile,
+    /ARG NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=0/,
+  );
+  assert.match(
+    portalDockerfile,
+    /ENV NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=\$NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS/,
+  );
+  assert.match(
+    developmentCompose,
+    /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS:\s+\$\{NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS:-0\}/,
+  );
+  assert.match(
+    workflow,
+    /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=0/,
+  );
 });
 
 test("every Docker image artifact includes an independent SHA-256 checksum", () => {

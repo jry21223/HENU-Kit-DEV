@@ -28,8 +28,7 @@ var (
 	ErrCatalogForbidden    = errors.New("QuizCraft catalog denied the requested permission")
 	ErrCatalogUnavailable  = errors.New("QuizCraft catalog is unavailable")
 	ErrInvalidCatalog      = errors.New("QuizCraft returned an invalid catalog response")
-	ErrStatsUnauthorized   = errors.New("QuizCraft statistics rejected service authentication")
-	ErrStatsForbidden      = errors.New("QuizCraft statistics denied the requested permission")
+	ErrStatsUnauthorized   = errors.New("QuizCraft statistics actor is invalid")
 	ErrStatsUnavailable    = errors.New("QuizCraft statistics are unavailable")
 	ErrInvalidStats        = errors.New("QuizCraft returned invalid personal statistics")
 )
@@ -162,10 +161,11 @@ func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID strin
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-	case http.StatusUnauthorized:
-		return PersonalPracticeStatsEnvelope{}, ErrStatsUnauthorized
-	case http.StatusForbidden:
-		return PersonalPracticeStatsEnvelope{}, ErrStatsForbidden
+	case http.StatusUnauthorized, http.StatusForbidden:
+		// The browser session and permission were already verified by Portal
+		// Gateway. A Core 401/403 here is a service-authentication or internal
+		// contract failure, never evidence that the browser should re-login.
+		return PersonalPracticeStatsEnvelope{}, fmt.Errorf("stats service authentication: %w", ErrStatsUnavailable)
 	default:
 		return PersonalPracticeStatsEnvelope{}, fmt.Errorf("stats status %d: %w", resp.StatusCode, ErrStatsUnavailable)
 	}
