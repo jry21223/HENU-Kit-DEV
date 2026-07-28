@@ -167,27 +167,31 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("initial ApplyMigrations() = %v", err)
 	}
 
-	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000001_account_portfolio.down.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, string(down)); err != nil {
-		t.Fatalf("apply rollback = %v", err)
+	for _, migration := range []string{"000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
+		down, err := os.ReadFile(filepath.Join("..", "db", "migrations", migration))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, string(down)); err != nil {
+			t.Fatalf("apply rollback %s = %v", migration, err)
+		}
 	}
 	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
 		t.Fatalf("reconcile after rollback = %v", err)
 	}
 
-	var accountTable, versionRecorded bool
+	var accountTable, commandsTable, initialVersionRecorded, supportCommandsVersionRecorded bool
 	if err := pool.QueryRow(ctx, `
 		SELECT
 			to_regclass('account_portfolio_accounts') IS NOT NULL,
-			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000001_account_portfolio')
-	`).Scan(&accountTable, &versionRecorded); err != nil {
+			to_regclass('account_portfolio_command_idempotency') IS NOT NULL,
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000001_account_portfolio'),
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000002_support_ticket_commands')
+	`).Scan(&accountTable, &commandsTable, &initialVersionRecorded, &supportCommandsVersionRecorded); err != nil {
 		t.Fatal(err)
 	}
-	if !accountTable || !versionRecorded {
-		t.Fatalf("reconciled schema account_table=%t version_recorded=%t, want both true", accountTable, versionRecorded)
+	if !accountTable || !commandsTable || !initialVersionRecorded || !supportCommandsVersionRecorded {
+		t.Fatalf("reconciled schema account_table=%t commands_table=%t initial_version=%t support_commands_version=%t, want all true", accountTable, commandsTable, initialVersionRecorded, supportCommandsVersionRecorded)
 	}
 }
 
@@ -195,7 +199,9 @@ func clearAccountPortfolio(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(), `
 		TRUNCATE TABLE
+			account_portfolio_command_idempotency,
 			account_portfolio_service_nonces,
+			account_portfolio_ticket_events,
 			account_portfolio_ticket_messages,
 			account_portfolio_tickets,
 			account_portfolio_notifications,

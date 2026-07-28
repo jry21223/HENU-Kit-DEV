@@ -42,8 +42,8 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - name: Install Portal dependencies
-        run: pnpm install --frozen-lockfile --filter @henukit/portal...
+      - name: Install Portal and Console browser-test dependencies
+        run: pnpm install --frozen-lockfile --filter @henukit/portal... --filter @henukit/console...
       - name: Verify Portal unit behavior
         run: pnpm --filter @henukit/portal test
       - name: Verify Portal unit contracts

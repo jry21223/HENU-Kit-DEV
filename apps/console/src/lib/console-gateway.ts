@@ -1,8 +1,48 @@
-// Code generated from console-gateway.yaml (SHA256 1d52529fe02eb539c07179b20ded2113b94867826422265a1cabf0be9ae8c3c7); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 bc87c591cc27348662acd6010b6ffed1a69f65a4cacd17682f16f09bf0f8ce3c); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
   verified_at: string;
+}
+
+export interface ConsoleAccountTicket {
+  category: string;
+  created_at: string;
+  id: string;
+  reference: string;
+  status: "open" | "in_progress" | "resolved";
+  title: string;
+  updated_at: string;
+  version: number;
+}
+
+export interface ConsoleAccountTicketCommandResult {
+  ticket: ConsoleAccountTicket;
+}
+
+export interface ConsoleAccountTicketDetail {
+  events: Array<ConsoleAccountTicketEvent>;
+  messages: Array<ConsoleAccountTicketMessage>;
+  ticket: ConsoleAccountTicket;
+}
+
+export interface ConsoleAccountTicketEvent {
+  created_at: string;
+  from_status: "open" | "in_progress" | "resolved";
+  id: string;
+  kind: "operator_reply" | "status_transition" | "reopened";
+  to_status: "open" | "in_progress" | "resolved";
+}
+
+export interface ConsoleAccountTicketMessage {
+  author_kind: "user" | "operator";
+  body: string;
+  created_at: string;
+  id: string;
+}
+
+export interface ConsoleAccountTicketQueue {
+  tickets: Array<ConsoleAccountTicket>;
 }
 
 export interface ConsoleModuleMetric {
@@ -21,6 +61,11 @@ export interface ConsoleModuleSummary {
   status_message: string;
 }
 
+export interface ConsoleOperatorReplyRequest {
+  body: string;
+  expected_version: number;
+}
+
 export interface ConsoleOverview {
   generated_at: string;
   modules: Array<ConsoleModuleSummary>;
@@ -37,6 +82,11 @@ export interface ConsoleSession {
   user: {
   id: string;
 };
+}
+
+export interface ConsoleTicketTransitionRequest {
+  expected_version: number;
+  status: "in_progress" | "resolved";
 }
 
 export interface CorrectionReviewCommand {
@@ -459,12 +509,40 @@ function isConsoleAccessContext(value: unknown): value is ConsoleAccessContext {
   return isRecord(value) && "permissions" in value && Array.isArray(value["permissions"]) && value["permissions"].every((item) => typeof item === "string") && "scopes" in value && Array.isArray(value["scopes"]) && value["scopes"].every((item) => isConsoleScope(item)) && "verified_at" in value && isDateTime(value["verified_at"]) && Object.keys(value).every((key) => ["permissions","scopes","verified_at"].includes(key));
 }
 
+function isConsoleAccountTicket(value: unknown): value is ConsoleAccountTicket {
+  return isRecord(value) && "category" in value && typeof value["category"] === "string" && value["category"].length <= 80 && new RegExp("^[a-z][a-z0-9_-]*$").test(value["category"]) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && Object.keys(value).every((key) => ["category","created_at","id","reference","status","title","updated_at","version"].includes(key));
+}
+
+function isConsoleAccountTicketCommandResult(value: unknown): value is ConsoleAccountTicketCommandResult {
+  return isRecord(value) && "ticket" in value && isConsoleAccountTicket(value["ticket"]) && Object.keys(value).every((key) => ["ticket"].includes(key));
+}
+
+function isConsoleAccountTicketDetail(value: unknown): value is ConsoleAccountTicketDetail {
+  return isRecord(value) && "events" in value && Array.isArray(value["events"]) && value["events"].length <= 1000 && value["events"].every((item) => isConsoleAccountTicketEvent(item)) && "messages" in value && Array.isArray(value["messages"]) && value["messages"].length <= 1000 && value["messages"].every((item) => isConsoleAccountTicketMessage(item)) && "ticket" in value && isConsoleAccountTicket(value["ticket"]) && Object.keys(value).every((key) => ["events","messages","ticket"].includes(key));
+}
+
+function isConsoleAccountTicketEvent(value: unknown): value is ConsoleAccountTicketEvent {
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "from_status" in value && typeof value["from_status"] === "string" && ["open","in_progress","resolved"].includes(value["from_status"]) && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["operator_reply","status_transition","reopened"].includes(value["kind"]) && "to_status" in value && typeof value["to_status"] === "string" && ["open","in_progress","resolved"].includes(value["to_status"]) && Object.keys(value).every((key) => ["created_at","from_status","id","kind","to_status"].includes(key));
+}
+
+function isConsoleAccountTicketMessage(value: unknown): value is ConsoleAccountTicketMessage {
+  return isRecord(value) && "author_kind" in value && typeof value["author_kind"] === "string" && ["user","operator"].includes(value["author_kind"]) && "body" in value && typeof value["body"] === "string" && value["body"].length <= 5000 && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && Object.keys(value).every((key) => ["author_kind","body","created_at","id"].includes(key));
+}
+
+function isConsoleAccountTicketQueue(value: unknown): value is ConsoleAccountTicketQueue {
+  return isRecord(value) && "tickets" in value && Array.isArray(value["tickets"]) && value["tickets"].length <= 500 && value["tickets"].every((item) => isConsoleAccountTicket(item)) && Object.keys(value).every((key) => ["tickets"].includes(key));
+}
+
 function isConsoleModuleMetric(value: unknown): value is ConsoleModuleMetric {
   return isRecord(value) && (!("hint" in value) || typeof value["hint"] === "string" && value["hint"].length <= 120) && "label" in value && typeof value["label"] === "string" && value["label"].length <= 40 && "value" in value && typeof value["value"] === "string" && value["value"].length <= 80 && Object.keys(value).every((key) => ["hint","label","value"].includes(key));
 }
 
 function isConsoleModuleSummary(value: unknown): value is ConsoleModuleSummary {
   return isRecord(value) && (!("as_of" in value) || isDateTime(value["as_of"])) && "id" in value && typeof value["id"] === "string" && ["portal","platform","notice","library","quizcraft","food"].includes(value["id"]) && (!("last_success_at" in value) || isDateTime(value["last_success_at"])) && "metrics" in value && Array.isArray(value["metrics"]) && value["metrics"].length <= 8 && value["metrics"].every((item) => isConsoleModuleMetric(item)) && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 120 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","stale","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && Object.keys(value).every((key) => ["as_of","id","last_success_at","metrics","request_id","status","status_message"].includes(key)) && ((isRecord(value) && "as_of" in value && true && "last_success_at" in value && true) || (isRecord(value) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","unavailable"].includes(value["status"])));
+}
+
+function isConsoleOperatorReplyRequest(value: unknown): value is ConsoleOperatorReplyRequest {
+  return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length <= 5000 && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && Object.keys(value).every((key) => ["body","expected_version"].includes(key));
 }
 
 function isConsoleOverview(value: unknown): value is ConsoleOverview {
@@ -477,6 +555,10 @@ function isConsoleScope(value: unknown): value is ConsoleScope {
 
 function isConsoleSession(value: unknown): value is ConsoleSession {
   return isRecord(value) && "access_context" in value && isConsoleAccessContext(value["access_context"]) && "expires_at" in value && isDateTime(value["expires_at"]) && "user" in value && isRecord(value["user"]) && "id" in value["user"] && isUUID(value["user"]["id"]) && Object.keys(value["user"]).every((key) => ["id"].includes(key)) && Object.keys(value).every((key) => ["access_context","expires_at","user"].includes(key));
+}
+
+function isConsoleTicketTransitionRequest(value: unknown): value is ConsoleTicketTransitionRequest {
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && "status" in value && typeof value["status"] === "string" && ["in_progress","resolved"].includes(value["status"]) && Object.keys(value).every((key) => ["expected_version","status"].includes(key));
 }
 
 function isCorrectionReviewCommand(value: unknown): value is CorrectionReviewCommand {
@@ -921,6 +1003,61 @@ export async function resolveFoodOperation(operation: FoodCommandKind, idempoten
     if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unavailable" };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unavailable" }; }
+}
+
+export type AccountTicketQueueResult = { state: "authenticated"; queue: ConsoleAccountTicketQueue } | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchAccountTicketQueue(): Promise<AccountTicketQueueResult> {
+  try {
+    const response = await fetch("/api/v1/account/tickets", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketQueue(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", queue: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type AccountTicketDetailResult = { state: "authenticated"; ticket: ConsoleAccountTicketDetail } | { state: "signed_out" | "denied" | "not_found" | "invalid" | "unavailable" };
+
+export async function fetchAccountTicket(ticketID: string): Promise<AccountTicketDetailResult> {
+  try {
+    const response = await fetch("/api/v1/account/tickets/{ticket_id}".replace("{ticket_id}", encodeURIComponent(ticketID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketDetail(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", ticket: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type AccountTicketWriteResult = { state: "succeeded"; ticket: ConsoleAccountTicket } | { state: "signed_out" | "denied" | "not_found" | "conflict" | "invalid" | "unavailable" };
+
+async function writeAccountTicket(path: string, input: ConsoleOperatorReplyRequest | ConsoleTicketTransitionRequest, idempotencyKey: string): Promise<AccountTicketWriteResult> {
+  try {
+    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketCommandResult(envelope.data)) return { state: "unavailable" };
+    return { state: "succeeded", ticket: envelope.data.ticket };
+  } catch { return { state: "unavailable" }; }
+}
+
+export function replyToAccountTicket(ticketID: string, input: ConsoleOperatorReplyRequest, idempotencyKey: string): Promise<AccountTicketWriteResult> {
+  return writeAccountTicket("/api/v1/account/tickets/{ticket_id}/replies".replace("{ticket_id}", encodeURIComponent(ticketID)), input, idempotencyKey);
+}
+
+export function transitionAccountTicket(ticketID: string, input: ConsoleTicketTransitionRequest, idempotencyKey: string): Promise<AccountTicketWriteResult> {
+  return writeAccountTicket("/api/v1/account/tickets/{ticket_id}/transitions".replace("{ticket_id}", encodeURIComponent(ticketID)), input, idempotencyKey);
 }
 
 export async function logoutConsoleSession(): Promise<void> {

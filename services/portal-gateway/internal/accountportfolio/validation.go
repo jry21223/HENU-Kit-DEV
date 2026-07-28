@@ -14,29 +14,55 @@ func validateData(path string, raw json.RawMessage) error {
 	if !ok {
 		return ErrInvalid
 	}
-	switch path {
-	case SummaryPath:
+	switch {
+	case path == SummaryPath:
 		if !validSummary(value) {
 			return ErrInvalid
 		}
-	case PointsPath:
+	case path == PointsPath:
 		if !validPoints(value) {
 			return ErrInvalid
 		}
-	case MembershipPath:
+	case path == MembershipPath:
 		if !validMembership(value) {
 			return ErrInvalid
 		}
-	case NotificationsPath:
+	case path == NotificationsPath:
 		if !validNotifications(value) {
 			return ErrInvalid
 		}
-	case TicketsPath:
+	case path == TicketsPath:
 		if !validTickets(value) {
 			return ErrInvalid
 		}
-	case MembershipOrdersPath:
+	case strings.HasPrefix(path, TicketsPath+"/"):
+		if !validTicketDetail(value) {
+			return ErrInvalid
+		}
+	case path == MembershipOrdersPath:
 		if !validMembershipOrders(value) {
+			return ErrInvalid
+		}
+	default:
+		return ErrInvalid
+	}
+	return nil
+}
+
+func validateCommandData(path string, raw json.RawMessage) error {
+	value, ok := requiredObject(raw)
+	if !ok {
+		return ErrInvalid
+	}
+	switch {
+	case path == TicketsPath || strings.HasSuffix(path, "/follow-ups"):
+		ticket, ticketOK := requiredObject(value["ticket"])
+		if !ticketOK || !validTicket(ticket) {
+			return ErrInvalid
+		}
+	case strings.HasPrefix(path, NotificationsPath+"/") && strings.HasSuffix(path, "/read"):
+		notification, notificationOK := requiredObject(value["notification"])
+		if !notificationOK || !validNotification(notification) {
 			return ErrInvalid
 		}
 	default:
@@ -89,12 +115,7 @@ func validNotifications(value map[string]json.RawMessage) bool {
 	}
 	for _, raw := range items {
 		item, itemOK := requiredObject(raw)
-		id, idOK := requiredString(item, "id")
-		_, titleOK := requiredString(item, "title")
-		_, bodyOK := requiredString(item, "body")
-		_, kindOK := requiredString(item, "kind")
-		createdOK := requiredTimestamp(item, "created_at")
-		if !itemOK || !idOK || !validUUID(id) || !titleOK || !bodyOK || !kindOK || !createdOK || !optionalTimestamp(item, "read_at") {
+		if !itemOK || !validNotification(item) {
 			return false
 		}
 	}
@@ -108,16 +129,83 @@ func validTickets(value map[string]json.RawMessage) bool {
 	}
 	for _, raw := range items {
 		item, itemOK := requiredObject(raw)
-		id, idOK := requiredString(item, "id")
-		_, titleOK := requiredString(item, "title")
-		_, categoryOK := requiredString(item, "category")
-		status, statusOK := requiredString(item, "status")
-		updatedOK := requiredTimestamp(item, "updated_at")
-		if !itemOK || !idOK || !validUUID(id) || !titleOK || !categoryOK || !statusOK || !validTicketStatus(status) || !updatedOK {
+		if !itemOK || !validTicket(item) {
 			return false
 		}
 	}
 	return true
+}
+
+func validNotification(item map[string]json.RawMessage) bool {
+	id, idOK := requiredString(item, "id")
+	_, titleOK := requiredString(item, "title")
+	_, bodyOK := requiredString(item, "body")
+	_, kindOK := requiredString(item, "kind")
+	createdOK := requiredTimestamp(item, "created_at")
+	return idOK && validUUID(id) && titleOK && bodyOK && kindOK && createdOK && optionalTimestamp(item, "read_at") && validOptionalTicketReference(item)
+}
+
+func validOptionalTicketReference(item map[string]json.RawMessage) bool {
+	ticketIDRaw, hasTicketID := item["ticket_id"]
+	referenceRaw, hasReference := item["ticket_reference"]
+	if (!hasTicketID || isNull(ticketIDRaw)) && (!hasReference || isNull(referenceRaw)) {
+		return true
+	}
+	if !hasTicketID || !hasReference || isNull(ticketIDRaw) || isNull(referenceRaw) {
+		return false
+	}
+	ticketID, ticketIDOK := requiredString(item, "ticket_id")
+	reference, referenceOK := requiredString(item, "ticket_reference")
+	return ticketIDOK && referenceOK && validUUID(ticketID) && reference == "HKT-"+strings.ToLower(ticketID)
+}
+
+func validTicket(item map[string]json.RawMessage) bool {
+	id, idOK := requiredString(item, "id")
+	reference, referenceOK := requiredString(item, "reference")
+	_, titleOK := requiredString(item, "title")
+	_, categoryOK := requiredString(item, "category")
+	status, statusOK := requiredString(item, "status")
+	version, versionOK := requiredInt(item, "version")
+	createdOK := requiredTimestamp(item, "created_at")
+	updatedOK := requiredTimestamp(item, "updated_at")
+	return idOK && validUUID(id) && referenceOK && reference == "HKT-"+strings.ToLower(id) && titleOK && categoryOK && statusOK && validTicketStatus(status) && versionOK && version >= 1 && createdOK && updatedOK
+}
+
+func validTicketDetail(value map[string]json.RawMessage) bool {
+	ticket, ticketOK := requiredObject(value["ticket"])
+	messages, messagesOK := requiredArray(value, "messages")
+	events, eventsOK := requiredArray(value, "events")
+	if !ticketOK || !validTicket(ticket) || !messagesOK || !eventsOK {
+		return false
+	}
+	for _, raw := range messages {
+		message, ok := requiredObject(raw)
+		if !ok || !validTicketMessage(message) {
+			return false
+		}
+	}
+	for _, raw := range events {
+		event, ok := requiredObject(raw)
+		if !ok || !validTicketEvent(event) {
+			return false
+		}
+	}
+	return true
+}
+
+func validTicketMessage(value map[string]json.RawMessage) bool {
+	id, idOK := requiredString(value, "id")
+	authorKind, authorKindOK := requiredString(value, "author_kind")
+	_, bodyOK := requiredString(value, "body")
+	return idOK && validUUID(id) && authorKindOK && (authorKind == "user" || authorKind == "operator") && bodyOK && requiredTimestamp(value, "created_at")
+}
+
+func validTicketEvent(value map[string]json.RawMessage) bool {
+	id, idOK := requiredString(value, "id")
+	kind, kindOK := requiredString(value, "kind")
+	from, fromOK := requiredString(value, "from_status")
+	to, toOK := requiredString(value, "to_status")
+	return idOK && validUUID(id) && kindOK && (kind == "operator_reply" || kind == "status_transition" || kind == "reopened") && fromOK && validTicketStatus(from) && toOK && validTicketStatus(to) && requiredTimestamp(value, "created_at")
 }
 
 func validMembershipOrders(value map[string]json.RawMessage) bool {
@@ -250,6 +338,19 @@ func validUUID(value string) bool {
 		if !(char >= '0' && char <= '9') && !(char >= 'a' && char <= 'f') && !(char >= 'A' && char <= 'F') {
 			return false
 		}
+	}
+	return true
+}
+
+func validIdempotencyKey(value string) bool {
+	if len(value) < 8 || len(value) > 200 {
+		return false
+	}
+	for _, char := range value {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '.' || char == '_' || char == ':' || char == '-' {
+			continue
+		}
+		return false
 	}
 	return true
 }

@@ -8,23 +8,25 @@ import (
 )
 
 type Config struct {
-	ListenAddr          string
-	PlatformCoreURL     string
-	PlatformAuthorize   string
-	ClientID            string
-	ClientSecret        string
-	KeyID               string
-	RedirectURI         string
-	RedisAddr           string
-	SessionKey          []byte
-	OverviewEndpoints   map[string]string
-	OverviewCredentials map[string]SummaryCredentials
-	NoticeAPIURL        string
-	NoticeCredentials   SummaryCredentials
-	LibraryAPIURL       string
-	LibraryCredentials  SummaryCredentials
-	FoodAPIURL          string
-	FoodCredentials     SummaryCredentials
+	ListenAddr                  string
+	PlatformCoreURL             string
+	PlatformAuthorize           string
+	ClientID                    string
+	ClientSecret                string
+	KeyID                       string
+	RedirectURI                 string
+	RedisAddr                   string
+	SessionKey                  []byte
+	OverviewEndpoints           map[string]string
+	OverviewCredentials         map[string]SummaryCredentials
+	NoticeAPIURL                string
+	NoticeCredentials           SummaryCredentials
+	LibraryAPIURL               string
+	LibraryCredentials          SummaryCredentials
+	FoodAPIURL                  string
+	FoodCredentials             SummaryCredentials
+	AccountPortfolioAPIURL      string
+	AccountPortfolioCredentials SummaryCredentials
 }
 
 type SummaryCredentials struct{ ClientID, ClientSecret, KeyID string }
@@ -50,6 +52,7 @@ func FromEnv() (Config, error) {
 		NoticeAPIURL: strings.TrimRight(os.Getenv("NOTICE_API_URL"), "/"), NoticeCredentials: summaryCredentials("NOTICE"),
 		LibraryAPIURL: strings.TrimRight(os.Getenv("LIBRARY_API_URL"), "/"), LibraryCredentials: summaryCredentials("LIBRARY"),
 		FoodAPIURL: strings.TrimRight(os.Getenv("FOOD_API_URL"), "/"), FoodCredentials: summaryCredentials("FOOD"),
+		AccountPortfolioAPIURL: strings.TrimRight(os.Getenv("ACCOUNT_PORTFOLIO_API_URL"), "/"), AccountPortfolioCredentials: accountPortfolioConsoleCredentials(),
 	}
 	if config.ListenAddr == "" {
 		config.ListenAddr = ":8082"
@@ -79,10 +82,48 @@ func FromEnv() (Config, error) {
 	if len(missing) > 0 {
 		return Config{}, errors.New("console gateway configuration is incomplete; set " + strings.Join(missing, ", "))
 	}
+	accountConfigured := config.AccountPortfolioAPIURL != "" || config.AccountPortfolioCredentials.ClientID != "" || config.AccountPortfolioCredentials.ClientSecret != "" || config.AccountPortfolioCredentials.KeyID != ""
+	if accountConfigured {
+		var accountMissing []string
+		if config.AccountPortfolioAPIURL == "" {
+			accountMissing = append(accountMissing, "ACCOUNT_PORTFOLIO_API_URL")
+		}
+		if config.AccountPortfolioCredentials.ClientID == "" {
+			accountMissing = append(accountMissing, "ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID")
+		}
+		if config.AccountPortfolioCredentials.ClientSecret == "" {
+			accountMissing = append(accountMissing, "ACCOUNT_PORTFOLIO_CONSOLE_SECRET")
+		}
+		if config.AccountPortfolioCredentials.KeyID == "" {
+			accountMissing = append(accountMissing, "ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID")
+		}
+		if len(accountMissing) > 0 {
+			return Config{}, errors.New("Account Portfolio Console configuration is incomplete; set " + strings.Join(accountMissing, ", "))
+		}
+		if os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(config.AccountPortfolioCredentials.ClientSecret) {
+			return Config{}, errors.New("ACCOUNT_PORTFOLIO_CONSOLE_SECRET is a deployment placeholder")
+		}
+	}
 	return config, nil
 }
 
 func summaryCredentials(module string) SummaryCredentials {
 	prefix := module + "_SUMMARY_"
 	return SummaryCredentials{ClientID: os.Getenv(prefix + "CLIENT_ID"), ClientSecret: os.Getenv(prefix + "CLIENT_SECRET"), KeyID: os.Getenv(prefix + "KEY_ID")}
+}
+
+func accountPortfolioConsoleCredentials() SummaryCredentials {
+	return SummaryCredentials{
+		ClientID:     os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID"),
+		ClientSecret: os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_SECRET"),
+		KeyID:        os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID"),
+	}
+}
+
+func isPlaceholderSecret(secret string) bool {
+	value := strings.ToLower(strings.TrimSpace(secret))
+	return strings.HasPrefix(value, "replace-") ||
+		strings.HasPrefix(value, "change-me") ||
+		strings.HasPrefix(value, "example-") ||
+		strings.Contains(value, "placeholder")
 }

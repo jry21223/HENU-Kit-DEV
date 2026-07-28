@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -44,6 +45,8 @@ type Handler struct {
 	localSessionCookie string
 	trustedProxies     []*net.IPNet
 }
+
+var accountIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
 // New creates a Handler from config.
 func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
@@ -104,7 +107,11 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/account/points", h.accountPoints)
 	r.Get("/api/v1/account/membership", h.accountMembership)
 	r.Get("/api/v1/account/notifications", h.accountNotifications)
+	r.Post("/api/v1/account/notifications/{notification_id}/read", h.accountNotificationRead)
 	r.Get("/api/v1/account/tickets", h.accountTickets)
+	r.Post("/api/v1/account/tickets", h.accountTicketCreate)
+	r.Get("/api/v1/account/tickets/{ticket_id}", h.accountTicket)
+	r.Post("/api/v1/account/tickets/{ticket_id}/follow-ups", h.accountTicketFollowUp)
 	r.Get("/api/v1/account/membership-orders", h.accountMembershipOrders)
 
 	// Product data — proxy to portal-api (public, no auth required)
@@ -293,6 +300,7 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 type accountRead func(context.Context, string, string) (json.RawMessage, error)
+type accountCommand func(context.Context, string, string, string, []byte) (json.RawMessage, error)
 
 func (h *Handler) accountSummary(w http.ResponseWriter, r *http.Request) {
 	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
@@ -324,6 +332,33 @@ func (h *Handler) accountTickets(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) accountTicket(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticket_id")
+	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.accountPortfolio.Ticket(ctx, actorUserID, requestID, ticketID)
+	})
+}
+
+func (h *Handler) accountTicketCreate(w http.ResponseWriter, r *http.Request) {
+	h.accountCommand(w, r, http.StatusCreated, true, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+		return h.accountPortfolio.CreateTicket(ctx, actorUserID, requestID, idempotencyKey, raw)
+	})
+}
+
+func (h *Handler) accountTicketFollowUp(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticket_id")
+	h.accountCommand(w, r, http.StatusOK, true, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+		return h.accountPortfolio.FollowUp(ctx, actorUserID, requestID, ticketID, idempotencyKey, raw)
+	})
+}
+
+func (h *Handler) accountNotificationRead(w http.ResponseWriter, r *http.Request) {
+	notificationID := chi.URLParam(r, "notification_id")
+	h.accountCommand(w, r, http.StatusOK, false, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+		return h.accountPortfolio.MarkNotificationRead(ctx, actorUserID, requestID, notificationID, idempotencyKey)
+	})
+}
+
 func (h *Handler) accountMembershipOrders(w http.ResponseWriter, r *http.Request) {
 	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
 		return h.accountPortfolio.MembershipOrders(ctx, actorUserID, requestID)
@@ -345,20 +380,80 @@ func (h *Handler) accountRead(w http.ResponseWriter, r *http.Request, read accou
 	}
 	data, err := read(r.Context(), value.UserID, requestIDOf(w, r))
 	if err != nil {
-		switch {
-		case errors.Is(err, accountportfolio.ErrUnauthorized):
-			writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
-		case errors.Is(err, accountportfolio.ErrInvalid):
-			writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "account_portfolio_invalid_response", RequestID: requestIDOf(w, r)})
-		default:
-			writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
-		}
+		h.writeAccountFailure(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, struct {
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}{Data: data, RequestID: requestIDOf(w, r)})
+}
+
+func (h *Handler) accountCommand(w http.ResponseWriter, r *http.Request, successStatus int, bodyRequired bool, command accountCommand) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if h.accountPortfolio == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if !validAccountIdempotencyKey(idempotencyKey) {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_idempotency_key_invalid", RequestID: requestIDOf(w, r)})
+		return
+	}
+	var raw []byte
+	if bodyRequired {
+		raw, err = readAccountCommandBody(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_command_invalid", RequestID: requestIDOf(w, r)})
+			return
+		}
+	}
+	data, err := command(r.Context(), value.UserID, requestIDOf(w, r), idempotencyKey, raw)
+	if err != nil {
+		h.writeAccountFailure(w, r, err)
+		return
+	}
+	writeJSON(w, successStatus, struct {
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}{Data: data, RequestID: requestIDOf(w, r)})
+}
+
+func (h *Handler) writeAccountFailure(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, accountportfolio.ErrBadRequest):
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_command_invalid", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, accountportfolio.ErrUnauthorized):
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, accountportfolio.ErrNotFound):
+		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "account_resource_not_found", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, accountportfolio.ErrConflict):
+		writeJSON(w, http.StatusConflict, contract.ErrorEnvelope{Error: "account_command_conflict", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, accountportfolio.ErrInvalid):
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "account_portfolio_invalid_response", RequestID: requestIDOf(w, r)})
+	default:
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
+	}
+}
+
+func readAccountCommandBody(r *http.Request) ([]byte, error) {
+	if r.Body == nil {
+		return nil, fmt.Errorf("request body is required")
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 64<<10+1))
+	if err != nil || len(raw) == 0 || len(raw) > 64<<10 {
+		return nil, fmt.Errorf("request body is invalid")
+	}
+	return raw, nil
+}
+
+func validAccountIdempotencyKey(value string) bool {
+	return len(value) >= 8 && len(value) <= 200 && accountIdempotencyKeyPattern.MatchString(value)
 }
 
 // --- Proxy to portal-api ---

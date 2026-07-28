@@ -7,6 +7,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/console-gateway/internal/accountportfolio"
 	"henukit.dev/console-gateway/internal/food"
 	"henukit.dev/console-gateway/internal/httpapi"
 	"henukit.dev/console-gateway/internal/library"
@@ -30,6 +31,8 @@ type Config struct {
 	LibraryCredentials                         overview.Credentials
 	FoodAPIURL                                 string
 	FoodCredentials                            overview.Credentials
+	AccountPortfolioAPIURL                     string
+	AccountPortfolioCredentials                overview.Credentials
 	Logger                                     *slog.Logger
 }
 
@@ -66,6 +69,16 @@ func New(config Config) (http.Handler, error) {
 			return nil, err
 		}
 	}
+	var accountPortfolioClient *accountportfolio.Client
+	if config.AccountPortfolioAPIURL != "" {
+		if config.AccountPortfolioCredentials.ClientSecret == config.ClientSecret {
+			return nil, fmt.Errorf("Account Portfolio secret must be separate from Platform Core OAuth credentials")
+		}
+		accountPortfolioClient, err = accountportfolio.New(config.AccountPortfolioAPIURL, config.AccountPortfolioCredentials.ClientID, config.AccountPortfolioCredentials.ClientSecret, config.AccountPortfolioCredentials.KeyID, config.HTTPClient)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for id, credential := range config.OverviewCredentials {
 		if credential.ClientSecret == config.ClientSecret {
 			return nil, fmt.Errorf("%s summary secret must be separate from Platform Core OAuth credentials", id)
@@ -75,5 +88,5 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient, foodClient)
+	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient, foodClient, accountPortfolioClient)
 }

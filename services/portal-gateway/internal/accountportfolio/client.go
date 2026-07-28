@@ -4,6 +4,7 @@
 package accountportfolio
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,8 +27,23 @@ const (
 	MembershipOrdersPath = "/api/v1/account/membership-orders"
 )
 
+func TicketPath(ticketID string) string {
+	return TicketsPath + "/" + ticketID
+}
+
+func TicketFollowUpsPath(ticketID string) string {
+	return TicketPath(ticketID) + "/follow-ups"
+}
+
+func NotificationReadPath(notificationID string) string {
+	return NotificationsPath + "/" + notificationID + "/read"
+}
+
 var (
 	ErrUnauthorized = errors.New("account portfolio rejected the authenticated actor")
+	ErrBadRequest   = errors.New("account portfolio rejected the command")
+	ErrNotFound     = errors.New("account portfolio resource was not found")
+	ErrConflict     = errors.New("account portfolio command conflicted")
 	ErrUnavailable  = errors.New("account portfolio is unavailable")
 	ErrInvalid      = errors.New("account portfolio returned an invalid response")
 )
@@ -73,19 +89,67 @@ func (c *Client) Tickets(ctx context.Context, actorUserID, requestID string) (js
 	return c.get(ctx, TicketsPath, actorUserID, requestID)
 }
 
+func (c *Client) Ticket(ctx context.Context, actorUserID, requestID, ticketID string) (json.RawMessage, error) {
+	if !validUUID(ticketID) {
+		return nil, ErrBadRequest
+	}
+	return c.get(ctx, TicketPath(ticketID), actorUserID, requestID)
+}
+
+func (c *Client) CreateTicket(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	return c.command(ctx, TicketsPath, actorUserID, requestID, idempotencyKey, raw, http.StatusCreated)
+}
+
+func (c *Client) FollowUp(ctx context.Context, actorUserID, requestID, ticketID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	if !validUUID(ticketID) {
+		return nil, ErrBadRequest
+	}
+	return c.command(ctx, TicketFollowUpsPath(ticketID), actorUserID, requestID, idempotencyKey, raw, http.StatusOK)
+}
+
+func (c *Client) MarkNotificationRead(ctx context.Context, actorUserID, requestID, notificationID, idempotencyKey string) (json.RawMessage, error) {
+	if !validUUID(notificationID) {
+		return nil, ErrBadRequest
+	}
+	return c.command(ctx, NotificationReadPath(notificationID), actorUserID, requestID, idempotencyKey, nil, http.StatusOK)
+}
+
 func (c *Client) MembershipOrders(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
 	return c.get(ctx, MembershipOrdersPath, actorUserID, requestID)
 }
 
 func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (json.RawMessage, error) {
+	return c.call(ctx, http.MethodGet, path, actorUserID, requestID, "", nil, http.StatusOK, validateData)
+}
+
+func (c *Client) command(ctx context.Context, path, actorUserID, requestID, idempotencyKey string, raw []byte, expectedStatus int) (json.RawMessage, error) {
+	if !validIdempotencyKey(idempotencyKey) || len(raw) > 64<<10 {
+		return nil, ErrBadRequest
+	}
+	return c.call(ctx, http.MethodPost, path, actorUserID, requestID, idempotencyKey, raw, expectedStatus, validateCommandData)
+}
+
+type responseValidator func(string, json.RawMessage) error
+
+func (c *Client) call(ctx context.Context, method, path, actorUserID, requestID, idempotencyKey string, raw []byte, expectedStatus int, validate responseValidator) (json.RawMessage, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(actorUserID) == "" || strings.TrimSpace(requestID) == "" {
 		return nil, ErrUnavailable
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	var body io.Reader
+	if raw != nil {
+		body = bytes.NewReader(raw)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
 		return nil, fmt.Errorf("create Account Portfolio request: %w", ErrUnavailable)
 	}
 	request.Header.Set("X-Request-Id", requestID)
+	if raw != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if idempotencyKey != "" {
+		request.Header.Set("Idempotency-Key", idempotencyKey)
+	}
 	if err := c.signer.SignWithActor(request, actorUserID); err != nil {
 		return nil, fmt.Errorf("sign Account Portfolio request: %w", ErrUnavailable)
 	}
@@ -96,9 +160,15 @@ func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (
 	}
 	defer response.Body.Close()
 	switch response.StatusCode {
-	case http.StatusOK:
+	case expectedStatus:
+	case http.StatusBadRequest:
+		return nil, ErrBadRequest
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return nil, ErrUnauthorized
+	case http.StatusNotFound:
+		return nil, ErrNotFound
+	case http.StatusConflict:
+		return nil, ErrConflict
 	default:
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
 		return nil, fmt.Errorf("account portfolio status %d: %w", response.StatusCode, ErrUnavailable)
@@ -111,7 +181,7 @@ func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (
 	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&envelope); err != nil || len(envelope.Data) == 0 || string(envelope.Data) == "null" || strings.TrimSpace(envelope.RequestID) == "" {
 		return nil, ErrInvalid
 	}
-	if err := validateData(path, envelope.Data); err != nil {
+	if err := validate(path, envelope.Data); err != nil {
 		return nil, ErrInvalid
 	}
 	return envelope.Data, nil

@@ -72,13 +72,11 @@ test("account overview renders a recoverable error when Account Portfolio is una
   await expect(page.getByText(/积分余额/)).toHaveCount(0);
 });
 
-test("unimplemented Account Portfolio pages fail closed rather than exposing session mocks", async ({ page }) => {
+test("unimplemented Account Portfolio pages still fail closed rather than exposing session mocks", async ({ page }) => {
   await mockSession(page);
   const pages = [
     { path: "/account/wallet", title: "积分钱包", absentAction: "每日签到" },
     { path: "/account/membership", title: "会员", absentAction: "开通" },
-    { path: "/account/notifications", title: "系统通知", absentAction: "全部已读" },
-    { path: "/account/tickets", title: "工单", absentAction: "新建工单" },
     { path: "/account/posts", title: "我的文章", absentAction: "去发布" },
     { path: "/account/deals", title: "我的交易", absentAction: "完整管理" },
   ];
@@ -90,6 +88,114 @@ test("unimplemented Account Portfolio pages fail closed rather than exposing ses
     await expect(page.getByText("不会展示或修改任何会话内数据")).toBeVisible();
     await expect(page.getByText(item.absentAction, { exact: false })).toHaveCount(0);
   }
+});
+
+test("account tickets create and show durable ticket history without a session fallback", async ({ page }) => {
+  await mockSession(page);
+  const ticketID = "33333333-3333-4333-8333-333333333333";
+  const ticket = {
+    id: ticketID,
+    reference: "HKT-33333333-3333-4333-8333-333333333333",
+    title: "练习记录问题",
+    category: "practice",
+    status: "open",
+    version: 1,
+    created_at: "2030-01-01T00:00:00Z",
+    updated_at: "2030-01-01T00:00:00Z",
+  };
+  let createCount = 0;
+  await page.route("**/api/v1/account/tickets", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ data: { tickets: [] }, request_id: "req_tickets_empty" }),
+      });
+      return;
+    }
+    createCount += 1;
+    expect(route.request().headers()["idempotency-key"]).toMatch(/^portal-ticket:/);
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { ticket }, request_id: "req_ticket_create" }),
+    });
+  });
+  await page.route(`**/api/v1/account/tickets/${ticketID}`, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          ticket,
+          messages: [
+            {
+              id: "44444444-4444-4444-8444-444444444444",
+              author_kind: "user",
+              body: "请帮我核对这次作答。",
+              created_at: "2030-01-01T00:00:00Z",
+            },
+          ],
+          events: [],
+        },
+        request_id: "req_ticket_detail",
+      }),
+    });
+  });
+
+  await page.goto("/account/tickets", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-account-tickets-state="success"]')).toBeVisible();
+  await expect(page.locator("[data-account-tickets-empty]")).toBeVisible();
+  await page.getByRole("button", { name: "新建工单" }).click();
+  await page.getByLabel("标题").fill("练习记录问题");
+  await page.getByLabel("问题说明").fill("请帮我核对这次作答。");
+  await page.getByRole("button", { name: "提交工单" }).click();
+  await expect(page.locator('[data-account-ticket-detail-state="success"]')).toBeVisible();
+  const detail = page.locator('[data-account-ticket-detail-state="success"]');
+  await expect(detail.getByText("HKT-33333333-3333-4333-8333-333333333333")).toBeVisible();
+  await expect(detail.getByText("请帮我核对这次作答。")).toBeVisible();
+  expect(createCount).toBe(1);
+});
+
+test("notifications render and mark the server-returned notification as read at a narrow width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockSession(page);
+  const notificationID = "55555555-5555-4555-8555-555555555555";
+  const notification = {
+    id: notificationID,
+    title: "工单有新回复",
+    body: "客服已回复你的问题。",
+    kind: "ticket_operator_reply",
+    ticket_id: "33333333-3333-4333-8333-333333333333",
+    ticket_reference: "HKT-33333333-3333-4333-8333-333333333333",
+    created_at: "2030-01-01T00:00:00Z",
+  };
+  let markReadCount = 0;
+  await page.route("**/api/v1/account/notifications", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { notifications: [notification] }, request_id: "req_notifications" }),
+    });
+  });
+  await page.route(`**/api/v1/account/notifications/${notificationID}/read`, async (route) => {
+    markReadCount += 1;
+    expect(route.request().headers()["idempotency-key"]).toMatch(/^portal-notification:/);
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          notification: { ...notification, read_at: "2030-01-01T00:05:00Z" },
+        },
+        request_id: "req_notification_read",
+      }),
+    });
+  });
+
+  await page.goto("/account/notifications", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-account-notifications-state="success"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "标为已读" })).toBeVisible();
+  await page.getByRole("button", { name: "标为已读" }).click();
+  await expect(page.getByText("已读", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "标为已读" })).toHaveCount(0);
+  expect(markReadCount).toBe(1);
 });
 
 test("paid Library materials never use Account session mocks as a purchase or shelf result", async ({ page }) => {

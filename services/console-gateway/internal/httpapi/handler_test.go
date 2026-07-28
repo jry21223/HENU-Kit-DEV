@@ -18,6 +18,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	accountportfolioapi "henukit.dev/console-gateway/internal/accountportfolio"
 	"henukit.dev/console-gateway/internal/contract"
 	"henukit.dev/console-gateway/internal/platformcore"
 	"henukit.dev/console-gateway/internal/session"
@@ -37,6 +38,7 @@ type fakePlatform struct {
 	operationKey       string
 	libraryPermissions []string
 	foodPermissions    []string
+	accountPermissions []string
 }
 
 type fakeOverview struct{}
@@ -54,6 +56,31 @@ type fakeLibrary struct {
 type fakeFood struct {
 	actor, key        string
 	workspace, result json.RawMessage
+}
+
+type fakeAccountPortfolio struct {
+	actor, key                string
+	queue, detail, result     json.RawMessage
+	replyBody, transitionBody []byte
+	err                       error
+	replyCalls                int
+}
+
+func (f *fakeAccountPortfolio) Tickets(_ context.Context, actor string) (json.RawMessage, error) {
+	f.actor = actor
+	return f.queue, f.err
+}
+func (f *fakeAccountPortfolio) Ticket(_ context.Context, actor, _ string) (json.RawMessage, error) {
+	f.actor = actor
+	return f.detail, f.err
+}
+func (f *fakeAccountPortfolio) Reply(_ context.Context, actor, _, key string, body []byte) (json.RawMessage, error) {
+	f.actor, f.key, f.replyBody, f.replyCalls = actor, key, append([]byte(nil), body...), f.replyCalls+1
+	return f.result, f.err
+}
+func (f *fakeAccountPortfolio) Transition(_ context.Context, actor, _, key string, body []byte) (json.RawMessage, error) {
+	f.actor, f.key, f.transitionBody = actor, key, append([]byte(nil), body...)
+	return f.result, f.err
 }
 
 func (f *fakeFood) Workspace(_ context.Context, actor string) (json.RawMessage, error) {
@@ -167,6 +194,14 @@ func (fake *fakePlatform) CheckFood(_ context.Context, token, permission string)
 		return platformcore.ErrUnauthorized
 	}
 	fake.foodPermissions = append(fake.foodPermissions, permission)
+	return fake.checkErr
+}
+
+func (fake *fakePlatform) CheckAccount(_ context.Context, token, permission string) error {
+	if token != fake.exchange.ExchangeToken {
+		return platformcore.ErrUnauthorized
+	}
+	fake.accountPermissions = append(fake.accountPermissions, permission)
 	return fake.checkErr
 }
 
@@ -355,6 +390,153 @@ func TestFoodForwardingUsesExactPermissionActorAndIdempotency(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || platform.foodPermissions[len(platform.foodPermissions)-1] != "food.anomaly" {
 		t.Fatalf("Food lookup status/permission=%d/%v", response.StatusCode, platform.foodPermissions)
+	}
+}
+
+func TestAccountTicketForwardingUsesExactPermissionAndServerSessionOperator(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	userID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeAccountPortfolio{
+		queue:  json.RawMessage(`{"tickets":[]}`),
+		detail: json.RawMessage(`{"ticket":{"id":"22222222-2222-4222-8222-222222222222","reference":"HKT-22222222-2222-4222-8222-222222222222","title":"Need help","category":"account","status":"open","version":1,"created_at":"2026-07-28T00:00:00Z","updated_at":"2026-07-28T00:00:00Z"},"messages":[],"events":[]}`),
+		result: json.RawMessage(`{"ticket":{"id":"22222222-2222-4222-8222-222222222222","reference":"HKT-22222222-2222-4222-8222-222222222222","title":"Need help","category":"account","status":"open","version":1,"created_at":"2026-07-28T00:00:00Z","updated_at":"2026-07-28T00:00:00Z"}}`),
+	}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: userID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	queue, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/account/tickets", nil)
+	queue.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	queue.Header.Set("X-Actor-User-Id", "33333333-3333-4333-8333-333333333333")
+	response, err := server.Client().Do(queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.actor != userID {
+		t.Fatalf("Account ticket queue status/actor=%d/%s", response.StatusCode, owner.actor)
+	}
+
+	detail, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/account/tickets/22222222-2222-4222-8222-222222222222", nil)
+	detail.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err = server.Client().Do(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("Account ticket detail = %d", response.StatusCode)
+	}
+
+	replyRaw := "{\n  \"body\": \"We are investigating.\", \"expected_version\": 1\n}"
+	reply, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/tickets/22222222-2222-4222-8222-222222222222/replies", strings.NewReader(replyRaw))
+	reply.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	reply.Header.Set("Content-Type", "application/json")
+	reply.Header.Set("Idempotency-Key", "idem_account_reply")
+	response, err = server.Client().Do(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.key != "idem_account_reply" || string(owner.replyBody) != replyRaw {
+		t.Fatalf("Account ticket reply status/key/body=%d/%q/%q", response.StatusCode, owner.key, owner.replyBody)
+	}
+
+	transition, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/tickets/22222222-2222-4222-8222-222222222222/transitions", strings.NewReader(`{"status":"resolved","expected_version":1}`))
+	transition.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	transition.Header.Set("Content-Type", "application/json")
+	transition.Header.Set("Idempotency-Key", "idem_account_transition")
+	response, err = server.Client().Do(transition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || owner.key != "idem_account_transition" || string(owner.transitionBody) != `{"status":"resolved","expected_version":1}` {
+		t.Fatalf("Account ticket transition status/key/body=%d/%q/%q", response.StatusCode, owner.key, owner.transitionBody)
+	}
+	wantPermissions := []string{"account.tickets.read", "account.tickets.read", "account.tickets.reply", "account.tickets.transition"}
+	if strings.Join(platform.accountPermissions, ",") != strings.Join(wantPermissions, ",") {
+		t.Fatalf("Account permission checks=%v, want %v", platform.accountPermissions, wantPermissions)
+	}
+}
+
+func TestAccountTicketGatewayRejectsInvalidKeyAndMapsOwnerConflictWithoutSuccess(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeAccountPortfolio{err: accountportfolioapi.ErrConflict}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	invalid, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/tickets/22222222-2222-4222-8222-222222222222/replies", strings.NewReader(`{"body":"reply","expected_version":1}`))
+	invalid.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	invalid.Header.Set("Idempotency-Key", "invalid key")
+	response, err := server.Client().Do(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest || owner.replyCalls != 0 {
+		t.Fatalf("invalid Account idempotency = %d calls=%d, want 400 before owner call", response.StatusCode, owner.replyCalls)
+	}
+
+	conflict, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/tickets/22222222-2222-4222-8222-222222222222/replies", strings.NewReader(`{"body":"reply","expected_version":1}`))
+	conflict.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	conflict.Header.Set("Idempotency-Key", "idem_account_conflict")
+	response, err = server.Client().Do(conflict)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusConflict || owner.replyCalls != 1 {
+		t.Fatalf("conflicting Account reply = %d calls=%d, want 409 and one owner call", response.StatusCode, owner.replyCalls)
+	}
+}
+
+func TestConsoleSessionAdvertisesOnlyVerifiedAccountTicketPermissions(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	owner := &fakeAccountPortfolio{}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/session", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var envelope struct {
+		Data contract.ConsoleSession `json:"data"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("Console account Session response=%d err=%v", response.StatusCode, err)
+	}
+	permissions := strings.Join(envelope.Data.AccessContext.Permissions, ",")
+	for _, permission := range []string{"account.tickets.read", "account.tickets.reply", "account.tickets.transition"} {
+		if !strings.Contains(permissions, permission) {
+			t.Fatalf("Console Session omitted verified Account permission %q: %v", permission, envelope.Data.AccessContext.Permissions)
+		}
+	}
+	accountScope := false
+	for _, scope := range envelope.Data.AccessContext.Scopes {
+		if scope.Kind == "product" && scope.ProductCode != nil && *scope.ProductCode == "account-portfolio" {
+			accountScope = true
+		}
+	}
+	if !accountScope {
+		t.Fatalf("Console Session omitted Account Portfolio Scope: %+v", envelope.Data.AccessContext.Scopes)
 	}
 }
 

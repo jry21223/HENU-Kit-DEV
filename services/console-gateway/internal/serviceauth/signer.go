@@ -26,6 +26,23 @@ func New(clientID, secret, keyID string) (*Signer, error) {
 }
 
 func (s *Signer) Sign(request *http.Request, body []byte) error {
+	return s.sign(request, body, "")
+}
+
+// SignWithActor signs an Account Portfolio-style owner request whose actor is
+// part of the authorization subject. The actor header is set before the
+// signature is calculated so a downstream owner can reject header swapping.
+// Existing Console owner contracts retain Sign's five-line canonical form.
+func (s *Signer) SignWithActor(request *http.Request, body []byte, actorUserID string) error {
+	actorUserID = strings.TrimSpace(actorUserID)
+	if actorUserID == "" {
+		return errors.New("actor is required for actor-bound service authentication")
+	}
+	request.Header.Set("X-Actor-User-Id", actorUserID)
+	return s.sign(request, body, actorUserID)
+}
+
+func (s *Signer) sign(request *http.Request, body []byte, actorUserID string) error {
 	nonceBytes := make([]byte, 24)
 	if _, err := rand.Read(nonceBytes); err != nil {
 		return err
@@ -33,7 +50,11 @@ func (s *Signer) Sign(request *http.Request, body []byte) error {
 	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
 	timestamp := fmt.Sprintf("%d", s.now().Unix())
 	digest := sha256.Sum256(body)
-	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
+	canonicalParts := []string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:])}
+	if actorUserID != "" {
+		canonicalParts = append(canonicalParts, actorUserID)
+	}
+	canonical := strings.Join(canonicalParts, "\n")
 	mac := hmac.New(sha256.New, []byte(s.secret))
 	_, _ = mac.Write([]byte(canonical))
 	request.SetBasicAuth(s.clientID, s.secret)

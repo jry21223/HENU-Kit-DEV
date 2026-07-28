@@ -62,6 +62,37 @@ func TestAuthorizationStatusMapping(t *testing.T) {
 	}
 }
 
+func TestCheckAccountUsesOnlyAllowlistedPermissionAndAccountPortfolioProductScope(t *testing.T) {
+	const secret = "test-console-client-secret-with-entropy"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body struct {
+			PermissionCode string `json:"permission_code"`
+			Scope          struct {
+				Kind        string `json:"kind"`
+				ProductCode string `json:"product_code"`
+			} `json:"scope"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.PermissionCode != "account.tickets.reply" || body.Scope.Kind != "product" || body.Scope.ProductCode != "account-portfolio" {
+			t.Fatalf("Account authorization body = %+v", body)
+		}
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "console-gateway", secret, "active-key", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.CheckAccount(t.Context(), "exchange_token_with_at_least_32_characters", "account.tickets.reply"); err != nil {
+		t.Fatalf("CheckAccount() error = %v", err)
+	}
+	if err := client.CheckAccount(t.Context(), "exchange_token_with_at_least_32_characters", "account.membership.write"); err != ErrInvalid {
+		t.Fatalf("CheckAccount() unsupported permission = %v, want ErrInvalid", err)
+	}
+}
+
 func TestPlatformOperationsForwardSessionOnlyInHeaderAndSignExactPath(t *testing.T) {
 	const secret = "test-console-client-secret-with-entropy"
 	const sessionToken = "exchange_token_with_at_least_32_characters"

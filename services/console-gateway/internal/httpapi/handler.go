@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -20,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	accountportfolioapi "henukit.dev/console-gateway/internal/accountportfolio"
 	"henukit.dev/console-gateway/internal/contract"
 	foodapi "henukit.dev/console-gateway/internal/food"
 	libraryapi "henukit.dev/console-gateway/internal/library"
@@ -46,6 +48,7 @@ type platformClient interface {
 	CheckNotice(context.Context, string, string) error
 	CheckLibrary(context.Context, string, string) error
 	CheckFood(context.Context, string, string) error
+	CheckAccount(context.Context, string, string) error
 }
 
 type noticeClient interface {
@@ -69,6 +72,13 @@ type foodClient interface {
 	Operation(context.Context, string, string, string) (json.RawMessage, error)
 }
 
+type accountPortfolioClient interface {
+	Tickets(context.Context, string) (json.RawMessage, error)
+	Ticket(context.Context, string, string) (json.RawMessage, error)
+	Reply(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	Transition(context.Context, string, string, string, []byte) (json.RawMessage, error)
+}
+
 type overviewClient interface {
 	Fetch(context.Context, string) contract.ConsoleOverview
 }
@@ -79,6 +89,7 @@ type Handler struct {
 	notice                                noticeClient
 	library                               libraryClient
 	food                                  foodClient
+	account                               accountPortfolioClient
 	overview                              overviewClient
 	redis                                 *redis.Client
 	codec                                 *session.Codec
@@ -108,13 +119,17 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	}
 	var library libraryClient
 	var food foodClient
+	var account accountPortfolioClient
 	if len(ownerClients) > 0 && ownerClients[0] != nil {
 		library, _ = ownerClients[0].(libraryClient)
 	}
 	if len(ownerClients) > 1 && ownerClients[1] != nil {
 		food, _ = ownerClients[1].(foodClient)
 	}
-	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, notice: notice, library: library, food: food, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
+	if len(ownerClients) > 2 && ownerClients[2] != nil {
+		account, _ = ownerClients[2].(accountPortfolioClient)
+	}
+	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, notice: notice, library: library, food: food, account: account, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
 	router := chi.NewRouter()
 	router.Use(handler.requestContext)
 	router.Use(securityHeaders)
@@ -139,6 +154,10 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.FoodWorkspaceRoute, handler.getFoodWorkspace)
 	router.Post(contract.FoodCommandRoute, handler.executeFoodCommand)
 	router.Get(contract.FoodOperationRoute, handler.getFoodOperation)
+	router.Get(contract.AccountTicketsRoute, handler.getAccountTickets)
+	router.Get(contract.AccountTicketRoute, handler.getAccountTicket)
+	router.Post(contract.AccountTicketRepliesRoute, handler.replyAccountTicket)
+	router.Post(contract.AccountTicketTransitionsRoute, handler.transitionAccountTicket)
 	router.Post(contract.LogoutRoute, handler.logout)
 	return router, nil
 }
@@ -238,6 +257,97 @@ func (h *Handler) writeFoodResult(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, request, http.StatusConflict, "FOOD_CONFLICT", "Food version or idempotency history conflicts")
 	case errors.Is(err, foodapi.ErrInvalid):
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Food request is invalid")
+	default:
+		h.unavailable(writer, request, err)
+	}
+}
+
+func (h *Handler) getAccountTickets(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeAccount(writer, request, "account.tickets.read")
+	if !ok {
+		return
+	}
+	data, err := h.account.Tickets(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID)
+	h.writeAccountResult(writer, request, data, err)
+}
+
+func (h *Handler) getAccountTicket(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeAccount(writer, request, "account.tickets.read")
+	if !ok {
+		return
+	}
+	data, err := h.account.Ticket(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "ticket_id"))
+	h.writeAccountResult(writer, request, data, err)
+}
+
+func (h *Handler) replyAccountTicket(writer http.ResponseWriter, request *http.Request) {
+	var input contract.ConsoleOperatorReplyRequest
+	body, ok := decodeAccountCommand(writer, request, &input)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(input.Body) == "" || len([]rune(input.Body)) > 5000 || input.ExpectedVersion < 1 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Account ticket reply is invalid")
+		return
+	}
+	value, ok := h.authorizeAccount(writer, request, "account.tickets.reply")
+	if !ok {
+		return
+	}
+	data, err := h.account.Reply(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "ticket_id"), request.Header.Get("Idempotency-Key"), body)
+	h.writeAccountResult(writer, request, data, err)
+}
+
+func (h *Handler) transitionAccountTicket(writer http.ResponseWriter, request *http.Request) {
+	var input contract.ConsoleTicketTransitionRequest
+	body, ok := decodeAccountCommand(writer, request, &input)
+	if !ok {
+		return
+	}
+	if input.ExpectedVersion < 1 || (input.Status != "in_progress" && input.Status != "resolved") {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Account ticket transition is invalid")
+		return
+	}
+	value, ok := h.authorizeAccount(writer, request, "account.tickets.transition")
+	if !ok {
+		return
+	}
+	data, err := h.account.Transition(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "ticket_id"), request.Header.Get("Idempotency-Key"), body)
+	h.writeAccountResult(writer, request, data, err)
+}
+
+func (h *Handler) authorizeAccount(writer http.ResponseWriter, request *http.Request, permission string) (session.Value, bool) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return session.Value{}, false
+	}
+	if h.account == nil {
+		h.unavailable(writer, request, errors.New("account portfolio API is not configured"))
+		return session.Value{}, false
+	}
+	if err := h.platform.CheckAccount(request.Context(), value.ExchangeToken, permission); err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return session.Value{}, false
+	}
+	return value, true
+}
+
+func (h *Handler) writeAccountResult(writer http.ResponseWriter, request *http.Request, data json.RawMessage, err error) {
+	if err == nil {
+		writeJSON(writer, request, http.StatusOK, data)
+		return
+	}
+	switch {
+	case errors.Is(err, accountportfolioapi.ErrUnauthorized):
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Account Portfolio rejected the verified operator")
+	case errors.Is(err, accountportfolioapi.ErrForbidden):
+		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Account Portfolio permission or Scope is missing")
+	case errors.Is(err, accountportfolioapi.ErrNotFound):
+		writeError(writer, request, http.StatusNotFound, "ACCOUNT_TICKET_NOT_FOUND", "Account support ticket was not found")
+	case errors.Is(err, accountportfolioapi.ErrConflict):
+		writeError(writer, request, http.StatusConflict, "ACCOUNT_TICKET_CONFLICT", "Account ticket version or idempotency history conflicts")
+	case errors.Is(err, accountportfolioapi.ErrInvalid):
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Account ticket request is invalid")
 	default:
 		h.unavailable(writer, request, err)
 	}
@@ -548,6 +658,26 @@ func decodeOperationInput(writer http.ResponseWriter, request *http.Request, tar
 	return body, true
 }
 
+func decodeAccountCommand(writer http.ResponseWriter, request *http.Request, target any) ([]byte, bool) {
+	key := request.Header.Get("Idempotency-Key")
+	if !accountIdempotencyKeyPattern.MatchString(key) {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		return nil, false
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(writer, request.Body, 64<<10))
+	if err != nil || len(body) == 0 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Request body is invalid")
+		return nil, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Request body is invalid")
+		return nil, false
+	}
+	return body, true
+}
+
 func (h *Handler) handlePlatformSessionError(writer http.ResponseWriter, request *http.Request, err error) {
 	if errors.Is(err, platformcore.ErrUnauthorized) {
 		h.clearSession(writer)
@@ -584,6 +714,7 @@ func (h *Handler) requestContext(next http.Handler) http.Handler {
 type requestIDKey struct{}
 
 var requestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
+var accountIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,200}$`)
 
 func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, request, http.StatusOK, map[string]bool{"ok": true})
@@ -704,7 +835,13 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 		foodAnomalyErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.anomaly")
 		foodTierErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.tier_adjust")
 	}
-	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) {
+	accountReadErr, accountReplyErr, accountTransitionErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
+	if h.account != nil {
+		accountReadErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.read")
+		accountReplyErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.reply")
+		accountTransitionErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.transition")
+	}
+	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) || errors.Is(accountReadErr, platformcore.ErrUnauthorized) || errors.Is(accountReplyErr, platformcore.ErrUnauthorized) || errors.Is(accountTransitionErr, platformcore.ErrUnauthorized) {
 		h.clearSession(writer)
 		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
 		return
@@ -749,6 +886,15 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if foodTierErr == nil {
 		permissions = append(permissions, "food.tier_adjust")
 	}
+	if accountReadErr == nil {
+		permissions = append(permissions, "account.tickets.read")
+	}
+	if accountReplyErr == nil {
+		permissions = append(permissions, "account.tickets.reply")
+	}
+	if accountTransitionErr == nil {
+		permissions = append(permissions, "account.tickets.transition")
+	}
 	if len(permissions) == 0 {
 		err := overviewErr
 		if errors.Is(err, platformcore.ErrForbidden) {
@@ -777,6 +923,10 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if foodReadErr == nil {
 		foodProduct := "food"
 		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &foodProduct})
+	}
+	if accountReadErr == nil || accountReplyErr == nil || accountTransitionErr == nil {
+		accountProduct := "account-portfolio"
+		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &accountProduct})
 	}
 	response.User.ID = value.UserID
 	writeJSON(writer, request, http.StatusOK, response)

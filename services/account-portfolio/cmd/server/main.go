@@ -20,11 +20,25 @@ func main() {
 	clientID := os.Getenv("ACCOUNT_PORTFOLIO_SERVICE_CLIENT_ID")
 	keyID := os.Getenv("ACCOUNT_PORTFOLIO_SERVICE_KEY_ID")
 	secret := os.Getenv("ACCOUNT_PORTFOLIO_SERVICE_SECRET")
+	consoleClientID := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID")
+	consoleKeyID := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID")
+	consoleSecret := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_SECRET")
 	if databaseURL == "" || clientID == "" || keyID == "" || secret == "" {
 		log.Fatal("Account Portfolio configuration is incomplete")
 	}
+	consoleConfigured := consoleClientID != "" || consoleKeyID != "" || consoleSecret != ""
+	if consoleConfigured && (consoleClientID == "" || consoleKeyID == "" || consoleSecret == "") {
+		log.Fatal("Account Portfolio Console caller configuration is incomplete")
+	}
 	if os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(secret) {
 		log.Fatal("Account Portfolio service secret is a deployment placeholder")
+	}
+	if consoleConfigured && os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(consoleSecret) {
+		log.Fatal("Account Portfolio Console service secret is a deployment placeholder")
+	}
+	var consoleKeys map[string]string
+	if consoleConfigured {
+		consoleKeys = map[string]string{consoleKeyID: consoleSecret}
 	}
 
 	pool, err := pgxpool.New(context.Background(), databaseURL)
@@ -36,9 +50,11 @@ func main() {
 		log.Fatal(err)
 	}
 	handler, err := accountportfolio.New(accountportfolio.Config{
-		Database: pool,
-		ClientID: clientID,
-		Keys:     map[string]string{keyID: secret},
+		Database:        pool,
+		ClientID:        clientID,
+		Keys:            map[string]string{keyID: secret},
+		ConsoleClientID: consoleClientID,
+		ConsoleKeys:     consoleKeys,
 	})
 	if err != nil {
 		log.Fatal(err)

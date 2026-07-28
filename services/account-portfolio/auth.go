@@ -21,8 +21,9 @@ const nonceTTL = 5 * time.Minute
 func (h *service) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientID, basicSecret, basic := r.BasicAuth()
-		secret, keyKnown := h.keys[r.Header.Get("X-Key-Id")]
-		if !basic || clientID != h.clientID || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
+		keys, clientKnown := h.clientKeys[clientID]
+		secret, keyKnown := keys[r.Header.Get("X-Key-Id")]
+		if !basic || !clientKnown || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
 			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
 			return
 		}
@@ -77,7 +78,7 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID})))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID, clientID: clientID})))
 	})
 }
 

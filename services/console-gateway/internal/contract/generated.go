@@ -4,35 +4,79 @@ package contract
 import "time"
 
 const (
-	HealthRoute             = "/api/v1/healthz"
-	LoginRoute              = "/api/v1/auth/login"
-	CallbackRoute           = "/api/v1/auth/callback"
-	SessionRoute            = "/api/v1/session"
-	OverviewRoute           = "/api/v1/overview"
-	OperationsRoute         = "/api/v1/operations"
-	RevokeSessionRoute      = "/api/v1/operations/sessions/{session_id}/revocations"
-	UpdateAccessRoute       = "/api/v1/operations/users/{user_id}/access-updates"
-	OperationStatusRoute    = "/api/v1/operations/results/{operation}"
-	NoticeSnapshotRoute     = "/api/v1/notices"
-	NoticeSourceRoute       = "/api/v1/notices/sources"
-	NoticeVersionRoute      = "/api/v1/notices/sources/{source_id}/versions"
-	NoticeReviewRoute       = "/api/v1/notices/versions/{version_id}/reviews"
-	NoticeDistributionRoute = "/api/v1/notices/versions/{version_id}/distributions"
-	NoticeOperationRoute    = "/api/v1/notices/operations/{operation}"
-	LibraryWorkspaceRoute   = "/api/v1/library"
-	LibraryCommandRoute     = "/api/v1/library/commands"
-	LibraryOperationRoute   = "/api/v1/library/operations/{operation}"
-	FoodWorkspaceRoute      = "/api/v1/food"
-	FoodCommandRoute        = "/api/v1/food/commands"
-	FoodOperationRoute      = "/api/v1/food/operations/{operation}"
-	LogoutRoute             = "/api/v1/session/logout"
-	SourceSHA256            = "1d52529fe02eb539c07179b20ded2113b94867826422265a1cabf0be9ae8c3c7"
+	HealthRoute                   = "/api/v1/healthz"
+	LoginRoute                    = "/api/v1/auth/login"
+	CallbackRoute                 = "/api/v1/auth/callback"
+	SessionRoute                  = "/api/v1/session"
+	OverviewRoute                 = "/api/v1/overview"
+	OperationsRoute               = "/api/v1/operations"
+	RevokeSessionRoute            = "/api/v1/operations/sessions/{session_id}/revocations"
+	UpdateAccessRoute             = "/api/v1/operations/users/{user_id}/access-updates"
+	OperationStatusRoute          = "/api/v1/operations/results/{operation}"
+	NoticeSnapshotRoute           = "/api/v1/notices"
+	NoticeSourceRoute             = "/api/v1/notices/sources"
+	NoticeVersionRoute            = "/api/v1/notices/sources/{source_id}/versions"
+	NoticeReviewRoute             = "/api/v1/notices/versions/{version_id}/reviews"
+	NoticeDistributionRoute       = "/api/v1/notices/versions/{version_id}/distributions"
+	NoticeOperationRoute          = "/api/v1/notices/operations/{operation}"
+	LibraryWorkspaceRoute         = "/api/v1/library"
+	LibraryCommandRoute           = "/api/v1/library/commands"
+	LibraryOperationRoute         = "/api/v1/library/operations/{operation}"
+	FoodWorkspaceRoute            = "/api/v1/food"
+	FoodCommandRoute              = "/api/v1/food/commands"
+	FoodOperationRoute            = "/api/v1/food/operations/{operation}"
+	AccountTicketsRoute           = "/api/v1/account/tickets"
+	AccountTicketRoute            = "/api/v1/account/tickets/{ticket_id}"
+	AccountTicketRepliesRoute     = "/api/v1/account/tickets/{ticket_id}/replies"
+	AccountTicketTransitionsRoute = "/api/v1/account/tickets/{ticket_id}/transitions"
+	LogoutRoute                   = "/api/v1/session/logout"
+	SourceSHA256                  = "bc87c591cc27348662acd6010b6ffed1a69f65a4cacd17682f16f09bf0f8ce3c"
 )
 
 type ConsoleAccessContext struct {
 	Permissions []string       `json:"permissions"`
 	Scopes      []ConsoleScope `json:"scopes"`
 	VerifiedAt  time.Time      `json:"verified_at"`
+}
+
+type ConsoleAccountTicket struct {
+	Category  string    `json:"category"`
+	CreatedAt time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Reference string    `json:"reference"`
+	Status    string    `json:"status"`
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Version   int64     `json:"version"`
+}
+
+type ConsoleAccountTicketCommandResult struct {
+	Ticket ConsoleAccountTicket `json:"ticket"`
+}
+
+type ConsoleAccountTicketDetail struct {
+	Events   []ConsoleAccountTicketEvent   `json:"events"`
+	Messages []ConsoleAccountTicketMessage `json:"messages"`
+	Ticket   ConsoleAccountTicket          `json:"ticket"`
+}
+
+type ConsoleAccountTicketEvent struct {
+	CreatedAt  time.Time `json:"created_at"`
+	FromStatus string    `json:"from_status"`
+	ID         string    `json:"id"`
+	Kind       string    `json:"kind"`
+	ToStatus   string    `json:"to_status"`
+}
+
+type ConsoleAccountTicketMessage struct {
+	AuthorKind string    `json:"author_kind"`
+	Body       string    `json:"body"`
+	CreatedAt  time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+}
+
+type ConsoleAccountTicketQueue struct {
+	Tickets []ConsoleAccountTicket `json:"tickets"`
 }
 
 type ConsoleModuleMetric struct {
@@ -51,6 +95,11 @@ type ConsoleModuleSummary struct {
 	StatusMessage string                `json:"status_message"`
 }
 
+type ConsoleOperatorReplyRequest struct {
+	Body            string `json:"body"`
+	ExpectedVersion int64  `json:"expected_version"`
+}
+
 type ConsoleOverview struct {
 	GeneratedAt time.Time              `json:"generated_at"`
 	Modules     []ConsoleModuleSummary `json:"modules"`
@@ -67,6 +116,11 @@ type ConsoleSession struct {
 	User          struct {
 		ID string `json:"id"`
 	} `json:"user"`
+}
+
+type ConsoleTicketTransitionRequest struct {
+	ExpectedVersion int64  `json:"expected_version"`
+	Status          string `json:"status"`
 }
 
 type CorrectionReviewCommand struct {

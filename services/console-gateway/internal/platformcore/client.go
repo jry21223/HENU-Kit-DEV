@@ -183,6 +183,19 @@ func (c *Client) CheckFood(ctx context.Context, exchangeToken, permissionCode st
 	return c.checkPermission(ctx, exchangeToken, permissionCode, map[string]string{"kind": "product", "product_code": "food"})
 }
 
+// CheckAccount authorizes only the three operator capabilities owned by the
+// Account Portfolio ticket workflow. It intentionally does not create a
+// blanket Account Portfolio permission check for points, memberships, or
+// payment state.
+func (c *Client) CheckAccount(ctx context.Context, exchangeToken, permissionCode string) error {
+	switch permissionCode {
+	case "account.tickets.read", "account.tickets.reply", "account.tickets.transition":
+	default:
+		return ErrInvalid
+	}
+	return c.checkPermission(ctx, exchangeToken, permissionCode, map[string]string{"kind": "product", "product_code": "account-portfolio"})
+}
+
 func (c *Client) checkPermission(ctx context.Context, exchangeToken, permissionCode string, scope map[string]string) error {
 	body, _ := json.Marshal(map[string]any{"session_exchange_token": exchangeToken, "permission_code": permissionCode, "scope": scope})
 	request, err := c.signedRequest(ctx, http.MethodPost, "/api/v1/authorization/check", body)
