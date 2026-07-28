@@ -113,6 +113,30 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/ReplayDetected' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/account/notifications/{notification_id}/read:
+    post:
+      operationId: markAccountNotificationRead
+      summary: Mark one signed-in user's notification as read
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/NotificationID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Notification read state, including an idempotent retry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationEnvelope'
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /api/v1/account/tickets:
     get:
       operationId: getAccountTickets
@@ -133,6 +157,81 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/ReplayDetected' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+    post:
+      operationId: createAccountTicket
+      summary: Create one durable support ticket for the signed-in user
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTicketRequest' }
+      responses:
+        '201':
+          description: Created ticket, including an idempotent retry of this command
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/account/tickets/{ticket_id}:
+    get:
+      operationId: getAccountTicket
+      summary: Return one signed-in user's support ticket and durable message history
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/TicketID'
+      responses:
+        '200':
+          description: Owner-scoped support ticket detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketDetailEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/account/tickets/{ticket_id}/follow-ups:
+    post:
+      operationId: createAccountTicketFollowUp
+      summary: Add a signed-in user's durable follow-up to one owned support ticket
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/TicketID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketFollowUpRequest' }
+      responses:
+        '200':
+          description: Updated ticket after a durable follow-up or its idempotent retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /api/v1/account/membership-orders:
     get:
       operationId: getAccountMembershipOrders
@@ -152,6 +251,107 @@ paths:
                 $ref: '#/components/schemas/MembershipOrdersEnvelope'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/tickets:
+    get:
+      operationId: getConsoleAccountTickets
+      summary: Return the authorized Console support-ticket queue
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+      responses:
+        '200':
+          description: Durable support-ticket queue, possibly empty
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketsEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/tickets/{ticket_id}:
+    get:
+      operationId: getConsoleAccountTicket
+      summary: Return one authorized Console support-ticket detail
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/TicketID'
+      responses:
+        '200':
+          description: Durable support-ticket detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketDetailEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/tickets/{ticket_id}/replies:
+    post:
+      operationId: replyConsoleAccountTicket
+      summary: Add an authorized operator reply to one support ticket
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/TicketID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OperatorReplyRequest' }
+      responses:
+        '200':
+          description: Updated support ticket after the operator reply or its idempotent retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/tickets/{ticket_id}/transitions:
+    post:
+      operationId: transitionConsoleAccountTicket
+      summary: Move one support ticket through its authorized lifecycle
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/TicketID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketTransitionRequest' }
+      responses:
+        '200':
+          description: Updated support ticket after the lifecycle transition or its idempotent retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
 components:
   securitySchemes:
@@ -200,16 +400,52 @@ components:
       name: X-Actor-User-Id
       in: header
       required: true
-      description: Authenticated Portal Session user ID, selected only by Portal Gateway.
+      description: Authenticated Portal Session user ID or authorized Console operator ID, selected only by its Gateway.
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Caller-scoped command key. Retrying the same command returns the original result.
+      schema: { type: string, minLength: 8, maxLength: 200, pattern: '^[A-Za-z0-9._:-]+$' }
+    TicketID:
+      name: ticket_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    NotificationID:
+      name: notification_id
+      in: path
+      required: true
       schema: { type: string, format: uuid }
   responses:
+    InvalidRequest:
+      description: Invalid command, identifier, or lifecycle input
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     Unauthorized:
       description: Invalid service authentication or actor context
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: The authenticated service caller cannot use this route
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     ReplayDetected:
       description: Replayed signed service nonce
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: The caller cannot access the requested resource
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    CommandConflict:
+      description: A command idempotency key was reused with a different payload or the expected ticket revision is stale
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -303,8 +539,20 @@ components:
         title: { type: string }
         body: { type: string }
         kind: { type: string }
+        ticket_id: { type: string, format: uuid }
+        ticket_reference: { type: string, pattern: '^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' }
         read_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
+    NotificationEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [notification]
+          properties:
+            notification: { $ref: '#/components/schemas/Notification' }
+        request_id: { type: string }
     TicketsEnvelope:
       type: object
       required: [data, request_id]
@@ -319,13 +567,88 @@ components:
         request_id: { type: string }
     Ticket:
       type: object
-      required: [id, title, category, status, updated_at]
+      required: [id, reference, title, category, status, version, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
+        reference: { type: string, pattern: '^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' }
         title: { type: string }
         category: { type: string }
         status: { type: string, enum: [open, in_progress, resolved] }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    TicketEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [ticket]
+          properties:
+            ticket: { $ref: '#/components/schemas/Ticket' }
+        request_id: { type: string }
+    TicketDetailEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [ticket, messages, events]
+          properties:
+            ticket: { $ref: '#/components/schemas/Ticket' }
+            messages:
+              type: array
+              items: { $ref: '#/components/schemas/TicketMessage' }
+            events:
+              type: array
+              items: { $ref: '#/components/schemas/TicketEvent' }
+        request_id: { type: string }
+    CreateTicketRequest:
+      type: object
+      required: [title, category, body]
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        category: { type: string, minLength: 1, maxLength: 80, pattern: '^[a-z][a-z0-9_-]*$' }
+        body: { type: string, minLength: 1, maxLength: 5000 }
+    TicketFollowUpRequest:
+      type: object
+      required: [body, expected_version]
+      additionalProperties: false
+      properties:
+        body: { type: string, minLength: 1, maxLength: 5000 }
+        expected_version: { type: integer, minimum: 1 }
+    OperatorReplyRequest:
+      type: object
+      required: [body, expected_version]
+      additionalProperties: false
+      properties:
+        body: { type: string, minLength: 1, maxLength: 5000 }
+        expected_version: { type: integer, minimum: 1 }
+    TicketTransitionRequest:
+      type: object
+      required: [status, expected_version]
+      additionalProperties: false
+      properties:
+        status: { type: string, enum: [in_progress, resolved] }
+        expected_version: { type: integer, minimum: 1 }
+    TicketMessage:
+      type: object
+      required: [id, author_kind, body, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        author_kind: { type: string, enum: [user, operator] }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+    TicketEvent:
+      type: object
+      required: [id, kind, from_status, to_status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [operator_reply, status_transition, reopened] }
+        from_status: { type: string, enum: [open, in_progress, resolved] }
+        to_status: { type: string, enum: [open, in_progress, resolved] }
+        created_at: { type: string, format: date-time }
     MembershipOrdersEnvelope:
       type: object
       required: [data, request_id]

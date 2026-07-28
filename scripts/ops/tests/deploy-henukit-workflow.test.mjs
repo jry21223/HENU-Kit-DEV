@@ -54,6 +54,9 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "ACCOUNT_PORTFOLIO_CLIENT_ID",
       "ACCOUNT_PORTFOLIO_CLIENT_SECRET",
       "ACCOUNT_PORTFOLIO_KEY_ID",
+      "ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID",
+      "ACCOUNT_PORTFOLIO_CONSOLE_SECRET",
+      "ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID",
       "FOOD_CLIENT_SECRET",
       "FOOD_SUMMARY_CLIENT_SECRET",
       "LIBRARY_CLIENT_SECRET",
@@ -164,6 +167,31 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["portal-gateway"].environment.ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET,
     "1",
     "production Portal Gateway must reject the default Account Portfolio client-secret placeholder",
+  );
+  assert.equal(
+    config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID,
+    "test-required-value",
+    "production Account Portfolio must require the distinct Console caller identity",
+  );
+  assert.equal(
+    config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_CONSOLE_SECRET,
+    "test-required-value",
+    "production Account Portfolio must require the distinct Console caller secret",
+  );
+  assert.equal(
+    config.services["console-gateway"].environment.ACCOUNT_PORTFOLIO_CONSOLE_SECRET,
+    "test-required-value",
+    "production Console Gateway must receive its Account Portfolio caller secret",
+  );
+  assert.equal(
+    config.services["console-gateway"].environment.ACCOUNT_PORTFOLIO_API_URL,
+    "http://account-portfolio:8097",
+    "Console must use the private Account Portfolio owner endpoint",
+  );
+  assert.equal(
+    config.services["console-gateway"].environment.ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET,
+    "1",
+    "production Console Gateway must reject the default Account Portfolio caller-secret placeholder",
   );
   const publicConfig = renderRuntimeConfig({
     PLATFORM_ACCOUNT_ORIGIN: "https://henukit.cn/account-auth",

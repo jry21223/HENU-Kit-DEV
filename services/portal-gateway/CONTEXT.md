@@ -16,7 +16,7 @@
 
 ## Current boundary
 
-Portal Gateway is a read-only BFF. It authenticates users via Platform Core OAuth, establishes a Portal Session, and proxies GET requests to product services with verified permissions. It does not forward write operations, does not own business data, and does not expose service credentials to the browser.
+Portal Gateway is read-only by default. It authenticates users via Platform Core OAuth, establishes a Portal Session, and proxies GET requests to product services with verified permissions. ADR-0017 creates one deliberately narrow exception: it may forward an authenticated user's own Account Portfolio support-ticket create/follow-up and notification mark-read commands with an actor-bound signature and command idempotency. It does not forward any other product writes, does not own business data, and does not expose service credentials to the browser.
 
 ## Key terms
 
@@ -28,5 +28,5 @@ Portal Gateway is a read-only BFF. It authenticates users via Platform Core OAut
 
 - **Portal Gateway → Platform Core**: OAuth code exchange, permission verification. Uses HMAC-SHA256 service-to-service auth.
 - **Portal Gateway → Product services**: Signed read-only proxying. Each request carries `X-Actor-User-Id` and `X-Request-Id`.
-- **Portal Gateway → Account Portfolio**: Signed authenticated account reads; the Gateway owns neither account balances nor a fallback response.
+- **Portal Gateway → Account Portfolio**: Signed authenticated account reads plus the ADR-0017 self-service ticket/notification command exception; the Gateway owns neither account balances nor a fallback response.
 - **Portal frontend → Portal Gateway**: Same-origin API calls with session cookie (`credentials: "same-origin"`).

@@ -15,7 +15,14 @@ import {
   requireGateway,
 } from "./env";
 import type {
+	AccountCreateTicketInput,
+	AccountNotificationResponse,
+	AccountNotificationsResponse,
 	AccountSummaryResponse,
+	AccountTicketDetailResponse,
+	AccountTicketFollowUpInput,
+	AccountTicketResponse,
+	AccountTicketsResponse,
 	CampusItemListResponse,
   CategoryListResponse,
   ErrorEnvelope,
@@ -251,6 +258,74 @@ export async function logout(): Promise<void> {
  */
 export async function fetchAccountSummary(): Promise<AccountSummaryResponse> {
   return apiFetchRequired<AccountSummaryResponse>("/api/v1/account/summary");
+}
+
+/** Reads only the signed-in user's durable notifications. */
+export async function fetchAccountNotifications(): Promise<AccountNotificationsResponse> {
+  return apiFetchRequired<AccountNotificationsResponse>("/api/v1/account/notifications", {
+    cache: "no-store",
+  });
+}
+
+/** Reads only the signed-in user's durable support-ticket list. */
+export async function fetchAccountTickets(): Promise<AccountTicketsResponse> {
+  return apiFetchRequired<AccountTicketsResponse>("/api/v1/account/tickets", {
+    cache: "no-store",
+  });
+}
+
+/** Reads one owner-scoped ticket and its durable history. */
+export async function fetchAccountTicket(ticketID: string): Promise<AccountTicketDetailResponse> {
+  return apiFetchRequired<AccountTicketDetailResponse>(
+    `/api/v1/account/tickets/${encodeURIComponent(ticketID)}`,
+    { cache: "no-store" }
+  );
+}
+
+function accountCommandInit(idempotencyKey: string, body?: unknown): RequestInit {
+  return {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  };
+}
+
+/** Creates one durable ticket. The caller must retain the key for a retry. */
+export async function createAccountTicket(
+  input: AccountCreateTicketInput,
+  idempotencyKey: string
+): Promise<AccountTicketResponse> {
+  return apiFetchRequired<AccountTicketResponse>(
+    "/api/v1/account/tickets",
+    accountCommandInit(idempotencyKey, input)
+  );
+}
+
+/** Adds one durable owner follow-up using the ticket revision currently shown. */
+export async function createAccountTicketFollowUp(
+  ticketID: string,
+  input: AccountTicketFollowUpInput,
+  idempotencyKey: string
+): Promise<AccountTicketResponse> {
+  return apiFetchRequired<AccountTicketResponse>(
+    `/api/v1/account/tickets/${encodeURIComponent(ticketID)}/follow-ups`,
+    accountCommandInit(idempotencyKey, input)
+  );
+}
+
+/** Marks exactly one durable notification as read. */
+export async function markAccountNotificationRead(
+  notificationID: string,
+  idempotencyKey: string
+): Promise<AccountNotificationResponse> {
+  return apiFetchRequired<AccountNotificationResponse>(
+    `/api/v1/account/notifications/${encodeURIComponent(notificationID)}/read`,
+    accountCommandInit(idempotencyKey)
+  );
 }
 
 // ---- Library ----

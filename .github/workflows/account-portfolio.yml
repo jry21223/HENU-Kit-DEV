@@ -54,20 +54,30 @@ jobs:
         run: |
           set -euo pipefail
           psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -c "CREATE TABLE baseline_probe(id integer PRIMARY KEY); INSERT INTO baseline_probe VALUES(1)"
-          psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -f services/account-portfolio/db/migrations/000001_account_portfolio.up.sql
-          psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -f services/account-portfolio/db/migrations/000001_account_portfolio.up.sql
-          test "$(psql -h localhost -U account_portfolio -d account_portfolio_test -Atc "SELECT to_regclass('public.account_portfolio_accounts') IS NOT NULL AND to_regclass('public.account_portfolio_points') IS NOT NULL AND to_regclass('public.account_portfolio_memberships') IS NOT NULL AND to_regclass('public.account_portfolio_service_nonces') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
+          mapfile -t up_migrations < <(find services/account-portfolio/db/migrations -maxdepth 1 -type f -name '*.up.sql' -print | LC_ALL=C sort)
+          mapfile -t down_migrations < <(find services/account-portfolio/db/migrations -maxdepth 1 -type f -name '*.down.sql' -print | LC_ALL=C sort -r)
+          for migration in "${up_migrations[@]}"; do
+            psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          for migration in "${up_migrations[@]}"; do
+            psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          test "$(psql -h localhost -U account_portfolio -d account_portfolio_test -Atc "SELECT to_regclass('public.account_portfolio_accounts') IS NOT NULL AND to_regclass('public.account_portfolio_points') IS NOT NULL AND to_regclass('public.account_portfolio_memberships') IS NOT NULL AND to_regclass('public.account_portfolio_service_nonces') IS NOT NULL AND to_regclass('public.account_portfolio_ticket_events') IS NOT NULL AND to_regclass('public.account_portfolio_command_idempotency') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
           docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" postgres:17-alpine \
             pg_dump -h 127.0.0.1 -U account_portfolio -d account_portfolio_test --format=custom \
             > /tmp/account-portfolio-recovery.dump
-          psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -f services/account-portfolio/db/migrations/000001_account_portfolio.down.sql
-          psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -f services/account-portfolio/db/migrations/000001_account_portfolio.up.sql
+          for migration in "${down_migrations[@]}"; do
+            psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          for migration in "${up_migrations[@]}"; do
+            psql -h localhost -U account_portfolio -d account_portfolio_test -v ON_ERROR_STOP=1 -f "$migration"
+          done
           createdb -h localhost -U account_portfolio account_portfolio_recovery
           docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" \
             -v /tmp/account-portfolio-recovery.dump:/tmp/account-portfolio-recovery.dump:ro \
             postgres:17-alpine \
             pg_restore -h 127.0.0.1 -U account_portfolio -d account_portfolio_recovery --no-owner /tmp/account-portfolio-recovery.dump
-          test "$(psql -h localhost -U account_portfolio -d account_portfolio_recovery -Atc "SELECT to_regclass('public.account_portfolio_tickets') IS NOT NULL AND to_regclass('public.account_portfolio_membership_orders') IS NOT NULL")" = t
+          test "$(psql -h localhost -U account_portfolio -d account_portfolio_recovery -Atc "SELECT to_regclass('public.account_portfolio_tickets') IS NOT NULL AND to_regclass('public.account_portfolio_ticket_events') IS NOT NULL AND to_regclass('public.account_portfolio_command_idempotency') IS NOT NULL AND to_regclass('public.account_portfolio_membership_orders') IS NOT NULL")" = t
 
       - name: Verify Account Portfolio contract
         run: |

@@ -33,6 +33,15 @@ test("Account Portfolio recovery uses PostgreSQL 17 backup clients", () => {
   assertUsesPostgres17BackupClients(workflow);
 });
 
+test("Account Portfolio recovery round-trips every ordered migration", () => {
+  assert.match(workflow, /mapfile -t up_migrations < <\(find services\/account-portfolio\/db\/migrations/);
+  assert.match(workflow, /mapfile -t down_migrations < <\(find services\/account-portfolio\/db\/migrations/);
+  assert.match(workflow, /for migration in "\$\{up_migrations\[@\]\}"; do/);
+  assert.match(workflow, /for migration in "\$\{down_migrations\[@\]\}"; do/);
+  assert.match(workflow, /account_portfolio_ticket_events/);
+  assert.match(workflow, /account_portfolio_command_idempotency/);
+});
+
 test("Account Portfolio recovery rejects bare runner backup clients", () => {
   assert.throws(() =>
     assertUsesPostgres17BackupClients(`${workflow}\n          pg_dump -h 127.0.0.1 -U account_portfolio`),

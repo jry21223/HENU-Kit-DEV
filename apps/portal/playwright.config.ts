@@ -15,15 +15,23 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: "pnpm --filter @henukit/portal dev",
-    url: "http://127.0.0.1:3001",
-    env: {
-      ...process.env,
-      NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: "1",
-      NEXT_PUBLIC_PORTAL_ALLOW_MOCK: "0",
+  webServer: [
+    {
+      command: "pnpm --filter @henukit/portal dev",
+      url: "http://127.0.0.1:3001",
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: "1",
+        NEXT_PUBLIC_PORTAL_ALLOW_MOCK: "0",
+      },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
     },
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+    {
+      command: "pnpm --filter @henukit/console exec vite --host 127.0.0.1 --port 4174",
+      url: "http://127.0.0.1:4174",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });

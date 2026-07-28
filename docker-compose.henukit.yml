@@ -138,7 +138,8 @@ services:
 
   # Account Portfolio owns user-visible points, memberships, orders,
   # notifications, and support tickets. It is deliberately isolated from the
-  # legacy Study database and only accepts signed requests from Portal Gateway.
+  # legacy Study database and only accepts signed requests from the separately
+  # credentialed Portal Gateway and Console Gateway.
   account-portfolio:
     build:
       context: ./services/account-portfolio
@@ -148,6 +149,9 @@ services:
       ACCOUNT_PORTFOLIO_SERVICE_CLIENT_ID: ${ACCOUNT_PORTFOLIO_CLIENT_ID:-portal-gateway}
       ACCOUNT_PORTFOLIO_SERVICE_KEY_ID: ${ACCOUNT_PORTFOLIO_KEY_ID:-account-portfolio-key}
       ACCOUNT_PORTFOLIO_SERVICE_SECRET: ${ACCOUNT_PORTFOLIO_CLIENT_SECRET:-replace-account-portfolio-client-secret-32bytes-min!!}
+      ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID: ${ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID:-console-gateway}
+      ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID: ${ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID:-account-portfolio-console-key}
+      ACCOUNT_PORTFOLIO_CONSOLE_SECRET: ${ACCOUNT_PORTFOLIO_CONSOLE_SECRET:-replace-account-portfolio-console-secret-32bytes-min!!}
     depends_on:
       postgres:
         condition: service_healthy
@@ -269,11 +273,19 @@ services:
       FOOD_SUMMARY_CLIENT_ID: ${FOOD_SUMMARY_CLIENT_ID:-console-gateway-food}
       FOOD_SUMMARY_CLIENT_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:-replace-food-summary-client-secret-32bytes-min!!}
       FOOD_SUMMARY_KEY_ID: ${FOOD_SUMMARY_KEY_ID:-food-summary-key}
+      # Console uses a separate, actor-bound Account Portfolio caller identity.
+      ACCOUNT_PORTFOLIO_API_URL: ${ACCOUNT_PORTFOLIO_API_URL:-http://account-portfolio:8097}
+      ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID: ${ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID:-console-gateway}
+      ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID: ${ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID:-account-portfolio-console-key}
+      ACCOUNT_PORTFOLIO_CONSOLE_SECRET: ${ACCOUNT_PORTFOLIO_CONSOLE_SECRET:-replace-account-portfolio-console-secret-32bytes-min!!}
+      ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET: ${ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET:-0}
     depends_on:
       redis:
         condition: service_healthy
       platform-core:
         condition: service_started
+      account-portfolio:
+        condition: service_healthy
     ports:
       - "8082:8082"
     expose:

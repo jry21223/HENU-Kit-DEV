@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -185,6 +186,104 @@ func TestReadMethodsRejectIncompleteOwnerPayloads(t *testing.T) {
 	}
 }
 
+func TestTicketCommandsPreserveRawBodyAndUseActorBoundOwnerAuthentication(t *testing.T) {
+	const actorID = "11111111-1111-4111-8111-111111111111"
+	const ticketID = "22222222-2222-4222-8222-222222222222"
+	const notificationID = "33333333-3333-4333-8333-333333333333"
+	tests := []struct {
+		name     string
+		path     string
+		status   int
+		body     []byte
+		response map[string]any
+		invoke   func(*Client) (json.RawMessage, error)
+	}{
+		{
+			name:     "create",
+			path:     TicketsPath,
+			status:   http.StatusCreated,
+			body:     []byte("{\n  \"title\": \"Need help\", \"category\": \"account\", \"body\": \"Please help.\"\n}"),
+			response: map[string]any{"ticket": testTicketData()},
+			invoke: func(client *Client) (json.RawMessage, error) {
+				return client.CreateTicket(context.Background(), actorID, "req_ticket_create", "idem_ticket_create", []byte("{\n  \"title\": \"Need help\", \"category\": \"account\", \"body\": \"Please help.\"\n}"))
+			},
+		},
+		{
+			name:     "follow-up",
+			path:     TicketFollowUpsPath(ticketID),
+			status:   http.StatusOK,
+			body:     []byte(`{"body":"Please update me.","expected_version":1}`),
+			response: map[string]any{"ticket": testTicketData()},
+			invoke: func(client *Client) (json.RawMessage, error) {
+				return client.FollowUp(context.Background(), actorID, "req_ticket_follow_up", ticketID, "idem_ticket_follow_up", []byte(`{"body":"Please update me.","expected_version":1}`))
+			},
+		},
+		{
+			name:     "notification-read",
+			path:     NotificationReadPath(notificationID),
+			status:   http.StatusOK,
+			response: map[string]any{"notification": testNotificationData()},
+			invoke: func(client *Client) (json.RawMessage, error) {
+				return client.MarkNotificationRead(context.Background(), actorID, "req_notification_read", notificationID, "idem_notification_read")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodPost || request.URL.Path != test.path {
+					t.Fatalf("owner command = %s %s, want POST %s", request.Method, request.URL.Path, test.path)
+				}
+				if request.Header.Get("X-Actor-User-Id") != actorID || request.Header.Get("Idempotency-Key") == "" {
+					t.Fatalf("owner command actor/key = %q/%q", request.Header.Get("X-Actor-User-Id"), request.Header.Get("Idempotency-Key"))
+				}
+				assertSignedOwnerRequest(t, request)
+				body, err := io.ReadAll(request.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(body) != string(test.body) {
+					t.Fatalf("owner command body = %q, want exact %q", body, test.body)
+				}
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(test.status)
+				_ = json.NewEncoder(writer).Encode(map[string]any{"data": test.response, "request_id": "req_owner"})
+			}))
+			defer server.Close()
+
+			client, err := NewClient(server.URL, testClientID, testSecret, testKeyID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.httpClient = server.Client()
+			data, err := test.invoke(client)
+			if err != nil || len(data) == 0 {
+				t.Fatalf("ticket command data=%s err=%v", data, err)
+			}
+		})
+	}
+}
+
+func TestTicketCommandMapsOwnerConflictWithoutAFalseSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertSignedOwnerRequest(t, request)
+		writer.WriteHeader(http.StatusConflict)
+		_, _ = writer.Write([]byte(`{"error":{"code":"VERSION_CONFLICT"},"request_id":"req_owner"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, testClientID, testSecret, testKeyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.httpClient = server.Client()
+	data, err := client.CreateTicket(context.Background(), "11111111-1111-4111-8111-111111111111", "req_ticket_conflict", "idem_ticket_conflict", []byte(`{"title":"Help","category":"account","body":"Please help."}`))
+	if !errors.Is(err, ErrConflict) || len(data) != 0 {
+		t.Fatalf("conflicting command data=%s err=%v, want ErrConflict and no data", data, err)
+	}
+}
+
 func validOwnerData(path string) map[string]any {
 	switch path {
 	case SummaryPath:
@@ -210,6 +309,29 @@ func validOwnerData(path string) map[string]any {
 	}
 }
 
+func testTicketData() map[string]any {
+	return map[string]any{
+		"id":         "22222222-2222-4222-8222-222222222222",
+		"reference":  "HKT-22222222-2222-4222-8222-222222222222",
+		"title":      "Need help",
+		"category":   "account",
+		"status":     "open",
+		"version":    1,
+		"created_at": "2026-07-28T00:00:00Z",
+		"updated_at": "2026-07-28T00:00:00Z",
+	}
+}
+
+func testNotificationData() map[string]any {
+	return map[string]any{
+		"id":         "33333333-3333-4333-8333-333333333333",
+		"title":      "客服工单状态已更新",
+		"body":       "工单状态已更新。",
+		"kind":       "ticket_status",
+		"created_at": "2026-07-28T00:00:00Z",
+	}
+}
+
 func assertSignedOwnerRequest(t *testing.T, request *http.Request) {
 	t.Helper()
 	user, password, ok := request.BasicAuth()
@@ -218,7 +340,12 @@ func assertSignedOwnerRequest(t *testing.T, request *http.Request) {
 	}
 	timestamp := request.Header.Get("X-Timestamp")
 	nonce := request.Header.Get("X-Nonce")
-	digest := sha256.Sum256(nil)
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Body = io.NopCloser(strings.NewReader(string(body)))
+	digest := sha256.Sum256(body)
 	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:]), request.Header.Get("X-Actor-User-Id")}, "\n")
 	mac := hmac.New(sha256.New, []byte(testSecret))
 	_, _ = mac.Write([]byte(canonical))

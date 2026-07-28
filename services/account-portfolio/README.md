@@ -4,14 +4,18 @@ Account Portfolio is the sole persistent owner of user points, memberships,
 membership orders, notifications, and support tickets. It does not import or
 translate legacy Study account data.
 
-The service accepts only Portal Gateway's signed service requests. Browser
-clients use the same-origin Portal Gateway contract and never receive service
-credentials or an actor identifier they can assert themselves.
+The service accepts separately credentialed, actor-bound signed requests from
+Portal Gateway and Console Gateway. Browser clients use the same-origin Portal
+Gateway contract and never receive service credentials or an actor identifier
+they can assert themselves. Console Gateway is the only operator caller and
+must use a credential distinct from Portal Gateway's.
 
 ## Run
 
 Set `ACCOUNT_PORTFOLIO_DATABASE_URL`, `ACCOUNT_PORTFOLIO_SERVICE_CLIENT_ID`,
 `ACCOUNT_PORTFOLIO_SERVICE_KEY_ID`, and `ACCOUNT_PORTFOLIO_SERVICE_SECRET`,
+plus the Console caller's `ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID`,
+`ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID`, and `ACCOUNT_PORTFOLIO_CONSOLE_SECRET`,
 then run:
 
 ```bash

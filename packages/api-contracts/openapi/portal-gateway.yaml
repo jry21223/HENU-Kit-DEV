@@ -188,6 +188,47 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/account/notifications/{notification_id}/read:
+    post:
+      operationId: markAccountNotificationRead
+      summary: Mark one signed-in user's persistent notification as read
+      security:
+        - portalSession: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 200
+            pattern: '^[A-Za-z0-9._:-]+$'
+      responses:
+        "200":
+          description: Persistent notification read state, including an idempotent retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountNotificationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/account/tickets:
     get:
       operationId: getAccountTickets
@@ -203,6 +244,121 @@ paths:
                 $ref: "#/components/schemas/AccountTicketsResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    post:
+      operationId: createAccountTicket
+      summary: Create one persistent support ticket for the signed-in user
+      security:
+        - portalSession: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 200
+            pattern: '^[A-Za-z0-9._:-]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountCreateTicketRequest"
+      responses:
+        "201":
+          description: Created persistent support ticket, including an idempotent retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountTicketResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/account/tickets/{ticket_id}:
+    get:
+      operationId: getAccountTicket
+      summary: Return one signed-in user's support ticket and persistent history
+      security:
+        - portalSession: []
+      parameters:
+        - name: ticket_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Owner-scoped support ticket detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountTicketDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/account/tickets/{ticket_id}/follow-ups:
+    post:
+      operationId: createAccountTicketFollowUp
+      summary: Add one persistent follow-up to the signed-in user's support ticket
+      security:
+        - portalSession: []
+      parameters:
+        - name: ticket_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 200
+            pattern: '^[A-Za-z0-9._:-]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountTicketFollowUpRequest"
+      responses:
+        "200":
+          description: Updated persistent ticket after a follow-up or idempotent retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountTicketResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "502":
           $ref: "#/components/responses/ServiceUnavailable"
         "503":
@@ -456,12 +612,31 @@ components:
           type: string
         kind:
           type: string
+        ticket_id:
+          type: string
+          format: uuid
+        ticket_reference:
+          type: string
+          pattern: '^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         read_at:
           type: string
           format: date-time
         created_at:
           type: string
           format: date-time
+
+    AccountNotificationResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [notification]
+          properties:
+            notification:
+              $ref: "#/components/schemas/AccountNotification"
+        request_id:
+          type: string
 
     AccountTicketsResponse:
       type: object
@@ -480,11 +655,14 @@ components:
 
     AccountTicket:
       type: object
-      required: [id, title, category, status, updated_at]
+      required: [id, reference, title, category, status, version, created_at, updated_at]
       properties:
         id:
           type: string
           format: uuid
+        reference:
+          type: string
+          pattern: '^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         title:
           type: string
         category:
@@ -492,7 +670,115 @@ components:
         status:
           type: string
           enum: [open, in_progress, resolved]
+        version:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
         updated_at:
+          type: string
+          format: date-time
+
+    AccountTicketResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [ticket]
+          properties:
+            ticket:
+              $ref: "#/components/schemas/AccountTicket"
+        request_id:
+          type: string
+
+    AccountTicketDetailResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [ticket, messages, events]
+          properties:
+            ticket:
+              $ref: "#/components/schemas/AccountTicket"
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccountTicketMessage"
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccountTicketEvent"
+        request_id:
+          type: string
+
+    AccountCreateTicketRequest:
+      type: object
+      required: [title, category, body]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 160
+        category:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: '^[a-z][a-z0-9_-]*$'
+        body:
+          type: string
+          minLength: 1
+          maxLength: 5000
+
+    AccountTicketFollowUpRequest:
+      type: object
+      required: [body, expected_version]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        expected_version:
+          type: integer
+          minimum: 1
+
+    AccountTicketMessage:
+      type: object
+      required: [id, author_kind, body, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        author_kind:
+          type: string
+          enum: [user, operator]
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AccountTicketEvent:
+      type: object
+      required: [id, kind, from_status, to_status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [operator_reply, status_transition, reopened]
+        from_status:
+          type: string
+          enum: [open, in_progress, resolved]
+        to_status:
+          type: string
+          enum: [open, in_progress, resolved]
+        created_at:
           type: string
           format: date-time
 
@@ -634,6 +920,12 @@ components:
           format: date-time
 
   responses:
+    BadRequest:
+      description: Invalid command input or identifier
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     Unauthorized:
       description: Not authenticated or session expired
       content:
@@ -642,6 +934,18 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
     Forbidden:
       description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: The signed-in user cannot access the requested resource
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: A command idempotency key was reused or the ticket revision is stale
       content:
         application/json:
           schema:

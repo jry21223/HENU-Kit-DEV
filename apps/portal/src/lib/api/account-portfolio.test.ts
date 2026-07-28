@@ -63,6 +63,155 @@ describe("fetchAccountSummary", () => {
   });
 });
 
+describe("Account Portfolio ticket and notification commands", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
+    vi.stubEnv("NODE_ENV", "test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the Gateway for persistent ticket reads and writes with the supplied idempotency key", async () => {
+    const ticketID = "11111111-1111-4111-8111-111111111111";
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              tickets: [
+                {
+                  id: ticketID,
+                  reference: "HKT-11111111-1111-4111-8111-111111111111",
+                  title: "练习记录问题",
+                  category: "practice",
+                  status: "open",
+                  version: 1,
+                  created_at: "2030-01-01T00:00:00Z",
+                  updated_at: "2030-01-01T00:00:00Z",
+                },
+              ],
+            },
+            request_id: "req_tickets",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              ticket: {
+                id: ticketID,
+                reference: "HKT-11111111-1111-4111-8111-111111111111",
+                title: "练习记录问题",
+                category: "practice",
+                status: "open",
+                version: 1,
+                created_at: "2030-01-01T00:00:00Z",
+                updated_at: "2030-01-01T00:00:00Z",
+              },
+            },
+            request_id: "req_ticket_created",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } }
+        )
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    const { createAccountTicket, fetchAccountTickets } = await import("./client");
+    await expect(fetchAccountTickets()).resolves.toMatchObject({
+      data: { tickets: [expect.objectContaining({ id: ticketID, version: 1 })] },
+    });
+    await expect(
+      createAccountTicket(
+        { title: "练习记录问题", category: "practice", body: "请帮我核对这次作答。" },
+        "portal-ticket:retry-0001"
+      )
+    ).resolves.toMatchObject({ data: { ticket: expect.objectContaining({ id: ticketID }) } });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/account/tickets",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "Idempotency-Key": "portal-ticket:retry-0001",
+        }),
+        body: JSON.stringify({
+          title: "练习记录问题",
+          category: "practice",
+          body: "请帮我核对这次作答。",
+        }),
+      })
+    );
+  });
+
+  it("does not turn a ticket version conflict into a successful local update", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: "ticket_version_conflict", request_id: "req_conflict" }),
+          { status: 409, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    const { createAccountTicketFollowUp } = await import("./client");
+    await expect(
+      createAccountTicketFollowUp(
+        "11111111-1111-4111-8111-111111111111",
+        { body: "补充说明", expected_version: 1 },
+        "portal-followup:retry-0001"
+      )
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("marks only the persistent notification returned by the Gateway as read", async () => {
+    const notificationID = "22222222-2222-4222-8222-222222222222";
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            notification: {
+              id: notificationID,
+              title: "工单有新回复",
+              body: "请查看客服回复。",
+              kind: "ticket_operator_reply",
+              created_at: "2030-01-01T00:00:00Z",
+              read_at: "2030-01-01T00:02:00Z",
+            },
+          },
+          request_id: "req_notice_read",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { markAccountNotificationRead } = await import("./client");
+    await expect(
+      markAccountNotificationRead(notificationID, "portal-notification:retry-0001")
+    ).resolves.toMatchObject({
+      data: { notification: expect.objectContaining({ id: notificationID, read_at: expect.any(String) }) },
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/v1/account/notifications/${notificationID}/read`,
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Idempotency-Key": "portal-notification:retry-0001" }),
+      })
+    );
+  });
+});
+
 describe("fetchSession", () => {
   beforeEach(() => {
     vi.resetModules();

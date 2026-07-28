@@ -15,6 +15,8 @@ tags:
     description: Permission-checked forwarding to the bounded Library Compatibility Adapter.
   - name: Food
     description: Permission-checked forwarding to the Food-owned operations API.
+  - name: Account Portfolio
+    description: Permission-checked forwarding to the Account Portfolio support-ticket owner.
 paths:
   /healthz:
     get:
@@ -482,13 +484,79 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/tickets:
+    get:
+      tags: [Account Portfolio]
+      operationId: getConsoleAccountTickets
+      summary: Read the authorized Account Portfolio support-ticket queue
+      description: Requires account.tickets.read within Account Portfolio product Scope.
+      security: [{ consoleSession: [] }]
+      responses:
+        "200": { description: Durable support-ticket queue, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountTicketQueue" } } }] } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/tickets/{ticket_id}:
+    get:
+      tags: [Account Portfolio]
+      operationId: getConsoleAccountTicket
+      summary: Read one authorized support ticket and its durable history
+      description: Requires account.tickets.read within Account Portfolio product Scope.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: ticket_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Durable support-ticket detail without user or operator identifiers, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountTicketDetail" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/tickets/{ticket_id}/replies:
+    post:
+      tags: [Account Portfolio]
+      operationId: replyConsoleAccountTicket
+      summary: Add one operator reply to a support ticket
+      description: Requires account.tickets.reply within Account Portfolio product Scope. The operator is only the verified Console Session actor.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: ticket_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleOperatorReplyRequest" } } } }
+      responses:
+        "200": { description: Updated ticket or its original idempotent result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountTicketCommandResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/tickets/{ticket_id}/transitions:
+    post:
+      tags: [Account Portfolio]
+      operationId: transitionConsoleAccountTicket
+      summary: Transition one support ticket through the operator lifecycle
+      description: Requires account.tickets.transition within Account Portfolio product Scope. The Console may only move open to in_progress or resolved, and in_progress to resolved.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: ticket_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleTicketTransitionRequest" } } } }
+      responses:
+        "200": { description: Updated ticket or its original idempotent result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountTicketCommandResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 components:
   parameters:
     RequiredIdempotencyKey:
       name: Idempotency-Key
       in: header
       required: true
-      schema: { type: string, minLength: 8, maxLength: 200 }
+      schema: { type: string, minLength: 8, maxLength: 200, pattern: '^[A-Za-z0-9._:-]+$' }
   securitySchemes:
     consoleSession:
       type: apiKey
@@ -972,6 +1040,72 @@ components:
         operation: { $ref: "#/components/schemas/LibraryCommandKind" }
         resource_id: { type: string, format: uuid }
         state: { type: string, enum: [succeeded, unknown] }
+    ConsoleAccountTicketQueue:
+      type: object
+      additionalProperties: false
+      required: [tickets]
+      properties:
+        tickets: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/ConsoleAccountTicket" } }
+    ConsoleAccountTicketDetail:
+      type: object
+      additionalProperties: false
+      required: [ticket, messages, events]
+      properties:
+        ticket: { $ref: "#/components/schemas/ConsoleAccountTicket" }
+        messages: { type: array, maxItems: 1000, items: { $ref: "#/components/schemas/ConsoleAccountTicketMessage" } }
+        events: { type: array, maxItems: 1000, items: { $ref: "#/components/schemas/ConsoleAccountTicketEvent" } }
+    ConsoleAccountTicketCommandResult:
+      type: object
+      additionalProperties: false
+      required: [ticket]
+      properties:
+        ticket: { $ref: "#/components/schemas/ConsoleAccountTicket" }
+    ConsoleAccountTicket:
+      type: object
+      additionalProperties: false
+      required: [id, reference, title, category, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string, pattern: '^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' }
+        title: { type: string, maxLength: 160 }
+        category: { type: string, maxLength: 80, pattern: '^[a-z][a-z0-9_-]*$' }
+        status: { type: string, enum: [open, in_progress, resolved] }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ConsoleAccountTicketMessage:
+      type: object
+      additionalProperties: false
+      required: [id, author_kind, body, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        author_kind: { type: string, enum: [user, operator] }
+        body: { type: string, maxLength: 5000 }
+        created_at: { type: string, format: date-time }
+    ConsoleAccountTicketEvent:
+      type: object
+      additionalProperties: false
+      required: [id, kind, from_status, to_status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [operator_reply, status_transition, reopened] }
+        from_status: { type: string, enum: [open, in_progress, resolved] }
+        to_status: { type: string, enum: [open, in_progress, resolved] }
+        created_at: { type: string, format: date-time }
+    ConsoleOperatorReplyRequest:
+      type: object
+      additionalProperties: false
+      required: [body, expected_version]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 5000 }
+        expected_version: { type: integer, minimum: 1 }
+    ConsoleTicketTransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [status, expected_version]
+      properties:
+        status: { type: string, enum: [in_progress, resolved] }
+        expected_version: { type: integer, minimum: 1 }
     ConsoleOverview:
       type: object
       additionalProperties: false

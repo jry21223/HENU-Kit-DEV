@@ -22,7 +22,10 @@ import (
 	accountportfolio "henukit.dev/account-portfolio"
 )
 
-const serviceSecret = "account-portfolio-gateway-secret-at-least-32-bytes"
+const (
+	serviceSecret        = "account-portfolio-gateway-secret-at-least-32-bytes"
+	consoleServiceSecret = "account-portfolio-console-secret-at-least-32-bytes"
+)
 
 func TestNewUserSummaryStartsWithPersistedZeroAndFreeMembership(t *testing.T) {
 	server, pool := newAccountPortfolioServer(t)
@@ -198,6 +201,24 @@ func TestHealthFailsClosedWhenDatabaseIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestAccountPortfolioRejectsSharedPortalAndConsoleSecret(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	_, err = accountportfolio.New(accountportfolio.Config{
+		Database:        pool,
+		ClientID:        "portal-gateway",
+		Keys:            map[string]string{"account-key": serviceSecret},
+		ConsoleClientID: "console-gateway",
+		ConsoleKeys:     map[string]string{"console-key": serviceSecret},
+	})
+	if err == nil {
+		t.Fatal("Account Portfolio accepted the Portal Gateway secret for Console Gateway")
+	}
+}
+
 func newAccountPortfolioServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	t.Helper()
 	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
@@ -209,6 +230,27 @@ func newAccountPortfolioServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 		Database: pool,
 		ClientID: "portal-gateway",
 		Keys:     map[string]string{"account-key": serviceSecret},
+	})
+	if err != nil {
+		pool.Close()
+		t.Fatal(err)
+	}
+	return httptest.NewServer(handler), pool
+}
+
+func newAccountPortfolioServerWithConsole(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
+	t.Helper()
+	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clearAccountPortfolio(t, pool)
+	handler, err := accountportfolio.New(accountportfolio.Config{
+		Database:        pool,
+		ClientID:        "portal-gateway",
+		Keys:            map[string]string{"account-key": serviceSecret},
+		ConsoleClientID: "console-gateway",
+		ConsoleKeys:     map[string]string{"console-key": consoleServiceSecret},
 	})
 	if err != nil {
 		pool.Close()

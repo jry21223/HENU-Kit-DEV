@@ -28,6 +28,93 @@ export interface AccountSummaryResponse {
   request_id: string;
 }
 
+export type AccountTicketStatus = "open" | "in_progress" | "resolved";
+
+export interface AccountNotification {
+  id: string;
+  title: string;
+  body: string;
+  kind: string;
+  ticket_id?: string;
+  ticket_reference?: string;
+  read_at?: string;
+  created_at: string;
+}
+
+export interface AccountNotificationsResponse {
+  data: {
+    notifications: AccountNotification[];
+  };
+  request_id: string;
+}
+
+export interface AccountNotificationResponse {
+  data: {
+    notification: AccountNotification;
+  };
+  request_id: string;
+}
+
+export interface AccountTicket {
+  id: string;
+  reference: string;
+  title: string;
+  category: string;
+  status: AccountTicketStatus;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccountTicketsResponse {
+  data: {
+    tickets: AccountTicket[];
+  };
+  request_id: string;
+}
+
+export interface AccountTicketResponse {
+  data: {
+    ticket: AccountTicket;
+  };
+  request_id: string;
+}
+
+export interface AccountTicketMessage {
+  id: string;
+  author_kind: "user" | "operator";
+  body: string;
+  created_at: string;
+}
+
+export interface AccountTicketEvent {
+  id: string;
+  kind: "operator_reply" | "status_transition" | "reopened";
+  from_status: AccountTicketStatus;
+  to_status: AccountTicketStatus;
+  created_at: string;
+}
+
+export interface AccountTicketDetailResponse {
+  data: {
+    ticket: AccountTicket;
+    messages: AccountTicketMessage[];
+    events: AccountTicketEvent[];
+  };
+  request_id: string;
+}
+
+export interface AccountCreateTicketInput {
+  title: string;
+  category: string;
+  body: string;
+}
+
+export interface AccountTicketFollowUpInput {
+  body: string;
+  expected_version: number;
+}
+
 // ---- Library (gateway courses + portal-api materials) ----
 
 export interface CourseSummary {

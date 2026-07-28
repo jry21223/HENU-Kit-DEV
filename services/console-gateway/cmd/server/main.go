@@ -36,6 +36,7 @@ func main() {
 		NoticeAPIURL: config.NoticeAPIURL, NoticeCredentials: overview.Credentials{ClientID: config.NoticeCredentials.ClientID, ClientSecret: config.NoticeCredentials.ClientSecret, KeyID: config.NoticeCredentials.KeyID},
 		LibraryAPIURL: config.LibraryAPIURL, LibraryCredentials: overview.Credentials{ClientID: config.LibraryCredentials.ClientID, ClientSecret: config.LibraryCredentials.ClientSecret, KeyID: config.LibraryCredentials.KeyID},
 		FoodAPIURL: config.FoodAPIURL, FoodCredentials: overview.Credentials{ClientID: config.FoodCredentials.ClientID, ClientSecret: config.FoodCredentials.ClientSecret, KeyID: config.FoodCredentials.KeyID},
+		AccountPortfolioAPIURL: config.AccountPortfolioAPIURL, AccountPortfolioCredentials: overview.Credentials{ClientID: config.AccountPortfolioCredentials.ClientID, ClientSecret: config.AccountPortfolioCredentials.ClientSecret, KeyID: config.AccountPortfolioCredentials.KeyID},
 	})
 	if err != nil {
 		logger.Error("create_gateway", "error", err)
