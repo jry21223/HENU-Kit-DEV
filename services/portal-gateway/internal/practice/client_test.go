@@ -57,6 +57,165 @@ func TestBanksUsesGeneratedQuizCraftCatalogContract(t *testing.T) {
 	}
 }
 
+func TestRankingsUseGeneratedQuizCraftContract(t *testing.T) {
+	const bankID = "10ca9b18-c303-4b7a-ab14-1241e41b665a"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case OverallRankingPath:
+			assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_overall", OverallRankingPath)
+			if request.URL.RawQuery != "period=weekly" {
+				t.Fatalf("overall ranking query = %q", request.URL.RawQuery)
+			}
+			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_overall", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, Nickname: "认真刷题", SystemAvatar: "scholar-blue", CorrectAnswerCount: 12}}}})
+		case strings.Replace(BankRankingPath, "{bank_id}", bankID, 1):
+			assertPortalReadRequest(t, request, "user-123", "req_ranking_bank", strings.Replace(BankRankingPath, "{bank_id}", bankID, 1))
+			if request.URL.RawQuery != "period=lifetime" {
+				t.Fatalf("bank ranking query = %q", request.URL.RawQuery)
+			}
+			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_bank", Data: RankingPage{Scope: "bank", BankID: bankID, Period: RankingPeriodLifetime, Metric: "correct_answer_count", Entries: []RankingEntry{}}})
+		default:
+			t.Fatalf("unexpected ranking path %q", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := testCatalogClient(t, server)
+	overall, err := client.OverallRanking(context.Background(), "", "req_ranking_overall", "")
+	if err != nil {
+		t.Fatalf("OverallRanking() error = %v", err)
+	}
+	if overall.RequestID != "req_core_overall" || overall.Data.Scope != "overall" || len(overall.Data.Entries) != 1 || overall.Data.Entries[0].Nickname != "认真刷题" || overall.Data.Entries[0].CorrectAnswerCount != 12 {
+		t.Fatalf("overall ranking = %+v", overall)
+	}
+
+	bank, err := client.BankRanking(context.Background(), "user-123", "req_ranking_bank", bankID, RankingPeriodLifetime)
+	if err != nil {
+		t.Fatalf("BankRanking() error = %v", err)
+	}
+	if bank.RequestID != "req_core_bank" || bank.Data.Scope != "bank" || bank.Data.BankID != bankID || bank.Data.Entries == nil || len(bank.Data.Entries) != 0 {
+		t.Fatalf("bank ranking = %+v", bank)
+	}
+}
+
+func TestRankingsWaitForCoreAndReturnTrueEmptyWithoutFallback(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_loading", OverallRankingPath)
+		close(started)
+		<-release
+		_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_empty", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{}}})
+	}))
+	defer server.Close()
+
+	type result struct {
+		value RankingEnvelope
+		err   error
+	}
+	results := make(chan result, 1)
+	client := testCatalogClient(t, server)
+	go func() {
+		value, err := client.OverallRanking(context.Background(), "", "req_ranking_loading", RankingPeriodWeekly)
+		results <- result{value: value, err: err}
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("ranking client did not call Core")
+	}
+	select {
+	case returned := <-results:
+		t.Fatalf("ranking client returned before Core completed: %+v", returned)
+	case <-time.After(120 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case returned := <-results:
+		if returned.err != nil || returned.value.RequestID != "req_core_empty" || returned.value.Data.Entries == nil || len(returned.value.Data.Entries) != 0 {
+			t.Fatalf("ranking client true empty result = %+v", returned)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ranking client did not return after Core completed")
+	}
+}
+
+func TestRankingsReturnDependencyFailureWithoutMockFallback(t *testing.T) {
+	const upstreamDetail = "ranking-upstream-detail-must-not-leak"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_failure", OverallRankingPath)
+		writer.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = writer.Write([]byte(`{"error":{"code":"database_unavailable","message":"` + upstreamDetail + `"}}`))
+	}))
+	defer server.Close()
+
+	result, err := testCatalogClient(t, server).OverallRanking(context.Background(), "", "req_ranking_failure", RankingPeriodWeekly)
+	if !errors.Is(err, ErrRankingUnavailable) {
+		t.Fatalf("OverallRanking() error = %v, want ErrRankingUnavailable", err)
+	}
+	if result.RequestID != "" || result.Data.Entries != nil {
+		t.Fatalf("ranking client returned a successful fallback: %+v", result)
+	}
+	if strings.Contains(err.Error(), upstreamDetail) || strings.Contains(err.Error(), testCatalogSecret) {
+		t.Fatalf("ranking dependency failure leaked detail or credential: %v", err)
+	}
+}
+
+func TestRankingsRejectAnUpstreamPeriodMismatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_period_mismatch", OverallRankingPath)
+		_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_period_mismatch", Data: RankingPage{Scope: "overall", Period: RankingPeriodLifetime, Metric: "correct_answer_count", Entries: []RankingEntry{}}})
+	}))
+	defer server.Close()
+
+	result, err := testCatalogClient(t, server).OverallRanking(context.Background(), "", "req_ranking_period_mismatch", RankingPeriodWeekly)
+	if !errors.Is(err, ErrInvalidRanking) {
+		t.Fatalf("OverallRanking() error = %v, want ErrInvalidRanking", err)
+	}
+	if result.RequestID != "" || result.Data.Entries != nil {
+		t.Fatalf("ranking client accepted an upstream period mismatch: %+v", result)
+	}
+}
+
+func TestRankingsRejectAnUpstreamIdentifierField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_identifier", OverallRankingPath)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"request_id":"req_core_identifier","data":{"scope":"overall","period":"weekly","metric":"correct_answer_count","entries":[{"rank":1,"nickname":"匿名学习者","system_avatar":"scholar-blue","correct_answer_count":3,"user_id":"must-not-cross-gateway"}]}}`))
+	}))
+	defer server.Close()
+
+	result, err := testCatalogClient(t, server).OverallRanking(context.Background(), "", "req_ranking_identifier", RankingPeriodWeekly)
+	if !errors.Is(err, ErrInvalidRanking) {
+		t.Fatalf("OverallRanking() error = %v, want ErrInvalidRanking", err)
+	}
+	if result.RequestID != "" || result.Data.Entries != nil {
+		t.Fatalf("ranking client accepted an identifier-bearing response: %+v", result)
+	}
+}
+
+func TestRankingsRejectIdentifierShapedNickname(t *testing.T) {
+	for _, nickname := range []string{
+		"123e4567-e89b-12d3-a456-426614174000",
+		"learner@example.test",
+	} {
+		t.Run(nickname, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_identifier_nickname", OverallRankingPath)
+				_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_identifier_nickname", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, Nickname: nickname, SystemAvatar: "scholar-blue", CorrectAnswerCount: 3}}}})
+			}))
+			defer server.Close()
+
+			result, err := testCatalogClient(t, server).OverallRanking(context.Background(), "", "req_ranking_identifier_nickname", RankingPeriodWeekly)
+			if !errors.Is(err, ErrInvalidRanking) {
+				t.Fatalf("OverallRanking() error = %v, want ErrInvalidRanking", err)
+			}
+			if result.RequestID != "" || result.Data.Entries != nil {
+				t.Fatalf("ranking client accepted identifier-shaped nickname: %+v", result)
+			}
+		})
+	}
+}
+
 func TestBanksAcceptsTrueEmptyCatalogButRejectsLegacyMockShape(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -195,9 +354,13 @@ func testCatalogClient(t *testing.T, server *httptest.Server) *Client {
 }
 
 func assertCatalogRequest(t *testing.T, request *http.Request, wantActor, wantRequestID string) {
+	assertPortalReadRequest(t, request, wantActor, wantRequestID, ListPracticeBanksPath)
+}
+
+func assertPortalReadRequest(t *testing.T, request *http.Request, wantActor, wantRequestID, wantPath string) {
 	t.Helper()
-	if request.Method != http.MethodGet || request.URL.Path != ListPracticeBanksPath {
-		t.Fatalf("Core request = %s %s, want GET %s", request.Method, request.URL.Path, ListPracticeBanksPath)
+	if request.Method != http.MethodGet || request.URL.Path != wantPath {
+		t.Fatalf("Core request = %s %s, want GET %s", request.Method, request.URL.Path, wantPath)
 	}
 	if got := request.Header.Get("X-Actor-User-Id"); got != wantActor {
 		t.Fatalf("X-Actor-User-Id = %q, want %q", got, wantActor)

@@ -85,12 +85,12 @@ func (service *practiceHTTP) authenticateConsoleSummary(next http.Handler) http.
 	}, next)
 }
 
-func (service *practiceHTTP) authenticatePortalCatalog(next http.Handler) http.Handler {
+func (service *practiceHTTP) authenticatePortalRead(next http.Handler) http.Handler {
 	return service.authenticateSignedGET(serviceAuthRequirement{
 		clientID:           service.catalogClientID,
 		keys:               service.catalogKeys,
-		unavailableCode:    "catalog_auth_unavailable",
-		label:              "catalog",
+		unavailableCode:    "portal_read_auth_unavailable",
+		label:              "Portal read",
 		requiredPermission: "portal.practice.read",
 	}, next)
 }

@@ -407,7 +407,10 @@ func (q *Queries) IsQuestionInBank(ctx context.Context, arg IsQuestionInBankPara
 
 const listBankRanking = `-- name: ListBankRanking :many
 WITH totals AS (
-  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  SELECT a.user_id,
+         COALESCE(p.nickname,'匿名学习者') AS nickname,
+         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+         count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
   JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
   WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2
@@ -458,7 +461,10 @@ func (q *Queries) ListBankRanking(ctx context.Context, arg ListBankRankingParams
 
 const listBankRankingWindow = `-- name: ListBankRankingWindow :many
 WITH totals AS (
-  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  SELECT a.user_id,
+         COALESCE(p.nickname,'匿名学习者') AS nickname,
+         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+         count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
   JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
   WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2 AND a.submitted_at < $3
@@ -696,7 +702,10 @@ func (q *Queries) ListLearningState(ctx context.Context, userID uuid.UUID) ([]Li
 
 const listOverallRanking = `-- name: ListOverallRanking :many
 WITH totals AS (
-  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  SELECT a.user_id,
+         COALESCE(p.nickname,'匿名学习者') AS nickname,
+         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+         count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
   JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
   WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1
@@ -742,7 +751,10 @@ func (q *Queries) ListOverallRanking(ctx context.Context, submittedAt pgtype.Tim
 
 const listOverallRankingWindow = `-- name: ListOverallRankingWindow :many
 WITH totals AS (
-  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  SELECT a.user_id,
+         COALESCE(p.nickname,'匿名学习者') AS nickname,
+         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+         count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
   JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
   WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2

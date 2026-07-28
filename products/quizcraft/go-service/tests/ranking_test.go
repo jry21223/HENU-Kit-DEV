@@ -19,7 +19,7 @@ import (
 func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T) {
 	pool := practicePool(t)
 	report := importPracticeBank(t, pool, "ranking-"+uuid.NewString())
-	handler, _ := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
+	handler, _ := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), CatalogClientID: portalCatalogClientID, CatalogKeys: map[string]string{portalCatalogKeyID: portalCatalogSecret}})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	userID := uuid.NewString()
@@ -91,8 +91,8 @@ func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T)
 		}
 	}
 
-	for _, path := range []string{"/api/v1/rankings/overall", fmt.Sprintf("/api/v1/banks/%s/rankings?period=lifetime", report.BankID)} {
-		rankStatus, rankBody := requestJSON(t, http.MethodGet, server.URL+path, nil, nil)
+	for index, path := range []string{"/api/v1/rankings/overall", fmt.Sprintf("/api/v1/banks/%s/rankings?period=lifetime", report.BankID)} {
+		rankStatus, rankBody := requestPortalRead(t, server.URL, path, "portal.practice.read", fmt.Sprintf("req_ranking_public_%d", index))
 		if rankStatus != http.StatusOK || !bytes.Contains(rankBody, []byte(`"nickname":"认真刷题"`)) || !bytes.Contains(rankBody, []byte(`"system_avatar":"scholar-blue"`)) || !bytes.Contains(rankBody, []byte(`"correct_answer_count":2`)) || bytes.Contains(rankBody, []byte(userID)) || bytes.Contains(rankBody, []byte(`"user_id"`)) {
 			t.Fatalf("public ranking = %d %s", rankStatus, rankBody)
 		}
@@ -100,24 +100,116 @@ func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T)
 			t.Fatalf("equal scores are not tied: %s", rankBody)
 		}
 	}
-	invalidPeriod, _ := requestJSON(t, http.MethodGet, server.URL+"/api/v1/rankings/overall?period=monthly", nil, nil)
+	invalidPeriod, _ := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=monthly", "portal.practice.read", "req_ranking_invalid_period")
 	if invalidPeriod != http.StatusBadRequest {
 		t.Fatalf("invalid period = %d", invalidPeriod)
 	}
 
-	futureHandler, _ := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), Now: func() time.Time { return time.Now().UTC().AddDate(0, 0, 8) }})
+	futureNow := time.Now().UTC().AddDate(0, 0, 8)
+	futureHandler, _ := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), CatalogClientID: portalCatalogClientID, CatalogKeys: map[string]string{portalCatalogKeyID: portalCatalogSecret}, Now: func() time.Time { return futureNow }})
 	future := httptest.NewServer(futureHandler)
 	defer future.Close()
-	_, weeklyBody := requestJSON(t, http.MethodGet, future.URL+"/api/v1/rankings/overall", nil, nil)
-	_, lifetimeBody := requestJSON(t, http.MethodGet, future.URL+"/api/v1/rankings/overall?period=lifetime", nil, nil)
+	_, weeklyBody := requestPortalReadAt(t, future.URL, "/api/v1/rankings/overall", "portal.practice.read", "req_ranking_future_weekly", futureNow)
+	_, lifetimeBody := requestPortalReadAt(t, future.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_future_lifetime", futureNow)
 	if bytes.Contains(weeklyBody, []byte("认真刷题")) || !bytes.Contains(lifetimeBody, []byte("认真刷题")) {
 		t.Fatalf("weekly/lifetime boundary = %s / %s", weeklyBody, lifetimeBody)
 	}
 
 	optOutStatus, _ := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-profile-optout"}, map[string]any{"visible": false, "nickname": "认真刷题", "system_avatar": "scholar-blue"})
-	_, hiddenBody := requestJSON(t, http.MethodGet, server.URL+"/api/v1/rankings/overall?period=lifetime", nil, nil)
+	_, hiddenBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_hidden")
 	if optOutStatus != http.StatusOK || bytes.Contains(hiddenBody, []byte("认真刷题")) {
 		t.Fatalf("ranking opt out = %d %s", optOutStatus, hiddenBody)
+	}
+}
+
+func TestRankingProfileRejectsIdentifierShapedNicknames(t *testing.T) {
+	pool := practicePool(t)
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	userID := uuid.NewString()
+	auth := "quizcraft_session=" + practiceToken(t, userID)
+
+	for _, nickname := range []string{
+		"123e4567e89b12d3a456426614174000",
+		"１２３ｅ４５６７ｅ８９ｂ１２ｄ３ａ４５６４２６６１４１７４０００",
+		"learner@example.test",
+	} {
+		status, body := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "identifier-nickname-" + uuid.NewString()}, map[string]any{"visible": true, "nickname": nickname, "system_avatar": "scholar-blue"})
+		if status != http.StatusBadRequest {
+			t.Fatalf("identifier-shaped nickname %q accepted = %d %s", nickname, status, body)
+		}
+	}
+
+	var profileCount int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_ranking_profiles WHERE user_id=$1`, userID).Scan(&profileCount); err != nil || profileCount != 0 {
+		t.Fatalf("identifier-shaped nickname persisted profile count = %d err=%v", profileCount, err)
+	}
+}
+
+func TestRankingHTTPStaysDarkUntilPortalGatewayAndUsesNeutralAnonymousProfile(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "ranking-dark-"+uuid.NewString())
+
+	darkHandler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		Database:       pool,
+		AuthHMACSecret: []byte(practiceAuthSecret),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	darkServer := httptest.NewServer(darkHandler)
+	defer darkServer.Close()
+	darkStatus, _ := requestJSON(t, http.MethodGet, darkServer.URL+"/api/v1/rankings/overall", nil, nil)
+	if darkStatus != http.StatusNotFound {
+		t.Fatalf("unconfigured V2 ranking route = %d, want 404", darkStatus)
+	}
+
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		Database:        pool,
+		AuthHMACSecret:  []byte(practiceAuthSecret),
+		CatalogClientID: portalCatalogClientID,
+		CatalogKeys:     map[string]string{portalCatalogKeyID: portalCatalogSecret},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	unsignedStatus, unsignedBody := requestJSON(t, http.MethodGet, server.URL+"/api/v1/rankings/overall", nil, nil)
+	if unsignedStatus != http.StatusUnauthorized || bytes.Contains(unsignedBody, []byte(`"data"`)) {
+		t.Fatalf("unsigned V2 ranking = %d %s", unsignedStatus, unsignedBody)
+	}
+	forbiddenStatus, forbiddenBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall", "portal.library.read", "req_ranking_forbidden")
+	if forbiddenStatus != http.StatusForbidden || bytes.Contains(forbiddenBody, []byte(`"data"`)) {
+		t.Fatalf("forbidden V2 ranking = %d %s", forbiddenStatus, forbiddenBody)
+	}
+
+	userID := uuid.NewString()
+	auth := "quizcraft_session=" + practiceToken(t, userID)
+	sessionID, question := createRankingSession(t, server.URL, auth, report, "ranking-anonymous-session")
+	answerStatus, answerBody := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, sessionID), map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-anonymous-answer"}, map[string]any{"question_id": question.QuestionID, "question_version_id": question.QuestionVersionID, "answer": 1})
+	if answerStatus != http.StatusOK || !bytes.Contains(answerBody, []byte(`"correct":true`)) {
+		t.Fatalf("anonymous ranking answer = %d %s", answerStatus, answerBody)
+	}
+
+	noProfileStatus, noProfileBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_without_profile")
+	if noProfileStatus != http.StatusOK || bytes.Contains(noProfileBody, []byte(`"nickname":"匿名学习者"`)) || bytes.Contains(noProfileBody, []byte(userID)) || bytes.Contains(noProfileBody, []byte(`"user_id"`)) {
+		t.Fatalf("ranking without visible profile = %d %s", noProfileStatus, noProfileBody)
+	}
+
+	profileStatus, profileBody := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-anonymous-profile"}, map[string]any{"visible": true, "nickname": "", "system_avatar": "scholar-blue"})
+	if profileStatus != http.StatusOK {
+		t.Fatalf("anonymous profile = %d %s", profileStatus, profileBody)
+	}
+
+	rankingStatus, rankingBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_anonymous")
+	if rankingStatus != http.StatusOK || !bytes.Contains(rankingBody, []byte(`"nickname":"匿名学习者"`)) || !bytes.Contains(rankingBody, []byte(`"system_avatar":"scholar-blue"`)) || bytes.Contains(rankingBody, []byte(userID)) || bytes.Contains(rankingBody, []byte(`"user_id"`)) {
+		t.Fatalf("anonymous public ranking = %d %s", rankingStatus, rankingBody)
 	}
 }
 

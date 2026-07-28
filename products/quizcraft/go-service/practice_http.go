@@ -245,7 +245,10 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	router.Get("/auth/callback", service.finishPlatformLogin)
 	router.With(service.authenticateConsoleSummary).Get("/api/v1/console-summary", service.consoleSummary)
 	if service.catalogClientID != "" {
-		router.With(service.authenticatePortalCatalog).Get("/api/v1/banks", service.listBanks)
+		portalRead := router.With(service.authenticatePortalRead)
+		portalRead.Get("/api/v1/banks", service.listBanks)
+		portalRead.Get("/api/v1/rankings/overall", service.overallRanking)
+		portalRead.Get("/api/v1/banks/{bank_id}/rankings", service.bankRanking)
 	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
@@ -267,9 +270,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	writes.Put("/api/v1/banks/{bank_id}/favorites/{question_id}", service.favoriteQuestion)
 	writes.Delete("/api/v1/banks/{bank_id}/favorites/{question_id}", service.unfavoriteQuestion)
 	writes.Post("/api/v1/banks/{bank_id}/favorites/practice-sessions", service.createFavoritesSession)
-	router.Get("/api/v1/rankings/overall", service.overallRanking)
 	router.Get("/api/v1/rankings/legacy", service.legacyRanking)
-	router.Get("/api/v1/banks/{bank_id}/rankings", service.bankRanking)
 	writes.Patch("/api/v1/ranking-profile", service.updateRankingProfile)
 	writes.Post("/api/v1/practice/sessions", service.createSession)
 	writes.Post("/api/v1/practice/sessions/{session_id}/answers", service.submitAnswer)
@@ -447,6 +448,12 @@ func (service *practiceHTTP) updateRankingProfile(writer http.ResponseWriter, re
 
 func normalizeRankingNickname(value string) (string, bool) {
 	value = strings.TrimSpace(norm.NFKC.String(value))
+	if value == "" {
+		return "匿名学习者", true
+	}
+	if looksLikeRankingIdentifier(value) {
+		return "", false
+	}
 	length := len([]rune(value))
 	if length < 1 || length > 32 {
 		return "", false
@@ -467,6 +474,22 @@ func normalizeRankingNickname(value string) (string, bool) {
 		}
 	}
 	return value, true
+}
+
+func looksLikeRankingIdentifier(value string) bool {
+	if strings.Contains(value, "@") {
+		return true
+	}
+	compact := strings.ReplaceAll(value, "-", "")
+	if len(compact) != 32 {
+		return false
+	}
+	for _, r := range compact {
+		if !('0' <= r && r <= '9') && !('a' <= r && r <= 'f') && !('A' <= r && r <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func validSystemAvatar(value string) bool {

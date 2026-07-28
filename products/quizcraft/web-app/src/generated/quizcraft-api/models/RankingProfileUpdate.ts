@@ -4,6 +4,9 @@
 /* eslint-disable */
 export type RankingProfileUpdate = {
     visible: boolean;
+    /**
+     * Leave empty to use the neutral anonymous public label.
+     */
     nickname: string;
     system_avatar: string;
 };

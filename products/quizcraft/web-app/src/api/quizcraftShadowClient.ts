@@ -4,7 +4,6 @@ import {
   FavoritesService,
   OpenAPI,
   PracticeService,
-  RankingService,
   WorkshopService,
   type BankImportRequest,
   type BankVersion,
@@ -401,21 +400,5 @@ export const shadowFavoritesApi = {
       questions: response.data.questions.map(toQuestion),
       excludedUnavailableCount: response.data.excluded_unavailable_count,
     };
-  },
-};
-
-export const shadowRankingApi = {
-  async get(scope: 'overall' | 'bank', period: 'weekly' | 'lifetime', bankId?: string) {
-    configureGeneratedClient();
-    if (scope === 'bank') {
-      if (!bankId) throw new Error('请选择题库');
-      return (await RankingService.getBankRanking({ bankId, period })).data;
-    }
-    return (await RankingService.getOverallRanking({ period })).data;
-  },
-
-  async updateProfile(input: { visible: boolean; nickname: string; system_avatar: string }) {
-    configureGeneratedClient();
-    return RankingService.updateRankingProfile({ idempotencyKey: randomKey(), requestBody: input });
   },
 };

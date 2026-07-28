@@ -145,12 +145,30 @@ func TestPracticeHTTPCatalogUsesPublishedQuizCraftV2Facts(t *testing.T) {
 
 func requestCatalog(t *testing.T, baseURL, permission string) (int, []byte) {
 	t.Helper()
-	return sendCatalogRequest(t, newCatalogRequest(t, baseURL, permission))
+	return requestPortalRead(t, baseURL, "/api/v1/banks", permission, "req_catalog_v2_test")
+}
+
+func requestPortalRead(t *testing.T, baseURL, path, permission, requestID string) (int, []byte) {
+	t.Helper()
+	return sendCatalogRequest(t, newPortalReadRequest(t, baseURL, path, permission, requestID))
+}
+
+func requestPortalReadAt(t *testing.T, baseURL, path, permission, requestID string, at time.Time) (int, []byte) {
+	t.Helper()
+	return sendCatalogRequest(t, newPortalReadRequestAt(t, baseURL, path, permission, requestID, at))
 }
 
 func newCatalogRequest(t *testing.T, baseURL, permission string) *http.Request {
+	return newPortalReadRequest(t, baseURL, "/api/v1/banks", permission, "req_catalog_v2_test")
+}
+
+func newPortalReadRequest(t *testing.T, baseURL, path, permission, requestID string) *http.Request {
+	return newPortalReadRequestAt(t, baseURL, path, permission, requestID, time.Now())
+}
+
+func newPortalReadRequestAt(t *testing.T, baseURL, path, permission, requestID string, at time.Time) *http.Request {
 	t.Helper()
-	request, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/banks", nil)
+	request, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +177,7 @@ func newCatalogRequest(t *testing.T, baseURL, permission string) *http.Request {
 		t.Fatal(err)
 	}
 	nonceText := base64.RawURLEncoding.EncodeToString(nonce)
-	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	timestamp := strconv.FormatInt(at.Unix(), 10)
 	digest := sha256.Sum256(nil)
 	canonical := strings.Join([]string{http.MethodGet, request.URL.RequestURI(), timestamp, nonceText, hex.EncodeToString(digest[:])}, "\n")
 	mac := hmac.New(sha256.New, []byte(portalCatalogSecret))
@@ -173,7 +191,7 @@ func newCatalogRequest(t *testing.T, baseURL, permission string) *http.Request {
 	request.Header.Set("X-Permission-Code", permission)
 	request.Header.Set("X-Scope-Kind", "product")
 	request.Header.Set("X-Product-Code", "quizcraft")
-	request.Header.Set("X-Request-Id", "req_catalog_v2_test")
+	request.Header.Set("X-Request-Id", requestID)
 	return request
 }
 
