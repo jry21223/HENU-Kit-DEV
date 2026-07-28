@@ -18,7 +18,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var consoleRequestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
+var serviceRequestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
 
 type serviceAuthRequirement struct {
 	clientID           string
@@ -247,7 +247,7 @@ func (service *practiceHTTP) consoleSummary(writer http.ResponseWriter, request 
 		return
 	}
 	requestID := request.Header.Get("X-Request-Id")
-	if len(requestID) > 120 || !consoleRequestIDPattern.MatchString(requestID) {
+	if len(requestID) > 120 || !serviceRequestIDPattern.MatchString(requestID) {
 		requestID = "req_summary_invalid"
 	}
 	data := map[string]any{

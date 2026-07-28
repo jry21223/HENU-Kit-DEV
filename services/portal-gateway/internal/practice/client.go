@@ -42,10 +42,9 @@ var (
 	ErrRankingUnavailable  = ErrPortalReadUnavailable
 	ErrInvalidRanking      = ErrInvalidPortalRead
 
-	ErrStatsUnauthorized = ErrPortalReadUnauthorized
-	ErrStatsForbidden    = ErrPortalReadForbidden
-	ErrStatsUnavailable  = ErrPortalReadUnavailable
-	ErrInvalidStats      = ErrInvalidPortalRead
+	ErrStatsUnauthorized = errors.New("QuizCraft statistics actor is invalid")
+	ErrStatsUnavailable  = errors.New("QuizCraft statistics are unavailable")
+	ErrInvalidStats      = errors.New("QuizCraft returned invalid personal statistics")
 )
 
 // Client is an internal, read-only client for QuizCraft catalog and ranking
@@ -272,12 +271,12 @@ func (c *Client) actorBoundPersonalStats(ctx context.Context, actorUserID, reque
 	switch resp.StatusCode {
 	case http.StatusOK:
 		return resp, nil
-	case http.StatusUnauthorized:
+	case http.StatusUnauthorized, http.StatusForbidden:
 		_ = resp.Body.Close()
-		return nil, ErrStatsUnauthorized
-	case http.StatusForbidden:
-		_ = resp.Body.Close()
-		return nil, ErrStatsForbidden
+		// Portal Gateway has already checked the browser's session and live
+		// permission. A Core 401/403 here is an internal service-auth failure,
+		// never evidence that the browser should be asked to sign in again.
+		return nil, fmt.Errorf("Portal personal stats service authentication: %w", ErrStatsUnavailable)
 	default:
 		_ = resp.Body.Close()
 		return nil, fmt.Errorf("Portal personal stats status %d: %w", resp.StatusCode, ErrStatsUnavailable)

@@ -99,12 +99,16 @@ func TestPracticeHTTPPersonalStatsAggregatesImmutableAttempts(t *testing.T) {
 		t.Fatalf("replayed answer = %d %s", replayStatus, replayBody)
 	}
 
-	status, body := requestPersonalStats(t, server.URL, userID)
+	statsRequest := newPersonalStatsRequest(t, server.URL, userID)
+	status, body, headers := sendCatalogRequestWithHeaders(t, statsRequest)
 	if status != http.StatusOK {
 		t.Fatalf("personal stats = %d %s", status, body)
 	}
 	var stats apiEnvelope[personalStatsResponse]
 	decodeJSON(t, body, &stats)
+	if got, want := headers.Get("X-Request-Id"), statsRequest.Header.Get("X-Request-Id"); got != want || stats.RequestID != want {
+		t.Fatalf("personal stats request ID = header:%q body:%q want:%q", got, stats.RequestID, want)
+	}
 	if stats.Data.TotalAnswers != 4 || stats.Data.CorrectAnswers != 1 || stats.Data.Accuracy != 25 || stats.Data.StreakDays != 1 {
 		t.Fatalf("personal stats aggregate = %+v", stats.Data)
 	}
@@ -189,6 +193,20 @@ func correctAnswerFor(question practiceQuestionResponse) any {
 func requestPersonalStats(t *testing.T, baseURL, actor string) (int, []byte) {
 	t.Helper()
 	return sendCatalogRequest(t, newPersonalStatsRequest(t, baseURL, actor))
+}
+
+func sendCatalogRequestWithHeaders(t *testing.T, request *http.Request) (int, []byte, http.Header) {
+	t.Helper()
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var body bytes.Buffer
+	if _, err := body.ReadFrom(response.Body); err != nil {
+		t.Fatal(err)
+	}
+	return response.StatusCode, body.Bytes(), response.Header
 }
 
 func newPersonalStatsRequest(t *testing.T, baseURL, actor string) *http.Request {

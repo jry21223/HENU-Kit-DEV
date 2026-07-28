@@ -233,6 +233,9 @@ services:
         NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL: ${NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL:-/api}
         NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: ${NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY:-1}
         NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG: ${NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG:-0}
+        # This public Next.js value is baked into the Portal image. #166 must
+        # rebuild the fixed-SHA Portal artifact when enabling the V2 read path.
+        NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS: ${NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS:-0}
     environment:
       NODE_ENV: production
       PORT: 3001

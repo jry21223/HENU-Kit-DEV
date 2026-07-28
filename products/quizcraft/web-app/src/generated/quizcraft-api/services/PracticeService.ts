@@ -169,14 +169,24 @@ export class PracticeService {
     }
     /**
      * Read one authenticated user's fact-derived Practice statistics for Portal
-     * The trusted Portal actor header is bound into the signed service request and cannot be substituted in transit.
+     * The trusted Portal actor header is bound as the sixth line of the signed service request and cannot be substituted in transit.
      * @returns PersonalPracticeStatsEnvelope Persistent stats and mastery rebuilt from immutable Practice attempts
      * @throws ApiError
      */
-    public static getPersonalPracticeStats(): CancelablePromise<PersonalPracticeStatsEnvelope> {
+    public static getPersonalPracticeStats({
+        xActorUserId,
+    }: {
+        /**
+         * UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+         */
+        xActorUserId: string,
+    }): CancelablePromise<PersonalPracticeStatsEnvelope> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/stats',
+            headers: {
+                'X-Actor-User-Id': xActorUserId,
+            },
             errors: {
                 401: `Missing or invalid actor credentials`,
                 403: `Permission code or product Scope denied`,

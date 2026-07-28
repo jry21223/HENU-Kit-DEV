@@ -182,10 +182,16 @@ paths:
   /api/v1/stats:
     get:
       summary: Read one authenticated user's fact-derived Practice statistics for Portal
-      description: The trusted Portal actor header is bound into the signed service request and cannot be substituted in transit.
+      description: The trusted Portal actor header is bound as the sixth line of the signed service request and cannot be substituted in transit.
       tags: [Practice]
       operationId: getPersonalPracticeStats
-      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [], portalCatalogActor: [] }]
+      parameters:
+        - name: X-Actor-User-Id
+          in: header
+          required: true
+          description: UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+          schema: { type: string, format: uuid }
       responses:
         '200': { description: Persistent stats and mastery rebuilt from immutable Practice attempts, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalPracticeStatsEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -561,6 +567,7 @@ components:
     portalCatalogPermission: { type: apiKey, in: header, name: X-Permission-Code, description: Must be portal.practice.read after Portal Gateway authorization. }
     portalCatalogScope: { type: apiKey, in: header, name: X-Scope-Kind, description: Must be product. }
     portalCatalogProduct: { type: apiKey, in: header, name: X-Product-Code, description: Must be quizcraft. }
+    portalCatalogActor: { type: apiKey, in: header, name: X-Actor-User-Id, description: "Required UUID Portal actor for personal statistics, included as the sixth line after the body digest in the HMAC-SHA256 canonical request." }
     portalPracticeBasic: { type: http, scheme: basic, description: Dedicated Portal Gateway to QuizCraft command service credential. }
     portalPracticeSignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, raw body digest, and (only for signed-in callers) X-Actor-User-Id." }
     cutoverEvidence: { type: apiKey, in: header, name: X-QuizCraft-Cutover-Secret, description: Dedicated operator-only secret for release evidence. }

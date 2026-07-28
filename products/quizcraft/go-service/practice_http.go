@@ -1177,6 +1177,8 @@ func (service *practiceHTTP) personalStats(writer http.ResponseWriter, request *
 		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read persistent Practice statistics")
 		return
 	}
+	requestID := serviceRequestIDFromHeader(request)
+	writer.Header().Set("X-Request-Id", requestID)
 
 	tx, err := service.database.BeginTx(request.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -1233,7 +1235,7 @@ func (service *practiceHTTP) personalStats(writer http.ResponseWriter, request *
 			CorrectQuestions: row.CorrectQuestions,
 		})
 	}
-	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: stats})
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID, Data: stats})
 }
 
 // portalActorUserID is called only after authenticatePortalPersonalStats has
@@ -1685,6 +1687,14 @@ func boolInt(value bool) int64 {
 
 func requestID() string {
 	return "req_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+}
+
+func serviceRequestIDFromHeader(request *http.Request) string {
+	value := strings.TrimSpace(request.Header.Get("X-Request-Id"))
+	if len(value) <= 120 && serviceRequestIDPattern.MatchString(value) {
+		return value
+	}
+	return requestID()
 }
 
 func writeError(writer http.ResponseWriter, status int, code, message string) {

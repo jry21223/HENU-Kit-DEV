@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -50,7 +51,8 @@ func TestPersonalPracticeStatsUsesSignedInUserAndNeverFallsBackToPortalAPI(t *te
 		assertActorBoundStatsSignature(t, request, personalStatsUserID, "catalog-secret-with-enough-entropy")
 		coreCalls.Add(1)
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"request_id":"req_core_stats","data":{"total_answers":4,"correct_answers":3,"accuracy":75,"streak_days":2,"mastery":[{"bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","label":"计算机基础","value":50,"total_questions":4,"correct_questions":2}]}}`))
+		writer.Header().Set("X-Request-Id", request.Header.Get("X-Request-Id"))
+		_, _ = writer.Write([]byte(`{"request_id":"req_gateway_stats","data":{"total_answers":4,"correct_answers":3,"accuracy":75,"streak_days":2,"mastery":[{"bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","label":"计算机基础","value":50,"total_questions":4,"correct_questions":2}]}}`))
 	}))
 	defer core.Close()
 
@@ -69,12 +71,76 @@ func TestPersonalPracticeStatsUsesSignedInUserAndNeverFallsBackToPortalAPI(t *te
 		if err := json.Unmarshal(response.Body.Bytes(), &stats); err != nil {
 			t.Fatal(err)
 		}
-		if stats.RequestID != "req_core_stats" || stats.Data.TotalAnswers != 4 || stats.Data.CorrectAnswers != 3 || stats.Data.Accuracy != 75 || stats.Data.StreakDays != 2 || len(stats.Data.Mastery) != 1 {
+		if response.Header().Get("X-Request-Id") != "req_gateway_stats" || stats.RequestID != "req_gateway_stats" || stats.Data.TotalAnswers != 4 || stats.Data.CorrectAnswers != 3 || stats.Data.Accuracy != 75 || stats.Data.StreakDays != 2 || len(stats.Data.Mastery) != 1 {
 			t.Fatalf("device %d stats = %+v", index, stats)
 		}
 	}
 	if platformCalls.Load() != 2 || coreCalls.Load() != 2 || portalAPICalls.Load() != 0 {
 		t.Fatalf("stats chain calls = platform:%d core:%d portal-api:%d", platformCalls.Load(), coreCalls.Load(), portalAPICalls.Load())
+	}
+}
+
+func TestPersonalPracticeStatsNormalizesInvalidRequestIDBeforeCallingCore(t *testing.T) {
+	platform := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v1/authorization/check" {
+			t.Fatalf("Platform Core path = %q", request.URL.Path)
+		}
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer platform.Close()
+
+	var coreRequestID string
+	core := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		coreRequestID = request.Header.Get("X-Request-Id")
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("X-Request-Id", coreRequestID)
+		_, _ = writer.Write([]byte(`{"request_id":"` + coreRequestID + `","data":{"total_answers":0,"correct_answers":0,"accuracy":0,"streak_days":0,"mastery":[]}}`))
+	}))
+	defer core.Close()
+
+	handler := newPersonalStatsHandler(t, platform.URL, core.URL, "http://127.0.0.1:9")
+	request := httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/practice/stats", nil)
+	request.Header.Set("X-Request-Id", "browser supplied id with spaces")
+	request.AddCookie(sessionCookie(t, handler, personalStatsUserID))
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("stats = %d %s", response.Code, response.Body.String())
+	}
+	if !regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`).MatchString(coreRequestID) || coreRequestID != response.Header().Get("X-Request-Id") {
+		t.Fatalf("request ID propagation = core:%q browser:%q", coreRequestID, response.Header().Get("X-Request-Id"))
+	}
+}
+
+func TestPersonalPracticeStatsTreatsCoreServiceAuthenticationRejectionAsUnavailable(t *testing.T) {
+	for _, coreStatus := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(coreStatus), func(t *testing.T) {
+			platform := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/api/v1/authorization/check" {
+					t.Fatalf("Platform Core path = %q", request.URL.Path)
+				}
+				writer.WriteHeader(http.StatusOK)
+			}))
+			defer platform.Close()
+			core := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(coreStatus)
+				_, _ = writer.Write([]byte(`{"error":"service authentication rejected"}`))
+			}))
+			defer core.Close()
+
+			handler := newPersonalStatsHandler(t, platform.URL, core.URL, "http://127.0.0.1:9")
+			failure := getPersonalStats(t, handler, sessionCookie(t, handler, personalStatsUserID))
+			if failure.Code != http.StatusServiceUnavailable || strings.Contains(failure.Body.String(), `"data"`) {
+				t.Fatalf("Core %d response = %d %s", coreStatus, failure.Code, failure.Body.String())
+			}
+			var envelope contract.ErrorEnvelope
+			if err := json.Unmarshal(failure.Body.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if envelope.Error != "practice statistics are temporarily unavailable" {
+				t.Fatalf("Core %d error envelope = %+v", coreStatus, envelope)
+			}
+		})
 	}
 }
 

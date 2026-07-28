@@ -1250,6 +1250,12 @@ type GetOverallRankingParams struct {
 // GetOverallRankingParamsPeriod defines parameters for GetOverallRanking.
 type GetOverallRankingParamsPeriod string
 
+// GetPersonalPracticeStatsParams defines parameters for GetPersonalPracticeStats.
+type GetPersonalPracticeStatsParams struct {
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
+}
+
 // CreateWorkshopBankParams defines parameters for CreateWorkshopBank.
 type CreateWorkshopBankParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
