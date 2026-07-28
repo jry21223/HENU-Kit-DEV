@@ -42,6 +42,12 @@ LIMIT sqlc.arg(question_count);
 -- name: LockSubmission :exec
 SELECT pg_advisory_xact_lock(hashtextextended($1,0));
 
+-- name: GetPracticeSessionActor :one
+SELECT COALESCE(c.user_actor_key,s.actor_key) AS actor_key
+FROM quizcraft_practice_sessions s
+LEFT JOIN quizcraft_practice_session_claims c ON c.session_id=s.id
+WHERE s.id=$1;
+
 -- name: GetSessionQuestion :one
 SELECT s.bank_id,s.bank_version_id,COALESCE(c.user_id,s.user_id) AS user_id,COALESCE(c.user_actor_key,s.actor_key) AS actor_key,qv.type,qv.answer,COALESCE(qv.options,'null'::jsonb) AS options,qv.analysis,b.bank_key,q.source_question_id
 FROM quizcraft_practice_sessions s

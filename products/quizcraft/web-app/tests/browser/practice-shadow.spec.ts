@@ -8,24 +8,12 @@ const sessionId = '55555555-5555-4555-8555-555555555555';
 
 test('React uses the generated Practice client for a guest session', async ({ page }) => {
   const calls: string[] = [];
-  await page.addInitScript(() => {
-    localStorage.setItem('quizcraft_access_token', 'browser-controlled-token');
-  });
-  await page.context().addCookies([{
-    name: 'quizcraft_session',
-    value: 'server-issued-http-only-session',
-    domain: '127.0.0.1',
-    path: '/',
-    httpOnly: true,
-    secure: false,
-    sameSite: 'Lax',
-  }]);
   await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
     const request = route.request();
     calls.push(`${request.method()} ${new URL(request.url()).pathname}`);
     expect(request.headers().authorization).toBeUndefined();
-    expect((await request.allHeaders()).cookie).toContain('quizcraft_session=server-issued-http-only-session');
     if (request.method() === 'GET' && request.url().endsWith('/api/v1/banks')) {
+      expect((await request.allHeaders()).cookie).toBeUndefined();
       await route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
@@ -45,6 +33,7 @@ test('React uses the generated Practice client for a guest session', async ({ pa
     }
     if (request.method() === 'POST' && request.url().endsWith('/api/v1/practice/sessions')) {
       expect(request.headers()['idempotency-key']).toBeTruthy();
+      expect((await request.allHeaders()).cookie).toBeUndefined();
       expect(request.postDataJSON()).toMatchObject({
         bank_id: bankId,
         bank_version_id: bankVersionId,
@@ -53,6 +42,7 @@ test('React uses the generated Practice client for a guest session', async ({ pa
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
+        headers: { 'set-cookie': 'quizcraft_anonymous=server-issued-anonymous-session; Path=/; HttpOnly; SameSite=Lax' },
         body: JSON.stringify({
           request_id: 'req_browser_session',
           data: {
@@ -77,6 +67,7 @@ test('React uses the generated Practice client for a guest session', async ({ pa
     }
     if (request.method() === 'POST' && request.url().endsWith(`/api/v1/practice/sessions/${sessionId}/answers`)) {
       expect(request.headers()['idempotency-key']).toBeTruthy();
+      expect((await request.allHeaders()).cookie).toContain('quizcraft_anonymous=server-issued-anonymous-session');
       expect(request.postDataJSON()).toEqual({
         question_id: questionId,
         question_version_id: questionVersionId,
@@ -126,6 +117,101 @@ test('React uses the generated Practice client for a guest session', async ({ pa
   ]);
   expect(calls.filter((call) => call === 'GET /api/v1/banks').length).toBeGreaterThanOrEqual(1);
   expect(calls.every((call) => call.includes('/api/v1/'))).toBe(true);
+});
+
+test('answer retry keeps its idempotency key after a browser refresh', async ({ page }) => {
+  const answerKeys: string[] = [];
+  let answerRequests = 0;
+  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && request.url().endsWith('/api/v1/banks')) {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          request_id: 'req_retry_banks',
+          data: [{
+            bank_id: bankId,
+            bank_version_id: bankVersionId,
+            bank_key: 'browser-bank',
+            name: '浏览器重试题库',
+            content_sha256: 'b'.repeat(64),
+            question_count: 1,
+            chapters: [{ id: 'ch01', name: '第一章' }],
+          }],
+        }),
+      });
+      return;
+    }
+    if (request.method() === 'POST' && request.url().endsWith('/api/v1/practice/sessions')) {
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          request_id: 'req_retry_session',
+          data: {
+            session_id: sessionId,
+            bank_id: bankId,
+            bank_version_id: bankVersionId,
+            mode: 'random',
+            excluded_unavailable_count: 0,
+            questions: [{
+              question_id: questionId,
+              question_version_id: questionVersionId,
+              type: 'single',
+              chapter_id: 'ch01',
+              chapter: '第一章',
+              content: '刷新后仍需使用同一个重试键',
+              options: ['1', '2'],
+            }],
+          },
+        }),
+      });
+      return;
+    }
+    if (request.method() === 'POST' && request.url().endsWith(`/api/v1/practice/sessions/${sessionId}/answers`)) {
+      answerRequests += 1;
+      answerKeys.push(request.headers()['idempotency-key']);
+      if (answerRequests === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ request_id: 'req_retry_failed', error: { code: 'database_unavailable', message: 'unavailable' } }),
+        });
+        return;
+      }
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          request_id: 'req_retry_answer',
+          data: {
+            question_id: questionId,
+            question_version_id: questionVersionId,
+            correct: true,
+            replayed: false,
+            expected_answer: 1,
+            analysis: '重试由服务端确认',
+          },
+        }),
+      });
+      return;
+    }
+    await route.abort();
+  });
+
+  await page.goto('/practice');
+  await page.getByRole('button', { name: '开始练习' }).click();
+  await expect(page.getByRole('heading', { name: '刷新后仍需使用同一个重试键' })).toBeVisible();
+  await page.getByRole('button', { name: /B.*2/ }).click();
+  await page.getByRole('button', { name: '提交答案' }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '刷新后仍需使用同一个重试键' })).toBeVisible();
+  await page.getByRole('button', { name: /B.*2/ }).click();
+  await page.getByRole('button', { name: '提交答案' }).click();
+  await expect(page.getByText('重试由服务端确认')).toBeVisible();
+  expect(answerKeys).toHaveLength(2);
+  expect(answerKeys[1]).toBe(answerKeys[0]);
 });
 
 test('Workshop uses scoped generated APIs and requires human validation before publish', async ({ page }) => {

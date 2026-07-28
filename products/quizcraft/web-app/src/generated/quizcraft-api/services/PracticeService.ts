@@ -145,6 +145,7 @@ export class PracticeService {
                 400: `Invalid request`,
                 401: `Missing or invalid actor credentials`,
                 403: `Permission code or product Scope denied`,
+                404: `Resource or operation is unknown to this actor`,
                 409: `Idempotency payload or optimistic version conflict`,
                 503: `PostgreSQL or a required service is unavailable`,
             },

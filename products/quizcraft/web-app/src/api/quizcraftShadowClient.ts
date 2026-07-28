@@ -47,6 +47,7 @@ const persistActiveSession = (session: ShadowPracticeSession) => {
       bankId: session.bankId,
       bankKey: session.bankKey,
       versions: Array.from(session.versions.entries()),
+      pendingKeys: Array.from(session.pendingKeys.entries()),
     }));
   }
 };
@@ -59,6 +60,7 @@ const restoreActiveSession = (): ShadowPracticeSession | null => {
       bankId?: string;
       bankKey?: string;
       versions?: Array<[string, string]>;
+      pendingKeys?: Array<[string, string]>;
     };
     if (!stored.id || !stored.bankId || !stored.bankKey || !Array.isArray(stored.versions)) return null;
     activeSession = {
@@ -66,7 +68,7 @@ const restoreActiveSession = (): ShadowPracticeSession | null => {
       bankId: stored.bankId,
       bankKey: stored.bankKey,
       versions: new Map(stored.versions),
-      pendingKeys: new Map(),
+      pendingKeys: new Map(stored.pendingKeys || []),
     };
   } catch {
     return null;
@@ -189,6 +191,7 @@ export const shadowPracticeApi = {
     const idempotencyKey =
       session.pendingKeys.get(questionId) || randomKey();
     session.pendingKeys.set(questionId, idempotencyKey);
+    persistActiveSession(session);
     const response = await PracticeService.submitPracticeAnswer({
       sessionId: session.id,
       idempotencyKey,
@@ -199,6 +202,7 @@ export const shadowPracticeApi = {
       },
     });
     session.pendingKeys.delete(questionId);
+    persistActiveSession(session);
     return {
       correct: response.data.correct,
       correct_answer: response.data.expected_answer,

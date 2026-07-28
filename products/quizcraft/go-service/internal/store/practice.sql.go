@@ -278,6 +278,20 @@ func (q *Queries) GetPracticeAttemptResponse(ctx context.Context, arg GetPractic
 	return response_body, err
 }
 
+const getPracticeSessionActor = `-- name: GetPracticeSessionActor :one
+SELECT COALESCE(c.user_actor_key,s.actor_key) AS actor_key
+FROM quizcraft_practice_sessions s
+LEFT JOIN quizcraft_practice_session_claims c ON c.session_id=s.id
+WHERE s.id=$1
+`
+
+func (q *Queries) GetPracticeSessionActor(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getPracticeSessionActor, id)
+	var actor_key string
+	err := row.Scan(&actor_key)
+	return actor_key, err
+}
+
 const getSessionQuestion = `-- name: GetSessionQuestion :one
 SELECT s.bank_id,s.bank_version_id,COALESCE(c.user_id,s.user_id) AS user_id,COALESCE(c.user_actor_key,s.actor_key) AS actor_key,qv.type,qv.answer,COALESCE(qv.options,'null'::jsonb) AS options,qv.analysis,b.bank_key,q.source_question_id
 FROM quizcraft_practice_sessions s

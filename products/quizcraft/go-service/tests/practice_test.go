@@ -202,6 +202,36 @@ func TestPracticeHTTPIssuesSecureAnonymousCookie(t *testing.T) {
 	}
 }
 
+func TestPracticeHTTPRejectsMissingSessionWithoutWritingFacts(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "practice-missing-session-"+uuid.NewString())
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	var attemptsBefore, idempotencyFactsBefore int
+	if err := pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM quizcraft_practice_attempts),(SELECT count(*) FROM quizcraft_idempotency_results)`).Scan(&attemptsBefore, &idempotencyFactsBefore); err != nil {
+		t.Fatal(err)
+	}
+	question := report.Questions[0]
+	status, body := requestJSON(t, http.MethodPost, server.URL+"/api/v1/practice/sessions/"+uuid.NewString()+"/answers", map[string]string{"Idempotency-Key": "missing-session-answer-0001"}, map[string]any{
+		"question_id": question.QuestionID, "question_version_id": question.QuestionVersionID, "answer": 0,
+	})
+	if status != http.StatusNotFound || !bytes.Contains(body, []byte(`"code":"session_not_found"`)) {
+		t.Fatalf("missing session = %d %s", status, body)
+	}
+	var attempts, idempotencyFacts int
+	if err := pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM quizcraft_practice_attempts),(SELECT count(*) FROM quizcraft_idempotency_results)`).Scan(&attempts, &idempotencyFacts); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != attemptsBefore || idempotencyFacts != idempotencyFactsBefore {
+		t.Fatalf("missing session changed attempt/idempotency facts from %d/%d to %d/%d", attemptsBefore, idempotencyFactsBefore, attempts, idempotencyFacts)
+	}
+}
+
 func TestPracticeHTTPScoresImportedChoiceTextAnswers(t *testing.T) {
 	pool := practicePool(t)
 	var bank map[string]any
