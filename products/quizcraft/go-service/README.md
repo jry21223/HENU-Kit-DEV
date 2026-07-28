@@ -69,7 +69,7 @@ QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' go run ./cmd/migrate
 QUIZCRAFT_V2_DATABASE_URL='postgres://.../quizcraft_v2' go run ./cmd/migrate # reports only skipped artifacts
 ```
 
-An existing released V2 schema that was manually applied through `000008` is adopted only on PostgreSQL 16 when its columns, constraints, indexes, non-internal triggers, and trigger functions match the frozen released catalog fingerprint; the report records those immutable checksums as `adopted` and then applies every later tracked artifact (currently `000009` and `000010`). A partial or altered untracked schema fails before a migration-history table is created.
+An existing released V2 schema that was manually applied through `000008` is adopted only on PostgreSQL 16 when its columns, constraints, indexes, non-internal triggers, and trigger functions match the frozen released catalog fingerprint; the report records those immutable checksums as `adopted` and then applies every later tracked artifact (currently `000009` through `000011`). A partial or altered untracked schema fails before a migration-history table is created.
 
 Freeze a read-only legacy snapshot before the full import. The artifact includes the source database identity and a content checksum, and is create-only so it can be reused after an interruption. Then run the full PostgreSQL-to-PostgreSQL migration:
 

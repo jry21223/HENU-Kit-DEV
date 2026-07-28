@@ -1052,7 +1052,9 @@ func (service *practiceHTTP) submitAnswer(writer http.ResponseWriter, request *h
 	response := responseEnvelope{RequestID: requestID(), Data: result}
 	encoded, _ := json.Marshal(response)
 	answerJSON, _ := json.Marshal(input.Answer)
-	if err = queries.CreatePracticeAttempt(request.Context(), store.CreatePracticeAttemptParams{ID: uuid.New(), SessionID: sessionID, BankID: question.BankID, BankVersionID: question.BankVersionID, QuestionID: input.QuestionID, QuestionVersionID: input.QuestionVersionID, UserID: nullableUUID(actor.userID), SubmittedAnswer: answerJSON, Correct: correct, ExpectedAnswer: question.Answer, Analysis: question.Analysis, ResponseBody: string(encoded)}); err != nil {
+	attemptID := uuid.New()
+	attemptSubmittedAt, err := queries.CreatePracticeAttempt(request.Context(), store.CreatePracticeAttemptParams{ID: attemptID, SessionID: sessionID, BankID: question.BankID, BankVersionID: question.BankVersionID, QuestionID: input.QuestionID, QuestionVersionID: input.QuestionVersionID, UserID: nullableUUID(actor.userID), SubmittedAnswer: answerJSON, Correct: correct, ExpectedAnswer: question.Answer, Analysis: question.Analysis, ResponseBody: string(encoded)})
+	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
 		return
 	}
@@ -1061,7 +1063,7 @@ func (service *practiceHTTP) submitAnswer(writer http.ResponseWriter, request *h
 		return
 	}
 	if actor.userID != nil {
-		if err = queries.UpdateLearningState(request.Context(), store.UpdateLearningStateParams{UserID: *actor.userID, BankID: question.BankID, QuestionID: input.QuestionID, QuestionVersionID: input.QuestionVersionID, Wrong: !correct, CorrectCount: boolInt(correct)}); err != nil {
+		if err = queries.UpdateLearningState(request.Context(), store.UpdateLearningStateParams{UserID: *actor.userID, BankID: question.BankID, QuestionID: input.QuestionID, QuestionVersionID: input.QuestionVersionID, Wrong: !correct, CorrectCount: boolInt(correct), LatestAttemptID: attemptID, UpdatedAt: attemptSubmittedAt}); err != nil {
 			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
 			return
 		}

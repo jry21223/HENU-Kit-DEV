@@ -110,9 +110,10 @@ func (q *Queries) CountFavoritesForBank(ctx context.Context, arg CountFavoritesF
 	return column_1, err
 }
 
-const createPracticeAttempt = `-- name: CreatePracticeAttempt :exec
+const createPracticeAttempt = `-- name: CreatePracticeAttempt :one
 INSERT INTO quizcraft_practice_attempts(id,session_id,bank_id,bank_version_id,question_id,question_version_id,user_id,submitted_answer,correct,expected_answer,analysis,response_body)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+RETURNING submitted_at
 `
 
 type CreatePracticeAttemptParams struct {
@@ -130,8 +131,8 @@ type CreatePracticeAttemptParams struct {
 	ResponseBody      string        `json:"response_body"`
 }
 
-func (q *Queries) CreatePracticeAttempt(ctx context.Context, arg CreatePracticeAttemptParams) error {
-	_, err := q.db.Exec(ctx, createPracticeAttempt,
+func (q *Queries) CreatePracticeAttempt(ctx context.Context, arg CreatePracticeAttemptParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, createPracticeAttempt,
 		arg.ID,
 		arg.SessionID,
 		arg.BankID,
@@ -145,7 +146,9 @@ func (q *Queries) CreatePracticeAttempt(ctx context.Context, arg CreatePracticeA
 		arg.Analysis,
 		arg.ResponseBody,
 	)
-	return err
+	var submitted_at pgtype.Timestamptz
+	err := row.Scan(&submitted_at)
+	return submitted_at, err
 }
 
 const createPracticeSession = `-- name: CreatePracticeSession :exec
@@ -257,13 +260,13 @@ WITH aggregates AS (
 ),
 latest AS (
   SELECT DISTINCT ON (user_id,bank_id,question_id)
-         user_id,bank_id,question_id,question_version_id,(NOT correct) AS wrong
+         user_id,bank_id,question_id,id AS latest_attempt_id,question_version_id,(NOT correct) AS wrong
   FROM quizcraft_practice_attempts
   WHERE user_id IS NOT NULL
   ORDER BY user_id,bank_id,question_id,submitted_at DESC,id DESC
 ),
 expected AS (
-  SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,
+  SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,latest.latest_attempt_id,
          latest.question_version_id,latest.wrong,aggregates.attempt_count,
          aggregates.correct_count,aggregates.updated_at
   FROM aggregates
@@ -272,6 +275,8 @@ expected AS (
 compared AS (
   SELECT expected.user_id AS expected_user_id,
          actual.user_id AS actual_user_id,
+         expected.latest_attempt_id AS expected_latest_attempt_id,
+         actual.latest_attempt_id AS actual_latest_attempt_id,
          expected.question_version_id AS expected_question_version_id,
          actual.question_version_id AS actual_question_version_id,
          expected.wrong AS expected_wrong,actual.wrong AS actual_wrong,
@@ -285,7 +290,8 @@ compared AS (
 SELECT count(*) FILTER (WHERE expected_user_id IS NOT NULL AND actual_user_id IS NULL)::bigint AS missing_rows,
        count(*) FILTER (WHERE expected_user_id IS NULL AND actual_user_id IS NOT NULL)::bigint AS extra_rows,
        count(*) FILTER (WHERE expected_user_id IS NOT NULL AND actual_user_id IS NOT NULL AND
-         (expected_question_version_id IS DISTINCT FROM actual_question_version_id OR
+         (expected_latest_attempt_id IS DISTINCT FROM actual_latest_attempt_id OR
+          expected_question_version_id IS DISTINCT FROM actual_question_version_id OR
           expected_wrong IS DISTINCT FROM actual_wrong OR
           expected_attempt_count IS DISTINCT FROM actual_attempt_count OR
           expected_correct_count IS DISTINCT FROM actual_correct_count OR
@@ -1160,14 +1166,14 @@ WITH aggregates AS (
 ),
 latest AS (
   SELECT DISTINCT ON (user_id,bank_id,question_id)
-         user_id,bank_id,question_id,question_version_id,(NOT correct) AS wrong
+         user_id,bank_id,question_id,id AS latest_attempt_id,question_version_id,(NOT correct) AS wrong
   FROM quizcraft_practice_attempts
   WHERE user_id IS NOT NULL
   ORDER BY user_id,bank_id,question_id,submitted_at DESC,id DESC
 )
-INSERT INTO quizcraft_learning_state(user_id,bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,updated_at)
+INSERT INTO quizcraft_learning_state(user_id,bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,latest_attempt_id,updated_at)
 SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,latest.question_version_id,
-       latest.wrong,aggregates.attempt_count,aggregates.correct_count,aggregates.updated_at
+       latest.wrong,aggregates.attempt_count,aggregates.correct_count,latest.latest_attempt_id,aggregates.updated_at
 FROM aggregates
 JOIN latest USING (user_id,bank_id,question_id)
 `
@@ -1222,23 +1228,38 @@ func (q *Queries) StoreIdempotencyResult(ctx context.Context, arg StoreIdempoten
 }
 
 const updateLearningState = `-- name: UpdateLearningState :exec
-INSERT INTO quizcraft_learning_state(user_id,bank_id,question_id,question_version_id,wrong,attempt_count,correct_count)
-VALUES($1,$2,$3,$4,$5,1,$6)
+INSERT INTO quizcraft_learning_state(user_id,bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,latest_attempt_id,updated_at)
+VALUES($1,$2,$3,$4,$5,1,$6,$7,$8)
 ON CONFLICT(user_id,bank_id,question_id) DO UPDATE
-SET question_version_id=EXCLUDED.question_version_id,
-    wrong=EXCLUDED.wrong,
+SET question_version_id=CASE
+        WHEN (EXCLUDED.updated_at,EXCLUDED.latest_attempt_id) > (quizcraft_learning_state.updated_at,quizcraft_learning_state.latest_attempt_id)
+        THEN EXCLUDED.question_version_id
+        ELSE quizcraft_learning_state.question_version_id
+    END,
+    wrong=CASE
+        WHEN (EXCLUDED.updated_at,EXCLUDED.latest_attempt_id) > (quizcraft_learning_state.updated_at,quizcraft_learning_state.latest_attempt_id)
+        THEN EXCLUDED.wrong
+        ELSE quizcraft_learning_state.wrong
+    END,
     attempt_count=quizcraft_learning_state.attempt_count+1,
     correct_count=quizcraft_learning_state.correct_count+EXCLUDED.correct_count,
-    updated_at=now()
+    latest_attempt_id=CASE
+        WHEN (EXCLUDED.updated_at,EXCLUDED.latest_attempt_id) > (quizcraft_learning_state.updated_at,quizcraft_learning_state.latest_attempt_id)
+        THEN EXCLUDED.latest_attempt_id
+        ELSE quizcraft_learning_state.latest_attempt_id
+    END,
+    updated_at=GREATEST(quizcraft_learning_state.updated_at,EXCLUDED.updated_at)
 `
 
 type UpdateLearningStateParams struct {
-	UserID            uuid.UUID `json:"user_id"`
-	BankID            uuid.UUID `json:"bank_id"`
-	QuestionID        uuid.UUID `json:"question_id"`
-	QuestionVersionID uuid.UUID `json:"question_version_id"`
-	Wrong             bool      `json:"wrong"`
-	CorrectCount      int64     `json:"correct_count"`
+	UserID            uuid.UUID          `json:"user_id"`
+	BankID            uuid.UUID          `json:"bank_id"`
+	QuestionID        uuid.UUID          `json:"question_id"`
+	QuestionVersionID uuid.UUID          `json:"question_version_id"`
+	Wrong             bool               `json:"wrong"`
+	CorrectCount      int64              `json:"correct_count"`
+	LatestAttemptID   uuid.UUID          `json:"latest_attempt_id"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) UpdateLearningState(ctx context.Context, arg UpdateLearningStateParams) error {
@@ -1249,6 +1270,8 @@ func (q *Queries) UpdateLearningState(ctx context.Context, arg UpdateLearningSta
 		arg.QuestionVersionID,
 		arg.Wrong,
 		arg.CorrectCount,
+		arg.LatestAttemptID,
+		arg.UpdatedAt,
 	)
 	return err
 }
