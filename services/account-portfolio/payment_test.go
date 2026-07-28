@@ -37,7 +37,8 @@ func TestFakePaymentProviderImplementsTheCompletePaymentSeam(t *testing.T) {
 	signed, err := provider.Sign(context.Background(), PaymentOrderRequest{
 		MerchantOrderID: "a1111111-1111-4111-8111-111111111111",
 		AmountCents:     lifetimeMembershipAmountCents,
-		Product:         "lifetime",
+		Currency:        lifetimeMembershipCurrency,
+		Plan:            lifetimeMembershipPlan,
 	})
 	if err != nil {
 		t.Fatal(err)

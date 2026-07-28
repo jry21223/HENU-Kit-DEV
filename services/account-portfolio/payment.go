@@ -13,7 +13,11 @@ import (
 	"time"
 )
 
-const lifetimeMembershipAmountCents = 990
+const (
+	lifetimeMembershipAmountCents = 990
+	lifetimeMembershipCurrency    = "CNY"
+	lifetimeMembershipPlan        = "lifetime"
+)
 
 // MembershipOrderStatus is the durable lifecycle for the one ¥9.9 lifetime
 // product. It intentionally does not model a provider-specific state.
@@ -31,7 +35,10 @@ const (
 // PaymentProvider isolates the provider-specific signing, ordering, querying,
 // notification verification, and refund protocols from Account Portfolio's
 // durable membership-order state machine. Production deliberately supplies no
-// implementation until a separate payment-provider Spike is approved.
+// implementation until a separate payment-provider Spike is approved. Its
+// CreateOrder implementation MUST be idempotent by the service-generated,
+// opaque PaymentOrderRequest.MerchantOrderID: repeated requests for that id
+// must return the same external order and must not create another charge.
 type PaymentProvider interface {
 	Name() string
 	Sign(context.Context, PaymentOrderRequest) (SignedPaymentOrder, error)
@@ -42,9 +49,12 @@ type PaymentProvider interface {
 }
 
 type PaymentOrderRequest struct {
+	// MerchantOrderID is an opaque, service-generated id persisted only in the
+	// payment intent. It is never derived from or returned as the public order id.
 	MerchantOrderID string
 	AmountCents     int
-	Product         string
+	Currency        string
+	Plan            string
 }
 
 type SignedPaymentOrder struct {
@@ -56,6 +66,8 @@ type ProviderOrder struct {
 	ExternalOrderID string
 	MerchantOrderID string
 	AmountCents     int
+	Currency        string
+	Plan            string
 	Status          MembershipOrderStatus
 }
 
@@ -64,6 +76,8 @@ type VerifiedPaymentNotification struct {
 	ExternalOrderID string                `json:"external_order_id"`
 	MerchantOrderID string                `json:"merchant_order_id"`
 	AmountCents     int                   `json:"amount_cents"`
+	Currency        string                `json:"currency"`
+	Plan            string                `json:"plan"`
 	Status          MembershipOrderStatus `json:"status"`
 	Sequence        int64                 `json:"sequence"`
 	OccurredAt      time.Time             `json:"occurred_at"`
@@ -84,7 +98,9 @@ func validProviderNotificationStatus(status MembershipOrderStatus) bool {
 
 // membershipOrderTransitionAllowed makes every terminal edge explicit. A
 // repeated pending-payment notice is permitted only to record a newer provider
-// sequence; it never creates an entitlement.
+// sequence; it never creates an entitlement. A verified refund may follow a
+// locally missed paid callback; it terminally reconciles a pending order but
+// cannot revoke an entitlement without a current paid ownership fact.
 func membershipOrderTransitionAllowed(from, to MembershipOrderStatus) bool {
 	if from == MembershipOrderPendingPayment && to == MembershipOrderPendingPayment {
 		return true
@@ -93,7 +109,7 @@ func membershipOrderTransitionAllowed(from, to MembershipOrderStatus) bool {
 	case MembershipOrderCreated:
 		return to == MembershipOrderPendingPayment || to == MembershipOrderFailed || to == MembershipOrderClosed
 	case MembershipOrderPendingPayment:
-		return to == MembershipOrderPaid || to == MembershipOrderClosed || to == MembershipOrderFailed
+		return to == MembershipOrderPaid || to == MembershipOrderClosed || to == MembershipOrderFailed || to == MembershipOrderRefunded
 	case MembershipOrderPaid:
 		return to == MembershipOrderRefunded
 	default:
@@ -141,7 +157,7 @@ func NewFakePaymentProvider() *FakePaymentProvider {
 func (p *FakePaymentProvider) Name() string { return "fake" }
 
 func (p *FakePaymentProvider) Sign(_ context.Context, request PaymentOrderRequest) (SignedPaymentOrder, error) {
-	if p == nil || request.MerchantOrderID == "" || request.AmountCents != lifetimeMembershipAmountCents || request.Product != "lifetime" {
+	if p == nil || request.MerchantOrderID == "" || request.AmountCents != lifetimeMembershipAmountCents || request.Currency != lifetimeMembershipCurrency || request.Plan != lifetimeMembershipPlan {
 		return SignedPaymentOrder{}, errors.New("fake payment order is invalid")
 	}
 	return SignedPaymentOrder{Request: request, Signature: p.signOrder(request)}, nil
@@ -171,6 +187,8 @@ func (p *FakePaymentProvider) CreateOrder(_ context.Context, signed SignedPaymen
 		ExternalOrderID: externalOrderID,
 		MerchantOrderID: signed.Request.MerchantOrderID,
 		AmountCents:     signed.Request.AmountCents,
+		Currency:        signed.Request.Currency,
+		Plan:            signed.Request.Plan,
 		Status:          MembershipOrderPendingPayment,
 	}
 	p.orders[externalOrderID] = order
@@ -227,6 +245,8 @@ func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) 
 		ExternalOrderID: order.ExternalOrderID,
 		MerchantOrderID: order.MerchantOrderID,
 		AmountCents:     order.AmountCents,
+		Currency:        order.Currency,
+		Plan:            order.Plan,
 		Status:          MembershipOrderRefunded,
 		Sequence:        int64(p.nextEvent),
 		OccurredAt:      time.Now().UTC(),
@@ -253,6 +273,8 @@ func (p *FakePaymentProvider) Transition(externalOrderID string, status Membersh
 		ExternalOrderID: order.ExternalOrderID,
 		MerchantOrderID: order.MerchantOrderID,
 		AmountCents:     order.AmountCents,
+		Currency:        order.Currency,
+		Plan:            order.Plan,
 		Status:          status,
 		Sequence:        int64(p.nextEvent),
 		OccurredAt:      time.Now().UTC(),
@@ -276,6 +298,8 @@ func (p *FakePaymentProvider) NewNotification(externalOrderID string, status Mem
 		ExternalOrderID: order.ExternalOrderID,
 		MerchantOrderID: order.MerchantOrderID,
 		AmountCents:     order.AmountCents,
+		Currency:        order.Currency,
+		Plan:            order.Plan,
 		Status:          status,
 		Sequence:        sequence,
 		OccurredAt:      time.Now().UTC(),
@@ -331,7 +355,7 @@ func (p *FakePaymentProvider) CreateCalls() int {
 
 func (p *FakePaymentProvider) signOrder(request PaymentOrderRequest) string {
 	mac := hmac.New(sha256.New, p.secret)
-	_, _ = mac.Write([]byte(strings.Join([]string{request.MerchantOrderID, fmt.Sprintf("%d", request.AmountCents), request.Product}, "\n")))
+	_, _ = mac.Write([]byte(strings.Join([]string{request.MerchantOrderID, fmt.Sprintf("%d", request.AmountCents), request.Currency, request.Plan}, "\n")))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
@@ -342,6 +366,8 @@ func (p *FakePaymentProvider) signNotification(notification VerifiedPaymentNotif
 		notification.ExternalOrderID,
 		notification.MerchantOrderID,
 		fmt.Sprintf("%d", notification.AmountCents),
+		notification.Currency,
+		notification.Plan,
 		string(notification.Status),
 		fmt.Sprintf("%d", notification.Sequence),
 		notification.OccurredAt.UTC().Format(time.RFC3339Nano),

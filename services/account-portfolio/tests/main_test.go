@@ -180,22 +180,23 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("reconcile after rollback = %v", err)
 	}
 
-	var accountTable, commandsTable, membershipEventsTable, paymentFactsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded bool
+	var accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded bool
 	if err := pool.QueryRow(ctx, `
 		SELECT
 			to_regclass('account_portfolio_accounts') IS NOT NULL,
 			to_regclass('account_portfolio_command_idempotency') IS NOT NULL,
 			to_regclass('account_portfolio_membership_events') IS NOT NULL,
+			to_regclass('account_portfolio_payment_order_intents') IS NOT NULL,
 			to_regclass('account_portfolio_payment_facts') IS NOT NULL,
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000001_account_portfolio'),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000002_support_ticket_commands'),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000003_membership_entitlements'),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000004_membership_order_payment_kernel')
-	`).Scan(&accountTable, &commandsTable, &membershipEventsTable, &paymentFactsTable, &initialVersionRecorded, &supportCommandsVersionRecorded, &membershipEntitlementsVersionRecorded, &paymentKernelVersionRecorded); err != nil {
+	`).Scan(&accountTable, &commandsTable, &membershipEventsTable, &paymentIntentsTable, &paymentFactsTable, &initialVersionRecorded, &supportCommandsVersionRecorded, &membershipEntitlementsVersionRecorded, &paymentKernelVersionRecorded); err != nil {
 		t.Fatal(err)
 	}
-	if !accountTable || !commandsTable || !membershipEventsTable || !paymentFactsTable || !initialVersionRecorded || !supportCommandsVersionRecorded || !membershipEntitlementsVersionRecorded || !paymentKernelVersionRecorded {
-		t.Fatalf("reconciled schema account_table=%t commands_table=%t membership_events_table=%t payment_facts_table=%t initial_version=%t support_commands_version=%t membership_entitlements_version=%t payment_kernel_version=%t, want all true", accountTable, commandsTable, membershipEventsTable, paymentFactsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded)
+	if !accountTable || !commandsTable || !membershipEventsTable || !paymentIntentsTable || !paymentFactsTable || !initialVersionRecorded || !supportCommandsVersionRecorded || !membershipEntitlementsVersionRecorded || !paymentKernelVersionRecorded {
+		t.Fatalf("reconciled schema account_table=%t commands_table=%t membership_events_table=%t payment_intents_table=%t payment_facts_table=%t initial_version=%t support_commands_version=%t membership_entitlements_version=%t payment_kernel_version=%t, want all true", accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded)
 	}
 }
 
@@ -276,6 +277,7 @@ func clearAccountPortfolio(t *testing.T, pool *pgxpool.Pool) {
 			account_portfolio_notifications,
 			account_portfolio_membership_events,
 			account_portfolio_payment_facts,
+			account_portfolio_payment_order_intents,
 			account_portfolio_membership_orders,
 			account_portfolio_point_ledger,
 			account_portfolio_memberships,

@@ -27,6 +27,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS account_portfolio_membership_orders_user_idemp
     ON account_portfolio_membership_orders (user_id, idempotency_key)
     WHERE idempotency_key IS NOT NULL;
 
+-- An intent is committed before any Provider call. Its opaque merchant id is
+-- distinct from the public local order id and remains stable across retries,
+-- so a process crash after Provider creation but before local binding can be
+-- recovered without opening a second external order. The short dispatch lease
+-- prevents concurrent retries from calling an adapter twice while remaining
+-- reclaimable after a crash.
+CREATE TABLE IF NOT EXISTS account_portfolio_payment_order_intents (
+    order_id UUID PRIMARY KEY REFERENCES account_portfolio_membership_orders(id) ON DELETE RESTRICT,
+    provider TEXT NOT NULL CHECK (length(provider) BETWEEN 1 AND 80),
+    merchant_order_id UUID NOT NULL UNIQUE,
+    delivery_state TEXT NOT NULL DEFAULT 'pending' CHECK (delivery_state IN ('pending', 'dispatching', 'delivered', 'failed')),
+    delivery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (delivery_attempts >= 0),
+    delivery_lease_id UUID,
+    delivery_lease_expires_at TIMESTAMPTZ,
+    last_attempt_at TIMESTAMPTZ,
+    last_error_code TEXT CHECK (last_error_code IS NULL OR last_error_code ~ '^[a-z][a-z0-9_]{1,79}$'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT account_portfolio_payment_order_intents_delivery_lease_shape CHECK (
+        (delivery_state = 'dispatching' AND delivery_lease_id IS NOT NULL AND delivery_lease_expires_at IS NOT NULL)
+        OR
+        (delivery_state <> 'dispatching' AND delivery_lease_id IS NULL AND delivery_lease_expires_at IS NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS account_portfolio_payment_order_intents_pending_idx
+    ON account_portfolio_payment_order_intents (provider, updated_at ASC, order_id)
+    WHERE delivery_state = 'pending';
+
 CREATE TABLE IF NOT EXISTS account_portfolio_payment_facts (
     id UUID PRIMARY KEY,
     order_id UUID NOT NULL REFERENCES account_portfolio_membership_orders(id) ON DELETE RESTRICT,
@@ -49,8 +77,11 @@ CREATE TABLE IF NOT EXISTS account_portfolio_payment_audits (
     payment_fact_id UUID REFERENCES account_portfolio_payment_facts(id) ON DELETE RESTRICT,
     provider TEXT NOT NULL CHECK (length(provider) BETWEEN 1 AND 80),
     outcome TEXT NOT NULL CHECK (outcome IN (
-        'order_created',
-        'order_creation_failed',
+        'order_intent_persisted',
+        'order_dispatched',
+        'order_delivery_failed',
+        'order_delivery_conflicted',
+        'order_recovered',
         'notification_applied',
         'notification_replayed',
         'notification_out_of_order',

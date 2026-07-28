@@ -27,6 +27,8 @@ ALTER TABLE account_portfolio_memberships
 DROP INDEX IF EXISTS account_portfolio_payment_audits_order_created_idx;
 DROP TABLE IF EXISTS account_portfolio_payment_audits;
 DROP TABLE IF EXISTS account_portfolio_payment_facts;
+DROP INDEX IF EXISTS account_portfolio_payment_order_intents_pending_idx;
+DROP TABLE IF EXISTS account_portfolio_payment_order_intents;
 
 DROP INDEX IF EXISTS account_portfolio_membership_orders_user_idempotency_key_idx;
 ALTER TABLE account_portfolio_membership_orders

@@ -16,6 +16,20 @@ Provider returns an explicit unavailable result and creates neither an order
 nor an entitlement. Portal keeps the purchase surface closed until a separate
 Provider Spike and authorization establish a compliant browser boundary.
 
+When an approved Provider adapter is enabled in a later ticket, the service
+commits a local order plus stable merchant-order intent before any external
+create call. Retried creates and verified callbacks reuse that intent to repair
+an external order that was created before its local binding committed. Callback
+data must exactly match the Provider query before a verified payment fact can
+change the entitlement; the membership retains the current paid fact so an
+older refund cannot revoke a newer valid lifetime purchase.
+
+The merchant ID is a private, service-generated intent value rather than the
+public order ID. Adapter `CreateOrder` implementations must be idempotent by
+that merchant ID; the service also commits a short dispatch lease so concurrent
+same-key retries do not start duplicate creates, while an expired lease or a
+verified callback can recover a crashed dispatcher.
+
 ## Run
 
 Set `ACCOUNT_PORTFOLIO_DATABASE_URL`, `ACCOUNT_PORTFOLIO_SERVICE_CLIENT_ID`,
