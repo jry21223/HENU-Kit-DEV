@@ -480,7 +480,12 @@ func looksLikeRankingIdentifier(value string) bool {
 	if strings.Contains(value, "@") {
 		return true
 	}
-	compact := strings.ReplaceAll(value, "-", "")
+	compact := strings.Map(func(r rune) rune {
+		if strings.ContainsRune(" _-.", r) {
+			return -1
+		}
+		return r
+	}, value)
 	if len(compact) != 32 {
 		return false
 	}

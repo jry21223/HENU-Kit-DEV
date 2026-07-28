@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/unicode/norm"
+
 	"henukit.dev/portal-gateway/internal/serviceauth"
 )
 
@@ -232,11 +234,16 @@ func validateRanking(result RankingEnvelope, expectedScope, expectedBankID strin
 }
 
 func looksLikeRankingIdentifier(value string) bool {
-	value = strings.TrimSpace(value)
+	value = strings.TrimSpace(norm.NFKC.String(value))
 	if strings.Contains(value, "@") {
 		return true
 	}
-	compact := strings.ReplaceAll(value, "-", "")
+	compact := strings.Map(func(r rune) rune {
+		if strings.ContainsRune(" _-.", r) {
+			return -1
+		}
+		return r
+	}, value)
 	if len(compact) != 32 {
 		return false
 	}

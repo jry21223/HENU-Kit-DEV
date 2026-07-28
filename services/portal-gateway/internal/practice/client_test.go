@@ -196,7 +196,12 @@ func TestRankingsRejectAnUpstreamIdentifierField(t *testing.T) {
 func TestRankingsRejectIdentifierShapedNickname(t *testing.T) {
 	for _, nickname := range []string{
 		"123e4567-e89b-12d3-a456-426614174000",
+		"123e4567 e89b 12d3 a456 426614174000",
+		"123e4567_e89b_12d3_a456_426614174000",
+		"123e4567.e89b.12d3.a456.426614174000",
+		"１２３ｅ４５６７ｅ８９ｂ１２ｄ３ａ４５６４２６６１４１７４０００",
 		"learner@example.test",
+		"learner＠example．test",
 	} {
 		t.Run(nickname, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

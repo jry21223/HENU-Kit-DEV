@@ -136,6 +136,9 @@ func TestRankingProfileRejectsIdentifierShapedNicknames(t *testing.T) {
 	for _, nickname := range []string{
 		"123e4567e89b12d3a456426614174000",
 		"１２３ｅ４５６７ｅ８９ｂ１２ｄ３ａ４５６４２６６１４１７４０００",
+		"123e4567 e89b 12d3 a456 426614174000",
+		"123e4567_e89b_12d3_a456_426614174000",
+		"123e4567.e89b.12d3.a456.426614174000",
 		"learner@example.test",
 	} {
 		status, body := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "identifier-nickname-" + uuid.NewString()}, map[string]any{"visible": true, "nickname": nickname, "system_avatar": "scholar-blue"})
