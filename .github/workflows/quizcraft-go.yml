@@ -109,6 +109,9 @@ jobs:
           pg_restore -h localhost -U quizcraft -d quizcraft_recovery --no-owner /tmp/quizcraft-recovery.dump
           test "$(psql -h localhost -U quizcraft -d quizcraft_recovery -Atc "SELECT to_regclass('public.quizcraft_question_versions') IS NOT NULL AND to_regclass('public.quizcraft_practice_sessions') IS NOT NULL AND to_regclass('public.quizcraft_favorites') IS NOT NULL AND to_regclass('public.quizcraft_practice_session_claims') IS NOT NULL AND to_regclass('public.quizcraft_ranking_profiles') IS NOT NULL AND to_regclass('public.quizcraft_ranking_settlement_events') IS NOT NULL AND to_regclass('public.quizcraft_workshop_audit_events') IS NOT NULL AND to_regclass('public.quizcraft_feedbacks') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_outbox') IS NOT NULL AND to_regclass('public.quizcraft_feedback_inbox_deliveries') IS NOT NULL AND to_regclass('public.quizcraft_service_nonces') IS NOT NULL AND to_regclass('public.quizcraft_migration_runs') IS NOT NULL AND to_regclass('public.quizcraft_migration_exceptions') IS NOT NULL AND to_regclass('public.quizcraft_migration_exception_resolutions') IS NOT NULL AND to_regclass('public.quizcraft_legacy_feedback_archives') IS NOT NULL AND to_regclass('public.quizcraft_legacy_feedback_state_events') IS NOT NULL AND to_regclass('public.quizcraft_legacy_ranking_snapshots') IS NOT NULL AND to_regclass('public.quizcraft_migration_event_receipts') IS NOT NULL AND to_regclass('public.quizcraft_shadow_gate_reports') IS NOT NULL AND to_regclass('public.quizcraft_schema_migrations') IS NOT NULL")" = t
           dropdb -h localhost -U quizcraft quizcraft_v2
+      - name: Verify resumable reconciliation CLI recovery
+        working-directory: products/quizcraft/go-service
+        run: go test -count=1 -run '^TestReconcileCLIBlocksARealPartialImportThenResumesTheSameRun$' ./cmd/reconcile
       - name: Verify QuizCraft contract
         run: |
           set -euo pipefail
