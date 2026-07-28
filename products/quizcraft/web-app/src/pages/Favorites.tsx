@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { Flag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { FavoriteFolder } from '@/generated/quizcraft-api';
-import { shadowFavoritesApi, shadowPracticeApi } from '@/api/quizcraftShadowClient';
+import {
+  isQuizcraftAuthenticationError,
+  quizcraftLoginHref,
+  shadowFavoritesApi,
+  shadowPracticeApi,
+} from '@/api/quizcraftShadowClient';
 import { useQuizStore } from '@/stores/quizStore';
 
 export default function Favorites() {
@@ -12,6 +17,7 @@ export default function Favorites() {
   const [loading, setLoading] = useState(true);
   const [startingBankId, setStartingBankId] = useState('');
   const [error, setError] = useState('');
+  const [requiresLogin, setRequiresLogin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -20,9 +26,14 @@ export default function Favorites() {
         if (cancelled) return;
         setBanks(bankResult.banks);
         setFolders(favoriteFolders);
+        setRequiresLogin(false);
       })
-      .catch(() => {
-        if (!cancelled) setError('收藏夹暂时无法加载，请确认已经登录');
+      .catch((loadError) => {
+        if (!cancelled) {
+          const needsLogin = isQuizcraftAuthenticationError(loadError);
+          setRequiresLogin(needsLogin);
+          setError(needsLogin ? '请登录后查看收藏夹' : '收藏夹暂时无法加载，请稍后重试');
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -38,13 +49,16 @@ export default function Favorites() {
     }
     setStartingBankId(folder.bank_id);
     setError('');
+    setRequiresLogin(false);
     try {
       const result = await shadowFavoritesApi.start(folder.bank_id, bank.key);
       setCurrentBank(bank.key);
       startPractice(result.questions, bank.key);
       navigate('/quiz');
-    } catch {
-      setError('收藏练习创建失败，请稍后重试');
+    } catch (startError) {
+      const needsLogin = isQuizcraftAuthenticationError(startError);
+      setRequiresLogin(needsLogin);
+      setError(needsLogin ? '请登录后再从收藏发起练习' : '收藏练习创建失败，请稍后重试');
     } finally {
       setStartingBankId('');
     }
@@ -58,6 +72,11 @@ export default function Favorites() {
       </h1>
       {loading && <p className="text-sm text-gray-500">正在加载收藏夹…</p>}
       {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {requiresLogin && (
+        <a className="mb-4 inline-flex rounded-xl bg-primary-500 px-4 py-2 text-sm font-medium text-white" href={quizcraftLoginHref('/favorites')}>
+          登录后查看收藏夹
+        </a>
+      )}
       {!loading && !error && folders.length === 0 && (
         <p className="rounded-2xl border border-gray-100 bg-white p-6 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-800">还没有收藏题目。</p>
       )}
