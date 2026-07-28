@@ -108,6 +108,126 @@ paths:
                     type: string
                     example: signed_out
 
+  /api/v1/account/summary:
+    get:
+      operationId: getAccountSummary
+      summary: Return the signed-in user's persisted Account Portfolio summary
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Persisted zero state or current account summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountSummaryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/account/points:
+    get:
+      operationId: getAccountPoints
+      summary: Return the signed-in user's persistent points balance and ledger
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Points account, possibly with an empty ledger
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountPointsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/account/membership:
+    get:
+      operationId: getAccountMembership
+      summary: Return the signed-in user's persisted membership entitlement
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Membership entitlement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountMembershipResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/account/notifications:
+    get:
+      operationId: getAccountNotifications
+      summary: Return notifications belonging to the signed-in user
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Persistent notifications, possibly empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountNotificationsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/account/tickets:
+    get:
+      operationId: getAccountTickets
+      summary: Return support tickets belonging to the signed-in user
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Persistent support tickets, possibly empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountTicketsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/account/membership-orders:
+    get:
+      operationId: getAccountMembershipOrders
+      summary: Return membership orders belonging to the signed-in user
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Membership orders, possibly empty while the provider is disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountMembershipOrdersResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/library/courses:
     get:
       operationId: libraryCourses
@@ -227,6 +347,189 @@ components:
           type: string
         request_id:
           type: string
+
+    AccountSummaryResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/AccountSummary"
+        request_id:
+          type: string
+
+    AccountSummary:
+      type: object
+      required: [points_balance, plan, lifetime, unread_notification_count, open_ticket_count]
+      properties:
+        points_balance:
+          type: integer
+          format: int64
+          minimum: 0
+        plan:
+          type: string
+          enum: [free, lifetime]
+        lifetime:
+          type: boolean
+        unread_notification_count:
+          type: integer
+          minimum: 0
+        open_ticket_count:
+          type: integer
+          minimum: 0
+
+    AccountPointsResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [balance, entries]
+          properties:
+            balance:
+              type: integer
+              format: int64
+              minimum: 0
+            entries:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccountPointEntry"
+        request_id:
+          type: string
+
+    AccountPointEntry:
+      type: object
+      required: [id, amount, reason, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AccountMembershipResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [plan, lifetime]
+          properties:
+            plan:
+              type: string
+              enum: [free, lifetime]
+            lifetime:
+              type: boolean
+        request_id:
+          type: string
+
+    AccountNotificationsResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [notifications]
+          properties:
+            notifications:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccountNotification"
+        request_id:
+          type: string
+
+    AccountNotification:
+      type: object
+      required: [id, title, body, kind, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        body:
+          type: string
+        kind:
+          type: string
+        read_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    AccountTicketsResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [tickets]
+          properties:
+            tickets:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccountTicket"
+        request_id:
+          type: string
+
+    AccountTicket:
+      type: object
+      required: [id, title, category, status, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, resolved]
+        updated_at:
+          type: string
+          format: date-time
+
+    AccountMembershipOrdersResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [orders]
+          properties:
+            orders:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccountMembershipOrder"
+        request_id:
+          type: string
+
+    AccountMembershipOrder:
+      type: object
+      required: [id, plan, amount_cents, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        plan:
+          type: string
+          enum: [lifetime]
+        amount_cents:
+          type: integer
+          enum: [990]
+        status:
+          type: string
+          enum: [created, pending_payment, paid, closed, failed, refunded]
+        created_at:
+          type: string
+          format: date-time
 
     LibraryCoursesResponse:
       type: object

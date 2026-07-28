@@ -7,7 +7,6 @@ import { cn } from "@/lib/cn";
 
 const TABS = [
   { href: "/library", index: "L-01", label: "书库", match: (p: string) => p === "/library" || p.startsWith("/library/item") || p.startsWith("/library/read") },
-  { href: "/library/shelf", index: "L-02", label: "我的书架", match: (p: string) => p.startsWith("/library/shelf") },
 ];
 
 export default function LibraryNav() {

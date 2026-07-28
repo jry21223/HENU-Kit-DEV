@@ -136,6 +136,30 @@ services:
     expose:
       - "8085"
 
+  # Account Portfolio owns user-visible points, memberships, orders,
+  # notifications, and support tickets. It is deliberately isolated from the
+  # legacy Study database and only accepts signed requests from Portal Gateway.
+  account-portfolio:
+    build:
+      context: ./services/account-portfolio
+    environment:
+      ACCOUNT_PORTFOLIO_ADDR: ${ACCOUNT_PORTFOLIO_ADDR:-:8097}
+      ACCOUNT_PORTFOLIO_DATABASE_URL: ${ACCOUNT_PORTFOLIO_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/account_portfolio?sslmode=disable}
+      ACCOUNT_PORTFOLIO_SERVICE_CLIENT_ID: ${ACCOUNT_PORTFOLIO_CLIENT_ID:-portal-gateway}
+      ACCOUNT_PORTFOLIO_SERVICE_KEY_ID: ${ACCOUNT_PORTFOLIO_KEY_ID:-account-portfolio-key}
+      ACCOUNT_PORTFOLIO_SERVICE_SECRET: ${ACCOUNT_PORTFOLIO_CLIENT_SECRET:-replace-account-portfolio-client-secret-32bytes-min!!}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8097"
+    healthcheck:
+      test: ["CMD", "/account-portfolio-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
   portal-gateway:
     build:
       context: ./services/portal-gateway
@@ -170,6 +194,10 @@ services:
       NOTICE_CLIENT_ID: ${NOTICE_CLIENT_ID:-portal-notice}
       NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:-replace-notice-client-secret-32bytes-min!!}
       NOTICE_KEY_ID: ${NOTICE_KEY_ID:-notice-key}
+      ACCOUNT_PORTFOLIO_URL: ${ACCOUNT_PORTFOLIO_URL:-http://account-portfolio:8097}
+      ACCOUNT_PORTFOLIO_CLIENT_ID: ${ACCOUNT_PORTFOLIO_CLIENT_ID:-portal-gateway}
+      ACCOUNT_PORTFOLIO_CLIENT_SECRET: ${ACCOUNT_PORTFOLIO_CLIENT_SECRET:-replace-account-portfolio-client-secret-32bytes-min!!}
+      ACCOUNT_PORTFOLIO_KEY_ID: ${ACCOUNT_PORTFOLIO_KEY_ID:-account-portfolio-key}
       PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
     depends_on:
       redis:
@@ -178,6 +206,8 @@ services:
         condition: service_started
       platform-core:
         condition: service_started
+      account-portfolio:
+        condition: service_healthy
     expose:
       - "8084"
 

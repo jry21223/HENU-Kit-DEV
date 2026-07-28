@@ -15,7 +15,8 @@ import {
   requireGateway,
 } from "./env";
 import type {
-  CampusItemListResponse,
+	AccountSummaryResponse,
+	CampusItemListResponse,
   CategoryListResponse,
   ErrorEnvelope,
   FoodPostListResponse,
@@ -214,7 +215,7 @@ export async function fetchSession(): Promise<PortalSession | null> {
   // Mock-only mode (no gateway URL and not require-gateway).
   if (!hasGatewayConfigured()) return null;
   // Absolute origin or same-origin (empty base + REQUIRE_GATEWAY=1).
-  return apiFetch<PortalSession>("/api/v1/session");
+	return apiFetch<PortalSession>("/api/v1/session", { cache: "no-store" });
 }
 
 export function redirectToLogin(returnTo = "/") {
@@ -239,6 +240,17 @@ export async function logout(): Promise<void> {
     method: "POST",
     credentials: "include",
   });
+}
+
+// ---- Account Portfolio ----
+
+/**
+ * Reads the authenticated user's persisted Account Portfolio summary.
+ * This intentionally uses the strict boundary: an unavailable service is an
+ * error state, never a local or session-backed successful account response.
+ */
+export async function fetchAccountSummary(): Promise<AccountSummaryResponse> {
+  return apiFetchRequired<AccountSummaryResponse>("/api/v1/account/summary");
 }
 
 // ---- Library ----

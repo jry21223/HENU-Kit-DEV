@@ -47,7 +47,7 @@
 - [ ] 记录最终 `main` 完整 SHA：`________________________________________`
 - [ ] 记录最终 PR、Required Checks、当前 SHA 的 Standards / Spec 双轴 Review 与人工批准证据。
 - [ ] 每个部署单元的 Artifact/Image 均绑定精确 SHA，不使用 `latest` 作为发布证据。
-- [ ] 记录 Portal、Console、Platform Core、Platform Worker、Study Web、Study Admin、Study API、Study Worker、Quiz Web、Quiz API/Go Service、Notice、Food、Library、Portal API、Portal Gateway 的实际部署版本。
+- [ ] 记录 Portal、Console、Platform Core、Platform Worker、Study Web、Study Admin、Study API、Study Worker、Quiz Web、Quiz API/Go Service、Notice、Food、Library、Portal API、Portal Gateway、Account Portfolio 的实际部署版本。
 - [ ] 发布说明列出本次包含与不包含的模块、Migration、Feature Flag、切流顺序和回滚边界。
 - [ ] “代码已可发布”和“生产已部署”分别记录，CI 成功不能替代服务器部署证据。
 
@@ -66,6 +66,7 @@
 
 - [ ] 所有相关数据库在发布前完成校验和备份，记录 SHA-256、时间、大小、数据库版本和存放位置。
 - [ ] 在隔离环境真实恢复备份，并通过计数、Hash、关键查询、Readiness 和业务 Smoke。
+- [ ] Account Portfolio 发布前已对 `account_portfolio` 完成独立备份与隔离恢复；恢复证据覆盖账户、积分、会员、积分流水、通知、工单、工单消息、会员订单、Nonce 和 Migration 元数据。首次创建的空库也记录为可恢复基线，回滚不得删除它。
 - [ ] 所有本次 Migration 完成前置检查、锁/执行时间评估、Up/重复 Up/Down/Up 或等价的可恢复验证。
 - [ ] 生产不执行未审计的破坏性 AutoMigrate；采用 `expand -> migrate -> contract`。
 - [ ] QuizCraft 最终 catch-up 后重新计算题库、题目、题型、答案、章节、反馈、旧排行和内容 Hash。
@@ -130,6 +131,7 @@
 - [ ] Staging 部署使用与生产相同的不可变 Artifact，并完成 Readiness、Contract、Smoke 和 E2E。
 - [ ] 生产变更经人工批准，按单一部署单元逐步执行。
 - [ ] Nginx、Systemd/容器编排、环境变量、Secrets、Deploy Key、Webhook 和服务器 Remote 已核验。
+- [ ] Account Portfolio 容器健康、九镜像 SHA 一致性、`HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER`（如覆盖）以及 8-to-9 首次切换的 legacy rollback 演练均已记录。
 - [ ] 发布前后记录 5xx、延迟、登录成功率、队列积压、数据库连接、邮件错误和关键业务成功率。
 - [ ] Readiness 失败或 5xx 超阈值立即停止放量并回滚对应部署单元。
 - [ ] 应用回滚不回滚向前兼容 Migration；数据库恢复只在明确 Runbook 条件下执行。

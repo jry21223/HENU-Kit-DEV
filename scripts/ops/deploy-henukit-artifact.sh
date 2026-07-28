@@ -36,6 +36,36 @@ export RELEASE_SHA="$release_sha"
 compose=(docker compose --env-file "$env_file" -f "$runtime_dir/docker-compose.henukit.release.yml")
 "${compose[@]}" config --quiet
 
+# init-henukit-dbs.sh runs only when a PostgreSQL volume is first created.
+# Releases against an existing volume must provision this independent database
+# explicitly before Account Portfolio starts its embedded schema migration.
+ensure_account_portfolio_database() {
+  "${compose[@]}" exec -T postgres sh -ceu '
+    if ! psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc \
+      "SELECT 1 FROM pg_database WHERE datname = '\''account_portfolio'\''" | grep -qx 1; then
+      createdb -U "$POSTGRES_USER" account_portfolio
+    fi
+  '
+}
+
+ensure_postgres_ready() {
+  local attempt
+  "${compose[@]}" up -d postgres
+  for attempt in $(seq 1 30); do
+    if "${compose[@]}" exec -T postgres sh -ceu 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null'; then
+      return 0
+    fi
+    sleep 1
+  done
+  die "PostgreSQL did not become ready for Account Portfolio database provisioning"
+}
+
+# Platform Core migrations and the Account Portfolio database bootstrap both
+# execute through postgres. A fresh host has no running container yet, so this
+# readiness gate must run before either operation.
+echo "Ensuring PostgreSQL is ready"
+ensure_postgres_ready
+
 if [[ -n "$migration_arg" ]]; then
   migration_dir="$(cd "$runtime_dir/migrations/platform-core" 2>/dev/null && pwd -P)" || die "migration directory is missing"
   if [[ "$migration_arg" = /* ]]; then
@@ -51,6 +81,8 @@ if [[ -n "$migration_arg" ]]; then
   "${compose[@]}" exec -T postgres sh -ceu 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d platform -f -' < "$migration_path"
 fi
 
+echo "Ensuring Account Portfolio database exists"
+ensure_account_portfolio_database
 echo "Activating HENU Kit release $release_sha"
 "${compose[@]}" up -d --remove-orphans
 

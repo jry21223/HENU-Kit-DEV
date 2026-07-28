@@ -9,6 +9,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
   SELECT 'CREATE DATABASE platform'
   WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'platform')\gexec
 
+  SELECT 'CREATE DATABASE account_portfolio'
+  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'account_portfolio')\gexec
+
   SELECT 'CREATE DATABASE quizcraft'
   WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'quizcraft')\gexec
 
