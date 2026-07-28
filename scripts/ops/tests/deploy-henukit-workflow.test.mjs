@@ -17,6 +17,7 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
     "henukit-platform-smtp-provider",
     "henukit-portal",
     "henukit-portal-api",
+    "henukit-account-portfolio",
     "henukit-portal-gateway",
   ];
 
@@ -46,6 +47,9 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     [
       "CONSOLE_PLATFORM_CLIENT_SECRET",
       "CONSOLE_SESSION_KEY",
+      "ACCOUNT_PORTFOLIO_CLIENT_ID",
+      "ACCOUNT_PORTFOLIO_CLIENT_SECRET",
+      "ACCOUNT_PORTFOLIO_KEY_ID",
       "FOOD_CLIENT_SECRET",
       "FOOD_SUMMARY_CLIENT_SECRET",
       "LIBRARY_CLIENT_SECRET",
@@ -94,6 +98,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
             ...requiredEnvironment,
             PLATFORM_CORE_DATABASE_URL: "postgres://test",
             PLATFORM_CORE_REDIS_URL: "redis://test",
+            ACCOUNT_PORTFOLIO_DATABASE_URL: "postgres://test",
             QUIZCRAFT_DATABASE_URL: "postgres://test",
             RELEASE_SHA: releaseSha,
             STUDY_DATABASE_URL: "postgres://test",
@@ -111,6 +116,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-platform-smtp-provider",
     "henukit-portal",
     "henukit-portal-api",
+    "henukit-account-portfolio",
     "henukit-portal-gateway",
   ];
 
@@ -166,6 +172,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   assert.match(workflow, /install -m 0555 scripts\/ops\/watch-henukit-actions\.sh/);
   assert.match(workflow, /infra\/systemd\/henukit-actions-watch\.service/);
   assert.match(workflow, /migrations\/platform-core/);
+  assert.match(workflow, /migrations\/account-portfolio/);
   assert.doesNotMatch(
     workflow,
     /cp docker-compose\.henukit\.yml|cp docker-compose\.henukit\.prebuilt\.yml|init-henukit-dbs\.sh/,
@@ -174,6 +181,11 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     workflow,
     /cp services\/platform-core\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry the registration migration",
+  );
+  assert.match(
+    workflow,
+    /cp services\/account-portfolio\/db\/migrations\/\*\.up\.sql/,
+    "the fixed-SHA runtime must carry Account Portfolio recovery migrations",
   );
 });
 

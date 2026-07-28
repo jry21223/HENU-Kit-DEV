@@ -36,6 +36,18 @@ export RELEASE_SHA="$release_sha"
 compose=(docker compose --env-file "$env_file" -f "$runtime_dir/docker-compose.henukit.release.yml")
 "${compose[@]}" config --quiet
 
+# init-henukit-dbs.sh runs only when a PostgreSQL volume is first created.
+# Releases against an existing volume must provision this independent database
+# explicitly before Account Portfolio starts its embedded schema migration.
+ensure_account_portfolio_database() {
+  "${compose[@]}" exec -T postgres sh -ceu '
+    if ! psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc \
+      "SELECT 1 FROM pg_database WHERE datname = '\''account_portfolio'\''" | grep -qx 1; then
+      createdb -U "$POSTGRES_USER" account_portfolio
+    fi
+  '
+}
+
 if [[ -n "$migration_arg" ]]; then
   migration_dir="$(cd "$runtime_dir/migrations/platform-core" 2>/dev/null && pwd -P)" || die "migration directory is missing"
   if [[ "$migration_arg" = /* ]]; then
@@ -52,6 +64,8 @@ if [[ -n "$migration_arg" ]]; then
 fi
 
 echo "Activating HENU Kit release $release_sha"
+echo "Ensuring Account Portfolio database exists"
+ensure_account_portfolio_database
 "${compose[@]}" up -d --remove-orphans
 
 legacy_names='^(henukit-)?(study-api|study-worker|quizcraft-api|quizcraft-web)(-|$)'

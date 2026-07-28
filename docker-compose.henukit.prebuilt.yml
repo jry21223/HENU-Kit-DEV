@@ -51,6 +51,16 @@ services:
     environment:
       QUIZCRAFT_DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:?QUIZCRAFT_DATABASE_URL is required}
       STUDY_DATABASE_URL: ${STUDY_DATABASE_URL:?STUDY_DATABASE_URL is required}
+  account-portfolio:
+    image: henukit-account-portfolio:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 96m
+    environment:
+      ACCOUNT_PORTFOLIO_DATABASE_URL: ${ACCOUNT_PORTFOLIO_DATABASE_URL:?ACCOUNT_PORTFOLIO_DATABASE_URL is required}
+      ACCOUNT_PORTFOLIO_SERVICE_CLIENT_ID: ${ACCOUNT_PORTFOLIO_CLIENT_ID:?ACCOUNT_PORTFOLIO_CLIENT_ID is required}
+      ACCOUNT_PORTFOLIO_SERVICE_KEY_ID: ${ACCOUNT_PORTFOLIO_KEY_ID:?ACCOUNT_PORTFOLIO_KEY_ID is required}
+      ACCOUNT_PORTFOLIO_SERVICE_SECRET: ${ACCOUNT_PORTFOLIO_CLIENT_SECRET:?ACCOUNT_PORTFOLIO_CLIENT_SECRET is required}
   portal-gateway:
     image: henukit-portal-gateway:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null
@@ -63,6 +73,7 @@ services:
       FOOD_CLIENT_SECRET: ${FOOD_CLIENT_SECRET:?FOOD_CLIENT_SECRET is required}
       PRACTICE_CLIENT_SECRET: ${PRACTICE_CLIENT_SECRET:?PRACTICE_CLIENT_SECRET is required}
       NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:?NOTICE_CLIENT_SECRET is required}
+      ACCOUNT_PORTFOLIO_CLIENT_SECRET: ${ACCOUNT_PORTFOLIO_CLIENT_SECRET:?ACCOUNT_PORTFOLIO_CLIENT_SECRET is required}
   console-gateway:
     image: henukit-console-gateway:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null

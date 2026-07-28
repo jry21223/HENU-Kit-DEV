@@ -18,12 +18,12 @@
 - Food submissions, anomaly tickets, or tier adjustments (owned by Food service).
 - Campus market transaction data (owned by campus_life).
 - Credential validation, account records, Core Sessions, recovery policy, or mail delivery (owned by Platform Core).
-- Any business backend or database access.
+- Any business backend or database access, including Account Portfolio points, memberships, notifications, and tickets.
 - Console operations dashboard (owned by apps/console).
 
 ## Current boundary
 
-Portal owns the public account page presentation at `/account/login`, `/account/recover`, and `/account/security`. These existing pages submit same-origin forms through `/account-auth` to Platform Core; Portal never validates credentials or treats a local response as authenticated. Successful login, registration, and recovery continue through OAuth so Portal Gateway establishes the Portal Session. Production mock authentication is prohibited. See ADR-0014.
+Portal owns the public account page presentation at `/account/login`, `/account/recover`, `/account/security`, and the account overview. These existing pages submit same-origin forms through `/account-auth` to Platform Core; Portal never validates credentials or treats a local response as authenticated. Successful login, registration, and recovery continue through OAuth so Portal Gateway establishes the Portal Session. The account overview reads Account Portfolio only through that Gateway and shows an explicit error instead of session or local mock data when the owner is unavailable. Production mock authentication is prohibited. See ADR-0014 and ADR-0016.
 
 ## Design language
 

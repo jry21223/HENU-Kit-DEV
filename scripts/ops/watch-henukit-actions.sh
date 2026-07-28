@@ -64,6 +64,7 @@ images=(
   henukit-platform-smtp-provider
   henukit-portal
   henukit-portal-api
+  henukit-account-portfolio
   henukit-portal-gateway
 )
 

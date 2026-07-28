@@ -107,6 +107,7 @@ images=(
   henukit-platform-smtp-provider
   henukit-portal
   henukit-portal-api
+  henukit-account-portfolio
   henukit-portal-gateway
 )
 for image in "\${images[@]}"; do
@@ -157,7 +158,7 @@ printf 'docker %s\\n' "$*" >> "$FAKE_CALL_LOG"
 if [[ "$1" == "ps" ]]; then
   if [[ -s "$FAKE_ACTIVE_FILE" ]]; then
     sha="$(cat "$FAKE_ACTIVE_FILE")"
-    for image in henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-api henukit-portal-gateway; do
+    for image in henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-api henukit-account-portfolio henukit-portal-gateway; do
       printf '%s:%s\\n' "$image" "$sha"
     done
   fi
@@ -235,7 +236,7 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 8);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 9);
   assert.match(calls, /deploy .*releases.*henukit\.env/);
   assert.match(calls, /curl .*https:\/\/example\.test\/api\/v1\/healthz/);
   assert.equal(

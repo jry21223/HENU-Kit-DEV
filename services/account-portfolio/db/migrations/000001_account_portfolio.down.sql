@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS account_portfolio_service_nonces;
+DROP TABLE IF EXISTS account_portfolio_ticket_messages;
+DROP TABLE IF EXISTS account_portfolio_tickets;
+DROP TABLE IF EXISTS account_portfolio_notifications;
+DROP TABLE IF EXISTS account_portfolio_membership_orders;
+DROP TABLE IF EXISTS account_portfolio_point_ledger;
+DROP TABLE IF EXISTS account_portfolio_memberships;
+DROP TABLE IF EXISTS account_portfolio_points;
+DROP TABLE IF EXISTS account_portfolio_accounts;

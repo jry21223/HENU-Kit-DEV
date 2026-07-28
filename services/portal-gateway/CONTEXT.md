@@ -4,7 +4,7 @@
 
 - Portal-specific OAuth callback, PKCE flow, and one-time state (Redis + browser-binding nonce).
 - Portal Session cookie (`__Host-henukit_portal_session`) with AES-256-GCM encryption.
-- Server-to-server signed forwarding to product services (Library, Food, Practice, Notice).
+- Server-to-server signed forwarding to product services (Library, Food, Practice, Notice, Account Portfolio).
 - Portal-specific permission verification via Platform Core (`portal.library.read`, `portal.food.read`, `portal.practice.read`, `portal.notice.read`).
 
 ## Does not own
@@ -28,4 +28,5 @@ Portal Gateway is a read-only BFF. It authenticates users via Platform Core OAut
 
 - **Portal Gateway → Platform Core**: OAuth code exchange, permission verification. Uses HMAC-SHA256 service-to-service auth.
 - **Portal Gateway → Product services**: Signed read-only proxying. Each request carries `X-Actor-User-Id` and `X-Request-Id`.
+- **Portal Gateway → Account Portfolio**: Signed authenticated account reads; the Gateway owns neither account balances nor a fallback response.
 - **Portal frontend → Portal Gateway**: Same-origin API calls with session cookie (`credentials: "same-origin"`).

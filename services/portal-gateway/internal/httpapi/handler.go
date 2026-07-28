@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,6 +20,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/portal-gateway/internal/accountportfolio"
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/platformcore"
@@ -30,6 +33,7 @@ type Handler struct {
 	platform           *platformcore.Client
 	portalAPI          *http.Client
 	portalAPIURL       string
+	accountPortfolio   *accountportfolio.Client
 	redis              *redis.Client
 	portalOrigin       string
 	platformCoreURL    string
@@ -55,11 +59,25 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		}
 		trustedProxies = append(trustedProxies, network)
 	}
+	var portfolio *accountportfolio.Client
+	if strings.TrimSpace(cfg.AccountPortfolioURL) != "" {
+		var err error
+		portfolio, err = accountportfolio.NewClient(
+			cfg.AccountPortfolioURL,
+			cfg.AccountPortfolioAuth.ClientID,
+			cfg.AccountPortfolioAuth.ClientSecret,
+			cfg.AccountPortfolioAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("accountportfolio.NewClient: %w", err)
+		}
+	}
 	return &Handler{
 		sessionCodec:       codec,
 		platform:           platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID),
 		portalAPI:          &http.Client{Timeout: 10 * time.Second},
 		portalAPIURL:       cfg.PortalAPIURL,
+		accountPortfolio:   portfolio,
 		redis:              rdb,
 		portalOrigin:       cfg.PortalOrigin,
 		platformCoreURL:    cfg.PlatformCoreURL,
@@ -82,6 +100,12 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/auth/callback", h.callback)
 	r.Get("/api/v1/session", h.getSession)
 	r.Post("/api/v1/session/logout", h.logout)
+	r.Get("/api/v1/account/summary", h.accountSummary)
+	r.Get("/api/v1/account/points", h.accountPoints)
+	r.Get("/api/v1/account/membership", h.accountMembership)
+	r.Get("/api/v1/account/notifications", h.accountNotifications)
+	r.Get("/api/v1/account/tickets", h.accountTickets)
+	r.Get("/api/v1/account/membership-orders", h.accountMembershipOrders)
 
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
@@ -264,6 +288,76 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true, Secure: cookies.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})
+}
+
+type accountRead func(context.Context, string, string) (json.RawMessage, error)
+
+func (h *Handler) accountSummary(w http.ResponseWriter, r *http.Request) {
+	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.accountPortfolio.Summary(ctx, actorUserID, requestID)
+	})
+}
+
+func (h *Handler) accountPoints(w http.ResponseWriter, r *http.Request) {
+	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.accountPortfolio.Points(ctx, actorUserID, requestID)
+	})
+}
+
+func (h *Handler) accountMembership(w http.ResponseWriter, r *http.Request) {
+	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.accountPortfolio.Membership(ctx, actorUserID, requestID)
+	})
+}
+
+func (h *Handler) accountNotifications(w http.ResponseWriter, r *http.Request) {
+	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.accountPortfolio.Notifications(ctx, actorUserID, requestID)
+	})
+}
+
+func (h *Handler) accountTickets(w http.ResponseWriter, r *http.Request) {
+	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.accountPortfolio.Tickets(ctx, actorUserID, requestID)
+	})
+}
+
+func (h *Handler) accountMembershipOrders(w http.ResponseWriter, r *http.Request) {
+	h.accountRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.accountPortfolio.MembershipOrders(ctx, actorUserID, requestID)
+	})
+}
+
+func (h *Handler) accountRead(w http.ResponseWriter, r *http.Request, read accountRead) {
+	// Account facts are private and must not be stored by a browser or
+	// intermediary while the Portal Session remains active.
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	value, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if h.accountPortfolio == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
+		return
+	}
+	data, err := read(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		switch {
+		case errors.Is(err, accountportfolio.ErrUnauthorized):
+			writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+		case errors.Is(err, accountportfolio.ErrInvalid):
+			writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "account_portfolio_invalid_response", RequestID: requestIDOf(w, r)})
+		default:
+			writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}{Data: data, RequestID: requestIDOf(w, r)})
 }
 
 // --- Proxy to portal-api ---

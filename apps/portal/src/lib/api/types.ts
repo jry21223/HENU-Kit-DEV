@@ -12,6 +12,22 @@ export interface ErrorEnvelope {
   request_id?: string;
 }
 
+// ---- Account Portfolio ----
+
+/** A persisted account summary from Portal Gateway, never a session fixture. */
+export interface AccountSummary {
+  points_balance: number;
+  plan: "free" | "lifetime";
+  lifetime: boolean;
+  unread_notification_count: number;
+  open_ticket_count: number;
+}
+
+export interface AccountSummaryResponse {
+  data: AccountSummary;
+  request_id: string;
+}
+
 // ---- Library (gateway courses + portal-api materials) ----
 
 export interface CourseSummary {

@@ -102,6 +102,11 @@ jobs:
             context: services/portal-api
             dockerfile: services/portal-api/Dockerfile
             build_args: ""
+          - name: account-portfolio
+            image: henukit-account-portfolio
+            context: services/account-portfolio
+            dockerfile: services/account-portfolio/Dockerfile
+            build_args: ""
           - name: portal-gateway
             image: henukit-portal-gateway
             context: services/portal-gateway
@@ -166,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           runtime="release/runtime"
-          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/migrations/platform-core"
+          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/migrations/platform-core" "$runtime/migrations/account-portfolio"
           docker compose \
             -f docker-compose.henukit.yml \
             -f docker-compose.henukit.prebuilt.yml \
@@ -174,6 +179,7 @@ jobs:
           cp infra/nginx/henukit.conf.example "$runtime/infra/nginx/"
           cp infra/systemd/henukit-actions-watch.service "$runtime/infra/systemd/"
           cp services/platform-core/db/migrations/*.up.sql "$runtime/migrations/platform-core/"
+          cp services/account-portfolio/db/migrations/*.up.sql "$runtime/migrations/account-portfolio/"
           install -m 0555 scripts/ops/deploy-henukit-artifact.sh "$runtime/bin/deploy-henukit-artifact.sh"
           install -m 0555 scripts/ops/watch-henukit-actions.sh "$runtime/bin/watch-henukit-actions.sh"
           printf '%s\n' "$GITHUB_SHA" > "$runtime/RELEASE_SHA"

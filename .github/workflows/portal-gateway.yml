@@ -6,6 +6,7 @@ on:
       - services/portal-gateway/**
       - apps/portal/src/lib/api/portal-session.generated.ts
       - packages/api-contracts/openapi/portal-gateway.yaml
+      - packages/api-contracts/openapi/account-portfolio.yaml
       - packages/api-contracts/openapi/quizcraft.yaml
       - .github/workflows/portal-gateway.yml
   push:
@@ -14,6 +15,7 @@ on:
       - services/portal-gateway/**
       - apps/portal/src/lib/api/portal-session.generated.ts
       - packages/api-contracts/openapi/portal-gateway.yaml
+      - packages/api-contracts/openapi/account-portfolio.yaml
       - packages/api-contracts/openapi/quizcraft.yaml
       - .github/workflows/portal-gateway.yml
 

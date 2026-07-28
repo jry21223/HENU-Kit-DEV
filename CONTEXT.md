@@ -124,8 +124,12 @@ _Avoid_: 浏览器本地收藏、匿名用户档案
 HENUKit Console 中处理美食投稿审核、异常票和调档确认的 Active Product Module；Food 服务拥有业务数据，Console 仅通过 Food API 执行运营操作。
 _Avoid_: Platform Operations 美食页、共享数据库美食后台
 
+**Account Portfolio**:
+用户积分、会员、会员订单、账户通知与客服工单的独立持久化数据 Owner。Platform Core 只拥有身份，Portal Gateway 只转发已验证的用户上下文；Account Portfolio 不读取或迁移 Study 的旧权益。
+_Avoid_: Study 钱包、会话内账户 mock、Platform Core 账户余额
+
 **Candidate Capability**:
-正在评估但尚未进入 HENUKit Console 正式产品边界的能力；现有代码、数据表或旧页面不能代替产品决策，评估期间不显示在导航或数据看板。积分和会员当前属于此状态。
+正在评估但尚未进入 HENUKit Console 正式产品边界的能力；现有代码、数据表或旧页面不能代替产品决策，评估期间不显示在导航或数据看板。
 _Avoid_: 暂时保留功能、默认启用模块
 
 **Study Legacy Admin**:

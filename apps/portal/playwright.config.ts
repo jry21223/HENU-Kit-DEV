@@ -18,6 +18,11 @@ export default defineConfig({
   webServer: {
     command: "pnpm --filter @henukit/portal dev",
     url: "http://127.0.0.1:3001",
+    env: {
+      ...process.env,
+      NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: "1",
+      NEXT_PUBLIC_PORTAL_ALLOW_MOCK: "0",
+    },
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

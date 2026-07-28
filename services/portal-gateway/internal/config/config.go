@@ -28,15 +28,17 @@ type Config struct {
 
 	PortalAPIURL string
 
-	LibraryURL  string
-	FoodURL     string
-	PracticeURL string
-	NoticeURL   string
+	LibraryURL          string
+	FoodURL             string
+	PracticeURL         string
+	NoticeURL           string
+	AccountPortfolioURL string
 
-	LibraryAuth  ServiceAuth
-	FoodAuth     ServiceAuth
-	PracticeAuth ServiceAuth
-	NoticeAuth   ServiceAuth
+	LibraryAuth          ServiceAuth
+	FoodAuth             ServiceAuth
+	PracticeAuth         ServiceAuth
+	NoticeAuth           ServiceAuth
+	AccountPortfolioAuth ServiceAuth
 
 	PortalOrigin           string
 	LocalOAuthCookieName   string
@@ -65,6 +67,7 @@ func FromEnv() (Config, error) {
 		FoodURL:               mustEnv("FOOD_SERVICE_URL"),
 		PracticeURL:           mustEnv("PRACTICE_SERVICE_URL"),
 		NoticeURL:             mustEnv("NOTICE_SERVICE_URL"),
+		AccountPortfolioURL:   mustEnv("ACCOUNT_PORTFOLIO_URL"),
 		LibraryAuth: ServiceAuth{
 			ClientID:     mustEnv("LIBRARY_CLIENT_ID"),
 			ClientSecret: mustEnv("LIBRARY_CLIENT_SECRET"),
@@ -84,6 +87,11 @@ func FromEnv() (Config, error) {
 			ClientID:     mustEnv("NOTICE_CLIENT_ID"),
 			ClientSecret: mustEnv("NOTICE_CLIENT_SECRET"),
 			KeyID:        mustEnv("NOTICE_KEY_ID"),
+		},
+		AccountPortfolioAuth: ServiceAuth{
+			ClientID:     mustEnv("ACCOUNT_PORTFOLIO_CLIENT_ID"),
+			ClientSecret: mustEnv("ACCOUNT_PORTFOLIO_CLIENT_SECRET"),
+			KeyID:        mustEnv("ACCOUNT_PORTFOLIO_KEY_ID"),
 		},
 		PortalOrigin:           mustEnv("PORTAL_ORIGIN"),
 		LocalOAuthCookieName:   envOrDefault("PORTAL_LOCAL_OAUTH_COOKIE_NAME", "henukit_portal_oauth_local"),

@@ -1,0 +1,348 @@
+openapi: 3.1.0
+info:
+  title: Account Portfolio
+  version: 1.0.0
+  description: >-
+    Internal owner contract for persistent user points, memberships, membership
+    orders, notifications, and support tickets. Browser traffic reaches this
+    service only through Portal Gateway's authenticated forwarding boundary.
+  license: { name: MIT, identifier: MIT }
+servers: [{ url: "https://account-portfolio.internal" }]
+security:
+  - serviceBasic: []
+    serviceSignature: []
+    serviceActor: []
+paths:
+  /healthz:
+    get:
+      operationId: getAccountPortfolioHealth
+      summary: Verify the service and its durable database dependency
+      security: []
+      responses:
+        '200':
+          description: Service and database are ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '503':
+          $ref: '#/components/responses/DependencyUnavailable'
+        '400':
+          description: Invalid health request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/account/summary:
+    get:
+      operationId: getAccountSummary
+      summary: Return the signed-in user's persisted Account Portfolio summary
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+      responses:
+        '200':
+          description: Account summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSummaryEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/account/points:
+    get:
+      operationId: getAccountPoints
+      summary: Return the signed-in user's balance and immutable point ledger
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+      responses:
+        '200':
+          description: Points account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PointsEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/account/membership:
+    get:
+      operationId: getAccountMembership
+      summary: Return the signed-in user's persistent membership entitlement
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+      responses:
+        '200':
+          description: Membership entitlement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/account/notifications:
+    get:
+      operationId: getAccountNotifications
+      summary: Return persistent notifications belonging to the signed-in user
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+      responses:
+        '200':
+          description: Notifications, possibly empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationsEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/account/tickets:
+    get:
+      operationId: getAccountTickets
+      summary: Return support tickets belonging to the signed-in user
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+      responses:
+        '200':
+          description: Support tickets, possibly empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketsEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/account/membership-orders:
+    get:
+      operationId: getAccountMembershipOrders
+      summary: Return the signed-in user's membership orders, possibly empty
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+      responses:
+        '200':
+          description: Membership orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipOrdersEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+components:
+  securitySchemes:
+    serviceBasic:
+      type: http
+      scheme: basic
+    serviceSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+    serviceActor:
+      type: apiKey
+      in: header
+      name: X-Actor-User-Id
+      description: >-
+        Portal Gateway authenticates with Basic credentials plus a signed,
+        timestamped nonce and a trusted actor header. It is not a browser
+        authentication scheme.
+  parameters:
+    ServiceID:
+      name: X-Service-Id
+      in: header
+      required: true
+      description: Must equal the service Basic username.
+      schema: { type: string, minLength: 1, maxLength: 120 }
+    KeyID:
+      name: X-Key-Id
+      in: header
+      required: true
+      description: Selects a configured Account Portfolio service key.
+      schema: { type: string, minLength: 1, maxLength: 120 }
+    Timestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      description: Unix seconds within the five-minute replay window.
+      schema: { type: integer, format: int64 }
+    Nonce:
+      name: X-Nonce
+      in: header
+      required: true
+      description: Base64url encoding of 24 random bytes.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{32}$' }
+    ActorUserID:
+      name: X-Actor-User-Id
+      in: header
+      required: true
+      description: Authenticated Portal Session user ID, selected only by Portal Gateway.
+      schema: { type: string, format: uuid }
+  responses:
+    Unauthorized:
+      description: Invalid service authentication or actor context
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ReplayDetected:
+      description: Replayed signed service nonce
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    DependencyUnavailable:
+      description: The owner service or durable dependency is unavailable
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  schemas:
+    DataEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data: { type: object }
+        request_id: { type: string }
+    ErrorEnvelope:
+      type: object
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+        request_id: { type: string }
+    AccountSummaryEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data: { $ref: '#/components/schemas/AccountSummary' }
+        request_id: { type: string }
+    AccountSummary:
+      type: object
+      required: [points_balance, plan, lifetime, unread_notification_count, open_ticket_count]
+      properties:
+        points_balance: { type: integer, format: int64, minimum: 0 }
+        plan: { type: string, enum: [free, lifetime] }
+        lifetime: { type: boolean }
+        unread_notification_count: { type: integer, minimum: 0 }
+        open_ticket_count: { type: integer, minimum: 0 }
+    PointsEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [balance, entries]
+          properties:
+            balance: { type: integer, format: int64, minimum: 0 }
+            entries:
+              type: array
+              items: { $ref: '#/components/schemas/PointLedgerEntry' }
+        request_id: { type: string }
+    PointLedgerEntry:
+      type: object
+      required: [id, amount, reason, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { type: integer, format: int64 }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+    MembershipEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [plan, lifetime]
+          properties:
+            plan: { type: string, enum: [free, lifetime] }
+            lifetime: { type: boolean }
+        request_id: { type: string }
+    NotificationsEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [notifications]
+          properties:
+            notifications:
+              type: array
+              items: { $ref: '#/components/schemas/Notification' }
+        request_id: { type: string }
+    Notification:
+      type: object
+      required: [id, title, body, kind, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string }
+        kind: { type: string }
+        read_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+    TicketsEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [tickets]
+          properties:
+            tickets:
+              type: array
+              items: { $ref: '#/components/schemas/Ticket' }
+        request_id: { type: string }
+    Ticket:
+      type: object
+      required: [id, title, category, status, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        category: { type: string }
+        status: { type: string, enum: [open, in_progress, resolved] }
+        updated_at: { type: string, format: date-time }
+    MembershipOrdersEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [orders]
+          properties:
+            orders:
+              type: array
+              items: { $ref: '#/components/schemas/MembershipOrder' }
+        request_id: { type: string }
+    MembershipOrder:
+      type: object
+      required: [id, plan, amount_cents, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        plan: { type: string, enum: [lifetime] }
+        amount_cents: { type: integer, enum: [990] }
+        status: { type: string, enum: [created, pending_payment, paid, closed, failed, refunded] }
+        created_at: { type: string, format: date-time }
