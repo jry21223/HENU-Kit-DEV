@@ -252,6 +252,87 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/ReplayDetected' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/memberships/{user_id}:
+    get:
+      operationId: getConsoleAccountMembership
+      summary: Return one initialized Account Portfolio user's membership for an authorized Console operator
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/AccountUserID'
+      responses:
+        '200':
+          description: Durable target membership and revision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsoleMembershipEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/memberships/{user_id}/grants:
+    post:
+      operationId: grantConsoleAccountMembership
+      summary: Grant a durable lifetime membership to one initialized user
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/AccountUserID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MembershipMutationRequest' }
+      responses:
+        '200':
+          description: Updated durable membership or the original idempotent grant result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsoleMembershipCommandEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/memberships/{user_id}/revocations:
+    post:
+      operationId: revokeConsoleAccountMembership
+      summary: Revoke one durable lifetime membership back to the free plan
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/AccountUserID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MembershipMutationRequest' }
+      responses:
+        '200':
+          description: Updated durable membership or the original idempotent revocation result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsoleMembershipCommandEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /api/v1/console/tickets:
     get:
       operationId: getConsoleAccountTickets
@@ -418,6 +499,12 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    AccountUserID:
+      name: user_id
+      in: path
+      required: true
+      description: A user whose Account Portfolio state has already been initialized by a verified owner read.
+      schema: { type: string, format: uuid }
   responses:
     InvalidRequest:
       description: Invalid command, identifier, or lifecycle input
@@ -445,7 +532,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     CommandConflict:
-      description: A command idempotency key was reused with a different payload or the expected ticket revision is stale
+      description: A command idempotency key was reused with a different payload or the expected resource revision is stale
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -519,6 +606,43 @@ components:
             plan: { type: string, enum: [free, lifetime] }
             lifetime: { type: boolean }
         request_id: { type: string }
+    ConsoleMembership:
+      type: object
+      additionalProperties: false
+      required: [plan, lifetime, version]
+      properties:
+        plan: { type: string, enum: [free, lifetime] }
+        lifetime: { type: boolean }
+        version: { type: integer, minimum: 1 }
+    ConsoleMembershipEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [membership]
+          properties:
+            membership: { $ref: '#/components/schemas/ConsoleMembership' }
+        request_id: { type: string }
+    ConsoleMembershipCommandEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [membership]
+          properties:
+            membership: { $ref: '#/components/schemas/ConsoleMembership' }
+        request_id: { type: string }
+    MembershipMutationRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, expected_version]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        expected_version: { type: integer, minimum: 1 }
     NotificationsEnvelope:
       type: object
       required: [data, request_id]

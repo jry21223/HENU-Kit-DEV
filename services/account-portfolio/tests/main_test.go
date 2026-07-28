@@ -167,7 +167,7 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("initial ApplyMigrations() = %v", err)
 	}
 
-	for _, migration := range []string{"000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
+	for _, migration := range []string{"000003_membership_entitlements.down.sql", "000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
 		down, err := os.ReadFile(filepath.Join("..", "db", "migrations", migration))
 		if err != nil {
 			t.Fatal(err)
@@ -180,18 +180,20 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("reconcile after rollback = %v", err)
 	}
 
-	var accountTable, commandsTable, initialVersionRecorded, supportCommandsVersionRecorded bool
+	var accountTable, commandsTable, membershipEventsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded bool
 	if err := pool.QueryRow(ctx, `
 		SELECT
 			to_regclass('account_portfolio_accounts') IS NOT NULL,
 			to_regclass('account_portfolio_command_idempotency') IS NOT NULL,
+			to_regclass('account_portfolio_membership_events') IS NOT NULL,
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000001_account_portfolio'),
-			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000002_support_ticket_commands')
-	`).Scan(&accountTable, &commandsTable, &initialVersionRecorded, &supportCommandsVersionRecorded); err != nil {
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000002_support_ticket_commands'),
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000003_membership_entitlements')
+	`).Scan(&accountTable, &commandsTable, &membershipEventsTable, &initialVersionRecorded, &supportCommandsVersionRecorded, &membershipEntitlementsVersionRecorded); err != nil {
 		t.Fatal(err)
 	}
-	if !accountTable || !commandsTable || !initialVersionRecorded || !supportCommandsVersionRecorded {
-		t.Fatalf("reconciled schema account_table=%t commands_table=%t initial_version=%t support_commands_version=%t, want all true", accountTable, commandsTable, initialVersionRecorded, supportCommandsVersionRecorded)
+	if !accountTable || !commandsTable || !membershipEventsTable || !initialVersionRecorded || !supportCommandsVersionRecorded || !membershipEntitlementsVersionRecorded {
+		t.Fatalf("reconciled schema account_table=%t commands_table=%t membership_events_table=%t initial_version=%t support_commands_version=%t membership_entitlements_version=%t, want all true", accountTable, commandsTable, membershipEventsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded)
 	}
 }
 
@@ -205,6 +207,7 @@ func clearAccountPortfolio(t *testing.T, pool *pgxpool.Pool) {
 			account_portfolio_ticket_messages,
 			account_portfolio_tickets,
 			account_portfolio_notifications,
+			account_portfolio_membership_events,
 			account_portfolio_membership_orders,
 			account_portfolio_point_ledger,
 			account_portfolio_memberships,

@@ -97,6 +97,12 @@ type notificationView struct {
 	CreatedAt       time.Time  `json:"created_at"`
 }
 
+type consoleMembershipView struct {
+	Plan     string `json:"plan"`
+	Lifetime bool   `json:"lifetime"`
+	Version  int    `json:"version"`
+}
+
 type ticketRecord struct {
 	Ticket ticketView
 	UserID string
@@ -143,6 +149,9 @@ func New(config Config) (http.Handler, error) {
 		protected.Get(contract.TicketRoute, h.ticket)
 		protected.Post(contract.TicketFollowUpsRoute, h.createTicketFollowUp)
 		protected.Get(contract.MembershipOrdersRoute, h.membershipOrders)
+		protected.Get(contract.ConsoleMembershipRoute, h.consoleMembership)
+		protected.Post(contract.ConsoleMembershipGrantsRoute, h.grantConsoleMembership)
+		protected.Post(contract.ConsoleMembershipRevocationsRoute, h.revokeConsoleMembership)
 		protected.Get(contract.ConsoleTicketsRoute, h.consoleTickets)
 		protected.Get(contract.ConsoleTicketRoute, h.consoleTicket)
 		protected.Post(contract.ConsoleTicketRepliesRoute, h.replyConsoleTicket)
@@ -339,6 +348,127 @@ func (h *service) tickets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, r, http.StatusOK, data)
+}
+
+func (h *service) consoleMembership(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.prepareConsole(w, r); !ok {
+		return
+	}
+	userID, failure := membershipTargetID(r)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	membership, err := h.consoleMembershipByUserID(r.Context(), userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Account Portfolio membership is not initialized for this user")
+		return
+	}
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio membership is unavailable")
+		return
+	}
+	writeData(w, r, http.StatusOK, map[string]any{"membership": membership})
+}
+
+func (h *service) grantConsoleMembership(w http.ResponseWriter, r *http.Request) {
+	h.mutateConsoleMembership(w, r, "membership_grant", "grant", "free", "lifetime", "operator_grant", "membership_lifetime_granted", "终身会员权益已发放", "你的终身会员权益已由运营人员发放。")
+}
+
+func (h *service) revokeConsoleMembership(w http.ResponseWriter, r *http.Request) {
+	h.mutateConsoleMembership(w, r, "membership_revoke", "revoke", "lifetime", "free", "operator_revocation", "membership_lifetime_revoked", "终身会员权益已撤销", "你的终身会员权益已由运营人员撤销。")
+}
+
+func (h *service) mutateConsoleMembership(w http.ResponseWriter, r *http.Request, operation, eventKind, fromPlan, toPlan, source, notificationKind, notificationTitle, notificationBody string) {
+	operator, ok := h.prepareConsole(w, r)
+	if !ok {
+		return
+	}
+	userID, failure := membershipTargetID(r)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	var input struct {
+		Reason          string `json:"reason"`
+		ExpectedVersion int    `json:"expected_version"`
+	}
+	raw, failure := decodeCommand(r, &input)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	input.Reason = strings.TrimSpace(input.Reason)
+	if len([]rune(input.Reason)) == 0 || len([]rune(input.Reason)) > 1000 || input.ExpectedVersion < 1 {
+		writeCommandFailure(w, r, invalidCommand("membership mutation is invalid"))
+		return
+	}
+	key, failure := idempotencyKey(r)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	payload, status, failure := h.executeCommand(r.Context(), operator.clientID, operator.userID, operation, r.URL.Path, key, raw, http.StatusOK, func(tx pgx.Tx) (any, *commandFailure) {
+		var current consoleMembershipView
+		err := tx.QueryRow(r.Context(), `
+			SELECT plan, version
+			FROM account_portfolio_memberships
+			WHERE user_id=$1
+			FOR UPDATE
+		`, userID).Scan(&current.Plan, &current.Version)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, notFoundFailure("Account Portfolio membership is not initialized for this user")
+		}
+		if err != nil {
+			return nil, dependencyFailure("Account Portfolio membership is unavailable")
+		}
+		current.Lifetime = current.Plan == "lifetime"
+		if current.Version != input.ExpectedVersion {
+			return nil, membershipVersionConflictFailure()
+		}
+		if current.Plan != fromPlan {
+			return nil, invalidStateFailure("membership transition is not allowed")
+		}
+		now := h.now().UTC()
+		if eventKind == "grant" {
+			err = tx.QueryRow(r.Context(), `
+				UPDATE account_portfolio_memberships
+				SET plan=$2, source=$3, granted_at=$4, version=version+1, updated_at=$4
+				WHERE user_id=$1 AND version=$5
+				RETURNING plan, version
+			`, userID, toPlan, source, now, input.ExpectedVersion).Scan(&current.Plan, &current.Version)
+		} else {
+			err = tx.QueryRow(r.Context(), `
+				UPDATE account_portfolio_memberships
+				SET plan=$2, source=$3, version=version+1, updated_at=$4
+				WHERE user_id=$1 AND version=$5
+				RETURNING plan, version
+			`, userID, toPlan, source, now, input.ExpectedVersion).Scan(&current.Plan, &current.Version)
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, membershipVersionConflictFailure()
+		}
+		if err != nil {
+			return nil, dependencyFailure("Account Portfolio membership is unavailable")
+		}
+		current.Lifetime = current.Plan == "lifetime"
+		eventID := uuid.NewString()
+		if _, err := tx.Exec(r.Context(), `
+			INSERT INTO account_portfolio_membership_events(id, user_id, kind, from_plan, to_plan, source, actor_user_id, reason, idempotency_key, created_at)
+			VALUES($1, $2, $3, $4, $5, 'operator', $6, $7, $8, $9)
+		`, eventID, userID, eventKind, fromPlan, toPlan, operator.userID, input.Reason, key, now); err != nil {
+			return nil, dependencyFailure("Account Portfolio membership audit is unavailable")
+		}
+		if failure := h.createMembershipNotification(r.Context(), tx, eventID, userID, notificationKind, notificationTitle, notificationBody, now); failure != nil {
+			return nil, failure
+		}
+		return map[string]any{"membership": current}, nil
+	})
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	writeData(w, r, status, payload)
 }
 
 func (h *service) consoleTickets(w http.ResponseWriter, r *http.Request) {
@@ -802,6 +932,27 @@ func (h *service) markNotificationRead(w http.ResponseWriter, r *http.Request) {
 	writeData(w, r, status, payload)
 }
 
+func membershipTargetID(r *http.Request) (string, *commandFailure) {
+	userID := chi.URLParam(r, "user_id")
+	if uuid.Validate(userID) != nil {
+		return "", invalidCommand("membership user id is invalid")
+	}
+	return userID, nil
+}
+
+func (h *service) consoleMembershipByUserID(ctx context.Context, userID string) (consoleMembershipView, error) {
+	var value consoleMembershipView
+	err := h.database.QueryRow(ctx, `
+		SELECT plan, version
+		FROM account_portfolio_memberships
+		WHERE user_id=$1
+	`, userID).Scan(&value.Plan, &value.Version)
+	if err == nil {
+		value.Lifetime = value.Plan == "lifetime"
+	}
+	return value, err
+}
+
 func (h *service) ownerTicket(ctx context.Context, userID, ticketID string) (ticketView, error) {
 	var value ticketView
 	err := h.database.QueryRow(ctx, `
@@ -924,6 +1075,16 @@ func (h *service) createTicketNotification(ctx context.Context, tx pgx.Tx, ticke
 		VALUES($1, $2, $3, $4, $5, $6, $7, $8)
 	`, uuid.NewString(), userID, title, body, kind, ticketID, eventID, createdAt); err != nil {
 		return dependencyFailure("Account Portfolio notification delivery is unavailable")
+	}
+	return nil
+}
+
+func (h *service) createMembershipNotification(ctx context.Context, tx pgx.Tx, eventID, userID, kind, title, body string, createdAt time.Time) *commandFailure {
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO account_portfolio_notifications(id, user_id, title, body, kind, membership_event_id, created_at)
+		VALUES($1, $2, $3, $4, $5, $6, $7)
+	`, uuid.NewString(), userID, title, body, kind, eventID, createdAt); err != nil {
+		return dependencyFailure("Account Portfolio membership notification delivery is unavailable")
 	}
 	return nil
 }
@@ -1057,6 +1218,10 @@ func notFoundFailure(message string) *commandFailure {
 
 func versionConflictFailure() *commandFailure {
 	return &commandFailure{status: http.StatusConflict, code: "VERSION_CONFLICT", message: "ticket version no longer matches"}
+}
+
+func membershipVersionConflictFailure() *commandFailure {
+	return &commandFailure{status: http.StatusConflict, code: "VERSION_CONFLICT", message: "membership version no longer matches"}
 }
 
 func invalidStateFailure(message string) *commandFailure {
