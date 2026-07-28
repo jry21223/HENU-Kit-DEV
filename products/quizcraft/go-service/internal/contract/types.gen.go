@@ -1055,6 +1055,9 @@ type Forbidden = ErrorEnvelope
 // NotFound defines model for NotFound.
 type NotFound = ErrorEnvelope
 
+// ServiceReplay defines model for ServiceReplay.
+type ServiceReplay = ErrorEnvelope
+
 // ServiceUnavailable defines model for ServiceUnavailable.
 type ServiceUnavailable = ErrorEnvelope
 

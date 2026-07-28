@@ -72,7 +72,7 @@ export class PracticeService {
         });
     }
     /**
-     * List published practice banks
+     * List published practice banks through the internal Portal catalog contract
      * @returns BankListEnvelope Published banks
      * @throws ApiError
      */
@@ -81,7 +81,9 @@ export class PracticeService {
             method: 'GET',
             url: '/api/v1/banks',
             errors: {
-                400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
+                403: `Permission code or product Scope denied`,
+                409: `Dedicated service request nonce was already used`,
                 503: `PostgreSQL or a required service is unavailable`,
             },
         });

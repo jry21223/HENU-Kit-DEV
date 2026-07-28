@@ -28,9 +28,14 @@ func main() {
 	fail(err)
 	defer pool.Close()
 	fail(pool.Ping(ctx))
+	fail(quizcraft.RequireQuizcraftV2Target(ctx, pool))
 	summaryKeys := map[string]string{}
 	if keyID := os.Getenv("QUIZCRAFT_SUMMARY_KEY_ID"); keyID != "" {
 		summaryKeys[keyID] = os.Getenv("QUIZCRAFT_SUMMARY_CLIENT_SECRET")
+	}
+	catalogKeys := map[string]string{}
+	if keyID := os.Getenv("QUIZCRAFT_PORTAL_CATALOG_KEY_ID"); keyID != "" {
+		catalogKeys[keyID] = os.Getenv("QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET")
 	}
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
 		Database:              pool,
@@ -39,6 +44,8 @@ func main() {
 		LegacyCompareSecret:   os.Getenv("QUIZCRAFT_LEGACY_COMPARE_SECRET"),
 		SummaryClientID:       os.Getenv("QUIZCRAFT_SUMMARY_CLIENT_ID"),
 		SummaryKeys:           summaryKeys,
+		CatalogClientID:       os.Getenv("QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID"),
+		CatalogKeys:           catalogKeys,
 		PlatformCoreURL:       os.Getenv("PLATFORM_CORE_URL"),
 		PlatformClientID:      os.Getenv("QUIZCRAFT_PLATFORM_CLIENT_ID"),
 		PlatformClientSecret:  os.Getenv("QUIZCRAFT_PLATFORM_CLIENT_SECRET"),

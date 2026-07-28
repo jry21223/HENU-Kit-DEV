@@ -37,6 +37,8 @@ type PracticeHTTPConfig struct {
 	Now                     func() time.Time
 	SummaryClientID         string
 	SummaryKeys             map[string]string
+	CatalogClientID         string
+	CatalogKeys             map[string]string
 	PlatformCoreURL         string
 	PlatformClientID        string
 	PlatformClientSecret    string
@@ -61,6 +63,8 @@ type practiceHTTP struct {
 	now                     func() time.Time
 	summaryClientID         string
 	summaryKeys             map[string]string
+	catalogClientID         string
+	catalogKeys             map[string]string
 	platform                *platformClient
 	sessionCodec            *quizcraftSessionCodec
 	publicURL               string
@@ -159,6 +163,9 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if (config.SummaryClientID == "") != (len(config.SummaryKeys) == 0) {
 		return nil, errors.New("QuizCraft summary client and key ring must be configured together")
 	}
+	if (config.CatalogClientID == "") != (len(config.CatalogKeys) == 0) {
+		return nil, errors.New("QuizCraft catalog client and key ring must be configured together")
+	}
 	platformValues := []bool{config.PlatformCoreURL != "", config.PlatformClientID != "", config.PlatformClientSecret != "", config.PlatformKeyID != "", config.PublicURL != "", len(config.SessionEncryptionKey) != 0}
 	platformCount := 0
 	for _, configured := range platformValues {
@@ -178,6 +185,11 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	for keyID, secret := range config.SummaryKeys {
 		if keyID == "" || len(secret) < 32 {
 			return nil, errors.New("quizCraft summary key ring is invalid")
+		}
+	}
+	for keyID, secret := range config.CatalogKeys {
+		if keyID == "" || len(secret) < 32 {
+			return nil, errors.New("QuizCraft catalog key ring is invalid")
 		}
 	}
 	legacyBaseURL := strings.TrimRight(strings.TrimSpace(config.LegacyBaseURL), "/")
@@ -202,7 +214,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if releaseSHA == "" {
 		releaseSHA = "development"
 	}
-	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, allowTestWorkshopClaims: config.AllowTestWorkshopClaims, writesDisabled: config.WritesDisabled, releaseSHA: releaseSHA, cutoverEvidenceSecret: config.CutoverEvidenceSecret}
+	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, catalogClientID: config.CatalogClientID, catalogKeys: config.CatalogKeys, allowTestWorkshopClaims: config.AllowTestWorkshopClaims, writesDisabled: config.WritesDisabled, releaseSHA: releaseSHA, cutoverEvidenceSecret: config.CutoverEvidenceSecret}
 	if platformCount == len(platformValues) {
 		platform, err := newPlatformClient(config.PlatformCoreURL, config.PlatformClientID, config.PlatformClientSecret, config.PlatformKeyID, client)
 		if err != nil {
@@ -232,7 +244,9 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	router.Get("/auth/login", service.startPlatformLogin)
 	router.Get("/auth/callback", service.finishPlatformLogin)
 	router.With(service.authenticateConsoleSummary).Get("/api/v1/console-summary", service.consoleSummary)
-	router.Get("/api/v1/banks", service.listBanks)
+	if service.catalogClientID != "" {
+		router.With(service.authenticatePortalCatalog).Get("/api/v1/banks", service.listBanks)
+	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Post("/api/v1/feedback", service.createFeedback)
 	router.Get("/api/v1/workshop/banks", service.listWorkshopBanks)
