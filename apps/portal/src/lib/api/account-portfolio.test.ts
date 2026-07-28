@@ -61,6 +61,29 @@ describe("fetchAccountSummary", () => {
     const { fetchAccountSummary, PortalHttpError } = await import("./client");
     await expect(fetchAccountSummary()).rejects.toBeInstanceOf(PortalHttpError);
   });
+
+  it("reads the durable membership entitlement from the Gateway without a session fallback", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { plan: "lifetime", lifetime: true },
+          request_id: "req_membership_lifetime",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { fetchAccountMembership } = await import("./client");
+    await expect(fetchAccountMembership()).resolves.toEqual({
+      data: { plan: "lifetime", lifetime: true },
+      request_id: "req_membership_lifetime",
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/account/membership",
+      expect.objectContaining({ cache: "no-store", credentials: "include" })
+    );
+  });
 });
 
 describe("Account Portfolio ticket and notification commands", () => {

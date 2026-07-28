@@ -73,11 +73,46 @@ type foodClient interface {
 }
 
 type accountPortfolioClient interface {
+	Membership(context.Context, string, string) (json.RawMessage, error)
+	Grant(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	Revoke(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	Tickets(context.Context, string) (json.RawMessage, error)
 	Ticket(context.Context, string, string) (json.RawMessage, error)
 	Reply(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	Transition(context.Context, string, string, string, []byte) (json.RawMessage, error)
 }
+
+type accountMembershipMutation uint8
+
+const (
+	accountMembershipGrant accountMembershipMutation = iota
+	accountMembershipRevocation
+)
+
+type accountResultMessages struct {
+	notFoundCode    string
+	notFoundMessage string
+	conflictCode    string
+	conflictMessage string
+	invalidMessage  string
+}
+
+var (
+	accountTicketResultMessages = accountResultMessages{
+		notFoundCode:    "ACCOUNT_TICKET_NOT_FOUND",
+		notFoundMessage: "Account support ticket was not found",
+		conflictCode:    "ACCOUNT_TICKET_CONFLICT",
+		conflictMessage: "Account ticket version or idempotency history conflicts",
+		invalidMessage:  "Account ticket request is invalid",
+	}
+	accountMembershipResultMessages = accountResultMessages{
+		notFoundCode:    "ACCOUNT_MEMBERSHIP_NOT_FOUND",
+		notFoundMessage: "Account membership target was not initialized",
+		conflictCode:    "ACCOUNT_MEMBERSHIP_CONFLICT",
+		conflictMessage: "Account membership version or idempotency history conflicts",
+		invalidMessage:  "Account membership request is invalid",
+	}
+)
 
 type overviewClient interface {
 	Fetch(context.Context, string) contract.ConsoleOverview
@@ -154,6 +189,9 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.FoodWorkspaceRoute, handler.getFoodWorkspace)
 	router.Post(contract.FoodCommandRoute, handler.executeFoodCommand)
 	router.Get(contract.FoodOperationRoute, handler.getFoodOperation)
+	router.Get(contract.AccountMembershipRoute, handler.getAccountMembership)
+	router.Post(contract.AccountMembershipGrantsRoute, handler.grantAccountMembership)
+	router.Post(contract.AccountMembershipRevocationsRoute, handler.revokeAccountMembership)
 	router.Get(contract.AccountTicketsRoute, handler.getAccountTickets)
 	router.Get(contract.AccountTicketRoute, handler.getAccountTicket)
 	router.Post(contract.AccountTicketRepliesRoute, handler.replyAccountTicket)
@@ -271,6 +309,55 @@ func (h *Handler) getAccountTickets(writer http.ResponseWriter, request *http.Re
 	h.writeAccountResult(writer, request, data, err)
 }
 
+func (h *Handler) getAccountMembership(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeAccount(writer, request, "account.membership.write")
+	if !ok {
+		return
+	}
+	data, err := h.account.Membership(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "user_id"))
+	h.writeAccountMembershipResult(writer, request, data, err)
+}
+
+func (h *Handler) grantAccountMembership(writer http.ResponseWriter, request *http.Request) {
+	h.mutateAccountMembership(writer, request, accountMembershipGrant)
+}
+
+func (h *Handler) revokeAccountMembership(writer http.ResponseWriter, request *http.Request) {
+	h.mutateAccountMembership(writer, request, accountMembershipRevocation)
+}
+
+func (h *Handler) mutateAccountMembership(writer http.ResponseWriter, request *http.Request, mutation accountMembershipMutation) {
+	var input contract.ConsoleMembershipMutationRequest
+	body, ok := decodeAccountCommand(writer, request, &input)
+	if !ok {
+		return
+	}
+	invalidMessage := "Account membership grant is invalid"
+	if mutation == accountMembershipRevocation {
+		invalidMessage = "Account membership revocation is invalid"
+	}
+	if strings.TrimSpace(input.Reason) == "" || len([]rune(input.Reason)) > 1000 || input.ExpectedVersion < 1 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", invalidMessage)
+		return
+	}
+	value, ok := h.authorizeAccount(writer, request, "account.membership.write")
+	if !ok {
+		return
+	}
+	ctx := accountportfolioapi.WithRequestID(request.Context(), requestID(request))
+	operatorID := value.UserID
+	targetID := chi.URLParam(request, "user_id")
+	idempotencyKey := request.Header.Get("Idempotency-Key")
+	var data json.RawMessage
+	var err error
+	if mutation == accountMembershipGrant {
+		data, err = h.account.Grant(ctx, operatorID, targetID, idempotencyKey, body)
+	} else {
+		data, err = h.account.Revoke(ctx, operatorID, targetID, idempotencyKey, body)
+	}
+	h.writeAccountMembershipResult(writer, request, data, err)
+}
+
 func (h *Handler) getAccountTicket(writer http.ResponseWriter, request *http.Request) {
 	value, ok := h.authorizeAccount(writer, request, "account.tickets.read")
 	if !ok {
@@ -333,6 +420,14 @@ func (h *Handler) authorizeAccount(writer http.ResponseWriter, request *http.Req
 }
 
 func (h *Handler) writeAccountResult(writer http.ResponseWriter, request *http.Request, data json.RawMessage, err error) {
+	h.writeAccountOwnerResult(writer, request, data, err, accountTicketResultMessages)
+}
+
+func (h *Handler) writeAccountMembershipResult(writer http.ResponseWriter, request *http.Request, data json.RawMessage, err error) {
+	h.writeAccountOwnerResult(writer, request, data, err, accountMembershipResultMessages)
+}
+
+func (h *Handler) writeAccountOwnerResult(writer http.ResponseWriter, request *http.Request, data json.RawMessage, err error, messages accountResultMessages) {
 	if err == nil {
 		writeJSON(writer, request, http.StatusOK, data)
 		return
@@ -343,11 +438,11 @@ func (h *Handler) writeAccountResult(writer http.ResponseWriter, request *http.R
 	case errors.Is(err, accountportfolioapi.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Account Portfolio permission or Scope is missing")
 	case errors.Is(err, accountportfolioapi.ErrNotFound):
-		writeError(writer, request, http.StatusNotFound, "ACCOUNT_TICKET_NOT_FOUND", "Account support ticket was not found")
+		writeError(writer, request, http.StatusNotFound, messages.notFoundCode, messages.notFoundMessage)
 	case errors.Is(err, accountportfolioapi.ErrConflict):
-		writeError(writer, request, http.StatusConflict, "ACCOUNT_TICKET_CONFLICT", "Account ticket version or idempotency history conflicts")
+		writeError(writer, request, http.StatusConflict, messages.conflictCode, messages.conflictMessage)
 	case errors.Is(err, accountportfolioapi.ErrInvalid):
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Account ticket request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", messages.invalidMessage)
 	default:
 		h.unavailable(writer, request, err)
 	}
@@ -835,13 +930,14 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 		foodAnomalyErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.anomaly")
 		foodTierErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.tier_adjust")
 	}
-	accountReadErr, accountReplyErr, accountTransitionErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
+	accountMembershipErr, accountReadErr, accountReplyErr, accountTransitionErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
 	if h.account != nil {
+		accountMembershipErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.membership.write")
 		accountReadErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.read")
 		accountReplyErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.reply")
 		accountTransitionErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.transition")
 	}
-	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) || errors.Is(accountReadErr, platformcore.ErrUnauthorized) || errors.Is(accountReplyErr, platformcore.ErrUnauthorized) || errors.Is(accountTransitionErr, platformcore.ErrUnauthorized) {
+	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) || errors.Is(accountMembershipErr, platformcore.ErrUnauthorized) || errors.Is(accountReadErr, platformcore.ErrUnauthorized) || errors.Is(accountReplyErr, platformcore.ErrUnauthorized) || errors.Is(accountTransitionErr, platformcore.ErrUnauthorized) {
 		h.clearSession(writer)
 		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
 		return
@@ -886,6 +982,9 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if foodTierErr == nil {
 		permissions = append(permissions, "food.tier_adjust")
 	}
+	if accountMembershipErr == nil {
+		permissions = append(permissions, "account.membership.write")
+	}
 	if accountReadErr == nil {
 		permissions = append(permissions, "account.tickets.read")
 	}
@@ -924,7 +1023,7 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 		foodProduct := "food"
 		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &foodProduct})
 	}
-	if accountReadErr == nil || accountReplyErr == nil || accountTransitionErr == nil {
+	if accountMembershipErr == nil || accountReadErr == nil || accountReplyErr == nil || accountTransitionErr == nil {
 		accountProduct := "account-portfolio"
 		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &accountProduct})
 	}

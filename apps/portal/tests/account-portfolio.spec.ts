@@ -76,7 +76,6 @@ test("unimplemented Account Portfolio pages still fail closed rather than exposi
   await mockSession(page);
   const pages = [
     { path: "/account/wallet", title: "积分钱包", absentAction: "每日签到" },
-    { path: "/account/membership", title: "会员", absentAction: "开通" },
     { path: "/account/posts", title: "我的文章", absentAction: "去发布" },
     { path: "/account/deals", title: "我的交易", absentAction: "完整管理" },
   ];
@@ -89,6 +88,34 @@ test("unimplemented Account Portfolio pages still fail closed rather than exposi
     await expect(page.getByText(item.absentAction, { exact: false })).toHaveCount(0);
   }
 });
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 1000 },
+  { name: "390px", width: 390, height: 844 },
+]) {
+  test(`${viewport.name} membership page renders the durable entitlement without a payment or session fallback`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mockSession(page);
+    await page.route("**/api/v1/account/membership", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { plan: "lifetime", lifetime: true },
+          request_id: "req_membership_lifetime",
+        }),
+      });
+    });
+
+    await page.goto("/account/membership", { waitUntil: "domcontentloaded" });
+    await expect(page.locator('[data-account-membership-state="success"]')).toBeVisible();
+    await expect(page.getByRole("heading", { name: "终身会员" })).toBeVisible();
+    await expect(page.getByText("权益已由 Account Portfolio 持久化确认，可跨设备读取。", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /开通|支付/ })).toHaveCount(0);
+    await expect(page.getByText(sessionUserID, { exact: true })).toHaveCount(0);
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+}
 
 test("account tickets create and show durable ticket history without a session fallback", async ({ page }) => {
   await mockSession(page);

@@ -28,6 +28,17 @@ export interface AccountSummaryResponse {
   request_id: string;
 }
 
+/** The signed-in user's durable membership entitlement. */
+export interface AccountMembership {
+  plan: "free" | "lifetime";
+  lifetime: boolean;
+}
+
+export interface AccountMembershipResponse {
+  data: AccountMembership;
+  request_id: string;
+}
+
 export type AccountTicketStatus = "open" | "in_progress" | "resolved";
 
 export interface AccountNotification {

@@ -24,8 +24,13 @@ HC-167 establishes the owner read boundary. Portal Gateway forwards only the
 verified Portal Session user ID in a replay-protected signed request. Every
 read reconciles the user’s missing default rows transactionally and returns a
 real persisted zero state; dependency failure is explicit, never a mock
-success. Later tickets add user and operator writes without changing owner
-identity or the initial-state rule.
+success. HC-170 adds the membership operator boundary: only the separately
+configured, actor-bound Console Gateway credential may read or mutate an
+already initialized target membership. A Console mutation changes the durable
+entitlement and membership revision, appends one immutable membership event,
+and creates one user notification in the same transaction. It never creates
+an Account Portfolio account for an arbitrary target and never imports legacy
+Study membership state.
 
 ## Language
 
@@ -52,3 +57,22 @@ A durable message written by an authorized Console operator to a Support
 Ticket. It identifies the operator and produces a user notification without
 copying ownership to Console.
 _Avoid_: Console note, browser response
+
+**Membership Entitlement**:
+The persisted `free` or `lifetime` Account Portfolio plan for an initialized
+user. New users start at `free`; a lifetime entitlement is the durable benefit
+associated with the ¥9.9 product, not evidence that a payment Provider ran.
+_Avoid_: Study membership, client-side flag, paid receipt
+
+**Membership Event**:
+An immutable, operator-attributed transition from `free` to `lifetime` or from
+`lifetime` to `free`. It records the stated reason and idempotency key, and
+has exactly one associated user notification. It is private audit data, not a
+Portal membership response.
+_Avoid_: Editable membership history, browser audit log
+
+**Membership Revision**:
+The positive version of a Membership Entitlement. Console grant and revocation
+commands must present the current revision; stale or repeated state changes
+fail without creating an event or notification.
+_Avoid_: Timestamp-only concurrency, last-write-wins

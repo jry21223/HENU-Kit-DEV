@@ -75,7 +75,7 @@ func main() {
 		fail(errors.New("console gateway server must end with /api/v1"))
 	}
 	routes := operationRoutes(spec)
-	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "getConsoleFoodWorkspace", "executeConsoleFoodCommand", "getConsoleFoodOperationStatus", "getConsoleAccountTickets", "getConsoleAccountTicket", "replyConsoleAccountTicket", "transitionConsoleAccountTicket", "logoutConsoleSession"} {
+	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "getConsoleFoodWorkspace", "executeConsoleFoodCommand", "getConsoleFoodOperationStatus", "getConsoleAccountMembership", "grantConsoleAccountMembership", "revokeConsoleAccountMembership", "getConsoleAccountTickets", "getConsoleAccountTicket", "replyConsoleAccountTicket", "transitionConsoleAccountTicket", "logoutConsoleSession"} {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
@@ -207,6 +207,9 @@ const (
 		FoodWorkspaceRoute = %q
 		FoodCommandRoute = %q
 		FoodOperationRoute = %q
+		AccountMembershipRoute = %q
+		AccountMembershipGrantsRoute = %q
+		AccountMembershipRevocationsRoute = %q
 		AccountTicketsRoute = %q
 		AccountTicketRoute = %q
 		AccountTicketRepliesRoute = %q
@@ -215,7 +218,7 @@ const (
 	SourceSHA256 = %q
 )
 
-	`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["logoutConsoleSession"], digest)
+	`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -522,6 +525,51 @@ export async function resolveFoodOperation(operation: FoodCommandKind, idempoten
   } catch { return { state: "unavailable" }; }
 }
 
+export type AccountMembershipReadResult =
+  | { state: "authenticated"; membership: ConsoleAccountMembership }
+  | { state: "signed_out" | "denied" | "not_found" | "invalid" | "unavailable" };
+
+export async function fetchAccountMembership(userID: string): Promise<AccountMembershipReadResult> {
+  try {
+    const response = await fetch("{{ACCOUNT_MEMBERSHIP_ROUTE}}".replace("{user_id}", encodeURIComponent(userID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountMembershipEnvelope(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", membership: envelope.data.membership };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type AccountMembershipWriteResult =
+  | { state: "succeeded"; membership: ConsoleAccountMembership }
+  | { state: "signed_out" | "denied" | "not_found" | "conflict" | "invalid" | "unavailable" };
+
+async function writeAccountMembership(path: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
+  try {
+    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 404) return { state: "not_found" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountMembershipEnvelope(envelope.data)) return { state: "unavailable" };
+    return { state: "succeeded", membership: envelope.data.membership };
+  } catch { return { state: "unavailable" }; }
+}
+
+export function grantAccountMembership(userID: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
+  return writeAccountMembership("{{ACCOUNT_MEMBERSHIP_GRANTS_ROUTE}}".replace("{user_id}", encodeURIComponent(userID)), input, idempotencyKey);
+}
+
+export function revokeAccountMembership(userID: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
+  return writeAccountMembership("{{ACCOUNT_MEMBERSHIP_REVOCATIONS_ROUTE}}".replace("{user_id}", encodeURIComponent(userID)), input, idempotencyKey);
+}
+
 export type AccountTicketQueueResult = { state: "authenticated"; queue: ConsoleAccountTicketQueue } | { state: "signed_out" | "denied" | "unavailable" };
 
 export async function fetchAccountTicketQueue(): Promise<AccountTicketQueueResult> {
@@ -593,6 +641,7 @@ export function consoleLoginHref(): string {
 		"{{NOTICE_ROUTE}}": routes["getConsoleNotices"], "{{NOTICE_SOURCE_ROUTE}}": routes["createConsoleNoticeSource"], "{{NOTICE_VERSION_ROUTE}}": routes["createConsoleNoticeVersion"], "{{NOTICE_REVIEW_ROUTE}}": routes["reviewConsoleNoticeVersion"], "{{NOTICE_DISTRIBUTION_ROUTE}}": routes["distributeConsoleNoticeVersion"], "{{NOTICE_OPERATION_ROUTE}}": routes["getConsoleNoticeOperationStatus"],
 		"{{LIBRARY_ROUTE}}": routes["getConsoleLibraryWorkspace"], "{{LIBRARY_COMMAND_ROUTE}}": routes["executeConsoleLibraryCommand"], "{{LIBRARY_OPERATION_ROUTE}}": routes["getConsoleLibraryOperationStatus"],
 		"{{FOOD_ROUTE}}": routes["getConsoleFoodWorkspace"], "{{FOOD_COMMAND_ROUTE}}": routes["executeConsoleFoodCommand"], "{{FOOD_OPERATION_ROUTE}}": routes["getConsoleFoodOperationStatus"],
+		"{{ACCOUNT_MEMBERSHIP_ROUTE}}": routes["getConsoleAccountMembership"], "{{ACCOUNT_MEMBERSHIP_GRANTS_ROUTE}}": routes["grantConsoleAccountMembership"], "{{ACCOUNT_MEMBERSHIP_REVOCATIONS_ROUTE}}": routes["revokeConsoleAccountMembership"],
 		"{{ACCOUNT_TICKETS_ROUTE}}": routes["getConsoleAccountTickets"], "{{ACCOUNT_TICKET_ROUTE}}": routes["getConsoleAccountTicket"], "{{ACCOUNT_TICKET_REPLIES_ROUTE}}": routes["replyConsoleAccountTicket"], "{{ACCOUNT_TICKET_TRANSITIONS_ROUTE}}": routes["transitionConsoleAccountTicket"],
 	}
 	for old, replacement := range replacements {

@@ -64,6 +64,25 @@ func validateTicketCommand(raw json.RawMessage) error {
 	return nil
 }
 
+func validateMembershipEnvelope(raw json.RawMessage) error {
+	value, ok := requiredObject(raw)
+	if !ok || !hasOnlyKeys(value, "membership") {
+		return ErrInvalid
+	}
+	membership, ok := requiredObject(value["membership"])
+	if !ok || !validMembership(membership) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func validMembership(value map[string]json.RawMessage) bool {
+	plan, planOK := requiredString(value, "plan")
+	lifetime, lifetimeOK := requiredBool(value, "lifetime")
+	version, versionOK := requiredInt(value, "version")
+	return hasOnlyKeys(value, "plan", "lifetime", "version") && planOK && lifetimeOK && versionOK && version >= 1 && ((plan == "free" && !lifetime) || (plan == "lifetime" && lifetime))
+}
+
 func validTicket(value map[string]json.RawMessage) bool {
 	id, idOK := requiredString(value, "id")
 	reference, referenceOK := requiredString(value, "reference")
@@ -142,6 +161,18 @@ func requiredInt(value map[string]json.RawMessage, key string) (int64, bool) {
 	return result, true
 }
 
+func requiredBool(value map[string]json.RawMessage, key string) (bool, bool) {
+	raw, ok := value[key]
+	if !ok || isNull(raw) {
+		return false, false
+	}
+	var result bool
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return false, false
+	}
+	return result, true
+}
+
 func requiredTimestamp(value map[string]json.RawMessage, key string) bool {
 	text, ok := requiredString(value, key)
 	if !ok {
@@ -152,6 +183,18 @@ func requiredTimestamp(value map[string]json.RawMessage, key string) bool {
 }
 
 func isNull(raw json.RawMessage) bool { return strings.TrimSpace(string(raw)) == "null" }
+
+func hasOnlyKeys(value map[string]json.RawMessage, allowed ...string) bool {
+	if len(value) != len(allowed) {
+		return false
+	}
+	for _, key := range allowed {
+		if _, ok := value[key]; !ok {
+			return false
+		}
+	}
+	return true
+}
 
 func validStatus(value string) bool {
 	return value == "open" || value == "in_progress" || value == "resolved"

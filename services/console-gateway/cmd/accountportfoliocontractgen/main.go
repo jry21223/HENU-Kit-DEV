@@ -27,10 +27,13 @@ func main() {
 		}
 	}
 	required := map[string]string{
-		"TicketsPath":           "getConsoleAccountTickets",
-		"TicketPath":            "getConsoleAccountTicket",
-		"TicketRepliesPath":     "replyConsoleAccountTicket",
-		"TicketTransitionsPath": "transitionConsoleAccountTicket",
+		"MembershipPath":            "getConsoleAccountMembership",
+		"MembershipGrantsPath":      "grantConsoleAccountMembership",
+		"MembershipRevocationsPath": "revokeConsoleAccountMembership",
+		"TicketsPath":               "getConsoleAccountTickets",
+		"TicketPath":                "getConsoleAccountTicket",
+		"TicketRepliesPath":         "replyConsoleAccountTicket",
+		"TicketTransitionsPath":     "transitionConsoleAccountTicket",
 	}
 	for _, operationID := range required {
 		if routes[operationID] == "" {
@@ -42,12 +45,15 @@ func main() {
 package accountportfolio
 
 const (
+	MembershipPathTemplate = %q
+	MembershipGrantsPathTemplate = %q
+	MembershipRevocationsPathTemplate = %q
 	TicketsPath = %q
 	TicketPathTemplate = %q
 	TicketRepliesPathTemplate = %q
 	TicketTransitionsPathTemplate = %q
 )
-`, digest, routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"])
+`, digest, routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/accountportfolio", 0o755))

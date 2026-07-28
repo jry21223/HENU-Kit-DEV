@@ -167,7 +167,7 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("initial ApplyMigrations() = %v", err)
 	}
 
-	for _, migration := range []string{"000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
+	for _, migration := range []string{"000003_membership_entitlements.down.sql", "000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
 		down, err := os.ReadFile(filepath.Join("..", "db", "migrations", migration))
 		if err != nil {
 			t.Fatal(err)
@@ -180,18 +180,84 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("reconcile after rollback = %v", err)
 	}
 
-	var accountTable, commandsTable, initialVersionRecorded, supportCommandsVersionRecorded bool
+	var accountTable, commandsTable, membershipEventsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded bool
 	if err := pool.QueryRow(ctx, `
 		SELECT
 			to_regclass('account_portfolio_accounts') IS NOT NULL,
 			to_regclass('account_portfolio_command_idempotency') IS NOT NULL,
+			to_regclass('account_portfolio_membership_events') IS NOT NULL,
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000001_account_portfolio'),
-			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000002_support_ticket_commands')
-	`).Scan(&accountTable, &commandsTable, &initialVersionRecorded, &supportCommandsVersionRecorded); err != nil {
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000002_support_ticket_commands'),
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000003_membership_entitlements')
+	`).Scan(&accountTable, &commandsTable, &membershipEventsTable, &initialVersionRecorded, &supportCommandsVersionRecorded, &membershipEntitlementsVersionRecorded); err != nil {
 		t.Fatal(err)
 	}
-	if !accountTable || !commandsTable || !initialVersionRecorded || !supportCommandsVersionRecorded {
-		t.Fatalf("reconciled schema account_table=%t commands_table=%t initial_version=%t support_commands_version=%t, want all true", accountTable, commandsTable, initialVersionRecorded, supportCommandsVersionRecorded)
+	if !accountTable || !commandsTable || !membershipEventsTable || !initialVersionRecorded || !supportCommandsVersionRecorded || !membershipEntitlementsVersionRecorded {
+		t.Fatalf("reconciled schema account_table=%t commands_table=%t membership_events_table=%t initial_version=%t support_commands_version=%t membership_entitlements_version=%t, want all true", accountTable, commandsTable, membershipEventsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded)
+	}
+}
+
+func TestMembershipEntitlementMigrationPreservesPreexistingMembership(t *testing.T) {
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+
+	schema := fmt.Sprintf("account_portfolio_membership_migration_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+	}()
+
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+		t.Fatalf("initial ApplyMigrations() = %v", err)
+	}
+
+	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000003_membership_entitlements.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("rollback membership entitlement migration = %v", err)
+	}
+
+	const ownerID = "abababab-abab-4bab-8bab-abababababab"
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_accounts(user_id) VALUES($1)`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_memberships(user_id, plan, source) VALUES($1, 'lifetime', 'legacy_operator')`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+		t.Fatalf("ApplyMigrations() after pre-entitlement seed = %v", err)
+	}
+
+	var plan string
+	var version, eventCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT
+			(SELECT plan FROM account_portfolio_memberships WHERE user_id=$1),
+			(SELECT version FROM account_portfolio_memberships WHERE user_id=$1),
+			(SELECT count(*) FROM account_portfolio_membership_events WHERE user_id=$1)
+	`, ownerID).Scan(&plan, &version, &eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if plan != "lifetime" || version != 1 || eventCount != 0 {
+		t.Fatalf("migrated preexisting membership plan/version/events = %q/%d/%d, want lifetime/1/0", plan, version, eventCount)
 	}
 }
 
@@ -205,6 +271,7 @@ func clearAccountPortfolio(t *testing.T, pool *pgxpool.Pool) {
 			account_portfolio_ticket_messages,
 			account_portfolio_tickets,
 			account_portfolio_notifications,
+			account_portfolio_membership_events,
 			account_portfolio_membership_orders,
 			account_portfolio_point_ledger,
 			account_portfolio_memberships,

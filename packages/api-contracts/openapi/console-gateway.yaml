@@ -16,7 +16,7 @@ tags:
   - name: Food
     description: Permission-checked forwarding to the Food-owned operations API.
   - name: Account Portfolio
-    description: Permission-checked forwarding to the Account Portfolio support-ticket owner.
+    description: Permission-checked forwarding to Account Portfolio operator operations.
 paths:
   /healthz:
     get:
@@ -482,6 +482,60 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/memberships/{user_id}:
+    get:
+      tags: [Account Portfolio]
+      operationId: getConsoleAccountMembership
+      summary: Read one initialized user's durable membership entitlement
+      description: Requires account.membership.write within Account Portfolio product Scope. The target must already have a durable Account Portfolio state; the response omits target and operator identities.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Durable membership entitlement and revision, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountMembershipEnvelope" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/memberships/{user_id}/grants:
+    post:
+      tags: [Account Portfolio]
+      operationId: grantConsoleAccountMembership
+      summary: Grant a lifetime membership entitlement to one initialized user
+      description: Requires account.membership.write within Account Portfolio product Scope. The operator is only the verified Console Session actor; browsers cannot select it.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleMembershipMutationRequest" } } } }
+      responses:
+        "200": { description: Updated durable membership or its original idempotent result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountMembershipEnvelope" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/memberships/{user_id}/revocations:
+    post:
+      tags: [Account Portfolio]
+      operationId: revokeConsoleAccountMembership
+      summary: Revoke one lifetime membership entitlement back to free
+      description: Requires account.membership.write within Account Portfolio product Scope. The operator is only the verified Console Session actor; browsers cannot select it.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleMembershipMutationRequest" } } } }
+      responses:
+        "200": { description: Updated durable membership or its original idempotent result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountMembershipEnvelope" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /account/tickets:
@@ -1046,6 +1100,32 @@ components:
       required: [tickets]
       properties:
         tickets: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/ConsoleAccountTicket" } }
+    ConsoleAccountMembershipEnvelope:
+      type: object
+      additionalProperties: false
+      required: [membership]
+      properties:
+        membership: { $ref: "#/components/schemas/ConsoleAccountMembership" }
+    ConsoleAccountMembership:
+      type: object
+      additionalProperties: false
+      required: [plan, lifetime, version]
+      properties:
+        plan: { type: string, enum: [free, lifetime] }
+        lifetime: { type: boolean }
+        version: { type: integer, minimum: 1 }
+      allOf:
+        - if: { type: object, required: [plan], properties: { plan: { const: free } } }
+          then: { type: object, required: [lifetime], properties: { lifetime: { const: false } } }
+        - if: { type: object, required: [plan], properties: { plan: { const: lifetime } } }
+          then: { type: object, required: [lifetime], properties: { lifetime: { const: true } } }
+    ConsoleMembershipMutationRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, expected_version]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        expected_version: { type: integer, minimum: 1 }
     ConsoleAccountTicketDetail:
       type: object
       additionalProperties: false
