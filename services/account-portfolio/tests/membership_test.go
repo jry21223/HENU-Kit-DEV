@@ -164,6 +164,29 @@ func TestConsoleRevocationRequiresLifetimeStateAndDoesNotRepeatSideEffects(t *te
 	if plan != "free" || version != 3 || events != 2 || notifications != 2 {
 		t.Fatalf("revocation facts plan/version/events/notifications = %s/%d/%d/%d, want free/3/2/2", plan, version, events, notifications)
 	}
+
+	var kind, fromPlan, toPlan, source, actorUserID, reason, notificationKind string
+	var notificationReferencesEvent bool
+	if err := pool.QueryRow(t.Context(), `
+		SELECT kind, from_plan, to_plan, source, actor_user_id::text, reason
+		FROM account_portfolio_membership_events
+		WHERE user_id=$1 AND kind='revoke'
+	`, ownerID).Scan(&kind, &fromPlan, &toPlan, &source, &actorUserID, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "revoke" || fromPlan != "lifetime" || toPlan != "free" || source != "operator" || actorUserID != operatorID || reason != "Manual revocation after entitlement review." {
+		t.Fatalf("membership revocation audit event = kind=%q transition=%q->%q source=%q actor=%q reason=%q, want operator-attributed revoke fact", kind, fromPlan, toPlan, source, actorUserID, reason)
+	}
+	if err := pool.QueryRow(t.Context(), `
+		SELECT kind, membership_event_id IS NOT NULL
+		FROM account_portfolio_notifications
+		WHERE user_id=$1 AND kind='membership_lifetime_revoked'
+	`, ownerID).Scan(&notificationKind, &notificationReferencesEvent); err != nil {
+		t.Fatal(err)
+	}
+	if notificationKind != "membership_lifetime_revoked" || !notificationReferencesEvent {
+		t.Fatalf("membership revocation notification = kind=%q references_event=%t, want durable revoke notification linked to audit", notificationKind, notificationReferencesEvent)
+	}
 }
 
 func TestConsoleMembershipRejectsNonConsoleAndNeverInitializesAnUnknownTarget(t *testing.T) {
