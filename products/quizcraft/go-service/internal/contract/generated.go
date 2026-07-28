@@ -1,4 +1,4 @@
-// Code generated from quizcraft.yaml (SHA256 5364b539fecff5de724882bb91e1caa09b6fef68217ae6360aa45992b1eedeaf); DO NOT EDIT.
+// Code generated from quizcraft.yaml (SHA256 d933ae03711c018cff95f8d20e5389f61fe9e887c41b53a94c23a238ed84cc33); DO NOT EDIT.
 package contract
 
 const (

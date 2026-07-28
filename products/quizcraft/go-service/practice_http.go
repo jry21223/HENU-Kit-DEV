@@ -951,21 +951,21 @@ func (service *practiceHTTP) submitAnswer(writer http.ResponseWriter, request *h
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
 		return
 	}
-	question, err := queries.GetSessionQuestion(request.Context(), store.GetSessionQuestionParams{ID: sessionID, QuestionID: input.QuestionID, QuestionVersionID: input.QuestionVersionID})
+	sessionActorKey, err := queries.GetPracticeSessionActor(request.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(writer, http.StatusBadRequest, "question_not_in_session", "question version is not part of this session")
+			writeError(writer, http.StatusNotFound, "session_not_found", "practice session does not exist")
 		} else {
 			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
 		}
 		return
 	}
-	ownerMatches := question.ActorKey == actor.key
+	ownerMatches := sessionActorKey == actor.key
 	if !ownerMatches && actor.userID != nil {
 		if anonymousCookie, cookieErr := request.Cookie("quizcraft_anonymous"); cookieErr == nil {
 			if anonymousSubject, parseErr := service.parseSubject(anonymousCookie.Value, "quizcraft-anonymous"); parseErr == nil {
 				guestActorKey := "guest:" + anonymousSubject.String()
-				if guestActorKey == question.ActorKey {
+				if guestActorKey == sessionActorKey {
 					claimed, claimErr := queries.ClaimGuestPracticeSession(request.Context(), store.ClaimGuestPracticeSessionParams{ID: sessionID, GuestActorKey: guestActorKey, UserID: *actor.userID, UserActorKey: actor.key})
 					if claimErr != nil {
 						writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
@@ -978,6 +978,15 @@ func (service *practiceHTTP) submitAnswer(writer http.ResponseWriter, request *h
 	}
 	if !ownerMatches {
 		writeError(writer, http.StatusForbidden, "session_owner_mismatch", "practice session belongs to another actor")
+		return
+	}
+	question, err := queries.GetSessionQuestion(request.Context(), store.GetSessionQuestionParams{ID: sessionID, QuestionID: input.QuestionID, QuestionVersionID: input.QuestionVersionID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(writer, http.StatusBadRequest, "question_not_in_session", "question version is not part of this session")
+		} else {
+			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
+		}
 		return
 	}
 	if storedStatus, storedBody, found, conflict, err := loadIdempotency(request.Context(), queries, actor.key, "submit_practice_answer", idempotencyKey, requestHash); err != nil {
