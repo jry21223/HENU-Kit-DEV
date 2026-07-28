@@ -368,6 +368,114 @@ func TestPracticeHTTPAuthenticatedLearningStateAndConcurrentReplay(t *testing.T)
 	}
 }
 
+func TestPracticeHTTPConcurrentSessionsKeepLatestLearningStateReconciled(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "practice-learning-state-order-"+uuid.NewString())
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	userID := uuid.New()
+	auth := "quizcraft_session=" + practiceToken(t, userID.String())
+	blockedSession, blockedQuestion := createRankingSession(t, server.URL, auth, report, "learning-state-blocked-session")
+	laterSession, laterQuestion := createRankingSession(t, server.URL, auth, report, "learning-state-later-session")
+	if laterQuestion.QuestionID != blockedQuestion.QuestionID || laterQuestion.QuestionVersionID != blockedQuestion.QuestionVersionID {
+		t.Fatalf("sessions did not select the same stable question: %+v / %+v", blockedQuestion, laterQuestion)
+	}
+
+	blocker, err := pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = blocker.Rollback(context.Background()) }()
+	if _, err := blocker.Exec(context.Background(), `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, blockedSession); err != nil {
+		t.Fatal(err)
+	}
+
+	type submissionOutcome struct {
+		status int
+		body   []byte
+		err    error
+	}
+	blockedResult := make(chan submissionOutcome, 1)
+	go func() {
+		request, requestErr := http.NewRequest(http.MethodPost, server.URL+"/api/v1/practice/sessions/"+blockedSession+"/answers", bytes.NewReader(mustJSON(map[string]any{
+			"question_id": blockedQuestion.QuestionID, "question_version_id": blockedQuestion.QuestionVersionID, "answer": correctAnswerFor(blockedQuestion),
+		})))
+		if requestErr != nil {
+			blockedResult <- submissionOutcome{err: requestErr}
+			return
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Cookie", auth)
+		request.Header.Set("Idempotency-Key", "learning-state-blocked-answer")
+		response, requestErr := http.DefaultClient.Do(request)
+		if requestErr != nil {
+			blockedResult <- submissionOutcome{err: requestErr}
+			return
+		}
+		defer response.Body.Close()
+		body, requestErr := io.ReadAll(response.Body)
+		blockedResult <- submissionOutcome{status: response.StatusCode, body: body, err: requestErr}
+	}()
+	waitForAdvisoryWaiters(t, pool, 1)
+
+	laterStatus, laterBody := requestJSON(t, http.MethodPost, server.URL+"/api/v1/practice/sessions/"+laterSession+"/answers", map[string]string{
+		"Cookie": auth, "Idempotency-Key": "learning-state-later-answer",
+	}, map[string]any{"question_id": laterQuestion.QuestionID, "question_version_id": laterQuestion.QuestionVersionID, "answer": "definitely-wrong"})
+	if laterStatus != http.StatusOK || !bytes.Contains(laterBody, []byte(`"correct":false`)) {
+		t.Fatalf("later answer = %d %s", laterStatus, laterBody)
+	}
+	if err := blocker.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	blocked := <-blockedResult
+	if blocked.err != nil || blocked.status != http.StatusOK || !bytes.Contains(blocked.body, []byte(`"correct":true`)) {
+		t.Fatalf("blocked answer = %d %s err=%v", blocked.status, blocked.body, blocked.err)
+	}
+
+	reconciliation, err := quizcraft.ReconcileLearningState(context.Background(), pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reconciliation.Clean() {
+		t.Fatalf("concurrent learning state reconciliation = %+v", reconciliation)
+	}
+
+	var wrong bool
+	var attempts, correct int64
+	var latestAttemptID, expectedLatestAttemptID uuid.UUID
+	var expectedWrong bool
+	if err := pool.QueryRow(context.Background(), `
+SELECT state.wrong,state.attempt_count,state.correct_count,state.latest_attempt_id,
+       latest.id,(NOT latest.correct)
+FROM quizcraft_learning_state AS state
+JOIN LATERAL (
+    SELECT id,correct
+    FROM quizcraft_practice_attempts
+    WHERE user_id=$1 AND bank_id=$2 AND question_id=$3
+    ORDER BY submitted_at DESC,id DESC
+    LIMIT 1
+) AS latest ON true
+WHERE state.user_id=$1 AND state.bank_id=$2 AND state.question_id=$3
+`, userID, report.BankID, blockedQuestion.QuestionID).Scan(&wrong, &attempts, &correct, &latestAttemptID, &expectedLatestAttemptID, &expectedWrong); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 || correct != 1 || wrong != expectedWrong || latestAttemptID != expectedLatestAttemptID {
+		t.Fatalf("latest learning state = wrong:%v attempts:%d correct:%d latest:%s; want wrong:%v attempts:2 correct:1 latest:%s", wrong, attempts, correct, latestAttemptID, expectedWrong, expectedLatestAttemptID)
+	}
+
+	if rebuilt, err := quizcraft.RebuildLearningState(context.Background(), pool); err != nil || !rebuilt.Clean() {
+		t.Fatalf("rebuilt concurrent learning state = %+v err=%v", rebuilt, err)
+	}
+	if reconciled, err := quizcraft.ReconcileLearningState(context.Background(), pool); err != nil || !reconciled.Clean() {
+		t.Fatalf("post-rebuild concurrent learning state = %+v err=%v", reconciled, err)
+	}
+}
+
 func TestPracticeHTTPLegacyShadowComparison(t *testing.T) {
 	pool := practicePool(t)
 	report := importPracticeBank(t, pool, "practice-shadow-"+uuid.NewString())
