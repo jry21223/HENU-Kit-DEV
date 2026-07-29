@@ -39,6 +39,8 @@ func TestValidateDataRejectsMissingAndInvalidContractValues(t *testing.T) {
 		{name: "notification incomplete item", path: NotificationsPath, body: `{"notifications":[{}]}`},
 		{name: "ticket invalid status", path: TicketsPath, body: `{"tickets":[{"id":"11111111-1111-4111-8111-111111111111","title":"t","category":"c","status":"preview","updated_at":"2026-07-28T00:00:00Z"}]}`},
 		{name: "order invalid amount", path: MembershipOrdersPath, body: `{"orders":[{"id":"11111111-1111-4111-8111-111111111111","plan":"lifetime","amount_cents":1,"status":"paid","created_at":"2026-07-28T00:00:00Z"}]}`},
+		{name: "order missing version", path: MembershipOrdersPath, body: `{"orders":[{"id":"11111111-1111-4111-8111-111111111111","plan":"lifetime","amount_cents":990,"status":"paid","created_at":"2026-07-28T00:00:00Z","updated_at":"2026-07-28T00:00:00Z"}]}`},
+		{name: "order missing update timestamp", path: MembershipOrdersPath, body: `{"orders":[{"id":"11111111-1111-4111-8111-111111111111","plan":"lifetime","amount_cents":990,"status":"paid","version":1,"created_at":"2026-07-28T00:00:00Z"}]}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

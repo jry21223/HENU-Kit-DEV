@@ -252,6 +252,60 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/ReplayDetected' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+    post:
+      operationId: createAccountMembershipOrder
+      summary: Create one signed-in user's ¥9.9 lifetime membership order when a Provider is enabled
+      description: >-
+        This owner seam is not exposed through Portal Gateway while payment
+        Providers are disabled. A disabled Provider returns an explicit
+        unavailable response and creates no order or entitlement.
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMembershipOrderRequest' }
+      responses:
+        '201':
+          description: Durable order created, pending payment, or terminally failed without an entitlement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MembershipOrderEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/PaymentProviderUnavailable' }
+  /api/v1/payment-providers/{provider}/notifications:
+    post:
+      operationId: recordAccountPaymentProviderNotification
+      summary: Verify and record a provider notification without accepting browser authority
+      description: >-
+        This endpoint is not a browser API. Account Portfolio accepts only a
+        Provider-verified notification and stores a digest rather than the
+        signature or raw payment payload.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PaymentProviderName'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: Verified notification acknowledged, including replay or ordered no-op acknowledgement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderNotificationEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/PaymentProviderUnavailable' }
   /api/v1/console/memberships/{user_id}:
     get:
       operationId: getConsoleAccountMembership
@@ -505,6 +559,12 @@ components:
       required: true
       description: A user whose Account Portfolio state has already been initialized by a verified owner read.
       schema: { type: string, format: uuid }
+    PaymentProviderName:
+      name: provider
+      in: path
+      required: true
+      description: Configured provider identifier. No production provider is enabled by default.
+      schema: { type: string, pattern: '^[a-z][a-z0-9_-]{0,79}$' }
   responses:
     InvalidRequest:
       description: Invalid command, identifier, or lifecycle input
@@ -538,6 +598,11 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     DependencyUnavailable:
       description: The owner service or durable dependency is unavailable
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    PaymentProviderUnavailable:
+      description: No payment Provider is enabled; no order or entitlement was created
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -787,10 +852,37 @@ components:
         request_id: { type: string }
     MembershipOrder:
       type: object
-      required: [id, plan, amount_cents, status, created_at]
+      required: [id, plan, amount_cents, status, version, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         plan: { type: string, enum: [lifetime] }
         amount_cents: { type: integer, enum: [990] }
         status: { type: string, enum: [created, pending_payment, paid, closed, failed, refunded] }
+        version: { type: integer, minimum: 1 }
         created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MembershipOrderEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [order]
+          properties:
+            order: { $ref: '#/components/schemas/MembershipOrder' }
+        request_id: { type: string }
+    CreateMembershipOrderRequest:
+      type: object
+      additionalProperties: false
+    ProviderNotificationEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [accepted, outcome, order]
+          properties:
+            accepted: { type: boolean, enum: [true] }
+            outcome: { type: string, enum: [applied, replayed, ignored] }
+            order: { $ref: '#/components/schemas/MembershipOrder' }
+        request_id: { type: string }

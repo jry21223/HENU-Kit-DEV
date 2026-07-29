@@ -32,6 +32,23 @@ and creates one user notification in the same transaction. It never creates
 an Account Portfolio account for an arbitrary target and never imports legacy
 Study membership state.
 
+HC-171 adds the durable Membership Order kernel. Its state machine may record
+`created`, `pending_payment`, `paid`, `closed`, `failed`, and `refunded`, but a
+Membership Entitlement changes only in the same transaction as a
+Provider-verified payment fact. The local order and a stable merchant-order
+intent commit before an adapter can create an external order; retry and a
+verified callback can recover a Provider-created but locally unbound order
+without creating another external order. The merchant ID is an opaque,
+service-only intent value, never the public order ID; a short committed lease
+coalesces concurrent retry dispatches and can be reclaimed after a crash. The
+current payment fact is the membership's explicit ownership reference, so
+refunding an older paid order cannot revoke a later valid lifetime entitlement.
+The production process has no enabled payment Provider; Fake Provider behavior
+exists only for contract and lifecycle tests. Provider callbacks record bounded
+audit codes and payload digests, never raw signatures, secrets, or payment
+payloads. ADR-0017 still keeps membership-order commands out of Portal Gateway,
+so the browser purchase surface remains closed.
+
 ## Language
 
 **Support Ticket**:
@@ -65,8 +82,10 @@ associated with the ¥9.9 product, not evidence that a payment Provider ran.
 _Avoid_: Study membership, client-side flag, paid receipt
 
 **Membership Event**:
-An immutable, operator-attributed transition from `free` to `lifetime` or from
-`lifetime` to `free`. It records the stated reason and idempotency key, and
+An immutable transition from `free` to `lifetime` or from `lifetime` to
+`free`. An operator command identifies its authorized operator; a
+Provider-verified payment transition identifies its verified Payment Fact
+instead. Each transition records its stated reason and idempotency evidence and
 has exactly one associated user notification. It is private audit data, not a
 Portal membership response.
 _Avoid_: Editable membership history, browser audit log
@@ -76,3 +95,25 @@ The positive version of a Membership Entitlement. Console grant and revocation
 commands must present the current revision; stale or repeated state changes
 fail without creating an event or notification.
 _Avoid_: Timestamp-only concurrency, last-write-wins
+
+**Membership Order**:
+A durable request for the single ¥9.9 lifetime product. Its local state is
+separate from Provider protocol state and can advance only through the
+controlled order lifecycle. Its stable merchant-order intent is committed
+before an external Provider call, is private to the service and adapter, and
+is reused by recovery and retry.
+_Avoid_: QR code, successful payment, temporary checkout
+
+**Verified Payment Fact**:
+An immutable Provider-verified notification correlated to one Membership Order.
+It is the only payment evidence that may grant or revoke a Membership
+Entitlement, and replay or stale facts do not repeat an entitlement change. A
+payment-backed membership records its current paid fact, so an older order's
+refund cannot revoke a later still-valid paid entitlement.
+_Avoid_: Browser success callback, unsigned provider payload, session flag
+
+**Payment Provider**:
+An isolated adapter responsible for signing, creating and querying external
+orders, verifying notifications, and refund protocol behavior. No real Payment
+Provider is enabled without a separate Spike and later authorization.
+_Avoid_: Portal API, browser secret, mock purchase success

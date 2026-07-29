@@ -38,6 +38,9 @@ type Config struct {
 	Keys            map[string]string
 	ConsoleClientID string
 	ConsoleKeys     map[string]string
+	// PaymentProvider is nil in every production configuration until the
+	// separately authorized provider Spike supplies a real implementation.
+	PaymentProvider PaymentProvider
 	Now             func() time.Time
 }
 
@@ -46,6 +49,7 @@ type service struct {
 	clientID        string
 	consoleClientID string
 	clientKeys      map[string]map[string]string
+	paymentProvider PaymentProvider
 	now             func() time.Time
 }
 
@@ -125,6 +129,9 @@ func New(config Config) (http.Handler, error) {
 	if consoleConfigured && (strings.TrimSpace(config.ConsoleClientID) == "" || config.ConsoleClientID == config.ClientID || !validClientKeys(config.ConsoleKeys) || sharedServiceSecret(config.Keys, config.ConsoleKeys)) {
 		return nil, errors.New("account portfolio Console service credentials are invalid")
 	}
+	if config.PaymentProvider != nil && !validPaymentProviderName(config.PaymentProvider.Name()) {
+		return nil, errors.New("account portfolio payment provider is invalid")
+	}
 	now := config.Now
 	if now == nil {
 		now = time.Now
@@ -133,10 +140,11 @@ func New(config Config) (http.Handler, error) {
 	if consoleConfigured {
 		clientKeys[config.ConsoleClientID] = config.ConsoleKeys
 	}
-	h := &service{database: config.Database, clientID: config.ClientID, consoleClientID: config.ConsoleClientID, clientKeys: clientKeys, now: now}
+	h := &service{database: config.Database, clientID: config.ClientID, consoleClientID: config.ConsoleClientID, clientKeys: clientKeys, paymentProvider: config.PaymentProvider, now: now}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, h.health)
+	router.Post(contract.PaymentProviderNotificationRoute, h.paymentProviderNotification)
 	router.Group(func(protected chi.Router) {
 		protected.Use(h.authenticate)
 		protected.Get(contract.SummaryRoute, h.summary)
@@ -149,6 +157,7 @@ func New(config Config) (http.Handler, error) {
 		protected.Get(contract.TicketRoute, h.ticket)
 		protected.Post(contract.TicketFollowUpsRoute, h.createTicketFollowUp)
 		protected.Get(contract.MembershipOrdersRoute, h.membershipOrders)
+		protected.Post(contract.MembershipOrderCreateRoute, h.createMembershipOrder)
 		protected.Get(contract.ConsoleMembershipRoute, h.consoleMembership)
 		protected.Post(contract.ConsoleMembershipGrantsRoute, h.grantConsoleMembership)
 		protected.Post(contract.ConsoleMembershipRevocationsRoute, h.revokeConsoleMembership)
@@ -433,14 +442,14 @@ func (h *service) mutateConsoleMembership(w http.ResponseWriter, r *http.Request
 		if eventKind == "grant" {
 			err = tx.QueryRow(r.Context(), `
 				UPDATE account_portfolio_memberships
-				SET plan=$2, source=$3, granted_at=$4, version=version+1, updated_at=$4
+				SET plan=$2, source=$3, payment_fact_id=NULL, granted_at=$4, version=version+1, updated_at=$4
 				WHERE user_id=$1 AND version=$5
 				RETURNING plan, version
 			`, userID, toPlan, source, now, input.ExpectedVersion).Scan(&current.Plan, &current.Version)
 		} else {
 			err = tx.QueryRow(r.Context(), `
 				UPDATE account_portfolio_memberships
-				SET plan=$2, source=$3, version=version+1, updated_at=$4
+				SET plan=$2, source=$3, payment_fact_id=NULL, version=version+1, updated_at=$4
 				WHERE user_id=$1 AND version=$5
 				RETURNING plan, version
 			`, userID, toPlan, source, now, input.ExpectedVersion).Scan(&current.Plan, &current.Version)
@@ -1246,25 +1255,24 @@ func (h *service) membershipOrders(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	type order struct {
-		ID          string    `json:"id"`
-		Plan        string    `json:"plan"`
-		AmountCents int       `json:"amount_cents"`
-		Status      string    `json:"status"`
-		CreatedAt   time.Time `json:"created_at"`
-	}
 	data := struct {
-		Orders []order `json:"orders"`
-	}{Orders: make([]order, 0)}
-	rows, err := h.database.Query(r.Context(), `SELECT id, plan, amount_cents, status, created_at FROM account_portfolio_membership_orders WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 100`, userID)
+		Orders []membershipOrderView `json:"orders"`
+	}{Orders: make([]membershipOrderView, 0)}
+	rows, err := h.database.Query(r.Context(), `
+		SELECT id, plan, amount_cents, status, version, created_at, updated_at
+		FROM account_portfolio_membership_orders
+		WHERE user_id=$1
+		ORDER BY created_at DESC, id DESC
+		LIMIT 100
+	`, userID)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio orders are unavailable")
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var value order
-		if err := rows.Scan(&value.ID, &value.Plan, &value.AmountCents, &value.Status, &value.CreatedAt); err != nil {
+		var value membershipOrderView
+		if err := rows.Scan(&value.ID, &value.Plan, &value.AmountCents, &value.Status, &value.Version, &value.CreatedAt, &value.UpdatedAt); err != nil {
 			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio orders are unavailable")
 			return
 		}
