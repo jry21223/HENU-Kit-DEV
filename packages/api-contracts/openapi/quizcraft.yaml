@@ -562,7 +562,7 @@ components:
     workshopSessionCookie: { type: apiKey, in: cookie, name: __Host-quizcraft_session, description: Encrypted HttpOnly Secure local session holding the server-only Platform Core exchange session. Every Workshop request is authorized live by the backend. }
     summaryBasic: { type: http, scheme: basic, description: Dedicated Console Gateway to QuizCraft service credential. }
     summarySignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
-    portalCatalogBasic: { type: http, scheme: basic, description: Dedicated Portal Gateway to QuizCraft read service credential for catalog, ranking, and actor-bound personal statistics. }
+    portalCatalogBasic: { type: http, scheme: basic, description: "Dedicated Portal Gateway to QuizCraft read service credential for catalog, ranking, and actor-bound personal statistics." }
     portalCatalogSignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
     portalCatalogPermission: { type: apiKey, in: header, name: X-Permission-Code, description: Must be portal.practice.read after Portal Gateway authorization. }
     portalCatalogScope: { type: apiKey, in: header, name: X-Scope-Kind, description: Must be product. }
