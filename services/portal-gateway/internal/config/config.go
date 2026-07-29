@@ -34,11 +34,18 @@ type Config struct {
 	NoticeURL           string
 	AccountPortfolioURL string
 
-	LibraryAuth          ServiceAuth
-	FoodAuth             ServiceAuth
-	PracticeAuth         ServiceAuth
+	LibraryAuth  ServiceAuth
+	FoodAuth     ServiceAuth
+	PracticeAuth ServiceAuth
+	// PracticeCommandAuth is deliberately distinct from PracticeAuth. The
+	// latter is reserved for read-only product contracts; the former is the
+	// narrowly scoped, default-off Portal -> QuizCraft command capability.
+	PracticeCommandAuth  ServiceAuth
 	NoticeAuth           ServiceAuth
 	AccountPortfolioAuth ServiceAuth
+	// PracticeCommandsEnabled defaults to false. #166 is the only cutover
+	// window allowed to enable browser-visible QuizCraft writes.
+	PracticeCommandsEnabled bool
 
 	PortalOrigin           string
 	LocalOAuthCookieName   string
@@ -83,6 +90,12 @@ func FromEnv() (Config, error) {
 			ClientSecret: mustEnv("PRACTICE_CLIENT_SECRET"),
 			KeyID:        mustEnv("PRACTICE_KEY_ID"),
 		},
+		PracticeCommandAuth: ServiceAuth{
+			ClientID:     os.Getenv("PRACTICE_COMMAND_CLIENT_ID"),
+			ClientSecret: os.Getenv("PRACTICE_COMMAND_CLIENT_SECRET"),
+			KeyID:        os.Getenv("PRACTICE_COMMAND_KEY_ID"),
+		},
+		PracticeCommandsEnabled: os.Getenv("PORTAL_PRACTICE_COMMANDS_ENABLED") == "1",
 		NoticeAuth: ServiceAuth{
 			ClientID:     mustEnv("NOTICE_CLIENT_ID"),
 			ClientSecret: mustEnv("NOTICE_CLIENT_SECRET"),

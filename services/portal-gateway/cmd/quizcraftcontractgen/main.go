@@ -16,6 +16,7 @@ type operation struct {
 	OperationID string                `yaml:"operationId"`
 	Responses   map[string]response   `yaml:"responses"`
 	Security    []map[string][]string `yaml:"security"`
+	Internal    bool                  `yaml:"x-internal"`
 }
 
 type response struct {
@@ -102,6 +103,11 @@ var catalogSecurityRequirements = []catalogSecurityRequirement{
 	{name: "portalCatalogProduct", kind: "apiKey", in: "header", header: "X-Product-Code"},
 }
 
+var portalPracticeCommandSecurityRequirements = []catalogSecurityRequirement{
+	{name: "portalPracticeBasic", kind: "http", scheme: "basic"},
+	{name: "portalPracticeSignature", kind: "apiKey", in: "header", header: "X-Signature"},
+}
+
 func main() {
 	contractPath := flag.String("contract", "../../packages/api-contracts/openapi/quizcraft.yaml", "QuizCraft OpenAPI contract")
 	outputPath := flag.String("output", "internal/practice/contract_generated.go", "generated Go output")
@@ -115,15 +121,20 @@ func main() {
 	catalogPath, catalogMethod, catalogOperation := requireOperation(spec.Paths, "listPracticeBanks")
 	overallRankingPath, overallRankingMethod, overallRankingOperation := requireOperation(spec.Paths, "getOverallRanking")
 	bankRankingPath, bankRankingMethod, bankRankingOperation := requireOperation(spec.Paths, "getBankRanking")
+	createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation := requireOperation(spec.Paths, "createPortalPracticeSession")
+	submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation := requireOperation(spec.Paths, "submitPortalPracticeAnswer")
 	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope")
 	validatePortalReadOperation("getOverallRanking", overallRankingMethod, overallRankingOperation, "RankingEnvelope")
 	validatePortalReadOperation("getBankRanking", bankRankingMethod, bankRankingOperation, "RankingEnvelope")
+	validatePortalPracticeCommandOperation("createPortalPracticeSession", createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation, "201", "PracticeSessionEnvelope")
+	validatePortalPracticeCommandOperation("submitPortalPracticeAnswer", submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation, "200", "AnswerResultEnvelope")
 	validateCatalogSecurity(spec.Components.SecuritySchemes)
+	validatePortalPracticeCommandSecurity(spec.Components.SecuritySchemes)
 	validateCatalogSchema(spec.Components.Schemas)
 	validateRankingSchema(spec.Components.Schemas)
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
-	generated, err := format.Source([]byte(render(catalogPath, overallRankingPath, bankRankingPath, digest)))
+	generated, err := format.Source([]byte(render(catalogPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, digest)))
 	fail(err)
 	fail(os.WriteFile(*outputPath, generated, 0o644))
 }
@@ -181,11 +192,50 @@ func validatePortalReadOperation(operationID, method string, operation operation
 	}
 }
 
+func validatePortalPracticeCommandOperation(operationID, path, method string, operation operation, successStatus, envelope string) {
+	if method != "post" || !operation.Internal || !strings.HasPrefix(path, "/api/v1/portal/practice/") {
+		fail(fmt.Errorf("%s must be an internal Portal practice POST", operationID))
+	}
+	response, ok := operation.Responses[successStatus]
+	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/"+envelope {
+		fail(fmt.Errorf("%s %s response must be %s", operationID, successStatus, envelope))
+	}
+	for _, status := range []string{"400", "401", "409", "503"} {
+		if _, ok := operation.Responses[status]; !ok {
+			fail(fmt.Errorf("%s must document %s", operationID, status))
+		}
+	}
+	if operationID == "submitPortalPracticeAnswer" {
+		for _, status := range []string{"403", "404"} {
+			if _, ok := operation.Responses[status]; !ok {
+				fail(fmt.Errorf("%s must document %s", operationID, status))
+			}
+		}
+	}
+	if len(operation.Security) != 1 || len(operation.Security[0]) != len(portalPracticeCommandSecurityRequirements) {
+		fail(fmt.Errorf("%s must require the dedicated Portal practice command security", operationID))
+	}
+	for _, requirement := range portalPracticeCommandSecurityRequirements {
+		if scopes, found := operation.Security[0][requirement.name]; !found || len(scopes) != 0 {
+			fail(fmt.Errorf("%s is missing security scheme %s", operationID, requirement.name))
+		}
+	}
+}
+
 func validateCatalogSecurity(schemes map[string]securityScheme) {
 	for _, requirement := range catalogSecurityRequirements {
 		scheme, found := schemes[requirement.name]
 		if !found || scheme.Type != requirement.kind || scheme.Scheme != requirement.scheme || scheme.In != requirement.in || scheme.Name != requirement.header {
 			fail(fmt.Errorf("%s security scheme does not match the Portal read client", requirement.name))
+		}
+	}
+}
+
+func validatePortalPracticeCommandSecurity(schemes map[string]securityScheme) {
+	for _, requirement := range portalPracticeCommandSecurityRequirements {
+		scheme, found := schemes[requirement.name]
+		if !found || scheme.Type != requirement.kind || scheme.Scheme != requirement.scheme || scheme.In != requirement.in || scheme.Name != requirement.header {
+			fail(fmt.Errorf("%s security scheme does not match the Portal practice command client", requirement.name))
 		}
 	}
 }
@@ -294,7 +344,7 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-func render(catalogPath, overallRankingPath, bankRankingPath, digest string) string {
+func render(catalogPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, digest string) string {
 	return fmt.Sprintf(`// Code generated by cmd/quizcraftcontractgen from quizcraft.yaml; DO NOT EDIT.
 package practice
 
@@ -303,6 +353,8 @@ const QuizCraftRankingContractSHA256 = QuizCraftCatalogContractSHA256
 const ListPracticeBanksPath = %q
 const OverallRankingPath = %q
 const BankRankingPath = %q
+const CreatePortalPracticeSessionPath = %q
+const SubmitPortalPracticeAnswerPath = %q
 
 // BankListEnvelope is the generated read-only QuizCraft catalog response.
 // Its data members are the published, and therefore available, bank versions.
@@ -356,7 +408,7 @@ type RankingEntry struct {
 	SystemAvatar       string `+"`json:\"system_avatar\"`"+`
 	CorrectAnswerCount int64  `+"`json:\"correct_answer_count\"`"+`
 }
-	`, digest, catalogPath, overallRankingPath, bankRankingPath)
+	`, digest, catalogPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath)
 }
 
 func fail(err error) {

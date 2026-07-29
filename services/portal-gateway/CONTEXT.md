@@ -16,17 +16,19 @@
 
 ## Current boundary
 
-Portal Gateway is read-only by default. It authenticates users via Platform Core OAuth, establishes a Portal Session, and proxies GET requests to product services with verified permissions. Account Portfolio point-ledger reads accept only a bounded opaque cursor and page size; the Gateway includes the canonical query in the signed owner RequestURI while validating the returned data against the static owner route. ADR-0017 creates one deliberately narrow exception: it may forward an authenticated user's own Account Portfolio support-ticket create/follow-up and notification mark-read commands with an actor-bound signature and command idempotency. It does not forward any other product writes, does not own business data, and does not expose service credentials to the browser.
+Portal Gateway is read-only by default. It authenticates users via Platform Core OAuth, establishes a Portal Session, and proxies GET requests to product services with verified permissions. Account Portfolio point-ledger reads accept only a bounded opaque cursor and page size; the Gateway includes the canonical query in the signed owner RequestURI while validating the returned data against the static owner route. ADR-0017 creates one deliberately narrow exception for authenticated Account Portfolio support-ticket create/follow-up and notification mark-read commands. ADR-0018 creates a separate, default-off exception for exactly two QuizCraft Practice commands: create a server-selected session and submit one answer. For that boundary Gateway uses an independent command credential, signs a validated Portal Session UUID only for signed-in requests, and otherwise relays only the Core-issued `quizcraft_anonymous` cookie; it never forwards a generic browser cookie jar or a generic product write. Both Practice command gates remain off until #166. Gateway does not own business data and never exposes service credentials to the browser.
 
 ## Key terms
 
 - **Portal Session**: An encrypted cookie containing UserID, the login-time Display Name snapshot, ExchangeToken, and ExpiresAt. The snapshot is presentation-only and refreshes on the next OAuth login; Platform Core remains the Display Name source of truth. Distinct from Console Session and Core Session.
 - **Exchange token**: A Platform Core session exchange token, stored server-side in the encrypted cookie, forwarded to Platform Core for permission checks.
 - **Portal permission**: A permission code prefixed with `portal.*` (e.g., `portal.library.read`), distinct from Console's `console.*` permissions.
+- **Portal Practice command**: The ADR-0018-specific signed bridge for only create-session and submit-answer. It is not a product write proxy, and before #166 it must fail closed without contacting QuizCraft Core.
 
 ## Relationships
 
 - **Portal Gateway → Platform Core**: OAuth code exchange, permission verification. Uses HMAC-SHA256 service-to-service auth.
 - **Portal Gateway → Product services**: Signed read-only proxying. Each request carries `X-Actor-User-Id` and `X-Request-Id`.
 - **Portal Gateway → Account Portfolio**: Signed authenticated account reads plus the ADR-0017 self-service ticket/notification command exception; the Gateway owns neither account balances nor a fallback response.
+- **Portal Gateway → QuizCraft Practice Core**: ADR-0018's two default-off commands only, using a credential distinct from catalog reads; QuizCraft remains the owner of session selection, scoring, attempts, and the anonymous identity cookie.
 - **Portal frontend → Portal Gateway**: Same-origin API calls with session cookie (`credentials: "same-origin"`).

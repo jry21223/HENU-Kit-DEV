@@ -266,6 +266,57 @@ export interface PracticeBanksResponse {
   request_id: string;
 }
 
+/** Browser input for one real QuizCraft session. The API selects questions. */
+export interface PortalPracticeSessionInput {
+  bank_id: string;
+  bank_version_id: string;
+  mode: "random" | "difficult" | "chapter";
+  chapter_id?: string;
+  question_count?: number;
+}
+
+/** A server-selected question. It deliberately has no answer key. */
+export interface PortalPracticeQuestion {
+  question_id: string;
+  question_version_id: string;
+  type: "single" | "multi" | "judge" | "blank";
+  chapter_id: string;
+  chapter: string;
+  content: string;
+  options?: string[];
+}
+
+export interface PortalPracticeSessionResponse {
+  request_id: string;
+  data: {
+    session_id: string;
+    bank_id: string;
+    bank_version_id: string;
+    mode: "random" | "difficult" | "chapter";
+    excluded_unavailable_count: number;
+    questions: PortalPracticeQuestion[];
+  };
+}
+
+export interface PortalPracticeAnswerInput {
+  question_id: string;
+  question_version_id: string;
+  answer: unknown;
+}
+
+/** Correctness and answer disclosure arrive only after server-side scoring. */
+export interface PortalPracticeAnswerResponse {
+  request_id: string;
+  data: {
+    question_id: string;
+    question_version_id: string;
+    correct: boolean;
+    replayed: boolean;
+    expected_answer: unknown;
+    analysis: string;
+  };
+}
+
 export interface QuizListMeta {
   id: string;
   name: string;

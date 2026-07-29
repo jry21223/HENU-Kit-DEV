@@ -44,4 +44,4 @@ _Avoid_: 流量已切换、Go 服务已启动
 
 ## Current boundary
 
-HC-16 冻结五个产品域的 OpenAPI，并建立可独立验证的 Go/PostgreSQL 导入基线。HC-17 在该基线上提供 Practice Core 影子 HTTP 服务、四类服务端判题、Session/重放事实、登录学习状态与可选旧响应对比。现有 FastAPI 仍是当前运行实现，Go 与其并行存在；本阶段没有替换生产路由或流量。
+HC-16 冻结五个产品域的 OpenAPI，并建立可独立验证的 Go/PostgreSQL 导入基线。HC-17 在该基线上提供 Practice Core 影子 HTTP 服务、四类服务端判题、Session/重放事实、登录学习状态与可选旧响应对比。HC-161 额外准备 ADR-0018 的两条私有 Portal Practice command 路径：Core 使用独立 command key ring 验证精确原始请求体、nonce 和可选签名 actor；游客只能由 Core 签发的 `quizcraft_anonymous` cookie 识别。路径与写门默认关闭，且不会改变当前生产路由或流量；#166 才可在迁移证据和三重 gate 都满足后切换。
