@@ -91,6 +91,7 @@ test("unimplemented Account Portfolio pages still fail closed rather than exposi
 for (const viewport of [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "390px", width: 390, height: 844 },
+  { name: "360px", width: 360, height: 800 },
 ]) {
   test(`${viewport.name} wallet renders the real paged immutable ledger without point consumption features`, async ({ page }) => {
     await page.setViewportSize(viewport);
@@ -131,7 +132,11 @@ for (const viewport of [
     await expect(page.getByRole("heading", { name: "积分钱包" })).toBeVisible();
     await expect(page.locator('[data-account-points-state="success"]')).toContainText("100");
     await expect(page.getByText("人工核验后的补偿积分")).toBeVisible();
-    await page.getByRole("button", { name: "加载更多记录" }).click();
+    const loadMore = page.getByRole("button", { name: "加载更多记录" });
+    const walletNavigation = page.getByRole("link", { name: /A-03.*积分钱包/ });
+    await expect(loadMore).toHaveCSS("min-height", "44px");
+    await expect(walletNavigation).toHaveCSS("min-height", "44px");
+    await loadMore.click();
     await expect(page.getByText("重复记账复核扣减")).toBeVisible();
     await expect(page.getByRole("button", { name: "加载更多记录" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /签到|购买|消费/ })).toHaveCount(0);
@@ -143,6 +148,7 @@ for (const viewport of [
 }
 
 test("wallet exposes a recoverable owner failure instead of a local balance", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
   await mockSession(page);
   await page.route("**/api/v1/account/points**", async (route) => {
     await route.fulfill({
@@ -156,6 +162,7 @@ test("wallet exposes a recoverable owner failure instead of a local balance", as
   await expect(page.locator('[data-account-points-state="error"]')).toBeVisible();
   await expect(page.getByText("账户服务不可用时，不会以本地余额或会话数据替代真实积分账本。")).toBeVisible();
   await expect(page.getByText("当前积分余额")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "重新加载" })).toHaveCSS("min-height", "44px");
 });
 
 for (const viewport of [

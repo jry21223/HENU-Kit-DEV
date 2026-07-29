@@ -141,7 +141,7 @@ export default function WalletPage() {
           <button
             type="button"
             onClick={loadWallet}
-            className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -194,7 +194,7 @@ export default function WalletPage() {
                 type="button"
                 onClick={loadMore}
                 disabled={state.loadingMore}
-                className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+                className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
               >
                 {state.loadingMore ? "正在加载…" : "加载更多记录"}
               </button>
