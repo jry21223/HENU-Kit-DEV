@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useAccountConsoleSession,
+  useAccountConsoleUnauthorizedHandler,
+} from "@/components/account/account-console-session";
 import { useReveal } from "@/components/account/use-reveal";
 import { fetchAccountSummary } from "@/lib/api/client";
 import type { AccountSummaryResponse } from "@/lib/api/types";
-import { authStore, type AuthUser } from "@/lib/auth/store";
+import { publicDisplayName } from "@/lib/auth/display-name";
 
 type SummaryState =
   | { kind: "loading" }
@@ -12,16 +16,23 @@ type SummaryState =
   | { kind: "error" };
 
 export default function AccountOverviewPage() {
-  const { user } = useSyncExternalStore(authStore.subscribe, authStore.get, authStore.getServer);
+  const session = useAccountConsoleSession();
+  const handleUnauthorized = useAccountConsoleUnauthorizedHandler();
+  const displayName = publicDisplayName(session.display_name);
 
   // A change of authenticated subject must not reuse the prior subject's
-  // account result while the new read is in flight. uid is only a React key;
-  // it is never rendered as a public identifier.
-  if (!user) return null;
-  return <AccountOverviewContent key={user.uid} user={user} />;
+  // account result while the new read is in flight. user_id is only a React
+  // key sourced from Portal Gateway; it is never rendered as an identifier.
+  return <AccountOverviewContent key={session.user_id} displayName={displayName} onUnauthorized={handleUnauthorized} />;
 }
 
-function AccountOverviewContent({ user }: { user: AuthUser }) {
+function AccountOverviewContent({
+  displayName,
+  onUnauthorized,
+}: {
+  displayName: string;
+  onUnauthorized: (error: unknown) => boolean;
+}) {
   const [state, setState] = useState<SummaryState>({ kind: "loading" });
   const requestVersion = useRef(0);
   useReveal();
@@ -32,11 +43,13 @@ function AccountOverviewContent({ user }: { user: AuthUser }) {
       (summary) => {
         if (version === requestVersion.current) setState({ kind: "success", summary });
       },
-      () => {
-        if (version === requestVersion.current) setState({ kind: "error" });
+      (error: unknown) => {
+        if (version === requestVersion.current && !onUnauthorized(error)) {
+          setState({ kind: "error" });
+        }
       }
     );
-  }, []);
+  }, [onUnauthorized]);
 
   useEffect(() => {
     void loadSummary();
@@ -66,15 +79,11 @@ function AccountOverviewContent({ user }: { user: AuthUser }) {
     <div>
       <section data-enter className="flex items-center gap-5 border border-ink p-6" aria-label="账户身份">
         <span className="bg-blueprint flex h-16 w-16 shrink-0 items-center justify-center border border-ink font-display text-3xl font-bold" aria-hidden>
-          {user.name.slice(0, 1)}
+          {displayName.slice(0, 1)}
         </span>
         <div className="min-w-0">
-          <h1 className="truncate font-display text-2xl font-bold">{user.name}</h1>
-          {user.email ? (
-            <p className="mt-1 truncate font-mono text-[10px] tracking-[0.15em] text-ink/50">{user.email}</p>
-          ) : (
-            <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/50">ACCOUNT PORTFOLIO</p>
-          )}
+          <h1 className="truncate font-display text-2xl font-bold">{displayName}</h1>
+          <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/50">ACCOUNT PORTFOLIO</p>
         </div>
         <span className="ml-auto shrink-0 border border-accent px-2 py-1 font-mono text-[10px] tracking-widest text-accent">
           {membershipLabel}
@@ -105,7 +114,7 @@ function AccountOverviewContent({ user }: { user: AuthUser }) {
               setState({ kind: "loading" });
               loadSummary();
             }}
-            className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>

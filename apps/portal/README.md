@@ -88,9 +88,8 @@ npm run dev
 | `/account/membership` | 会员状态 |
 | `/account/tickets` | 工单 |
 | `/account/notifications` | 通知 |
-| `/account/posts` | 美食文章管理 |
 
-Mock 认证，登录态存 localStorage，跨子站通用。
+账户控制台只使用 Portal Gateway 建立的 HttpOnly 会话；概览、积分、会员、通知和工单均从真实 Account Portfolio 接口读取。服务不可用时显示可恢复错误，绝不以 localStorage、会话 mock 或示例数据伪造成功状态；文章和交易入口尚未交付，故不在账户导航中暴露。
 
 ## 设计系统
 

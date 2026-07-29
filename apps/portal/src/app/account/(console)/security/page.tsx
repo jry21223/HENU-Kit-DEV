@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSyncExternalStore } from "react";
-import { authStore } from "@/lib/auth/store";
 import {
   AccountCenterError,
   bootstrapAccountSecurity,
@@ -15,7 +13,6 @@ import { cn } from "@/lib/cn";
 const EMAIL_RE = /^[^@\s]+@henu\.edu\.cn$/i;
 
 export default function SecurityPage() {
-  const { user } = useSyncExternalStore(authStore.subscribe, authStore.get, authStore.getServer);
   useReveal();
 
   const [oldPwd, setOldPwd] = useState("");
@@ -156,7 +153,7 @@ export default function SecurityPage() {
           ))}
           <div>
             <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
-              绑定邮箱{user?.email ? `（${user.email}）` : ""}
+              绑定邮箱
             </label>
             <input
               type="email"
