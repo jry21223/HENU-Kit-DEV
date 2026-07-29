@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -22,7 +23,7 @@ import (
 
 const personalStatsUserID = "5f03dac8-7f7f-4513-9dcd-e4cc5f592c85"
 
-func TestPersonalPracticeStatsUsesSignedInUserAndNeverFallsBackToPortalAPI(t *testing.T) {
+func TestPersonalPracticeStatsUsesSignedInUserAcrossFreshPortalSessionsAndNeverFallsBackToPortalAPI(t *testing.T) {
 	var platformCalls atomic.Int32
 	platform := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/authorization/check" {
@@ -61,8 +62,14 @@ func TestPersonalPracticeStatsUsesSignedInUserAndNeverFallsBackToPortalAPI(t *te
 	defer portalAPI.Close()
 
 	handler := newPersonalStatsHandler(t, platform.URL, core.URL, portalAPI.URL)
-	first := getPersonalStats(t, handler, sessionCookie(t, handler, personalStatsUserID))
-	second := getPersonalStats(t, handler, sessionCookie(t, handler, personalStatsUserID))
+	firstDeviceCookie := sessionCookie(t, handler, personalStatsUserID)
+	secondDeviceCookie := sessionCookie(t, handler, personalStatsUserID)
+	if firstDeviceCookie.Value == secondDeviceCookie.Value {
+		t.Fatal("two fresh Portal sessions encoded the same cookie")
+	}
+	first := getPersonalStats(t, handler, firstDeviceCookie)
+	second := getPersonalStats(t, handler, secondDeviceCookie)
+	devices := make([]practice.PersonalPracticeStats, 0, 2)
 	for index, response := range []*httptest.ResponseRecorder{first, second} {
 		if response.Code != http.StatusOK {
 			t.Fatalf("device %d stats = %d %s", index, response.Code, response.Body.String())
@@ -74,6 +81,10 @@ func TestPersonalPracticeStatsUsesSignedInUserAndNeverFallsBackToPortalAPI(t *te
 		if response.Header().Get("X-Request-Id") != "req_gateway_stats" || stats.RequestID != "req_gateway_stats" || stats.Data.TotalAnswers != 4 || stats.Data.CorrectAnswers != 3 || stats.Data.Accuracy != 75 || stats.Data.StreakDays != 2 || len(stats.Data.Mastery) != 1 {
 			t.Fatalf("device %d stats = %+v", index, stats)
 		}
+		devices = append(devices, stats.Data)
+	}
+	if !reflect.DeepEqual(devices[0], devices[1]) {
+		t.Fatalf("fresh Portal sessions received different Hero-facing stats: first=%+v second=%+v", devices[0], devices[1])
 	}
 	if platformCalls.Load() != 2 || coreCalls.Load() != 2 || portalAPICalls.Load() != 0 {
 		t.Fatalf("stats chain calls = platform:%d core:%d portal-api:%d", platformCalls.Load(), coreCalls.Load(), portalAPICalls.Load())

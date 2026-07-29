@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -99,7 +100,11 @@ func TestPracticeHTTPPersonalStatsAggregatesImmutableAttempts(t *testing.T) {
 		t.Fatalf("replayed answer = %d %s", replayStatus, replayBody)
 	}
 
+	// The first signed request represents one freshly authenticated Portal
+	// device. It reads the facts written by the real Practice session/answer
+	// flow above rather than a fixture-shaped stats response.
 	statsRequest := newPersonalStatsRequest(t, server.URL, userID)
+	statsRequest.Header.Set("X-Request-Id", "req_personal_stats_device_one")
 	status, body, headers := sendCatalogRequestWithHeaders(t, statsRequest)
 	if status != http.StatusOK {
 		t.Fatalf("personal stats = %d %s", status, body)
@@ -118,6 +123,24 @@ func TestPracticeHTTPPersonalStatsAggregatesImmutableAttempts(t *testing.T) {
 	mastery := stats.Data.Mastery[0]
 	if mastery.BankID != report.BankID || mastery.Label == "" || mastery.Value != 25 || mastery.TotalQuestions != 4 || mastery.CorrectQuestions != 1 {
 		t.Fatalf("mastery row = %+v", mastery)
+	}
+
+	// A separate nonce and request ID model a second device after it creates a
+	// fresh Portal session for the same account. It must receive exactly the
+	// immutable answer facts that drive the first device's Hero-facing stats.
+	secondDeviceRequest := newPersonalStatsRequest(t, server.URL, userID)
+	secondDeviceRequest.Header.Set("X-Request-Id", "req_personal_stats_device_two")
+	secondStatus, secondBody, secondHeaders := sendCatalogRequestWithHeaders(t, secondDeviceRequest)
+	if secondStatus != http.StatusOK {
+		t.Fatalf("second-device personal stats = %d %s", secondStatus, secondBody)
+	}
+	var secondDevice apiEnvelope[personalStatsResponse]
+	decodeJSON(t, secondBody, &secondDevice)
+	if got, want := secondHeaders.Get("X-Request-Id"), secondDeviceRequest.Header.Get("X-Request-Id"); got != want || secondDevice.RequestID != want {
+		t.Fatalf("second-device request ID = header:%q body:%q want:%q", got, secondDevice.RequestID, want)
+	}
+	if !reflect.DeepEqual(stats.Data, secondDevice.Data) {
+		t.Fatalf("cross-device immutable facts differ: first=%+v second=%+v", stats.Data, secondDevice.Data)
 	}
 
 	newUserStatus, newUserBody := requestPersonalStats(t, server.URL, uuid.NewString())

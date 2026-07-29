@@ -19,14 +19,18 @@ const successPayload = {
   },
 };
 
-test.describe("QuizCraft personal Practice stats", () => {
-  test("Hero and dashboard render the same V2 facts across separate browser contexts", async ({ browser }) => {
+test.describe("QuizCraft personal Practice stats presentation", () => {
+  test("Hero and dashboard render the same Gateway-shaped V2 facts across separate browser contexts", async ({ browser }) => {
     let statsCalls = 0;
     const desktop = await browser.newContext();
     const mobile = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const desktopPage = await desktop.newPage();
     const mobilePage = await mobile.newPage();
     try {
+      // This is deliberately a browser presentation contract: it verifies how
+      // the Portal renders a Gateway response. The real answer -> immutable
+      // facts -> two fresh Portal-session chain is covered by the Core and
+      // Gateway integration tests, not replaced by this route interception.
       for (const page of [desktopPage, mobilePage]) {
         await page.route("**/api/v1/practice/stats*", async (route) => {
           statsCalls += 1;
