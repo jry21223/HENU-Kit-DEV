@@ -200,6 +200,58 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 	}
 }
 
+func TestPaymentKernelRollbackRefusesAuditOnlyRecord(t *testing.T) {
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+
+	schema := fmt.Sprintf("account_portfolio_payment_rollback_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+	}()
+
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO account_portfolio_payment_audits(
+			id, provider, outcome, reason_code, payload_sha256
+		)
+		VALUES(
+			'61111111-1111-4111-8111-111111111111',
+			'fake',
+			'notification_unknown_order',
+			'merchant_order_not_found',
+			decode(repeat('00', 32), 'hex')
+		)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000004_membership_order_payment_kernel.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(down)); err == nil {
+		t.Fatal("payment-kernel rollback accepted an audit-only durable record")
+	}
+}
+
 func TestMembershipEntitlementMigrationPreservesPreexistingMembership(t *testing.T) {
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, testDatabaseURL(t))

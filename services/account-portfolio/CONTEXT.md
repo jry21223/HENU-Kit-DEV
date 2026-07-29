@@ -82,8 +82,10 @@ associated with the ¥9.9 product, not evidence that a payment Provider ran.
 _Avoid_: Study membership, client-side flag, paid receipt
 
 **Membership Event**:
-An immutable, operator-attributed transition from `free` to `lifetime` or from
-`lifetime` to `free`. It records the stated reason and idempotency key, and
+An immutable transition from `free` to `lifetime` or from `lifetime` to
+`free`. An operator command identifies its authorized operator; a
+Provider-verified payment transition identifies its verified Payment Fact
+instead. Each transition records its stated reason and idempotency evidence and
 has exactly one associated user notification. It is private audit data, not a
 Portal membership response.
 _Avoid_: Editable membership history, browser audit log

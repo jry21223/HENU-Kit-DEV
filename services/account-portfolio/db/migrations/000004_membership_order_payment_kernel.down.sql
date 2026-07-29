@@ -1,7 +1,10 @@
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM account_portfolio_membership_orders) THEN
-        RAISE EXCEPTION 'cannot roll back membership order payment kernel while durable orders exist';
+    IF EXISTS (SELECT 1 FROM account_portfolio_membership_orders)
+        OR EXISTS (SELECT 1 FROM account_portfolio_payment_order_intents)
+        OR EXISTS (SELECT 1 FROM account_portfolio_payment_facts)
+        OR EXISTS (SELECT 1 FROM account_portfolio_payment_audits) THEN
+        RAISE EXCEPTION 'cannot roll back membership order payment kernel while durable payment records exist';
     END IF;
 END $$;
 

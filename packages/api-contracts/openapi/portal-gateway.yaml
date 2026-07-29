@@ -799,7 +799,7 @@ components:
 
     AccountMembershipOrder:
       type: object
-      required: [id, plan, amount_cents, status, created_at]
+      required: [id, plan, amount_cents, status, version, created_at, updated_at]
       properties:
         id:
           type: string
@@ -813,7 +813,13 @@ components:
         status:
           type: string
           enum: [created, pending_payment, paid, closed, failed, refunded]
+        version:
+          type: integer
+          minimum: 1
         created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
 

@@ -2,6 +2,8 @@ package accountportfolio
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -76,5 +78,27 @@ func TestFakePaymentProviderImplementsTheCompletePaymentSeam(t *testing.T) {
 	}
 	if refunded.Notification.Status != MembershipOrderRefunded || refunded.Notification.Sequence <= paid.Sequence {
 		t.Fatalf("fake refund = %+v, want a later refunded notification", refunded)
+	}
+}
+
+func TestPaymentKernelRollbackGuardsEveryDurablePaymentRecord(t *testing.T) {
+	down, err := os.ReadFile("db/migrations/000004_membership_order_payment_kernel.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	guardEnd := strings.Index(string(down), "END $$;")
+	if guardEnd < 0 {
+		t.Fatal("payment-kernel rollback migration has no durable-record guard")
+	}
+	guard := string(down[:guardEnd])
+	for _, table := range []string{
+		"account_portfolio_membership_orders",
+		"account_portfolio_payment_order_intents",
+		"account_portfolio_payment_facts",
+		"account_portfolio_payment_audits",
+	} {
+		if !strings.Contains(guard, table) {
+			t.Fatalf("payment-kernel rollback guard does not protect %s", table)
+		}
 	}
 }

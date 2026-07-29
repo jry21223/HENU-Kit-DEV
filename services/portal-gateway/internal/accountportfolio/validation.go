@@ -219,8 +219,10 @@ func validMembershipOrders(value map[string]json.RawMessage) bool {
 		plan, planOK := requiredString(item, "plan")
 		amount, amountOK := requiredInt(item, "amount_cents")
 		status, statusOK := requiredString(item, "status")
+		version, versionOK := requiredInt(item, "version")
 		createdOK := requiredTimestamp(item, "created_at")
-		if !itemOK || !idOK || !validUUID(id) || !planOK || plan != "lifetime" || !amountOK || amount != 990 || !statusOK || !validOrderStatus(status) || !createdOK {
+		updatedOK := requiredTimestamp(item, "updated_at")
+		if !itemOK || !idOK || !validUUID(id) || !planOK || plan != "lifetime" || !amountOK || amount != 990 || !statusOK || !validOrderStatus(status) || !versionOK || version < 1 || !createdOK || !updatedOK {
 			return false
 		}
 	}
