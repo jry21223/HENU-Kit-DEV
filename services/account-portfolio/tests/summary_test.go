@@ -27,6 +27,8 @@ const (
 	consoleServiceSecret = "account-portfolio-console-secret-at-least-32-bytes"
 )
 
+var pointCursorTestKey = []byte("account-portfolio-cursor-key-123")
+
 func TestNewUserSummaryStartsWithPersistedZeroAndFreeMembership(t *testing.T) {
 	server, pool := newAccountPortfolioServer(t)
 	defer server.Close()
@@ -186,9 +188,10 @@ func TestHealthFailsClosedWhenDatabaseIsUnavailable(t *testing.T) {
 	}
 	defer pool.Close()
 	handler, err := accountportfolio.New(accountportfolio.Config{
-		Database: pool,
-		ClientID: "portal-gateway",
-		Keys:     map[string]string{"account-key": serviceSecret},
+		Database:       pool,
+		ClientID:       "portal-gateway",
+		Keys:           map[string]string{"account-key": serviceSecret},
+		PointCursorKey: pointCursorTestKey,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -213,9 +216,65 @@ func TestAccountPortfolioRejectsSharedPortalAndConsoleSecret(t *testing.T) {
 		Keys:            map[string]string{"account-key": serviceSecret},
 		ConsoleClientID: "console-gateway",
 		ConsoleKeys:     map[string]string{"console-key": serviceSecret},
+		PointCursorKey:  pointCursorTestKey,
 	})
 	if err == nil {
 		t.Fatal("Account Portfolio accepted the Portal Gateway secret for Console Gateway")
+	}
+}
+
+func TestAccountPortfolioRejectsMissingPointCursorEncryptionKey(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	_, err = accountportfolio.New(accountportfolio.Config{
+		Database: pool,
+		ClientID: "portal-gateway",
+		Keys:     map[string]string{"account-key": serviceSecret},
+	})
+	if err == nil {
+		t.Fatal("Account Portfolio accepted a missing independent point cursor encryption key")
+	}
+}
+
+func TestAccountPortfolioRejectsPointCursorKeyThatReusesAServiceSecret(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	const reusedSecret = "0123456789abcdef0123456789abcdef"
+	_, err = accountportfolio.New(accountportfolio.Config{
+		Database:       pool,
+		ClientID:       "portal-gateway",
+		Keys:           map[string]string{"account-key": reusedSecret},
+		PointCursorKey: []byte(reusedSecret),
+	})
+	if err == nil {
+		t.Fatal("Account Portfolio accepted a point cursor key that reuses a service credential")
+	}
+}
+
+func TestAccountPortfolioRejectsPointCursorKeyWhoseBase64EncodingReusesAServiceSecret(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	cursorKey := []byte("account-portfolio-cursor-key-123")
+	_, err = accountportfolio.New(accountportfolio.Config{
+		Database:       pool,
+		ClientID:       "portal-gateway",
+		Keys:           map[string]string{"account-key": base64.StdEncoding.EncodeToString(cursorKey)},
+		PointCursorKey: cursorKey,
+	})
+	if err == nil {
+		t.Fatal("Account Portfolio accepted a Base64-encoded point cursor key as a service credential")
 	}
 }
 
@@ -227,9 +286,10 @@ func newAccountPortfolioServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	}
 	clearAccountPortfolio(t, pool)
 	handler, err := accountportfolio.New(accountportfolio.Config{
-		Database: pool,
-		ClientID: "portal-gateway",
-		Keys:     map[string]string{"account-key": serviceSecret},
+		Database:       pool,
+		ClientID:       "portal-gateway",
+		Keys:           map[string]string{"account-key": serviceSecret},
+		PointCursorKey: pointCursorTestKey,
 	})
 	if err != nil {
 		pool.Close()
@@ -239,6 +299,10 @@ func newAccountPortfolioServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 }
 
 func newAccountPortfolioServerWithConsole(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
+	return newAccountPortfolioServerWithConsoleAt(t, nil)
+}
+
+func newAccountPortfolioServerWithConsoleAt(t *testing.T, now func() time.Time) (*httptest.Server, *pgxpool.Pool) {
 	t.Helper()
 	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
 	if err != nil {
@@ -251,6 +315,8 @@ func newAccountPortfolioServerWithConsole(t *testing.T) (*httptest.Server, *pgxp
 		Keys:            map[string]string{"account-key": serviceSecret},
 		ConsoleClientID: "console-gateway",
 		ConsoleKeys:     map[string]string{"console-key": consoleServiceSecret},
+		PointCursorKey:  pointCursorTestKey,
+		Now:             now,
 	})
 	if err != nil {
 		pool.Close()

@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 const MENU = [
   { href: "/account", index: "A-01", label: "概览", exact: true },
   { href: "/account/security", index: "A-02", label: "安全设置" },
+  { href: "/account/wallet", index: "A-03", label: "积分钱包" },
   { href: "/account/tickets", index: "A-05", label: "工单" },
   { href: "/account/notifications", index: "A-06", label: "系统通知" },
 ];
@@ -77,7 +78,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "shrink-0 border-l-2 px-3 py-2 font-mono text-xs tracking-widest transition-colors lg:py-2.5",
+                      "inline-flex min-h-11 shrink-0 items-center border-l-2 px-3 py-2 font-mono text-xs tracking-widest transition-colors lg:py-2.5",
                       active
                         ? "border-accent font-semibold text-ink"
                         : "border-transparent text-ink/55 hover:text-ink"

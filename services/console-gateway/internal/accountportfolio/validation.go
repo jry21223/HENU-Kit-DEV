@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const maxPublicPointValue int64 = 9_007_199_254_740_991
+
 // Runtime owner validation prevents a syntactically successful but incomplete
 // downstream response from becoming a Console success response.
 func validateTicketQueue(raw json.RawMessage) error {
@@ -74,6 +76,26 @@ func validateMembershipEnvelope(raw json.RawMessage) error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+func validatePointAdjustment(raw json.RawMessage) error {
+	value, ok := requiredObject(raw)
+	if !ok || !hasOnlyKeys(value, "balance", "entry") {
+		return ErrInvalid
+	}
+	balance, balanceOK := requiredInt(value, "balance")
+	entry, entryOK := requiredObject(value["entry"])
+	if !balanceOK || balance < 0 || balance > maxPublicPointValue || !entryOK || !validPointLedgerEntry(entry) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func validPointLedgerEntry(value map[string]json.RawMessage) bool {
+	id, idOK := requiredString(value, "id")
+	amount, amountOK := requiredInt(value, "amount")
+	reason, reasonOK := requiredString(value, "reason")
+	return hasOnlyKeys(value, "id", "amount", "reason", "created_at") && idOK && validUUID(id) && amountOK && amount >= -maxPublicPointValue && amount <= maxPublicPointValue && amount != 0 && reasonOK && strings.TrimSpace(reason) != "" && requiredTimestamp(value, "created_at") && !hasInternalIdentity(value)
 }
 
 func validMembership(value map[string]json.RawMessage) bool {

@@ -28,9 +28,14 @@ success. HC-170 adds the membership operator boundary: only the separately
 configured, actor-bound Console Gateway credential may read or mutate an
 already initialized target membership. A Console mutation changes the durable
 entitlement and membership revision, appends one immutable membership event,
-and creates one user notification in the same transaction. It never creates
-an Account Portfolio account for an arbitrary target and never imports legacy
-Study membership state.
+and creates one user notification in the same transaction. HC-169 adds a
+separate point-adjustment boundary: the owner derives an operator solely from
+the signed Console request, may initialize the target’s durable Account
+Portfolio rows inside that same transaction, appends linked private audit and
+ledger facts, and creates the target user’s notification atomically. A debit
+uses the ledger-derived balance and fails before any audit, ledger, projection,
+or notification write when funds are insufficient. It never imports legacy
+Study points or membership state.
 
 HC-171 adds the durable Membership Order kernel. Its state machine may record
 `created`, `pending_payment`, `paid`, `closed`, `failed`, and `refunded`, but a
@@ -117,3 +122,31 @@ An isolated adapter responsible for signing, creating and querying external
 orders, verifying notifications, and refund protocol behavior. No real Payment
 Provider is enabled without a separate Spike and later authorization.
 _Avoid_: Portal API, browser secret, mock purchase success
+
+**Point Ledger**:
+The ordered, immutable sequence of a user’s point facts. Its signed amounts,
+not a mutable balance projection, are the source of truth for both displayed
+balance and debit eligibility. Portal sees only its own paged entries and no
+operator or audit identity.
+_Avoid_: Editable balance history, client-side points cache
+
+**Point Adjustment**:
+An authorized Console credit or debit command with a nonzero signed amount,
+target user, reason, and idempotency key. The target is command input; the
+operator comes only from the actor-bound Console credential and is never a
+browser-selected field.
+_Avoid_: Browser-admin action, anonymous balance edit
+
+**Point Adjustment Audit**:
+The private immutable record of one successful Point Adjustment’s operator,
+target, amount, reason, idempotency key, timestamp, and exactly one linked
+Point Ledger entry. It is not a Portal wallet response.
+_Avoid_: Editable audit note, public operator history
+
+**Point Ledger Cursor**:
+An owner-issued `plc1.` AES-256-GCM continuation token for the user-owned,
+descending immutable ledger page. It encrypts and authenticates the owner and
+sorting boundary, expires after ten minutes, and uses Account Portfolio's
+independent cursor key. Portal forwards it only as an uninspected bounded
+query value; clients do not derive it from an identifier or timestamp.
+_Avoid_: Offset pagination, exposed audit identifier

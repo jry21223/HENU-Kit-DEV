@@ -7,6 +7,7 @@ import ModuleCard from "@/components/ModuleCard.vue";
 import LibraryOperationsView from "@/components/LibraryOperationsView.vue";
 import FoodOperationsView from "@/components/FoodOperationsView.vue";
 import AccountMembershipOperationsView from "@/components/AccountMembershipOperationsView.vue";
+import AccountPointOperationsView from "@/components/AccountPointOperationsView.vue";
 import AccountTicketOperationsView from "@/components/AccountTicketOperationsView.vue";
 import NoticeOperationsView from "@/components/NoticeOperationsView.vue";
 import PlatformOperationsView from "@/components/PlatformOperationsView.vue";
@@ -31,12 +32,14 @@ const isNoticeOperations = isConsolePath("/notices");
 const isLibraryOperations = isConsolePath("/library");
 const isFoodOperations = isConsolePath("/food");
 const isAccountMembershipOperations = isConsolePath("/account/memberships");
+const isAccountPointOperations = isConsolePath("/account/points");
 const isAccountTicketOperations = isConsolePath("/account");
 const operationsHref = consolePath("/operations");
 const noticesHref = consolePath("/notices");
 const libraryHref = consolePath("/library");
 const foodHref = consolePath("/food");
 const accountMembershipsHref = consolePath("/account/memberships");
+const accountPointsHref = consolePath("/account/points");
 const accountTicketsHref = consolePath("/account");
 const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
@@ -51,7 +54,7 @@ async function refreshSession() {
   authState.value = result.state;
   consoleSession.value = result.state === "authenticated" ? result.session : undefined;
   consoleOverview.value = undefined;
-  if (result.state === "authenticated" && !isPlatformOperations && !isNoticeOperations && !isLibraryOperations && !isFoodOperations && !isAccountMembershipOperations && !isAccountTicketOperations) {
+  if (result.state === "authenticated" && !isPlatformOperations && !isNoticeOperations && !isLibraryOperations && !isFoodOperations && !isAccountMembershipOperations && !isAccountPointOperations && !isAccountTicketOperations) {
     overviewState.value = "loading";
     const overviewResult = await fetchConsoleOverview();
     if (overviewResult.state === "authenticated") {
@@ -126,6 +129,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <a v-if="consoleSession?.access_context.permissions.includes('library.read')" :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><BookOpen :size="17" aria-hidden="true" />资料库运营</a>
         <a v-if="consoleSession?.access_context.permissions.includes('food.read')" :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Utensils :size="17" aria-hidden="true" />Food 运营</a>
         <a v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><ShieldCheck :size="17" aria-hidden="true" />会员权益运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Activity :size="17" aria-hidden="true" />积分账本运营</a>
         <a v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><MessageSquare :size="17" aria-hidden="true" />账户工单运营</a>
         <a
           v-for="module in moduleSummaries"
@@ -167,6 +171,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('library.read')" as-child><a :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><BookOpen :size="18" />资料库运营</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('food.read')" as-child><a :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Utensils :size="18" />Food 运营</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" as-child><a :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><ShieldCheck :size="18" />会员权益运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" as-child><a :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Activity :size="18" />积分账本运营</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" as-child><a :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><MessageSquare :size="18" />账户工单运营</a></DialogClose>
                 <DialogClose v-for="module in moduleSummaries" :key="module.id" as-child>
                   <a :href="`#module-${module.id}`" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white/85 hover:bg-white/10">
@@ -203,6 +208,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <LibraryOperationsView v-else-if="isLibraryOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
         <FoodOperationsView v-else-if="isFoodOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountMembershipOperationsView v-else-if="isAccountMembershipOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
+        <AccountPointOperationsView v-else-if="isAccountPointOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountTicketOperationsView v-else-if="isAccountTicketOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
         <template v-else>
         <section class="overview-hero" aria-labelledby="overview-heading">

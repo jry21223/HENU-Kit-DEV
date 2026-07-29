@@ -28,6 +28,9 @@ type schema struct {
 	Enum                 []string          `yaml:"enum"`
 	MinItems             int               `yaml:"minItems"`
 	MaxItems             int               `yaml:"maxItems"`
+	Minimum              *float64          `yaml:"minimum"`
+	Maximum              *float64          `yaml:"maximum"`
+	MinLength            int               `yaml:"minLength"`
 	MaxLength            int               `yaml:"maxLength"`
 	Pattern              string            `yaml:"pattern"`
 	Required             []string          `yaml:"required"`
@@ -75,7 +78,7 @@ func main() {
 		fail(errors.New("console gateway server must end with /api/v1"))
 	}
 	routes := operationRoutes(spec)
-	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "getConsoleFoodWorkspace", "executeConsoleFoodCommand", "getConsoleFoodOperationStatus", "getConsoleAccountMembership", "grantConsoleAccountMembership", "revokeConsoleAccountMembership", "getConsoleAccountTickets", "getConsoleAccountTicket", "replyConsoleAccountTicket", "transitionConsoleAccountTicket", "logoutConsoleSession"} {
+	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "getConsoleFoodWorkspace", "executeConsoleFoodCommand", "getConsoleFoodOperationStatus", "getConsoleAccountMembership", "grantConsoleAccountMembership", "revokeConsoleAccountMembership", "adjustConsoleAccountPoints", "getConsoleAccountTickets", "getConsoleAccountTicket", "replyConsoleAccountTicket", "transitionConsoleAccountTicket", "logoutConsoleSession"} {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
@@ -210,6 +213,7 @@ const (
 		AccountMembershipRoute = %q
 		AccountMembershipGrantsRoute = %q
 		AccountMembershipRevocationsRoute = %q
+		AccountPointAdjustmentsRoute = %q
 		AccountTicketsRoute = %q
 		AccountTicketRoute = %q
 		AccountTicketRepliesRoute = %q
@@ -218,7 +222,7 @@ const (
 	SourceSHA256 = %q
 )
 
-	`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["logoutConsoleSession"], digest)
+	`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -228,6 +232,22 @@ const (
 func goType(value schema, indent int) string {
 	if value.Ref != "" {
 		return refName(value.Ref)
+	}
+	if len(value.OneOf) > 0 {
+		var shared string
+		for _, item := range value.OneOf {
+			candidate := goType(item, indent)
+			if shared == "" {
+				shared = candidate
+				continue
+			}
+			if shared != candidate {
+				return "any"
+			}
+		}
+		if shared != "" {
+			return shared
+		}
 	}
 	switch value.Type {
 	case "string":
@@ -570,6 +590,24 @@ export function revokeAccountMembership(userID: string, input: ConsoleMembership
   return writeAccountMembership("{{ACCOUNT_MEMBERSHIP_REVOCATIONS_ROUTE}}".replace("{user_id}", encodeURIComponent(userID)), input, idempotencyKey);
 }
 
+export type AccountPointAdjustmentWriteResult =
+  | { state: "succeeded"; result: ConsoleAccountPointAdjustmentResult }
+  | { state: "signed_out" | "denied" | "conflict" | "invalid" | "unavailable" };
+
+export async function adjustAccountPoints(input: ConsolePointAdjustmentRequest, idempotencyKey: string): Promise<AccountPointAdjustmentWriteResult> {
+  try {
+    const response = await fetch("{{ACCOUNT_POINT_ADJUSTMENTS_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 409) return { state: "conflict" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountPointAdjustmentResult(envelope.data)) return { state: "unavailable" };
+    return { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
 export type AccountTicketQueueResult = { state: "authenticated"; queue: ConsoleAccountTicketQueue } | { state: "signed_out" | "denied" | "unavailable" };
 
 export async function fetchAccountTicketQueue(): Promise<AccountTicketQueueResult> {
@@ -642,7 +680,8 @@ export function consoleLoginHref(): string {
 		"{{LIBRARY_ROUTE}}": routes["getConsoleLibraryWorkspace"], "{{LIBRARY_COMMAND_ROUTE}}": routes["executeConsoleLibraryCommand"], "{{LIBRARY_OPERATION_ROUTE}}": routes["getConsoleLibraryOperationStatus"],
 		"{{FOOD_ROUTE}}": routes["getConsoleFoodWorkspace"], "{{FOOD_COMMAND_ROUTE}}": routes["executeConsoleFoodCommand"], "{{FOOD_OPERATION_ROUTE}}": routes["getConsoleFoodOperationStatus"],
 		"{{ACCOUNT_MEMBERSHIP_ROUTE}}": routes["getConsoleAccountMembership"], "{{ACCOUNT_MEMBERSHIP_GRANTS_ROUTE}}": routes["grantConsoleAccountMembership"], "{{ACCOUNT_MEMBERSHIP_REVOCATIONS_ROUTE}}": routes["revokeConsoleAccountMembership"],
-		"{{ACCOUNT_TICKETS_ROUTE}}": routes["getConsoleAccountTickets"], "{{ACCOUNT_TICKET_ROUTE}}": routes["getConsoleAccountTicket"], "{{ACCOUNT_TICKET_REPLIES_ROUTE}}": routes["replyConsoleAccountTicket"], "{{ACCOUNT_TICKET_TRANSITIONS_ROUTE}}": routes["transitionConsoleAccountTicket"],
+		"{{ACCOUNT_POINT_ADJUSTMENTS_ROUTE}}": routes["adjustConsoleAccountPoints"],
+		"{{ACCOUNT_TICKETS_ROUTE}}":           routes["getConsoleAccountTickets"], "{{ACCOUNT_TICKET_ROUTE}}": routes["getConsoleAccountTicket"], "{{ACCOUNT_TICKET_REPLIES_ROUTE}}": routes["replyConsoleAccountTicket"], "{{ACCOUNT_TICKET_TRANSITIONS_ROUTE}}": routes["transitionConsoleAccountTicket"],
 	}
 	for old, replacement := range replacements {
 		template = strings.ReplaceAll(template, old, replacement)
@@ -674,8 +713,13 @@ func tsType(value schema) string {
 	}
 	if len(value.OneOf) > 0 {
 		alternatives := make([]string, 0, len(value.OneOf))
+		seen := make(map[string]struct{}, len(value.OneOf))
 		for _, item := range value.OneOf {
-			alternatives = append(alternatives, tsType(item))
+			alternative := tsType(item)
+			if _, exists := seen[alternative]; !exists {
+				alternatives = append(alternatives, alternative)
+				seen[alternative] = struct{}{}
+			}
 		}
 		return strings.Join(alternatives, " | ")
 	}
@@ -769,6 +813,9 @@ func tsCheckBase(expression string, value schema) string {
 			return "isDateTime(" + expression + ")"
 		}
 		check := "typeof " + expression + ` === "string"`
+		if value.MinLength > 0 {
+			check += fmt.Sprintf(" && %s.length >= %d", expression, value.MinLength)
+		}
 		if value.MaxLength > 0 {
 			check += fmt.Sprintf(" && %s.length <= %d", expression, value.MaxLength)
 		}
@@ -780,7 +827,14 @@ func tsCheckBase(expression string, value schema) string {
 	case "boolean":
 		return "typeof " + expression + ` === "boolean"`
 	case "integer":
-		return "typeof " + expression + ` === "number" && Number.isSafeInteger(` + expression + ")"
+		check := "typeof " + expression + ` === "number" && Number.isSafeInteger(` + expression + ")"
+		if value.Minimum != nil {
+			check += fmt.Sprintf(" && %s >= %g", expression, *value.Minimum)
+		}
+		if value.Maximum != nil {
+			check += fmt.Sprintf(" && %s <= %g", expression, *value.Maximum)
+		}
+		return check
 	case "array":
 		if value.Items == nil {
 			return "Array.isArray(" + expression + ")"
@@ -912,6 +966,9 @@ func validateSchemaBase(value schema, candidate any, schemas map[string]schema) 
 		}
 		if value.MaxLength > 0 && len([]rune(text)) > value.MaxLength {
 			return fmt.Errorf("string exceeds %d characters", value.MaxLength)
+		}
+		if value.MinLength > 0 && len([]rune(text)) < value.MinLength {
+			return fmt.Errorf("string is shorter than %d characters", value.MinLength)
 		}
 		if value.Pattern != "" {
 			matched, err := regexp.MatchString(value.Pattern, text)

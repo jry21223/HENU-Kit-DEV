@@ -28,12 +28,13 @@ const (
 	AccountMembershipRoute            = "/api/v1/account/memberships/{user_id}"
 	AccountMembershipGrantsRoute      = "/api/v1/account/memberships/{user_id}/grants"
 	AccountMembershipRevocationsRoute = "/api/v1/account/memberships/{user_id}/revocations"
+	AccountPointAdjustmentsRoute      = "/api/v1/account/points/adjustments"
 	AccountTicketsRoute               = "/api/v1/account/tickets"
 	AccountTicketRoute                = "/api/v1/account/tickets/{ticket_id}"
 	AccountTicketRepliesRoute         = "/api/v1/account/tickets/{ticket_id}/replies"
 	AccountTicketTransitionsRoute     = "/api/v1/account/tickets/{ticket_id}/transitions"
 	LogoutRoute                       = "/api/v1/session/logout"
-	SourceSHA256                      = "418778025096749b31652f8063bb8b8b6fb9793d927aedbed1888460c797a5d0"
+	SourceSHA256                      = "cefd9efdf3a09f135cc4289eb6b605ca6289510def54a512ab5d3a448e390465"
 )
 
 type ConsoleAccessContext struct {
@@ -50,6 +51,11 @@ type ConsoleAccountMembership struct {
 
 type ConsoleAccountMembershipEnvelope struct {
 	Membership ConsoleAccountMembership `json:"membership"`
+}
+
+type ConsoleAccountPointAdjustmentResult struct {
+	Balance int64                   `json:"balance"`
+	Entry   ConsolePointLedgerEntry `json:"entry"`
 }
 
 type ConsoleAccountTicket struct {
@@ -121,6 +127,19 @@ type ConsoleOperatorReplyRequest struct {
 type ConsoleOverview struct {
 	GeneratedAt time.Time              `json:"generated_at"`
 	Modules     []ConsoleModuleSummary `json:"modules"`
+}
+
+type ConsolePointAdjustmentRequest struct {
+	Amount int64  `json:"amount"`
+	Reason string `json:"reason"`
+	UserID string `json:"user_id"`
+}
+
+type ConsolePointLedgerEntry struct {
+	Amount    int64     `json:"amount"`
+	CreatedAt time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Reason    string    `json:"reason"`
 }
 
 type ConsoleScope struct {

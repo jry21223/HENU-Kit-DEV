@@ -28,6 +28,23 @@ export interface AccountSummaryResponse {
   request_id: string;
 }
 
+/** One immutable point-ledger fact belonging to the signed-in user. */
+export interface AccountPointEntry {
+  id: string;
+  amount: number;
+  reason: string;
+  created_at: string;
+}
+
+export interface AccountPointsResponse {
+  data: {
+    balance: number;
+    entries: AccountPointEntry[];
+    next_cursor: string | null;
+  };
+  request_id: string;
+}
+
 /** The signed-in user's durable membership entitlement. */
 export interface AccountMembership {
   plan: "free" | "lifetime";

@@ -193,6 +193,101 @@ func TestConsoleMembershipCallsUseActorBoundSignaturesAndExactOwnerRoutes(t *tes
 	}
 }
 
+func TestConsolePointAdjustmentUsesActorBoundSignatureAndRejectsIdentityLeaks(t *testing.T) {
+	raw := "{\n  \"user_id\": \"33333333-3333-4333-8333-333333333333\", \"amount\": 120, \"reason\": \"Verified support correction.\"\n}"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != PointAdjustmentsPath {
+			t.Fatalf("owner point adjustment request = %s %s, want POST %s", request.Method, request.URL.Path, PointAdjustmentsPath)
+		}
+		if request.Header.Get("X-Actor-User-Id") != operatorID || request.Header.Get("Idempotency-Key") != "idem_account_points_adjust" || request.Header.Get("X-Request-Id") != "req_account_points_adjust" {
+			t.Fatalf("owner point adjustment headers actor/key/request = %q/%q/%q", request.Header.Get("X-Actor-User-Id"), request.Header.Get("Idempotency-Key"), request.Header.Get("X-Request-Id"))
+		}
+		assertActorBoundSignature(t, request)
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != raw {
+			t.Fatalf("owner point adjustment body = %q, want exact %q", body, raw)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{"balance": 120, "entry": testPointLedgerEntry()}, "request_id": "req_account_owner"})
+	}))
+	defer server.Close()
+	client, err := New(server.URL, consoleClientID, consoleSecret, consoleKeyID, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := client.Adjust(WithRequestID(context.Background(), "req_account_points_adjust"), operatorID, "idem_account_points_adjust", []byte(raw))
+	if err != nil || len(data) == 0 {
+		t.Fatalf("point adjustment data=%s err=%v", data, err)
+	}
+
+	leakingServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{
+			"balance": 120,
+			"entry":   map[string]any{"id": "55555555-5555-4555-8555-555555555555", "amount": 120, "reason": "Verified support correction.", "created_at": "2026-07-28T00:00:00Z", "operator_user_id": operatorID},
+		}, "request_id": "req_account_owner"})
+	}))
+	defer leakingServer.Close()
+	leakingClient, err := New(leakingServer.URL, consoleClientID, consoleSecret, consoleKeyID, leakingServer.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = leakingClient.Adjust(WithRequestID(context.Background(), "req_account_points_leak"), operatorID, "idem_account_points_leak", []byte(raw))
+	if !errors.Is(err, ErrInvalid) || len(data) != 0 {
+		t.Fatalf("identity-leaking point owner success data=%s err=%v, want ErrInvalid and no data", data, err)
+	}
+}
+
+func TestConsolePointAdjustmentClientRejectsUnsafePublicPointValues(t *testing.T) {
+	const unsafe = int64(9_007_199_254_740_992)
+	raw := []byte(`{"user_id":"33333333-3333-4333-8333-333333333333","amount":1,"reason":"Validated command fixture."}`)
+	for _, rejected := range []struct {
+		name string
+		data map[string]any
+	}{
+		{
+			name: "balance beyond JavaScript-safe range",
+			data: map[string]any{"balance": unsafe, "entry": testPointLedgerEntry()},
+		},
+		{
+			name: "positive ledger entry beyond JavaScript-safe range",
+			data: map[string]any{"balance": 0, "entry": func() map[string]any {
+				entry := testPointLedgerEntry()
+				entry["amount"] = unsafe
+				return entry
+			}()},
+		},
+		{
+			name: "negative ledger entry beyond JavaScript-safe range",
+			data: map[string]any{"balance": 0, "entry": func() map[string]any {
+				entry := testPointLedgerEntry()
+				entry["amount"] = -unsafe
+				return entry
+			}()},
+		},
+	} {
+		t.Run(rejected.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assertActorBoundSignature(t, request)
+				writer.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(writer).Encode(map[string]any{"data": rejected.data, "request_id": "req_account_owner"})
+			}))
+			defer server.Close()
+			client, err := New(server.URL, consoleClientID, consoleSecret, consoleKeyID, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := client.Adjust(WithRequestID(context.Background(), "req_account_points_unsafe"), operatorID, "idem_account_points_unsafe", raw)
+			if !errors.Is(err, ErrInvalid) || len(data) != 0 {
+				t.Fatalf("unsafe point owner success data=%s err=%v, want ErrInvalid and no data", data, err)
+			}
+		})
+	}
+}
+
 func TestConsoleMembershipClientRejectsMalformedOrInternalOwnerFields(t *testing.T) {
 	tests := []struct {
 		name string
@@ -303,6 +398,15 @@ func testTicket() map[string]any {
 
 func testMembership(plan string, lifetime bool, version int) map[string]any {
 	return map[string]any{"plan": plan, "lifetime": lifetime, "version": version}
+}
+
+func testPointLedgerEntry() map[string]any {
+	return map[string]any{
+		"id":         "55555555-5555-4555-8555-555555555555",
+		"amount":     120,
+		"reason":     "Verified support correction.",
+		"created_at": "2026-07-28T00:00:00Z",
+	}
 }
 
 func assertActorBoundSignature(t *testing.T, request *http.Request) {

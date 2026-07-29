@@ -30,6 +30,7 @@ func main() {
 		"MembershipPath":            "getConsoleAccountMembership",
 		"MembershipGrantsPath":      "grantConsoleAccountMembership",
 		"MembershipRevocationsPath": "revokeConsoleAccountMembership",
+		"PointAdjustmentsPath":      "adjustConsoleAccountPoints",
 		"TicketsPath":               "getConsoleAccountTickets",
 		"TicketPath":                "getConsoleAccountTicket",
 		"TicketRepliesPath":         "replyConsoleAccountTicket",
@@ -48,12 +49,13 @@ const (
 	MembershipPathTemplate = %q
 	MembershipGrantsPathTemplate = %q
 	MembershipRevocationsPathTemplate = %q
+	PointAdjustmentsPath = %q
 	TicketsPath = %q
 	TicketPathTemplate = %q
 	TicketRepliesPathTemplate = %q
 	TicketTransitionsPathTemplate = %q
 )
-`, digest, routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"])
+`, digest, routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/accountportfolio", 0o755))

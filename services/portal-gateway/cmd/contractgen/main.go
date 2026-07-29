@@ -15,10 +15,38 @@ import (
 )
 
 type schema struct {
-	Type       string            `yaml:"type"`
+	Type       schemaType        `yaml:"type"`
 	Format     string            `yaml:"format"`
 	Required   []string          `yaml:"required"`
 	Properties map[string]schema `yaml:"properties"`
+}
+
+// schemaType accepts the OpenAPI 3.1 scalar and union forms. This generator
+// only emits PortalSession, but it must still parse the full public contract.
+type schemaType []string
+
+func (value *schemaType) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		*value = schemaType{node.Value}
+		return nil
+	case yaml.SequenceNode:
+		result := make(schemaType, 0, len(node.Content))
+		for _, item := range node.Content {
+			if item.Kind != yaml.ScalarNode {
+				return fmt.Errorf("OpenAPI schema type item must be a scalar")
+			}
+			result = append(result, item.Value)
+		}
+		*value = result
+		return nil
+	default:
+		return fmt.Errorf("OpenAPI schema type must be a scalar or sequence")
+	}
+}
+
+func (value schemaType) isExactly(want string) bool {
+	return len(value) == 1 && value[0] == want
 }
 
 type document struct {
@@ -42,7 +70,7 @@ func main() {
 		fail(fmt.Errorf("parse OpenAPI: %w", err))
 	}
 	portalSession, ok := spec.Components.Schemas["PortalSession"]
-	if !ok || portalSession.Type != "object" {
+	if !ok || !portalSession.Type.isExactly("object") {
 		fail(fmt.Errorf("PortalSession object schema is missing"))
 	}
 	for _, property := range []string{"user_id", "display_name", "expires_at"} {
@@ -101,21 +129,21 @@ export interface PortalSession {
 }
 
 func goType(value schema) string {
-	if value.Type == "string" && value.Format == "date-time" {
+	if value.Type.isExactly("string") && value.Format == "date-time" {
 		return "time.Time"
 	}
-	if value.Type == "string" {
+	if value.Type.isExactly("string") {
 		return "string"
 	}
-	fail(fmt.Errorf("unsupported Go schema type %q format %q", value.Type, value.Format))
+	fail(fmt.Errorf("unsupported Go schema type %q format %q", []string(value.Type), value.Format))
 	return ""
 }
 
 func tsType(value schema) string {
-	if value.Type == "string" {
+	if value.Type.isExactly("string") {
 		return "string"
 	}
-	fail(fmt.Errorf("unsupported TypeScript schema type %q", value.Type))
+	fail(fmt.Errorf("unsupported TypeScript schema type %q", []string(value.Type)))
 	return ""
 }
 

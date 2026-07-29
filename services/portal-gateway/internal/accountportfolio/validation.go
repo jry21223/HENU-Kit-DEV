@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const maxPublicPointValue int64 = 9_007_199_254_740_991
+
 // validateData is the Gateway's runtime contract guard. The owner is a
 // separate deployment, so a 200 with a truncated or incompatible payload must
 // never become a successful browser account response.
@@ -77,13 +79,13 @@ func validSummary(value map[string]json.RawMessage) bool {
 	lifetime, lifetimeOK := requiredBool(value, "lifetime")
 	unread, unreadOK := requiredInt(value, "unread_notification_count")
 	open, openOK := requiredInt(value, "open_ticket_count")
-	return pointsOK && points >= 0 && planOK && validPlan(plan) && lifetimeOK && lifetime == (plan == "lifetime") && unreadOK && unread >= 0 && openOK && open >= 0
+	return pointsOK && points >= 0 && points <= maxPublicPointValue && planOK && validPlan(plan) && lifetimeOK && lifetime == (plan == "lifetime") && unreadOK && unread >= 0 && openOK && open >= 0
 }
 
 func validPoints(value map[string]json.RawMessage) bool {
 	balance, balanceOK := requiredInt(value, "balance")
 	entries, entriesOK := requiredArray(value, "entries")
-	if !balanceOK || balance < 0 || !entriesOK {
+	if !balanceOK || balance < 0 || balance > maxPublicPointValue || !entriesOK || !onlyKeys(value, "balance", "entries", "next_cursor") || !validPointCursor(value) {
 		return false
 	}
 	for _, raw := range entries {
@@ -92,14 +94,23 @@ func validPoints(value map[string]json.RawMessage) bool {
 			return false
 		}
 		id, idOK := requiredString(entry, "id")
-		_, amountOK := requiredInt(entry, "amount")
+		amount, amountOK := requiredInt(entry, "amount")
 		_, reasonOK := requiredString(entry, "reason")
 		createdOK := requiredTimestamp(entry, "created_at")
-		if !idOK || !validUUID(id) || !amountOK || !reasonOK || !createdOK {
+		if !idOK || !validUUID(id) || !amountOK || amount < -maxPublicPointValue || amount > maxPublicPointValue || amount == 0 || !reasonOK || !createdOK || !onlyKeys(entry, "id", "amount", "reason", "created_at") {
 			return false
 		}
 	}
 	return true
+}
+
+func validPointCursor(value map[string]json.RawMessage) bool {
+	raw, exists := value["next_cursor"]
+	if !exists || isNull(raw) {
+		return exists
+	}
+	cursor, ok := requiredString(value, "next_cursor")
+	return ok && len(cursor) > 0 && len(cursor) <= 512
 }
 
 func validMembership(value map[string]json.RawMessage) bool {
@@ -238,6 +249,22 @@ func requiredObject(raw json.RawMessage) (map[string]json.RawMessage, bool) {
 		return nil, false
 	}
 	return value, true
+}
+
+func onlyKeys(value map[string]json.RawMessage, allowed ...string) bool {
+	for key := range value {
+		valid := false
+		for _, candidate := range allowed {
+			if key == candidate {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return false
+		}
+	}
+	return true
 }
 
 func requiredArray(value map[string]json.RawMessage, key string) ([]json.RawMessage, bool) {

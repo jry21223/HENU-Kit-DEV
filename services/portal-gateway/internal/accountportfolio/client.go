@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,7 +75,22 @@ func (c *Client) Summary(ctx context.Context, actorUserID, requestID string) (js
 }
 
 func (c *Client) Points(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
-	return c.get(ctx, PointsPath, actorUserID, requestID)
+	return c.PointsPage(ctx, actorUserID, requestID, "", 20)
+}
+
+// PointsPage forwards an opaque owner cursor and a bounded page size. The
+// request path deliberately retains its query string for HMAC signing, while
+// response validation remains bound to the static owner route.
+func (c *Client) PointsPage(ctx context.Context, actorUserID, requestID, cursor string, limit int) (json.RawMessage, error) {
+	if limit < 1 || limit > 50 || len(cursor) > 512 || (cursor != "" && strings.TrimSpace(cursor) != cursor) {
+		return nil, ErrBadRequest
+	}
+	query := url.Values{}
+	query.Set("limit", strconv.Itoa(limit))
+	if cursor != "" {
+		query.Set("cursor", cursor)
+	}
+	return c.getAt(ctx, PointsPath+"?"+query.Encode(), PointsPath, actorUserID, requestID)
 }
 
 func (c *Client) Membership(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
@@ -119,19 +135,23 @@ func (c *Client) MembershipOrders(ctx context.Context, actorUserID, requestID st
 }
 
 func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (json.RawMessage, error) {
-	return c.call(ctx, http.MethodGet, path, actorUserID, requestID, "", nil, http.StatusOK, validateData)
+	return c.getAt(ctx, path, path, actorUserID, requestID)
+}
+
+func (c *Client) getAt(ctx context.Context, requestPath, validationPath, actorUserID, requestID string) (json.RawMessage, error) {
+	return c.call(ctx, http.MethodGet, requestPath, validationPath, actorUserID, requestID, "", nil, http.StatusOK, validateData)
 }
 
 func (c *Client) command(ctx context.Context, path, actorUserID, requestID, idempotencyKey string, raw []byte, expectedStatus int) (json.RawMessage, error) {
 	if !validIdempotencyKey(idempotencyKey) || len(raw) > 64<<10 {
 		return nil, ErrBadRequest
 	}
-	return c.call(ctx, http.MethodPost, path, actorUserID, requestID, idempotencyKey, raw, expectedStatus, validateCommandData)
+	return c.call(ctx, http.MethodPost, path, path, actorUserID, requestID, idempotencyKey, raw, expectedStatus, validateCommandData)
 }
 
 type responseValidator func(string, json.RawMessage) error
 
-func (c *Client) call(ctx context.Context, method, path, actorUserID, requestID, idempotencyKey string, raw []byte, expectedStatus int, validate responseValidator) (json.RawMessage, error) {
+func (c *Client) call(ctx context.Context, method, requestPath, validationPath, actorUserID, requestID, idempotencyKey string, raw []byte, expectedStatus int, validate responseValidator) (json.RawMessage, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(actorUserID) == "" || strings.TrimSpace(requestID) == "" {
 		return nil, ErrUnavailable
 	}
@@ -139,7 +159,7 @@ func (c *Client) call(ctx context.Context, method, path, actorUserID, requestID,
 	if raw != nil {
 		body = bytes.NewReader(raw)
 	}
-	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+requestPath, body)
 	if err != nil {
 		return nil, fmt.Errorf("create Account Portfolio request: %w", ErrUnavailable)
 	}
@@ -181,7 +201,7 @@ func (c *Client) call(ctx context.Context, method, path, actorUserID, requestID,
 	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&envelope); err != nil || len(envelope.Data) == 0 || string(envelope.Data) == "null" || strings.TrimSpace(envelope.RequestID) == "" {
 		return nil, ErrInvalid
 	}
-	if err := validate(path, envelope.Data); err != nil {
+	if err := validate(validationPath, envelope.Data); err != nil {
 		return nil, ErrInvalid
 	}
 	return envelope.Data, nil

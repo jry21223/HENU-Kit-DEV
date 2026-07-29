@@ -134,6 +134,24 @@ paths:
       summary: Return the signed-in user's persistent points balance and ledger
       security:
         - portalSession: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Versioned opaque encrypted continuation cursor returned by the preceding point-ledger page; Portal forwards it without inspection.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+        - name: limit
+          in: query
+          required: false
+          description: Number of immutable point-ledger entries to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
       responses:
         "200":
           description: Points account, possibly with an empty ledger
@@ -141,6 +159,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AccountPointsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "502":
@@ -521,6 +541,7 @@ components:
           type: integer
           format: int64
           minimum: 0
+          maximum: 9007199254740991
         plan:
           type: string
           enum: [free, lifetime]
@@ -539,29 +560,42 @@ components:
       properties:
         data:
           type: object
-          required: [balance, entries]
+          additionalProperties: false
+          required: [balance, entries, next_cursor]
           properties:
             balance:
               type: integer
               format: int64
               minimum: 0
+              maximum: 9007199254740991
             entries:
               type: array
               items:
                 $ref: "#/components/schemas/AccountPointEntry"
+            next_cursor:
+              type: [string, 'null']
+              maxLength: 512
         request_id:
           type: string
 
     AccountPointEntry:
       type: object
+      additionalProperties: false
       required: [id, amount, reason, created_at]
       properties:
         id:
           type: string
           format: uuid
         amount:
-          type: integer
-          format: int64
+          oneOf:
+            - type: integer
+              format: int64
+              minimum: -9007199254740991
+              maximum: -1
+            - type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
         reason:
           type: string
         created_at:

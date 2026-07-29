@@ -517,6 +517,10 @@ func TestConcurrentConsoleTransitionsWithOneRevisionYieldOneSuccessAndOneConflic
 }
 
 func sendOwnerJSON(t *testing.T, baseURL, method, actorID, route, nonce, idempotencyKey, body string) *http.Response {
+	return sendOwnerJSONAt(t, baseURL, method, actorID, route, nonce, idempotencyKey, body, time.Now())
+}
+
+func sendOwnerJSONAt(t *testing.T, baseURL, method, actorID, route, nonce, idempotencyKey, body string, timestamp time.Time) *http.Response {
 	t.Helper()
 	request, err := http.NewRequest(method, baseURL+route, strings.NewReader(body))
 	if err != nil {
@@ -530,7 +534,7 @@ func sendOwnerJSON(t *testing.T, baseURL, method, actorID, route, nonce, idempot
 	if idempotencyKey != "" {
 		request.Header.Set("Idempotency-Key", idempotencyKey)
 	}
-	signOwnerRequest(t, request, nonce, []byte(body))
+	signOwnerRequestAt(t, request, nonce, []byte(body), timestamp)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -539,6 +543,10 @@ func sendOwnerJSON(t *testing.T, baseURL, method, actorID, route, nonce, idempot
 }
 
 func sendConsoleJSON(t *testing.T, baseURL, method, actorID, route, nonce, idempotencyKey, body string) *http.Response {
+	return sendConsoleJSONAt(t, baseURL, method, actorID, route, nonce, idempotencyKey, body, time.Now())
+}
+
+func sendConsoleJSONAt(t *testing.T, baseURL, method, actorID, route, nonce, idempotencyKey, body string, timestamp time.Time) *http.Response {
 	t.Helper()
 	request, err := http.NewRequest(method, baseURL+route, strings.NewReader(body))
 	if err != nil {
@@ -552,7 +560,7 @@ func sendConsoleJSON(t *testing.T, baseURL, method, actorID, route, nonce, idemp
 	if idempotencyKey != "" {
 		request.Header.Set("Idempotency-Key", idempotencyKey)
 	}
-	signConsoleRequest(t, request, nonce, []byte(body))
+	signConsoleRequestAt(t, request, nonce, []byte(body), timestamp)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -561,15 +569,19 @@ func sendConsoleJSON(t *testing.T, baseURL, method, actorID, route, nonce, idemp
 }
 
 func signOwnerRequest(t *testing.T, request *http.Request, nonce string, body []byte) {
+	signOwnerRequestAt(t, request, nonce, body, time.Now())
+}
+
+func signOwnerRequestAt(t *testing.T, request *http.Request, nonce string, body []byte, timestamp time.Time) {
 	t.Helper()
-	timestamp := time.Now().Unix()
+	timestampUnix := timestamp.UTC().Unix()
 	nonceDigest := sha256.Sum256([]byte(nonce))
 	nonce = base64.RawURLEncoding.EncodeToString(nonceDigest[:24])
 	digest := sha256.Sum256(body)
 	canonical := strings.Join([]string{
 		request.Method,
 		request.URL.RequestURI(),
-		fmtInt(timestamp),
+		fmtInt(timestampUnix),
 		nonce,
 		hex.EncodeToString(digest[:]),
 		request.Header.Get("X-Actor-User-Id"),
@@ -579,21 +591,25 @@ func signOwnerRequest(t *testing.T, request *http.Request, nonce string, body []
 	request.SetBasicAuth("portal-gateway", serviceSecret)
 	request.Header.Set("X-Service-Id", "portal-gateway")
 	request.Header.Set("X-Key-Id", "account-key")
-	request.Header.Set("X-Timestamp", fmtInt(timestamp))
+	request.Header.Set("X-Timestamp", fmtInt(timestampUnix))
 	request.Header.Set("X-Nonce", nonce)
 	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 }
 
 func signConsoleRequest(t *testing.T, request *http.Request, nonce string, body []byte) {
+	signConsoleRequestAt(t, request, nonce, body, time.Now())
+}
+
+func signConsoleRequestAt(t *testing.T, request *http.Request, nonce string, body []byte, timestamp time.Time) {
 	t.Helper()
-	timestamp := time.Now().Unix()
+	timestampUnix := timestamp.UTC().Unix()
 	nonceDigest := sha256.Sum256([]byte(nonce))
 	nonce = base64.RawURLEncoding.EncodeToString(nonceDigest[:24])
 	digest := sha256.Sum256(body)
 	canonical := strings.Join([]string{
 		request.Method,
 		request.URL.RequestURI(),
-		fmtInt(timestamp),
+		fmtInt(timestampUnix),
 		nonce,
 		hex.EncodeToString(digest[:]),
 		request.Header.Get("X-Actor-User-Id"),
@@ -603,7 +619,7 @@ func signConsoleRequest(t *testing.T, request *http.Request, nonce string, body 
 	request.SetBasicAuth("console-gateway", consoleServiceSecret)
 	request.Header.Set("X-Service-Id", "console-gateway")
 	request.Header.Set("X-Key-Id", "console-key")
-	request.Header.Set("X-Timestamp", fmtInt(timestamp))
+	request.Header.Set("X-Timestamp", fmtInt(timestampUnix))
 	request.Header.Set("X-Nonce", nonce)
 	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 }

@@ -16,7 +16,7 @@
 
 ## Current boundary
 
-Portal Gateway is read-only by default. It authenticates users via Platform Core OAuth, establishes a Portal Session, and proxies GET requests to product services with verified permissions. ADR-0017 creates one deliberately narrow exception: it may forward an authenticated user's own Account Portfolio support-ticket create/follow-up and notification mark-read commands with an actor-bound signature and command idempotency. It does not forward any other product writes, does not own business data, and does not expose service credentials to the browser.
+Portal Gateway is read-only by default. It authenticates users via Platform Core OAuth, establishes a Portal Session, and proxies GET requests to product services with verified permissions. Account Portfolio point-ledger reads accept only a bounded opaque cursor and page size; the Gateway includes the canonical query in the signed owner RequestURI while validating the returned data against the static owner route. ADR-0017 creates one deliberately narrow exception: it may forward an authenticated user's own Account Portfolio support-ticket create/follow-up and notification mark-read commands with an actor-bound signature and command idempotency. It does not forward any other product writes, does not own business data, and does not expose service credentials to the browser.
 
 ## Key terms
 

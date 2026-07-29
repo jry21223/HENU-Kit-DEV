@@ -3,7 +3,7 @@ package contract
 
 import "time"
 
-const PortalSessionSourceSHA256 = "0d349a6f91fdcc8391a56ebac230937c677a80b1d92e0100a5e6ed7e59bfb77d"
+const PortalSessionSourceSHA256 = "579536fab62dae997f3b4fe499832307cce127356deb3ef6a73dd10e29e8cc77"
 
 type PortalSession struct {
 	DisplayName *string   `json:"display_name,omitempty"`
