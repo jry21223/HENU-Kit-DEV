@@ -39,6 +39,7 @@ import type {
 	PortalPracticeSessionInput,
 	PortalPracticeSessionResponse,
   PracticeBanksResponse,
+	QuizCraftCatalogResponse,
   SchoolListResponse,
 } from "./types";
 
@@ -395,6 +396,15 @@ export async function fetchFoodPosts(campus?: string): Promise<FoodPostListRespo
 
 export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null> {
   return apiFetch<PracticeBanksResponse>("/api/v1/practice/banks");
+}
+
+/**
+ * Reads the Gateway's cutover-only QuizCraft V2 catalog. It intentionally
+ * uses the strict boundary: an unavailable or disabled route is an error,
+ * never a legacy Portal API or client-side mock success response.
+ */
+export async function fetchQuizCraftCatalog(): Promise<QuizCraftCatalogResponse> {
+  return apiFetchRequired<QuizCraftCatalogResponse>("/api/v1/practice/catalog");
 }
 
 export async function fetchPracticeSchools(): Promise<SchoolListResponse> {

@@ -9,6 +9,7 @@ import { hasGateway, mockAllowed } from "@/lib/api/client";
 import { initCampusGateway } from "@/lib/campus/gateway";
 import { initFoodGateway } from "@/lib/food/gateway";
 import { initGateway } from "@/lib/library/gateway";
+import { quizCraftCatalogEnabled } from "@/lib/api/env";
 import { initPracticeGateway } from "@/lib/practice/gateway";
 
 let initialized = false;
@@ -27,10 +28,16 @@ export async function initAllGateways(): Promise<void> {
   if (inflight) return inflight;
 
   inflight = (async () => {
+    // The controlled QuizCraft catalog is an authoritative data cutover. Do
+    // not let the root warm-up issue legacy Practice reads behind its back;
+    // the catalog page owns its only permitted Practice request in this mode.
+    const practiceInitializer = quizCraftCatalogEnabled()
+      ? []
+      : [initPracticeGateway()];
     await Promise.allSettled([
       initGateway(),
       initFoodGateway(),
-      initPracticeGateway(),
+      ...practiceInitializer,
       initCampusGateway(),
     ]);
     initialized = true;

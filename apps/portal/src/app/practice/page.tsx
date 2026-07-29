@@ -1,13 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchPracticeBanks,
   fetchPracticeSchools,
+  fetchQuizCraftCatalog,
   formatPortalError,
   mockAllowed,
 } from "@/lib/api/client";
-import type { BankSummary, PracticeSchool } from "@/lib/api/types";
+import { quizCraftCatalogEnabled } from "@/lib/api/env";
+import type {
+  BankSummary,
+  PracticeSchool,
+  QuizCraftCatalogBank,
+} from "@/lib/api/types";
 import { SCHOOLS, QuizListMeta, type School } from "@/lib/practice/mock";
 import {
   getGatewayBanks,
@@ -20,6 +27,8 @@ import TransitionLink from "@/components/practice/transition/transition-link";
 import BankHero from "@/components/practice/bank-hero";
 import BankFilter from "@/components/practice/bank-filter";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
+
+const quizCraftCatalogIsEnabled = quizCraftCatalogEnabled();
 
 function ListCard({ list, index }: { list: QuizListMeta; index: number }) {
   return (
@@ -76,6 +85,50 @@ function BankCard({ bank, index }: { bank: BankSummary; index: number }) {
   );
 }
 
+function QuizCraftCatalogCard({
+  bank,
+  index,
+}: {
+  bank: QuizCraftCatalogBank;
+  index: number;
+}) {
+  const href = `/practice/quiz?bank_id=${encodeURIComponent(bank.bank_id)}&bank_version_id=${encodeURIComponent(bank.bank_version_id)}`;
+  return (
+    <article
+      data-testid="quizcraft-catalog"
+      className="group border border-ink/25 bg-paper p-5"
+    >
+      <div className="flex items-start justify-between">
+        <span className="font-mono text-xs text-accent">
+          QC-{String(index + 1).padStart(2, "0")}
+        </span>
+        <span className="font-mono text-[10px] tracking-wider text-ink/50">
+          {bank.available ? "可练习" : "暂不可用"}
+        </span>
+      </div>
+      <h3 className="mt-3 font-display text-xl font-bold leading-snug">{bank.name}</h3>
+      <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">
+        {bank.question_count} 题
+      </p>
+      <div className="mt-5 border-t border-line pt-3">
+        {bank.available ? (
+          <Link
+            data-testid="quizcraft-catalog-start"
+            href={href}
+            className="inline-flex border border-ink px-3 py-1.5 font-mono text-xs tracking-wider transition-colors hover:bg-ink hover:text-paper"
+          >
+            开始刷题 →
+          </Link>
+        ) : (
+          <span className="font-mono text-xs tracking-wider text-ink/45">
+            当前版本暂不可练习
+          </span>
+        )}
+      </div>
+    </article>
+  );
+}
+
 function asLocalSchools(api: PracticeSchool[]): School[] {
   return api as unknown as School[];
 }
@@ -87,6 +140,7 @@ export default function PracticeBankPage() {
 
   const [schools, setSchools] = useState<School[]>([]);
   const [banks, setBanks] = useState<BankSummary[]>([]);
+  const [quizCraftBanks, setQuizCraftBanks] = useState<QuizCraftCatalogBank[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
 
@@ -99,12 +153,31 @@ export default function PracticeBankPage() {
   const load = useCallback(async () => {
     setLoadState("loading");
     setError(null);
+    if (quizCraftCatalogIsEnabled) {
+      try {
+        const response = await fetchQuizCraftCatalog();
+        setSchools([]);
+        setBanks([]);
+        setQuizCraftBanks(response.banks);
+        setLoadState("ready");
+      } catch {
+        // The flag is a real-data cutover seam. Never replace a failed Core
+        // read with legacy Portal API, cached, or local mock catalog data.
+        setSchools([]);
+        setBanks([]);
+        setQuizCraftBanks([]);
+        setError("题库接口不可用，请稍后重试。");
+        setLoadState("error");
+      }
+      return;
+    }
     try {
       try {
         const resp = await fetchPracticeSchools();
         const next = asLocalSchools(resp.schools);
         setSchools(next);
         setBanks([]);
+        setQuizCraftBanks([]);
         if (next[0]) {
           setSchoolId(next[0].id);
           setMajorId(next[0].majors[0]?.id ?? "");
@@ -121,6 +194,7 @@ export default function PracticeBankPage() {
         if (banksResp?.banks?.length) {
           setSchools([]);
           setBanks(banksResp.banks);
+          setQuizCraftBanks([]);
           setLoadState("ready");
           return;
         }
@@ -135,6 +209,7 @@ export default function PracticeBankPage() {
         const next = asLocalSchools(cachedSchools);
         setSchools(next);
         setBanks([]);
+        setQuizCraftBanks([]);
         if (next[0]) {
           setSchoolId(next[0].id);
           setMajorId(next[0].majors[0]?.id ?? "");
@@ -146,12 +221,14 @@ export default function PracticeBankPage() {
       if (cachedBanks?.length) {
         setSchools([]);
         setBanks(cachedBanks);
+        setQuizCraftBanks([]);
         setLoadState("ready");
         return;
       }
       if (mockAllowed) {
         setSchools(SCHOOLS);
         setBanks([]);
+        setQuizCraftBanks([]);
         setSchoolId(SCHOOLS[0].id);
         setMajorId(SCHOOLS[0].majors[0].id);
         setSubjectId(SCHOOLS[0].majors[0].subjects[0].id);
@@ -166,6 +243,7 @@ export default function PracticeBankPage() {
     } catch (e) {
       if (mockAllowed) {
         setSchools(SCHOOLS);
+        setQuizCraftBanks([]);
         setSchoolId(SCHOOLS[0].id);
         setMajorId(SCHOOLS[0].majors[0].id);
         setSubjectId(SCHOOLS[0].majors[0].subjects[0].id);
@@ -208,11 +286,21 @@ export default function PracticeBankPage() {
     );
   }, [banks, query, searching]);
 
+  const filteredQuizCraftBanks = useMemo(() => {
+    if (!searching) return quizCraftBanks;
+    const q = query.trim();
+    return quizCraftBanks.filter((bank) => bank.name.includes(q));
+  }, [query, quizCraftBanks, searching]);
+
   const useHierarchy = schools.length > 0;
 
   return (
     <main>
-      <BankHero query={query} onQueryChange={setQuery} />
+      <BankHero
+        query={query}
+        onQueryChange={setQuery}
+        catalogMode={quizCraftCatalogIsEnabled}
+      />
 
       <div data-block className="border-t border-line">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-3 md:px-8">
@@ -294,6 +382,20 @@ export default function PracticeBankPage() {
           <div data-block className="flex-1 px-5 py-10 md:px-8">
             {loadState === "error" ? (
               <EmptyBlock label="接口不可用" />
+            ) : quizCraftCatalogIsEnabled ? (
+              filteredQuizCraftBanks.length === 0 ? (
+                <EmptyBlock label={searching ? "无匹配题库" : "暂无题库"} />
+              ) : (
+                <div data-enter className="grid gap-5 md:grid-cols-2">
+                  {filteredQuizCraftBanks.map((bank, index) => (
+                    <QuizCraftCatalogCard
+                      key={`${bank.bank_id}:${bank.bank_version_id}`}
+                      bank={bank}
+                      index={index}
+                    />
+                  ))}
+                </div>
+              )
             ) : useHierarchy && school && major && subject ? (
               !searching ? (
                 <>

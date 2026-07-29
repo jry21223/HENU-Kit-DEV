@@ -26,7 +26,7 @@ const (
 
 func TestBanksUsesGeneratedQuizCraftCatalogContract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assertCatalogRequest(t, request, "user-123", "req_catalog_success")
+		assertCatalogRequest(t, request, AnonymousCatalogActor, "req_catalog_success")
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(BankListEnvelope{
 			RequestID: "req_core_catalog",
@@ -44,7 +44,7 @@ func TestBanksUsesGeneratedQuizCraftCatalogContract(t *testing.T) {
 	defer server.Close()
 
 	client := testCatalogClient(t, server)
-	result, err := client.Banks(context.Background(), "user-123", "req_catalog_success")
+	result, err := client.Banks(context.Background(), "req_catalog_success")
 	if err != nil {
 		t.Fatalf("Banks() error = %v", err)
 	}
@@ -247,7 +247,7 @@ func TestBanksAcceptsTrueEmptyCatalogButRejectsLegacyMockShape(t *testing.T) {
 			}))
 			defer server.Close()
 
-			result, err := testCatalogClient(t, server).Banks(context.Background(), "", "req_catalog_"+strings.ReplaceAll(test.name, " ", "_"))
+			result, err := testCatalogClient(t, server).Banks(context.Background(), "req_catalog_"+strings.ReplaceAll(test.name, " ", "_"))
 			if test.wantErr {
 				if err == nil {
 					t.Fatalf("Banks() = %+v, want malformed legacy response error", result)
@@ -290,7 +290,7 @@ func TestBanksWaitsForCoreInsteadOfFallingBackWhileLoading(t *testing.T) {
 	resultCh := make(chan result, 1)
 	client := testCatalogClient(t, server)
 	go func() {
-		value, err := client.Banks(context.Background(), "", "req_catalog_loading")
+		value, err := client.Banks(context.Background(), "req_catalog_loading")
 		resultCh <- result{value: value, err: err}
 	}()
 
@@ -319,13 +319,13 @@ func TestBanksWaitsForCoreInsteadOfFallingBackWhileLoading(t *testing.T) {
 func TestBanksReturnsDependencyFailureWithoutLeakingCredentials(t *testing.T) {
 	const upstreamDetail = "upstream-failure-must-not-expose-portal-catalog-secret"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assertCatalogRequest(t, request, "user-123", "req_catalog_failure")
+		assertCatalogRequest(t, request, AnonymousCatalogActor, "req_catalog_failure")
 		writer.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = writer.Write([]byte(`{"error":{"code":"database_unavailable","message":"` + upstreamDetail + `"}}`))
 	}))
 	defer server.Close()
 
-	result, err := testCatalogClient(t, server).Banks(context.Background(), "user-123", "req_catalog_failure")
+	result, err := testCatalogClient(t, server).Banks(context.Background(), "req_catalog_failure")
 	if !errors.Is(err, ErrCatalogUnavailable) {
 		t.Fatalf("Banks() error = %v, want ErrCatalogUnavailable", err)
 	}

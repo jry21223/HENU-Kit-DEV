@@ -31,6 +31,15 @@ export function allowMock(): boolean {
 }
 
 /**
+ * The QuizCraft V2 catalog is a coordinated, cutover-only surface. This
+ * browser flag intentionally defaults to false; the Gateway must also opt in
+ * with PORTAL_ENABLE_QUIZCRAFT_CATALOG=1 before any real catalog can load.
+ */
+export function quizCraftCatalogEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG === "1";
+}
+
+/**
  * Gateway base URL (no trailing slash).
  * Empty string = same-origin (/api/v1/... via nginx).
  */

@@ -39,6 +39,7 @@ type Handler struct {
 	portalAPIURL       string
 	accountPortfolio   *accountportfolio.Client
 	practiceCommands   *practice.CommandClient
+	quizCraftCatalog   *practice.Client
 	redis              *redis.Client
 	portalOrigin       string
 	platformCoreURL    string
@@ -51,6 +52,8 @@ type Handler struct {
 }
 
 var accountIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+
+const quizCraftCatalogPath = "/api/v1/practice/catalog"
 
 // New creates a Handler from config.
 func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
@@ -91,6 +94,18 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			return nil, fmt.Errorf("practice.NewCommandClient: %w", err)
 		}
 	}
+	var quizCraftCatalog *practice.Client
+	if cfg.QuizCraftCatalogEnabled {
+		quizCraftCatalog, err = practice.NewClient(
+			cfg.PracticeURL,
+			cfg.PracticeAuth.ClientID,
+			cfg.PracticeAuth.ClientSecret,
+			cfg.PracticeAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("practice.NewClient: %w", err)
+		}
+	}
 	return &Handler{
 		sessionCodec:       codec,
 		platform:           platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID),
@@ -98,6 +113,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		portalAPIURL:       cfg.PortalAPIURL,
 		accountPortfolio:   portfolio,
 		practiceCommands:   practiceCommands,
+		quizCraftCatalog:   quizCraftCatalog,
 		redis:              rdb,
 		portalOrigin:       cfg.PortalOrigin,
 		platformCoreURL:    cfg.PlatformCoreURL,
@@ -130,6 +146,12 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/account/tickets/{ticket_id}", h.accountTicket)
 	r.Post("/api/v1/account/tickets/{ticket_id}/follow-ups", h.accountTicketFollowUp)
 	r.Get("/api/v1/account/membership-orders", h.accountMembershipOrders)
+	if h.quizCraftCatalog != nil {
+		// This exact handler is registered only for a local or explicitly
+		// coordinated cutover configuration. The default wildcard path below
+		// still fails closed for this exact V2 route.
+		r.Get(quizCraftCatalogPath, h.getQuizCraftCatalog)
+	}
 
 	// This is the sole browser-visible QuizCraft write boundary. It is not a
 	// generic proxy and stays unavailable until the explicit #166 cutover gate
@@ -632,6 +654,13 @@ func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Req
 // --- Proxy to portal-api ---
 
 func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
+	// The legacy wildcard must not accidentally make a successful V2 catalog
+	// route public before #166. Keep the path externally indistinguishable
+	// from an unregistered route and do not contact either upstream.
+	if r.URL.Path == quizCraftCatalogPath {
+		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "not found", RequestID: requestIDOf(w, r)})
+		return
+	}
 	targetURL := h.portalAPIURL + r.URL.Path
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
