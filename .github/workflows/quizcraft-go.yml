@@ -173,6 +173,7 @@ jobs:
           bash -n products/quizcraft/go-service/scripts/verify-cutover.sh
           bash -n products/quizcraft/go-service/scripts/test-switch-cutover-release.sh
           python3 products/quizcraft/go-service/scripts/test-write-portal-read-request-config.py
+          python3 products/quizcraft/go-service/scripts/test-verify-cutover-preflight-contract.py
           products/quizcraft/go-service/scripts/test-switch-cutover-release.sh
       - name: Build shadow image
         run: docker build --build-arg RELEASE_SHA=${{ github.sha }} -t henukit-quizcraft:${{ github.sha }} products/quizcraft/go-service

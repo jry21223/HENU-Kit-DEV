@@ -398,7 +398,7 @@ func (service *practiceHTTP) updateRankingProfile(writer http.ResponseWriter, re
 	var input rankingProfileRequest
 	raw, err := decodeBody(request, &input)
 	nickname, validNickname := normalizeRankingNickname(input.Nickname)
-	if err != nil || !jsonFieldPresent(raw, "nickname") || !validNickname || !validSystemAvatar(input.SystemAvatar) {
+	if err != nil || !jsonStringFieldPresent(raw, "nickname") || !validNickname || !validSystemAvatar(input.SystemAvatar) {
 		writeError(writer, http.StatusBadRequest, "invalid_ranking_profile", "nickname or system avatar is not allowed")
 		return
 	}
@@ -1427,6 +1427,23 @@ func jsonFieldPresent(raw []byte, field string) bool {
 	}
 	_, present := object[field]
 	return present
+}
+
+func jsonStringFieldPresent(raw []byte, field string) bool {
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) != nil {
+		return false
+	}
+	value, present := object[field]
+	if !present {
+		return false
+	}
+	var decoded any
+	if json.Unmarshal(value, &decoded) != nil {
+		return false
+	}
+	_, isString := decoded.(string)
+	return isString
 }
 
 func hashCanonical(raw []byte) string {

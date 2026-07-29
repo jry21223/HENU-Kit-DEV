@@ -37,7 +37,7 @@ test $(( 8#$gate_permissions & 8#077 )) -eq 0
 [[ -f "$QUIZCRAFT_GO_ENV_FILE" ]]
 test "$(stat -c '%u' "$QUIZCRAFT_GO_ENV_FILE")" = 0
 go_environment_permissions="$(stat -c '%a' "$QUIZCRAFT_GO_ENV_FILE")"
-test $(( 8#$go_environment_permissions & 8#022 )) -eq 0
+test $(( 8#$go_environment_permissions & 8#077 )) -eq 0
 require_root_executable() {
   local path="$1" permissions
   [[ -f "$path" && -x "$path" ]]
@@ -80,6 +80,10 @@ curl --fail --silent --show-error --max-time 10 "$GO_BASE_URL/readyz" > "$cutove
 curl --fail --silent --show-error --max-time 10 "$LEGACY_BASE_URL/api/healthz" > "$cutover_tmp/legacy-health.json"
 write_portal_read_config "/api/v1/banks" "$cutover_tmp/portal-read-banks.curl"
 curl --fail --silent --show-error --max-time 10 --config "$cutover_tmp/portal-read-banks.curl" "$GO_BASE_URL/api/v1/banks" > "$cutover_tmp/banks.json"
+write_portal_read_config "/api/v1/rankings/overall?period=weekly" "$cutover_tmp/portal-read-ranking.curl"
+curl --fail --silent --show-error --max-time 10 --config "$cutover_tmp/portal-read-ranking.curl" \
+  "$GO_BASE_URL/api/v1/rankings/overall?period=weekly" > "$cutover_tmp/ranking.json"
+python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; assert data["scope"] == "overall" and data["period"] == "weekly" and isinstance(data["entries"], list)' "$cutover_tmp/ranking.json"
 curl --fail --silent --show-error --max-time 10 --config "$cutover_tmp/evidence.curl" \
   "$GO_BASE_URL/api/v1/cutover-evidence?run_id=$EXPECTED_MIGRATION_RUN_ID&source_head=$EXPECTED_SOURCE_HEAD" \
   > "$cutover_tmp/evidence.json"
@@ -237,11 +241,6 @@ PY
     --data-binary @"$cutover_tmp/feedback-request.json" \
     "$GO_BASE_URL/api/v1/feedback" > "$cutover_tmp/feedback.json"
   python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; assert data["state"] == "succeeded" and data["resource_id"]' "$cutover_tmp/feedback.json"
-
-  write_portal_read_config "/api/v1/rankings/overall?period=weekly" "$cutover_tmp/portal-read-ranking.curl"
-  curl --fail --silent --show-error --max-time 10 --config "$cutover_tmp/portal-read-ranking.curl" \
-    "$GO_BASE_URL/api/v1/rankings/overall?period=weekly" > "$cutover_tmp/ranking.json"
-  python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; assert data["scope"] == "overall" and data["period"] == "weekly" and isinstance(data["entries"], list)' "$cutover_tmp/ranking.json"
 
   read -r bank_id question_id < <(python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; print(data["bank_id"], data["questions"][0]["question_id"])' "$cutover_tmp/session.json")
   probe_nonce="$(date +%s)-$$"

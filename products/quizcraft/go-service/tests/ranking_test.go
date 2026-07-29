@@ -149,14 +149,24 @@ func TestRankingProfileRejectsOmittedNicknameWithoutOverwritingExistingProfile(t
 		t.Fatalf("initial ranking profile = %d %s", initialStatus, initialBody)
 	}
 
-	omittedStatus, omittedBody := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-nickname-required-omitted"}, map[string]any{"visible": false, "system_avatar": "scholar-blue"})
-	if omittedStatus != http.StatusBadRequest || !bytes.Contains(omittedBody, []byte(`"code":"invalid_ranking_profile"`)) {
-		t.Fatalf("nickname-omitted ranking profile = %d %s", omittedStatus, omittedBody)
+	for _, test := range []struct {
+		name  string
+		input map[string]any
+	}{
+		{name: "omitted", input: map[string]any{"visible": false, "system_avatar": "scholar-blue"}},
+		{name: "null", input: map[string]any{"visible": false, "nickname": nil, "system_avatar": "scholar-blue"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, body := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-nickname-required-" + test.name}, test.input)
+			if status != http.StatusBadRequest || !bytes.Contains(body, []byte(`"code":"invalid_ranking_profile"`)) {
+				t.Fatalf("nickname-%s ranking profile = %d %s", test.name, status, body)
+			}
+		})
 	}
 
 	rankingStatus, rankingBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_nickname_required")
 	if rankingStatus != http.StatusOK || !bytes.Contains(rankingBody, []byte(`"nickname":"保留昵称"`)) {
-		t.Fatalf("nickname-omitted profile overwrote existing public identity = %d %s", rankingStatus, rankingBody)
+		t.Fatalf("invalid nickname profile overwrote existing public identity = %d %s", rankingStatus, rankingBody)
 	}
 }
 
