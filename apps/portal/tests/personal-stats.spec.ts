@@ -107,4 +107,20 @@ test.describe("QuizCraft personal Practice stats", () => {
     await expect(page.getByTestId("practice-stats-success")).toBeVisible();
     await expect(page.getByTestId("practice-stats-success")).toContainText("50% · 2/4");
   });
+
+  test("an unauthenticated visitor receives no personal progress fallback", async ({ page }) => {
+    await page.route("**/api/v1/practice/stats*", async (route) => {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "login required" }),
+      });
+    });
+
+    await page.goto("/practice/stats", { waitUntil: "domcontentloaded" });
+
+    await expect(page.getByTestId("practice-stats-unauthenticated")).toBeVisible();
+    await expect(page.getByTestId("practice-stats-unauthenticated")).toContainText("登录后查看跨设备同步的学习状态");
+    await expect(page.locator("main")).not.toContainText("486");
+  });
 });
