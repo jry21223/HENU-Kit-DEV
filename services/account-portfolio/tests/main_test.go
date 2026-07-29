@@ -254,6 +254,65 @@ func TestPaymentKernelRollbackRefusesAuditOnlyRecord(t *testing.T) {
 	}
 }
 
+func TestPointAdjustmentRollbackRefusesDurableAudit(t *testing.T) {
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+
+	schema := fmt.Sprintf("account_portfolio_points_rollback_audit_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+	}()
+
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+		t.Fatalf("initial ApplyMigrations() = %v", err)
+	}
+
+	const targetUserID = "c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1"
+	const auditID = "c2c2c2c2-c2c2-42c2-82c2-c2c2c2c2c2c2"
+	if _, err := pool.Exec(ctx, "INSERT INTO account_portfolio_accounts(user_id) VALUES($1)", targetUserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO account_portfolio_point_adjustment_audits(id, operator_user_id, target_user_id, amount, reason, idempotency_key)
+		VALUES($1, 'c3c3c3c3-c3c3-43c3-83c3-c3c3c3c3c3c3', $2, 10, 'durable audit', 'durable_point_adjustment')
+	`, auditID, targetUserID); err != nil {
+		t.Fatal(err)
+	}
+
+	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000004_admin_point_adjustments.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(down)); err == nil {
+		t.Fatal("point adjustment rollback accepted a durable audit")
+	}
+
+	var auditExists bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM account_portfolio_point_adjustment_audits WHERE id=$1)", auditID).Scan(&auditExists); err != nil {
+		t.Fatal(err)
+	}
+	if !auditExists {
+		t.Fatal("failed rollback removed the durable point adjustment audit")
+	}
+}
+
 func TestMembershipEntitlementMigrationPreservesPreexistingMembership(t *testing.T) {
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, testDatabaseURL(t))

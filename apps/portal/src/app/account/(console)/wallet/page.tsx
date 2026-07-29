@@ -53,9 +53,7 @@ export default function WalletPage() {
   const requestVersion = useRef(0);
   useReveal();
 
-  const loadWallet = useCallback(() => {
-    const version = ++requestVersion.current;
-    setState({ kind: "loading" });
+  const requestWallet = useCallback((version: number) => {
     void fetchAccountPoints().then(
       (response) => {
         if (version === requestVersion.current) setState(walletState(response));
@@ -66,12 +64,19 @@ export default function WalletPage() {
     );
   }, []);
 
+  const loadWallet = useCallback(() => {
+    const version = ++requestVersion.current;
+    setState({ kind: "loading" });
+    requestWallet(version);
+  }, [requestWallet]);
+
   useEffect(() => {
-    loadWallet();
+    const version = ++requestVersion.current;
+    requestWallet(version);
     return () => {
       requestVersion.current += 1;
     };
-  }, [loadWallet]);
+  }, [requestWallet]);
 
   const loadMore = () => {
     if (state.kind !== "success" || !state.nextCursor || state.loadingMore) return;

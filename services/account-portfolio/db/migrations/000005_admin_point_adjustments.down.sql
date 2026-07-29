@@ -1,3 +1,10 @@
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM account_portfolio_point_adjustment_audits) THEN
+        RAISE EXCEPTION 'cannot roll back point adjustments while durable audits exist';
+    END IF;
+END $$;
+
 DROP TRIGGER IF EXISTS account_portfolio_point_adjustment_audits_immutable ON account_portfolio_point_adjustment_audits;
 DROP TRIGGER IF EXISTS account_portfolio_point_ledger_immutable ON account_portfolio_point_ledger;
 DROP FUNCTION IF EXISTS account_portfolio_reject_point_fact_mutation();

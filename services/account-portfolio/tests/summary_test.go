@@ -259,6 +259,25 @@ func TestAccountPortfolioRejectsPointCursorKeyThatReusesAServiceSecret(t *testin
 	}
 }
 
+func TestAccountPortfolioRejectsPointCursorKeyWhoseBase64EncodingReusesAServiceSecret(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	cursorKey := []byte("account-portfolio-cursor-key-123")
+	_, err = accountportfolio.New(accountportfolio.Config{
+		Database:       pool,
+		ClientID:       "portal-gateway",
+		Keys:           map[string]string{"account-key": base64.StdEncoding.EncodeToString(cursorKey)},
+		PointCursorKey: cursorKey,
+	})
+	if err == nil {
+		t.Fatal("Account Portfolio accepted a Base64-encoded point cursor key as a service credential")
+	}
+}
+
 func newAccountPortfolioServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	t.Helper()
 	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))

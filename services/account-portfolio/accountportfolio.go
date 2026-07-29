@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -234,6 +235,17 @@ func pointCursorKeyReusesServiceSecret(pointCursorKey []byte, keySets ...map[str
 		for _, secret := range keys {
 			if subtle.ConstantTimeCompare(pointCursorKey, []byte(secret)) == 1 {
 				return true
+			}
+			for _, encoding := range []*base64.Encoding{
+				base64.StdEncoding,
+				base64.RawStdEncoding,
+				base64.URLEncoding,
+				base64.RawURLEncoding,
+			} {
+				decoded, err := encoding.DecodeString(secret)
+				if err == nil && subtle.ConstantTimeCompare(pointCursorKey, decoded) == 1 {
+					return true
+				}
 			}
 		}
 	}
