@@ -296,7 +296,7 @@ func TestPointAdjustmentRollbackRefusesDurableAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000004_admin_point_adjustments.down.sql"))
+	down, err := os.ReadFile(filepath.Join("..", "db", "migrations", "000005_admin_point_adjustments.down.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
