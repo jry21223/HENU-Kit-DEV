@@ -13,6 +13,7 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
+	_ "time/tzdata"
 )
 
 type SMTPMailer struct {
@@ -99,7 +100,10 @@ func buildVerificationMIME(from string, message Mail, now time.Time) (string, er
 		strings.ContainsAny(message.MessageID, "\r\n") {
 		return "", errors.New("mail headers must not contain CR or LF")
 	}
-	expiresText := message.ExpiresAt.In(time.FixedZone("CST", 8*60*60)).Format("2006-01-02 15:04:05 MST")
+	expiresText, err := formatVerificationExpiry(message.ExpiresAt)
+	if err != nil {
+		return "", err
+	}
 	plain := fmt.Sprintf(
 		"你的 HENU Kit 验证码是：%s\r\n\r\n验证码将在 %s 过期。如非本人操作，请忽略此邮件。\r\n\r\n学生自主运营 · 非河南大学官方项目\r\n",
 		message.Code,
@@ -118,6 +122,14 @@ func buildVerificationMIME(from string, message Mail, now time.Time) (string, er
 	fmt.Fprintf(&builder, "--%s\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n", boundary, htmlBody)
 	fmt.Fprintf(&builder, "--%s--\r\n", boundary)
 	return builder.String(), nil
+}
+
+func formatVerificationExpiry(expiresAt time.Time) (string, error) {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return "", fmt.Errorf("load Asia/Shanghai timezone: %w", err)
+	}
+	return expiresAt.In(location).Format("2006-01-02 15:04:05") + " Asia/Shanghai（北京时间）", nil
 }
 
 func buildVerificationHTML(code, expiresText string) string {
