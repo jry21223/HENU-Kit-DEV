@@ -42,7 +42,7 @@ func TestBuildVerificationMIMEUsesMultipartCurrentBrandAndEscapesHTML(t *testing
 		"#f2f0ea",
 		"#161513",
 		"#ff4d00",
-		"2099-07-22 20:00:00 CST",
+		"2099-07-22 20:00:00 Asia/Shanghai（北京时间）",
 		"学生自主运营 · 非河南大学官方项目",
 	} {
 		if !strings.Contains(content, expected) {
