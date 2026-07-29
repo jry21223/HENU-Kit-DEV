@@ -28,11 +28,12 @@ type Config struct {
 
 	PortalAPIURL string
 
-	LibraryURL          string
-	FoodURL             string
-	PracticeURL         string
-	NoticeURL           string
-	AccountPortfolioURL string
+	LibraryURL              string
+	FoodURL                 string
+	PracticeURL             string
+	QuizCraftCatalogEnabled bool
+	NoticeURL               string
+	AccountPortfolioURL     string
 
 	LibraryAuth  ServiceAuth
 	FoodAuth     ServiceAuth
@@ -73,8 +74,11 @@ func FromEnv() (Config, error) {
 		LibraryURL:            mustEnv("LIBRARY_SERVICE_URL"),
 		FoodURL:               mustEnv("FOOD_SERVICE_URL"),
 		PracticeURL:           mustEnv("PRACTICE_SERVICE_URL"),
-		NoticeURL:             mustEnv("NOTICE_SERVICE_URL"),
-		AccountPortfolioURL:   mustEnv("ACCOUNT_PORTFOLIO_URL"),
+		// This remains dark by default. #166 is the only production cutover
+		// that may set it to 1 alongside the Portal UI flag.
+		QuizCraftCatalogEnabled: os.Getenv("PORTAL_ENABLE_QUIZCRAFT_CATALOG") == "1",
+		NoticeURL:               mustEnv("NOTICE_SERVICE_URL"),
+		AccountPortfolioURL:     mustEnv("ACCOUNT_PORTFOLIO_URL"),
 		LibraryAuth: ServiceAuth{
 			ClientID:     mustEnv("LIBRARY_CLIENT_ID"),
 			ClientSecret: mustEnv("LIBRARY_CLIENT_SECRET"),

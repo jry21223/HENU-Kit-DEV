@@ -99,6 +99,7 @@ jobs:
               NEXT_PUBLIC_PORTAL_GATEWAY_URL=
               NEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL=/api
               NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1
+              NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=0
           - name: portal-api
             image: henukit-portal-api
             context: services/portal-api

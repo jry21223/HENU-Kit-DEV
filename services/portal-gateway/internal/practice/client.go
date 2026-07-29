@@ -65,11 +65,16 @@ func NewClient(baseURL, clientID, clientSecret, keyID string) (*Client, error) {
 	}, nil
 }
 
-// Banks reads the Core's published catalog. A genuine empty data array is a
-// successful empty catalog; absent or null data is an invalid response, never
-// a mock fallback.
-func (c *Client) Banks(ctx context.Context, actorUserID, requestID string) (BankListEnvelope, error) {
-	resp, err := c.portalRead(ctx, actorUserID, requestID, ListPracticeBanksPath)
+// Banks reads the Core's public published catalog. A catalog has no
+// user-specific result, and the legacy read signature does not bind an actor
+// header, so its API deliberately accepts no actor argument. This makes every
+// catalog read explicitly anonymous instead of depending on each caller to
+// avoid attaching an unauthenticated browser identity.
+//
+// A genuine empty data array is successful; absent or null data is invalid,
+// never a mock fallback.
+func (c *Client) Banks(ctx context.Context, requestID string) (BankListEnvelope, error) {
+	resp, err := c.portalRead(ctx, AnonymousCatalogActor, requestID, ListPracticeBanksPath)
 	if err != nil {
 		return BankListEnvelope{}, err
 	}

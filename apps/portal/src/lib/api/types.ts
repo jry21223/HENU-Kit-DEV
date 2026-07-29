@@ -317,6 +317,24 @@ export interface PortalPracticeAnswerResponse {
   };
 }
 
+/**
+ * Dark-until-cutover QuizCraft catalog data. This intentionally stays
+ * separate from the legacy Portal API BankSummary shape, which cannot carry
+ * the immutable QuizCraft bank-version identifier required to start V2 work.
+ */
+export interface QuizCraftCatalogBank {
+  bank_id: string;
+  bank_version_id: string;
+  name: string;
+  question_count: number;
+  available: boolean;
+}
+
+export interface QuizCraftCatalogResponse {
+  banks: QuizCraftCatalogBank[];
+  request_id: string;
+}
+
 export interface QuizListMeta {
   id: string;
   name: string;

@@ -139,15 +139,19 @@ function StaticKnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
 export default function BankHero({
   query,
   onQueryChange,
+  catalogMode = false,
 }: {
   query: string;
   onQueryChange: (v: string) => void;
+  /** Omit legacy illustrative activity while the real V2 catalog is enabled. */
+  catalogMode?: boolean;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const tickerRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(true);
   const mastery = EMPTY_MASTERY;
+  const counters = catalogMode ? [] : COUNTERS;
   const { ringSubjects, cubeCount } = useMemo(
     () => deriveMasteryVisuals(mastery),
     [mastery]
@@ -178,7 +182,7 @@ export default function BankHero({
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
-        COUNTERS.forEach((c, i) => {
+        counters.forEach((c, i) => {
           const el = counterRefs.current[i];
           if (!el) return;
           const obj = { v: 0 };
@@ -192,26 +196,30 @@ export default function BankHero({
             },
           });
         });
-        gsap.fromTo(
-          "[data-spark]",
-          { strokeDasharray: SPARK_LEN, strokeDashoffset: SPARK_LEN },
-          {
-            strokeDashoffset: -SPARK_LEN,
-            duration: 3.2,
-            repeat: -1,
-            repeatDelay: 0.8,
-            ease: "power1.inOut",
+        if (!catalogMode) {
+          gsap.fromTo(
+            "[data-spark]",
+            { strokeDasharray: SPARK_LEN, strokeDashoffset: SPARK_LEN },
+            {
+              strokeDashoffset: -SPARK_LEN,
+              duration: 3.2,
+              repeat: -1,
+              repeatDelay: 0.8,
+              ease: "power1.inOut",
+            }
+          );
+          if (tickerRef.current) {
+            gsap.to(tickerRef.current, {
+              xPercent: -50,
+              ease: "none",
+              duration: 26,
+              repeat: -1,
+            });
           }
-        );
-        gsap.to(tickerRef.current, {
-          xPercent: -50,
-          ease: "none",
-          duration: 26,
-          repeat: -1,
-        });
+        }
       });
       mm.add("(prefers-reduced-motion: reduce)", () => {
-        COUNTERS.forEach((c, i) => {
+        counters.forEach((c, i) => {
           const el = counterRefs.current[i];
           if (el) el.textContent = formatNum(c.value);
         });
@@ -241,8 +249,9 @@ export default function BankHero({
             题库
           </h1>
           <p data-enter className="mt-5 max-w-md text-sm leading-7 text-ink/70">
-            按学院、专业、科目逐级定位题单；真题讲解、掌握度追踪、
-            排行榜——数据在流动，像工地一样热火朝天。
+            {catalogMode
+              ? "题库目录由 QuizCraft 提供；仅展示可开始练习的真实题库版本。"
+              : "按学院、专业、科目逐级定位题单；真题讲解、掌握度追踪、排行榜——数据在流动，像工地一样热火朝天。"}
           </p>
 
           <div data-enter className="mt-8 w-full max-w-md">
@@ -258,7 +267,7 @@ export default function BankHero({
           </div>
 
           <div data-enter className="mt-10 flex flex-wrap items-end gap-x-10 gap-y-6">
-            {COUNTERS.map((c, i) => (
+            {counters.map((c, i) => (
               <div key={c.label}>
                 <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
                   {c.label}
@@ -274,20 +283,22 @@ export default function BankHero({
                 </p>
               </div>
             ))}
-            <svg
-              viewBox="0 0 196 40"
-              aria-hidden
-              className="h-10 w-48 text-ink/60"
-              fill="none"
-            >
-              <path d="M0 38 H196" className="stroke-line" />
-              <path
-                data-spark
-                d={SPARK_PATH}
-                className="stroke-accent"
-                strokeWidth="1.5"
-              />
-            </svg>
+            {!catalogMode && (
+              <svg
+                viewBox="0 0 196 40"
+                aria-hidden
+                className="h-10 w-48 text-ink/60"
+                fill="none"
+              >
+                <path d="M0 38 H196" className="stroke-line" />
+                <path
+                  data-spark
+                  d={SPARK_PATH}
+                  className="stroke-accent"
+                  strokeWidth="1.5"
+                />
+              </svg>
+            )}
           </div>
         </div>
 
@@ -368,33 +379,35 @@ export default function BankHero({
         </div>
       </div>
 
-      <div className="relative border-t border-line py-2.5">
-        <div className="overflow-hidden">
-          <div ref={tickerRef} className="flex w-max will-change-transform">
-            {[0, 1].map((dup) => (
-              <div
-                key={dup}
-                className="flex shrink-0 items-center"
-                aria-hidden={dup === 1}
-              >
-                {TICKER.map((t, i) => (
-                  <span
-                    key={`${dup}-${i}`}
-                    className="flex items-center whitespace-nowrap"
-                  >
-                    <span className="px-5 font-mono text-[11px] tracking-wider text-ink/60">
-                      {t}
+      {!catalogMode && (
+        <div className="relative border-t border-line py-2.5">
+          <div className="overflow-hidden">
+            <div ref={tickerRef} className="flex w-max will-change-transform">
+              {[0, 1].map((dup) => (
+                <div
+                  key={dup}
+                  className="flex shrink-0 items-center"
+                  aria-hidden={dup === 1}
+                >
+                  {TICKER.map((t, i) => (
+                    <span
+                      key={`${dup}-${i}`}
+                      className="flex items-center whitespace-nowrap"
+                    >
+                      <span className="px-5 font-mono text-[11px] tracking-wider text-ink/60">
+                        {t}
+                      </span>
+                      <span aria-hidden className="text-[9px] text-accent">
+                        +
+                      </span>
                     </span>
-                    <span aria-hidden className="text-[9px] text-accent">
-                      +
-                    </span>
-                  </span>
-                ))}
-              </div>
-            ))}
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }

@@ -10,8 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run src/lib/auth/display-name.test.ts src/lib/api/account-portfolio.test.ts src/lib/api/practice-session.test.ts",
     "test:unit": "node --experimental-strip-types --test src/components/practice/bank-hero-mastery.test.mjs src/components/account/account-console-boundary.test.mjs",
-    "test:e2e:responsive": "playwright test tests/responsive.spec.ts tests/practice-leaderboard.spec.ts",
+    "test:e2e:responsive": "playwright test tests/responsive.spec.ts tests/practice-leaderboard.spec.ts tests/quizcraft-catalog-dark.spec.ts",
     "test:e2e:practice": "playwright test tests/practice-session.spec.ts",
+    "test:e2e:quizcraft-catalog": "playwright test --config playwright.quizcraft-catalog.config.ts",
     "test:e2e:account": "playwright test tests/account-portfolio.spec.ts tests/account-ticket-loop.spec.ts",
     "test:library-public-artifact": "node scripts/check-paid-library-public-artifact.mjs"
   },
