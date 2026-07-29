@@ -1,4 +1,4 @@
-// Code generated from account-portfolio.yaml (SHA256 6e1c53e25e82be3a9933de5c959fbf9da870debcdc81ccc0c45fb039b45c54a1); DO NOT EDIT.
+// Code generated from account-portfolio.yaml (SHA256 1c555c011827c904b99d34a8e7292fda5bd27664f6c3a4bada57c4689ad88f07); DO NOT EDIT.
 package accountportfolio
 
 const (
