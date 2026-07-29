@@ -29,16 +29,21 @@ import (
 )
 
 type PracticeHTTPConfig struct {
-	Database                *pgxpool.Pool
-	AuthHMACSecret          []byte
-	LegacyBaseURL           string
-	LegacyCompareSecret     string
-	HTTPClient              *http.Client
-	Now                     func() time.Time
-	SummaryClientID         string
-	SummaryKeys             map[string]string
-	CatalogClientID         string
-	CatalogKeys             map[string]string
+	Database            *pgxpool.Pool
+	AuthHMACSecret      []byte
+	LegacyBaseURL       string
+	LegacyCompareSecret string
+	HTTPClient          *http.Client
+	Now                 func() time.Time
+	SummaryClientID     string
+	SummaryKeys         map[string]string
+	CatalogClientID     string
+	CatalogKeys         map[string]string
+	// Portal command credentials are a deliberately separate, write-capable
+	// service identity. They must never share the read-only catalog key ring.
+	PortalCommandClientID   string
+	PortalCommandKeys       map[string]string
+	PortalCommandsEnabled   bool
 	PlatformCoreURL         string
 	PlatformClientID        string
 	PlatformClientSecret    string
@@ -65,6 +70,9 @@ type practiceHTTP struct {
 	summaryKeys             map[string]string
 	catalogClientID         string
 	catalogKeys             map[string]string
+	portalCommandClientID   string
+	portalCommandKeys       map[string]string
+	portalCommandsEnabled   bool
 	platform                *platformClient
 	sessionCodec            *quizcraftSessionCodec
 	publicURL               string
@@ -166,6 +174,15 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if (config.CatalogClientID == "") != (len(config.CatalogKeys) == 0) {
 		return nil, errors.New("QuizCraft catalog client and key ring must be configured together")
 	}
+	if (config.PortalCommandClientID == "") != (len(config.PortalCommandKeys) == 0) {
+		return nil, errors.New("QuizCraft Portal command client and key ring must be configured together")
+	}
+	if config.PortalCommandsEnabled && (config.PortalCommandClientID == "" || len(config.PortalCommandKeys) == 0) {
+		return nil, errors.New("QuizCraft Portal command credentials are required when Portal commands are enabled")
+	}
+	if config.PortalCommandClientID != "" && config.PortalCommandClientID == config.CatalogClientID {
+		return nil, errors.New("QuizCraft Portal command client must differ from the catalog client")
+	}
 	platformValues := []bool{config.PlatformCoreURL != "", config.PlatformClientID != "", config.PlatformClientSecret != "", config.PlatformKeyID != "", config.PublicURL != "", len(config.SessionEncryptionKey) != 0}
 	platformCount := 0
 	for _, configured := range platformValues {
@@ -192,6 +209,16 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 			return nil, errors.New("QuizCraft catalog key ring is invalid")
 		}
 	}
+	for keyID, secret := range config.PortalCommandKeys {
+		if keyID == "" || len(secret) < 32 {
+			return nil, errors.New("QuizCraft Portal command key ring is invalid")
+		}
+		for _, catalogSecret := range config.CatalogKeys {
+			if subtle.ConstantTimeCompare([]byte(secret), []byte(catalogSecret)) == 1 {
+				return nil, errors.New("QuizCraft Portal command keys must differ from catalog keys")
+			}
+		}
+	}
 	legacyBaseURL := strings.TrimRight(strings.TrimSpace(config.LegacyBaseURL), "/")
 	if legacyBaseURL != "" {
 		parsed, err := url.Parse(legacyBaseURL)
@@ -214,7 +241,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if releaseSHA == "" {
 		releaseSHA = "development"
 	}
-	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, catalogClientID: config.CatalogClientID, catalogKeys: config.CatalogKeys, allowTestWorkshopClaims: config.AllowTestWorkshopClaims, writesDisabled: config.WritesDisabled, releaseSHA: releaseSHA, cutoverEvidenceSecret: config.CutoverEvidenceSecret}
+	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, catalogClientID: config.CatalogClientID, catalogKeys: config.CatalogKeys, portalCommandClientID: config.PortalCommandClientID, portalCommandKeys: config.PortalCommandKeys, portalCommandsEnabled: config.PortalCommandsEnabled, allowTestWorkshopClaims: config.AllowTestWorkshopClaims, writesDisabled: config.WritesDisabled, releaseSHA: releaseSHA, cutoverEvidenceSecret: config.CutoverEvidenceSecret}
 	if platformCount == len(platformValues) {
 		platform, err := newPlatformClient(config.PlatformCoreURL, config.PlatformClientID, config.PlatformClientSecret, config.PlatformKeyID, client)
 		if err != nil {
@@ -274,6 +301,15 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	writes.Patch("/api/v1/ranking-profile", service.updateRankingProfile)
 	writes.Post("/api/v1/practice/sessions", service.createSession)
 	writes.Post("/api/v1/practice/sessions/{session_id}/answers", service.submitAnswer)
+	// Portal is the sole browser-facing caller for these narrow command routes.
+	// Keeping their registration default-off makes a deployment without an
+	// intentional cutover flag indistinguishable from a route that does not
+	// exist; it also prevents a generic Core write proxy from growing here.
+	if service.portalCommandsEnabled && service.portalCommandClientID != "" {
+		portalCommands := router.With(service.authenticatePortalCommand).With(service.requireWritesEnabled)
+		portalCommands.Post("/api/v1/portal/practice/sessions", service.createSession)
+		portalCommands.Post("/api/v1/portal/practice/sessions/{session_id}/answers", service.submitAnswer)
+	}
 	router.Get("/api/v1/operations/{operation_kind}", service.operationStatus)
 	router.Get("/api/v1/learning-state", service.learningState)
 	if service.inboxExchangeToken != "" {
@@ -1116,6 +1152,15 @@ func (service *practiceHTTP) learningState(writer http.ResponseWriter, request *
 }
 
 func (service *practiceHTTP) actor(writer http.ResponseWriter, request *http.Request) (practiceActor, int, error) {
+	if identity, ok := portalPracticeCommandIdentityFromContext(request.Context()); ok {
+		if identity.userID != nil {
+			return practiceActor{userID: identity.userID, key: "user:" + identity.userID.String()}, 0, nil
+		}
+		// A five-part Portal command is a guest command. In particular, ignore
+		// its Basic service credential and any unrelated browser session header;
+		// only QuizCraft's own anonymous cookie can establish the guest actor.
+		return service.anonymousActor(writer, request)
+	}
 	if service.sessionCodec != nil {
 		if cookie, err := request.Cookie("__Host-quizcraft_session"); err == nil {
 			var session localPlatformSession
@@ -1139,6 +1184,10 @@ func (service *practiceHTTP) actor(writer http.ResponseWriter, request *http.Req
 	if cookie, err := request.Cookie("quizcraft_session"); err == nil {
 		return service.signedInActor(cookie.Value)
 	}
+	return service.anonymousActor(writer, request)
+}
+
+func (service *practiceHTTP) anonymousActor(writer http.ResponseWriter, request *http.Request) (practiceActor, int, error) {
 	if cookie, err := request.Cookie("quizcraft_anonymous"); err == nil {
 		if subject, parseErr := service.parseSubject(cookie.Value, "quizcraft-anonymous"); parseErr == nil {
 			return practiceActor{key: "guest:" + subject.String()}, 0, nil
@@ -1147,7 +1196,7 @@ func (service *practiceHTTP) actor(writer http.ResponseWriter, request *http.Req
 	subject := uuid.New()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": subject.String(), "iss": "quizcraft-anonymous", "aud": "quizcraft",
-		"exp": time.Now().Add(90 * 24 * time.Hour).Unix(),
+		"exp": service.now().Add(90 * 24 * time.Hour).Unix(),
 	})
 	signed, err := token.SignedString(service.authHMACSecret)
 	if err != nil {

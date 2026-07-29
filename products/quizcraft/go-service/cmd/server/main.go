@@ -37,6 +37,10 @@ func main() {
 	if keyID := os.Getenv("QUIZCRAFT_PORTAL_CATALOG_KEY_ID"); keyID != "" {
 		catalogKeys[keyID] = os.Getenv("QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET")
 	}
+	portalCommandKeys := map[string]string{}
+	if keyID := os.Getenv("QUIZCRAFT_PORTAL_COMMAND_KEY_ID"); keyID != "" {
+		portalCommandKeys[keyID] = os.Getenv("QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET")
+	}
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
 		Database:              pool,
 		AuthHMACSecret:        []byte(authSecret),
@@ -46,6 +50,9 @@ func main() {
 		SummaryKeys:           summaryKeys,
 		CatalogClientID:       os.Getenv("QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID"),
 		CatalogKeys:           catalogKeys,
+		PortalCommandClientID: os.Getenv("QUIZCRAFT_PORTAL_COMMAND_CLIENT_ID"),
+		PortalCommandKeys:     portalCommandKeys,
+		PortalCommandsEnabled: os.Getenv("QUIZCRAFT_PORTAL_COMMANDS_ENABLED") == "1",
 		PlatformCoreURL:       os.Getenv("PLATFORM_CORE_URL"),
 		PlatformClientID:      os.Getenv("QUIZCRAFT_PLATFORM_CLIENT_ID"),
 		PlatformClientSecret:  os.Getenv("QUIZCRAFT_PLATFORM_CLIENT_SECRET"),

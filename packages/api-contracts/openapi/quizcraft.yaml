@@ -124,6 +124,51 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/sessions:
+    post:
+      x-internal: true
+      summary: Create a Practice session through the narrow Portal Gateway command boundary
+      description: >
+        Internal-only service route. Portal Gateway signs the complete request
+        body and, for a signed-in Portal Session, binds X-Actor-User-Id into
+        the HMAC canonical form. Guest identity is derived only from the
+        QuizCraft-issued quizcraft_anonymous HttpOnly cookie; a guest request
+        does not carry an actor header.
+      tags: [Practice]
+      operationId: createPortalPracticeSession
+      security: [{ portalPracticeBasic: [], portalPracticeSignature: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreatePracticeSession' } } } }
+      responses:
+        '201': { description: Session pinned to immutable content, content: { application/json: { schema: { $ref: '#/components/schemas/PracticeSessionEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/sessions/{session_id}/answers:
+    post:
+      x-internal: true
+      summary: Submit one answer through the narrow Portal Gateway command boundary
+      description: >
+        Internal-only service route. Core verifies the Portal Gateway HMAC,
+        nonce, exact raw body, and signed-in actor binding before it evaluates
+        an answer. The expected answer and analysis are returned only after
+        evaluation.
+      tags: [Practice]
+      operationId: submitPortalPracticeAnswer
+      security: [{ portalPracticeBasic: [], portalPracticeSignature: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AnswerSubmission' } } } }
+      responses:
+        '200': { description: Server-confirmed result and explanation, content: { application/json: { schema: { $ref: '#/components/schemas/AnswerResultEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/learning-state:
     get:
       summary: Read signed-in progress and wrong-question state
@@ -503,6 +548,8 @@ components:
     portalCatalogPermission: { type: apiKey, in: header, name: X-Permission-Code, description: Must be portal.practice.read after Portal Gateway authorization. }
     portalCatalogScope: { type: apiKey, in: header, name: X-Scope-Kind, description: Must be product. }
     portalCatalogProduct: { type: apiKey, in: header, name: X-Product-Code, description: Must be quizcraft. }
+    portalPracticeBasic: { type: http, scheme: basic, description: Dedicated Portal Gateway to QuizCraft command service credential. }
+    portalPracticeSignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, raw body digest, and (only for signed-in callers) X-Actor-User-Id." }
     cutoverEvidence: { type: apiKey, in: header, name: X-QuizCraft-Cutover-Secret, description: Dedicated operator-only secret for release evidence. }
   parameters:
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 160 } }

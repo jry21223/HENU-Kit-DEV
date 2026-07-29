@@ -3,9 +3,10 @@ info:
   title: Portal Gateway
   version: 0.1.0
   description: >
-    Read-only BFF for HENU Kit Portal (henukit.cn). Authenticates users via
-    Platform Core OAuth and proxies GET requests to product services with
-    verified permissions.
+    Default-read BFF for HENU Kit Portal (henukit.cn). It authenticates users
+    via Platform Core OAuth and proxies GET requests to product services with
+    verified permissions. ADR-0018 adds exactly two default-off QuizCraft
+    Practice commands; it does not permit a generic product write proxy.
 servers:
   - url: http://127.0.0.1:8084
     description: Local development
@@ -471,6 +472,101 @@ paths:
         "502":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/practice/sessions:
+    post:
+      operationId: createPortalPracticeSession
+      summary: Create a real QuizCraft Practice Session
+      description: >
+        This is the only Portal write path for a new Practice Session. A
+        signed-in Portal Session is forwarded as an actor-bound service
+        request; a visitor is identified only by a Core-issued anonymous
+        HttpOnly cookie. The route remains disabled until the QuizCraft V2
+        cutover gate is explicitly enabled.
+      security: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 160
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalPracticeSessionRequest"
+      responses:
+        "201":
+          description: Server-selected questions pinned to one immutable bank version; question answers are intentionally absent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalPracticeSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/practice/sessions/{session_id}/answers:
+    post:
+      operationId: submitPortalPracticeAnswer
+      summary: Submit one answer for server-side Practice evaluation
+      description: >
+        The browser supplies only the selected answer. QuizCraft owns the
+        answer key, score, immutable attempt fact, and retry outcome. This
+        route remains disabled until the QuizCraft V2 cutover gate is
+        explicitly enabled.
+      security: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 160
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalPracticeAnswerRequest"
+      responses:
+        "200":
+          description: Server-confirmed correctness and optional explanation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalPracticeAnswerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/notices:
     get:
       operationId: noticeList
@@ -933,6 +1029,125 @@ components:
           type: string
         question_count:
           type: integer
+
+    PortalPracticeSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [bank_id, bank_version_id, mode]
+      properties:
+        bank_id:
+          type: string
+          format: uuid
+        bank_version_id:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          enum: [random, difficult, chapter]
+        chapter_id:
+          type: string
+          minLength: 1
+          maxLength: 160
+        question_count:
+          type: integer
+          minimum: 1
+          maximum: 500
+
+    PortalPracticeQuestion:
+      type: object
+      additionalProperties: false
+      required: [question_id, question_version_id, type, chapter_id, chapter, content]
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        question_version_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [single, multi, judge, blank]
+        chapter_id:
+          type: string
+        chapter:
+          type: string
+        content:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+
+    PortalPracticeSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [request_id, data]
+      properties:
+        request_id:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [session_id, bank_id, bank_version_id, mode, excluded_unavailable_count, questions]
+          properties:
+            session_id:
+              type: string
+              format: uuid
+            bank_id:
+              type: string
+              format: uuid
+            bank_version_id:
+              type: string
+              format: uuid
+            mode:
+              type: string
+              enum: [random, difficult, chapter]
+            excluded_unavailable_count:
+              type: integer
+              minimum: 0
+            questions:
+              type: array
+              items:
+                $ref: "#/components/schemas/PortalPracticeQuestion"
+
+    PortalPracticeAnswerRequest:
+      type: object
+      additionalProperties: false
+      required: [question_id, question_version_id, answer]
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        question_version_id:
+          type: string
+          format: uuid
+        answer: {}
+
+    PortalPracticeAnswerResponse:
+      type: object
+      additionalProperties: false
+      required: [request_id, data]
+      properties:
+        request_id:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [question_id, question_version_id, correct, replayed, expected_answer, analysis]
+          properties:
+            question_id:
+              type: string
+              format: uuid
+            question_version_id:
+              type: string
+              format: uuid
+            correct:
+              type: boolean
+            replayed:
+              type: boolean
+            expected_answer: {}
+            analysis:
+              type: string
 
     NoticeListResponse:
       type: object

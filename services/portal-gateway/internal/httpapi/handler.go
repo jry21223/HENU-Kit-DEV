@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -26,6 +27,7 @@ import (
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/platformcore"
+	"henukit.dev/portal-gateway/internal/practice"
 	"henukit.dev/portal-gateway/internal/session"
 )
 
@@ -36,6 +38,7 @@ type Handler struct {
 	portalAPI          *http.Client
 	portalAPIURL       string
 	accountPortfolio   *accountportfolio.Client
+	practiceCommands   *practice.CommandClient
 	redis              *redis.Client
 	portalOrigin       string
 	platformCoreURL    string
@@ -76,12 +79,25 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			return nil, fmt.Errorf("accountportfolio.NewClient: %w", err)
 		}
 	}
+	var practiceCommands *practice.CommandClient
+	if cfg.PracticeCommandsEnabled {
+		practiceCommands, err = practice.NewCommandClient(
+			cfg.PracticeURL,
+			cfg.PracticeCommandAuth.ClientID,
+			cfg.PracticeCommandAuth.ClientSecret,
+			cfg.PracticeCommandAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("practice.NewCommandClient: %w", err)
+		}
+	}
 	return &Handler{
 		sessionCodec:       codec,
 		platform:           platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID),
 		portalAPI:          &http.Client{Timeout: 10 * time.Second},
 		portalAPIURL:       cfg.PortalAPIURL,
 		accountPortfolio:   portfolio,
+		practiceCommands:   practiceCommands,
 		redis:              rdb,
 		portalOrigin:       cfg.PortalOrigin,
 		platformCoreURL:    cfg.PlatformCoreURL,
@@ -114,6 +130,12 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/account/tickets/{ticket_id}", h.accountTicket)
 	r.Post("/api/v1/account/tickets/{ticket_id}/follow-ups", h.accountTicketFollowUp)
 	r.Get("/api/v1/account/membership-orders", h.accountMembershipOrders)
+
+	// This is the sole browser-visible QuizCraft write boundary. It is not a
+	// generic proxy and stays unavailable until the explicit #166 cutover gate
+	// has provisioned independent command credentials on both services.
+	r.Post("/api/v1/practice/sessions", h.createPracticeSession)
+	r.Post("/api/v1/practice/sessions/{session_id}/answers", h.submitPracticeAnswer)
 
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
@@ -494,6 +516,117 @@ func readAccountCommandBody(r *http.Request) ([]byte, error) {
 
 func validAccountIdempotencyKey(value string) bool {
 	return len(value) >= 8 && len(value) <= 200 && accountIdempotencyKeyPattern.MatchString(value)
+}
+
+type practiceCommand func(context.Context, string, string, string, []byte, *http.Cookie) (practice.CommandResult, error)
+
+func (h *Handler) createPracticeSession(w http.ResponseWriter, r *http.Request) {
+	h.practiceCommand(w, r, http.StatusCreated, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+		return h.practiceCommands.CreateSession(ctx, actorUserID, requestID, idempotencyKey, raw, anonymousCookie)
+	})
+}
+
+func (h *Handler) submitPracticeAnswer(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "session_id")
+	h.practiceCommand(w, r, http.StatusOK, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+		return h.practiceCommands.SubmitAnswer(ctx, sessionID, actorUserID, requestID, idempotencyKey, raw, anonymousCookie)
+	})
+}
+
+// practiceCommand turns a browser command into exactly one signed Core
+// command. It intentionally does not proxy headers, cookies, actor identity,
+// or mock data. An invalid Portal Session is a 401, while an absent Portal
+// Session is a genuine guest request.
+func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
+	setPrivateResponseHeaders(w)
+	if h.practiceCommands == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", RequestID: requestIDOf(w, r)})
+		return
+	}
+	actorUserID, anonymousCookie, status, err := h.practiceCommandActor(r)
+	if err != nil {
+		writeJSON(w, status, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if !practice.ValidIdempotencyKey(idempotencyKey) {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", RequestID: requestIDOf(w, r)})
+		return
+	}
+	raw, err := readGatewayPracticeCommandBody(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", RequestID: requestIDOf(w, r)})
+		return
+	}
+	result, err := command(r.Context(), actorUserID, requestIDOf(w, r), idempotencyKey, raw, anonymousCookie)
+	if err != nil {
+		h.writePracticeCommandFailure(w, r, err)
+		return
+	}
+	if result.AnonymousCookie != nil {
+		// CommandClient accepted this only after checking every browser-visible
+		// attribute. Do not append any other upstream Set-Cookie header.
+		http.SetCookie(w, result.AnonymousCookie)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(successStatus)
+	_, _ = w.Write(result.Raw)
+}
+
+func (h *Handler) practiceCommandActor(r *http.Request) (string, *http.Cookie, int, error) {
+	if _, err := r.Cookie(h.browserCookies(r).session); err == nil {
+		value, sessionErr := h.readSession(r)
+		if sessionErr != nil || !practice.ValidUUID(value.UserID) {
+			return "", nil, http.StatusUnauthorized, errors.New("invalid Portal Session")
+		}
+		return value.UserID, coreAnonymousCookie(r), 0, nil
+	} else if !errors.Is(err, http.ErrNoCookie) {
+		return "", nil, http.StatusUnauthorized, errors.New("invalid Portal Session")
+	}
+	return "", coreAnonymousCookie(r), 0, nil
+}
+
+func coreAnonymousCookie(r *http.Request) *http.Cookie {
+	cookie, err := r.Cookie("quizcraft_anonymous")
+	if err != nil || strings.TrimSpace(cookie.Value) == "" {
+		return nil
+	}
+	return &http.Cookie{Name: "quizcraft_anonymous", Value: cookie.Value}
+}
+
+func readGatewayPracticeCommandBody(r *http.Request) ([]byte, error) {
+	if r.Body == nil {
+		return nil, errors.New("practice command body is required")
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 2<<20+1))
+	if err != nil || len(raw) == 0 || len(raw) > 2<<20 {
+		return nil, errors.New("practice command body is invalid")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	var value any
+	if err := decoder.Decode(&value); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, errors.New("practice command body is not one JSON value")
+	}
+	return raw, nil
+}
+
+func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, practice.ErrPracticeCommandBadRequest):
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, practice.ErrPracticeCommandForbidden):
+		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "practice_session_forbidden", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, practice.ErrPracticeCommandNotFound):
+		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "practice_session_not_found", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, practice.ErrPracticeCommandConflict):
+		writeJSON(w, http.StatusConflict, contract.ErrorEnvelope{Error: "practice_command_conflict", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, practice.ErrPracticeCommandInvalid):
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "practice_command_invalid_response", RequestID: requestIDOf(w, r)})
+	default:
+		// Authentication failures are a deployment/configuration fault between
+		// Gateway and Core, not a browser authentication state.
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", RequestID: requestIDOf(w, r)})
+	}
 }
 
 // --- Proxy to portal-api ---

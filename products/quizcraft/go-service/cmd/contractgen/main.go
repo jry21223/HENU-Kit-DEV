@@ -47,6 +47,8 @@ func main() {
 		"ListBanksRoute":            "listPracticeBanks",
 		"CreateSessionRoute":        "createPracticeSession",
 		"SubmitAnswerRoute":         "submitPracticeAnswer",
+		"CreatePortalSessionRoute":  "createPortalPracticeSession",
+		"SubmitPortalAnswerRoute":   "submitPortalPracticeAnswer",
 		"ListFavoritesRoute":        "listFavoriteQuestions",
 		"OverallRankingRoute":       "getOverallRanking",
 		"CreateFeedbackRoute":       "createQuestionFeedback",

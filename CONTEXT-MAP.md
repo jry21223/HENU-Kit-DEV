@@ -12,7 +12,7 @@
 - [Food Operations](./services/food/CONTEXT.md) — Food-owned submissions, anomaly tickets, tier adjustments, idempotency, and stale semantics.
 - [QuizCraft](./products/quizcraft/CONTEXT.md) — Practice Core, stable question identity, versioned banks, explicit imports, and workshop boundaries.
 - [Portal](./apps/portal/CONTEXT.md) — Portal main site, module sections, sub-sites, design language, and deterministic SSR.
-- [Portal Gateway](./services/portal-gateway/CONTEXT.md) — Portal OAuth session, read-only product proxying, and portal-scoped permissions.
+- [Portal Gateway](./services/portal-gateway/CONTEXT.md) — Portal OAuth session, default read-only product proxying, portal-scoped permissions, and ADR-0018's dark Practice command bridge.
 - [Portal API](./services/portal-api/CONTEXT.md) — User-facing data API for Portal, contract derived from frontend mock interfaces.
 
 ## Extraction targets
@@ -29,5 +29,6 @@ Do not create empty context files. Move a term when its owning implementation co
 - **Console Gateway → Platform Core and product services**: the Gateway validates Console access, aggregates summaries, and forwards controlled operations without owning business data.
 - **Platform Core → all products**: supplies identity, permission codes, scopes, sessions, mail infrastructure, audit, and Operations Inbox references.
 - **Portal Gateway → Account Portfolio**: forwards only a verified Portal Session actor through signed service requests; Account Portfolio remains the durable account-data owner.
+- **Portal Gateway → QuizCraft**: ADR-0018 permits only dark, signed create-session and submit-answer commands; QuizCraft retains question, scoring, attempt, and anonymous-identity ownership.
 - **Notice, Library, QuizCraft, and Food → Console Gateway**: each remains the sole data owner and exposes versioned contracts.
 - **Study Legacy Admin → Study Legacy API**: remains physically separate from HENUKit Console during migration and retirement.

@@ -34,6 +34,10 @@ import type {
   MaterialListResponse,
   NoticeListResponse,
   PortalSession,
+	PortalPracticeAnswerInput,
+	PortalPracticeAnswerResponse,
+	PortalPracticeSessionInput,
+	PortalPracticeSessionResponse,
   PracticeBanksResponse,
   SchoolListResponse,
 } from "./types";
@@ -395,6 +399,59 @@ export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null
 
 export async function fetchPracticeSchools(): Promise<SchoolListResponse> {
   return apiFetchRequired<SchoolListResponse>("/api/v1/practice/schools");
+}
+
+function practiceCommandInit(idempotencyKey: string, body: unknown): RequestInit {
+  const key = idempotencyKey.trim();
+  if (key.length < 16 || key.length > 160) {
+    throw new PortalApiError("Invalid Practice idempotency key", {
+      code: "PORTAL_INVALID_PRACTICE_IDEMPOTENCY_KEY",
+    });
+  }
+  return {
+    method: "POST",
+    cache: "no-store",
+    // Practice commands are browser-to-Gateway calls only. Do not let this
+    // narrow command boundary opt into cross-origin credential forwarding.
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": key,
+    },
+    body: JSON.stringify(body),
+  };
+}
+
+/**
+ * Starts a real QuizCraft session through Portal Gateway. Callers retain the
+ * idempotency key for a retry; this client never falls back to QUIZ_SET or a
+ * browser-side score.
+ */
+export async function createPracticeSession(
+  input: PortalPracticeSessionInput,
+  idempotencyKey: string
+): Promise<PortalPracticeSessionResponse> {
+  return apiFetchRequired<PortalPracticeSessionResponse>(
+    "/api/v1/practice/sessions",
+    practiceCommandInit(idempotencyKey, input)
+  );
+}
+
+/** Submits one answer to QuizCraft; only the returned result establishes score. */
+export async function submitPracticeAnswer(
+  sessionID: string,
+  input: PortalPracticeAnswerInput,
+  idempotencyKey: string
+): Promise<PortalPracticeAnswerResponse> {
+  if (!sessionID.trim()) {
+    throw new PortalApiError("Invalid Practice session id", {
+      code: "PORTAL_INVALID_PRACTICE_SESSION",
+    });
+  }
+  return apiFetchRequired<PortalPracticeAnswerResponse>(
+    `/api/v1/practice/sessions/${encodeURIComponent(sessionID)}/answers`,
+    practiceCommandInit(idempotencyKey, input)
+  );
 }
 
 // ---- Campus ----
