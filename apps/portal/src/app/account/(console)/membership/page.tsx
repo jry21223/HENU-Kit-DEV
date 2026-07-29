@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
 import { useReveal } from "@/components/account/use-reveal";
 import { fetchAccountMembership, formatPortalError } from "@/lib/api/client";
 import type { AccountMembershipResponse } from "@/lib/api/types";
@@ -14,6 +15,7 @@ type MembershipState =
 export default function MembershipPage() {
   const [state, setState] = useState<MembershipState>({ kind: "loading" });
   const requestVersion = useRef(0);
+  const handleUnauthorized = useAccountConsoleUnauthorizedHandler();
   useReveal();
 
   const loadMembership = useCallback(() => {
@@ -23,10 +25,12 @@ export default function MembershipPage() {
         if (version === requestVersion.current) setState({ kind: "success", membership });
       },
       (error: unknown) => {
-        if (version === requestVersion.current) setState({ kind: "error", message: formatPortalError(error) });
+        if (version === requestVersion.current && !handleUnauthorized(error)) {
+          setState({ kind: "error", message: formatPortalError(error) });
+        }
       }
     );
-  }, []);
+  }, [handleUnauthorized]);
 
   useEffect(() => {
     loadMembership();
@@ -73,7 +77,7 @@ export default function MembershipPage() {
               setState({ kind: "loading" });
               loadMembership();
             }}
-            className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>

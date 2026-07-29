@@ -303,3 +303,48 @@ describe("fetchSession", () => {
     );
   });
 });
+
+describe("logout", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
+    vi.stubEnv("NODE_ENV", "test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("requires a successful Gateway cookie-clear response", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "signed_out" }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { logout } = await import("./client");
+    await expect(logout()).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/session/logout",
+      expect.objectContaining({ method: "POST", cache: "no-store", credentials: "include" })
+    );
+  });
+
+  it("does not report logout success when the Gateway is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: "portal_gateway_unavailable" }),
+          { status: 503, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    const { logout, PortalHttpError } = await import("./client");
+    await expect(logout()).rejects.toBeInstanceOf(PortalHttpError);
+  });
+});

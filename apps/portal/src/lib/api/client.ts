@@ -243,11 +243,9 @@ export function redirectToLogin(returnTo = "/") {
 }
 
 export async function logout(): Promise<void> {
-  if (!hasGatewayConfigured()) return;
-  const base = baseUrlOrEmpty();
-  await fetch(`${base}/api/v1/session/logout`, {
+  await apiFetchRequired<{ status: "signed_out" }>("/api/v1/session/logout", {
     method: "POST",
-    credentials: "include",
+    cache: "no-store",
   });
 }
 

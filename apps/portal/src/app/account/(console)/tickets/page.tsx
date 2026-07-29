@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
 import { useReveal } from "@/components/account/use-reveal";
 import {
   createAccountTicket,
@@ -65,15 +66,16 @@ function formatTimestamp(value: string): string {
 function updateTicketList(
   state: ListState,
   ticket: AccountTicket,
+  requestID: string,
   prepend = false
 ): ListState {
-  if (state.kind !== "success") return state;
-  const remaining = state.response.data.tickets.filter((item) => item.id !== ticket.id);
+  const existingTickets = state.kind === "success" ? state.response.data.tickets : [];
+  const remaining = existingTickets.filter((item) => item.id !== ticket.id);
   return {
     kind: "success",
     response: {
-      ...state.response,
       data: { tickets: prepend ? [ticket, ...remaining] : [...remaining, ticket] },
+      request_id: requestID,
     },
   };
 }
@@ -94,6 +96,7 @@ export default function TicketsPage() {
   const detailRequestVersion = useRef(0);
   const createKeyRef = useRef<string | null>(null);
   const followUpKeyRef = useRef<string | null>(null);
+  const handleUnauthorized = useAccountConsoleUnauthorizedHandler();
   useReveal();
 
   const loadTickets = useCallback(() => {
@@ -105,12 +108,12 @@ export default function TicketsPage() {
         }
       },
       (error: unknown) => {
-        if (requestVersion === listRequestVersion.current) {
+        if (requestVersion === listRequestVersion.current && !handleUnauthorized(error)) {
           setListState({ kind: "error", message: formatPortalError(error) });
         }
       }
     );
-  }, []);
+  }, [handleUnauthorized]);
 
   const loadTicket = useCallback((ticketID: string) => {
     const requestVersion = ++detailRequestVersion.current;
@@ -122,11 +125,18 @@ export default function TicketsPage() {
         }
       },
       (error: unknown) => {
-        if (requestVersion === detailRequestVersion.current) {
+        if (requestVersion === detailRequestVersion.current && !handleUnauthorized(error)) {
           setDetailState({ kind: "error", ticketID, message: formatPortalError(error) });
         }
       }
     );
+  }, [handleUnauthorized]);
+
+  const applyTicketCommand = useCallback((ticket: AccountTicket, requestID: string, prepend = false) => {
+    // A delayed list read started before this acknowledged write must not erase
+    // the durable ticket returned by the command response.
+    listRequestVersion.current += 1;
+    setListState((current) => updateTicketList(current, ticket, requestID, prepend));
   }, []);
 
   useEffect(() => {
@@ -161,13 +171,13 @@ export default function TicketsPage() {
         idempotencyKey
       );
       createKeyRef.current = null;
-      setListState((current) => updateTicketList(current, response.data.ticket, true));
+      applyTicketCommand(response.data.ticket, response.request_id, true);
       setTitle("");
       setBody("");
       setCreateOpen(false);
       loadTicket(response.data.ticket.id);
     } catch (error) {
-      setCreateError(formatPortalError(error));
+      if (!handleUnauthorized(error)) setCreateError(formatPortalError(error));
     } finally {
       setCreatePending(false);
     }
@@ -199,11 +209,15 @@ export default function TicketsPage() {
         idempotencyKey
       );
       followUpKeyRef.current = null;
-      setListState((current) => updateTicketList(current, response.data.ticket));
+      applyTicketCommand(response.data.ticket, response.request_id);
       setFollowUp("");
       loadTicket(ticket.id);
     } catch (error) {
+      if (handleUnauthorized(error)) {
+        return;
+      }
       if (error instanceof PortalHttpError && error.status === 409) {
+        followUpKeyRef.current = null;
         setFollowUpError("工单刚刚发生更新，已刷新最新记录后再试。");
         loadTicket(ticket.id);
       } else {
@@ -236,7 +250,7 @@ export default function TicketsPage() {
             setCreateOpen((open) => !open);
             setCreateError("");
           }}
-          className="border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
           aria-expanded={createOpen}
         >
           {createOpen ? "收起表单" : "新建工单"}
@@ -306,7 +320,7 @@ export default function TicketsPage() {
             <button
               type="submit"
               disabled={createPending}
-              className="border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-50"
             >
               {createPending ? "正在提交…" : "提交工单"}
             </button>
@@ -314,7 +328,7 @@ export default function TicketsPage() {
               type="button"
               onClick={() => setCreateOpen(false)}
               disabled={createPending}
-              className="border border-ink/35 px-4 py-2 font-mono text-xs tracking-widest text-ink/65 transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+              className="inline-flex min-h-11 items-center justify-center border border-ink/35 px-4 py-2 font-mono text-xs tracking-widest text-ink/65 transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
             >
               取消
             </button>
@@ -342,7 +356,7 @@ export default function TicketsPage() {
               setListState({ kind: "loading" });
               loadTickets();
             }}
-            className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -443,7 +457,7 @@ function TicketDetail({
         <button
           type="button"
           onClick={onRetryDetail}
-          className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
         >
           重新加载
         </button>
@@ -510,7 +524,7 @@ function TicketDetail({
         <button
           type="submit"
           disabled={followUpPending}
-          className="mt-4 border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-50"
+          className="mt-4 inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-50"
         >
           {followUpPending ? "正在提交…" : "提交补充"}
         </button>

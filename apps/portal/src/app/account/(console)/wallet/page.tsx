@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
 import { useReveal } from "@/components/account/use-reveal";
 import { fetchAccountPoints, formatPortalError } from "@/lib/api/client";
 import type { AccountPointEntry, AccountPointsResponse } from "@/lib/api/types";
@@ -51,6 +52,7 @@ function walletState(response: AccountPointsResponse): Extract<WalletState, { ki
 export default function WalletPage() {
   const [state, setState] = useState<WalletState>({ kind: "loading" });
   const requestVersion = useRef(0);
+  const handleUnauthorized = useAccountConsoleUnauthorizedHandler();
   useReveal();
 
   const requestWallet = useCallback((version: number) => {
@@ -59,10 +61,12 @@ export default function WalletPage() {
         if (version === requestVersion.current) setState(walletState(response));
       },
       (error: unknown) => {
-        if (version === requestVersion.current) setState({ kind: "error", message: formatPortalError(error) });
+        if (version === requestVersion.current && !handleUnauthorized(error)) {
+          setState({ kind: "error", message: formatPortalError(error) });
+        }
       }
     );
-  }, []);
+  }, [handleUnauthorized]);
 
   const loadWallet = useCallback(() => {
     const version = ++requestVersion.current;
@@ -102,6 +106,7 @@ export default function WalletPage() {
       },
       (error: unknown) => {
         if (version !== requestVersion.current) return;
+        if (handleUnauthorized(error)) return;
         setState((current) => current.kind === "success" && current.nextCursor === cursor
           ? { ...current, loadingMore: false, moreError: formatPortalError(error) }
           : current);

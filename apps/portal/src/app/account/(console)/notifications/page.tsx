@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
 import { useReveal } from "@/components/account/use-reveal";
 import {
   fetchAccountNotifications,
@@ -54,6 +55,7 @@ export default function NotificationsPage() {
   const [commandError, setCommandError] = useState("");
   const requestVersion = useRef(0);
   const readKeys = useRef(new Map<string, string>());
+  const handleUnauthorized = useAccountConsoleUnauthorizedHandler();
   useReveal();
 
   const loadNotifications = useCallback(() => {
@@ -63,12 +65,12 @@ export default function NotificationsPage() {
         if (version === requestVersion.current) setState({ kind: "success", response });
       },
       (error: unknown) => {
-        if (version === requestVersion.current) {
+        if (version === requestVersion.current && !handleUnauthorized(error)) {
           setState({ kind: "error", message: formatPortalError(error) });
         }
       }
     );
-  }, []);
+  }, [handleUnauthorized]);
 
   useEffect(() => {
     loadNotifications();
@@ -87,7 +89,7 @@ export default function NotificationsPage() {
       readKeys.current.delete(notificationID);
       setState((current) => replaceNotification(current, response.data.notification));
     } catch (error) {
-      setCommandError(formatPortalError(error));
+      if (!handleUnauthorized(error)) setCommandError(formatPortalError(error));
     } finally {
       setPendingID(null);
     }
@@ -128,7 +130,7 @@ export default function NotificationsPage() {
               setState({ kind: "loading" });
               loadNotifications();
             }}
-            className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -174,7 +176,7 @@ export default function NotificationsPage() {
                           type="button"
                           onClick={() => void markRead(notification.id)}
                           disabled={pendingID === notification.id}
-                          className="shrink-0 border border-ink px-3 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+                          className="inline-flex min-h-11 shrink-0 items-center justify-center border border-ink px-3 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
                         >
                           {pendingID === notification.id ? "正在更新…" : "标为已读"}
                         </button>
