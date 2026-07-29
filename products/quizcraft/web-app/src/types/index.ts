@@ -72,15 +72,6 @@ export interface UserStats {
   rate: number;
 }
 
-// 排行榜项
-export interface RankItem {
-  user_id: string;
-  name: string;
-  correct: number;
-  total: number;
-  accuracy: number;
-}
-
 export interface FeedbackBoardItem {
   feedback_id: number;
   question_index: number;

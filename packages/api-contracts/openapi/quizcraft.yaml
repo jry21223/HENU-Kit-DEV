@@ -82,7 +82,7 @@ paths:
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks:
     get:
-      summary: List published practice banks through the internal Portal catalog contract
+      summary: List published practice banks through the internal Portal read contract
       tags: [Practice]
       operationId: listPracticeBanks
       security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
@@ -220,13 +220,16 @@ paths:
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/rankings/overall:
     get:
-      summary: Get the public overall ranking
+      summary: Get the public overall ranking through the internal Portal read contract
       tags: [Ranking]
       operationId: getOverallRanking
-      security: []
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
       parameters: [{ $ref: '#/components/parameters/RankingPeriodParam' }]
       responses:
         '200': { description: Overall weekly by default or lifetime ranking, content: { application/json: { schema: { $ref: '#/components/schemas/RankingEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/rankings/legacy:
@@ -240,15 +243,18 @@ paths:
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/banks/{bank_id}/rankings:
     get:
-      summary: Get one bank's public ranking
+      summary: Get one bank's public ranking through the internal Portal read contract
       tags: [Ranking]
       operationId: getBankRanking
-      security: []
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [] }]
       parameters:
         - $ref: '#/components/parameters/BankID'
         - $ref: '#/components/parameters/RankingPeriodParam'
       responses:
         '200': { description: Bank weekly or lifetime ranking, content: { application/json: { schema: { $ref: '#/components/schemas/RankingEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/ranking-profile:
@@ -492,7 +498,7 @@ components:
     workshopSessionCookie: { type: apiKey, in: cookie, name: __Host-quizcraft_session, description: Encrypted HttpOnly Secure local session holding the server-only Platform Core exchange session. Every Workshop request is authorized live by the backend. }
     summaryBasic: { type: http, scheme: basic, description: Dedicated Console Gateway to QuizCraft service credential. }
     summarySignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
-    portalCatalogBasic: { type: http, scheme: basic, description: Dedicated Portal Gateway to QuizCraft catalog service credential. }
+    portalCatalogBasic: { type: http, scheme: basic, description: Dedicated Portal Gateway to QuizCraft read service credential for catalog and ranking. }
     portalCatalogSignature: { type: apiKey, in: header, name: X-Signature, description: "HMAC-SHA256 signature bound to method, URI, timestamp, nonce, and body digest." }
     portalCatalogPermission: { type: apiKey, in: header, name: X-Permission-Code, description: Must be portal.practice.read after Portal Gateway authorization. }
     portalCatalogScope: { type: apiKey, in: header, name: X-Scope-Kind, description: Must be product. }
@@ -723,6 +729,7 @@ components:
     RankingPeriod: { type: string, enum: [weekly, lifetime] }
     RankingPage:
       type: object
+      additionalProperties: false
       required: [scope, period, metric, entries]
       properties:
         scope: { type: string, enum: [overall, bank] }
@@ -733,6 +740,7 @@ components:
           type: array
           items:
             type: object
+            additionalProperties: false
             required: [rank, nickname, system_avatar, correct_answer_count]
             properties:
               rank: { type: integer, minimum: 1 }
@@ -744,7 +752,7 @@ components:
       required: [visible, nickname, system_avatar]
       properties:
         visible: { type: boolean }
-        nickname: { type: string, minLength: 1, maxLength: 32 }
+        nickname: { type: string, minLength: 0, maxLength: 32, description: Leave empty to use the neutral anonymous public label. }
         system_avatar: { type: string, pattern: '^[a-z0-9_-]+$' }
     LegacyRankingPage:
       type: object
@@ -980,6 +988,7 @@ components:
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/FavoriteQuestion' } } }
     RankingEnvelope:
       type: object
+      additionalProperties: false
       required: [request_id, data]
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/RankingPage' } }
     LegacyRankingEnvelope:

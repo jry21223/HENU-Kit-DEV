@@ -56,12 +56,26 @@ func (value *schemaType) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
+type additionalProperties struct {
+	specified bool
+	falseOnly bool
+}
+
+func (value *additionalProperties) UnmarshalYAML(node *yaml.Node) error {
+	value.specified = true
+	value.falseOnly = node.Kind == yaml.ScalarNode && node.Tag == "!!bool" && node.Value == "false"
+	return nil
+}
+
 type schema struct {
-	Type       schemaType        `yaml:"type"`
-	Required   []string          `yaml:"required"`
-	Properties map[string]schema `yaml:"properties"`
-	Items      *schema           `yaml:"items"`
-	Ref        string            `yaml:"$ref"`
+	Type                 schemaType           `yaml:"type"`
+	Required             []string             `yaml:"required"`
+	Properties           map[string]schema    `yaml:"properties"`
+	Items                *schema              `yaml:"items"`
+	Ref                  string               `yaml:"$ref"`
+	Enum                 []string             `yaml:"enum"`
+	Const                string               `yaml:"const"`
+	AdditionalProperties additionalProperties `yaml:"additionalProperties"`
 }
 
 type document struct {
@@ -98,13 +112,18 @@ func main() {
 	var spec document
 	fail(yaml.Unmarshal(source, &spec))
 
-	path, method, catalogOperation := requireOperation(spec.Paths, "listPracticeBanks")
-	validateCatalogOperation(method, catalogOperation)
+	catalogPath, catalogMethod, catalogOperation := requireOperation(spec.Paths, "listPracticeBanks")
+	overallRankingPath, overallRankingMethod, overallRankingOperation := requireOperation(spec.Paths, "getOverallRanking")
+	bankRankingPath, bankRankingMethod, bankRankingOperation := requireOperation(spec.Paths, "getBankRanking")
+	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope")
+	validatePortalReadOperation("getOverallRanking", overallRankingMethod, overallRankingOperation, "RankingEnvelope")
+	validatePortalReadOperation("getBankRanking", bankRankingMethod, bankRankingOperation, "RankingEnvelope")
 	validateCatalogSecurity(spec.Components.SecuritySchemes)
 	validateCatalogSchema(spec.Components.Schemas)
+	validateRankingSchema(spec.Components.Schemas)
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
-	generated, err := format.Source([]byte(render(path, digest)))
+	generated, err := format.Source([]byte(render(catalogPath, overallRankingPath, bankRankingPath, digest)))
 	fail(err)
 	fail(os.WriteFile(*outputPath, generated, 0o644))
 }
@@ -135,23 +154,29 @@ func requireOperation(paths map[string]map[string]operation, operationID string)
 	return pathsWithOperation[0].path, pathsWithOperation[0].method, pathsWithOperation[0].operation
 }
 
-func validateCatalogOperation(method string, operation operation) {
+func validatePortalReadOperation(operationID, method string, operation operation, envelope string) {
 	if method != "get" {
-		fail(fmt.Errorf("listPracticeBanks must use GET, found %s", method))
+		fail(fmt.Errorf("%s must use GET, found %s", operationID, method))
 	}
 	response, ok := operation.Responses["200"]
-	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/BankListEnvelope" {
-		fail(fmt.Errorf("listPracticeBanks 200 response must be BankListEnvelope"))
+	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/"+envelope {
+		fail(fmt.Errorf("%s 200 response must be %s", operationID, envelope))
+	}
+	if unauthorized, ok := operation.Responses["401"]; !ok || unauthorized.Ref != "#/components/responses/Unauthorized" {
+		fail(fmt.Errorf("%s must document unauthorized Portal reads", operationID))
+	}
+	if forbidden, ok := operation.Responses["403"]; !ok || forbidden.Ref != "#/components/responses/Forbidden" {
+		fail(fmt.Errorf("%s must document forbidden Portal reads", operationID))
 	}
 	if conflict, ok := operation.Responses["409"]; !ok || conflict.Ref != "#/components/responses/ServiceReplay" {
-		fail(fmt.Errorf("listPracticeBanks must document the service replay conflict"))
+		fail(fmt.Errorf("%s must document the service replay conflict", operationID))
 	}
 	if len(operation.Security) != 1 || len(operation.Security[0]) != len(catalogSecurityRequirements) {
-		fail(fmt.Errorf("listPracticeBanks must require the complete Portal catalog security requirement"))
+		fail(fmt.Errorf("%s must require the complete Portal read security requirement", operationID))
 	}
 	for _, requirement := range catalogSecurityRequirements {
 		if scopes, found := operation.Security[0][requirement.name]; !found || len(scopes) != 0 {
-			fail(fmt.Errorf("listPracticeBanks is missing security scheme %s", requirement.name))
+			fail(fmt.Errorf("%s is missing security scheme %s", operationID, requirement.name))
 		}
 	}
 }
@@ -160,7 +185,7 @@ func validateCatalogSecurity(schemes map[string]securityScheme) {
 	for _, requirement := range catalogSecurityRequirements {
 		scheme, found := schemes[requirement.name]
 		if !found || scheme.Type != requirement.kind || scheme.Scheme != requirement.scheme || scheme.In != requirement.in || scheme.Name != requirement.header {
-			fail(fmt.Errorf("%s security scheme does not match the Portal catalog client", requirement.name))
+			fail(fmt.Errorf("%s security scheme does not match the Portal read client", requirement.name))
 		}
 	}
 }
@@ -192,15 +217,64 @@ func validateCatalogSchema(schemas map[string]schema) {
 	requireProperty(chapter, "name", "string")
 }
 
+func validateRankingSchema(schemas map[string]schema) {
+	requireObject(schemas, "RankingEnvelope", []string{"request_id", "data"})
+	envelope := schemas["RankingEnvelope"]
+	requireClosedObject(envelope, "RankingEnvelope")
+	if data, ok := envelope.Properties["data"]; !ok || data.Ref != "#/components/schemas/RankingPage" {
+		fail(fmt.Errorf("RankingEnvelope.data must reference RankingPage"))
+	}
+
+	requireObject(schemas, "RankingPage", []string{"scope", "period", "metric", "entries"})
+	page := schemas["RankingPage"]
+	requireClosedObject(page, "RankingPage")
+	requireProperty(page, "scope", "string")
+	if period, ok := page.Properties["period"]; !ok || period.Ref != "#/components/schemas/RankingPeriod" {
+		fail(fmt.Errorf("RankingPage.period must reference RankingPeriod"))
+	}
+	requireProperty(page, "metric", "string")
+	if page.Properties["metric"].Const != "correct_answer_count" {
+		fail(fmt.Errorf("RankingPage.metric must be correct_answer_count"))
+	}
+	entries, ok := page.Properties["entries"]
+	if !ok || entries.Type != "array" || entries.Items == nil || entries.Items.Type != "object" {
+		fail(fmt.Errorf("RankingPage.entries must be an array of public ranking entries"))
+	}
+	requireSchemaObject(*entries.Items, "RankingPage.entries[]", []string{"rank", "nickname", "system_avatar", "correct_answer_count"})
+	requireClosedObject(*entries.Items, "RankingPage.entries[]")
+	requireProperty(*entries.Items, "rank", "integer")
+	requireProperty(*entries.Items, "nickname", "string")
+	requireProperty(*entries.Items, "system_avatar", "string")
+	requireProperty(*entries.Items, "correct_answer_count", "integer")
+
+	period, ok := schemas["RankingPeriod"]
+	if !ok || period.Type != "string" || !contains(period.Enum, "weekly") || !contains(period.Enum, "lifetime") {
+		fail(fmt.Errorf("RankingPeriod must be a weekly/lifetime string enum"))
+	}
+}
+
 func requireObject(schemas map[string]schema, name string, required []string) {
 	value, ok := schemas[name]
-	if !ok || value.Type != "object" {
+	if !ok {
+		fail(fmt.Errorf("%s must be an object schema", name))
+	}
+	requireSchemaObject(value, name, required)
+}
+
+func requireSchemaObject(value schema, name string, required []string) {
+	if value.Type != "object" {
 		fail(fmt.Errorf("%s must be an object schema", name))
 	}
 	for _, property := range required {
 		if !contains(value.Required, property) || value.Properties[property].Type == "" && value.Properties[property].Ref == "" {
 			fail(fmt.Errorf("%s.%s must be required", name, property))
 		}
+	}
+}
+
+func requireClosedObject(value schema, name string) {
+	if !value.AdditionalProperties.specified || !value.AdditionalProperties.falseOnly {
+		fail(fmt.Errorf("%s must forbid unspecified public fields", name))
 	}
 }
 
@@ -220,12 +294,15 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-func render(path, digest string) string {
+func render(catalogPath, overallRankingPath, bankRankingPath, digest string) string {
 	return fmt.Sprintf(`// Code generated by cmd/quizcraftcontractgen from quizcraft.yaml; DO NOT EDIT.
 package practice
 
 const QuizCraftCatalogContractSHA256 = %q
+const QuizCraftRankingContractSHA256 = QuizCraftCatalogContractSHA256
 const ListPracticeBanksPath = %q
+const OverallRankingPath = %q
+const BankRankingPath = %q
 
 // BankListEnvelope is the generated read-only QuizCraft catalog response.
 // Its data members are the published, and therefore available, bank versions.
@@ -250,7 +327,36 @@ type Chapter struct {
 	ID   string `+"`json:\"id\"`"+`
 	Name string `+"`json:\"name\"`"+`
 }
-`, digest, path)
+
+type RankingPeriod string
+
+const (
+	RankingPeriodWeekly   RankingPeriod = "weekly"
+	RankingPeriodLifetime RankingPeriod = "lifetime"
+)
+
+// RankingEnvelope contains public fields only; internal account identifiers are
+// deliberately absent from the Portal read contract.
+type RankingEnvelope struct {
+	RequestID string      `+"`json:\"request_id\"`"+`
+	Data      RankingPage `+"`json:\"data\"`"+`
+}
+
+type RankingPage struct {
+	Scope   string        `+"`json:\"scope\"`"+`
+	BankID  string        `+"`json:\"bank_id,omitempty\"`"+`
+	Period  RankingPeriod `+"`json:\"period\"`"+`
+	Metric  string        `+"`json:\"metric\"`"+`
+	Entries []RankingEntry `+"`json:\"entries\"`"+`
+}
+
+type RankingEntry struct {
+	Rank               int64  `+"`json:\"rank\"`"+`
+	Nickname           string `+"`json:\"nickname\"`"+`
+	SystemAvatar       string `+"`json:\"system_avatar\"`"+`
+	CorrectAnswerCount int64  `+"`json:\"correct_answer_count\"`"+`
+}
+	`, digest, catalogPath, overallRankingPath, bankRankingPath)
 }
 
 func fail(err error) {

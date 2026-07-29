@@ -9,7 +9,6 @@ import type {
   QuestionBank, 
   Question, 
   PracticeSettings,
-  RankItem,
   UserStats,
   FeedbackDashboard,
   FeedbackBoardItem,
@@ -287,11 +286,6 @@ export const userApi = {
       persistUserId(user.userId);
       return user;
     });
-  },
-  
-  // 获取排行榜
-  getRanking: (): Promise<{ ranking: RankItem[] }> => {
-    return api.get('/ranking');
   },
 };
 

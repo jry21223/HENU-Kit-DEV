@@ -2091,23 +2091,12 @@ async def set_user(request: UserRequest):
 
 @app.get("/api/ranking")
 async def get_ranking():
-    """获取排行榜"""
-    if db_runtime_enabled():
-        return {"ranking": db_storage.get_ranking()}
+    """Fail closed until the controlled QuizCraft V2 ranking is cut over.
 
-    ranking = []
-    for user_id, stats in USER_STATS.items():
-        if stats["total"] > 0:
-            ranking.append({
-                "user_id": user_id,
-                "name": stats.get("name", user_id),
-                "correct": stats["correct"],
-                "total": stats["total"],
-                "accuracy": round(stats["correct"] / stats["total"] * 100, 1)
-            })
-
-    ranking.sort(key=lambda x: (-x["correct"], -x["accuracy"]))
-    return {"ranking": ranking}
+    The legacy response includes account identifiers and has no Ranking Profile
+    visibility fact, so it cannot safely remain a public leaderboard.
+    """
+    raise HTTPException(status_code=503, detail="旧排行榜正在迁移，暂不可用")
 
 
 @app.get("/api/wheel")

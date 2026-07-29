@@ -155,7 +155,7 @@ jobs:
           python -m pip install -r products/quizcraft/requirements.txt pytest
           python -m py_compile products/quizcraft/server.py products/quizcraft/db_storage.py
           cd products/quizcraft
-          PYTHONPATH=. python -m pytest -q tests/test_shadow_compare.py tests/test_migration_event_outbox.py tests/test_feedback_migration_boundary.py tests/test_cutover_read_only.py
+          PYTHONPATH=. python -m pytest -q tests/test_shadow_compare.py tests/test_migration_event_outbox.py tests/test_feedback_migration_boundary.py tests/test_cutover_read_only.py tests/test_ranking_privacy.py
       - name: Verify React generated-client shadow flow
         run: |
           set -euo pipefail
@@ -166,11 +166,14 @@ jobs:
           pnpm --dir products/quizcraft/web-app run test:syntax
           pnpm --dir products/quizcraft/web-app exec playwright install --with-deps chromium
           pnpm --dir products/quizcraft/web-app run test:browser:practice
+          pnpm --dir products/quizcraft/web-app run test:browser:legacy-ranking
       - name: Verify cutover release switch rollback
         run: |
           bash -n products/quizcraft/go-service/scripts/switch-cutover-release.sh
           bash -n products/quizcraft/go-service/scripts/verify-cutover.sh
           bash -n products/quizcraft/go-service/scripts/test-switch-cutover-release.sh
+          python3 products/quizcraft/go-service/scripts/test-write-portal-read-request-config.py
+          python3 products/quizcraft/go-service/scripts/test-verify-cutover-preflight-contract.py
           products/quizcraft/go-service/scripts/test-switch-cutover-release.sh
       - name: Build shadow image
         run: docker build --build-arg RELEASE_SHA=${{ github.sha }} -t henukit-quizcraft:${{ github.sha }} products/quizcraft/go-service

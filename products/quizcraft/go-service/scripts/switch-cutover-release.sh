@@ -143,14 +143,14 @@ activate_release() {
 
   # The complete stop-write/reconciliation/restore gate runs while Go still
   # rejects every mutation. A failure here must never cross the write promise.
-  EXPECTED_WRITES_ENABLED=false "$cutover_verify_script"
+  QUIZCRAFT_GO_ENV_FILE="$writes_env_file" EXPECTED_WRITES_ENABLED=false "$cutover_verify_script"
 
   atomic_state "activating-writes:$next_static" "$state_dir/active-phase"
   set_writes_flag 1
   systemctl restart "$service_name"
   systemctl is-active --quiet "$service_name"
   wait_for_go_health
-  EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
+  QUIZCRAFT_GO_ENV_FILE="$writes_env_file" EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
   nginx -t
   systemctl reload nginx
   atomic_link "$next_static" "$static_current_link"
@@ -250,13 +250,13 @@ resume_write_activation() {
   active_phase="$(cat "$state_dir/active-phase" 2>/dev/null || echo legacy)"
   if [[ "$active_phase" == "writes" ]]; then
     [[ "$(readlink -f "$static_current_link")" == "$next_static" ]]
-    EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
+    QUIZCRAFT_GO_ENV_FILE="$writes_env_file" EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
     disable_maintenance
     return 0
   fi
   [[ "$active_phase" == "activating-writes:$next_static" ]]
   [[ -e "$maintenance_marker" ]]
-  EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
+  QUIZCRAFT_GO_ENV_FILE="$writes_env_file" EXPECTED_WRITES_ENABLED=true "$cutover_verify_script"
   nginx -t
   systemctl reload nginx
   atomic_link "$next_static" "$static_current_link"

@@ -994,6 +994,7 @@ type RankingPeriod string
 
 // RankingProfileUpdate defines model for RankingProfileUpdate.
 type RankingProfileUpdate struct {
+	// Nickname Leave empty to use the neutral anonymous public label.
 	Nickname     string `json:"nickname"`
 	SystemAvatar string `json:"system_avatar"`
 	Visible      bool   `json:"visible"`

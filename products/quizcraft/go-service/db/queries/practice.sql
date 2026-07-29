@@ -183,7 +183,10 @@ SELECT pg_advisory_xact_lock(hashtextextended('ranking-profile-user:' || $1::tex
 
 -- name: ListOverallRanking :many
 WITH totals AS (
-  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  SELECT a.user_id,
+         COALESCE(p.nickname,'匿名学习者') AS nickname,
+         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+         count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
   JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
   WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1
@@ -196,7 +199,10 @@ LIMIT 100;
 
 -- name: ListBankRanking :many
 WITH totals AS (
-  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  SELECT a.user_id,
+         COALESCE(p.nickname,'匿名学习者') AS nickname,
+         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+         count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
   JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
   WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2
@@ -209,7 +215,10 @@ LIMIT 100;
 
 -- name: ListOverallRankingWindow :many
 WITH totals AS (
-  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  SELECT a.user_id,
+         COALESCE(p.nickname,'匿名学习者') AS nickname,
+         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+         count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
   JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
   WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
@@ -220,7 +229,10 @@ FROM totals ORDER BY correct_answer_count DESC,user_id LIMIT 100;
 
 -- name: ListBankRankingWindow :many
 WITH totals AS (
-  SELECT a.user_id,p.nickname,p.system_avatar,count(*)::bigint AS correct_answer_count
+  SELECT a.user_id,
+         COALESCE(p.nickname,'匿名学习者') AS nickname,
+         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+         count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
   JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
   WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2 AND a.submitted_at < $3

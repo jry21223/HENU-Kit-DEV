@@ -11,39 +11,52 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/unicode/norm"
+
 	"henukit.dev/portal-gateway/internal/serviceauth"
 )
 
 //go:generate go run ../../cmd/quizcraftcontractgen -contract ../../../../packages/api-contracts/openapi/quizcraft.yaml -output contract_generated.go
 
 const (
-	CatalogReadPermission = "portal.practice.read"
+	PortalReadPermission  = "portal.practice.read"
+	CatalogReadPermission = PortalReadPermission
 	// AnonymousCatalogActor makes guest catalog reads explicit while preserving
 	// Portal Gateway's product-request actor-header invariant.
 	AnonymousCatalogActor = "anonymous"
 )
 
 var (
-	ErrCatalogUnauthorized = errors.New("QuizCraft catalog rejected service authentication")
-	ErrCatalogForbidden    = errors.New("QuizCraft catalog denied the requested permission")
-	ErrCatalogUnavailable  = errors.New("QuizCraft catalog is unavailable")
-	ErrInvalidCatalog      = errors.New("QuizCraft returned an invalid catalog response")
+	ErrPortalReadUnauthorized = errors.New("QuizCraft Portal read rejected service authentication")
+	ErrPortalReadForbidden    = errors.New("QuizCraft Portal read denied the requested permission")
+	ErrPortalReadUnavailable  = errors.New("QuizCraft Portal read is unavailable")
+	ErrInvalidPortalRead      = errors.New("QuizCraft returned an invalid Portal read response")
+
+	ErrCatalogUnauthorized = ErrPortalReadUnauthorized
+	ErrCatalogForbidden    = ErrPortalReadForbidden
+	ErrCatalogUnavailable  = ErrPortalReadUnavailable
+	ErrInvalidCatalog      = ErrInvalidPortalRead
+
+	ErrRankingUnauthorized = ErrPortalReadUnauthorized
+	ErrRankingForbidden    = ErrPortalReadForbidden
+	ErrRankingUnavailable  = ErrPortalReadUnavailable
+	ErrInvalidRanking      = ErrInvalidPortalRead
 )
 
-// Client is an internal, read-only client for the QuizCraft catalog. It is not
-// registered on Portal Gateway's public router until the #166 cutover window.
+// Client is an internal, read-only client for QuizCraft catalog and ranking
+// facts. It is not registered on Portal Gateway's public router until #166.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	signer     *serviceauth.Signer
 }
 
-// NewClient creates an internal-only Catalog client with explicit service
+// NewClient creates an internal-only Portal read client with explicit service
 // credentials. Browser clients never receive this configuration.
 func NewClient(baseURL, clientID, clientSecret, keyID string) (*Client, error) {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || clientID == "" || len(clientSecret) < 32 || keyID == "" {
-		return nil, errors.New("invalid QuizCraft catalog client configuration")
+		return nil, errors.New("invalid QuizCraft Portal read client configuration")
 	}
 	return &Client{
 		baseURL:    strings.TrimRight(parsed.String(), "/"),
@@ -56,41 +69,11 @@ func NewClient(baseURL, clientID, clientSecret, keyID string) (*Client, error) {
 // successful empty catalog; absent or null data is an invalid response, never
 // a mock fallback.
 func (c *Client) Banks(ctx context.Context, actorUserID, requestID string) (BankListEnvelope, error) {
-	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" {
-		return BankListEnvelope{}, ErrCatalogUnavailable
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+ListPracticeBanksPath, nil)
+	resp, err := c.portalRead(ctx, actorUserID, requestID, ListPracticeBanksPath)
 	if err != nil {
-		return BankListEnvelope{}, ErrCatalogUnavailable
-	}
-	actorUserID = strings.TrimSpace(actorUserID)
-	if actorUserID == "" {
-		actorUserID = AnonymousCatalogActor
-	}
-	req.Header.Set("X-Actor-User-Id", actorUserID)
-	req.Header.Set("X-Request-Id", requestID)
-	req.Header.Set("X-Permission-Code", CatalogReadPermission)
-	req.Header.Set("X-Scope-Kind", "product")
-	req.Header.Set("X-Product-Code", "quizcraft")
-	if err := c.signer.Sign(req); err != nil {
-		return BankListEnvelope{}, fmt.Errorf("catalog sign: %w", ErrCatalogUnavailable)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return BankListEnvelope{}, fmt.Errorf("catalog request: %w", ErrCatalogUnavailable)
+		return BankListEnvelope{}, err
 	}
 	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-	case http.StatusUnauthorized:
-		return BankListEnvelope{}, ErrCatalogUnauthorized
-	case http.StatusForbidden:
-		return BankListEnvelope{}, ErrCatalogForbidden
-	default:
-		return BankListEnvelope{}, fmt.Errorf("catalog status %d: %w", resp.StatusCode, ErrCatalogUnavailable)
-	}
 
 	var raw struct {
 		RequestID string          `json:"request_id"`
@@ -113,6 +96,93 @@ func (c *Client) Banks(ctx context.Context, actorUserID, requestID string) (Bank
 	return result, nil
 }
 
+// OverallRanking returns a true empty page when Core has no scored attempts;
+// it never turns that state into browser-owned example rankings.
+func (c *Client) OverallRanking(ctx context.Context, actorUserID, requestID string, period RankingPeriod) (RankingEnvelope, error) {
+	normalized, err := normalizeRankingPeriod(period)
+	if err != nil {
+		return RankingEnvelope{}, err
+	}
+	values := url.Values{"period": []string{string(normalized)}}
+	return c.ranking(ctx, actorUserID, requestID, OverallRankingPath+"?"+values.Encode(), "overall", "", normalized)
+}
+
+// BankRanking returns one bank's public ranking with the same service-auth
+// boundary as the overall view.
+func (c *Client) BankRanking(ctx context.Context, actorUserID, requestID, bankID string, period RankingPeriod) (RankingEnvelope, error) {
+	if strings.TrimSpace(bankID) == "" {
+		return RankingEnvelope{}, ErrInvalidRanking
+	}
+	normalized, err := normalizeRankingPeriod(period)
+	if err != nil {
+		return RankingEnvelope{}, err
+	}
+	path := strings.Replace(BankRankingPath, "{bank_id}", url.PathEscape(bankID), 1)
+	values := url.Values{"period": []string{string(normalized)}}
+	return c.ranking(ctx, actorUserID, requestID, path+"?"+values.Encode(), "bank", bankID, normalized)
+}
+
+func (c *Client) ranking(ctx context.Context, actorUserID, requestID, path, scope, bankID string, period RankingPeriod) (RankingEnvelope, error) {
+	resp, err := c.portalRead(ctx, actorUserID, requestID, path)
+	if err != nil {
+		return RankingEnvelope{}, err
+	}
+	defer resp.Body.Close()
+	var result RankingEnvelope
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return RankingEnvelope{}, fmt.Errorf("ranking decode: %w", ErrInvalidRanking)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return RankingEnvelope{}, fmt.Errorf("ranking decode: %w", ErrInvalidRanking)
+	}
+	if err := validateRanking(result, scope, bankID, period); err != nil {
+		return RankingEnvelope{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) portalRead(ctx context.Context, actorUserID, requestID, path string) (*http.Response, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" {
+		return nil, ErrPortalReadUnavailable
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return nil, ErrPortalReadUnavailable
+	}
+	actorUserID = strings.TrimSpace(actorUserID)
+	if actorUserID == "" {
+		actorUserID = AnonymousCatalogActor
+	}
+	req.Header.Set("X-Actor-User-Id", actorUserID)
+	req.Header.Set("X-Request-Id", requestID)
+	req.Header.Set("X-Permission-Code", PortalReadPermission)
+	req.Header.Set("X-Scope-Kind", "product")
+	req.Header.Set("X-Product-Code", "quizcraft")
+	if err := c.signer.Sign(req); err != nil {
+		return nil, fmt.Errorf("Portal read sign: %w", ErrPortalReadUnavailable)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Portal read request: %w", ErrPortalReadUnavailable)
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return resp, nil
+	case http.StatusUnauthorized:
+		_ = resp.Body.Close()
+		return nil, ErrPortalReadUnauthorized
+	case http.StatusForbidden:
+		_ = resp.Body.Close()
+		return nil, ErrPortalReadForbidden
+	default:
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("Portal read status %d: %w", resp.StatusCode, ErrPortalReadUnavailable)
+	}
+}
+
 func validateCatalog(result BankListEnvelope) error {
 	for _, bank := range result.Data {
 		if bank.BankID == "" || bank.BankVersionID == "" || bank.BankKey == "" || bank.Name == "" || len(bank.ContentSHA256) != 64 || bank.QuestionCount < 0 || bank.Chapters == nil {
@@ -125,4 +195,71 @@ func validateCatalog(result BankListEnvelope) error {
 		}
 	}
 	return nil
+}
+
+func normalizeRankingPeriod(period RankingPeriod) (RankingPeriod, error) {
+	if period == "" {
+		return RankingPeriodWeekly, nil
+	}
+	if period != RankingPeriodWeekly && period != RankingPeriodLifetime {
+		return "", ErrInvalidRanking
+	}
+	return period, nil
+}
+
+func validateRanking(result RankingEnvelope, expectedScope, expectedBankID string, expectedPeriod RankingPeriod) error {
+	if strings.TrimSpace(result.RequestID) == "" ||
+		result.Data.Scope != expectedScope ||
+		result.Data.Period != expectedPeriod ||
+		result.Data.Metric != "correct_answer_count" ||
+		result.Data.Entries == nil {
+		return ErrInvalidRanking
+	}
+	if expectedScope == "bank" && result.Data.BankID != expectedBankID {
+		return ErrInvalidRanking
+	}
+	if expectedScope == "overall" && result.Data.BankID != "" {
+		return ErrInvalidRanking
+	}
+	previousRank := int64(0)
+	previousCount := int64(-1)
+	for _, entry := range result.Data.Entries {
+		if entry.Rank < 1 || entry.Rank < previousRank || strings.TrimSpace(entry.Nickname) == "" || looksLikeRankingIdentifier(entry.Nickname) || !validRankingAvatar(entry.SystemAvatar) || entry.CorrectAnswerCount < 0 || previousCount >= 0 && entry.CorrectAnswerCount > previousCount {
+			return ErrInvalidRanking
+		}
+		previousRank = entry.Rank
+		previousCount = entry.CorrectAnswerCount
+	}
+	return nil
+}
+
+func looksLikeRankingIdentifier(value string) bool {
+	value = strings.TrimSpace(norm.NFKC.String(value))
+	if strings.Contains(value, "@") {
+		return true
+	}
+	compact := strings.Map(func(r rune) rune {
+		if strings.ContainsRune(" _-.", r) {
+			return -1
+		}
+		return r
+	}, value)
+	if len(compact) != 32 {
+		return false
+	}
+	for _, r := range compact {
+		if !('0' <= r && r <= '9') && !('a' <= r && r <= 'f') && !('A' <= r && r <= 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+func validRankingAvatar(value string) bool {
+	switch value {
+	case "scholar-blue", "coder-green", "reader-amber", "owl-purple":
+		return true
+	default:
+		return false
+	}
 }

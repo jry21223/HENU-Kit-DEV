@@ -11,7 +11,7 @@ import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class RankingService {
     /**
-     * Get the public overall ranking
+     * Get the public overall ranking through the internal Portal read contract
      * @returns RankingEnvelope Overall weekly by default or lifetime ranking
      * @throws ApiError
      */
@@ -28,6 +28,9 @@ export class RankingService {
             },
             errors: {
                 400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
+                403: `Permission code or product Scope denied`,
+                409: `Dedicated service request nonce was already used`,
                 503: `PostgreSQL or a required service is unavailable`,
             },
         });
@@ -47,7 +50,7 @@ export class RankingService {
         });
     }
     /**
-     * Get one bank's public ranking
+     * Get one bank's public ranking through the internal Portal read contract
      * @returns RankingEnvelope Bank weekly or lifetime ranking
      * @throws ApiError
      */
@@ -69,6 +72,9 @@ export class RankingService {
             },
             errors: {
                 400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
+                403: `Permission code or product Scope denied`,
+                409: `Dedicated service request nonce was already used`,
                 503: `PostgreSQL or a required service is unavailable`,
             },
         });

@@ -72,7 +72,7 @@ export class PracticeService {
         });
     }
     /**
-     * List published practice banks through the internal Portal catalog contract
+     * List published practice banks through the internal Portal read contract
      * @returns BankListEnvelope Published banks
      * @throws ApiError
      */

@@ -14,8 +14,7 @@ const TABS = [
     match: (p: string) => p === "/practice" || p.startsWith("/practice/lists"),
   },
   { href: "/practice/quiz", index: "P-02", label: "刷题", match: (p: string) => p.startsWith("/practice/quiz") },
-  { href: "/practice/leaderboard", index: "P-03", label: "排行榜", match: (p: string) => p.startsWith("/practice/leaderboard") },
-  { href: "/practice/stats", index: "P-04", label: "数据", match: (p: string) => p.startsWith("/practice/stats") },
+  { href: "/practice/stats", index: "P-03", label: "数据", match: (p: string) => p.startsWith("/practice/stats") },
 ];
 
 export default function PracticeNav() {

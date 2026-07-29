@@ -47,3 +47,40 @@ func TestRouterKeepsQuizCraftCatalogDarkBeforeCutover(t *testing.T) {
 		t.Fatalf("before #166 public route calls = portal-api:%d QuizCraft:%d", portalAPICalls.Load(), quizCraftCalls.Load())
 	}
 }
+
+func TestRouterKeepsQuizCraftV2RankingsDarkBeforeCutover(t *testing.T) {
+	var portalAPICalls atomic.Int32
+	portalAPI := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		portalAPICalls.Add(1)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer portalAPI.Close()
+
+	var quizCraftCalls atomic.Int32
+	quizCraft := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		quizCraftCalls.Add(1)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer quizCraft.Close()
+
+	handler, err := New(config.Config{
+		SessionKey:   []byte("0123456789abcdef0123456789abcdef"),
+		PortalAPIURL: portalAPI.URL,
+		PracticeURL:  quizCraft.URL,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/api/v1/rankings/overall", "/api/v1/banks/data-structures/rankings"} {
+		recorder := httptest.NewRecorder()
+		handler.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://portal.test"+path, nil))
+
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("public V2 ranking response for %s = %d, want 404", path, recorder.Code)
+		}
+	}
+	if portalAPICalls.Load() != 0 || quizCraftCalls.Load() != 0 {
+		t.Fatalf("before #166 public V2 ranking route calls = portal-api:%d QuizCraft:%d", portalAPICalls.Load(), quizCraftCalls.Load())
+	}
+}

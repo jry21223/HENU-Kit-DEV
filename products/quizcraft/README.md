@@ -193,7 +193,7 @@ python3 scripts/upload_bank_via_api.py /tmp/my_bank.parsed.json \
 - `GET /api/banks`
 - `POST /api/practice/start`
 - `POST /api/practice/submit`
-- `GET /api/ranking`
+- `GET /api/ranking`（安全 V2 全量切流前明确返回 `503`，不公开旧排行身份数据）
 - `GET /api/feedback/dashboard`
 - `GET /api/wheel`
 - `POST /api/wheel`
