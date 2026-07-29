@@ -33,6 +33,7 @@ import type {
   LibraryCoursesResponse,
   MaterialListResponse,
   NoticeListResponse,
+  PersonalPracticeStatsEnvelope,
   PortalSession,
 	PortalPracticeAnswerInput,
 	PortalPracticeAnswerResponse,
@@ -405,6 +406,14 @@ export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null
  */
 export async function fetchQuizCraftCatalog(): Promise<QuizCraftCatalogResponse> {
   return apiFetchRequired<QuizCraftCatalogResponse>("/api/v1/practice/catalog");
+}
+
+/**
+ * Fetches V2 fact-derived personal Practice stats. Callers must first check
+ * quizCraftV2ReadsEnabled(); this strict path has no local/mock success mode.
+ */
+export async function fetchPersonalPracticeStats(): Promise<PersonalPracticeStatsEnvelope> {
+  return apiFetchRequired<PersonalPracticeStatsEnvelope>("/api/v1/practice/stats");
 }
 
 export async function fetchPracticeSchools(): Promise<SchoolListResponse> {

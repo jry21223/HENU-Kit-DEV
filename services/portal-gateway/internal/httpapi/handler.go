@@ -35,6 +35,7 @@ import (
 type Handler struct {
 	sessionCodec       *session.Codec
 	platform           *platformcore.Client
+	quizCraft          *practice.Client
 	portalAPI          *http.Client
 	portalAPIURL       string
 	accountPortfolio   *accountportfolio.Client
@@ -51,7 +52,10 @@ type Handler struct {
 	trustedProxies     []*net.IPNet
 }
 
-var accountIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+var (
+	accountIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+	portalRequestIDPattern       = regexp.MustCompile(`^req_[A-Za-z0-9_-]{1,116}$`)
+)
 
 const quizCraftCatalogPath = "/api/v1/practice/catalog"
 
@@ -71,7 +75,6 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 	}
 	var portfolio *accountportfolio.Client
 	if strings.TrimSpace(cfg.AccountPortfolioURL) != "" {
-		var err error
 		portfolio, err = accountportfolio.NewClient(
 			cfg.AccountPortfolioURL,
 			cfg.AccountPortfolioAuth.ClientID,
@@ -103,12 +106,25 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			cfg.PracticeAuth.KeyID,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("practice.NewClient: %w", err)
+			return nil, fmt.Errorf("practice.NewClient catalog: %w", err)
+		}
+	}
+	var quizCraft *practice.Client
+	if cfg.QuizCraftV2ReadsEnabled {
+		quizCraft, err = practice.NewClient(
+			cfg.QuizCraftCoreURL,
+			cfg.QuizCraftCoreAuth.ClientID,
+			cfg.QuizCraftCoreAuth.ClientSecret,
+			cfg.QuizCraftCoreAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("QuizCraft V2 read client: %w", err)
 		}
 	}
 	return &Handler{
 		sessionCodec:       codec,
 		platform:           platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID),
+		quizCraft:          quizCraft,
 		portalAPI:          &http.Client{Timeout: 10 * time.Second},
 		portalAPIURL:       cfg.PortalAPIURL,
 		accountPortfolio:   portfolio,
@@ -162,6 +178,9 @@ func (h *Handler) Router() chi.Router {
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/food/*", h.proxyToPortalAPI)
+	// This private V2 route is never proxied to legacy Portal API data. Before
+	// #166 enables the V2 client it returns an honest unavailable response.
+	r.Get("/api/v1/practice/stats", h.personalPracticeStats)
 	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/notices", h.proxyToPortalAPI)
@@ -173,9 +192,9 @@ func (h *Handler) Router() chi.Router {
 
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-Id")
-		if id == "" {
-			id = uuid()
+		id := strings.TrimSpace(r.Header.Get("X-Request-Id"))
+		if !portalRequestIDPattern.MatchString(id) {
+			id = "req_" + strings.ReplaceAll(uuid(), "-", "")
 		}
 		w.Header().Set("X-Request-Id", id)
 		next.ServeHTTP(w, r)
@@ -649,6 +668,56 @@ func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Req
 		// Gateway and Core, not a browser authentication state.
 		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", RequestID: requestIDOf(w, r)})
 	}
+}
+
+// personalPracticeStats returns only the signed-in user's Core-derived
+// statistics. It intentionally has no mock or Portal API success fallback.
+func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.quizCraft == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "practice statistics are not enabled")
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
+		switch {
+		case errors.Is(err, platformcore.ErrUnauthorized):
+			writeError(w, r, http.StatusUnauthorized, "not authenticated")
+		case errors.Is(err, platformcore.ErrForbidden):
+			writeError(w, r, http.StatusForbidden, "practice access denied")
+		default:
+			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable")
+		}
+		return
+	}
+	stats, err := h.quizCraft.PersonalStats(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		switch {
+		case errors.Is(err, practice.ErrStatsUnauthorized):
+			writeError(w, r, http.StatusUnauthorized, "not authenticated")
+		default:
+			writeError(w, r, http.StatusServiceUnavailable, "practice statistics are temporarily unavailable")
+		}
+		return
+	}
+	mastery := make([]contract.MasterySubject, 0, len(stats.Data.Mastery))
+	for _, subject := range stats.Data.Mastery {
+		mastery = append(mastery, contract.MasterySubject{
+			BankID: subject.BankID, Label: subject.Label, Value: subject.Value,
+			TotalQuestions: subject.TotalQuestions, CorrectQuestions: subject.CorrectQuestions,
+		})
+	}
+	writeJSON(w, http.StatusOK, contract.PersonalPracticeStatsEnvelope{
+		RequestID: stats.RequestID,
+		Data: contract.PersonalPracticeStats{
+			TotalAnswers: stats.Data.TotalAnswers, CorrectAnswers: stats.Data.CorrectAnswers,
+			Accuracy: stats.Data.Accuracy, StreakDays: stats.Data.StreakDays, Mastery: mastery,
+		},
+	})
 }
 
 // --- Proxy to portal-api ---

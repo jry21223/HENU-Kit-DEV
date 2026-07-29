@@ -31,9 +31,17 @@ type Config struct {
 	LibraryURL              string
 	FoodURL                 string
 	PracticeURL             string
+	// #160 catalog uses its established default-off flag and anonymous Banks
+	// read client. It must remain independent of account-bound stats.
 	QuizCraftCatalogEnabled bool
 	NoticeURL               string
 	AccountPortfolioURL     string
+
+	// QuizCraftV2ReadsEnabled is deliberately false unless the deployment
+	// supplies an explicit "1". #166 owns enabling this V2 read path.
+	QuizCraftV2ReadsEnabled bool
+	QuizCraftCoreURL        string
+	QuizCraftCoreAuth       ServiceAuth
 
 	LibraryAuth  ServiceAuth
 	FoodAuth     ServiceAuth
@@ -115,6 +123,13 @@ func FromEnv() (Config, error) {
 		LocalSessionCookieName: envOrDefault("PORTAL_LOCAL_SESSION_COOKIE_NAME", "henukit_portal_session_local"),
 		TrustedProxyCIDRs:      splitNonEmpty(os.Getenv("PORTAL_TRUSTED_PROXY_CIDRS")),
 	}
+	quizCraftReadsEnabled, quizCraftCoreURL, quizCraftCoreAuth, err := quizCraftV2ReadsFromEnv(os.Getenv)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.QuizCraftV2ReadsEnabled = quizCraftReadsEnabled
+	cfg.QuizCraftCoreURL = quizCraftCoreURL
+	cfg.QuizCraftCoreAuth = quizCraftCoreAuth
 	if err := validateLocalCookieNames(cfg.LocalOAuthCookieName, cfg.LocalSessionCookieName); err != nil {
 		return Config{}, err
 	}
@@ -130,6 +145,26 @@ func isPlaceholderSecret(secret string) bool {
 		strings.HasPrefix(value, "change-me") ||
 		strings.HasPrefix(value, "example-") ||
 		strings.Contains(value, "placeholder")
+}
+
+func quizCraftV2ReadsFromEnv(getenv func(string) string) (bool, string, ServiceAuth, error) {
+	switch strings.TrimSpace(getenv("PORTAL_ENABLE_QUIZCRAFT_V2_READS")) {
+	case "", "0":
+		return false, "", ServiceAuth{}, nil
+	case "1":
+	default:
+		return false, "", ServiceAuth{}, fmt.Errorf("PORTAL_ENABLE_QUIZCRAFT_V2_READS must be 0 or 1")
+	}
+	coreURL := strings.TrimSpace(getenv("QUIZCRAFT_CORE_URL"))
+	auth := ServiceAuth{
+		ClientID:     strings.TrimSpace(getenv("QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID")),
+		ClientSecret: getenv("QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET"),
+		KeyID:        strings.TrimSpace(getenv("QUIZCRAFT_PORTAL_CATALOG_KEY_ID")),
+	}
+	if coreURL == "" || auth.ClientID == "" || auth.ClientSecret == "" || auth.KeyID == "" {
+		return false, "", ServiceAuth{}, fmt.Errorf("QuizCraft V2 reads require QUIZCRAFT_CORE_URL and QUIZCRAFT_PORTAL_CATALOG_* credentials")
+	}
+	return true, coreURL, auth, nil
 }
 
 func validateLocalCookieNames(oauth, session string) error {

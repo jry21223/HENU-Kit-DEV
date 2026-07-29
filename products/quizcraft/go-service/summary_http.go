@@ -18,7 +18,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var consoleRequestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
+var serviceRequestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
 
 type serviceAuthRequirement struct {
 	clientID           string
@@ -26,6 +26,7 @@ type serviceAuthRequirement struct {
 	unavailableCode    string
 	label              string
 	requiredPermission string
+	actorBound         bool
 }
 
 const maxPortalPracticeCommandBodyBytes = 2 << 20
@@ -72,7 +73,18 @@ func (service *practiceHTTP) authenticateSignedGET(requirement serviceAuthRequir
 			return
 		}
 		digest := sha256.Sum256(nil)
-		canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}, "\n")
+		canonicalParts := []string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
+		if requirement.actorBound {
+			// Only personal stats opts into this branch. The strict parser keeps
+			// malformed and guest actors out before any fact query, while the
+			// original header text remains the sixth canonical HMAC line.
+			if _, err := portalActorUserID(request); err != nil {
+				writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" actor is invalid")
+				return
+			}
+			canonicalParts = append(canonicalParts, request.Header.Get("X-Actor-User-Id"))
+		}
+		canonical := strings.Join(canonicalParts, "\n")
 		mac := hmac.New(sha256.New, []byte(secret))
 		_, _ = mac.Write([]byte(canonical))
 		if !hmac.Equal([]byte(request.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
@@ -113,6 +125,17 @@ func (service *practiceHTTP) authenticatePortalRead(next http.Handler) http.Hand
 		unavailableCode:    "portal_read_auth_unavailable",
 		label:              "Portal read",
 		requiredPermission: "portal.practice.read",
+	}, next)
+}
+
+func (service *practiceHTTP) authenticatePortalPersonalStats(next http.Handler) http.Handler {
+	return service.authenticateSignedGET(serviceAuthRequirement{
+		clientID:           service.catalogClientID,
+		keys:               service.catalogKeys,
+		unavailableCode:    "catalog_auth_unavailable",
+		label:              "personal statistics",
+		requiredPermission: "portal.practice.read",
+		actorBound:         true,
 	}, next)
 }
 
@@ -224,7 +247,7 @@ func (service *practiceHTTP) consoleSummary(writer http.ResponseWriter, request 
 		return
 	}
 	requestID := request.Header.Get("X-Request-Id")
-	if len(requestID) > 120 || !consoleRequestIDPattern.MatchString(requestID) {
+	if len(requestID) > 120 || !serviceRequestIDPattern.MatchString(requestID) {
 		requestID = "req_summary_invalid"
 	}
 	data := map[string]any{

@@ -114,6 +114,7 @@ type QuizcraftLearningState struct {
 	AttemptCount      int64              `json:"attempt_count"`
 	CorrectCount      int64              `json:"correct_count"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	LatestAttemptID   uuid.UUID          `json:"latest_attempt_id"`
 }
 
 type QuizcraftLegacyFeedbackArchive struct {
