@@ -191,7 +191,10 @@ func (h *service) persistMembershipOrderIntent(ctx context.Context, clientID, us
 	}
 
 	now := h.now().UTC()
-	merchantOrderID := uuid.NewString()
+	merchantOrderID, err := newMembershipMerchantOrderID()
+	if err != nil {
+		return membershipOrderView{}, dependencyFailure("Account Portfolio payment intent is unavailable")
+	}
 	order := membershipOrderView{
 		ID:          uuid.NewString(),
 		Plan:        "lifetime",
@@ -968,7 +971,7 @@ func readPaymentNotification(r *http.Request) ([]byte, *commandFailure) {
 func validVerifiedPaymentNotification(notification VerifiedPaymentNotification) bool {
 	return len(strings.TrimSpace(notification.EventID)) <= 200 && len(strings.TrimSpace(notification.EventID)) > 0 &&
 		len(strings.TrimSpace(notification.ExternalOrderID)) <= 200 && len(strings.TrimSpace(notification.ExternalOrderID)) > 0 &&
-		uuid.Validate(notification.MerchantOrderID) == nil &&
+		validMembershipMerchantOrderID(notification.MerchantOrderID) &&
 		notification.AmountCents == lifetimeMembershipAmountCents &&
 		notification.Currency == lifetimeMembershipCurrency &&
 		notification.Plan == lifetimeMembershipPlan &&

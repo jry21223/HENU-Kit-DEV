@@ -81,6 +81,10 @@ func TestPaymentMerchantIntentIsPrivateAndRejectsCrossOrderCallback(t *testing.T
 	if firstMerchantID == firstBody.Data.Order.ID || secondMerchantID == second.ID || firstMerchantID == secondMerchantID {
 		t.Fatalf("merchant ids must be distinct private values: first=%q/%q second=%q/%q", firstBody.Data.Order.ID, firstMerchantID, second.ID, secondMerchantID)
 	}
+	if !strings.HasPrefix(firstMerchantID, "HNK") || len(firstMerchantID) != 32 ||
+		!strings.HasPrefix(secondMerchantID, "HNK") || len(secondMerchantID) != 32 {
+		t.Fatalf("merchant ids must use the HENU Kit HNK prefix: first=%q second=%q", firstMerchantID, secondMerchantID)
+	}
 	if strings.Contains(firstRaw, firstMerchantID) || strings.Contains(firstRaw, secondMerchantID) {
 		t.Fatalf("public order response exposed a private merchant id: %s", firstRaw)
 	}
@@ -1221,6 +1225,7 @@ func newAccountPortfolioServerWithPaymentProvider(t *testing.T, provider account
 		Database:        pool,
 		ClientID:        "portal-gateway",
 		Keys:            map[string]string{"account-key": serviceSecret},
+		PointCursorKey:  pointCursorTestKey,
 		PaymentProvider: provider,
 	})
 	if err != nil {
