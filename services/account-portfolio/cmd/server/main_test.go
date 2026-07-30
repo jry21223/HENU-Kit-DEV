@@ -23,6 +23,38 @@ func TestIsPlaceholderSecret(t *testing.T) {
 	}
 }
 
+func TestEasyPayProviderRemainsDisabledUnlessTheExplicitGateAndTenantConfigArePresent(t *testing.T) {
+	for _, name := range []string{
+		"ACCOUNT_PORTFOLIO_EASYPAY_ENABLED",
+		"ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL",
+		"ACCOUNT_PORTFOLIO_EASYPAY_PID",
+		"ACCOUNT_PORTFOLIO_EASYPAY_KEY",
+		"ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL",
+		"ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL",
+	} {
+		t.Setenv(name, "")
+	}
+	provider, err := paymentProviderFromEnv()
+	if err != nil || provider != nil {
+		t.Fatalf("disabled EasyPay provider = %T, %v; want nil, nil", provider, err)
+	}
+
+	t.Setenv("ACCOUNT_PORTFOLIO_EASYPAY_ENABLED", "1")
+	if _, err := paymentProviderFromEnv(); err == nil {
+		t.Fatal("enabled EasyPay accepted incomplete HENU tenant configuration")
+	}
+
+	t.Setenv("ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL", "https://metaview.top/epay")
+	t.Setenv("ACCOUNT_PORTFOLIO_EASYPAY_PID", "2001")
+	t.Setenv("ACCOUNT_PORTFOLIO_EASYPAY_KEY", "independent-henukit-tenant-secret")
+	t.Setenv("ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL", "https://henukit.cn/api/v1/payment-providers/easypay/notifications")
+	t.Setenv("ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL", "https://henukit.cn/account/membership")
+	provider, err = paymentProviderFromEnv()
+	if err != nil || provider == nil || provider.Name() != "easypay" {
+		t.Fatalf("enabled EasyPay provider = %T, %v; want easypay", provider, err)
+	}
+}
+
 func TestPointCursorKeyFromEnvRequiresAnIndependentStrongAESKey(t *testing.T) {
 	valid := base64.StdEncoding.EncodeToString([]byte("account-portfolio-cursor-key-123"))
 	placeholder := base64.StdEncoding.EncodeToString(append([]byte("replace-"), bytes.Repeat([]byte("x"), 24)...))

@@ -1,0 +1,497 @@
+diff --git a/lib/db.js b/lib/db.js
+--- a/lib/db.js
++++ b/lib/db.js
+@@ -29,14 +29,12 @@
+   }
+ 
+   _save() {
+-    try {
+-      const dir = path.dirname(this._file);
+-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+-      const obj = Object.fromEntries(this._orders);
+-      fs.writeFileSync(this._file, JSON.stringify(obj, null, 2), "utf-8");
+-    } catch (err) {
+-      console.error(`Failed to save orders: ${err.message}`);
+-    }
++    const dir = path.dirname(this._file);
++    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
++    const temporary = `${this._file}.${process.pid}.tmp`;
++    const obj = Object.fromEntries(this._orders);
++    fs.writeFileSync(temporary, JSON.stringify(obj, null, 2), { encoding: "utf-8", mode: 0o600 });
++    fs.renameSync(temporary, this._file);
+   }
+ 
+   create(params) {
+@@ -54,6 +52,10 @@
+       wechat_txn_id: null,
+       created_at: params.created_at || new Date().toISOString(),
+       paid_at: null,
++      notify_state: "waiting_payment",
++      notify_attempts: 0,
++      next_notify_at: null,
++      last_notify_error: null,
+     };
+     this._orders.set(order.out_trade_no, order);
+     this._save();
+@@ -78,9 +80,42 @@
+     order.status = "paid";
+     order.wechat_txn_id = wechatTxnId;
+     order.paid_at = new Date().toISOString();
++    order.notify_state = "pending";
++    order.next_notify_at = order.paid_at;
+     this._save();
+     return true;
+   }
++
++  recordNotifyAttempt(outTradeNo, succeeded, errorMessage = "") {
++    const order = this._orders.get(outTradeNo);
++    if (!order || order.status !== "paid") return false;
++    order.notify_attempts = Number(order.notify_attempts || 0) + 1;
++    order.last_notify_at = new Date().toISOString();
++    if (succeeded) {
++      order.notify_state = "delivered";
++      order.next_notify_at = null;
++      order.last_notify_error = null;
++    } else {
++      const delaySeconds = Math.min(3600, 30 * Math.pow(2, Math.min(order.notify_attempts - 1, 7)));
++      order.notify_state = "retry";
++      order.next_notify_at = new Date(Date.now() + delaySeconds * 1000).toISOString();
++      order.last_notify_error = String(errorMessage || "delivery failed").slice(0, 200);
++    }
++    this._save();
++    return true;
++  }
++
++  dueNotifications(now = new Date(), limit = 20) {
++    return [...this._orders.values()]
++      .filter((order) =>
++        order.status === "paid" &&
++        order.notify_state !== "delivered" &&
++        order.next_notify_at &&
++        new Date(order.next_notify_at) <= now
++      )
++      .sort((a, b) => String(a.next_notify_at).localeCompare(String(b.next_notify_at)))
++      .slice(0, limit);
++  }
+ }
+ 
+ let _store = null;
+@@ -90,4 +125,4 @@
+   return _store;
+ }
+ 
+-module.exports = { getStore };
++module.exports = { OrderStore, getStore };
+diff --git a/lib/wechat.js b/lib/wechat.js
+--- a/lib/wechat.js
++++ b/lib/wechat.js
+@@ -36,6 +36,15 @@
+     return payload.code_url;
+   }
+ 
++  async queryOrder(outTradeNo) {
++    const encoded = encodeURIComponent(outTradeNo);
++    return this._request(
++      "GET",
++      `/v3/pay/transactions/out-trade-no/${encoded}?mchid=${encodeURIComponent(this._config.wechatMchId)}`,
++      null
++    );
++  }
++
+   // ── Callback verification ───────────────────────────────────
+ 
+   verifyCallbackSignature(headers, body) {
+@@ -80,7 +89,7 @@
+   // ── HTTP with WECHATPAY2-SHA256-RSA2048 auth ─────────────────
+ 
+   async _request(method, path, body) {
+-    const bodyStr = JSON.stringify(body);
++    const bodyStr = body == null ? "" : JSON.stringify(body);
+     const url = new URL(path, this._config.wechatApiBase);
+     const timestamp = String(Math.floor(Date.now() / 1000));
+     const nonce = crypto.randomBytes(16).toString("hex");
+@@ -140,7 +149,7 @@
+         req.destroy();
+         reject(new Error("WeChat Pay API request timed out"));
+       });
+-      req.write(bodyStr);
++      if (bodyStr) req.write(bodyStr);
+       req.end();
+     });
+   }
+diff --git a/server.js b/server.js
+--- a/server.js
++++ b/server.js
+@@ -3,7 +3,7 @@
+ 
+ const config = require("./config");
+ const { getStore } = require("./lib/db");
+-const { verify: epayVerify, buildNotifyParams, buildReturnParams } = require("./lib/epay");
++const { sign: epaySign, verify: epayVerify, buildNotifyParams, buildReturnParams } = require("./lib/epay");
+ const { validateMerchantRequest } = require("./lib/merchants");
+ const { WeChatPayClient } = require("./lib/wechat");
+ 
+@@ -24,6 +24,13 @@
+   next();
+ });
+ 
++function wechatOrderMatches(order, transaction) {
++  return transaction.mchid === config.wechatMchId &&
++    transaction.appid === config.wechatAppId &&
++    Number(transaction.amount?.total) === Number(order.amount_cents) &&
++    transaction.amount?.currency === "CNY";
++}
++
+ // ── /submit.php — EPay-compatible order creation ───────────────
+ // MetaView POSTs here with: pid, type, out_trade_no, notify_url,
+ // return_url, name, money, sign, sign_type
+@@ -135,10 +142,12 @@
+ app.get("/pay/:outTradeNo", (req, res) => {
+   const order = store.get( req.params.outTradeNo);
+   if (!order) return res.status(404).send("订单不存在");
++  const merchant = config.merchants.resolve(order.pid);
++  if (!merchant || merchant.name === "henukit") {
++    return res.status(404).send("订单不存在");
++  }
+   if (order.status === "paid") {
+     // Already paid — redirect to return_url
+-    const merchant = config.merchants.resolve(order.pid);
+-    if (!merchant) return res.status(503).send("merchant unavailable");
+     const retParams = buildReturnParams(order, merchant.key);
+     const qs = new URLSearchParams(retParams).toString();
+     const redirectUrl = `${order.return_url}?${qs}`;
+@@ -182,6 +189,16 @@
+     if (tradeState !== "SUCCESS") {
+       console.log(`WeChat callback trade_state=${tradeState}, ignoring`);
+       return res.json({ code: "SUCCESS" });
+     }
+ 
++    const existingOrder = store.get(outTradeNo);
++    if (!existingOrder) {
++      console.error(`Order ${outTradeNo} not found`);
++      return res.json({ code: "SUCCESS" });
++    }
++    if (!wechatOrderMatches(existingOrder, transaction)) {
++      console.error(`WeChat callback correlation failed for ${outTradeNo}`);
++      return res.status(400).json({ code: "FAIL", message: "order mismatch" });
++    }
++
+     // 3. Mark order paid (idempotent)
+@@ -191,12 +208,10 @@
+     }
+ 
+     // 4. Forward EPay-format callback to MetaView
+-    if (updated) {
+-      await forwardNotify(order);
+-    } else {
++    if (!updated) {
+       console.log(`Order ${outTradeNo} already paid (duplicate callback), re-sending notify`);
+-      await forwardNotify(order);
+     }
++    await deliverNotify(order);
+ 
+     return res.json({ code: "SUCCESS" });
+   } catch (err) {
+@@ -247,28 +262,86 @@
+       req.write(body);
+       req.end();
+     });
++    return true;
+   } catch (err) {
+-    // Don't fail the WeChat callback — MetaView may retry
+-    console.error(`Notify forward failed (MetaView may retry): ${err.message}`);
++    console.error(`Notify forward failed: ${err.message}`);
++    throw err;
+   }
+ }
+ 
+-// ── /api/query/:outTradeNo — Order status query ─────────────────
+-
+-app.get("/api/query/:outTradeNo", (req, res) => {
+-  const order = store.get( req.params.outTradeNo);
++async function deliverNotify(order) {
++  try {
++    await forwardNotify(order);
++    store.recordNotifyAttempt(order.out_trade_no, true);
++  } catch (err) {
++    store.recordNotifyAttempt(order.out_trade_no, false, err.message);
++  }
++}
++
++const retryTimer = setInterval(async () => {
++  for (const order of store.dueNotifications()) {
++    await deliverNotify(order);
++  }
++}, 15000);
++retryTimer.unref();
++
++// ── /api/query.php — authenticated merchant-order query ─────────
++
++app.post("/api/query.php", async (req, res) => {
++  const params = { ...req.body };
++  const merchant = config.merchants.resolve(params.pid);
++  if (!merchant || !epayVerify(params, merchant.key)) {
++    return res.status(400).json({ error: "signature error" });
++  }
++  const order = store.get(params.out_trade_no);
+   if (!order) return res.status(404).json({ error: "order not found" });
+-  res.json({
++  if (order.pid !== merchant.pid) return res.status(404).json({ error: "order not found" });
++  let authoritative;
++  try {
++    authoritative = await wechat.queryOrder(order.out_trade_no);
++  } catch (err) {
++    console.error(`WeChat merchant-order query failed: ${err.message}`);
++    return res.status(502).json({ error: "wechat query failed" });
++  }
++  if (!wechatOrderMatches(order, authoritative) ||
++      authoritative.out_trade_no !== order.out_trade_no) {
++    return res.status(502).json({ error: "wechat query mismatch" });
++  }
++  if (authoritative.trade_state === "SUCCESS") {
++    store.markPaid(order.out_trade_no, authoritative.transaction_id);
++  }
++  const tradeStatus = authoritative.trade_state === "SUCCESS"
++    ? "TRADE_SUCCESS"
++    : (authoritative.trade_state === "CLOSED" || authoritative.trade_state === "REVOKED"
++      ? "TRADE_CLOSED"
++      : "WAIT_BUYER_PAY");
++  const result = {
++    pid: order.pid,
+     out_trade_no: order.out_trade_no,
+-    status: order.status,
+-    amount_yuan: order.amount_yuan,
++    trade_no: authoritative.transaction_id || "",
++    trade_status: tradeStatus,
++    type: order.pay_type,
++    money: order.amount_yuan,
+     name: order.name,
+-    wechat_txn_id: order.wechat_txn_id,
+-    created_at: order.created_at,
+-    paid_at: order.paid_at,
+-  });
++    paid_at: authoritative.success_time || "",
++  };
++  result.sign = epaySign(result, merchant.key);
++  result.sign_type = "MD5";
++  res.json(result);
+ });
+ 
++// Payment-page polling exposes only the local pending/paid display state. It
++// is not the authenticated merchant reconciliation endpoint.
++app.get("/api/status/:outTradeNo", (req, res) => {
++  const order = store.get(req.params.outTradeNo);
++  if (!order) return res.status(404).json({ error: "order not found" });
++  const merchant = config.merchants.resolve(order.pid);
++  if (!merchant || merchant.name === "henukit") {
++    return res.status(404).json({ error: "order not found" });
++  }
++  res.json({ status: order.status });
++});
++
+ // ── /api/notify/wechat — GET support (for testing) ─────────────
+ 
+ app.get("/api/notify/wechat", (req, res) => {
+@@ -383,7 +456,7 @@
+ 
+   function checkStatus() {
+     attempts++;
+-    fetch("/api/query/${order.out_trade_no}")
++    fetch("/api/status/${order.out_trade_no}")
+       .then(r => r.json())
+       .then(data => {
+         if (data.status === "paid") {
+@@ -421,10 +494,14 @@
+ 
+ // ── Start server ───────────────────────────────────────────────
+ 
+-app.listen(config.port, config.host, () => {
+-  console.log(`EPay Gateway running on http://${config.host}:${config.port}`);
+-  console.log(`  Site domain: ${config.siteDomain}`);
+-  console.log(`  EPay PID:    ${config.epayPid}`);
+-  console.log(`  WeChat Mch:  ${config.wechatMchId}`);
+-  console.log(`  DB:          ${config.dbPath}`);
+-});
++if (require.main === module) {
++  app.listen(config.port, config.host, () => {
++    console.log(`EPay Gateway running on http://${config.host}:${config.port}`);
++    console.log(`  Site domain: ${config.siteDomain}`);
++    console.log(`  EPay PID:    ${config.epayPid}`);
++    console.log(`  WeChat Mch:  ${config.wechatMchId}`);
++    console.log(`  DB:          ${config.dbPath}`);
++  });
++}
++
++module.exports = { app, store };
+diff --git a/test/query-outbox.test.js b/test/query-outbox.test.js
+new file mode 100644
+--- /dev/null
++++ b/test/query-outbox.test.js
+@@ -0,0 +1,45 @@
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const os = require("node:os");
++const path = require("node:path");
++const test = require("node:test");
++const { OrderStore } = require("../lib/db");
++
++test("failed downstream notifications survive restart and become retryable", () => {
++  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epay-outbox-"));
++  const file = path.join(directory, "orders.json");
++  const store = new OrderStore(file);
++  store.create({
++    out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
++    pid: "2001",
++    pay_type: "wxpay",
++    amount_yuan: "9.90",
++    amount_cents: 990,
++    name: "HENU Kit lifetime membership",
++    notify_url: "https://henukit.cn/api/v1/payment-providers/easypay/notifications",
++    return_url: "https://henukit.cn/account/membership",
++  });
++  store.markPaid("HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234", "42000000000000000001");
++  store.recordNotifyAttempt("HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234", false, "HTTP 503");
++
++  const restarted = new OrderStore(file);
++  const order = restarted.get("HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234");
++  assert.equal(order.notify_state, "retry");
++  assert.equal(order.notify_attempts, 1);
++  assert.equal(order.last_notify_error, "HTTP 503");
++  order.next_notify_at = "2020-01-01T00:00:00.000Z";
++  restarted._save();
++  assert.equal(restarted.dueNotifications(new Date("2026-07-30T00:00:00Z")).length, 1);
++  restarted.recordNotifyAttempt(order.out_trade_no, true);
++  assert.equal(restarted.dueNotifications(new Date("2030-01-01T00:00:00Z")).length, 0);
++  fs.rmSync(directory, { recursive: true, force: true });
++});
++
++test("order store persists with owner-only permissions", () => {
++  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epay-mode-"));
++  const file = path.join(directory, "orders.json");
++  const store = new OrderStore(file);
++  store.create({ out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234" });
++  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
++  fs.rmSync(directory, { recursive: true, force: true });
++});
+diff --git a/test/wechat-query.test.js b/test/wechat-query.test.js
+new file mode 100644
+--- /dev/null
++++ b/test/wechat-query.test.js
+@@ -0,0 +1,45 @@
++const assert = require("node:assert/strict");
++const crypto = require("node:crypto");
++const http = require("node:http");
++const test = require("node:test");
++const { WeChatPayClient } = require("../lib/wechat");
++
++test("merchant-order query uses an authenticated WeChat GET without a body", async () => {
++  const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
++  const server = http.createServer((request, response) => {
++    assert.equal(
++      request.url,
++      "/v3/pay/transactions/out-trade-no/HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234?mchid=1900000109"
++    );
++    assert.equal(request.method, "GET");
++    assert.match(request.headers.authorization, /^WECHATPAY2-SHA256-RSA2048 /);
++    let body = "";
++    request.on("data", (chunk) => { body += chunk; });
++    request.on("end", () => {
++      assert.equal(body, "");
++      response.setHeader("Content-Type", "application/json");
++      response.end(JSON.stringify({
++        out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
++        transaction_id: "42000000000000000001",
++        trade_state: "SUCCESS",
++        amount: { total: 990, currency: "CNY" },
++      }));
++    });
++  });
++  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
++  try {
++    const address = server.address();
++    const client = new WeChatPayClient({
++      wechatAppId: "wx-test",
++      wechatMchId: "1900000109",
++      wechatSerialNo: "serial-test",
++      wechatPrivateKey: privateKey.export({ type: "pkcs8", format: "pem" }),
++      wechatApiBase: `http://127.0.0.1:${address.port}`,
++    });
++    const order = await client.queryOrder("HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234");
++    assert.equal(order.trade_state, "SUCCESS");
++    assert.equal(order.amount.total, 990);
++  } finally {
++    await new Promise((resolve) => server.close(resolve));
++  }
++});
+diff --git a/test/query-route.test.js b/test/query-route.test.js
+new file mode 100644
+--- /dev/null
++++ b/test/query-route.test.js
+@@ -0,0 +1,67 @@
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const os = require("node:os");
++const path = require("node:path");
++const test = require("node:test");
++
++const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epay-query-route-"));
++process.env.EPAY_DB_PATH = path.join(directory, "orders.json");
++process.env.EPAY_PID = "1001";
++process.env.EPAY_KEY = "metaview-test-secret";
++process.env.HENUKIT_EPAY_PID = "2001";
++process.env.HENUKIT_EPAY_KEY = "henukit-test-secret";
++process.env.HENUKIT_EPAY_ENABLED = "1";
++process.env.WECHAT_MCHID = "1900000109";
++process.env.WECHAT_APPID = "wx-henukit-test";
++
++const { WeChatPayClient } = require("../lib/wechat");
++WeChatPayClient.prototype.queryOrder = async (outTradeNo) => ({
++  mchid: "1900000109",
++  appid: "wx-henukit-test",
++  out_trade_no: outTradeNo,
++  transaction_id: "42000000000000000001",
++  trade_state: "SUCCESS",
++  success_time: "2026-07-30T13:43:08Z",
++  amount: { total: 990, currency: "CNY" },
++});
++const { sign, verify } = require("../lib/epay");
++const { app, store } = require("../server");
++
++test("authoritative query returns once and only enqueues downstream notification", async () => {
++  const orderID = "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234";
++  store.create({
++    out_trade_no: orderID,
++    pid: "2001",
++    pay_type: "wxpay",
++    amount_yuan: "9.90",
++    amount_cents: 990,
++    name: "HENU Kit lifetime membership",
++    notify_url: "https://henukit.cn/api/v1/payment-providers/easypay/notifications",
++    return_url: "https://henukit.cn/account/membership",
++  });
++  const server = app.listen(0, "127.0.0.1");
++  await new Promise((resolve) => server.once("listening", resolve));
++  try {
++    const params = { pid: "2001", out_trade_no: orderID };
++    params.sign = sign(params, "henukit-test-secret");
++    params.sign_type = "MD5";
++    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/query.php`, {
++      method: "POST",
++      headers: { "Content-Type": "application/x-www-form-urlencoded" },
++      body: new URLSearchParams(params),
++    });
++    assert.equal(response.status, 200);
++    const result = await response.json();
++    assert.equal(result.trade_status, "TRADE_SUCCESS");
++    assert.equal(verify(result, "henukit-test-secret"), true);
++    assert.equal(store.get(orderID).notify_state, "pending");
++    assert.equal(store.dueNotifications(new Date("2030-01-01T00:00:00Z")).length, 1);
++    const browserStatus = await fetch(`http://127.0.0.1:${server.address().port}/api/status/${orderID}`);
++    assert.equal(browserStatus.status, 404);
++    const browserCheckout = await fetch(`http://127.0.0.1:${server.address().port}/pay/${orderID}`);
++    assert.equal(browserCheckout.status, 404);
++  } finally {
++    await new Promise((resolve) => server.close(resolve));
++    fs.rmSync(directory, { recursive: true, force: true });
++  }
++});

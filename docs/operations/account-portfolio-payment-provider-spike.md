@@ -1,8 +1,10 @@
 # Account Portfolio Payment Provider Spike
 
-Status: Provider remains disabled. This document records the read-only
-production evidence collected for #174 on 2026-07-30 and the HENU Kit order
-namespace decision. It does not authorize a real payment.
+Status: the existing EasyPay compatibility route is selected and implemented
+behind an explicit disabled-by-default gate. This document records the
+read-only production evidence collected for #174 on 2026-07-30, the HENU Kit
+order namespace decision, and the implementation evidence. It does not
+authorize a real payment.
 
 Evidence date: 2026-07-30. The "EasyPay" implementation is not an external
 supplier product with a separate published protocol. It is the server-local
@@ -70,7 +72,7 @@ Documentation versions observed on 2026-07-30: transaction-id query updated
 2025-02-20, merchant-order query updated 2024-12-27, signature verification
 updated 2024-11-29, and refund development guidance updated 2026-06-09.
 
-## Route comparison and recommendation
+## Route decision
 
 | Capability | Existing EasyPay compatibility route | Direct WeChat API v3 route |
 | --- | --- | --- |
@@ -85,13 +87,53 @@ updated 2024-11-29, and refund development guidance updated 2026-06-09.
 | Domain boundary | MetaView works; HENU callback is HTTP 404 | HENU ingress and callback route still required |
 | Key custody | Server-local root files and tenant secret | Dedicated adapter-only secret mount and rotation |
 
-Recommendation: do not enable the existing compatibility gateway as the HENU
-financial source of truth. Prefer a direct WeChat API v3 Account Portfolio
-adapter because the current gateway already calls WeChat and the extra
-EasyPay/JSON/forwarding layer adds another reconciliation boundary. Reusing the
-gateway is acceptable only after it gains authoritative query, close, refund,
-durable notification retry, replay defense, key rotation, and database-backed
-financial facts. Both routes remain blocked from production payment today.
+The product owner selected the existing EasyPay compatibility route. Account
+Portfolio therefore implements a dedicated `easypay` Provider and does not
+implement a direct WeChat adapter. The Provider remains disabled until the
+versioned gateway patch, Account Portfolio service, and public ingress are
+released together.
+
+## Implemented production slice
+
+The Account Portfolio `easypay` Provider now:
+
+- signs create and query requests with the independent HENU tenant key;
+- accepts only the fixed ¥9.90 lifetime product and `HNK` merchant order
+  namespace;
+- verifies the tenant PID, MD5 signature, amount, payment status, merchant
+  prefix, and transaction identity on callbacks;
+- queries the gateway before applying a callback;
+- reconciles pending orders through the signed merchant-order query when the
+  owner next lists membership orders;
+- grants the lifetime entitlement, membership event, and notification in the
+  existing single database transaction, with duplicate and concurrent
+  callbacks remaining idempotent.
+
+The Provider is constructed only when
+`ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=1`; absent or incomplete configuration
+continues to return the explicit Provider-unavailable behavior.
+
+Because the gateway source is server-local, the deployable source delta is
+versioned at
+`infra/epay-gateway/patches/0001-henukit-query-and-notify-outbox.patch`.
+It adds tenant-authenticated query backed by WeChat's merchant-order query,
+cross-tenant rejection, atomic owner-only JSON persistence, a durable
+downstream notification retry state, and bounded exponential retry.
+
+## Remaining release blockers
+
+- Public Nginx ingress must route the exact HENU notification path to Account
+  Portfolio; it currently returns 404 in production.
+- Account Portfolio and migration `000006` have not been deployed.
+- The current OpenAPI contract has no operator close/refund command and the
+  selected gateway has no close/refund endpoint. Those operations require a
+  separate contract ticket rather than an uncallable adapter method.
+- The owner purchase API intentionally remains outside Portal Gateway under
+  ADR-0017, and the public order schema has no private-merchant-safe checkout
+  handle. A purchase-surface ticket must define that boundary before users can
+  open the QR checkout without exposing the merchant order number.
+- Platform-certificate rotation and timestamp/replay hardening at the WeChat
+  callback boundary remain gateway release gates.
 
 ## Merchant capability and domain boundary
 

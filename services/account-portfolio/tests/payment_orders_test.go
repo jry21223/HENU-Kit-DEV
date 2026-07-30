@@ -365,6 +365,54 @@ func TestVerifiedFakePaymentLifecycleIsIdempotentOrderedAndRefundable(t *testing
 	}
 }
 
+func TestListingMembershipOrdersReconcilesALostPaidCallbackExactlyOnce(t *testing.T) {
+	provider := accountportfolio.NewFakePaymentProvider()
+	server, pool := newAccountPortfolioServerWithPaymentProvider(t, provider)
+	defer server.Close()
+	defer pool.Close()
+
+	const ownerID = "a2323232-2323-4232-8232-232323232323"
+	created := createFakeMembershipOrder(t, server.URL, ownerID, "nonce-reconcile-create", "idem_reconcile_create")
+	externalOrderID := fakeExternalOrderIDForLocalOrder(t, pool, provider, created.ID)
+	if _, err := provider.Transition(externalOrderID, accountportfolio.MembershipOrderPaid); err != nil {
+		t.Fatal(err)
+	}
+
+	statuses := make(chan int, 8)
+	var group sync.WaitGroup
+	for index := range 8 {
+		group.Add(1)
+		go func(index int) {
+			defer group.Done()
+			response := sendOwnerJSON(t, server.URL, http.MethodGet, ownerID, "/api/v1/account/membership-orders", "nonce-reconcile-list-"+strconv.Itoa(index), "", "")
+			statuses <- response.StatusCode
+			_ = responseText(t, response)
+		}(index)
+	}
+	group.Wait()
+	close(statuses)
+	for status := range statuses {
+		if status != http.StatusOK {
+			t.Fatalf("concurrent reconciled order list status = %d, want 200", status)
+		}
+	}
+
+	var plan string
+	var events, notifications, facts int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT
+			(SELECT plan FROM account_portfolio_memberships WHERE user_id=$1),
+			(SELECT count(*) FROM account_portfolio_membership_events WHERE user_id=$1),
+			(SELECT count(*) FROM account_portfolio_notifications WHERE user_id=$1 AND kind='membership_lifetime_granted'),
+			(SELECT count(*) FROM account_portfolio_payment_facts WHERE order_id=$2 AND status='paid')
+	`, ownerID, created.ID).Scan(&plan, &events, &notifications, &facts); err != nil {
+		t.Fatal(err)
+	}
+	if plan != "lifetime" || events != 1 || notifications != 1 || facts != 1 {
+		t.Fatalf("reconciled payment facts plan/events/notifications/facts = %s/%d/%d/%d, want lifetime/1/1/1", plan, events, notifications, facts)
+	}
+}
+
 func TestPaymentProviderFailuresAreAuditedWithoutRawSignaturesOrSecrets(t *testing.T) {
 	provider := accountportfolio.NewFakePaymentProvider()
 	server, pool := newAccountPortfolioServerWithPaymentProvider(t, provider)

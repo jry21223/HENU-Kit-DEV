@@ -1495,6 +1495,10 @@ func (h *service) membershipOrders(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if failure := h.reconcilePendingMembershipOrders(r.Context(), userID); failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
 	data := struct {
 		Orders []membershipOrderView `json:"orders"`
 	}{Orders: make([]membershipOrderView, 0)}

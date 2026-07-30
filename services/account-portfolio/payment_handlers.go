@@ -150,6 +150,84 @@ func (h *service) paymentProviderNotification(w http.ResponseWriter, r *http.Req
 	writeData(w, r, http.StatusOK, map[string]any{"accepted": true, "outcome": outcome, "order": order})
 }
 
+// reconcilePendingMembershipOrders recovers a lost callback through the
+// Provider's signed merchant-order query when the owner next reads their
+// orders. The query-derived fact uses a deterministic event id, so repeated or
+// concurrent reads cannot grant the entitlement twice.
+func (h *service) reconcilePendingMembershipOrders(ctx context.Context, userID string) *commandFailure {
+	provider := h.paymentProvider
+	if provider == nil {
+		return nil
+	}
+	providerName := provider.Name()
+	if !validPaymentProviderName(providerName) {
+		return dependencyFailure("Membership payment reconciliation is unavailable")
+	}
+	rows, err := h.database.Query(ctx, `
+		SELECT o.provider_order_id, i.merchant_order_id::text
+		FROM account_portfolio_membership_orders o
+		JOIN account_portfolio_payment_order_intents i ON i.order_id=o.id
+		WHERE o.user_id=$1 AND o.provider=$2 AND i.provider=$2
+		  AND o.status='pending_payment' AND o.provider_order_id IS NOT NULL
+		ORDER BY o.created_at ASC, o.id ASC
+		LIMIT 100
+	`, userID, providerName)
+	if err != nil {
+		return dependencyFailure("Account Portfolio payment reconciliation is unavailable")
+	}
+	type candidate struct {
+		externalOrderID string
+		merchantOrderID string
+	}
+	candidates := make([]candidate, 0)
+	for rows.Next() {
+		var value candidate
+		if err := rows.Scan(&value.externalOrderID, &value.merchantOrderID); err != nil {
+			rows.Close()
+			return dependencyFailure("Account Portfolio payment reconciliation is unavailable")
+		}
+		candidates = append(candidates, value)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return dependencyFailure("Account Portfolio payment reconciliation is unavailable")
+	}
+	rows.Close()
+
+	for _, value := range candidates {
+		providerOrder, err := provider.QueryOrder(ctx, value.externalOrderID)
+		if err != nil {
+			return dependencyFailure("Membership payment verification is unavailable")
+		}
+		if providerOrder.Status == MembershipOrderPendingPayment {
+			continue
+		}
+		notification := VerifiedPaymentNotification{
+			EventID:         "query:" + providerName + ":" + value.merchantOrderID + ":" + string(providerOrder.Status),
+			ExternalOrderID: providerOrder.ExternalOrderID,
+			MerchantOrderID: providerOrder.MerchantOrderID,
+			AmountCents:     providerOrder.AmountCents,
+			Currency:        providerOrder.Currency,
+			Plan:            providerOrder.Plan,
+			Status:          providerOrder.Status,
+			Sequence:        1,
+			OccurredAt:      h.now().UTC(),
+		}
+		if value.merchantOrderID != notification.MerchantOrderID ||
+			!validVerifiedPaymentNotification(notification) ||
+			!validProviderOrderCorrelation(notification, providerOrder) {
+			return dependencyFailure("Membership payment verification is unavailable")
+		}
+		// Query retries may observe different local clocks. Digest the stable
+		// Provider-derived event id so concurrent reconciliation treats the
+		// same authoritative state as a replay rather than payload reuse.
+		if _, _, failure := h.applyVerifiedPaymentNotification(ctx, providerName, notification, paymentDigest([]byte(notification.EventID))); failure != nil {
+			return failure
+		}
+	}
+	return nil
+}
+
 // persistMembershipOrderIntent commits the local order and its stable merchant
 // id before a Provider call. This is the durability boundary: all retries use
 // the same merchant id, so Provider creation remains idempotent after a crash.
