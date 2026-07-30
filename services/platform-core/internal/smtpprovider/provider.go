@@ -23,6 +23,7 @@ import (
 
 var idempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9:._-]{8,200}$`)
 var auditIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
+var messageIDDomainLabelPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
 
 type Mail struct {
 	Recipient string
@@ -44,6 +45,7 @@ type Config struct {
 	Logger          *slog.Logger
 	ProviderID      string
 	KeyID           string
+	MessageIDDomain string
 }
 
 type Provider struct {
@@ -53,14 +55,15 @@ type Provider struct {
 	logger          *slog.Logger
 	providerID      string
 	keyID           string
+	messageIDDomain string
 	readAccepted    func(string) ([]byte, error)
 	persistAccepted func(string, string, []byte) error
 	mu              sync.Mutex
 }
 
 func New(config Config) (*Provider, error) {
-	if len(config.Token) < 32 || config.LedgerDirectory == "" || config.Mailer == nil || !auditIdentifierPattern.MatchString(config.ProviderID) || !auditIdentifierPattern.MatchString(config.KeyID) {
-		return nil, errors.New("provider token, ledger directory, mailer, provider ID, and key ID are required")
+	if len(config.Token) < 32 || config.LedgerDirectory == "" || config.Mailer == nil || !auditIdentifierPattern.MatchString(config.ProviderID) || !auditIdentifierPattern.MatchString(config.KeyID) || !validMessageIDDomain(config.MessageIDDomain) {
+		return nil, errors.New("provider token, ledger directory, mailer, provider ID, key ID, and message ID domain are required")
 	}
 	if config.Logger == nil {
 		config.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -74,6 +77,7 @@ func New(config Config) (*Provider, error) {
 	return &Provider{
 		token: config.Token, ledger: config.LedgerDirectory, mailer: config.Mailer,
 		logger: config.Logger, providerID: config.ProviderID, keyID: config.KeyID,
+		messageIDDomain: config.MessageIDDomain,
 		readAccepted:    os.ReadFile,
 		persistAccepted: persistAcceptedMarker,
 	}, nil
@@ -138,7 +142,8 @@ func (provider *Provider) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	ledgerKey := hex.EncodeToString(digest[:])
 	acceptedPath := filepath.Join(provider.ledger, ledgerKey+".accepted.json")
 	pendingPath := filepath.Join(provider.ledger, ledgerKey+".pending")
-	messageID := "henukit-" + ledgerKey[:32] + "@superhuazai.me"
+	messageIDPrefix := "henukit-" + ledgerKey[:32] + "@"
+	messageID := messageIDPrefix + provider.messageIDDomain
 
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
@@ -153,7 +158,7 @@ func (provider *Provider) ServeHTTP(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	if pending, err := os.ReadFile(pendingPath); err == nil {
-		if acceptedMarker(pending, messageID) {
+		if acceptedMarker(pending, messageIDPrefix) {
 			_ = os.Rename(pendingPath, acceptedPath)
 			provider.audit(requestID, "replayed", "NONE", attempt, startedAt)
 			writer.Header().Set("Content-Type", "application/json")
@@ -240,11 +245,30 @@ func syncDirectory(path string) error {
 	return directory.Sync()
 }
 
-func acceptedMarker(marker []byte, messageID string) bool {
+func acceptedMarker(marker []byte, messageIDPrefix string) bool {
 	var accepted struct {
 		MessageID string `json:"message_id"`
 	}
-	return json.Unmarshal(marker, &accepted) == nil && accepted.MessageID == messageID
+	if json.Unmarshal(marker, &accepted) != nil || !strings.HasPrefix(accepted.MessageID, messageIDPrefix) {
+		return false
+	}
+	return validMessageIDDomain(strings.TrimPrefix(accepted.MessageID, messageIDPrefix))
+}
+
+func validMessageIDDomain(domain string) bool {
+	if len(domain) == 0 || len(domain) > 253 {
+		return false
+	}
+	labels := strings.Split(domain, ".")
+	if len(labels) < 2 {
+		return false
+	}
+	for _, label := range labels {
+		if !messageIDDomainLabelPattern.MatchString(label) {
+			return false
+		}
+	}
+	return true
 }
 
 func (provider *Provider) audit(requestID, result, errorCode string, attempt int, startedAt time.Time) {

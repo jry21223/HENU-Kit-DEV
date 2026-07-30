@@ -92,6 +92,7 @@ services:
       PLATFORM_CORE_SMTP_USERNAME: ${PLATFORM_CORE_SMTP_USERNAME:-}
       PLATFORM_CORE_SMTP_PASSWORD: ${PLATFORM_CORE_SMTP_PASSWORD:-}
       PLATFORM_CORE_SMTP_FROM: ${PLATFORM_CORE_SMTP_FROM:-noreply@notify.superhuazai.me}
+      PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN: ${PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN:-superhuazai.me}
     volumes:
       - henukit_smtp_ledger:/var/lib/henukit-smtp-provider
     # Do NOT publish 18081 to the host in production.

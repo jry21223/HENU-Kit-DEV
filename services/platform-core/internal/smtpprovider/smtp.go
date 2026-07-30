@@ -10,6 +10,7 @@ import (
 	"html"
 	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -24,7 +25,8 @@ type SMTPMailer struct {
 
 func NewSMTPMailer(address, username, password, from string, timeout time.Duration) (*SMTPMailer, error) {
 	host, port, err := net.SplitHostPort(address)
-	if err != nil || host == "" || username == "" || password == "" || from == "" || timeout <= 0 || strings.ContainsAny(from, "\r\n") {
+	sender, senderErr := mail.ParseAddress(from)
+	if err != nil || host == "" || username == "" || password == "" || senderErr != nil || sender.Address != from || timeout <= 0 || strings.ContainsAny(from, "\r\n") {
 		return nil, errors.New("SMTP address, credentials, sender, and timeout are required")
 	}
 	// Port 465 is SMTPS (implicit TLS). Port 587/25 typically use STARTTLS.
@@ -116,7 +118,8 @@ func buildVerificationMIME(from string, message Mail, now time.Time) (string, er
 	}
 	var builder strings.Builder
 	builder.Grow(len(plain) + len(htmlBody) + 512)
-	fmt.Fprintf(&builder, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMessage-ID: <%s>\r\nDate: %s\r\n", from, message.Recipient, mime.BEncoding.Encode("UTF-8", verificationSubject), message.MessageID, now.Format(time.RFC1123Z))
+	fromHeader := (&mail.Address{Name: "HENU Kit", Address: from}).String()
+	fmt.Fprintf(&builder, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMessage-ID: <%s>\r\nDate: %s\r\n", fromHeader, message.Recipient, mime.BEncoding.Encode("UTF-8", verificationSubject), message.MessageID, now.Format(time.RFC1123Z))
 	fmt.Fprintf(&builder, "MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", boundary)
 	fmt.Fprintf(&builder, "--%s\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n", boundary, plain)
 	fmt.Fprintf(&builder, "--%s\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n", boundary, htmlBody)

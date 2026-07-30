@@ -39,7 +39,8 @@ func main() {
 		Token:           os.Getenv("PLATFORM_CORE_MAIL_PROVIDER_TOKEN"),
 		LedgerDirectory: env("PLATFORM_CORE_SMTP_LEDGER_DIR", "/var/lib/henukit-smtp-provider"), Mailer: mailer,
 		Logger: logger, ProviderID: env("PLATFORM_CORE_SMTP_PROVIDER_ID", "local-smtp"),
-		KeyID: env("PLATFORM_CORE_MAIL_PROVIDER_KEY_ID", "mail-provider-active"),
+		KeyID:           env("PLATFORM_CORE_MAIL_PROVIDER_KEY_ID", "mail-provider-active"),
+		MessageIDDomain: env("PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN", "superhuazai.me"),
 	})
 	if err != nil {
 		logger.Error("invalid local provider configuration")
