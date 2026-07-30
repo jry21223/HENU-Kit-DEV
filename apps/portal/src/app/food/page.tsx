@@ -152,14 +152,22 @@ export default function FoodHomePage() {
             <div data-enter className="mt-10 border border-ink p-6 md:flex md:items-center md:justify-between">
               <div>
                 <p className="font-mono text-[10px] tracking-[0.3em] text-ink/50">RANK / 全站</p>
-                <p className="mt-2 font-display text-2xl font-bold">必吃美食排行榜</p>
+                <p className="mt-2 font-display text-2xl font-bold">从夯到拉五档排行榜</p>
               </div>
-              <Link
-                href="/food/leaderboard"
-                className="mt-4 inline-block border border-ink px-6 py-3 font-mono text-sm tracking-widest transition-colors hover:bg-ink hover:text-paper md:mt-0"
-              >
-                查看榜单 →
-              </Link>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row md:mt-0">
+                <Link
+                  href="/food/publish"
+                  className="inline-block border border-ink px-6 py-3 text-center font-mono text-sm tracking-widest transition-colors hover:bg-ink hover:text-paper"
+                >
+                  投稿一家好店
+                </Link>
+                <Link
+                  href="/food/leaderboard"
+                  className="inline-block bg-ink px-6 py-3 text-center font-mono text-sm tracking-widest text-paper transition-colors hover:bg-accent"
+                >
+                  查看五档榜 →
+                </Link>
+              </div>
             </div>
           </>
         )}

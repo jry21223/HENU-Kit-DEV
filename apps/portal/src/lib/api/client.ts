@@ -28,6 +28,7 @@ import type {
 	CampusItemListResponse,
   CategoryListResponse,
   ErrorEnvelope,
+  FoodPostDetailResponse,
   FoodPostListResponse,
   FoodVenuesResponse,
   LibraryCoursesResponse,
@@ -391,6 +392,12 @@ export async function fetchFoodVenues(
 export async function fetchFoodPosts(campus?: string): Promise<FoodPostListResponse> {
   const qs = campus ? `?campus=${encodeURIComponent(campus)}` : "";
   return apiFetchRequired<FoodPostListResponse>(`/api/v1/food/posts${qs}`);
+}
+
+export async function fetchFoodPost(id: string): Promise<FoodPostDetailResponse> {
+  return apiFetchRequired<FoodPostDetailResponse>(
+    `/api/v1/food/posts/${encodeURIComponent(id)}`
+  );
 }
 
 // ---- Practice ----
