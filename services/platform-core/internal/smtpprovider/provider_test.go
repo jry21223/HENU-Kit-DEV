@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,10 +20,12 @@ import (
 type captureMailer struct {
 	calls int
 	err   error
+	mails []Mail
 }
 
 func (mailer *captureMailer) Send(_ context.Context, message Mail) error {
 	mailer.calls++
+	mailer.mails = append(mailer.mails, message)
 	if mailer.err != nil {
 		return mailer.err
 	}
@@ -62,6 +65,9 @@ func TestProviderAuthenticatesAndDeduplicatesAcceptedMail(t *testing.T) {
 	if mailer.calls != 1 {
 		t.Fatalf("idempotent provider sent %d messages, want 1", mailer.calls)
 	}
+	if got := mailer.mails[0].MessageID; !strings.HasSuffix(got, "@notify.henukit.cn") {
+		t.Fatalf("message ID = %q, want notify.henukit.cn domain", got)
+	}
 	restarted, err := newTestProvider(ledger, mailer, &logs)
 	if err != nil {
 		t.Fatalf("restart provider: %v", err)
@@ -86,6 +92,50 @@ func TestProviderAuthenticatesAndDeduplicatesAcceptedMail(t *testing.T) {
 		if strings.Contains(logs.String(), secret) {
 			t.Fatalf("audit log leaked %q: %s", secret, logs.String())
 		}
+	}
+}
+
+func TestProviderPromotesAcceptedMarkerAcrossMessageIDDomainRotation(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), "ledger")
+	mailer := &captureMailer{}
+	oldProvider, err := newTestProviderWithDomain(ledger, mailer, &bytes.Buffer{}, "superhuazai.me")
+	if err != nil {
+		t.Fatalf("create old provider: %v", err)
+	}
+	if response := sendValidRequest(oldProvider, "req_rotation_001", 1); response.Code != http.StatusOK || mailer.calls != 1 {
+		t.Fatalf("old provider send = %d calls=%d, want 200/1", response.Code, mailer.calls)
+	}
+
+	accepted, err := filepath.Glob(filepath.Join(ledger, "*.accepted.json"))
+	if err != nil || len(accepted) != 1 {
+		t.Fatalf("accepted markers = %v err=%v, want one", accepted, err)
+	}
+	pending := strings.TrimSuffix(accepted[0], ".accepted.json") + ".pending"
+	if err := os.Rename(accepted[0], pending); err != nil {
+		t.Fatalf("simulate post-send pre-rename crash: %v", err)
+	}
+
+	rotated, err := newTestProviderWithDomain(ledger, mailer, &bytes.Buffer{}, "notify.henukit.cn")
+	if err != nil {
+		t.Fatalf("create rotated provider: %v", err)
+	}
+	replay := sendValidRequest(rotated, "req_rotation_001", 2)
+	if replay.Code != http.StatusOK || mailer.calls != 1 {
+		t.Fatalf("rotated replay = %d calls=%d, want 200/1", replay.Code, mailer.calls)
+	}
+	if !strings.Contains(replay.Body.String(), "@superhuazai.me") {
+		t.Fatalf("rotated replay must preserve accepted provider message ID, got %q", replay.Body.String())
+	}
+}
+
+func TestNewRejectsInvalidMessageIDDomains(t *testing.T) {
+	for _, domain := range []string{"", "a..b", "-notify.henukit.cn", "notify-.henukit.cn", strings.Repeat("a", 64) + ".cn"} {
+		t.Run(domain, func(t *testing.T) {
+			_, err := newTestProviderWithDomain(filepath.Join(t.TempDir(), "ledger"), &captureMailer{}, &bytes.Buffer{}, domain)
+			if err == nil {
+				t.Fatalf("New accepted invalid message ID domain %q", domain)
+			}
+		})
 	}
 }
 
@@ -230,9 +280,14 @@ func TestProviderDoesNotResendWhenAcceptedLedgerIsTemporarilyUnreadable(t *testi
 }
 
 func newTestProvider(ledger string, mailer Mailer, logs *bytes.Buffer) (*Provider, error) {
+	return newTestProviderWithDomain(ledger, mailer, logs, "notify.henukit.cn")
+}
+
+func newTestProviderWithDomain(ledger string, mailer Mailer, logs *bytes.Buffer, domain string) (*Provider, error) {
 	return New(Config{
 		Token: "provider-token-at-least-32-characters", LedgerDirectory: ledger, Mailer: mailer,
 		Logger: slog.New(slog.NewJSONHandler(logs, nil)), ProviderID: "local-smtp", KeyID: "mail-provider-active",
+		MessageIDDomain: domain,
 	})
 }
 

@@ -38,6 +38,7 @@ func TestBuildVerificationMIMEUsesMultipartCurrentBrandAndEscapesHTML(t *testing
 		"Content-Type: text/plain; charset=UTF-8",
 		"Content-Type: text/html; charset=UTF-8",
 		"Subject: =?UTF-8?",
+		`From: "HENU Kit" <noreply@example.com>`,
 		"12&lt;script&gt;3",
 		"#f2f0ea",
 		"#161513",
