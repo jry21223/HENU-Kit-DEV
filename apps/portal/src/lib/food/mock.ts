@@ -3,8 +3,6 @@
  * 字面量数据，SSR/客户端一致；点赞/收藏/评论/发布/编辑/隐藏/删除仅会话内存态，刷新还原。
  */
 
-import { seedImg } from "@/lib/image";
-
 // ---------------------------------------------------------------- 校区
 
 export type CampusKey = "minglun" | "jinming" | "longzihu";
@@ -101,14 +99,14 @@ const INITIAL_POSTS: Post[] = [
       { type: "quote", text: "锐评：微辣约等于外面的中辣，第一次来点微微辣，别硬撑。打分：夯。" },
       { type: "list", items: ["鸡公煲小份 ¥38：加土豆和宽粉是标配", "酸梅汤 ¥4：解辣刚需"] },
     ]),
-  post("ml-03", "minglun", "食堂三楼烤盘饭：看阿姨心情", "排队二十分钟吃饭五分钟，肉量随机。", "虾仁猪心", 96, 21, ["食堂", "烤盘饭", "拉"],
+  post("ml-03", "minglun", "食堂三楼烤盘饭：看阿姨心情", "排队二十分钟吃饭五分钟，肉量随机。", "虾仁猪心", 96, 21, ["食堂", "烤盘饭", "拉完了"],
     { name: "明伦食堂三楼", lat: 34.8180, lng: 114.3548 }, "07-16 12:15",
     [
       { type: "p", text: "烤盘饭窗口永远排长队，但出餐速度其实不慢，问题在于肉量全看阿姨当天手感。" },
       { type: "quote", text: "锐评：同样的价格，周一是烤肉饭，周五是烤土豆饭。打分：拉。" },
       { type: "p", text: "建议错开 12:00–12:30 高峰，11:40 前到基本不排队。" },
     ]),
-  post("ml-04", "minglun", "东门麻辣烫的称重玄学", "同样的菜，每次价格都不一样。", "开封菜研究僧", 78, 18, ["麻辣烫", "东门", "拉"],
+  post("ml-04", "minglun", "东门麻辣烫的称重玄学", "同样的菜，每次价格都不一样。", "开封菜研究僧", 78, 18, ["麻辣烫", "东门", "拉完了"],
     { name: "张亮麻辣烫（东门）", lat: 34.8193, lng: 114.3583 }, "07-15 18:30",
     [
       { type: "p", text: "东门麻辣烫味道过得去，但称重一直是玄学——建议自己先掂量再拿盆。" },
@@ -136,20 +134,20 @@ const INITIAL_POSTS: Post[] = [
       { type: "list", items: ["优质胡辣汤 ¥8", "油馍头 ¥2/份", "茶叶蛋 ¥1.5"] },
       { type: "quote", text: "锐评：早八前来一碗，一上午不饿。打分：夯。" },
     ]),
-  post("jm-03", "jinming", "金明食堂一楼的糖醋里脊去哪了", "换了厨师之后一落千丈。", "你", 64, 12, ["食堂", "拉"],
+  post("jm-03", "jinming", "金明食堂一楼的糖醋里脊去哪了", "换了厨师之后一落千丈。", "你", 64, 12, ["食堂", "拉完了"],
     { name: "金明食堂一楼", lat: 34.8215, lng: 114.3088 }, "07-16 12:02",
     [
       { type: "p", text: "上学期的糖醋里脊是一楼招牌，这学期换了厨师，外壳软塌、酱汁发齁。" },
       { type: "quote", text: "锐评：从夯到拉只需要换一个厨师。打分：拉。" },
       { type: "p", text: "目前一楼能打的只剩早餐窗口。" },
     ], true),
-  post("jm-04", "jinming", "东门黄焖鸡：稳定的及格线", "不知道吃什么时的保底选项。", "随缘干饭人", 88, 30, ["黄焖鸡", "东门", "中"],
+  post("jm-04", "jinming", "东门黄焖鸡：稳定的及格线", "不知道吃什么时的保底选项。", "随缘干饭人", 88, 30, ["黄焖鸡", "东门", "NPC"],
     { name: "杨铭宇黄焖鸡（东门）", lat: 34.8233, lng: 114.3130 }, "07-15 18:44",
     [
       { type: "p", text: "连锁黄焖鸡，味道稳定没有惊喜也没有雷，小份 ¥18 加米饭管饱。" },
       { type: "quote", text: "锐评：不难吃，但也不值得专门跑一趟。打分：中。" },
     ]),
-  post("jm-05", "jinming", "图书馆咖啡车：贵但离不开", "¥15 的美式，买的是不回宿舍的决心。", "DDL 战士", 121, 47, ["咖啡", "图书馆", "中"],
+  post("jm-05", "jinming", "图书馆咖啡车：贵但离不开", "¥15 的美式，买的是不回宿舍的决心。", "DDL 战士", 121, 47, ["咖啡", "图书馆", "NPC"],
     { name: "咖啡车（图书馆西）", lat: 34.8220, lng: 114.3070 }, "07-14 14:30",
     [
       { type: "p", text: "图书馆西侧的咖啡车，美式 ¥15 比商业街贵三块，但胜在近，下楼三十秒。" },
@@ -169,19 +167,19 @@ const INITIAL_POSTS: Post[] = [
       { type: "p", text: "西区食堂二楼最里面的烩面窗口，¥10 一碗，汤头奶白，海带丝和千张丝给得足。" },
       { type: "quote", text: "锐评：比校外 ¥18 的强。打分：夯。" },
     ], true),
-  post("lz-03", "longzihu", "东门炸鸡排：油是昨天剩下的吗", "吃一次拉一次，怕了。", "肠胃科常客", 52, 9, ["炸鸡", "东门", "拉"],
+  post("lz-03", "longzihu", "东门炸鸡排：油是昨天剩下的吗", "吃一次拉一次，怕了。", "肠胃科常客", 52, 9, ["炸鸡", "东门", "拉完了"],
     { name: "豪大鸡排（东门）", lat: 34.8168, lng: 113.8322 }, "07-15 19:40",
     [
       { type: "p", text: "东门炸鸡排闻着香，但油品明显不行，宿舍三个人吃完两个人拉肚子。" },
       { type: "quote", text: "锐评：从夯到拉，只说人话——这家是拉中拉。打分：拉。" },
     ]),
-  post("lz-04", "longzihu", "地铁口煎饼果子：加两个蛋的奢侈", "通勤路上的固定节目。", "早八在逃人员", 99, 34, ["早餐", "地铁口", "中"],
+  post("lz-04", "longzihu", "地铁口煎饼果子：加两个蛋的奢侈", "通勤路上的固定节目。", "早八在逃人员", 99, 34, ["早餐", "地铁口", "顶级"],
     { name: "煎饼果子（地铁口 B 口）", lat: 34.8190, lng: 113.8310 }, "07-14 08:15",
     [
       { type: "p", text: "地铁口的煎饼摊，标准 ¥7 加蛋 ¥1.5，薄脆是现炸的，高峰期排十个人。" },
       { type: "quote", text: "锐评：稳定发挥的早餐，打分：中偏夯。" },
     ]),
-  post("lz-05", "longzihu", "北苑螺蛳粉：整层楼都知道你吃了", "味道两极，爱的人天天来。", "你", 113, 41, ["螺蛳粉", "北苑", "中"],
+  post("lz-05", "longzihu", "北苑螺蛳粉：整层楼都知道你吃了", "味道两极，爱的人天天来。", "你", 113, 41, ["螺蛳粉", "北苑", "NPC"],
     { name: "柳州螺蛳粉（北苑）", lat: 34.8202, lng: 113.8288 }, "07-13 18:05",
     [
       { type: "p", text: "北苑螺蛳粉，酸笋味道穿透力极强，堂食 ¥13，加鸭脚 ¥4。" },
@@ -199,21 +197,35 @@ const INITIAL_COMMENTS: Comment[] = [  { id: "c1", postId: "ml-01", author: "干
   { id: "c8", postId: "lz-03", author: "肠胃科常客", time: "07-15 21:12", text: "别抱侥幸心理，我已经替大家试过了。" },
 ];
 
-// seed 图注入（确定性 picsum 外链；离线/失败时 Img 组件回退图纸占位块）
-INITIAL_POSTS.find((p) => p.id === "ml-01")!.images = [seedImg("henu-laowanmian", 800, 500)];
+// 与“河大新生手册”参考站点共用的真实餐食氛围图。它们是菜品参考图，
+// 不冒充具体商家实拍；离线/失败时 Img 组件回退图纸占位块。
+const FOOD_REFERENCE_IMAGES = {
+  dumplings:
+    "https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=1200&q=82",
+  colorfulDish:
+    "https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=1200&q=82",
+  noodles:
+    "https://images.unsplash.com/photo-1559314809-0d155014e29e?auto=format&fit=crop&w=1200&q=82",
+  hotBowl:
+    "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=1200&q=82",
+  sharedMeal:
+    "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=82",
+} as const;
+
+INITIAL_POSTS.find((p) => p.id === "ml-01")!.images = [FOOD_REFERENCE_IMAGES.hotBowl];
 INITIAL_POSTS.find((p) => p.id === "ml-01")!.blocks.splice(2, 0, {
   type: "img",
-  src: seedImg("henu-noodle-soup", 800, 450),
+  src: FOOD_REFERENCE_IMAGES.noodles,
 });
-INITIAL_POSTS.find((p) => p.id === "ml-02")!.images = [seedImg("henu-jigongbao", 800, 500)];
-INITIAL_POSTS.find((p) => p.id === "jm-01")!.images = [seedImg("henu-lemontea", 800, 500)];
-INITIAL_POSTS.find((p) => p.id === "jm-02")!.images = [seedImg("henu-hulatang", 800, 500)];
+INITIAL_POSTS.find((p) => p.id === "ml-02")!.images = [FOOD_REFERENCE_IMAGES.sharedMeal];
+INITIAL_POSTS.find((p) => p.id === "jm-01")!.images = [FOOD_REFERENCE_IMAGES.colorfulDish];
+INITIAL_POSTS.find((p) => p.id === "jm-02")!.images = [FOOD_REFERENCE_IMAGES.hotBowl];
 INITIAL_POSTS.find((p) => p.id === "jm-02")!.blocks.splice(1, 0, {
   type: "img",
-  src: seedImg("henu-breakfast", 800, 450),
+  src: FOOD_REFERENCE_IMAGES.colorfulDish,
 });
-INITIAL_POSTS.find((p) => p.id === "lz-01")!.images = [seedImg("henu-tangbao", 800, 500)];
-INITIAL_POSTS.find((p) => p.id === "lz-02")!.images = [seedImg("henu-huimian", 800, 500)];
+INITIAL_POSTS.find((p) => p.id === "lz-01")!.images = [FOOD_REFERENCE_IMAGES.dumplings];
+INITIAL_POSTS.find((p) => p.id === "lz-02")!.images = [FOOD_REFERENCE_IMAGES.noodles];
 
 // ---------------------------------------------------------------- foodStore
 
