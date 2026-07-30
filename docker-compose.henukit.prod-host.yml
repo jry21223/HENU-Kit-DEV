@@ -1,4 +1,4 @@
-# Host-side production overlay for superhuazai.me (115.191.22.22)
+# Host-side production overlay for henukit.cn (8.146.200.82, SSH 22222).
 # - bind DB/redis/admin ports to loopback only
 # - edge on 127.0.0.1:8088 for host nginx reverse proxy
 services:
