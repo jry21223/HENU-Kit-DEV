@@ -20,6 +20,7 @@ const (
 	lifetimeMembershipCurrency    = "CNY"
 	lifetimeMembershipPlan        = "lifetime"
 	membershipMerchantOrderPrefix = "HNK"
+	membershipRefundOrderPrefix   = "HNR"
 	membershipMerchantOrderLength = 32
 )
 
@@ -39,6 +40,17 @@ func newMembershipMerchantOrderID() (string, error) {
 		return "", errors.New("generated HENU Kit merchant order id is invalid")
 	}
 	return merchantOrderID, nil
+}
+
+// membershipRefundOrderID derives the durable refund correlation for one
+// merchant order. It is deterministic, so a retried refund reuses it and the
+// provider settles on a single refund, and it carries its own namespace so a
+// refund number can never collide with an order number.
+func membershipRefundOrderID(merchantOrderID string) string {
+	if !validMembershipMerchantOrderID(merchantOrderID) {
+		return ""
+	}
+	return membershipRefundOrderPrefix + merchantOrderID[len(membershipMerchantOrderPrefix):]
 }
 
 func validMembershipMerchantOrderID(value string) bool {
@@ -120,6 +132,15 @@ type VerifiedPaymentNotification struct {
 
 type PaymentRefund struct {
 	Notification VerifiedPaymentNotification
+	// RefundID is the provider's durable refund correlation. It is derived
+	// deterministically from the merchant order, so retrying a refund reuses it
+	// and the provider settles on one refund instead of creating another.
+	RefundID string
+	// Settled reports that the provider confirmed the refund reached a terminal
+	// successful state. A submitted but still-processing refund is not settled,
+	// and must never revoke an entitlement: the refund is only a fact once the
+	// provider says it completed.
+	Settled bool
 }
 
 func validProviderNotificationStatus(status MembershipOrderStatus) bool {
@@ -275,17 +296,21 @@ func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) 
 	p.nextEvent++
 	order.Status = MembershipOrderRefunded
 	p.orders[externalOrderID] = order
-	return PaymentRefund{Notification: VerifiedPaymentNotification{
-		EventID:         fmt.Sprintf("fake-refund-%d", p.nextEvent),
-		ExternalOrderID: order.ExternalOrderID,
-		MerchantOrderID: order.MerchantOrderID,
-		AmountCents:     order.AmountCents,
-		Currency:        order.Currency,
-		Plan:            order.Plan,
-		Status:          MembershipOrderRefunded,
-		Sequence:        int64(p.nextEvent),
-		OccurredAt:      time.Now().UTC(),
-	}}, nil
+	return PaymentRefund{
+		Notification: VerifiedPaymentNotification{
+			EventID:         fmt.Sprintf("fake-refund-%d", p.nextEvent),
+			ExternalOrderID: order.ExternalOrderID,
+			MerchantOrderID: order.MerchantOrderID,
+			AmountCents:     order.AmountCents,
+			Currency:        order.Currency,
+			Plan:            order.Plan,
+			Status:          MembershipOrderRefunded,
+			Sequence:        int64(p.nextEvent),
+			OccurredAt:      time.Now().UTC(),
+		},
+		RefundID: membershipRefundOrderID(order.MerchantOrderID),
+		Settled:  true,
+	}, nil
 }
 
 // Transition records a fake provider-side state before producing the signed

@@ -105,7 +105,7 @@ func paymentProviderFromEnv() (accountportfolio.PaymentProvider, error) {
 	}
 	key := os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_KEY")
 	if os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(key) {
-		return nil, errors.New("Account Portfolio EasyPay key is a deployment placeholder")
+		return nil, errors.New("EasyPay key for Account Portfolio is a deployment placeholder")
 	}
 	provider, err := accountportfolio.NewEasyPayProvider(accountportfolio.EasyPayConfig{
 		BaseURL:   os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL"),

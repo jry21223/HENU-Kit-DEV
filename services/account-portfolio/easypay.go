@@ -225,8 +225,128 @@ func (p *EasyPayProvider) VerifyNotification(_ context.Context, raw []byte) (Ver
 	}, nil
 }
 
-func (p *EasyPayProvider) Refund(context.Context, string) (PaymentRefund, error) {
-	return PaymentRefund{}, errors.New("EasyPay refund is not supported")
+// Refund submits the full lifetime-membership refund for one HENU merchant
+// order. The refund correlation is derived deterministically from that order, so
+// a retry reuses it and the gateway settles on a single refund rather than
+// issuing a second one. The amount is never sent: the gateway takes it from the
+// stored order, so a caller cannot influence how much is refunded.
+func (p *EasyPayProvider) Refund(ctx context.Context, externalOrderID string) (PaymentRefund, error) {
+	if p == nil || !validMembershipMerchantOrderID(externalOrderID) {
+		return PaymentRefund{}, errors.New("EasyPay merchant order is invalid")
+	}
+	refundID := membershipRefundOrderID(externalOrderID)
+	params := map[string]string{
+		"pid":           p.pid,
+		"out_trade_no":  externalOrderID,
+		"out_refund_no": refundID,
+	}
+	params["sign"] = easyPaySign(params, p.key)
+	result, err := p.postSigned(ctx, "/api/refund.php", params)
+	if err != nil {
+		return PaymentRefund{}, err
+	}
+	return p.refundFrom(externalOrderID, refundID, result)
+}
+
+// QueryRefund reconciles a previously submitted refund against the gateway's
+// authoritative refund query, so a refund that was still processing can be
+// settled later without re-submitting it.
+func (p *EasyPayProvider) QueryRefund(ctx context.Context, externalOrderID string) (PaymentRefund, error) {
+	if p == nil || !validMembershipMerchantOrderID(externalOrderID) {
+		return PaymentRefund{}, errors.New("EasyPay merchant order is invalid")
+	}
+	refundID := membershipRefundOrderID(externalOrderID)
+	params := map[string]string{
+		"pid":           p.pid,
+		"out_trade_no":  externalOrderID,
+		"out_refund_no": refundID,
+	}
+	params["sign"] = easyPaySign(params, p.key)
+	result, err := p.postSigned(ctx, "/api/refund-query.php", params)
+	if err != nil {
+		return PaymentRefund{}, err
+	}
+	return p.refundFrom(externalOrderID, refundID, result)
+}
+
+func (p *EasyPayProvider) postSigned(ctx context.Context, path string, params map[string]string) (map[string]string, error) {
+	form := url.Values{"sign_type": {"MD5"}}
+	for key, value := range params {
+		form.Set(key, value)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint(path), strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := p.client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("call EasyPay %s: %w", path, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("call EasyPay %s: status %d", path, response.StatusCode)
+	}
+	var result map[string]string
+	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&result); err != nil {
+		return nil, fmt.Errorf("call EasyPay %s: invalid response", path)
+	}
+	return result, nil
+}
+
+// refundFrom validates that a gateway refund response is signed by this tenant's
+// key and describes this exact order and refund before any of it is believed.
+func (p *EasyPayProvider) refundFrom(externalOrderID, refundID string, result map[string]string) (PaymentRefund, error) {
+	if result["pid"] != p.pid || result["out_trade_no"] != externalOrderID ||
+		result["out_refund_no"] != refundID || !easyPayVerify(result, p.key) {
+		return PaymentRefund{}, errors.New("EasyPay refund response is invalid")
+	}
+	amount, err := easyPayCents(result["money"])
+	if err != nil || amount != lifetimeMembershipAmountCents {
+		return PaymentRefund{}, errors.New("EasyPay refund amount is invalid")
+	}
+	settled, err := easyPayRefundSettled(result["refund_status"])
+	if err != nil {
+		return PaymentRefund{}, err
+	}
+	// A refund that has not settled leaves the order paid. Only a settled refund
+	// is a refund fact, and only a refund fact may revoke an entitlement.
+	status := MembershipOrderPaid
+	if settled {
+		status = MembershipOrderRefunded
+	}
+	return PaymentRefund{
+		Notification: VerifiedPaymentNotification{
+			EventID:         fmt.Sprintf("easypay-refund-%s", refundID),
+			ExternalOrderID: externalOrderID,
+			MerchantOrderID: externalOrderID,
+			AmountCents:     amount,
+			Currency:        "CNY",
+			Plan:            lifetimeMembershipPlan,
+			Status:          status,
+			OccurredAt:      p.now().UTC(),
+		},
+		RefundID: refundID,
+		Settled:  settled,
+	}, nil
+}
+
+// easyPayRefundSettled maps the gateway's reconciled refund status. `abnormal`
+// is deliberately an error: it needs operator handling and must never be read as
+// either a completed or a harmlessly pending refund.
+func easyPayRefundSettled(value string) (bool, error) {
+	switch strings.TrimSpace(value) {
+	case "succeeded":
+		return true, nil
+	case "processing":
+		return false, nil
+	case "closed":
+		return false, nil
+	case "abnormal":
+		return false, errors.New("EasyPay refund is abnormal and needs operator handling")
+	default:
+		return false, errors.New("EasyPay refund status is invalid")
+	}
 }
 
 func (p *EasyPayProvider) createParams(request PaymentOrderRequest) map[string]string {
