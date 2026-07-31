@@ -22,7 +22,8 @@ HENU Kit <noreply@notify.henukit.cn>
 | SMTP | `smtpdm.aliyun.com:465` |
 
 发信域名必须保持“验证通过”，发信地址必须保持“正常”。SMTP 密码是专用
-凭据，不是阿里云登录密码。
+凭据，不是阿里云登录密码。**每个发信地址的 SMTP 密码都是身份绑定凭据；
+切换发信地址时必须同时切换用户名、密码、From 和 Message-ID 域。**
 
 ## DNS 记录
 
@@ -44,7 +45,7 @@ MX、TXT 或 DKIM。切换权威 DNS 前，先在新 DNS 中完整复制并核�
 ```env
 PLATFORM_CORE_SMTP_ADDRESS=smtpdm.aliyun.com:465
 PLATFORM_CORE_SMTP_USERNAME=noreply@notify.henukit.cn
-PLATFORM_CORE_SMTP_PASSWORD=<smtp-specific-password>
+PLATFORM_CORE_SMTP_PASSWORD=<smtp-password-for-noreply@notify.henukit.cn>
 PLATFORM_CORE_SMTP_FROM=noreply@notify.henukit.cn
 PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN=notify.henukit.cn
 ```
@@ -55,9 +56,14 @@ PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN=notify.henukit.cn
 
 1. 在新权威 DNS 中复制 SPF、MX、DKIM、DMARC，并用公共解析器核对。
 2. 确认 DirectMail 发信域名仍为“验证通过”。
-3. 仅更新 SMTP 用户名、From 和 Message-ID 域；保留旧 SMTP 身份作为回退。
-4. 重建并只重启 `platform-smtp-provider` 与 `platform-mail-worker`。
-5. 从真实登录流程发送一封验证码邮件，核对 outbox、供应商投递记录和收件箱。
-6. 回退时恢复旧 SMTP 用户名、From 与密码，并重建上述两个服务。
+3. 准备新发信地址专用 SMTP 密码，不得复用旧发信地址的密码。
+4. 作为一个原子变更同时更新以下四项：
+   - `PLATFORM_CORE_SMTP_USERNAME`
+   - `PLATFORM_CORE_SMTP_PASSWORD`
+   - `PLATFORM_CORE_SMTP_FROM`
+   - `PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN`
+5. 重建并只重启 `platform-smtp-provider` 与 `platform-mail-worker`。
+6. 从真实登录流程发送一封验证码邮件，核对 outbox、供应商投递记录和收件箱。
+7. 如果认证、投递或收件任一失败，整体回滚旧 SMTP 用户名、密码、From 与 Message-ID 域，并重建上述两个服务。
 
 日志不得记录 SMTP 密码、验证码、完整收件地址或邮件正文。
