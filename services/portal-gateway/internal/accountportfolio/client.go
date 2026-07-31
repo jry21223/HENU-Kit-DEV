@@ -134,6 +134,15 @@ func (c *Client) MembershipOrders(ctx context.Context, actorUserID, requestID st
 	return c.get(ctx, MembershipOrdersPath, actorUserID, requestID)
 }
 
+// CreateMembershipOrder forwards a user creating their own lifetime membership
+// order. ADR-0019 admits exactly this one command to the Portal write
+// exception: the actor is bound from the verified Portal Session, the browser
+// can neither select it nor supply a merchant order number, and a duplicate
+// idempotency key returns the original order rather than a second charge.
+func (c *Client) CreateMembershipOrder(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	return c.command(ctx, MembershipOrdersPath, actorUserID, requestID, idempotencyKey, raw, http.StatusCreated)
+}
+
 func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (json.RawMessage, error) {
 	return c.getAt(ctx, path, path, actorUserID, requestID)
 }
