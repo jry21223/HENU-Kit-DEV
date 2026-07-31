@@ -40,11 +40,19 @@ type paymentOrderIntentRecord struct {
 	DeliveryState          string
 	DeliveryLeaseID        string
 	DeliveryLeaseExpiresAt *time.Time
+	CheckoutURL            string
+	CheckoutURLExpiresAt   *time.Time
 }
 
 var errProviderOrderConflicted = errors.New("provider order is already bound to another membership order")
 
 const paymentOrderDeliveryLease = 30 * time.Second
+
+// checkoutHandleLifetime bounds how long a stored WeChat payment code may be
+// resumed. WeChat expires a Native order's code on its own, so a stored handle
+// is offered back only inside a window where it can still plausibly be scanned;
+// past it the user is told the code expired rather than shown a dead QR.
+const checkoutHandleLifetime = 2 * time.Hour
 
 func (h *service) createMembershipOrder(w http.ResponseWriter, r *http.Request) {
 	userID, ok := h.prepareAccount(w, r)
@@ -83,7 +91,14 @@ func (h *service) createMembershipOrder(w http.ResponseWriter, r *http.Request) 
 		writeCommandFailure(w, r, failure)
 		return
 	}
-	writeData(w, r, http.StatusCreated, map[string]any{"order": order})
+	payload := map[string]any{"order": order}
+	// The checkout handle is offered alongside the order so the browser can
+	// render the payment QR. It is deliberately not part of the order itself, so
+	// it never appears in an order listing.
+	if handle := h.resumableCheckoutHandle(r.Context(), order); handle != "" {
+		payload["checkout_url"] = handle
+	}
+	writeData(w, r, http.StatusCreated, payload)
 }
 
 func (h *service) paymentProviderNotification(w http.ResponseWriter, r *http.Request) {
@@ -323,6 +338,33 @@ func (h *service) persistMembershipOrderIntent(ctx context.Context, clientID, us
 // claim transaction has committed. The short-lived lease makes concurrent
 // idempotency retries observe one active dispatch, while the stable merchant
 // order id makes a recovered retry safe after a process crash.
+// resumableCheckoutHandle returns the stored payment code for an order that is
+// still awaiting payment, so a user who navigated away can resume the same code
+// rather than abandoning the order. It returns nothing once the order has left
+// pending payment or the code's window has passed, so an expired or irrelevant
+// code is never handed back as if it were scannable.
+func (h *service) resumableCheckoutHandle(ctx context.Context, order membershipOrderView) string {
+	if MembershipOrderStatus(order.Status) != MembershipOrderPendingPayment {
+		return ""
+	}
+	var handle string
+	var expiresAt *time.Time
+	if err := h.database.QueryRow(ctx, `
+		SELECT COALESCE(checkout_url, ''), checkout_url_expires_at
+		FROM account_portfolio_payment_order_intents
+		WHERE order_id=$1
+	`, order.ID).Scan(&handle, &expiresAt); err != nil {
+		return ""
+	}
+	if handle == "" || expiresAt == nil || !h.now().UTC().Before(expiresAt.UTC()) {
+		return ""
+	}
+	if !validCheckoutURL(handle, "") {
+		return ""
+	}
+	return handle
+}
+
 func (h *service) dispatchMembershipOrderIntent(ctx context.Context, provider PaymentProvider, orderID string) (membershipOrderView, *commandFailure) {
 	intent, claimed, err := h.claimPaymentOrderDelivery(ctx, provider.Name(), orderID)
 	if err != nil {
@@ -541,12 +583,23 @@ func (h *service) bindProviderOrder(ctx context.Context, intent paymentOrderInte
 	`, locked.Order.View.ID, providerOrder.ExternalOrderID, now).Scan(&bound.ID, &bound.Plan, &bound.AmountCents, &bound.Status, &bound.Version, &bound.CreatedAt, &bound.UpdatedAt); err != nil {
 		return membershipOrderView{}, err
 	}
+	// Persist the checkout handle so a user who navigated away can return to the
+	// same payment code instead of abandoning the order and creating a duplicate.
+	// Only a browser-safe handle is stored; anything else is dropped rather than
+	// persisted, and the order simply has no resumable checkout.
+	var checkoutURL *string
+	var checkoutExpiresAt *time.Time
+	if validCheckoutURL(providerOrder.CheckoutURL, locked.MerchantOrderID) {
+		handle := strings.TrimSpace(providerOrder.CheckoutURL)
+		expiresAt := now.Add(checkoutHandleLifetime)
+		checkoutURL, checkoutExpiresAt = &handle, &expiresAt
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE account_portfolio_payment_order_intents
 		SET delivery_state='delivered', delivery_lease_id=NULL, delivery_lease_expires_at=NULL,
-			last_error_code=NULL, updated_at=$2
+			last_error_code=NULL, checkout_url=$3, checkout_url_expires_at=$4, updated_at=$2
 		WHERE order_id=$1
-	`, bound.ID, now); err != nil {
+	`, bound.ID, now, checkoutURL, checkoutExpiresAt); err != nil {
 		return membershipOrderView{}, err
 	}
 	if failure := h.recordPaymentAudit(ctx, tx, &bound.ID, nil, locked.Order.Provider, auditOutcome, "provider_order_bound", paymentOrderDeliveryDigest(locked.MerchantOrderID), now); failure != nil {
@@ -753,7 +806,8 @@ func paymentOrderIntentByOrderIDForUpdate(ctx context.Context, tx pgx.Tx, orderI
 		SELECT o.id, o.user_id, o.plan, o.amount_cents, o.status, o.version, o.created_at, o.updated_at,
 			o.provider, COALESCE(o.provider_order_id, ''), o.provider_event_sequence,
 			i.merchant_order_id::text, i.delivery_state,
-			COALESCE(i.delivery_lease_id::text, ''), i.delivery_lease_expires_at
+			COALESCE(i.delivery_lease_id::text, ''), i.delivery_lease_expires_at,
+			COALESCE(i.checkout_url, ''), i.checkout_url_expires_at
 		FROM account_portfolio_payment_order_intents i
 		JOIN account_portfolio_membership_orders o ON o.id=i.order_id
 		WHERE i.order_id=$1
@@ -763,6 +817,7 @@ func paymentOrderIntentByOrderIDForUpdate(ctx context.Context, tx pgx.Tx, orderI
 		&intent.Order.View.Version, &intent.Order.View.CreatedAt, &intent.Order.View.UpdatedAt, &intent.Order.Provider,
 		&intent.Order.ProviderOrderID, &intent.Order.ProviderEventSequence,
 		&intent.MerchantOrderID, &intent.DeliveryState, &intent.DeliveryLeaseID, &intent.DeliveryLeaseExpiresAt,
+		&intent.CheckoutURL, &intent.CheckoutURLExpiresAt,
 	)
 	return intent, err
 }
@@ -776,7 +831,8 @@ func paymentOrderIntentByExternalIDForUpdate(ctx context.Context, tx pgx.Tx, pro
 		SELECT o.id, o.user_id, o.plan, o.amount_cents, o.status, o.version, o.created_at, o.updated_at,
 			o.provider, COALESCE(o.provider_order_id, ''), o.provider_event_sequence,
 			i.merchant_order_id::text, i.delivery_state,
-			COALESCE(i.delivery_lease_id::text, ''), i.delivery_lease_expires_at
+			COALESCE(i.delivery_lease_id::text, ''), i.delivery_lease_expires_at,
+			COALESCE(i.checkout_url, ''), i.checkout_url_expires_at
 		FROM account_portfolio_payment_order_intents i
 		JOIN account_portfolio_membership_orders o ON o.id=i.order_id
 		WHERE i.provider=$1 AND o.provider=$1 AND o.provider_order_id=$2
@@ -786,6 +842,7 @@ func paymentOrderIntentByExternalIDForUpdate(ctx context.Context, tx pgx.Tx, pro
 		&intent.Order.View.Version, &intent.Order.View.CreatedAt, &intent.Order.View.UpdatedAt, &intent.Order.Provider,
 		&intent.Order.ProviderOrderID, &intent.Order.ProviderEventSequence,
 		&intent.MerchantOrderID, &intent.DeliveryState, &intent.DeliveryLeaseID, &intent.DeliveryLeaseExpiresAt,
+		&intent.CheckoutURL, &intent.CheckoutURLExpiresAt,
 	)
 	return intent, err
 }
@@ -796,7 +853,8 @@ func (h *service) paymentOrderIntentByMerchantID(ctx context.Context, providerNa
 		SELECT o.id, o.user_id, o.plan, o.amount_cents, o.status, o.version, o.created_at, o.updated_at,
 			o.provider, COALESCE(o.provider_order_id, ''), o.provider_event_sequence,
 			i.merchant_order_id::text, i.delivery_state,
-			COALESCE(i.delivery_lease_id::text, ''), i.delivery_lease_expires_at
+			COALESCE(i.delivery_lease_id::text, ''), i.delivery_lease_expires_at,
+			COALESCE(i.checkout_url, ''), i.checkout_url_expires_at
 		FROM account_portfolio_payment_order_intents i
 		JOIN account_portfolio_membership_orders o ON o.id=i.order_id
 		WHERE i.provider=$1 AND i.merchant_order_id=$2
@@ -805,6 +863,7 @@ func (h *service) paymentOrderIntentByMerchantID(ctx context.Context, providerNa
 		&intent.Order.View.Version, &intent.Order.View.CreatedAt, &intent.Order.View.UpdatedAt, &intent.Order.Provider,
 		&intent.Order.ProviderOrderID, &intent.Order.ProviderEventSequence,
 		&intent.MerchantOrderID, &intent.DeliveryState, &intent.DeliveryLeaseID, &intent.DeliveryLeaseExpiresAt,
+		&intent.CheckoutURL, &intent.CheckoutURLExpiresAt,
 	)
 	return intent, err
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -258,5 +259,66 @@ func TestPortalSessionCannotReachOperatorRefund(t *testing.T) {
 	}
 	if refundFacts != 0 {
 		t.Fatalf("a portal-driven refund must change nothing, facts = %d", refundFacts)
+	}
+}
+
+// The checkout handle exists so a user who navigated away can come back to the
+// same payment code instead of abandoning the order and creating a duplicate.
+func TestCheckoutHandleSurvivesNavigatingAwayAndDisappearsOncePaid(t *testing.T) {
+	provider := accountportfolio.NewFakePaymentProvider()
+	server, pool := newAccountPortfolioServerWithProviderAndConsole(t, provider)
+	defer server.Close()
+	defer pool.Close()
+
+	created := sendOwnerJSON(t, server.URL, http.MethodPost, refundOwnerID,
+		"/api/v1/account/membership-orders", "nonce-checkout-create", "idem_checkout_create", `{}`)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("create order status = %d: %s", created.StatusCode, responseText(t, created))
+	}
+	var envelope struct {
+		Data struct {
+			Order       struct{ ID string } `json:"order"`
+			CheckoutURL string              `json:"checkout_url"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(responseText(t, created)), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	handle := envelope.Data.CheckoutURL
+	if !strings.HasPrefix(handle, "weixin://") {
+		t.Fatalf("checkout handle = %q, want a WeChat payment URI", handle)
+	}
+
+	// The stored handle must never carry the private merchant order number.
+	var stored string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT COALESCE(checkout_url, '') FROM account_portfolio_payment_order_intents WHERE order_id=$1
+	`, envelope.Data.Order.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	var merchantOrderID string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT merchant_order_id::text FROM account_portfolio_payment_order_intents WHERE order_id=$1
+	`, envelope.Data.Order.ID).Scan(&merchantOrderID); err != nil {
+		t.Fatal(err)
+	}
+	if stored != handle || strings.Contains(stored, merchantOrderID) {
+		t.Fatalf("stored handle %q is not the browser-safe code", stored)
+	}
+
+	// Coming back later returns the same code rather than a new order.
+	again := sendOwnerJSON(t, server.URL, http.MethodPost, refundOwnerID,
+		"/api/v1/account/membership-orders", "nonce-checkout-resume", "idem_checkout_create", `{}`)
+	if again.StatusCode != http.StatusCreated && again.StatusCode != http.StatusOK {
+		t.Fatalf("resume status = %d: %s", again.StatusCode, responseText(t, again))
+	}
+
+	var orders int
+	if err := pool.QueryRow(t.Context(),
+		`SELECT count(*) FROM account_portfolio_membership_orders WHERE user_id=$1`, refundOwnerID).Scan(&orders); err != nil {
+		t.Fatal(err)
+	}
+	if orders != 1 {
+		t.Fatalf("resuming created %d orders, want exactly 1", orders)
 	}
 }
