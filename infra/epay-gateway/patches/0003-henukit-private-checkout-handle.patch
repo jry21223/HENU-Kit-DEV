@@ -1,0 +1,242 @@
+diff --git a/config.js b/config.js
+--- a/config.js
++++ b/config.js
+@@ -47,6 +47,9 @@
+     notifyUrls: env("HENUKIT_EPAY_NOTIFY_URLS"),
+     returnOrigins: env("HENUKIT_EPAY_RETURN_ORIGINS"),
+     enabled: env("HENUKIT_EPAY_ENABLED", "0") === "1",
++    // HENU Kit merchant order numbers are private, so this tenant never gets a
++    // gateway-hosted checkout page whose URL would carry them.
++    hostedCheckout: false,
+   }),
+ ]);
+ 
+diff --git a/lib/merchants.js b/lib/merchants.js
+--- a/lib/merchants.js
++++ b/lib/merchants.js
+@@ -15,6 +15,10 @@
+   notifyUrls = "",
+   returnOrigins = "",
+   enabled = true,
++  // A tenant whose merchant order numbers must stay private cannot use the
++  // gateway-hosted checkout page, because that page's URL carries the order
++  // number. It receives WeChat's own `weixin://` payment URI instead.
++  hostedCheckout = true,
+ }) {
+   if (!pid || !key) return null;
+   return {
+@@ -25,6 +29,7 @@
+     notifyUrls: new Set(normalizeList(notifyUrls)),
+     returnOrigins: new Set(normalizeList(returnOrigins)),
+     enabled,
++    hostedCheckout,
+   };
+ }
+ 
+diff --git a/server.js b/server.js
+--- a/server.js
++++ b/server.js
+@@ -24,6 +24,21 @@
+   next();
+ });
+ 
++// A tenant whose merchant order number must stay private gets no
++// gateway-hosted checkout page: that page's URL carries the order number. Such
++// a tenant receives WeChat's own `weixin://` payment URI instead, which is a
++// single-use code carrying no merchant order number.
++function hostsOwnCheckoutPage(merchant) {
++  return !merchant || merchant.hostedCheckout !== false;
++}
++
++function checkoutURLFor(merchant, outTradeNo, wechatCodeUrl) {
++  if (hostsOwnCheckoutPage(merchant)) {
++    return `${config.siteDomain}/pay/${outTradeNo}`;
++  }
++  return wechatCodeUrl || "";
++}
++
+ function wechatOrderMatches(order, transaction) {
+   return transaction.mchid === config.wechatMchId &&
+     transaction.appid === config.wechatAppId &&
+@@ -75,10 +90,14 @@
+     const existing = store.get( outTradeNo);
+     if (existing) {
+       // Already exists — redirect to the existing payment page
+-      const payUrl = `${config.siteDomain}/pay/${outTradeNo}`;
++      const payUrl = checkoutURLFor(merchant, existing.out_trade_no, existing.wechat_code_url);
+       if (req.headers["content-type"]?.includes("application/json")) {
+         return res.json({ code: 1, msg: "order exists", code_url: payUrl });
+       }
++      if (!hostsOwnCheckoutPage(merchant)) {
++        // This tenant has no gateway-hosted checkout page to redirect to.
++        return res.status(404).send("订单不存在");
++      }
+       return res.redirect(302, payUrl);
+     }
+ 
+@@ -112,10 +131,15 @@
+     console.log(`Order created: ${outTradeNo} ¥${moneyYuan}`);
+ 
+     // 6. Return payment URL
+-    const payUrl = `${config.siteDomain}/pay/${outTradeNo}`;
++    const payUrl = checkoutURLFor(merchant, outTradeNo, wechatCodeUrl);
+     if (req.headers["content-type"]?.includes("application/json")) {
+       return res.json({ code: 1, msg: "success", code_url: payUrl });
+     }
++    if (!hostsOwnCheckoutPage(merchant)) {
++      // No gateway-hosted checkout page exists for this tenant, and redirecting
++      // to one would put the merchant order number in a browser URL.
++      return res.status(404).send("订单不存在");
++    }
+     // HTML form redirect (EPay standard behavior)
+     res.send(`
+ <!DOCTYPE html>
+@@ -143,7 +167,7 @@
+   const order = store.get( req.params.outTradeNo);
+   if (!order) return res.status(404).send("订单不存在");
+   const merchant = config.merchants.resolve(order.pid);
+-  if (!merchant || merchant.name === "henukit") {
++  if (!merchant || !hostsOwnCheckoutPage(merchant)) {
+     return res.status(404).send("订单不存在");
+   }
+   if (order.status === "paid") {
+@@ -514,7 +538,7 @@
+   const order = store.get(req.params.outTradeNo);
+   if (!order) return res.status(404).json({ error: "order not found" });
+   const merchant = config.merchants.resolve(order.pid);
+-  if (!merchant || merchant.name === "henukit") {
++  if (!merchant || !hostsOwnCheckoutPage(merchant)) {
+     return res.status(404).json({ error: "order not found" });
+   }
+   res.json({ status: order.status });
+diff --git a/test/checkout-handle.test.js b/test/checkout-handle.test.js
+--- a/test/checkout-handle.test.js
++++ b/test/checkout-handle.test.js
+@@ -0,0 +1,127 @@
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const os = require("node:os");
++const path = require("node:path");
++const test = require("node:test");
++
++const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epay-checkout-"));
++process.env.EPAY_DB_PATH = path.join(directory, "orders.json");
++process.env.EPAY_SITE_DOMAIN = "https://pay.metaview.top";
++process.env.EPAY_PID = "1001";
++process.env.EPAY_KEY = "metaview-test-secret";
++process.env.HENUKIT_EPAY_PID = "2001";
++process.env.HENUKIT_EPAY_KEY = "henukit-test-secret";
++process.env.HENUKIT_EPAY_ENABLED = "1";
++process.env.WECHAT_MCHID = "1900000109";
++process.env.WECHAT_APPID = "wx-henukit-test";
++
++const WECHAT_CODE_URL = "weixin://wxpay/bizpayurl?pr=A1b2C3d";
++
++const { WeChatPayClient } = require("../lib/wechat");
++WeChatPayClient.prototype.createNativeOrder = async () => WECHAT_CODE_URL;
++
++const { sign } = require("../lib/epay");
++const { app, store } = require("../server");
++
++const HENU_ORDER = "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234";
++const METAVIEW_ORDER = "MV20260731090000";
++
++async function withServer(run) {
++  const server = app.listen(0, "127.0.0.1");
++  await new Promise((resolve) => server.once("listening", resolve));
++  try {
++    await run(server);
++  } finally {
++    await new Promise((resolve) => server.close(resolve));
++  }
++}
++
++async function submit(server, params, key) {
++  const signed = { ...params };
++  signed.sign = sign(signed, key);
++  signed.sign_type = "MD5";
++  return fetch(`http://127.0.0.1:${server.address().port}/submit.php`, {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify(signed),
++  });
++}
++
++const henuParams = {
++  pid: "2001",
++  type: "wxpay",
++  out_trade_no: HENU_ORDER,
++  notify_url: "https://henukit.cn/api/v1/payment-providers/easypay/notifications",
++  return_url: "https://henukit.cn/account/membership",
++  name: "HENU Kit lifetime membership",
++  money: "9.90",
++};
++
++test.after(() => fs.rmSync(directory, { recursive: true, force: true }));
++
++test("a private-order tenant receives WeChat's own payment URI, never a URL carrying its order number", async () => {
++  await withServer(async (server) => {
++    const response = await submit(server, henuParams, "henukit-test-secret");
++    assert.equal(response.status, 200);
++    const body = await response.json();
++
++    assert.equal(body.code_url, WECHAT_CODE_URL);
++    // The merchant order number must not appear anywhere in what the caller
++    // may hand to a browser.
++    assert.ok(!body.code_url.includes(HENU_ORDER), "checkout URI leaked the merchant order number");
++    assert.ok(!body.code_url.includes("/pay/"), "checkout URI pointed at the gateway checkout page");
++    assert.ok(body.code_url.startsWith("weixin://"), "checkout URI was not a WeChat payment URI");
++  });
++});
++
++test("replaying creation returns the same WeChat URI without a second WeChat order", async () => {
++  await withServer(async (server) => {
++    const replay = await submit(server, henuParams, "henukit-test-secret");
++    assert.equal(replay.status, 200);
++    const body = await replay.json();
++    assert.equal(body.msg, "order exists");
++    assert.equal(body.code_url, WECHAT_CODE_URL);
++    assert.ok(!body.code_url.includes(HENU_ORDER));
++  });
++});
++
++test("the gateway checkout page and status probe stay closed for a private-order tenant", async () => {
++  await withServer(async (server) => {
++    const base = `http://127.0.0.1:${server.address().port}`;
++    const page = await fetch(`${base}/pay/${HENU_ORDER}`);
++    assert.equal(page.status, 404);
++    const status = await fetch(`${base}/api/status/${HENU_ORDER}`);
++    assert.equal(status.status, 404);
++  });
++});
++
++test("the existing hosted-checkout tenant is unchanged", async () => {
++  await withServer(async (server) => {
++    const response = await submit(server, {
++      pid: "1001",
++      type: "wxpay",
++      out_trade_no: METAVIEW_ORDER,
++      notify_url: "https://metaview.top/notify",
++      return_url: "https://metaview.top/return",
++      name: "MetaView order",
++      money: "128.00",
++    }, "metaview-test-secret");
++    assert.equal(response.status, 200);
++    const body = await response.json();
++
++    // MetaView keeps the gateway-hosted checkout page it has always used.
++    assert.equal(body.code_url, `https://pay.metaview.top/pay/${METAVIEW_ORDER}`);
++
++    const base = `http://127.0.0.1:${server.address().port}`;
++    const page = await fetch(`${base}/pay/${METAVIEW_ORDER}`);
++    assert.equal(page.status, 200);
++    const status = await fetch(`${base}/api/status/${METAVIEW_ORDER}`);
++    assert.equal(status.status, 200);
++    assert.equal((await status.json()).status, "pending");
++  });
++});
++
++test("the stored order still keeps the WeChat URI server-side for reconciliation", async () => {
++  assert.equal(store.get(HENU_ORDER).wechat_code_url, WECHAT_CODE_URL);
++  assert.equal(store.get(METAVIEW_ORDER).wechat_code_url, WECHAT_CODE_URL);
++});
