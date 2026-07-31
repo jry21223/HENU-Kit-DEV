@@ -1110,6 +1110,14 @@ func (p *queryOverridePaymentProvider) VerifyNotification(ctx context.Context, p
 	return p.fake.VerifyNotification(ctx, payload)
 }
 
+func (p *queryOverridePaymentProvider) CloseOrder(ctx context.Context, externalOrderID string) (accountportfolio.ProviderOrder, error) {
+	return p.fake.CloseOrder(ctx, externalOrderID)
+}
+
+func (p *queryOverridePaymentProvider) QueryRefund(ctx context.Context, externalOrderID string) (accountportfolio.PaymentRefund, error) {
+	return p.fake.QueryRefund(ctx, externalOrderID)
+}
+
 func (p *queryOverridePaymentProvider) Refund(ctx context.Context, externalOrderID string) (accountportfolio.PaymentRefund, error) {
 	return p.fake.Refund(ctx, externalOrderID)
 }
@@ -1150,6 +1158,14 @@ func (p *blockingFakePaymentProvider) QueryOrder(ctx context.Context, externalOr
 
 func (p *blockingFakePaymentProvider) VerifyNotification(ctx context.Context, payload []byte) (accountportfolio.VerifiedPaymentNotification, error) {
 	return p.fake.VerifyNotification(ctx, payload)
+}
+
+func (p *blockingFakePaymentProvider) CloseOrder(ctx context.Context, externalOrderID string) (accountportfolio.ProviderOrder, error) {
+	return p.fake.CloseOrder(ctx, externalOrderID)
+}
+
+func (p *blockingFakePaymentProvider) QueryRefund(ctx context.Context, externalOrderID string) (accountportfolio.PaymentRefund, error) {
+	return p.fake.QueryRefund(ctx, externalOrderID)
 }
 
 func (p *blockingFakePaymentProvider) Refund(ctx context.Context, externalOrderID string) (accountportfolio.PaymentRefund, error) {

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -371,6 +372,23 @@ func (p *FakePaymentProvider) QueryRefund(_ context.Context, externalOrderID str
 		RefundID: membershipRefundOrderID(order.MerchantOrderID),
 		Settled:  settled,
 	}, nil
+}
+
+// OrderIDs lists the provider-side orders the fake currently holds, so a test
+// can drive an order it created through the real purchase path without having
+// to guess the service-generated merchant order id.
+func (p *FakePaymentProvider) OrderIDs() []string {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	ids := make([]string, 0, len(p.orders))
+	for id := range p.orders {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // Transition records a fake provider-side state before producing the signed
