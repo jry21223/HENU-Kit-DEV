@@ -278,6 +278,17 @@ func (h *service) claimConsoleOrderCommand(
 		if err := tx.Commit(ctx); err != nil {
 			return consoleOrderCommandContext{}, dependencyFailure("Account Portfolio command store is unavailable")
 		}
+		// The claim is written before the provider is contacted and only filled
+		// in once the command has settled, so an empty payload means the
+		// original command is still in flight or never completed. Returning it
+		// would answer a duplicate with an empty success, so this reports a
+		// conflict and the caller retries for the real result instead.
+		if !completedCommandPayload(storedPayload) {
+			return consoleOrderCommandContext{}, &commandFailure{
+				status: http.StatusConflict, code: "COMMAND_IN_PROGRESS",
+				message: "An earlier command with this Idempotency-Key has not finished yet",
+			}
+		}
 		return consoleOrderCommandContext{Replayed: true, StoredPayload: json.RawMessage(storedPayload)}, nil
 	}
 
@@ -369,6 +380,18 @@ func notificationDigest(notification VerifiedPaymentNotification) [sha256.Size]b
 		return sha256.Sum256([]byte(notification.EventID))
 	}
 	return sha256.Sum256(raw)
+}
+
+// completedCommandPayload reports whether a stored idempotency payload is a
+// real command result rather than the placeholder written when the command was
+// claimed.
+func completedCommandPayload(payload []byte) bool {
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return false
+	}
+	_, ok := decoded["order"]
+	return ok
 }
 
 func writeRawCommandData(w http.ResponseWriter, r *http.Request, status int, payload json.RawMessage) {

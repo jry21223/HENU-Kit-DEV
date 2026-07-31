@@ -108,6 +108,7 @@ func TestOperatorRefundIsExactlyOnceUnderConcurrentCommands(t *testing.T) {
 	const attempts = 10
 	var wait sync.WaitGroup
 	statuses := make([]int, attempts)
+	bodies := make([]string, attempts)
 	for index := range attempts {
 		wait.Add(1)
 		go func() {
@@ -115,16 +116,29 @@ func TestOperatorRefundIsExactlyOnceUnderConcurrentCommands(t *testing.T) {
 			response := sendConsoleJSON(t, server.URL, http.MethodPost, refundOperatorID, route,
 				"nonce-refund-concurrent-"+strconv.Itoa(index), "idem_refund_concurrent", body)
 			statuses[index] = response.StatusCode
-			response.Body.Close()
+			bodies[index] = responseText(t, response)
 		}()
 	}
 	wait.Wait()
 
 	accepted := 0
-	for _, status := range statuses {
+	for index, status := range statuses {
 		switch status {
 		case http.StatusAccepted, http.StatusOK:
 			accepted++
+			// A success must carry the real order. An empty success would mean a
+			// duplicate was answered with the not-yet-filled idempotency claim.
+			var envelope struct {
+				Data struct {
+					Order struct{ ID string } `json:"order"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal([]byte(bodies[index]), &envelope); err != nil {
+				t.Fatalf("decode concurrent refund body: %v", err)
+			}
+			if envelope.Data.Order.ID != orderID {
+				t.Fatalf("a successful refund returned no order: %s", bodies[index])
+			}
 		case http.StatusConflict, http.StatusServiceUnavailable:
 		default:
 			t.Fatalf("unexpected concurrent refund status %d (all: %v)", status, statuses)
