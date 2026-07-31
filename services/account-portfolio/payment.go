@@ -3,7 +3,9 @@ package accountportfolio
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -17,7 +19,40 @@ const (
 	lifetimeMembershipAmountCents = 990
 	lifetimeMembershipCurrency    = "CNY"
 	lifetimeMembershipPlan        = "lifetime"
+	membershipMerchantOrderPrefix = "HNK"
+	membershipMerchantOrderLength = 32
 )
+
+var membershipMerchantOrderEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
+
+// newMembershipMerchantOrderID creates the stable provider-facing order
+// number for HENU Kit. WeChat Pay limits out_trade_no to 32 characters, so the
+// three-character tenant prefix is followed by 29 uppercase Base32
+// characters (144 bits of source entropy).
+func newMembershipMerchantOrderID() (string, error) {
+	random := make([]byte, 18)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate HENU Kit merchant order id: %w", err)
+	}
+	merchantOrderID := membershipMerchantOrderPrefix + membershipMerchantOrderEncoding.EncodeToString(random)
+	if !validMembershipMerchantOrderID(merchantOrderID) {
+		return "", errors.New("generated HENU Kit merchant order id is invalid")
+	}
+	return merchantOrderID, nil
+}
+
+func validMembershipMerchantOrderID(value string) bool {
+	if len(value) != membershipMerchantOrderLength || !strings.HasPrefix(value, membershipMerchantOrderPrefix) {
+		return false
+	}
+	for _, char := range value[len(membershipMerchantOrderPrefix):] {
+		if (char >= 'A' && char <= 'Z') || (char >= '2' && char <= '7') {
+			continue
+		}
+		return false
+	}
+	return true
+}
 
 // MembershipOrderStatus is the durable lifecycle for the one ¥9.9 lifetime
 // product. It intentionally does not model a provider-specific state.
@@ -157,7 +192,7 @@ func NewFakePaymentProvider() *FakePaymentProvider {
 func (p *FakePaymentProvider) Name() string { return "fake" }
 
 func (p *FakePaymentProvider) Sign(_ context.Context, request PaymentOrderRequest) (SignedPaymentOrder, error) {
-	if p == nil || request.MerchantOrderID == "" || request.AmountCents != lifetimeMembershipAmountCents || request.Currency != lifetimeMembershipCurrency || request.Plan != lifetimeMembershipPlan {
+	if p == nil || !validMembershipMerchantOrderID(request.MerchantOrderID) || request.AmountCents != lifetimeMembershipAmountCents || request.Currency != lifetimeMembershipCurrency || request.Plan != lifetimeMembershipPlan {
 		return SignedPaymentOrder{}, errors.New("fake payment order is invalid")
 	}
 	return SignedPaymentOrder{Request: request, Signature: p.signOrder(request)}, nil

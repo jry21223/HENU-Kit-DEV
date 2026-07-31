@@ -43,6 +43,10 @@ func main() {
 	if consoleConfigured && os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(consoleSecret) {
 		log.Fatal("Account Portfolio Console service secret is a deployment placeholder")
 	}
+	paymentProvider, err := paymentProviderFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
 	var consoleKeys map[string]string
 	if consoleConfigured {
 		consoleKeys = map[string]string{consoleKeyID: consoleSecret}
@@ -63,6 +67,7 @@ func main() {
 		ConsoleClientID: consoleClientID,
 		ConsoleKeys:     consoleKeys,
 		PointCursorKey:  pointCursorKey,
+		PaymentProvider: paymentProvider,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -92,6 +97,27 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func paymentProviderFromEnv() (accountportfolio.PaymentProvider, error) {
+	if os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_ENABLED") != "1" {
+		return nil, nil
+	}
+	key := os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_KEY")
+	if os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(key) {
+		return nil, errors.New("Account Portfolio EasyPay key is a deployment placeholder")
+	}
+	provider, err := accountportfolio.NewEasyPayProvider(accountportfolio.EasyPayConfig{
+		BaseURL:   os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL"),
+		PID:       os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_PID"),
+		Key:       key,
+		NotifyURL: os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL"),
+		ReturnURL: os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return provider, nil
 }
 
 func pointCursorKeyFromEnv() ([]byte, error) {
