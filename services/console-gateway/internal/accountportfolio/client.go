@@ -91,6 +91,43 @@ func TicketTransitionsPath(ticketID string) string {
 	return strings.ReplaceAll(TicketTransitionsPathTemplate, "{ticket_id}", url.PathEscape(ticketID))
 }
 
+func MembershipOrderClosuresPath(orderID string) string {
+	return strings.ReplaceAll(MembershipOrderClosuresPathTemplate, "{order_id}", url.PathEscape(orderID))
+}
+
+func MembershipOrderRefundsPath(orderID string) string {
+	return strings.ReplaceAll(MembershipOrderRefundsPathTemplate, "{order_id}", url.PathEscape(orderID))
+}
+
+func MembershipOrderRefundPath(orderID, refundID string) string {
+	path := strings.ReplaceAll(MembershipOrderRefundPathTemplate, "{order_id}", url.PathEscape(orderID))
+	return strings.ReplaceAll(path, "{refund_id}", url.PathEscape(refundID))
+}
+
+// CloseMembershipOrder closes one unpaid membership order. The order is named
+// only by its Account Portfolio id; the private merchant order number is never
+// carried through the Console.
+func (c *Client) CloseMembershipOrder(ctx context.Context, actorUserID, orderID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	if !validUUID(orderID) {
+		return nil, ErrInvalid
+	}
+	return c.command(ctx, MembershipOrderClosuresPath(orderID), actorUserID, idempotencyKey, raw, validateMembershipOrderCommand)
+}
+
+func (c *Client) RefundMembershipOrder(ctx context.Context, actorUserID, orderID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	if !validUUID(orderID) {
+		return nil, ErrInvalid
+	}
+	return c.commandAccepted(ctx, MembershipOrderRefundsPath(orderID), actorUserID, idempotencyKey, raw, validateMembershipOrderRefund)
+}
+
+func (c *Client) MembershipOrderRefund(ctx context.Context, actorUserID, orderID, refundID string) (json.RawMessage, error) {
+	if !validUUID(orderID) || !validUUID(refundID) && !validMembershipRefundID(refundID) {
+		return nil, ErrInvalid
+	}
+	return c.get(ctx, MembershipOrderRefundPath(orderID, refundID), actorUserID, validateMembershipOrderRefund)
+}
+
 func (c *Client) Tickets(ctx context.Context, actorUserID string) (json.RawMessage, error) {
 	return c.get(ctx, TicketsPath, actorUserID, validateTicketQueue)
 }
@@ -156,6 +193,15 @@ func (c *Client) command(ctx context.Context, path, actorUserID, idempotencyKey 
 		return nil, ErrInvalid
 	}
 	return c.call(ctx, http.MethodPost, path, actorUserID, idempotencyKey, raw, http.StatusOK, validate)
+}
+
+// commandAccepted is the same command shape for an owner operation that reports
+// 202: a refund is submitted durably but may still be settling at the provider.
+func (c *Client) commandAccepted(ctx context.Context, path, actorUserID, idempotencyKey string, raw []byte, validate responseValidator) (json.RawMessage, error) {
+	if !validIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > 64<<10 || validate == nil {
+		return nil, ErrInvalid
+	}
+	return c.call(ctx, http.MethodPost, path, actorUserID, idempotencyKey, raw, http.StatusAccepted, validate)
 }
 
 type responseValidator func(json.RawMessage) error

@@ -35,6 +35,9 @@ func main() {
 		"TicketPath":                "getConsoleAccountTicket",
 		"TicketRepliesPath":         "replyConsoleAccountTicket",
 		"TicketTransitionsPath":     "transitionConsoleAccountTicket",
+		"MembershipOrderClosuresPath": "closeConsoleMembershipOrder",
+		"MembershipOrderRefundsPath":  "refundConsoleMembershipOrder",
+		"MembershipOrderRefundPath":   "getConsoleMembershipOrderRefund",
 	}
 	for _, operationID := range required {
 		if routes[operationID] == "" {
@@ -54,8 +57,11 @@ const (
 	TicketPathTemplate = %q
 	TicketRepliesPathTemplate = %q
 	TicketTransitionsPathTemplate = %q
+	MembershipOrderClosuresPathTemplate = %q
+	MembershipOrderRefundsPathTemplate = %q
+	MembershipOrderRefundPathTemplate = %q
 )
-`, digest, routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"])
+`, digest, routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/accountportfolio", 0o755))

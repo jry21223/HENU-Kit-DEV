@@ -67,6 +67,10 @@ type fakeAccountPortfolio struct {
 	err                                                  error
 	replyCalls, grantCalls, revokeCalls, membershipCalls int
 	pointAdjustmentCalls                                 int
+	orderID, refundID                                    string
+	order                                                json.RawMessage
+	orderCommandBody                                     []byte
+	closeOrderCalls, refundOrderCalls, refundReadCalls   int
 }
 
 func (f *fakeAccountPortfolio) Tickets(_ context.Context, actor string) (json.RawMessage, error) {
@@ -100,6 +104,18 @@ func (f *fakeAccountPortfolio) Revoke(_ context.Context, actor, userID, key stri
 func (f *fakeAccountPortfolio) Adjust(_ context.Context, actor, key string, body []byte) (json.RawMessage, error) {
 	f.actor, f.key, f.pointAdjustmentBody, f.pointAdjustmentCalls = actor, key, append([]byte(nil), body...), f.pointAdjustmentCalls+1
 	return f.points, f.err
+}
+func (f *fakeAccountPortfolio) CloseMembershipOrder(_ context.Context, actor, orderID, key string, body []byte) (json.RawMessage, error) {
+	f.actor, f.orderID, f.key, f.orderCommandBody, f.closeOrderCalls = actor, orderID, key, append([]byte(nil), body...), f.closeOrderCalls+1
+	return f.order, f.err
+}
+func (f *fakeAccountPortfolio) RefundMembershipOrder(_ context.Context, actor, orderID, key string, body []byte) (json.RawMessage, error) {
+	f.actor, f.orderID, f.key, f.orderCommandBody, f.refundOrderCalls = actor, orderID, key, append([]byte(nil), body...), f.refundOrderCalls+1
+	return f.order, f.err
+}
+func (f *fakeAccountPortfolio) MembershipOrderRefund(_ context.Context, actor, orderID, refundID string) (json.RawMessage, error) {
+	f.actor, f.orderID, f.refundID, f.refundReadCalls = actor, orderID, refundID, f.refundReadCalls+1
+	return f.order, f.err
 }
 
 func (f *fakeFood) Workspace(_ context.Context, actor string) (json.RawMessage, error) {
