@@ -92,7 +92,14 @@ type PaymentProvider interface {
 	CreateOrder(context.Context, SignedPaymentOrder) (ProviderOrder, error)
 	QueryOrder(context.Context, string) (ProviderOrder, error)
 	VerifyNotification(context.Context, []byte) (VerifiedPaymentNotification, error)
+	// CloseOrder closes an order that never completed payment. It must refuse a
+	// paid order rather than closing it, so a close can never discard a payment
+	// fact, and it must be idempotent for an already-closed order.
+	CloseOrder(context.Context, string) (ProviderOrder, error)
 	Refund(context.Context, string) (PaymentRefund, error)
+	// QueryRefund reconciles a previously submitted refund without submitting
+	// another one, so a refund that was still processing can settle later.
+	QueryRefund(context.Context, string) (PaymentRefund, error)
 }
 
 type PaymentOrderRequest struct {
@@ -283,6 +290,27 @@ func (p *FakePaymentProvider) VerifyNotification(_ context.Context, raw []byte) 
 	return wire.Notification, nil
 }
 
+func (p *FakePaymentProvider) CloseOrder(_ context.Context, externalOrderID string) (ProviderOrder, error) {
+	if p == nil {
+		return ProviderOrder{}, errors.New("fake payment provider is unavailable")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	order, ok := p.orders[externalOrderID]
+	if !ok {
+		return ProviderOrder{}, errors.New("fake payment order was not found")
+	}
+	if order.Status == MembershipOrderClosed {
+		return order, nil
+	}
+	if order.Status == MembershipOrderPaid || order.Status == MembershipOrderRefunded {
+		return ProviderOrder{}, errors.New("fake payment order cannot be closed")
+	}
+	order.Status = MembershipOrderClosed
+	p.orders[externalOrderID] = order
+	return order, nil
+}
+
 func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) (PaymentRefund, error) {
 	if p == nil {
 		return PaymentRefund{}, errors.New("fake payment provider is unavailable")
@@ -310,6 +338,38 @@ func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) 
 		},
 		RefundID: membershipRefundOrderID(order.MerchantOrderID),
 		Settled:  true,
+	}, nil
+}
+
+func (p *FakePaymentProvider) QueryRefund(_ context.Context, externalOrderID string) (PaymentRefund, error) {
+	if p == nil {
+		return PaymentRefund{}, errors.New("fake payment provider is unavailable")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	order, ok := p.orders[externalOrderID]
+	if !ok {
+		return PaymentRefund{}, errors.New("fake payment order was not found")
+	}
+	settled := order.Status == MembershipOrderRefunded
+	status := MembershipOrderPaid
+	if settled {
+		status = MembershipOrderRefunded
+	}
+	return PaymentRefund{
+		Notification: VerifiedPaymentNotification{
+			EventID:         fmt.Sprintf("fake-refund-%s", order.MerchantOrderID),
+			ExternalOrderID: order.ExternalOrderID,
+			MerchantOrderID: order.MerchantOrderID,
+			AmountCents:     order.AmountCents,
+			Currency:        order.Currency,
+			Plan:            order.Plan,
+			Status:          status,
+			Sequence:        easyPayRefundSequence,
+			OccurredAt:      time.Now().UTC(),
+		},
+		RefundID: membershipRefundOrderID(order.MerchantOrderID),
+		Settled:  settled,
 	}, nil
 }
 

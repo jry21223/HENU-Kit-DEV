@@ -21,6 +21,15 @@ import (
 
 const easyPayProviderName = "easypay"
 
+// EasyPay carries no provider sequence, so each lifecycle stage gets one fixed
+// logical sequence: the payment notification is 1 and the refund that can only
+// follow it is 2. That keeps the durable ordering check meaningful without
+// inventing a sequence the gateway does not have.
+const (
+	easyPayPaidSequence   int64 = 1
+	easyPayRefundSequence int64 = 2
+)
+
 // EasyPayConfig binds Account Portfolio to its dedicated HENU Kit tenant on
 // the existing EasyPay-compatible gateway. The key is never shared with a
 // browser or another gateway tenant.
@@ -220,9 +229,35 @@ func (p *EasyPayProvider) VerifyNotification(_ context.Context, raw []byte) (Ver
 		Currency:        lifetimeMembershipCurrency,
 		Plan:            lifetimeMembershipPlan,
 		Status:          status,
-		Sequence:        1,
+		Sequence:        easyPayPaidSequence,
 		OccurredAt:      occurredAt,
 	}, nil
+}
+
+// CloseOrder closes one unpaid HENU merchant order. The gateway asks WeChat
+// before closing, so a paid order is refused there rather than being closed on
+// stale state; closing an already-closed order stays successful.
+func (p *EasyPayProvider) CloseOrder(ctx context.Context, externalOrderID string) (ProviderOrder, error) {
+	if p == nil || !validMembershipMerchantOrderID(externalOrderID) {
+		return ProviderOrder{}, errors.New("EasyPay merchant order is invalid")
+	}
+	params := map[string]string{"pid": p.pid, "out_trade_no": externalOrderID}
+	params["sign"] = easyPaySign(params, p.key)
+	result, err := p.postSigned(ctx, "/api/close.php", params)
+	if err != nil {
+		return ProviderOrder{}, err
+	}
+	if result["pid"] != p.pid || result["out_trade_no"] != externalOrderID || !easyPayVerify(result, p.key) {
+		return ProviderOrder{}, errors.New("EasyPay close response is invalid")
+	}
+	status, err := easyPayStatus(result["trade_status"])
+	if err != nil {
+		return ProviderOrder{}, err
+	}
+	if status != MembershipOrderClosed {
+		return ProviderOrder{}, errors.New("EasyPay close did not close the order")
+	}
+	return providerOrderFor(externalOrderID, status), nil
 }
 
 // Refund submits the full lifetime-membership refund for one HENU merchant
@@ -317,6 +352,8 @@ func (p *EasyPayProvider) refundFrom(externalOrderID, refundID string, result ma
 	}
 	return PaymentRefund{
 		Notification: VerifiedPaymentNotification{
+			// Stable per refund, so replaying a refund is recognised as the same
+			// provider event instead of producing a second payment fact.
 			EventID:         fmt.Sprintf("easypay-refund-%s", refundID),
 			ExternalOrderID: externalOrderID,
 			MerchantOrderID: externalOrderID,
@@ -324,7 +361,11 @@ func (p *EasyPayProvider) refundFrom(externalOrderID, refundID string, result ma
 			Currency:        "CNY",
 			Plan:            lifetimeMembershipPlan,
 			Status:          status,
-			OccurredAt:      p.now().UTC(),
+			// EasyPay has no sequence of its own, so the provider assigns one
+			// fixed logical sequence per lifecycle stage: payment is 1 and the
+			// refund that follows it is 2.
+			Sequence:   easyPayRefundSequence,
+			OccurredAt: p.now().UTC(),
 		},
 		RefundID: refundID,
 		Settled:  settled,
