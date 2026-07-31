@@ -252,3 +252,36 @@ func TestMembershipRefundOrderIDIsNamespacedAndRejectsInvalidOrders(t *testing.T
 		}
 	}
 }
+
+// A gateway regression that answered with its own checkout page would put the
+// private merchant order number in a browser URL. ADR-0019 requires that to be
+// refused rather than shown, so the check lives at the provider boundary.
+func TestEasyPayRejectsACheckoutHandleThatIsNotBrowserSafe(t *testing.T) {
+	for name, codeURL := range map[string]string{
+		"gateway checkout page": "https://pay.metaview.top/pay/" + refundTestMerchant,
+		"any https page":        "https://pay.metaview.top/checkout/abc",
+		"carries the order id":  "weixin://wxpay/bizpayurl?pr=" + refundTestMerchant,
+		"empty":                 "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{"code": 1, "msg": "success", "code_url": codeURL})
+			}))
+			defer server.Close()
+			provider := newRefundProvider(t, server.URL)
+
+			signed, err := provider.Sign(context.Background(), PaymentOrderRequest{
+				MerchantOrderID: refundTestMerchant,
+				AmountCents:     lifetimeMembershipAmountCents,
+				Currency:        lifetimeMembershipCurrency,
+				Plan:            lifetimeMembershipPlan,
+			})
+			if err != nil {
+				t.Fatalf("sign: %v", err)
+			}
+			if _, err := provider.CreateOrder(context.Background(), signed); err == nil {
+				t.Fatal("an unsafe checkout handle must be refused")
+			}
+		})
+	}
+}

@@ -141,7 +141,15 @@ func (p *EasyPayProvider) CreateOrder(ctx context.Context, signed SignedPaymentO
 	if json.Unmarshal(body, &result) != nil || result.Code != 1 || strings.TrimSpace(result.CodeURL) == "" {
 		return ProviderOrder{}, errors.New("EasyPay create response is invalid")
 	}
-	return providerOrderFor(signed.Request.MerchantOrderID, MembershipOrderPendingPayment), nil
+	// Per ADR-0019 the checkout handle must be WeChat's own payment URI. A
+	// gateway that answered with its own checkout page would put the private
+	// merchant order number in a browser URL, so that is refused here.
+	if !validCheckoutURL(result.CodeURL, signed.Request.MerchantOrderID) {
+		return ProviderOrder{}, errors.New("EasyPay checkout handle is not browser-safe")
+	}
+	order := providerOrderFor(signed.Request.MerchantOrderID, MembershipOrderPendingPayment)
+	order.CheckoutURL = strings.TrimSpace(result.CodeURL)
+	return order, nil
 }
 
 func (p *EasyPayProvider) QueryOrder(ctx context.Context, externalOrderID string) (ProviderOrder, error) {
