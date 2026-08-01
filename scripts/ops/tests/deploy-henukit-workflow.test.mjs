@@ -72,7 +72,7 @@ test("release artifacts carry an exact-SHA Account mock-free boundary manifest",
   );
 });
 
-test("Portal V2 read flag is an explicit production build input and stays dark in ordinary artifacts", () => {
+test("Portal V2 cutover flags are enabled in production artifacts after HC-166", () => {
   assert.match(
     portalDockerfile,
     /ARG NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=0/,
@@ -87,7 +87,11 @@ test("Portal V2 read flag is an explicit production build input and stays dark i
   );
   assert.match(
     workflow,
-    /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=0/,
+    /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1/,
+  );
+  assert.match(
+    workflow,
+    /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=1/,
   );
 });
 
