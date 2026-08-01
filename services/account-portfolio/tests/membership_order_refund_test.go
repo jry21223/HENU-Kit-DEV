@@ -79,7 +79,23 @@ func paidMembershipOrder(t *testing.T, server *httptest.Server, provider *accoun
 	if paid.StatusCode != http.StatusOK {
 		t.Fatalf("paid notification status = %d: %s", paid.StatusCode, responseText(t, paid))
 	}
-	return envelope.Data.Order.ID, envelope.Data.Order.Version
+	// Paying bumps the order revision, so the version a caller must supply is the
+	// one the payment produced, not the one creation returned.
+	var applied struct {
+		Data struct {
+			Order struct {
+				ID      string `json:"id"`
+				Version int    `json:"version"`
+			} `json:"order"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(responseText(t, paid)), &applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied.Data.Order.ID != envelope.Data.Order.ID || applied.Data.Order.Version < 1 {
+		t.Fatalf("paid notification returned an unexpected order: %+v", applied.Data.Order)
+	}
+	return applied.Data.Order.ID, applied.Data.Order.Version
 }
 
 func providerOrderIDFor(t *testing.T, provider *accountportfolio.FakePaymentProvider) string {
