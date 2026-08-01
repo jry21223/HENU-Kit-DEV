@@ -83,6 +83,46 @@ func TestSummaryRejectsUpstreamFailureInsteadOfReturningFallback(t *testing.T) {
 	}
 }
 
+func TestMembershipOrderCreateDistinguishesDisabledProviderFromDependencyFailure(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		want     error
+	}{
+		{
+			name:     "provider disabled",
+			response: `{"error":{"code":"PAYMENT_PROVIDER_UNAVAILABLE","message":"Membership payment is not available"},"request_id":"req_owner"}`,
+			want:     ErrPaymentProviderUnavailable,
+		},
+		{
+			name:     "dependency failure",
+			response: `{"error":{"code":"DEPENDENCY_UNAVAILABLE","message":"Account Portfolio database is unavailable"},"request_id":"req_owner"}`,
+			want:     ErrUnavailable,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assertSignedOwnerRequest(t, request)
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = writer.Write([]byte(test.response))
+			}))
+			defer server.Close()
+
+			client, err := NewClient(server.URL, testClientID, testSecret, testKeyID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.httpClient = server.Client()
+			data, err := client.CreateMembershipOrder(context.Background(), "11111111-1111-4111-8111-111111111111", "req_order", "idem_membership_order", []byte(`{}`))
+			if !errors.Is(err, test.want) || len(data) != 0 {
+				t.Fatalf("CreateMembershipOrder() data=%s err=%v, want %v with no data", data, err, test.want)
+			}
+		})
+	}
+}
+
 func TestReadMethodsUseTheDeclaredOwnerRoutes(t *testing.T) {
 	tests := []struct {
 		name string
@@ -222,7 +262,7 @@ func TestReadMethodsRejectIncompleteOwnerPayloads(t *testing.T) {
 	}
 }
 
-func TestTicketCommandsPreserveRawBodyAndUseActorBoundOwnerAuthentication(t *testing.T) {
+func TestAccountCommandsPreserveRawBodyAndUseActorBoundOwnerAuthentication(t *testing.T) {
 	const actorID = "11111111-1111-4111-8111-111111111111"
 	const ticketID = "22222222-2222-4222-8222-222222222222"
 	const notificationID = "33333333-3333-4333-8333-333333333333"
@@ -234,6 +274,26 @@ func TestTicketCommandsPreserveRawBodyAndUseActorBoundOwnerAuthentication(t *tes
 		response map[string]any
 		invoke   func(*Client) (json.RawMessage, error)
 	}{
+		{
+			name:     "membership-order-create",
+			path:     MembershipOrdersPath,
+			status:   http.StatusCreated,
+			body:     []byte(`{}`),
+			response: testMembershipOrderCommandData("weixin://wxpay/bizpayurl?pr=A1b2C3d"),
+			invoke: func(client *Client) (json.RawMessage, error) {
+				return client.CreateMembershipOrder(context.Background(), actorID, "req_membership_order_create", "idem_membership_order_create", []byte(`{}`))
+			},
+		},
+		{
+			name:     "membership-order-create-without-checkout-handle",
+			path:     MembershipOrdersPath,
+			status:   http.StatusCreated,
+			body:     []byte(`{}`),
+			response: testMembershipOrderCommandData(""),
+			invoke: func(client *Client) (json.RawMessage, error) {
+				return client.CreateMembershipOrder(context.Background(), actorID, "req_membership_order_create_without_handle", "idem_membership_order_without_handle", []byte(`{}`))
+			},
+		},
 		{
 			name:     "create",
 			path:     TicketsPath,
@@ -295,7 +355,7 @@ func TestTicketCommandsPreserveRawBodyAndUseActorBoundOwnerAuthentication(t *tes
 			client.httpClient = server.Client()
 			data, err := test.invoke(client)
 			if err != nil || len(data) == 0 {
-				t.Fatalf("ticket command data=%s err=%v", data, err)
+				t.Fatalf("account command data=%s err=%v", data, err)
 			}
 		})
 	}
@@ -366,6 +426,24 @@ func testNotificationData() map[string]any {
 		"kind":       "ticket_status",
 		"created_at": "2026-07-28T00:00:00Z",
 	}
+}
+
+func testMembershipOrderCommandData(checkoutURL string) map[string]any {
+	data := map[string]any{
+		"order": map[string]any{
+			"id":           "44444444-4444-4444-8444-444444444444",
+			"plan":         "lifetime",
+			"amount_cents": 990,
+			"status":       "pending_payment",
+			"version":      2,
+			"created_at":   "2026-07-31T00:00:00Z",
+			"updated_at":   "2026-07-31T00:00:00Z",
+		},
+	}
+	if checkoutURL != "" {
+		data["checkout_url"] = checkoutURL
+	}
+	return data
 }
 
 func assertSignedOwnerRequest(t *testing.T, request *http.Request) {

@@ -57,8 +57,12 @@ that would mean the payment promise point may already have been crossed.
 The production process has no enabled payment Provider; Fake Provider behavior
 exists only for contract and lifecycle tests. Provider callbacks record bounded
 audit codes and payload digests, never raw signatures, secrets, or payment
-payloads. ADR-0017 still keeps membership-order commands out of Portal Gateway,
-so the browser purchase surface remains closed.
+payloads. ADR-0019 permits Portal Gateway to forward exactly one
+membership-order command: an authenticated user creating their own order. Its
+checkout handle is a resumable `weixin://` URI stored outside the general order
+representation; close, refund, and refund-status remain Console-only operator
+commands. The production Provider remains disabled until the separate release
+window is authorized.
 
 ## Language
 

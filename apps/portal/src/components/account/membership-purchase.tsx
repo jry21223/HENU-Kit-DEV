@@ -66,7 +66,9 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
           typeof error === "object" &&
           error !== null &&
           "status" in error &&
-          (error as { status?: number }).status === 503;
+          (error as { status?: number }).status === 503 &&
+          error instanceof Error &&
+          error.message === "membership_payment_unavailable";
         setState(unavailable ? { kind: "unavailable", message } : { kind: "error", message });
       }
     );

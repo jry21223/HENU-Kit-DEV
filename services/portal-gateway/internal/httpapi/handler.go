@@ -549,6 +549,8 @@ func (h *Handler) writeAccountFailure(w http.ResponseWriter, r *http.Request, er
 		writeJSON(w, http.StatusConflict, contract.ErrorEnvelope{Error: "account_command_conflict", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, accountportfolio.ErrInvalid):
 		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "account_portfolio_invalid_response", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, accountportfolio.ErrPaymentProviderUnavailable):
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_payment_unavailable", RequestID: requestIDOf(w, r)})
 	default:
 		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
 	}

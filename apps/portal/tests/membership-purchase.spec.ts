@@ -9,6 +9,7 @@ type PurchaseState = {
   paid: boolean;
   checkoutURL?: string;
   providerEnabled: boolean;
+  dependencyFailure?: boolean;
 };
 
 function order(state: PurchaseState) {
@@ -52,7 +53,9 @@ async function installGateway(context: BrowserContext, state: PurchaseState) {
           status: 503,
           contentType: "application/json",
           body: JSON.stringify({
-            error: "Membership payment is not available",
+            error: state.dependencyFailure
+              ? "account_portfolio_unavailable"
+              : "membership_payment_unavailable",
             request_id: "req_order",
           }),
         });
@@ -126,6 +129,21 @@ test("a disabled payment provider is an honest unavailable state", async ({ cont
 
   await expect(page.locator('[data-membership-purchase="unavailable"]')).toBeVisible();
   await expect(page.locator('[data-membership-purchase="paid"]')).toHaveCount(0);
+});
+
+test("a dependency failure does not claim that no order was created", async ({ context, page }) => {
+  const state: PurchaseState = {
+    paid: false,
+    providerEnabled: false,
+    dependencyFailure: true,
+  };
+  await installGateway(context, state);
+
+  await page.goto("/account/membership");
+  await page.getByRole("button", { name: "购买终身会员" }).click();
+
+  await expect(page.locator('[data-membership-purchase="error"]')).toBeVisible();
+  await expect(page.locator('[data-membership-purchase="unavailable"]')).toHaveCount(0);
 });
 
 test("an order with no checkout handle tells the user to start again", async ({

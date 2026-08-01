@@ -270,6 +270,7 @@ func (p *FakePaymentProvider) CreateOrder(_ context.Context, signed SignedPaymen
 		Currency:        signed.Request.Currency,
 		Plan:            signed.Request.Plan,
 		Status:          MembershipOrderPendingPayment,
+		CheckoutURL:     "weixin://wxpay/bizpayurl?pr=" + externalOrderID,
 	}
 	p.orders[externalOrderID] = order
 	p.merchantExternalOrders[signed.Request.MerchantOrderID] = externalOrderID
