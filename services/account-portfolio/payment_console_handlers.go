@@ -40,7 +40,7 @@ func (h *service) closeConsoleMembershipOrder(w http.ResponseWriter, r *http.Req
 		writeRawCommandData(w, r, http.StatusOK, context_.StoredPayload)
 		return
 	}
-	providerOrder, err := context_.Provider.CloseOrder(r.Context(), context_.MerchantOrderID)
+	providerOrder, err := context_.Provider.CloseOrder(r.Context(), context_.ExternalOrderID)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio payment provider is unavailable")
 		return
@@ -68,7 +68,7 @@ func (h *service) refundConsoleMembershipOrder(w http.ResponseWriter, r *http.Re
 		writeRawCommandData(w, r, http.StatusOK, context_.StoredPayload)
 		return
 	}
-	refund, err := context_.Provider.Refund(r.Context(), context_.MerchantOrderID)
+	refund, err := context_.Provider.Refund(r.Context(), context_.ExternalOrderID)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio payment provider is unavailable")
 		return
@@ -100,12 +100,12 @@ func (h *service) getConsoleMembershipOrderRefund(w http.ResponseWriter, r *http
 		writeError(w, r, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNAVAILABLE", "Membership payment is not available")
 		return
 	}
-	record, merchantOrderID, failure := h.consoleOrderTarget(r.Context(), orderID, provider.Name())
+	record, failure := h.consoleOrderTarget(r.Context(), orderID, provider.Name())
 	if failure != nil {
 		writeCommandFailure(w, r, failure)
 		return
 	}
-	refund, err := provider.QueryRefund(r.Context(), merchantOrderID)
+	refund, err := provider.QueryRefund(r.Context(), record.ProviderOrderID)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio payment provider is unavailable")
 		return
@@ -177,9 +177,12 @@ func (h *service) settleConsoleOrderClose(ctx context.Context, orderID string) (
 }
 
 type consoleOrderCommandContext struct {
-	Provider        PaymentProvider
-	Order           membershipOrderView
-	MerchantOrderID string
+	Provider PaymentProvider
+	Order    membershipOrderView
+	// ExternalOrderID is the provider's own order identifier, which is what
+	// every PaymentProvider method takes. It is not the private merchant order
+	// number; the two coincide for EasyPay but must not be conflated.
+	ExternalOrderID string
 	ClientID        string
 	OperatorID      string
 	Operation       string
@@ -311,7 +314,7 @@ func (h *service) claimConsoleOrderCommand(
 	if err := tx.Commit(ctx); err != nil {
 		return consoleOrderCommandContext{}, dependencyFailure("Account Portfolio command store is unavailable")
 	}
-	return consoleOrderCommandContext{Order: intent.Order.View, MerchantOrderID: intent.MerchantOrderID}, nil
+	return consoleOrderCommandContext{Order: intent.Order.View, ExternalOrderID: intent.Order.ProviderOrderID}, nil
 }
 
 // finishConsoleOrderCommand stores the response so a later retry of the same
@@ -332,26 +335,26 @@ func (h *service) finishConsoleOrderCommand(ctx context.Context, command console
 
 // consoleOrderTarget loads one membership order and its private merchant order
 // number.
-func (h *service) consoleOrderTarget(ctx context.Context, orderID, providerName string) (membershipOrderRecord, string, *commandFailure) {
+func (h *service) consoleOrderTarget(ctx context.Context, orderID, providerName string) (membershipOrderRecord, *commandFailure) {
 	tx, err := h.database.Begin(ctx)
 	if err != nil {
-		return membershipOrderRecord{}, "", dependencyFailure("Account Portfolio payment store is unavailable")
+		return membershipOrderRecord{}, dependencyFailure("Account Portfolio payment store is unavailable")
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	intent, err := paymentOrderIntentByOrderIDForUpdate(ctx, tx, orderID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return membershipOrderRecord{}, "", notFoundFailure("membership order was not found")
+		return membershipOrderRecord{}, notFoundFailure("membership order was not found")
 	}
 	if err != nil {
-		return membershipOrderRecord{}, "", dependencyFailure("Account Portfolio payment order is unavailable")
+		return membershipOrderRecord{}, dependencyFailure("Account Portfolio payment order is unavailable")
 	}
 	if intent.Order.Provider != providerName {
-		return membershipOrderRecord{}, "", notFoundFailure("membership order was not found")
+		return membershipOrderRecord{}, notFoundFailure("membership order was not found")
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return membershipOrderRecord{}, "", dependencyFailure("Account Portfolio payment store is unavailable")
+		return membershipOrderRecord{}, dependencyFailure("Account Portfolio payment store is unavailable")
 	}
-	return intent.Order, intent.MerchantOrderID, nil
+	return intent.Order, nil
 }
 
 func consoleOrderTargetID(r *http.Request) (string, *commandFailure) {
