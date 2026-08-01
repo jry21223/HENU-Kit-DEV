@@ -149,13 +149,13 @@ func TestReadMembershipOrderRefundUsesTheReadScope(t *testing.T) {
 
 func TestMembershipOrderCommandsRejectInvalidBodiesBeforeReachingTheOwner(t *testing.T) {
 	for name, body := range map[string]string{
-		"missing reason":     `{"expected_version":2}`,
-		"blank reason":       `{"reason":"   ","expected_version":2}`,
-		"missing revision":   `{"reason":"Approved support refund."}`,
-		"zero revision":      `{"reason":"Approved support refund.","expected_version":0}`,
-		"negative revision":  `{"reason":"Approved support refund.","expected_version":-1}`,
-		"caller-set amount":  `{"reason":"Approved refund.","expected_version":2,"amount_cents":990}`,
-		"merchant order no":  `{"reason":"Approved refund.","expected_version":2,"out_trade_no":"HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234"}`,
+		"missing reason":    `{"expected_version":2}`,
+		"blank reason":      `{"reason":"   ","expected_version":2}`,
+		"missing revision":  `{"reason":"Approved support refund."}`,
+		"zero revision":     `{"reason":"Approved support refund.","expected_version":0}`,
+		"negative revision": `{"reason":"Approved support refund.","expected_version":-1}`,
+		"caller-set amount": `{"reason":"Approved refund.","expected_version":2,"amount_cents":990}`,
+		"merchant order no": `{"reason":"Approved refund.","expected_version":2,"out_trade_no":"HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			owner := &fakeAccountPortfolio{order: refundEnvelope("paid", "processing")}

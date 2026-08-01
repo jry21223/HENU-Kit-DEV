@@ -27,14 +27,14 @@ func main() {
 		}
 	}
 	required := map[string]string{
-		"MembershipPath":            "getConsoleAccountMembership",
-		"MembershipGrantsPath":      "grantConsoleAccountMembership",
-		"MembershipRevocationsPath": "revokeConsoleAccountMembership",
-		"PointAdjustmentsPath":      "adjustConsoleAccountPoints",
-		"TicketsPath":               "getConsoleAccountTickets",
-		"TicketPath":                "getConsoleAccountTicket",
-		"TicketRepliesPath":         "replyConsoleAccountTicket",
-		"TicketTransitionsPath":     "transitionConsoleAccountTicket",
+		"MembershipPath":              "getConsoleAccountMembership",
+		"MembershipGrantsPath":        "grantConsoleAccountMembership",
+		"MembershipRevocationsPath":   "revokeConsoleAccountMembership",
+		"PointAdjustmentsPath":        "adjustConsoleAccountPoints",
+		"TicketsPath":                 "getConsoleAccountTickets",
+		"TicketPath":                  "getConsoleAccountTicket",
+		"TicketRepliesPath":           "replyConsoleAccountTicket",
+		"TicketTransitionsPath":       "transitionConsoleAccountTicket",
 		"MembershipOrderClosuresPath": "closeConsoleMembershipOrder",
 		"MembershipOrderRefundsPath":  "refundConsoleMembershipOrder",
 		"MembershipOrderRefundPath":   "getConsoleMembershipOrderRefund",
