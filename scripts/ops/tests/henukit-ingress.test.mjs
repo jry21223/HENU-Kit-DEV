@@ -6,6 +6,10 @@ const config = readFileSync(
   new URL("../../../infra/nginx/henukit-host.conf.example", import.meta.url),
   "utf8",
 );
+const composeEdge = readFileSync(
+  new URL("../../../infra/nginx/henukit.conf.example", import.meta.url),
+  "utf8",
+);
 const runbook = readFileSync(
   new URL("../../../docs/operations/henukit-domain-cutover.md", import.meta.url),
   "utf8",
@@ -28,4 +32,23 @@ test("henukit host ingress is canonical, hardened, and rollback-safe", () => {
   assert.match(runbook, /Full \(strict\)/);
   assert.match(runbook, /MX, SPF,\s+DKIM, DMARC and ownership records remain DNS-only/);
   assert.match(runbook, /superhuazai\.me/);
+});
+
+test("Compose edge exposes only the exact Account Portfolio payment callback", () => {
+  const callback =
+    "location = /api/v1/payment-providers/easypay/notifications";
+  assert.ok(composeEdge.includes(callback));
+  assert.match(
+    composeEdge,
+    /set \$account_portfolio_upstream account-portfolio:8097;[\s\S]*proxy_pass http:\/\/\$account_portfolio_upstream/,
+  );
+  assert.ok(
+    composeEdge.indexOf(callback) < composeEdge.indexOf("location /api/"),
+    "the exact callback must win before the generic Portal Gateway route",
+  );
+  assert.doesNotMatch(
+    composeEdge,
+    /location (?:\^~ )?\/api\/v1\/account\//,
+    "owner account routes must never be exposed directly",
+  );
 });

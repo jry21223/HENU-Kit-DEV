@@ -15,6 +15,10 @@ const developmentCompose = readFileSync(
   new URL("../../../docker-compose.henukit.yml", import.meta.url),
   "utf8",
 );
+const exampleEnvironment = readFileSync(
+  new URL("../../../.env.henukit.example", import.meta.url),
+  "utf8",
+);
 
 test("CI builds the primary HENU runtime without legacy Study or QuizCraft images", () => {
   const expectedImages = [
@@ -87,6 +91,65 @@ test("development Compose forwards an explicit Portal V2 read build flag", () =>
     config.services.portal.build.args.NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS,
     "1",
   );
+});
+
+test("Account Portfolio payment configuration is wired but disabled by default", () => {
+  const config = JSON.parse(
+    execFileSync(
+      "docker",
+      [
+        "compose",
+        "-f",
+        "docker-compose.henukit.yml",
+        "config",
+        "--format",
+        "json",
+        "--no-path-resolution",
+      ],
+      {
+        cwd: new URL("../../../", import.meta.url),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ACCOUNT_PORTFOLIO_EASYPAY_ENABLED: "1",
+          ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL: "https://metaview.top/epay",
+          ACCOUNT_PORTFOLIO_EASYPAY_PID: "henukit-tenant",
+          ACCOUNT_PORTFOLIO_EASYPAY_KEY: "independent-test-tenant-secret",
+          ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL:
+            "https://henukit.cn/api/v1/payment-providers/easypay/notifications",
+          ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL:
+            "https://henukit.cn/account/membership",
+        },
+      },
+    ),
+  );
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(config.services["account-portfolio"].environment).filter(
+        ([name]) => name.startsWith("ACCOUNT_PORTFOLIO_EASYPAY_"),
+      ),
+    ),
+    {
+      ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL: "https://metaview.top/epay",
+      ACCOUNT_PORTFOLIO_EASYPAY_ENABLED: "1",
+      ACCOUNT_PORTFOLIO_EASYPAY_KEY: "independent-test-tenant-secret",
+      ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL:
+        "https://henukit.cn/api/v1/payment-providers/easypay/notifications",
+      ACCOUNT_PORTFOLIO_EASYPAY_PID: "henukit-tenant",
+      ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL:
+        "https://henukit.cn/account/membership",
+    },
+  );
+  for (const name of [
+    "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED",
+    "ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL",
+    "ACCOUNT_PORTFOLIO_EASYPAY_PID",
+    "ACCOUNT_PORTFOLIO_EASYPAY_KEY",
+    "ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL",
+    "ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL",
+  ]) {
+    assert.match(exampleEnvironment, new RegExp(`^${name}=`, "m"));
+  }
 });
 
 test("every Docker image artifact includes an independent SHA-256 checksum", () => {
@@ -219,6 +282,11 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET,
     "1",
     "production Account Portfolio must reject the default client-secret placeholder",
+  );
+  assert.equal(
+    config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_EASYPAY_ENABLED,
+    "0",
+    "fixed-SHA runtime must keep the payment Provider disabled by default",
   );
   assert.equal(
     config.services["portal-gateway"].environment.ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET,

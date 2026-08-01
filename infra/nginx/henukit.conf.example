@@ -40,6 +40,19 @@ server {
     proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
+  # EasyPay callback enters the Account Portfolio owner through one exact,
+  # unauthenticated Provider route. No user-owned /api/v1/account/* route is
+  # exposed directly; those continue through the signed Portal Gateway.
+  location = /api/v1/payment-providers/easypay/notifications {
+    set $account_portfolio_upstream account-portfolio:8097;
+    proxy_pass http://$account_portfolio_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
+  }
+
   # Portal gateway BFF (/api/v1/*)
   location /api/ {
     set $portal_gateway_upstream portal-gateway:8084;
