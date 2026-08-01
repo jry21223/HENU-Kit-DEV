@@ -24,6 +24,9 @@ Optional configuration:
   HENUKIT_STATE_ROOT     Watcher state and lock (default: /var/lib/henukit-actions-watch)
   HENUKIT_POLL_SECONDS   Watch interval (default: 60)
   HENUKIT_PUBLIC_BASE_URL Public smoke-test base URL
+  HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE Active role receiving Account Console permissions
+  HENUKIT_PLATFORM_MIGRATIONS Comma-separated reviewed Platform Core migrations
+  HENUKIT_PLATFORM_CORE_CONTAINER Platform Core container name
 EOF
 }
 
@@ -46,6 +49,7 @@ repo="${HENUKIT_REPO:-jry21223/HENU-Kit-DEV}"
 workflow="${HENUKIT_WORKFLOW:-deploy-henukit.yml}"
 branch="${HENUKIT_BRANCH:-main}"
 env_file="${HENUKIT_ENV_FILE:-}"
+rollback_env_file="${HENUKIT_ROLLBACK_ENV_FILE:-$env_file}"
 token_file="${GH_TOKEN_FILE:-/etc/henukit/github-actions-read.token}"
 staging_root="${HENUKIT_STAGING_ROOT:-/opt/henukit-staging}"
 release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
@@ -53,9 +57,12 @@ backup_root="${HENUKIT_BACKUP_ROOT:-/opt/henukit-backups}"
 state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
 poll_seconds="${HENUKIT_POLL_SECONDS:-60}"
 public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://superhuazai.me}"
+account_public_origin="https://henukit.cn"
 postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
 account_portfolio_container="${HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER:-henukit-account-portfolio-1}"
-migration="${HENUKIT_PLATFORM_MIGRATION:-}"
+platform_core_container="${HENUKIT_PLATFORM_CORE_CONTAINER:-henukit-platform-core-1}"
+migration="${HENUKIT_PLATFORM_MIGRATIONS:-${HENUKIT_PLATFORM_MIGRATION:-}}"
+account_operator_role="${HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE:-}"
 
 base_images=(
   henukit-console
@@ -81,15 +88,86 @@ images=(
 )
 
 [[ -n "$env_file" && -r "$env_file" ]] || die "HENUKIT_ENV_FILE must point to a readable production environment file"
+[[ -n "$rollback_env_file" && -r "$rollback_env_file" && ! -L "$rollback_env_file" ]] ||
+  die "HENUKIT_ROLLBACK_ENV_FILE must point to a readable, non-symlink environment file"
 [[ -r "$token_file" && -f "$token_file" ]] || die "GH_TOKEN_FILE must point to a readable regular file"
 [[ "$poll_seconds" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_POLL_SECONDS must be a positive integer"
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$branch" =~ ^[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_BRANCH contains unsupported characters"
+[[ "$account_operator_role" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] ||
+  die "HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE must name an explicit role using lowercase letters, digits, or hyphens"
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v flock >/dev/null 2>&1 || die "flock is required"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+
+environment_value() {
+  local key="$1"
+  local count value
+  count="$(grep -Ec "^[[:space:]]*${key}[[:space:]]*=" "$env_file" || true)"
+  [[ "$count" -le 1 ]] || die "$key is assigned more than once in HENUKIT_ENV_FILE"
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+  value="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$env_file")"
+  value="${value#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+  printf '%s' "$value"
+}
+
+verify_production_data_boundary() {
+  local portal_api_mode portal_allow_mock easypay_enabled easypay_pid easypay_key
+  local easypay_base_url easypay_notify_url easypay_return_url
+  portal_api_mode="$(environment_value PORTAL_API_MODE)"
+  portal_allow_mock="$(environment_value NEXT_PUBLIC_PORTAL_ALLOW_MOCK)"
+  [[ "$portal_api_mode" == "live" ]] ||
+    die "PORTAL_API_MODE must be explicitly live before production deployment"
+  [[ -z "$portal_allow_mock" || "$portal_allow_mock" == "0" ]] ||
+    die "NEXT_PUBLIC_PORTAL_ALLOW_MOCK must be 0 or absent before production deployment"
+  easypay_enabled="$(environment_value ACCOUNT_PORTFOLIO_EASYPAY_ENABLED)"
+  easypay_pid="$(environment_value ACCOUNT_PORTFOLIO_EASYPAY_PID)"
+  easypay_key="$(environment_value ACCOUNT_PORTFOLIO_EASYPAY_KEY)"
+  easypay_base_url="$(environment_value ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL)"
+  easypay_notify_url="$(environment_value ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL)"
+  easypay_return_url="$(environment_value ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL)"
+  [[ "$easypay_enabled" == "1" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED must be 1 for the Account payment release"
+  [[ "$easypay_pid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_PID is missing or invalid"
+  [[ ${#easypay_key} -ge 16 && "$easypay_key" != *[[:space:]]* ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_KEY is missing or invalid"
+  [[ ! "$easypay_key" =~ (replace|example|changeme|test-secret) ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_KEY is a deployment placeholder"
+  [[ "$easypay_base_url" == "https://metaview.top/epay" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL must use the production MetaView EasyPay gateway"
+  [[ "$easypay_notify_url" == "https://henukit.cn/api/v1/payment-providers/easypay/notifications" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL must use the exact public callback ingress"
+  [[ "$easypay_return_url" == "https://henukit.cn/account/membership" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL must use the public membership route"
+}
+
+verify_account_boundary_manifest() {
+  local release_dir="$1"
+  local release_sha="$2"
+  local manifest="$release_dir/release-gates/account-production-boundary.env"
+  local expected actual
+  [[ -f "$manifest" && -r "$manifest" && ! -L "$manifest" ]] ||
+    die "Account production-boundary manifest is missing"
+  expected="$(printf '%s\n' \
+    "release_sha=$release_sha" \
+    "status=pass" \
+    "account_console_mock_sources=absent" \
+    "account_transitive_mock_sources=absent" \
+    "account_payment_provider=easypay_or_disabled" \
+    "portal_require_gateway=1" \
+    "portal_allow_mock=0" \
+    "portal_api_default_mode=live")"
+  actual="$(tr -d '\r' < "$manifest")"
+  [[ "$actual" == "$expected" ]] ||
+    die "Account production-boundary manifest did not pass for release $release_sha"
+}
+
+verify_production_data_boundary
 
 token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || stat -f '%Lp' "$token_file")"
 token_owner="$(stat -c '%u' "$token_file" 2>/dev/null || stat -f '%u' "$token_file")"
@@ -266,7 +344,7 @@ current_release_sha() {
 
 verify_active_release() {
   local release_sha="$1"
-  local account_portfolio_state
+  local account_portfolio_state account_status callback_status
   active_release_matches "$release_sha" || return 1
   if release_uses_account_portfolio "$release_sha"; then
     account_portfolio_state=0
@@ -282,10 +360,27 @@ verify_active_release() {
   curl --fail --silent --show-error "$public_base_url/" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/practice" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/library" >/dev/null || return 1
+  if [[ "$account_portfolio_state" -eq 0 ]]; then
+    account_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$account_public_origin/api/v1/account/summary")" || return 1
+    [[ "$account_status" =~ ^[234][0-9]{2}$ && "$account_status" != "404" ]] || return 1
+    callback_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      --request POST --header 'Content-Type: application/json' --data '{}' \
+      "$account_public_origin/api/v1/payment-providers/easypay/notifications")" || return 1
+    [[ "$callback_status" =~ ^4[0-9]{2}$ && "$callback_status" != "404" ]] || return 1
+  fi
   [[ "$(curl --location --max-redirs 3 --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/quiz/")" == "404" ]] ||
     return 1
   [[ "$(curl --location --max-redirs 3 --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/study-api/healthz")" == "404" ]] ||
     return 1
+}
+
+grant_account_operator_permissions() {
+  local release_sha="$1"
+  docker exec "$platform_core_container" grant-account-operator-role \
+    --role-code "$account_operator_role" \
+    --request-id "req_release_${release_sha}" \
+    --reason "Account Portfolio production release $release_sha" || return 1
+  log "Platform Core audited the Account Console permission grant for role $account_operator_role"
 }
 
 record_activation() {
@@ -480,7 +575,7 @@ rollback_release() {
     return 1
   [[ -x "$previous_helper" ]] || return 1
   log "rolling back to release $previous_sha"
-  "$previous_helper" "$previous_dir" "$env_file" || return 1
+  "$previous_helper" "$previous_dir" "$rollback_env_file" || return 1
   verify_active_release "$previous_sha"
 }
 
@@ -505,6 +600,9 @@ deploy_release() {
 
   if active_release_matches "$release_sha"; then
     verify_active_release "$release_sha" || die "active release failed public health verification"
+    if release_uses_account_portfolio "$release_sha"; then
+      grant_account_operator_permissions "$release_sha" || die "active release permission grant did not converge"
+    fi
     record_activation "$release_sha"
     log "release $release_sha is already active"
     return
@@ -531,6 +629,7 @@ deploy_release() {
     die "release directory SHA does not match the workflow run"
   [[ -x "$release_dir/bin/deploy-henukit-artifact.sh" ]] ||
     die "release directory has no executable deployment helper"
+  verify_account_boundary_manifest "$release_dir" "$release_sha"
 
   if ! release_is_approved "$release_sha"; then
     prepared_backup_file=""
@@ -574,6 +673,11 @@ deploy_release() {
     rollback_release "$previous_sha" ||
       die "release verification failed and rollback to $previous_sha also failed"
     die "release verification failed; rolled back to $previous_sha"
+  fi
+  if ! grant_account_operator_permissions "$release_sha"; then
+    rollback_release "$previous_sha" ||
+      die "permission grant failed and rollback to $previous_sha also failed"
+    die "permission grant failed; rolled back to $previous_sha"
   fi
   record_activation "$release_sha"
   log "release $release_sha activated and deterministic smoke checks passed; manual acceptance remains"

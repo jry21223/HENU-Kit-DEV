@@ -3,10 +3,11 @@ set -Eeuo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-usage: deploy-henukit-artifact.sh <runtime-dir> <env-file> [platform-core-migration]
+usage: deploy-henukit-artifact.sh <runtime-dir> <env-file> [platform-core-migrations]
 
 The image tarballs must already have been verified and loaded into Docker.
-The optional migration is a filename from <runtime-dir>/migrations/platform-core.
+The optional value is a comma-separated list of filenames from
+<runtime-dir>/migrations/platform-core, applied in the supplied order.
 EOF
 }
 
@@ -68,17 +69,14 @@ ensure_postgres_ready
 
 if [[ -n "$migration_arg" ]]; then
   migration_dir="$(cd "$runtime_dir/migrations/platform-core" 2>/dev/null && pwd -P)" || die "migration directory is missing"
-  if [[ "$migration_arg" = /* ]]; then
-    migration_path="$(cd "$(dirname "$migration_arg")" 2>/dev/null && pwd -P)/$(basename "$migration_arg")" || die "migration path is invalid"
-  else
-    migration_path="$migration_dir/$migration_arg"
-  fi
-  [[ "$migration_path" == "$migration_dir/"* ]] || die "migration must come from the runtime artifact"
-  [[ "$migration_path" =~ /[0-9]{6}_[a-z0-9_]+\.up\.sql$ ]] || die "migration must be a numbered .up.sql file"
-  [[ -f "$migration_path" ]] || die "migration file does not exist"
-
-  echo "Applying Platform Core migration $(basename "$migration_path") to the platform database"
-  "${compose[@]}" exec -T postgres sh -ceu 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d platform -f -' < "$migration_path"
+  IFS=',' read -r -a migration_names <<< "$migration_arg"
+  for migration_name in "${migration_names[@]}"; do
+    [[ "$migration_name" =~ ^[0-9]{6}_[a-z0-9_]+\.up\.sql$ ]] || die "migration must be a numbered .up.sql filename"
+    migration_path="$migration_dir/$migration_name"
+    [[ -f "$migration_path" && ! -L "$migration_path" ]] || die "migration file does not exist or is unsafe"
+    echo "Applying Platform Core migration $migration_name to the platform database"
+    "${compose[@]}" exec -T postgres sh -ceu 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d platform -f -' < "$migration_path"
+  done
 fi
 
 echo "Ensuring Account Portfolio database exists"

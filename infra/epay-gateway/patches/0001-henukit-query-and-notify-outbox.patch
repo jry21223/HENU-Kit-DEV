@@ -1,7 +1,8 @@
 diff --git a/lib/db.js b/lib/db.js
+index 151ed67..ea40395 100644
 --- a/lib/db.js
 +++ b/lib/db.js
-@@ -29,14 +29,12 @@
+@@ -29,14 +29,12 @@ class OrderStore {
    }
  
    _save() {
@@ -22,7 +23,7 @@ diff --git a/lib/db.js b/lib/db.js
    }
  
    create(params) {
-@@ -54,6 +52,10 @@
+@@ -54,6 +52,10 @@ class OrderStore {
        wechat_txn_id: null,
        created_at: params.created_at || new Date().toISOString(),
        paid_at: null,
@@ -33,7 +34,7 @@ diff --git a/lib/db.js b/lib/db.js
      };
      this._orders.set(order.out_trade_no, order);
      this._save();
-@@ -78,9 +80,42 @@
+@@ -78,9 +80,42 @@ class OrderStore {
      order.status = "paid";
      order.wechat_txn_id = wechatTxnId;
      order.paid_at = new Date().toISOString();
@@ -76,16 +77,17 @@ diff --git a/lib/db.js b/lib/db.js
  }
  
  let _store = null;
-@@ -90,4 +125,4 @@
+@@ -90,4 +125,4 @@ function getStore(dbPath) {
    return _store;
  }
  
 -module.exports = { getStore };
 +module.exports = { OrderStore, getStore };
 diff --git a/lib/wechat.js b/lib/wechat.js
+index f274cc4..577ec9c 100644
 --- a/lib/wechat.js
 +++ b/lib/wechat.js
-@@ -36,6 +36,15 @@
+@@ -36,6 +36,15 @@ class WeChatPayClient {
      return payload.code_url;
    }
  
@@ -101,7 +103,7 @@ diff --git a/lib/wechat.js b/lib/wechat.js
    // ── Callback verification ───────────────────────────────────
  
    verifyCallbackSignature(headers, body) {
-@@ -80,7 +89,7 @@
+@@ -80,7 +89,7 @@ class WeChatPayClient {
    // ── HTTP with WECHATPAY2-SHA256-RSA2048 auth ─────────────────
  
    async _request(method, path, body) {
@@ -110,7 +112,7 @@ diff --git a/lib/wechat.js b/lib/wechat.js
      const url = new URL(path, this._config.wechatApiBase);
      const timestamp = String(Math.floor(Date.now() / 1000));
      const nonce = crypto.randomBytes(16).toString("hex");
-@@ -140,7 +149,7 @@
+@@ -140,7 +149,7 @@ class WeChatPayClient {
          req.destroy();
          reject(new Error("WeChat Pay API request timed out"));
        });
@@ -120,9 +122,10 @@ diff --git a/lib/wechat.js b/lib/wechat.js
      });
    }
 diff --git a/server.js b/server.js
+index b9832fa..55923e3 100644
 --- a/server.js
 +++ b/server.js
-@@ -3,7 +3,7 @@
+@@ -3,7 +3,7 @@ const path = require("path");
  
  const config = require("./config");
  const { getStore } = require("./lib/db");
@@ -131,7 +134,7 @@ diff --git a/server.js b/server.js
  const { validateMerchantRequest } = require("./lib/merchants");
  const { WeChatPayClient } = require("./lib/wechat");
  
-@@ -24,6 +24,13 @@
+@@ -24,6 +24,13 @@ app.use((req, _res, next) => {
    next();
  });
  
@@ -145,7 +148,7 @@ diff --git a/server.js b/server.js
  // ── /submit.php — EPay-compatible order creation ───────────────
  // MetaView POSTs here with: pid, type, out_trade_no, notify_url,
  // return_url, name, money, sign, sign_type
-@@ -135,10 +142,12 @@
+@@ -135,10 +142,12 @@ app.get("/submit.php", (req, res) => {
  app.get("/pay/:outTradeNo", (req, res) => {
    const order = store.get( req.params.outTradeNo);
    if (!order) return res.status(404).send("订单不存在");
@@ -160,9 +163,7 @@ diff --git a/server.js b/server.js
      const retParams = buildReturnParams(order, merchant.key);
      const qs = new URLSearchParams(retParams).toString();
      const redirectUrl = `${order.return_url}?${qs}`;
-@@ -182,6 +189,16 @@
-     if (tradeState !== "SUCCESS") {
-       console.log(`WeChat callback trade_state=${tradeState}, ignoring`);
+@@ -182,6 +191,16 @@ app.post("/api/notify/wechat", async (req, res) => {
        return res.json({ code: "SUCCESS" });
      }
  
@@ -177,7 +178,9 @@ diff --git a/server.js b/server.js
 +    }
 +
      // 3. Mark order paid (idempotent)
-@@ -191,12 +208,10 @@
+     const updated = store.markPaid( outTradeNo, wechatTxnId);
+     const order = store.get( outTradeNo);
+@@ -191,12 +210,10 @@ app.post("/api/notify/wechat", async (req, res) => {
      }
  
      // 4. Forward EPay-format callback to MetaView
@@ -192,7 +195,7 @@ diff --git a/server.js b/server.js
  
      return res.json({ code: "SUCCESS" });
    } catch (err) {
-@@ -247,28 +262,86 @@
+@@ -247,26 +264,84 @@ async function forwardNotify(order) {
        req.write(body);
        req.end();
      });
@@ -206,9 +209,6 @@ diff --git a/server.js b/server.js
  }
  
 -// ── /api/query/:outTradeNo — Order status query ─────────────────
--
--app.get("/api/query/:outTradeNo", (req, res) => {
--  const order = store.get( req.params.outTradeNo);
 +async function deliverNotify(order) {
 +  try {
 +    await forwardNotify(order);
@@ -217,7 +217,9 @@ diff --git a/server.js b/server.js
 +    store.recordNotifyAttempt(order.out_trade_no, false, err.message);
 +  }
 +}
-+
+ 
+-app.get("/api/query/:outTradeNo", (req, res) => {
+-  const order = store.get( req.params.outTradeNo);
 +const retryTimer = setInterval(async () => {
 +  for (const order of store.dueNotifications()) {
 +    await deliverNotify(order);
@@ -275,8 +277,8 @@ diff --git a/server.js b/server.js
 +  result.sign = epaySign(result, merchant.key);
 +  result.sign_type = "MD5";
 +  res.json(result);
- });
- 
++});
++
 +// Payment-page polling exposes only the local pending/paid display state. It
 +// is not the authenticated merchant reconciliation endpoint.
 +app.get("/api/status/:outTradeNo", (req, res) => {
@@ -287,12 +289,10 @@ diff --git a/server.js b/server.js
 +    return res.status(404).json({ error: "order not found" });
 +  }
 +  res.json({ status: order.status });
-+});
-+
- // ── /api/notify/wechat — GET support (for testing) ─────────────
+ });
  
- app.get("/api/notify/wechat", (req, res) => {
-@@ -383,7 +456,7 @@
+ // ── /api/notify/wechat — GET support (for testing) ─────────────
+@@ -383,7 +458,7 @@ function renderPayPage(order) {
  
    function checkStatus() {
      attempts++;
@@ -301,7 +301,7 @@ diff --git a/server.js b/server.js
        .then(r => r.json())
        .then(data => {
          if (data.status === "paid") {
-@@ -421,10 +494,14 @@
+@@ -421,10 +496,14 @@ function renderPayPage(order) {
  
  // ── Start server ───────────────────────────────────────────────
  
@@ -325,6 +325,7 @@ diff --git a/server.js b/server.js
 +module.exports = { app, store };
 diff --git a/test/query-outbox.test.js b/test/query-outbox.test.js
 new file mode 100644
+index 0000000..5506d3a
 --- /dev/null
 +++ b/test/query-outbox.test.js
 @@ -0,0 +1,45 @@
@@ -373,58 +374,9 @@ new file mode 100644
 +  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 +  fs.rmSync(directory, { recursive: true, force: true });
 +});
-diff --git a/test/wechat-query.test.js b/test/wechat-query.test.js
-new file mode 100644
---- /dev/null
-+++ b/test/wechat-query.test.js
-@@ -0,0 +1,45 @@
-+const assert = require("node:assert/strict");
-+const crypto = require("node:crypto");
-+const http = require("node:http");
-+const test = require("node:test");
-+const { WeChatPayClient } = require("../lib/wechat");
-+
-+test("merchant-order query uses an authenticated WeChat GET without a body", async () => {
-+  const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
-+  const server = http.createServer((request, response) => {
-+    assert.equal(
-+      request.url,
-+      "/v3/pay/transactions/out-trade-no/HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234?mchid=1900000109"
-+    );
-+    assert.equal(request.method, "GET");
-+    assert.match(request.headers.authorization, /^WECHATPAY2-SHA256-RSA2048 /);
-+    let body = "";
-+    request.on("data", (chunk) => { body += chunk; });
-+    request.on("end", () => {
-+      assert.equal(body, "");
-+      response.setHeader("Content-Type", "application/json");
-+      response.end(JSON.stringify({
-+        out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
-+        transaction_id: "42000000000000000001",
-+        trade_state: "SUCCESS",
-+        amount: { total: 990, currency: "CNY" },
-+      }));
-+    });
-+  });
-+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-+  try {
-+    const address = server.address();
-+    const client = new WeChatPayClient({
-+      wechatAppId: "wx-test",
-+      wechatMchId: "1900000109",
-+      wechatSerialNo: "serial-test",
-+      wechatPrivateKey: privateKey.export({ type: "pkcs8", format: "pem" }),
-+      wechatApiBase: `http://127.0.0.1:${address.port}`,
-+    });
-+    const order = await client.queryOrder("HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234");
-+    assert.equal(order.trade_state, "SUCCESS");
-+    assert.equal(order.amount.total, 990);
-+  } finally {
-+    await new Promise((resolve) => server.close(resolve));
-+  }
-+});
 diff --git a/test/query-route.test.js b/test/query-route.test.js
 new file mode 100644
+index 0000000..7447dfa
 --- /dev/null
 +++ b/test/query-route.test.js
 @@ -0,0 +1,67 @@
@@ -493,5 +445,56 @@ new file mode 100644
 +  } finally {
 +    await new Promise((resolve) => server.close(resolve));
 +    fs.rmSync(directory, { recursive: true, force: true });
++  }
++});
+diff --git a/test/wechat-query.test.js b/test/wechat-query.test.js
+new file mode 100644
+index 0000000..dfdeaec
+--- /dev/null
++++ b/test/wechat-query.test.js
+@@ -0,0 +1,45 @@
++const assert = require("node:assert/strict");
++const crypto = require("node:crypto");
++const http = require("node:http");
++const test = require("node:test");
++const { WeChatPayClient } = require("../lib/wechat");
++
++test("merchant-order query uses an authenticated WeChat GET without a body", async () => {
++  const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
++  const server = http.createServer((request, response) => {
++    assert.equal(
++      request.url,
++      "/v3/pay/transactions/out-trade-no/HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234?mchid=1900000109"
++    );
++    assert.equal(request.method, "GET");
++    assert.match(request.headers.authorization, /^WECHATPAY2-SHA256-RSA2048 /);
++    let body = "";
++    request.on("data", (chunk) => { body += chunk; });
++    request.on("end", () => {
++      assert.equal(body, "");
++      response.setHeader("Content-Type", "application/json");
++      response.end(JSON.stringify({
++        out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
++        transaction_id: "42000000000000000001",
++        trade_state: "SUCCESS",
++        amount: { total: 990, currency: "CNY" },
++      }));
++    });
++  });
++  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
++  try {
++    const address = server.address();
++    const client = new WeChatPayClient({
++      wechatAppId: "wx-test",
++      wechatMchId: "1900000109",
++      wechatSerialNo: "serial-test",
++      wechatPrivateKey: privateKey.export({ type: "pkcs8", format: "pem" }),
++      wechatApiBase: `http://127.0.0.1:${address.port}`,
++    });
++    const order = await client.queryOrder("HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234");
++    assert.equal(order.trade_state, "SUCCESS");
++    assert.equal(order.amount.total, 990);
++  } finally {
++    await new Promise((resolve) => server.close(resolve));
 +  }
 +});

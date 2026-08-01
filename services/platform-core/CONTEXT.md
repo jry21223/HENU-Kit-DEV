@@ -22,6 +22,11 @@
 
 HC-05 through HC-08 establish identity authorization, verified-email mail delivery, and reference-only Operations Inbox coordination. Registration now requires a HENU Kit Password Credential and Display Name to commit atomically with the verified Email Identity and Core Session. Password recovery requires a fresh Email Verification Code, revokes all old Sessions, and issues one new Core Session; an authenticated password change additionally requires the current password, retains only the current Core Session, and revokes every other Session. Temporary email, IP, and device failure counters escalate password authentication to email-code login and fail closed when Redis is unavailable. HC-12 adds `platform.operations.read` and `platform.operations.write`, both requiring platform Scope, plus a bounded operational snapshot and audited mutation APIs for Session revocation and optimistic account status/role/Scope replacement. HC-170 registers the exact `account.membership.write` permission; it is usable only through an active role grant carrying product Scope `account-portfolio` and does not grant points or payment authority. The root-only initial-operator CLI grants only Platform Operations and QuizCraft Workshop scopes and writes an immutable audit. Durable idempotency records distinguish replay, conflicting payloads, and unknown outcomes; append-only operation audits accompany the existing authorization audits. Responses omit Session hashes/tokens, recipient ciphertext, provider identifiers, mail secrets, verification secrets, and source-product content.
 
+The Account payment release uses a separate Platform Core-owned command to
+grant the exact eight Account Console permissions to one explicitly named
+active role, increment its authorization revision, and append an immutable
+release audit. Deployment scripts never write authorization tables directly.
+
 ## Language
 
 **Account Center**:

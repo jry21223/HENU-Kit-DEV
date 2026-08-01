@@ -8,6 +8,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccountOperatorRoleGrantAuditEvent struct {
+	ID              pgtype.UUID        `json:"id"`
+	RoleID          pgtype.UUID        `json:"role_id"`
+	RoleCode        string             `json:"role_code"`
+	Actor           string             `json:"actor"`
+	RequestID       string             `json:"request_id"`
+	Reason          string             `json:"reason"`
+	PermissionCodes []string           `json:"permission_codes"`
+	Changed         bool               `json:"changed"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
 type AuthorizationAuditEvent struct {
 	ID                    pgtype.UUID        `json:"id"`
 	ActorUserID           pgtype.UUID        `json:"actor_user_id"`

@@ -54,15 +54,18 @@ The number commits with the durable payment intent before any Provider call,
 remains private from browser order responses, and is stable across recovery.
 Enabling this format fails closed if any older payment intent exists because
 that would mean the payment promise point may already have been crossed.
-The production process has no enabled payment Provider; Fake Provider behavior
-exists only for contract and lifecycle tests. Provider callbacks record bounded
+The production runtime can wire only EasyPay when its release-gated environment
+explicitly enables it; otherwise it fails closed with no Provider. Fake Provider behavior
+exists only for contract and lifecycle tests and is rejected from production
+startup wiring. Provider callbacks record bounded
 audit codes and payload digests, never raw signatures, secrets, or payment
 payloads. ADR-0019 permits Portal Gateway to forward exactly one
 membership-order command: an authenticated user creating their own order. Its
 checkout handle is a resumable `weixin://` URI stored outside the general order
 representation; close, refund, and refund-status remain Console-only operator
-commands. The production Provider remains disabled until the separate release
-window is authorized.
+commands. Release automation requires the authorized payment window, exact
+tenant configuration, mock-free manifest, and reachable callback before it can
+record activation success.
 
 ## Language
 

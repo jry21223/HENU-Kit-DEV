@@ -55,14 +55,20 @@ It deploys only the newest completed, successful `push` run of
 
 1. downloads the exact full-SHA artifact set with `gh`;
 2. rejects missing, duplicate, unexpected, or checksum-invalid files;
-3. verifies the runtime `RELEASE_SHA`;
+3. verifies the runtime `RELEASE_SHA` and its exact-SHA Account production
+   boundary manifest. The manifest follows Account's local import graph,
+   rejects user-reachable Portal/Gateway fixtures and fake-success sources,
+   proves runtime wiring is EasyPay-or-disabled, and proves Portal requires the
+   real Gateway with Portal API defaulting live;
 4. creates custom-format `platform` and `account_portfolio` database backups,
    records their checksums, sizes and PostgreSQL version, and restores each
    into isolated temporary databases with key-table and Account durable-fact
    count checks. On the first Account Portfolio release it records and
    restores an explicit empty-database baseline before schema creation;
 5. loads all nine fixed-SHA Docker images;
-6. calls the existing `deploy-henukit-artifact.sh`;
+6. calls the existing `deploy-henukit-artifact.sh`, then invokes Platform
+   Core's owner-defined command to grant all eight Account Console permissions,
+   bump the role revision, and append an immutable grant audit;
 7. verifies all nine running image tags, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
@@ -90,6 +96,9 @@ sudo install -d -o root -g root -m 0700 \
 sudo install -o root -g root -m 0555 \
   /opt/henukit-releases/<sha>/bin/watch-henukit-actions.sh \
   /usr/local/sbin/watch-henukit-actions
+sudo install -o root -g root -m 0555 \
+  /opt/henukit-releases/<sha>/bin/activate-henukit-release.sh \
+  /usr/local/sbin/activate-henukit-release
 sudo install -o root -g root -m 0644 \
   /opt/henukit-releases/<sha>/infra/systemd/henukit-actions-watch.service \
   /etc/systemd/system/henukit-actions-watch.service
@@ -102,10 +111,23 @@ only watcher configuration; application secrets stay in the referenced file:
 sudo sh -c 'umask 077; cat > /etc/henukit/actions-watch.env' <<'EOF'
 HENUKIT_ENV_FILE=/opt/henukit/.env.henukit
 HENUKIT_PUBLIC_BASE_URL=https://superhuazai.me
+HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator
 # Override only when Docker Compose uses a non-default container name.
 HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER=henukit-account-portfolio-1
 EOF
 ```
+
+The referenced application environment must explicitly contain
+`PORTAL_API_MODE=live` and `NEXT_PUBLIC_PORTAL_ALLOW_MOCK=0`. The one-command
+entry reads the already-installed HENU tenant PID/key from MetaView over the
+existing root SSH channel without logging either value, atomically installs the
+Account-side tenant configuration and `ENABLED=1`, and restores the complete
+environment file on any failed release. Exact base, callback, and return URLs
+are also installed. Invoking the watcher directly requires all six values
+already be valid. Any invalid value is rejected before artifact download or
+backup. The
+operator role has no default: confirm the intended production role and set it
+explicitly. Migrations declare permissions but deliberately do not grant them.
 
 ### First 8-to-9 image Account Portfolio cutover
 
@@ -148,7 +170,49 @@ full SHA:
 - the release scope, migration boundary, monitoring window, and rollback owner
   are explicitly approved.
 
-Only then authorize production activation:
+### One-command Account payment release
+
+After issue #166 is closed and the fixed-SHA artifact has passed the gates
+above, the runtime's release entry is the sole production approval command:
+
+```bash
+sudo GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
+  HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
+  HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator \
+  HENUKIT_PLATFORM_MIGRATIONS=000017_account_portfolio_order_access.up.sql,000018_account_operator_role_grant_audit.up.sql \
+  /usr/local/sbin/activate-henukit-release <full-main-sha> --execute
+```
+
+This single entry performs the unapproved preparation pass first. It refuses
+while #166 is open, restore-tests both database backups, verifies the mock-free
+manifest, securely copies the existing MetaView HENU tenant identity into the
+Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
+tests and atomically activates the gateway with health rollback, creates the
+single-use SHA approval, refreshes both backups, applies Platform Core
+`000017` and `000018`, deploys all nine fixed-SHA images, grants the eight
+Account Console permissions through Platform Core, and probes the public
+Account summary and EasyPay callback routes in addition to deterministic health
+checks. Account Portfolio migrations
+`000006` and `000007` remain service-owned startup migrations.
+
+If activation fails, the watcher invokes the previous fixed-SHA helper with the
+pre-release environment snapshot before the outer command restores that file,
+so running containers and disk state agree. A crash after the new containers
+become healthy but before the grant is recorded converges on the next run: the
+active SHA path re-invokes Platform Core's idempotent audited grant before it
+writes `last-activated-sha`. Migration `000018` is itself safe to reapply after
+a later release step fails.
+
+The defaults assume SSH key access to `root@metaview.top` and gateway directory
+`/root/epay-gateway`; override only with
+`HENUKIT_EPAY_GATEWAY_SSH_TARGET` and `HENUKIT_EPAY_GATEWAY_DIR`. SSH host-key
+verification remains enabled. A successful gateway patch is backward-compatible
+with MetaView and is intentionally retained if the later HENU activation rolls
+back; reruns are idempotent through the exact patch-hash marker.
+
+The manual approval procedure below remains available for recovery and
+diagnosis, but is not the normal Account payment release. Only then authorize
+production activation manually:
 
 ```bash
 printf '%s\n' '<full-main-sha>' | \
@@ -181,6 +245,8 @@ The activation record is deliberately not a production-acceptance claim: the
 real school-mail registration, OAuth session, metrics, and observation checks in
 the release procedure above must still be recorded for that SHA.
 
-Automatic schema selection is intentionally disabled. When a reviewed release
-requires one Platform Core migration, set its exact artifact filename with
-`HENUKIT_PLATFORM_MIGRATION` for that deployment and remove it afterward.
+Automatic schema selection is intentionally disabled. Set the reviewed,
+comma-separated Platform Core migration filenames with
+`HENUKIT_PLATFORM_MIGRATIONS` for that deployment and remove the setting
+afterward. The singular `HENUKIT_PLATFORM_MIGRATION` remains a compatibility
+alias for older one-migration releases.
