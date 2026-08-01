@@ -154,7 +154,15 @@ set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_ENABLED 1 || die "could not atom
 # restore-test both databases. Any failure exits before an approval is written.
 "$watcher" --once
 [[ -s "$prepared" ]] || die "watcher did not prepare verified backup evidence for release $release_sha"
-[[ "$(basename "$(tr -d '\r\n' < "$prepared")")" == *"$release_sha"* ]] ||
+prepared_backup="$(tr -d '\r\n' < "$prepared")"
+[[ "$prepared_backup" =~ ^/[A-Za-z0-9_./-]+$ && "$prepared_backup" != "/" ]] ||
+  die "prepared backup evidence contains an invalid backup path"
+prepared_metadata="${prepared_backup}.meta"
+[[ -f "$prepared_metadata" && -r "$prepared_metadata" && ! -L "$prepared_metadata" ]] ||
+  die "prepared backup evidence has no readable metadata"
+[[ "$(grep -c '^release_sha=' "$prepared_metadata")" == "1" ]] ||
+  die "prepared backup metadata must contain exactly one release SHA"
+[[ "$(sed -n 's/^release_sha=//p' "$prepared_metadata")" == "$release_sha" ]] ||
   die "prepared backup evidence is not bound to release $release_sha"
 
 release_dir="$release_root/$release_sha"

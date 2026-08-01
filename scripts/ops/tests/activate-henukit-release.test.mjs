@@ -27,6 +27,9 @@ function fixture({
   blockerState = "closed",
   branchSha = releaseSha,
   gatewayDeploymentFails = false,
+  metadataDuplicate = false,
+  metadataReleaseSha = releaseSha,
+  metadataSymlink = false,
   preparationFails = false,
   runConclusion = "success",
 } = {}) {
@@ -80,7 +83,18 @@ if [[ -f "$approval" ]]; then
   rm "$approval"
   printf '%s\n' "$FAKE_RELEASE_SHA" > "$HENUKIT_STATE_ROOT/last-activated-sha"
 else
-  printf '/verified/platform-backup-%s.dump\n' "$FAKE_RELEASE_SHA" > "$HENUKIT_STATE_ROOT/prepared/$FAKE_RELEASE_SHA"
+  backup="$HENUKIT_STATE_ROOT/platform-backup-\${FAKE_RELEASE_SHA:0:12}.dump"
+  printf 'verified backup\n' > "$backup"
+  if [[ "$FAKE_METADATA_SYMLINK" == "1" ]]; then
+    printf 'release_sha=%s\n' "$FAKE_METADATA_RELEASE_SHA" > "$backup.metadata-target"
+    ln -s "$backup.metadata-target" "$backup.meta"
+  else
+    printf 'release_sha=%s\n' "$FAKE_METADATA_RELEASE_SHA" > "$backup.meta"
+    if [[ "$FAKE_METADATA_DUPLICATE" == "1" ]]; then
+      printf 'release_sha=%s\n' "$FAKE_RELEASE_SHA" >> "$backup.meta"
+    fi
+  fi
+  printf '%s\n' "$backup" > "$HENUKIT_STATE_ROOT/prepared/$FAKE_RELEASE_SHA"
 fi
 `,
   );
@@ -113,6 +127,9 @@ fi
       FAKE_BRANCH_SHA: branchSha,
       FAKE_CALL_LOG: log,
       FAKE_GATEWAY_DEPLOYMENT_FAILS: gatewayDeploymentFails ? "1" : "0",
+      FAKE_METADATA_DUPLICATE: metadataDuplicate ? "1" : "0",
+      FAKE_METADATA_RELEASE_SHA: metadataReleaseSha,
+      FAKE_METADATA_SYMLINK: metadataSymlink ? "1" : "0",
       FAKE_PREPARATION_FAILS: preparationFails ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
       FAKE_RUN_CONCLUSION: runConclusion,
@@ -173,6 +190,48 @@ test("one command never creates approval when preparation or mock gates fail", (
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
   assert.equal((readFileSync(setup.log, "utf8").match(/^watcher /gm) ?? []).length, 1);
   assert.match(readFileSync(join(setup.root, "henukit.env"), "utf8"), /EASYPAY_ENABLED=0/);
+});
+
+test("one command rejects prepared metadata bound to another full SHA", () => {
+  const setup = fixture({ metadataReleaseSha: `${releaseSha.slice(0, 12)}${"b".repeat(28)}` });
+
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /backup evidence is not bound/i);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /deploy-epay-gateway-patches/);
+});
+
+test("one command rejects symlinked prepared backup metadata", () => {
+  const setup = fixture({ metadataSymlink: true });
+
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /no readable metadata/i);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /deploy-epay-gateway-patches/);
+});
+
+test("one command rejects duplicate release SHA metadata", () => {
+  const setup = fixture({ metadataDuplicate: true });
+
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /exactly one release SHA/i);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /deploy-epay-gateway-patches/);
 });
 
 test("one command never creates approval when the EasyPay gateway patch fails", () => {
