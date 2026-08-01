@@ -21,13 +21,20 @@ function write(path, contents, mode = 0o644) {
   writeFileSync(path, contents, { mode });
 }
 
-function fixture({ henukitEnabled = true, npmFails = false } = {}) {
+function fixture({
+  healthFailures = 0,
+  henukitEnabled = true,
+  npmFails = false,
+  serviceDiesAfterAttempts = -1,
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), "deploy-epay-gateway-"));
   const gateway = join(root, "epay-gateway");
   const patches = join(root, "patches");
   const backups = join(root, "backups");
   const bin = join(root, "bin");
   const log = join(root, "calls.log");
+  const healthAttempts = join(root, "health-attempts");
+  const serviceStarts = join(root, "service-starts");
   for (const directory of [gateway, patches, backups, bin]) mkdirSync(directory);
   write(join(gateway, "server.js"), "state=baseline\n");
   write(join(gateway, "config.js"), "module.exports = {};\n");
@@ -74,7 +81,21 @@ if [[ "$1" == "ci" ]]; then mkdir -p node_modules; fi
     `#!/usr/bin/env bash
 set -Eeuo pipefail
 printf 'systemctl %s\n' "$*" >> "$FAKE_CALL_LOG"
-if [[ "$1" == "is-active" ]]; then printf 'active\n'; fi
+if [[ "$1" == "start" ]]; then
+  starts=0
+  if [[ -f "$FAKE_SERVICE_STARTS" ]]; then starts="$(cat "$FAKE_SERVICE_STARTS")"; fi
+  printf '%s' "$((starts + 1))" > "$FAKE_SERVICE_STARTS"
+fi
+if [[ "$1" == "is-active" ]]; then
+  attempts=0
+  if [[ -f "$FAKE_HEALTH_ATTEMPTS" ]]; then attempts="$(cat "$FAKE_HEALTH_ATTEMPTS")"; fi
+  starts=0
+  if [[ -f "$FAKE_SERVICE_STARTS" ]]; then starts="$(cat "$FAKE_SERVICE_STARTS")"; fi
+  if [[ "$starts" -eq 1 && "$FAKE_SERVICE_DIES_AFTER_ATTEMPTS" -ge 0 && "$attempts" -ge "$FAKE_SERVICE_DIES_AFTER_ATTEMPTS" ]]; then
+    exit 3
+  fi
+  printf 'active\n'
+fi
 `,
     0o755,
   );
@@ -83,7 +104,22 @@ if [[ "$1" == "is-active" ]]; then printf 'active\n'; fi
     `#!/usr/bin/env bash
 set -Eeuo pipefail
 printf 'curl %s\n' "$*" >> "$FAKE_CALL_LOG"
+attempts=0
+if [[ -f "$FAKE_HEALTH_ATTEMPTS" ]]; then attempts="$(cat "$FAKE_HEALTH_ATTEMPTS")"; fi
+attempts=$((attempts + 1))
+printf '%s' "$attempts" > "$FAKE_HEALTH_ATTEMPTS"
+starts=0
+if [[ -f "$FAKE_SERVICE_STARTS" ]]; then starts="$(cat "$FAKE_SERVICE_STARTS")"; fi
+if [[ "$starts" -le 1 && "$attempts" -le "$FAKE_HEALTH_FAILURES" ]]; then exit 7; fi
 printf '{"status":"ok"}\n'
+`,
+    0o755,
+  );
+  write(
+    join(bin, "sleep"),
+    `#!/usr/bin/env bash
+set -Eeuo pipefail
+printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
 `,
     0o755,
   );
@@ -101,7 +137,11 @@ printf '{"status":"ok"}\n'
       EPAY_HEALTH_URL: "http://127.0.0.1:9219/health",
       EPAY_SERVICE: "epay-gateway.service",
       FAKE_CALL_LOG: log,
+      FAKE_HEALTH_ATTEMPTS: healthAttempts,
+      FAKE_HEALTH_FAILURES: String(healthFailures),
       FAKE_NPM_FAILS: npmFails ? "1" : "0",
+      FAKE_SERVICE_DIES_AFTER_ATTEMPTS: String(serviceDiesAfterAttempts),
+      FAKE_SERVICE_STARTS: serviceStarts,
     },
   };
 }
@@ -151,6 +191,53 @@ test("execute mode enables the prepared HENU tenant during atomic activation", (
 
   assert.match(output, /gateway patches activated/i);
   assert.match(readFileSync(join(setup.gateway, ".env"), "utf8"), /^HENUKIT_EPAY_ENABLED=1$/m);
+});
+
+test("execute mode waits for a candidate that becomes healthy after startup", () => {
+  const setup = fixture({ healthFailures: 3 });
+
+  const output = execFileSync(
+    command,
+    [setup.gateway, setup.patches, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.match(output, /gateway patches activated/i);
+  assert.equal(readFileSync(join(setup.gateway, "server.js"), "utf8"), "state=three\n");
+  assert.equal(readFileSync(join(setup.root, "health-attempts"), "utf8"), "4");
+  assert.equal((readFileSync(setup.log, "utf8").match(/^sleep 1$/gm) ?? []).length, 3);
+});
+
+test("execute mode rolls back promptly when the candidate service exits during readiness", () => {
+  const setup = fixture({ healthFailures: 30, serviceDiesAfterAttempts: 1 });
+
+  const result = spawnSync(
+    command,
+    [setup.gateway, setup.patches, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /original gateway restored/i);
+  assert.equal(readFileSync(join(setup.gateway, "server.js"), "utf8"), "state=baseline\n");
+  assert.equal(readFileSync(join(setup.root, "health-attempts"), "utf8"), "2");
+});
+
+test("execute mode bounds readiness attempts and verifies the restored gateway", () => {
+  const setup = fixture({ healthFailures: 30 });
+
+  const result = spawnSync(
+    command,
+    [setup.gateway, setup.patches, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /original gateway restored/i);
+  assert.equal(readFileSync(join(setup.gateway, "server.js"), "utf8"), "state=baseline\n");
+  assert.equal(readFileSync(join(setup.root, "health-attempts"), "utf8"), "31");
+  assert.equal((readFileSync(setup.log, "utf8").match(/^curl /gm) ?? []).length, 31);
+  assert.equal((readFileSync(setup.log, "utf8").match(/^sleep 1$/gm) ?? []).length, 29);
 });
 
 test("a failed candidate test stops before service interruption", () => {

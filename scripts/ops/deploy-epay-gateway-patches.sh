@@ -139,6 +139,19 @@ chmod 0600 "$candidate/.env"
 command -v systemctl >/dev/null 2>&1 || die "systemctl is required for execution"
 command -v curl >/dev/null 2>&1 || die "curl is required for execution"
 systemctl is-active "$service" >/dev/null || die "$service is not active"
+
+service_becomes_healthy() {
+  local attempt
+  for attempt in {1..30}; do
+    systemctl is-active "$service" >/dev/null || return 1
+    if curl --fail --silent --max-time 2 "$health_url" >/dev/null 2>&1; then
+      return 0
+    fi
+    [[ "$attempt" -eq 30 ]] || sleep 1
+  done
+  return 1
+}
+
 install -d -m 0700 "$backup_root"
 backup_dir="$backup_root/$(date -u +%Y%m%dT%H%M%SZ)-$$"
 [[ ! -e "$backup_dir" ]] || die "backup target already exists"
@@ -155,15 +168,15 @@ for private_path in epay.db data; do
 done
 
 activation_failed=0
-systemctl start "$service" || activation_failed=1
-if [[ "$activation_failed" -eq 0 ]]; then
-  curl --fail --silent --show-error "$health_url" >/dev/null || activation_failed=1
+if ! systemctl start "$service" || ! service_becomes_healthy; then
+  activation_failed=1
 fi
 if [[ "$activation_failed" -ne 0 ]]; then
   systemctl stop "$service" >/dev/null 2>&1 || true
   mv "$gateway_dir" "$backup_dir/failed-candidate"
   mv "$backup_dir/original" "$gateway_dir"
   systemctl start "$service" || die "candidate failed and rollback service could not start"
+  service_becomes_healthy || die "candidate failed and original gateway rollback did not become healthy"
   die "candidate failed health verification; original gateway restored"
 fi
 
