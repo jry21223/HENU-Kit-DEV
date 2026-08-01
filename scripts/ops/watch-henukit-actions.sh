@@ -24,6 +24,7 @@ Optional configuration:
   HENUKIT_STATE_ROOT     Watcher state and lock (default: /var/lib/henukit-actions-watch)
   HENUKIT_POLL_SECONDS   Watch interval (default: 60)
   HENUKIT_PUBLIC_BASE_URL Public smoke-test base URL
+  HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE Active role receiving Account Console permissions
 EOF
 }
 
@@ -56,6 +57,7 @@ public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://superhuazai.me}"
 postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
 account_portfolio_container="${HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER:-henukit-account-portfolio-1}"
 migration="${HENUKIT_PLATFORM_MIGRATION:-}"
+account_operator_role="${HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE:-}"
 
 base_images=(
   henukit-console
@@ -85,11 +87,65 @@ images=(
 [[ "$poll_seconds" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_POLL_SECONDS must be a positive integer"
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$branch" =~ ^[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_BRANCH contains unsupported characters"
+[[ "$account_operator_role" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] ||
+  die "HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE must name an explicit role using lowercase letters, digits, or hyphens"
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v flock >/dev/null 2>&1 || die "flock is required"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+
+environment_value() {
+  local key="$1"
+  local count value
+  count="$(grep -Ec "^[[:space:]]*${key}[[:space:]]*=" "$env_file" || true)"
+  [[ "$count" -le 1 ]] || die "$key is assigned more than once in HENUKIT_ENV_FILE"
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+  value="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$env_file")"
+  value="${value#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+  printf '%s' "$value"
+}
+
+verify_production_data_boundary() {
+  local portal_api_mode portal_allow_mock
+  portal_api_mode="$(environment_value PORTAL_API_MODE)"
+  portal_allow_mock="$(environment_value NEXT_PUBLIC_PORTAL_ALLOW_MOCK)"
+  [[ "$portal_api_mode" == "live" ]] ||
+    die "PORTAL_API_MODE must be explicitly live before production deployment"
+  [[ -z "$portal_allow_mock" || "$portal_allow_mock" == "0" ]] ||
+    die "NEXT_PUBLIC_PORTAL_ALLOW_MOCK must be 0 or absent before production deployment"
+}
+
+verify_account_boundary_manifest() {
+  local release_dir="$1"
+  local release_sha="$2"
+  local manifest="$release_dir/release-gates/account-production-boundary.env"
+  local expected actual
+  [[ -f "$manifest" && -r "$manifest" && ! -L "$manifest" ]] ||
+    die "Account production-boundary manifest is missing"
+  expected="$(printf '%s\n' \
+    "release_sha=$release_sha" \
+    "status=pass" \
+    "account_console_mock_sources=absent" \
+    "account_payment_provider=easypay_or_disabled" \
+    "portal_require_gateway=1" \
+    "portal_allow_mock=0" \
+    "portal_api_default_mode=live")"
+  actual="$(tr -d '\r' < "$manifest")"
+  [[ "$actual" == "$expected" ]] ||
+    die "Account production-boundary manifest did not pass for release $release_sha"
+}
+
+verify_production_data_boundary
 
 token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || stat -f '%Lp' "$token_file")"
 token_owner="$(stat -c '%u' "$token_file" 2>/dev/null || stat -f '%u' "$token_file")"
@@ -286,6 +342,62 @@ verify_active_release() {
     return 1
   [[ "$(curl --location --max-redirs 3 --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/study-api/healthz")" == "404" ]] ||
     return 1
+}
+
+account_operator_role_is_active() {
+  local count
+  count="$(docker exec "$postgres_container" sh -ceu '
+    role_code="$1"
+    psql -U "$POSTGRES_USER" -d platform -Atqc \
+      "SELECT count(*) FROM authorization_roles WHERE code = '\''$role_code'\'' AND status = '\''active'\''"
+  ' sh "$account_operator_role")" || return 1
+  [[ "$count" == "1" ]]
+}
+
+grant_account_operator_permissions() {
+  local permission_count granted_count
+  permission_count="$(docker exec "$postgres_container" sh -ceu '
+    psql -U "$POSTGRES_USER" -d platform -Atqc \
+      "SELECT count(*) FROM permission_codes WHERE code IN ('\''account.tickets.read'\'', '\''account.tickets.reply'\'', '\''account.tickets.transition'\'', '\''account.membership.write'\'', '\''account.points.adjust'\'', '\''account.orders.read'\'', '\''account.orders.close'\'', '\''account.orders.refund'\'')"
+  ')" || return 1
+  if [[ "$permission_count" != "8" ]]; then
+    printf '%s: expected 8 Account Console permission codes after migration, found %s\n' "$program" "$permission_count" >&2
+    return 1
+  fi
+
+  docker exec "$postgres_container" sh -ceu '
+    role_code="$1"
+    psql -U "$POSTGRES_USER" -d platform -v ON_ERROR_STOP=1 -qc \
+      "WITH inserted AS (
+       INSERT INTO role_permissions (role_id, permission_code)
+       SELECT role.id, permission.code
+       FROM authorization_roles AS role
+       CROSS JOIN permission_codes AS permission
+       WHERE role.code = '\''$role_code'\''
+         AND role.status = '\''active'\''
+         AND permission.code IN ('\''account.tickets.read'\'', '\''account.tickets.reply'\'', '\''account.tickets.transition'\'', '\''account.membership.write'\'', '\''account.points.adjust'\'', '\''account.orders.read'\'', '\''account.orders.close'\'', '\''account.orders.refund'\'')
+       ON CONFLICT DO NOTHING
+       RETURNING role_id
+       )
+       UPDATE authorization_roles AS role
+       SET revision = role.revision + 1, updated_at = now()
+       WHERE role.id IN (SELECT role_id FROM inserted)"
+  ' sh "$account_operator_role" || return 1
+
+  granted_count="$(docker exec "$postgres_container" sh -ceu '
+    role_code="$1"
+    psql -U "$POSTGRES_USER" -d platform -Atqc \
+      "SELECT count(*)
+       FROM role_permissions AS grant_row
+       JOIN authorization_roles AS role ON role.id = grant_row.role_id
+       WHERE role.code = '\''$role_code'\''
+         AND grant_row.permission_code IN ('\''account.tickets.read'\'', '\''account.tickets.reply'\'', '\''account.tickets.transition'\'', '\''account.membership.write'\'', '\''account.points.adjust'\'', '\''account.orders.read'\'', '\''account.orders.close'\'', '\''account.orders.refund'\'')"
+  ' sh "$account_operator_role")" || return 1
+  if [[ "$granted_count" != "8" ]]; then
+    printf '%s: Account Console permission grant verification failed for role %s\n' "$program" "$account_operator_role" >&2
+    return 1
+  fi
+  log "verified 8 Account Console permissions for role $account_operator_role"
 }
 
 record_activation() {
@@ -531,6 +643,9 @@ deploy_release() {
     die "release directory SHA does not match the workflow run"
   [[ -x "$release_dir/bin/deploy-henukit-artifact.sh" ]] ||
     die "release directory has no executable deployment helper"
+  verify_account_boundary_manifest "$release_dir" "$release_sha"
+  account_operator_role_is_active ||
+    die "HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE does not identify exactly one active platform role"
 
   if ! release_is_approved "$release_sha"; then
     prepared_backup_file=""
@@ -564,6 +679,12 @@ deploy_release() {
     activation_status=$?
   fi
   set -e
+  if [[ "$activation_status" -eq 0 ]]; then
+    set +e
+    grant_account_operator_permissions
+    activation_status=$?
+    set -e
+  fi
   if [[ "$activation_status" -ne 0 ]]; then
     rollback_release "$previous_sha" ||
       die "release activation failed and rollback to $previous_sha also failed"

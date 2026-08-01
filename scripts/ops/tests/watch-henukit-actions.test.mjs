@@ -23,8 +23,10 @@ function writeExecutable(path, body) {
 }
 
 function fixture({
+  accountOperatorRole = "operations-operator",
   accountPortfolioSchemaPresent = true,
   approved = true,
+  badAccountBoundary = false,
   badChecksum = false,
   branchSha = releaseSha,
   canonicalQuizRedirect = false,
@@ -32,6 +34,8 @@ function fixture({
   failTargetHealth = false,
   previousHasAccountPortfolio = true,
   previousSha = "b".repeat(40),
+  portalAllowMock = false,
+  portalApiMode = "live",
   runConclusion = "success",
   runStatus = "completed",
 } = {}) {
@@ -57,7 +61,10 @@ function fixture({
   }
   writeFileSync(token, "test-read-only-token\n", { mode: 0o600 });
   chmodSync(token, 0o600);
-  writeFileSync(envFile, "POSTGRES_USER=test\n");
+  writeFileSync(
+    envFile,
+    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\n`,
+  );
   writeFileSync(log, "");
   if (previousSha) {
     const previousRelease = join(releases, previousSha);
@@ -128,9 +135,18 @@ for image in "\${images[@]}"; do
 done
 runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
-mkdir -p "$runtime_artifact" "$runtime_tree/bin"
+mkdir -p "$runtime_artifact" "$runtime_tree/bin" "$runtime_tree/release-gates"
 printf '%s\\n' "$FAKE_RELEASE_SHA" > "$runtime_tree/RELEASE_SHA"
 printf 'services:\\n  account-portfolio:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
+cat > "$runtime_tree/release-gates/account-production-boundary.env" <<EOF
+release_sha=$FAKE_RELEASE_SHA
+status=$([[ "$FAKE_BAD_ACCOUNT_BOUNDARY" == "1" ]] && printf fail || printf pass)
+account_console_mock_sources=absent
+account_payment_provider=easypay_or_disabled
+portal_require_gateway=1
+portal_allow_mock=0
+portal_api_default_mode=live
+EOF
 cat > "$runtime_tree/bin/deploy-henukit-artifact.sh" <<'HELPER'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -190,6 +206,12 @@ elif [[ "$1" == "exec" && "$*" == *"SHOW server_version"* ]]; then
   printf '16.3\\n'
 elif [[ "$1" == "exec" && "$*" == *"count(*) FROM users"* ]]; then
   printf '1,1,1\\n'
+elif [[ "$1" == "exec" && "$*" == *"permission_codes"* && "$*" == *"account.orders.refund"* ]]; then
+  printf '8\\n'
+elif [[ "$1" == "exec" && "$*" == *"role_permissions"* && "$*" == *"account.orders.refund"* ]]; then
+  printf '8\\n'
+elif [[ "$1" == "exec" && "$*" == *"authorization_roles"* && "$*" == *"role_code"* ]]; then
+  printf '1\\n'
 fi
 `,
   );
@@ -225,6 +247,7 @@ fi
       PATH: `${bin}:${process.env.PATH}`,
       FAKE_ACTIVE_FILE: active,
       FAKE_ACCOUNT_PORTFOLIO_SCHEMA_PRESENT: accountPortfolioSchemaPresent ? "t" : "f",
+      FAKE_BAD_ACCOUNT_BOUNDARY: badAccountBoundary ? "1" : "0",
       FAKE_BAD_CHECKSUM: badChecksum ? "1" : "0",
       FAKE_BRANCH_SHA: branchSha,
       FAKE_CANONICAL_QUIZ_REDIRECT: canonicalQuizRedirect ? "1" : "0",
@@ -237,6 +260,7 @@ fi
       FAKE_RUN_CONCLUSION: runConclusion,
       FAKE_RUN_STATUS: runStatus,
       GH_TOKEN_FILE: token,
+      HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE: accountOperatorRole,
       HENUKIT_BACKUP_ROOT: backups,
       HENUKIT_ENV_FILE: envFile,
       HENUKIT_RELEASE_ROOT: releases,
@@ -263,6 +287,10 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump/);
   assert.equal((calls.match(/docker load/g) ?? []).length, 9);
   assert.match(calls, /deploy .*releases.*henukit\.env/);
+  assert.match(calls, /role_permissions/);
+  assert.match(calls, /account\.orders\.refund/);
+  assert.match(calls, /operations-operator/);
+  assert.match(calls, /revision = role\.revision \+ 1/);
   assert.match(calls, /curl .*https:\/\/example\.test\/api\/v1\/healthz/);
   assert.equal(
     readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(),
@@ -444,4 +472,60 @@ test("first Account Portfolio rollout rolls back to a legacy eight-image release
   assert.match(result.stderr, /rolled back/);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
   assert.equal((calls.match(/^deploy /gm) ?? []).length, 2);
+});
+
+test("one-shot refuses a release whose Account production-boundary manifest did not pass", () => {
+  const setup = fixture({ badAccountBoundary: true });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Account production-boundary manifest/i);
+  assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot refuses production Portal API mock mode before backup or activation", () => {
+  const setup = fixture({ portalApiMode: "mock" });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /PORTAL_API_MODE must be explicitly live/i);
+  assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot refuses an environment that opts Portal into mock mode", () => {
+  const setup = fixture({ portalAllowMock: true });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /NEXT_PUBLIC_PORTAL_ALLOW_MOCK must be 0 or absent/i);
+  assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot requires an explicit Account operator role before backup or activation", () => {
+  const setup = fixture({ accountOperatorRole: "" });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE/i);
+  assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
 });

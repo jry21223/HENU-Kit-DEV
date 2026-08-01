@@ -45,6 +45,33 @@ test("CI runs the Account Portfolio browser behavior spec", () => {
   assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:account/);
 });
 
+test("release artifacts carry an exact-SHA Account mock-free boundary manifest", () => {
+  assert.match(
+    workflow,
+    /node scripts\/ops\/check-account-production-boundary\.mjs/,
+  );
+  assert.match(
+    workflow,
+    /RELEASE_SHA="\$GITHUB_SHA" node scripts\/ops\/check-account-production-boundary\.mjs --report "\$runtime\/release-gates\/account-production-boundary\.env"/,
+  );
+  assert.match(
+    workflow,
+    /install -d .*"\$runtime\/release-gates"/,
+  );
+  assert.match(
+    workflow,
+    /install -m 0555 scripts\/ops\/activate-henukit-release\.sh "\$runtime\/bin\/activate-henukit-release\.sh"/,
+  );
+  assert.match(
+    workflow,
+    /install -m 0555 scripts\/ops\/deploy-epay-gateway-patches\.sh "\$runtime\/bin\/deploy-epay-gateway-patches\.sh"/,
+  );
+  assert.match(
+    workflow,
+    /cp infra\/epay-gateway\/patches\/\*\.patch "\$runtime\/infra\/epay-gateway\/patches\/"/,
+  );
+});
+
 test("Portal V2 read flag is an explicit production build input and stays dark in ordinary artifacts", () => {
   assert.match(
     portalDockerfile,

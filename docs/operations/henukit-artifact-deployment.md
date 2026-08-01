@@ -55,14 +55,17 @@ It deploys only the newest completed, successful `push` run of
 
 1. downloads the exact full-SHA artifact set with `gh`;
 2. rejects missing, duplicate, unexpected, or checksum-invalid files;
-3. verifies the runtime `RELEASE_SHA`;
+3. verifies the runtime `RELEASE_SHA` and its exact-SHA Account production
+   boundary manifest. The manifest proves Account console sources are
+   mock-free, Portal requires the real Gateway, and Portal API defaults live;
 4. creates custom-format `platform` and `account_portfolio` database backups,
    records their checksums, sizes and PostgreSQL version, and restores each
    into isolated temporary databases with key-table and Account durable-fact
    count checks. On the first Account Portfolio release it records and
    restores an explicit empty-database baseline before schema creation;
 5. loads all nine fixed-SHA Docker images;
-6. calls the existing `deploy-henukit-artifact.sh`;
+6. calls the existing `deploy-henukit-artifact.sh`, then grants and re-reads all
+   eight Account Console permissions on the explicitly configured active role;
 7. verifies all nine running image tags, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
@@ -90,6 +93,9 @@ sudo install -d -o root -g root -m 0700 \
 sudo install -o root -g root -m 0555 \
   /opt/henukit-releases/<sha>/bin/watch-henukit-actions.sh \
   /usr/local/sbin/watch-henukit-actions
+sudo install -o root -g root -m 0555 \
+  /opt/henukit-releases/<sha>/bin/activate-henukit-release.sh \
+  /usr/local/sbin/activate-henukit-release
 sudo install -o root -g root -m 0644 \
   /opt/henukit-releases/<sha>/infra/systemd/henukit-actions-watch.service \
   /etc/systemd/system/henukit-actions-watch.service
@@ -102,10 +108,17 @@ only watcher configuration; application secrets stay in the referenced file:
 sudo sh -c 'umask 077; cat > /etc/henukit/actions-watch.env' <<'EOF'
 HENUKIT_ENV_FILE=/opt/henukit/.env.henukit
 HENUKIT_PUBLIC_BASE_URL=https://superhuazai.me
+HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator
 # Override only when Docker Compose uses a non-default container name.
 HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER=henukit-account-portfolio-1
 EOF
 ```
+
+The referenced application environment must explicitly contain
+`PORTAL_API_MODE=live` and either omit `NEXT_PUBLIC_PORTAL_ALLOW_MOCK` or set it
+to `0`. Any other value is rejected before artifact download or backup. The
+operator role has no default: confirm the intended production role and set it
+explicitly. Migrations declare permissions but deliberately do not grant them.
 
 ### First 8-to-9 image Account Portfolio cutover
 
@@ -148,7 +161,38 @@ full SHA:
 - the release scope, migration boundary, monitoring window, and rollback owner
   are explicitly approved.
 
-Only then authorize production activation:
+### One-command Account payment release
+
+After issue #166 is closed and the fixed-SHA artifact has passed the gates
+above, the runtime's release entry is the sole production approval command:
+
+```bash
+sudo GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
+  HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
+  HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator \
+  HENUKIT_PLATFORM_MIGRATION=000017_account_portfolio_order_access.up.sql \
+  /usr/local/sbin/activate-henukit-release <full-main-sha> --execute
+```
+
+This single entry performs the unapproved preparation pass first. It refuses
+while #166 is open, restore-tests both database backups, verifies the mock-free
+manifest, transfers the exact three EasyPay patches to `root@metaview.top`,
+tests and atomically activates the gateway with health rollback, creates the
+single-use SHA approval, refreshes both backups, applies Platform Core
+`000017`, deploys all nine fixed-SHA images, grants the eight Account Console
+permissions, and runs deterministic smoke checks. Account Portfolio migrations
+`000006` and `000007` remain service-owned startup migrations.
+
+The defaults assume SSH key access to `root@metaview.top` and gateway directory
+`/root/epay-gateway`; override only with
+`HENUKIT_EPAY_GATEWAY_SSH_TARGET` and `HENUKIT_EPAY_GATEWAY_DIR`. SSH host-key
+verification remains enabled. A successful gateway patch is backward-compatible
+with MetaView and is intentionally retained if the later HENU activation rolls
+back; reruns are idempotent through the exact patch-hash marker.
+
+The manual approval procedure below remains available for recovery and
+diagnosis, but is not the normal Account payment release. Only then authorize
+production activation manually:
 
 ```bash
 printf '%s\n' '<full-main-sha>' | \

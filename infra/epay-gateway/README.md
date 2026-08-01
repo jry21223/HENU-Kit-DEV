@@ -73,6 +73,24 @@ merchant order number in a browser URL.
 
 ## Apply and verify in a staging copy
 
+The release artifact includes a fail-closed installer. `--check` builds and
+tests an isolated candidate without stopping the live service. `--execute`
+performs the same verification, then swaps in that tested directory, preserves
+the root-owned `.env`, `epay.db`, and `data`, checks loopback health, and
+automatically restores the original directory if health fails:
+
+```sh
+./scripts/ops/deploy-epay-gateway-patches.sh \
+  /root/epay-gateway \
+  ./infra/epay-gateway/patches \
+  --check
+```
+
+The HENU Kit one-command release entry transfers this installer and the exact
+artifact patch set over SSH to `root@metaview.top`, runs `--execute`, and only
+then writes the HENU exact-SHA approval. The commands below remain the manual
+equivalent for diagnosis:
+
 ```sh
 patch -p1 < patches/0001-henukit-query-and-notify-outbox.patch
 patch -p1 < patches/0002-henukit-close-refund-and-response-verification.patch

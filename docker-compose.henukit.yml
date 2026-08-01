@@ -125,7 +125,7 @@ services:
       context: ./services/portal-api
     environment:
       LISTEN_ADDR: ${PORTAL_API_LISTEN_ADDR:-:8085}
-      # mock keeps first boot working without product migrations applied
+      # Production defaults to durable PostgreSQL-backed product data.
       PORTAL_API_MODE: ${PORTAL_API_MODE:-live}
       PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
       QUIZCRAFT_DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/quizcraft?sslmode=disable}

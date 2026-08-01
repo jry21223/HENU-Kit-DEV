@@ -26,7 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify artifact and runtime boundaries
-        run: node --test scripts/ops/tests/deploy-henukit-workflow.test.mjs scripts/ops/tests/account-portfolio-workflow.test.mjs
+        run: node --test scripts/ops/tests/deploy-henukit-workflow.test.mjs scripts/ops/tests/account-portfolio-workflow.test.mjs scripts/ops/tests/check-account-production-boundary.test.mjs
+      - name: Reject Account mock and fallback sources
+        run: node scripts/ops/check-account-production-boundary.mjs
 
   portal-responsive:
     name: portal-responsive
@@ -177,17 +179,21 @@ jobs:
         run: |
           set -euo pipefail
           runtime="release/runtime"
-          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/migrations/platform-core" "$runtime/migrations/account-portfolio"
+          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/infra/epay-gateway/patches" "$runtime/migrations/platform-core" "$runtime/migrations/account-portfolio" "$runtime/release-gates"
           docker compose \
             -f docker-compose.henukit.yml \
             -f docker-compose.henukit.prebuilt.yml \
             config --no-interpolate --no-path-resolution > "$runtime/docker-compose.henukit.release.yml"
           cp infra/nginx/henukit.conf.example "$runtime/infra/nginx/"
           cp infra/systemd/henukit-actions-watch.service "$runtime/infra/systemd/"
+          cp infra/epay-gateway/patches/*.patch "$runtime/infra/epay-gateway/patches/"
           cp services/platform-core/db/migrations/*.up.sql "$runtime/migrations/platform-core/"
           cp services/account-portfolio/db/migrations/*.up.sql "$runtime/migrations/account-portfolio/"
           install -m 0555 scripts/ops/deploy-henukit-artifact.sh "$runtime/bin/deploy-henukit-artifact.sh"
           install -m 0555 scripts/ops/watch-henukit-actions.sh "$runtime/bin/watch-henukit-actions.sh"
+          install -m 0555 scripts/ops/activate-henukit-release.sh "$runtime/bin/activate-henukit-release.sh"
+          install -m 0555 scripts/ops/deploy-epay-gateway-patches.sh "$runtime/bin/deploy-epay-gateway-patches.sh"
+          RELEASE_SHA="$GITHUB_SHA" node scripts/ops/check-account-production-boundary.mjs --report "$runtime/release-gates/account-production-boundary.env"
           printf '%s\n' "$GITHUB_SHA" > "$runtime/RELEASE_SHA"
           tar -C "$runtime" -czf "release/henukit-runtime-${GITHUB_SHA}.tar.gz" .
           cd release
