@@ -25,14 +25,17 @@ function executable(path, contents) {
 
 function fixture({
   blockerState = "closed",
+  branchSha = releaseSha,
   gatewayDeploymentFails = false,
   preparationFails = false,
+  runConclusion = "success",
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), "activate-henukit-release-"));
   const bin = join(root, "bin");
   const state = join(root, "state");
   const log = join(root, "calls.log");
   const watcher = join(bin, "watcher");
+  const envFile = join(root, "henukit.env");
   mkdirSync(bin);
   mkdirSync(join(state, "approvals"), { recursive: true });
   mkdirSync(join(state, "prepared"), { recursive: true });
@@ -43,13 +46,22 @@ function fixture({
   executable(join(release, "bin", "deploy-epay-gateway-patches.sh"), "#!/usr/bin/env bash\nexit 0\n");
   writeFileSync(join(release, "infra", "epay-gateway", "patches", "0001.patch"), "patch\n");
   writeFileSync(log, "");
+  writeFileSync(envFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
 
   executable(
     join(bin, "gh"),
     `#!/usr/bin/env bash
 set -Eeuo pipefail
 printf 'gh %s\n' "$*" >> "$FAKE_CALL_LOG"
-printf '%s\n' "$FAKE_BLOCKER_STATE"
+if [[ "$*" == *"/issues/"* ]]; then
+  printf '%s\n' "$FAKE_BLOCKER_STATE"
+elif [[ "$*" == *"/branches/"* ]]; then
+  printf '%s\n' "$FAKE_BRANCH_SHA"
+elif [[ "$1 $2" == "run list" ]]; then
+  printf '%s\tcompleted\t%s\n' "$FAKE_RELEASE_SHA" "$FAKE_RUN_CONCLUSION"
+else
+  exit 70
+fi
 `,
   );
   executable(
@@ -66,7 +78,7 @@ if [[ -f "$approval" ]]; then
   rm "$approval"
   printf '%s\n' "$FAKE_RELEASE_SHA" > "$HENUKIT_STATE_ROOT/last-activated-sha"
 else
-  printf '/verified/backup.dump\n' > "$HENUKIT_STATE_ROOT/prepared/$FAKE_RELEASE_SHA"
+  printf '/verified/platform-backup-%s.dump\n' "$FAKE_RELEASE_SHA" > "$HENUKIT_STATE_ROOT/prepared/$FAKE_RELEASE_SHA"
 fi
 `,
   );
@@ -77,6 +89,9 @@ set -Eeuo pipefail
 printf 'ssh %s\n' "$*" >> "$FAKE_CALL_LOG"
 if [[ "$*" == *"mktemp -d"* ]]; then
   printf '/tmp/henukit-epay-release.test\n'
+elif [[ "$*" == *"bash -s -- /root/epay-gateway"* ]]; then
+  cat >/dev/null
+  printf 'henukit-production\nhenukit-production-secret-32bytes\n'
 elif [[ "$*" == *"deploy-epay-gateway-patches.sh"* && "$FAKE_GATEWAY_DEPLOYMENT_FAILS" == "1" ]]; then
   exit 1
 else
@@ -93,12 +108,15 @@ fi
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       FAKE_BLOCKER_STATE: blockerState,
+      FAKE_BRANCH_SHA: branchSha,
       FAKE_CALL_LOG: log,
       FAKE_GATEWAY_DEPLOYMENT_FAILS: gatewayDeploymentFails ? "1" : "0",
       FAKE_PREPARATION_FAILS: preparationFails ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
+      FAKE_RUN_CONCLUSION: runConclusion,
       HENUKIT_STATE_ROOT: state,
       HENUKIT_RELEASE_ROOT: releases,
+      HENUKIT_ENV_FILE: envFile,
       HENUKIT_WATCHER: watcher,
     },
   };
@@ -118,6 +136,7 @@ test("one command prepares, exact-SHA approves, and activates a release", () => 
     releaseSha,
   );
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+  assert.match(readFileSync(join(setup.root, "henukit.env"), "utf8"), /EASYPAY_ENABLED=1/);
   assert.equal((readFileSync(setup.log, "utf8").match(/^watcher /gm) ?? []).length, 2);
   const calls = readFileSync(setup.log, "utf8");
   assert.match(calls, /ssh root@metaview\.top .*deploy-epay-gateway-patches\.sh.*--execute/);
@@ -148,6 +167,7 @@ test("one command never creates approval when preparation or mock gates fail", (
   assert.notEqual(result.status, 0);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
   assert.equal((readFileSync(setup.log, "utf8").match(/^watcher /gm) ?? []).length, 1);
+  assert.match(readFileSync(join(setup.root, "henukit.env"), "utf8"), /EASYPAY_ENABLED=0/);
 });
 
 test("one command never creates approval when the EasyPay gateway patch fails", () => {
@@ -161,4 +181,31 @@ test("one command never creates approval when the EasyPay gateway patch fails", 
   assert.notEqual(result.status, 0);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
   assert.equal((readFileSync(setup.log, "utf8").match(/^watcher /gm) ?? []).length, 1);
+  assert.match(readFileSync(join(setup.root, "henukit.env"), "utf8"), /EASYPAY_ENABLED=0/);
+});
+
+test("one command refuses an old SHA before preparing or modifying MetaView", () => {
+  const setup = fixture({ branchSha: "b".repeat(40) });
+
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not the current main head/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /^watcher |^ssh /m);
+});
+
+test("one command refuses a failed newest workflow before preparing or modifying MetaView", () => {
+  const setup = fixture({ runConclusion: "failure" });
+
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not the newest completed successful/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /^watcher |^ssh /m);
 });

@@ -36,6 +36,7 @@ function fixture({
   previousSha = "b".repeat(40),
   portalAllowMock = false,
   portalApiMode = "live",
+  easypayEnabled = true,
   runConclusion = "success",
   runStatus = "completed",
 } = {}) {
@@ -63,7 +64,7 @@ function fixture({
   chmodSync(token, 0o600);
   writeFileSync(
     envFile,
-    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\n`,
+    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\n`,
   );
   writeFileSync(log, "");
   if (previousSha) {
@@ -142,6 +143,7 @@ cat > "$runtime_tree/release-gates/account-production-boundary.env" <<EOF
 release_sha=$FAKE_RELEASE_SHA
 status=$([[ "$FAKE_BAD_ACCOUNT_BOUNDARY" == "1" ]] && printf fail || printf pass)
 account_console_mock_sources=absent
+account_transitive_mock_sources=absent
 account_payment_provider=easypay_or_disabled
 portal_require_gateway=1
 portal_allow_mock=0
@@ -227,6 +229,14 @@ if [[ "$FAKE_FAIL_TARGET_HEALTH" == "1" &&
   exit 22
 fi
 if [[ "$*" == *"--write-out"* ]]; then
+  if [[ "$*" == *"/api/v1/account/summary"* ]]; then
+    printf '401'
+    exit 0
+  fi
+  if [[ "$*" == *"/api/v1/payment-providers/easypay/notifications"* ]]; then
+    printf '400'
+    exit 0
+  fi
   if [[ "$FAKE_CANONICAL_QUIZ_REDIRECT" == "1" &&
         "$*" == *"https://example.test/quiz/"* &&
         "$*" != *"--location"* ]]; then
@@ -287,11 +297,11 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump/);
   assert.equal((calls.match(/docker load/g) ?? []).length, 9);
   assert.match(calls, /deploy .*releases.*henukit\.env/);
-  assert.match(calls, /role_permissions/);
-  assert.match(calls, /account\.orders\.refund/);
+  assert.match(calls, /grant-account-operator-role/);
   assert.match(calls, /operations-operator/);
-  assert.match(calls, /revision = role\.revision \+ 1/);
   assert.match(calls, /curl .*https:\/\/example\.test\/api\/v1\/healthz/);
+  assert.match(calls, /curl .*\/api\/v1\/account\/summary/);
+  assert.match(calls, /curl .*\/api\/v1\/payment-providers\/easypay\/notifications/);
   assert.equal(
     readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(),
     releaseSha,
@@ -527,5 +537,19 @@ test("one-shot requires an explicit Account operator role before backup or activ
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE/i);
+  assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot refuses while the Account EasyPay provider remains disabled", () => {
+  const setup = fixture({ easypayEnabled: false });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /ACCOUNT_PORTFOLIO_EASYPAY_ENABLED must be 1/i);
   assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
 });

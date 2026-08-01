@@ -56,16 +56,19 @@ It deploys only the newest completed, successful `push` run of
 1. downloads the exact full-SHA artifact set with `gh`;
 2. rejects missing, duplicate, unexpected, or checksum-invalid files;
 3. verifies the runtime `RELEASE_SHA` and its exact-SHA Account production
-   boundary manifest. The manifest proves Account console sources are
-   mock-free, Portal requires the real Gateway, and Portal API defaults live;
+   boundary manifest. The manifest follows Account's local import graph,
+   rejects user-reachable Portal/Gateway fixtures and fake-success sources,
+   proves runtime wiring is EasyPay-or-disabled, and proves Portal requires the
+   real Gateway with Portal API defaulting live;
 4. creates custom-format `platform` and `account_portfolio` database backups,
    records their checksums, sizes and PostgreSQL version, and restores each
    into isolated temporary databases with key-table and Account durable-fact
    count checks. On the first Account Portfolio release it records and
    restores an explicit empty-database baseline before schema creation;
 5. loads all nine fixed-SHA Docker images;
-6. calls the existing `deploy-henukit-artifact.sh`, then grants and re-reads all
-   eight Account Console permissions on the explicitly configured active role;
+6. calls the existing `deploy-henukit-artifact.sh`, then invokes Platform
+   Core's owner-defined command to grant all eight Account Console permissions,
+   bump the role revision, and append an immutable grant audit;
 7. verifies all nine running image tags, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
@@ -115,8 +118,14 @@ EOF
 ```
 
 The referenced application environment must explicitly contain
-`PORTAL_API_MODE=live` and either omit `NEXT_PUBLIC_PORTAL_ALLOW_MOCK` or set it
-to `0`. Any other value is rejected before artifact download or backup. The
+`PORTAL_API_MODE=live` and `NEXT_PUBLIC_PORTAL_ALLOW_MOCK=0`. The one-command
+entry reads the already-installed HENU tenant PID/key from MetaView over the
+existing root SSH channel without logging either value, atomically installs the
+Account-side tenant configuration and `ENABLED=1`, and restores the complete
+environment file on any failed release. Exact base, callback, and return URLs
+are also installed. Invoking the watcher directly requires all six values
+already be valid. Any invalid value is rejected before artifact download or
+backup. The
 operator role has no default: confirm the intended production role and set it
 explicitly. Migrations declare permissions but deliberately do not grant them.
 
@@ -170,17 +179,20 @@ above, the runtime's release entry is the sole production approval command:
 sudo GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
   HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
   HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator \
-  HENUKIT_PLATFORM_MIGRATION=000017_account_portfolio_order_access.up.sql \
+  HENUKIT_PLATFORM_MIGRATIONS=000017_account_portfolio_order_access.up.sql,000018_account_operator_role_grant_audit.up.sql \
   /usr/local/sbin/activate-henukit-release <full-main-sha> --execute
 ```
 
 This single entry performs the unapproved preparation pass first. It refuses
 while #166 is open, restore-tests both database backups, verifies the mock-free
-manifest, transfers the exact three EasyPay patches to `root@metaview.top`,
+manifest, securely copies the existing MetaView HENU tenant identity into the
+Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017`, deploys all nine fixed-SHA images, grants the eight Account Console
-permissions, and runs deterministic smoke checks. Account Portfolio migrations
+`000017` and `000018`, deploys all nine fixed-SHA images, grants the eight
+Account Console permissions through Platform Core, and probes the public
+Account summary and EasyPay callback routes in addition to deterministic health
+checks. Account Portfolio migrations
 `000006` and `000007` remain service-owned startup migrations.
 
 The defaults assume SSH key access to `root@metaview.top` and gateway directory
@@ -225,6 +237,8 @@ The activation record is deliberately not a production-acceptance claim: the
 real school-mail registration, OAuth session, metrics, and observation checks in
 the release procedure above must still be recorded for that SHA.
 
-Automatic schema selection is intentionally disabled. When a reviewed release
-requires one Platform Core migration, set its exact artifact filename with
-`HENUKIT_PLATFORM_MIGRATION` for that deployment and remove it afterward.
+Automatic schema selection is intentionally disabled. Set the reviewed,
+comma-separated Platform Core migration filenames with
+`HENUKIT_PLATFORM_MIGRATIONS` for that deployment and remove the setting
+afterward. The singular `HENUKIT_PLATFORM_MIGRATION` remains a compatibility
+alias for older one-migration releases.

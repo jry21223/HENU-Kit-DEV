@@ -21,7 +21,7 @@ function write(path, contents, mode = 0o644) {
   writeFileSync(path, contents, { mode });
 }
 
-function fixture({ npmFails = false } = {}) {
+function fixture({ henukitEnabled = true, npmFails = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "deploy-epay-gateway-"));
   const gateway = join(root, "epay-gateway");
   const patches = join(root, "patches");
@@ -36,7 +36,14 @@ function fixture({ npmFails = false } = {}) {
   write(join(gateway, "package-lock.json"), '{"name":"fixture","lockfileVersion":3,"packages":{}}\n');
   write(join(gateway, "lib", "db.js"), "module.exports = {};\n");
   write(join(gateway, "test", "baseline.test.js"), "// baseline\n");
-  write(join(gateway, ".env"), "SECRET=preserved\n", 0o600);
+  const gatewayEnv = `SECRET=preserved
+HENUKIT_EPAY_ENABLED=${henukitEnabled ? "1" : "0"}
+HENUKIT_EPAY_PID=henukit-production
+HENUKIT_EPAY_KEY=henukit-production-secret-32bytes
+HENUKIT_EPAY_NOTIFY_URLS=https://henukit.cn/api/v1/payment-providers/easypay/notifications
+HENUKIT_EPAY_RETURN_ORIGINS=https://henukit.cn
+`;
+  write(join(gateway, ".env"), gatewayEnv, 0o600);
   write(join(gateway, "data", "orders.json"), "[]\n", 0o600);
   write(
     join(patches, "0001-henukit-query-and-notify-outbox.patch"),
@@ -124,12 +131,26 @@ test("execute mode atomically activates the tested candidate and preserves priva
 
   assert.match(output, /gateway patches activated/i);
   assert.equal(readFileSync(join(setup.gateway, "server.js"), "utf8"), "state=three\n");
-  assert.equal(readFileSync(join(setup.gateway, ".env"), "utf8"), "SECRET=preserved\n");
+  assert.match(readFileSync(join(setup.gateway, ".env"), "utf8"), /^SECRET=preserved$/m);
+  assert.match(readFileSync(join(setup.gateway, ".env"), "utf8"), /^HENUKIT_EPAY_ENABLED=1$/m);
   assert.equal(readFileSync(join(setup.gateway, "data", "orders.json"), "utf8"), "[]\n");
   assert.equal(existsSync(join(setup.gateway, ".henukit-patches.sha256")), true);
   assert.match(readFileSync(setup.log, "utf8"), /systemctl stop epay-gateway\.service/);
   assert.match(readFileSync(setup.log, "utf8"), /systemctl start epay-gateway\.service/);
   assert.equal(existsSync(setup.backups), true);
+});
+
+test("execute mode enables the prepared HENU tenant during atomic activation", () => {
+  const setup = fixture({ henukitEnabled: false });
+
+  const output = execFileSync(
+    command,
+    [setup.gateway, setup.patches, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.match(output, /gateway patches activated/i);
+  assert.match(readFileSync(join(setup.gateway, ".env"), "utf8"), /^HENUKIT_EPAY_ENABLED=1$/m);
 });
 
 test("a failed candidate test stops before service interruption", () => {

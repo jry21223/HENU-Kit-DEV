@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {
+  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -51,7 +52,7 @@ function sourceFiles(root, path) {
     const candidate = join(directory, entry.name);
     if (entry.isDirectory()) {
       files.push(...sourceFiles(root, relative(root, candidate)));
-    } else if (entry.isFile() && /\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) {
+    } else if (entry.isFile() && /\.(?:ts|tsx|js|jsx|mjs|go)$/.test(entry.name)) {
       files.push(candidate);
     }
   }
@@ -59,10 +60,30 @@ function sourceFiles(root, path) {
 }
 
 function assertAccountSources(root) {
-  const files = sourceFiles(root, "apps/portal/src/app/account/(console)");
-  files.push(
+  const entryFiles = sourceFiles(root, "apps/portal/src/app/account/(console)");
+  entryFiles.push(
     join(root, "apps/portal/src/components/account/account-console-session.tsx"),
   );
+  const files = new Set();
+  const pending = [...entryFiles];
+  const portalSource = join(root, "apps/portal/src");
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (files.has(file)) continue;
+    files.add(file);
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(/(?:from\s*|import\s*)["']([^"']+)["']/g)) {
+      const specifier = match[1];
+      let base = "";
+      if (specifier.startsWith("@/")) base = join(portalSource, specifier.slice(2));
+      else if (specifier.startsWith(".")) base = resolve(dirname(file), specifier);
+      else continue;
+      const candidates = [base, ...[".ts", ".tsx", ".js", ".jsx", ".mjs"].map((extension) => `${base}${extension}`), ...["index.ts", "index.tsx", "index.js"].map((name) => join(base, name))];
+      const dependency = candidates.find((candidate) => existsSync(candidate));
+      if (!dependency) die(`${relative(root, file)} has an unresolved local import ${specifier}`);
+      if (dependency.startsWith(portalSource)) pending.push(dependency);
+    }
+  }
   const forbidden = [
     { pattern: /@\/lib\/auth\/(?:mock|store)/, label: "mock data source" },
     { pattern: /@\/lib\/[^"']*mock/, label: "mock data source" },
@@ -70,7 +91,13 @@ function assertAccountSources(root) {
     { pattern: /\b(?:localStorage|sessionStorage)\b/, label: "browser fixture storage" },
   ];
   for (const file of files) {
-    const source = readFileSync(file, "utf8");
+    if (/(?:^|\/)(?:mock|mocks|fixtures?)(?:\.|\/)/i.test(relative(root, file))) {
+      die(`${relative(root, file)} is reachable mock or fixture code`);
+    }
+    const fullSource = readFileSync(file, "utf8");
+    const source = relative(root, file) === "apps/portal/src/lib/api/client.ts" && fullSource.includes("// ---- Account Portfolio ----")
+      ? fullSource.slice(fullSource.indexOf("// ---- Account Portfolio ----"), fullSource.indexOf("// ---- Library ----"))
+      : fullSource;
     for (const rule of forbidden) {
       if (rule.pattern.test(source)) {
         die(`${relative(root, file)} reaches a ${rule.label}`);
@@ -81,6 +108,20 @@ function assertAccountSources(root) {
   const authMock = read(root, "apps/portal/src/lib/auth/mock.ts");
   if (/\b(?:accountStore|AccountData|MEMBERSHIP_PLANS|FREE_MEMBERSHIP|TicketMsg|unreadNotices)\b/.test(authMock)) {
     die("apps/portal/src/lib/auth/mock.ts contains an Account Portfolio fixture");
+  }
+}
+
+function assertGatewayAccountSources(root) {
+  const candidates = [
+    ...sourceFiles(root, "services/portal-gateway/internal/accountportfolio"),
+    ...sourceFiles(root, "services/console-gateway/internal/accountportfolio"),
+  ];
+  for (const file of candidates) {
+    if (file.endsWith("_test.go")) continue;
+    const source = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    if (/\b(?:mock|fake|fixture)\w*\b/i.test(source) || /fallback\w*\s*(?:success|ok|response)/i.test(source)) {
+      die(`${relative(root, file)} contains a user-reachable fake-success source`);
+    }
   }
 }
 
@@ -127,6 +168,7 @@ try {
 }
 
 assertAccountSources(repoRoot);
+assertGatewayAccountSources(repoRoot);
 assertBuildBoundary(repoRoot);
 assertPaymentProviderBoundary(repoRoot);
 
@@ -139,6 +181,7 @@ if (report) {
     `release_sha=${releaseSha}`,
     "status=pass",
     "account_console_mock_sources=absent",
+    "account_transitive_mock_sources=absent",
     "account_payment_provider=easypay_or_disabled",
     "portal_require_gateway=1",
     "portal_allow_mock=0",

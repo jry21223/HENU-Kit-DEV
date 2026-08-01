@@ -86,6 +86,13 @@ automatically restores the original directory if health fails:
   --check
 ```
 
+Execution additionally reads the existing root-owned `.env` without sourcing
+or printing it and requires a `0|1` enabled flag, a non-placeholder PID/key,
+the exact HENU callback allowlist entry, and the `https://henukit.cn` return
+origin. It writes `HENUKIT_EPAY_ENABLED=1` only into the tested candidate that
+is atomically activated; rollback restores the original directory and flag.
+Missing tenant configuration fails before `systemctl stop`.
+
 The HENU Kit one-command release entry transfers this installer and the exact
 artifact patch set over SSH to `root@metaview.top`, runs `--execute`, and only
 then writes the HENU exact-SHA approval. The commands below remain the manual

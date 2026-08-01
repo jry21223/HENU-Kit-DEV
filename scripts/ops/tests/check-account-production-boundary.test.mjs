@@ -39,6 +39,9 @@ function fixture() {
     "apps/portal/src/lib/auth/mock.ts",
     'export const EMAIL_DEMO_CODE = "local-only";\n',
   );
+  write(root, "apps/portal/src/lib/api/client.ts", "export const fetchSession = async () => ({});\n");
+  write(root, "services/portal-gateway/internal/accountportfolio/client.go", "package accountportfolio\n");
+  write(root, "services/console-gateway/internal/accountportfolio/client.go", "package accountportfolio\n");
   write(
     root,
     "apps/portal/Dockerfile",
@@ -76,6 +79,7 @@ test("production boundary emits an exact-SHA pass manifest for a real-gateway ac
       `release_sha=${releaseSha}`,
       "status=pass",
       "account_console_mock_sources=absent",
+      "account_transitive_mock_sources=absent",
       "account_payment_provider=easypay_or_disabled",
       "portal_require_gateway=1",
       "portal_allow_mock=0",
@@ -99,6 +103,20 @@ test("production boundary rejects a runtime-wired fake payment provider", () => 
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /runtime.*fake payment provider/i);
+});
+
+test("production boundary rejects a mock reached through an indirect Account import", () => {
+  const root = fixture();
+  write(root, "apps/portal/src/lib/api/client.ts", 'export { accountData } from "@/lib/api/account";\n');
+  write(root, "apps/portal/src/lib/api/account.ts", 'export { accountData } from "@/lib/account/fixture";\n');
+  write(root, "apps/portal/src/lib/account/fixture.ts", "export const accountData = {};\n");
+
+  const result = spawnSync(process.execPath, [checker, "--repo-root", root], {
+    encoding: "utf8",
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /reachable mock or fixture code/i);
 });
 
 test("production boundary rejects an Account console import from a mock data source", () => {

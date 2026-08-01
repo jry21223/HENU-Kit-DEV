@@ -100,6 +100,42 @@ if [[ "$mode" == "--check" ]]; then
   exit 0
 fi
 
+gateway_env_value() {
+  local key="$1"
+  local env_file="$gateway_dir/.env"
+  local count value
+  [[ -f "$env_file" && -r "$env_file" && ! -L "$env_file" ]] || return 1
+  count="$(grep -Ec "^[[:space:]]*${key}[[:space:]]*=" "$env_file" || true)"
+  [[ "$count" == "1" ]] || return 1
+  value="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$env_file")"
+  value="${value#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+henukit_enabled="$(gateway_env_value HENUKIT_EPAY_ENABLED || true)"
+henukit_pid="$(gateway_env_value HENUKIT_EPAY_PID || true)"
+henukit_key="$(gateway_env_value HENUKIT_EPAY_KEY || true)"
+henukit_notify_urls="$(gateway_env_value HENUKIT_EPAY_NOTIFY_URLS || true)"
+henukit_return_origins="$(gateway_env_value HENUKIT_EPAY_RETURN_ORIGINS || true)"
+[[ "$henukit_enabled" == "0" || "$henukit_enabled" == "1" ]] || die "HENU EasyPay tenant enabled flag must be 0 or 1"
+[[ "$henukit_pid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "HENU EasyPay tenant PID is missing or invalid"
+[[ ${#henukit_key} -ge 16 && "$henukit_key" != *[[:space:]]* ]] || die "HENU EasyPay tenant key is missing or invalid"
+[[ ! "$henukit_key" =~ (replace|example|changeme|test-secret) ]] || die "HENU EasyPay tenant key is a deployment placeholder"
+[[ ",$henukit_notify_urls," == *,https://henukit.cn/api/v1/payment-providers/easypay/notifications,* ]] ||
+  die "HENU EasyPay tenant callback allowlist is incomplete"
+[[ ",$henukit_return_origins," == *,https://henukit.cn,* ]] ||
+  die "HENU EasyPay tenant return-origin allowlist is incomplete"
+
+awk '
+  BEGIN { changed=0 }
+  /^[[:space:]]*HENUKIT_EPAY_ENABLED[[:space:]]*=/ { print "HENUKIT_EPAY_ENABLED=1"; changed++; next }
+  { print }
+  END { if (changed != 1) exit 42 }
+' "$gateway_dir/.env" > "$candidate/.env" || die "could not prepare the enabled HENU tenant environment"
+chmod 0600 "$candidate/.env"
+
 command -v systemctl >/dev/null 2>&1 || die "systemctl is required for execution"
 command -v curl >/dev/null 2>&1 || die "curl is required for execution"
 systemctl is-active "$service" >/dev/null || die "$service is not active"
@@ -112,7 +148,7 @@ systemctl stop "$service"
 mv "$gateway_dir" "$backup_dir/original"
 mv "$candidate" "$gateway_dir"
 candidate=""
-for private_path in .env epay.db data; do
+for private_path in epay.db data; do
   if [[ -e "$backup_dir/original/$private_path" ]]; then
     cp -a "$backup_dir/original/$private_path" "$gateway_dir/"
   fi

@@ -11,9 +11,9 @@ usage() {
 usage: activate-henukit-release.sh <full-main-sha> --execute
 
 The command is the production approval action. It first asks the watcher to
-prepare and restore-test backups without approval, then atomically approves
-that exact SHA, installs the tested EasyPay gateway patch set on MetaView, and
-asks the watcher to activate HENU Kit. It never approves while the QuizCraft
+prepare and restore-test backups without approval, installs the tested EasyPay
+gateway patch set on MetaView, then atomically approves that exact SHA and asks
+the watcher to activate HENU Kit. It never approves while the QuizCraft
 cutover blocker is open or when preparation, mock, or gateway gates fail.
 EOF
 }
@@ -31,8 +31,11 @@ fi
 release_sha="$1"
 repo="${HENUKIT_REPO:-jry21223/HENU-Kit-DEV}"
 blocker_issue="${HENUKIT_BLOCKER_ISSUE:-166}"
+branch="${HENUKIT_BRANCH:-main}"
+workflow="${HENUKIT_WORKFLOW:-deploy-henukit.yml}"
 state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
 watcher="${HENUKIT_WATCHER:-/usr/local/sbin/watch-henukit-actions}"
+env_file="${HENUKIT_ENV_FILE:-}"
 release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
 epay_ssh_target="${HENUKIT_EPAY_GATEWAY_SSH_TARGET:-root@metaview.top}"
 epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
@@ -40,6 +43,7 @@ epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release SHA must be 40 lowercase hexadecimal characters"
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$blocker_issue" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_BLOCKER_ISSUE must be a positive issue number"
+[[ "$branch" =~ ^[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_BRANCH contains unsupported characters"
 [[ "$epay_ssh_target" =~ ^[A-Za-z0-9_.@-]+$ ]] || die "HENUKIT_EPAY_GATEWAY_SSH_TARGET contains unsupported characters"
 [[ "$epay_gateway_dir" =~ ^/[A-Za-z0-9_./-]+$ && "$epay_gateway_dir" != "/" ]] ||
   die "HENUKIT_EPAY_GATEWAY_DIR must be a specific absolute path"
@@ -63,20 +67,55 @@ fi
 
 [[ ! -e "$approval" ]] || die "an approval already exists for release $release_sha"
 
-# No approval exists during this first pass, so the watcher can only download,
-# validate Account's mock-free manifest and production env, then backup and
-# restore-test both databases. Any failure exits before an approval is written.
-"$watcher" --once
-[[ -s "$prepared" ]] || die "watcher did not prepare verified backup evidence for release $release_sha"
+branch_head="$(gh api "repos/$repo/branches/$branch" --jq '.commit.sha')"
+[[ "$branch_head" == "$release_sha" ]] || die "requested release is not the current $branch head"
+run_row="$(gh run list --repo "$repo" --workflow "$workflow" --branch "$branch" --event push --limit 1 --json headSha,status,conclusion --jq 'first(.[]) | [.headSha,.status,.conclusion] | @tsv')"
+IFS=$'\t' read -r run_sha run_status run_conclusion <<< "$run_row"
+[[ "$run_sha" == "$release_sha" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] ||
+  die "requested release is not the newest completed successful $workflow run"
 
-release_dir="$release_root/$release_sha"
-epay_installer="$release_dir/bin/deploy-epay-gateway-patches.sh"
-epay_patches="$release_dir/infra/epay-gateway/patches"
-[[ -x "$epay_installer" ]] || die "release has no executable EasyPay gateway installer"
-[[ -d "$epay_patches" ]] || die "release has no EasyPay gateway patch set"
+[[ -n "$env_file" && -r "$env_file" && -w "$env_file" && ! -L "$env_file" ]] ||
+  die "HENUKIT_ENV_FILE must be a writable, non-symlink production environment file"
+
+tenant_credentials="$(ssh "$epay_ssh_target" bash -s -- "$epay_gateway_dir" <<'REMOTE'
+set -Eeuo pipefail
+env_file="$1/.env"
+value() {
+  local key="$1" line
+  line="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$env_file" | tail -n 1 || true)"
+  printf '%s' "${line#*=}"
+}
+printf '%s\n%s\n' "$(value HENUKIT_EPAY_PID)" "$(value HENUKIT_EPAY_KEY)"
+REMOTE
+)"
+[[ "$tenant_credentials" == *$'\n'* ]] || die "MetaView did not return the HENU tenant credential pair"
+tenant_pid="${tenant_credentials%%$'\n'*}"
+tenant_key="${tenant_credentials#*$'\n'}"
+[[ "$tenant_pid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "MetaView HENU tenant PID is missing or invalid"
+[[ ${#tenant_key} -ge 16 && "$tenant_key" != *[[:space:]]* ]] || die "MetaView HENU tenant key is missing or invalid"
+
+set_account_env_value() {
+  local key="$1"
+  local value="$2"
+  local incoming="$(dirname "$env_file")/.henukit-env.$$"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { changed=0 }
+    $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { if (changed > 0) exit 42; print key "=" value; changed++; next }
+    { print }
+    END { if (changed == 0) print key "=" value }
+  ' "$env_file" > "$incoming" || {
+    rm -f -- "$incoming"
+    return 1
+  }
+  chmod 0600 "$incoming"
+  mv "$incoming" "$env_file"
+}
 
 approval_incoming="$state_root/approvals/.${release_sha}.$$"
 remote_stage=""
+environment_backup="$(dirname "$env_file")/.henukit-env.backup.$$"
+cp -p "$env_file" "$environment_backup"
+chmod 0600 "$environment_backup"
 cleanup() {
   if [[ -n "${approval_incoming:-}" && -f "$approval_incoming" ]]; then
     rm -f -- "$approval_incoming"
@@ -84,8 +123,31 @@ cleanup() {
   if [[ "$remote_stage" =~ ^/tmp/henukit-epay-release\.[A-Za-z0-9]+$ ]]; then
     ssh "$epay_ssh_target" "rm -rf -- '$remote_stage'" >/dev/null 2>&1 || true
   fi
+  if [[ -n "${environment_backup:-}" && -f "$environment_backup" ]]; then
+    mv "$environment_backup" "$env_file" || true
+  fi
 }
 trap cleanup EXIT
+set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_PID "$tenant_pid" || die "could not install the HENU tenant PID"
+set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_KEY "$tenant_key" || die "could not install the HENU tenant key"
+set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL "https://metaview.top/epay" || die "could not configure the EasyPay base URL"
+set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL "https://henukit.cn/api/v1/payment-providers/easypay/notifications" || die "could not configure the EasyPay callback"
+set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL "https://henukit.cn/account/membership" || die "could not configure the EasyPay return URL"
+set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_ENABLED 1 || die "could not atomically enable Account Portfolio EasyPay"
+
+# No approval exists during this first pass, so the watcher can only download,
+# validate Account's mock-free manifest and production env, then backup and
+# restore-test both databases. Any failure exits before an approval is written.
+"$watcher" --once
+[[ -s "$prepared" ]] || die "watcher did not prepare verified backup evidence for release $release_sha"
+[[ "$(basename "$(tr -d '\r\n' < "$prepared")")" == *"$release_sha"* ]] ||
+  die "prepared backup evidence is not bound to release $release_sha"
+
+release_dir="$release_root/$release_sha"
+epay_installer="$release_dir/bin/deploy-epay-gateway-patches.sh"
+epay_patches="$release_dir/infra/epay-gateway/patches"
+[[ -x "$epay_installer" ]] || die "release has no executable EasyPay gateway installer"
+[[ -d "$epay_patches" ]] || die "release has no EasyPay gateway patch set"
 
 remote_stage="$(ssh "$epay_ssh_target" 'mktemp -d /tmp/henukit-epay-release.XXXXXX')"
 [[ "$remote_stage" =~ ^/tmp/henukit-epay-release\.[A-Za-z0-9]+$ ]] ||
@@ -111,5 +173,7 @@ approval_incoming=""
 "$watcher" --once
 [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]] ||
   die "watcher returned without activating release $release_sha"
+rm -f -- "$environment_backup"
+environment_backup=""
 
 printf '%s: release %s activated\n' "$program" "$release_sha"
