@@ -78,6 +78,49 @@ func TestAccountOperatorRoleGrantIsOwnedAuditedAndIdempotent(t *testing.T) {
 	if grantCount != 8 || revision != 2 || auditCount != 2 {
 		t.Fatalf("grant facts count=%d revision=%d audits=%d", grantCount, revision, auditCount)
 	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO authorization_roles(code, display_name) VALUES ('concurrent-operator','Concurrent operator')`); err != nil {
+		t.Fatalf("create concurrent operator role: %v", err)
+	}
+	type grantOutcome struct {
+		result accountoperatorgrant.Result
+		err    error
+	}
+	start := make(chan struct{})
+	outcomes := make(chan grantOutcome, 2)
+	for attempt := 0; attempt < 2; attempt++ {
+		go func() {
+			<-start
+			result, grantErr := accountoperatorgrant.Grant(ctx, pool, accountoperatorgrant.Input{
+				RoleCode: "concurrent-operator", Actor: "henukit-release", RequestID: "req_release_aaaaaaaa_concurrent",
+				Reason: "Account Portfolio production release aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			})
+			outcomes <- grantOutcome{result: result, err: grantErr}
+		}()
+	}
+	close(start)
+	changedCount := 0
+	for attempt := 0; attempt < 2; attempt++ {
+		outcome := <-outcomes
+		if outcome.err != nil {
+			t.Fatalf("concurrent grant attempt %d: %v", attempt+1, outcome.err)
+		}
+		if outcome.result.Changed {
+			changedCount++
+		}
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM role_permissions rp JOIN authorization_roles r ON r.id=rp.role_id WHERE r.code='concurrent-operator' AND rp.permission_code LIKE 'account.%'`).Scan(&grantCount); err != nil {
+		t.Fatalf("count concurrent grants: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT revision FROM authorization_roles WHERE code='concurrent-operator'`).Scan(&revision); err != nil {
+		t.Fatalf("read concurrent revision: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_operator_role_grant_audit_events WHERE role_code='concurrent-operator'`).Scan(&auditCount); err != nil {
+		t.Fatalf("count concurrent audits: %v", err)
+	}
+	if changedCount != 1 || grantCount != 8 || revision != 2 || auditCount != 1 {
+		t.Fatalf("concurrent grant facts changed=%d count=%d revision=%d audits=%d", changedCount, grantCount, revision, auditCount)
+	}
 	if _, err := pool.Exec(ctx, `DELETE FROM account_operator_role_grant_audit_events`); err == nil {
 		t.Fatal("account operator grant audit accepted deletion")
 	}
