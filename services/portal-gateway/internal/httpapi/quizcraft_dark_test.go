@@ -340,3 +340,74 @@ func TestRouterKeepsQuizCraftV2RankingsDarkBeforeCutover(t *testing.T) {
 		t.Fatalf("before #166 public V2 ranking route calls = portal-api:%d QuizCraft:%d", portalAPICalls.Load(), quizCraftCalls.Load())
 	}
 }
+
+func TestRouterPublishesRealQuizCraftV2RankingsAtCutover(t *testing.T) {
+	const bankID = "11111111-1111-4111-8111-111111111111"
+	var quizCraftCalls atomic.Int32
+	quizCraft := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		quizCraftCalls.Add(1)
+		if request.Header.Get("X-Actor-User-Id") != practice.AnonymousCatalogActor || request.Header.Get("X-Permission-Code") != practice.PortalReadPermission {
+			t.Fatalf("ranking read headers = actor %q permission %q", request.Header.Get("X-Actor-User-Id"), request.Header.Get("X-Permission-Code"))
+		}
+		switch request.URL.Path {
+		case practice.OverallRankingPath:
+			if request.URL.RawQuery != "period=weekly" {
+				t.Fatalf("overall ranking query = %q", request.URL.RawQuery)
+			}
+			_ = json.NewEncoder(writer).Encode(practice.RankingEnvelope{RequestID: "req_core_overall", Data: practice.RankingPage{Scope: "overall", Period: practice.RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []practice.RankingEntry{{Rank: 1, Nickname: "认真刷题", SystemAvatar: "scholar-blue", CorrectAnswerCount: 12}}}})
+		case strings.Replace(practice.BankRankingPath, "{bank_id}", bankID, 1):
+			if request.URL.RawQuery != "period=lifetime" {
+				t.Fatalf("bank ranking query = %q", request.URL.RawQuery)
+			}
+			_ = json.NewEncoder(writer).Encode(practice.RankingEnvelope{RequestID: "req_core_bank", Data: practice.RankingPage{Scope: "bank", BankID: bankID, Period: practice.RankingPeriodLifetime, Metric: "correct_answer_count", Entries: []practice.RankingEntry{}}})
+		default:
+			t.Fatalf("unexpected ranking path %q", request.URL.Path)
+		}
+	}))
+	defer quizCraft.Close()
+
+	handler, err := New(config.Config{
+		SessionKey:              []byte("0123456789abcdef0123456789abcdef"),
+		PortalAPIURL:            "http://127.0.0.1:1",
+		QuizCraftV2ReadsEnabled: true,
+		QuizCraftCoreURL:        quizCraft.URL,
+		QuizCraftCoreAuth:       config.ServiceAuth{ClientID: testQuizCraftCatalogClientID, ClientSecret: testQuizCraftCatalogSecret, KeyID: testQuizCraftCatalogKeyID},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		path        string
+		requestID   string
+		wantScope   string
+		wantPeriod  string
+		wantEntries int
+	}{
+		{path: "/api/v1/rankings/overall?period=weekly", requestID: "req_public_overall", wantScope: "overall", wantPeriod: "weekly", wantEntries: 1},
+		{path: "/api/v1/banks/" + bankID + "/rankings?period=lifetime", requestID: "req_public_bank", wantScope: "bank", wantPeriod: "lifetime", wantEntries: 0},
+	} {
+		request := httptest.NewRequest(http.MethodGet, "http://portal.test"+test.path, nil)
+		request.Header.Set("X-Request-Id", test.requestID)
+		response := httptest.NewRecorder()
+		handler.Router().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("ranking %s = %d %s", test.path, response.Code, response.Body.String())
+		}
+		var payload practice.RankingEnvelope
+		if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Data.Scope != test.wantScope || string(payload.Data.Period) != test.wantPeriod || len(payload.Data.Entries) != test.wantEntries {
+			t.Fatalf("ranking %s payload = %+v", test.path, payload)
+		}
+	}
+	if quizCraftCalls.Load() != 2 {
+		t.Fatalf("ranking Core calls = %d, want 2", quizCraftCalls.Load())
+	}
+	invalid := httptest.NewRecorder()
+	handler.Router().ServeHTTP(invalid, httptest.NewRequest(http.MethodGet, "http://portal.test/api/v1/banks/not-a-uuid/rankings", nil))
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "invalid_bank_id") || quizCraftCalls.Load() != 2 {
+		t.Fatalf("invalid bank ranking = %d %s Core calls=%d", invalid.Code, invalid.Body.String(), quizCraftCalls.Load())
+	}
+}

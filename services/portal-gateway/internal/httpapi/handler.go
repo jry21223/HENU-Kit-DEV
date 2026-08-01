@@ -169,6 +169,12 @@ func (h *Handler) Router() chi.Router {
 		// still fails closed for this exact V2 route.
 		r.Get(quizCraftCatalogPath, h.getQuizCraftCatalog)
 	}
+	if h.quizCraft != nil {
+		// #164 prepared these clients behind the V2 read gate. #166 is the
+		// only release allowed to make the public read routes reachable.
+		r.Get(practice.OverallRankingPath, h.getQuizCraftOverallRanking)
+		r.Get(practice.BankRankingPath, h.getQuizCraftBankRanking)
+	}
 
 	// This is the sole browser-visible QuizCraft write boundary. It is not a
 	// generic proxy and stays unavailable until the explicit #166 cutover gate
