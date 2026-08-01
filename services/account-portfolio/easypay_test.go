@@ -16,8 +16,7 @@ func TestEasyPayProviderCreatesQueriesAndVerifiesHENUTenantOrders(t *testing.T) 
 		secret   = "test-henukit-tenant-secret"
 		merchant = "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234"
 	)
-	var gateway *httptest.Server
-	gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/submit.php":
 			var params map[string]string
@@ -31,10 +30,12 @@ func TestEasyPayProviderCreatesQueriesAndVerifiesHENUTenantOrders(t *testing.T) 
 				!easyPayVerify(params, secret) {
 				t.Fatalf("invalid create params: %#v", params)
 			}
+			// Per ADR-0019 the gateway answers a private-order tenant with
+			// WeChat's own payment URI, never a URL carrying the order number.
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"code":     1,
 				"msg":      "success",
-				"code_url": gateway.URL + "/pay/" + merchant,
+				"code_url": "weixin://wxpay/bizpayurl?pr=A1b2C3d",
 			})
 		case "/api/query.php":
 			if err := r.ParseForm(); err != nil {
@@ -90,6 +91,9 @@ func TestEasyPayProviderCreatesQueriesAndVerifiesHENUTenantOrders(t *testing.T) 
 	}
 	if created.ExternalOrderID != merchant || created.Status != MembershipOrderPendingPayment {
 		t.Fatalf("created order = %+v, want HENU pending order", created)
+	}
+	if created.CheckoutURL != "weixin://wxpay/bizpayurl?pr=A1b2C3d" {
+		t.Fatalf("checkout handle = %q, want the WeChat payment URI", created.CheckoutURL)
 	}
 
 	queried, err := provider.QueryOrder(context.Background(), merchant)

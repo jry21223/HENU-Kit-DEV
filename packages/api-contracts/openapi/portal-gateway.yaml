@@ -404,6 +404,48 @@ paths:
           $ref: "#/components/responses/ServiceUnavailable"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+    post:
+      operationId: createAccountMembershipOrder
+      summary: Create the signed-in user's own lifetime membership order
+      description: >-
+        The ADR-0019 write exception. The order belongs to the verified Portal
+        Session user; a browser can neither select the actor nor supply an
+        amount or merchant order number. A disabled payment provider returns an
+        honest unavailable response and creates no order.
+      security:
+        - portalSession: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 200
+            pattern: '^[A-Za-z0-9._:-]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountCreateMembershipOrderRequest"
+      responses:
+        "201":
+          description: Created order, including an idempotent retry, with its checkout handle while payment is pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountMembershipOrderResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /api/v1/library/courses:
     get:
@@ -950,6 +992,36 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/AccountMembershipOrder"
+        request_id:
+          type: string
+
+    AccountCreateMembershipOrderRequest:
+      type: object
+      additionalProperties: false
+      description: >-
+        Carries nothing. The plan, the amount, and the merchant order number are
+        all owned by the server, so a browser cannot influence what is charged.
+
+    AccountMembershipOrderResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [order]
+          properties:
+            order:
+              $ref: "#/components/schemas/AccountMembershipOrder"
+            checkout_url:
+              type: string
+              pattern: '^weixin://'
+              maxLength: 512
+              description: >-
+                Single-use WeChat payment URI the browser renders as a QR code.
+                Present only while the order awaits payment and the code is
+                still valid, so an expired code is never returned as if it were
+                scannable. It carries no merchant order number, and it is not
+                part of the order, so it never appears in an order listing.
         request_id:
           type: string
 

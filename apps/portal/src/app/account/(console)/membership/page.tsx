@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
+import { MembershipPurchase } from "@/components/account/membership-purchase";
 import { useReveal } from "@/components/account/use-reveal";
 import { fetchAccountMembership, formatPortalError } from "@/lib/api/client";
 import type { AccountMembershipResponse } from "@/lib/api/types";
@@ -52,7 +53,7 @@ export default function MembershipPage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">会员权益</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          仅展示 Account Portfolio 返回的真实会员权益；本页不提供会话内开通或模拟支付。
+          仅展示 Account Portfolio 返回的真实会员权益；开通由服务端确认，本页不提供会话内开通或模拟支付。
         </p>
       </section>
 
@@ -106,10 +107,12 @@ export default function MembershipPage() {
             </div>
           </dl>
           <p className="mt-6 border-t border-line pt-5 text-sm leading-6 text-ink/60">
-            终身会员产品金额为 ¥9.9；支付 Provider 尚未启用，运营授权与撤销会通过真实通知告知用户。
+            终身会员产品金额为 ¥9.9；运营授权与撤销会通过真实通知告知用户。
           </p>
         </section>
       ) : null}
+
+      {membership && !isLifetime ? <MembershipPurchase onPaid={loadMembership} /> : null}
     </div>
   );
 }

@@ -1052,6 +1052,17 @@ components:
           required: [order]
           properties:
             order: { $ref: '#/components/schemas/MembershipOrder' }
+            checkout_url:
+              type: string
+              pattern: '^weixin://'
+              maxLength: 512
+              description: >-
+                Single-use WeChat payment URI the browser renders as a QR code.
+                Present only while the order awaits payment and the code is
+                still within its window, so an expired code is never returned as
+                if it were scannable. It is deliberately not part of
+                MembershipOrder, so it never appears in an order listing. It
+                never contains the private merchant order number.
         request_id: { type: string }
     CreateMembershipOrderRequest:
       type: object

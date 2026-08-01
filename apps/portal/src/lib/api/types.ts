@@ -61,6 +61,42 @@ export interface AccountMembershipResponse {
   request_id: string;
 }
 
+export type AccountMembershipOrderStatus =
+  | "created"
+  | "pending_payment"
+  | "paid"
+  | "closed"
+  | "failed"
+  | "refunded";
+
+export interface AccountMembershipOrder {
+  id: string;
+  plan: "lifetime";
+  amount_cents: number;
+  status: AccountMembershipOrderStatus;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccountMembershipOrderResponse {
+  data: {
+    order: AccountMembershipOrder;
+    /**
+     * Single-use WeChat payment URI rendered as a QR code. Present only while
+     * the order awaits payment and the code is still valid, so an absent value
+     * means "no scannable code", never "assume it worked".
+     */
+    checkout_url?: string;
+  };
+  request_id: string;
+}
+
+export interface AccountMembershipOrdersResponse {
+  data: { orders: AccountMembershipOrder[] };
+  request_id: string;
+}
+
 export type AccountTicketStatus = "open" | "in_progress" | "resolved";
 
 export interface AccountNotification {

@@ -41,12 +41,13 @@ func NotificationReadPath(notificationID string) string {
 }
 
 var (
-	ErrUnauthorized = errors.New("account portfolio rejected the authenticated actor")
-	ErrBadRequest   = errors.New("account portfolio rejected the command")
-	ErrNotFound     = errors.New("account portfolio resource was not found")
-	ErrConflict     = errors.New("account portfolio command conflicted")
-	ErrUnavailable  = errors.New("account portfolio is unavailable")
-	ErrInvalid      = errors.New("account portfolio returned an invalid response")
+	ErrUnauthorized               = errors.New("account portfolio rejected the authenticated actor")
+	ErrBadRequest                 = errors.New("account portfolio rejected the command")
+	ErrNotFound                   = errors.New("account portfolio resource was not found")
+	ErrConflict                   = errors.New("account portfolio command conflicted")
+	ErrUnavailable                = errors.New("account portfolio is unavailable")
+	ErrInvalid                    = errors.New("account portfolio returned an invalid response")
+	ErrPaymentProviderUnavailable = errors.New("membership payment provider is unavailable")
 )
 
 // Client is a typed internal boundary for Account Portfolio reads.
@@ -134,6 +135,15 @@ func (c *Client) MembershipOrders(ctx context.Context, actorUserID, requestID st
 	return c.get(ctx, MembershipOrdersPath, actorUserID, requestID)
 }
 
+// CreateMembershipOrder forwards a user creating their own lifetime membership
+// order. ADR-0019 admits exactly this one command to the Portal write
+// exception: the actor is bound from the verified Portal Session, the browser
+// can neither select it nor supply a merchant order number, and a duplicate
+// idempotency key returns the original order rather than a second charge.
+func (c *Client) CreateMembershipOrder(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	return c.command(ctx, MembershipOrdersPath, actorUserID, requestID, idempotencyKey, raw, http.StatusCreated)
+}
+
 func (c *Client) get(ctx context.Context, path, actorUserID, requestID string) (json.RawMessage, error) {
 	return c.getAt(ctx, path, path, actorUserID, requestID)
 }
@@ -189,6 +199,16 @@ func (c *Client) call(ctx context.Context, method, requestPath, validationPath, 
 		return nil, ErrNotFound
 	case http.StatusConflict:
 		return nil, ErrConflict
+	case http.StatusServiceUnavailable:
+		var envelope struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope); err == nil && envelope.Error.Code == "PAYMENT_PROVIDER_UNAVAILABLE" {
+			return nil, ErrPaymentProviderUnavailable
+		}
+		return nil, ErrUnavailable
 	default:
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
 		return nil, fmt.Errorf("account portfolio status %d: %w", response.StatusCode, ErrUnavailable)

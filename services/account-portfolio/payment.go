@@ -124,6 +124,22 @@ type ProviderOrder struct {
 	Currency        string
 	Plan            string
 	Status          MembershipOrderStatus
+	// CheckoutURL is the single-use payment URI a browser may open. Per
+	// ADR-0019 it must never be a URL that carries the private merchant order
+	// number, so only a WeChat `weixin://` URI is accepted.
+	CheckoutURL string
+}
+
+// validCheckoutURL enforces ADR-0019's browser-safety rule at the boundary
+// where a provider response becomes something a browser could open. A gateway
+// regression that started returning its own checkout page is rejected here
+// rather than shown to a user.
+func validCheckoutURL(value, merchantOrderID string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || !strings.HasPrefix(value, "weixin://") {
+		return false
+	}
+	return merchantOrderID == "" || !strings.Contains(value, merchantOrderID)
 }
 
 type VerifiedPaymentNotification struct {
@@ -254,6 +270,7 @@ func (p *FakePaymentProvider) CreateOrder(_ context.Context, signed SignedPaymen
 		Currency:        signed.Request.Currency,
 		Plan:            signed.Request.Plan,
 		Status:          MembershipOrderPendingPayment,
+		CheckoutURL:     "weixin://wxpay/bizpayurl?pr=" + externalOrderID,
 	}
 	p.orders[externalOrderID] = order
 	p.merchantExternalOrders[signed.Request.MerchantOrderID] = externalOrderID

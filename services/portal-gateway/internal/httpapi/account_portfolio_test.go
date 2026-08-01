@@ -344,6 +344,23 @@ func TestAccountTicketCommandMapsOwnerConflictWithoutMockSuccess(t *testing.T) {
 	}
 }
 
+func TestMembershipOrderCreatePreservesDisabledProviderSemantics(t *testing.T) {
+	owner := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = writer.Write([]byte(`{"error":{"code":"PAYMENT_PROVIDER_UNAVAILABLE","message":"Membership payment is not available"},"request_id":"req_owner"}`))
+	}))
+	defer owner.Close()
+
+	handler := newAccountPortfolioHandler(t, owner.URL)
+	request := authenticatedAccountRequestWithMethod(t, handler, http.MethodPost, "/api/v1/account/membership-orders", `{}`, "idem_membership_order")
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"error":"membership_payment_unavailable"`) {
+		t.Fatalf("disabled-provider response = %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func validAccountOwnerData(path string) map[string]any {
 	switch path {
 	case "/api/v1/account/summary":

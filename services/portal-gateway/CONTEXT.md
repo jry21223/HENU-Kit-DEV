@@ -18,6 +18,13 @@
 
 Portal Gateway is read-only by default. It authenticates users via Platform Core OAuth, establishes a Portal Session, and proxies GET requests to product services with verified permissions. Account Portfolio point-ledger reads accept only a bounded opaque cursor and page size; the Gateway includes the canonical query in the signed owner RequestURI while validating the returned data against the static owner route. ADR-0017 creates one deliberately narrow exception for authenticated Account Portfolio support-ticket create/follow-up and notification mark-read commands. ADR-0018 creates a separate, default-off exception for exactly two QuizCraft Practice commands: create a server-selected session and submit one answer. For that boundary Gateway uses an independent command credential, signs a validated Portal Session UUID only for signed-in requests, and otherwise relays only the Core-issued `quizcraft_anonymous` cookie; it never forwards a generic browser cookie jar or a generic product write. Both Practice command gates remain off until #166. Gateway does not own business data and never exposes service credentials to the browser.
 
+ADR-0019 adds exactly one Account Portfolio membership-order command: an
+authenticated Portal Session user may create their own order with an empty
+browser-owned payload and a required idempotency key. Portal Gateway binds the
+actor from the session, validates the returned order and browser-safe
+`weixin://` checkout handle, and permits no Portal close, refund, or
+refund-status command.
+
 Before QuizCraft #166, `/api/v1/practice/catalog` is a dark V2 handoff seam, not a normal public product proxy. With `PORTAL_ENABLE_QUIZCRAFT_CATALOG=0` (the default), the legacy Practice wildcard returns `404` for that exact path without calling Portal API or QuizCraft. With the flag explicitly `1`, Gateway signs the existing QuizCraft Core catalog contract, maps only bank ID, immutable bank-version ID, name, question count, and published availability, and never substitutes legacy or mock data. Every catalog read uses the explicit `anonymous` actor: the directory is public and has no user-specific result, while the existing read signature does not bind an actor header, so no browser Session identity enters the Core request.
 
 ## Key terms
@@ -31,6 +38,6 @@ Before QuizCraft #166, `/api/v1/practice/catalog` is a dark V2 handoff seam, not
 
 - **Portal Gateway → Platform Core**: OAuth code exchange, permission verification. Uses HMAC-SHA256 service-to-service auth.
 - **Portal Gateway → Product services**: Signed read-only proxying. Each request carries `X-Actor-User-Id` and `X-Request-Id`.
-- **Portal Gateway → Account Portfolio**: Signed authenticated account reads plus the ADR-0017 self-service ticket/notification command exception; the Gateway owns neither account balances nor a fallback response.
+- **Portal Gateway → Account Portfolio**: Signed authenticated account reads, the ADR-0017 self-service ticket/notification commands, and ADR-0019's self-order creation command only; the Gateway owns neither account balances nor a fallback response.
 - **Portal Gateway → QuizCraft Practice Core**: ADR-0018's two default-off commands only, using a credential distinct from catalog reads; QuizCraft remains the owner of session selection, scoring, attempts, and the anonymous identity cookie.
 - **Portal frontend → Portal Gateway**: Same-origin API calls with session cookie (`credentials: "same-origin"`).

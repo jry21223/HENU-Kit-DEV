@@ -162,6 +162,7 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/account/tickets/{ticket_id}", h.accountTicket)
 	r.Post("/api/v1/account/tickets/{ticket_id}/follow-ups", h.accountTicketFollowUp)
 	r.Get("/api/v1/account/membership-orders", h.accountMembershipOrders)
+	r.Post("/api/v1/account/membership-orders", h.accountMembershipOrderCreate)
 	if h.quizCraftCatalog != nil {
 		// This exact handler is registered only for a local or explicitly
 		// coordinated cutover configuration. The default wildcard path below
@@ -468,6 +469,15 @@ func (h *Handler) accountMembershipOrders(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// accountMembershipOrderCreate is the ADR-0019 write exception. It forwards
+// only a user creating their own order; close, refund, and every other order
+// command stay on the separately authenticated Console path.
+func (h *Handler) accountMembershipOrderCreate(w http.ResponseWriter, r *http.Request) {
+	h.accountCommand(w, r, http.StatusCreated, true, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+		return h.accountPortfolio.CreateMembershipOrder(ctx, actorUserID, requestID, idempotencyKey, raw)
+	})
+}
+
 func (h *Handler) accountRead(w http.ResponseWriter, r *http.Request, read accountRead) {
 	// Account facts are private and must not be stored by a browser or
 	// intermediary while the Portal Session remains active.
@@ -539,6 +549,8 @@ func (h *Handler) writeAccountFailure(w http.ResponseWriter, r *http.Request, er
 		writeJSON(w, http.StatusConflict, contract.ErrorEnvelope{Error: "account_command_conflict", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, accountportfolio.ErrInvalid):
 		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "account_portfolio_invalid_response", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, accountportfolio.ErrPaymentProviderUnavailable):
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_payment_unavailable", RequestID: requestIDOf(w, r)})
 	default:
 		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
 	}

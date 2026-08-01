@@ -57,6 +57,11 @@ func validateCommandData(path string, raw json.RawMessage) error {
 		return ErrInvalid
 	}
 	switch {
+	case path == MembershipOrdersPath:
+		order, orderOK := requiredObject(value["order"])
+		if !orderOK || !validMembershipOrder(order) || !validOptionalCheckoutURL(value) {
+			return ErrInvalid
+		}
 	case path == TicketsPath || strings.HasSuffix(path, "/follow-ups"):
 		ticket, ticketOK := requiredObject(value["ticket"])
 		if !ticketOK || !validTicket(ticket) {
@@ -226,18 +231,31 @@ func validMembershipOrders(value map[string]json.RawMessage) bool {
 	}
 	for _, raw := range items {
 		item, itemOK := requiredObject(raw)
-		id, idOK := requiredString(item, "id")
-		plan, planOK := requiredString(item, "plan")
-		amount, amountOK := requiredInt(item, "amount_cents")
-		status, statusOK := requiredString(item, "status")
-		version, versionOK := requiredInt(item, "version")
-		createdOK := requiredTimestamp(item, "created_at")
-		updatedOK := requiredTimestamp(item, "updated_at")
-		if !itemOK || !idOK || !validUUID(id) || !planOK || plan != "lifetime" || !amountOK || amount != 990 || !statusOK || !validOrderStatus(status) || !versionOK || version < 1 || !createdOK || !updatedOK {
+		if !itemOK || !validMembershipOrder(item) {
 			return false
 		}
 	}
 	return true
+}
+
+func validMembershipOrder(item map[string]json.RawMessage) bool {
+	id, idOK := requiredString(item, "id")
+	plan, planOK := requiredString(item, "plan")
+	amount, amountOK := requiredInt(item, "amount_cents")
+	status, statusOK := requiredString(item, "status")
+	version, versionOK := requiredInt(item, "version")
+	createdOK := requiredTimestamp(item, "created_at")
+	updatedOK := requiredTimestamp(item, "updated_at")
+	return idOK && validUUID(id) && planOK && plan == "lifetime" && amountOK && amount == 990 && statusOK && validOrderStatus(status) && versionOK && version >= 1 && createdOK && updatedOK
+}
+
+func validOptionalCheckoutURL(value map[string]json.RawMessage) bool {
+	raw, exists := value["checkout_url"]
+	if !exists {
+		return true
+	}
+	checkoutURL, ok := requiredString(value, "checkout_url")
+	return ok && strings.TrimSpace(checkoutURL) == checkoutURL && len(checkoutURL) <= 512 && strings.HasPrefix(checkoutURL, "weixin://") && !isNull(raw)
 }
 
 func requiredObject(raw json.RawMessage) (map[string]json.RawMessage, bool) {

@@ -22,6 +22,7 @@
 16. [`0016-account-portfolio-owner.md`](./0016-account-portfolio-owner.md) — Account Portfolio 持久化账户事实边界。
 17. [`0017-account-portfolio-user-commands-through-portal-gateway.md`](./0017-account-portfolio-user-commands-through-portal-gateway.md) — Portal Gateway 的受限账户自助写入例外。
 18. [`0018-portal-quizcraft-practice-command-boundary.md`](./0018-portal-quizcraft-practice-command-boundary.md) — Portal Gateway 的两条默认关闭 QuizCraft Practice 命令边界。
+19. [`0019-membership-order-purchase-surface.md`](./0019-membership-order-purchase-surface.md) — 用户自建会员订单的 Portal 写入例外与不泄漏商户订单号的收银台句柄。
 
 ## 使用规则
 

@@ -16,6 +16,8 @@ import {
 } from "./env";
 import type {
   AccountCreateTicketInput,
+  AccountMembershipOrderResponse,
+  AccountMembershipOrdersResponse,
   AccountMembershipResponse,
   AccountNotificationResponse,
   AccountNotificationsResponse,
@@ -286,6 +288,30 @@ export async function fetchAccountPoints(cursor?: string): Promise<AccountPoints
 /** Reads only the signed-in user's durable membership entitlement. */
 export async function fetchAccountMembership(): Promise<AccountMembershipResponse> {
   return apiFetchRequired<AccountMembershipResponse>("/api/v1/account/membership", {
+    cache: "no-store",
+  });
+}
+
+/**
+ * Starts the signed-in user's own lifetime membership purchase.
+ *
+ * The request carries no body fields: the plan, the amount, and the merchant
+ * order number are all server-owned, so nothing here can influence what is
+ * charged. Retrying with the same key returns the original order rather than
+ * starting a second purchase, so the caller must retain it.
+ */
+export async function createAccountMembershipOrder(
+  idempotencyKey: string
+): Promise<AccountMembershipOrderResponse> {
+  return apiFetchRequired<AccountMembershipOrderResponse>(
+    "/api/v1/account/membership-orders",
+    accountCommandInit(idempotencyKey, {})
+  );
+}
+
+/** Reads only the signed-in user's own durable membership orders. */
+export async function fetchAccountMembershipOrders(): Promise<AccountMembershipOrdersResponse> {
+  return apiFetchRequired<AccountMembershipOrdersResponse>("/api/v1/account/membership-orders", {
     cache: "no-store",
   });
 }

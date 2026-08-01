@@ -57,11 +57,26 @@ this patch. Public keys are also long-lived and merchant-rotated, unlike
 platform certificates, so enforcing response verification does not introduce an
 expiry-driven outage risk here.
 
+## 0003 — private checkout handle
+
+Delivers the checkout surface ADR-0019 decided, without ever putting a private
+merchant order number in a browser URL.
+
+- a merchant now declares `hostedCheckout`. A tenant whose order numbers are
+  private (HENU Kit) sets it false and receives WeChat's own `weixin://` payment
+  URI as its `code_url`, instead of the gateway's `/pay/{out_trade_no}` page;
+- the gateway-hosted checkout page and the unauthenticated status probe stay 404
+  for such a tenant, and the guards now key off that flag rather than a
+  hard-coded tenant name;
+- MetaView keeps the hosted checkout page it has always used, unchanged;
+- the authoritative WeChat URI is still stored server-side for reconciliation.
+
 ## Apply and verify in a staging copy
 
 ```sh
 patch -p1 < patches/0001-henukit-query-and-notify-outbox.patch
 patch -p1 < patches/0002-henukit-close-refund-and-response-verification.patch
+patch -p1 < patches/0003-henukit-private-checkout-handle.patch
 npm test
 ```
 
