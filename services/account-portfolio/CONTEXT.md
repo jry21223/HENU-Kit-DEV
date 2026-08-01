@@ -48,6 +48,12 @@ service-only intent value, never the public order ID; a short committed lease
 coalesces concurrent retry dispatches and can be reclaimed after a crash. The
 current payment fact is the membership's explicit ownership reference, so
 refunding an older paid order cannot revoke a later valid lifetime entitlement.
+Every provider-facing merchant order number is exactly 32 characters and uses
+the HENU Kit tenant prefix `HNK` followed by 29 uppercase Base32 characters.
+The number commits with the durable payment intent before any Provider call,
+remains private from browser order responses, and is stable across recovery.
+Enabling this format fails closed if any older payment intent exists because
+that would mean the payment promise point may already have been crossed.
 The production process has no enabled payment Provider; Fake Provider behavior
 exists only for contract and lifecycle tests. Provider callbacks record bounded
 audit codes and payload digests, never raw signatures, secrets, or payment
@@ -122,6 +128,13 @@ An isolated adapter responsible for signing, creating and querying external
 orders, verifying notifications, and refund protocol behavior. No real Payment
 Provider is enabled without a separate Spike and later authorization.
 _Avoid_: Portal API, browser secret, mock purchase success
+
+**Merchant Order Number**:
+The stable provider-facing identifier `HNK<29 uppercase Base32 characters>`
+committed with a Membership Order intent before any Provider call. It is
+reused for retry, query, notification correlation, and refund idempotency, but
+is not returned as the public Membership Order ID.
+_Avoid_: Public order ID, raw UUID, shared MetaView order number
 
 **Point Ledger**:
 The ordered, immutable sequence of a user’s point facts. Its signed amounts,

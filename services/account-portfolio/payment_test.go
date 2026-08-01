@@ -7,6 +7,26 @@ import (
 	"testing"
 )
 
+func TestMembershipMerchantOrderIDsUseTheHENUKITPrefix(t *testing.T) {
+	seen := make(map[string]struct{}, 256)
+	for range 256 {
+		merchantOrderID, err := newMembershipMerchantOrderID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !validMembershipMerchantOrderID(merchantOrderID) {
+			t.Fatalf("merchant order id %q is not a valid HENU Kit provider order number", merchantOrderID)
+		}
+		if !strings.HasPrefix(merchantOrderID, "HNK") || len(merchantOrderID) != 32 {
+			t.Fatalf("merchant order id = %q, want HNK plus 29 characters", merchantOrderID)
+		}
+		if _, exists := seen[merchantOrderID]; exists {
+			t.Fatalf("merchant order id %q was generated twice", merchantOrderID)
+		}
+		seen[merchantOrderID] = struct{}{}
+	}
+}
+
 func TestMembershipOrderTransitionsAreExplicitAndTerminal(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -36,8 +56,20 @@ func TestMembershipOrderTransitionsAreExplicitAndTerminal(t *testing.T) {
 
 func TestFakePaymentProviderImplementsTheCompletePaymentSeam(t *testing.T) {
 	var provider PaymentProvider = NewFakePaymentProvider()
-	signed, err := provider.Sign(context.Background(), PaymentOrderRequest{
+	if _, err := provider.Sign(context.Background(), PaymentOrderRequest{
 		MerchantOrderID: "a1111111-1111-4111-8111-111111111111",
+		AmountCents:     lifetimeMembershipAmountCents,
+		Currency:        lifetimeMembershipCurrency,
+		Plan:            lifetimeMembershipPlan,
+	}); err == nil {
+		t.Fatal("Fake Provider accepted a merchant order without the HNK prefix")
+	}
+	merchantOrderID, err := newMembershipMerchantOrderID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := provider.Sign(context.Background(), PaymentOrderRequest{
+		MerchantOrderID: merchantOrderID,
 		AmountCents:     lifetimeMembershipAmountCents,
 		Currency:        lifetimeMembershipCurrency,
 		Plan:            lifetimeMembershipPlan,
@@ -99,6 +131,24 @@ func TestPaymentKernelRollbackGuardsEveryDurablePaymentRecord(t *testing.T) {
 	} {
 		if !strings.Contains(guard, table) {
 			t.Fatalf("payment-kernel rollback guard does not protect %s", table)
+		}
+	}
+}
+
+func TestHENUKITMerchantOrderMigrationRefusesAnExistingPaymentPromise(t *testing.T) {
+	up, err := os.ReadFile("db/migrations/000006_henukit_merchant_order_prefix.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	migration := string(up)
+	for _, expected := range []string{
+		"IF EXISTS (SELECT 1 FROM account_portfolio_payment_order_intents)",
+		"RAISE EXCEPTION",
+		"ALTER COLUMN merchant_order_id TYPE TEXT",
+		"^HNK[A-Z2-7]{29}$",
+	} {
+		if !strings.Contains(migration, expected) {
+			t.Fatalf("HENU Kit merchant-order migration is missing %q", expected)
 		}
 	}
 }

@@ -1,0 +1,988 @@
+diff --git a/config.js b/config.js
+--- a/config.js
++++ b/config.js
+@@ -1,3 +1,4 @@
++const crypto = require("crypto");
+ const fs = require("fs");
+ const path = require("path");
+ const { buildMerchant, createMerchantRegistry } = require("./lib/merchants");
+@@ -91,6 +92,41 @@
+   return null;
+ }
+ 
++/**
++ * Serial-keyed platform certificates, so `Wechatpay-Serial` selects the
++ * verifying key and rotation is a configuration change. Serials are derived
++ * from the certificates themselves, so no serial has to be transcribed by
++ * hand. Material that is not a parseable X.509 certificate — a public-key-only
++ * PEM, for example — is skipped, leaving the legacy single-certificate path in
++ * place rather than silently trusting nothing.
++ */
++let _platformCerts = null;
++function getPlatformCerts() {
++  if (_platformCerts) return _platformCerts;
++  _platformCerts = {};
++  const pems = [];
++  const dir = env("WECHAT_PLATFORM_CERTS_DIR");
++  if (dir && fs.existsSync(dir)) {
++    for (const name of fs.readdirSync(dir).sort()) {
++      if (!/\.(pem|crt|cer)$/i.test(name)) continue;
++      try {
++        pems.push(fs.readFileSync(path.join(dir, name), "utf-8"));
++      } catch { /* skip unreadable file */ }
++    }
++  }
++  const single = getPlatformCert();
++  if (single) pems.push(single);
++
++  for (const pem of pems) {
++    if (!pem || !pem.includes("BEGIN CERTIFICATE")) continue;
++    try {
++      const serial = new crypto.X509Certificate(pem).serialNumber;
++      if (serial) _platformCerts[String(serial).toUpperCase()] = pem;
++    } catch { /* not a parseable certificate — skip */ }
++  }
++  return _platformCerts;
++}
++
+ module.exports = {
+   // Server
+   port,
+@@ -109,6 +145,7 @@
+   get wechatSerialNo() { return env("WECHAT_MERCHANT_SERIAL_NO"); },
+   get wechatPrivateKey() { return getWechatPrivateKey(); },
+   get wechatPlatformCert() { return getPlatformCert(); },
++  get wechatPlatformCerts() { return getPlatformCerts(); },
+   wechatApiBase: env("WECHAT_API_BASE", "https://api.mch.weixin.qq.com"),
+ 
+   // Notify/return defaults
+diff --git a/lib/db.js b/lib/db.js
+--- a/lib/db.js
++++ b/lib/db.js
+@@ -86,6 +86,67 @@
+     return true;
+   }
+ 
++  /**
++   * Close one order that never held a verified payment. Returns false when the
++   * order is already paid, already closed, or unknown, so a close can never
++   * erase a payment fact.
++   */
++  markClosed(outTradeNo) {
++    const order = this._orders.get(outTradeNo);
++    if (!order) return false;
++    if (order.status !== "pending") return false;
++    order.status = "closed";
++    order.closed_at = new Date().toISOString();
++    order.notify_state = "closed";
++    order.next_notify_at = null;
++    this._save();
++    return true;
++  }
++
++  /**
++   * Durably reserve one refund against a paid order before it is submitted.
++   * The reservation is keyed by `out_refund_no`, so a duplicate or concurrent
++   * command observes the existing reservation instead of creating a second
++   * refund. Returns {created, refund} or null when the order cannot be
++   * refunded.
++   */
++  reserveRefund(outTradeNo, outRefundNo, amountCents) {
++    const order = this._orders.get(outTradeNo);
++    if (!order || order.status !== "paid") return null;
++    if (order.refund) {
++      if (order.refund.out_refund_no !== outRefundNo) return null;
++      return { created: false, refund: order.refund };
++    }
++    order.refund = {
++      out_refund_no: outRefundNo,
++      amount_cents: amountCents,
++      status: "processing",
++      wechat_refund_id: null,
++      created_at: new Date().toISOString(),
++      updated_at: new Date().toISOString(),
++    };
++    this._save();
++    return { created: true, refund: order.refund };
++  }
++
++  /**
++   * Apply an authoritative refund status. `succeeded` flips the order itself to
++   * refunded exactly once; every other status only updates the refund record.
++   */
++  applyRefundStatus(outTradeNo, outRefundNo, status, wechatRefundID = null) {
++    const order = this._orders.get(outTradeNo);
++    if (!order || !order.refund || order.refund.out_refund_no !== outRefundNo) return null;
++    order.refund.status = status;
++    order.refund.updated_at = new Date().toISOString();
++    if (wechatRefundID) order.refund.wechat_refund_id = wechatRefundID;
++    if (status === "succeeded" && order.status !== "refunded") {
++      order.status = "refunded";
++      order.refunded_at = order.refund.updated_at;
++    }
++    this._save();
++    return order.refund;
++  }
++
+   recordNotifyAttempt(outTradeNo, succeeded, errorMessage = "") {
+     const order = this._orders.get(outTradeNo);
+     if (!order || order.status !== "paid") return false;
+diff --git a/lib/wechat.js b/lib/wechat.js
+--- a/lib/wechat.js	2026-07-31 11:36:11
++++ b/lib/wechat.js	2026-07-31 11:31:01
+@@ -45,6 +45,39 @@
+     );
+   }
+ 
++  // ── Close / refund ──────────────────────────────────────────
++
++  /**
++   * Close one unpaid merchant order. WeChat answers 204 with no body, so this
++   * resolves undefined on success and rejects on every other outcome.
++   */
++  async closeOrder(outTradeNo) {
++    const encoded = encodeURIComponent(outTradeNo);
++    await this._request("POST", `/v3/pay/transactions/out-trade-no/${encoded}/close`, {
++      mchid: this._config.wechatMchId,
++    });
++  }
++
++  /**
++   * Submit one idempotent refund. `outRefundNo` is the caller's durable refund
++   * correlation: replaying it returns WeChat's original refund rather than
++   * creating a second one. Amounts are always passed in fen.
++   */
++  async refund({ outTradeNo, outRefundNo, refundCents, totalCents, reason }) {
++    const body = {
++      out_trade_no: outTradeNo,
++      out_refund_no: outRefundNo,
++      amount: { refund: refundCents, total: totalCents, currency: "CNY" },
++    };
++    if (reason) body.reason = String(reason).slice(0, 80);
++    return this._request("POST", "/v3/refund/domestic/refunds", body);
++  }
++
++  async queryRefund(outRefundNo) {
++    const encoded = encodeURIComponent(outRefundNo);
++    return this._request("GET", `/v3/refund/domestic/refunds/${encoded}`, null);
++  }
++
+   // ── Callback verification ───────────────────────────────────
+ 
+   verifyCallbackSignature(headers, body) {
+@@ -58,7 +91,7 @@
+     }
+ 
+     const message = `${timestamp}\n${nonce}\n${body}\n`;
+-    const verified = this._verifyRsa(message, signature);
++    const verified = this._verifyRsa(message, signature, serial);
+     return { ok: verified, timestamp, nonce, serial, signature };
+   }
+ 
+@@ -123,23 +156,27 @@
+           let data = "";
+           res.on("data", (chunk) => (data += chunk));
+           res.on("end", () => {
++            if (res.statusCode >= 400) {
++              let detail = data;
++              try {
++                detail = JSON.parse(data).message || data;
++              } catch { /* keep raw body */ }
++              reject(new Error(`WeChat Pay API error ${res.statusCode}: ${detail}`));
++              return;
++            }
++            const verification = this._verifyResponse(res.headers, data);
++            if (!verification.ok) {
++              reject(new Error(`WeChat Pay API response verification failed: ${verification.error}`));
++              return;
++            }
++            if (data === "") {
++              resolve(undefined);
++              return;
++            }
+             try {
+-              const parsed = JSON.parse(data);
+-              if (res.statusCode >= 400) {
+-                reject(
+-                  new Error(
+-                    `WeChat Pay API error ${res.statusCode}: ${parsed.message || data}`
+-                  )
+-                );
+-              } else {
+-                resolve(parsed);
+-              }
++              resolve(JSON.parse(data));
+             } catch (err) {
+-              if (res.statusCode >= 400) {
+-                reject(new Error(`WeChat Pay API error ${res.statusCode}: ${data}`));
+-              } else {
+-                reject(err);
+-              }
++              reject(err);
+             }
+           });
+         }
+@@ -161,15 +198,58 @@
+     return sign.sign(this._config.wechatPrivateKey, "base64");
+   }
+ 
+-  _verifyRsa(message, signature) {
++  /**
++   * Verify a signed WeChat API response. A 2xx that carries a body must be
++   * signed; an unsigned body is treated as a downgrade and rejected. Only a
++   * genuinely empty body (the 204 that `close` returns) may be unsigned.
++   */
++  _verifyResponse(headers, rawBody) {
++    const timestamp = headers["wechatpay-timestamp"] || "";
++    const nonce = headers["wechatpay-nonce"] || "";
++    const signature = headers["wechatpay-signature"] || "";
++    const serial = headers["wechatpay-serial"] || "";
++
++    if (!timestamp && !nonce && !signature) {
++      if (rawBody === "") return { ok: true, unsigned: true };
++      return { ok: false, error: "response body was not signed" };
++    }
++    if (!timestamp || !nonce || !signature) {
++      return { ok: false, error: "incomplete response signature headers" };
++    }
++    const message = `${timestamp}\n${nonce}\n${rawBody}\n`;
++    if (!this._verifyRsa(message, signature, serial)) {
++      return { ok: false, error: `bad signature for platform serial ${serial || "(none)"}` };
++    }
++    return { ok: true };
++  }
++
++  /**
++   * Select the platform key by `Wechatpay-Serial` so certificate rotation is a
++   * configuration change rather than a redeploy. An unknown serial fails
++   * closed. When no serial-keyed material is configured the client falls back
++   * to the single legacy platform certificate.
++   */
++  _verifyRsa(message, signature, serial = "") {
++    const key = this._platformKeyFor(serial);
++    if (!key) return false;
+     try {
+       const verify = crypto.createVerify("SHA256");
+       verify.update(message);
+       verify.end();
+-      return verify.verify(this._config.wechatPlatformCert, signature, "base64");
++      return verify.verify(key, signature, "base64");
+     } catch {
+       return false;
+     }
++  }
++
++  _platformKeyFor(serial) {
++    const registry = this._config.wechatPlatformCerts;
++    const hasRegistry = registry && Object.keys(registry).length > 0;
++    if (hasRegistry) {
++      if (!serial) return null;
++      return registry[String(serial).toUpperCase()] || null;
++    }
++    return this._config.wechatPlatformCert || null;
+   }
+ }
+ 
+diff --git a/server.js b/server.js
+--- a/server.js
++++ b/server.js
+@@ -332,6 +332,182 @@
+   res.json(result);
+ });
+ 
++// ── Close / refund ─────────────────────────────────────────────
++//
++// Tenant-signed operator commands. Each one resolves the order only inside the
++// calling tenant, so a merchant can never close or refund another tenant's
++// order. Refund amounts are always taken from the stored order, never from the
++// request.
++
++const WECHAT_REFUND_STATUS = {
++  SUCCESS: "succeeded",
++  CLOSED: "closed",
++  PROCESSING: "processing",
++  ABNORMAL: "abnormal",
++};
++
++function authorizeTenantOrder(req, res) {
++  const params = { ...req.body };
++  const merchant = config.merchants.resolve(params.pid);
++  if (!merchant || !epayVerify(params, merchant.key)) {
++    res.status(400).json({ error: "signature error" });
++    return null;
++  }
++  const order = store.get(params.out_trade_no);
++  if (!order || order.pid !== merchant.pid) {
++    res.status(404).json({ error: "order not found" });
++    return null;
++  }
++  return { params, merchant, order };
++}
++
++function signedJson(res, merchant, payload) {
++  const result = { ...payload };
++  result.sign = epaySign(result, merchant.key);
++  result.sign_type = "MD5";
++  res.json(result);
++}
++
++app.post("/api/close.php", async (req, res) => {
++  const context = authorizeTenantOrder(req, res);
++  if (!context) return;
++  const { merchant, order } = context;
++
++  // Ask WeChat before closing so a paid order can never be closed on the
++  // strength of stale local state.
++  let authoritative;
++  try {
++    authoritative = await wechat.queryOrder(order.out_trade_no);
++  } catch (err) {
++    console.error(`WeChat merchant-order query failed: ${err.message}`);
++    return res.status(502).json({ error: "wechat query failed" });
++  }
++  if (!wechatOrderMatches(order, authoritative) ||
++      authoritative.out_trade_no !== order.out_trade_no) {
++    return res.status(502).json({ error: "wechat query mismatch" });
++  }
++  if (authoritative.trade_state === "SUCCESS") {
++    store.markPaid(order.out_trade_no, authoritative.transaction_id);
++    return res.status(409).json({ error: "order already paid" });
++  }
++
++  if (order.status === "pending") {
++    try {
++      await wechat.closeOrder(order.out_trade_no);
++    } catch (err) {
++      console.error(`WeChat close failed: ${err.message}`);
++      return res.status(502).json({ error: "wechat close failed" });
++    }
++    store.markClosed(order.out_trade_no);
++  }
++
++  const closed = store.get(order.out_trade_no);
++  signedJson(res, merchant, {
++    pid: order.pid,
++    out_trade_no: order.out_trade_no,
++    trade_status: "TRADE_CLOSED",
++    closed_at: closed.closed_at || "",
++  });
++});
++
++app.post("/api/refund.php", async (req, res) => {
++  const context = authorizeTenantOrder(req, res);
++  if (!context) return;
++  const { params, merchant, order } = context;
++  const outRefundNo = String(params.out_refund_no || "");
++  if (!outRefundNo) {
++    return res.status(400).json({ error: "out_refund_no required" });
++  }
++
++  let authoritative;
++  try {
++    authoritative = await wechat.queryOrder(order.out_trade_no);
++  } catch (err) {
++    console.error(`WeChat merchant-order query failed: ${err.message}`);
++    return res.status(502).json({ error: "wechat query failed" });
++  }
++  if (!wechatOrderMatches(order, authoritative) ||
++      authoritative.out_trade_no !== order.out_trade_no) {
++    return res.status(502).json({ error: "wechat query mismatch" });
++  }
++  if (authoritative.trade_state !== "SUCCESS") {
++    return res.status(409).json({ error: "order not paid" });
++  }
++  store.markPaid(order.out_trade_no, authoritative.transaction_id);
++
++  // The refunded amount comes from the stored order, never from the caller.
++  const reservation = store.reserveRefund(order.out_trade_no, outRefundNo, order.amount_cents);
++  if (!reservation) {
++    return res.status(409).json({ error: "order already has a different refund" });
++  }
++
++  // A replay whose refund is already confirmed submitted returns the durable
++  // fact instead of calling WeChat again. A reservation that never recorded a
++  // WeChat refund id is re-submitted, which is safe because `out_refund_no`
++  // makes the WeChat refund itself idempotent — that way a submission lost to a
++  // network failure still completes rather than stranding the refund.
++  let refund = reservation.refund;
++  if (!refund.wechat_refund_id) {
++    let refundResult;
++    try {
++      refundResult = await wechat.refund({
++        outTradeNo: order.out_trade_no,
++        outRefundNo,
++        refundCents: order.amount_cents,
++        totalCents: order.amount_cents,
++        reason: params.reason || "",
++      });
++    } catch (err) {
++      console.error(`WeChat refund failed: ${err.message}`);
++      return res.status(502).json({ error: "wechat refund failed" });
++    }
++    const status = WECHAT_REFUND_STATUS[refundResult.status] || "processing";
++    refund = store.applyRefundStatus(
++      order.out_trade_no, outRefundNo, status, refundResult.refund_id || null
++    );
++  }
++  signedJson(res, merchant, {
++    pid: order.pid,
++    out_trade_no: order.out_trade_no,
++    out_refund_no: outRefundNo,
++    refund_status: refund.status,
++    money: order.amount_yuan,
++  });
++});
++
++app.post("/api/refund-query.php", async (req, res) => {
++  const context = authorizeTenantOrder(req, res);
++  if (!context) return;
++  const { params, merchant, order } = context;
++  const outRefundNo = String(params.out_refund_no || "");
++  if (!order.refund || order.refund.out_refund_no !== outRefundNo) {
++    return res.status(404).json({ error: "refund not found" });
++  }
++
++  let authoritative;
++  try {
++    authoritative = await wechat.queryRefund(outRefundNo);
++  } catch (err) {
++    console.error(`WeChat refund query failed: ${err.message}`);
++    return res.status(502).json({ error: "wechat refund query failed" });
++  }
++  if (authoritative.out_trade_no !== order.out_trade_no) {
++    return res.status(502).json({ error: "wechat refund query mismatch" });
++  }
++
++  const status = WECHAT_REFUND_STATUS[authoritative.status] || "processing";
++  const refund = store.applyRefundStatus(
++    order.out_trade_no, outRefundNo, status, authoritative.refund_id || null
++  );
++  signedJson(res, merchant, {
++    pid: order.pid,
++    out_trade_no: order.out_trade_no,
++    out_refund_no: outRefundNo,
++    refund_status: refund.status,
++    money: order.amount_yuan,
++  });
++});
++
+ // Payment-page polling exposes only the local pending/paid display state. It
+ // is not the authenticated merchant reconciliation endpoint.
+ app.get("/api/status/:outTradeNo", (req, res) => {
+diff --git a/test/refund-route.test.js b/test/refund-route.test.js
+--- a/test/refund-route.test.js	1970-01-01 08:00:00
++++ b/test/refund-route.test.js	2026-07-31 11:35:47
+@@ -0,0 +1,225 @@
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const os = require("node:os");
++const path = require("node:path");
++const test = require("node:test");
++
++const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epay-refund-route-"));
++process.env.EPAY_DB_PATH = path.join(directory, "orders.json");
++process.env.EPAY_PID = "1001";
++process.env.EPAY_KEY = "metaview-test-secret";
++process.env.HENUKIT_EPAY_PID = "2001";
++process.env.HENUKIT_EPAY_KEY = "henukit-test-secret";
++process.env.HENUKIT_EPAY_ENABLED = "1";
++process.env.WECHAT_MCHID = "1900000109";
++process.env.WECHAT_APPID = "wx-henukit-test";
++
++const { WeChatPayClient } = require("../lib/wechat");
++
++// Authoritative trade state per order. WeChat never walks an order back from
++// SUCCESS, so each order keeps one stable state for the whole run.
++const tradeStates = new Map();
++const calls = { close: [], refund: [], queryRefund: [] };
++
++WeChatPayClient.prototype.queryOrder = async (outTradeNo) => ({
++  mchid: "1900000109",
++  appid: "wx-henukit-test",
++  out_trade_no: outTradeNo,
++  transaction_id: "42000000000000000001",
++  trade_state: tradeStates.get(outTradeNo) || "SUCCESS",
++  success_time: "2026-07-30T13:43:08Z",
++  amount: { total: 990, currency: "CNY" },
++});
++WeChatPayClient.prototype.closeOrder = async (outTradeNo) => {
++  calls.close.push(outTradeNo);
++};
++WeChatPayClient.prototype.refund = async (request) => {
++  calls.refund.push(request);
++  return {
++    refund_id: "50000000382019052709732678859",
++    out_refund_no: request.outRefundNo,
++    out_trade_no: request.outTradeNo,
++    status: "PROCESSING",
++  };
++};
++WeChatPayClient.prototype.queryRefund = async (outRefundNo) => {
++  calls.queryRefund.push(outRefundNo);
++  return {
++    refund_id: "50000000382019052709732678859",
++    out_refund_no: outRefundNo,
++    out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
++    status: "SUCCESS",
++  };
++};
++
++const { sign, verify } = require("../lib/epay");
++const { app, store } = require("../server");
++
++const HENU_ORDER = "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234";
++const METAVIEW_ORDER = "MV20260730120000";
++
++function seed() {
++  store.create({
++    out_trade_no: HENU_ORDER,
++    pid: "2001",
++    pay_type: "wxpay",
++    amount_yuan: "9.90",
++    amount_cents: 990,
++    name: "HENU Kit lifetime membership",
++    notify_url: "https://henukit.cn/api/v1/payment-providers/easypay/notifications",
++    return_url: "https://henukit.cn/account/membership",
++  });
++  store.create({
++    out_trade_no: METAVIEW_ORDER,
++    pid: "1001",
++    pay_type: "wxpay",
++    amount_yuan: "128.00",
++    amount_cents: 12800,
++    name: "MetaView order",
++    notify_url: "https://metaview.top/notify",
++    return_url: "https://metaview.top/return",
++  });
++}
++
++async function post(server, route, params, key) {
++  const signed = { ...params };
++  signed.sign = sign(signed, key);
++  signed.sign_type = "MD5";
++  return fetch(`http://127.0.0.1:${server.address().port}${route}`, {
++    method: "POST",
++    headers: { "Content-Type": "application/x-www-form-urlencoded" },
++    body: new URLSearchParams(signed),
++  });
++}
++
++async function withServer(run) {
++  const server = app.listen(0, "127.0.0.1");
++  await new Promise((resolve) => server.once("listening", resolve));
++  try {
++    await run(server);
++  } finally {
++    await new Promise((resolve) => server.close(resolve));
++  }
++}
++
++test.after(() => fs.rmSync(directory, { recursive: true, force: true }));
++
++test("a tenant cannot refund another tenant's order", async () => {
++  seed();
++  await withServer(async (server) => {
++    // HENU Kit credentials pointed at the MetaView order.
++    const response = await post(
++      server,
++      "/api/refund.php",
++      { pid: "2001", out_trade_no: METAVIEW_ORDER, out_refund_no: "HNKREFUND0001" },
++      "henukit-test-secret"
++    );
++    assert.equal(response.status, 404);
++    assert.equal(calls.refund.length, 0);
++    assert.equal(store.get(METAVIEW_ORDER).refund, undefined);
++  });
++});
++
++test("refund uses the stored amount and is idempotent for one refund number", async () => {
++  await withServer(async (server) => {
++    const params = { pid: "2001", out_trade_no: HENU_ORDER, out_refund_no: "HNKREFUND0001" };
++    const first = await post(server, "/api/refund.php", params, "henukit-test-secret");
++    assert.equal(first.status, 200);
++    const body = await first.json();
++    assert.equal(verify(body, "henukit-test-secret"), true);
++    assert.equal(body.refund_status, "processing");
++
++    // The caller never supplies an amount; it comes from the stored order.
++    assert.equal(calls.refund.length, 1);
++    assert.equal(calls.refund[0].refundCents, 990);
++    assert.equal(calls.refund[0].totalCents, 990);
++
++    // Replaying the same refund number must not create a second refund.
++    const replay = await post(server, "/api/refund.php", params, "henukit-test-secret");
++    assert.equal(replay.status, 200);
++    assert.equal(calls.refund.length, 1);
++
++    // A different refund number against an already-refunded order is refused.
++    const second = await post(
++      server,
++      "/api/refund.php",
++      { pid: "2001", out_trade_no: HENU_ORDER, out_refund_no: "HNKREFUND0002" },
++      "henukit-test-secret"
++    );
++    assert.equal(second.status, 409);
++    assert.equal(calls.refund.length, 1);
++  });
++});
++
++test("refund status query reconciles the durable refund to the authoritative result", async () => {
++  await withServer(async (server) => {
++    const response = await post(
++      server,
++      "/api/refund-query.php",
++      { pid: "2001", out_trade_no: HENU_ORDER, out_refund_no: "HNKREFUND0001" },
++      "henukit-test-secret"
++    );
++    assert.equal(response.status, 200);
++    const body = await response.json();
++    assert.equal(verify(body, "henukit-test-secret"), true);
++    assert.equal(body.refund_status, "succeeded");
++    assert.equal(store.get(HENU_ORDER).status, "refunded");
++    assert.equal(calls.queryRefund.length, 1);
++  });
++});
++
++test("a paid order is never closed, and an unpaid one closes exactly once", async () => {
++  const paidOrder = "HNKPAID00000000000000000000000AB";
++  const unpaidOrder = "HNKUNPAID000000000000000000000AB";
++  for (const id of [paidOrder, unpaidOrder]) {
++    store.create({
++      out_trade_no: id,
++      pid: "2001",
++      pay_type: "wxpay",
++      amount_yuan: "9.90",
++      amount_cents: 990,
++      name: "HENU Kit lifetime membership",
++      notify_url: "https://henukit.cn/api/v1/payment-providers/easypay/notifications",
++      return_url: "https://henukit.cn/account/membership",
++    });
++  }
++  tradeStates.set(paidOrder, "SUCCESS");
++  tradeStates.set(unpaidOrder, "NOTPAY");
++
++  await withServer(async (server) => {
++    // WeChat reports SUCCESS, so closing must be refused and the payment fact
++    // recorded rather than discarded.
++    const paid = await post(
++      server,
++      "/api/close.php",
++      { pid: "2001", out_trade_no: paidOrder },
++      "henukit-test-secret"
++    );
++    assert.equal(paid.status, 409);
++    assert.equal(calls.close.length, 0);
++    assert.equal(store.get(paidOrder).status, "paid");
++
++    const closed = await post(
++      server,
++      "/api/close.php",
++      { pid: "2001", out_trade_no: unpaidOrder },
++      "henukit-test-secret"
++    );
++    assert.equal(closed.status, 200);
++    const body = await closed.json();
++    assert.equal(verify(body, "henukit-test-secret"), true);
++    assert.equal(body.trade_status, "TRADE_CLOSED");
++    assert.equal(store.get(unpaidOrder).status, "closed");
++    assert.equal(calls.close.length, 1);
++
++    // Closing again is safe and does not re-issue the WeChat call.
++    const again = await post(
++      server,
++      "/api/close.php",
++      { pid: "2001", out_trade_no: unpaidOrder },
++      "henukit-test-secret"
++    );
++    assert.equal(again.status, 200);
++    assert.equal(calls.close.length, 1);
++  });
++});
+diff --git a/test/wechat-close-refund.test.js b/test/wechat-close-refund.test.js
+--- a/test/wechat-close-refund.test.js	1970-01-01 08:00:00
++++ b/test/wechat-close-refund.test.js	2026-07-31 11:33:42
+@@ -0,0 +1,229 @@
++const assert = require("node:assert/strict");
++const crypto = require("node:crypto");
++const http = require("node:http");
++const test = require("node:test");
++const { WeChatPayClient } = require("../lib/wechat");
++
++const PLATFORM_SERIAL = "5157F09EFDC096DE15EBE81A47057A72";
++
++function signResponse(response, body, platformKey, serial = PLATFORM_SERIAL) {
++  const timestamp = String(Math.floor(Date.now() / 1000));
++  const nonce = crypto.randomBytes(16).toString("hex");
++  const signer = crypto.createSign("SHA256");
++  signer.update(`${timestamp}\n${nonce}\n${body}\n`);
++  signer.end();
++  response.setHeader("Wechatpay-Timestamp", timestamp);
++  response.setHeader("Wechatpay-Nonce", nonce);
++  response.setHeader("Wechatpay-Serial", serial);
++  response.setHeader("Wechatpay-Signature", signer.sign(platformKey, "base64"));
++}
++
++function newKeys() {
++  const merchant = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
++  const platform = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
++  return {
++    merchantPrivateKey: merchant.privateKey.export({ type: "pkcs8", format: "pem" }),
++    platformPrivateKey: platform.privateKey,
++    platformCert: platform.publicKey.export({ type: "spki", format: "pem" }),
++  };
++}
++
++async function withServer(handler, run, clientOverrides = {}) {
++  const keys = newKeys();
++  const server = http.createServer((request, response) => handler(request, response, keys));
++  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
++  try {
++    const client = new WeChatPayClient({
++      wechatAppId: "wx-test",
++      wechatMchId: "1900000109",
++      wechatSerialNo: "merchant-serial",
++      wechatPrivateKey: keys.merchantPrivateKey,
++      wechatPlatformCert: keys.platformCert,
++      wechatApiBase: `http://127.0.0.1:${server.address().port}`,
++      ...clientOverrides(keys),
++    });
++    await run(client, keys);
++  } finally {
++    await new Promise((resolve) => server.close(resolve));
++  }
++}
++
++const noOverrides = () => ({});
++
++test("close posts mchid to the close path and accepts WeChat's empty 204", async () => {
++  let seen = null;
++  await withServer(
++    (request, response) => {
++      let body = "";
++      request.on("data", (chunk) => { body += chunk; });
++      request.on("end", () => {
++        seen = { url: request.url, method: request.method, body: JSON.parse(body) };
++        response.statusCode = 204;
++        response.end();
++      });
++    },
++    async (client) => {
++      const result = await client.closeOrder("HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234");
++      assert.equal(result, undefined);
++    },
++    noOverrides
++  );
++  assert.equal(seen.method, "POST");
++  assert.equal(
++    seen.url,
++    "/v3/pay/transactions/out-trade-no/HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234/close"
++  );
++  assert.deepEqual(seen.body, { mchid: "1900000109" });
++});
++
++test("refund sends fen amounts and the caller's idempotent refund correlation", async () => {
++  let seen = null;
++  await withServer(
++    (request, response, keys) => {
++      let body = "";
++      request.on("data", (chunk) => { body += chunk; });
++      request.on("end", () => {
++        seen = { url: request.url, method: request.method, body: JSON.parse(body) };
++        const payload = JSON.stringify({
++          refund_id: "50000000382019052709732678859",
++          out_refund_no: "HNKREFUND0001",
++          out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
++          status: "PROCESSING",
++        });
++        signResponse(response, payload, keys.platformPrivateKey);
++        response.end(payload);
++      });
++    },
++    async (client) => {
++      const result = await client.refund({
++        outTradeNo: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
++        outRefundNo: "HNKREFUND0001",
++        refundCents: 990,
++        totalCents: 990,
++        reason: "operator refund",
++      });
++      assert.equal(result.status, "PROCESSING");
++    },
++    noOverrides
++  );
++  assert.equal(seen.method, "POST");
++  assert.equal(seen.url, "/v3/refund/domestic/refunds");
++  assert.equal(seen.body.out_refund_no, "HNKREFUND0001");
++  assert.deepEqual(seen.body.amount, { refund: 990, total: 990, currency: "CNY" });
++});
++
++test("refund query is an authenticated GET with no body", async () => {
++  let seen = null;
++  await withServer(
++    (request, response, keys) => {
++      let body = "";
++      request.on("data", (chunk) => { body += chunk; });
++      request.on("end", () => {
++        seen = { url: request.url, method: request.method, body };
++        const payload = JSON.stringify({
++          out_refund_no: "HNKREFUND0001",
++          out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
++          status: "SUCCESS",
++        });
++        signResponse(response, payload, keys.platformPrivateKey);
++        response.end(payload);
++      });
++    },
++    async (client) => {
++      const result = await client.queryRefund("HNKREFUND0001");
++      assert.equal(result.status, "SUCCESS");
++    },
++    noOverrides
++  );
++  assert.equal(seen.method, "GET");
++  assert.equal(seen.url, "/v3/refund/domestic/refunds/HNKREFUND0001");
++  assert.equal(seen.body, "");
++});
++
++test("an unsigned response body is rejected instead of trusted", async () => {
++  await withServer(
++    (request, response) => {
++      request.on("data", () => {});
++      request.on("end", () => {
++        response.setHeader("Content-Type", "application/json");
++        response.end(JSON.stringify({ status: "SUCCESS" }));
++      });
++    },
++    async (client) => {
++      await assert.rejects(
++        () => client.queryRefund("HNKREFUND0001"),
++        /response body was not signed/
++      );
++    },
++    noOverrides
++  );
++});
++
++test("a response signed by the wrong key is rejected", async () => {
++  await withServer(
++    (request, response) => {
++      const impostor = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
++      request.on("data", () => {});
++      request.on("end", () => {
++        const payload = JSON.stringify({ status: "SUCCESS" });
++        signResponse(response, payload, impostor.privateKey);
++        response.end(payload);
++      });
++    },
++    async (client) => {
++      await assert.rejects(
++        () => client.queryRefund("HNKREFUND0001"),
++        /bad signature for platform serial/
++      );
++    },
++    noOverrides
++  );
++});
++
++test("the platform key is selected by Wechatpay-Serial so rotation is config-only", async () => {
++  const rotated = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
++  const rotatedSerial = "7A0EDC0F5B2C4A118E5D6F3B9C1A2D4E";
++  await withServer(
++    (request, response) => {
++      request.on("data", () => {});
++      request.on("end", () => {
++        // WeChat has rotated: it now signs with the newer serial's key.
++        const payload = JSON.stringify({ status: "SUCCESS" });
++        signResponse(response, payload, rotated.privateKey, rotatedSerial);
++        response.end(payload);
++      });
++    },
++    async (client) => {
++      const result = await client.queryRefund("HNKREFUND0001");
++      assert.equal(result.status, "SUCCESS");
++    },
++    // Both the outgoing and the incoming certificate are staged, so the
++    // rotation verifies without a redeploy.
++    (keys) => ({
++      wechatPlatformCerts: {
++        [PLATFORM_SERIAL]: keys.platformCert,
++        [rotatedSerial]: rotated.publicKey.export({ type: "spki", format: "pem" }),
++      },
++    })
++  );
++});
++
++test("an unknown platform serial fails closed rather than falling back", async () => {
++  await withServer(
++    (request, response, keys) => {
++      request.on("data", () => {});
++      request.on("end", () => {
++        const payload = JSON.stringify({ status: "SUCCESS" });
++        signResponse(response, payload, keys.platformPrivateKey, "UNSTAGED-SERIAL");
++        response.end(payload);
++      });
++    },
++    async (client) => {
++      await assert.rejects(
++        () => client.queryRefund("HNKREFUND0001"),
++        /bad signature for platform serial UNSTAGED-SERIAL/
++      );
++    },
++    (keys) => ({ wechatPlatformCerts: { [PLATFORM_SERIAL]: keys.platformCert } })
++  );
++});
+diff --git a/test/wechat-query.test.js b/test/wechat-query.test.js
+--- a/test/wechat-query.test.js	2026-07-31 11:36:11
++++ b/test/wechat-query.test.js	2026-07-31 11:33:09
+@@ -4,8 +4,24 @@
+ const test = require("node:test");
+ const { WeChatPayClient } = require("../lib/wechat");
+ 
++// WeChat signs every response body it returns; the client rejects an unsigned
++// one, so the stub has to sign exactly the way WeChat does.
++function signResponse(response, body, platformKey, serial = "PLATFORM-SERIAL") {
++  const timestamp = String(Math.floor(Date.now() / 1000));
++  const nonce = crypto.randomBytes(16).toString("hex");
++  const signer = crypto.createSign("SHA256");
++  signer.update(`${timestamp}\n${nonce}\n${body}\n`);
++  signer.end();
++  response.setHeader("Wechatpay-Timestamp", timestamp);
++  response.setHeader("Wechatpay-Nonce", nonce);
++  response.setHeader("Wechatpay-Serial", serial);
++  response.setHeader("Wechatpay-Signature", signer.sign(platformKey, "base64"));
++}
++
+ test("merchant-order query uses an authenticated WeChat GET without a body", async () => {
+   const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
++  const platform = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
++  const platformCert = platform.publicKey.export({ type: "spki", format: "pem" });
+   const server = http.createServer((request, response) => {
+     assert.equal(
+       request.url,
+@@ -17,13 +33,15 @@
+     request.on("data", (chunk) => { body += chunk; });
+     request.on("end", () => {
+       assert.equal(body, "");
+-      response.setHeader("Content-Type", "application/json");
+-      response.end(JSON.stringify({
++      const payload = JSON.stringify({
+         out_trade_no: "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234",
+         transaction_id: "42000000000000000001",
+         trade_state: "SUCCESS",
+         amount: { total: 990, currency: "CNY" },
+-      }));
++      });
++      response.setHeader("Content-Type", "application/json");
++      signResponse(response, payload, platform.privateKey);
++      response.end(payload);
+     });
+   });
+   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+@@ -34,6 +52,7 @@
+       wechatMchId: "1900000109",
+       wechatSerialNo: "serial-test",
+       wechatPrivateKey: privateKey.export({ type: "pkcs8", format: "pem" }),
++      wechatPlatformCert: platformCert,
+       wechatApiBase: `http://127.0.0.1:${address.port}`,
+     });
+     const order = await client.queryOrder("HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234");

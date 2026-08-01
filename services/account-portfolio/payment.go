@@ -3,11 +3,14 @@ package accountportfolio
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,7 +20,52 @@ const (
 	lifetimeMembershipAmountCents = 990
 	lifetimeMembershipCurrency    = "CNY"
 	lifetimeMembershipPlan        = "lifetime"
+	membershipMerchantOrderPrefix = "HNK"
+	membershipRefundOrderPrefix   = "HNR"
+	membershipMerchantOrderLength = 32
 )
+
+var membershipMerchantOrderEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
+
+// newMembershipMerchantOrderID creates the stable provider-facing order
+// number for HENU Kit. WeChat Pay limits out_trade_no to 32 characters, so the
+// three-character tenant prefix is followed by 29 uppercase Base32
+// characters (144 bits of source entropy).
+func newMembershipMerchantOrderID() (string, error) {
+	random := make([]byte, 18)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate HENU Kit merchant order id: %w", err)
+	}
+	merchantOrderID := membershipMerchantOrderPrefix + membershipMerchantOrderEncoding.EncodeToString(random)
+	if !validMembershipMerchantOrderID(merchantOrderID) {
+		return "", errors.New("generated HENU Kit merchant order id is invalid")
+	}
+	return merchantOrderID, nil
+}
+
+// membershipRefundOrderID derives the durable refund correlation for one
+// merchant order. It is deterministic, so a retried refund reuses it and the
+// provider settles on a single refund, and it carries its own namespace so a
+// refund number can never collide with an order number.
+func membershipRefundOrderID(merchantOrderID string) string {
+	if !validMembershipMerchantOrderID(merchantOrderID) {
+		return ""
+	}
+	return membershipRefundOrderPrefix + merchantOrderID[len(membershipMerchantOrderPrefix):]
+}
+
+func validMembershipMerchantOrderID(value string) bool {
+	if len(value) != membershipMerchantOrderLength || !strings.HasPrefix(value, membershipMerchantOrderPrefix) {
+		return false
+	}
+	for _, char := range value[len(membershipMerchantOrderPrefix):] {
+		if (char >= 'A' && char <= 'Z') || (char >= '2' && char <= '7') {
+			continue
+		}
+		return false
+	}
+	return true
+}
 
 // MembershipOrderStatus is the durable lifecycle for the one ¥9.9 lifetime
 // product. It intentionally does not model a provider-specific state.
@@ -45,7 +93,14 @@ type PaymentProvider interface {
 	CreateOrder(context.Context, SignedPaymentOrder) (ProviderOrder, error)
 	QueryOrder(context.Context, string) (ProviderOrder, error)
 	VerifyNotification(context.Context, []byte) (VerifiedPaymentNotification, error)
+	// CloseOrder closes an order that never completed payment. It must refuse a
+	// paid order rather than closing it, so a close can never discard a payment
+	// fact, and it must be idempotent for an already-closed order.
+	CloseOrder(context.Context, string) (ProviderOrder, error)
 	Refund(context.Context, string) (PaymentRefund, error)
+	// QueryRefund reconciles a previously submitted refund without submitting
+	// another one, so a refund that was still processing can settle later.
+	QueryRefund(context.Context, string) (PaymentRefund, error)
 }
 
 type PaymentOrderRequest struct {
@@ -85,6 +140,15 @@ type VerifiedPaymentNotification struct {
 
 type PaymentRefund struct {
 	Notification VerifiedPaymentNotification
+	// RefundID is the provider's durable refund correlation. It is derived
+	// deterministically from the merchant order, so retrying a refund reuses it
+	// and the provider settles on one refund instead of creating another.
+	RefundID string
+	// Settled reports that the provider confirmed the refund reached a terminal
+	// successful state. A submitted but still-processing refund is not settled,
+	// and must never revoke an entitlement: the refund is only a fact once the
+	// provider says it completed.
+	Settled bool
 }
 
 func validProviderNotificationStatus(status MembershipOrderStatus) bool {
@@ -157,7 +221,7 @@ func NewFakePaymentProvider() *FakePaymentProvider {
 func (p *FakePaymentProvider) Name() string { return "fake" }
 
 func (p *FakePaymentProvider) Sign(_ context.Context, request PaymentOrderRequest) (SignedPaymentOrder, error) {
-	if p == nil || request.MerchantOrderID == "" || request.AmountCents != lifetimeMembershipAmountCents || request.Currency != lifetimeMembershipCurrency || request.Plan != lifetimeMembershipPlan {
+	if p == nil || !validMembershipMerchantOrderID(request.MerchantOrderID) || request.AmountCents != lifetimeMembershipAmountCents || request.Currency != lifetimeMembershipCurrency || request.Plan != lifetimeMembershipPlan {
 		return SignedPaymentOrder{}, errors.New("fake payment order is invalid")
 	}
 	return SignedPaymentOrder{Request: request, Signature: p.signOrder(request)}, nil
@@ -227,6 +291,27 @@ func (p *FakePaymentProvider) VerifyNotification(_ context.Context, raw []byte) 
 	return wire.Notification, nil
 }
 
+func (p *FakePaymentProvider) CloseOrder(_ context.Context, externalOrderID string) (ProviderOrder, error) {
+	if p == nil {
+		return ProviderOrder{}, errors.New("fake payment provider is unavailable")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	order, ok := p.orders[externalOrderID]
+	if !ok {
+		return ProviderOrder{}, errors.New("fake payment order was not found")
+	}
+	if order.Status == MembershipOrderClosed {
+		return order, nil
+	}
+	if order.Status == MembershipOrderPaid || order.Status == MembershipOrderRefunded {
+		return ProviderOrder{}, errors.New("fake payment order cannot be closed")
+	}
+	order.Status = MembershipOrderClosed
+	p.orders[externalOrderID] = order
+	return order, nil
+}
+
 func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) (PaymentRefund, error) {
 	if p == nil {
 		return PaymentRefund{}, errors.New("fake payment provider is unavailable")
@@ -240,17 +325,70 @@ func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) 
 	p.nextEvent++
 	order.Status = MembershipOrderRefunded
 	p.orders[externalOrderID] = order
-	return PaymentRefund{Notification: VerifiedPaymentNotification{
-		EventID:         fmt.Sprintf("fake-refund-%d", p.nextEvent),
-		ExternalOrderID: order.ExternalOrderID,
-		MerchantOrderID: order.MerchantOrderID,
-		AmountCents:     order.AmountCents,
-		Currency:        order.Currency,
-		Plan:            order.Plan,
-		Status:          MembershipOrderRefunded,
-		Sequence:        int64(p.nextEvent),
-		OccurredAt:      time.Now().UTC(),
-	}}, nil
+	return PaymentRefund{
+		Notification: VerifiedPaymentNotification{
+			EventID:         fmt.Sprintf("fake-refund-%d", p.nextEvent),
+			ExternalOrderID: order.ExternalOrderID,
+			MerchantOrderID: order.MerchantOrderID,
+			AmountCents:     order.AmountCents,
+			Currency:        order.Currency,
+			Plan:            order.Plan,
+			Status:          MembershipOrderRefunded,
+			Sequence:        int64(p.nextEvent),
+			OccurredAt:      time.Now().UTC(),
+		},
+		RefundID: membershipRefundOrderID(order.MerchantOrderID),
+		Settled:  true,
+	}, nil
+}
+
+func (p *FakePaymentProvider) QueryRefund(_ context.Context, externalOrderID string) (PaymentRefund, error) {
+	if p == nil {
+		return PaymentRefund{}, errors.New("fake payment provider is unavailable")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	order, ok := p.orders[externalOrderID]
+	if !ok {
+		return PaymentRefund{}, errors.New("fake payment order was not found")
+	}
+	settled := order.Status == MembershipOrderRefunded
+	status := MembershipOrderPaid
+	if settled {
+		status = MembershipOrderRefunded
+	}
+	return PaymentRefund{
+		Notification: VerifiedPaymentNotification{
+			EventID:         fmt.Sprintf("fake-refund-%s", order.MerchantOrderID),
+			ExternalOrderID: order.ExternalOrderID,
+			MerchantOrderID: order.MerchantOrderID,
+			AmountCents:     order.AmountCents,
+			Currency:        order.Currency,
+			Plan:            order.Plan,
+			Status:          status,
+			Sequence:        easyPayRefundSequence,
+			OccurredAt:      time.Now().UTC(),
+		},
+		RefundID: membershipRefundOrderID(order.MerchantOrderID),
+		Settled:  settled,
+	}, nil
+}
+
+// OrderIDs lists the provider-side orders the fake currently holds, so a test
+// can drive an order it created through the real purchase path without having
+// to guess the service-generated merchant order id.
+func (p *FakePaymentProvider) OrderIDs() []string {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	ids := make([]string, 0, len(p.orders))
+	for id := range p.orders {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // Transition records a fake provider-side state before producing the signed

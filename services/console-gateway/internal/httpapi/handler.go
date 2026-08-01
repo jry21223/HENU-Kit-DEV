@@ -82,6 +82,9 @@ type accountPortfolioClient interface {
 	Ticket(context.Context, string, string) (json.RawMessage, error)
 	Reply(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	Transition(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	CloseMembershipOrder(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	RefundMembershipOrder(context.Context, string, string, string, []byte) (json.RawMessage, error)
+	MembershipOrderRefund(context.Context, string, string, string) (json.RawMessage, error)
 }
 
 type accountMembershipMutation uint8
@@ -120,6 +123,13 @@ var (
 		conflictCode:    "ACCOUNT_POINTS_CONFLICT",
 		conflictMessage: "Account point balance or idempotency history conflicts",
 		invalidMessage:  "Account point adjustment is invalid",
+	}
+	accountOrderResultMessages = accountResultMessages{
+		notFoundCode:    "ACCOUNT_ORDER_NOT_FOUND",
+		notFoundMessage: "Membership order was not found",
+		conflictCode:    "ACCOUNT_ORDER_CONFLICT",
+		conflictMessage: "Membership order revision or idempotency history conflicts",
+		invalidMessage:  "Membership order command is invalid",
 	}
 )
 
@@ -206,6 +216,9 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.AccountTicketRoute, handler.getAccountTicket)
 	router.Post(contract.AccountTicketRepliesRoute, handler.replyAccountTicket)
 	router.Post(contract.AccountTicketTransitionsRoute, handler.transitionAccountTicket)
+	router.Post(contract.AccountMembershipOrderClosuresRoute, handler.closeAccountMembershipOrder)
+	router.Post(contract.AccountMembershipOrderRefundsRoute, handler.refundAccountMembershipOrder)
+	router.Get(contract.AccountMembershipOrderRefundRoute, handler.getAccountMembershipOrderRefund)
 	router.Post(contract.LogoutRoute, handler.logout)
 	return router, nil
 }
@@ -384,6 +397,74 @@ func (h *Handler) adjustAccountPoints(writer http.ResponseWriter, request *http.
 	}
 	data, err := h.account.Adjust(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, request.Header.Get("Idempotency-Key"), body)
 	h.writeAccountPointResult(writer, request, data, err)
+}
+
+// Membership order operator commands. The order is addressed only by its
+// Account Portfolio id, so the private merchant order number never reaches a
+// browser, and the refunded amount is never carried in the request: the owner
+// derives it from the verified payment fact.
+
+func (h *Handler) closeAccountMembershipOrder(writer http.ResponseWriter, request *http.Request) {
+	body, ok := decodeAccountMembershipOrderCommand(writer, request)
+	if !ok {
+		return
+	}
+	value, ok := h.authorizeAccount(writer, request, "account.orders.close")
+	if !ok {
+		return
+	}
+	data, err := h.account.CloseMembershipOrder(
+		accountportfolioapi.WithRequestID(request.Context(), requestID(request)),
+		value.UserID, chi.URLParam(request, "order_id"), request.Header.Get("Idempotency-Key"), body,
+	)
+	h.writeAccountOwnerResult(writer, request, data, err, accountOrderResultMessages)
+}
+
+func (h *Handler) refundAccountMembershipOrder(writer http.ResponseWriter, request *http.Request) {
+	body, ok := decodeAccountMembershipOrderCommand(writer, request)
+	if !ok {
+		return
+	}
+	value, ok := h.authorizeAccount(writer, request, "account.orders.refund")
+	if !ok {
+		return
+	}
+	data, err := h.account.RefundMembershipOrder(
+		accountportfolioapi.WithRequestID(request.Context(), requestID(request)),
+		value.UserID, chi.URLParam(request, "order_id"), request.Header.Get("Idempotency-Key"), body,
+	)
+	if err == nil {
+		// A refund may still be settling at the provider, so the Console reports
+		// accepted rather than claiming the refund completed.
+		writeJSON(writer, request, http.StatusAccepted, data)
+		return
+	}
+	h.writeAccountOwnerResult(writer, request, data, err, accountOrderResultMessages)
+}
+
+func (h *Handler) getAccountMembershipOrderRefund(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeAccount(writer, request, "account.orders.read")
+	if !ok {
+		return
+	}
+	data, err := h.account.MembershipOrderRefund(
+		accountportfolioapi.WithRequestID(request.Context(), requestID(request)),
+		value.UserID, chi.URLParam(request, "order_id"), chi.URLParam(request, "refund_id"),
+	)
+	h.writeAccountOwnerResult(writer, request, data, err, accountOrderResultMessages)
+}
+
+func decodeAccountMembershipOrderCommand(writer http.ResponseWriter, request *http.Request) ([]byte, bool) {
+	var input contract.ConsoleMembershipOrderCommandRequest
+	body, ok := decodeAccountCommand(writer, request, &input)
+	if !ok {
+		return nil, false
+	}
+	if strings.TrimSpace(input.Reason) == "" || len([]rune(input.Reason)) > 1000 || input.ExpectedVersion < 1 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Membership order command is invalid")
+		return nil, false
+	}
+	return body, true
 }
 
 func (h *Handler) getAccountTicket(writer http.ResponseWriter, request *http.Request) {

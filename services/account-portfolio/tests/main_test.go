@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -167,7 +168,7 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("initial ApplyMigrations() = %v", err)
 	}
 
-	for _, migration := range []string{"000005_admin_point_adjustments.down.sql", "000004_membership_order_payment_kernel.down.sql", "000003_membership_entitlements.down.sql", "000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
+	for _, migration := range []string{"000006_henukit_merchant_order_prefix.down.sql", "000005_admin_point_adjustments.down.sql", "000004_membership_order_payment_kernel.down.sql", "000003_membership_entitlements.down.sql", "000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
 		down, err := os.ReadFile(filepath.Join("..", "db", "migrations", migration))
 		if err != nil {
 			t.Fatal(err)
@@ -180,7 +181,7 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("reconcile after rollback = %v", err)
 	}
 
-	var accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, pointAdjustmentAuditsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded, pointAdjustmentsVersionRecorded bool
+	var accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, pointAdjustmentAuditsTable, merchantOrderText, merchantOrderFormat, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded, pointAdjustmentsVersionRecorded, merchantOrderPrefixVersionRecorded bool
 	if err := pool.QueryRow(ctx, `
 		SELECT
 			to_regclass('account_portfolio_accounts') IS NOT NULL,
@@ -189,16 +190,177 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 			to_regclass('account_portfolio_payment_order_intents') IS NOT NULL,
 			to_regclass('account_portfolio_payment_facts') IS NOT NULL,
 			to_regclass('account_portfolio_point_adjustment_audits') IS NOT NULL,
+			EXISTS(
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema=current_schema()
+				  AND table_name='account_portfolio_payment_order_intents'
+				  AND column_name='merchant_order_id'
+				  AND data_type='text'
+			),
+			EXISTS(
+				SELECT 1
+				FROM pg_constraint
+				WHERE conname='account_payment_intent_merchant_order_format'
+				  AND conrelid='account_portfolio_payment_order_intents'::regclass
+			),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000001_account_portfolio'),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000002_support_ticket_commands'),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000003_membership_entitlements'),
 			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000004_membership_order_payment_kernel'),
-			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000005_admin_point_adjustments')
-	`).Scan(&accountTable, &commandsTable, &membershipEventsTable, &paymentIntentsTable, &paymentFactsTable, &pointAdjustmentAuditsTable, &initialVersionRecorded, &supportCommandsVersionRecorded, &membershipEntitlementsVersionRecorded, &paymentKernelVersionRecorded, &pointAdjustmentsVersionRecorded); err != nil {
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000005_admin_point_adjustments'),
+			EXISTS(SELECT 1 FROM account_portfolio_schema_migrations WHERE version='000006_henukit_merchant_order_prefix')
+	`).Scan(&accountTable, &commandsTable, &membershipEventsTable, &paymentIntentsTable, &paymentFactsTable, &pointAdjustmentAuditsTable, &merchantOrderText, &merchantOrderFormat, &initialVersionRecorded, &supportCommandsVersionRecorded, &membershipEntitlementsVersionRecorded, &paymentKernelVersionRecorded, &pointAdjustmentsVersionRecorded, &merchantOrderPrefixVersionRecorded); err != nil {
 		t.Fatal(err)
 	}
-	if !accountTable || !commandsTable || !membershipEventsTable || !paymentIntentsTable || !paymentFactsTable || !pointAdjustmentAuditsTable || !initialVersionRecorded || !supportCommandsVersionRecorded || !membershipEntitlementsVersionRecorded || !paymentKernelVersionRecorded || !pointAdjustmentsVersionRecorded {
-		t.Fatalf("reconciled schema account_table=%t commands_table=%t membership_events_table=%t payment_intents_table=%t payment_facts_table=%t point_adjustment_audits_table=%t initial_version=%t support_commands_version=%t membership_entitlements_version=%t payment_kernel_version=%t point_adjustments_version=%t, want all true", accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, pointAdjustmentAuditsTable, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded, pointAdjustmentsVersionRecorded)
+	if !accountTable || !commandsTable || !membershipEventsTable || !paymentIntentsTable || !paymentFactsTable || !pointAdjustmentAuditsTable || !merchantOrderText || !merchantOrderFormat || !initialVersionRecorded || !supportCommandsVersionRecorded || !membershipEntitlementsVersionRecorded || !paymentKernelVersionRecorded || !pointAdjustmentsVersionRecorded || !merchantOrderPrefixVersionRecorded {
+		t.Fatalf("reconciled schema account_table=%t commands_table=%t membership_events_table=%t payment_intents_table=%t payment_facts_table=%t point_adjustment_audits_table=%t merchant_order_text=%t merchant_order_format=%t initial_version=%t support_commands_version=%t membership_entitlements_version=%t payment_kernel_version=%t point_adjustments_version=%t merchant_order_prefix_version=%t, want all true", accountTable, commandsTable, membershipEventsTable, paymentIntentsTable, paymentFactsTable, pointAdjustmentAuditsTable, merchantOrderText, merchantOrderFormat, initialVersionRecorded, supportCommandsVersionRecorded, membershipEntitlementsVersionRecorded, paymentKernelVersionRecorded, pointAdjustmentsVersionRecorded, merchantOrderPrefixVersionRecorded)
+	}
+}
+
+func TestHENUKITMerchantOrderMigrationFailsClosedAroundDurableIntents(t *testing.T) {
+	t.Run("up refuses legacy UUID intent", func(t *testing.T) {
+		ctx := context.Background()
+		pool := newIsolatedMigrationPool(t, "account_portfolio_hnk_up_guard")
+		defer pool.Close()
+		if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+			t.Fatal(err)
+		}
+		down := readMigration(t, "000006_henukit_merchant_order_prefix.down.sql")
+		if _, err := pool.Exec(ctx, down); err != nil {
+			t.Fatalf("rollback empty HNK migration = %v", err)
+		}
+		insertPaymentIntentFixture(t, pool, "a6111111-1111-4111-8111-111111111111")
+
+		up := readMigration(t, "000006_henukit_merchant_order_prefix.up.sql")
+		if _, err := pool.Exec(ctx, up); err == nil || !strings.Contains(err.Error(), "payment intents exist") {
+			t.Fatalf("HNK migration with UUID intent error = %v, want fail-closed payment-intent error", err)
+		}
+		var uuidType, versionAbsent, constraintAbsent bool
+		if err := pool.QueryRow(ctx, `
+			SELECT
+				EXISTS(
+					SELECT 1 FROM information_schema.columns
+					WHERE table_schema=current_schema()
+					  AND table_name='account_portfolio_payment_order_intents'
+					  AND column_name='merchant_order_id'
+					  AND data_type='uuid'
+				),
+				NOT EXISTS(
+					SELECT 1 FROM account_portfolio_schema_migrations
+					WHERE version='000006_henukit_merchant_order_prefix'
+				),
+				NOT EXISTS(
+					SELECT 1 FROM pg_constraint
+					WHERE conname='account_payment_intent_merchant_order_format'
+					  AND conrelid='account_portfolio_payment_order_intents'::regclass
+				)
+		`).Scan(&uuidType, &versionAbsent, &constraintAbsent); err != nil {
+			t.Fatal(err)
+		}
+		if !uuidType || !versionAbsent || !constraintAbsent {
+			t.Fatalf("failed HNK up left uuid_type=%t version_absent=%t constraint_absent=%t, want all true", uuidType, versionAbsent, constraintAbsent)
+		}
+	})
+
+	t.Run("down refuses HNK intent", func(t *testing.T) {
+		ctx := context.Background()
+		pool := newIsolatedMigrationPool(t, "account_portfolio_hnk_down_guard")
+		defer pool.Close()
+		if err := accountportfolio.ApplyMigrations(ctx, pool); err != nil {
+			t.Fatal(err)
+		}
+		insertPaymentIntentFixture(t, pool, "HNKABCDEFGHIJKLMNOPQRSTUVWXYZ234")
+
+		down := readMigration(t, "000006_henukit_merchant_order_prefix.down.sql")
+		if _, err := pool.Exec(ctx, down); err == nil || !strings.Contains(err.Error(), "payment intents exist") {
+			t.Fatalf("HNK rollback with durable intent error = %v, want fail-closed payment-intent error", err)
+		}
+		var textType, versionPresent, constraintPresent bool
+		if err := pool.QueryRow(ctx, `
+			SELECT
+				EXISTS(
+					SELECT 1 FROM information_schema.columns
+					WHERE table_schema=current_schema()
+					  AND table_name='account_portfolio_payment_order_intents'
+					  AND column_name='merchant_order_id'
+					  AND data_type='text'
+				),
+				EXISTS(
+					SELECT 1 FROM account_portfolio_schema_migrations
+					WHERE version='000006_henukit_merchant_order_prefix'
+				),
+				EXISTS(
+					SELECT 1 FROM pg_constraint
+					WHERE conname='account_payment_intent_merchant_order_format'
+					  AND conrelid='account_portfolio_payment_order_intents'::regclass
+				)
+		`).Scan(&textType, &versionPresent, &constraintPresent); err != nil {
+			t.Fatal(err)
+		}
+		if !textType || !versionPresent || !constraintPresent {
+			t.Fatalf("failed HNK down left text_type=%t version_present=%t constraint_present=%t, want all true", textType, versionPresent, constraintPresent)
+		}
+	})
+}
+
+func newIsolatedMigrationPool(t *testing.T, prefix string) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(admin.Close)
+	schema := fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+	})
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pool
+}
+
+func readMigration(t *testing.T, name string) string {
+	t.Helper()
+	contents, err := os.ReadFile(filepath.Join("..", "db", "migrations", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(contents)
+}
+
+func insertPaymentIntentFixture(t *testing.T, pool *pgxpool.Pool, merchantOrderID string) {
+	t.Helper()
+	ctx := context.Background()
+	const userID = "a6000000-0000-4000-8000-000000000001"
+	const orderID = "a6000000-0000-4000-8000-000000000002"
+	if _, err := pool.Exec(ctx, `INSERT INTO account_portfolio_accounts(user_id) VALUES($1)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO account_portfolio_membership_orders(
+			id, user_id, plan, amount_cents, status, provider, idempotency_key
+		)
+		VALUES($1, $2, 'lifetime', 990, 'created', 'fake', 'hnk_migration_guard')
+	`, orderID, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO account_portfolio_payment_order_intents(order_id, provider, merchant_order_id)
+		VALUES($1, 'fake', $2)
+	`, orderID, merchantOrderID); err != nil {
+		t.Fatal(err)
 	}
 }
 

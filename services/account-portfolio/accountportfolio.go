@@ -199,6 +199,9 @@ func New(config Config) (http.Handler, error) {
 		protected.Post(contract.ConsoleMembershipGrantsRoute, h.grantConsoleMembership)
 		protected.Post(contract.ConsoleMembershipRevocationsRoute, h.revokeConsoleMembership)
 		protected.Post(contract.ConsolePointAdjustmentsRoute, h.adjustConsolePoints)
+		protected.Post(contract.ConsoleMembershipOrderClosuresRoute, h.closeConsoleMembershipOrder)
+		protected.Post(contract.ConsoleMembershipOrderRefundsRoute, h.refundConsoleMembershipOrder)
+		protected.Get(contract.ConsoleMembershipOrderRefundRoute, h.getConsoleMembershipOrderRefund)
 		protected.Get(contract.ConsoleTicketsRoute, h.consoleTickets)
 		protected.Get(contract.ConsoleTicketRoute, h.consoleTicket)
 		protected.Post(contract.ConsoleTicketRepliesRoute, h.replyConsoleTicket)
@@ -1493,6 +1496,10 @@ func authenticatedActor(r *http.Request) actor {
 func (h *service) membershipOrders(w http.ResponseWriter, r *http.Request) {
 	userID, ok := h.prepareAccount(w, r)
 	if !ok {
+		return
+	}
+	if failure := h.reconcilePendingMembershipOrders(r.Context(), userID); failure != nil {
+		writeCommandFailure(w, r, failure)
 		return
 	}
 	data := struct {

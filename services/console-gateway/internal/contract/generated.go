@@ -4,37 +4,40 @@ package contract
 import "time"
 
 const (
-	HealthRoute                       = "/api/v1/healthz"
-	LoginRoute                        = "/api/v1/auth/login"
-	CallbackRoute                     = "/api/v1/auth/callback"
-	SessionRoute                      = "/api/v1/session"
-	OverviewRoute                     = "/api/v1/overview"
-	OperationsRoute                   = "/api/v1/operations"
-	RevokeSessionRoute                = "/api/v1/operations/sessions/{session_id}/revocations"
-	UpdateAccessRoute                 = "/api/v1/operations/users/{user_id}/access-updates"
-	OperationStatusRoute              = "/api/v1/operations/results/{operation}"
-	NoticeSnapshotRoute               = "/api/v1/notices"
-	NoticeSourceRoute                 = "/api/v1/notices/sources"
-	NoticeVersionRoute                = "/api/v1/notices/sources/{source_id}/versions"
-	NoticeReviewRoute                 = "/api/v1/notices/versions/{version_id}/reviews"
-	NoticeDistributionRoute           = "/api/v1/notices/versions/{version_id}/distributions"
-	NoticeOperationRoute              = "/api/v1/notices/operations/{operation}"
-	LibraryWorkspaceRoute             = "/api/v1/library"
-	LibraryCommandRoute               = "/api/v1/library/commands"
-	LibraryOperationRoute             = "/api/v1/library/operations/{operation}"
-	FoodWorkspaceRoute                = "/api/v1/food"
-	FoodCommandRoute                  = "/api/v1/food/commands"
-	FoodOperationRoute                = "/api/v1/food/operations/{operation}"
-	AccountMembershipRoute            = "/api/v1/account/memberships/{user_id}"
-	AccountMembershipGrantsRoute      = "/api/v1/account/memberships/{user_id}/grants"
-	AccountMembershipRevocationsRoute = "/api/v1/account/memberships/{user_id}/revocations"
-	AccountPointAdjustmentsRoute      = "/api/v1/account/points/adjustments"
-	AccountTicketsRoute               = "/api/v1/account/tickets"
-	AccountTicketRoute                = "/api/v1/account/tickets/{ticket_id}"
-	AccountTicketRepliesRoute         = "/api/v1/account/tickets/{ticket_id}/replies"
-	AccountTicketTransitionsRoute     = "/api/v1/account/tickets/{ticket_id}/transitions"
-	LogoutRoute                       = "/api/v1/session/logout"
-	SourceSHA256                      = "cefd9efdf3a09f135cc4289eb6b605ca6289510def54a512ab5d3a448e390465"
+	HealthRoute                         = "/api/v1/healthz"
+	LoginRoute                          = "/api/v1/auth/login"
+	CallbackRoute                       = "/api/v1/auth/callback"
+	SessionRoute                        = "/api/v1/session"
+	OverviewRoute                       = "/api/v1/overview"
+	OperationsRoute                     = "/api/v1/operations"
+	RevokeSessionRoute                  = "/api/v1/operations/sessions/{session_id}/revocations"
+	UpdateAccessRoute                   = "/api/v1/operations/users/{user_id}/access-updates"
+	OperationStatusRoute                = "/api/v1/operations/results/{operation}"
+	NoticeSnapshotRoute                 = "/api/v1/notices"
+	NoticeSourceRoute                   = "/api/v1/notices/sources"
+	NoticeVersionRoute                  = "/api/v1/notices/sources/{source_id}/versions"
+	NoticeReviewRoute                   = "/api/v1/notices/versions/{version_id}/reviews"
+	NoticeDistributionRoute             = "/api/v1/notices/versions/{version_id}/distributions"
+	NoticeOperationRoute                = "/api/v1/notices/operations/{operation}"
+	LibraryWorkspaceRoute               = "/api/v1/library"
+	LibraryCommandRoute                 = "/api/v1/library/commands"
+	LibraryOperationRoute               = "/api/v1/library/operations/{operation}"
+	FoodWorkspaceRoute                  = "/api/v1/food"
+	FoodCommandRoute                    = "/api/v1/food/commands"
+	FoodOperationRoute                  = "/api/v1/food/operations/{operation}"
+	AccountMembershipRoute              = "/api/v1/account/memberships/{user_id}"
+	AccountMembershipGrantsRoute        = "/api/v1/account/memberships/{user_id}/grants"
+	AccountMembershipRevocationsRoute   = "/api/v1/account/memberships/{user_id}/revocations"
+	AccountPointAdjustmentsRoute        = "/api/v1/account/points/adjustments"
+	AccountTicketsRoute                 = "/api/v1/account/tickets"
+	AccountTicketRoute                  = "/api/v1/account/tickets/{ticket_id}"
+	AccountTicketRepliesRoute           = "/api/v1/account/tickets/{ticket_id}/replies"
+	AccountTicketTransitionsRoute       = "/api/v1/account/tickets/{ticket_id}/transitions"
+	AccountMembershipOrderClosuresRoute = "/api/v1/account/membership-orders/{order_id}/closures"
+	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
+	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
+	LogoutRoute                         = "/api/v1/session/logout"
+	SourceSHA256                        = "142081eb72f38747adfc011bc9b624a69b649e801726e1c87be850e4cf48bd7a"
 )
 
 type ConsoleAccessContext struct {
@@ -101,6 +104,36 @@ type ConsoleAccountTicketQueue struct {
 type ConsoleMembershipMutationRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Reason          string `json:"reason"`
+}
+
+type ConsoleMembershipOrder struct {
+	AmountCents int64     `json:"amount_cents"`
+	CreatedAt   time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	Plan        string    `json:"plan"`
+	Status      string    `json:"status"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Version     int64     `json:"version"`
+}
+
+type ConsoleMembershipOrderCommandRequest struct {
+	ExpectedVersion int64  `json:"expected_version"`
+	Reason          string `json:"reason"`
+}
+
+type ConsoleMembershipOrderRefund struct {
+	AmountCents int64  `json:"amount_cents"`
+	ID          string `json:"id"`
+	Status      string `json:"status"`
+}
+
+type ConsoleMembershipOrderRefundResult struct {
+	Order  ConsoleMembershipOrder       `json:"order"`
+	Refund ConsoleMembershipOrderRefund `json:"refund"`
+}
+
+type ConsoleMembershipOrderResult struct {
+	Order ConsoleMembershipOrder `json:"order"`
 }
 
 type ConsoleModuleMetric struct {

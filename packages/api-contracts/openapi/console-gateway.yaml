@@ -549,11 +549,65 @@ paths:
         - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsolePointAdjustmentRequest" } } } }
       responses:
-        "200": { description: Durable balance and immutable ledger entry, or the original idempotent result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountPointAdjustmentResult" } } }] } } } }
+        "200": { description: "Durable balance and immutable ledger entry, or the original idempotent result", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountPointAdjustmentResult" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/membership-orders/{order_id}/closures:
+    post:
+      tags: [Account Portfolio]
+      operationId: closeConsoleMembershipOrder
+      summary: Close one unpaid membership order
+      description: Requires account.orders.close within Account Portfolio product Scope. The order is named only by its Account Portfolio id; the private merchant order number is never accepted from or returned to a browser. A paid order is refused rather than closed.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/MembershipOrderID" }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleMembershipOrderCommandRequest" } } } }
+      responses:
+        "200": { description: "Closed order, or the original idempotent result", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleMembershipOrderResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/membership-orders/{order_id}/refunds:
+    post:
+      tags: [Account Portfolio]
+      operationId: refundConsoleMembershipOrder
+      summary: Refund one paid membership order in full
+      description: Requires account.orders.refund within Account Portfolio product Scope. The refunded amount is always the full verified paid amount and is never selected by a caller. The lifetime entitlement is revoked only when the refunded payment fact still owns it.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/MembershipOrderID" }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleMembershipOrderCommandRequest" } } } }
+      responses:
+        "202": { description: "Durable refund recorded, possibly still settling, or the original idempotent result", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleMembershipOrderRefundResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/membership-orders/{order_id}/refunds/{refund_id}:
+    get:
+      tags: [Account Portfolio]
+      operationId: getConsoleMembershipOrderRefund
+      summary: Read one refund and its reconciled status
+      description: Requires account.orders.read within Account Portfolio product Scope. Reconciles against the authoritative provider refund query; a dependency failure returns an explicit unavailable response and never a synthesized success.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/MembershipOrderID" }
+        - { $ref: "#/components/parameters/MembershipRefundID" }
+      responses:
+        "200": { description: Durable refund and its reconciled status, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleMembershipOrderRefundResult" } } }] } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /account/tickets:
     get:
@@ -628,6 +682,18 @@ components:
       in: header
       required: true
       schema: { type: string, minLength: 8, maxLength: 200, pattern: '^[A-Za-z0-9._:-]+$' }
+    MembershipOrderID:
+      name: order_id
+      in: path
+      required: true
+      description: Account Portfolio membership order identifier. Never the private merchant order number.
+      schema: { type: string, format: uuid }
+    MembershipRefundID:
+      name: refund_id
+      in: path
+      required: true
+      description: Account Portfolio refund correlation. Never the provider or WeChat refund number.
+      schema: { type: string, pattern: '^HNR[A-Z2-7]{29}$' }
   securitySchemes:
     consoleSession:
       type: apiKey
@@ -1143,6 +1209,47 @@ components:
       properties:
         reason: { type: string, minLength: 1, maxLength: 1000 }
         expected_version: { type: integer, minimum: 1 }
+    ConsoleMembershipOrderCommandRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, expected_version]
+      description: Carries no amount and no merchant order number. A refund is always the full verified paid amount recorded in the owning payment fact.
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        expected_version: { type: integer, minimum: 1 }
+    ConsoleMembershipOrder:
+      type: object
+      additionalProperties: false
+      required: [id, plan, amount_cents, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        plan: { type: string, enum: [lifetime] }
+        amount_cents: { type: integer, enum: [990] }
+        status: { type: string, enum: [created, pending_payment, paid, closed, failed, refunded] }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ConsoleMembershipOrderRefund:
+      type: object
+      additionalProperties: false
+      required: [id, status, amount_cents]
+      properties:
+        id: { type: string, pattern: '^HNR[A-Z2-7]{29}$' }
+        status: { type: string, enum: [processing, succeeded, closed, abnormal] }
+        amount_cents: { type: integer, enum: [990] }
+    ConsoleMembershipOrderResult:
+      type: object
+      additionalProperties: false
+      required: [order]
+      properties:
+        order: { $ref: "#/components/schemas/ConsoleMembershipOrder" }
+    ConsoleMembershipOrderRefundResult:
+      type: object
+      additionalProperties: false
+      required: [order, refund]
+      properties:
+        order: { $ref: "#/components/schemas/ConsoleMembershipOrder" }
+        refund: { $ref: "#/components/schemas/ConsoleMembershipOrderRefund" }
     ConsolePointAdjustmentRequest:
       type: object
       additionalProperties: false

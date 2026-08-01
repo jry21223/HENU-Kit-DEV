@@ -81,6 +81,10 @@ func TestPaymentMerchantIntentIsPrivateAndRejectsCrossOrderCallback(t *testing.T
 	if firstMerchantID == firstBody.Data.Order.ID || secondMerchantID == second.ID || firstMerchantID == secondMerchantID {
 		t.Fatalf("merchant ids must be distinct private values: first=%q/%q second=%q/%q", firstBody.Data.Order.ID, firstMerchantID, second.ID, secondMerchantID)
 	}
+	if !strings.HasPrefix(firstMerchantID, "HNK") || len(firstMerchantID) != 32 ||
+		!strings.HasPrefix(secondMerchantID, "HNK") || len(secondMerchantID) != 32 {
+		t.Fatalf("merchant ids must use the HENU Kit HNK prefix: first=%q second=%q", firstMerchantID, secondMerchantID)
+	}
 	if strings.Contains(firstRaw, firstMerchantID) || strings.Contains(firstRaw, secondMerchantID) {
 		t.Fatalf("public order response exposed a private merchant id: %s", firstRaw)
 	}
@@ -358,6 +362,54 @@ func TestVerifiedFakePaymentLifecycleIsIdempotentOrderedAndRefundable(t *testing
 	}
 	if plan != "free" || source != "payment_refund" || events != 2 || notifications != 2 || paidFacts != 1 || refundedFacts != 1 || replayAudits != 1 || outOfOrderAudits != 0 || rejectedAudits != 1 {
 		t.Fatalf("payment lifecycle facts plan/source/events/notifications/paid/refunded/replay/out_of_order/rejected = %s/%s/%d/%d/%d/%d/%d/%d/%d, want free/payment_refund/2/2/1/1/1/0/1", plan, source, events, notifications, paidFacts, refundedFacts, replayAudits, outOfOrderAudits, rejectedAudits)
+	}
+}
+
+func TestListingMembershipOrdersReconcilesALostPaidCallbackExactlyOnce(t *testing.T) {
+	provider := accountportfolio.NewFakePaymentProvider()
+	server, pool := newAccountPortfolioServerWithPaymentProvider(t, provider)
+	defer server.Close()
+	defer pool.Close()
+
+	const ownerID = "a2323232-2323-4232-8232-232323232323"
+	created := createFakeMembershipOrder(t, server.URL, ownerID, "nonce-reconcile-create", "idem_reconcile_create")
+	externalOrderID := fakeExternalOrderIDForLocalOrder(t, pool, provider, created.ID)
+	if _, err := provider.Transition(externalOrderID, accountportfolio.MembershipOrderPaid); err != nil {
+		t.Fatal(err)
+	}
+
+	statuses := make(chan int, 8)
+	var group sync.WaitGroup
+	for index := range 8 {
+		group.Add(1)
+		go func(index int) {
+			defer group.Done()
+			response := sendOwnerJSON(t, server.URL, http.MethodGet, ownerID, "/api/v1/account/membership-orders", "nonce-reconcile-list-"+strconv.Itoa(index), "", "")
+			statuses <- response.StatusCode
+			_ = responseText(t, response)
+		}(index)
+	}
+	group.Wait()
+	close(statuses)
+	for status := range statuses {
+		if status != http.StatusOK {
+			t.Fatalf("concurrent reconciled order list status = %d, want 200", status)
+		}
+	}
+
+	var plan string
+	var events, notifications, facts int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT
+			(SELECT plan FROM account_portfolio_memberships WHERE user_id=$1),
+			(SELECT count(*) FROM account_portfolio_membership_events WHERE user_id=$1),
+			(SELECT count(*) FROM account_portfolio_notifications WHERE user_id=$1 AND kind='membership_lifetime_granted'),
+			(SELECT count(*) FROM account_portfolio_payment_facts WHERE order_id=$2 AND status='paid')
+	`, ownerID, created.ID).Scan(&plan, &events, &notifications, &facts); err != nil {
+		t.Fatal(err)
+	}
+	if plan != "lifetime" || events != 1 || notifications != 1 || facts != 1 {
+		t.Fatalf("reconciled payment facts plan/events/notifications/facts = %s/%d/%d/%d, want lifetime/1/1/1", plan, events, notifications, facts)
 	}
 }
 
@@ -1058,6 +1110,14 @@ func (p *queryOverridePaymentProvider) VerifyNotification(ctx context.Context, p
 	return p.fake.VerifyNotification(ctx, payload)
 }
 
+func (p *queryOverridePaymentProvider) CloseOrder(ctx context.Context, externalOrderID string) (accountportfolio.ProviderOrder, error) {
+	return p.fake.CloseOrder(ctx, externalOrderID)
+}
+
+func (p *queryOverridePaymentProvider) QueryRefund(ctx context.Context, externalOrderID string) (accountportfolio.PaymentRefund, error) {
+	return p.fake.QueryRefund(ctx, externalOrderID)
+}
+
 func (p *queryOverridePaymentProvider) Refund(ctx context.Context, externalOrderID string) (accountportfolio.PaymentRefund, error) {
 	return p.fake.Refund(ctx, externalOrderID)
 }
@@ -1098,6 +1158,14 @@ func (p *blockingFakePaymentProvider) QueryOrder(ctx context.Context, externalOr
 
 func (p *blockingFakePaymentProvider) VerifyNotification(ctx context.Context, payload []byte) (accountportfolio.VerifiedPaymentNotification, error) {
 	return p.fake.VerifyNotification(ctx, payload)
+}
+
+func (p *blockingFakePaymentProvider) CloseOrder(ctx context.Context, externalOrderID string) (accountportfolio.ProviderOrder, error) {
+	return p.fake.CloseOrder(ctx, externalOrderID)
+}
+
+func (p *blockingFakePaymentProvider) QueryRefund(ctx context.Context, externalOrderID string) (accountportfolio.PaymentRefund, error) {
+	return p.fake.QueryRefund(ctx, externalOrderID)
 }
 
 func (p *blockingFakePaymentProvider) Refund(ctx context.Context, externalOrderID string) (accountportfolio.PaymentRefund, error) {
@@ -1221,6 +1289,7 @@ func newAccountPortfolioServerWithPaymentProvider(t *testing.T, provider account
 		Database:        pool,
 		ClientID:        "portal-gateway",
 		Keys:            map[string]string{"account-key": serviceSecret},
+		PointCursorKey:  pointCursorTestKey,
 		PaymentProvider: provider,
 	})
 	if err != nil {

@@ -526,6 +526,107 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/CommandConflict' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/console/membership-orders/{order_id}/closures:
+    post:
+      operationId: closeConsoleMembershipOrder
+      summary: Close one unpaid membership order without creating an entitlement
+      description: >-
+        Closes an order that has never held a verified paid payment fact. The
+        order is addressed only by its Account Portfolio identifier; the private
+        HNK merchant order number is never accepted from or returned to a
+        caller. A paid order is rejected rather than closed, and closing never
+        grants, revokes, or refunds an entitlement.
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/MembershipOrderID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MembershipOrderCloseRequest' }
+      responses:
+        '200':
+          description: Closed order, or the original idempotent close result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MembershipOrderCommandEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/PaymentProviderUnavailable' }
+  /api/v1/console/membership-orders/{order_id}/refunds:
+    post:
+      operationId: refundConsoleMembershipOrder
+      summary: Refund one verified paid membership order in full
+      description: >-
+        Refunds the full verified paid amount. The amount is derived from the
+        stored payment fact and is never selected by a caller, and the order is
+        addressed only by its Account Portfolio identifier so the private HNK
+        merchant order correlation stays server-side and can never target
+        another gateway tenant's order. The durable lifetime entitlement is
+        revoked only when the refunded payment fact still owns it. Duplicate and
+        concurrent commands resolve to exactly one durable refund.
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/MembershipOrderID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MembershipOrderRefundRequest' }
+      responses:
+        '202':
+          description: >-
+            Durable refund recorded and submitted, or the original idempotent
+            refund result. A refund may still be processing at the gateway.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MembershipOrderRefundEnvelope' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/CommandConflict' }
+        '503': { $ref: '#/components/responses/PaymentProviderUnavailable' }
+  /api/v1/console/membership-orders/{order_id}/refunds/{refund_id}:
+    get:
+      operationId: getConsoleMembershipOrderRefund
+      summary: Return one durable refund fact and its last reconciled gateway status
+      description: >-
+        Read-only. Returns the stored refund fact reconciled against the
+        authoritative gateway refund query. A dependency failure returns an
+        explicit unavailable response and never a synthesized success.
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+        - $ref: '#/components/parameters/MembershipOrderID'
+        - $ref: '#/components/parameters/MembershipRefundID'
+      responses:
+        '200':
+          description: Durable refund fact and its reconciled status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MembershipOrderRefundEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
 components:
   securitySchemes:
     serviceBasic:
@@ -603,6 +704,18 @@ components:
       required: true
       description: Configured provider identifier. No production provider is enabled by default.
       schema: { type: string, pattern: '^[a-z][a-z0-9_-]{0,79}$' }
+    MembershipOrderID:
+      name: order_id
+      in: path
+      required: true
+      description: Account Portfolio membership order identifier. Never the private HNK merchant order number.
+      schema: { type: string, format: uuid }
+    MembershipRefundID:
+      name: refund_id
+      in: path
+      required: true
+      description: Account Portfolio refund identifier. Never the gateway or WeChat refund number.
+      schema: { type: string, format: uuid }
   responses:
     InvalidRequest:
       description: Invalid command, identifier, or lifecycle input
@@ -943,6 +1056,69 @@ components:
     CreateMembershipOrderRequest:
       type: object
       additionalProperties: false
+    MembershipOrderCloseRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, expected_version]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        expected_version: { type: integer, minimum: 1 }
+    MembershipOrderRefundRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, expected_version]
+      description: >-
+        Carries no amount and no merchant order number. The refunded amount is
+        always the full verified paid amount recorded in the owning payment
+        fact.
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        expected_version: { type: integer, minimum: 1 }
+    MembershipOrderRefund:
+      type: object
+      required: [id, order_id, amount_cents, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        order_id: { type: string, format: uuid }
+        amount_cents: { type: integer, enum: [990] }
+        status:
+          type: string
+          description: >-
+            Durable refund state reconciled from the authoritative gateway
+            refund query. `abnormal` requires operator handling and never
+            implies a completed refund.
+          enum: [processing, succeeded, closed, abnormal]
+        entitlement_revoked:
+          type: boolean
+          description: >-
+            True only when this refund revoked the durable lifetime entitlement
+            that the refunded payment fact still owned.
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MembershipOrderCommandEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order]
+          properties:
+            order: { $ref: '#/components/schemas/MembershipOrder' }
+        request_id: { type: string }
+    MembershipOrderRefundEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order, refund]
+          properties:
+            order: { $ref: '#/components/schemas/MembershipOrder' }
+            refund: { $ref: '#/components/schemas/MembershipOrderRefund' }
+        request_id: { type: string }
     ProviderNotificationEnvelope:
       type: object
       required: [data, request_id]

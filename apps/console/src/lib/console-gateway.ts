@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 cefd9efdf3a09f135cc4289eb6b605ca6289510def54a512ab5d3a448e390465); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 142081eb72f38747adfc011bc9b624a69b649e801726e1c87be850e4cf48bd7a); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -63,6 +63,36 @@ export interface ConsoleAccountTicketQueue {
 export interface ConsoleMembershipMutationRequest {
   expected_version: number;
   reason: string;
+}
+
+export interface ConsoleMembershipOrder {
+  amount_cents: number;
+  created_at: string;
+  id: string;
+  plan: "lifetime";
+  status: "created" | "pending_payment" | "paid" | "closed" | "failed" | "refunded";
+  updated_at: string;
+  version: number;
+}
+
+export interface ConsoleMembershipOrderCommandRequest {
+  expected_version: number;
+  reason: string;
+}
+
+export interface ConsoleMembershipOrderRefund {
+  amount_cents: number;
+  id: string;
+  status: "processing" | "succeeded" | "closed" | "abnormal";
+}
+
+export interface ConsoleMembershipOrderRefundResult {
+  order: ConsoleMembershipOrder;
+  refund: ConsoleMembershipOrderRefund;
+}
+
+export interface ConsoleMembershipOrderResult {
+  order: ConsoleMembershipOrder;
 }
 
 export interface ConsoleModuleMetric {
@@ -580,6 +610,26 @@ function isConsoleAccountTicketQueue(value: unknown): value is ConsoleAccountTic
 
 function isConsoleMembershipMutationRequest(value: unknown): value is ConsoleMembershipMutationRequest {
   return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
+}
+
+function isConsoleMembershipOrder(value: unknown): value is ConsoleMembershipOrder {
+  return isRecord(value) && "amount_cents" in value && typeof value["amount_cents"] === "number" && Number.isSafeInteger(value["amount_cents"]) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "plan" in value && typeof value["plan"] === "string" && ["lifetime"].includes(value["plan"]) && "status" in value && typeof value["status"] === "string" && ["created","pending_payment","paid","closed","failed","refunded"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["amount_cents","created_at","id","plan","status","updated_at","version"].includes(key));
+}
+
+function isConsoleMembershipOrderCommandRequest(value: unknown): value is ConsoleMembershipOrderCommandRequest {
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
+}
+
+function isConsoleMembershipOrderRefund(value: unknown): value is ConsoleMembershipOrderRefund {
+  return isRecord(value) && "amount_cents" in value && typeof value["amount_cents"] === "number" && Number.isSafeInteger(value["amount_cents"]) && "id" in value && typeof value["id"] === "string" && new RegExp("^HNR[A-Z2-7]{29}$").test(value["id"]) && "status" in value && typeof value["status"] === "string" && ["processing","succeeded","closed","abnormal"].includes(value["status"]) && Object.keys(value).every((key) => ["amount_cents","id","status"].includes(key));
+}
+
+function isConsoleMembershipOrderRefundResult(value: unknown): value is ConsoleMembershipOrderRefundResult {
+  return isRecord(value) && "order" in value && isConsoleMembershipOrder(value["order"]) && "refund" in value && isConsoleMembershipOrderRefund(value["refund"]) && Object.keys(value).every((key) => ["order","refund"].includes(key));
+}
+
+function isConsoleMembershipOrderResult(value: unknown): value is ConsoleMembershipOrderResult {
+  return isRecord(value) && "order" in value && isConsoleMembershipOrder(value["order"]) && Object.keys(value).every((key) => ["order"].includes(key));
 }
 
 function isConsoleModuleMetric(value: unknown): value is ConsoleModuleMetric {

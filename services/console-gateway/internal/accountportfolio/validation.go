@@ -8,6 +8,14 @@ import (
 
 const maxPublicPointValue int64 = 9_007_199_254_740_991
 
+const (
+	// The only membership product is the ¥9.9 lifetime plan, so any other
+	// amount in an owner response is a contract violation, not a variant.
+	lifetimeMembershipAmountCents int64 = 990
+	// HNR + 29 Base32 characters, matching the owner's refund correlation.
+	membershipRefundIDLength = 32
+)
+
 // Runtime owner validation prevents a syntactically successful but incomplete
 // downstream response from becoming a Console success response.
 func validateTicketQueue(raw json.RawMessage) error {
@@ -220,4 +228,85 @@ func hasOnlyKeys(value map[string]json.RawMessage, allowed ...string) bool {
 
 func validStatus(value string) bool {
 	return value == "open" || value == "in_progress" || value == "resolved"
+}
+
+// validateMembershipOrderCommand accepts only the owner's order envelope. The
+// Console must never forward a private merchant order number to a browser, so
+// any additional key is rejected rather than passed through.
+func validateMembershipOrderCommand(raw json.RawMessage) error {
+	value, ok := requiredObject(raw)
+	if !ok || !hasOnlyKeys(value, "order") {
+		return ErrInvalid
+	}
+	order, ok := requiredObject(value["order"])
+	if !ok || !validMembershipOrder(order) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func validateMembershipOrderRefund(raw json.RawMessage) error {
+	value, ok := requiredObject(raw)
+	if !ok || !hasOnlyKeys(value, "order", "refund") {
+		return ErrInvalid
+	}
+	order, orderOK := requiredObject(value["order"])
+	refund, refundOK := requiredObject(value["refund"])
+	if !orderOK || !validMembershipOrder(order) || !refundOK || !validMembershipRefund(refund) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func validMembershipOrder(value map[string]json.RawMessage) bool {
+	if !hasOnlyKeys(value, "id", "plan", "amount_cents", "status", "version", "created_at", "updated_at") {
+		return false
+	}
+	id, idOK := requiredString(value, "id")
+	status, statusOK := requiredString(value, "status")
+	amount, amountOK := requiredInt(value, "amount_cents")
+	version, versionOK := requiredInt(value, "version")
+	if !idOK || !validUUID(id) || !amountOK || amount != lifetimeMembershipAmountCents ||
+		!versionOK || version < 1 || !statusOK {
+		return false
+	}
+	switch status {
+	case "created", "pending_payment", "paid", "closed", "failed", "refunded":
+		return true
+	default:
+		return false
+	}
+}
+
+func validMembershipRefund(value map[string]json.RawMessage) bool {
+	if !hasOnlyKeys(value, "id", "status", "amount_cents") {
+		return false
+	}
+	id, idOK := requiredString(value, "id")
+	status, statusOK := requiredString(value, "status")
+	amount, amountOK := requiredInt(value, "amount_cents")
+	if !idOK || !validMembershipRefundID(id) || !amountOK || amount != lifetimeMembershipAmountCents || !statusOK {
+		return false
+	}
+	switch status {
+	case "processing", "succeeded", "closed", "abnormal":
+		return true
+	default:
+		return false
+	}
+}
+
+// validMembershipRefundID accepts the owner's opaque refund correlation without
+// letting an arbitrary provider string through.
+func validMembershipRefundID(value string) bool {
+	if len(value) != membershipRefundIDLength {
+		return false
+	}
+	for _, char := range value {
+		if (char >= 'A' && char <= 'Z') || (char >= '2' && char <= '7') {
+			continue
+		}
+		return false
+	}
+	return true
 }

@@ -568,10 +568,6 @@ func sendConsoleJSONAt(t *testing.T, baseURL, method, actorID, route, nonce, ide
 	return response
 }
 
-func signOwnerRequest(t *testing.T, request *http.Request, nonce string, body []byte) {
-	signOwnerRequestAt(t, request, nonce, body, time.Now())
-}
-
 func signOwnerRequestAt(t *testing.T, request *http.Request, nonce string, body []byte, timestamp time.Time) {
 	t.Helper()
 	timestampUnix := timestamp.UTC().Unix()
@@ -594,10 +590,6 @@ func signOwnerRequestAt(t *testing.T, request *http.Request, nonce string, body 
 	request.Header.Set("X-Timestamp", fmtInt(timestampUnix))
 	request.Header.Set("X-Nonce", nonce)
 	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
-}
-
-func signConsoleRequest(t *testing.T, request *http.Request, nonce string, body []byte) {
-	signConsoleRequestAt(t, request, nonce, body, time.Now())
 }
 
 func signConsoleRequestAt(t *testing.T, request *http.Request, nonce string, body []byte, timestamp time.Time) {
