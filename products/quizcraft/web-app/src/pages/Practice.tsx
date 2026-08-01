@@ -84,7 +84,7 @@ export default function Practice() {
         setCurrentBank(res.banks[0].key);
       }
     }).catch(() => {
-      if (QUIZCRAFT_GO_READ_ENABLED) {
+      if (QUIZCRAFT_GO_READ_ENABLED || !import.meta.env.DEV) {
         setBanks([]);
         return;
       }
@@ -138,7 +138,7 @@ export default function Practice() {
         });
         questions = result.questions;
       } catch (error) {
-        if (QUIZCRAFT_GO_SHADOW_ENABLED) {
+        if (QUIZCRAFT_GO_SHADOW_ENABLED || !import.meta.env.DEV) {
           throw error;
         }
         // Mock questions for local dev preview

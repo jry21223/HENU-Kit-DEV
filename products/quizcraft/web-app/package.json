@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:ops": "vite --mode ops",
     "build": "node scripts/check-admin-session.mjs && tsc && vite build && node scripts/check-admin-session.mjs --dist",
-    "build:ops": "node scripts/check-admin-session.mjs && tsc && vite build --mode ops && node scripts/check-admin-session.mjs --dist",
+    "build:ops": "node scripts/check-admin-session.mjs && tsc && vite build --mode ops && node scripts/check-admin-session.mjs --dist && node scripts/check-cutover-bundle.mjs",
     "preview": "vite preview",
     "preview:ops": "vite preview --mode ops",
     "lint": "eslint . --ext ts,tsx",
