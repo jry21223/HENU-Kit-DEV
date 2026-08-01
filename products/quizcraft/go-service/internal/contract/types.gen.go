@@ -1227,6 +1227,16 @@ type GetQuizCraftOperationParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// CreatePortalPracticeSessionParams defines parameters for CreatePortalPracticeSession.
+type CreatePortalPracticeSessionParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// SubmitPortalPracticeAnswerParams defines parameters for SubmitPortalPracticeAnswer.
+type SubmitPortalPracticeAnswerParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // CreatePracticeSessionParams defines parameters for CreatePracticeSession.
 type CreatePracticeSessionParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -1304,6 +1314,12 @@ type StartQuizCraftPlatformLoginParams struct {
 
 // CreateQuestionFeedbackJSONRequestBody defines body for CreateQuestionFeedback for application/json ContentType.
 type CreateQuestionFeedbackJSONRequestBody = QuestionFeedback
+
+// CreatePortalPracticeSessionJSONRequestBody defines body for CreatePortalPracticeSession for application/json ContentType.
+type CreatePortalPracticeSessionJSONRequestBody = CreatePracticeSession
+
+// SubmitPortalPracticeAnswerJSONRequestBody defines body for SubmitPortalPracticeAnswer for application/json ContentType.
+type SubmitPortalPracticeAnswerJSONRequestBody = AnswerSubmission
 
 // CreatePracticeSessionJSONRequestBody defines body for CreatePracticeSession for application/json ContentType.
 type CreatePracticeSessionJSONRequestBody = CreatePracticeSession

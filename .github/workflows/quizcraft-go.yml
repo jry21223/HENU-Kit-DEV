@@ -1,6 +1,7 @@
 name: QuizCraft Go
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - products/quizcraft/go-service/**

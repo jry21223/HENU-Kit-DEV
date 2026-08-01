@@ -153,6 +153,73 @@ export class PracticeService {
         });
     }
     /**
+     * Create a Practice session through the narrow Portal Gateway command boundary
+     * Internal-only service route. Portal Gateway signs the complete request body and, for a signed-in Portal Session, binds X-Actor-User-Id into the HMAC canonical form. Guest identity is derived only from the QuizCraft-issued quizcraft_anonymous HttpOnly cookie; a guest request does not carry an actor header.
+     *
+     * @returns PracticeSessionEnvelope Session pinned to immutable content
+     * @throws ApiError
+     */
+    public static createPortalPracticeSession({
+        idempotencyKey,
+        requestBody,
+    }: {
+        idempotencyKey: string,
+        requestBody: CreatePracticeSession,
+    }): CancelablePromise<PracticeSessionEnvelope> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/portal/practice/sessions',
+            headers: {
+                'Idempotency-Key': idempotencyKey,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
+                409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
+    /**
+     * Submit one answer through the narrow Portal Gateway command boundary
+     * Internal-only service route. Core verifies the Portal Gateway HMAC, nonce, exact raw body, and signed-in actor binding before it evaluates an answer. The expected answer and analysis are returned only after evaluation.
+     *
+     * @returns AnswerResultEnvelope Server-confirmed result and explanation
+     * @throws ApiError
+     */
+    public static submitPortalPracticeAnswer({
+        sessionId,
+        idempotencyKey,
+        requestBody,
+    }: {
+        sessionId: string,
+        idempotencyKey: string,
+        requestBody: AnswerSubmission,
+    }): CancelablePromise<AnswerResultEnvelope> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/portal/practice/sessions/{session_id}/answers',
+            path: {
+                'session_id': sessionId,
+            },
+            headers: {
+                'Idempotency-Key': idempotencyKey,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
+                403: `Permission code or product Scope denied`,
+                404: `Resource or operation is unknown to this actor`,
+                409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
+    /**
      * Read signed-in progress and wrong-question state
      * @returns LearningStateEnvelope Persistent account learning state
      * @throws ApiError
