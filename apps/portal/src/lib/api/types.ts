@@ -376,6 +376,24 @@ export interface QuizCraftCatalogResponse {
   request_id: string;
 }
 
+export type QuizCraftRankingPeriod = "weekly" | "lifetime";
+
+export interface QuizCraftRankingResponse {
+  request_id: string;
+  data: {
+    scope: "overall" | "bank";
+    bank_id?: string;
+    period: QuizCraftRankingPeriod;
+    metric: "correct_answer_count";
+    entries: Array<{
+      rank: number;
+      nickname: string;
+      system_avatar: "scholar-blue" | "coder-green" | "reader-amber" | "owl-purple";
+      correct_answer_count: number;
+    }>;
+  };
+}
+
 export interface QuizListMeta {
   id: string;
   name: string;

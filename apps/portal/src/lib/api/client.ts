@@ -44,6 +44,8 @@ import type {
 	PortalPracticeSessionResponse,
   PracticeBanksResponse,
 	QuizCraftCatalogResponse,
+  QuizCraftRankingPeriod,
+  QuizCraftRankingResponse,
   SchoolListResponse,
 } from "./types";
 
@@ -439,6 +441,15 @@ export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null
  */
 export async function fetchQuizCraftCatalog(): Promise<QuizCraftCatalogResponse> {
   return apiFetchRequired<QuizCraftCatalogResponse>("/api/v1/practice/catalog");
+}
+
+/** Reads the public ranking derived by Core from immutable scored attempts. */
+export async function fetchQuizCraftOverallRanking(
+  period: QuizCraftRankingPeriod
+): Promise<QuizCraftRankingResponse> {
+  return apiFetchRequired<QuizCraftRankingResponse>(
+    `/api/v1/rankings/overall?period=${encodeURIComponent(period)}`
+  );
 }
 
 /**

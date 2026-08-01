@@ -45,6 +45,11 @@ test("CI runs the Account Portfolio browser behavior spec", () => {
   assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:account/);
 });
 
+test("CI runs the enabled QuizCraft V2 ranking behavior spec", () => {
+  assert.match(workflow, /Verify enabled QuizCraft V2 stats and rankings/);
+  assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:stats/);
+});
+
 test("release artifacts carry an exact-SHA Account mock-free boundary manifest", () => {
   assert.match(
     workflow,
@@ -230,6 +235,13 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "POSTGRES_PASSWORD",
       "POSTGRES_USER",
       "PRACTICE_CLIENT_SECRET",
+      "PRACTICE_COMMAND_CLIENT_ID",
+      "PRACTICE_COMMAND_CLIENT_SECRET",
+      "PRACTICE_COMMAND_KEY_ID",
+      "QUIZCRAFT_CORE_URL",
+      "QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID",
+      "QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET",
+      "QUIZCRAFT_PORTAL_CATALOG_KEY_ID",
       "QUIZCRAFT_SUMMARY_CLIENT_SECRET",
     ].map((name) => [name, "test-required-value"]),
   );
@@ -257,6 +269,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
             PLATFORM_CORE_DATABASE_URL: "postgres://test",
             PLATFORM_CORE_REDIS_URL: "redis://test",
             ACCOUNT_PORTFOLIO_DATABASE_URL: "postgres://test",
+            QUIZCRAFT_CORE_URL: "http://host.docker.internal:10089",
             QUIZCRAFT_DATABASE_URL: "postgres://test",
             RELEASE_SHA: releaseSha,
             STUDY_DATABASE_URL: "postgres://test",
@@ -323,6 +336,31 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["portal-gateway"].environment.ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET,
     "1",
     "production Portal Gateway must reject the default Account Portfolio client-secret placeholder",
+  );
+  assert.equal(
+    config.services["portal-gateway"].environment.PRACTICE_SERVICE_URL,
+    "http://host.docker.internal:10089",
+    "the fixed-SHA Gateway catalog seam must call QuizCraft Core, not legacy Portal API",
+  );
+  assert.deepEqual(
+    config.services["portal-gateway"].extra_hosts,
+    ["host.docker.internal=host-gateway"],
+    "the containerized Gateway must have an explicit private route to the host Core",
+  );
+  assert.equal(
+    config.services["portal-gateway"].environment.PRACTICE_CLIENT_SECRET,
+    config.services["portal-gateway"].environment.QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET,
+    "the catalog seam and V2 read client must share the dedicated Core read credential",
+  );
+  assert.equal(
+    config.services["portal-gateway"].environment.PORTAL_PRACTICE_COMMANDS_ENABLED,
+    "0",
+    "the fixed-SHA runtime must keep Practice writes closed until the #166 commitment point",
+  );
+  assert.equal(
+    config.services["portal-gateway"].environment.PRACTICE_COMMAND_CLIENT_SECRET,
+    "test-required-value",
+    "the fixed-SHA runtime must carry the separately provisioned Practice command credential",
   );
   assert.equal(
     config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID,

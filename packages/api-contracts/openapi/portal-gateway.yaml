@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Portal Gateway
-  version: 0.1.0
+  version: 0.2.0
   description: >
     Default-read BFF for HENU Kit Portal (henukit.cn). It authenticates users
     via Platform Core OAuth and proxies GET requests to product services with
@@ -610,6 +610,73 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/practice/catalog:
+    get:
+      operationId: quizCraftCatalog
+      summary: List published QuizCraft V2 banks available for real Practice sessions
+      description: Available only during and after the explicit #166 cutover; it never falls back to legacy or mock data.
+      security: []
+      responses:
+        "200":
+          description: Published QuizCraft V2 bank versions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizCraftCatalogResponse"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/rankings/overall:
+    get:
+      operationId: quizCraftOverallRanking
+      summary: Read the public QuizCraft V2 overall ranking
+      description: Derived only from immutable scored attempts and restricted to controlled public identity fields.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/QuizCraftRankingPeriod"
+      responses:
+        "200":
+          description: Real weekly or lifetime standings; an empty list is a successful empty ranking.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizCraftRankingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/banks/{bank_id}/rankings:
+    get:
+      operationId: quizCraftBankRanking
+      summary: Read one published bank's public QuizCraft V2 ranking
+      security: []
+      parameters:
+        - name: bank_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/QuizCraftRankingPeriod"
+      responses:
+        "200":
+          description: Real bank standings with controlled public identity fields only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizCraftRankingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/practice/stats:
     get:
       operationId: personalPracticeStats
@@ -661,6 +728,16 @@ components:
       type: apiKey
       in: cookie
       name: __Host-henukit_portal_session
+
+  parameters:
+    QuizCraftRankingPeriod:
+      name: period
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [weekly, lifetime]
+        default: weekly
 
   schemas:
     PortalSession:
@@ -1292,6 +1369,83 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MasterySubject"
+
+    QuizCraftCatalogResponse:
+      type: object
+      additionalProperties: false
+      required: [banks, request_id]
+      properties:
+        banks:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [bank_id, bank_version_id, name, question_count, available]
+            properties:
+              bank_id:
+                type: string
+                format: uuid
+              bank_version_id:
+                type: string
+                format: uuid
+              name:
+                type: string
+                minLength: 1
+              question_count:
+                type: integer
+                minimum: 0
+              available:
+                type: boolean
+        request_id:
+          type: string
+          minLength: 1
+
+    QuizCraftRankingResponse:
+      type: object
+      additionalProperties: false
+      required: [request_id, data]
+      properties:
+        request_id:
+          type: string
+          minLength: 1
+        data:
+          type: object
+          additionalProperties: false
+          required: [scope, period, metric, entries]
+          properties:
+            scope:
+              type: string
+              enum: [overall, bank]
+            bank_id:
+              type: string
+              format: uuid
+            period:
+              type: string
+              enum: [weekly, lifetime]
+            metric:
+              type: string
+              const: correct_answer_count
+            entries:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [rank, nickname, system_avatar, correct_answer_count]
+                properties:
+                  rank:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                  nickname:
+                    type: string
+                    minLength: 1
+                  system_avatar:
+                    type: string
+                    enum: [scholar-blue, coder-green, reader-amber, owl-purple]
+                  correct_answer_count:
+                    type: integer
+                    format: int64
+                    minimum: 0
 
     PersonalPracticeStatsEnvelope:
       type: object
