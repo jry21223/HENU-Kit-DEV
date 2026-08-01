@@ -73,11 +73,9 @@ func paidMembershipOrder(t *testing.T, server *httptest.Server, provider *accoun
 	if err != nil {
 		t.Fatalf("transition fake order to paid: %v", err)
 	}
-	payload, err := json.Marshal(map[string]any{"notification": notification, "signature": "fake"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	paid := sendFakePaymentNotification(t, server.URL, "fake", payload)
+	// The fake provider HMAC-signs its notifications, so the payload has to come
+	// from the provider rather than be assembled by hand.
+	paid := sendFakePaymentNotification(t, server.URL, "fake", provider.NotificationPayload(notification))
 	if paid.StatusCode != http.StatusOK {
 		t.Fatalf("paid notification status = %d: %s", paid.StatusCode, responseText(t, paid))
 	}
