@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,6 +51,7 @@ function fixture({
   const active = join(root, "active-sha");
   const token = join(root, "github.token");
   const envFile = join(root, "henukit.env");
+  const rollbackEnvFile = join(root, "henukit.rollback.env");
   mkdirSync(bin);
   for (const directory of [staging, releases, backups, state]) {
     mkdirSync(directory);
@@ -66,6 +68,7 @@ function fixture({
     envFile,
     `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\n`,
   );
+  writeFileSync(rollbackEnvFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
   writeFileSync(log, "");
   if (previousSha) {
     const previousRelease = join(releases, previousSha);
@@ -229,11 +232,11 @@ if [[ "$FAKE_FAIL_TARGET_HEALTH" == "1" &&
   exit 22
 fi
 if [[ "$*" == *"--write-out"* ]]; then
-  if [[ "$*" == *"/api/v1/account/summary"* ]]; then
+  if [[ "$*" == *"https://henukit.cn/api/v1/account/summary"* ]]; then
     printf '401'
     exit 0
   fi
-  if [[ "$*" == *"/api/v1/payment-providers/easypay/notifications"* ]]; then
+  if [[ "$*" == *"https://henukit.cn/api/v1/payment-providers/easypay/notifications"* ]]; then
     printf '400'
     exit 0
   fi
@@ -277,6 +280,7 @@ fi
       HENUKIT_STAGING_ROOT: staging,
       HENUKIT_STATE_ROOT: state,
       HENUKIT_PUBLIC_BASE_URL: "https://example.test",
+      HENUKIT_ROLLBACK_ENV_FILE: rollbackEnvFile,
     },
   };
 }
@@ -300,8 +304,8 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
   assert.match(calls, /grant-account-operator-role/);
   assert.match(calls, /operations-operator/);
   assert.match(calls, /curl .*https:\/\/example\.test\/api\/v1\/healthz/);
-  assert.match(calls, /curl .*\/api\/v1\/account\/summary/);
-  assert.match(calls, /curl .*\/api\/v1\/payment-providers\/easypay\/notifications/);
+  assert.match(calls, /curl .*https:\/\/henukit\.cn\/api\/v1\/account\/summary/);
+  assert.match(calls, /curl .*https:\/\/henukit\.cn\/api\/v1\/payment-providers\/easypay\/notifications/);
   assert.equal(
     readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(),
     releaseSha,
@@ -324,6 +328,19 @@ test("one-shot accepts the canonical retired Quiz redirect when its final respon
     output,
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
+});
+
+test("an active release without an activation record converges the audited permission grant", () => {
+  const setup = fixture();
+  execFileSync(script, ["--once"], { env: setup.env });
+  unlinkSync(join(setup.state, "last-activated-sha"));
+
+  execFileSync(script, ["--once"], { env: setup.env });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.equal((calls.match(/^deploy /gm) ?? []).length, 1);
+  assert.equal((calls.match(/grant-account-operator-role/g) ?? []).length, 2);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
 });
 
 test("one-shot does nothing when no main workflow run has completed successfully", () => {
@@ -422,6 +439,7 @@ test("failed public verification restores and verifies the previous fixed-SHA re
   assert.match(result.stderr, /rolled back/);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
   assert.equal((calls.match(/^deploy /gm) ?? []).length, 2);
+  assert.match(calls, /deploy .*henukit\.rollback\.env/);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
 });
 

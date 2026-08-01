@@ -36,6 +36,7 @@ function fixture({
   const log = join(root, "calls.log");
   const watcher = join(bin, "watcher");
   const envFile = join(root, "henukit.env");
+  const tokenFile = join(root, "github.token");
   mkdirSync(bin);
   mkdirSync(join(state, "approvals"), { recursive: true });
   mkdirSync(join(state, "prepared"), { recursive: true });
@@ -47,6 +48,7 @@ function fixture({
   writeFileSync(join(release, "infra", "epay-gateway", "patches", "0001.patch"), "patch\n");
   writeFileSync(log, "");
   writeFileSync(envFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
+  writeFileSync(tokenFile, "test-token\n", { mode: 0o600 });
 
   executable(
     join(bin, "gh"),
@@ -117,6 +119,7 @@ fi
       HENUKIT_STATE_ROOT: state,
       HENUKIT_RELEASE_ROOT: releases,
       HENUKIT_ENV_FILE: envFile,
+      GH_TOKEN_FILE: tokenFile,
       HENUKIT_WATCHER: watcher,
     },
   };
@@ -141,6 +144,8 @@ test("one command prepares, exact-SHA approves, and activates a release", () => 
   const calls = readFileSync(setup.log, "utf8");
   assert.match(calls, /ssh root@metaview\.top .*deploy-epay-gateway-patches\.sh.*--execute/);
   assert.ok(calls.indexOf("deploy-epay-gateway-patches.sh") < calls.lastIndexOf("watcher --once"));
+  assert.equal((calls.match(/gh api .*\/branches\//g) ?? []).length, 3);
+  assert.equal((calls.match(/^gh run list/gm) ?? []).length, 3);
 });
 
 test("one command refuses while QuizCraft cutover blocker remains open", () => {

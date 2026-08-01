@@ -1,3 +1,3 @@
-DROP TRIGGER account_operator_role_grant_audit_events_immutable ON account_operator_role_grant_audit_events;
-DROP FUNCTION reject_account_operator_role_grant_audit_mutation();
-DROP TABLE account_operator_role_grant_audit_events;
+DROP TRIGGER IF EXISTS account_operator_role_grant_audit_events_immutable ON account_operator_role_grant_audit_events;
+DROP FUNCTION IF EXISTS reject_account_operator_role_grant_audit_mutation();
+DROP TABLE IF EXISTS account_operator_role_grant_audit_events;

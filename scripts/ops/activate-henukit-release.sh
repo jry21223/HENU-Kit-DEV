@@ -36,6 +36,7 @@ workflow="${HENUKIT_WORKFLOW:-deploy-henukit.yml}"
 state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
 watcher="${HENUKIT_WATCHER:-/usr/local/sbin/watch-henukit-actions}"
 env_file="${HENUKIT_ENV_FILE:-}"
+token_file="${GH_TOKEN_FILE:-/etc/henukit/github-actions-read.token}"
 release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
 epay_ssh_target="${HENUKIT_EPAY_GATEWAY_SSH_TARGET:-root@metaview.top}"
 epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
@@ -51,6 +52,14 @@ epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
 command -v ssh >/dev/null 2>&1 || die "ssh is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+[[ -r "$token_file" && -f "$token_file" ]] || die "GH_TOKEN_FILE must point to a readable regular file"
+token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || stat -f '%Lp' "$token_file")"
+token_owner="$(stat -c '%u' "$token_file" 2>/dev/null || stat -f '%u' "$token_file")"
+[[ "$token_mode" == "600" || "$token_mode" == "400" ]] || die "GitHub token file mode must be 0600 or 0400"
+[[ "$token_owner" == "$(id -u)" ]] || die "GitHub token file must be owned by the release user"
+GH_TOKEN="$(tr -d '\r\n' < "$token_file")"
+[[ -n "$GH_TOKEN" ]] || die "GitHub token file is empty"
+export GH_TOKEN
 
 install -d -m 0700 "$state_root" "$state_root/approvals" "$state_root/prepared"
 approval="$state_root/approvals/$release_sha"
@@ -60,19 +69,23 @@ active="$state_root/last-activated-sha"
 blocker_state="$(gh api "repos/$repo/issues/$blocker_issue" --jq '.state')"
 [[ "$blocker_state" == "closed" ]] || die "blocker issue #$blocker_issue must be closed before Account Portfolio deployment"
 
+[[ ! -e "$approval" ]] || die "an approval already exists for release $release_sha"
+
+verify_release_current() {
+  local branch_head run_row run_sha run_status run_conclusion
+  branch_head="$(gh api "repos/$repo/branches/$branch" --jq '.commit.sha')"
+  [[ "$branch_head" == "$release_sha" ]] || die "requested release is not the current $branch head"
+  run_row="$(gh run list --repo "$repo" --workflow "$workflow" --branch "$branch" --event push --limit 1 --json headSha,status,conclusion --jq 'first(.[]) | [.headSha,.status,.conclusion] | @tsv')"
+  IFS=$'\t' read -r run_sha run_status run_conclusion <<< "$run_row"
+  [[ "$run_sha" == "$release_sha" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] ||
+    die "requested release is not the newest completed successful $workflow run"
+}
+
+verify_release_current
 if [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]]; then
   printf '%s: release %s is already active\n' "$program" "$release_sha"
   exit 0
 fi
-
-[[ ! -e "$approval" ]] || die "an approval already exists for release $release_sha"
-
-branch_head="$(gh api "repos/$repo/branches/$branch" --jq '.commit.sha')"
-[[ "$branch_head" == "$release_sha" ]] || die "requested release is not the current $branch head"
-run_row="$(gh run list --repo "$repo" --workflow "$workflow" --branch "$branch" --event push --limit 1 --json headSha,status,conclusion --jq 'first(.[]) | [.headSha,.status,.conclusion] | @tsv')"
-IFS=$'\t' read -r run_sha run_status run_conclusion <<< "$run_row"
-[[ "$run_sha" == "$release_sha" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] ||
-  die "requested release is not the newest completed successful $workflow run"
 
 [[ -n "$env_file" && -r "$env_file" && -w "$env_file" && ! -L "$env_file" ]] ||
   die "HENUKIT_ENV_FILE must be a writable, non-symlink production environment file"
@@ -116,6 +129,7 @@ remote_stage=""
 environment_backup="$(dirname "$env_file")/.henukit-env.backup.$$"
 cp -p "$env_file" "$environment_backup"
 chmod 0600 "$environment_backup"
+export HENUKIT_ROLLBACK_ENV_FILE="$environment_backup"
 cleanup() {
   if [[ -n "${approval_incoming:-}" && -f "$approval_incoming" ]]; then
     rm -f -- "$approval_incoming"
@@ -149,6 +163,7 @@ epay_patches="$release_dir/infra/epay-gateway/patches"
 [[ -x "$epay_installer" ]] || die "release has no executable EasyPay gateway installer"
 [[ -d "$epay_patches" ]] || die "release has no EasyPay gateway patch set"
 
+verify_release_current
 remote_stage="$(ssh "$epay_ssh_target" 'mktemp -d /tmp/henukit-epay-release.XXXXXX')"
 [[ "$remote_stage" =~ ^/tmp/henukit-epay-release\.[A-Za-z0-9]+$ ]] ||
   die "EasyPay gateway host returned an invalid staging path"
@@ -161,6 +176,7 @@ ssh "$epay_ssh_target" \
   "$epay_gateway_dir" \
   "$remote_stage/infra/epay-gateway/patches" \
   --execute
+verify_release_current
 
 umask 077
 printf '%s\n' "$release_sha" > "$approval_incoming"

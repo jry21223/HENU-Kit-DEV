@@ -13,6 +13,15 @@ import (
 func TestAccountOperatorRoleGrantIsOwnedAuditedAndIdempotent(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
+	auditMigration, err := os.ReadFile("../db/migrations/000018_account_operator_role_grant_audit.up.sql")
+	if err != nil {
+		t.Fatalf("read audit migration: %v", err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := pool.Exec(ctx, string(auditMigration)); err != nil {
+			t.Fatalf("reapply audit migration attempt %d: %v", attempt+1, err)
+		}
+	}
 	resetIdentityTables(t, ctx, pool, redisClient)
 	for migration := 14; migration <= 17; migration++ {
 		matches, err := filepath.Glob(fmt.Sprintf("../db/migrations/%06d_*.up.sql", migration))
@@ -45,6 +54,13 @@ func TestAccountOperatorRoleGrantIsOwnedAuditedAndIdempotent(t *testing.T) {
 		if result.Changed != (attempt == 0) {
 			t.Fatalf("grant attempt %d changed=%t", attempt+1, result.Changed)
 		}
+	}
+	replay, err := accountoperatorgrant.Grant(ctx, pool, accountoperatorgrant.Input{
+		RoleCode: "operations-operator", Actor: "henukit-release", RequestID: "req_release_aaaaaaaa_first",
+		Reason: "Account Portfolio production release aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	})
+	if err != nil || replay.Changed {
+		t.Fatalf("audited replay changed=%t err=%v", replay.Changed, err)
 	}
 
 	var grantCount int

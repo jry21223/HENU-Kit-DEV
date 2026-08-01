@@ -195,6 +195,14 @@ Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
 `000006` and `000007` remain service-owned startup migrations.
 
+If activation fails, the watcher invokes the previous fixed-SHA helper with the
+pre-release environment snapshot before the outer command restores that file,
+so running containers and disk state agree. A crash after the new containers
+become healthy but before the grant is recorded converges on the next run: the
+active SHA path re-invokes Platform Core's idempotent audited grant before it
+writes `last-activated-sha`. Migration `000018` is itself safe to reapply after
+a later release step fails.
+
 The defaults assume SSH key access to `root@metaview.top` and gateway directory
 `/root/epay-gateway`; override only with
 `HENUKIT_EPAY_GATEWAY_SSH_TARGET` and `HENUKIT_EPAY_GATEWAY_DIR`. SSH host-key

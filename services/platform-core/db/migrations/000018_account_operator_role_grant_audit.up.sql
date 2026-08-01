@@ -1,4 +1,4 @@
-CREATE TABLE account_operator_role_grant_audit_events (
+CREATE TABLE IF NOT EXISTS account_operator_role_grant_audit_events (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     role_id uuid NOT NULL REFERENCES authorization_roles(id) ON DELETE RESTRICT,
     role_code text NOT NULL,
@@ -17,6 +17,16 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER account_operator_role_grant_audit_events_immutable
-BEFORE UPDATE OR DELETE OR TRUNCATE ON account_operator_role_grant_audit_events
-FOR EACH STATEMENT EXECUTE FUNCTION reject_account_operator_role_grant_audit_mutation();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgname = 'account_operator_role_grant_audit_events_immutable'
+          AND tgrelid = 'account_operator_role_grant_audit_events'::regclass
+    ) THEN
+        CREATE TRIGGER account_operator_role_grant_audit_events_immutable
+        BEFORE UPDATE OR DELETE OR TRUNCATE ON account_operator_role_grant_audit_events
+        FOR EACH STATEMENT EXECUTE FUNCTION reject_account_operator_role_grant_audit_mutation();
+    END IF;
+END;
+$$;

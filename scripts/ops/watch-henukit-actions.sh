@@ -49,6 +49,7 @@ repo="${HENUKIT_REPO:-jry21223/HENU-Kit-DEV}"
 workflow="${HENUKIT_WORKFLOW:-deploy-henukit.yml}"
 branch="${HENUKIT_BRANCH:-main}"
 env_file="${HENUKIT_ENV_FILE:-}"
+rollback_env_file="${HENUKIT_ROLLBACK_ENV_FILE:-$env_file}"
 token_file="${GH_TOKEN_FILE:-/etc/henukit/github-actions-read.token}"
 staging_root="${HENUKIT_STAGING_ROOT:-/opt/henukit-staging}"
 release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
@@ -56,6 +57,7 @@ backup_root="${HENUKIT_BACKUP_ROOT:-/opt/henukit-backups}"
 state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
 poll_seconds="${HENUKIT_POLL_SECONDS:-60}"
 public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://superhuazai.me}"
+account_public_origin="https://henukit.cn"
 postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
 account_portfolio_container="${HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER:-henukit-account-portfolio-1}"
 platform_core_container="${HENUKIT_PLATFORM_CORE_CONTAINER:-henukit-platform-core-1}"
@@ -86,6 +88,8 @@ images=(
 )
 
 [[ -n "$env_file" && -r "$env_file" ]] || die "HENUKIT_ENV_FILE must point to a readable production environment file"
+[[ -n "$rollback_env_file" && -r "$rollback_env_file" && ! -L "$rollback_env_file" ]] ||
+  die "HENUKIT_ROLLBACK_ENV_FILE must point to a readable, non-symlink environment file"
 [[ -r "$token_file" && -f "$token_file" ]] || die "GH_TOKEN_FILE must point to a readable regular file"
 [[ "$poll_seconds" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_POLL_SECONDS must be a positive integer"
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
@@ -357,11 +361,11 @@ verify_active_release() {
   curl --fail --silent --show-error "$public_base_url/practice" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/library" >/dev/null || return 1
   if [[ "$account_portfolio_state" -eq 0 ]]; then
-    account_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/api/v1/account/summary")" || return 1
+    account_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$account_public_origin/api/v1/account/summary")" || return 1
     [[ "$account_status" =~ ^[234][0-9]{2}$ && "$account_status" != "404" ]] || return 1
     callback_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
       --request POST --header 'Content-Type: application/json' --data '{}' \
-      "$public_base_url/api/v1/payment-providers/easypay/notifications")" || return 1
+      "$account_public_origin/api/v1/payment-providers/easypay/notifications")" || return 1
     [[ "$callback_status" =~ ^4[0-9]{2}$ && "$callback_status" != "404" ]] || return 1
   fi
   [[ "$(curl --location --max-redirs 3 --silent --show-error --output /dev/null --write-out '%{http_code}' "$public_base_url/quiz/")" == "404" ]] ||
@@ -571,7 +575,7 @@ rollback_release() {
     return 1
   [[ -x "$previous_helper" ]] || return 1
   log "rolling back to release $previous_sha"
-  "$previous_helper" "$previous_dir" "$env_file" || return 1
+  "$previous_helper" "$previous_dir" "$rollback_env_file" || return 1
   verify_active_release "$previous_sha"
 }
 
@@ -596,6 +600,9 @@ deploy_release() {
 
   if active_release_matches "$release_sha"; then
     verify_active_release "$release_sha" || die "active release failed public health verification"
+    if release_uses_account_portfolio "$release_sha"; then
+      grant_account_operator_permissions "$release_sha" || die "active release permission grant did not converge"
+    fi
     record_activation "$release_sha"
     log "release $release_sha is already active"
     return

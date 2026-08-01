@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"slices"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -40,6 +42,18 @@ func Grant(ctx context.Context, database *pgxpool.Pool, input Input) (Result, er
 		!requestIDPattern.MatchString(input.RequestID) || len(input.Actor) < 1 || len(input.Actor) > 120 ||
 		len(input.Reason) < 8 || len(input.Reason) > 500 {
 		return Result{}, errors.New("invalid account operator role grant input")
+	}
+	var existingRoleCode, existingActor, existingReason string
+	var existingPermissions []string
+	err := database.QueryRow(ctx, `SELECT role_code, actor, reason, permission_codes FROM account_operator_role_grant_audit_events WHERE request_id=$1`, input.RequestID).Scan(&existingRoleCode, &existingActor, &existingReason, &existingPermissions)
+	if err == nil {
+		if existingRoleCode == input.RoleCode && existingActor == input.Actor && existingReason == input.Reason && slices.Equal(existingPermissions, permissionCodes) {
+			return Result{Changed: false}, nil
+		}
+		return Result{}, errors.New("account operator role grant request conflicts with its audit")
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return Result{}, err
 	}
 	tx, err := database.Begin(ctx)
 	if err != nil {
