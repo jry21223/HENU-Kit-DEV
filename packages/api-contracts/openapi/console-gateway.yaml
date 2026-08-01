@@ -549,7 +549,7 @@ paths:
         - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsolePointAdjustmentRequest" } } } }
       responses:
-        "200": { description: Durable balance and immutable ledger entry, or the original idempotent result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountPointAdjustmentResult" } } }] } } } }
+        "200": { description: "Durable balance and immutable ledger entry, or the original idempotent result", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountPointAdjustmentResult" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -567,7 +567,7 @@ paths:
         - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleMembershipOrderCommandRequest" } } } }
       responses:
-        "200": { description: Closed order, or the original idempotent result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleMembershipOrderResult" } } }] } } } }
+        "200": { description: "Closed order, or the original idempotent result", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleMembershipOrderResult" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -586,7 +586,7 @@ paths:
         - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleMembershipOrderCommandRequest" } } } }
       responses:
-        "202": { description: Durable refund recorded, possibly still settling, or the original idempotent result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleMembershipOrderRefundResult" } } }] } } } }
+        "202": { description: "Durable refund recorded, possibly still settling, or the original idempotent result", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleMembershipOrderRefundResult" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
