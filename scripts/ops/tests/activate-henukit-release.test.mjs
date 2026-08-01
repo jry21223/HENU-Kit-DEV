@@ -80,7 +80,10 @@ if [[ -f "$approval" ]]; then
   rm "$approval"
   printf '%s\n' "$FAKE_RELEASE_SHA" > "$HENUKIT_STATE_ROOT/last-activated-sha"
 else
-  printf '/verified/platform-backup-%s.dump\n' "$FAKE_RELEASE_SHA" > "$HENUKIT_STATE_ROOT/prepared/$FAKE_RELEASE_SHA"
+  backup="$HENUKIT_STATE_ROOT/platform-backup-\${FAKE_RELEASE_SHA:0:12}.dump"
+  printf 'verified backup\n' > "$backup"
+  printf 'release_sha=%s\n' "$FAKE_RELEASE_SHA" > "$backup.meta"
+  printf '%s\n' "$backup" > "$HENUKIT_STATE_ROOT/prepared/$FAKE_RELEASE_SHA"
 fi
 `,
   );
