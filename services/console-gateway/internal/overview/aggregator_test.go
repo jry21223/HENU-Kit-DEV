@@ -155,6 +155,30 @@ func TestAggregatorRequiresServiceCredentials(t *testing.T) {
 	}
 }
 
+func TestQuizCraftHostGatewaySummaryEndpointIsNarrowlyAllowed(t *testing.T) {
+	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { _ = client.Close() })
+	credentials := testCredentials()
+	allowed := "http://host.docker.internal:10089/api/v1/console-summary"
+	if _, err := New(map[string]string{"quizcraft": allowed}, &http.Client{}, client, credentials, Options{}); err != nil {
+		t.Fatalf("aggregator rejected private QuizCraft host gateway: %v", err)
+	}
+	for name, endpoint := range map[string]string{
+		"other module": "http://host.docker.internal:10089/api/v1/console-summary",
+		"wrong port":   "http://host.docker.internal:8080/api/v1/console-summary",
+		"wrong path":   "http://host.docker.internal:10089/api/v1/other",
+		"query":        "http://host.docker.internal:10089/api/v1/console-summary?forward=1",
+	} {
+		module := "quizcraft"
+		if name == "other module" {
+			module = "portal"
+		}
+		if _, err := New(map[string]string{module: endpoint}, &http.Client{}, client, credentials, Options{}); err == nil {
+			t.Fatalf("aggregator accepted %s private endpoint", name)
+		}
+	}
+}
+
 func TestRetryUsesDistinctNonces(t *testing.T) {
 	redisClient := integrationRedis(t)
 	var calls atomic.Int32

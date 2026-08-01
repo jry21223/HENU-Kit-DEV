@@ -347,6 +347,11 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     ["host.docker.internal=host-gateway"],
     "the containerized Gateway must have an explicit private route to the host Core",
   );
+  assert.deepEqual(
+    config.services["console-gateway"].extra_hosts,
+    ["host.docker.internal=host-gateway"],
+    "the Console Gateway must reach the host-bound QuizCraft summary privately",
+  );
   assert.equal(
     config.services["portal-gateway"].environment.PRACTICE_CLIENT_SECRET,
     config.services["portal-gateway"].environment.QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET,

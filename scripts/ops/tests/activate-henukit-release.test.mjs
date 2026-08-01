@@ -16,6 +16,10 @@ import { fileURLToPath } from "node:url";
 const command = fileURLToPath(
   new URL("../activate-henukit-release.sh", import.meta.url),
 );
+const runbook = readFileSync(
+  new URL("../../../docs/operations/henukit-artifact-deployment.md", import.meta.url),
+  "utf8",
+);
 const releaseSha = "a".repeat(40);
 
 function executable(path, contents) {
@@ -30,6 +34,7 @@ function fixture({
   metadataDuplicate = false,
   metadataReleaseSha = releaseSha,
   metadataSymlink = false,
+  platformMigrations,
   preparationFails = false,
   runConclusion = "success",
 } = {}) {
@@ -74,6 +79,7 @@ fi
     `#!/usr/bin/env bash
 set -Eeuo pipefail
 printf 'watcher %s\n' "$*" >> "$FAKE_CALL_LOG"
+printf 'migrations %s\n' "\${HENUKIT_PLATFORM_MIGRATIONS:-}" >> "$FAKE_CALL_LOG"
 if [[ "$FAKE_PREPARATION_FAILS" == "1" ]]; then
   printf 'Account production-boundary manifest did not pass\n' >&2
   exit 1
@@ -116,29 +122,35 @@ fi
 `,
   );
 
+  const environment = {
+    ...process.env,
+    PATH: `${bin}:${process.env.PATH}`,
+    FAKE_BLOCKER_STATE: blockerState,
+    FAKE_BRANCH_SHA: branchSha,
+    FAKE_CALL_LOG: log,
+    FAKE_GATEWAY_DEPLOYMENT_FAILS: gatewayDeploymentFails ? "1" : "0",
+    FAKE_METADATA_DUPLICATE: metadataDuplicate ? "1" : "0",
+    FAKE_METADATA_RELEASE_SHA: metadataReleaseSha,
+    FAKE_METADATA_SYMLINK: metadataSymlink ? "1" : "0",
+    FAKE_PREPARATION_FAILS: preparationFails ? "1" : "0",
+    FAKE_RELEASE_SHA: releaseSha,
+    FAKE_RUN_CONCLUSION: runConclusion,
+    HENUKIT_STATE_ROOT: state,
+    HENUKIT_RELEASE_ROOT: releases,
+    HENUKIT_ENV_FILE: envFile,
+    GH_TOKEN_FILE: tokenFile,
+    HENUKIT_WATCHER: watcher,
+  };
+  delete environment.HENUKIT_PLATFORM_MIGRATIONS;
+  if (platformMigrations !== undefined) {
+    environment.HENUKIT_PLATFORM_MIGRATIONS = platformMigrations;
+  }
+
   return {
     root,
     state,
     log,
-    env: {
-      ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
-      FAKE_BLOCKER_STATE: blockerState,
-      FAKE_BRANCH_SHA: branchSha,
-      FAKE_CALL_LOG: log,
-      FAKE_GATEWAY_DEPLOYMENT_FAILS: gatewayDeploymentFails ? "1" : "0",
-      FAKE_METADATA_DUPLICATE: metadataDuplicate ? "1" : "0",
-      FAKE_METADATA_RELEASE_SHA: metadataReleaseSha,
-      FAKE_METADATA_SYMLINK: metadataSymlink ? "1" : "0",
-      FAKE_PREPARATION_FAILS: preparationFails ? "1" : "0",
-      FAKE_RELEASE_SHA: releaseSha,
-      FAKE_RUN_CONCLUSION: runConclusion,
-      HENUKIT_STATE_ROOT: state,
-      HENUKIT_RELEASE_ROOT: releases,
-      HENUKIT_ENV_FILE: envFile,
-      GH_TOKEN_FILE: tokenFile,
-      HENUKIT_WATCHER: watcher,
-    },
+    env: environment,
   };
 }
 
@@ -163,6 +175,35 @@ test("one command prepares, exact-SHA approves, and activates a release", () => 
   assert.ok(calls.indexOf("deploy-epay-gateway-patches.sh") < calls.lastIndexOf("watcher --once"));
   assert.equal((calls.match(/gh api .*\/branches\//g) ?? []).length, 3);
   assert.equal((calls.match(/^gh run list/gm) ?? []).length, 3);
+  assert.match(
+    calls,
+    /migrations 000014_account_portfolio_ticket_access\.up\.sql,000015_account_portfolio_membership_access\.up\.sql,000016_account_portfolio_points_access\.up\.sql,000017_account_portfolio_order_access\.up\.sql,000018_account_operator_role_grant_audit\.up\.sql,000019_operations_operator_role\.up\.sql/,
+  );
+});
+
+test("the one-command runbook keeps migrations owned by the activation default", () => {
+  const section = runbook
+    .split("### One-command Account payment release")[1]
+    .split("### ")[0];
+
+  assert.doesNotMatch(section, /HENUKIT_PLATFORM_MIGRATIONS=/);
+  assert.match(section, /`000014` through `000019`/);
+  assert.match(section, /grants it\s+to no user/);
+});
+
+test("one command preserves an explicit reviewed migration override", () => {
+  const setup = fixture({ platformMigrations: "000017_account_portfolio_order_access.up.sql" });
+
+  execFileSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  const calls = readFileSync(setup.log, "utf8");
+  assert.equal(
+    (calls.match(/^migrations 000017_account_portfolio_order_access\.up\.sql$/gm) ?? []).length,
+    2,
+  );
 });
 
 test("one command refuses while QuizCraft cutover blocker remains open", () => {

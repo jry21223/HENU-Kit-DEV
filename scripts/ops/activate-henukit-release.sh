@@ -40,6 +40,8 @@ token_file="${GH_TOKEN_FILE:-/etc/henukit/github-actions-read.token}"
 release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
 epay_ssh_target="${HENUKIT_EPAY_GATEWAY_SSH_TARGET:-root@metaview.top}"
 epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
+platform_migrations="${HENUKIT_PLATFORM_MIGRATIONS:-000014_account_portfolio_ticket_access.up.sql,000015_account_portfolio_membership_access.up.sql,000016_account_portfolio_points_access.up.sql,000017_account_portfolio_order_access.up.sql,000018_account_operator_role_grant_audit.up.sql,000019_operations_operator_role.up.sql}"
+export HENUKIT_PLATFORM_MIGRATIONS="$platform_migrations"
 
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release SHA must be 40 lowercase hexadecimal characters"
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"

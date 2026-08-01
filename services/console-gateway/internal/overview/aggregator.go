@@ -67,7 +67,10 @@ func New(endpoints map[string]string, client *http.Client, redisClient *redis.Cl
 		if endpoint != "" {
 			parsed, err := url.Parse(endpoint)
 			loopback := err == nil && parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || net.ParseIP(parsed.Hostname()).IsLoopback())
-			if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !loopback) || parsed.User != nil || parsed.Fragment != "" {
+			quizcraftHostGateway := err == nil && id == "quizcraft" && parsed.Scheme == "http" &&
+				parsed.Hostname() == "host.docker.internal" && parsed.Port() == "10089" &&
+				parsed.EscapedPath() == "/api/v1/console-summary" && parsed.RawQuery == ""
+			if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !loopback && !quizcraftHostGateway) || parsed.User != nil || parsed.Fragment != "" {
 				return nil, fmt.Errorf("invalid %s summary endpoint", id)
 			}
 			credential := credentials[id]
