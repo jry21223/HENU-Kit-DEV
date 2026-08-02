@@ -4,7 +4,7 @@ HENUKit Console is the **sole operator / admin UI** for HENU Kit production. Stu
 
 `VITE_QUIZCRAFT_WORKSHOP_URL` is optional and defaults to empty. The standalone QuizCraft workshop is not part of the HENU Kit primary runtime; set this only for an explicitly provisioned external QuizCraft deployment. The Console does not assume a production domain.
 
-To serve Console under a subpath such as `/console/`, set `VITE_BASE_PATH` at build time (for example `VITE_BASE_PATH=/console/`). Vite `base` is derived from that env; app-relative navigation uses the same base. Same-origin `/api/*` calls still target the Console Gateway edge and are not rewritten by `VITE_BASE_PATH`.
+Console is deployed on its own subdomain (`console.henukit.cn`) and built with `VITE_BASE_PATH=/` (the compose default), so the container serves the app at `/` and same-origin `/api/*` calls reach the Console Gateway edge instead of the Portal Gateway. The legacy `henukit.cn/console` subpath is retired: the shared edge redirects `/console/` to `https://console.henukit.cn/` during the cutover observation window. Vite `base` is derived from `VITE_BASE_PATH`; app-relative navigation uses the same base, and `/api/*` calls are not rewritten by it.
 
 This directory is the physical application boundary for HENUKit Console. It contains a responsive six-module Overview built with Vue, shadcn-vue conventions, Reka UI, Tailwind CSS v4, and HENU Kit Design Tokens. The legacy Study Admin does not contribute routes, Element Plus, or Study API types to this bundle.
 
@@ -17,4 +17,4 @@ Console obtains its Session, access context, and six module summaries from the s
 - `pnpm --filter @henukit/console run test`
 - `pnpm --filter @henukit/console run test:e2e`
 - `pnpm --filter @henukit/console run build`
-- `VITE_BASE_PATH=/console/ pnpm --filter @henukit/console run build`
+- `VITE_BASE_PATH=/ pnpm --filter @henukit/console run build`

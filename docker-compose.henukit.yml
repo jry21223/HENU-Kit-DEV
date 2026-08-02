@@ -9,7 +9,7 @@
 # Edge: http://localhost:8088
 #   /            Portal
 #   /api/        Portal Gateway
-#   /console/    Console (ops)
+#   /console/    302 → https://console.henukit.cn/ (Console subdomain)
 #   /library     Portal integrated materials
 #   /practice    Portal integrated practice
 

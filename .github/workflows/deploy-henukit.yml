@@ -75,7 +75,7 @@ jobs:
             context: .
             dockerfile: apps/console/Dockerfile
             build_args: |-
-              VITE_BASE_PATH=/console/
+              VITE_BASE_PATH=/
               VITE_QUIZCRAFT_WORKSHOP_URL=
           - name: console-gateway
             image: henukit-console-gateway

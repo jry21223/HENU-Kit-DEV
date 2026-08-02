@@ -138,8 +138,10 @@ route belongs to Portal). Steps:
 3. Build the Console image with `VITE_BASE_PATH=/` (the compose default) so
    assets are served at `/` on the subdomain. Note: this image no longer
    serves `henukit.cn/console`; once the subdomain is live, update the shared
-   edge to redirect `/console/` to `https://console.henukit.cn/` and remove
-   the `/console/` + `/console-api/` locations after the observation window.
+   edge to redirect `/console/` to `https://console.henukit.cn/` with HTTP 302
+   (temporary, so browsers do not cache it and the rollback window stays
+   clean), and remove the `/console/` + `/console-api/` locations after the
+   observation window.
 4. Set production env: `CONSOLE_ORIGIN=https://console.henukit.cn` and
    `CONSOLE_REDIRECT_URI=https://console.henukit.cn/api/v1/auth/callback`.
 5. Register the new callback in `oauth_clients.redirect_uris` (above) and run
