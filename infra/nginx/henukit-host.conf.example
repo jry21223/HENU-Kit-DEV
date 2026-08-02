@@ -16,6 +16,53 @@ server {
     }
 }
 
+# Console has its own subdomain so its same-origin /api/* calls reach the
+# Console Gateway instead of the Portal Gateway (see apps/console/README.md).
+server {
+    listen 80;
+    listen [::]:80;
+    server_name console.henukit.cn;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+    }
+
+    location / {
+        return 308 https://console.henukit.cn$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name console.henukit.cn;
+
+    ssl_certificate /etc/letsencrypt/live/console.henukit.cn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/console.henukit.cn/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 32m;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8088;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+    }
+}
+
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;

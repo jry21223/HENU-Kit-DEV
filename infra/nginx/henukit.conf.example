@@ -64,18 +64,20 @@ server {
     proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
-  # Sole admin console UI
+  # Legacy /console/ path. The Console image is now built with VITE_BASE_PATH=/
+  # and serves only its console.henukit.cn subdomain, so proxying here 404s.
+  # Redirect to the subdomain instead. 302 (not 308) while the cutover
+  # observation window is open: browsers do not cache a 302, so the documented
+  # rollback stays clean. Flip to 308 or drop this location once the window
+  # closes (see docs/operations/henukit-domain-cutover.md).
   location /console/ {
-    set $console_upstream console:80;
-    proxy_pass http://$console_upstream;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
+    return 302 https://console.henukit.cn/;
   }
 
-  # Console gateway (ops API) — optional; fails soft if down
+  # Console gateway (ops API) — legacy shared-edge path, kept only for the
+  # OAuth observation window (henukit.cn/console-api/* callbacks are still
+  # registered in oauth_clients). Remove with the /console/ redirect once the
+  # window closes.
   location /console-api/ {
     set $console_gateway_upstream console-gateway:8082;
     rewrite ^/console-api/(.*)$ /api/$1 break;
@@ -99,4 +101,35 @@ server {
     proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
+}
+
+# Console subdomain: same-origin /api/* must reach the Console Gateway, not
+# the Portal Gateway. This vhost serves the Console UI at / and forwards /api/
+# to the console-gateway service directly.
+server {
+  listen 80;
+  server_name console.henukit.cn;
+  client_max_body_size 32m;
+
+  # Console UI
+  location / {
+    set $console_upstream console:80;
+    proxy_pass http://$console_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
+  }
+
+  # Console Gateway same-origin API
+  location /api/ {
+    set $console_gateway_upstream console-gateway:8082;
+    proxy_pass http://$console_gateway_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
+  }
 }

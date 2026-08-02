@@ -83,40 +83,40 @@ watch(() => props.authState, (value) => {
       <div><p class="eyebrow">Notice lifecycle</p><h1 id="notice-heading" class="mt-2 text-2xl font-bold sm:text-3xl">校园通知审核与分发</h1><p class="mt-2 max-w-2xl leading-7 text-[var(--hk-ink-muted)]">正文版本由 Notice 服务保持不可变；审核与分发使用乐观 revision、幂等键和服务端产品 Scope。</p></div>
       <div class="access-context"><span>scope:product/notice</span><strong>{{ snapshot?.items.length ?? 0 }} 个版本</strong></div>
     </div>
-    <p v-if="feedback" class="mt-4 rounded-xl border border-[var(--hk-paper-line)] bg-white px-4 py-3" role="status">{{ feedback }}</p>
-    <div v-if="state === 'loading'" class="mt-6 rounded-2xl bg-white p-6" aria-busy="true">正在读取 Notice 生命周期…</div>
-    <div v-else-if="state === 'denied'" class="mt-6 rounded-2xl bg-white p-6">当前账户缺少 Notice 产品 Scope 或读取权限。</div>
-    <div v-else-if="state === 'unavailable'" class="mt-6 rounded-2xl bg-white p-6"><p>Notice 服务暂不可用。</p><UiButton class="mt-4" @click="refresh">重新加载</UiButton></div>
+    <p v-if="feedback" class="mt-4 rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-white px-4 py-3" role="status">{{ feedback }}</p>
+    <div v-if="state === 'loading'" class="mt-6 rounded-[var(--hk-radius-card)] bg-white p-6" aria-busy="true">正在读取 Notice 生命周期…</div>
+    <div v-else-if="state === 'denied'" class="mt-6 rounded-[var(--hk-radius-card)] bg-white p-6">当前账户缺少 Notice 产品 Scope 或读取权限。</div>
+    <div v-else-if="state === 'unavailable'" class="mt-6 rounded-[var(--hk-radius-card)] bg-white p-6"><p>Notice 服务暂不可用。</p><UiButton class="mt-4" @click="refresh">重新加载</UiButton></div>
     <div v-if="state === 'ready' && canManage" class="mt-6 grid gap-4 lg:grid-cols-2">
-      <form class="rounded-2xl border border-[var(--hk-paper-line)] bg-white p-5" @submit.prevent="addSource">
+      <form class="rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-white p-5" @submit.prevent="addSource">
         <h2 class="text-lg font-semibold">登记通知来源</h2>
         <div class="mt-4 grid gap-3">
-          <label class="grid gap-1 text-sm">来源代码<input v-model="sourceCode" required pattern="[a-z0-9][a-z0-9-]{1,62}" class="rounded-lg border px-3 py-2" placeholder="henu-office"></label>
-          <label class="grid gap-1 text-sm">来源名称<input v-model="sourceName" required maxlength="120" class="rounded-lg border px-3 py-2" placeholder="学校办公室"></label>
-          <label class="grid gap-1 text-sm">来源主页<input v-model="sourceCanonicalURL" required type="url" pattern="https://.*" class="rounded-lg border px-3 py-2" placeholder="https://example.edu/notices"></label>
+          <label class="grid gap-1 text-sm">来源代码<input v-model="sourceCode" required pattern="[a-z0-9][a-z0-9-]{1,62}" class="rounded-[var(--hk-radius-control)] border px-3 py-2" placeholder="henu-office"></label>
+          <label class="grid gap-1 text-sm">来源名称<input v-model="sourceName" required maxlength="120" class="rounded-[var(--hk-radius-control)] border px-3 py-2" placeholder="学校办公室"></label>
+          <label class="grid gap-1 text-sm">来源主页<input v-model="sourceCanonicalURL" required type="url" pattern="https://.*" class="rounded-[var(--hk-radius-control)] border px-3 py-2" placeholder="https://example.edu/notices"></label>
         </div>
         <UiButton class="mt-4" type="submit" :disabled="busyID !== ''">创建来源</UiButton>
       </form>
-      <form class="rounded-2xl border border-[var(--hk-paper-line)] bg-white p-5" @submit.prevent="addVersion">
+      <form class="rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-white p-5" @submit.prevent="addVersion">
         <h2 class="text-lg font-semibold">创建不可变版本</h2>
         <div class="mt-4 grid gap-3">
-          <label class="grid gap-1 text-sm">来源 ID<input v-model="versionSourceID" required class="rounded-lg border px-3 py-2" placeholder="UUID"></label>
-          <label class="grid gap-1 text-sm">标题<input v-model="versionTitle" required maxlength="200" class="rounded-lg border px-3 py-2"></label>
-          <label class="grid gap-1 text-sm">正文<textarea v-model="versionBody" required maxlength="100000" rows="4" class="rounded-lg border px-3 py-2"></textarea></label>
-          <label class="grid gap-1 text-sm">原文链接<input v-model="versionSourceURL" required type="url" pattern="https://.*" class="rounded-lg border px-3 py-2"></label>
-          <label class="grid gap-1 text-sm">原文发布时间（可选）<input v-model="versionPublishedAt" type="datetime-local" class="rounded-lg border px-3 py-2"></label>
+          <label class="grid gap-1 text-sm">来源 ID<input v-model="versionSourceID" required class="rounded-[var(--hk-radius-control)] border px-3 py-2" placeholder="UUID"></label>
+          <label class="grid gap-1 text-sm">标题<input v-model="versionTitle" required maxlength="200" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
+          <label class="grid gap-1 text-sm">正文<textarea v-model="versionBody" required maxlength="100000" rows="4" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></textarea></label>
+          <label class="grid gap-1 text-sm">原文链接<input v-model="versionSourceURL" required type="url" pattern="https://.*" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
+          <label class="grid gap-1 text-sm">原文发布时间（可选）<input v-model="versionPublishedAt" type="datetime-local" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
         </div>
         <UiButton class="mt-4" type="submit" :disabled="busyID !== ''">创建版本</UiButton>
       </form>
     </div>
-    <div v-if="state === 'ready' && canDistribute" class="mt-4 flex flex-wrap gap-3 rounded-2xl border border-[var(--hk-paper-line)] bg-white p-4">
-      <label class="grid gap-1 text-sm">渠道<select v-model="channel" class="rounded-lg border px-3 py-2"><option value="in_app">站内</option><option value="email">邮件</option></select></label>
-      <label class="grid gap-1 text-sm">受众<select v-model="audienceKind" class="rounded-lg border px-3 py-2"><option value="all_students">全体学生</option><option value="college">学院</option><option value="role">角色</option></select></label>
-      <label v-if="audienceKind !== 'all_students'" class="grid flex-1 gap-1 text-sm">受众值<input v-model="audienceValue" required maxlength="120" class="rounded-lg border px-3 py-2" placeholder="例如 software-college"></label>
+    <div v-if="state === 'ready' && canDistribute" class="mt-4 flex flex-wrap gap-3 rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-white p-4">
+      <label class="grid gap-1 text-sm">渠道<select v-model="channel" class="rounded-[var(--hk-radius-control)] border px-3 py-2"><option value="in_app">站内</option><option value="email">邮件</option></select></label>
+      <label class="grid gap-1 text-sm">受众<select v-model="audienceKind" class="rounded-[var(--hk-radius-control)] border px-3 py-2"><option value="all_students">全体学生</option><option value="college">学院</option><option value="role">角色</option></select></label>
+      <label v-if="audienceKind !== 'all_students'" class="grid flex-1 gap-1 text-sm">受众值<input v-model="audienceValue" required maxlength="120" class="rounded-[var(--hk-radius-control)] border px-3 py-2" placeholder="例如 software-college"></label>
     </div>
-    <div v-if="state === 'ready' && snapshot?.items.length === 0" class="mt-6 rounded-2xl bg-white p-6">当前没有待处理的通知版本。</div>
+    <div v-if="state === 'ready' && snapshot?.items.length === 0" class="mt-6 rounded-[var(--hk-radius-card)] bg-white p-6">当前没有待处理的通知版本。</div>
     <div v-if="state === 'ready' && snapshot?.items.length" class="mt-6 grid gap-4">
-      <article v-for="item in snapshot?.items" :key="item.id" class="rounded-2xl border border-[var(--hk-paper-line)] bg-white p-5 shadow-[var(--hk-shadow-card)]">
+      <article v-for="item in snapshot?.items" :key="item.id" class="rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-white p-5 shadow-[var(--hk-shadow-card)]">
         <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="eyebrow">{{ item.source.name }} · v{{ item.version }}</p><h2 class="mt-1 text-xl font-semibold">{{ item.title }}</h2></div><span class="rounded-full bg-[var(--hk-paper)] px-3 py-1 text-sm">{{ item.state }} · r{{ item.revision }}</span></div>
         <p class="mt-4 whitespace-pre-wrap leading-7">{{ item.body }}</p>
         <a :href="item.source_url" class="mt-3 inline-block text-sm underline" target="_blank" rel="noreferrer">核对原始来源</a>

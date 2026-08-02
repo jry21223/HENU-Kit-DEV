@@ -348,13 +348,14 @@ func (p *EasyPayProvider) refundFrom(externalOrderID, refundID string, result ma
 	if err != nil || amount != lifetimeMembershipAmountCents {
 		return PaymentRefund{}, errors.New("EasyPay refund amount is invalid")
 	}
-	settled, err := easyPayRefundSettled(result["refund_status"])
+	refundStatus, err := easyPayRefundStatus(result["refund_status"])
 	if err != nil {
 		return PaymentRefund{}, err
 	}
-	// A refund that has not settled leaves the order paid. Only a settled refund
-	// is a refund fact, and only a refund fact may revoke an entitlement.
+	// A refund that has not succeeded leaves the order paid. Only a succeeded
+	// refund is a refund fact, and only a refund fact may revoke an entitlement.
 	status := MembershipOrderPaid
+	settled := refundStatus == MembershipRefundSucceeded
 	if settled {
 		status = MembershipOrderRefunded
 	}
@@ -366,7 +367,7 @@ func (p *EasyPayProvider) refundFrom(externalOrderID, refundID string, result ma
 			ExternalOrderID: externalOrderID,
 			MerchantOrderID: externalOrderID,
 			AmountCents:     amount,
-			Currency:        "CNY",
+			Currency:        lifetimeMembershipCurrency,
 			Plan:            lifetimeMembershipPlan,
 			Status:          status,
 			// EasyPay has no sequence of its own, so the provider assigns one
@@ -376,25 +377,27 @@ func (p *EasyPayProvider) refundFrom(externalOrderID, refundID string, result ma
 			OccurredAt: p.now().UTC(),
 		},
 		RefundID: refundID,
+		Status:   refundStatus,
 		Settled:  settled,
 	}, nil
 }
 
-// easyPayRefundSettled maps the gateway's reconciled refund status. `abnormal`
-// is deliberately an error: it needs operator handling and must never be read as
-// either a completed or a harmlessly pending refund.
-func easyPayRefundSettled(value string) (bool, error) {
+// easyPayRefundStatus maps the gateway's reconciled refund status. `abnormal`
+// is not an error: it is persisted and returned honestly so an operator can
+// handle it, but it never implies a completed refund. `closed` means the
+// gateway closed the refund without completing it, so the order stays paid.
+func easyPayRefundStatus(value string) (MembershipRefundStatus, error) {
 	switch strings.TrimSpace(value) {
 	case "succeeded":
-		return true, nil
+		return MembershipRefundSucceeded, nil
 	case "processing":
-		return false, nil
+		return MembershipRefundProcessing, nil
 	case "closed":
-		return false, nil
+		return MembershipRefundClosed, nil
 	case "abnormal":
-		return false, errors.New("EasyPay refund is abnormal and needs operator handling")
+		return MembershipRefundAbnormal, nil
 	default:
-		return false, errors.New("EasyPay refund status is invalid")
+		return "", errors.New("EasyPay refund status is invalid")
 	}
 }
 

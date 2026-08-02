@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 142081eb72f38747adfc011bc9b624a69b649e801726e1c87be850e4cf48bd7a); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 5987f137ee26b95ae0d0a22ab22cfafafe0778c8b831eeab6f734cc5b8b4d630); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;

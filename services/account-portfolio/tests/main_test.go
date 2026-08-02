@@ -168,7 +168,7 @@ func TestRollbackClearsVersionRecordSoServiceCanReconcileSchema(t *testing.T) {
 		t.Fatalf("initial ApplyMigrations() = %v", err)
 	}
 
-	for _, migration := range []string{"000006_henukit_merchant_order_prefix.down.sql", "000005_admin_point_adjustments.down.sql", "000004_membership_order_payment_kernel.down.sql", "000003_membership_entitlements.down.sql", "000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
+	for _, migration := range []string{"000008_membership_order_refunds.down.sql", "000007_membership_order_checkout_handle.down.sql", "000006_henukit_merchant_order_prefix.down.sql", "000005_admin_point_adjustments.down.sql", "000004_membership_order_payment_kernel.down.sql", "000003_membership_entitlements.down.sql", "000002_support_ticket_commands.down.sql", "000001_account_portfolio.down.sql"} {
 		down, err := os.ReadFile(filepath.Join("..", "db", "migrations", migration))
 		if err != nil {
 			t.Fatal(err)
@@ -753,13 +753,14 @@ func clearAccountPortfolio(t *testing.T, pool *pgxpool.Pool) {
 			account_portfolio_membership_events,
 			account_portfolio_payment_facts,
 			account_portfolio_payment_order_intents,
+			account_portfolio_membership_order_refunds,
 			account_portfolio_membership_orders,
 			account_portfolio_point_adjustment_audits,
 			account_portfolio_point_ledger,
 			account_portfolio_memberships,
 			account_portfolio_points,
 			account_portfolio_accounts
-	`)
+		`)
 	if err != nil {
 		t.Fatal(err)
 	}

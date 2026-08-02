@@ -57,7 +57,7 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 
 - `apps/web`：Next.js 学习平台 Web，迁移期间收敛为资料库 Web。
 - `apps/study-legacy-admin`：已退役的旧 Study Vue 管理后台；代码保留仅供紧急 break-glass，不再作为默认 admin 入口。
-- `apps/console`：独立 HENUKit Console，生产唯一运营控制台；支持 `VITE_BASE_PATH` 子路径部署（如 `/console/`）。
+- `apps/console`：独立 HENUKit Console，生产唯一运营控制台；部署于 `console.henukit.cn` 子域，镜像以 `VITE_BASE_PATH=/` 构建。
 - `services/api`：Go Gin/GORM API，当前同时包含账号、资料、刷题、社区、支付、AI 等能力。
 - `services/worker`：Go + Redis Streams Worker。
 - `legacy/v1-next-prisma`：旧 V1 可执行源码已从当前工作树移除，只保留定位说明；完整历史仍在 Git 中。
@@ -114,7 +114,7 @@ pnpm run dev:henukit
 |------|------|
 | `/` | Portal 公共站 |
 | `/api/` | Portal Gateway |
-| `/console/` | Console 管理台 |
+| `/console/` | 302 → `https://console.henukit.cn/`（Console 子域，观察期过渡） |
 | `/library` | Portal 集成资料库 |
 | `/practice` | Portal 集成刷题 |
 

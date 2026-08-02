@@ -67,12 +67,12 @@ The production environment must explicitly use:
 ```env
 PUBLIC_ORIGIN=https://henukit.cn
 PORTAL_ORIGIN=https://henukit.cn
-CONSOLE_ORIGIN=https://henukit.cn/console
+CONSOLE_ORIGIN=https://console.henukit.cn
 QUIZ_ORIGIN=https://henukit.cn/quiz
 PLATFORM_ACCOUNT_ORIGIN=https://henukit.cn/account-auth
 PLATFORM_CORE_PUBLIC_URL=https://henukit.cn/account-auth
 PORTAL_REDIRECT_URI=https://henukit.cn/api/v1/auth/callback
-CONSOLE_REDIRECT_URI=https://henukit.cn/console-api/v1/auth/callback
+CONSOLE_REDIRECT_URI=https://console.henukit.cn/api/v1/auth/callback
 STUDY_CORS_ALLOWED_ORIGINS=https://henukit.cn
 QUIZCRAFT_CORS_ORIGINS=https://henukit.cn
 ```
@@ -114,7 +114,8 @@ WHERE id = 'portal-gateway';
 UPDATE oauth_clients
 SET redirect_uris = ARRAY[
   'https://superhuazai.me/console-api/v1/auth/callback',
-  'https://henukit.cn/console-api/v1/auth/callback'
+  'https://henukit.cn/console-api/v1/auth/callback',
+  'https://console.henukit.cn/api/v1/auth/callback'
 ]
 WHERE id = 'console-gateway';
 COMMIT;
@@ -122,6 +123,32 @@ COMMIT;
 
 If either OAuth Smoke fails, restore the backed-up arrays in a transaction
 before restoring the gateway environment.
+
+## Console subdomain cutover
+
+Console is served on its own subdomain so its same-origin `/api/*` calls reach
+the Console Gateway instead of the Portal Gateway (the shared-edge `/api/`
+route belongs to Portal). Steps:
+
+1. Add DNS `console` CNAME/`A` to `8.146.200.82` and issue a certificate for
+   `console.henukit.cn` (see the ACME flow above).
+2. Deploy the updated host vhost (`henukit-host.conf.example`) and compose edge
+   (`henukit.conf.example`) so `console.henukit.cn` serves the Console UI at `/`
+   and forwards `/api/` to `console-gateway`.
+3. Build the Console image with `VITE_BASE_PATH=/` (the compose default) so
+   assets are served at `/` on the subdomain. Note: this image no longer
+   serves `henukit.cn/console`; once the subdomain is live, update the shared
+   edge to redirect `/console/` to `https://console.henukit.cn/` with HTTP 302
+   (temporary, so browsers do not cache it and the rollback window stays
+   clean), and remove the `/console/` + `/console-api/` locations after the
+   observation window.
+4. Set production env: `CONSOLE_ORIGIN=https://console.henukit.cn` and
+   `CONSOLE_REDIRECT_URI=https://console.henukit.cn/api/v1/auth/callback`.
+5. Register the new callback in `oauth_clients.redirect_uris` (above) and run
+   the Console OAuth Smoke against the subdomain.
+6. After the observation window, drop the `henukit.cn/console-api/*` callback
+   and the shared-edge `/console/` + `/console-api/` locations in a separate,
+   audited change.
 
 ## Rollback
 

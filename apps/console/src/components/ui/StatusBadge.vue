@@ -23,9 +23,9 @@ const variants = cva("inline-flex min-h-7 items-center rounded-full px-2.5 text-
 <template><span :class="variants({ status: props.status })"><slot /></span></template>
 
 <style scoped>
-.status-success { background: var(--hk-ink-green-soft); color: var(--hk-success); }
+.status-success { background: var(--hk-accent-soft); color: var(--hk-success); }
 .status-info { background: color-mix(in srgb, var(--hk-info) 10%, var(--hk-paper-raised)); color: var(--hk-info); }
-.status-warning { background: var(--hk-wheat-gold-soft); color: var(--hk-warning); }
+.status-warning { background: color-mix(in srgb, var(--hk-warning) 12%, var(--hk-paper-raised)); color: var(--hk-warning); }
 .status-danger { background: color-mix(in srgb, var(--hk-danger) 10%, var(--hk-paper-raised)); color: var(--hk-danger); }
-.status-neutral { background: var(--hk-paper-line); color: var(--hk-ink); }
+.status-neutral { background: var(--hk-line); color: var(--hk-ink); }
 </style>

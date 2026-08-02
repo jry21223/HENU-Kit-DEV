@@ -158,6 +158,9 @@ func TestEasyPayRefundLeavesTheOrderPaidUntilItSettles(t *testing.T) {
 	if refund.Settled {
 		t.Fatal("a processing refund must not report as settled")
 	}
+	if refund.Status != MembershipRefundProcessing {
+		t.Fatalf("status = %q, want processing", refund.Status)
+	}
 	// An unsettled refund is not a refund fact and must not revoke anything.
 	if refund.Notification.Status != MembershipOrderPaid {
 		t.Fatalf("status = %q, want %q", refund.Notification.Status, MembershipOrderPaid)
@@ -175,6 +178,9 @@ func TestEasyPayRefundQuerySettlesAPreviouslyProcessingRefund(t *testing.T) {
 	if !refund.Settled || refund.Notification.Status != MembershipOrderRefunded {
 		t.Fatalf("query should settle the refund: %+v", refund)
 	}
+	if refund.Status != MembershipRefundSucceeded {
+		t.Fatalf("status = %q, want succeeded", refund.Status)
+	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if len(state.queries) != 1 || len(state.refunds) != 0 {
@@ -182,13 +188,35 @@ func TestEasyPayRefundQuerySettlesAPreviouslyProcessingRefund(t *testing.T) {
 	}
 }
 
-func TestEasyPayRefundRejectsAbnormalStatus(t *testing.T) {
+// abnormal is not an error for the provider: it is persisted and returned
+// honestly so the console query surface can show it, but it never counts as
+// settled and never implies a completed refund.
+func TestEasyPayRefundReportsAbnormalStatusWithoutSettling(t *testing.T) {
 	_, server := newRefundGateway(t, "abnormal")
 	provider := newRefundProvider(t, server.URL)
 
-	if _, err := provider.Refund(context.Background(), refundTestMerchant); err == nil ||
-		!strings.Contains(err.Error(), "abnormal") {
-		t.Fatalf("abnormal refund must surface an error, got %v", err)
+	refund, err := provider.Refund(context.Background(), refundTestMerchant)
+	if err != nil {
+		t.Fatalf("refund must surface the abnormal state, got error: %v", err)
+	}
+	if refund.Status != MembershipRefundAbnormal || refund.Settled {
+		t.Fatalf("abnormal refund = status %q settled %t, want abnormal and unsettled", refund.Status, refund.Settled)
+	}
+}
+
+func TestEasyPayRefundClosedStatusLeavesTheOrderPaid(t *testing.T) {
+	_, server := newRefundGateway(t, "closed")
+	provider := newRefundProvider(t, server.URL)
+
+	refund, err := provider.Refund(context.Background(), refundTestMerchant)
+	if err != nil {
+		t.Fatalf("refund: %v", err)
+	}
+	if refund.Status != MembershipRefundClosed || refund.Settled {
+		t.Fatalf("closed refund = status %q settled %t, want closed and unsettled", refund.Status, refund.Settled)
+	}
+	if refund.Notification.Status != MembershipOrderPaid {
+		t.Fatalf("a closed refund must leave the order paid, got %q", refund.Notification.Status)
 	}
 }
 

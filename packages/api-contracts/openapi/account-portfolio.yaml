@@ -589,8 +589,12 @@ paths:
       responses:
         '202':
           description: >-
-            Durable refund recorded and submitted, or the original idempotent
-            refund result. A refund may still be processing at the gateway.
+            Durable refund recorded and returned, or the original idempotent
+            refund result. Every gateway state — processing, succeeded,
+            closed, or abnormal — is recorded and returned the same way the
+            reconcile surface does, and abnormal never implies a completed
+            refund or an entitlement revocation. A refund may still be
+            processing at the gateway.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MembershipOrderRefundEnvelope' }
@@ -605,9 +609,14 @@ paths:
       operationId: getConsoleMembershipOrderRefund
       summary: Return one durable refund fact and its last reconciled gateway status
       description: >-
-        Read-only. Returns the stored refund fact reconciled against the
-        authoritative gateway refund query. A dependency failure returns an
-        explicit unavailable response and never a synthesized success.
+        Read-only for the caller. Resolves the refund by its public Account
+        Portfolio refund id, verifies it belongs to the addressed order, and
+        reconciles it against the authoritative gateway refund query, so a
+        submitted refund that is still processing can settle later. Every
+        reconciled state is persisted and returned — processing, succeeded,
+        closed, or abnormal — and abnormal never implies a completed refund.
+        A dependency failure returns an explicit unavailable response and never
+        a synthesized success.
       parameters:
         - $ref: '#/components/parameters/ServiceID'
         - $ref: '#/components/parameters/KeyID'
@@ -714,7 +723,11 @@ components:
       name: refund_id
       in: path
       required: true
-      description: Account Portfolio refund identifier. Never the gateway or WeChat refund number.
+      description: >-
+        Account Portfolio public refund identifier: a random UUID persisted with
+        the refund. The gateway's out_refund_no correlation never leaves the
+        service, so a refund id can never be used to rebuild the private HNK
+        merchant order number.
       schema: { type: string, format: uuid }
   responses:
     InvalidRequest:
@@ -1087,9 +1100,16 @@ components:
         expected_version: { type: integer, minimum: 1 }
     MembershipOrderRefund:
       type: object
-      required: [id, order_id, amount_cents, status, version, created_at, updated_at]
+      required: [id, order_id, amount_cents, status, created_at, updated_at]
       properties:
-        id: { type: string, format: uuid }
+        id:
+          type: string
+          format: uuid
+          description: >-
+            Account Portfolio public refund identifier: a random UUID persisted
+            with the refund. The gateway's out_refund_no correlation is derived
+            from the private merchant order number and never leaves the
+            service, so a refund id can never be used to rebuild it.
         order_id: { type: string, format: uuid }
         amount_cents: { type: integer, enum: [990] }
         status:
@@ -1104,7 +1124,6 @@ components:
           description: >-
             True only when this refund revoked the durable lifetime entitlement
             that the refunded payment fact still owned.
-        version: { type: integer, minimum: 1 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     MembershipOrderCommandEnvelope:

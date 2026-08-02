@@ -35,10 +35,10 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
   >
     <template v-if="summary.status === 'loading'">
       <div class="flex items-center gap-3">
-        <div class="skeleton size-11 rounded-xl" />
+        <div class="skeleton size-11 rounded-[var(--hk-radius-card)]" />
         <div class="flex-1 space-y-2"><div class="skeleton h-3 w-20" /><div class="skeleton h-5 w-32" /></div>
       </div>
-      <div class="mt-5 grid grid-cols-2 gap-3"><div class="skeleton h-20 rounded-xl" /><div class="skeleton h-20 rounded-xl" /></div>
+      <div class="mt-5 grid grid-cols-2 gap-3"><div class="skeleton h-20 rounded-[var(--hk-radius-card)]" /><div class="skeleton h-20 rounded-[var(--hk-radius-card)]" /></div>
       <span class="sr-only">{{ summary.name }} 正在加载</span>
     </template>
 
@@ -67,21 +67,21 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
         <span>{{ summary.statusMessage }}</span>
       </div>
 
-      <a v-if="summary.id === 'quizcraft' && quizcraftWorkshopURL" :href="quizcraftWorkshopURL" target="_blank" rel="noreferrer" class="mt-4 inline-flex min-h-11 items-center rounded-lg border border-[var(--hk-paper-line)] px-3 text-sm font-semibold text-[var(--hk-ink-green-deep)]">打开 QuizCraft 题库工坊</a>
+      <a v-if="summary.id === 'quizcraft' && quizcraftWorkshopURL" :href="quizcraftWorkshopURL" target="_blank" rel="noreferrer" class="mt-4 inline-flex min-h-11 items-center rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] px-3 text-sm font-semibold text-[var(--hk-ink)]">打开 QuizCraft 题库工坊</a>
 
-      <div v-if="summary.trend" class="mt-4 rounded-xl border border-[var(--hk-paper-line)] bg-[var(--hk-paper)]/45 p-3">
+      <div v-if="summary.trend" class="mt-4 rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-[var(--hk-paper)]/45 p-3">
         <div class="flex items-center justify-between gap-3">
           <span class="text-sm font-semibold">关键页面探针 · 5 日</span>
           <span class="text-sm text-[var(--hk-ink-muted)]">成功次数</span>
         </div>
         <div class="mt-3 flex h-16 items-end gap-2" role="img" aria-label="Portal 最近五日关键页面探针成功次数柱状图">
           <div v-for="point in summary.trend" :key="point.label" class="flex flex-1 flex-col items-center gap-1">
-            <div class="w-full rounded-sm bg-[var(--hk-ink-green)]" :style="{ height: `${Math.max(12, point.value * 1.55)}px` }" />
+            <div class="w-full rounded-sm bg-[var(--hk-accent)]" :style="{ height: `${Math.max(12, point.value * 1.55)}px` }" />
             <span class="text-sm text-[var(--hk-ink-muted)]">{{ point.label.slice(1) }}</span>
           </div>
         </div>
         <CollapsibleRoot class="mt-2">
-          <CollapsibleTrigger class="flex min-h-11 w-full items-center justify-between rounded-lg px-2 text-sm font-semibold text-[var(--hk-ink-green-deep)] hover:bg-[var(--hk-ink-green-soft)]">
+          <CollapsibleTrigger class="flex min-h-11 w-full items-center justify-between rounded-[var(--hk-radius-control)] px-2 text-sm font-semibold text-[var(--hk-ink)] hover:bg-[var(--hk-accent-soft)]">
             查看表格数据 <ChevronDown :size="15" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent class="pt-2">
@@ -93,7 +93,7 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
         </CollapsibleRoot>
       </div>
 
-      <footer class="mt-4 flex min-h-8 items-end justify-between gap-3 border-t border-[var(--hk-paper-line)] pt-3 text-sm text-[var(--hk-ink-muted)]">
+      <footer class="mt-4 flex min-h-8 items-end justify-between gap-3 border-t border-[var(--hk-line)] pt-3 text-sm text-[var(--hk-ink-muted)]">
         <span v-if="summary.status !== 'empty'">{{ summary.statusMessage }}</span>
         <span v-else>正常空状态</span>
         <span class="flex flex-col items-end gap-1 text-right">
@@ -109,7 +109,7 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
 <style scoped>
 .module-card {
   min-width: 0;
-  border: 1px solid var(--hk-paper-line);
+  border: 1px solid var(--hk-line);
   border-radius: var(--hk-radius-feature);
   background: white;
   padding: 1.15rem;
@@ -127,9 +127,9 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
   height: 2.75rem;
   flex: none;
   place-items: center;
-  border-radius: 0.8rem;
-  background: var(--hk-ink-green-soft);
-  color: var(--hk-ink-green-deep);
+  border-radius: 0.25rem;
+  background: var(--hk-ink);
+  color: var(--hk-paper);
 }
 
 .metric-tile {
@@ -158,7 +158,7 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
 }
 
 .state-panel--unavailable { background: color-mix(in srgb, var(--hk-danger) 10%, var(--hk-paper-raised)); color: var(--hk-danger); }
-.state-panel--denied { background: var(--hk-paper-line); color: var(--hk-ink); }
+.state-panel--denied { background: var(--hk-line); color: var(--hk-ink); }
 
 .skeleton {
   background: linear-gradient(90deg, #ecebe7 20%, #f7f6f2 50%, #ecebe7 80%);

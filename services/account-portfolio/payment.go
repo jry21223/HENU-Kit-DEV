@@ -80,6 +80,19 @@ const (
 	MembershipOrderRefunded       MembershipOrderStatus = "refunded"
 )
 
+// MembershipRefundStatus is the durable, provider-reconciled state of one
+// membership order refund. Only succeeded is a refund fact: processing and
+// closed never revoke an entitlement, and abnormal needs operator handling and
+// never implies a completed refund.
+type MembershipRefundStatus string
+
+const (
+	MembershipRefundProcessing MembershipRefundStatus = "processing"
+	MembershipRefundSucceeded  MembershipRefundStatus = "succeeded"
+	MembershipRefundClosed     MembershipRefundStatus = "closed"
+	MembershipRefundAbnormal   MembershipRefundStatus = "abnormal"
+)
+
 // PaymentProvider isolates the provider-specific signing, ordering, querying,
 // notification verification, and refund protocols from Account Portfolio's
 // durable membership-order state machine. Production deliberately supplies no
@@ -158,8 +171,12 @@ type PaymentRefund struct {
 	Notification VerifiedPaymentNotification
 	// RefundID is the provider's durable refund correlation. It is derived
 	// deterministically from the merchant order, so retrying a refund reuses it
-	// and the provider settles on one refund instead of creating another.
+	// and the provider settles on one refund instead of creating another. It is
+	// the gateway's out_refund_no and never crosses the service boundary.
 	RefundID string
+	// Status is the provider-reconciled refund state. Only succeeded may be
+	// treated as a settled refund fact.
+	Status MembershipRefundStatus
 	// Settled reports that the provider confirmed the refund reached a terminal
 	// successful state. A submitted but still-processing refund is not settled,
 	// and must never revoke an entitlement: the refund is only a fact once the
@@ -270,7 +287,10 @@ func (p *FakePaymentProvider) CreateOrder(_ context.Context, signed SignedPaymen
 		Currency:        signed.Request.Currency,
 		Plan:            signed.Request.Plan,
 		Status:          MembershipOrderPendingPayment,
-		CheckoutURL:     "weixin://wxpay/bizpayurl?pr=" + externalOrderID,
+		// A stable browser-safe WeChat payment URI, mirroring the real provider's
+		// ADR-0019 boundary: never a gateway page and never carrying the private
+		// merchant order number.
+		CheckoutURL: "weixin://wxpay/bizpayurl?pr=henukit-fake-test-code",
 	}
 	p.orders[externalOrderID] = order
 	p.merchantExternalOrders[signed.Request.MerchantOrderID] = externalOrderID
@@ -308,13 +328,31 @@ func (p *FakePaymentProvider) VerifyNotification(_ context.Context, raw []byte) 
 	return wire.Notification, nil
 }
 
+// fakeProviderOrder resolves the provider-side order for a refund or close
+// operation. The service addresses these by the private merchant order number
+// (the gateway's out_trade_no), exactly like EasyPay, while tests also drive
+// the fake directly by its external order id, so both keys resolve to the same
+// order.
+func (p *FakePaymentProvider) fakeProviderOrder(id string) (ProviderOrder, bool) {
+	order, ok := p.orders[id]
+	if ok {
+		return order, true
+	}
+	external, mapped := p.merchantExternalOrders[id]
+	if !mapped {
+		return ProviderOrder{}, false
+	}
+	order, ok = p.orders[external]
+	return order, ok
+}
+
 func (p *FakePaymentProvider) CloseOrder(_ context.Context, externalOrderID string) (ProviderOrder, error) {
 	if p == nil {
 		return ProviderOrder{}, errors.New("fake payment provider is unavailable")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	order, ok := p.orders[externalOrderID]
+	order, ok := p.fakeProviderOrder(externalOrderID)
 	if !ok {
 		return ProviderOrder{}, errors.New("fake payment order was not found")
 	}
@@ -335,7 +373,7 @@ func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) 
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	order, ok := p.orders[externalOrderID]
+	order, ok := p.fakeProviderOrder(externalOrderID)
 	if !ok || order.Status != MembershipOrderPaid {
 		return PaymentRefund{}, errors.New("fake payment order cannot be refunded")
 	}
@@ -355,6 +393,7 @@ func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) 
 			OccurredAt:      time.Now().UTC(),
 		},
 		RefundID: membershipRefundOrderID(order.MerchantOrderID),
+		Status:   MembershipRefundSucceeded,
 		Settled:  true,
 	}, nil
 }
@@ -365,14 +404,18 @@ func (p *FakePaymentProvider) QueryRefund(_ context.Context, externalOrderID str
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	order, ok := p.orders[externalOrderID]
+	order, ok := p.fakeProviderOrder(externalOrderID)
 	if !ok {
 		return PaymentRefund{}, errors.New("fake payment order was not found")
 	}
 	settled := order.Status == MembershipOrderRefunded
-	status := MembershipOrderPaid
+	status := MembershipRefundProcessing
 	if settled {
-		status = MembershipOrderRefunded
+		status = MembershipRefundSucceeded
+	}
+	orderStatus := MembershipOrderPaid
+	if settled {
+		orderStatus = MembershipOrderRefunded
 	}
 	return PaymentRefund{
 		Notification: VerifiedPaymentNotification{
@@ -382,11 +425,12 @@ func (p *FakePaymentProvider) QueryRefund(_ context.Context, externalOrderID str
 			AmountCents:     order.AmountCents,
 			Currency:        order.Currency,
 			Plan:            order.Plan,
-			Status:          status,
+			Status:          orderStatus,
 			Sequence:        easyPayRefundSequence,
 			OccurredAt:      time.Now().UTC(),
 		},
 		RefundID: membershipRefundOrderID(order.MerchantOrderID),
+		Status:   status,
 		Settled:  settled,
 	}, nil
 }

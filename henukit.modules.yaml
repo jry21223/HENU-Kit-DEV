@@ -48,9 +48,11 @@ modules:
     target_path: apps/console
     owner: platform
     deploy_unit: henukit-console
+    target_domain: console.henukit.cn
     status: active
     notes:
       - Primary ops/admin UI; dual Study admin entry is retired from product path
+      - Served on its own subdomain so same-origin /api/* reaches Console Gateway
 
   - id: study_api
     kind: go_service
@@ -115,7 +117,7 @@ modules:
     target_path: services/platform-core
     owner: platform
     deploy_unit: platform-core-api
-    target_domain: account.superhuazai.me
+    target_domain: account.henukit.cn
     status: identity_foundation
 
   - id: platform_worker
