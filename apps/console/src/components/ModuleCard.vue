@@ -35,10 +35,10 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
   >
     <template v-if="summary.status === 'loading'">
       <div class="flex items-center gap-3">
-        <div class="skeleton size-11 rounded-[4px]" />
+        <div class="skeleton size-11 rounded-[var(--hk-radius-card)]" />
         <div class="flex-1 space-y-2"><div class="skeleton h-3 w-20" /><div class="skeleton h-5 w-32" /></div>
       </div>
-      <div class="mt-5 grid grid-cols-2 gap-3"><div class="skeleton h-20 rounded-[4px]" /><div class="skeleton h-20 rounded-[4px]" /></div>
+      <div class="mt-5 grid grid-cols-2 gap-3"><div class="skeleton h-20 rounded-[var(--hk-radius-card)]" /><div class="skeleton h-20 rounded-[var(--hk-radius-card)]" /></div>
       <span class="sr-only">{{ summary.name }} 正在加载</span>
     </template>
 
@@ -67,9 +67,9 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
         <span>{{ summary.statusMessage }}</span>
       </div>
 
-      <a v-if="summary.id === 'quizcraft' && quizcraftWorkshopURL" :href="quizcraftWorkshopURL" target="_blank" rel="noreferrer" class="mt-4 inline-flex min-h-11 items-center rounded-[4px] border border-[var(--hk-line)] px-3 text-sm font-semibold text-[var(--hk-ink)]">打开 QuizCraft 题库工坊</a>
+      <a v-if="summary.id === 'quizcraft' && quizcraftWorkshopURL" :href="quizcraftWorkshopURL" target="_blank" rel="noreferrer" class="mt-4 inline-flex min-h-11 items-center rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] px-3 text-sm font-semibold text-[var(--hk-ink)]">打开 QuizCraft 题库工坊</a>
 
-      <div v-if="summary.trend" class="mt-4 rounded-[4px] border border-[var(--hk-line)] bg-[var(--hk-paper)]/45 p-3">
+      <div v-if="summary.trend" class="mt-4 rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-[var(--hk-paper)]/45 p-3">
         <div class="flex items-center justify-between gap-3">
           <span class="text-sm font-semibold">关键页面探针 · 5 日</span>
           <span class="text-sm text-[var(--hk-ink-muted)]">成功次数</span>
@@ -81,7 +81,7 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
           </div>
         </div>
         <CollapsibleRoot class="mt-2">
-          <CollapsibleTrigger class="flex min-h-11 w-full items-center justify-between rounded-[4px] px-2 text-sm font-semibold text-[var(--hk-ink)] hover:bg-[var(--hk-accent-soft)]">
+          <CollapsibleTrigger class="flex min-h-11 w-full items-center justify-between rounded-[var(--hk-radius-control)] px-2 text-sm font-semibold text-[var(--hk-ink)] hover:bg-[var(--hk-accent-soft)]">
             查看表格数据 <ChevronDown :size="15" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent class="pt-2">

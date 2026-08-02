@@ -6,7 +6,7 @@ import type { HTMLAttributes } from "vue";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-[4px] text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hk-focus-ring)] disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--hk-radius-control)] text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hk-focus-ring)] disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {

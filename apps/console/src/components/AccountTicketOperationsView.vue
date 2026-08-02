@@ -218,7 +218,7 @@ watch(
             v-for="ticket in queue"
             :key="ticket.id"
             type="button"
-            class="rounded-[4px] border border-[var(--hk-line)] p-3 text-left transition hover:bg-[var(--hk-paper)]"
+            class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] p-3 text-left transition hover:bg-[var(--hk-paper)]"
             :class="selectedID === ticket.id ? 'ring-2 ring-[var(--hk-accent)]' : ''"
             :aria-current="selectedID === ticket.id ? 'page' : undefined"
             @click="openTicket(ticket.id)"
@@ -250,7 +250,7 @@ watch(
           </div>
 
           <form v-if="canReply" class="mt-5" @submit.prevent="sendReply">
-            <label class="grid gap-2 text-sm font-semibold">客服回复<textarea v-model="replyBody" required maxlength="5000" rows="4" class="rounded-[4px] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" placeholder="回复会以当前 Console Session 的操作员身份写入工单。" @input="clearPendingForEditedReply"></textarea></label>
+            <label class="grid gap-2 text-sm font-semibold">客服回复<textarea v-model="replyBody" required maxlength="5000" rows="4" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" placeholder="回复会以当前 Console Session 的操作员身份写入工单。" @input="clearPendingForEditedReply"></textarea></label>
             <UiButton class="mt-3" type="submit" :disabled="busy || !replyBody.trim()">发送回复</UiButton>
           </form>
 

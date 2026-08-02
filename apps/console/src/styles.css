@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "../../../packages/design-tokens/tokens.css";
 
+:root {
+  /* Font families are loaded via <link> in index.html (Google Fonts). Define
+     the same variable contract as the Portal's next/font variable so
+     tokens.css --hk-font-display/--hk-font-mono resolve to real webfonts. */
+  --font-space-grotesk: "Space Grotesk";
+  --font-plex-mono: "IBM Plex Mono";
+}
+
 @theme inline {
   --font-display: var(--hk-font-display);
   --font-sans: var(--hk-font-sans);
@@ -146,7 +154,7 @@ textarea {
 }
 
 code {
-  border-radius: 0.25rem;
+  border-radius: var(--hk-radius-control);
   background: var(--hk-accent-soft);
   padding: 0.35rem 0.55rem;
   color: var(--hk-accent-deep);
@@ -166,13 +174,13 @@ code {
 .operation-row code { display: inline-block; margin: .25rem .25rem 0 0; }
 .operation-actions { display: flex; align-items: end; gap: .5rem; flex-wrap: wrap; }
 .operation-actions label { display: grid; gap: .2rem; font-size: .75rem; color: var(--hk-ink-muted); }
-.operation-panel button, .operation-notice button { min-height: 2.75rem; border-radius: .25rem; background: var(--hk-ink); padding: .5rem .8rem; color: var(--hk-paper); font-weight: 700; }
+.operation-panel button, .operation-notice button { min-height: 2.75rem; border-radius: var(--hk-radius-control); background: var(--hk-ink); padding: .5rem .8rem; color: var(--hk-paper); font-weight: 700; }
 .operation-panel button:hover, .operation-notice button:hover { background: var(--hk-accent); }
 .operation-panel button:disabled { opacity: .5; }
-.operation-panel select { min-height: 2.75rem; border: 1px solid var(--hk-line); border-radius: .25rem; background: white; padding: .4rem; }
-.operation-panel input { min-height: 2.75rem; min-width: 0; border: 1px solid var(--hk-line); border-radius: .25rem; background: white; padding: .4rem; }
+.operation-panel select { min-height: 2.75rem; border: 1px solid var(--hk-line); border-radius: var(--hk-radius-control); background: white; padding: .4rem; }
+.operation-panel input { min-height: 2.75rem; min-width: 0; border: 1px solid var(--hk-line); border-radius: var(--hk-radius-control); background: white; padding: .4rem; }
 .account-access-editor { min-width: 0; flex: 1; }
-.grant-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); align-items: end; gap: .5rem; margin-top: .65rem; padding: .65rem; border-radius: .25rem; background: var(--hk-paper); }
+.grant-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); align-items: end; gap: .5rem; margin-top: .65rem; padding: .65rem; border-radius: var(--hk-radius-card); background: var(--hk-paper); }
 .grant-editor label { display: grid; gap: .2rem; color: var(--hk-ink-muted); font-size: .75rem; }
 .operation-panel .secondary-action { background: transparent; border: 1px solid var(--hk-line); color: var(--hk-ink); }
 .operation-panel .secondary-action:hover { border-color: var(--hk-ink); background: transparent; }

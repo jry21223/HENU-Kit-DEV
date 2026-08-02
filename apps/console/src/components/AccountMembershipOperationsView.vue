@@ -217,7 +217,7 @@ watch(
         <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">目标用户必须先通过其认证后的 Account Portfolio 读取完成初始化；Console 不会为任意 UUID 创建账户。</p>
         <label class="mt-5 grid gap-2 text-sm font-semibold">
           用户 ID
-          <input v-model="targetUserID" required inputmode="text" autocomplete="off" placeholder="已初始化的 UUID" :disabled="busy" class="rounded-[4px] border border-[var(--hk-line)] bg-white px-3 py-2 font-mono text-sm font-normal" @input="resetLookup">
+          <input v-model="targetUserID" required inputmode="text" autocomplete="off" placeholder="已初始化的 UUID" :disabled="busy" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-mono text-sm font-normal" @input="resetLookup">
         </label>
         <UiButton class="mt-4" type="submit" :disabled="busy || detailState === 'loading' || !targetUserID.trim()">查询会员权益</UiButton>
       </form>
@@ -241,7 +241,7 @@ watch(
           <form class="mt-5 border-t border-[var(--hk-line)] pt-5" @submit.prevent="submitMutation">
             <label class="grid gap-2 text-sm font-semibold">
               操作原因
-              <textarea v-model="reason" required maxlength="1000" rows="4" class="rounded-[4px] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" :placeholder="membership.plan === 'free' ? '说明为何发放终身权益。' : '说明为何撤销终身权益。'"></textarea>
+              <textarea v-model="reason" required maxlength="1000" rows="4" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" :placeholder="membership.plan === 'free' ? '说明为何发放终身权益。' : '说明为何撤销终身权益。'"></textarea>
             </label>
             <UiButton class="mt-3" type="submit" :disabled="busy || !reason.trim()">
               {{ membership.plan === 'free' ? '发放终身会员' : '撤销终身会员' }}

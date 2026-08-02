@@ -194,7 +194,7 @@ watch(
         </label>
         <label class="mt-4 grid gap-2 text-sm font-semibold">
           操作原因
-          <textarea v-model="reason" required maxlength="1000" rows="4" :disabled="busy" placeholder="记录可复核的调整原因。" class="rounded-[4px] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal"></textarea>
+          <textarea v-model="reason" required maxlength="1000" rows="4" :disabled="busy" placeholder="记录可复核的调整原因。" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal"></textarea>
         </label>
         <UiButton class="mt-4" type="submit" :disabled="busy">{{ busy ? "正在提交…" : "提交积分调整" }}</UiButton>
       </form>
