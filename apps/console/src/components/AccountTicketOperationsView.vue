@@ -218,8 +218,8 @@ watch(
             v-for="ticket in queue"
             :key="ticket.id"
             type="button"
-            class="rounded-xl border border-[var(--hk-paper-line)] p-3 text-left transition hover:bg-[var(--hk-paper)]"
-            :class="selectedID === ticket.id ? 'ring-2 ring-[var(--hk-wheat-gold)]' : ''"
+            class="rounded-[4px] border border-[var(--hk-line)] p-3 text-left transition hover:bg-[var(--hk-paper)]"
+            :class="selectedID === ticket.id ? 'ring-2 ring-[var(--hk-accent)]' : ''"
             :aria-current="selectedID === ticket.id ? 'page' : undefined"
             @click="openTicket(ticket.id)"
           >
@@ -242,19 +242,19 @@ watch(
           </div>
           <p class="mt-2 text-sm text-[var(--hk-ink-muted)]">版本 {{ detail.ticket.version }} · 更新于 {{ timestamp(detail.ticket.updated_at) }}</p>
 
-          <div class="mt-5 grid gap-3 border-y border-[var(--hk-paper-line)] py-5">
-            <article v-for="message in detail.messages" :key="message.id" class="border-l-2 border-[var(--hk-wheat-gold)] pl-3">
+          <div class="mt-5 grid gap-3 border-y border-[var(--hk-line)] py-5">
+            <article v-for="message in detail.messages" :key="message.id" class="border-l-2 border-[var(--hk-accent)] pl-3">
               <p class="text-xs text-[var(--hk-ink-muted)]">{{ message.author_kind === 'operator' ? '客服' : '用户' }} · {{ timestamp(message.created_at) }}</p>
               <p class="mt-1 whitespace-pre-wrap leading-7">{{ message.body }}</p>
             </article>
           </div>
 
           <form v-if="canReply" class="mt-5" @submit.prevent="sendReply">
-            <label class="grid gap-2 text-sm font-semibold">客服回复<textarea v-model="replyBody" required maxlength="5000" rows="4" class="rounded-lg border border-[var(--hk-paper-line)] bg-white px-3 py-2 font-normal" placeholder="回复会以当前 Console Session 的操作员身份写入工单。" @input="clearPendingForEditedReply"></textarea></label>
+            <label class="grid gap-2 text-sm font-semibold">客服回复<textarea v-model="replyBody" required maxlength="5000" rows="4" class="rounded-[4px] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" placeholder="回复会以当前 Console Session 的操作员身份写入工单。" @input="clearPendingForEditedReply"></textarea></label>
             <UiButton class="mt-3" type="submit" :disabled="busy || !replyBody.trim()">发送回复</UiButton>
           </form>
 
-          <div v-if="canTransition && detail.ticket.status !== 'resolved'" class="mt-5 flex flex-wrap gap-3 border-t border-[var(--hk-paper-line)] pt-5">
+          <div v-if="canTransition && detail.ticket.status !== 'resolved'" class="mt-5 flex flex-wrap gap-3 border-t border-[var(--hk-line)] pt-5">
             <UiButton v-if="detail.ticket.status === 'open'" :disabled="busy" @click="transition('in_progress')">开始处理</UiButton>
             <UiButton :disabled="busy" variant="ghost" class="secondary-action" @click="transition('resolved')">标记已解决</UiButton>
           </div>

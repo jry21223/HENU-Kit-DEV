@@ -194,7 +194,7 @@ watch(
         </label>
         <label class="mt-4 grid gap-2 text-sm font-semibold">
           操作原因
-          <textarea v-model="reason" required maxlength="1000" rows="4" :disabled="busy" placeholder="记录可复核的调整原因。" class="rounded-lg border border-[var(--hk-paper-line)] bg-white px-3 py-2 font-normal"></textarea>
+          <textarea v-model="reason" required maxlength="1000" rows="4" :disabled="busy" placeholder="记录可复核的调整原因。" class="rounded-[4px] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal"></textarea>
         </label>
         <UiButton class="mt-4" type="submit" :disabled="busy">{{ busy ? "正在提交…" : "提交积分调整" }}</UiButton>
       </form>
@@ -211,7 +211,7 @@ watch(
             </div>
             <span class="rounded-full bg-[var(--hk-paper)] px-3 py-1 text-sm">{{ adjustment.entry.amount > 0 ? "+" : "" }}{{ formatPoints(adjustment.entry.amount) }}</span>
           </div>
-          <dl class="mt-5 grid gap-3 border-t border-[var(--hk-paper-line)] pt-5 text-sm">
+          <dl class="mt-5 grid gap-3 border-t border-[var(--hk-line)] pt-5 text-sm">
             <div class="grid gap-1"><dt class="text-[var(--hk-ink-muted)]">记账原因</dt><dd>{{ adjustment.entry.reason }}</dd></div>
             <div class="grid gap-1"><dt class="text-[var(--hk-ink-muted)]">记账时间（中国标准时间）</dt><dd>{{ formatTime(adjustment.entry.created_at) }}</dd></div>
           </dl>

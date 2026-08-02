@@ -1,8 +1,9 @@
 # HENU Kit Design System
 
-> 状态：Baseline v1.1  
-> 适用范围：主站、资料库、QuizCraft、校园生活模块及相关公开页面  
+> 状态：Baseline v2.0
+> 适用范围：主站（Portal）、管理后台（Console）、资料库、QuizCraft、校园生活模块及相关公开页面
 > 本文描述 HENU Kit 自有视觉系统，不代表河南大学官方视觉识别规范。
+> 视觉基准以线上主站 `henukit.cn` 为准；管理后台（Console）必须与主站共享同一套颜色、字体与形状体系，不发展独立主题。
 
 新增页面和功能必须遵守本基线。确需偏离时，应在 Issue 或 PR 中说明原因、影响范围、替代方案和清理期限。
 
@@ -53,49 +54,58 @@ HENU Kit 是面向河南大学学生的统一校园工具系统，由学生自�
 
 ## 3. 色彩
 
-### Kit 墨绿
+视觉基准是线上主站 `henukit.cn` 的工程图纸体系：纸白底、墨色线条与文字、橙色强调。设计 token 位于 `packages/design-tokens`，全部前端（含 Console）必须消费同一套 token。
+
+### 强调橙（主品牌色）
 
 | Token | 色值 | 用途 |
 |---|---:|---|
-| `--hk-ink-green` | `#0C6B45` | 主按钮、品牌标志、重点标题、选中状态 |
-| `--hk-ink-green-deep` | `#05603A` | Hover、按下、深色强调区 |
-| `--hk-ink-green-soft` | `#E4EFE9` | 浅标签、成功提示、选中背景 |
+| `--hk-accent` | `#FF4D00` | 主按钮、品牌标志、重点标题、选中状态、导航编号标记 |
+| `--hk-accent-deep` | `#D84300` | Hover、按下、深色强调区 |
+| `--hk-accent-soft` | `#FFE9DE` | 浅标签、提示背景、选中背景 |
 
-“Kit 墨绿”是 HENU Kit 内部品牌命名，不是“河大绿”或河南大学官方标准色。
+“强调橙”是 HENU Kit 内部品牌命名，不是“河大橙”或河南大学官方标准色。
 
 ### 基础色
 
 | Token | 色值 | 用途 |
 |---|---:|---|
-| `--hk-paper` | `#F5F1E7` | 页面主背景，称为纸白 |
+| `--hk-paper` | `#F2F0EA` | 页面主背景，纸白 |
 | `--hk-paper-raised` | `#FFFFFF` | 卡片、弹层、输入区域 |
-| `--hk-paper-line` | `#E9E6DB` | 分割线、边框、禁用背景 |
-| `--hk-ink` | `#343D36` | 正文与主要文字 |
-| `--hk-ink-muted` | `#6F766F` | 次要说明和元信息 |
+| `--hk-line` | `rgba(22,21,19,.14)` | 分割线、边框、禁用背景 |
+| `--hk-ink` | `#161513` | 正文与主要文字（墨色） |
+| `--hk-ink-muted` | `#6B6A66` | 次要说明和元信息 |
 
-### Kit 麦金
+### 功能色
 
 | Token | 色值 | 用途 |
 |---|---:|---|
-| `--hk-wheat-gold` | `#F0BE44` | 插画、徽标、少量重点提示 |
-| `--hk-wheat-gold-soft` | `#F8E8B4` | 提示背景和轻装饰 |
-
-麦金不作为大段正文颜色，不与白字组合成主要按钮。
+| `--hk-success` | `#3E7C4F` | 成功状态 |
+| `--hk-warning` | `#C79A2A` | 警告状态 |
+| `--hk-danger` | `#C2401F` | 危险/错误状态 |
+| `--hk-info` | `#175CD3` | 信息状态 |
 
 ### 使用比例
 
 - 纸白与白色约 70%。
-- 墨绿与文字色约 20%。
-- 麦金和其他强调色不超过 10%。
+- 墨色与文字约 20%。
+- 强调橙和其他强调色不超过 10%。
 - 每页只使用一个主要强调色。
-- 美食、学习和工具模块不得发展彼此无关的主题色系统。
+- 美食、学习、工具与 Console 模块不得发展彼此无关的主题色系统；所有颜色必须来自同一 token 集。
 
 ## 4. 排版
 
-推荐字体：
+推荐字体（与主站一致）：
 
 ```css
-font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+/* 展示标题：Space Grotesk */
+font-family: "Space Grotesk", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+/* 正文：苹方等中文字体优先 */
+font-family: "PingFang SC", "Microsoft YaHei", "Space Grotesk", sans-serif;
+
+/* 编号、标签、代码：IBM Plex Mono */
+font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 ```
 
 | 层级 | 桌面端 | 移动端 | 用途 |
@@ -107,16 +117,16 @@ font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
 | Body | 16–18px | 16px | 正文 |
 | Meta | 13–14px | 13–14px | 标签和辅助信息 |
 
-操作页降低标题张力，优先扫描效率。正文行宽建议不超过 72 个中文字符。
+操作页降低标题张力，优先扫描效率。正文行宽建议不超过 72 个中文字符。等宽编号标签（如 `01 / 02 / 03`、`A-01`）是主站的工程图纸风格标记，Console 与主站页面同样使用。
 
 ## 5. 间距与形状
 
 - 基础单位：4px。
 - 常用间距：8 / 12 / 16 / 24 / 32 / 48 / 64px。
-- 卡片圆角：12px。
-- 大型展示卡片：20px。
+- 工程图纸风格：以直角与细线为主，卡片圆角 4px（`--hk-radius-card`）。
+- 大面积展示区块同样使用 4px 圆角，不引入大圆角卡片。
 - 胶囊只用于短标签和少量动作。
-- 阴影克制，优先边框、留白和背景层级。
+- 阴影克制，优先边框、留白和背景层级；主站卡片常以 1px 墨色/纸色边框定义层级。
 
 ## 6. 全局产品外壳
 
@@ -149,8 +159,9 @@ font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
 
 ## 8. 按钮
 
-- Primary：Kit 墨绿背景、白字。
+- Primary：墨色（`--hk-ink`）背景、纸白文字；Hover 转为强调橙（与主站 `button.tsx` 一致）。
 - Secondary：纸白或透明背景、墨色文字、浅边框。
+- Accent：强调橙背景、纸白文字（用于少量主操作或品牌强调）。
 - Tertiary：纯文字。
 - Danger：只用于删除、退出和不可逆操作。
 
@@ -212,7 +223,8 @@ font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
 
 ## 14. 统一账户和隐私界面
 
-- 账户入口使用 `account.henukit.cn`。
+- 账户入口使用 `account.henukit.cn`（备案迁移期间 `account.superhuazai.me` 保持可用）。
+- 管理后台入口使用 `console.henukit.cn`，与主站共享品牌与设计体系。
 - 学生邮箱验证码只证明邮箱控制权，不描述为学校认证。
 - 发件域使用 `notify.henukit.cn`，发件人不得暗示官方身份。
 - 验证码 5–10 分钟过期、单次使用，至少 60 秒重发等待。
@@ -275,14 +287,15 @@ font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
 
 ## 19. 已确定事项
 
-- 主色称为 Kit 墨绿，不称河大绿。
+- 主色称为强调橙，不称河大橙；视觉基准以线上主站为准。
 - HENU Kit 是学生自主运营的非官方项目。
 - HENU Kit 是统一校园工具系统，不是简单导航集合。
 - 资料库只展示资料。
 - QuizCraft 是唯一刷题产品。
 - 子产品可以独立部署，但统一设计、账户和跳转。
+- 管理后台（Console）与主站共享同一套设计 token，不发展独立主题。
 - 资料库保留轻量“打开资料册”。
-- 计划使用 `henukit.cn`、`study.henukit.cn`、`quiz.henukit.cn` 和 `account.henukit.cn`。
+- 计划使用 `henukit.cn`、`console.henukit.cn`、`study.henukit.cn`、`quiz.henukit.cn` 和 `account.henukit.cn`。
 - 统一账户考虑河南大学学生邮箱验证码登录。
 
 ## 20. 待决策事项

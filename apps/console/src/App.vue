@@ -114,7 +114,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
   <div class="min-h-screen bg-[var(--hk-paper)] text-[var(--hk-ink)]" data-console-shell>
     <aside class="console-sidebar" aria-label="Console 主导航">
       <div class="flex items-center gap-3 px-4 py-5">
-        <div class="grid size-10 place-items-center rounded-xl bg-[var(--hk-wheat-gold)] font-black text-[var(--hk-ink-green-deep)]">H</div>
+        <div class="grid size-10 place-items-center rounded-[4px] bg-[var(--hk-accent)] font-black text-[var(--hk-paper)]">H</div>
         <div>
           <strong class="block text-base tracking-tight text-white">HENUKit Console</strong>
           <span class="text-sm text-white/75">学生自主运营</span>
@@ -122,20 +122,20 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
       </div>
 
       <nav class="mt-4 grid gap-1 px-3" aria-label="产品模块">
-        <a v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" :href="operationsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10">
+        <a v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" :href="operationsHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base font-semibold text-white hover:bg-white/10">
           <ShieldCheck :size="17" aria-hidden="true" />平台运营工作台
         </a>
-        <a v-if="consoleSession?.access_context.permissions.includes('notice.read')" :href="noticesHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Bell :size="17" aria-hidden="true" />通知审核与分发</a>
-        <a v-if="consoleSession?.access_context.permissions.includes('library.read')" :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><BookOpen :size="17" aria-hidden="true" />资料库运营</a>
-        <a v-if="consoleSession?.access_context.permissions.includes('food.read')" :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Utensils :size="17" aria-hidden="true" />Food 运营</a>
-        <a v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><ShieldCheck :size="17" aria-hidden="true" />会员权益运营</a>
-        <a v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><Activity :size="17" aria-hidden="true" />积分账本运营</a>
-        <a v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-white hover:bg-white/10"><MessageSquare :size="17" aria-hidden="true" />账户工单运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('notice.read')" :href="noticesHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base font-semibold text-white hover:bg-white/10"><Bell :size="17" aria-hidden="true" />通知审核与分发</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('library.read')" :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base font-semibold text-white hover:bg-white/10"><BookOpen :size="17" aria-hidden="true" />资料库运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('food.read')" :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base font-semibold text-white hover:bg-white/10"><Utensils :size="17" aria-hidden="true" />Food 运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base font-semibold text-white hover:bg-white/10"><ShieldCheck :size="17" aria-hidden="true" />会员权益运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base font-semibold text-white hover:bg-white/10"><Activity :size="17" aria-hidden="true" />积分账本运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base font-semibold text-white hover:bg-white/10"><MessageSquare :size="17" aria-hidden="true" />账户工单运营</a>
         <a
           v-for="module in moduleSummaries"
           :key="module.id"
           :href="`#module-${module.id}`"
-          class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-medium text-white/75 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hk-wheat-gold)]"
+          class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base font-medium text-white/75 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hk-accent)]"
         >
           <component :is="icons[module.id]" :size="17" aria-hidden="true" />
           {{ module.name }}
@@ -155,7 +155,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
           </DialogTrigger>
           <DialogPortal>
             <DialogOverlay class="fixed inset-0 z-40 bg-black/35 backdrop-blur-sm" />
-            <DialogContent class="fixed inset-y-0 left-0 z-50 w-[min(84vw,20rem)] bg-[var(--hk-ink-green-deep)] p-5 text-white shadow-2xl">
+            <DialogContent class="fixed inset-y-0 left-0 z-50 w-[min(84vw,20rem)] bg-[var(--hk-ink)] p-5 text-white shadow-2xl">
               <div class="flex items-start justify-between gap-4">
                 <div>
                   <DialogTitle class="font-semibold">产品模块</DialogTitle>
@@ -166,15 +166,15 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
                 </DialogClose>
               </div>
               <nav class="mt-6 grid gap-2" aria-label="移动端产品模块">
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" as-child><a :href="operationsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><ShieldCheck :size="18" />平台运营工作台</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('notice.read')" as-child><a :href="noticesHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Bell :size="18" />通知审核与分发</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('library.read')" as-child><a :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><BookOpen :size="18" />资料库运营</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('food.read')" as-child><a :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Utensils :size="18" />Food 运营</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" as-child><a :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><ShieldCheck :size="18" />会员权益运营</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" as-child><a :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><Activity :size="18" />积分账本运营</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" as-child><a :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white"><MessageSquare :size="18" />账户工单运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" as-child><a :href="operationsHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base text-white"><ShieldCheck :size="18" />平台运营工作台</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('notice.read')" as-child><a :href="noticesHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base text-white"><Bell :size="18" />通知审核与分发</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('library.read')" as-child><a :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base text-white"><BookOpen :size="18" />资料库运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('food.read')" as-child><a :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base text-white"><Utensils :size="18" />Food 运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" as-child><a :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base text-white"><ShieldCheck :size="18" />会员权益运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" as-child><a :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base text-white"><Activity :size="18" />积分账本运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" as-child><a :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base text-white"><MessageSquare :size="18" />账户工单运营</a></DialogClose>
                 <DialogClose v-for="module in moduleSummaries" :key="module.id" as-child>
-                  <a :href="`#module-${module.id}`" class="flex min-h-11 items-center gap-3 rounded-xl px-3 text-base text-white/85 hover:bg-white/10">
+                  <a :href="`#module-${module.id}`" class="flex min-h-11 items-center gap-3 rounded-[4px] px-3 text-base text-white/85 hover:bg-white/10">
                     <component :is="icons[module.id]" :size="18" aria-hidden="true" />{{ module.name }}
                   </a>
                 </DialogClose>
@@ -197,8 +197,8 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
             <button type="button" class="operator-avatar" aria-label="退出 Console" @click="signOut">CO</button>
           </template>
           <StatusBadge v-else-if="authState === 'denied'" status="denied">权限不足</StatusBadge>
-          <button v-else-if="authState === 'unavailable'" type="button" class="rounded-xl bg-[var(--hk-ink-green-deep)] px-4 py-2 text-sm font-semibold text-white" @click="refreshSession">重试连接</button>
-          <a v-else :href="consoleLoginHref()" class="rounded-xl bg-[var(--hk-ink-green-deep)] px-4 py-2 text-sm font-semibold text-white">登录 Console</a>
+          <button v-else-if="authState === 'unavailable'" type="button" class="rounded-[4px] bg-[var(--hk-ink)] px-4 py-2 text-sm font-semibold text-white" @click="refreshSession">重试连接</button>
+          <a v-else :href="consoleLoginHref()" class="rounded-[4px] bg-[var(--hk-ink)] px-4 py-2 text-sm font-semibold text-white">登录 Console</a>
         </div>
       </header>
 
@@ -235,7 +235,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
           />
         </section>
 
-        <section class="mt-6 rounded-[var(--hk-radius-feature)] border border-[var(--hk-paper-line)] bg-white p-5 shadow-[var(--hk-shadow-card)]" aria-labelledby="permission-heading">
+        <section class="mt-6 rounded-[var(--hk-radius-feature)] border border-[var(--hk-line)] bg-white p-5 shadow-[var(--hk-shadow-card)]" aria-labelledby="permission-heading">
           <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p class="eyebrow">Access context</p>

@@ -6,12 +6,12 @@ import type { HTMLAttributes } from "vue";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hk-focus-ring)] disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-[4px] text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hk-focus-ring)] disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-[var(--hk-ink-green)] px-4 text-white hover:bg-[var(--hk-ink-green-deep)]",
-        ghost: "px-3 text-[var(--hk-ink)] hover:bg-[var(--hk-ink-green-soft)]",
+        default: "bg-[var(--hk-ink)] px-4 text-white hover:bg-[var(--hk-accent)]",
+        ghost: "px-3 text-[var(--hk-ink)] hover:bg-[var(--hk-accent-soft)]",
         "ghost-inverse": "px-3 text-white hover:bg-white/10",
       },
       size: {

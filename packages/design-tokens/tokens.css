@@ -1,25 +1,28 @@
 :root {
-  /* Brand colors — HENU Kit internal naming, not Henan University official VI. */
-  --hk-ink-green: #0c6b45;
-  --hk-ink-green-deep: #05603a;
-  --hk-ink-green-soft: #e4efe9;
-  --hk-paper: #f5f1e7;
+  /* Brand colors — aligned with the live Portal (henukit.cn) engineering-drawing
+     palette: paper white, ink black, accent orange. Internal naming, not Henan
+     University official VI. */
+  --hk-accent: #ff4d00;
+  --hk-accent-deep: #d84300;
+  --hk-accent-soft: #ffe9de;
+  --hk-paper: #f2f0ea;
   --hk-paper-raised: #ffffff;
-  --hk-paper-line: #e9e6db;
-  --hk-ink: #343d36;
-  --hk-ink-muted: #6f766f;
-  --hk-wheat-gold: #f0be44;
-  --hk-wheat-gold-soft: #f8e8b4;
+  --hk-line: rgba(22, 21, 19, 0.14);
+  --hk-line-dark: rgba(242, 240, 234, 0.16);
+  --hk-ink: #161513;
+  --hk-ink-muted: #6b6a66;
 
   /* Semantic colors. */
-  --hk-success: #0c6b45;
-  --hk-warning: #9a6500;
-  --hk-danger: #b42318;
+  --hk-success: #3e7c4f;
+  --hk-warning: #c79a2a;
+  --hk-danger: #c2401f;
   --hk-info: #175cd3;
-  --hk-focus-ring: #2e90fa;
+  --hk-focus-ring: #ff4d00;
 
-  /* Typography. */
-  --hk-font-sans: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* Typography — Space Grotesk display + IBM Plex Mono labels + PingFang SC body. */
+  --hk-font-display: var(--font-space-grotesk, "Space Grotesk"), "PingFang SC", "Microsoft YaHei", sans-serif;
+  --hk-font-sans: "PingFang SC", "Microsoft YaHei", var(--font-space-grotesk, "Space Grotesk"), sans-serif;
+  --hk-font-mono: var(--font-plex-mono, "IBM Plex Mono"), "PingFang SC", "Microsoft YaHei", monospace;
   --hk-font-size-body: 1rem;
   --hk-font-size-meta: 0.875rem;
   --hk-line-height-body: 1.7;
@@ -34,12 +37,12 @@
   --hk-space-12: 3rem;
   --hk-space-16: 4rem;
 
-  /* Shape and elevation. */
-  --hk-radius-control: 0.75rem;
-  --hk-radius-card: 0.75rem;
-  --hk-radius-feature: 1.25rem;
+  /* Shape and elevation — engineering-drawing corners, restrained shadow. */
+  --hk-radius-control: 0.25rem;
+  --hk-radius-card: 0.25rem;
+  --hk-radius-feature: 0.25rem;
   --hk-border-width: 1px;
-  --hk-shadow-card: 0 8px 24px rgb(52 61 54 / 8%);
+  --hk-shadow-card: 0 1px 0 rgba(22, 21, 19, 0.06);
 
   /* Motion. */
   --hk-duration-fast: 120ms;
@@ -51,6 +54,15 @@
   --hk-content-max: 72rem;
   --hk-reading-max: 72ch;
   --hk-touch-target: 2.75rem;
+
+  /* Deprecated legacy names — kept as aliases while consumers migrate.
+     Remove after Console and any other consumer switch to --hk-accent. */
+  --hk-ink-green: var(--hk-accent);
+  --hk-ink-green-deep: var(--hk-accent-deep);
+  --hk-ink-green-soft: var(--hk-accent-soft);
+  --hk-paper-line: var(--hk-line);
+  --hk-wheat-gold: var(--hk-accent);
+  --hk-wheat-gold-soft: var(--hk-accent-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {
