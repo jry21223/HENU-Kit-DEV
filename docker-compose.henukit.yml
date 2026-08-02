@@ -91,8 +91,8 @@ services:
       PLATFORM_CORE_SMTP_ADDRESS: ${PLATFORM_CORE_SMTP_ADDRESS:-smtpdm.aliyun.com:465}
       PLATFORM_CORE_SMTP_USERNAME: ${PLATFORM_CORE_SMTP_USERNAME:-}
       PLATFORM_CORE_SMTP_PASSWORD: ${PLATFORM_CORE_SMTP_PASSWORD:-}
-      PLATFORM_CORE_SMTP_FROM: ${PLATFORM_CORE_SMTP_FROM:-noreply@notify.superhuazai.me}
-      PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN: ${PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN:-superhuazai.me}
+      PLATFORM_CORE_SMTP_FROM: ${PLATFORM_CORE_SMTP_FROM:-noreply@notify.henukit.cn}
+      PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN: ${PLATFORM_CORE_SMTP_MESSAGE_ID_DOMAIN:-henukit.cn}
     volumes:
       - henukit_smtp_ledger:/var/lib/henukit-smtp-provider
     # Do NOT publish 18081 to the host in production.
@@ -320,7 +320,7 @@ services:
       context: .
       dockerfile: apps/console/Dockerfile
       args:
-        VITE_BASE_PATH: ${VITE_CONSOLE_BASE_PATH:-/console/}
+        VITE_BASE_PATH: ${VITE_CONSOLE_BASE_PATH:-/}
         VITE_QUIZCRAFT_WORKSHOP_URL: ${VITE_QUIZCRAFT_WORKSHOP_URL:-}
     depends_on:
       - console-gateway

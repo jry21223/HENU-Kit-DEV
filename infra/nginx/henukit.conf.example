@@ -100,3 +100,34 @@ server {
   }
 
 }
+
+# Console subdomain: same-origin /api/* must reach the Console Gateway, not
+# the Portal Gateway. This vhost serves the Console UI at / and forwards /api/
+# to the console-gateway service directly.
+server {
+  listen 80;
+  server_name console.henukit.cn;
+  client_max_body_size 32m;
+
+  # Console UI
+  location / {
+    set $console_upstream console:80;
+    proxy_pass http://$console_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
+  }
+
+  # Console Gateway same-origin API
+  location /api/ {
+    set $console_gateway_upstream console-gateway:8082;
+    proxy_pass http://$console_gateway_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
+  }
+}

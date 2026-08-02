@@ -20,7 +20,7 @@ RUN node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.
  && pnpm install --frozen-lockfile --filter @henukit/console...
 
 FROM pnpm AS builder
-ARG VITE_BASE_PATH=/console/
+ARG VITE_BASE_PATH=/
 ARG VITE_QUIZCRAFT_WORKSHOP_URL=
 ENV VITE_BASE_PATH=$VITE_BASE_PATH
 ENV VITE_QUIZCRAFT_WORKSHOP_URL=$VITE_QUIZCRAFT_WORKSHOP_URL
@@ -31,5 +31,5 @@ RUN pnpm --filter @henukit/console run build
 
 FROM nginx:1.27-alpine AS runner
 COPY apps/console/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/apps/console/dist /usr/share/nginx/html/console
+COPY --from=builder /app/apps/console/dist /usr/share/nginx/html
 EXPOSE 80
