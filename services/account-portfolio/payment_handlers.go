@@ -157,7 +157,7 @@ func (h *service) paymentProviderNotification(w http.ResponseWriter, r *http.Req
 		writeCommandFailure(w, r, failure)
 		return
 	}
-	order, outcome, failure := h.applyVerifiedPaymentNotification(r.Context(), providerName, notification, digest)
+	order, outcome, _, failure := h.applyVerifiedPaymentNotification(r.Context(), providerName, notification, digest)
 	if failure != nil {
 		writeCommandFailure(w, r, failure)
 		return
@@ -225,7 +225,7 @@ func (h *service) reconcilePendingMembershipOrders(ctx context.Context, userID s
 			Currency:        providerOrder.Currency,
 			Plan:            providerOrder.Plan,
 			Status:          providerOrder.Status,
-			Sequence:        1,
+			Sequence:        easyPayPaidSequence,
 			OccurredAt:      h.now().UTC(),
 		}
 		if value.merchantOrderID != notification.MerchantOrderID ||
@@ -236,7 +236,7 @@ func (h *service) reconcilePendingMembershipOrders(ctx context.Context, userID s
 		// Query retries may observe different local clocks. Digest the stable
 		// Provider-derived event id so concurrent reconciliation treats the
 		// same authoritative state as a replay rather than payload reuse.
-		if _, _, failure := h.applyVerifiedPaymentNotification(ctx, providerName, notification, paymentDigest([]byte(notification.EventID))); failure != nil {
+		if _, _, _, failure := h.applyVerifiedPaymentNotification(ctx, providerName, notification, paymentDigest([]byte(notification.EventID))); failure != nil {
 			return failure
 		}
 	}
@@ -668,35 +668,35 @@ func paymentOrderDeliveryDigest(merchantOrderID string) [sha256.Size]byte {
 	return paymentDigest([]byte("payment-order-intent:" + merchantOrderID))
 }
 
-func (h *service) applyVerifiedPaymentNotification(ctx context.Context, providerName string, notification VerifiedPaymentNotification, digest [sha256.Size]byte) (membershipOrderView, string, *commandFailure) {
+func (h *service) applyVerifiedPaymentNotification(ctx context.Context, providerName string, notification VerifiedPaymentNotification, digest [sha256.Size]byte) (membershipOrderView, string, bool, *commandFailure) {
 	tx, err := h.database.Begin(ctx)
 	if err != nil {
-		return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment store is unavailable")
+		return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment store is unavailable")
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	intent, err := paymentOrderIntentByExternalIDForUpdate(ctx, tx, providerName, notification.ExternalOrderID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if failure := h.recordPaymentAudit(ctx, tx, nil, nil, providerName, "notification_unknown_order", "merchant_order_not_found", digest, h.now().UTC()); failure != nil {
-			return membershipOrderView{}, "", failure
+			return membershipOrderView{}, "", false, failure
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment audit is unavailable")
+			return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment audit is unavailable")
 		}
-		return membershipOrderView{}, "", invalidCommand("payment notification is invalid")
+		return membershipOrderView{}, "", false, invalidCommand("payment notification is invalid")
 	}
 	if err != nil {
-		return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment order is unavailable")
+		return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment order is unavailable")
 	}
 	record := intent.Order
 	if intent.Order.Provider != providerName || intent.MerchantOrderID != notification.MerchantOrderID {
 		if failure := h.recordPaymentAudit(ctx, tx, &record.View.ID, nil, providerName, "notification_rejected", "merchant_order_mismatch", digest, h.now().UTC()); failure != nil {
-			return membershipOrderView{}, "", failure
+			return membershipOrderView{}, "", false, failure
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment audit is unavailable")
+			return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment audit is unavailable")
 		}
-		return membershipOrderView{}, "", invalidCommand("payment notification is invalid")
+		return membershipOrderView{}, "", false, invalidCommand("payment notification is invalid")
 	}
 
 	now := h.now().UTC()
@@ -704,78 +704,81 @@ func (h *service) applyVerifiedPaymentNotification(ctx context.Context, provider
 	if err != nil {
 		if errors.Is(err, errProviderOrderConflicted) {
 			if failure := h.recordPaymentAudit(ctx, tx, &record.View.ID, nil, providerName, "notification_rejected", "provider_event_order_conflict", digest, now); failure != nil {
-				return membershipOrderView{}, "", failure
+				return membershipOrderView{}, "", false, failure
 			}
 			if err := tx.Commit(ctx); err != nil {
-				return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment audit is unavailable")
+				return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment audit is unavailable")
 			}
-			return membershipOrderView{}, "", invalidCommand("payment notification is invalid")
+			return membershipOrderView{}, "", false, invalidCommand("payment notification is invalid")
 		}
-		return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment fact is unavailable")
+		return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment fact is unavailable")
 	}
 	if !inserted {
 		var existingDigest []byte
 		if err := tx.QueryRow(ctx, `SELECT payload_sha256 FROM account_portfolio_payment_facts WHERE provider=$1 AND provider_event_id=$2`, providerName, notification.EventID).Scan(&existingDigest); err != nil {
-			return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment fact is unavailable")
+			return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment fact is unavailable")
 		}
 		if !bytes.Equal(existingDigest, digest[:]) {
 			if failure := h.recordPaymentAudit(ctx, tx, &record.View.ID, nil, providerName, "notification_rejected", "provider_event_reused", digest, now); failure != nil {
-				return membershipOrderView{}, "", failure
+				return membershipOrderView{}, "", false, failure
 			}
 			if err := tx.Commit(ctx); err != nil {
-				return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment audit is unavailable")
+				return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment audit is unavailable")
 			}
-			return membershipOrderView{}, "", invalidCommand("payment notification is invalid")
+			return membershipOrderView{}, "", false, invalidCommand("payment notification is invalid")
 		}
 		if failure := h.recordPaymentAudit(ctx, tx, &record.View.ID, &factID, providerName, "notification_replayed", "provider_event_replayed", digest, now); failure != nil {
-			return membershipOrderView{}, "", failure
+			return membershipOrderView{}, "", false, failure
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment audit is unavailable")
+			return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment audit is unavailable")
 		}
-		return record.View, "replayed", nil
+		return record.View, "replayed", false, nil
 	}
 
 	if notification.Sequence <= record.ProviderEventSequence {
 		if failure := h.recordPaymentAudit(ctx, tx, &record.View.ID, &factID, providerName, "notification_out_of_order", "provider_sequence_stale", digest, now); failure != nil {
-			return membershipOrderView{}, "", failure
+			return membershipOrderView{}, "", false, failure
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment audit is unavailable")
+			return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment audit is unavailable")
 		}
-		return record.View, "ignored", nil
+		return record.View, "ignored", false, nil
 	}
 	if !membershipOrderTransitionAllowed(MembershipOrderStatus(record.View.Status), notification.Status) {
 		if failure := h.recordPaymentAudit(ctx, tx, &record.View.ID, &factID, providerName, "notification_invalid_transition", "provider_transition_invalid", digest, now); failure != nil {
-			return membershipOrderView{}, "", failure
+			return membershipOrderView{}, "", false, failure
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment audit is unavailable")
+			return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment audit is unavailable")
 		}
-		return record.View, "ignored", nil
+		return record.View, "ignored", false, nil
 	}
 
 	updated, err := h.transitionMembershipOrder(ctx, tx, record.View.ID, notification.Status, notification.Sequence, now)
 	if err != nil {
-		return membershipOrderView{}, "", dependencyFailure("Account Portfolio membership order is unavailable")
+		return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio membership order is unavailable")
 	}
+	revoked := false
 	if notification.Status == MembershipOrderPaid {
 		if failure := h.grantPaymentMembership(ctx, tx, record.View.ID, record.UserID, factID, now); failure != nil {
-			return membershipOrderView{}, "", failure
+			return membershipOrderView{}, "", false, failure
 		}
 	}
 	if notification.Status == MembershipOrderRefunded {
-		if failure := h.revokePaymentMembership(ctx, tx, record.View.ID, record.UserID, factID, now); failure != nil {
-			return membershipOrderView{}, "", failure
+		var failure *commandFailure
+		revoked, failure = h.revokePaymentMembership(ctx, tx, record.View.ID, record.UserID, factID, now)
+		if failure != nil {
+			return membershipOrderView{}, "", false, failure
 		}
 	}
 	if failure := h.recordPaymentAudit(ctx, tx, &updated.ID, &factID, providerName, "notification_applied", "provider_notification_applied", digest, now); failure != nil {
-		return membershipOrderView{}, "", failure
+		return membershipOrderView{}, "", false, failure
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return membershipOrderView{}, "", dependencyFailure("Account Portfolio payment store is unavailable")
+		return membershipOrderView{}, "", false, dependencyFailure("Account Portfolio payment store is unavailable")
 	}
-	return updated, "applied", nil
+	return updated, "applied", revoked, nil
 }
 
 type paymentRowQueryer interface {
@@ -985,7 +988,7 @@ func (h *service) grantPaymentMembership(ctx context.Context, tx pgx.Tx, orderID
 	return nil
 }
 
-func (h *service) revokePaymentMembership(ctx context.Context, tx pgx.Tx, orderID, userID, refundFactID string, now time.Time) *commandFailure {
+func (h *service) revokePaymentMembership(ctx context.Context, tx pgx.Tx, orderID, userID, refundFactID string, now time.Time) (bool, *commandFailure) {
 	var refundFactOrderID string
 	if err := tx.QueryRow(ctx, `
 		SELECT order_id
@@ -993,7 +996,7 @@ func (h *service) revokePaymentMembership(ctx context.Context, tx pgx.Tx, orderI
 		WHERE id=$1 AND order_id=$2 AND status='refunded'
 		FOR KEY SHARE
 	`, refundFactID, orderID).Scan(&refundFactOrderID); err != nil || refundFactOrderID != orderID {
-		return dependencyFailure("Account Portfolio verified refund fact is unavailable")
+		return false, dependencyFailure("Account Portfolio verified refund fact is unavailable")
 	}
 	var plan, source string
 	var currentPaymentFactID *string
@@ -1004,10 +1007,10 @@ func (h *service) revokePaymentMembership(ctx context.Context, tx pgx.Tx, orderI
 		WHERE user_id=$1
 		FOR UPDATE
 	`, userID).Scan(&plan, &source, &currentPaymentFactID, &version); err != nil {
-		return dependencyFailure("Account Portfolio membership is unavailable")
+		return false, dependencyFailure("Account Portfolio membership is unavailable")
 	}
 	if plan != "lifetime" || source != "payment" || currentPaymentFactID == nil {
-		return nil
+		return false, nil
 	}
 	var currentFactOrderID string
 	err := tx.QueryRow(ctx, `
@@ -1017,15 +1020,15 @@ func (h *service) revokePaymentMembership(ctx context.Context, tx pgx.Tx, orderI
 		FOR KEY SHARE
 	`, *currentPaymentFactID).Scan(&currentFactOrderID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return dependencyFailure("Account Portfolio payment fact is unavailable")
+		return false, dependencyFailure("Account Portfolio payment fact is unavailable")
 	}
 	// Reverse-check the exact ownership fact. A refund for an older order must
 	// not downgrade a membership currently backed by a newer valid payment.
 	if currentFactOrderID != orderID {
-		return nil
+		return false, nil
 	}
 
 	var replacementFactID string
@@ -1045,12 +1048,12 @@ func (h *service) revokePaymentMembership(ctx context.Context, tx pgx.Tx, orderI
 			WHERE user_id=$1 AND version=$4 AND source='payment'
 			RETURNING version
 		`, userID, replacementFactID, now, version).Scan(&version); err != nil {
-			return dependencyFailure("Account Portfolio membership is unavailable")
+			return false, dependencyFailure("Account Portfolio membership is unavailable")
 		}
-		return nil
+		return false, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return dependencyFailure("Account Portfolio payment fact is unavailable")
+		return false, dependencyFailure("Account Portfolio payment fact is unavailable")
 	}
 	if err := tx.QueryRow(ctx, `
 		UPDATE account_portfolio_memberships
@@ -1058,7 +1061,7 @@ func (h *service) revokePaymentMembership(ctx context.Context, tx pgx.Tx, orderI
 		WHERE user_id=$1 AND version=$3
 		RETURNING version
 	`, userID, now, version).Scan(&version); err != nil {
-		return dependencyFailure("Account Portfolio membership is unavailable")
+		return false, dependencyFailure("Account Portfolio membership is unavailable")
 	}
 	eventID := uuid.NewString()
 	if _, err := tx.Exec(ctx, `
@@ -1068,9 +1071,12 @@ func (h *service) revokePaymentMembership(ctx context.Context, tx pgx.Tx, orderI
 		)
 		VALUES($1, $2, 'revoke', 'lifetime', 'free', 'payment', NULL, $3, $4, $5, $6)
 	`, eventID, userID, "Verified payment refund confirmation.", "payment:"+refundFactID, refundFactID, now); err != nil {
-		return dependencyFailure("Account Portfolio membership audit is unavailable")
+		return false, dependencyFailure("Account Portfolio membership audit is unavailable")
 	}
-	return h.createMembershipNotification(ctx, tx, eventID, userID, "membership_lifetime_revoked", "终身会员权益已撤销", "已确认退款，终身会员权益已撤销。", now)
+	if failure := h.createMembershipNotification(ctx, tx, eventID, userID, "membership_lifetime_revoked", "终身会员权益已撤销", "已确认退款，终身会员权益已撤销。", now); failure != nil {
+		return false, failure
+	}
+	return true, nil
 }
 
 func (h *service) auditPaymentNotification(ctx context.Context, providerName string, orderID, paymentFactID *string, outcome, reason string, digest [sha256.Size]byte) error {

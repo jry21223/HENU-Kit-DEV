@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -32,15 +33,15 @@ type consoleOrderCommandInput struct {
 }
 
 func (h *service) closeConsoleMembershipOrder(w http.ResponseWriter, r *http.Request) {
-	context_, ok := h.beginConsoleOrderCommand(w, r, "membership_order_close", MembershipOrderPendingPayment)
+	context_, ok := h.beginConsoleOrderCommand(w, r, "membership_order_close", []MembershipOrderStatus{MembershipOrderCreated, MembershipOrderPendingPayment})
 	if !ok {
 		return
 	}
 	if context_.Replayed {
-		writeRawCommandData(w, r, http.StatusOK, context_.StoredPayload)
+		writeRawCommandData(w, r, context_.StoredStatus, context_.StoredPayload)
 		return
 	}
-	providerOrder, err := context_.Provider.CloseOrder(r.Context(), context_.ExternalOrderID)
+	providerOrder, err := context_.Provider.CloseOrder(r.Context(), context_.MerchantOrderID)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio payment provider is unavailable")
 		return
@@ -55,37 +56,50 @@ func (h *service) closeConsoleMembershipOrder(w http.ResponseWriter, r *http.Req
 		writeCommandFailure(w, r, failure)
 		return
 	}
-	h.finishConsoleOrderCommand(r.Context(), context_, map[string]any{"order": view})
+	h.finishConsoleOrderCommand(r.Context(), context_, map[string]any{"order": view}, http.StatusOK)
 	writeData(w, r, http.StatusOK, map[string]any{"order": view})
 }
 
 func (h *service) refundConsoleMembershipOrder(w http.ResponseWriter, r *http.Request) {
-	context_, ok := h.beginConsoleOrderCommand(w, r, "membership_order_refund", MembershipOrderPaid)
+	context_, ok := h.beginConsoleOrderCommand(w, r, "membership_order_refund", []MembershipOrderStatus{MembershipOrderPaid})
 	if !ok {
 		return
 	}
 	if context_.Replayed {
-		writeRawCommandData(w, r, http.StatusOK, context_.StoredPayload)
+		writeRawCommandData(w, r, context_.StoredStatus, context_.StoredPayload)
 		return
 	}
-	refund, err := context_.Provider.Refund(r.Context(), context_.ExternalOrderID)
+	refund, err := context_.Provider.Refund(r.Context(), context_.MerchantOrderID)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio payment provider is unavailable")
 		return
 	}
-	view, failure := h.settleConsoleRefund(r.Context(), context_.Provider.Name(), context_.Order, refund)
+	// An abnormal refund needs operator handling and must never be recorded as
+	// either a completed or a harmlessly pending refund.
+	if refund.Status == MembershipRefundAbnormal {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio refund needs operator handling")
+		return
+	}
+	view, revoked, failure := h.settleConsoleRefund(r.Context(), context_.Provider.Name(), context_.Order, refund)
 	if failure != nil {
 		writeCommandFailure(w, r, failure)
 		return
 	}
-	payload := map[string]any{"order": view, "refund": consoleRefundView(refund)}
-	h.finishConsoleOrderCommand(r.Context(), context_, payload)
+	record, failure := h.upsertConsoleMembershipRefund(r.Context(), context_.Order.ID, context_.Provider.Name(), context_.MerchantOrderID, refund, revoked)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	payload := map[string]any{"order": view, "refund": consoleRefundView(record)}
+	h.finishConsoleOrderCommand(r.Context(), context_, payload, http.StatusAccepted)
 	writeData(w, r, http.StatusAccepted, payload)
 }
 
-// getConsoleMembershipOrderRefund reconciles a refund against the provider. It
-// is read-only for the caller, but it still settles a refund that has completed
-// since it was submitted, so a refund cannot stay pending forever.
+// getConsoleMembershipOrderRefund reconciles one stored refund against the
+// provider. It is read-only for the caller, but it still settles a refund that
+// has completed since it was submitted, so a refund cannot stay pending
+// forever, and it persists every reconciled state — including closed and
+// abnormal — so the contract enum is reachable.
 func (h *service) getConsoleMembershipOrderRefund(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.prepareConsole(w, r); !ok {
 		return
@@ -95,31 +109,51 @@ func (h *service) getConsoleMembershipOrderRefund(w http.ResponseWriter, r *http
 		writeCommandFailure(w, r, failure)
 		return
 	}
+	refundID := strings.TrimSpace(chi.URLParam(r, "refund_id"))
+	if uuid.Validate(refundID) != nil {
+		writeCommandFailure(w, r, invalidCommand("membership order refund id is invalid"))
+		return
+	}
 	provider := h.paymentProvider
 	if provider == nil {
 		writeError(w, r, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNAVAILABLE", "Membership payment is not available")
 		return
 	}
-	record, failure := h.consoleOrderTarget(r.Context(), orderID, provider.Name())
+	record, failure := h.membershipOrderRefundByID(r.Context(), refundID)
 	if failure != nil {
 		writeCommandFailure(w, r, failure)
 		return
 	}
-	refund, err := provider.QueryRefund(r.Context(), record.ProviderOrderID)
+	if record.OrderID != orderID || record.ProviderName != provider.Name() {
+		writeCommandFailure(w, r, notFoundFailure("membership order refund was not found"))
+		return
+	}
+	target, _, failure := h.consoleOrderTarget(r.Context(), orderID, provider.Name())
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	view := target.View
+	refund, err := provider.QueryRefund(r.Context(), record.MerchantOrderID)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio payment provider is unavailable")
 		return
 	}
-	if strings.TrimSpace(chi.URLParam(r, "refund_id")) != refund.RefundID {
-		writeCommandFailure(w, r, notFoundFailure("membership order refund was not found"))
-		return
+	revoked := false
+	if refund.Status == MembershipRefundSucceeded {
+		var reconcileFailure *commandFailure
+		view, revoked, reconcileFailure = h.settleConsoleRefund(r.Context(), provider.Name(), view, refund)
+		if reconcileFailure != nil {
+			writeCommandFailure(w, r, reconcileFailure)
+			return
+		}
 	}
-	view, failure := h.settleConsoleRefund(r.Context(), provider.Name(), record.View, refund)
+	updated, failure := h.updateConsoleMembershipRefund(r.Context(), record.ID, refund.Status, revoked)
 	if failure != nil {
 		writeCommandFailure(w, r, failure)
 		return
 	}
-	writeData(w, r, http.StatusOK, map[string]any{"order": view, "refund": consoleRefundView(refund)})
+	writeData(w, r, http.StatusOK, map[string]any{"order": view, "refund": consoleRefundView(updated)})
 }
 
 // settleConsoleRefund applies a refund only once the provider says it settled.
@@ -129,20 +163,20 @@ func (h *service) getConsoleMembershipOrderRefund(w http.ResponseWriter, r *http
 // what keeps the revocation guarded by payment-fact ownership.
 func (h *service) settleConsoleRefund(
 	ctx context.Context, providerName string, current membershipOrderView, refund PaymentRefund,
-) (membershipOrderView, *commandFailure) {
-	if !refund.Settled {
-		return current, nil
+) (membershipOrderView, bool, *commandFailure) {
+	if refund.Status != MembershipRefundSucceeded {
+		return current, false, nil
 	}
-	applied, _, failure := h.applyVerifiedPaymentNotification(
+	applied, _, revoked, failure := h.applyVerifiedPaymentNotification(
 		ctx, providerName, refund.Notification, notificationDigest(refund.Notification),
 	)
 	if failure != nil {
-		return membershipOrderView{}, failure
+		return membershipOrderView{}, false, failure
 	}
 	if applied.ID == "" {
-		return current, nil
+		return current, false, nil
 	}
-	return applied, nil
+	return applied, revoked, nil
 }
 
 func (h *service) settleConsoleOrderClose(ctx context.Context, orderID string) (membershipOrderView, *commandFailure) {
@@ -177,17 +211,15 @@ func (h *service) settleConsoleOrderClose(ctx context.Context, orderID string) (
 }
 
 type consoleOrderCommandContext struct {
-	Provider PaymentProvider
-	Order    membershipOrderView
-	// ExternalOrderID is the provider's own order identifier, which is what
-	// every PaymentProvider method takes. It is not the private merchant order
-	// number; the two coincide for EasyPay but must not be conflated.
-	ExternalOrderID string
+	Provider        PaymentProvider
+	Order           membershipOrderView
+	MerchantOrderID string
 	ClientID        string
 	OperatorID      string
 	Operation       string
 	Key             string
 	Replayed        bool
+	StoredStatus    int
 	StoredPayload   json.RawMessage
 }
 
@@ -195,7 +227,7 @@ type consoleOrderCommandContext struct {
 // and its expected revision, and claims the Idempotency-Key — all before the
 // provider is contacted.
 func (h *service) beginConsoleOrderCommand(
-	w http.ResponseWriter, r *http.Request, operation string, required MembershipOrderStatus,
+	w http.ResponseWriter, r *http.Request, operation string, required []MembershipOrderStatus,
 ) (consoleOrderCommandContext, bool) {
 	operator, ok := h.prepareConsole(w, r)
 	if !ok {
@@ -246,7 +278,7 @@ func (h *service) beginConsoleOrderCommand(
 
 func (h *service) claimConsoleOrderCommand(
 	ctx context.Context, clientID, operatorID, operation, targetPath, key string, raw []byte,
-	orderID string, expectedVersion int, providerName string, required MembershipOrderStatus,
+	orderID string, expectedVersion int, providerName string, required []MembershipOrderStatus,
 ) (consoleOrderCommandContext, *commandFailure) {
 	digest := commandRequestHash(targetPath, raw)
 	tx, err := h.database.Begin(ctx)
@@ -265,11 +297,12 @@ func (h *service) claimConsoleOrderCommand(
 	}
 	if inserted.RowsAffected() == 0 {
 		var storedHash, storedPayload []byte
+		var storedStatus int
 		if err := tx.QueryRow(ctx, `
-			SELECT request_hash, response_payload
+			SELECT request_hash, response_payload, response_status
 			FROM account_portfolio_command_idempotency
 			WHERE client_id=$1 AND actor_user_id=$2 AND operation=$3 AND idempotency_key=$4
-		`, clientID, operatorID, operation, key).Scan(&storedHash, &storedPayload); err != nil {
+		`, clientID, operatorID, operation, key).Scan(&storedHash, &storedPayload, &storedStatus); err != nil {
 			return consoleOrderCommandContext{}, dependencyFailure("Account Portfolio command store is unavailable")
 		}
 		if !bytes.Equal(storedHash, digest[:]) {
@@ -281,18 +314,7 @@ func (h *service) claimConsoleOrderCommand(
 		if err := tx.Commit(ctx); err != nil {
 			return consoleOrderCommandContext{}, dependencyFailure("Account Portfolio command store is unavailable")
 		}
-		// The claim is written before the provider is contacted and only filled
-		// in once the command has settled, so an empty payload means the
-		// original command is still in flight or never completed. Returning it
-		// would answer a duplicate with an empty success, so this reports a
-		// conflict and the caller retries for the real result instead.
-		if !completedCommandPayload(storedPayload) {
-			return consoleOrderCommandContext{}, &commandFailure{
-				status: http.StatusConflict, code: "COMMAND_IN_PROGRESS",
-				message: "An earlier command with this Idempotency-Key has not finished yet",
-			}
-		}
-		return consoleOrderCommandContext{Replayed: true, StoredPayload: json.RawMessage(storedPayload)}, nil
+		return consoleOrderCommandContext{Replayed: true, StoredStatus: storedStatus, StoredPayload: json.RawMessage(storedPayload)}, nil
 	}
 
 	intent, err := paymentOrderIntentByOrderIDForUpdate(ctx, tx, orderID)
@@ -308,53 +330,64 @@ func (h *service) claimConsoleOrderCommand(
 	if intent.Order.View.Version != expectedVersion {
 		return consoleOrderCommandContext{}, membershipVersionConflictFailure()
 	}
-	if MembershipOrderStatus(intent.Order.View.Status) != required {
+	if !orderStatusAllowed(required, MembershipOrderStatus(intent.Order.View.Status)) {
 		return consoleOrderCommandContext{}, invalidStateFailure("membership order is not in the required state")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return consoleOrderCommandContext{}, dependencyFailure("Account Portfolio command store is unavailable")
 	}
-	return consoleOrderCommandContext{Order: intent.Order.View, ExternalOrderID: intent.Order.ProviderOrderID}, nil
+	return consoleOrderCommandContext{Order: intent.Order.View, MerchantOrderID: intent.MerchantOrderID}, nil
+}
+
+func orderStatusAllowed(allowed []MembershipOrderStatus, current MembershipOrderStatus) bool {
+	for _, candidate := range allowed {
+		if current == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 // finishConsoleOrderCommand stores the response so a later retry of the same
-// key replays it instead of contacting the provider again. A storage failure
-// here does not fail the command: the durable payment effect already committed,
-// and the retry path re-derives the same result from the provider.
-func (h *service) finishConsoleOrderCommand(ctx context.Context, command consoleOrderCommandContext, payload map[string]any) {
+// key replays it instead of contacting the provider again. The stored status is
+// the status the original command returned, so a replay answers identically. A
+// storage failure here does not fail the command: the durable payment effect
+// already committed, and the retry path re-derives the same result from the
+// provider.
+func (h *service) finishConsoleOrderCommand(ctx context.Context, command consoleOrderCommandContext, payload map[string]any, status int) {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
 	_, _ = h.database.Exec(ctx, `
 		UPDATE account_portfolio_command_idempotency
-		SET response_payload=$5
+		SET response_payload=$5, response_status=$6
 		WHERE client_id=$1 AND actor_user_id=$2 AND operation=$3 AND idempotency_key=$4
-	`, command.ClientID, command.OperatorID, command.Operation, command.Key, encoded)
+	`, command.ClientID, command.OperatorID, command.Operation, command.Key, encoded, status)
 }
 
 // consoleOrderTarget loads one membership order and its private merchant order
 // number.
-func (h *service) consoleOrderTarget(ctx context.Context, orderID, providerName string) (membershipOrderRecord, *commandFailure) {
+func (h *service) consoleOrderTarget(ctx context.Context, orderID, providerName string) (membershipOrderRecord, string, *commandFailure) {
 	tx, err := h.database.Begin(ctx)
 	if err != nil {
-		return membershipOrderRecord{}, dependencyFailure("Account Portfolio payment store is unavailable")
+		return membershipOrderRecord{}, "", dependencyFailure("Account Portfolio payment store is unavailable")
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	intent, err := paymentOrderIntentByOrderIDForUpdate(ctx, tx, orderID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return membershipOrderRecord{}, notFoundFailure("membership order was not found")
+		return membershipOrderRecord{}, "", notFoundFailure("membership order was not found")
 	}
 	if err != nil {
-		return membershipOrderRecord{}, dependencyFailure("Account Portfolio payment order is unavailable")
+		return membershipOrderRecord{}, "", dependencyFailure("Account Portfolio payment order is unavailable")
 	}
 	if intent.Order.Provider != providerName {
-		return membershipOrderRecord{}, notFoundFailure("membership order was not found")
+		return membershipOrderRecord{}, "", notFoundFailure("membership order was not found")
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return membershipOrderRecord{}, dependencyFailure("Account Portfolio payment store is unavailable")
+		return membershipOrderRecord{}, "", dependencyFailure("Account Portfolio payment store is unavailable")
 	}
-	return intent.Order, nil
+	return intent.Order, intent.MerchantOrderID, nil
 }
 
 func consoleOrderTargetID(r *http.Request) (string, *commandFailure) {
@@ -365,15 +398,112 @@ func consoleOrderTargetID(r *http.Request) (string, *commandFailure) {
 	return value, nil
 }
 
-func consoleRefundView(refund PaymentRefund) map[string]any {
-	status := "processing"
+// membershipOrderRefundRecord is the durable refund row. The public id is a
+// random UUID; the gateway correlation (out_refund_no) and the private merchant
+// order number stay server-side and never appear in any response.
+type membershipOrderRefundRecord struct {
+	ID                 string
+	OrderID            string
+	ProviderName       string
+	MerchantOrderID    string
+	OutRefundNo        string
+	Status             string
+	AmountCents        int
+	EntitlementRevoked bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+// upsertConsoleMembershipRefund persists one refund under the
+// (provider_name, merchant_order_id) idempotency anchor, reusing the existing
+// public id on retry, and returns the durable row the response view is built
+// from. entitlement_revoked is monotonic: once a refund revoked the
+// entitlement, later reconciliations may not clear it.
+func (h *service) upsertConsoleMembershipRefund(ctx context.Context, orderID, providerName, merchantOrderID string, refund PaymentRefund, revoked bool) (membershipOrderRefundRecord, *commandFailure) {
+	status := MembershipRefundProcessing
 	if refund.Settled {
-		status = "succeeded"
+		status = MembershipRefundSucceeded
 	}
+	now := h.now().UTC()
+	var record membershipOrderRefundRecord
+	err := h.database.QueryRow(ctx, `
+		INSERT INTO account_portfolio_membership_order_refunds(
+			order_id, provider_name, merchant_order_id, out_refund_no, status, amount_cents,
+			entitlement_revoked, created_at, updated_at
+		)
+		VALUES($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		ON CONFLICT (provider_name, merchant_order_id) DO UPDATE
+		SET out_refund_no = EXCLUDED.out_refund_no,
+			status = EXCLUDED.status,
+			amount_cents = EXCLUDED.amount_cents,
+			entitlement_revoked = account_portfolio_membership_order_refunds.entitlement_revoked OR EXCLUDED.entitlement_revoked,
+			updated_at = EXCLUDED.updated_at
+		RETURNING id, order_id, status, amount_cents, entitlement_revoked, created_at, updated_at
+	`, orderID, providerName, merchantOrderID, refund.RefundID, string(status), refund.Notification.AmountCents, revoked, now).Scan(
+		&record.ID, &record.OrderID, &record.Status, &record.AmountCents, &record.EntitlementRevoked, &record.CreatedAt, &record.UpdatedAt,
+	)
+	if err != nil {
+		return membershipOrderRefundRecord{}, dependencyFailure("Account Portfolio refund store is unavailable")
+	}
+	record.ProviderName = providerName
+	record.MerchantOrderID = merchantOrderID
+	record.OutRefundNo = refund.RefundID
+	return record, nil
+}
+
+// updateConsoleMembershipRefund reconciles a stored refund's status against the
+// provider. entitlement_revoked is monotonic exactly like the upsert path.
+func (h *service) updateConsoleMembershipRefund(ctx context.Context, refundID string, status MembershipRefundStatus, revoked bool) (membershipOrderRefundRecord, *commandFailure) {
+	var record membershipOrderRefundRecord
+	err := h.database.QueryRow(ctx, `
+		UPDATE account_portfolio_membership_order_refunds
+		SET status=$2,
+			entitlement_revoked = entitlement_revoked OR $3,
+			updated_at=$4
+		WHERE id=$1
+		RETURNING id, order_id, provider_name, merchant_order_id, out_refund_no, status, amount_cents, entitlement_revoked, created_at, updated_at
+	`, refundID, string(status), revoked, h.now().UTC()).Scan(
+		&record.ID, &record.OrderID, &record.ProviderName, &record.MerchantOrderID, &record.OutRefundNo, &record.Status,
+		&record.AmountCents, &record.EntitlementRevoked, &record.CreatedAt, &record.UpdatedAt,
+	)
+	if err != nil {
+		return membershipOrderRefundRecord{}, dependencyFailure("Account Portfolio refund store is unavailable")
+	}
+	return record, nil
+}
+
+func (h *service) membershipOrderRefundByID(ctx context.Context, refundID string) (membershipOrderRefundRecord, *commandFailure) {
+	var record membershipOrderRefundRecord
+	err := h.database.QueryRow(ctx, `
+		SELECT id, order_id, provider_name, merchant_order_id, out_refund_no, status, amount_cents, entitlement_revoked, created_at, updated_at
+		FROM account_portfolio_membership_order_refunds
+		WHERE id=$1
+	`, refundID).Scan(
+		&record.ID, &record.OrderID, &record.ProviderName, &record.MerchantOrderID, &record.OutRefundNo, &record.Status,
+		&record.AmountCents, &record.EntitlementRevoked, &record.CreatedAt, &record.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return membershipOrderRefundRecord{}, notFoundFailure("membership order refund was not found")
+	}
+	if err != nil {
+		return membershipOrderRefundRecord{}, dependencyFailure("Account Portfolio refund store is unavailable")
+	}
+	return record, nil
+}
+
+// consoleRefundView renders the durable refund row exactly as the contract
+// declares it: the public UUID id, the order, the reconciled status, the
+// amount, the entitlement-revocation fact, and the durable timestamps. No
+// provider correlation ever leaves the service.
+func consoleRefundView(record membershipOrderRefundRecord) map[string]any {
 	return map[string]any{
-		"id":           refund.RefundID,
-		"status":       status,
-		"amount_cents": refund.Notification.AmountCents,
+		"id":                  record.ID,
+		"order_id":            record.OrderID,
+		"amount_cents":        record.AmountCents,
+		"status":              record.Status,
+		"entitlement_revoked": record.EntitlementRevoked,
+		"created_at":          record.CreatedAt.UTC(),
+		"updated_at":          record.UpdatedAt.UTC(),
 	}
 }
 
@@ -383,18 +513,6 @@ func notificationDigest(notification VerifiedPaymentNotification) [sha256.Size]b
 		return sha256.Sum256([]byte(notification.EventID))
 	}
 	return sha256.Sum256(raw)
-}
-
-// completedCommandPayload reports whether a stored idempotency payload is a
-// real command result rather than the placeholder written when the command was
-// claimed.
-func completedCommandPayload(payload []byte) bool {
-	var decoded map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return false
-	}
-	_, ok := decoded["order"]
-	return ok
 }
 
 func writeRawCommandData(w http.ResponseWriter, r *http.Request, status int, payload json.RawMessage) {
