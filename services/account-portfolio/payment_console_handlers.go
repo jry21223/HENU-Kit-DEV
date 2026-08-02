@@ -25,7 +25,10 @@ import (
 // matching the order-creation path: holding a row lock across a call to the
 // gateway would let a slow gateway stall unrelated commands. The command's
 // Idempotency-Key is claimed in the first transaction, so a retry short-circuits
-// before reaching the provider and can never produce a second refund.
+// before reaching the provider and can never produce a second refund. A retry
+// that finds no stored result rebuilds the durable refund record from the
+// provider's read-only refund query, so a refund that settled before its record
+// was written is never left without one.
 
 type consoleOrderCommandInput struct {
 	Reason          string `json:"reason"`
@@ -66,7 +69,7 @@ func (h *service) refundConsoleMembershipOrder(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if context_.Replayed {
-		writeRawCommandData(w, r, context_.StoredStatus, context_.StoredPayload)
+		h.replayConsoleMembershipRefund(w, r, context_)
 		return
 	}
 	refund, err := context_.Provider.Refund(r.Context(), context_.MerchantOrderID)
@@ -74,12 +77,11 @@ func (h *service) refundConsoleMembershipOrder(w http.ResponseWriter, r *http.Re
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio payment provider is unavailable")
 		return
 	}
-	// An abnormal refund needs operator handling and must never be recorded as
-	// either a completed or a harmlessly pending refund.
-	if refund.Status == MembershipRefundAbnormal {
-		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio refund needs operator handling")
-		return
-	}
+	// Every gateway state — processing, succeeded, closed, or abnormal — is
+	// recorded and returned honestly, exactly like the reconcile surface does.
+	// abnormal needs operator handling and never implies a completed refund or
+	// an entitlement revocation, and a retry replays the stored result instead
+	// of contacting the provider again.
 	view, revoked, failure := h.settleConsoleRefund(r.Context(), context_.Provider.Name(), context_.Order, refund)
 	if failure != nil {
 		writeCommandFailure(w, r, failure)
@@ -92,6 +94,52 @@ func (h *service) refundConsoleMembershipOrder(w http.ResponseWriter, r *http.Re
 	}
 	payload := map[string]any{"order": view, "refund": consoleRefundView(record)}
 	h.finishConsoleOrderCommand(r.Context(), context_, payload, http.StatusAccepted)
+	writeData(w, r, http.StatusAccepted, payload)
+}
+
+// replayConsoleMembershipRefund answers a retried refund command. The stored
+// response is authoritative when the first attempt finished; when no response
+// was ever stored — a retry landed while the first attempt was still in
+// flight, or the first attempt died after the durable settle but before the
+// refund record was written — the durable refund record is rebuilt
+// idempotently from the provider's read-only refund query, so a settled
+// refund can never leave its record permanently missing while the entitlement
+// revocation has already committed. The rebuilt result is stored back, so a
+// later retry replays it instead of querying the provider again.
+func (h *service) replayConsoleMembershipRefund(w http.ResponseWriter, r *http.Request, command consoleOrderCommandContext) {
+	if len(bytes.TrimSpace(command.StoredPayload)) != 0 && !bytes.Equal(bytes.TrimSpace(command.StoredPayload), []byte("{}")) {
+		writeRawCommandData(w, r, command.StoredStatus, command.StoredPayload)
+		return
+	}
+	orderID, failure := consoleOrderTargetID(r)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	target, merchantOrderID, failure := h.consoleOrderTarget(r.Context(), orderID, command.Provider.Name())
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	refund, err := command.Provider.QueryRefund(r.Context(), merchantOrderID)
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio payment provider is unavailable")
+		return
+	}
+	// The order's durable state is the authority on whether the refunded
+	// payment fact already revoked the entitlement: the revocation commits in
+	// the same transaction as the refunded transition, so an already-refunded
+	// order proves the revocation is done and re-applying the provider event
+	// would only replay it. A still-paid order means the refund fact was never
+	// applied here, and the rebuilt record lets the GET surface reconcile it.
+	revoked := MembershipOrderStatus(target.View.Status) == MembershipOrderRefunded
+	record, failure := h.upsertConsoleMembershipRefund(r.Context(), target.View.ID, command.Provider.Name(), merchantOrderID, refund, revoked)
+	if failure != nil {
+		writeCommandFailure(w, r, failure)
+		return
+	}
+	payload := map[string]any{"order": target.View, "refund": consoleRefundView(record)}
+	h.finishConsoleOrderCommand(r.Context(), command, payload, http.StatusAccepted)
 	writeData(w, r, http.StatusAccepted, payload)
 }
 
@@ -417,12 +465,14 @@ type membershipOrderRefundRecord struct {
 // upsertConsoleMembershipRefund persists one refund under the
 // (provider_name, merchant_order_id) idempotency anchor, reusing the existing
 // public id on retry, and returns the durable row the response view is built
-// from. entitlement_revoked is monotonic: once a refund revoked the
-// entitlement, later reconciliations may not clear it.
+// from. The status is the provider-reconciled state recorded exactly as the
+// gateway reports it — processing, succeeded, closed, or abnormal — matching
+// the reconcile update path. entitlement_revoked is monotonic: once a refund
+// revoked the entitlement, later reconciliations may not clear it.
 func (h *service) upsertConsoleMembershipRefund(ctx context.Context, orderID, providerName, merchantOrderID string, refund PaymentRefund, revoked bool) (membershipOrderRefundRecord, *commandFailure) {
-	status := MembershipRefundProcessing
-	if refund.Settled {
-		status = MembershipRefundSucceeded
+	status := refund.Status
+	if status == "" {
+		status = MembershipRefundProcessing
 	}
 	now := h.now().UTC()
 	var record membershipOrderRefundRecord

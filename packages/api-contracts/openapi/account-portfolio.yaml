@@ -589,8 +589,12 @@ paths:
       responses:
         '202':
           description: >-
-            Durable refund recorded and submitted, or the original idempotent
-            refund result. A refund may still be processing at the gateway.
+            Durable refund recorded and returned, or the original idempotent
+            refund result. Every gateway state — processing, succeeded,
+            closed, or abnormal — is recorded and returned the same way the
+            reconcile surface does, and abnormal never implies a completed
+            refund or an entitlement revocation. A refund may still be
+            processing at the gateway.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MembershipOrderRefundEnvelope' }

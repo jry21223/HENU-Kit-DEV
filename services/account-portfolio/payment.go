@@ -328,13 +328,31 @@ func (p *FakePaymentProvider) VerifyNotification(_ context.Context, raw []byte) 
 	return wire.Notification, nil
 }
 
+// fakeProviderOrder resolves the provider-side order for a refund or close
+// operation. The service addresses these by the private merchant order number
+// (the gateway's out_trade_no), exactly like EasyPay, while tests also drive
+// the fake directly by its external order id, so both keys resolve to the same
+// order.
+func (p *FakePaymentProvider) fakeProviderOrder(id string) (ProviderOrder, bool) {
+	order, ok := p.orders[id]
+	if ok {
+		return order, true
+	}
+	external, mapped := p.merchantExternalOrders[id]
+	if !mapped {
+		return ProviderOrder{}, false
+	}
+	order, ok = p.orders[external]
+	return order, ok
+}
+
 func (p *FakePaymentProvider) CloseOrder(_ context.Context, externalOrderID string) (ProviderOrder, error) {
 	if p == nil {
 		return ProviderOrder{}, errors.New("fake payment provider is unavailable")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	order, ok := p.orders[externalOrderID]
+	order, ok := p.fakeProviderOrder(externalOrderID)
 	if !ok {
 		return ProviderOrder{}, errors.New("fake payment order was not found")
 	}
@@ -355,7 +373,7 @@ func (p *FakePaymentProvider) Refund(_ context.Context, externalOrderID string) 
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	order, ok := p.orders[externalOrderID]
+	order, ok := p.fakeProviderOrder(externalOrderID)
 	if !ok || order.Status != MembershipOrderPaid {
 		return PaymentRefund{}, errors.New("fake payment order cannot be refunded")
 	}
@@ -386,7 +404,7 @@ func (p *FakePaymentProvider) QueryRefund(_ context.Context, externalOrderID str
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	order, ok := p.orders[externalOrderID]
+	order, ok := p.fakeProviderOrder(externalOrderID)
 	if !ok {
 		return PaymentRefund{}, errors.New("fake payment order was not found")
 	}

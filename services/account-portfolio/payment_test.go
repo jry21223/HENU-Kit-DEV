@@ -104,12 +104,25 @@ func TestFakePaymentProviderImplementsTheCompletePaymentSeam(t *testing.T) {
 	if verified != paid {
 		t.Fatalf("verified fake notification = %+v, want %+v", verified, paid)
 	}
-	refunded, err := provider.Refund(context.Background(), created.ExternalOrderID)
+	refunded, err := provider.Refund(context.Background(), merchantOrderID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if refunded.Notification.Status != MembershipOrderRefunded || refunded.Notification.Sequence <= paid.Sequence {
 		t.Fatalf("fake refund = %+v, want a later refunded notification", refunded)
+	}
+	// The service addresses refund and close operations by the private merchant
+	// order number (the gateway's out_trade_no), so the fake must resolve that
+	// id to the order it created under its external id.
+	reconciled, err := provider.QueryRefund(context.Background(), merchantOrderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reconciled.Settled || reconciled.Status != MembershipRefundSucceeded {
+		t.Fatalf("fake refund query by merchant id = %+v, want the settled refund", reconciled)
+	}
+	if _, err := provider.CloseOrder(context.Background(), merchantOrderID); err == nil || !strings.Contains(err.Error(), "cannot be closed") {
+		t.Fatalf("fake close by merchant id must refuse the refunded order, got %v", err)
 	}
 }
 
