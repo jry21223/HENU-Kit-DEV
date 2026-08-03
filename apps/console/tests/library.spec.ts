@@ -44,9 +44,9 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     for (const excluded of ["社区", "支付", "刷题", "积分", "会员"]) await expect(page.getByText(excluded, { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "创建课程" })).toBeVisible();
     await expect(page.getByRole("button", { name: "创建资料" })).toBeVisible();
-    await page.getByLabel("学校 ID").fill("55555555-5555-4555-8555-555555555555");
-    await page.getByLabel("学院 ID").fill("66666666-6666-4666-8666-666666666666");
-    await page.getByLabel("专业 ID").fill("77777777-7777-4777-8777-777777777777");
+    await page.getByLabel("学校标识").fill("55555555-5555-4555-8555-555555555555");
+    await page.getByLabel("学院标识").fill("66666666-6666-4666-8666-666666666666");
+    await page.getByLabel("专业标识").fill("77777777-7777-4777-8777-777777777777");
     await page.getByLabel("课程名称", { exact: true }).fill("线性代数");
     await page.getByLabel("课程标识").fill("linear-algebra");
     await page.getByLabel("年级").fill("2025");

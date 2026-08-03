@@ -59,7 +59,7 @@ test("desktop overview exposes six traced module summaries and degradation state
   await expect(page.getByText("积分", { exact: true })).toHaveCount(0);
   await expect(page.getByText("会员", { exact: true })).toHaveCount(0);
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
-  await expect(page.getByText("摘要暂不可用", { exact: true })).toBeVisible();
+  await expect(page.getByText("摘要暂不可用", { exact: true }).first()).toBeVisible();
   const portal = page.locator('[data-module-card="portal"]');
   await expect(portal).toHaveAccessibleName("Portal：正常");
   for (const fact of ["2026.07.19", "0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) await expect(portal.getByText(fact, { exact: true })).toBeVisible();

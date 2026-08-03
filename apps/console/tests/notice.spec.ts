@@ -51,7 +51,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.getByLabel("正文").fill("新正文");
     await page.getByLabel("原文链接").fill("https://example.edu/new/1");
     await page.getByRole("button", { name: "创建版本" }).click();
-    await expect(page.getByRole("status")).toContainText("不可变通知版本已创建");
+    await expect(page.getByRole("status")).toContainText("通知版本已创建并进入待审核状态。");
     await page.getByRole("button", { name: "批准" }).click();
     await expect(page.getByRole("status")).toContainText("审核已批准");
     await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
