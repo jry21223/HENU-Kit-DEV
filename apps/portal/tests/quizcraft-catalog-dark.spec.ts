@@ -18,7 +18,7 @@ test("default Portal flags keep the V2 catalog dark and fail closed", async ({ p
 
   await page.goto("/practice", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByText("接口不可用")).toBeVisible();
+  await expect(page.getByText("服务暂时不可用，请稍后再来。")).toBeVisible();
   await expect(page.getByTestId("quizcraft-catalog")).toHaveCount(0);
   await expect(page.getByTestId("quizcraft-catalog-start")).toHaveCount(0);
   expect(catalogRequests).toBe(0);

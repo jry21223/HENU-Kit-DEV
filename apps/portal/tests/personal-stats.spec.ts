@@ -39,7 +39,7 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
       }
 
       await desktopPage.goto("/practice", { waitUntil: "domcontentloaded" });
-      await expect(desktopPage.getByTestId("practice-hero-stats-state")).toContainText("图谱由已确认");
+      await expect(desktopPage.getByTestId("practice-hero-stats-state")).toContainText("图谱根据你的答题记录生成。");
       await expect(desktopPage.getByTestId("practice-hero-stats-state").locator("xpath=.."))
         .toContainText("4");
 
@@ -97,13 +97,13 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
     phase = "empty";
     releaseLoading?.();
     await expect(page.getByTestId("practice-stats-empty")).toBeVisible();
-    await expect(page.getByTestId("practice-stats-empty")).toContainText("尚无已确认作答事实");
+    await expect(page.getByTestId("practice-stats-empty")).toContainText("还没有学习记录，从第一题开始建立你的学习图谱");
     await expect(page.locator("main")).not.toContainText("486");
 
     phase = "failure";
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("practice-stats-error")).toBeVisible();
-    await expect(page.getByTestId("practice-stats-error")).toContainText("未使用示例数据填充");
+    await expect(page.getByTestId("practice-stats-error")).toContainText("服务暂时不可用，请稍后再试。");
     await expect(page.locator("main")).not.toContainText("486");
 
     phase = "success";

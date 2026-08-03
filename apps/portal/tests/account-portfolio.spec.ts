@@ -155,7 +155,7 @@ test("account session dependency failure fails closed instead of becoming a loca
 
   await page.goto("/account", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-account-session-state="error"]')).toBeVisible();
-  await expect(page.getByText("账户页不会以浏览器缓存、本地身份或会话 mock 替代真实 Portal Session。")).toBeVisible();
+  await expect(page.getByText("账户信息暂时加载不出来，请稍后重新加载。")).toBeVisible();
   await expect(page.locator('[data-account-summary-state="success"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: "重新加载" })).toHaveCSS("min-height", "44px");
   await expect(page.getByRole("link", { name: /登录\s*\/\s*注册/ })).toHaveCSS("min-height", "44px");
@@ -637,7 +637,7 @@ test("wallet exposes a recoverable owner failure instead of a local balance", as
 
   await page.goto("/account/wallet", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-account-points-state="error"]')).toBeVisible();
-  await expect(page.getByText("账户服务不可用时，不会以本地余额或会话数据替代真实积分账本。")).toBeVisible();
+  await expect(page.getByText("积分数据暂时加载不出来，请稍后重试。")).toBeVisible();
   await expect(page.getByText("当前积分余额")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "重新加载" })).toHaveCSS("min-height", "44px");
 });
@@ -662,7 +662,7 @@ for (const viewport of [
     await page.goto("/account/membership", { waitUntil: "domcontentloaded" });
     await expect(page.locator('[data-account-membership-state="success"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "终身会员" })).toBeVisible();
-    await expect(page.getByText("权益已由 Account Portfolio 持久化确认，可跨设备读取。", { exact: true })).toBeVisible();
+    await expect(page.getByText("权益已由系统确认，可跨设备读取。", { exact: true })).toBeVisible();
     await expect(page.locator("[data-membership-purchase]")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /开通|支付/ })).toHaveCount(0);
     await expect(page.getByText(sessionUserID, { exact: true })).toHaveCount(0);
@@ -796,10 +796,10 @@ test("paid Library materials never use Account session mocks as a purchase or sh
   await nextPage.click();
   await expect(page.getByText("3 / 8", { exact: true })).toBeVisible();
   await expect(page.locator('[data-library-purchase-state="unavailable"]')).toBeVisible();
-  await expect(page.getByText("不会通过本地余额或会话状态解锁全文")).toBeVisible();
+  await expect(page.getByText("积分兑换暂未开放")).toBeVisible();
   await expect(page.getByRole("button", { name: /积分购买|登录后购买/ })).toHaveCount(0);
 
   await page.goto("/library/shelf", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-library-shelf-state="unavailable"]')).toBeVisible();
-  await expect(page.getByText("不会展示任何个人书架内容")).toBeVisible();
+  await expect(page.getByText("书架功能即将上线，敬请期待。")).toBeVisible();
 });
