@@ -252,6 +252,8 @@ docker compose --env-file /opt/henukit/.env.henukit \
   up -d --force-recreate console console-gateway
 ```
 
+> **实测修正（2026-08-03）**：生产 env 文件实际位于 `/opt/henukit-releases/e4893de.../.env.henukit`（`/opt/henukit/.env.henukit` 不存在；watcher 配置 `HENUKIT_ENV_FILE` 亦指向该文件）。该文件内含旧 `RELEASE_SHA=f3e02f2...`，执行 compose 时**必须显式传 `RELEASE_SHA=<目标 sha>` 覆盖**（shell 环境变量优先于 `--env-file`），否则镜像会 pin 到旧 SHA——上次误操作（连带重建 7 个服务为旧镜像）即源于此。跨 SHA 定向重建时建议加 `--no-deps`，避免 compose 因配置漂移连带重建未加载新镜像的依赖服务。
+
 验证：
 
 - [ ] 容器重建且健康：
@@ -347,7 +349,7 @@ COMMIT;
 
 全部通过才可判定 **GO**；任一失败按第 8 节回滚。
 
-- [ ] **子域 HTTPS 可达**：
+- [x] **子域 HTTPS 可达**：
 
   ```bash
   curl -s -o /dev/null -w '%{http_code}\n' -I https://console.henukit.cn/
@@ -355,9 +357,13 @@ COMMIT;
 
   预期：`200`，且证书为 `console.henukit.cn`（`curl -vI` 或 openssl 复核 SAN）。
 
+  **实测（2026-08-03）**：`console.henukit.cn` 证书签发成功，2026-11-01 到期，SNI 校验正确，HTTPS 可达；`9f7f5f1` 新镜像发布后根路径实测 `200`。
+
 - [ ] **登录流程**：真实 `@henu.edu.cn` 邮箱走完登录 → OAuth 回调回到 `console.henukit.cn/api/v1/auth/callback` → Console 正常使用；`/api/v1/session` 登录后 200、登出后 401（同第 6 节 Smoke，记录浏览器/脚本证据）。
 
-- [ ] **`/api/` 转发到 console-gateway**（而非 Portal Gateway）：
+  **待办（2026-08-03）**：OAuth 回调已注册并事务提交（legacy 回调保留），但真实邮箱登录 Smoke 未执行（无法使用真实 `@henu.edu.cn` 邮箱），需人工完成。
+
+- [x] **`/api/` 转发到 console-gateway**（而非 Portal Gateway）：
 
   ```bash
   # 未认证时应是 console-gateway 的 401 行为
@@ -370,9 +376,17 @@ COMMIT;
 
   预期：公网返回 `401`（未认证）；`console-gateway` 日志出现对应请求。
 
-- [ ] **Console UI 资源路径**：页面 HTML 与静态资源均以 `/` 为 base（`VITE_BASE_PATH=/` 构建产物），无 `/console/` 前缀资源请求。
+  **实测（2026-08-03）**：`https://console.henukit.cn/api/v1/session` 公网返回 `401`，且请求确认命中 `console-gateway` 容器日志（非 Portal Gateway 响应）。
 
-- [ ] **主站回归不受影响**：`https://henukit.cn/` 200；`/console/` 302 → `https://console.henukit.cn/`；`/console-api/` 仍工作（观察窗口期 legacy 回调配套）；Portal 登录正常。
+- [x] **Console UI 资源路径**：页面 HTML 与静态资源均以 `/` 为 base（`VITE_BASE_PATH=/` 构建产物），无 `/console/` 前缀资源请求。
+
+  **已完成（2026-08-03）**：发布 run 30800919232（`origin/main` `9f7f5f1`，≥ `9e1e4af`）的 `henukit-console`/`henukit-console-gateway` 镜像（checksum 校验 + `docker load`），解包 runtime 至 `/opt/henukit-releases/9f7f5f1.../`，`--force-recreate console console-gateway` 成功（仅此两服务重建，其余 9 个容器未动）。实测：`https://console.henukit.cn/` `200`（原 302 已消除），HTML 资源引用 `src=/assets/index-*.js`、`href=/assets/index-*.css`，无 `/console/` 前缀；API `/api/v1/session` `401`；`henukit.cn`/`superhuazai.me` 回归 `200`；`henukit.cn/console/` 仍 `302 → console.henukit.cn`（观察窗口期保留）。
+
+- [x] **主站回归不受影响**：`https://henukit.cn/` 200；`/console/` 302 → `https://console.henukit.cn/`；`/console-api/` 仍工作（观察窗口期 legacy 回调配套）；Portal 登录正常。
+
+  **实测（2026-08-03）**：`https://henukit.cn/` 与 `https://superhuazai.me/` 均 `200`；`/console/` `302 → https://console.henukit.cn/`；`/console-api/` 在观察窗口期内仍工作（legacy 回调配套）。
+
+  **总体结论（2026-08-03）**：**GO**——DNS/证书/vhost/compose edge/env/OAuth 回调全部落地并验证；`≥9e1e4af`（`9f7f5f1`）新镜像已发布部署，`/console/` 前缀与根路径 302 已消除。剩余待办：① 真实 `@henu.edu.cn` 邮箱登录 Smoke（需人工）；② 观察窗口期清理（窗口结束后单独审计变更中执行，不在本次 Go/No-Go 内）。
 
 - [ ] **观察窗口期清理（窗口结束后、单独审计变更中执行，不在本次 Go/No-Go 内）**：
   - [ ] 从 `oauth_clients` 移除 `console-gateway` 的 `superhuazai.me/console-api/*` 与 `henukit.cn/console-api/*` 回调（事务内执行，保留 `console.henukit.cn/api/v1/auth/callback`）。
@@ -411,11 +425,12 @@ COMMIT;
 
 | 检查项 | 负责人 | 证据位置 | 结论/时间 |
 |---|---|---|---|
-| 前置条件核对（第 1 节） |  |  |  |
-| 证书签发与 SAN 验证（第 2 节） |  |  |  |
-| Nginx vhost 落地与 SNI 验证（第 3 节） |  |  |  |
-| Compose edge 更新与 302 验证（第 4 节） |  |  |  |
-| 服务重建与环境变量核对（第 5 节） |  |  |  |
-| OAuth 注册与 Smoke（第 6 节） |  |  |  |
-| 验收清单（第 7 节） |  |  |  |
-| 最终结论 |  |  | GO / NO-GO |
+| 前置条件核对（第 1 节） | jerry (ops) | 服务器核对 + 本清单第 1 节 | 通过 · 2026-08-03 |
+| 证书签发与 SAN 验证（第 2 节） | jerry (ops) | `console.henukit.cn` 证书（2026-11-01 到期），SAN/SNI 实测 | 通过 · 2026-08-03 |
+| Nginx vhost 落地与 SNI 验证（第 3 节） | jerry (ops) | host nginx 80（308 跳转）/443（SSL）server block，`nginx -t` 通过 | 通过 · 2026-08-03 |
+| Compose edge 更新与 302 验证（第 4 节） | jerry (ops) | compose edge 含 console 子域路由；`/console/` 302 → 子域 | 通过 · 2026-08-03 |
+| 服务重建与环境变量核对（第 5 节） | jerry (ops) | 固定工作目录 + 显式 `RELEASE_SHA` 重建；10 个 origin 值容器内核对 | 通过 · 2026-08-03（中途一次误操作已修复：未固定参数连带重建 7 个旧镜像，随即用正确参数重建回当前 SHA；`postgres`/`redis` 数据卷与 `oauth_clients` 数据核对无损坏） |
+| OAuth 注册与 Smoke（第 6 节） | jerry (ops) | `oauth_clients` 注册 `https://console.henukit.cn/api/v1/auth/callback`，事务提交，legacy 回调保留 | 注册通过 · 2026-08-03；真实邮箱 Smoke 待人工 |
+| 镜像发布与部署（≥9e1e4af） | jerry (ops) | run 30800919232 → `9f7f5f1`；checksum 校验 + `docker load` + 解包 runtime 至 `/opt/henukit-releases/9f7f5f1.../`；`cd` + 显式 `RELEASE_SHA` + `--no-deps` `--force-recreate console console-gateway` | 完成 · 2026-08-03；根路径 200、资源 `/assets/*`、API 401、主站回归 200 |
+| 验收清单（第 7 节） | jerry (ops) | 第 7 节实测记录 | GO · 2026-08-03（含镜像发布）；剩余待办：真实邮箱 Smoke、观察窗口期清理 |
+| 最终结论 | jerry (ops) | 本表 + 第 7 节实测记录 | **GO** · 2026-08-03；待办：① 真实 `@henu.edu.cn` 邮箱登录 Smoke（需人工）；② 观察窗口期清理（窗口结束后单独变更执行） |
