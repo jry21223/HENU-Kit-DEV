@@ -24,7 +24,7 @@ async function loadBlog() {
   } catch (error) {
     return {
       posts: [] as BlogPost[],
-      error: error instanceof Error ? error.message : "API unavailable",
+      error: error instanceof Error ? error.message : "服务暂时不可用",
     };
   }
 }
@@ -60,7 +60,7 @@ export default async function BlogPage() {
             <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone="success">published</Badge>
+                  <Badge tone="success">已发布</Badge>
                   <Badge tone="muted">{post.slug}</Badge>
                 </div>
                 <h2 className="mt-3 break-words text-xl font-semibold tracking-tight">{post.title}</h2>

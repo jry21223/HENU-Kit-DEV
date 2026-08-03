@@ -25,7 +25,7 @@ const copy = {
   eyebrow: "我的错题本",
   title: "错题记录与薄弱课程",
   intro:
-    "这里只读取当前登录账号自己的错题记录。题目详情来自公开题目接口，不包含标准答案；删除错题只会移出错题本，不会影响题库或练习记录。",
+    "这里只读取当前登录账号自己的错题记录。题目详情来自公开题目，不包含标准答案；删除错题只会移出错题本，不会影响题库或练习记录。",
   loading: "正在加载错题本...",
   login: "去登录",
   empty: "暂无错题。完成课程练习后，答错的题目会自动进入这里。",
@@ -182,8 +182,8 @@ export default function WrongQuestionsPage() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="muted">{course?.name ?? "课程信息待同步"}</Badge>
-                      <Badge tone="muted">{question?.type ?? "question"}</Badge>
+                      <Badge tone="muted">{course?.name ?? "暂无课程信息"}</Badge>
+                      <Badge tone="muted">{questionTypeLabel(question?.type)}</Badge>
                       <Badge tone="success">
                         {copy.wrongCount}: {wrong.wrongCount}
                       </Badge>
@@ -269,7 +269,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<Envelop
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function questionTypeLabel(type?: string) {
+  const labels: Record<string, string> = {
+    single: "单选",
+    multiple: "多选",
+    judge: "判断",
+  };
+  if (!type) return "题目";
+  return labels[type] ?? type;
 }

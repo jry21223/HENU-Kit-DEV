@@ -76,7 +76,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
               <dl className="grid shrink-0 gap-3 text-sm sm:grid-cols-3 lg:w-80 lg:grid-cols-1">
                 <div className="rounded-2xl border border-border bg-background p-4">
                   <dt className="text-xs text-muted-foreground">适用年级</dt>
-                  <dd className="mt-1 font-medium">{course.grade || "待补充"}</dd>
+                  <dd className="mt-1 font-medium">{course.grade || "年级未设置"}</dd>
                 </div>
                 <div className="rounded-2xl border border-border bg-background p-4">
                   <dt className="text-xs text-muted-foreground">资料数量</dt>

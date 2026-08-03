@@ -31,7 +31,7 @@ export const archiveDirectory: ArchiveDirectoryItem[] = [
   { label: "历年真题", href: "/courses", description: "围绕课程归档考前练习和解析入口。" },
   { label: "实验资料", href: "/courses", description: "实验报告、代码材料和环境说明集中维护。" },
   { label: "复习笔记", href: "/courses", description: "考前速记、重点整理和同学贡献内容。" },
-  { label: "课程包", href: "/courses", description: "按课程打包解锁 paid 资料和复习组合。" },
+  { label: "课程包", href: "/courses", description: "按课程打包解锁付费资料和复习组合。" },
   { label: "刷题练习", href: "/courses", description: "从课程题目进入练习、提交和错题沉淀。" },
   { label: "我的下载", href: "/me/downloads", description: "登录后回看自己的资料下载记录。" },
 ];
@@ -62,14 +62,14 @@ export const practiceFeatures: VisionFeature[] = [
 export const membershipFeatures: VisionFeature[] = [
   { title: "创作者积分", body: "资料补充、内容共创和课程经验沉淀都能进入激励体系。", icon: Coins },
   { title: "会员权益", body: "会员和积分共同控制资料权益、课程包权益和 AI 使用额度。", icon: BadgeCheck },
-  { title: "课程包", body: "以课程为单位组织 paid 资料，解锁仍由服务端校验。", icon: Gift },
+  { title: "课程包", body: "以课程为单位组织付费资料，解锁仍由服务端校验。", icon: Gift },
   { title: "成本控制", body: "AI 能力按积分或会员额度使用，避免无边界消耗。", icon: Tags },
 ];
 
 export const guaranteeItems: GuaranteeItem[] = [
   { title: "资料稳定供应", body: "课程 PDF 按资料库规则维护，避免临时网盘式失效。", icon: BookMarked },
   { title: "轻水印", body: "下载资料带有不影响阅读的来源标识。", icon: Sparkles },
-  { title: "权限校验", body: "free、login_required、paid 资料都由 Go API 服务端判定。", icon: ShieldCheck },
+  { title: "权限校验", body: "资料按公开、登录、付费规则由服务端校验。", icon: ShieldCheck },
   { title: "审核边界", body: "AI 草稿和贡献内容先进入审核流程，再成为正式内容。", icon: PenLine },
 ];
 

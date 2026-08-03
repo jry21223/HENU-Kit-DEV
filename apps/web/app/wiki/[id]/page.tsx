@@ -42,7 +42,7 @@ async function loadEntry(id: string) {
     return {
       entry: null as WikiEntry | null,
       course: null as Course | null,
-      error: error instanceof Error ? error.message : "API unavailable",
+      error: error instanceof Error ? error.message : "服务暂时不可用",
     };
   }
 }
@@ -69,7 +69,7 @@ export default async function WikiDetailPage({ params }: PageProps) {
               <div className="min-w-0">
                 <p className="text-sm font-medium text-primary">{copy.eyebrow}</p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Badge tone="success">published</Badge>
+                  <Badge tone="success">已发布</Badge>
                   <Badge tone="muted">{course?.name ?? copy.noCourse}</Badge>
                 </div>
                 <h1 className="mt-4 break-words text-3xl font-semibold tracking-tight sm:text-4xl">{entry.title}</h1>

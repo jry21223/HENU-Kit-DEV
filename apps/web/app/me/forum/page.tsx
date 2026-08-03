@@ -167,7 +167,7 @@ export default function MyForumPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={post.status} />
                     <Badge tone="muted">{labelPostType(post.type)}</Badge>
-                    {post.rewardStatus ? <Badge tone="muted">{post.rewardStatus}</Badge> : null}
+                    {post.rewardStatus ? <Badge tone="muted">{rewardStatusLabel(post.rewardStatus)}</Badge> : null}
                   </div>
                   <h3 className="mt-3 break-words font-semibold">{post.title}</h3>
                   <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-muted-foreground">{post.content}</p>
@@ -204,7 +204,7 @@ export default function MyForumPage() {
                     <StatusBadge status={reply.status} />
                     {reply.isBest ? <Badge tone="success">\u6700\u4f73\u7b54\u6848</Badge> : null}
                   </div>
-                  <h3 className="mt-3 break-words text-sm font-semibold text-muted-foreground">{reply.postTitle || reply.postId}</h3>
+                  <h3 className="mt-3 break-words text-sm font-semibold text-muted-foreground">{reply.postTitle || "原帖已不可见"}</h3>
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{reply.content}</p>
                   <ReviewReason value={reply.reviewReason} />
                   {editing?.kind === "reply" && editing.id === reply.id ? (
@@ -384,7 +384,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<Envelop
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function rewardStatusLabel(status?: string) {
+  const labels: Record<string, string> = {
+    open: "悬赏中",
+    completed: "已解决",
+    expired: "已过期",
+  };
+  return labels[status ?? ""] ?? status ?? "";
 }

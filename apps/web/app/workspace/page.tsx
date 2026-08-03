@@ -665,7 +665,7 @@ function CourseGrid() {
               <div className="flex items-center justify-between px-4 pb-4">
                 <Icon className="size-5 opacity-72 transition group-hover:translate-x-0.5" aria-hidden="true" />
                 <span className="rounded-lg bg-white/30 px-2 py-1 font-mono text-[11px] font-semibold">
-                  {course.files} Files
+                  {course.files} 份资料
                 </span>
               </div>
             </Link>
@@ -674,6 +674,11 @@ function CourseGrid() {
       </div>
     </section>
   );
+}
+
+function categoryLabel(category: string) {
+  const labels: Record<string, string> = { Exam: "资料", Note: "笔记", Slide: "课件" };
+  return labels[category] ?? category;
 }
 
 function Tag({ value }: { value: DocumentRow["tags"][number] }) {
@@ -694,7 +699,7 @@ function DocumentRepository() {
         <h2 className="text-xs font-semibold text-foreground">资料归档</h2>
         <button
           className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-lg border border-[#5b4128]/12 bg-white/62 px-2 text-xs text-muted-foreground opacity-60"
-          aria-label="筛选暂未开放"
+          aria-label="筛选功能即将开放"
           disabled
           type="button"
         >
@@ -724,7 +729,7 @@ function DocumentRepository() {
                 </td>
                 <td className="px-4 py-3 font-medium">{document.title}</td>
                 <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{document.course}</td>
-                <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{document.category}</td>
+                <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{categoryLabel(document.category)}</td>
                 <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{document.date}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
@@ -753,7 +758,7 @@ function DocumentRepository() {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{document.title}</p>
                   <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                    {document.course} / {document.category} / {document.date}
+                    {document.course} / {categoryLabel(document.category)} / {document.date}
                   </p>
                 </div>
               </div>
@@ -842,8 +847,8 @@ export default function HomePage() {
               </div>
               <div className="workspace-paper-panel rounded-2xl p-4 transition duration-200 hover:-translate-y-0.5">
                 <IconBlock icon={UsersRound} />
-                <h2 className="mt-4 font-heading text-xl font-semibold">社区功能预留</h2>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">后续讨论围绕资料补充、勘误和课程经验展开，不抢占当前下载主流程。</p>
+                <h2 className="mt-4 font-heading text-xl font-semibold">社区功能即将上线</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">敬请期待</p>
               </div>
             </section>
           </div>

@@ -15,14 +15,14 @@ const copy = {
   backToCourses: "返回课程库",
   packageBadge: "课程复习包",
   intro:
-    "课程包用于把讲义、模拟卷、解析和速背资料组合交付。当前支付仍在微信 Native 联调准备中，已授权账号可直接访问包内 paid 资料。",
+    "课程包用于把讲义、模拟卷、解析和速背资料组合交付。当前微信支付仍在联调准备中，已授权账号可直接访问包内付费资料。",
   price: "价格",
   materialList: "包内资料",
-  emptyMaterials: "这个课程包暂时没有已发布资料。后台可先绑定草稿资料，但公开页不会展示未发布内容。",
+  emptyMaterials: "该课程包正在整理中，请稍后查看。",
   serviceGuard: "服务端权限校验",
-  serviceGuardBody: "课程包本身不直接暴露 PDF 地址。每个资料下载仍会经过 Go API 的登录、邮箱验证、entitlement 和水印逻辑。",
+  serviceGuardBody: "课程包本身不直接暴露 PDF 地址。每个资料下载都会校验账号权限并附加水印标识。",
   delivery: "交付状态",
-  deliveryBody: "内测阶段支持后台手动授权；后续接入微信 Native 支付回调后，会由服务端自动发放课程包 entitlement。",
+  deliveryBody: "内测阶段支持后台手动授权；后续接入微信支付回调后，会由服务端自动发放课程包权限。",
   viewMaterial: "查看资料",
   unavailable: "课程包暂时不可访问",
 };

@@ -146,8 +146,8 @@ function buildRenderOptions(question: QuizQuestion): RenderOption[] {
 
   if (question.type === "true_false") {
     return [
-      { id: `${question.id}-true`, label: "true", content: "正确" },
-      { id: `${question.id}-false`, label: "false", content: "错误" },
+      { id: `${question.id}-true`, label: "A", content: "正确" },
+      { id: `${question.id}-false`, label: "B", content: "错误" },
     ];
   }
 

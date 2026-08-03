@@ -123,7 +123,7 @@ export function LoginForm() {
           <p className="text-sm text-muted-foreground">当前登录</p>
           <p className="mt-1 break-words font-semibold text-foreground">{currentUser.email}</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {currentUser.name} · {currentUser.role} · {currentUser.emailVerified ? "邮箱已验证" : "邮箱未验证"}
+            {currentUser.name} · {roleLabel(currentUser.role)} · {currentUser.emailVerified ? "邮箱已验证" : "邮箱未验证"}
           </p>
           <button
             className="mt-4 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
@@ -223,7 +223,17 @@ async function request<T>(path: string, init: RequestInit): Promise<Envelope<T>>
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function roleLabel(role: string) {
+  const labels: Record<string, string> = {
+    admin: "管理员",
+    creator: "创作者",
+    reviewer: "审核员",
+    student: "学生",
+  };
+  return labels[role] ?? role;
 }

@@ -18,7 +18,7 @@ const copy = {
   eyebrow: "\u6211\u7684\u901a\u77e5",
   title: "\u5ba1\u6838\u7ed3\u679c\u4e0e\u7cfb\u7edf\u6d88\u606f",
   intro:
-    "\u8fd9\u91cc\u53ea\u5c55\u793a\u5f53\u524d\u767b\u5f55\u8d26\u53f7\u7684\u901a\u77e5\u3002\u8bba\u575b\u5e16\u5b50\u548c\u56de\u590d\u7684\u5ba1\u6838\u7ed3\u679c\u4f1a\u5728\u670d\u52a1\u7aef\u4e8b\u52a1\u4e2d\u5199\u5165\u901a\u77e5\u3002",
+    "\u8fd9\u91cc\u53ea\u5c55\u793a\u5f53\u524d\u767b\u5f55\u8d26\u53f7\u7684\u901a\u77e5\u3002\u8bba\u575b\u5e16\u5b50\u548c\u56de\u590d\u7684\u5ba1\u6838\u7ed3\u679c\u4f1a\u901a\u8fc7\u901a\u77e5\u544a\u77e5\u4f60\u3002",
   loading: "\u6b63\u5728\u52a0\u8f7d\u901a\u77e5...",
   login: "\u53bb\u767b\u5f55",
   unread: "\u672a\u8bfb",
@@ -133,7 +133,7 @@ export default function NotificationsPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone={unread ? "success" : "muted"}>{unread ? copy.unread : copy.read}</Badge>
-                      <Badge tone="muted">{item.type}</Badge>
+                      <Badge tone="muted">{notificationTypeLabel(item.type)}</Badge>
                     </div>
                     <h2 className="mt-3 break-words text-lg font-semibold">{item.title}</h2>
                     <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{item.body}</p>
@@ -184,7 +184,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<Envelop
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function notificationTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    reply: "回复",
+    mention: "提及",
+    system: "系统通知",
+  };
+  return labels[type] ?? type;
 }

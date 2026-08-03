@@ -203,7 +203,7 @@ async function request<T>(path: string, init: RequestInit): Promise<Envelope<T>>
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
 }

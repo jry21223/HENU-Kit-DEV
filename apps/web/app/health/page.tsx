@@ -12,9 +12,9 @@ export default async function HealthPage() {
 
   try {
     const response = await getApi<VersionData>("/version");
-    result = `${response.data.service} ${response.data.version} (${response.data.environment})`;
+    result = `${response.data.service} 服务正常（版本 ${response.data.version}）`;
   } catch (error) {
-    result = error instanceof Error ? error.message : "API unavailable";
+    result = error instanceof Error ? error.message : "服务暂时不可用";
   }
 
   return (
@@ -23,7 +23,7 @@ export default async function HealthPage() {
         <Link className="text-sm text-sage" href="/">
           返回首页
         </Link>
-        <h1 className="mt-6 text-2xl font-semibold">API 状态</h1>
+        <h1 className="mt-6 text-2xl font-semibold">服务状态</h1>
         <p className="mt-3 rounded-md bg-paper p-4 text-sm text-slate-700">{result}</p>
       </section>
     </main>

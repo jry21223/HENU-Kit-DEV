@@ -9,7 +9,7 @@ async function loadCourses() {
     const response = await getApi<{ courses: Course[] }>("/courses");
     return { courses: response.data.courses, error: "" };
   } catch (error) {
-    return { courses: [] as Course[], error: error instanceof Error ? error.message : "API unavailable" };
+    return { courses: [] as Course[], error: error instanceof Error ? error.message : "服务暂时不可用" };
   }
 }
 
@@ -43,7 +43,7 @@ export default async function CoursesPage() {
                 <h2 className="mt-4 text-lg font-semibold tracking-tight">{course.name}</h2>
               </div>
               <span className="shrink-0 rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground">
-                {course.grade || "适用年级待补充"}
+                {course.grade || "年级未设置"}
               </span>
             </div>
             <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">

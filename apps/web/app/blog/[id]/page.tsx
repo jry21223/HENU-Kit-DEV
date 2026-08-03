@@ -27,7 +27,7 @@ async function loadPost(id: string) {
   } catch (error) {
     return {
       post: null as BlogPost | null,
-      error: error instanceof Error ? error.message : "API unavailable",
+      error: error instanceof Error ? error.message : "服务暂时不可用",
     };
   }
 }
@@ -54,7 +54,7 @@ export default async function BlogDetailPage({ params }: PageProps) {
               <div className="min-w-0">
                 <p className="text-sm font-medium text-primary">{copy.eyebrow}</p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Badge tone="success">published</Badge>
+                  <Badge tone="success">已发布</Badge>
                   <Badge tone="muted">{post.slug}</Badge>
                 </div>
                 <h1 className="mt-4 break-words text-3xl font-semibold tracking-tight sm:text-4xl">{post.title}</h1>
@@ -79,9 +79,9 @@ export default async function BlogDetailPage({ params }: PageProps) {
                 <div className="rounded-2xl border border-border bg-background p-4">
                   <dt className="flex items-center text-xs text-muted-foreground">
                     <BookMarked className="mr-1.5 size-3.5" aria-hidden="true" />
-                    Author
+                    作者
                   </dt>
-                  <dd className="mt-1 break-words font-medium">{post.authorId}</dd>
+                  <dd className="mt-1 break-words font-medium">未知作者</dd>
                 </div>
                 <ReportButton targetId={post.id} targetLabel={post.title} targetType="blog_post" />
               </dl>

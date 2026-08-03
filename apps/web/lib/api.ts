@@ -1,4 +1,4 @@
-const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 export type ApiEnvelope<T> = {
   code: number;
@@ -7,19 +7,19 @@ export type ApiEnvelope<T> = {
 };
 
 export async function getApi<T>(path: string): Promise<ApiEnvelope<T>> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
     next: { revalidate: 10 },
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed with ${response.status}`);
+    throw new Error("网络不太顺畅，请检查网络后重试");
   }
 
   return response.json() as Promise<ApiEnvelope<T>>;
 }
 
 export async function postApi<T>(path: string, body: unknown): Promise<ApiEnvelope<T>> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -27,7 +27,7 @@ export async function postApi<T>(path: string, body: unknown): Promise<ApiEnvelo
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed with ${response.status}`);
+    throw new Error("网络不太顺畅，请检查网络后重试");
   }
 
   return response.json() as Promise<ApiEnvelope<T>>;
@@ -552,5 +552,6 @@ export type NotificationItem = {
 };
 
 export function apiBaseUrl() {
+  if (!baseUrl) throw new Error("服务暂时不可用");
   return baseUrl;
 }

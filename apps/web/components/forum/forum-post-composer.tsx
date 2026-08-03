@@ -44,7 +44,7 @@ const copy = {
   submit: "\u63d0\u4ea4\u5ba1\u6838",
   submitting: "\u63d0\u4ea4\u4e2d...",
   submitted: "\u5e16\u5b50\u5df2\u63d0\u4ea4\u5ba1\u6838\uff0c\u901a\u8fc7\u540e\u4f1a\u516c\u5f00\u5c55\u793a\u3002",
-  noBoards: "\u6682\u65e0\u53ef\u7528\u7248\u5757\uff0c\u8bf7\u5148\u5728 seed \u6216\u7ba1\u7406\u540e\u53f0\u51c6\u5907\u7248\u5757\u6570\u636e\u3002",
+  noBoards: "\u7248\u5757\u6b63\u5728\u51c6\u5907\u4e2d\uff0c\u8bf7\u7a0d\u540e\u518d\u6765",
   loadFailed: "\u53d1\u5e16\u529f\u80fd\u6682\u65f6\u4e0d\u53ef\u7528",
 };
 
@@ -246,7 +246,7 @@ async function request<T>(path: string, init: RequestInit): Promise<Envelope<T>>
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "\u7f51\u7edc\u4e0d\u592a\u987a\u7545\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u91cd\u8bd5");
   }
   return payload;
 }

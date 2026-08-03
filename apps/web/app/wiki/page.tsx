@@ -37,7 +37,7 @@ async function loadWiki(courseId?: string) {
     return {
       entries: [] as WikiEntry[],
       courses: [] as Course[],
-      error: error instanceof Error ? error.message : "API unavailable",
+      error: error instanceof Error ? error.message : "服务暂时不可用",
     };
   }
 }
@@ -110,7 +110,7 @@ export default async function WikiPage({ searchParams }: PageProps) {
               <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone="success">published</Badge>
+                    <Badge tone="success">已发布</Badge>
                     {course ? <Badge tone="muted">{course.name}</Badge> : null}
                   </div>
                   <h2 className="mt-3 break-words text-xl font-semibold tracking-tight">{entry.title}</h2>

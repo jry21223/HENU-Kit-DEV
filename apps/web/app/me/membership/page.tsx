@@ -30,7 +30,7 @@ const copy = {
   login: "去登录",
   eyebrow: "会员权益",
   title: "我的会员与积分兑换",
-  intro: "当前会员状态以后端记录为准。积分兑换会由服务端扣减积分、写入流水并发放会员，前端不会自行修改权益。",
+  intro: "会员与积分以服务端记录为准。",
   loading: "正在加载会员信息...",
   current: "当前会员",
   noCurrent: "当前没有有效会员。",
@@ -182,7 +182,7 @@ export default function MyMembershipPage() {
                       <div className="min-w-0">
                         <h3 className="break-words text-sm font-medium">{row.plan?.name ?? planByCode[row.membership.planCode]?.name ?? row.membership.planCode}</h3>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {copy.source}：{row.membership.source || "system"}
+                          {copy.source}：{membershipSourceLabel(row.membership.source)}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {copy.expires}：{formatExpiry(row.membership.expiresAt)}
@@ -206,7 +206,6 @@ export default function MyMembershipPage() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <h3 className="text-sm font-medium">{plan.name}</h3>
-                          <p className="mt-1 text-xs text-muted-foreground">{plan.code}</p>
                         </div>
                         <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{formatPrice(plan.priceFen)}</span>
                       </div>
@@ -255,9 +254,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<Envelop
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function membershipSourceLabel(source?: string) {
+  const labels: Record<string, string> = {
+    system: "系统",
+    manual: "手动授权",
+    redeem: "积分兑换",
+  };
+  return labels[source ?? ""] ?? source ?? "系统";
 }
 
 function formatExpiry(value?: string | null) {
@@ -268,6 +276,6 @@ function formatExpiry(value?: string | null) {
 }
 
 function formatPrice(priceFen: number) {
-  if (!Number.isFinite(priceFen) || priceFen <= 0) return "免费 / 手动授权";
+  if (!Number.isFinite(priceFen) || priceFen <= 0) return "暂未定价";
   return `￥${(priceFen / 100).toFixed(2)}`;
 }

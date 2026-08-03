@@ -19,9 +19,9 @@ const copy = {
   eyebrow: "课程复习包",
   title: "按课程包集中查看讲义、模拟卷和解析",
   intro:
-    "课程包用于把同一门课程的知识点讲义、模拟卷、答案解析和考前速背资料合在一起交付。这里仅展示后端已发布的课程包，付费解锁仍以服务端订单和 entitlement 为准。",
+    "课程包用于把同一门课程的知识点讲义、模拟卷、答案解析和考前速背资料合在一起交付。这里仅展示后端已发布的课程包，付费解锁仍以服务端订单和资料权限为准。",
   viewCourses: "查看课程资料",
-  publishedOnly: "仅展示 published",
+  publishedOnly: "已发布",
   price: "价格",
   school: "学校",
   college: "学院",
@@ -30,9 +30,9 @@ const copy = {
   detail: "查看复习包",
   empty: "暂无已发布课程包。",
   unavailable: "课程包列表暂时不可用",
-  fallbackSchool: "学校信息待同步",
-  fallbackCollege: "学院信息待同步",
-  fallbackMajor: "专业信息待同步",
+  fallbackSchool: "暂无学校信息",
+  fallbackCollege: "暂无学院信息",
+  fallbackMajor: "暂无专业信息",
 };
 
 async function loadPackages() {

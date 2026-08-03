@@ -68,7 +68,7 @@ export function UserProfileView({ initialProfile, userId }: { initialProfile: Us
         <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <Badge tone="success">{profile.profile.role}</Badge>
+              <Badge tone="success">{roleLabel(profile.profile.role)}</Badge>
               <h1 className="mt-4 break-words text-3xl font-semibold tracking-tight">{profile.profile.name || "\u540c\u5b66"}</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 {copy.joined} {formatDate(profile.profile.createdAt)}
@@ -150,7 +150,7 @@ export function UserProfileView({ initialProfile, userId }: { initialProfile: Us
           {profile.forumPosts.map((post) => (
             <Link className="block rounded-3xl border border-border bg-card p-5 shadow-sm transition hover:border-primary/60 hover:shadow-md" href={`/forum/${post.id}`} key={post.id}>
               <div className="flex flex-wrap gap-2">
-                <Badge tone={post.type === "reward" ? "success" : "muted"}>{post.type}</Badge>
+                <Badge tone={post.type === "reward" ? "success" : "muted"}>{forumPostTypeLabel(post.type)}</Badge>
                 <Badge tone="muted">{post.commentCount} {copy.replies}</Badge>
               </div>
               <h2 className="mt-3 break-words text-lg font-semibold tracking-tight">{post.title}</h2>
@@ -202,9 +202,28 @@ async function request<T>(path: string, init: RequestInit): Promise<Envelope<T>>
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function roleLabel(role: string) {
+  const labels: Record<string, string> = {
+    admin: "管理员",
+    creator: "创作者",
+    reviewer: "审核员",
+    student: "学生",
+  };
+  return labels[role] ?? role;
+}
+
+function forumPostTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    normal: "讨论",
+    question: "问答",
+    reward: "悬赏",
+  };
+  return labels[type] ?? type;
 }
 
 function formatDate(value: string) {

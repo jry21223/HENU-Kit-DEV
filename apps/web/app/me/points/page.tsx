@@ -17,7 +17,7 @@ const copy = {
   back: "返回个人中心",
   eyebrow: "我的积分",
   title: "积分余额与流水",
-  intro: "这里展示当前登录账号的积分余额和最近积分变动。所有积分增减都应有服务端流水记录。",
+  intro: "这里展示当前登录账号的积分余额和最近积分变动。积分以服务端记录为准。",
   loading: "正在加载积分信息...",
   login: "去登录",
   balance: "当前积分",
@@ -104,9 +104,7 @@ export default function MyPointsPage() {
                       </span>
                       <div className="min-w-0">
                         <h3 className="break-words text-sm font-medium">{log.reason}</h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {log.referenceType || "system"} / {log.referenceId || "-"}
-                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">来源：{referenceTypeLabel(log.referenceType)}</p>
                       </div>
                     </div>
                     <div className="text-right">
@@ -135,9 +133,14 @@ async function request<T>(path: string): Promise<Envelope<T>> {
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function referenceTypeLabel(type?: string) {
+  if (!type || type === "system") return "系统";
+  return "其他";
 }
 
 function formatDate(value: string) {

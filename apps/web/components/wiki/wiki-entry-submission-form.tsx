@@ -18,9 +18,9 @@ type WikiEntrySubmissionFormProps = {
 const copy = {
   title: "\u65b0\u5efa Wiki \u8bcd\u6761",
   intro:
-    "\u65b0\u8bcd\u6761\u4e0d\u4f1a\u76f4\u63a5\u516c\u5f00\u3002\u63d0\u4ea4\u540e\u8fdb\u5165 reviewer/admin \u5ba1\u6838\uff0c\u901a\u8fc7\u540e\u624d\u4f1a\u51fa\u73b0\u5728\u516c\u5f00 Wiki \u5217\u8868\u3002",
+    "\u65b0\u8bcd\u6761\u4e0d\u4f1a\u76f4\u63a5\u516c\u5f00\u3002\u63d0\u4ea4\u540e\u8fdb\u5165\u5ba1\u6838\uff0c\u901a\u8fc7\u540e\u624d\u4f1a\u51fa\u73b0\u5728\u516c\u5f00 Wiki \u5217\u8868\u3002",
   loadingUser: "\u6b63\u5728\u8bfb\u53d6\u8d26\u53f7\u6743\u9650...",
-  loginRequired: "\u9700\u8981\u5148\u767b\u5f55\uff0c\u5e76\u83b7\u5f97 creator/admin \u6743\u9650\u540e\u624d\u80fd\u6295\u7a3f Wiki \u8bcd\u6761\u3002",
+  loginRequired: "\u9700\u8981\u5148\u767b\u5f55\uff0c\u5e76\u83b7\u5f97\u521b\u4f5c\u8005\u6216\u7ba1\u7406\u5458\u6743\u9650\u540e\u624d\u80fd\u6295\u7a3f Wiki \u8bcd\u6761\u3002",
   forbidden:
     "\u5f53\u524d\u8d26\u53f7\u8fd8\u4e0d\u662f Wiki \u521b\u4f5c\u8005\u3002\u53ef\u4ee5\u5148\u8fd4\u56de Wiki \u9875\u9762\u63d0\u4ea4\u521b\u4f5c\u8005\u7533\u8bf7\u3002",
   login: "\u53bb\u767b\u5f55",
@@ -29,7 +29,7 @@ const copy = {
   noCourse: "\u901a\u7528\u8bcd\u6761\uff08\u4e0d\u5173\u8054\u5177\u4f53\u8bfe\u7a0b\uff09",
   titleLabel: "\u8bcd\u6761\u6807\u9898",
   titlePlaceholder: "\u4f8b\uff1a\u79bb\u6563\u6570\u5b66\u56fe\u8bba\u9ad8\u9891\u8003\u70b9",
-  slugLabel: "URL Slug",
+  slugLabel: "\u94fe\u63a5\u522b\u540d",
   slugPlaceholder: "\u4ec5\u652f\u6301\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u548c\u8fde\u5b57\u7b26\uff0c\u4f8b\uff1adiscrete-graph-review",
   contentLabel: "\u6b63\u6587",
   contentPlaceholder: "\u5199\u5165\u7ed3\u6784\u5316\u5185\u5bb9\uff0c\u53ef\u5305\u542b\u77e5\u8bc6\u70b9\u3001\u6613\u9519\u70b9\u3001\u4f8b\u9898\u548c\u590d\u4e60\u5efa\u8bae\u3002",
@@ -39,9 +39,9 @@ const copy = {
   submitting: "\u63d0\u4ea4\u4e2d...",
   submitted: "\u8bcd\u6761\u5df2\u63d0\u4ea4\uff0c\u5f53\u524d\u72b6\u6001\u4e3a\u5f85\u5ba1\u6838\u3002",
   reset: "\u6e05\u7a7a",
-  missingRequired: "\u8bf7\u586b\u5199\u6807\u9898\u3001slug \u548c\u6b63\u6587\u3002",
+  missingRequired: "\u8bf7\u586b\u5199\u6807\u9898\u3001\u94fe\u63a5\u522b\u540d\u548c\u6b63\u6587\u3002",
   titleTooLong: "\u6807\u9898\u4e0d\u80fd\u8d85\u8fc7 200 \u4e2a\u5b57\u7b26\u3002",
-  invalidSlug: "Slug \u53ea\u80fd\u5305\u542b\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u548c\u8fde\u5b57\u7b26\u3002",
+  invalidSlug: "\u94fe\u63a5\u522b\u540d\u53ea\u80fd\u5305\u542b\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u548c\u8fde\u5b57\u7b26\u3002",
   contentTooLong: "\u6b63\u6587\u4e0d\u80fd\u8d85\u8fc7 80000 \u4e2a\u5b57\u7b26\u3002",
   summaryTooLong: "\u7248\u672c\u6458\u8981\u4e0d\u80fd\u8d85\u8fc7 500 \u4e2a\u5b57\u7b26\u3002",
   courseNotFound: "\u9009\u62e9\u7684\u8bfe\u7a0b\u4e0d\u53ef\u7528\u6216\u672a\u53d1\u5e03\u3002",
@@ -101,7 +101,7 @@ export function WikiEntrySubmissionForm({ courses }: WikiEntrySubmissionFormProp
         }),
       });
       if (response.data?.entry) {
-        setMessage(`${copy.submitted} ID: ${response.data.entry.id}`);
+        setMessage(copy.submitted);
         resetForm(false);
       }
     } catch (err) {
@@ -146,7 +146,7 @@ export function WikiEntrySubmissionForm({ courses }: WikiEntrySubmissionFormProp
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{copy.intro}</p>
         </div>
         <span className="inline-flex w-fit shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
-          {user.role}
+          {roleLabel(user.role)}
         </span>
       </div>
 
@@ -306,7 +306,17 @@ async function request<T>(path: string, init: RequestInit): Promise<Envelope<T>>
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function roleLabel(role: string) {
+  const labels: Record<string, string> = {
+    admin: "管理员",
+    creator: "创作者",
+    reviewer: "审核员",
+    student: "学生",
+  };
+  return labels[role] ?? role;
 }

@@ -26,17 +26,17 @@ const copy = {
   loading: "\u6b63\u5728\u68c0\u67e5\u89e3\u9501\u72b6\u6001...",
   unlocked: "\u5df2\u89e3\u9501",
   unlockedBody:
-    "\u5f53\u524d\u8d26\u53f7\u5df2\u62e5\u6709\u8fd9\u4e2a\u8bfe\u7a0b\u5305\u6743\u9650\u3002\u5305\u5185 paid \u8d44\u6599\u4ecd\u4f1a\u901a\u8fc7\u670d\u52a1\u7aef\u4e0b\u8f7d\u63a5\u53e3\u6821\u9a8c\u548c\u8bb0\u5f55\u3002",
+    "\u5f53\u524d\u8d26\u53f7\u5df2\u62e5\u6709\u8fd9\u4e2a\u8bfe\u7a0b\u5305\u6743\u9650\u3002\u5305\u5185\u8d44\u6599\u4ecd\u4f1a\u7ecf\u8fc7\u6743\u9650\u6821\u9a8c\u540e\u4e0b\u8f7d\u3002",
   loginRequired: "\u767b\u5f55\u540e\u67e5\u770b\u662f\u5426\u5df2\u89e3\u9501",
   loginBody:
     "\u8bfe\u7a0b\u5305\u6743\u76ca\u7ed1\u5b9a\u5230\u5b66\u751f\u90ae\u7bb1\u8d26\u53f7\u3002\u767b\u5f55\u540e\u53ef\u4ee5\u67e5\u770b\u7ba1\u7406\u5458\u6388\u6743\u6216\u540e\u7eed\u652f\u4ed8\u4ea4\u4ed8\u7684\u8bfe\u7a0b\u5305\u6743\u9650\u3002",
   login: "\u53bb\u767b\u5f55",
   locked: "\u5c1a\u672a\u89e3\u9501",
   lockedBody:
-    "\u5f53\u524d\u8bfe\u7a0b\u5305\u9700\u8981\u670d\u52a1\u7aef entitlement \u624d\u80fd\u89e3\u9501 paid \u8d44\u6599\u3002\u652f\u4ed8\u4e8c\u7ef4\u7801\u53ea\u7528\u4e8e\u53d1\u8d77\u8ba2\u5355\u652f\u4ed8\uff0c\u4e0d\u4f1a\u5728\u524d\u7aef\u53d1\u653e\u6743\u76ca\u3002",
+    "\u5f53\u524d\u8bfe\u7a0b\u5305\u9700\u8981\u8d44\u6599\u6743\u9650\u624d\u80fd\u89e3\u9501\u4ed8\u8d39\u8d44\u6599\u3002\u652f\u4ed8\u4e8c\u7ef4\u7801\u53ea\u7528\u4e8e\u53d1\u8d77\u8ba2\u5355\u652f\u4ed8\uff0c\u4e0d\u4f1a\u5728\u524d\u7aef\u53d1\u653e\u6743\u76ca\u3002",
   paymentPending: "\u652f\u4ed8\u8054\u8c03\u4e2d",
   paymentBody:
-    "\u524d\u7aef\u53ea\u5c55\u793a\u4e8c\u7ef4\u7801\u548c\u8f6e\u8be2\u8ba2\u5355\u72b6\u6001\uff0c\u4e0d\u4f1a\u4f2a\u9020\u652f\u4ed8\u6210\u529f\u3002\u6b63\u5f0f\u89e3\u9501\u5fc5\u987b\u6765\u81ea\u670d\u52a1\u7aef entitlement\u3002",
+    "\u524d\u7aef\u53ea\u5c55\u793a\u4e8c\u7ef4\u7801\u548c\u8f6e\u8be2\u8ba2\u5355\u72b6\u6001\uff0c\u4e0d\u4f1a\u4f2a\u9020\u652f\u4ed8\u6210\u529f\u3002\u6b63\u5f0f\u89e3\u9501\u4ee5\u670d\u52a1\u7aef\u8bb0\u5f55\u4e3a\u51c6\u3002",
   createOrder: "\u521b\u5efa\u5f85\u652f\u4ed8\u8ba2\u5355",
   creatingOrder: "\u521b\u5efa\u4e2d...",
   createNative: "\u751f\u6210\u5fae\u4fe1\u652f\u4ed8\u4e8c\u7ef4\u7801",
@@ -47,16 +47,16 @@ const copy = {
   orderNo: "\u8ba2\u5355\u53f7",
   orderStatus: "\u8ba2\u5355\u72b6\u6001",
   refreshStatus: "\u5237\u65b0\u72b6\u6001",
-  qrTitle: "\u5fae\u4fe1 Native \u626b\u7801\u652f\u4ed8",
+  qrTitle: "\u5fae\u4fe1\u626b\u7801\u652f\u4ed8",
   qrHint:
-    "\u8bf7\u4f7f\u7528\u5fae\u4fe1\u626b\u7801\u3002\u5f53\u524d\u5f00\u53d1/\u6d4b\u8bd5\u73af\u5883\u4f7f\u7528 mock codeUrl\uff1b\u771f\u5b9e\u652f\u4ed8\u7ed3\u679c\u5fc5\u987b\u4ee5\u670d\u52a1\u7aef\u56de\u8c03\u548c entitlement \u4e3a\u51c6\u3002",
+    "\u8bf7\u4f7f\u7528\u5fae\u4fe1\u626b\u7801\u3002\u5f53\u524d\u5f00\u53d1/\u6d4b\u8bd5\u73af\u5883\u4f7f\u7528\u6a21\u62df\u4e8c\u7ef4\u7801\uff1b\u771f\u5b9e\u652f\u4ed8\u7ed3\u679c\u4ee5\u670d\u52a1\u7aef\u56de\u8c03\u548c\u8d44\u6599\u6743\u9650\u4e3a\u51c6\u3002",
   expiresAt: "\u8fc7\u671f\u65f6\u95f4",
   mockMode: "\u6a21\u62df\u652f\u4ed8\u7801",
   ownedMaterials: "\u5df2\u89e3\u9501\u8d44\u6599",
   viewMaterial: "\u67e5\u770b\u8d44\u6599",
   packageGrants: "\u8bfe\u7a0b\u5305\u6388\u6743",
   failed: "\u6682\u65f6\u65e0\u6cd5\u8bfb\u53d6\u8d26\u53f7\u6743\u76ca",
-  nativeFailed: "\u5fae\u4fe1 Native \u4e0b\u5355\u6682\u65f6\u4e0d\u53ef\u7528",
+  nativeFailed: "\u5fae\u4fe1\u4e0b\u5355\u6682\u65f6\u4e0d\u53ef\u7528",
 };
 
 export function PackageEntitlementPanel({ coursePackage, materials }: { coursePackage: CoursePackage; materials: Material[] }) {
@@ -242,7 +242,7 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
             {copy.orderNo}: {pendingOrder.outTradeNo}
           </p>
           <p className="mt-1 text-xs" data-testid="package-order-status">
-            {copy.orderStatus}: {pendingOrderStatus?.status ?? pendingOrder.status}
+            {copy.orderStatus}: {orderStatusLabel(pendingOrderStatus?.status ?? pendingOrder.status)}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -277,7 +277,7 @@ export function PackageEntitlementPanel({ coursePackage, materials }: { coursePa
             <p className="max-w-xs text-xs leading-5">{copy.qrHint}</p>
             <div className="grid w-full gap-1 text-left text-xs">
               <p data-testid="package-native-status">
-                {copy.orderStatus}: {nativePayment.status}
+                {copy.orderStatus}: {orderStatusLabel(nativePayment.status)}
               </p>
               <p>
                 {copy.expiresAt}: {formatDate(nativePayment.expiresAt)}
@@ -317,9 +317,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<Envelop
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "\u7f51\u7edc\u4e0d\u592a\u987a\u7545\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u91cd\u8bd5");
   }
   return payload;
+}
+
+function orderStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: "\u5f85\u652f\u4ed8",
+    paid: "\u5df2\u652f\u4ed8",
+    expired: "\u5df2\u8fc7\u671f",
+  };
+  return labels[status] ?? status;
 }
 
 function formatPaymentError(message: string) {

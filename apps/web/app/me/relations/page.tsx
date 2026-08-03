@@ -202,7 +202,7 @@ function RelationColumn({
                     {user.name || "\u540c\u5b66"}
                   </Link>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <Badge tone="muted">{user.role}</Badge>
+                    <Badge tone="muted">{roleLabel(user.role)}</Badge>
                     {friendIDs.has(user.id) ? <Badge tone="success">{copy.mutual}</Badge> : null}
                   </div>
                 </div>
@@ -246,9 +246,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<Envelop
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function roleLabel(role: string) {
+  const labels: Record<string, string> = {
+    admin: "管理员",
+    creator: "创作者",
+    reviewer: "审核员",
+    student: "学生",
+  };
+  return labels[role] ?? role;
 }
 
 function formatError(error: unknown) {

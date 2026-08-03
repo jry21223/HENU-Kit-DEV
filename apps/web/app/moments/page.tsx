@@ -43,7 +43,6 @@ export default async function MomentsPage() {
             </div>
             <div className="rounded-2xl border border-border bg-background px-4 py-3">
               <UsersRound className="mb-2 size-4 text-primary" aria-hidden="true" />
-              <strong className="block text-lg text-foreground">2</strong>
               {copy.scope}
             </div>
           </div>

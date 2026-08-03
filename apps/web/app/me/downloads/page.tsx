@@ -16,7 +16,7 @@ const copy = {
   me: "\u4e2a\u4eba\u4e2d\u5fc3",
   title: "\u6211\u7684\u4e0b\u8f7d\u8bb0\u5f55",
   intro:
-    "\u8fd9\u91cc\u53ea\u5c55\u793a\u5f53\u524d\u767b\u5f55\u8d26\u53f7\u7684\u6210\u529f\u4e0b\u8f7d\u8bb0\u5f55\u3002\u6587\u4ef6\u8def\u5f84\u3001IP \u548c User-Agent \u7b49\u5ba1\u8ba1\u5b57\u6bb5\u53ea\u5728\u7ba1\u7406\u540e\u53f0\u63a5\u53e3\u4e2d\u53ef\u89c1\u3002",
+    "\u8fd9\u91cc\u53ea\u5c55\u793a\u5f53\u524d\u767b\u5f55\u8d26\u53f7\u7684\u6210\u529f\u4e0b\u8f7d\u8bb0\u5f55\u3002\u4e0b\u8f7d\u8bb0\u5f55\u4ec5\u81ea\u5df1\u53ef\u89c1\uff0c\u4e0d\u5305\u542b\u654f\u611f\u4fe1\u606f\u3002",
   loading: "\u6b63\u5728\u52a0\u8f7d\u4e0b\u8f7d\u8bb0\u5f55...",
   login: "\u53bb\u767b\u5f55",
   archived: "\u8d44\u6599\u5df2\u5f52\u6863\u6216\u4e0d\u53ef\u89c1",
@@ -41,7 +41,7 @@ export default function MyDownloadsPage() {
         });
         const payload = (await response.json().catch(() => ({}))) as Envelope<{ downloads: MaterialDownload[] }>;
         if (!response.ok || payload.code !== 0) {
-          throw new Error(payload.message || `API request failed with ${response.status}`);
+          throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
         }
         setDownloads(payload.data?.downloads ?? []);
       } catch (err) {
@@ -95,7 +95,7 @@ export default function MyDownloadsPage() {
                       {download.material?.description || download.material?.previewContent || copy.noDescription}
                     </p>
                   </div>
-                  <span className="rounded-md bg-paper px-2 py-1 text-xs text-slate-600">{download.accessLevel}</span>
+                  <span className="rounded-md bg-paper px-2 py-1 text-xs text-slate-600">{accessLevelLabel(download.accessLevel)}</span>
                 </div>
                 <p className="mt-3 text-xs text-slate-500">
                   {copy.downloadedAt}: {formatDate(download.downloadedAt)}
@@ -114,4 +114,13 @@ function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function accessLevelLabel(level: string) {
+  const labels: Record<string, string> = {
+    free: "公开",
+    login_required: "登录后下载",
+    paid: "付费",
+  };
+  return labels[level] ?? level;
 }

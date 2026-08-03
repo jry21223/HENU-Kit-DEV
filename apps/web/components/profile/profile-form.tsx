@@ -192,7 +192,7 @@ export function ProfileForm() {
         <p className="text-sm font-medium text-primary">{copy.current}</p>
         <h2 className="mt-2 break-words text-xl font-semibold">{user.email}</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          {user.role} / {user.emailVerified ? copy.verified : copy.unverified}
+          {roleLabel(user.role)} / {user.emailVerified ? copy.verified : copy.unverified}
         </p>
         <div className="mt-5 grid gap-2 text-sm text-muted-foreground">
           <Link className="rounded-xl border border-border px-3 py-2 text-foreground hover:bg-muted" href="/me/downloads">
@@ -336,7 +336,17 @@ async function request<T>(path: string, init: RequestInit): Promise<Envelope<T>>
   });
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>;
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `API request failed with ${response.status}`);
+    throw new Error(payload.message || "网络不太顺畅，请检查网络后重试");
   }
   return payload;
+}
+
+function roleLabel(role: string) {
+  const labels: Record<string, string> = {
+    admin: "管理员",
+    creator: "创作者",
+    reviewer: "审核员",
+    student: "学生",
+  };
+  return labels[role] ?? role;
 }

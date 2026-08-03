@@ -39,7 +39,7 @@ async function loadForum(boardId?: string) {
     return {
       boards: [] as ForumBoard[],
       posts: [] as ForumPost[],
-      error: error instanceof Error ? error.message : "API unavailable",
+      error: error instanceof Error ? error.message : "服务暂时不可用",
     };
   }
 }
@@ -101,7 +101,7 @@ export default async function ForumPage({ searchParams }: PageProps) {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={post.type === "reward" ? "success" : "muted"}>{labelPostType(post)}</Badge>
-                  {post.rewardStatus ? <Badge tone="muted">{post.rewardStatus}</Badge> : null}
+                  {post.rewardStatus ? <Badge tone="muted">{rewardStatusLabel(post.rewardStatus)}</Badge> : null}
                 </div>
                 <h2 className="mt-3 break-words text-xl font-semibold tracking-tight">{post.title}</h2>
               </div>
@@ -145,4 +145,13 @@ function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("zh-CN");
+}
+
+function rewardStatusLabel(status?: string) {
+  const labels: Record<string, string> = {
+    open: "悬赏中",
+    completed: "已解决",
+    expired: "已过期",
+  };
+  return labels[status ?? ""] ?? status ?? "";
 }
