@@ -89,7 +89,7 @@ func (h *service) consoleSummary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Notice summary is unavailable")
 		return
 	}
-	writeData(w, r, http.StatusOK, map[string]any{"id": "notice", "status": "ok", "status_message": "Notice lifecycle is available.", "as_of": h.now().UTC(), "metrics": []map[string]any{{"label": "待审核", "value": fmt.Sprint(counts["pending_review"])}, {"label": "已批准", "value": fmt.Sprint(counts["approved"])}, {"label": "已分发", "value": fmt.Sprint(counts["distributed"])}}})
+	writeData(w, r, http.StatusOK, map[string]any{"id": "notice", "status": "ok", "status_message": "通知服务运行正常", "as_of": h.now().UTC(), "metrics": []map[string]any{{"label": "待审核", "value": fmt.Sprint(counts["pending_review"])}, {"label": "已批准", "value": fmt.Sprint(counts["approved"])}, {"label": "已分发", "value": fmt.Sprint(counts["distributed"])}}})
 }
 
 func (h *service) require(w http.ResponseWriter, r *http.Request, permission string) (actor, bool) {

@@ -44,7 +44,7 @@ func validRankingBankID(value string) bool {
 func (h *Handler) getQuizCraftOverallRanking(w http.ResponseWriter, r *http.Request) {
 	period, ok := rankingPeriodOf(r)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid_ranking_period", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid_ranking_period", Message: "排行榜暂时加载不出来，请稍后再试", RequestID: requestIDOf(w, r)})
 		return
 	}
 	result, err := h.quizCraft.OverallRanking(r.Context(), practice.AnonymousCatalogActor, requestIDOf(w, r), period)
@@ -58,12 +58,12 @@ func (h *Handler) getQuizCraftOverallRanking(w http.ResponseWriter, r *http.Requ
 func (h *Handler) getQuizCraftBankRanking(w http.ResponseWriter, r *http.Request) {
 	bankID := strings.TrimSpace(chi.URLParam(r, "bank_id"))
 	if !validRankingBankID(bankID) {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid_bank_id", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid_bank_id", Message: "排行榜暂时加载不出来，请稍后再试", RequestID: requestIDOf(w, r)})
 		return
 	}
 	period, ok := rankingPeriodOf(r)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid_ranking_period", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "invalid_ranking_period", Message: "排行榜暂时加载不出来，请稍后再试", RequestID: requestIDOf(w, r)})
 		return
 	}
 	result, err := h.quizCraft.BankRanking(r.Context(), practice.AnonymousCatalogActor, requestIDOf(w, r), bankID, period)
@@ -76,8 +76,8 @@ func (h *Handler) getQuizCraftBankRanking(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) writeQuizCraftRankingFailure(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, practice.ErrInvalidRanking) {
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "quizcraft_ranking_invalid_response", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "quizcraft_ranking_invalid_response", Message: "排行榜暂时加载不出来，请稍后再试", RequestID: requestIDOf(w, r)})
 		return
 	}
-	writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "quizcraft_ranking_unavailable", RequestID: requestIDOf(w, r)})
+	writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "quizcraft_ranking_unavailable", Message: "排行榜暂时加载不出来，请稍后再试", RequestID: requestIDOf(w, r)})
 }

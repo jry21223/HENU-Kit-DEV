@@ -170,12 +170,12 @@ func (c *Client) portalRead(ctx context.Context, actorUserID, requestID, path st
 	req.Header.Set("X-Scope-Kind", "product")
 	req.Header.Set("X-Product-Code", "quizcraft")
 	if err := c.signer.Sign(req); err != nil {
-		return nil, fmt.Errorf("Portal read sign: %w", ErrPortalReadUnavailable)
+		return nil, fmt.Errorf("portal read sign: %w", ErrPortalReadUnavailable)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Portal read request: %w", ErrPortalReadUnavailable)
+		return nil, fmt.Errorf("portal read request: %w", ErrPortalReadUnavailable)
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -188,7 +188,7 @@ func (c *Client) portalRead(ctx context.Context, actorUserID, requestID, path st
 		return nil, ErrPortalReadForbidden
 	default:
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("Portal read status %d: %w", resp.StatusCode, ErrPortalReadUnavailable)
+		return nil, fmt.Errorf("portal read status %d: %w", resp.StatusCode, ErrPortalReadUnavailable)
 	}
 }
 
@@ -261,12 +261,12 @@ func (c *Client) actorBoundPersonalStats(ctx context.Context, actorUserID, reque
 	req.Header.Set("X-Scope-Kind", "product")
 	req.Header.Set("X-Product-Code", "quizcraft")
 	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
-		return nil, fmt.Errorf("Portal personal stats sign: %w", ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal personal stats sign: %w", ErrStatsUnavailable)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Portal personal stats request: %w", ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal personal stats request: %w", ErrStatsUnavailable)
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -276,10 +276,10 @@ func (c *Client) actorBoundPersonalStats(ctx context.Context, actorUserID, reque
 		// Portal Gateway has already checked the browser's session and live
 		// permission. A Core 401/403 here is an internal service-auth failure,
 		// never evidence that the browser should be asked to sign in again.
-		return nil, fmt.Errorf("Portal personal stats service authentication: %w", ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal personal stats service authentication: %w", ErrStatsUnavailable)
 	default:
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("Portal personal stats status %d: %w", resp.StatusCode, ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal personal stats status %d: %w", resp.StatusCode, ErrStatsUnavailable)
 	}
 }
 

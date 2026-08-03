@@ -2,7 +2,7 @@ package food
 
 // PostBlock matches the frontend PostBlock interface.
 type PostBlock struct {
-	Type  string   `json:"type"`            // h2|p|quote|list|img
+	Type  string   `json:"type"` // h2|p|quote|list|img
 	Text  *string  `json:"text,omitempty"`
 	Items []string `json:"items,omitempty"`
 	Src   *string  `json:"src,omitempty"`
@@ -18,19 +18,19 @@ type Shop struct {
 
 // Post matches the frontend Post interface.
 type Post struct {
-	ID       string      `json:"id"`
-	Campus   string      `json:"campus"` // minglun|jinming|longzihu
-	Title    string      `json:"title"`
-	Excerpt  string      `json:"excerpt"`
-	Blocks   []PostBlock `json:"blocks"`
-	Author   string      `json:"author"`
-	Likes    int         `json:"likes"`
-	Stars    int         `json:"stars"`
-	Tags     []string    `json:"tags"`
-	Shop     Shop        `json:"shop"`
-	Time     string      `json:"time"`
-	Hidden   bool        `json:"hidden"`
-	Images   []string    `json:"images,omitempty"`
+	ID      string      `json:"id"`
+	Campus  string      `json:"campus"` // minglun|jinming|longzihu
+	Title   string      `json:"title"`
+	Excerpt string      `json:"excerpt"`
+	Blocks  []PostBlock `json:"blocks"`
+	Author  string      `json:"author"`
+	Likes   int         `json:"likes"`
+	Stars   int         `json:"stars"`
+	Tags    []string    `json:"tags"`
+	Shop    Shop        `json:"shop"`
+	Time    string      `json:"time"`
+	Hidden  bool        `json:"hidden"`
+	Images  []string    `json:"images,omitempty"`
 }
 
 // Venue is a food venue card derived from real posts (never invented shops).
@@ -59,7 +59,7 @@ func MockPosts() []Post {
 		{
 			ID: "ml-01", Campus: "minglun", Title: "老碗面：十年不换配方的汤头",
 			Excerpt: "西门外的续命面馆，期末周排队的全是熟面孔。",
-			Author: "楼下的猫", Likes: 214, Stars: 96,
+			Author:  "楼下的猫", Likes: 214, Stars: 96,
 			Tags: []string{"面食", "西门", "夯"},
 			Shop: Shop{Name: "老碗面（西门店）", Lat: 34.8201, Lng: 114.3512},
 			Time: "07-18 12:40", Hidden: false,
@@ -74,7 +74,7 @@ func MockPosts() []Post {
 		{
 			ID: "ml-02", Campus: "minglun", Title: "鸡公煲的微辣是谎言",
 			Excerpt: "南门鸡公煲，点单请自觉降一档辣度。",
-			Author: "干饭组组长", Likes: 187, Stars: 74,
+			Author:  "干饭组组长", Likes: 187, Stars: 74,
 			Tags: []string{"鸡公煲", "南门", "夯"},
 			Shop: Shop{Name: "重庆鸡公煲（南门店）", Lat: 34.8158, Lng: 114.3556},
 			Time: "07-17 19:05", Hidden: false,
@@ -87,7 +87,7 @@ func MockPosts() []Post {
 		{
 			ID: "jm-01", Campus: "jinming", Title: "商业街手打柠檬茶：冰块比茶多",
 			Excerpt: "夏天还是得靠它续命。",
-			Author: "柠檬精本精", Likes: 156, Stars: 63,
+			Author:  "柠檬精本精", Likes: 156, Stars: 63,
 			Tags: []string{"饮品", "商业街", "夯"},
 			Shop: Shop{Name: "手打柠檬茶（金明商业街）", Lat: 34.8240, Lng: 114.3105},
 			Time: "07-18 15:20", Hidden: false,
@@ -99,7 +99,7 @@ func MockPosts() []Post {
 		{
 			ID: "jm-02", Campus: "jinming", Title: "北门胡辣汤：河南人的早八仪式感",
 			Excerpt: "配两块钱的油馍头，满血进教室。",
-			Author: "胡辣汤守卫者", Likes: 203, Stars: 88,
+			Author:  "胡辣汤守卫者", Likes: 203, Stars: 88,
 			Tags: []string{"早餐", "北门", "夯"},
 			Shop: Shop{Name: "方中山胡辣汤（北门）", Lat: 34.8251, Lng: 114.3062},
 			Time: "07-17 07:50", Hidden: false,
@@ -112,7 +112,7 @@ func MockPosts() []Post {
 		{
 			ID: "lz-01", Campus: "longzihu", Title: "南门灌汤包：先开窗后喝汤",
 			Excerpt: "皮薄汤足，小心烫嘴。",
-			Author: "汤包猎人", Likes: 178, Stars: 71,
+			Author:  "汤包猎人", Likes: 178, Stars: 71,
 			Tags: []string{"灌汤包", "南门", "夯"},
 			Shop: Shop{Name: "第一楼灌汤包（南门）", Lat: 34.8156, Lng: 113.8301},
 			Time: "07-18 11:30", Hidden: false,
@@ -124,7 +124,7 @@ func MockPosts() []Post {
 		{
 			ID: "lz-02", Campus: "longzihu", Title: "西区食堂的隐藏窗口：烩面",
 			Excerpt: "本地人认证，汤是羊骨熬的。",
-			Author: "你", Likes: 145, Stars: 60,
+			Author:  "你", Likes: 145, Stars: 60,
 			Tags: []string{"烩面", "食堂", "夯"},
 			Shop: Shop{Name: "龙子湖西区食堂二楼", Lat: 34.8180, Lng: 113.8275},
 			Time: "07-17 12:20", Hidden: false,

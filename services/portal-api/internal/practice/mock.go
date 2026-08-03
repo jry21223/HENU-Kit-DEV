@@ -26,8 +26,8 @@ type QuizListMeta struct {
 
 // Subject matches the frontend Subject interface.
 type Subject struct {
-	ID    string        `json:"id"`
-	Name  string        `json:"name"`
+	ID    string         `json:"id"`
+	Name  string         `json:"name"`
 	Lists []QuizListMeta `json:"lists"`
 }
 

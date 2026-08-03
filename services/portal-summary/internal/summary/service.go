@@ -139,9 +139,9 @@ func (s *Service) Build(ctx context.Context) contract.PortalSummary {
 	} else if feedbackState == "unavailable" {
 		feedbackValue, feedbackHint = "暂不可用", "已配置的数据源未返回有效摘要"
 	}
-	message := "Portal 部署与只读探测正常"
+	message := "门户各项服务运行正常"
 	if status == "partial" {
-		message = fmt.Sprintf("Portal 摘要部分可用：%d 个当前探测异常，反馈状态为%s", failures, feedbackValue)
+		message = fmt.Sprintf("部分服务暂时异常，正在恢复：%d 项；反馈状态为%s", failures, feedbackValue)
 	}
 	return contract.PortalSummary{ID: "portal", Status: status, AsOf: s.now().UTC(), StatusMessage: message, Metrics: []contract.Metric{
 		{Label: "部署版本", Value: s.config.Version},

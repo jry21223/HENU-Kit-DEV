@@ -20,7 +20,7 @@ func RateLimit(rps float64, burst int) gin.HandlerFunc {
 
 	return func(ctx *gin.Context) {
 		if !limiter.Allow() {
-			response.Error(ctx, http.StatusTooManyRequests, response.CodeBadRequest, "rate_limited", nil)
+			response.Error(ctx, http.StatusTooManyRequests, response.CodeBadRequest, "操作太频繁，请稍后再试", nil)
 			ctx.Abort()
 			return
 		}

@@ -23,8 +23,8 @@ func NewHandler(db *gorm.DB) Handler {
 }
 
 type materialEntitlement struct {
-	Grant    publicGrant                     `json:"grant"`
-	Material *materialview.PublicMaterial    `json:"material,omitempty"`
+	Grant    publicGrant                  `json:"grant"`
+	Material *materialview.PublicMaterial `json:"material,omitempty"`
 }
 
 type packageEntitlement struct {

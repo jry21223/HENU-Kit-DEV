@@ -25,7 +25,6 @@ var (
 	errEntryNotReviewable              = errors.New("entry_not_reviewable")
 	errProposalNotReviewable           = errors.New("proposal_not_reviewable")
 	errEntryNotEditable                = errors.New("entry_not_editable")
-	errProposalNotEditable             = errors.New("proposal_not_editable")
 	errProposalStale                   = errors.New("proposal_stale")
 	errCreatorApplicationNotReviewable = errors.New("creator_application_not_reviewable")
 	reviewableStatuses                 = []string{model.StatusPending, model.StatusDraft, model.StatusNeedsChanges}

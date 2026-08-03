@@ -89,8 +89,7 @@ func TestUpdateMeProfileBinding(t *testing.T) {
 		t.Fatalf("expected profile school/major binding, got %#v", payload.Data)
 	}
 
-	var otherSchool model.School
-	otherSchool = model.School{Name: "Other School", Slug: "other-school", EmailDomains: "other.edu.cn", Status: model.StatusPublished}
+	var otherSchool = model.School{Name: "Other School", Slug: "other-school", EmailDomains: "other.edu.cn", Status: model.StatusPublished}
 	if err := db.Create(&otherSchool).Error; err != nil {
 		t.Fatal(err)
 	}

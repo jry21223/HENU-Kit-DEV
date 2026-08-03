@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -272,7 +273,7 @@ func getMaterial(w http.ResponseWriter, r *http.Request, src librarySource, mode
 			return
 		}
 	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
 }
 
 // --- Food handlers ---
@@ -348,7 +349,7 @@ func getFoodPost(w http.ResponseWriter, r *http.Request, src foodSource, mode st
 			return
 		}
 		if post == nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
 			return
 		}
 		comments, err := src.portalDB.GetComments(id)
@@ -384,7 +385,7 @@ func getFoodPost(w http.ResponseWriter, r *http.Request, src foodSource, mode st
 			return
 		}
 	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
 }
 
 func listFoodComments(w http.ResponseWriter, r *http.Request, src foodSource, mode string) {
@@ -479,7 +480,7 @@ func getQuizList(w http.ResponseWriter, r *http.Request, src practiceSource, mod
 				}
 			}
 		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
 		return
 	}
 
@@ -504,7 +505,7 @@ func getQuizList(w http.ResponseWriter, r *http.Request, src practiceSource, mod
 			}
 		}
 	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
 }
 
 func getLeaderboard(w http.ResponseWriter, r *http.Request, src practiceSource, mode string) {
@@ -535,7 +536,12 @@ func getLeaderboard(w http.ResponseWriter, r *http.Request, src practiceSource, 
 func getUserStats(w http.ResponseWriter, r *http.Request, mode string) {
 	// No real user-stats source is wired yet. Live must not invent metrics.
 	if mode == db.ModeLive {
-		writeServiceUnavailable(w, "stats_unavailable", "user stats source is not configured")
+		log.Printf("portal-api user stats source is not configured")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error":      "stats_unavailable",
+			"message":    "学习统计暂时不可用，请稍后再来",
+			"request_id": requestIDOf(w),
+		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -608,7 +614,7 @@ func getCampusItem(w http.ResponseWriter, r *http.Request, src campusSource, mod
 			return
 		}
 		if item == nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
 			return
 		}
 		msgs, err := src.portalDB.GetMessages(id)
@@ -644,7 +650,7 @@ func getCampusItem(w http.ResponseWriter, r *http.Request, src campusSource, mod
 			return
 		}
 	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
 }
 
 func listCategories(w http.ResponseWriter, r *http.Request, src campusSource, mode string) {
@@ -680,9 +686,11 @@ func requestIDOf(w http.ResponseWriter) string {
 }
 
 func writeServiceUnavailable(w http.ResponseWriter, code, detail string) {
+	// Internal detail stays in the log; the client only ever sees a friendly message.
+	log.Printf("portal-api service unavailable code=%s detail=%s request_id=%s", code, detail, requestIDOf(w))
 	writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 		"error":      code,
-		"detail":     detail,
+		"message":    "服务暂时不可用，请稍后再来",
 		"request_id": requestIDOf(w),
 	})
 }

@@ -1433,25 +1433,25 @@ func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Reque
 	case errors.Is(err, verification.ErrRandomSource):
 		h.writeRandomSourceError(writer, request, "verification")
 	case errors.Is(err, verification.ErrCodeExpired):
-		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_EXPIRED", "verification code expired")
+		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_EXPIRED", "验证码已过期，请重新获取")
 	case errors.Is(err, verification.ErrCodeAlreadyUsed):
-		writeError(writer, request, http.StatusConflict, "VERIFICATION_CODE_ALREADY_USED", "verification code was already used")
+		writeError(writer, request, http.StatusConflict, "VERIFICATION_CODE_ALREADY_USED", "验证码已使用过，请重新获取")
 	case errors.Is(err, verification.ErrCodeInvalid):
-		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_INVALID", "verification code is invalid")
+		writeError(writer, request, http.StatusBadRequest, "VERIFICATION_CODE_INVALID", "验证码不正确，请重新输入")
 	case errors.Is(err, verification.ErrRegistrationRequired):
-		writeError(writer, request, http.StatusConflict, "REGISTRATION_REQUIRED", "email identity must be registered before login")
+		writeError(writer, request, http.StatusConflict, "REGISTRATION_REQUIRED", "该邮箱还没有注册，请先注册或换个邮箱")
 	case errors.Is(err, verification.ErrAlreadyRegistered):
-		writeError(writer, request, http.StatusConflict, "ACCOUNT_ALREADY_REGISTERED", "email identity is already registered")
+		writeError(writer, request, http.StatusConflict, "ACCOUNT_ALREADY_REGISTERED", "该邮箱已注册，请直接登录")
 	case errors.Is(err, verification.ErrAuthentication):
-		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
+		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "邮箱或密码错误，或登录暂不可用")
 	case errors.Is(err, verification.ErrChallengeRequired):
-		writeError(writer, request, http.StatusTooManyRequests, "EMAIL_CODE_LOGIN_REQUIRED", "email-code login is required")
+		writeError(writer, request, http.StatusTooManyRequests, "EMAIL_CODE_LOGIN_REQUIRED", "请改用邮箱验证码登录")
 	case errors.Is(err, verification.ErrIdempotency):
 		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
 	case errors.Is(err, verification.ErrDependency):
 		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
 	case errors.Is(err, verification.ErrRateLimited):
-		writeError(writer, request, http.StatusTooManyRequests, "RATE_LIMITED", "verification attempts are temporarily limited")
+		writeError(writer, request, http.StatusTooManyRequests, "RATE_LIMITED", "操作太频繁，请稍后再试")
 	case errors.Is(err, verification.ErrInvalid):
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
 	case errors.Is(err, identity.ErrUnauthorized):
@@ -1481,13 +1481,14 @@ func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Reque
 	case errors.Is(err, identity.ErrDependency):
 		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
 	default:
-		writeError(writer, request, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		h.logger.Error("internal_error", "request_id", requestIDFrom(request.Context()), "error", err)
+		writeError(writer, request, http.StatusInternalServerError, "INTERNAL_ERROR", "服务暂时不可用，请稍后再来")
 	}
 }
 
 func (h *Handler) writeRandomSourceError(writer http.ResponseWriter, request *http.Request, operation string) {
 	h.logger.Error("security_random_source_unavailable", "request_id", requestIDFrom(request.Context()), "operation", operation)
-	writeError(writer, request, http.StatusServiceUnavailable, "RANDOM_SOURCE_UNAVAILABLE", "temporarily unavailable")
+	writeError(writer, request, http.StatusServiceUnavailable, "RANDOM_SOURCE_UNAVAILABLE", "服务暂时不可用，请稍后再来")
 }
 
 func writeSuccess(writer http.ResponseWriter, request *http.Request, status int, data any) {

@@ -263,24 +263,24 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 	if code == "" || state == "" {
-		writeError(w, r, http.StatusBadRequest, "missing code or state")
+		writeError(w, r, http.StatusBadRequest, "missing code or state", "登录没有成功，请重新登录；如果反复失败请稍后再试")
 		return
 	}
 
 	cookies := h.browserCookies(r)
 	cookie, err := r.Cookie(cookies.oauth)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "missing oauth cookie")
+		writeError(w, r, http.StatusBadRequest, "missing oauth cookie", "登录没有成功，请重新登录；如果反复失败请稍后再试")
 		return
 	}
 	browserNonce, err := base64.RawURLEncoding.DecodeString(cookie.Value)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid oauth cookie")
+		writeError(w, r, http.StatusBadRequest, "invalid oauth cookie", "登录没有成功，请重新登录；如果反复失败请稍后再试")
 		return
 	}
 	stateBytes, err := base64.RawURLEncoding.DecodeString(state)
 	if err != nil || len(stateBytes) != 32 {
-		writeError(w, r, http.StatusBadRequest, "invalid or expired state")
+		writeError(w, r, http.StatusBadRequest, "invalid or expired state", "登录没有成功，请重新登录；如果反复失败请稍后再试")
 		return
 	}
 
@@ -290,13 +290,13 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 
 	data, err := h.redis.GetDel(r.Context(), key).Bytes()
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid or expired state")
+		writeError(w, r, http.StatusBadRequest, "invalid or expired state", "登录没有成功，请重新登录；如果反复失败请稍后再试")
 		return
 	}
 
 	var stored map[string]string
 	if err := json.Unmarshal(data, &stored); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "corrupt state")
+		writeError(w, r, http.StatusInternalServerError, "corrupt state", "登录没有成功，请重新登录；如果反复失败请稍后再试")
 		return
 	}
 
@@ -308,17 +308,15 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	idempotencyKey := hex.EncodeToString(stateBytes[:16])
 	result, err := h.platform.ExchangeCode(r.Context(), code, stored["verifier"], idempotencyKey)
 	if err != nil {
-		category := "exchange_error"
+		code := "exchange_error"
 		status := http.StatusInternalServerError
-		message := "exchange error"
 		if err == platformcore.ErrUnauthorized {
-			category = "unauthorized"
+			code = "exchange failed"
 			status = http.StatusUnauthorized
-			message = "exchange failed"
 		}
 		// Redacted: never log code, verifier, cookies, email, or secrets.
-		log.Printf("portal-gateway oauth exchange failed request_id=%s category=%s", requestIDOf(w, r), category)
-		writeError(w, r, status, message)
+		log.Printf("portal-gateway oauth exchange failed request_id=%s category=%s", requestIDOf(w, r), code)
+		writeError(w, r, status, code, "登录没有成功，请重新登录；如果反复失败请稍后再试")
 		return
 	}
 
@@ -327,7 +325,7 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		ExchangeToken: result.SessionExchangeToken, ExpiresAt: result.ExpiresAt,
 	})
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "session encode error")
+		writeError(w, r, http.StatusInternalServerError, "session encode error", "登录没有成功，请重新登录；如果反复失败请稍后再试")
 		return
 	}
 
@@ -348,7 +346,7 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 	setPrivateResponseHeaders(w)
 	v, err := h.readSession(r)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated"})
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录"})
 		return
 	}
 	var displayName *string
@@ -490,11 +488,11 @@ func (h *Handler) accountRead(w http.ResponseWriter, r *http.Request, read accou
 	setPrivateResponseHeaders(w)
 	value, err := h.readSession(r)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
 		return
 	}
 	if h.accountPortfolio == nil {
-		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
 		return
 	}
 	data, err := read(r.Context(), value.UserID, requestIDOf(w, r))
@@ -512,23 +510,23 @@ func (h *Handler) accountCommand(w http.ResponseWriter, r *http.Request, success
 	setPrivateResponseHeaders(w)
 	value, err := h.readSession(r)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
 		return
 	}
 	if h.accountPortfolio == nil {
-		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if !validAccountIdempotencyKey(idempotencyKey) {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_idempotency_key_invalid", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
 		return
 	}
 	var raw []byte
 	if bodyRequired {
 		raw, err = readAccountCommandBody(r)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_command_invalid", RequestID: requestIDOf(w, r)})
+			writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
 			return
 		}
 	}
@@ -546,19 +544,19 @@ func (h *Handler) accountCommand(w http.ResponseWriter, r *http.Request, success
 func (h *Handler) writeAccountFailure(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, accountportfolio.ErrBadRequest):
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_command_invalid", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "account_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, accountportfolio.ErrUnauthorized):
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, accountportfolio.ErrNotFound):
-		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "account_resource_not_found", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "account_resource_not_found", Message: "内容不存在或已下架", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, accountportfolio.ErrConflict):
-		writeJSON(w, http.StatusConflict, contract.ErrorEnvelope{Error: "account_command_conflict", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusConflict, contract.ErrorEnvelope{Error: "account_command_conflict", Message: "操作内容有更新，请刷新后重试", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, accountportfolio.ErrInvalid):
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "account_portfolio_invalid_response", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "account_portfolio_invalid_response", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, accountportfolio.ErrPaymentProviderUnavailable):
-		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_payment_unavailable", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_payment_unavailable", Message: "支付服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
 	default:
-		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "account_portfolio_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
 	}
 }
 
@@ -599,22 +597,22 @@ func (h *Handler) submitPracticeAnswer(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
 	setPrivateResponseHeaders(w)
 	if h.practiceCommands == nil {
-		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
 		return
 	}
 	actorUserID, anonymousCookie, status, err := h.practiceCommandActor(r)
 	if err != nil {
-		writeJSON(w, status, contract.ErrorEnvelope{Error: "not authenticated", RequestID: requestIDOf(w, r)})
+		writeJSON(w, status, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if !practice.ValidIdempotencyKey(idempotencyKey) {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
 		return
 	}
 	raw, err := readGatewayPracticeCommandBody(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
 		return
 	}
 	result, err := command(r.Context(), actorUserID, requestIDOf(w, r), idempotencyKey, raw, anonymousCookie)
@@ -630,6 +628,25 @@ func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, succes
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(successStatus)
 	_, _ = w.Write(result.Raw)
+}
+
+func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, practice.ErrPracticeCommandBadRequest):
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, practice.ErrPracticeCommandForbidden):
+		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "practice_session_forbidden", Message: "暂无练习权限，请联系管理员", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, practice.ErrPracticeCommandNotFound):
+		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "practice_session_not_found", Message: "练习记录不存在，请刷新后重试", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, practice.ErrPracticeCommandConflict):
+		writeJSON(w, http.StatusConflict, contract.ErrorEnvelope{Error: "practice_command_conflict", Message: "操作内容有更新，请刷新后重试", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, practice.ErrPracticeCommandInvalid):
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "practice_command_invalid_response", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
+	default:
+		// Authentication failures are a deployment/configuration fault between
+		// Gateway and Core, not a browser authentication state.
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
+	}
 }
 
 func (h *Handler) practiceCommandActor(r *http.Request) (string, *http.Cookie, int, error) {
@@ -669,46 +686,27 @@ func readGatewayPracticeCommandBody(r *http.Request) ([]byte, error) {
 	return raw, nil
 }
 
-func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, practice.ErrPracticeCommandBadRequest):
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", RequestID: requestIDOf(w, r)})
-	case errors.Is(err, practice.ErrPracticeCommandForbidden):
-		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "practice_session_forbidden", RequestID: requestIDOf(w, r)})
-	case errors.Is(err, practice.ErrPracticeCommandNotFound):
-		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "practice_session_not_found", RequestID: requestIDOf(w, r)})
-	case errors.Is(err, practice.ErrPracticeCommandConflict):
-		writeJSON(w, http.StatusConflict, contract.ErrorEnvelope{Error: "practice_command_conflict", RequestID: requestIDOf(w, r)})
-	case errors.Is(err, practice.ErrPracticeCommandInvalid):
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "practice_command_invalid_response", RequestID: requestIDOf(w, r)})
-	default:
-		// Authentication failures are a deployment/configuration fault between
-		// Gateway and Core, not a browser authentication state.
-		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", RequestID: requestIDOf(w, r)})
-	}
-}
-
 // personalPracticeStats returns only the signed-in user's Core-derived
 // statistics. It intentionally has no mock or Portal API success fallback.
 func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) {
 	setPrivateResponseHeaders(w)
 	if h.quizCraft == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "practice statistics are not enabled")
+		writeError(w, r, http.StatusServiceUnavailable, "practice statistics are not enabled", "学习统计暂时不可用，请稍后再试")
 		return
 	}
 	value, err := h.readSession(r)
 	if err != nil {
-		writeError(w, r, http.StatusUnauthorized, "not authenticated")
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 		return
 	}
 	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
 		switch {
 		case errors.Is(err, platformcore.ErrUnauthorized):
-			writeError(w, r, http.StatusUnauthorized, "not authenticated")
+			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 		case errors.Is(err, platformcore.ErrForbidden):
-			writeError(w, r, http.StatusForbidden, "practice access denied")
+			writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
 		default:
-			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable")
+			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
 		}
 		return
 	}
@@ -716,9 +714,9 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		switch {
 		case errors.Is(err, practice.ErrStatsUnauthorized):
-			writeError(w, r, http.StatusUnauthorized, "not authenticated")
+			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 		default:
-			writeError(w, r, http.StatusServiceUnavailable, "practice statistics are temporarily unavailable")
+			writeError(w, r, http.StatusServiceUnavailable, "practice statistics are temporarily unavailable", "学习统计暂时不可用，请稍后再试")
 		}
 		return
 	}
@@ -745,7 +743,7 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 	// route public before #166. Keep the path externally indistinguishable
 	// from an unregistered route and do not contact either upstream.
 	if r.URL.Path == quizCraftCatalogPath {
-		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "not found", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "not found", Message: "内容不存在或已下架", RequestID: requestIDOf(w, r)})
 		return
 	}
 	targetURL := h.portalAPIURL + r.URL.Path
@@ -755,14 +753,14 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "proxy_error"})
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "proxy_error", Message: "服务暂时不可用，请稍后再来"})
 		return
 	}
 	req.Header.Set("X-Request-Id", w.Header().Get("X-Request-Id"))
 
 	resp, err := h.portalAPI.Do(req)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "portal_api_unavailable"})
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "portal_api_unavailable", Message: "服务暂时不可用，请稍后再来"})
 		return
 	}
 	defer resp.Body.Close()
@@ -800,9 +798,10 @@ func setPrivateResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 }
 
-func writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
+func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	writeJSON(w, status, contract.ErrorEnvelope{
-		Error:     message,
+		Error:     code,
+		Message:   message,
 		RequestID: requestIDOf(w, r),
 	})
 }

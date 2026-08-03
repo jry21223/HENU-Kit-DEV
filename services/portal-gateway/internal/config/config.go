@@ -28,9 +28,9 @@ type Config struct {
 
 	PortalAPIURL string
 
-	LibraryURL              string
-	FoodURL                 string
-	PracticeURL             string
+	LibraryURL  string
+	FoodURL     string
+	PracticeURL string
 	// #160 catalog uses its established default-off flag and anonymous Banks
 	// read client. It must remain independent of account-bound stats.
 	QuizCraftCatalogEnabled bool

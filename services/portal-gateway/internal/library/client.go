@@ -41,7 +41,7 @@ func (c *Client) Courses(ctx context.Context, actorUserID, requestID string) (co
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return contract.LibraryCoursesResponse{}, fmt.Errorf("Do: %w", err)
+		return contract.LibraryCoursesResponse{}, fmt.Errorf("do: %w", err)
 	}
 	defer resp.Body.Close()
 

@@ -27,7 +27,7 @@ type quizCraftCatalogBank struct {
 
 func (h *Handler) getQuizCraftCatalog(w http.ResponseWriter, r *http.Request) {
 	if h.quizCraftCatalog == nil {
-		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "not found", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "not found", Message: "内容不存在或已下架", RequestID: requestIDOf(w, r)})
 		return
 	}
 
@@ -63,11 +63,11 @@ func (h *Handler) getQuizCraftCatalog(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) writeQuizCraftCatalogFailure(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, practice.ErrInvalidCatalog) {
-		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "quizcraft_catalog_invalid_response", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "quizcraft_catalog_invalid_response", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
 		return
 	}
 	// Authentication, authorization, and transport failures are deployment
 	// facts. Keep them a 503 at the browser boundary without exposing Core
 	// diagnostics or replacing them with legacy/mock catalog data.
-	writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "quizcraft_catalog_unavailable", RequestID: requestIDOf(w, r)})
+	writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "quizcraft_catalog_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
 }

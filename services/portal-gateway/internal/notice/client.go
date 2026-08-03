@@ -41,7 +41,7 @@ func (c *Client) List(ctx context.Context, actorUserID, requestID string) (contr
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return contract.NoticeListResponse{}, fmt.Errorf("Do: %w", err)
+		return contract.NoticeListResponse{}, fmt.Errorf("do: %w", err)
 	}
 	defer resp.Body.Close()
 

@@ -61,7 +61,7 @@ func (h Handler) SendCode(ctx *gin.Context) {
 		return
 	}
 	if !h.emailDomainAllowed(email) {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "email_domain_not_allowed", nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "该邮箱域名暂不支持注册", nil)
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h Handler) Login(ctx *gin.Context) {
 		Order("created_at desc").
 		First(&verification).Error
 	if err != nil || verification.ExpiresAt.Before(time.Now()) || verification.CodeHash != hashCode(email, code) {
-		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_or_expired_code", nil)
+		response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "验证码错误或已过期，请重新获取", nil)
 		return
 	}
 
@@ -240,12 +240,13 @@ func (h Handler) UpdateMe(ctx *gin.Context) {
 func (h Handler) issueSession(ctx *gin.Context, user model.User) {
 	accessToken, accessExpiresAt, err := h.tokens.Issue(user.ID, user.Email, user.Role, TokenTypeAccess)
 	if err != nil {
-		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "token_issue_failed", nil)
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "登录没有成功，请稍后再试", nil)
 		return
 	}
+
 	refreshToken, refreshExpiresAt, err := h.tokens.Issue(user.ID, user.Email, user.Role, TokenTypeRefresh)
 	if err != nil {
-		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "token_issue_failed", nil)
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "登录没有成功，请稍后再试", nil)
 		return
 	}
 	setCookie(ctx, "access_token", accessToken, accessExpiresAt)

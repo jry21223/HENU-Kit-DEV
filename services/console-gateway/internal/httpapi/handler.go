@@ -105,31 +105,31 @@ type accountResultMessages struct {
 var (
 	accountTicketResultMessages = accountResultMessages{
 		notFoundCode:    "ACCOUNT_TICKET_NOT_FOUND",
-		notFoundMessage: "Account support ticket was not found",
+		notFoundMessage: "未找到该工单，请刷新后重试",
 		conflictCode:    "ACCOUNT_TICKET_CONFLICT",
-		conflictMessage: "Account ticket version or idempotency history conflicts",
-		invalidMessage:  "Account ticket request is invalid",
+		conflictMessage: "工单内容有更新，请刷新后重试",
+		invalidMessage:  "工单请求内容无效，请检查后重试",
 	}
 	accountMembershipResultMessages = accountResultMessages{
 		notFoundCode:    "ACCOUNT_MEMBERSHIP_NOT_FOUND",
-		notFoundMessage: "Account membership target was not initialized",
+		notFoundMessage: "该用户还未开通会员账户，无法发放权益",
 		conflictCode:    "ACCOUNT_MEMBERSHIP_CONFLICT",
-		conflictMessage: "Account membership version or idempotency history conflicts",
-		invalidMessage:  "Account membership request is invalid",
+		conflictMessage: "会员账户内容有更新，请刷新后重试",
+		invalidMessage:  "会员操作内容无效，请检查后重试",
 	}
 	accountPointResultMessages = accountResultMessages{
 		notFoundCode:    "ACCOUNT_POINTS_NOT_FOUND",
-		notFoundMessage: "Account point target was not found",
+		notFoundMessage: "未找到该积分账户，请刷新后重试",
 		conflictCode:    "ACCOUNT_POINTS_CONFLICT",
-		conflictMessage: "Account point balance or idempotency history conflicts",
-		invalidMessage:  "Account point adjustment is invalid",
+		conflictMessage: "积分账户有更新，请刷新后重试",
+		invalidMessage:  "积分调整内容无效，请检查后重试",
 	}
 	accountOrderResultMessages = accountResultMessages{
 		notFoundCode:    "ACCOUNT_ORDER_NOT_FOUND",
-		notFoundMessage: "Membership order was not found",
+		notFoundMessage: "未找到该订单，请刷新后重试",
 		conflictCode:    "ACCOUNT_ORDER_CONFLICT",
-		conflictMessage: "Membership order revision or idempotency history conflicts",
-		invalidMessage:  "Membership order command is invalid",
+		conflictMessage: "订单内容有更新，请刷新后重试",
+		invalidMessage:  "订单操作内容无效，请检查后重试",
 	}
 )
 
@@ -258,7 +258,7 @@ func (h *Handler) executeFoodCommand(writer http.ResponseWriter, request *http.R
 	}
 	permission, valid := foodPermission(input.Kind)
 	if !valid {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Food operation is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "操作内容无效，请检查填写后重试")
 		return
 	}
 	value, ok := h.authorizeFood(writer, request, permission)
@@ -272,12 +272,12 @@ func (h *Handler) executeFoodCommand(writer http.ResponseWriter, request *http.R
 func (h *Handler) getFoodOperation(writer http.ResponseWriter, request *http.Request) {
 	operation, key := chi.URLParam(request, "operation"), request.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "请求内容不完整，请检查后重试")
 		return
 	}
 	permission, valid := foodPermission(operation)
 	if !valid {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Food operation is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "操作内容无效，请检查填写后重试")
 		return
 	}
 	value, ok := h.authorizeFood(writer, request, permission)
@@ -311,13 +311,13 @@ func (h *Handler) writeFoodResult(writer http.ResponseWriter, request *http.Requ
 	}
 	switch {
 	case errors.Is(err, foodapi.ErrUnauthorized):
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Food rejected the verified actor")
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
 	case errors.Is(err, foodapi.ErrForbidden):
-		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Food permission or Scope is missing")
+		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "暂无操作权限，请联系管理员")
 	case errors.Is(err, foodapi.ErrConflict):
-		writeError(writer, request, http.StatusConflict, "FOOD_CONFLICT", "Food version or idempotency history conflicts")
+		writeError(writer, request, http.StatusConflict, "FOOD_CONFLICT", "内容有更新，请刷新后重试")
 	case errors.Is(err, foodapi.ErrInvalid):
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Food request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "操作内容无效，请检查填写后重试")
 	default:
 		h.unavailable(writer, request, err)
 	}
@@ -388,7 +388,7 @@ func (h *Handler) adjustAccountPoints(writer http.ResponseWriter, request *http.
 		return
 	}
 	if uuid.Validate(input.UserID) != nil || input.Amount < -maxPublicPointValue || input.Amount > maxPublicPointValue || input.Amount == 0 || strings.TrimSpace(input.Reason) == "" || len([]rune(input.Reason)) > 1000 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Account point adjustment is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "积分调整内容无效，请检查后重试")
 		return
 	}
 	value, ok := h.authorizeAccount(writer, request, "account.points.adjust")
@@ -461,7 +461,7 @@ func decodeAccountMembershipOrderCommand(writer http.ResponseWriter, request *ht
 		return nil, false
 	}
 	if strings.TrimSpace(input.Reason) == "" || len([]rune(input.Reason)) > 1000 || input.ExpectedVersion < 1 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Membership order command is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "订单操作内容无效，请检查后重试")
 		return nil, false
 	}
 	return body, true
@@ -483,7 +483,7 @@ func (h *Handler) replyAccountTicket(writer http.ResponseWriter, request *http.R
 		return
 	}
 	if strings.TrimSpace(input.Body) == "" || len([]rune(input.Body)) > 5000 || input.ExpectedVersion < 1 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Account ticket reply is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "回复内容无效，请检查填写后重试")
 		return
 	}
 	value, ok := h.authorizeAccount(writer, request, "account.tickets.reply")
@@ -501,7 +501,7 @@ func (h *Handler) transitionAccountTicket(writer http.ResponseWriter, request *h
 		return
 	}
 	if input.ExpectedVersion < 1 || (input.Status != "in_progress" && input.Status != "resolved") {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Account ticket transition is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "工单状态操作无效，请检查后重试")
 		return
 	}
 	value, ok := h.authorizeAccount(writer, request, "account.tickets.transition")
@@ -547,9 +547,9 @@ func (h *Handler) writeAccountOwnerResult(writer http.ResponseWriter, request *h
 	}
 	switch {
 	case errors.Is(err, accountportfolioapi.ErrUnauthorized):
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Account Portfolio rejected the verified operator")
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
 	case errors.Is(err, accountportfolioapi.ErrForbidden):
-		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Account Portfolio permission or Scope is missing")
+		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "暂无操作权限，请联系管理员")
 	case errors.Is(err, accountportfolioapi.ErrNotFound):
 		writeError(writer, request, http.StatusNotFound, messages.notFoundCode, messages.notFoundMessage)
 	case errors.Is(err, accountportfolioapi.ErrConflict):
@@ -605,7 +605,7 @@ func (h *Handler) getLibraryOperation(writer http.ResponseWriter, request *http.
 	}
 	key := request.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "请求内容不完整，请检查后重试")
 		return
 	}
 	data, err := h.library.Operation(libraryapi.WithRequestID(request.Context(), requestID(request)), value.UserID, operation, key)
@@ -719,7 +719,7 @@ func (h *Handler) getNoticeOperation(writer http.ResponseWriter, request *http.R
 	}
 	key := request.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "请求内容不完整，请检查后重试")
 		return
 	}
 	data, err := h.notice.Operation(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "operation"), key)
@@ -749,15 +749,15 @@ func (h *Handler) writeNoticeResult(writer http.ResponseWriter, request *http.Re
 	}
 	switch {
 	case errors.Is(err, noticeapi.ErrUnauthorized):
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Notice rejected the verified actor")
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
 	case errors.Is(err, noticeapi.ErrForbidden):
-		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Notice permission or Scope is missing")
+		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "暂无操作权限，请联系管理员")
 	case errors.Is(err, noticeapi.ErrConflict):
-		writeError(writer, request, http.StatusConflict, "NOTICE_CONFLICT", "Notice state, revision, or idempotency history conflicts")
+		writeError(writer, request, http.StatusConflict, "NOTICE_CONFLICT", "内容有更新，请刷新后重试")
 	case errors.Is(err, noticeapi.ErrNotFound):
-		writeError(writer, request, http.StatusNotFound, "NOTICE_NOT_FOUND", "Notice resource was not found")
+		writeError(writer, request, http.StatusNotFound, "NOTICE_NOT_FOUND", "内容不存在或已下架")
 	case errors.Is(err, noticeapi.ErrInvalid):
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Notice request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "操作内容无效，请检查填写后重试")
 	default:
 		h.unavailable(writer, request, err)
 	}
@@ -798,7 +798,7 @@ func (h *Handler) revokePlatformSession(writer http.ResponseWriter, request *htt
 	body, ok := decodeOperationInput(writer, request, &input)
 	if !ok || !input.ExpectedActive {
 		if ok {
-			writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "expected_active must be true")
+			writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请先停用当前内容，再执行此操作")
 		}
 		return
 	}
@@ -835,7 +835,7 @@ func (h *Handler) getPlatformOperationStatus(writer http.ResponseWriter, request
 	}
 	key := request.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "请求内容不完整，请检查后重试")
 		return
 	}
 	data, err := h.platform.OperationStatus(request.Context(), value.ExchangeToken, chi.URLParam(request, "operation"), key)
@@ -849,18 +849,18 @@ func (h *Handler) getPlatformOperationStatus(writer http.ResponseWriter, request
 func decodeOperationInput(writer http.ResponseWriter, request *http.Request, target any) ([]byte, bool) {
 	key := request.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "请求内容不完整，请检查后重试")
 		return nil, false
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 64<<10))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Request body is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请求内容不完整，请检查后重试")
 		return nil, false
 	}
 	body, err := json.Marshal(target)
 	if err != nil {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Request body is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请求内容不完整，请检查后重试")
 		return nil, false
 	}
 	return body, true
@@ -869,18 +869,18 @@ func decodeOperationInput(writer http.ResponseWriter, request *http.Request, tar
 func decodeAccountCommand(writer http.ResponseWriter, request *http.Request, target any) ([]byte, bool) {
 	key := request.Header.Get("Idempotency-Key")
 	if !accountIdempotencyKeyPattern.MatchString(key) {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "请求内容不完整，请检查后重试")
 		return nil, false
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(writer, request.Body, 64<<10))
 	if err != nil || len(body) == 0 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Request body is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请求内容不完整，请检查后重试")
 		return nil, false
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Request body is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请求内容不完整，请检查后重试")
 		return nil, false
 	}
 	return body, true
@@ -934,7 +934,7 @@ func (h *Handler) login(writer http.ResponseWriter, request *http.Request) {
 		returnTo = "/"
 	}
 	if !validReturnTo(returnTo) {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_RETURN_TO", "return_to must be a same-origin path")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_RETURN_TO", "跳转地址无效，请重新发起登录")
 		return
 	}
 	state, err := randomToken(32)
@@ -975,19 +975,19 @@ func (h *Handler) login(writer http.ResponseWriter, request *http.Request) {
 func (h *Handler) callback(writer http.ResponseWriter, request *http.Request) {
 	code, state := request.URL.Query().Get("code"), request.URL.Query().Get("state")
 	if len(code) < 16 || len(state) < 32 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_CALLBACK", "authorization callback is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_CALLBACK", "登录未成功，请重新登录")
 		return
 	}
 	flowCookie, cookieErr := request.Cookie(oauthFlowCookie)
 	if cookieErr != nil || len(flowCookie.Value) != 43 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "authorization state is not bound to this browser")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "登录未成功，请重新登录")
 		return
 	}
 	stateHash := sha256.Sum256([]byte(state))
 	browserHash := sha256.Sum256([]byte(flowCookie.Value))
 	payload, err := h.redis.GetDel(request.Context(), oauthStateKey(stateHash, browserHash)).Bytes()
 	if errors.Is(err, redis.Nil) {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "authorization state is invalid or already used")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "登录未成功，请重新登录")
 		return
 	}
 	if err != nil {
@@ -997,7 +997,7 @@ func (h *Handler) callback(writer http.ResponseWriter, request *http.Request) {
 	h.clearOAuthFlow(writer)
 	var flow flowState
 	if err := json.Unmarshal(payload, &flow); err != nil || !validReturnTo(flow.ReturnTo) || len(flow.Verifier) != 43 {
-		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "authorization state is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_OAUTH_STATE", "登录未成功，请重新登录")
 		return
 	}
 	exchange, err := h.platform.ExchangeCode(request.Context(), code, h.redirectURI, flow.Verifier, "idem_console_"+hex.EncodeToString(stateHash[:16]))
@@ -1012,7 +1012,7 @@ func (h *Handler) callback(writer http.ResponseWriter, request *http.Request) {
 	}
 	maxAge := int(exchange.ExpiresAt.Sub(h.now()).Seconds())
 	if maxAge < 1 {
-		writeError(writer, request, http.StatusUnauthorized, "SESSION_EXPIRED", "Platform Session has expired")
+		writeError(writer, request, http.StatusUnauthorized, "SESSION_EXPIRED", "登录已过期，请重新登录")
 		return
 	}
 	http.SetCookie(writer, &http.Cookie{Name: sessionCookie, Value: encoded, Path: "/", MaxAge: maxAge, Expires: exchange.ExpiresAt, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
@@ -1156,13 +1156,13 @@ func (h *Handler) logout(writer http.ResponseWriter, _ *http.Request) {
 func (h *Handler) readSession(writer http.ResponseWriter, request *http.Request) (session.Value, bool) {
 	cookie, err := request.Cookie(sessionCookie)
 	if err != nil {
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_REQUIRED", "Console Session is required")
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_REQUIRED", "请先登录")
 		return session.Value{}, false
 	}
 	value, err := h.codec.Decode(cookie.Value)
 	if err != nil || !h.now().Before(value.ExpiresAt) {
 		h.clearSession(writer)
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Console Session is invalid or expired")
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
 		return session.Value{}, false
 	}
 	return value, true
@@ -1183,15 +1183,15 @@ func oauthStateKey(stateHash, browserHash [sha256.Size]byte) string {
 func (h *Handler) writePlatformError(writer http.ResponseWriter, request *http.Request, err error) {
 	switch {
 	case errors.Is(err, platformcore.ErrUnauthorized):
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Console Session is no longer authorized")
+		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
 	case errors.Is(err, platformcore.ErrForbidden):
-		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Required permission or Scope is missing")
+		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "暂无操作权限，请联系管理员")
 	case errors.Is(err, platformcore.ErrConflict):
-		writeError(writer, request, http.StatusConflict, "PLATFORM_OPERATION_CONFLICT", "Platform Operation conflicts with current state or idempotency history")
+		writeError(writer, request, http.StatusConflict, "PLATFORM_OPERATION_CONFLICT", "内容有更新，请刷新后重试")
 	case errors.Is(err, platformcore.ErrNotFound):
-		writeError(writer, request, http.StatusNotFound, "PLATFORM_RESOURCE_NOT_FOUND", "Platform resource was not found")
+		writeError(writer, request, http.StatusNotFound, "PLATFORM_RESOURCE_NOT_FOUND", "内容不存在或已下架")
 	case errors.Is(err, platformcore.ErrInvalid):
-		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation request is invalid")
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "操作内容无效，请检查填写后重试")
 	default:
 		h.unavailable(writer, request, err)
 	}
@@ -1199,7 +1199,7 @@ func (h *Handler) writePlatformError(writer http.ResponseWriter, request *http.R
 
 func (h *Handler) writeOAuthPlatformError(writer http.ResponseWriter, request *http.Request, err error) {
 	if errors.Is(err, platformcore.ErrConflict) {
-		writeError(writer, request, http.StatusConflict, "AUTHORIZATION_CONFLICT", "Authorization code could not be consumed")
+		writeError(writer, request, http.StatusConflict, "AUTHORIZATION_CONFLICT", "登录未成功，请重新登录")
 		return
 	}
 	h.writePlatformError(writer, request, err)
@@ -1207,7 +1207,7 @@ func (h *Handler) writeOAuthPlatformError(writer http.ResponseWriter, request *h
 
 func (h *Handler) unavailable(writer http.ResponseWriter, request *http.Request, err error) {
 	h.logger.Error("console_gateway_dependency_error", "request_id", requestID(request), "error", err)
-	writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Console authentication dependency is unavailable")
+	writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "登录服务暂时不可用，请稍后再试")
 }
 
 func validReturnTo(value string) bool {

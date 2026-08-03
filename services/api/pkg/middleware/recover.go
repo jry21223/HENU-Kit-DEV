@@ -12,6 +12,6 @@ import (
 func Recover(log *slog.Logger) gin.HandlerFunc {
 	return gin.CustomRecovery(func(ctx *gin.Context, recovered interface{}) {
 		log.Error("panic recovered", slog.Any("panic", recovered))
-		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "internal_server_error", nil)
+		response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "服务暂时不可用，请稍后再来", nil)
 	})
 }

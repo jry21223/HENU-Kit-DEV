@@ -41,7 +41,7 @@ func (c *Client) Venues(ctx context.Context, campus, actorUserID, requestID stri
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return contract.FoodVenuesResponse{}, fmt.Errorf("Do: %w", err)
+		return contract.FoodVenuesResponse{}, fmt.Errorf("do: %w", err)
 	}
 	defer resp.Body.Close()
 

@@ -67,9 +67,11 @@ type NoticeSummary struct {
 	Published time.Time `json:"published_at"`
 }
 
-// ErrorEnvelope is the standard error response.
+// ErrorEnvelope is the standard error response. Error is the machine-readable
+// code clients may branch on; Message is the user-facing Chinese text.
 type ErrorEnvelope struct {
 	Error     string `json:"error"`
 	Detail    string `json:"detail,omitempty"`
+	Message   string `json:"message,omitempty"`
 	RequestID string `json:"request_id"`
 }

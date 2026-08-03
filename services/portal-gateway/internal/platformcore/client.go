@@ -64,7 +64,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return ExchangeResult{}, fmt.Errorf("Do: %w", err)
+		return ExchangeResult{}, fmt.Errorf("do: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -119,7 +119,7 @@ func (c *Client) CheckPermission(ctx context.Context, exchangeToken, permissionC
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("Do: %w", err)
+		return fmt.Errorf("do: %w", err)
 	}
 	defer resp.Body.Close()
 
