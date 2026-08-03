@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { PageHeader } from "@/components/ui";
 import { fetchPlatformOperations, resolvePlatformOperation, revokePlatformSession, updatePlatformAccess, type PlatformAccessGrantInput, type PlatformOperationWriteResult, type PlatformOperationsSnapshot } from "@/lib/console-gateway";
 
 const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable" }>();
@@ -92,14 +93,14 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); });
 
 <template>
   <section aria-labelledby="operations-heading">
-    <div class="overview-hero">
-      <div>
-        <p class="eyebrow">平台运营</p>
-        <h1 id="operations-heading" class="mt-2 text-2xl font-bold tracking-[-0.03em] sm:text-3xl">平台运营工作台</h1>
-        <p class="mt-2 max-w-3xl text-base leading-7 text-[var(--hk-ink-muted)]">这里展示账户、登录、邮件与审计的运营状态。</p>
-      </div>
+    <PageHeader
+      eyebrow="平台运营"
+      title="平台运营工作台"
+      description="这里展示账户、登录、邮件与审计的运营状态。"
+      title-id="operations-heading"
+    >
       <div class="access-context"><span>{{ canWrite ? "可读写" : "只读" }}</span><strong>平台权限</strong></div>
-    </div>
+    </PageHeader>
 
     <p v-if="notice" class="operation-notice" role="status">{{ notice }} <button v-if="pending" type="button" @click="resolveUnknown">查询结果</button></p>
     <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取运营状态…</div>

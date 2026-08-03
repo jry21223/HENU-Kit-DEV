@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 
-import UiButton from "@/components/ui/UiButton.vue";
+import { Button, Card, Label, PageHeader, Textarea } from "@/components/ui";
 import {
   fetchAccountTicket,
   fetchAccountTicketQueue,
@@ -191,27 +191,27 @@ watch(
 
 <template>
   <section aria-labelledby="account-tickets-heading">
-    <div class="overview-hero">
-      <div>
-        <p class="eyebrow">工单处理操作</p>
-        <h1 id="account-tickets-heading" class="mt-2 text-2xl font-bold sm:text-3xl">账户工单运营</h1>
-        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">工单处理均以当前登录身份记录。</p>
-      </div>
+    <PageHeader
+      eyebrow="工单处理操作"
+      title="账户工单运营"
+      description="工单处理均以当前登录身份记录。"
+      title-id="account-tickets-heading"
+    >
       <div class="access-context"><strong>{{ queue.length }} 条工单</strong></div>
-    </div>
+    </PageHeader>
 
     <p v-if="feedback" class="operation-notice mt-5" role="status">
       {{ feedback }}
-      <UiButton v-if="pending && !busy" class="mt-3" @click="finish(pending)">按原请求重试</UiButton>
+      <Button v-if="pending && !busy" class="mt-3" @click="finish(pending)">按原请求重试</Button>
     </p>
 
     <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在读取工单队列…</div>
     <div v-else-if="workspaceState === 'denied'" class="operation-state">当前账户没有工单查看权限，请联系管理员开通。</div>
-    <div v-else-if="workspaceState === 'unavailable'" class="operation-state"><p>工单服务暂时不可用。</p><UiButton class="mt-3" @click="refreshQueue">重新加载</UiButton></div>
+    <div v-else-if="workspaceState === 'unavailable'" class="operation-state"><p>工单服务暂时不可用。</p><Button class="mt-3" @click="refreshQueue">重新加载</Button></div>
 
     <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
-      <section class="operation-panel !mt-0" aria-labelledby="account-ticket-queue-heading">
-        <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="account-ticket-queue-heading">工单队列</h2><UiButton variant="ghost" @click="refreshQueue">刷新</UiButton></div>
+      <Card class="!mt-0 p-4" aria-labelledby="account-ticket-queue-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="account-ticket-queue-heading">工单队列</h2><Button variant="ghost" @click="refreshQueue">刷新</Button></div>
         <p v-if="queue.length === 0" class="mt-3 text-[var(--hk-ink-muted)]">暂无待处理工单。</p>
         <div v-else class="mt-3 grid gap-2">
           <button
@@ -228,13 +228,13 @@ watch(
             <p class="mt-1 text-xs text-[var(--hk-ink-muted)]">更新于 {{ timestamp(ticket.updated_at) }}</p>
           </button>
         </div>
-      </section>
+      </Card>
 
-      <section class="operation-panel !mt-0" aria-labelledby="account-ticket-detail-heading" :data-account-ticket-detail-state="detailState">
+      <Card class="!mt-0 p-4" aria-labelledby="account-ticket-detail-heading" :data-account-ticket-detail-state="detailState">
         <div v-if="detailState === 'idle'" class="text-[var(--hk-ink-muted)]">选择队列中的工单查看详情、回复和状态流转。</div>
         <div v-else-if="detailState === 'loading'" aria-busy="true">正在读取工单详情…</div>
         <div v-else-if="detailState === 'not_found'" class="text-[var(--hk-ink-muted)]">该工单已不可访问；请刷新队列。</div>
-        <div v-else-if="detailState === 'unavailable'" class="text-[var(--hk-ink-muted)]"><p>工单详情暂不可用。</p><UiButton class="mt-3" @click="selectedID && openTicket(selectedID)">重新加载</UiButton></div>
+        <div v-else-if="detailState === 'unavailable'" class="text-[var(--hk-ink-muted)]"><p>工单详情暂不可用。</p><Button class="mt-3" @click="selectedID && openTicket(selectedID)">重新加载</Button></div>
         <template v-else-if="detail">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div><p class="eyebrow">{{ detail.ticket.reference }}</p><h2 id="account-ticket-detail-heading" class="mt-1 text-xl font-bold">{{ detail.ticket.title }}</h2></div>
@@ -250,17 +250,17 @@ watch(
           </div>
 
           <form v-if="canReply" class="mt-5" @submit.prevent="sendReply">
-            <label class="grid gap-2 text-sm font-semibold">客服回复<textarea v-model="replyBody" required maxlength="5000" rows="4" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" placeholder="回复将以你的登录身份写入工单。" @input="clearPendingForEditedReply"></textarea></label>
-            <UiButton class="mt-3" type="submit" :disabled="busy || !replyBody.trim()">发送回复</UiButton>
+            <Label class="grid gap-2">客服回复<Textarea v-model="replyBody" required maxlength="5000" rows="4" placeholder="回复将以你的登录身份写入工单。" @input="clearPendingForEditedReply"></Textarea></Label>
+            <Button class="mt-3" type="submit" :disabled="busy || !replyBody.trim()">发送回复</Button>
           </form>
 
           <div v-if="canTransition && detail.ticket.status !== 'resolved'" class="mt-5 flex flex-wrap gap-3 border-t border-[var(--hk-line)] pt-5">
-            <UiButton v-if="detail.ticket.status === 'open'" :disabled="busy" @click="transition('in_progress')">开始处理</UiButton>
-            <UiButton :disabled="busy" variant="ghost" class="secondary-action" @click="transition('resolved')">标记已解决</UiButton>
+            <Button v-if="detail.ticket.status === 'open'" :disabled="busy" @click="transition('in_progress')">开始处理</Button>
+            <Button :disabled="busy" variant="ghost" class="secondary-action" @click="transition('resolved')">标记已解决</Button>
           </div>
           <p v-else-if="!canReply && !canTransition" class="mt-5 text-sm text-[var(--hk-ink-muted)]">当前账户仅拥有工单只读权限。</p>
         </template>
-      </section>
+      </Card>
     </div>
   </section>
 </template>

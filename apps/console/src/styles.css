@@ -7,6 +7,30 @@
      tokens.css --hk-font-display/--hk-font-mono resolve to real webfonts. */
   --font-space-grotesk: "Space Grotesk";
   --font-plex-mono: "IBM Plex Mono";
+
+  /* shadcn-vue contract bridged to the engineering-drawing design tokens.
+     Components consume bg-background/text-foreground/border-border/… and
+     therefore inherit the HENU Kit palette with no extra configuration. */
+  --background: var(--hk-paper);
+  --foreground: var(--hk-ink);
+  --card: var(--hk-paper-raised);
+  --card-foreground: var(--hk-ink);
+  --popover: var(--hk-paper-raised);
+  --popover-foreground: var(--hk-ink);
+  --primary: var(--hk-ink);
+  --primary-foreground: var(--hk-paper);
+  --secondary: var(--hk-accent-soft);
+  --secondary-foreground: var(--hk-accent-deep);
+  --muted: var(--hk-paper);
+  --muted-foreground: var(--hk-ink-muted);
+  --accent: var(--hk-accent-soft);
+  --accent-foreground: var(--hk-accent-deep);
+  --destructive: var(--hk-danger);
+  --destructive-foreground: var(--hk-paper-raised);
+  --border: var(--hk-line);
+  --input: var(--hk-line);
+  --ring: var(--hk-focus-ring);
+  --radius: 0.25rem;
 }
 
 @theme inline {
@@ -17,6 +41,29 @@
   --color-kit-ink: var(--hk-ink);
   --color-kit-accent: var(--hk-accent);
   --color-kit-line: var(--hk-line);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
 * {

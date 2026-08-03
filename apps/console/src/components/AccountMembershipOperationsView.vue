@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 
-import UiButton from "@/components/ui/UiButton.vue";
+import { Button, Card, Input, Label, PageHeader, Textarea } from "@/components/ui";
 import {
   fetchAccountMembership,
   grantAccountMembership,
@@ -191,19 +191,19 @@ watch(
 
 <template>
   <section aria-labelledby="account-membership-heading">
-    <div class="overview-hero">
-      <div>
-        <p class="eyebrow">会员权益操作</p>
-        <h1 id="account-membership-heading" class="mt-2 text-2xl font-bold sm:text-3xl">会员权益运营</h1>
-        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">所有操作均以当前登录身份记录。</p>
-      </div>
+    <PageHeader
+      eyebrow="会员权益操作"
+      title="会员权益运营"
+      description="所有操作均以当前登录身份记录。"
+      title-id="account-membership-heading"
+    >
       <div class="access-context"><span>已记录审计的权益操作</span></div>
-    </div>
+    </PageHeader>
 
     <p v-if="feedback" class="operation-notice mt-5" role="status">
       {{ feedback }}
       <span v-if="pending" class="mt-2 block text-sm">待确认操作：{{ pending.kind === "grant" ? "向" : "从" }}用户 <code>{{ pending.userID }}</code>{{ pending.kind === "grant" ? "发放" : "撤销" }}终身会员权益。</span>
-      <UiButton v-if="pending && !busy" class="mt-3" @click="finish(pending)">确认并按原请求重试</UiButton>
+      <Button v-if="pending && !busy" class="mt-3" @click="finish(pending)">确认并按原请求重试</Button>
     </p>
 
     <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在验证会员操作权限…</div>
@@ -215,19 +215,19 @@ watch(
       <form class="operation-panel !mt-0" @submit.prevent="() => lookupMembership()">
         <h2>查找已开通账户</h2>
         <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">请先输入已开通会员账户的用户 ID。</p>
-        <label class="mt-5 grid gap-2 text-sm font-semibold">
+        <Label class="mt-5 grid gap-2">
           用户 ID
-          <input v-model="targetUserID" required inputmode="text" autocomplete="off" placeholder="已开通账户的用户 ID" :disabled="busy" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-mono text-sm font-normal" @input="resetLookup">
-        </label>
-        <UiButton class="mt-4" type="submit" :disabled="busy || detailState === 'loading' || !targetUserID.trim()">查询会员权益</UiButton>
+          <Input v-model="targetUserID" required inputmode="text" autocomplete="off" placeholder="已开通账户的用户 ID" :disabled="busy" class="font-mono" @input="resetLookup" />
+        </Label>
+        <Button class="mt-4" type="submit" :disabled="busy || detailState === 'loading' || !targetUserID.trim()">查询会员权益</Button>
       </form>
 
-      <section class="operation-panel !mt-0" :data-account-membership-detail-state="detailState" aria-labelledby="account-membership-detail-heading">
+      <Card class="!mt-0 p-4" :data-account-membership-detail-state="detailState" aria-labelledby="account-membership-detail-heading">
         <div v-if="detailState === 'idle'" class="text-[var(--hk-ink-muted)]">输入已开通账户的用户 ID 后查看其当前会员权益。</div>
         <div v-else-if="detailState === 'loading'" aria-busy="true">正在读取持久化会员权益…</div>
         <div v-else-if="detailState === 'not_found'" class="text-[var(--hk-ink-muted)]">该用户还未开通会员账户，无法发放权益。</div>
         <div v-else-if="detailState === 'invalid'" class="text-[var(--hk-ink-muted)]">用户 ID 格式不对，请检查后重试。</div>
-        <div v-else-if="detailState === 'unavailable'" class="text-[var(--hk-ink-muted)]"><p>会员权益暂不可用。</p><UiButton class="mt-3" @click="lookupMembership">重新加载</UiButton></div>
+        <div v-else-if="detailState === 'unavailable'" class="text-[var(--hk-ink-muted)]"><p>会员权益暂不可用。</p><Button class="mt-3" @click="lookupMembership">重新加载</Button></div>
         <template v-else-if="membership">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -239,16 +239,16 @@ watch(
           <p class="mt-3 text-sm leading-6 text-[var(--hk-ink-muted)]">每次授权或撤销都写入不可变审计事件，并向用户创建一条持久化通知。</p>
 
           <form class="mt-5 border-t border-[var(--hk-line)] pt-5" @submit.prevent="submitMutation">
-            <label class="grid gap-2 text-sm font-semibold">
+            <Label class="grid gap-2">
               操作原因
-              <textarea v-model="reason" required maxlength="1000" rows="4" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" :placeholder="membership.plan === 'free' ? '说明为何发放终身权益。' : '说明为何撤销终身权益。'"></textarea>
-            </label>
-            <UiButton class="mt-3" type="submit" :disabled="busy || !reason.trim()">
+              <Textarea v-model="reason" required maxlength="1000" rows="4" :placeholder="membership.plan === 'free' ? '说明为何发放终身权益。' : '说明为何撤销终身权益。'"></Textarea>
+            </Label>
+            <Button class="mt-3" type="submit" :disabled="busy || !reason.trim()">
               {{ membership.plan === 'free' ? '发放终身会员' : '撤销终身会员' }}
-            </UiButton>
+            </Button>
           </form>
         </template>
-      </section>
+      </Card>
     </div>
   </section>
 </template>

@@ -4,6 +4,7 @@ import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPor
 import { computed, onMounted, ref } from "vue";
 
 import ModuleCard from "@/components/ModuleCard.vue";
+import { Button, PageHeader } from "@/components/ui";
 import LibraryOperationsView from "@/components/LibraryOperationsView.vue";
 import FoodOperationsView from "@/components/FoodOperationsView.vue";
 import AccountMembershipOperationsView from "@/components/AccountMembershipOperationsView.vue";
@@ -12,7 +13,6 @@ import AccountTicketOperationsView from "@/components/AccountTicketOperationsVie
 import NoticeOperationsView from "@/components/NoticeOperationsView.vue";
 import PlatformOperationsView from "@/components/PlatformOperationsView.vue";
 import StatusBadge from "@/components/ui/StatusBadge.vue";
-import UiButton from "@/components/ui/UiButton.vue";
 import { moduleSummaries, type ModuleSummary } from "@/data/modules";
 import { consolePath, isConsolePath } from "@/lib/base-path";
 import { consoleLoginHref, fetchConsoleOverview, fetchConsoleSession, logoutConsoleSession, type ConsoleOverview, type ConsoleSession } from "@/lib/console-gateway";
@@ -149,9 +149,9 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
       <header class="console-topbar">
         <DialogRoot v-model:open="mobileNavigationOpen">
           <DialogTrigger as-child>
-            <UiButton variant="ghost" size="icon" class="lg:hidden" aria-label="打开产品导航">
+            <Button variant="ghost" size="icon" class="lg:hidden" aria-label="打开产品导航">
               <Menu :size="20" />
-            </UiButton>
+            </Button>
           </DialogTrigger>
           <DialogPortal>
             <DialogOverlay class="fixed inset-0 z-40 bg-black/35 backdrop-blur-sm" />
@@ -162,7 +162,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
                   <DialogDescription class="mt-1 text-sm text-white/75">专属工作台与 {{ summaries.length }} 个已确认的运营模块</DialogDescription>
                 </div>
                 <DialogClose as-child>
-                  <UiButton variant="ghost-inverse" size="icon" aria-label="关闭产品导航"><X :size="20" /></UiButton>
+                  <Button variant="ghost-inverse" size="icon" aria-label="关闭产品导航"><X :size="20" /></Button>
                 </DialogClose>
               </div>
               <nav class="mt-6 grid gap-2" aria-label="移动端产品模块">
@@ -197,8 +197,8 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
             <button type="button" class="operator-avatar" aria-label="退出 Console" @click="signOut">CO</button>
           </template>
           <StatusBadge v-else-if="authState === 'denied'" status="denied">权限不足</StatusBadge>
-          <button v-else-if="authState === 'unavailable'" type="button" class="rounded-[var(--hk-radius-control)] bg-[var(--hk-ink)] px-4 py-2 text-sm font-semibold text-white" @click="refreshSession">重试连接</button>
-          <a v-else :href="consoleLoginHref()" class="rounded-[var(--hk-radius-control)] bg-[var(--hk-ink)] px-4 py-2 text-sm font-semibold text-white">登录 Console</a>
+          <Button v-else-if="authState === 'unavailable'" @click="refreshSession">重试连接</Button>
+          <Button v-else as="a" :href="consoleLoginHref()">登录 Console</Button>
         </div>
       </header>
 
@@ -211,19 +211,17 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <AccountPointOperationsView v-else-if="isAccountPointOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountTicketOperationsView v-else-if="isAccountTicketOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
         <template v-else>
-        <section class="overview-hero" aria-labelledby="overview-heading">
-          <div>
-            <p class="eyebrow">运营概览</p>
-            <h1 id="overview-heading" class="mt-2 text-2xl font-bold tracking-[-0.03em] sm:text-3xl">产品运行概览</h1>
-            <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">
-              {{ summaries.length }} 个运营模块的运行状态与关键指标总览，供运营人员快速了解全站情况。
-            </p>
-          </div>
+        <PageHeader
+          eyebrow="运营概览"
+          title="产品运行概览"
+          description="{{ summaries.length }} 个运营模块的运行状态与关键指标总览，供运营人员快速了解全站情况。"
+          title-id="overview-heading"
+        >
           <div class="access-context" aria-label="服务端验证的访问上下文">
             <span>{{ authState === "authenticated" ? "已授予概览查看权限" : "需要服务端权限" }}</span>
             <strong>{{ authState === "authenticated" ? visibleCount : 0 }}/{{ summaries.length }} 可见</strong>
           </div>
-        </section>
+        </PageHeader>
 
         <section class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" :aria-busy="loading">
           <ModuleCard

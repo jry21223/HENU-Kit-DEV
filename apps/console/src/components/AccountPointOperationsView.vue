@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 
-import UiButton from "@/components/ui/UiButton.vue";
+import { Button, Card, Input, Label, PageHeader, Textarea } from "@/components/ui";
 import { adjustAccountPoints, type ConsoleAccountPointAdjustmentResult, type ConsolePointAdjustmentRequest } from "@/lib/console-gateway";
 
 const props = defineProps<{
@@ -160,19 +160,19 @@ watch(
 
 <template>
   <section aria-labelledby="account-points-heading">
-    <div class="overview-hero">
-      <div>
-        <p class="eyebrow">积分调整操作</p>
-        <h1 id="account-points-heading" class="mt-2 text-2xl font-bold sm:text-3xl">积分账本运营</h1>
-        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">积分调整以当前登录身份记录，不可伪造。</p>
-      </div>
+    <PageHeader
+      eyebrow="积分调整操作"
+      title="积分账本运营"
+      description="积分调整以当前登录身份记录，不可伪造。"
+      title-id="account-points-heading"
+    >
       <div class="access-context"><strong>不可变账本</strong></div>
-    </div>
+    </PageHeader>
 
     <p v-if="feedback" class="operation-notice mt-5" role="status">
       {{ feedback }}
       <span v-if="pending" class="mt-2 block text-sm">待确认操作：用户 <code>{{ pending.input.user_id }}</code> {{ pending.input.amount > 0 ? "增加" : "扣减" }} {{ formatPoints(Math.abs(pending.input.amount)) }} 积分。</span>
-      <UiButton v-if="pending && !busy" class="mt-3" @click="finish(pending)">确认并按原请求重试</UiButton>
+      <Button v-if="pending && !busy" class="mt-3" @click="finish(pending)">确认并按原请求重试</Button>
     </p>
 
     <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在验证积分调整权限…</div>
@@ -184,22 +184,22 @@ watch(
       <form class="operation-panel !mt-0" @submit.prevent="submitAdjustment">
         <h2>记账积分调整</h2>
         <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">输入用户 ID，系统将直接为该用户记入或扣减积分，并记录操作日志。</p>
-        <label class="mt-5 grid gap-2 text-sm font-semibold">
+        <Label class="mt-5 grid gap-2">
           目标用户 ID
-          <input v-model="targetUserID" required autocomplete="off" placeholder="目标用户 ID" :disabled="busy" class="font-mono text-sm font-normal">
-        </label>
-        <label class="mt-4 grid gap-2 text-sm font-semibold">
+          <Input v-model="targetUserID" required autocomplete="off" placeholder="目标用户 ID" :disabled="busy" class="font-mono" />
+        </Label>
+        <Label class="mt-4 grid gap-2">
           积分变更
-          <input v-model="amount" required inputmode="numeric" autocomplete="off" placeholder="正数增加，负数扣减" :disabled="busy" class="font-normal">
-        </label>
-        <label class="mt-4 grid gap-2 text-sm font-semibold">
+          <Input v-model="amount" required inputmode="numeric" autocomplete="off" placeholder="正数增加，负数扣减" :disabled="busy" />
+        </Label>
+        <Label class="mt-4 grid gap-2">
           操作原因
-          <textarea v-model="reason" required maxlength="1000" rows="4" :disabled="busy" placeholder="记录可复核的调整原因。" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal"></textarea>
-        </label>
-        <UiButton class="mt-4" type="submit" :disabled="busy">{{ busy ? "正在提交…" : "提交积分调整" }}</UiButton>
+          <Textarea v-model="reason" required maxlength="1000" rows="4" :disabled="busy" placeholder="记录可复核的调整原因。"></Textarea>
+        </Label>
+        <Button class="mt-4" type="submit" :disabled="busy">{{ busy ? "正在提交…" : "提交积分调整" }}</Button>
       </form>
 
-      <section class="operation-panel !mt-0" data-account-points-result aria-labelledby="account-points-result-heading">
+      <Card class="!mt-0 p-4" data-account-points-result aria-labelledby="account-points-result-heading">
         <div v-if="!adjustment" class="text-[var(--hk-ink-muted)]">
           提交后这里显示该用户的最新余额与本次记账明细。
         </div>
@@ -216,7 +216,7 @@ watch(
             <div class="grid gap-1"><dt class="text-[var(--hk-ink-muted)]">记账时间（中国标准时间）</dt><dd>{{ formatTime(adjustment.entry.created_at) }}</dd></div>
           </dl>
         </template>
-      </section>
+      </Card>
     </div>
   </section>
 </template>
