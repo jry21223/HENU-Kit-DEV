@@ -148,7 +148,7 @@ export default function FoodLeaderboardPage() {
           </div>
         ) : loadState === "error" ? (
           <div className="mt-8">
-            <EmptyBlock label="榜单接口不可用" />
+            <EmptyBlock label="榜单暂时加载不出来，请稍后刷新试试" />
           </div>
         ) : (
           <>

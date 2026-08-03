@@ -14,7 +14,6 @@ export default function ItemDetail({ id }: { id: string }) {
   const material = STATIC_MATERIALS.find((m) => m.id === id);
   useReveal();
   const [tocOpen, setTocOpen] = useState(false);
-  const [downloaded, setDownloaded] = useState(false);
 
   if (!material) {
     return (
@@ -70,6 +69,9 @@ export default function ItemDetail({ id }: { id: string }) {
           <p data-enter className="mt-3 font-mono text-[11px] tracking-wider text-ink/50">
             {material.author} · ★ {material.rating.toFixed(1)} · ↓ {material.downloads} · 收藏 {material.favs}
           </p>
+          <p data-enter className="mt-2 font-mono text-[10px] tracking-wider text-ink/40">
+            当前页面为示例资料，正式内容接入中
+          </p>
           <p data-enter className="mt-5 max-w-xl text-sm leading-7 text-ink/75">
             {material.intro}
           </p>
@@ -106,13 +108,9 @@ export default function ItemDetail({ id }: { id: string }) {
                 >
                   立即阅读 →
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => setDownloaded(true)}
-                  className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest transition-colors hover:border-ink"
-                >
-                  {downloaded ? "已加入下载队列（mock）" : "下载 · PDF（mock）"}
-                </button>
+                <p className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/55">
+                  下载即将开放
+                </p>
               </>
             ) : (
               <>
@@ -134,7 +132,7 @@ export default function ItemDetail({ id }: { id: string }) {
               data-library-favorite-state="unavailable"
               className="border border-ink/30 px-5 py-3 font-mono text-sm text-ink/55"
             >
-              收藏功能接入中
+              收藏功能即将上线
             </p>
           </div>
         </div>

@@ -89,7 +89,7 @@ export default function RecoverPage() {
       setError(
         e instanceof AccountCenterError
           ? e.message
-          : "发送失败（请确认邮件通道已配置）"
+          : "验证码暂时发不出去，请稍后再试；仍不行请联系管理员"
       );
     } finally {
       setPending(false);

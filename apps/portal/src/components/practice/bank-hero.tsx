@@ -148,17 +148,17 @@ export default function BankHero({
   const stateMessage = useMemo(() => {
     switch (masteryState.status) {
       case "disabled":
-        return "QuizCraft V2 数据将在确认切换后读取；当前未展示示例数据。";
+        return "学习数据暂时不可用，稍后自动恢复。";
       case "loading":
-        return "正在同步已确认的作答事实…";
+        return "正在同步学习数据…";
       case "unauthenticated":
         return "登录后可查看跨设备同步的掌握度。";
       case "error":
-        return "真实学习数据暂不可用，未使用示例数据填充。";
+        return "学习数据暂时不可用，请稍后重试。";
       case "empty":
-        return "尚无已确认作答事实；从第一题开始建立你的图谱。";
+        return "还没有学习记录，从第一题开始建立你的图谱。";
       case "ready":
-        return "图谱由已确认的 QuizCraft 作答事实驱动。";
+        return "图谱根据你的答题记录生成。";
     }
   }, [masteryState.status]);
 

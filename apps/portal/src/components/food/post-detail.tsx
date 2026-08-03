@@ -80,7 +80,7 @@ export default function PostDetail({ id }: { id: string }) {
       }
       setPost(null);
       setComments([]);
-      setError(message || "美食详情接口不可用。");
+      setError(message || "美食详情暂时加载不出来，请稍后刷新试试。");
       setLoadState("error");
     }
   }, [id]);
@@ -107,7 +107,7 @@ export default function PostDetail({ id }: { id: string }) {
     return (
       <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8">
         <ErrorBanner
-          message={error ?? "美食详情接口不可用。"}
+          message={error ?? "美食详情暂时加载不出来，请稍后刷新试试。"}
           onRetry={() => void load()}
         />
       </main>

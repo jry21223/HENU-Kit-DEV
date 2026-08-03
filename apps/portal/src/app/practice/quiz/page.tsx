@@ -44,14 +44,14 @@ function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; erro
   const bankID = params.get("bank_id")?.trim() ?? "";
   const bankVersionID = params.get("bank_version_id")?.trim() ?? "";
   if (!bankID && !bankVersionID) {
-    return { error: "请先从真实题库目录选择一组练习。当前页面不会加载演示题目。" };
+    return { error: "请先从题库目录选择一组练习后开始。" };
   }
   if (!isUUID(bankID) || !isUUID(bankVersionID)) {
-    return { error: "题库选择无效，请返回真实题库目录重新开始。" };
+    return { error: "题库选择无效，请返回题库目录重新选择。" };
   }
   const mode = params.get("mode")?.trim() || "random";
   if (mode !== "random" && mode !== "difficult" && mode !== "chapter") {
-    return { error: "练习模式无效，请从真实题库重新选择。" };
+    return { error: "练习模式无效，请从题库目录重新选择。" };
   }
   const chapterID = params.get("chapter_id")?.trim() || undefined;
   if (mode === "chapter" && !chapterID) {
@@ -301,26 +301,26 @@ export default function QuizPage() {
   };
 
   if (loadState === "loading") {
-    return <PracticeState title="正在连接真实题库" detail="QuizCraft 正在创建服务端练习会话…" />;
+    return <PracticeState title="正在连接题库" detail="正在创建练习会话…" />;
   }
   if (loadState === "missing-selection") {
-    return <PracticeState title="题库目录尚未切换" detail={loadError ?? "请从真实题库选择练习。"} />;
+    return <PracticeState title="请先选择题库" detail={loadError ?? "请从题库目录选择练习后开始。"} />;
   }
   if (loadState === "error") {
     return (
       <PracticeState
-        title="真实练习暂不可用"
-        detail={loadError ?? "QuizCraft 暂时无法创建练习会话。"}
+        title="练习暂时不可用"
+        detail={loadError ?? "暂时无法创建练习会话，请稍后重试。"}
         actionLabel="重试"
         onAction={retrySessionLoad}
       />
     );
   }
   if (loadState === "empty") {
-    return <PracticeState title="当前题库没有可练习题目" detail="没有使用示例题目替代，请返回题库目录重新选择。" />;
+    return <PracticeState title="当前题库没有可练习题目" detail="请返回题库目录重新选择。" />;
   }
   if (!session || !question) {
-    return <PracticeState title="练习会话无效" detail="请返回真实题库目录重新开始。" />;
+    return <PracticeState title="练习会话无效" detail="请返回题库目录重新选择。" />;
   }
 
   const weakChapters = Array.from(

@@ -106,7 +106,7 @@ export default function NotificationsPage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">系统通知</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          通知从 Account Portfolio 持久化读取；标记已读只会更新对应的真实通知记录。
+          通知记录由系统保存；标记已读只会更新对应的通知记录。
         </p>
       </section>
 

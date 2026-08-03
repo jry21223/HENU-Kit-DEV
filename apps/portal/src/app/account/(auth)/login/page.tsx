@@ -171,7 +171,7 @@ function LoginForm() {
         email:
           e instanceof AccountCenterError
             ? e.message
-            : "发送失败，请稍后重试（需配置邮件通道）",
+            : "验证码暂时发不出去，请稍后再试；仍不行请联系管理员",
       });
     } finally {
       setPending(false);

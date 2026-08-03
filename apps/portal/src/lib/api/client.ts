@@ -171,7 +171,7 @@ async function apiFetch<T>(
   if (!hasGatewayConfigured()) {
     if (allowMock()) return null;
     throw new PortalConfigError(
-      "Gateway is not configured. Set NEXT_PUBLIC_PORTAL_GATEWAY_URL, or NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1 for same-origin /api, or NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1 for local mock."
+      "服务未就绪，请联系维护者。"
     );
   }
 
@@ -556,11 +556,11 @@ export function formatPortalError(err: unknown): string {
     return "无法连接 Gateway，请检查网络或后端服务状态。";
   }
   if (err instanceof PortalHttpError) {
-    return `接口错误 (${err.status ?? "?"}): ${err.message}`;
+    return `服务暂时不可用，请稍后再试。`;
   }
   if (err instanceof PortalApiError) {
     return err.message;
   }
-  if (err instanceof Error) return err.message;
+  if (err instanceof Error) return "加载失败，请稍后重试。";
   return "加载失败，请稍后重试。";
 }

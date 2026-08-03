@@ -15,7 +15,7 @@ export default function ShelfPage() {
       </p>
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight">我的书架</h1>
       <p data-enter className="mt-6 border border-dashed border-ink/30 px-5 py-12 text-center text-sm leading-7 text-ink/65">
-        已购资料与收藏尚未接入持久化资料服务。为避免把本地会话数据伪装成账户结果，当前不会展示任何个人书架内容。
+        书架功能即将上线，敬请期待。
       </p>
       <Link
         href="/library"

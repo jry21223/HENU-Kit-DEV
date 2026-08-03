@@ -4,7 +4,6 @@ import {
   QuizListMeta,
   Question,
   getListQuestions,
-  questionStatus,
 } from "@/lib/practice/mock";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
@@ -49,6 +48,9 @@ export default function ListDetail({ list }: { list: QuizListMeta }) {
           <p data-enter className="mt-3 font-mono text-xs tracking-wider text-ink/50">
             创建者 {list.creator} · {questions.length} 题 · 完成度 {list.completion}%
           </p>
+          <p data-enter className="mt-2 font-mono text-[10px] tracking-wider text-ink/40">
+            当前页面为示例题单，正式数据接入中
+          </p>
           <div data-enter className="mt-6">
             <TransitionLink
               href="/practice/quiz"
@@ -80,7 +82,7 @@ export default function ListDetail({ list }: { list: QuizListMeta }) {
         </div>
         <ul data-enter>
           {questions.map((q, i) => (
-            <QuestionRow key={q.id} q={q} index={i} listId={list.id} />
+            <QuestionRow key={q.id} q={q} index={i} />
           ))}
         </ul>
       </div>
@@ -91,13 +93,11 @@ export default function ListDetail({ list }: { list: QuizListMeta }) {
 function QuestionRow({
   q,
   index,
-  listId,
 }: {
   q: Question;
   index: number;
-  listId: string;
 }) {
-  const status = questionStatus(listId, index);
+  const status = 0 as 0 | 1 | 2; // 示例题单：不展示伪随机作答状态，统一为未做
 
   return (
     <li>

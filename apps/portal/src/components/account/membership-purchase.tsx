@@ -128,12 +128,12 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
   return (
     <section data-membership-purchase={state.kind} className="mt-6 border border-ink p-6 sm:p-8">
       <p className="font-mono text-xs tracking-[0.2em] text-ink/45">LIFETIME MEMBERSHIP</p>
-      <h2 className="mt-3 font-display text-3xl font-bold tracking-tight">¥9.9 终身会员</h2>
+      <h2 className="mt-3 font-display text-3xl font-bold tracking-tight">¥9.9 永久解锁</h2>
 
       {state.kind === "idle" || state.kind === "error" ? (
         <>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-ink/70">
-            一次性支付，权益由服务端持久化，可跨设备读取。
+            一次付费永久解锁：会员包含期末押题卷等核心复习资料，也为服务器持续运行提供支持。权益由服务端持久化，可跨设备读取。
           </p>
           {state.kind === "error" ? (
             <p role="alert" className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-ink/70">

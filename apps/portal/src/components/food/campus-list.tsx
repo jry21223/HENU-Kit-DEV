@@ -92,6 +92,9 @@ export default function CampusList({ campus }: { campus: CampusKey }) {
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
         {c.name} · 吃什么
       </h1>
+      <p data-enter className="mt-2 font-mono text-[10px] tracking-wider text-ink/40">
+        当前页面为示例内容，正式数据接入中
+      </p>
 
       <div className="mt-8 gap-10 lg:flex">
         {/* 左列：文章卡 */}

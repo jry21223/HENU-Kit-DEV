@@ -58,26 +58,26 @@ export default function StatsPage() {
           数据面板
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65">
-          只展示由 QuizCraft 服务端已确认作答事实聚合出的数据；没有真实数据时不使用示例图表或排行榜数字。
+          这里展示你的学习数据；没有真实数据时不展示示例图表或排行榜数字。
         </p>
       </div>
 
       {state.status === "disabled" && (
         <section data-testid="practice-stats-disabled" className="mt-10">
-          <EmptyBlock label="QuizCraft V2 真实数据将在确认切换后启用" />
+          <EmptyBlock label="学习数据即将上线，敬请期待" />
         </section>
       )}
 
       {state.status === "loading" && (
         <section data-testid="practice-stats-loading" className="mt-10">
-          <LoadingBlock label="正在同步真实学习数据" />
+          <LoadingBlock label="正在同步学习数据" />
         </section>
       )}
 
       {state.status === "unauthenticated" && (
         <section data-testid="practice-stats-unauthenticated" className="mt-10 border border-ink/25 p-6">
           <p className="font-mono text-xs tracking-[0.2em] text-ink/55">
-            SIGN IN REQUIRED / 登录后查看跨设备同步的学习状态
+            SIGN IN REQUIRED / 请先登录后查看跨设备同步的学习状态
           </p>
           <button
             type="button"
@@ -92,7 +92,7 @@ export default function StatsPage() {
       {state.status === "error" && (
         <section data-testid="practice-stats-error" className="mt-10">
           <ErrorBanner
-            message={`${state.message}；未使用示例数据填充。`}
+            message={state.message}
             onRetry={retry}
           />
         </section>
@@ -109,7 +109,7 @@ export default function StatsPage() {
 
           {state.status === "empty" ? (
             <section data-testid="practice-stats-empty" className="mt-12">
-              <EmptyBlock label="尚无已确认作答事实，从第一题开始建立你的学习图谱" />
+              <EmptyBlock label="还没有学习记录，从第一题开始建立你的学习图谱" />
             </section>
           ) : (
             <section data-testid="practice-stats-success" data-block data-enter className="mt-12 border border-ink/25 p-5 md:p-7">
@@ -119,7 +119,7 @@ export default function StatsPage() {
                     MASTERY / 题库掌握度
                   </p>
                   <p className="mt-2 text-sm text-ink/55">
-                    分值为当前题库稳定题目中，至少答对一次的题目占比。
+                    分值为当前题库中至少答对过一次的题目占比。
                   </p>
                 </div>
                 <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">

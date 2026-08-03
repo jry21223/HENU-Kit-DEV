@@ -107,7 +107,7 @@ function AccountOverviewContent({
           className="mt-6 border border-accent px-5 py-6"
         >
           <p className="font-mono text-xs tracking-[0.14em] text-accent">ACCOUNT PORTFOLIO UNAVAILABLE</p>
-          <p className="mt-3 text-sm leading-6 text-ink/65">账户概览暂不可用，未展示任何本地或会话内替代数据。</p>
+          <p className="mt-3 text-sm leading-6 text-ink/65">账户概览暂时不可用，请稍后重试。</p>
           <button
             type="button"
             onClick={() => {
@@ -134,7 +134,7 @@ function AccountOverviewContent({
                   {card.mono} / {card.label}
                 </p>
                 <p className="mt-3 font-display text-3xl font-bold">{card.value}</p>
-                <p className="mt-2 font-mono text-[10px] text-ink/40">详情功能分批接入中</p>
+                <p className="mt-2 font-mono text-[10px] text-ink/40">详情即将上线</p>
               </div>
             ))}
           </div>
@@ -146,7 +146,7 @@ function AccountOverviewContent({
           ) : null}
 
           <p data-enter className="mt-8 font-mono text-[10px] tracking-[0.22em] text-ink/40">
-            数据来自持久化 ACCOUNT PORTFOLIO · 新用户从 0 积分和免费会员开始
+            新用户从 0 积分和免费会员开始
           </p>
         </section>
       ) : null}

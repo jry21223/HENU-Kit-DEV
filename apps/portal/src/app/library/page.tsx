@@ -85,7 +85,7 @@ export default function LibraryHomePage() {
         setError(
           getLibraryGatewayError() ||
             formatPortalError(e) ||
-            "资料库接口不可用，生产环境已禁用 mock 回退。"
+            "资料库暂时加载不出来，请稍后刷新试试。"
         );
         setLoadState("error");
       } catch (e2) {
@@ -191,7 +191,7 @@ export default function LibraryHomePage() {
           {loadState === "loading" ? (
             <LoadingBlock label="加载资料" />
           ) : loadState === "error" ? (
-            <EmptyBlock label="接口不可用" />
+            <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />
           ) : items.length === 0 ? (
             <EmptyBlock label="无匹配资料" />
           ) : (

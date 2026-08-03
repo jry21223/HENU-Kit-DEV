@@ -1,7 +1,6 @@
 import Link from "next/link";
 
-const FOOD_DESK_URL =
-  "https://henu-campus-guide.cocoa-brush-7952.chatgpt.site/#food-submit";
+const FOOD_DESK_URL = process.env.NEXT_PUBLIC_FOOD_DESK_URL ?? "";
 
 const REQUIRED_FACTS = [
   {
@@ -108,16 +107,22 @@ export default function FoodPublishPage() {
               前往学生美食台
             </h2>
             <p className="mt-3 text-sm leading-6 text-ink/65">
-              当前 HENU Kit 使用已经上线的学生美食台接收和跟踪投稿。登录后可提交推荐并查看审核状态。
+              投稿由学生美食台接收和跟踪，登录后可提交推荐并查看审核状态。
             </p>
-            <a
-              href={FOOD_DESK_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-6 block bg-ink px-5 py-3 text-center font-mono text-xs tracking-[0.12em] text-paper transition-colors hover:bg-accent"
-            >
-              登录学生美食台投稿 ↗
-            </a>
+            {FOOD_DESK_URL ? (
+              <a
+                href={FOOD_DESK_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-6 block bg-ink px-5 py-3 text-center font-mono text-xs tracking-[0.12em] text-paper transition-colors hover:bg-accent"
+              >
+                登录学生美食台投稿 ↗
+              </a>
+            ) : (
+              <p className="mt-6 block border border-ink/30 px-5 py-3 text-center font-mono text-xs tracking-[0.12em] text-ink/55">
+                投稿入口即将开放
+              </p>
+            )}
             <Link
               href="/food/leaderboard"
               className="mt-3 block border border-ink px-5 py-3 text-center font-mono text-xs tracking-[0.12em] transition-colors hover:bg-ink hover:text-paper"

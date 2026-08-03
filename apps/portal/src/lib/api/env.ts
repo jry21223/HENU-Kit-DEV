@@ -70,7 +70,6 @@ export function hasGatewayConfigured(): boolean {
 export function assertGatewayConfigured(context = "portal"): string {
   if (hasGatewayConfigured()) return gatewayUrlRaw();
   if (allowMock()) return "";
-  throw new Error(
-    `[${context}] NEXT_PUBLIC_PORTAL_GATEWAY_URL is required (or set NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1 for same-origin /api, or NEXT_PUBLIC_PORTAL_ALLOW_MOCK=1 for local mock).`
-  );
+  // 配置说明（NEXT_PUBLIC_PORTAL_GATEWAY_URL / NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY / NEXT_PUBLIC_PORTAL_ALLOW_MOCK）仅供排查日志，不展示给用户。
+  throw new Error(`[${context}] 服务未就绪，请联系维护者。`);
 }

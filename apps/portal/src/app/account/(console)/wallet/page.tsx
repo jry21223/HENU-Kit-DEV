@@ -124,7 +124,7 @@ export default function WalletPage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">积分钱包</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          余额与明细只来自 Account Portfolio 的不可变积分账本。本页不提供签到、任务、支付或积分消费入口。
+          这里展示你的积分余额与变动明细。本页不提供签到、任务、支付或积分消费入口。
         </p>
       </section>
 
@@ -142,7 +142,7 @@ export default function WalletPage() {
         <section data-account-points-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
           <p className="font-mono text-xs tracking-[0.14em] text-accent">POINT LEDGER UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">账户服务不可用时，不会以本地余额或会话数据替代真实积分账本。</p>
+          <p className="mt-3 text-sm leading-6 text-ink/60">积分数据暂时加载不出来，请稍后重试。</p>
           <button
             type="button"
             onClick={loadWallet}
@@ -173,7 +173,7 @@ export default function WalletPage() {
             {state.entries.length === 0 ? (
               <div data-account-points-empty className="border-b border-line py-8">
                 <p className="font-display text-xl font-bold">暂无积分变动</p>
-                <p className="mt-2 text-sm leading-6 text-ink/60">后续经授权的积分调整会以不可变账本条目的形式出现在这里。</p>
+                <p className="mt-2 text-sm leading-6 text-ink/60">后续积分变动会显示在这里。</p>
               </div>
             ) : (
               <div className="border-t border-line">

@@ -168,7 +168,7 @@ export default function PracticeBankPage() {
         setSchools([]);
         setBanks([]);
         setQuizCraftBanks([]);
-        setError("题库接口不可用，请稍后重试。");
+        setError("题库暂时加载不出来，请检查网络后重试。");
         setLoadState("error");
       }
       return;
@@ -239,7 +239,7 @@ export default function PracticeBankPage() {
       }
       setError(
         getPracticeGatewayError() ||
-          "刷题接口不可用，生产环境已禁用 mock 回退。"
+          "题库暂时加载不出来，请检查网络后重试。"
       );
       setLoadState("error");
     } catch (e) {
@@ -384,7 +384,7 @@ export default function PracticeBankPage() {
 
           <div data-block className="flex-1 px-5 py-10 md:px-8">
             {loadState === "error" ? (
-              <EmptyBlock label="接口不可用" />
+              <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />
             ) : quizCraftCatalogIsEnabled ? (
               filteredQuizCraftBanks.length === 0 ? (
                 <EmptyBlock label={searching ? "无匹配题库" : "暂无题库"} />

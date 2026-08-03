@@ -113,7 +113,7 @@ export default function Reader({ id }: { id: string }) {
             </p>
             <p className="mt-3 max-w-sm text-sm leading-7 text-ink/70">
               本文共 {total} 页，前 {visiblePages} 页已免费试读。
-              积分兑换将在真实账户服务接通后开放，当前不会通过本地余额或会话状态解锁全文。
+              全文需要积分兑换，兑换功能即将开放。
             </p>
             <p className="mt-6 font-display text-4xl font-bold">
               {material.price}

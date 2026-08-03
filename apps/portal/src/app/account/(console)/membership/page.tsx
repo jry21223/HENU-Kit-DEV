@@ -53,7 +53,7 @@ export default function MembershipPage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">会员权益</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          仅展示 Account Portfolio 返回的真实会员权益；开通由服务端确认，本页不提供会话内开通或模拟支付。
+          会员权益由系统确认后展示，本页不提供开通或支付入口。
         </p>
       </section>
 
@@ -93,8 +93,8 @@ export default function MembershipPage() {
           </h2>
           <p className="mt-4 max-w-2xl text-base leading-7 text-ink/75">
             {isLifetime
-              ? "权益已由 Account Portfolio 持久化确认，可跨设备读取。"
-              : "当前为免费会员；新用户会从持久化的免费会员状态开始。"}
+              ? "权益已由系统确认，可跨设备读取。"
+              : "当前为免费会员；新用户从免费会员状态开始。"}
           </p>
           <dl className="mt-6 grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
             <div>
@@ -107,7 +107,7 @@ export default function MembershipPage() {
             </div>
           </dl>
           <p className="mt-6 border-t border-line pt-5 text-sm leading-6 text-ink/60">
-            终身会员产品金额为 ¥9.9；运营授权与撤销会通过真实通知告知用户。
+            ¥9.9 一次付费永久解锁：会员包含期末押题卷等核心复习资料，费用用于维持服务器持续运行；运营授权与撤销会通过真实通知告知用户。
           </p>
         </section>
       ) : null}

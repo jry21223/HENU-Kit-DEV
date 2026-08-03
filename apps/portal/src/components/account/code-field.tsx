@@ -20,7 +20,7 @@ export default function CodeField({
 }) {
   const { cd, send } = useEmailCode();
   const [sendErr, setSendErr] = useState("");
-  const showDemo = isMockAuthEnabled();
+  const showDemo = isMockAuthEnabled() && process.env.NODE_ENV !== "production";
 
   return (
     <div>

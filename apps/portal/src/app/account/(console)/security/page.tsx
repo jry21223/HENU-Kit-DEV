@@ -218,7 +218,7 @@ export default function SecurityPage() {
         </p>
         <div className="mt-4 border-y border-line py-4">
           <p className="font-mono text-xs leading-6 text-ink/60">
-            不展示推测的设备名称、位置或 IP。修改密码会保留当前会话并撤销其余所有会话。
+            不展示推测的设备名称、位置或 IP 地址。修改密码会保留当前登录状态并撤销其余所有会话。
           </p>
         </div>
       </section>

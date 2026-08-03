@@ -72,7 +72,7 @@ export default function FoodHomePage() {
         setError(
           getFoodGatewayError() ||
             formatPortalError(e) ||
-            "美食接口不可用，生产环境已禁用 mock 回退。"
+            "美食榜单暂时加载不出来，请稍后刷新试试。"
         );
         setLoadState("error");
       } catch (e2) {
@@ -120,7 +120,7 @@ export default function FoodHomePage() {
         {loadState === "loading" ? (
           <LoadingBlock label="加载美食" />
         ) : loadState === "error" ? (
-          <EmptyBlock label="接口不可用" />
+          <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-3">

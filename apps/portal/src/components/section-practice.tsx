@@ -5,21 +5,26 @@ import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import AmbientSvg from "@/components/ui/ambient-svg";
+import { redirectToLogin } from "@/lib/api/client";
+import { usePersonalPracticeStats } from "@/lib/practice/personal-stats";
 
 const TYPE_TEXT =
   "【题目】求极限 lim(x→0) sin x / x。\n【AI 讲解】这是经典的 0/0 型极限。由重要极限公式直接得 1；也可用洛必达法则，分子分母分别求导得 cos x → 1。\n【易错点】注意 x 需以弧度计，且该公式只在 x→0 时成立。";
-
-const BARS = [
-  { label: "高等数学", value: 82, weak: false },
-  { label: "线性代数", value: 45, weak: true },
-  { label: "概率论", value: 71, weak: false },
-];
 
 const FEATURES = ["按知识点智能推题", "错题自动归因讲解", "掌握度曲线每周更新"];
 
 export default function SectionPractice() {
   const sectionRef = useRef<HTMLElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
+  const { state, retry } = usePersonalPracticeStats();
+
+  // 进度条只在真实作答事实就绪后渲染；动画在数据到达后重建。
+  const masteryBars =
+    state.status === "ready" || state.status === "empty"
+      ? state.data.mastery.slice(0, 3)
+      : [];
+  const barsReady =
+    state.status === "ready" || state.status === "empty";
 
   useGSAP(
     () => {
@@ -78,8 +83,98 @@ export default function SectionPractice() {
       });
       return () => mm.revert();
     },
-    { scope: sectionRef }
+    { scope: sectionRef, dependencies: [barsReady] }
   );
+
+  function renderMastery() {
+    switch (state.status) {
+      case "disabled":
+        return (
+          <p className="font-mono text-xs leading-5 text-paper/50">
+            掌握度即将上线，敬请期待。
+          </p>
+        );
+      case "loading":
+        return (
+          <div className="space-y-5" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i}>
+                <div className="mb-1.5 h-4 w-24 animate-pulse bg-paper/15" />
+                <div className="h-1.5 w-full bg-paper/10" />
+              </div>
+            ))}
+          </div>
+        );
+      case "unauthenticated":
+        return (
+          <div>
+            <p className="font-mono text-xs leading-5 text-paper/50">
+              登录后展示你的掌握度。
+            </p>
+            <button
+              type="button"
+              onClick={() => redirectToLogin("/practice")}
+              className="mt-4 border border-paper/40 px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:bg-paper hover:text-ink"
+            >
+              登录查看
+            </button>
+          </div>
+        );
+      case "error":
+        return (
+          <div role="alert">
+            <p className="font-mono text-xs leading-5 text-paper/50">
+              掌握度数据暂时不可用，请稍后重试。
+            </p>
+            <button
+              type="button"
+              onClick={retry}
+              className="mt-4 border border-paper/40 px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:bg-paper hover:text-ink"
+            >
+              重试
+            </button>
+          </div>
+        );
+      case "empty":
+        return (
+          <p className="font-mono text-xs leading-5 text-paper/50">
+            还没有作答记录，掌握度会随刷题积累。
+          </p>
+        );
+      case "ready":
+        if (masteryBars.length === 0) {
+          return (
+            <p className="font-mono text-xs leading-5 text-paper/50">
+              还没有题库掌握度数据，去刷题建立学习图谱。
+            </p>
+          );
+        }
+        return (
+          <div className="space-y-5">
+            {masteryBars.map((bar) => {
+              const weak = bar.value < 60;
+              return (
+                <div key={bar.bank_id}>
+                  <div className="mb-1.5 flex justify-between font-mono text-xs">
+                    <span>{bar.label}</span>
+                    <span className={weak ? "text-accent" : "text-paper/60"}>
+                      {bar.value}%{weak ? " / 薄弱" : ""}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full bg-paper/10">
+                    <div
+                      data-bar
+                      className={weak ? "h-full bg-accent" : "h-full bg-paper/70"}
+                      style={{ width: `${bar.value}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+    }
+  }
 
   return (
     <section
@@ -111,28 +206,12 @@ export default function SectionPractice() {
             进入模块
           </MagneticButton>
 
-          {/* 掌握度进度条 */}
+          {/* 掌握度进度条（真实作答事实聚合） */}
           <div className="mt-12 space-y-5">
             <p className="font-mono text-[10px] tracking-[0.3em] text-paper/40">
               MASTERY / 知识点掌握度
             </p>
-            {BARS.map((bar) => (
-              <div key={bar.label}>
-                <div className="mb-1.5 flex justify-between font-mono text-xs">
-                  <span>{bar.label}</span>
-                  <span className={bar.weak ? "text-accent" : "text-paper/60"}>
-                    {bar.value}%{bar.weak ? " / 薄弱" : ""}
-                  </span>
-                </div>
-                <div className="h-1.5 w-full bg-paper/10">
-                  <div
-                    data-bar
-                    className={bar.weak ? "h-full bg-accent" : "h-full bg-paper/70"}
-                    style={{ width: `${bar.value}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+            {renderMastery()}
           </div>
         </div>
 
@@ -155,7 +234,7 @@ export default function SectionPractice() {
               {TYPE_TEXT}
             </p>
             <p className="mt-4 border-t border-line-dark pt-3 font-mono text-[10px] tracking-wider text-paper/40">
-              生成耗时 0.8s / 已关联 3 道同类题
+              示例讲解 · 已关联同类题
             </p>
           </div>
         </div>

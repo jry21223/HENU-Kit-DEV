@@ -112,7 +112,10 @@ export default function Footer() {
             ))}
           </nav>
           <p className="font-mono text-xs tracking-widest text-ink/50">
-            © 2026 henukit
+            © {new Date().getFullYear()} henukit
+          </p>
+          <p className="mt-2 max-w-xs font-mono text-xs leading-5 tracking-wider text-ink/50">
+            学生自主运营 · 非河南大学官方项目
           </p>
         </div>
       </div>

@@ -148,9 +148,9 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
 
       {sessionState.kind === "error" ? (
         <section data-account-session-state="error" role="alert" className="mx-auto mt-10 max-w-2xl border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">PORTAL SESSION UNAVAILABLE</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent">账户服务暂不可用</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{sessionState.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">账户页不会以浏览器缓存、本地身份或会话 mock 替代真实 Portal Session。</p>
+          <p className="mt-3 text-sm leading-6 text-ink/60">账户信息暂时加载不出来，请稍后重新加载。</p>
           <button
             type="button"
             onClick={loadSession}

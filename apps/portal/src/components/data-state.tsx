@@ -38,7 +38,7 @@ export function ErrorBanner({
       <p className="tracking-[0.2em] text-accent">ERROR / 数据源不可用</p>
       <p className="mt-2 text-ink/80">{message}</p>
       <p className="mt-2 text-ink/50">
-        生产环境不使用本地 mock 数据。请配置 NEXT_PUBLIC_PORTAL_GATEWAY_URL 并确保 portal-api / portal-gateway 在线。
+        服务暂时不可用，请稍后再来。
       </p>
       {onRetry && (
         <button

@@ -80,12 +80,12 @@ async function bootstrapAccountForm(
     });
   } catch (e) {
     throw new AccountCenterError(
-      e instanceof Error ? e.message : "网络错误",
+      e instanceof Error ? "无法连接登录服务，请检查网络后重试" : "网络错误",
       "NETWORK"
     );
   }
   if (!res.ok) {
-    throw new AccountCenterError(`账号中心不可用（${res.status}）`, "NETWORK");
+    throw new AccountCenterError(`登录服务暂时不可用，请稍后再试`, "NETWORK");
   }
   const html = await res.text();
   const pageError = extractError(html);
@@ -126,7 +126,7 @@ async function postAccountForm(
     });
   } catch (e) {
     throw new AccountCenterError(
-      e instanceof Error ? e.message : "网络错误",
+      e instanceof Error ? "无法连接登录服务，请检查网络后重试" : "网络错误",
       "NETWORK"
     );
   }
@@ -166,7 +166,7 @@ function acceptedFormResult(result: {
     return null;
   }
   if (result.status < 200 || result.status >= 400) {
-    return extractError(result.html) || `账号操作失败（${result.status}）`;
+    return extractError(result.html) || `操作没有成功，请稍后重试`;
   }
   return extractError(result.html);
 }
@@ -211,7 +211,7 @@ export async function requestLoginCode(input: {
   });
 
   if (status >= 400 && status !== 200) {
-    throw new AccountCenterError(`发送失败（${status}）`, "SEND_FAILED");
+    throw new AccountCenterError(`验证码暂时发不出去，请稍后再试`, "SEND_FAILED");
   }
 
   const err = extractError(html);
@@ -262,7 +262,7 @@ export async function verifyLoginCode(input: {
   }
 
   if (status >= 400) {
-    throw new AccountCenterError(`验证失败（${status}）`, "VERIFY_FAILED");
+    throw new AccountCenterError(`验证没有成功，请检查验证码后重试`, "VERIFY_FAILED");
   }
 
   const err = extractError(html);
