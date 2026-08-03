@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { gsap } from "@/lib/gsap";
 import { morphStore } from "./transition-store";
 
@@ -21,6 +22,15 @@ export default function TransitionProvider({
     morphStore.getServer
   );
   const overlayRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+
+  // 退出动画（TransitionLink）在没有 [data-block] 的页面上直接给这个容器写
+  // autoAlpha/y。容器位于 practice/layout，导航不会重新挂载它，所以路由提交后
+  // 必须清掉 GSAP 的内联样式，否则新页面继承 opacity:0 而整页不可见。
+  useEffect(() => {
+    if (pageRef.current) gsap.set(pageRef.current, { clearProps: "all" });
+  }, [pathname]);
 
   // 落点上报：执行形变
   useEffect(() => {
@@ -54,7 +64,9 @@ export default function TransitionProvider({
 
   return (
     <>
-      <div data-transition-page>{children}</div>
+      <div ref={pageRef} data-transition-page>
+        {children}
+      </div>
       {p && (
         <div
           ref={overlayRef}

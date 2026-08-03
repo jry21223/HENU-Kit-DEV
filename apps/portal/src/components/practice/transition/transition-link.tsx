@@ -75,7 +75,17 @@ export default function TransitionLink({
       rulerSweep();
     }
 
-    const finish = () => router.push(href);
+    // 导航不能只挂在动画的 onComplete 上：标签页切到后台时 rAF 停摆，补间会冻结
+    // 在原地，onComplete 永不触发，这次跳转就彻底丢失。一次性 finish + 兜底定时器
+    // 保证无论补间是否走完，路由都会提交。
+    let navigated = false;
+    const finish = () => {
+      if (navigated) return;
+      navigated = true;
+      router.push(href);
+    };
+    window.setTimeout(finish, 900);
+
     if (blocks && blocks.length) {
       gsap.to(blocks, {
         scaleY: 0.04,
