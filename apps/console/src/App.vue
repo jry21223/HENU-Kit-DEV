@@ -214,7 +214,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <PageHeader
           eyebrow="运营概览"
           title="产品运行概览"
-          description="{{ summaries.length }} 个运营模块的运行状态与关键指标总览，供运营人员快速了解全站情况。"
+          :description="`${summaries.length} 个运营模块的运行状态与关键指标总览，供运营人员快速了解全站情况。`"
           title-id="overview-heading"
         >
           <div class="access-context" aria-label="服务端验证的访问上下文">

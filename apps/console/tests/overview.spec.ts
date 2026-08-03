@@ -68,6 +68,17 @@ test("desktop overview exposes six traced module summaries and degradation state
   for (const control of ["编辑内容", "重新部署", "回滚版本", "切换版本"]) await expect(page.getByText(control, { exact: true })).toHaveCount(0);
 });
 
+// A static attribute such as description="{{ summaries.length }} …" is literal
+// text to Vue, so the placeholder shipped to production unrendered. Assert the
+// resolved copy, and fail the whole page on any leaked mustache.
+test("desktop overview renders interpolated copy instead of raw template syntax", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  await expect(page.getByText("6 个运营模块的运行状态与关键指标总览，供运营人员快速了解全站情况。", { exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("{{");
+});
+
 test("390px overview keeps every module and mobile navigation usable", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
