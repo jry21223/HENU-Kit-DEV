@@ -17,13 +17,32 @@ import (
 )
 
 const (
-	lifetimeMembershipAmountCents = 990
 	lifetimeMembershipCurrency    = "CNY"
 	lifetimeMembershipPlan        = "lifetime"
 	membershipMerchantOrderPrefix = "HNK"
 	membershipRefundOrderPrefix   = "HNR"
 	membershipMerchantOrderLength = 32
 )
+
+// Lifetime-membership product defaults. Deployment may override both via
+// ConfigureMembershipPricing; every checkout, sign, callback, query and refund
+// path reads the same values so a price change stays consistent end to end.
+var (
+	lifetimeMembershipAmountCents = 990
+	lifetimeMembershipProductName = "HENU Kit 终身会员"
+)
+
+// ConfigureMembershipPricing overrides the durable lifetime-membership
+// product defaults from deployment configuration. Zero/blank values keep the
+// current default, so an unset environment never changes existing behavior.
+func ConfigureMembershipPricing(amountCents int, productName string) {
+	if amountCents > 0 {
+		lifetimeMembershipAmountCents = amountCents
+	}
+	if trimmed := strings.TrimSpace(productName); trimmed != "" {
+		lifetimeMembershipProductName = trimmed
+	}
+}
 
 var membershipMerchantOrderEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 

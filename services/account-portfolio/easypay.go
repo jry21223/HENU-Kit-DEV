@@ -408,8 +408,8 @@ func (p *EasyPayProvider) createParams(request PaymentOrderRequest) map[string]s
 		"out_trade_no": request.MerchantOrderID,
 		"notify_url":   p.notifyURL,
 		"return_url":   p.returnURL,
-		"name":         "HENU Kit 终身会员",
-		"money":        "9.90",
+		"name":         lifetimeMembershipProductName,
+		"money":        fmt.Sprintf("%d.%02d", lifetimeMembershipAmountCents/100, lifetimeMembershipAmountCents%100),
 	}
 }
 

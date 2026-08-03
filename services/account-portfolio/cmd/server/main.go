@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -100,6 +101,16 @@ func main() {
 }
 
 func paymentProviderFromEnv() (accountportfolio.PaymentProvider, error) {
+	// Product pricing is deployment configuration, independent of whether
+	// EasyPay is enabled: the checkout amount and every provider-side amount
+	// verification read the same configured values.
+	if cents := os.Getenv("ACCOUNT_PORTFOLIO_MEMBERSHIP_AMOUNT_CENTS"); cents != "" {
+		parsed, err := strconv.Atoi(cents)
+		if err != nil || parsed <= 0 || parsed > 1_000_000 {
+			return nil, errors.New("ACCOUNT_PORTFOLIO_MEMBERSHIP_AMOUNT_CENTS must be a positive integer in cents (max 1000000)")
+		}
+		accountportfolio.ConfigureMembershipPricing(parsed, os.Getenv("ACCOUNT_PORTFOLIO_MEMBERSHIP_PRODUCT_NAME"))
+	}
 	if os.Getenv("ACCOUNT_PORTFOLIO_EASYPAY_ENABLED") != "1" {
 		return nil, nil
 	}
