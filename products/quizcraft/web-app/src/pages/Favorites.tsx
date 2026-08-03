@@ -32,7 +32,7 @@ export default function Favorites() {
         if (!cancelled) {
           const needsLogin = isQuizcraftAuthenticationError(loadError);
           setRequiresLogin(needsLogin);
-          setError(needsLogin ? '请登录后查看收藏夹' : '收藏夹暂时无法加载，请稍后重试');
+          setError(needsLogin ? '请登录后查看收藏夹' : '收藏夹暂时加载不出来，请检查网络后重试');
         }
       })
       .finally(() => {
@@ -58,7 +58,7 @@ export default function Favorites() {
     } catch (startError) {
       const needsLogin = isQuizcraftAuthenticationError(startError);
       setRequiresLogin(needsLogin);
-      setError(needsLogin ? '请登录后再从收藏发起练习' : '收藏练习创建失败，请稍后重试');
+      setError(needsLogin ? '请登录后再从收藏发起练习' : '收藏练习创建失败，请登录后重试');
     } finally {
       setStartingBankId('');
     }

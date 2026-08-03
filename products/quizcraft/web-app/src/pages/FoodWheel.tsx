@@ -355,7 +355,7 @@ function useFoodWheelController() {
       setUi({ publishing: true, errorMessage: '' });
       const userId = await ensureUserId();
       await wheelApi.save(draftItems, userId).then(fetchPublicWheels);
-      setUi({ selectedOwner: `我的草稿转盘（已上传）${userId ? ` · ${userId}` : ''}` });
+      setUi({ selectedOwner: '我的草稿转盘（已上传）' });
       alert('上传成功，已加入公共转盘');
     } catch (error) {
       const message =
@@ -367,7 +367,8 @@ function useFoodWheelController() {
       } else if (message.includes('网络') || message.includes('Network') || message.includes('Failed to fetch')) {
         setUi({ errorMessage: '上传失败，请先检查网络' });
       } else {
-        setUi({ errorMessage: `上传失败：${message}` });
+        console.error('转盘上传失败:', error);
+        setUi({ errorMessage: '上传失败，请稍后重试；如持续失败请联系管理员' });
       }
     } finally {
       setUi({ publishing: false });
@@ -590,7 +591,7 @@ function PublicWheelCard({
     <div className="rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-3">
       <div className="text-sm text-gray-700 dark:text-slate-200">
         <div className="font-semibold">{owner.name}</div>
-        <div className="text-xs text-gray-500 dark:text-slate-400 dark:text-slate-500">ID: {wheel.id} · {owner.id}</div>
+        <div className="text-xs text-gray-500 dark:text-slate-400 dark:text-slate-500">转盘编号：{wheel.id}</div>
         <div className="text-xs text-gray-500 dark:text-slate-400 dark:text-slate-500">更新时间：{formatTime(wheel.updated_at)}</div>
       </div>
       <div className="text-xs text-gray-600 dark:text-slate-300 mt-2">

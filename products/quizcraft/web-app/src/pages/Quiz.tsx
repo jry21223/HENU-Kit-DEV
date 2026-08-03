@@ -945,7 +945,7 @@ function useQuizController() {
           serverFavoriteIds: [],
           favoriteError: isQuizcraftAuthenticationError(error)
             ? "登录后才能查看和管理收藏"
-            : "收藏状态加载失败，请稍后重试",
+            : "收藏状态加载失败，请检查网络后重试",
         });
       }
     });
@@ -983,7 +983,7 @@ function useQuizController() {
         favoriteSubmitting: false,
         favoriteError: isQuizcraftAuthenticationError(error)
           ? "登录后才能收藏题目"
-          : "收藏操作暂时失败，请稍后重试",
+          : "收藏失败，请登录后重试",
       });
       if (isQuizcraftAuthenticationError(error)) {
         try {
@@ -1168,7 +1168,7 @@ function useQuizController() {
 
     const questionVersionId = getActiveShadowQuestionVersionId(activeQuestion.id);
     if (!activeBankId || !questionVersionId) {
-      setUi({ feedbackError: "缺少稳定题目版本引用，请重新进入练习" });
+      setUi({ feedbackError: "题目数据暂时不完整，请重新进入练习" });
       return;
     }
     const idempotencyKey = feedbackRequestKey || createQuizcraftIdempotencyKey();
@@ -1185,7 +1185,7 @@ function useQuizController() {
         throw new Error("无法保存当前影子练习的安全重试凭据");
       }
     } catch {
-      setUi({ feedbackError: "浏览器无法保存安全重试凭据，请检查会话存储后重试。" });
+      setUi({ feedbackError: "浏览器存储不可用，请刷新页面后重试" });
       return;
     }
     setUi({
@@ -1205,7 +1205,12 @@ function useQuizController() {
       const accepted = await shadowFeedbackApi.submit(feedbackPayload, idempotencyKey);
       const feedbackId = accepted.data.resource_id;
       if (!feedbackId) {
-        throw new Error("反馈已接收但未返回可恢复编号，请使用相同内容重试");
+        setUi({
+          feedbackSubmitting: false,
+          feedbackSuggestion: "",
+          feedbackMessage: "反馈已收到，状态稍后更新",
+        });
+        return;
       }
       try {
         clearPendingShadowFeedback(pendingFeedback);
@@ -1662,7 +1667,7 @@ function useQuizController() {
         favoriteSubmitting: false,
         favoriteError: isQuizcraftAuthenticationError(error)
           ? "登录后才能收藏题目"
-          : "收藏操作暂时失败，请稍后重试",
+          : "收藏失败，请登录后重试",
       });
       if (isQuizcraftAuthenticationError(error)) {
         try {
@@ -1792,7 +1797,7 @@ function QuizFeedbackDialog({ controller }: { controller: QuizController }) {
         <div>
           <h2 id="feedback-modal-title" className="text-lg font-semibold text-gray-800 dark:text-slate-100">反馈本题</h2>
           <p className="mt-1 text-xs text-gray-500 dark:text-slate-400 dark:text-slate-500">
-            {controller.activeBankKey} · 第 {controller.feedbackQuestionIndex} 题 · {controller.activeQuestion.id}
+            {controller.activeBankKey} · 第 {controller.feedbackQuestionIndex} 题
           </p>
         </div>
         <button

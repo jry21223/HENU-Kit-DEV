@@ -41,7 +41,7 @@ export const describeAnswerSubmissionFailure = (
       return {
         kind: 'http',
         title: '提交失败',
-        message: `${error.message || '服务器拒绝了本次提交'}，你的答案仍已保留。`,
+        message: '提交没有成功，你的答案仍已保留。请检查网络后重试；如持续失败请联系管理员。',
       };
     }
   }

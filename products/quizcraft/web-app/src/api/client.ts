@@ -167,15 +167,24 @@ api.interceptors.response.use(
       message?: string;
       detail?: string;
     } | undefined;
-    const message =
+    const rawMessage =
       responseData?.message ||
       responseData?.detail ||
       error.message ||
       '请求失败';
+    const status = error.response?.status;
+    let message: string;
+    if (!error.response) {
+      message = '网络不太顺畅，请检查网络后重试';
+    } else if (status !== undefined && status >= 500) {
+      message = '服务暂时不可用，请稍后再来';
+    } else {
+      message = '操作没有成功，请检查填写内容后重试';
+    }
     const kind = classifyApiErrorKind(error);
-    console.error('API Error:', message);
+    console.error('API Error:', rawMessage);
     return Promise.reject(
-      new ApiRequestError(kind, message, error.response?.status),
+      new ApiRequestError(kind, message, status),
     );
   }
 );

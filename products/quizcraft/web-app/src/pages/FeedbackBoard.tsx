@@ -131,7 +131,8 @@ export default function FeedbackBoard() {
       const res = await feedbackApi.getDashboard();
       setUi({ dashboard: res });
     } catch (err) {
-      setUi({ error: (err as Error).message || '加载反馈看板失败' });
+      console.error('加载反馈看板失败:', err);
+      setUi({ error: '反馈看板暂时加载不出来，请检查网络后重试' });
     } finally {
       setUi({ loading: false });
     }
@@ -154,7 +155,8 @@ export default function FeedbackBoard() {
       });
       await loadDashboard();
     } catch (err) {
-      setUi({ error: (err as Error).message || '更新反馈状态失败' });
+      console.error('更新反馈状态失败:', err);
+      setUi({ error: '更新失败，请稍后重试' });
     } finally {
       setUi({ updatingId: null });
     }
@@ -165,11 +167,12 @@ export default function FeedbackBoard() {
     try {
       await feedbackApi.updateStatus(item.feedback_id, {
         status: 'archived',
-        resolution_note: notes[item.feedback_id]?.trim() || '归档，不计入待处理',
+        resolution_note: notes[item.feedback_id]?.trim() || '已归档',
       });
       await loadDashboard();
     } catch (err) {
-      setUi({ error: (err as Error).message || '更新反馈状态失败' });
+      console.error('归档反馈失败:', err);
+      setUi({ error: '更新失败，请稍后重试' });
     } finally {
       setUi({ updatingId: null });
     }

@@ -130,7 +130,7 @@ function FeedbackHistory() {
             我的反馈
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-            这里显示服务端保存的纠错记录；可按条刷新处理状态。
+            这里显示已保存的纠错记录；可按条刷新处理状态。
           </p>
         </div>
         <button
@@ -184,7 +184,6 @@ function FeedbackHistory() {
               <dl className="mt-3 grid gap-1 text-xs text-gray-500 dark:text-slate-400 sm:grid-cols-2">
                 <div><dt className="inline">提交时间：</dt><dd className="inline">{formatTime(item.created_at)}</dd></div>
                 <div><dt className="inline">状态更新：</dt><dd className="inline">{formatTime(item.updated_at)}</dd></div>
-                <div className="break-all sm:col-span-2"><dt className="inline">题目版本：</dt><dd className="inline">{item.question_version_id}</dd></div>
               </dl>
               {itemErrors[item.feedback_id] && (
                 <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">{itemErrors[item.feedback_id]}</p>
@@ -236,7 +235,7 @@ function LegacyFeedbackForm() {
 
     const normalizedSuggestion = suggestion.trim();
     if (!questionIndex) {
-      setError('未获取到有效题目索引，请从题目页点击“反馈本题”提交');
+      setError('未获取到题目编号，请从刷题页点“反馈本题”提交');
       return;
     }
     if (!normalizedSuggestion) {
@@ -271,7 +270,7 @@ function LegacyFeedbackForm() {
             <div>
               <h1 className="text-xl font-semibold text-gray-800 dark:text-slate-100">题目反馈</h1>
               <p className="mt-1 text-xs text-gray-500 dark:text-slate-400 dark:text-slate-500">
-                推荐从刷题页点击“反馈本题”，可自动带上题目 ID 和题干快照。
+                推荐从刷题页点击“反馈本题”，可自动带上题目编号和题干快照。
               </p>
             </div>
           </div>
@@ -288,7 +287,7 @@ function LegacyFeedbackForm() {
         <form onSubmit={submitFeedback} className="space-y-4">
           <div>
             <label htmlFor="feedback-question-index" className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">
-              题目索引
+              题目编号
             </label>
             <input
               id="feedback-question-index"
@@ -297,7 +296,7 @@ function LegacyFeedbackForm() {
               value={questionIndex ?? ''}
               readOnly
               className="w-full rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-700 px-3 py-2 text-sm text-gray-700 dark:text-slate-200"
-              placeholder="无法获取题目索引"
+              placeholder="无法获取题目编号"
             />
           </div>
 

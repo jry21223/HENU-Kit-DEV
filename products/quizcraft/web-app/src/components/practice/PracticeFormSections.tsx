@@ -22,9 +22,9 @@ export function PracticeIdentity({
   if (!IS_OPS_MODE) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 mb-6">
-        <div className="text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">排行榜将直接显示你的 ID</div>
+        <div className="text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">排行榜将直接显示你的昵称或学号</div>
         <p className="text-sm text-gray-600 dark:text-slate-300">
-          {displayUserId ? `当前 ID：${displayUserId}` : '首次开始练习时会自动生成一个 ID。'}
+          {displayUserId ? `当前账号：${displayUserId}` : '首次开始练习时会自动生成一个账号。'}
         </p>
       </div>
     );
@@ -32,16 +32,16 @@ export function PracticeIdentity({
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 mb-6">
-      <label htmlFor="practice-user-id" className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">输入你的 ID</label>
+      <label htmlFor="practice-user-id" className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">输入你的昵称或学号</label>
       <input
         id="practice-user-id"
         type="text"
         value={userIdInput}
         onChange={(event) => onUserIdChange(event.target.value)}
-        placeholder="请输入学号/工号/自定义ID"
+        placeholder="请输入昵称或学号"
         className="w-full px-3 py-2 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
       />
-      <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">该 ID 会用于排行榜统计，可随时修改</p>
+      <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">该昵称会用于排行榜统计，可随时修改</p>
     </div>
   );
 }

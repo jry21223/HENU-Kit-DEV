@@ -7,11 +7,11 @@ const Header = () => (
     </div>
     <div>
       <h1 className="text-2xl font-bold text-gray-800 dark:text-slate-100">排行榜</h1>
-      <p className="text-sm text-gray-500 dark:text-slate-400">按服务端确认的答对题数排名</p>
+      <p className="text-sm text-gray-500 dark:text-slate-400">按答对题数排名</p>
     </div>
   </div>
 );
 
 export default function Ranking() {
-  return <div className="mx-auto max-w-2xl animate-fade-in"><Header /><p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">旧排行榜正在迁移，暂不可用</p></div>;
+  return <div className="mx-auto max-w-2xl animate-fade-in"><Header /><p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">排行榜正在升级中，预计很快恢复，请稍后再来</p></div>;
 }

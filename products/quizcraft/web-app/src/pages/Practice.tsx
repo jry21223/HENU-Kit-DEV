@@ -107,7 +107,7 @@ export default function Practice() {
     if (IS_OPS_MODE && !QUIZCRAFT_GO_SHADOW_ENABLED) {
       const normalizedId = userIdInput.trim();
       if (!normalizedId) {
-        alert('请输入ID');
+        alert('请输入学号或工号');
         return;
       }
     }
@@ -157,7 +157,8 @@ export default function Practice() {
       startPractice(questions, currentBank);
       navigate('/quiz');
     } catch (error) {
-      alert('开始练习失败: ' + (error as Error).message);
+      console.error('开始练习失败:', error);
+      alert('暂时无法开始练习，请检查网络后重试');
     } finally {
       setUi({ loading: false });
     }

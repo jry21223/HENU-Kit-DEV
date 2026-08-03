@@ -48,9 +48,10 @@ const donateQrUrl =
   (import.meta.env.VITE_DONATE_QR_URL?.trim()) || '/wechat-receive-qrcode.jpg';
 const qqGroupQrUrl =
   (import.meta.env.VITE_QQ_GROUP_QR_URL?.trim()) || '/henu-kit-qq-group.png';
+const apkUrl = (import.meta.env.VITE_APK_URL || '').trim();
 
 const defaultAnnouncementMessage =
-  '✨祝大家考试旗开得胜，一切顺利！刷题发现题目错误、功能问题欢迎进群反馈，QQ群：1031855485，后续网站维护、更换网址都会在群内通知';
+  '✨祝大家考试旗开得胜，一切顺利！刷题发现题目错误、功能问题欢迎进群反馈';
 const defaultAnnouncementQqText = 'QQ群：';
 
 export default function Layout() {
@@ -65,7 +66,7 @@ export default function Layout() {
   const [qqQrLoadFailed, setQqQrLoadFailed] = useState(false);
   const isInApp = typeof navigator !== 'undefined' && /QuizCraft-Android/i.test(navigator.userAgent);
   const announcementMessage = (import.meta.env.VITE_ANNOUNCEMENT_MESSAGE || '').trim();
-  const announcementQq = (import.meta.env.VITE_ANNOUNCEMENT_QQ || '').trim();
+  const announcementQq = (import.meta.env.VITE_QQ_GROUP || import.meta.env.VITE_ANNOUNCEMENT_QQ || '').trim();
   const announcementText = announcementMessage || defaultAnnouncementMessage;
   const shouldAppendAnnouncementQq =
     announcementQq.length > 0 && !announcementText.includes(announcementQq);
@@ -174,7 +175,7 @@ export default function Layout() {
       <footer className="border-t border-white/70 dark:border-slate-800 bg-white dark:bg-slate-900/55 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto px-4 py-6 text-center">
           <div className="flex flex-col items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
-            <p>刷题助手 · Jerry</p>
+            <p>刷题助手</p>
             <button
               type="button"
               onClick={openQqGroupDialog}
@@ -189,7 +190,7 @@ export default function Layout() {
               className="inline-flex items-center gap-2 rounded-full border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-300 transition-colors hover:border-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-900/40"
             >
               <Heart className="h-3.5 w-3.5" />
-              <span>Buy me a coffee</span>
+              <span>请我喝杯奶茶</span>
             </button>
             <a
               href="https://github.com/jry21223/quizcraft-cn"
@@ -224,7 +225,7 @@ export default function Layout() {
             <div className="rounded-xl border border-gray-100 dark:border-slate-600 p-3 flex items-center justify-center bg-gray-50 dark:bg-slate-700">
               {qrLoadFailed ? (
                 <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed text-center">
-                  未配置微信收款码，请在 VITE_DONATE_QR_URL 中配置图片链接
+                  二维码暂时不可用，请稍后再试
                 </p>
               ) : shouldLoadDonateQr ? (
                 <img
@@ -263,7 +264,7 @@ export default function Layout() {
             <div className="flex items-center justify-center rounded-xl border border-gray-100 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 p-3">
               {qqQrLoadFailed ? (
                 <p className="text-center text-xs leading-relaxed text-gray-500 dark:text-slate-400">
-                  未配置 QQ 群二维码，请在 VITE_QQ_GROUP_QR_URL 中配置图片链接
+                  二维码暂时不可用，请稍后再试
                 </p>
               ) : shouldLoadQqGroupQr ? (
                 <img
@@ -295,10 +296,12 @@ export default function Layout() {
         </div>
         <p className="text-sm text-gray-600 dark:text-slate-300 mb-4">Android 客户端，支持外接键盘操控、应用内自动更新</p>
         <div className="space-y-3">
-          <a href="http://47.94.146.53/QuizCraft-2.1.0.apk" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full rounded-xl bg-primary-500 hover:bg-[#3366BA] px-4 py-3 text-sm font-medium text-white transition-colors">
-            <Download className="h-4 w-4" />
-            直接下载 APK（推荐）
-          </a>
+          {apkUrl && (
+            <a href={apkUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full rounded-xl bg-primary-500 hover:bg-[#3366BA] px-4 py-3 text-sm font-medium text-white transition-colors">
+              <Download className="h-4 w-4" />
+              直接下载 APK（推荐）
+            </a>
+          )}
           <a href="https://gitee.com/taylorchengitee/Android-exam-solving-assistant/releases" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 px-4 py-3 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors">
             Gitee Releases（备用）
           </a>

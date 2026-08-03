@@ -449,9 +449,10 @@ function useExtractController() {
         success: `已导入 ${normalized.length} 道题目，可以在线继续编辑`,
       });
     } catch (err) {
+      console.error('文件解析失败:', err);
       setUi({
         step: 'select',
-        error: '文件解析失败: ' + (err as Error).message,
+        error: '解析失败，请稍后重试；持续失败请联系管理员',
       });
     }
   }, [adminAuthenticated, applyQuestions, clearAsyncState]);
@@ -674,7 +675,8 @@ function useExtractController() {
       window.open(buildBrowserURL(result.download_url), '_blank');
       setUi({ success: '标准 JSON 已生成，浏览器正在下载' });
     } catch (err) {
-      setUi({ error: '导出失败: ' + (err as Error).message });
+      console.error('导出失败:', err);
+      setUi({ error: '导出失败，请稍后重试；持续失败请联系管理员' });
     }
   };
 
@@ -699,7 +701,8 @@ function useExtractController() {
       keyTouchedRef.current = true;
       setUi({ success: `题库已保存到 ${result.file}，现在可以在刷题页直接使用` });
     } catch (err) {
-      setUi({ error: '保存失败: ' + (err as Error).message });
+      console.error('保存失败:', err);
+      setUi({ error: '保存失败，请稍后重试；持续失败请联系管理员' });
     } finally {
       setUi({ isSaving: false });
     }
@@ -708,7 +711,7 @@ function useExtractController() {
   const handleGenerateAnalysis = async () => {
     if (!validateAdminSession()) return;
     if (!config.apiKey.trim()) {
-      setUi({ error: '请输入 API Key' });
+      setUi({ error: '请输入 AI 密钥' });
       return;
     }
 
@@ -767,8 +770,9 @@ function useExtractController() {
           setUi({ step: 'review', success: 'AI 解析已补齐到当前题库草稿' });
           break;
         case 'error':
+          console.error('AI 解析失败:', data.error);
           clearAsyncState();
-          setUi({ step: 'review', error: data.error || 'AI 解析失败' });
+          setUi({ step: 'review', error: '生成解析失败，请稍后重试；持续失败请联系管理员' });
           break;
       }
     };
@@ -779,7 +783,7 @@ function useExtractController() {
           current: 0,
           total: pendingQuestions.length,
           percentage: 0,
-          message: 'WebSocket 失败，切换备用模式...',
+          message: '连接不稳定，已改用备用通道...',
         } });
 
         const result = await analysisApi.generateAnalysis(pendingQuestions, config);
@@ -788,7 +792,8 @@ function useExtractController() {
           success: '已通过备用模式补齐 AI 解析',
         }));
       } catch (err) {
-        setUi({ error: '生成解析失败: ' + (err as Error).message });
+        console.error('生成解析失败:', err);
+        setUi({ error: '生成解析失败，请稍后重试；持续失败请联系管理员' });
       } finally {
         clearAsyncState();
         setUi({ step: 'review' });
@@ -807,7 +812,7 @@ function useExtractController() {
   const handleAdminLogin = async () => {
     const token = adminTokenInput.trim();
     if (!token) {
-      setUi({ error: '请输入后台管理 Token' });
+      setUi({ error: '请输入管理口令' });
       return;
     }
 
@@ -820,9 +825,10 @@ function useExtractController() {
         success: '后台管理会话已建立，刷新页面后仍可继续使用',
       });
     } catch (err) {
+      console.error('登录失败:', err);
       setUi({
         adminAuthenticated: false,
-        error: '后台登录失败: ' + (err as Error).message,
+        error: '登录失败，请稍后重试；持续失败请联系管理员',
       });
     } finally {
       setUi({ adminSessionLoading: false });
@@ -839,7 +845,8 @@ function useExtractController() {
         success: '后台管理会话已退出',
       });
     } catch (err) {
-      setUi({ error: '退出后台会话失败: ' + (err as Error).message });
+      console.error('退出后台会话失败:', err);
+      setUi({ error: '退出失败，请稍后重试；持续失败请联系管理员' });
     } finally {
       setUi({ adminSessionLoading: false });
     }
@@ -977,7 +984,7 @@ function AdminTokenCard({ controller }: { controller: ExtractController }) {
       {controller.adminAuthenticated ? (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-gray-500 dark:text-slate-400">
-            权限由 HttpOnly 会话 Cookie 提供，页面脚本无法读取管理密钥。
+            登录管理账号后即可使用。
           </p>
           <button
             type="button"
@@ -991,7 +998,7 @@ function AdminTokenCard({ controller }: { controller: ExtractController }) {
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row">
           <label htmlFor="admin-token" className="sr-only">
-            后台管理 Token
+            后台管理口令
           </label>
           <input
             id="admin-token"
@@ -999,7 +1006,7 @@ function AdminTokenCard({ controller }: { controller: ExtractController }) {
             autoComplete="current-password"
             value={controller.adminTokenInput}
             onChange={(event) => controller.setAdminTokenInput(event.target.value)}
-            placeholder="输入 ADMIN_TOKEN 以建立会话"
+            placeholder="输入管理口令以建立会话"
             disabled={controller.adminSessionLoading}
             className="flex-1 px-3 py-2 border border-gray-200 dark:border-slate-600 rounded-lg text-sm disabled:opacity-50"
           />
@@ -1015,7 +1022,7 @@ function AdminTokenCard({ controller }: { controller: ExtractController }) {
       )}
       {!controller.adminAuthenticated && (
         <p className="mt-2 text-xs text-gray-400 dark:text-slate-500">
-          Token 只用于本次登录交换，成功后不会保存在浏览器脚本或构建产物中。
+          登录口令仅用于本次登录，不会保存在浏览器中。
         </p>
       )}
     </div>
@@ -1360,7 +1367,7 @@ function AiAnalysisPanel({ controller }: { controller: ExtractController }) {
               <Key className="w-4 h-4 text-gray-400 dark:text-slate-500" />
               <span className="text-sm text-gray-600 dark:text-slate-300">{providerName}</span>
               <span className="text-xs text-gray-400 dark:text-slate-500">
-                {controller.keyCount} 个 API Key 已保存
+                {controller.keyCount} 个 AI 密钥已保存
               </span>
             </div>
             <div className="flex gap-2">
@@ -1394,7 +1401,7 @@ function AiAnalysisPanel({ controller }: { controller: ExtractController }) {
         className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
       >
         {controller.isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-        {controller.keyCount > 0 ? '为缺失题目生成解析' : '请先输入 API Key'}
+        {controller.keyCount > 0 ? '为缺失题目生成解析' : '请先输入 AI 密钥'}
       </button>
     </div>
   );
@@ -1433,11 +1440,11 @@ function AiConfigForm({ controller }: { controller: ExtractController }) {
 
       <div className="relative">
         <input
-          aria-label="API Key"
+          aria-label="AI 密钥"
           type="password"
           value={config.apiKey}
           onChange={(event) => controller.updateConfig({ apiKey: event.target.value })}
-          placeholder="输入 API Key（支持逗号/分号/换行；也支持 deepseek:sk-xxx）"
+          placeholder="输入 AI 密钥（支持逗号/分号/换行分隔）"
           className="w-full px-3 py-2 border border-gray-200 dark:border-slate-600 rounded-lg text-sm pr-20"
         />
         {config.apiKey && (

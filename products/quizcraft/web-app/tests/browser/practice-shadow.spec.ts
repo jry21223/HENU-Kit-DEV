@@ -459,7 +459,7 @@ test('Operations Inbox deep link reads full feedback only from QuizCraft', async
 test('Workshop deep link offers Platform Core login and preserves return path on 401', async ({ page }) => {
   await page.route('http://127.0.0.1:18080/api/v1/workshop/catalog', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_login', error: { code: 'platform_session_required', message: 'sign in' } }) }));
   await page.goto('/extract');
-  const login = page.getByRole('link', { name: '通过 Platform Core 登录并返回工坊' });
+  const login = page.getByRole('link', { name: '登录管理账号后即可使用' });
   await expect(login).toBeVisible();
   await expect(login).toHaveAttribute('href', 'http://127.0.0.1:18080/auth/login?return_to=%2Fextract');
 });
@@ -477,10 +477,10 @@ test('Workshop offers login when a detail read or mutation loses its session', a
   });
   await page.goto('/extract');
   await page.getByRole('button', { name: '查看并校验题目' }).click();
-  await expect(page.getByRole('link', { name: '通过 Platform Core 登录并返回工坊' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '登录管理账号后即可使用' })).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: '创建草稿版本' }).click();
-  await expect(page.getByRole('link', { name: '通过 Platform Core 登录并返回工坊' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '登录管理账号后即可使用' })).toBeVisible();
 });
 
 test('shadow bank failure does not fall back to browser-owned mock banks', async ({ page }) => {
@@ -590,7 +590,7 @@ test('favorite write failure stays visible and never falls back to browser stora
   await page.getByRole('button', { name: '开始练习' }).click();
   await expect(page.getByRole('heading', { name: '失败后不能伪造收藏' })).toBeVisible();
   await page.getByRole('button', { name: '收藏本题' }).click();
-  await expect(page.getByRole('status')).toHaveText('收藏操作暂时失败，请稍后重试');
+  await expect(page.getByRole('status')).toHaveText('收藏失败，请登录后重试');
   await expect(page.getByRole('button', { name: '收藏本题' })).toBeVisible();
   const persistedStars = await page.evaluate(() => JSON.parse(localStorage.getItem('quiz-storage') || '{}')?.state?.starredQuestions || []);
   expect(persistedStars).toEqual([]);
@@ -643,6 +643,6 @@ test('favorites overview distinguishes an unavailable service from a login requi
   });
 
   await page.goto('/favorites');
-  await expect(page.getByRole('alert')).toHaveText('收藏夹暂时无法加载，请稍后重试');
+  await expect(page.getByRole('alert')).toHaveText('收藏夹暂时加载不出来，请检查网络后重试');
   await expect(page.getByRole('link', { name: '登录后查看收藏夹' })).toHaveCount(0);
 });

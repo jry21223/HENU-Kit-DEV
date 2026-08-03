@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, PackagePlus, RefreshCw, Rocket, RotateCcw, Upload, XCircle } from 'lucide-react';
 import { isQuizcraftAuthenticationError, quizcraftLoginHref, shadowWorkshopApi } from '@/api/quizcraftShadowClient';
-import type { ImportedQuestionInput, WorkshopBank, WorkshopVersionDetail } from '@/generated/quizcraft-api';
+import { ApiError, type ImportedQuestionInput, type WorkshopBank, type WorkshopVersionDetail } from '@/generated/quizcraft-api';
 
 const sampleQuestions = JSON.stringify([{
-  source_question_id: 'q0001',
+  source_question_id: '',
   type: 'single',
-  chapter_id: 'ch01',
-  chapter: '第一章',
-  content: '1 + 1 = ?',
-  options: ['1', '2'],
-  answer: 1,
-  analysis: '人工核对后填写解析',
+  chapter_id: '',
+  chapter: '',
+  content: '',
+  options: [''],
+  answer: '',
+  analysis: '',
 }], null, 2);
 
 export default function Workshop() {
@@ -20,7 +20,7 @@ export default function Workshop() {
   const [bankKey, setBankKey] = useState('');
   const [bankName, setBankName] = useState('');
   const [questionsText, setQuestionsText] = useState(sampleQuestions);
-  const [sourceSHA, setSourceSHA] = useState('a'.repeat(64));
+  const [sourceSHA, setSourceSHA] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -29,8 +29,24 @@ export default function Workshop() {
   const selected = useMemo(() => banks.find((bank) => bank.bank_id === selectedID) || banks[0], [banks, selectedID]);
 
   const handleFailure = (failure: unknown, fallback: string) => {
-    setLoginRequired(isQuizcraftAuthenticationError(failure));
-    setError((failure as Error).message || fallback);
+    const needsLogin = isQuizcraftAuthenticationError(failure);
+    setLoginRequired(needsLogin);
+    console.error('题库工坊操作失败:', failure);
+    if (needsLogin || (failure instanceof ApiError && failure.status === 403)) {
+      setError('当前账号没有工坊权限，请联系管理员');
+    } else if (failure instanceof ApiError && failure.status >= 500) {
+      setError('服务暂时不可用，请稍后再来');
+    } else if (
+      !(failure instanceof ApiError) &&
+      failure instanceof Error &&
+      (!failure.message ||
+        failure.message.includes('Failed to fetch') ||
+        failure.message.includes('Network Error'))
+    ) {
+      setError('网络不通，请检查网络后重试');
+    } else {
+      setError(fallback);
+    }
   };
 
   const refresh = async () => {
@@ -39,7 +55,7 @@ export default function Workshop() {
     setSelectedID((current) => result.some((bank) => bank.bank_id === current) ? current : (result[0]?.bank_id || ''));
   };
 
-  useEffect(() => { void refresh().catch((failure) => handleFailure(failure, '需要 Platform Core 签发的 Workshop 权限与 QuizCraft Scope')); }, []);
+  useEffect(() => { void refresh().catch((failure) => handleFailure(failure, '登录后返回工坊')); }, []);
 
   const run = async (work: () => Promise<unknown>, success: string) => {
     if (busy) return;
@@ -52,7 +68,7 @@ export default function Workshop() {
       setReview(null);
       setMessage(success);
     } catch (failure) {
-      handleFailure(failure, '操作失败，请刷新版本后重试');
+      handleFailure(failure, '操作没有成功，请刷新后重试；如仍失败请联系管理员');
     } finally {
       setBusy(false);
     }
@@ -68,11 +84,11 @@ export default function Workshop() {
     <div className="mx-auto max-w-5xl space-y-6 animate-fade-in">
       <header>
         <h1 className="text-2xl font-bold text-gray-800 dark:text-slate-100">题库工坊</h1>
-        <p className="mt-2 text-gray-500 dark:text-slate-400">权限由 Platform Core 的 permission code 与 Scope 提供；导入后必须人工校验才能发布。</p>
+        <p className="mt-2 text-gray-500 dark:text-slate-400">需要登录管理账号后使用；导入后必须人工校验才能发布。</p>
       </header>
 
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-700">{error}</p>}
-      {loginRequired && <a href={quizcraftLoginHref('/extract')} className="inline-flex rounded-lg bg-primary-500 px-4 py-2 text-white">通过 Platform Core 登录并返回工坊</a>}
+      {loginRequired && <a href={quizcraftLoginHref('/extract')} className="inline-flex rounded-lg bg-primary-500 px-4 py-2 text-white">登录管理账号后即可使用</a>}
       {message && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-700">{message}</p>}
 
       <section className="rounded-2xl border bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
@@ -86,11 +102,11 @@ export default function Workshop() {
 
       <section className="rounded-2xl border bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-semibold">不可变版本与导入</h2>
+          <h2 className="font-semibold">版本与导入</h2>
           <button type="button" onClick={() => void run(refresh, '已刷新最新版本')} disabled={busy} className="rounded-lg border px-3 py-2"><RefreshCw className="mr-2 inline h-4 w-4" />刷新</button>
         </div>
         <select aria-label="选择工坊题库" value={selected?.bank_id || ''} onChange={(event) => setSelectedID(event.target.value)} className="mt-3 w-full rounded-lg border p-3">
-          {banks.map((bank) => <option key={bank.bank_id} value={bank.bank_id}>{bank.name} · v{bank.lifecycle_version}</option>)}
+          {banks.map((bank) => <option key={bank.bank_id} value={bank.bank_id}>{bank.name} · 版本 v{bank.lifecycle_version}</option>)}
         </select>
         <textarea aria-label="题目 JSON" value={questionsText} onChange={(event) => setQuestionsText(event.target.value)} rows={12} className="mt-3 w-full rounded-lg border p-3 font-mono text-sm" />
         <input aria-label="导入来源 SHA256" value={sourceSHA} onChange={(event) => setSourceSHA(event.target.value)} className="mt-3 w-full rounded-lg border p-3 font-mono text-sm" />
@@ -103,7 +119,7 @@ export default function Workshop() {
       <section className="space-y-3">
         {selected?.versions.map((version) => (
           <article key={version.bank_version_id} className="rounded-2xl border bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-xs text-gray-500">{version.bank_version_id}</p><h3 className="mt-1 font-semibold">{version.question_count} 题 · {version.state}{version.active ? ' · 已发布' : ''}</h3></div><span className="rounded-full bg-gray-100 px-3 py-1 text-xs">bank v{selected.lifecycle_version}</span></div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-xs text-gray-500">{version.bank_version_id}</p><h3 className="mt-1 font-semibold">{version.question_count} 题 · {version.state}{version.active ? ' · 已发布' : ''}</h3></div><span className="rounded-full bg-gray-100 px-3 py-1 text-xs">版本 v{selected.lifecycle_version}</span></div>
             <div className="mt-4 flex flex-wrap gap-2">
               {version.state === 'draft' && <button type="button" disabled={busy} onClick={() => void shadowWorkshopApi.detail(selected.bank_id, version.bank_version_id).then(setReview).catch((failure) => handleFailure(failure, '版本详情读取失败'))} className="rounded-lg border px-3 py-2">查看并校验题目</button>}
               {version.state === 'validated' && !version.active && <button type="button" disabled={busy} onClick={() => void run(() => shadowWorkshopApi.publish(selected.bank_id, version.bank_version_id, selected.lifecycle_version), '已发布校验版本')} className="rounded-lg bg-primary-500 px-3 py-2 text-white"><Rocket className="mr-2 inline h-4 w-4" />发布</button>}
