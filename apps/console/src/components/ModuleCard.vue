@@ -71,10 +71,10 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
 
       <div v-if="summary.trend" class="mt-4 rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-[var(--hk-paper)]/45 p-3">
         <div class="flex items-center justify-between gap-3">
-          <span class="text-sm font-semibold">关键页面探针 · 5 日</span>
+          <span class="text-sm font-semibold">关键页面监测 · 近 5 日</span>
           <span class="text-sm text-[var(--hk-ink-muted)]">成功次数</span>
         </div>
-        <div class="mt-3 flex h-16 items-end gap-2" role="img" aria-label="Portal 最近五日关键页面探针成功次数柱状图">
+        <div class="mt-3 flex h-16 items-end gap-2" role="img" aria-label="Portal 最近五日关键页面监测成功次数柱状图">
           <div v-for="point in summary.trend" :key="point.label" class="flex flex-1 flex-col items-center gap-1">
             <div class="w-full rounded-sm bg-[var(--hk-accent)]" :style="{ height: `${Math.max(12, point.value * 1.55)}px` }" />
             <span class="text-sm text-[var(--hk-ink-muted)]">{{ point.label.slice(1) }}</span>
@@ -85,7 +85,7 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
             查看表格数据 <ChevronDown :size="15" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent class="pt-2">
-            <table class="w-full text-left text-sm" aria-label="Portal 探针成功次数表格">
+            <table class="w-full text-left text-sm" aria-label="Portal 监测成功次数表格">
               <thead><tr><th class="py-1">日期</th><th class="py-1 text-right">成功次数</th></tr></thead>
               <tbody><tr v-for="point in summary.trend" :key="point.label"><td class="py-1">{{ point.label }}</td><td class="py-1 text-right tabular-nums">{{ point.value }}</td></tr></tbody>
             </table>
@@ -95,11 +95,10 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
 
       <footer class="mt-4 flex min-h-8 items-end justify-between gap-3 border-t border-[var(--hk-line)] pt-3 text-sm text-[var(--hk-ink-muted)]">
         <span v-if="summary.status !== 'empty'">{{ summary.statusMessage }}</span>
-        <span v-else>正常空状态</span>
+        <span v-else>暂无数据</span>
         <span class="flex flex-col items-end gap-1 text-right">
           <span v-if="summary.asOf">截至 {{ summary.asOf }}</span>
           <span v-if="summary.status === 'stale'">最近成功 {{ summary.lastSuccessAt }}</span>
-          <span v-if="summary.requestId" class="font-mono">{{ summary.requestId }}</span>
         </span>
       </footer>
     </template>

@@ -81,7 +81,7 @@ describe("Console Overview", () => {
     await wrapper.findAll("button").find((button) => button.text() === "批准")!.trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain("审核已批准");
-    expect(wrapper.text()).toContain("approved · r2");
+    expect(wrapper.text()).toContain("已通过 · 版本 v2");
     wrapper.unmount();
   });
 
@@ -101,9 +101,9 @@ describe("Console Overview", () => {
     window.history.replaceState({}, "", "/operations");
     const wrapper = mount(App);
     await flushPromises();
-    for (const heading of ["平台运营工作台", "账户、角色与 Scope", "Session", "邮件基础设施", "Operations Inbox", "授权审计"]) expect(wrapper.text()).toContain(heading);
+    for (const heading of ["平台运营工作台", "账户、角色与权限", "登录会话", "邮件基础设施", "运营收件箱", "授权审计"]) expect(wrapper.text()).toContain(heading);
     expect((wrapper.get("input[pattern]").element as HTMLInputElement).value).toBe("operations-operator");
-    expect(wrapper.text()).toContain("撤销 Session");
+    expect(wrapper.text()).toContain("撤销登录");
     expect(wrapper.findAll("button").some((button) => button.text().includes("保存访问设置"))).toBe(true);
     for (const secret of ["token_hash", "recipient_ciphertext", "provider_message_id"]) expect(wrapper.text()).not.toContain(secret);
     wrapper.unmount();
@@ -112,7 +112,7 @@ describe("Console Overview", () => {
     const readOnly = mount(App);
     await flushPromises();
     expect(readOnly.text()).toContain("只读权限");
-    expect(readOnly.findAll("button").some((button) => button.text().includes("保存访问设置") || button.text().includes("撤销 Session"))).toBe(false);
+    expect(readOnly.findAll("button").some((button) => button.text().includes("保存访问设置") || button.text().includes("撤销登录"))).toBe(false);
     readOnly.unmount();
   });
   it("renders six modules only after the server verifies the access context", async () => {
@@ -127,11 +127,11 @@ describe("Console Overview", () => {
     expect(wrapper.get("a[href='https://quizcraft.staging.example/extract']").text()).toContain("打开 QuizCraft 题库工坊");
     expect(wrapper.text()).not.toContain("创建草稿版本");
     for (const state of ["ok", "empty", "partial", "stale", "unavailable"]) expect(wrapper.find(`[data-state="${state}"]`).exists()).toBe(true);
-    expect(wrapper.text()).toContain("req_quizcraft");
+    expect(wrapper.text()).toContain("摘要暂不可用");
     for (const portalFact of ["0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) expect(wrapper.text()).toContain(portalFact);
     for (const forbiddenControl of ["编辑内容", "重新部署", "回滚版本", "切换版本"]) expect(wrapper.text()).not.toContain(forbiddenControl);
     expect(wrapper.text()).toContain("权限已验证");
-    expect(wrapper.text()).toContain("console.overview.read");
+    expect(wrapper.text()).toContain("已授予概览查看权限");
     expect(wrapper.text()).not.toContain("积分");
     expect(wrapper.text()).not.toContain("会员");
     wrapper.unmount();
@@ -144,7 +144,7 @@ describe("Console Overview", () => {
     await flushPromises();
 
     expect(wrapper.get("a[href^='/api/v1/auth/login']").text()).toContain("登录 Console");
-    expect(wrapper.text()).toContain("缺少 platform.operations.read");
+    expect(wrapper.text()).toContain("没有平台运营权限");
     expect(wrapper.findAll("[data-module-card]")).toHaveLength(0);
     expect(wrapper.findAll(".metric-tile")).toHaveLength(0);
     expect(wrapper.get("a[href^='/api/v1/auth/login']").attributes("href")).toContain(encodeURIComponent("/operations?tab=inbox"));

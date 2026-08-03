@@ -54,13 +54,13 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(page.getByRole("status")).toContainText("不可变通知版本已创建");
     await page.getByRole("button", { name: "批准" }).click();
     await expect(page.getByRole("status")).toContainText("审核已批准");
-    await expect(page.getByText("approved · r2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
     await page.getByLabel("渠道").selectOption("email");
     await page.getByLabel("受众").selectOption("college");
     await page.getByLabel("受众值").fill("software-college");
     await page.getByRole("button", { name: "创建分发任务" }).click();
     await expect(page.getByRole("status")).toContainText("分发任务已创建");
-    await expect(page.getByText("distributed · r3", { exact: true })).toBeVisible();
+    await expect(page.getByText("已分发 · 版本 v3", { exact: true })).toBeVisible();
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });

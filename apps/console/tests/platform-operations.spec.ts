@@ -29,13 +29,13 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
   test(`${viewport.name} Platform Operations supports bounded read and Session revocation`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/operations");
-    for (const heading of ["平台运营工作台", "账户、角色与 Scope", "Session", "邮件基础设施", "Operations Inbox", "授权审计"]) await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    for (const heading of ["平台运营工作台", "账户、角色与权限", "登录会话", "邮件基础设施", "运营收件箱", "授权审计"]) await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     await expect(page.getByLabel("角色代码")).toHaveValue("operations-operator");
-    await page.getByRole("button", { name: "撤销 Session" }).click();
+    await page.getByRole("button", { name: "撤销登录" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
     await page.getByLabel("角色代码").fill("operations-reviewer");
     await page.getByRole("button", { name: "保存访问设置" }).click();
-    await expect(page.getByRole("status")).toContainText("结果未知");
+    await expect(page.getByRole("status")).toContainText("结果还没确认");
     await page.getByRole("button", { name: "查询结果" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));

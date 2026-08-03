@@ -48,7 +48,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.getByLabel("学院 ID").fill("66666666-6666-4666-8666-666666666666");
     await page.getByLabel("专业 ID").fill("77777777-7777-4777-8777-777777777777");
     await page.getByLabel("课程名称", { exact: true }).fill("线性代数");
-    await page.getByLabel("课程 slug").fill("linear-algebra");
+    await page.getByLabel("课程标识").fill("linear-algebra");
     await page.getByLabel("年级").fill("2025");
     await page.getByRole("button", { name: "创建课程" }).click();
     await expect(page.getByText("课程已创建。", { exact: true })).toBeVisible();

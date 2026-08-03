@@ -137,10 +137,10 @@ async function finishResult(command: PendingCommand, result: AccountTicketWriteR
     await refreshQueue();
     await openTicket(command.ticketID);
   } else if (result.state === "unavailable") {
-    feedback.value = "结果尚未确认，已保留幂等键；可按原请求重试。";
+    feedback.value = "结果还没确认，可点下方按钮按原请求重试。";
   } else {
     persistPending();
-    feedback.value = result.state === "denied" ? "当前账户缺少该项账户工单权限。" : result.state === "not_found" ? "该工单已不可访问。" : result.state === "invalid" ? "请求内容无效。" : "操作未完成。";
+    feedback.value = result.state === "denied" ? "当前账户缺少该项账户工单权限。" : result.state === "not_found" ? "该工单已不可访问。" : result.state === "invalid" ? "请求内容无效，请检查填写后重试。" : "操作没有完成，请稍后刷新页面重试。";
   }
   busy.value = false;
 }
@@ -193,11 +193,11 @@ watch(
   <section aria-labelledby="account-tickets-heading">
     <div class="overview-hero">
       <div>
-        <p class="eyebrow">Account Portfolio operations</p>
+        <p class="eyebrow">工单处理操作</p>
         <h1 id="account-tickets-heading" class="mt-2 text-2xl font-bold sm:text-3xl">账户工单运营</h1>
-        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">工单、消息和状态均由 Account Portfolio 持久化；Console 只带经验证的操作员身份和精确产品权限。</p>
+        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">工单处理均以当前登录身份记录。</p>
       </div>
-      <div class="access-context"><span>scope:product/account-portfolio</span><strong>{{ queue.length }} 条工单</strong></div>
+      <div class="access-context"><strong>{{ queue.length }} 条工单</strong></div>
     </div>
 
     <p v-if="feedback" class="operation-notice mt-5" role="status">
@@ -205,9 +205,9 @@ watch(
       <UiButton v-if="pending && !busy" class="mt-3" @click="finish(pending)">按原请求重试</UiButton>
     </p>
 
-    <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在读取 Account Portfolio 工单队列…</div>
-    <div v-else-if="workspaceState === 'denied'" class="operation-state">当前账户缺少 Account Portfolio 产品 Scope 或 `account.tickets.read` 权限。</div>
-    <div v-else-if="workspaceState === 'unavailable'" class="operation-state"><p>Account Portfolio 暂不可用。</p><UiButton class="mt-3" @click="refreshQueue">重新加载</UiButton></div>
+    <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在读取工单队列…</div>
+    <div v-else-if="workspaceState === 'denied'" class="operation-state">当前账户没有工单查看权限，请联系管理员开通。</div>
+    <div v-else-if="workspaceState === 'unavailable'" class="operation-state"><p>工单服务暂时不可用。</p><UiButton class="mt-3" @click="refreshQueue">重新加载</UiButton></div>
 
     <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
       <section class="operation-panel !mt-0" aria-labelledby="account-ticket-queue-heading">
@@ -250,7 +250,7 @@ watch(
           </div>
 
           <form v-if="canReply" class="mt-5" @submit.prevent="sendReply">
-            <label class="grid gap-2 text-sm font-semibold">客服回复<textarea v-model="replyBody" required maxlength="5000" rows="4" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" placeholder="回复会以当前 Console Session 的操作员身份写入工单。" @input="clearPendingForEditedReply"></textarea></label>
+            <label class="grid gap-2 text-sm font-semibold">客服回复<textarea v-model="replyBody" required maxlength="5000" rows="4" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-normal" placeholder="回复将以你的登录身份写入工单。" @input="clearPendingForEditedReply"></textarea></label>
             <UiButton class="mt-3" type="submit" :disabled="busy || !replyBody.trim()">发送回复</UiButton>
           </form>
 

@@ -115,7 +115,7 @@ test("Console preserves JavaScript-safe point boundaries without rounding a brow
   await page.getByLabel("积分变更").fill("9007199254740992");
   await page.getByLabel("操作原因").fill("越界值不得由浏览器截断后发送。");
   await page.getByRole("button", { name: "提交积分调整" }).click();
-  await expect(page.getByText("请输入有效用户 UUID、非零整数积分和不超过 1000 字的操作原因。")).toBeVisible();
+  await expect(page.getByText("请填写正确的用户 ID、非零整数积分和不超过 1000 字的操作原因。")).toBeVisible();
   expect(attempts).toBe(2);
 });
 
@@ -145,7 +145,7 @@ test("Console retries an unknown point adjustment with its original idempotency 
   await page.getByLabel("积分变更").fill("30");
   await page.getByLabel("操作原因").fill("网关结果未确认时重试");
   await page.getByRole("button", { name: "提交积分调整" }).click();
-  await expect(page.getByText("结果尚未确认，已保留幂等键；可按原请求重试。")).toBeVisible();
+  await expect(page.getByText("结果还没确认，可点下方按钮按原请求重试。")).toBeVisible();
   await page.getByRole("button", { name: "确认并按原请求重试" }).click();
   await expect(page.getByText("积分调整已写入账本，并已为目标用户创建持久化通知。")).toBeVisible();
   expect(keys).toHaveLength(2);
@@ -163,6 +163,6 @@ test("Console fails closed without the exact point-adjustment permission", async
   });
 
   await page.goto("/account/points");
-  await expect(page.getByText("当前账户缺少 Account Portfolio 产品 Scope 或 `account.points.adjust` 权限。")).toBeVisible();
+  await expect(page.getByText("当前账户没有积分调整权限，请联系管理员开通。")).toBeVisible();
   expect(writeAttempted).toBe(false);
 });

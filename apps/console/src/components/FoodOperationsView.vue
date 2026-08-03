@@ -36,13 +36,13 @@ async function refresh() {
 async function finish(kind: FoodCommandKind, key: string, initial: Promise<FoodWriteResult>, success: string) {
   const result = await initial;
   if (result.state === "unknown") {
-    feedback.value = "操作结果未知，正在按幂等键核对…";
+    feedback.value = "操作结果待确认，正在核对…";
     persistPending({ kind, key, success });
     await continuePending();
     return;
   }
   if (result.state === "succeeded") { persistPending(); feedback.value = success; await refresh(); return; }
-  feedback.value = result.state === "conflict" ? "Food 数据版本已变化，请刷新后重试。" : result.state === "denied" ? "当前账户缺少对应 Food 权限。" : result.state === "invalid" ? "Food 操作内容无效。" : "操作暂未完成。";
+  feedback.value = result.state === "conflict" ? "数据有变化，请刷新后重试。" : result.state === "denied" ? "当前账户缺少对应操作权限。" : result.state === "invalid" ? "操作内容无效，请检查填写后重试。" : "操作没有完成，请稍后刷新页面重试。";
 }
 
 async function continuePending() {
@@ -54,10 +54,26 @@ async function continuePending() {
     if (result.state === "unknown" || result.state === "unavailable") continue;
     persistPending();
     if (result.state === "succeeded") { feedback.value = operation.success; await refresh(); return; }
-    feedback.value = result.state === "conflict" ? "Food 数据版本已变化，请刷新后重试。" : result.state === "denied" ? "当前账户缺少对应 Food 权限。" : "操作核对失败。";
+    feedback.value = result.state === "conflict" ? "数据有变化，请刷新后重试。" : result.state === "denied" ? "当前账户缺少对应操作权限。" : "操作核对没有通过，请刷新后重试。";
     return;
   }
-  feedback.value = "操作结果仍未知，已保留幂等键；请稍后继续核对。";
+  feedback.value = "操作结果还没确认，请稍后继续核对。";
+}
+
+function anomalyKindLabel(kind: FoodAnomalyTicket["kind"]) {
+  return kind === "duplicate" ? "重复投稿" : kind === "spam" ? "垃圾信息" : kind === "quality" ? "质量问题" : kind === "location" ? "位置问题" : kind;
+}
+
+function severityLabel(severity: FoodAnomalyTicket["severity"]) {
+  return severity === "low" ? "低" : severity === "medium" ? "中" : severity === "high" ? "高" : severity;
+}
+
+function workspaceStatusLabel(status: string) {
+  if (status === "ok") return "正常";
+  if (status === "empty") return "暂无数据";
+  if (status === "stale") return "数据过期";
+  if (status === "loading") return "加载中";
+  return status;
 }
 
 function run(kind: FoodCommandKind, resourceID: string, version: number, note: string, success: string) {
@@ -79,19 +95,19 @@ watch(() => props.authState, (value) => {
 <template>
   <section aria-labelledby="food-heading">
     <div class="overview-hero">
-      <div><p class="eyebrow">Food owner operations</p><h1 id="food-heading" class="mt-2 text-2xl font-bold sm:text-3xl">Food 运营</h1><p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">投稿审核、异常票和调档确认均通过 Food API；Console 与 Gateway 不连接 Food 数据库。</p></div>
-      <div class="access-context"><span>scope:product/food</span><strong>{{ workspace?.status ?? "loading" }}</strong></div>
+      <div><p class="eyebrow">美食运营</p><h1 id="food-heading" class="mt-2 text-2xl font-bold sm:text-3xl">Food 运营</h1><p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">投稿、异常与调档均由服务端处理。</p></div>
+      <div class="access-context"><strong>{{ workspaceStatusLabel(workspace?.status ?? "loading") }}</strong></div>
     </div>
-    <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取 Food 工作区…</div>
-    <div v-else-if="state === 'denied'" class="operation-state">当前账户缺少 Food 产品 Scope 或读取权限。</div>
-    <div v-else-if="state === 'unavailable'" class="operation-state"><p>Food API 暂不可用。</p><UiButton class="mt-3" @click="refresh">重新加载</UiButton></div>
+    <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取美食运营数据…</div>
+    <div v-else-if="state === 'denied'" class="operation-state">当前账户没有美食运营权限，请联系管理员。</div>
+    <div v-else-if="state === 'unavailable'" class="operation-state"><p>美食服务暂时不可用，请稍后重试。</p><UiButton class="mt-3" @click="refresh">重新加载</UiButton></div>
     <template v-else-if="workspace">
-      <div v-if="workspace.stale" class="operation-notice mt-5" role="status"><strong>数据可能已过期</strong><p>{{ workspace.status_message }}</p></div>
+      <div v-if="workspace.stale" class="operation-notice mt-5" role="status"><strong>数据可能不是最新</strong><p>{{ workspace.status_message }}</p></div>
       <div v-if="feedback" class="operation-notice mt-5" role="status"><p>{{ feedback }}</p><UiButton v-if="pending" class="mt-3" @click="continuePending">继续核对</UiButton></div>
       <div class="operation-summary-grid mt-6"><article><span>投稿</span><strong>{{ workspace.submissions.length }}</strong></article><article><span>异常票</span><strong>{{ workspace.anomaly_tickets.length }}</strong></article><article><span>调档</span><strong>{{ workspace.tier_adjustments.length }}</strong></article></div>
       <div class="mt-6 grid gap-5 xl:grid-cols-3">
         <section class="operation-panel" aria-labelledby="food-submissions"><h2 id="food-submissions" class="text-lg font-bold">投稿审核</h2><p v-if="!workspace.submissions.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无待审核投稿。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.submissions" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.venue_name }} · {{ item.item_name }}</strong><p class="mt-1 text-sm text-[var(--hk-ink-muted)]">{{ item.description }} · v{{ item.version }}</p><div v-if="canReview && item.status === 'pending'" class="mt-3 flex flex-wrap gap-2"><UiButton @click="reviewSubmission(item, true)">批准投稿</UiButton><UiButton variant="ghost" @click="reviewSubmission(item, false)">拒绝投稿</UiButton></div><p v-else-if="!canReview" class="mt-3 text-sm">只读权限</p></li></ul></section>
-        <section class="operation-panel" aria-labelledby="food-anomalies"><h2 id="food-anomalies" class="text-lg font-bold">异常票处理</h2><p v-if="!workspace.anomaly_tickets.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无异常票。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.anomaly_tickets" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.venue_name }} · {{ item.kind }}</strong><p class="mt-1 text-sm text-[var(--hk-ink-muted)]">{{ item.details }} · {{ item.severity }} · v{{ item.version }}</p><div v-if="canHandleAnomaly && item.status === 'open'" class="mt-3 flex flex-wrap gap-2"><UiButton @click="handleAnomaly(item, true)">标记已处理</UiButton><UiButton variant="ghost" @click="handleAnomaly(item, false)">驳回异常票</UiButton></div><p v-else-if="!canHandleAnomaly" class="mt-3 text-sm">只读权限</p></li></ul></section>
+        <section class="operation-panel" aria-labelledby="food-anomalies"><h2 id="food-anomalies" class="text-lg font-bold">异常票处理</h2><p v-if="!workspace.anomaly_tickets.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无异常票。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.anomaly_tickets" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.venue_name }} · {{ anomalyKindLabel(item.kind) }}</strong><p class="mt-1 text-sm text-[var(--hk-ink-muted)]">{{ item.details }} · {{ severityLabel(item.severity) }} · v{{ item.version }}</p><div v-if="canHandleAnomaly && item.status === 'open'" class="mt-3 flex flex-wrap gap-2"><UiButton @click="handleAnomaly(item, true)">标记已处理</UiButton><UiButton variant="ghost" @click="handleAnomaly(item, false)">驳回异常票</UiButton></div><p v-else-if="!canHandleAnomaly" class="mt-3 text-sm">只读权限</p></li></ul></section>
         <section class="operation-panel" aria-labelledby="food-tiers"><h2 id="food-tiers" class="text-lg font-bold">调档确认</h2><p v-if="!workspace.tier_adjustments.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无待确认调档。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.tier_adjustments" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.venue_name }}</strong><p class="mt-1 text-sm text-[var(--hk-ink-muted)]">{{ item.current_tier }} → {{ item.proposed_tier }} · {{ item.reason }} · v{{ item.version }}</p><div v-if="canAdjustTier && item.status === 'pending'" class="mt-3 flex flex-wrap gap-2"><UiButton @click="adjustTier(item, true)">确认调档</UiButton><UiButton variant="ghost" @click="adjustTier(item, false)">拒绝调档</UiButton></div><p v-else-if="!canAdjustTier" class="mt-3 text-sm">只读权限</p></li></ul></section>
       </div>
     </template>

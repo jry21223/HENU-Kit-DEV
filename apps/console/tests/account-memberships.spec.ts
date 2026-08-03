@@ -153,7 +153,7 @@ test("Console retries an unknown membership result with the original idempotency
   await page.getByLabel("操作原因").fill("网关结果未确认时重试");
   await page.getByRole("button", { name: "发放终身会员" }).click();
 
-  await expect(page.getByRole("status")).toContainText("结果尚未确认");
+  await expect(page.getByRole("status")).toContainText("结果还没确认");
   await expect(page.getByRole("status")).toContainText("待确认操作：向用户");
   await expect(page.getByRole("status").getByText(targetUserID, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "确认并按原请求重试" }).click();
@@ -181,7 +181,7 @@ test("Console fails closed for missing membership permission and a server denial
   });
 
   await page.goto("/account/memberships");
-  await expect(page.getByText("当前账户缺少 Account Portfolio 产品 Scope 或 `account.membership.write` 权限。")).toBeVisible();
+  await expect(page.getByText("当前账户没有会员权益运营权限，请联系管理员开通。")).toBeVisible();
   expect(membershipRead).toBe(false);
 });
 
@@ -196,7 +196,7 @@ test("Console surfaces a membership endpoint authorization denial", async ({ pag
   await page.goto("/account/memberships");
   await page.getByLabel("用户 ID").fill(targetUserID);
   await page.getByRole("button", { name: "查询会员权益" }).click();
-  await expect(page.getByText("当前账户缺少 Account Portfolio 产品 Scope 或 `account.membership.write` 权限。")).toBeVisible();
+  await expect(page.getByText("当前账户没有会员权益运营权限，请联系管理员开通。")).toBeVisible();
 });
 
 test("Console presents an expired Console session without a fake membership state", async ({ page }) => {

@@ -104,9 +104,9 @@ async function finish(command: PendingCommand) {
     feedback.value = "积分调整已写入账本，并已为目标用户创建持久化通知。";
   } else if (result.state === "conflict") {
     persistPending();
-    feedback.value = "积分不足或命令发生冲突；未写入新的积分记录，请核对后重试。";
+    feedback.value = "积分不足或数据有变化，未写入记录，请刷新后重试。";
   } else if (result.state === "unavailable") {
-    feedback.value = "结果尚未确认，已保留幂等键；可按原请求重试。";
+    feedback.value = "结果还没确认，可点下方按钮按原请求重试。";
   } else {
     if (result.state === "signed_out" || result.state === "denied") persistPending(command);
     if (result.state === "signed_out") workspaceState.value = "signed_out";
@@ -117,7 +117,7 @@ async function finish(command: PendingCommand) {
         ? "当前账户缺少积分调整权限。"
         : result.state === "invalid"
           ? "请求内容无效；请检查用户 ID、增减积分和原因。"
-          : "积分调整未完成。";
+          : "积分调整没有完成，请稍后刷新页面重试。";
   }
   busy.value = false;
 }
@@ -129,7 +129,7 @@ async function submitAdjustment() {
     reason: reason.value.trim(),
   };
   if (busy.value || !props.operatorID || !validInput(input)) {
-    feedback.value = "请输入有效用户 UUID、非零整数积分和不超过 1000 字的操作原因。";
+    feedback.value = "请填写正确的用户 ID、非零整数积分和不超过 1000 字的操作原因。";
     return;
   }
   const command: PendingCommand = { operatorID: props.operatorID, input, key: operationKey() };
@@ -162,11 +162,11 @@ watch(
   <section aria-labelledby="account-points-heading">
     <div class="overview-hero">
       <div>
-        <p class="eyebrow">Account Portfolio operations</p>
+        <p class="eyebrow">积分调整操作</p>
         <h1 id="account-points-heading" class="mt-2 text-2xl font-bold sm:text-3xl">积分账本运营</h1>
-        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">仅经服务端验证的 Console Session 可以向目标账户记入或扣减积分。操作员身份由 Session 签名，不可由浏览器指定。</p>
+        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">积分调整以当前登录身份记录，不可伪造。</p>
       </div>
-      <div class="access-context"><span>scope:product/account-portfolio</span><strong>immutable ledger</strong></div>
+      <div class="access-context"><strong>不可变账本</strong></div>
     </div>
 
     <p v-if="feedback" class="operation-notice mt-5" role="status">
@@ -175,18 +175,18 @@ watch(
       <UiButton v-if="pending && !busy" class="mt-3" @click="finish(pending)">确认并按原请求重试</UiButton>
     </p>
 
-    <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在验证 Account Portfolio 积分调整权限…</div>
+    <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在验证积分调整权限…</div>
     <div v-else-if="workspaceState === 'signed_out'" class="operation-state">登录状态已过期，请重新登录后再操作。</div>
-    <div v-else-if="workspaceState === 'denied'" class="operation-state">当前账户缺少 Account Portfolio 产品 Scope 或 `account.points.adjust` 权限。</div>
-    <div v-else-if="workspaceState === 'unavailable'" class="operation-state">积分调整暂不可用。</div>
+    <div v-else-if="workspaceState === 'denied'" class="operation-state">当前账户没有积分调整权限，请联系管理员开通。</div>
+    <div v-else-if="workspaceState === 'unavailable'" class="operation-state">积分服务暂时不可用，请稍后重试。</div>
 
     <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
       <form class="operation-panel !mt-0" @submit.prevent="submitAdjustment">
         <h2>记账积分调整</h2>
-        <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">输入经过核验的目标用户 UUID。该命令在 Account Portfolio 内原子地创建账户（如尚未初始化）、审计事实、账本条目与用户通知。</p>
+        <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">输入用户 ID，系统将直接为该用户记入或扣减积分，并记录操作日志。</p>
         <label class="mt-5 grid gap-2 text-sm font-semibold">
           目标用户 ID
-          <input v-model="targetUserID" required autocomplete="off" placeholder="目标用户 UUID" :disabled="busy" class="font-mono text-sm font-normal">
+          <input v-model="targetUserID" required autocomplete="off" placeholder="目标用户 ID" :disabled="busy" class="font-mono text-sm font-normal">
         </label>
         <label class="mt-4 grid gap-2 text-sm font-semibold">
           积分变更
@@ -201,12 +201,12 @@ watch(
 
       <section class="operation-panel !mt-0" data-account-points-result aria-labelledby="account-points-result-heading">
         <div v-if="!adjustment" class="text-[var(--hk-ink-muted)]">
-          提交成功后，这里只显示 owner 返回的真实余额与本次账本条目；不会显示操作员身份或虚构积分数据。
+          提交后这里显示该用户的最新余额与本次记账明细。
         </div>
         <template v-else>
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p class="eyebrow">LEDGER CONFIRMED</p>
+              <p class="eyebrow">账本已确认</p>
               <h2 id="account-points-result-heading" class="mt-1 text-xl font-bold">当前积分余额 {{ formatPoints(adjustment.balance) }}</h2>
             </div>
             <span class="rounded-full bg-[var(--hk-paper)] px-3 py-1 text-sm">{{ adjustment.entry.amount > 0 ? "+" : "" }}{{ formatPoints(adjustment.entry.amount) }}</span>

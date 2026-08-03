@@ -36,11 +36,35 @@ async function refresh() {
 async function finish(kind: LibraryCommandKind, key: string, initial: Promise<LibraryWriteResult>, success: string) {
   let result = await initial;
   if (result.state === "unknown") {
-    feedback.value = "操作结果未知，正在按幂等键核对…";
+    feedback.value = "操作结果待确认，正在核对…";
     result = await resolveLibraryOperation(kind, key);
   }
   if (result.state === "succeeded") { feedback.value = success; await refresh(); return; }
-  feedback.value = result.state === "conflict" ? "资料版本已变化，请刷新后重试。" : result.state === "denied" ? "当前账户缺少对应 Library 权限。" : result.state === "invalid" ? "操作不在 Library 兼容边界内。" : "操作暂未完成。";
+  feedback.value = result.state === "conflict" ? "资料版本已变化，请刷新后重试。" : result.state === "denied" ? "当前账户缺少资料库操作权限。" : result.state === "invalid" ? "该操作暂不支持，请检查内容后重试。" : "操作没有完成，请稍后刷新页面重试。";
+}
+
+function courseStatusLabel(status: string) {
+  return status === "draft" ? "草稿" : status === "published" ? "已发布" : status === "archived" ? "已归档" : status;
+}
+
+function materialStatusLabel(status: LibraryMaterial["status"]) {
+  return status === "draft" ? "草稿" : status === "pending" ? "待审核" : status === "published" ? "已发布" : status === "rejected" ? "已拒绝" : status === "archived" ? "已归档" : status;
+}
+
+function materialTypeLabel(type: LibraryMaterial["type"]) {
+  return type === "knowledge_note" ? "知识笔记" : type === "mock_paper" ? "模拟试卷" : type === "answer" ? "答案解析" : type === "quick_review" ? "快速复习" : type === "past_exam" ? "往年真题" : type === "other" ? "其他" : type;
+}
+
+function accessLevelLabel(level: LibraryMaterial["access_level"]) {
+  return level === "public" ? "公开" : level === "authenticated" ? "登录可见" : level === "restricted" ? "受限" : level;
+}
+
+function workspaceStatusLabel(status: string) {
+  if (status === "ok") return "正常";
+  if (status === "partial") return "部分可用";
+  if (status === "unavailable") return "暂不可用";
+  if (status === "loading") return "加载中";
+  return status;
 }
 
 function reviewSubmission(item: LibraryMaterial, decision: "approve" | "reject") {
@@ -61,7 +85,7 @@ function archive(kind: "course_archive" | "material_archive", id: string, versio
 }
 
 function createCourse() {
-  if (!courseName.value.trim() || !courseSlug.value.trim() || !courseGrade.value.trim() || !courseSchoolID.value || !courseCollegeID.value || !courseMajorID.value) { feedback.value = "请填写课程归属、年级、名称与 slug。"; return; }
+  if (!courseName.value.trim() || !courseSlug.value.trim() || !courseGrade.value.trim() || !courseSchoolID.value || !courseCollegeID.value || !courseMajorID.value) { feedback.value = "请填写课程归属、年级、名称与课程标识。"; return; }
   const key = operationKey("course_create");
   const payload = { schoolId: courseSchoolID.value, collegeId: courseCollegeID.value, majorId: courseMajorID.value, name: courseName.value.trim(), slug: courseSlug.value.trim(), grade: courseGrade.value.trim(), status: "draft" as const };
   return finish("course_create", key, executeLibraryCommand({ kind: "course_create", payload }, key), "课程已创建。");
@@ -75,7 +99,7 @@ function updateCourse(item: LibraryWorkspace["courses"][number]) {
 }
 
 function createMaterial() {
-  if (!materialCourseID.value || !materialTitle.value.trim() || !materialStorageKey.value.trim() || !materialFileName.value.trim()) { feedback.value = "请选择课程并填写资料标题、存储键与文件名。"; return; }
+  if (!materialCourseID.value || !materialTitle.value.trim() || !materialStorageKey.value.trim() || !materialFileName.value.trim()) { feedback.value = "请选择课程并填写资料标题、文件标识与文件名。"; return; }
   const key = operationKey("material_create");
   const payload = { courseId: materialCourseID.value, title: materialTitle.value.trim(), type: "other" as const, storageKey: materialStorageKey.value.trim(), fileName: materialFileName.value.trim(), fileSize: 0, accessLevel: "login_required" as const, status: "draft" as const };
   return finish("material_create", key, executeLibraryCommand({ kind: "material_create", payload }, key), "资料已创建。");
@@ -98,15 +122,15 @@ watch(() => props.authState, (value) => {
 <template>
   <section aria-labelledby="library-heading">
     <div class="overview-hero">
-      <div><p class="eyebrow">Bounded compatibility</p><h1 id="library-heading" class="mt-2 text-2xl font-bold sm:text-3xl">资料库运营</h1><p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">课程、资料、下载、投稿审核与资料纠错通过受限 Adapter 访问 Study Legacy API；Console 与 Gateway 均不连接旧数据库。</p></div>
-      <div class="access-context"><span>scope:product/library</span><strong>{{ workspace?.status ?? "loading" }}</strong></div>
+      <div><p class="eyebrow">兼容接入</p><h1 id="library-heading" class="mt-2 text-2xl font-bold sm:text-3xl">资料库运营</h1><p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">资料库内容由旧系统兼容接入，此处操作会同步生效。</p></div>
+      <div class="access-context"><strong>{{ workspaceStatusLabel(workspace?.status ?? "loading") }}</strong></div>
     </div>
 
-    <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取 Library 工作区…</div>
-    <div v-else-if="state === 'denied'" class="operation-state">当前账户缺少 Library 产品 Scope 或读取权限。</div>
-    <div v-else-if="state === 'unavailable'" class="operation-state"><p>Library Adapter 暂不可用。</p><UiButton class="mt-3" @click="refresh">重新加载</UiButton></div>
+    <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取资料库数据…</div>
+    <div v-else-if="state === 'denied'" class="operation-state">当前账户没有资料库操作权限，请联系管理员。</div>
+    <div v-else-if="state === 'unavailable'" class="operation-state"><p>资料库服务暂时不可用，请稍后重试。</p><UiButton class="mt-3" @click="refresh">重新加载</UiButton></div>
     <template v-else-if="workspace">
-      <div v-if="workspace.degraded" class="operation-notice mt-5" role="status"><strong>降级读取</strong><p>{{ workspace.status_message }}</p></div>
+      <div v-if="workspace.degraded" class="operation-notice mt-5" role="status"><strong>数据不完整，仅展示部分内容：</strong><p>{{ workspace.status_message }}</p></div>
       <p v-if="feedback" class="operation-notice mt-5" role="status">{{ feedback }}</p>
 
       <div class="operation-summary-grid mt-6">
@@ -122,16 +146,16 @@ watch(() => props.authState, (value) => {
           <h2 id="library-courses" class="text-lg font-bold">课程</h2>
           <form v-if="canManage" class="mt-3 grid gap-2 rounded-[var(--hk-radius-card)] border p-3" @submit.prevent="createCourse">
             <strong>创建课程</strong>
-            <label class="grid gap-1 text-sm">学校 ID<input v-model="courseSchoolID" required type="text" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
-            <label class="grid gap-1 text-sm">学院 ID<input v-model="courseCollegeID" required type="text" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
-            <label class="grid gap-1 text-sm">专业 ID<input v-model="courseMajorID" required type="text" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
+            <label class="grid gap-1 text-sm">学校标识<input v-model="courseSchoolID" required type="text" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
+            <label class="grid gap-1 text-sm">学院标识<input v-model="courseCollegeID" required type="text" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
+            <label class="grid gap-1 text-sm">专业标识<input v-model="courseMajorID" required type="text" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
             <label class="grid gap-1 text-sm">课程名称<input v-model="courseName" required maxlength="160" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
-            <label class="grid gap-1 text-sm">课程 slug<input v-model="courseSlug" required maxlength="160" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
+            <label class="grid gap-1 text-sm">课程标识<input v-model="courseSlug" required maxlength="160" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
             <label class="grid gap-1 text-sm">年级<input v-model="courseGrade" maxlength="32" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
             <UiButton type="submit">创建课程</UiButton>
           </form>
           <p v-if="!workspace.courses.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无课程。</p>
-          <ul class="mt-3 grid gap-3"><li v-for="item in workspace.courses" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.name }}</strong><p class="text-sm text-[var(--hk-ink-muted)]">{{ item.grade }} · {{ item.status }} · {{ item.slug }}</p><div v-if="canManage && item.status !== 'archived'" class="mt-3 grid gap-2"><label class="grid gap-1 text-sm">编辑课程名称<input v-model="courseEdits[item.id]" :placeholder="item.name" maxlength="160" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label><div class="flex flex-wrap gap-2"><UiButton @click="updateCourse(item)">保存课程</UiButton><UiButton variant="ghost" @click="archive('course_archive', item.id, item.updated_at)">归档课程</UiButton></div></div></li></ul>
+          <ul class="mt-3 grid gap-3"><li v-for="item in workspace.courses" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.name }}</strong><p class="text-sm text-[var(--hk-ink-muted)]">{{ item.grade }} · {{ courseStatusLabel(item.status) }}</p><div v-if="canManage && item.status !== 'archived'" class="mt-3 grid gap-2"><label class="grid gap-1 text-sm">编辑课程名称<input v-model="courseEdits[item.id]" :placeholder="item.name" maxlength="160" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label><div class="flex flex-wrap gap-2"><UiButton @click="updateCourse(item)">保存课程</UiButton><UiButton variant="ghost" @click="archive('course_archive', item.id, item.updated_at)">归档课程</UiButton></div></div></li></ul>
         </section>
         <section class="operation-panel" aria-labelledby="library-materials">
           <h2 id="library-materials" class="text-lg font-bold">资料</h2>
@@ -139,14 +163,14 @@ watch(() => props.authState, (value) => {
             <strong>创建资料</strong>
             <label class="grid gap-1 text-sm">所属课程<select v-model="materialCourseID" required class="rounded-[var(--hk-radius-control)] border px-3 py-2"><option value="" disabled>请选择课程</option><option v-for="course in workspace.courses" :key="course.id" :value="course.id">{{ course.name }}</option></select></label>
             <label class="grid gap-1 text-sm">资料标题<input v-model="materialTitle" required maxlength="200" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
-            <label class="grid gap-1 text-sm">存储键<input v-model="materialStorageKey" required maxlength="512" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
+            <label class="grid gap-1 text-sm">文件标识<input v-model="materialStorageKey" required maxlength="512" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
             <label class="grid gap-1 text-sm">文件名<input v-model="materialFileName" required maxlength="255" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label>
             <UiButton type="submit">创建资料</UiButton>
           </form>
           <p v-if="!workspace.materials.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无资料。</p>
-          <ul class="mt-3 grid gap-3"><li v-for="item in workspace.materials" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.title }}</strong><p class="text-sm text-[var(--hk-ink-muted)]">{{ item.type }} · {{ item.status }} · {{ item.file_name }}</p><div v-if="canManage && item.status !== 'archived'" class="mt-3 grid gap-2"><label class="grid gap-1 text-sm">编辑资料标题<input v-model="materialEdits[item.id]" :placeholder="item.title" maxlength="200" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label><div class="flex flex-wrap gap-2"><UiButton @click="updateMaterial(item)">保存资料</UiButton><UiButton variant="ghost" @click="archive('material_archive', item.id, item.updated_at)">归档资料</UiButton></div></div></li></ul>
+          <ul class="mt-3 grid gap-3"><li v-for="item in workspace.materials" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.title }}</strong><p class="text-sm text-[var(--hk-ink-muted)]">{{ materialTypeLabel(item.type) }} · {{ materialStatusLabel(item.status) }} · {{ item.file_name }}</p><div v-if="canManage && item.status !== 'archived'" class="mt-3 grid gap-2"><label class="grid gap-1 text-sm">编辑资料标题<input v-model="materialEdits[item.id]" :placeholder="item.title" maxlength="200" class="rounded-[var(--hk-radius-control)] border px-3 py-2"></label><div class="flex flex-wrap gap-2"><UiButton @click="updateMaterial(item)">保存资料</UiButton><UiButton variant="ghost" @click="archive('material_archive', item.id, item.updated_at)">归档资料</UiButton></div></div></li></ul>
         </section>
-        <section class="operation-panel" aria-labelledby="library-downloads"><h2 id="library-downloads" class="text-lg font-bold">下载</h2><p v-if="!workspace.downloads.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无下载记录。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.downloads" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.material_title }}</strong><p class="text-sm text-[var(--hk-ink-muted)]">{{ item.access_level }} · {{ new Date(item.downloaded_at).toLocaleString('zh-CN') }}</p></li></ul></section>
+        <section class="operation-panel" aria-labelledby="library-downloads"><h2 id="library-downloads" class="text-lg font-bold">下载</h2><p v-if="!workspace.downloads.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无下载记录。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.downloads" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.material_title }}</strong><p class="text-sm text-[var(--hk-ink-muted)]">{{ accessLevelLabel(item.access_level) }} · {{ new Date(item.downloaded_at).toLocaleString('zh-CN') }}</p></li></ul></section>
         <section class="operation-panel" aria-labelledby="library-submissions"><h2 id="library-submissions" class="text-lg font-bold">投稿审核</h2><p v-if="!workspace.submissions.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无待审核投稿。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.submissions" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.title }}</strong><p class="text-sm text-[var(--hk-ink-muted)]">{{ item.type }} · {{ item.file_name }}</p><div v-if="canReview" class="mt-3 flex flex-wrap gap-2"><UiButton @click="reviewSubmission(item, 'approve')">批准投稿</UiButton><UiButton variant="ghost" @click="reviewSubmission(item, 'reject')">拒绝投稿</UiButton></div><p v-else class="mt-3 text-sm">只读权限</p></li></ul></section>
         <section class="operation-panel xl:col-span-2" aria-labelledby="library-corrections"><h2 id="library-corrections" class="text-lg font-bold">资料纠错</h2><p v-if="!workspace.corrections.length" class="mt-3 text-[var(--hk-ink-muted)]">暂无待处理纠错。</p><ul class="mt-3 grid gap-3 md:grid-cols-2"><li v-for="item in workspace.corrections" :key="item.id" class="rounded-[var(--hk-radius-card)] border p-3"><strong>{{ item.reason }}</strong><p class="mt-1 text-sm text-[var(--hk-ink-muted)]">{{ item.description }}</p><div v-if="canReview && item.status === 'pending'" class="mt-3 flex gap-2"><UiButton @click="reviewCorrection(item, 'resolve')">标记已处理</UiButton><UiButton variant="ghost" @click="reviewCorrection(item, 'reject')">驳回纠错</UiButton></div></li></ul></section>
       </div>

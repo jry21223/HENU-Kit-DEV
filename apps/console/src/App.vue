@@ -101,10 +101,10 @@ const summaries = computed<ModuleSummary[]>(() =>
                   requestId: live.request_id,
                   trend: undefined,
                 }
-              : { ...presentation, status: "unavailable", metrics: [], statusMessage: "聚合响应缺少此模块。", trend: undefined };
+              : { ...presentation, status: "unavailable", metrics: [], statusMessage: "此模块暂无数据。", trend: undefined };
           })
-        : moduleSummaries.map((summary) => ({ ...summary, status: "unavailable", metrics: [], statusMessage: "Overview 聚合暂不可用。", trend: undefined }))
-      : moduleSummaries.map((summary) => ({ ...summary, status: "denied", metrics: [], statusMessage: "登录并通过服务端权限校验后可查看此模块。" })),
+        : moduleSummaries.map((summary) => ({ ...summary, status: "unavailable", metrics: [], statusMessage: "概览数据暂时不可用，请稍后刷新页面。", trend: undefined }))
+      : moduleSummaries.map((summary) => ({ ...summary, status: "denied", metrics: [], statusMessage: "登录后即可查看，或联系管理员开通权限。" })),
 );
 
 const visibleCount = computed(() => summaries.value.filter((summary) => summary.status !== "denied").length);
@@ -127,7 +127,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         </a>
         <a v-if="consoleSession?.access_context.permissions.includes('notice.read')" :href="noticesHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><Bell :size="17" aria-hidden="true" />通知审核与分发</a>
         <a v-if="consoleSession?.access_context.permissions.includes('library.read')" :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><BookOpen :size="17" aria-hidden="true" />资料库运营</a>
-        <a v-if="consoleSession?.access_context.permissions.includes('food.read')" :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><Utensils :size="17" aria-hidden="true" />Food 运营</a>
+        <a v-if="consoleSession?.access_context.permissions.includes('food.read')" :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><Utensils :size="17" aria-hidden="true" />美食运营</a>
         <a v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><ShieldCheck :size="17" aria-hidden="true" />会员权益运营</a>
         <a v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><Activity :size="17" aria-hidden="true" />积分账本运营</a>
         <a v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><MessageSquare :size="17" aria-hidden="true" />账户工单运营</a>
@@ -142,7 +142,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         </a>
       </nav>
 
-      <div class="mt-auto p-4 text-sm leading-6 text-white/85">非河南大学官方项目<br />Console V1 · Bounded summaries</div>
+      <div class="mt-auto p-4 text-sm leading-6 text-white/85">非河南大学官方项目<br />运营管理后台</div>
     </aside>
 
     <div class="console-main">
@@ -159,7 +159,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
               <div class="flex items-start justify-between gap-4">
                 <div>
                   <DialogTitle class="font-semibold">产品模块</DialogTitle>
-                  <DialogDescription class="mt-1 text-sm text-white/75">专属工作台与六个已确认的运营模块</DialogDescription>
+                  <DialogDescription class="mt-1 text-sm text-white/75">专属工作台与 {{ summaries.length }} 个已确认的运营模块</DialogDescription>
                 </div>
                 <DialogClose as-child>
                   <UiButton variant="ghost-inverse" size="icon" aria-label="关闭产品导航"><X :size="20" /></UiButton>
@@ -169,7 +169,7 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('platform.operations.read')" as-child><a :href="operationsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><ShieldCheck :size="18" />平台运营工作台</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('notice.read')" as-child><a :href="noticesHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><Bell :size="18" />通知审核与分发</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('library.read')" as-child><a :href="libraryHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><BookOpen :size="18" />资料库运营</a></DialogClose>
-                <DialogClose v-if="consoleSession?.access_context.permissions.includes('food.read')" as-child><a :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><Utensils :size="18" />Food 运营</a></DialogClose>
+                <DialogClose v-if="consoleSession?.access_context.permissions.includes('food.read')" as-child><a :href="foodHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><Utensils :size="18" />美食运营</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" as-child><a :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><ShieldCheck :size="18" />会员权益运营</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" as-child><a :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><Activity :size="18" />积分账本运营</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" as-child><a :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><MessageSquare :size="18" />账户工单运营</a></DialogClose>
@@ -186,12 +186,12 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <label class="search-control">
           <Search :size="17" aria-hidden="true" />
           <span class="sr-only">搜索模块</span>
-          <input type="search" placeholder="搜索模块或状态" disabled aria-describedby="search-note" />
+          <input type="search" placeholder="搜索模块" disabled aria-describedby="search-note" />
         </label>
-        <span id="search-note" class="sr-only">当前 Overview 暂不提供搜索</span>
+        <span id="search-note" class="sr-only">搜索即将开放</span>
 
         <div class="ml-auto flex items-center gap-3">
-          <StatusBadge v-if="authState === 'loading'" status="loading">正在验证 Session</StatusBadge>
+          <StatusBadge v-if="authState === 'loading'" status="loading">正在验证登录状态</StatusBadge>
           <template v-else-if="authState === 'authenticated'">
             <StatusBadge status="ok">权限已验证</StatusBadge>
             <button type="button" class="operator-avatar" aria-label="退出 Console" @click="signOut">CO</button>
@@ -213,15 +213,15 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <template v-else>
         <section class="overview-hero" aria-labelledby="overview-heading">
           <div>
-            <p class="eyebrow">Operations overview</p>
+            <p class="eyebrow">运营概览</p>
             <h1 id="overview-heading" class="mt-2 text-2xl font-bold tracking-[-0.03em] sm:text-3xl">产品运行概览</h1>
             <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">
-              六个产品模块保持各自的数据所有权；Gateway 仅聚合各 Owner 提供的有界摘要，生产操作仍由后续纵向切片接入。
+              {{ summaries.length }} 个运营模块的运行状态与关键指标总览，供运营人员快速了解全站情况。
             </p>
           </div>
           <div class="access-context" aria-label="服务端验证的访问上下文">
-            <span>{{ authState === "authenticated" ? "console.overview.read" : "需要服务端权限" }}</span>
-            <strong>{{ authState === "authenticated" ? visibleCount : 0 }}/6 可见</strong>
+            <span>{{ authState === "authenticated" ? "已授予概览查看权限" : "需要服务端权限" }}</span>
+            <strong>{{ authState === "authenticated" ? visibleCount : 0 }}/{{ summaries.length }} 可见</strong>
           </div>
         </section>
 
@@ -238,16 +238,16 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <section class="mt-6 rounded-[var(--hk-radius-feature)] border border-[var(--hk-line)] bg-white p-5 shadow-[var(--hk-shadow-card)]" aria-labelledby="permission-heading">
           <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p class="eyebrow">Access context</p>
-              <h2 id="permission-heading" class="mt-1 text-lg font-semibold">权限按代码与 Scope 表达</h2>
-              <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">访问上下文由 Console Gateway 在每次请求时向 Platform Core 验证；前端不信任浏览器角色，也不使用旧的 isAdmin 判断。</p>
+              <p class="eyebrow">权限信息</p>
+              <h2 id="permission-heading" class="mt-1 text-lg font-semibold">权限说明</h2>
+              <p class="mt-2 max-w-2xl text-base leading-7 text-[var(--hk-ink-muted)]">登录状态与权限由服务端在每次请求时验证，前端不自行判断权限。</p>
             </div>
             <div class="flex flex-wrap gap-2" aria-label="服务端验证的权限代码">
               <template v-if="consoleSession">
-                <code v-for="permission in consoleSession.access_context.permissions" :key="permission">{{ permission }}</code>
-                <code v-for="scope in consoleSession.access_context.scopes" :key="scope.kind">scope:{{ scope.kind }}</code>
+                <code>已授予概览查看权限</code>
+                <code>已授予的平台权限</code>
               </template>
-              <span v-else>{{ authState === "denied" ? "当前账户缺少权限或 Scope" : "登录后显示访问上下文" }}</span>
+              <span v-else>{{ authState === "denied" ? "当前账户缺少相应权限" : "登录后显示访问上下文" }}</span>
             </div>
           </div>
         </section>

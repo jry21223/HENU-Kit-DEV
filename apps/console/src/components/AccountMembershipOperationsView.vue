@@ -136,7 +136,7 @@ async function finish(command: PendingCommand) {
     await lookupMembership({ allowWhileBusy: true });
     feedback.value = "会员版本已变化，已刷新最新权益；请基于最新版本重新操作。";
   } else if (result.state === "unavailable") {
-    feedback.value = "结果尚未确认，已保留幂等键；可按原请求重试。";
+    feedback.value = "结果还没确认，可点下方按钮按原请求重试。";
   } else {
     if (result.state === "signed_out" || result.state === "denied") persistPending();
     feedback.value = result.state === "denied"
@@ -144,10 +144,10 @@ async function finish(command: PendingCommand) {
       : result.state === "signed_out"
         ? "登录状态已过期，请重新登录后再操作。"
       : result.state === "not_found"
-        ? "该用户尚未初始化 Account Portfolio，不能创建虚构账户。"
+        ? "该用户还未开通会员账户，无法发放权益。"
         : result.state === "invalid"
-          ? "请求内容无效。"
-          : "操作未完成。";
+          ? "请求内容无效，请检查填写后重试。"
+          : "操作没有完成，请稍后刷新页面重试。";
   }
   busy.value = false;
 }
@@ -193,11 +193,11 @@ watch(
   <section aria-labelledby="account-membership-heading">
     <div class="overview-hero">
       <div>
-        <p class="eyebrow">Account Portfolio operations</p>
+        <p class="eyebrow">会员权益操作</p>
         <h1 id="account-membership-heading" class="mt-2 text-2xl font-bold sm:text-3xl">会员权益运营</h1>
-        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">仅通过经验证的 Console Session 操作已初始化账户的真实会员权益；浏览器不能指定操作员身份。</p>
+        <p class="mt-2 max-w-3xl leading-7 text-[var(--hk-ink-muted)]">所有操作均以当前登录身份记录。</p>
       </div>
-      <div class="access-context"><span>scope:product/account-portfolio</span><strong>audited entitlement</strong></div>
+      <div class="access-context"><span>已记录审计的权益操作</span></div>
     </div>
 
     <p v-if="feedback" class="operation-notice mt-5" role="status">
@@ -206,32 +206,32 @@ watch(
       <UiButton v-if="pending && !busy" class="mt-3" @click="finish(pending)">确认并按原请求重试</UiButton>
     </p>
 
-    <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在验证 Account Portfolio 会员操作权限…</div>
+    <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在验证会员操作权限…</div>
     <div v-else-if="workspaceState === 'signed_out'" class="operation-state">登录状态已过期，请重新登录后再操作。</div>
-    <div v-else-if="workspaceState === 'denied'" class="operation-state">当前账户缺少 Account Portfolio 产品 Scope 或 `account.membership.write` 权限。</div>
-    <div v-else-if="workspaceState === 'unavailable'" class="operation-state"><p>会员权益操作暂不可用。</p></div>
+    <div v-else-if="workspaceState === 'denied'" class="operation-state">当前账户没有会员权益运营权限，请联系管理员开通。</div>
+    <div v-else-if="workspaceState === 'unavailable'" class="operation-state"><p>会员权益服务暂时不可用，请稍后再试。</p></div>
 
     <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
       <form class="operation-panel !mt-0" @submit.prevent="() => lookupMembership()">
-        <h2>查找已初始化账户</h2>
-        <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">目标用户必须先通过其认证后的 Account Portfolio 读取完成初始化；Console 不会为任意 UUID 创建账户。</p>
+        <h2>查找已开通账户</h2>
+        <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">请先输入已开通会员账户的用户 ID。</p>
         <label class="mt-5 grid gap-2 text-sm font-semibold">
           用户 ID
-          <input v-model="targetUserID" required inputmode="text" autocomplete="off" placeholder="已初始化的 UUID" :disabled="busy" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-mono text-sm font-normal" @input="resetLookup">
+          <input v-model="targetUserID" required inputmode="text" autocomplete="off" placeholder="已开通账户的用户 ID" :disabled="busy" class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] bg-white px-3 py-2 font-mono text-sm font-normal" @input="resetLookup">
         </label>
         <UiButton class="mt-4" type="submit" :disabled="busy || detailState === 'loading' || !targetUserID.trim()">查询会员权益</UiButton>
       </form>
 
       <section class="operation-panel !mt-0" :data-account-membership-detail-state="detailState" aria-labelledby="account-membership-detail-heading">
-        <div v-if="detailState === 'idle'" class="text-[var(--hk-ink-muted)]">输入已初始化账户的用户 ID 后读取其当前会员权益。</div>
+        <div v-if="detailState === 'idle'" class="text-[var(--hk-ink-muted)]">输入已开通账户的用户 ID 后查看其当前会员权益。</div>
         <div v-else-if="detailState === 'loading'" aria-busy="true">正在读取持久化会员权益…</div>
-        <div v-else-if="detailState === 'not_found'" class="text-[var(--hk-ink-muted)]">该用户尚未初始化 Account Portfolio；不能从 Console 创建虚构账户。</div>
-        <div v-else-if="detailState === 'invalid'" class="text-[var(--hk-ink-muted)]">用户 ID 格式无效。</div>
+        <div v-else-if="detailState === 'not_found'" class="text-[var(--hk-ink-muted)]">该用户还未开通会员账户，无法发放权益。</div>
+        <div v-else-if="detailState === 'invalid'" class="text-[var(--hk-ink-muted)]">用户 ID 格式不对，请检查后重试。</div>
         <div v-else-if="detailState === 'unavailable'" class="text-[var(--hk-ink-muted)]"><p>会员权益暂不可用。</p><UiButton class="mt-3" @click="lookupMembership">重新加载</UiButton></div>
         <template v-else-if="membership">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p class="eyebrow">CURRENT ENTITLEMENT</p>
+              <p class="eyebrow">当前权益</p>
               <h2 id="account-membership-detail-heading" class="mt-1 text-xl font-bold">{{ membershipLabel(membership) }}</h2>
             </div>
             <span class="rounded-full bg-[var(--hk-paper)] px-3 py-1 text-sm">版本 {{ membership.version }}</span>
