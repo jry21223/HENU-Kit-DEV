@@ -41,6 +41,13 @@ const foodHref = consolePath("/food");
 const accountMembershipsHref = consolePath("/account/memberships");
 const accountPointsHref = consolePath("/account/points");
 const accountTicketsHref = consolePath("/account");
+// The sidebar's module-summary links are `#module-<id>` anchors into the
+// ModuleCard grid that only exists in the DOM on the overview page (every
+// operations sub-page renders a dedicated view instead, see <main> below).
+// Showing them elsewhere put two full navigation lists in the sidebar at
+// once — the granted-permission shortcuts and a set of anchors with nothing
+// to scroll to — which is exactly what read as a tangled, duplicated menu.
+const isOverviewPage = !isPlatformOperations && !isNoticeOperations && !isLibraryOperations && !isFoodOperations && !isAccountMembershipOperations && !isAccountPointOperations && !isAccountTicketOperations;
 const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
 const authState = ref<"loading" | "authenticated" | "signed_out" | "denied" | "unavailable">("loading");
@@ -54,7 +61,7 @@ async function refreshSession() {
   authState.value = result.state;
   consoleSession.value = result.state === "authenticated" ? result.session : undefined;
   consoleOverview.value = undefined;
-  if (result.state === "authenticated" && !isPlatformOperations && !isNoticeOperations && !isLibraryOperations && !isFoodOperations && !isAccountMembershipOperations && !isAccountPointOperations && !isAccountTicketOperations) {
+  if (result.state === "authenticated" && isOverviewPage) {
     overviewState.value = "loading";
     const overviewResult = await fetchConsoleOverview();
     if (overviewResult.state === "authenticated") {
@@ -131,15 +138,17 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
         <a v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><ShieldCheck :size="17" aria-hidden="true" />会员权益运营</a>
         <a v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><Activity :size="17" aria-hidden="true" />积分账本运营</a>
         <a v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-semibold text-white hover:bg-white/10"><MessageSquare :size="17" aria-hidden="true" />账户工单运营</a>
-        <a
-          v-for="module in moduleSummaries"
-          :key="module.id"
-          :href="`#module-${module.id}`"
-          class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-medium text-white/75 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hk-accent)]"
-        >
-          <component :is="icons[module.id]" :size="17" aria-hidden="true" />
-          {{ module.name }}
-        </a>
+        <template v-if="isOverviewPage">
+          <a
+            v-for="module in moduleSummaries"
+            :key="module.id"
+            :href="`#module-${module.id}`"
+            class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base font-medium text-white/75 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hk-accent)]"
+          >
+            <component :is="icons[module.id]" :size="17" aria-hidden="true" />
+            {{ module.name }}
+          </a>
+        </template>
       </nav>
 
       <div class="mt-auto p-4 text-sm leading-6 text-white/85">非河南大学官方项目<br />运营管理后台</div>
@@ -173,11 +182,13 @@ const visibleCount = computed(() => summaries.value.filter((summary) => summary.
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.membership.write')" as-child><a :href="accountMembershipsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><ShieldCheck :size="18" />会员权益运营</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.points.adjust')" as-child><a :href="accountPointsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><Activity :size="18" />积分账本运营</a></DialogClose>
                 <DialogClose v-if="consoleSession?.access_context.permissions.includes('account.tickets.read')" as-child><a :href="accountTicketsHref" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white"><MessageSquare :size="18" />账户工单运营</a></DialogClose>
-                <DialogClose v-for="module in moduleSummaries" :key="module.id" as-child>
-                  <a :href="`#module-${module.id}`" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white/85 hover:bg-white/10">
-                    <component :is="icons[module.id]" :size="18" aria-hidden="true" />{{ module.name }}
-                  </a>
-                </DialogClose>
+                <template v-if="isOverviewPage">
+                  <DialogClose v-for="module in moduleSummaries" :key="module.id" as-child>
+                    <a :href="`#module-${module.id}`" class="flex min-h-11 items-center gap-3 rounded-[var(--hk-radius-control)] px-3 text-base text-white/85 hover:bg-white/10">
+                      <component :is="icons[module.id]" :size="18" aria-hidden="true" />{{ module.name }}
+                    </a>
+                  </DialogClose>
+                </template>
               </nav>
             </DialogContent>
           </DialogPortal>

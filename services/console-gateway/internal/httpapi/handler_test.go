@@ -20,6 +20,9 @@ import (
 
 	accountportfolioapi "henukit.dev/console-gateway/internal/accountportfolio"
 	"henukit.dev/console-gateway/internal/contract"
+	foodapi "henukit.dev/console-gateway/internal/food"
+	libraryapi "henukit.dev/console-gateway/internal/library"
+	noticeapi "henukit.dev/console-gateway/internal/notice"
 	"henukit.dev/console-gateway/internal/platformcore"
 	"henukit.dev/console-gateway/internal/session"
 )
@@ -1073,4 +1076,48 @@ func testRedis(t *testing.T) *redis.Client {
 	}
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+// gateway.go declares each owner client as a concrete *T that stays nil when
+// the matching *_API_URL environment variable is empty, then passes that
+// variable across an interface boundary (either directly, for notice, or
+// through the ownerClients ...any slot, for library/food/account). A nil
+// concrete pointer boxed into an interface produces a non-nil interface value
+// (type=*T, value=nil): `client == nil` never fires, and calling a method on
+// it panics on a nil receiver. Every other test in this file passes a literal
+// `nil`, which sidesteps the box entirely and cannot reproduce this — this
+// test mirrors gateway.go's real construction path with the real client
+// types so it actually exercises the boxing.
+func TestUnconfiguredOwnerClientsReturnUnavailableInsteadOfPanicking(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	userID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+
+	var noticeClient *noticeapi.Client
+	var libraryClient *libraryapi.Client
+	var foodClient *foodapi.Client
+
+	handler, err := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, noticeClient, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), libraryClient, foodClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: userID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	for _, path := range []string{"/api/v1/notices", "/api/v1/library", "/api/v1/food"} {
+		request, _ := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatalf("%s: request failed instead of receiving a graceful response: %v", path, err)
+		}
+		body, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if response.StatusCode != http.StatusServiceUnavailable {
+			t.Fatalf("%s status=%d body=%s, want 503 DEPENDENCY_UNAVAILABLE", path, response.StatusCode, body)
+		}
+	}
 }

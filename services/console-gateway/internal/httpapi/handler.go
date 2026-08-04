@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -293,7 +294,7 @@ func (h *Handler) authorizeFood(writer http.ResponseWriter, request *http.Reques
 	if !ok {
 		return session.Value{}, false
 	}
-	if h.food == nil {
+	if isUnconfigured(h.food) {
 		h.unavailable(writer, request, errors.New("food API is not configured"))
 		return session.Value{}, false
 	}
@@ -517,7 +518,7 @@ func (h *Handler) authorizeAccount(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return session.Value{}, false
 	}
-	if h.account == nil {
+	if isUnconfigured(h.account) {
 		h.unavailable(writer, request, errors.New("account portfolio API is not configured"))
 		return session.Value{}, false
 	}
@@ -617,7 +618,7 @@ func (h *Handler) authorizeLibrary(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return session.Value{}, false
 	}
-	if h.library == nil {
+	if isUnconfigured(h.library) {
 		h.unavailable(writer, request, errors.New("library API is not configured"))
 		return session.Value{}, false
 	}
@@ -731,7 +732,7 @@ func (h *Handler) authorizeNotice(writer http.ResponseWriter, request *http.Requ
 	if !ok {
 		return session.Value{}, false
 	}
-	if h.notice == nil {
+	if isUnconfigured(h.notice) {
 		h.unavailable(writer, request, errors.New("notice API is not configured"))
 		return session.Value{}, false
 	}
@@ -1203,6 +1204,27 @@ func (h *Handler) writeOAuthPlatformError(writer http.ResponseWriter, request *h
 		return
 	}
 	h.writePlatformError(writer, request, err)
+}
+
+// isUnconfigured reports whether an owner client interface holds nothing
+// usable to call. `gateway.go` constructs each client conditionally as a
+// concrete *T that stays nil when the matching API URL is unset, then passes
+// that variable into an interface-typed parameter or the `ownerClients ...any`
+// slot. A nil *T boxed into an interface produces a non-nil interface value
+// (type=*T, value=nil), so a plain `client == nil` check never fires and the
+// method call below panics on a nil receiver. Only reflection sees through
+// that box.
+func isUnconfigured(client any) bool {
+	if client == nil {
+		return true
+	}
+	value := reflect.ValueOf(client)
+	switch value.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Chan, reflect.Func, reflect.Slice, reflect.Interface:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func (h *Handler) unavailable(writer http.ResponseWriter, request *http.Request, err error) {
