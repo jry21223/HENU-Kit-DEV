@@ -73,6 +73,13 @@ function statusLabel(status: ConsoleAccountTicket["status"]) {
   return status === "open" ? "待处理" : status === "in_progress" ? "处理中" : "已解决";
 }
 
+// Success feedback must name the transition that actually happened. Reporting
+// "已解决" for an in_progress transition tells the operator the ticket is done,
+// so they stop working it and the queue silently accumulates open tickets.
+function transitionFeedback(status: ConsoleTicketTransitionRequest["status"]) {
+  return status === "in_progress" ? "工单已开始处理。" : "工单已标记为已解决。";
+}
+
 function timestamp(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
@@ -128,7 +135,7 @@ async function finishResult(command: PendingCommand, result: AccountTicketWriteR
     persistPending();
     updateQueue(result.ticket);
     if (command.kind === "reply") replyBody.value = "";
-    feedback.value = command.kind === "reply" ? "回复已写入工单。" : "工单已标记为已解决。";
+    feedback.value = command.kind === "reply" ? "回复已写入工单。" : transitionFeedback(command.input.status);
     await refreshQueue();
     await openTicket(command.ticketID);
   } else if (result.state === "conflict") {

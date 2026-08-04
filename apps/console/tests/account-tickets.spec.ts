@@ -97,3 +97,31 @@ for (const viewport of [
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
 }
+
+// The success banner used to be the constant "工单已标记为已解决。" for BOTH
+// transitions, so starting work on a ticket told the operator it was resolved
+// — they stop working it and the queue silently accumulates. The existing test
+// above only ever clicks 标记已解决, where that constant happens to be correct,
+// so this path was never covered. 开始处理 only renders while the ticket is
+// still open, so this test must not reply first.
+test("starting work on a ticket reports that it started, not that it was resolved", async ({ page }) => {
+  await page.route(`**/api/v1/account/tickets/${ticketID}/transitions`, async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({ status: "in_progress", expected_version: 1 });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { ticket: { ...baseTicket, status: "in_progress", version: 2, updated_at: "2026-07-28T00:02:00Z" } },
+        request_id: "req_account_transition_started",
+      }),
+    });
+  });
+
+  await page.goto("/account");
+  await page.getByRole("button", { name: "练习记录问题" }).click();
+  await page.getByRole("button", { name: "开始处理" }).click();
+
+  const banner = page.getByRole("status");
+  await expect(banner).toContainText("工单已开始处理");
+  await expect(banner).not.toContainText("已解决");
+});
