@@ -129,7 +129,11 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI, verifier, 
 	var envelope struct {
 		Data struct {
 			User struct {
-				ID string `json:"id"`
+				// Platform Core serialises the subject as `user_id`
+				// (contract.PlatformUser); `id` decodes to the empty string and
+				// fails the UUID check below, which surfaces as
+				// DEPENDENCY_UNAVAILABLE on every Console sign-in.
+				UserID string `json:"user_id"`
 			} `json:"user"`
 			SessionExchangeToken string    `json:"session_exchange_token"`
 			ExpiresAt            time.Time `json:"expires_at"`
@@ -138,10 +142,10 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI, verifier, 
 	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope); err != nil || len(envelope.Data.SessionExchangeToken) < 32 || envelope.Data.ExpiresAt.IsZero() {
 		return Exchange{}, errors.New("invalid platform core exchange response")
 	}
-	if _, userErr := uuid.Parse(envelope.Data.User.ID); userErr != nil {
+	if _, userErr := uuid.Parse(envelope.Data.User.UserID); userErr != nil {
 		return Exchange{}, errors.New("invalid platform core exchange response")
 	}
-	return Exchange{UserID: envelope.Data.User.ID, ExchangeToken: envelope.Data.SessionExchangeToken, ExpiresAt: envelope.Data.ExpiresAt}, nil
+	return Exchange{UserID: envelope.Data.User.UserID, ExchangeToken: envelope.Data.SessionExchangeToken, ExpiresAt: envelope.Data.ExpiresAt}, nil
 }
 
 func (c *Client) CheckOverview(ctx context.Context, exchangeToken string) error {
