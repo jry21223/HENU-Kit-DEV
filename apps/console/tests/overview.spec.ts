@@ -153,3 +153,56 @@ test("expired session completes sign-in callback and returns to the intended pat
   await expect(page.locator(".metric-tile")).not.toHaveCount(0);
   expect((await context.cookies()).some((cookie) => cookie.name === "henukit_console_e2e" && cookie.httpOnly)).toBe(true);
 });
+
+// The sidebar rendered two navigation systems at once for any operator with
+// broad permissions: the granted-permission shortcuts (e.g. "平台运营工作台")
+// AND the overview's module-summary anchors (e.g. "Portal", "Platform
+// Operations") — the latter targeting `#module-<id>` elements that only exist
+// in the DOM on the overview page itself, so on any operations sub-page they
+// were both confusing duplicates and dead links. The anchors must appear only
+// on the overview page.
+test("sidebar module anchors appear only on the overview page, not on an operations sub-page", async ({ page }) => {
+  await page.route("**/api/v1/session", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" },
+          access_context: {
+            permissions: ["console.overview.read", "platform.operations.read", "platform.operations.write"],
+            scopes: [{ kind: "platform" }],
+            verified_at: "2026-07-19T00:00:00Z",
+          },
+          expires_at: "2026-07-19T00:05:00Z",
+        },
+        request_id: "req_browser_console",
+      }),
+    }),
+  );
+  await page.route("**/api/v1/operations", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          accounts: [], sessions: [],
+          mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 0, failed: 0, dead_letters: 0 },
+          inbox_items: [], audit: [], dependencies: { postgres: "ready", redis: "ready" },
+          generated_at: "2026-07-19T00:00:00Z",
+        },
+        request_id: "req_operations_envelope",
+      }),
+    }),
+  );
+
+  const moduleAnchors = page.locator('nav[aria-label="产品模块"] a[href^="#module-"]');
+
+  await page.goto("/operations");
+  await expect(page.getByRole("heading", { name: "平台运营工作台" })).toBeVisible();
+  await expect(moduleAnchors).toHaveCount(0);
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "产品运行概览" })).toBeVisible();
+  await expect(moduleAnchors).toHaveCount(6);
+});
