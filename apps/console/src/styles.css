@@ -1,46 +1,55 @@
 @import "tailwindcss";
-@import "../../../packages/design-tokens/tokens.css";
 
+/* Console is an internal operations tool, not a brand surface. It deliberately
+   does NOT consume packages/design-tokens (the Portal's engineering-drawing
+   theme): a stylised palette costs operators reading speed on dense,
+   high-consequence screens. This file therefore carries shadcn-vue's stock
+   neutral scale unmodified, so every component renders the way the library
+   was designed and tested to look. */
 :root {
-  /* Font families are loaded via <link> in index.html (Google Fonts). Define
-     the same variable contract as the Portal's next/font variable so
-     tokens.css --hk-font-display/--hk-font-mono resolve to real webfonts. */
-  --font-space-grotesk: "Space Grotesk";
-  --font-plex-mono: "IBM Plex Mono";
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --radius: 0.625rem;
 
-  /* shadcn-vue contract bridged to the engineering-drawing design tokens.
-     Components consume bg-background/text-foreground/border-border/… and
-     therefore inherit the HENU Kit palette with no extra configuration. */
-  --background: var(--hk-paper);
-  --foreground: var(--hk-ink);
-  --card: var(--hk-paper-raised);
-  --card-foreground: var(--hk-ink);
-  --popover: var(--hk-paper-raised);
-  --popover-foreground: var(--hk-ink);
-  --primary: var(--hk-ink);
-  --primary-foreground: var(--hk-paper);
-  --secondary: var(--hk-accent-soft);
-  --secondary-foreground: var(--hk-accent-deep);
-  --muted: var(--hk-paper);
-  --muted-foreground: var(--hk-ink-muted);
-  --accent: var(--hk-accent-soft);
-  --accent-foreground: var(--hk-accent-deep);
-  --destructive: var(--hk-danger);
-  --destructive-foreground: var(--hk-paper-raised);
-  --border: var(--hk-line);
-  --input: var(--hk-line);
-  --ring: var(--hk-focus-ring);
-  --radius: 0.25rem;
+  /* Status hues for operational state. Kept close to the neutral scale's
+     chroma so a page full of badges stays calm. */
+  --success: oklch(0.55 0.13 155);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.68 0.15 70);
+  --warning-foreground: oklch(0.205 0 0);
+  --info: oklch(0.55 0.16 255);
+  --info-foreground: oklch(0.985 0 0);
+
+  /* Sidebar reads as a quiet surface beside the content, not an ink slab. */
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
 }
 
 @theme inline {
-  --font-display: var(--hk-font-display);
-  --font-sans: var(--hk-font-sans);
-  --font-mono: var(--hk-font-mono);
-  --color-kit-paper: var(--hk-paper);
-  --color-kit-ink: var(--hk-ink);
-  --color-kit-accent: var(--hk-accent);
-  --color-kit-line: var(--hk-line);
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -60,8 +69,22 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: calc(var(--radius) - 1px);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
@@ -77,9 +100,11 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--hk-paper);
-  font-family: var(--hk-font-sans);
-  line-height: var(--hk-line-height-body);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -89,190 +114,290 @@ textarea {
   font: inherit;
 }
 
-/* Engineering-drawing sidebar: ink black panel, paper text, accent index marks. */
-.console-sidebar {
-  position: fixed;
-  inset: 0 auto 0 0;
-  z-index: 20;
-  display: none;
-  width: 16.5rem;
-  flex-direction: column;
-  background: var(--hk-ink);
-  border-right: 1px solid var(--hk-line-dark);
-}
-
-.console-sidebar a {
-  color: rgb(242 240 234 / 78%);
-  font-family: var(--hk-font-mono);
-  font-size: 0.8125rem;
-  letter-spacing: 0.08em;
-}
-
-.console-sidebar a:hover {
-  color: var(--hk-accent);
-  background: rgb(255 255 255 / 6%);
-}
-
+/* Dense operational tables and long identifiers need to wrap rather than push
+   the page into horizontal scroll on narrow screens. */
 .console-main {
   min-width: 0;
-}
-
-.console-topbar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  min-height: 4.25rem;
-  align-items: center;
-  gap: 0.75rem;
-  border-bottom: 1px solid var(--hk-line);
-  background: rgb(242 240 234 / 88%);
-  padding: 0.75rem 1rem;
-  backdrop-filter: blur(16px);
-}
-
-.search-control {
-  display: flex;
-  min-height: var(--hk-touch-target);
-  min-width: 0;
-  max-width: 24rem;
-  flex: 1;
-  align-items: center;
-  gap: 0.6rem;
-  border: 1px solid var(--hk-line);
-  border-radius: var(--hk-radius-control);
-  background: #fff;
-  padding: 0 0.85rem;
-  color: var(--hk-ink-muted);
-}
-
-.search-control input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--hk-ink);
-}
-
-.operator-avatar {
-  display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
-  place-items: center;
-  border-radius: 0.125rem;
-  background: var(--hk-ink);
-  color: var(--hk-paper);
-  font-family: var(--hk-font-mono);
-  font-size: var(--hk-font-size-meta);
-  font-weight: 700;
-}
-
-.overview-hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1.5rem;
-}
-
-.eyebrow {
-  color: var(--hk-accent);
-  font-family: var(--hk-font-mono);
-  font-size: var(--hk-font-size-meta);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.access-context {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  border: 1px solid var(--hk-line);
-  border-radius: var(--hk-radius-card);
-  background: white;
-  padding: 0.7rem 0.85rem;
-  font-size: var(--hk-font-size-meta);
-}
-
-.access-context span {
-  color: var(--hk-ink-muted);
-}
-
-code {
-  border-radius: var(--hk-radius-control);
-  background: var(--hk-accent-soft);
-  padding: 0.35rem 0.55rem;
-  color: var(--hk-accent-deep);
-  font-family: var(--hk-font-mono);
-  font-size: var(--hk-font-size-meta);
-}
-
-.operation-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 1rem; margin-top: 1.5rem; }
-.operation-summary-grid article, .operation-panel, .operation-state, .operation-notice { border: 1px solid var(--hk-line); border-radius: var(--hk-radius-card); background: white; }
-.operation-summary-grid article { display: grid; gap: .25rem; padding: 1rem; }
-.operation-summary-grid span, .operation-row p, .compact-row span { color: var(--hk-ink-muted); font-size: .875rem; }
-.operation-summary-grid strong { font-size: 1.35rem; }
-.operation-panel { margin-top: 1rem; padding: 1rem; overflow-wrap: anywhere; }
-.operation-panel h2 { margin: 0 0 .85rem; font-size: 1.05rem; font-weight: 700; }
-.operation-list { display: grid; gap: .75rem; }
-.operation-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--hk-line); padding-top: .75rem; }
-.operation-row code { display: inline-block; margin: .25rem .25rem 0 0; }
-.operation-actions { display: flex; align-items: end; gap: .5rem; flex-wrap: wrap; }
-.operation-actions label { display: grid; gap: .2rem; font-size: .75rem; color: var(--hk-ink-muted); }
-.operation-panel button, .operation-notice button { min-height: 2.75rem; border-radius: var(--hk-radius-control); background: var(--hk-ink); padding: .5rem .8rem; color: var(--hk-paper); font-weight: 700; }
-.operation-panel button:hover, .operation-notice button:hover { background: var(--hk-accent); }
-.operation-panel button:disabled { opacity: .5; }
-.operation-panel select { min-height: 2.75rem; border: 1px solid var(--hk-line); border-radius: var(--hk-radius-control); background: white; padding: .4rem; }
-.operation-panel input { min-height: 2.75rem; min-width: 0; border: 1px solid var(--hk-line); border-radius: var(--hk-radius-control); background: white; padding: .4rem; }
-.account-access-editor { min-width: 0; flex: 1; }
-.grant-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); align-items: end; gap: .5rem; margin-top: .65rem; padding: .65rem; border-radius: var(--hk-radius-card); background: var(--hk-paper); }
-.grant-editor label { display: grid; gap: .2rem; color: var(--hk-ink-muted); font-size: .75rem; }
-.operation-panel .secondary-action { background: transparent; border: 1px solid var(--hk-line); color: var(--hk-ink); }
-.operation-panel .secondary-action:hover { border-color: var(--hk-ink); background: transparent; }
-.operation-two-column { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.compact-row { display: grid; gap: .2rem; border-top: 1px solid var(--hk-line); padding: .65rem 0; }
-.mail-grid { display: grid; grid-template-columns: 1fr auto; gap: .5rem 1rem; }
-.mail-grid dd { font-weight: 700; }
-.operation-state, .operation-notice { margin-top: 1rem; padding: 1rem; }
-
-@media (max-width: 700px) {
-  .operation-row { align-items: stretch; flex-direction: column; }
-  .operation-actions { align-items: stretch; flex-direction: column; }
-  .operation-two-column { grid-template-columns: 1fr; }
-}
-
-@media (min-width: 1024px) {
-  .console-sidebar {
-    display: flex;
-  }
-
-  .console-main {
-    margin-left: 16.5rem;
-  }
-
-  .console-topbar {
-    padding-inline: 2rem;
-  }
-}
-
-@media (max-width: 520px) {
-  .console-topbar {
-    gap: 0.5rem;
-  }
-
-  .search-control {
-    display: none;
-  }
-
-  .operator-avatar {
-    display: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Shared operational surfaces.
+
+   These class names predate the component kit and are consumed across the
+   seven operations views. They are kept as names — rewriting the markup of
+   every view at once would be a large, hard-to-review change — but restyled
+   onto the semantic tokens above, so they now match the shadcn components
+   they sit beside instead of the retired engineering-drawing theme.
+   --------------------------------------------------------------------------- */
+@layer components {
+  /* Section eyebrow above a page title. Quiet label, not a brand accent. */
+  .eyebrow {
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+
+  /* Right-hand summary chip in a page header (e.g. "可读写 / 平台权限"). */
+  .access-context {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--muted-foreground);
+  }
+
+  .access-context strong {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+
+  /* Inline identifiers. Muted chip, never a coloured brand token. */
+  code {
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--muted);
+    padding: 0.15em 0.4em;
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    font-size: 0.8125em;
+  }
+
+  /* Counter tiles. */
+  .operation-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+
+  .operation-summary-grid article {
+    display: grid;
+    gap: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+    padding: 0.875rem 1rem;
+  }
+
+  .operation-summary-grid span {
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+  }
+
+  .operation-summary-grid strong {
+    font-size: 1.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  /* Content panels, plus the state/notice banners that share their shell. */
+  .operation-panel,
+  .operation-state,
+  .operation-notice {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+  }
+
+  .operation-panel {
+    margin-top: 1rem;
+    padding: 1.25rem;
+    overflow-wrap: anywhere;
+  }
+
+  .operation-panel h2 {
+    margin: 0 0 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .operation-state,
+  .operation-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
+    color: var(--muted-foreground);
+  }
+
+  .operation-notice {
+    border-left: 3px solid var(--info);
+    color: var(--foreground);
+  }
+
+  .operation-list {
+    display: grid;
+    gap: 0;
+  }
+
+  .operation-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-top: 1px solid var(--border);
+    padding: 0.875rem 0;
+  }
+
+  .operation-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .operation-row p,
+  .compact-row span {
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+  }
+
+  .operation-row code {
+    display: inline-block;
+    margin: 0.25rem 0.25rem 0 0;
+  }
+
+  .operation-actions {
+    display: flex;
+    align-items: end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .operation-actions label,
+  .grant-editor label {
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+
+  /* Controls inside panels, matched to the Input/Button components. */
+  .operation-panel button,
+  .operation-notice button {
+    min-height: 2.25rem;
+    border: 1px solid var(--primary);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--primary);
+    padding: 0.4rem 0.85rem;
+    color: var(--primary-foreground);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: opacity 120ms ease;
+  }
+
+  .operation-panel button:hover,
+  .operation-notice button:hover {
+    opacity: 0.9;
+  }
+
+  .operation-panel button:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  .operation-panel .secondary-action {
+    border-color: var(--border);
+    background: var(--card);
+    color: var(--foreground);
+  }
+
+  .operation-panel .secondary-action:hover {
+    background: var(--accent);
+    opacity: 1;
+  }
+
+  .operation-panel select,
+  .operation-panel input {
+    min-height: 2.25rem;
+    min-width: 0;
+    border: 1px solid var(--input);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--card);
+    padding: 0.4rem 0.6rem;
+    font-size: 0.875rem;
+  }
+
+  .operation-panel select:focus-visible,
+  .operation-panel input:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+
+  .account-access-editor {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .grant-editor {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+    align-items: end;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 0.75rem;
+    background: var(--muted);
+  }
+
+  .operation-two-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .compact-row {
+    display: grid;
+    gap: 0.2rem;
+    border-top: 1px solid var(--border);
+    padding: 0.7rem 0;
+  }
+
+  .compact-row:first-of-type {
+    border-top: 0;
+  }
+
+  .mail-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .mail-grid dt {
+    color: var(--muted-foreground);
+  }
+
+  .mail-grid dd {
+    margin: 0;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (max-width: 700px) {
+  .operation-row,
+  .operation-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .operation-two-column {
+    grid-template-columns: 1fr;
   }
 }

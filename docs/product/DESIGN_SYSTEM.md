@@ -1,9 +1,14 @@
 # HENU Kit Design System
 
-> 状态：Baseline v2.0
-> 适用范围：主站（Portal）、管理后台（Console）、资料库、QuizCraft、校园生活模块及相关公开页面
+> 状态：Baseline v2.1
+> 适用范围：主站（Portal）、资料库、QuizCraft、校园生活模块及相关**面向学生的公开页面**
 > 本文描述 HENU Kit 自有视觉系统，不代表河南大学官方视觉识别规范。
-> 视觉基准以线上主站 `henukit.cn` 为准；管理后台（Console）必须与主站共享同一套颜色、字体与形状体系，不发展独立主题。
+> 视觉基准以线上主站 `henukit.cn` 为准。
+>
+> **管理后台（Console）不在本基线适用范围内。** Console 是仅供内部运营人员使用的工具，
+> 不是品牌触点：它的首要目标是让运营在高密度、高后果的界面上快速且准确地完成操作，
+> 风格化会直接增加认知负担。Console 因此使用 shadcn-vue 的原生中性色阶，
+> 不消费 `packages/design-tokens`，详见第 21 节。
 
 新增页面和功能必须遵守本基线。确需偏离时，应在 Issue 或 PR 中说明原因、影响范围、替代方案和清理期限。
 
@@ -54,7 +59,7 @@ HENU Kit 是面向河南大学学生的统一校园工具系统，由学生自�
 
 ## 3. 色彩
 
-视觉基准是线上主站 `henukit.cn` 的工程图纸体系：纸白底、墨色线条与文字、橙色强调。设计 token 位于 `packages/design-tokens`，全部前端（含 Console）必须消费同一套 token。
+视觉基准是线上主站 `henukit.cn` 的工程图纸体系：纸白底、墨色线条与文字、橙色强调。设计 token 位于 `packages/design-tokens`，**面向学生的全部前端**必须消费同一套 token。Console 不在此列（见第 21 节）。
 
 ### 强调橙（主品牌色）
 
@@ -91,7 +96,7 @@ HENU Kit 是面向河南大学学生的统一校园工具系统，由学生自�
 - 墨色与文字约 20%。
 - 强调橙和其他强调色不超过 10%。
 - 每页只使用一个主要强调色。
-- 美食、学习、工具与 Console 模块不得发展彼此无关的主题色系统；所有颜色必须来自同一 token 集。
+- 美食、学习与工具模块不得发展彼此无关的主题色系统；所有颜色必须来自同一 token 集。
 
 ## 4. 排版
 
@@ -117,7 +122,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 | Body | 16–18px | 16px | 正文 |
 | Meta | 13–14px | 13–14px | 标签和辅助信息 |
 
-操作页降低标题张力，优先扫描效率。正文行宽建议不超过 72 个中文字符。等宽编号标签（如 `01 / 02 / 03`、`A-01`）是主站的工程图纸风格标记，Console 与主站页面同样使用。
+操作页降低标题张力，优先扫描效率。正文行宽建议不超过 72 个中文字符。等宽编号标签（如 `01 / 02 / 03`、`A-01`）是主站的工程图纸风格标记，仅用于学生端页面。
 
 ## 5. 间距与形状
 
@@ -224,7 +229,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 ## 14. 统一账户和隐私界面
 
 - 账户入口使用 `account.henukit.cn`（备案迁移期间 `account.superhuazai.me` 保持可用）。
-- 管理后台入口使用 `console.henukit.cn`，与主站共享品牌与设计体系。
+- 管理后台入口使用 `console.henukit.cn`；它共享品牌归属与账户体系，但视觉上是内部工具（见第 21 节）。
 - 学生邮箱验证码只证明邮箱控制权，不描述为学校认证。
 - 发件域使用 `notify.henukit.cn`，发件人不得暗示官方身份。
 - 验证码 5–10 分钟过期、单次使用，至少 60 秒重发等待。
@@ -293,7 +298,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - 资料库只展示资料。
 - QuizCraft 是唯一刷题产品。
 - 子产品可以独立部署，但统一设计、账户和跳转。
-- 管理后台（Console）与主站共享同一套设计 token，不发展独立主题。
+- 管理后台（Console）是内部运营工具，不适用本基线；它使用组件库原生中性色阶，见第 21 节。
 - 资料库保留轻量“打开资料册”。
 - 计划使用 `henukit.cn`、`console.henukit.cn`、`study.henukit.cn`、`quiz.henukit.cn` 和 `account.henukit.cn`。
 - 统一账户考虑河南大学学生邮箱验证码登录。
@@ -305,3 +310,22 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - Portal 最终前端技术栈。
 - 跨框架共享组件是否只保留 token，还是建立 Web Components/多实现规范。
 - 统一账户首个正式接入站点和灰度规模。
+
+## 21. 管理后台（Console）
+
+Console 只面向内部运营人员，不是品牌触点。它的界面目标是让运营在高密度、高后果的
+屏幕上快速且准确地完成操作——授予权限、停用账户、群发通知、调整积分。风格化在这里
+不是加分项：它增加认知负担，也让"这一屏到底发生了什么"更难判断。
+
+因此 Console **不适用第 3–5 节的颜色、排版与形状规则**，也不消费 `packages/design-tokens`：
+
+- 颜色：直接使用 shadcn-vue 的原生中性色阶（`--background` / `--foreground` /
+  `--muted` / `--border` 等），不引入品牌强调色。状态色仅用于表达运营状态
+  （正常 / 警告 / 不可用），且必须与文字标签同时出现，不单独依赖颜色。
+- 排版：系统字体栈，不加载展示字体。
+- 形状：沿用组件库默认圆角，不套用主站的 4px 直角工程图纸风格。
+
+学生端产品仍然完全遵守本基线。改动 Console 的视觉不需要按第 18 节走颜色评审，
+但引入任何**新的**颜色语义（例如新增一种状态色）仍需说明理由。
+
+Console 的品牌归属声明（"学生自主运营 · 非河南大学官方项目"）保留，见第 16 节。

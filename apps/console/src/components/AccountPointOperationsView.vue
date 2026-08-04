@@ -183,7 +183,7 @@ watch(
     <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
       <form class="operation-panel !mt-0" @submit.prevent="submitAdjustment">
         <h2>记账积分调整</h2>
-        <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">输入用户 ID，系统将直接为该用户记入或扣减积分，并记录操作日志。</p>
+        <p class="mt-2 text-sm leading-6 text-muted-foreground">输入用户 ID，系统将直接为该用户记入或扣减积分，并记录操作日志。</p>
         <Label class="mt-5 grid gap-2">
           目标用户 ID
           <Input v-model="targetUserID" required autocomplete="off" placeholder="目标用户 ID" :disabled="busy" class="font-mono" />
@@ -200,7 +200,7 @@ watch(
       </form>
 
       <Card class="!mt-0 p-4" data-account-points-result aria-labelledby="account-points-result-heading">
-        <div v-if="!adjustment" class="text-[var(--hk-ink-muted)]">
+        <div v-if="!adjustment" class="text-muted-foreground">
           提交后这里显示该用户的最新余额与本次记账明细。
         </div>
         <template v-else>
@@ -209,11 +209,11 @@ watch(
               <p class="eyebrow">账本已确认</p>
               <h2 id="account-points-result-heading" class="mt-1 text-xl font-bold">当前积分余额 {{ formatPoints(adjustment.balance) }}</h2>
             </div>
-            <span class="rounded-full bg-[var(--hk-paper)] px-3 py-1 text-sm">{{ adjustment.entry.amount > 0 ? "+" : "" }}{{ formatPoints(adjustment.entry.amount) }}</span>
+            <span class="rounded-full bg-muted px-3 py-1 text-sm">{{ adjustment.entry.amount > 0 ? "+" : "" }}{{ formatPoints(adjustment.entry.amount) }}</span>
           </div>
-          <dl class="mt-5 grid gap-3 border-t border-[var(--hk-line)] pt-5 text-sm">
-            <div class="grid gap-1"><dt class="text-[var(--hk-ink-muted)]">记账原因</dt><dd>{{ adjustment.entry.reason }}</dd></div>
-            <div class="grid gap-1"><dt class="text-[var(--hk-ink-muted)]">记账时间（中国标准时间）</dt><dd>{{ formatTime(adjustment.entry.created_at) }}</dd></div>
+          <dl class="mt-5 grid gap-3 border-t border-border pt-5 text-sm">
+            <div class="grid gap-1"><dt class="text-muted-foreground">记账原因</dt><dd>{{ adjustment.entry.reason }}</dd></div>
+            <div class="grid gap-1"><dt class="text-muted-foreground">记账时间（中国标准时间）</dt><dd>{{ formatTime(adjustment.entry.created_at) }}</dd></div>
           </dl>
         </template>
       </Card>
