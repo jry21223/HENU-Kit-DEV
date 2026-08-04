@@ -31,8 +31,11 @@ func TestClientSignsExchangeAndNeverPlacesTokenInURL(t *testing.T) {
 			t.Errorf("credential leaked into URL: %s", request.URL)
 		}
 		writer.Header().Set("Content-Type", "application/json")
+		// Mirror contract.ExchangeAuthorizationCodeResponse exactly: Platform
+		// Core serialises the subject as `user_id`. Asserting a hand-made `id`
+		// here is what let the real decoder ship reading the wrong field.
 		_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{
-			"user":                   map[string]string{"id": "171f1c6f-7b10-4c92-91a2-b39bf5af5302"},
+			"user":                   map[string]string{"user_id": "171f1c6f-7b10-4c92-91a2-b39bf5af5302"},
 			"session_exchange_token": "exchange_token_with_at_least_32_characters", "expires_at": time.Now().Add(5 * time.Minute),
 		}})
 	}))
@@ -42,8 +45,11 @@ func TestClientSignsExchangeAndNeverPlacesTokenInURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	exchange, err := client.ExchangeCode(t.Context(), "authorization-code", "https://console.example/callback", strings.Repeat("v", 43), "idem_test_exchange")
-	if err != nil || exchange.UserID == "" || exchange.ExchangeToken == "" {
+	if err != nil || exchange.ExchangeToken == "" {
 		t.Fatalf("exchange = %+v, err=%v", exchange, err)
+	}
+	if exchange.UserID != "171f1c6f-7b10-4c92-91a2-b39bf5af5302" {
+		t.Fatalf("exchange.UserID = %q, want the subject Platform Core returned", exchange.UserID)
 	}
 }
 
