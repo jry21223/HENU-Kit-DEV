@@ -82,6 +82,11 @@ function BankCard({ bank, index }: { bank: BankSummary; index: number }) {
       <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">
         {bank.subject} · {bank.question_count} 题
       </p>
+      <div className="mt-5 border-t border-line pt-3">
+        <span className="font-mono text-xs tracking-wider text-ink/45">
+          题库接入中，暂不可练习
+        </span>
+      </div>
     </div>
   );
 }
