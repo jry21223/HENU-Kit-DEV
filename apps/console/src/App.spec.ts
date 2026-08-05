@@ -58,6 +58,8 @@ describe("Console Overview", () => {
     for (const excluded of ["社区", "支付", "刷题", "积分", "会员"]) expect(wrapper.text()).not.toContain(excluded);
     await wrapper.findAll("button").find((button) => button.text() === "批准投稿")!.trigger("click");
     await flushPromises();
+    await wrapper.findAll("button").find((button) => button.text() === "确认批准")!.trigger("click");
+    await flushPromises();
     expect(wrapper.text()).toContain("投稿已批准");
     expect(wrapper.text()).not.toContain("批准投稿");
     wrapper.unmount();
