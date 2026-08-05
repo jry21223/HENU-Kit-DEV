@@ -424,13 +424,24 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.equal(
     config.services["console-gateway"].environment.NOTICE_API_URL,
-    "http://notice:8094",
-    "Console must use the private Notice owner endpoint",
+    "",
+    "production Compose must keep the Notice owner endpoint unset so the module degrades until the env enables it",
   );
   assert.equal(
     config.services["console-gateway"].environment.FOOD_API_URL,
+    "",
+    "production Compose must keep the Food owner endpoint unset so the module degrades until the env enables it",
+  );
+  const withOwnerEndpoints = renderRuntimeConfig({ NOTICE_API_URL: "http://notice:8094", FOOD_API_URL: "http://food:8096" });
+  assert.equal(
+    withOwnerEndpoints.services["console-gateway"].environment.NOTICE_API_URL,
+    "http://notice:8094",
+    "Console must use the private Notice owner endpoint when the env enables it",
+  );
+  assert.equal(
+    withOwnerEndpoints.services["console-gateway"].environment.FOOD_API_URL,
     "http://food:8096",
-    "Console must use the private Food owner endpoint",
+    "Console must use the private Food owner endpoint when the env enables it",
   );
   assert.equal(
     config.services["console-gateway"].environment.NOTICE_SUMMARY_URL,
