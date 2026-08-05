@@ -188,6 +188,20 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /operations/account-lookups:
+    post:
+      tags: [Platform Operations]
+      operationId: lookupConsoleAccount
+      summary: Resolve one exact full email to the owning account identity
+      description: "Forwards the full email to Platform Core, which normalizes it exactly like the login path and returns only the resolved account id, display name, and status. The email is never echoed back, never placed in a URL or query string, and never logged. An unknown email returns account: null in the same envelope instead of a distinct error, so the response shape never distinguishes a miss from an empty lookup."
+      security: [{ consoleSession: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleAccountLookupRequest" } } } }
+      responses:
+        "200": { description: Resolved account identity, or account null for an unknown email, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountLookupResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /operations/sessions/{session_id}/revocations:
     post:
       tags: [Platform Operations]
@@ -1269,6 +1283,34 @@ components:
       properties:
         balance: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 }
         entry: { $ref: "#/components/schemas/ConsolePointLedgerEntry" }
+    ConsoleAccountLookupRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 5
+          maxLength: 320
+          pattern: '^[^\s@]+@[^\s@]+\.[^\s@]+$'
+    ConsoleAccountLookupResult:
+      type: object
+      additionalProperties: false
+      required: [account]
+      properties:
+        account:
+          oneOf:
+            - $ref: "#/components/schemas/ConsoleLookedUpAccount"
+            - type: "null"
+    ConsoleLookedUpAccount:
+      type: object
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string, maxLength: 80 }
+        status: { type: string, enum: [active, suspended, deleted] }
     ConsolePointLedgerEntry:
       type: object
       additionalProperties: false

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 
 import { Button, Card, Input, Label, PageHeader, Textarea } from "@/components/ui";
-import { adjustAccountPoints, type ConsoleAccountPointAdjustmentResult, type ConsolePointAdjustmentRequest } from "@/lib/console-gateway";
+import { adjustAccountPoints, lookupConsoleAccount, type ConsoleAccountPointAdjustmentResult, type ConsoleLookedUpAccount, type ConsolePointAdjustmentRequest } from "@/lib/console-gateway";
 
 const props = defineProps<{
   authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable";
@@ -11,22 +11,27 @@ const props = defineProps<{
 }>();
 
 type WorkspaceState = "loading" | "ready" | "signed_out" | "denied" | "unavailable";
+type LookupState = "idle" | "loading" | "ready" | "not_found" | "invalid" | "unavailable";
 type PendingCommand = {
   operatorID: string;
   input: ConsolePointAdjustmentRequest;
   key: string;
 };
 
-const targetUserID = ref("");
+const targetEmail = ref("");
+const account = ref<ConsoleLookedUpAccount>();
 const amount = ref("");
 const reason = ref("");
 const workspaceState = ref<WorkspaceState>("loading");
+const lookupState = ref<LookupState>("idle");
 const feedback = ref("");
 const busy = ref(false);
 const adjustment = ref<ConsoleAccountPointAdjustmentResult>();
+const confirm = ref<PendingCommand>();
 const pending = ref<PendingCommand>();
 const pendingStorageKey = "henukit.account-points.pending-command";
 const canAdjust = computed(() => props.permissions.includes("account.points.adjust"));
+let lookupToken = 0;
 
 function operationKey() {
   return `idem_account_points_${crypto.randomUUID()}`;
@@ -69,6 +74,26 @@ function restorePending(operatorID: string) {
   }
 }
 
+function resetLookup() {
+  lookupToken += 1;
+  account.value = undefined;
+  lookupState.value = "idle";
+  confirm.value = undefined;
+}
+
+function accountStatusLabel(status: string) {
+  if (status === "active") return "正常";
+  if (status === "suspended") return "已停用";
+  if (status === "deleted") return "已删除";
+  return status;
+}
+
+// accountName echoes the resolved display name; legacy rows may carry an empty
+// label, which must never render as a blank confirmation target.
+function accountName(value?: string) {
+  return value && value.trim().length > 0 ? value : "（未设置姓名）";
+}
+
 function formatPoints(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
@@ -79,6 +104,40 @@ function formatTime(value: string) {
     dateStyle: "medium",
     timeStyle: "medium",
   }).format(new Date(value));
+}
+
+async function lookupAccount() {
+  const email = targetEmail.value.trim();
+  if (!email || busy.value) return;
+  const token = ++lookupToken;
+  lookupState.value = "loading";
+  account.value = undefined;
+  confirm.value = undefined;
+  feedback.value = "";
+  const result = await lookupConsoleAccount(email);
+  if (token !== lookupToken || targetEmail.value.trim() !== email) return;
+  if (result.state === "authenticated") {
+    if (!result.account) {
+      lookupState.value = "not_found";
+      return;
+    }
+    account.value = result.account;
+    lookupState.value = "ready";
+    return;
+  }
+  if (result.state === "signed_out") {
+    persistPending(pending.value);
+    workspaceState.value = "signed_out";
+    lookupState.value = "idle";
+    return;
+  }
+  if (result.state === "denied") {
+    persistPending(pending.value);
+    workspaceState.value = "denied";
+    lookupState.value = "idle";
+    return;
+  }
+  lookupState.value = result.state === "invalid" ? "invalid" : "unavailable";
 }
 
 async function finish(command: PendingCommand) {
@@ -116,25 +175,49 @@ async function finish(command: PendingCommand) {
       : result.state === "denied"
         ? "当前账户缺少积分调整权限。"
         : result.state === "invalid"
-          ? "请求内容无效；请检查用户 ID、增减积分和原因。"
+          ? "请求内容无效；请检查账户、增减积分和原因。"
           : "积分调整没有完成，请稍后刷新页面重试。";
   }
   busy.value = false;
 }
 
-async function submitAdjustment() {
+// requestAdjustment opens the single confirmation step, which merges the
+// account-name echo with the #238 write confirmation: it restates the target
+// name and the signed amount and states that the ledger entry is irreversible.
+// Cancel performs no write, and nothing is persisted before confirmation. The
+// pending retry record stores only the resolved account id inside the request,
+// never the lookup email.
+function requestAdjustment() {
   const input: ConsolePointAdjustmentRequest = {
-    user_id: targetUserID.value.trim(),
+    user_id: account.value?.id ?? "",
     amount: parseAmount(amount.value) ?? 0,
     reason: reason.value.trim(),
   };
-  if (busy.value || !props.operatorID || !validInput(input)) {
-    feedback.value = "请填写正确的用户 ID、非零整数积分和不超过 1000 字的操作原因。";
+  if (busy.value || !props.operatorID || !account.value || !validInput(input)) {
+    feedback.value = "请先查找并核对账户，再填写非零整数积分和不超过 1000 字的操作原因。";
     return;
   }
-  const command: PendingCommand = { operatorID: props.operatorID, input, key: operationKey() };
+  confirm.value = { operatorID: props.operatorID, input, key: operationKey() };
+}
+
+// While the confirmation step is open, form submission (including Enter)
+// must not rebuild or dismiss it.
+function submitForm() {
+  if (confirm.value || busy.value) return;
+  requestAdjustment();
+}
+
+function confirmAdjustment() {
+  const command = confirm.value;
+  if (!command) return;
+  confirm.value = undefined;
   persistPending(command);
-  await finish(command);
+  void finish(command);
+}
+
+function cancelAdjustment() {
+  confirm.value = undefined;
+  feedback.value = "已取消，未写入任何积分流水。";
 }
 
 watch(
@@ -147,12 +230,12 @@ watch(
     }
     if (authState === "loading") {
       workspaceState.value = "loading";
-      adjustment.value = undefined;
+      resetLookup();
       return;
     }
     persistPending(pending.value);
     workspaceState.value = authState === "signed_out" ? "signed_out" : authState === "denied" || !hasPermission ? "denied" : "unavailable";
-    adjustment.value = undefined;
+    resetLookup();
   },
   { immediate: true },
 );
@@ -181,40 +264,69 @@ watch(
     <div v-else-if="workspaceState === 'unavailable'" class="operation-state">积分服务暂时不可用，请稍后重试。</div>
 
     <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
-      <form class="operation-panel !mt-0" @submit.prevent="submitAdjustment">
+      <form class="operation-panel !mt-0" @submit.prevent="submitForm">
         <h2>记账积分调整</h2>
-        <p class="mt-2 text-sm leading-6 text-muted-foreground">输入用户 ID，系统将直接为该用户记入或扣减积分，并记录操作日志。</p>
-        <Label class="mt-5 grid gap-2">
-          目标用户 ID
-          <Input v-model="targetUserID" required autocomplete="off" placeholder="目标用户 ID" :disabled="busy" class="font-mono" />
-        </Label>
+        <p class="mt-2 text-sm leading-6 text-muted-foreground">先按完整邮箱查找账户并核对姓名，再填写积分变更。</p>
+        <div class="mt-5 flex items-end gap-2">
+          <Label class="grid flex-1 gap-2">
+            完整邮箱
+            <Input v-model="targetEmail" required type="email" inputmode="email" autocomplete="off" placeholder="student@stu.henu.edu.cn" :disabled="busy || lookupState === 'loading'" @input="resetLookup" />
+          </Label>
+          <Button type="button" :disabled="busy || lookupState === 'loading' || !targetEmail.trim()" @click="lookupAccount">查找账户</Button>
+        </div>
+        <div v-if="lookupState === 'not_found'" class="mt-3 text-sm leading-6 text-muted-foreground">没有找到该邮箱对应的账户。请核对邮箱后重试；这不是服务不可用。</div>
+        <div v-else-if="lookupState === 'invalid'" class="mt-3 text-sm leading-6 text-muted-foreground">邮箱格式不对，请检查后重试。</div>
+        <div v-else-if="lookupState === 'unavailable'" class="mt-3 text-sm leading-6 text-muted-foreground">账户查找服务暂时不可用，请稍后再试。</div>
+        <div v-else-if="lookupState === 'ready' && account" class="mt-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
+          已核对账户：<strong>{{ accountName(account.display_name) }}</strong>（{{ accountStatusLabel(account.status) }}）
+        </div>
+
         <Label class="mt-4 grid gap-2">
           积分变更
-          <Input v-model="amount" required inputmode="numeric" autocomplete="off" placeholder="正数增加，负数扣减" :disabled="busy" />
+          <Input v-model="amount" required inputmode="numeric" autocomplete="off" placeholder="正数增加，负数扣减" :disabled="busy || !account" />
         </Label>
         <Label class="mt-4 grid gap-2">
           操作原因
-          <Textarea v-model="reason" required maxlength="1000" rows="4" :disabled="busy" placeholder="记录可复核的调整原因。"></Textarea>
+          <Textarea v-model="reason" required maxlength="1000" rows="4" :disabled="busy || !account" placeholder="记录可复核的调整原因。"></Textarea>
         </Label>
-        <Button class="mt-4" type="submit" :disabled="busy">{{ busy ? "正在提交…" : "提交积分调整" }}</Button>
+
+        <div v-if="confirm && account" class="mt-4 rounded-md border border-border p-3" data-points-confirm-step>
+          <p class="font-medium">确认写入这笔积分流水？</p>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            将向「{{ accountName(account.display_name) }}」{{ confirm.input.amount > 0 ? "增加" : "扣减" }} {{ formatPoints(Math.abs(confirm.input.amount)) }} 积分，写入不可撤销的积分流水，并向该用户发送通知。
+          </p>
+          <div class="mt-3 flex gap-3">
+            <Button :disabled="busy" @click="confirmAdjustment">确认写入</Button>
+            <Button variant="outline" :disabled="busy" @click="cancelAdjustment">取消</Button>
+          </div>
+        </div>
+        <Button v-else class="mt-4" type="submit" :disabled="busy || !account || !amount.trim() || !reason.trim()">{{ busy ? "正在提交…" : "提交积分调整" }}</Button>
       </form>
 
-      <Card class="!mt-0 p-4" data-account-points-result aria-labelledby="account-points-result-heading">
-        <div v-if="!adjustment" class="text-muted-foreground">
-          提交后这里显示该用户的最新余额与本次记账明细。
-        </div>
-        <template v-else>
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p class="eyebrow">账本已确认</p>
-              <h2 id="account-points-result-heading" class="mt-1 text-xl font-bold">当前积分余额 {{ formatPoints(adjustment.balance) }}</h2>
+      <Card class="!mt-0 p-4" :data-account-lookup-state="lookupState" data-account-points-result aria-labelledby="account-points-result-heading">
+        <div v-if="lookupState === 'idle'" class="text-muted-foreground">输入完整邮箱查找账户并核对姓名后，这里显示该用户的最新余额与本次记账明细。</div>
+        <div v-else-if="lookupState === 'loading'" class="text-muted-foreground" aria-busy="true">正在查找账户…</div>
+        <div v-else-if="lookupState === 'not_found'" class="text-muted-foreground">没有找到该邮箱对应的账户。请核对邮箱后重试；这不是服务不可用。</div>
+        <div v-else-if="lookupState === 'invalid'" class="text-muted-foreground">邮箱格式不对，请检查后重试。</div>
+        <div v-else-if="lookupState === 'unavailable'" class="text-muted-foreground"><p>账户查找服务暂时不可用，请稍后再试。</p><Button class="mt-3" @click="lookupAccount">重新查找</Button></div>
+        <template v-else-if="account">
+          <p class="eyebrow">账户核对</p>
+          <h2 id="account-points-result-heading" class="mt-1 text-xl font-bold">{{ accountName(account.display_name) }}</h2>
+          <p class="mt-1 text-sm text-muted-foreground">账户状态：{{ accountStatusLabel(account.status) }}。请核对姓名后再提交。</p>
+          <template v-if="adjustment">
+            <div class="mt-5 flex flex-wrap items-start justify-between gap-3 border-t border-border pt-5">
+              <div>
+                <p class="eyebrow">账本已确认</p>
+                <h3 class="mt-1 text-lg font-bold">当前积分余额 {{ formatPoints(adjustment.balance) }}</h3>
+              </div>
+              <span class="rounded-full bg-muted px-3 py-1 text-sm">{{ adjustment.entry.amount > 0 ? "+" : "" }}{{ formatPoints(adjustment.entry.amount) }}</span>
             </div>
-            <span class="rounded-full bg-muted px-3 py-1 text-sm">{{ adjustment.entry.amount > 0 ? "+" : "" }}{{ formatPoints(adjustment.entry.amount) }}</span>
-          </div>
-          <dl class="mt-5 grid gap-3 border-t border-border pt-5 text-sm">
-            <div class="grid gap-1"><dt class="text-muted-foreground">记账原因</dt><dd>{{ adjustment.entry.reason }}</dd></div>
-            <div class="grid gap-1"><dt class="text-muted-foreground">记账时间（中国标准时间）</dt><dd>{{ formatTime(adjustment.entry.created_at) }}</dd></div>
-          </dl>
+            <dl class="mt-5 grid gap-3 border-t border-border pt-5 text-sm">
+              <div class="grid gap-1"><dt class="text-muted-foreground">记账原因</dt><dd>{{ adjustment.entry.reason }}</dd></div>
+              <div class="grid gap-1"><dt class="text-muted-foreground">记账时间（中国标准时间）</dt><dd>{{ formatTime(adjustment.entry.created_at) }}</dd></div>
+            </dl>
+          </template>
+          <p v-else class="mt-4 text-muted-foreground">提交后这里显示该用户的最新余额与本次记账明细。</p>
         </template>
       </Card>
     </div>

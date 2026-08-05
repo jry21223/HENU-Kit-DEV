@@ -13,6 +13,7 @@ const (
 	RevokeSessionRoute                  = "/api/v1/operations/sessions/{session_id}/revocations"
 	UpdateAccessRoute                   = "/api/v1/operations/users/{user_id}/access-updates"
 	OperationStatusRoute                = "/api/v1/operations/results/{operation}"
+	AccountLookupRoute                  = "/api/v1/operations/account-lookups"
 	NoticeSnapshotRoute                 = "/api/v1/notices"
 	NoticeSourceRoute                   = "/api/v1/notices/sources"
 	NoticeVersionRoute                  = "/api/v1/notices/sources/{source_id}/versions"
@@ -37,13 +38,21 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "5987f137ee26b95ae0d0a22ab22cfafafe0778c8b831eeab6f734cc5b8b4d630"
+	SourceSHA256                        = "90b526ae5a6ff24fd407c41f46165e0283f204ea2f350a6181bba2b300380915"
 )
 
 type ConsoleAccessContext struct {
 	Permissions []string       `json:"permissions"`
 	Scopes      []ConsoleScope `json:"scopes"`
 	VerifiedAt  time.Time      `json:"verified_at"`
+}
+
+type ConsoleAccountLookupRequest struct {
+	Email string `json:"email"`
+}
+
+type ConsoleAccountLookupResult struct {
+	Account any `json:"account"`
 }
 
 type ConsoleAccountMembership struct {
@@ -99,6 +108,12 @@ type ConsoleAccountTicketMessage struct {
 
 type ConsoleAccountTicketQueue struct {
 	Tickets []ConsoleAccountTicket `json:"tickets"`
+}
+
+type ConsoleLookedUpAccount struct {
+	DisplayName *string `json:"display_name,omitempty"`
+	ID          string  `json:"id"`
+	Status      string  `json:"status"`
 }
 
 type ConsoleMembershipMutationRequest struct {

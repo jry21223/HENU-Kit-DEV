@@ -131,3 +131,65 @@ func TestClientRejectsPlaintextRemotePlatformCore(t *testing.T) {
 		t.Fatal("expected plaintext remote Platform Core URL to be rejected")
 	}
 }
+
+func TestAccountLookupForwardsEmailOnlyInBodyAndNeverInURL(t *testing.T) {
+	const secret = "test-console-client-secret-with-entropy"
+	const sessionToken = "exchange_token_with_at_least_32_characters"
+	const email = "student@stu.henu.edu.cn"
+	var forwarded string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/v1/platform-operations/account-lookups" {
+			t.Errorf("account lookup request = %s %s", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("X-Session-Exchange-Token") != sessionToken {
+			t.Errorf("account lookup session token header is missing")
+		}
+		body, _ := io.ReadAll(request.Body)
+		forwarded = string(body)
+		digest := sha256.Sum256(body)
+		canonical := strings.Join([]string{request.Method, request.URL.Path, request.Header.Get("X-Timestamp"), request.Header.Get("X-Nonce"), hex.EncodeToString(digest[:])}, "\n")
+		mac := hmac.New(sha256.New, []byte(secret))
+		_, _ = mac.Write([]byte(canonical))
+		if request.Header.Get("X-Signature") != base64.RawURLEncoding.EncodeToString(mac.Sum(nil)) {
+			t.Errorf("account lookup signature is invalid")
+		}
+		if strings.Contains(request.URL.String(), email) {
+			t.Errorf("email leaked into URL: %s", request.URL)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{
+			"account": map[string]any{"id": "171f1c6f-7b10-4c92-91a2-b39bf5af5302", "display_name": "张同学", "status": "active"},
+		}})
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "console-gateway", secret, "active-key", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := client.AccountLookup(t.Context(), sessionToken, []byte(`{"email":"`+email+`"}`))
+	if err != nil || !strings.Contains(string(data), "张同学") {
+		t.Fatalf("lookup data=%s err=%v", data, err)
+	}
+	if strings.Contains(string(data), email) {
+		t.Errorf("Platform Core echoed the email back in the lookup response: %s", data)
+	}
+	var sent struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal([]byte(forwarded), &sent); err != nil || sent.Email != email {
+		t.Errorf("forwarded body=%q, want email %q", forwarded, email)
+	}
+}
+
+func TestAccountLookupMapsPlatformCoreErrorsWithoutEchoingTheEmail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "console-gateway", "secret-with-enough-entropy-at-least-32", "active-key", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.AccountLookup(t.Context(), "exchange_token_with_at_least_32_characters", []byte(`{"email":"absent@stu.henu.edu.cn"}`)); err == nil || strings.Contains(err.Error(), "absent@") {
+		t.Fatalf("lookup error=%v, want a non-echoing transport error", err)
+	}
+}

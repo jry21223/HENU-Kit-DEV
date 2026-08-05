@@ -1,8 +1,16 @@
-// Code generated from console-gateway.yaml (SHA256 5987f137ee26b95ae0d0a22ab22cfafafe0778c8b831eeab6f734cc5b8b4d630); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 90b526ae5a6ff24fd407c41f46165e0283f204ea2f350a6181bba2b300380915); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
   verified_at: string;
+}
+
+export interface ConsoleAccountLookupRequest {
+  email: string;
+}
+
+export interface ConsoleAccountLookupResult {
+  account: ConsoleLookedUpAccount | null;
 }
 
 export interface ConsoleAccountMembership {
@@ -58,6 +66,12 @@ export interface ConsoleAccountTicketMessage {
 
 export interface ConsoleAccountTicketQueue {
   tickets: Array<ConsoleAccountTicket>;
+}
+
+export interface ConsoleLookedUpAccount {
+  display_name?: string;
+  id: string;
+  status: "active" | "suspended" | "deleted";
 }
 
 export interface ConsoleMembershipMutationRequest {
@@ -572,6 +586,14 @@ function isConsoleAccessContext(value: unknown): value is ConsoleAccessContext {
   return isRecord(value) && "permissions" in value && Array.isArray(value["permissions"]) && value["permissions"].every((item) => typeof item === "string") && "scopes" in value && Array.isArray(value["scopes"]) && value["scopes"].every((item) => isConsoleScope(item)) && "verified_at" in value && isDateTime(value["verified_at"]) && Object.keys(value).every((key) => ["permissions","scopes","verified_at"].includes(key));
 }
 
+function isConsoleAccountLookupRequest(value: unknown): value is ConsoleAccountLookupRequest {
+  return isRecord(value) && "email" in value && typeof value["email"] === "string" && value["email"].length >= 5 && value["email"].length <= 320 && new RegExp("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").test(value["email"]) && Object.keys(value).every((key) => ["email"].includes(key));
+}
+
+function isConsoleAccountLookupResult(value: unknown): value is ConsoleAccountLookupResult {
+  return isRecord(value) && "account" in value && true && ([(isConsoleLookedUpAccount(value["account"])), (value["account"] === null)].filter(Boolean).length === 1) && Object.keys(value).every((key) => ["account"].includes(key));
+}
+
 function isConsoleAccountMembership(value: unknown): value is ConsoleAccountMembership {
   return isRecord(value) && "lifetime" in value && typeof value["lifetime"] === "boolean" && "plan" in value && typeof value["plan"] === "string" && ["free","lifetime"].includes(value["plan"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["lifetime","plan","version"].includes(key)) && true && (!(isRecord(value) && "plan" in value && value["plan"] === "free") || isRecord(value) && "lifetime" in value && value["lifetime"] === false) && true && (!(isRecord(value) && "plan" in value && value["plan"] === "lifetime") || isRecord(value) && "lifetime" in value && value["lifetime"] === true);
 }
@@ -606,6 +628,10 @@ function isConsoleAccountTicketMessage(value: unknown): value is ConsoleAccountT
 
 function isConsoleAccountTicketQueue(value: unknown): value is ConsoleAccountTicketQueue {
   return isRecord(value) && "tickets" in value && Array.isArray(value["tickets"]) && value["tickets"].length <= 500 && value["tickets"].every((item) => isConsoleAccountTicket(item)) && Object.keys(value).every((key) => ["tickets"].includes(key));
+}
+
+function isConsoleLookedUpAccount(value: unknown): value is ConsoleLookedUpAccount {
+  return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","id","status"].includes(key));
 }
 
 function isConsoleMembershipMutationRequest(value: unknown): value is ConsoleMembershipMutationRequest {
@@ -973,6 +999,23 @@ export async function resolvePlatformOperation(operation: "session_revoke" | "ac
   } catch {
     return { state: "unavailable" };
   }
+}
+
+export type AccountLookupResult =
+  | { state: "authenticated"; account: ConsoleLookedUpAccount | null }
+  | { state: "signed_out" | "denied" | "invalid" | "unavailable" };
+
+export async function lookupConsoleAccount(email: string): Promise<AccountLookupResult> {
+  try {
+    const response = await fetch("/api/v1/operations/account-lookups", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountLookupResult(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", account: envelope.data.account };
+  } catch { return { state: "unavailable" }; }
 }
 
 export type NoticeSnapshotResult =

@@ -57,6 +57,13 @@ func (c *Client) OperationStatus(ctx context.Context, exchangeToken, operation, 
 	return c.operationRequest(ctx, http.MethodGet, "/api/v1/platform-operations/operations/"+operation, exchangeToken, idempotencyKey, nil)
 }
 
+// AccountLookup resolves one exact full email to the owning Platform account.
+// The email travels only inside the request body and is never echoed back, so
+// it cannot appear in a URL, query string, or gateway log line.
+func (c *Client) AccountLookup(ctx context.Context, exchangeToken string, body []byte) (json.RawMessage, error) {
+	return c.operationRequest(ctx, http.MethodPost, "/api/v1/platform-operations/account-lookups", exchangeToken, "", body)
+}
+
 func (c *Client) operationRequest(ctx context.Context, method, path, exchangeToken, idempotencyKey string, body []byte) (json.RawMessage, error) {
 	request, err := c.signedRequest(ctx, method, path, body)
 	if err != nil {

@@ -78,7 +78,7 @@ func main() {
 		fail(errors.New("console gateway server must end with /api/v1"))
 	}
 	routes := operationRoutes(spec)
-	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "getConsoleFoodWorkspace", "executeConsoleFoodCommand", "getConsoleFoodOperationStatus", "getConsoleAccountMembership", "grantConsoleAccountMembership", "revokeConsoleAccountMembership", "adjustConsoleAccountPoints", "getConsoleAccountTickets", "getConsoleAccountTicket", "replyConsoleAccountTicket", "transitionConsoleAccountTicket", "closeConsoleMembershipOrder", "refundConsoleMembershipOrder", "getConsoleMembershipOrderRefund", "logoutConsoleSession"} {
+	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "lookupConsoleAccount", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "getConsoleFoodWorkspace", "executeConsoleFoodCommand", "getConsoleFoodOperationStatus", "getConsoleAccountMembership", "grantConsoleAccountMembership", "revokeConsoleAccountMembership", "adjustConsoleAccountPoints", "getConsoleAccountTickets", "getConsoleAccountTicket", "replyConsoleAccountTicket", "transitionConsoleAccountTicket", "closeConsoleMembershipOrder", "refundConsoleMembershipOrder", "getConsoleMembershipOrderRefund", "logoutConsoleSession"} {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
@@ -198,6 +198,7 @@ const (
 	RevokeSessionRoute = %q
 	UpdateAccessRoute = %q
 	OperationStatusRoute = %q
+	AccountLookupRoute = %q
 	NoticeSnapshotRoute = %q
 	NoticeSourceRoute = %q
 	NoticeVersionRoute = %q
@@ -225,7 +226,7 @@ const (
 	SourceSHA256 = %q
 )
 
-	`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"], routes["logoutConsoleSession"], digest)
+	`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["lookupConsoleAccount"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -409,6 +410,23 @@ export async function resolvePlatformOperation(operation: "session_revoke" | "ac
   } catch {
     return { state: "unavailable" };
   }
+}
+
+export type AccountLookupResult =
+  | { state: "authenticated"; account: ConsoleLookedUpAccount | null }
+  | { state: "signed_out" | "denied" | "invalid" | "unavailable" };
+
+export async function lookupConsoleAccount(email: string): Promise<AccountLookupResult> {
+  try {
+    const response = await fetch("{{ACCOUNT_LOOKUP_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountLookupResult(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", account: envelope.data.account };
+  } catch { return { state: "unavailable" }; }
 }
 
 export type NoticeSnapshotResult =
@@ -678,7 +696,7 @@ export function consoleLoginHref(): string {
 `
 	replacements := map[string]string{
 		"{{SHA}}": digest, "{{SCHEMAS}}": schemas.String(), "{{VALIDATORS}}": validators.String(),
-		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{OPERATIONS_ROUTE}}": routes["getConsolePlatformOperations"], "{{REVOKE_SESSION_ROUTE}}": routes["revokeConsolePlatformSession"], "{{UPDATE_ACCESS_ROUTE}}": routes["updateConsolePlatformAccess"], "{{OPERATION_STATUS_ROUTE}}": routes["getConsolePlatformOperationStatus"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
+		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{OPERATIONS_ROUTE}}": routes["getConsolePlatformOperations"], "{{REVOKE_SESSION_ROUTE}}": routes["revokeConsolePlatformSession"], "{{UPDATE_ACCESS_ROUTE}}": routes["updateConsolePlatformAccess"], "{{OPERATION_STATUS_ROUTE}}": routes["getConsolePlatformOperationStatus"], "{{ACCOUNT_LOOKUP_ROUTE}}": routes["lookupConsoleAccount"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
 		"{{NOTICE_ROUTE}}": routes["getConsoleNotices"], "{{NOTICE_SOURCE_ROUTE}}": routes["createConsoleNoticeSource"], "{{NOTICE_VERSION_ROUTE}}": routes["createConsoleNoticeVersion"], "{{NOTICE_REVIEW_ROUTE}}": routes["reviewConsoleNoticeVersion"], "{{NOTICE_DISTRIBUTION_ROUTE}}": routes["distributeConsoleNoticeVersion"], "{{NOTICE_OPERATION_ROUTE}}": routes["getConsoleNoticeOperationStatus"],
 		"{{LIBRARY_ROUTE}}": routes["getConsoleLibraryWorkspace"], "{{LIBRARY_COMMAND_ROUTE}}": routes["executeConsoleLibraryCommand"], "{{LIBRARY_OPERATION_ROUTE}}": routes["getConsoleLibraryOperationStatus"],
 		"{{FOOD_ROUTE}}": routes["getConsoleFoodWorkspace"], "{{FOOD_COMMAND_ROUTE}}": routes["executeConsoleFoodCommand"], "{{FOOD_OPERATION_ROUTE}}": routes["getConsoleFoodOperationStatus"],
@@ -752,6 +770,8 @@ func tsType(value schema) string {
 		return "Array<" + tsType(*value.Items) + ">"
 	case "object":
 		return tsObject(value)
+	case "null":
+		return "null"
 	default:
 		return "unknown"
 	}
@@ -873,6 +893,8 @@ func tsCheckBase(expression string, value schema) string {
 			}
 		}
 		return strings.Join(checks, " && ")
+	case "null":
+		return expression + " === null"
 	default:
 		return "true"
 	}

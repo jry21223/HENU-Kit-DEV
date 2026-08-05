@@ -47,6 +47,7 @@ type platformClient interface {
 	RevokeSession(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	UpdateAccess(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	OperationStatus(context.Context, string, string, string) (json.RawMessage, error)
+	AccountLookup(context.Context, string, []byte) (json.RawMessage, error)
 	CheckNotice(context.Context, string, string) error
 	CheckLibrary(context.Context, string, string) error
 	CheckFood(context.Context, string, string) error
@@ -197,6 +198,7 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Post(contract.RevokeSessionRoute, handler.revokePlatformSession)
 	router.Post(contract.UpdateAccessRoute, handler.updatePlatformAccess)
 	router.Get(contract.OperationStatusRoute, handler.getPlatformOperationStatus)
+	router.Post(contract.AccountLookupRoute, handler.lookupAccount)
 	router.Get(contract.NoticeSnapshotRoute, handler.getNotices)
 	router.Post(contract.NoticeSourceRoute, handler.createNoticeSource)
 	router.Post(contract.NoticeVersionRoute, handler.createNoticeVersion)
@@ -847,6 +849,29 @@ func (h *Handler) getPlatformOperationStatus(writer http.ResponseWriter, request
 	writeJSON(writer, request, http.StatusOK, data)
 }
 
+// lookupAccount resolves one exact full email to the owning Platform account.
+// The email stays inside the request body: it never enters a URL, query
+// string, or gateway log line, and Platform Core never echoes it back. An
+// unknown email resolves to a null account in the same envelope rather than a
+// distinct error, so the browser cannot confuse a miss with an outage.
+func (h *Handler) lookupAccount(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return
+	}
+	var input contract.ConsoleAccountLookupRequest
+	body, ok := decodeLookupInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	data, err := h.platform.AccountLookup(request.Context(), value.ExchangeToken, body)
+	if err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return
+	}
+	writeJSON(writer, request, http.StatusOK, data)
+}
+
 func decodeOperationInput(writer http.ResponseWriter, request *http.Request, target any) ([]byte, bool) {
 	key := request.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
@@ -865,6 +890,32 @@ func decodeOperationInput(writer http.ResponseWriter, request *http.Request, tar
 		return nil, false
 	}
 	return body, true
+}
+
+// decodeLookupInput reads the email lookup body without an idempotency key: a
+// lookup is read-only at Platform Core, so retrying it is always safe.
+func decodeLookupInput(writer http.ResponseWriter, request *http.Request, target *contract.ConsoleAccountLookupRequest) ([]byte, bool) {
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil || decoder.Decode(&struct{}{}) != io.EOF || !validLookupEmail(target.Email) {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请输入完整的邮箱地址")
+		return nil, false
+	}
+	body, err := json.Marshal(target)
+	if err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请输入完整的邮箱地址")
+		return nil, false
+	}
+	return body, true
+}
+
+var lookupEmailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+
+// validLookupEmail accepts only a complete mailbox address. Platform Core
+// performs the authoritative normalization; this check only keeps obviously
+// invalid input away from the owner boundary.
+func validLookupEmail(value string) bool {
+	return len(value) >= 5 && len(value) <= 320 && lookupEmailPattern.MatchString(value)
 }
 
 func decodeAccountCommand(writer http.ResponseWriter, request *http.Request, target any) ([]byte, bool) {
