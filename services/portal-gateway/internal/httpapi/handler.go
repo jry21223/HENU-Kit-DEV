@@ -240,8 +240,15 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		"verifier":  verifier,
 		"return_to": returnTo,
 	})
+	// The OAuth flow must survive the full email-code login: a signed-out
+	// browser lands on Platform Core's own login page after authorize, then
+	// the user reads the code from mail and enters it. A 5-minute window made
+	// the callback fail with missing oauth cookie for slow users; 30 minutes
+	// covers the verification code TTL plus reading mail while staying short
+	// enough to keep replay exposure bounded.
+	const oauthFlowTTL = 30 * time.Minute
 	key := fmt.Sprintf("portal:oauth-state:%s:%s", stateHash, browserHash)
-	h.redis.Set(r.Context(), key, payload, 5*time.Minute)
+	h.redis.Set(r.Context(), key, payload, oauthFlowTTL)
 
 	cookies := h.browserCookies(r)
 	http.SetCookie(w, &http.Cookie{
@@ -251,7 +258,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		Secure:   cookies.secure,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   300,
+		MaxAge:   int(oauthFlowTTL.Seconds()),
 	})
 
 	codeChallenge := s256Challenge(verifier)
