@@ -22,6 +22,7 @@ import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneBooks } from "@/components/site-hero/scenes";
 import { useReveal } from "@/components/account/use-reveal";
+import { useScrollRestoration } from "@/components/use-scroll-restoration";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
 
@@ -56,6 +57,7 @@ export default function LibraryHomePage() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   useReveal();
+  useScrollRestoration(loadState === "ready");
 
   const load = useCallback(async () => {
     setLoadState("loading");

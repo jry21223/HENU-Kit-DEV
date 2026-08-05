@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useReveal } from "@/components/account/use-reveal";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import Img from "@/components/ui/img";
+import { useScrollRestoration } from "@/components/use-scroll-restoration";
 import {
   fetchFoodPosts,
   formatPortalError,
@@ -49,6 +50,7 @@ export default function FoodBoardPage() {
   }, [load]);
 
   useReveal([campus, loadState]);
+  useScrollRestoration(loadState === "ready");
 
   const groups = useMemo(
     () => groupFoodPostsByTier(posts, campus),
