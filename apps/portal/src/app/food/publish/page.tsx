@@ -124,7 +124,7 @@ export default function FoodPublishPage() {
               </p>
             )}
             <Link
-              href="/food/leaderboard"
+              href="/food"
               className="mt-3 block border border-ink px-5 py-3 text-center font-mono text-xs tracking-[0.12em] transition-colors hover:bg-ink hover:text-paper"
             >
               先看看五档榜

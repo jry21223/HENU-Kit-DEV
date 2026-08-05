@@ -6,9 +6,8 @@ import AccountEntry from "@/components/account/account-entry";
 import { cn } from "@/lib/cn";
 
 const TABS = [
-  { href: "/food", index: "F-01", label: "首页", match: (p: string) => p === "/food" || p.startsWith("/food/campus") || p.startsWith("/food/post") },
-  { href: "/food/leaderboard", index: "F-02", label: "排行榜", match: (p: string) => p.startsWith("/food/leaderboard") },
-  { href: "/food/publish", index: "F-03", label: "提交推荐", match: (p: string) => p.startsWith("/food/publish") },
+  { href: "/food", index: "F-01", label: "榜单", match: (p: string) => p === "/food" || p.startsWith("/food/post") },
+  { href: "/food/publish", index: "F-02", label: "提交推荐", match: (p: string) => p.startsWith("/food/publish") },
 ];
 
 export default function FoodNav() {

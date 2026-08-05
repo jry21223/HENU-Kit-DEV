@@ -95,7 +95,7 @@ for (const viewport of [
       });
     });
 
-    await page.goto("/food/leaderboard", { waitUntil: "domcontentloaded" });
+    await page.goto("/food", { waitUntil: "domcontentloaded" });
 
     await expect(page.getByRole("heading", { name: "从夯到拉" })).toBeVisible();
     await expect(page.locator("[data-food-tier]")).toHaveCount(5);
@@ -126,7 +126,7 @@ test("an empty real response keeps the fixed five-tier frame", async ({
     });
   });
 
-  await page.goto("/food/leaderboard", { waitUntil: "domcontentloaded" });
+  await page.goto("/food", { waitUntil: "domcontentloaded" });
 
   await expect(page.locator("[data-food-tier]")).toHaveCount(5);
   await expect(page.locator("[data-food-tier-label]")).toHaveText([

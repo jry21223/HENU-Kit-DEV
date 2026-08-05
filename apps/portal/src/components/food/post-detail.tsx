@@ -124,7 +124,7 @@ export default function PostDetail({ id }: { id: string }) {
           商家档案不存在或已隐藏
         </p>
         <Link
-          href="/food/leaderboard"
+          href="/food"
           className="mt-6 inline-block font-mono text-sm text-accent hover:underline"
         >
           ← 返回五档榜
