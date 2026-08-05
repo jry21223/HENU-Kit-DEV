@@ -3,6 +3,7 @@ package library
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // StudyDB reads from the legacy Study API database.
@@ -53,14 +54,15 @@ func (db *StudyDB) GetCourses() ([]Course, error) {
 // GetMaterials returns materials from the Study API database.
 // Joins with courses to get subject info.
 func (db *StudyDB) GetMaterials() ([]Material, error) {
+	// No LIMIT: the catalogue is the whole point of the page, and truncating it
+	// silently hid a third of the mirrored materials.
 	rows, err := db.conn.Query(`
 		SELECT m.id, m.type, c.name as subject, m.title, m.description,
-		       m.access_level, m.file_size
+		       m.access_level, m.file_size, m.file_name, m.storage_key
 		FROM materials m
 		JOIN courses c ON c.id = m.course_id
 		WHERE m.status = 'published' AND m.deleted_at IS NULL
-		ORDER BY m.created_at DESC
-		LIMIT 100
+		ORDER BY c.name, m.title
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query materials: %w", err)
@@ -77,13 +79,15 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 			description sql.NullString
 			accessLevel string
 			fileSize    sql.NullInt64
+			fileName    sql.NullString
+			storageKey  sql.NullString
 		)
-		if err := rows.Scan(&id, &mtype, &subject, &title, &description, &accessLevel, &fileSize); err != nil {
+		if err := rows.Scan(
+			&id, &mtype, &subject, &title, &description,
+			&accessLevel, &fileSize, &fileName, &storageKey,
+		); err != nil {
 			return nil, fmt.Errorf("scan material: %w", err)
 		}
-
-		// Map Study API type to Portal type
-		portalType := mapMaterialType(mtype)
 
 		// Price: access_level "free" = 0, otherwise use a default
 		price := 0
@@ -97,20 +101,25 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 		}
 
 		materials = append(materials, Material{
-			ID:           id,
-			Type:         portalType,
-			Subject:      subject,
-			Title:        title,
-			Author:       "HENU Kit",
-			Intro:        intro,
-			TOC:          []string{},
-			Pages:        [][]string{{"内容请下载查看"}},
-			Price:        price,
-			PreviewPages: 1,
-			Rating:       4.5,
-			Downloads:    0,
-			Favs:         0,
+			ID:      id,
+			Type:    mapMaterialType(mtype),
+			Subject: subject,
+			Title:   title,
+			Intro:   intro,
+			TOC:     []string{},
+			Pages:   [][]string{},
+			Price:   price,
+			// Ratings, download counts and favourites are not recorded anywhere,
+			// so they stay at zero rather than being invented. Author is left to
+			// the owner: these materials are contributed, not written by us.
+			PreviewPages: 0,
+			DownloadURL:  downloadURL(storageKey),
+			FileName:     fileName.String,
+			FileSize:     fileSize.Int64,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate materials: %w", err)
 	}
 
 	if materials == nil {
@@ -118,6 +127,26 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 	}
 	return materials, nil
 }
+
+// downloadURL turns a storage key into the path the mirror serves it from.
+//
+// Keys written by the materials mirror are repository-relative paths; anything
+// already absolute is passed through so a differently hosted material keeps
+// working. An empty key yields an empty URL, and the Portal hides the download
+// rather than offering a broken one.
+func downloadURL(storageKey sql.NullString) string {
+	key := strings.TrimSpace(storageKey.String)
+	if !storageKey.Valid || key == "" {
+		return ""
+	}
+	if strings.HasPrefix(key, "http://") || strings.HasPrefix(key, "https://") || strings.HasPrefix(key, "/") {
+		return key
+	}
+	return materialsMirrorPrefix + key
+}
+
+// Path prefix nginx serves the course materials mirror from.
+const materialsMirrorPrefix = "/materials/"
 
 // mapMaterialType maps Study API material types to Portal types.
 func mapMaterialType(t string) string {
@@ -132,6 +161,8 @@ func mapMaterialType(t string) string {
 		return "path"
 	case "lab_report", "lab":
 		return "lab"
+	case "courseware", "slides":
+		return "slides"
 	default:
 		return "note"
 	}

@@ -119,3 +119,20 @@ rm -rf "$PUBLIC.previous"
 
 printf '%s\n' "$synced_sha" > "$ROOT/SYNCED_SHA"
 echo "Mirror published at $PUBLIC ($(find "$PUBLIC" -type f | wc -l | tr -d ' ') files, $(du -sh "$PUBLIC" | cut -f1))"
+
+# Files on disk are only half the job: the Library lists what the Study
+# catalogue knows about, so a mirror without an index shows an empty page.
+# Both halves come from the same manifest, so the catalogue is reproducible.
+indexer="$(dirname "$0")/index-henukit-materials.mjs"
+if [[ -z "${STUDY_DATABASE_URL:-}" ]]; then
+  echo "STUDY_DATABASE_URL is not set; skipping catalogue indexing" >&2
+elif [[ ! -f "$indexer" ]]; then
+  echo "indexer missing at $indexer; skipping catalogue indexing" >&2
+else
+  echo "Indexing the catalogue"
+  catalogue_sql="$(mktemp)"
+  trap 'rm -f "$catalogue_sql"' EXIT
+  HENUKIT_MATERIALS_ROOT="$ROOT" node "$indexer" > "$catalogue_sql"
+  psql "$STUDY_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$catalogue_sql"
+  echo "Catalogue indexed"
+fi

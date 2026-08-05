@@ -7,7 +7,7 @@
 
 // ---------------------------------------------------------------- 类型
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab";
+export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides";
 
 export const MATERIAL_TYPES: Record<MaterialType, { name: string; code: string }> = {
   note: { name: "学长笔记", code: "NOTE" },
@@ -15,6 +15,7 @@ export const MATERIAL_TYPES: Record<MaterialType, { name: string; code: string }
   mock: { name: "模拟卷", code: "MOCK" },
   path: { name: "学习路径", code: "PATH" },
   lab: { name: "实验报告", code: "LAB" },
+  slides: { name: "课程课件", code: "SLIDE" },
 };
 
 export interface Material {
@@ -34,6 +35,14 @@ export interface Material {
   rating: number; // 0-5
   downloads: number;
   favs: number;
+  /**
+   * Where the file is served from. Absent when the owner holds no file for this
+   * material, in which case the Portal offers no download rather than a link
+   * that would 404.
+   */
+  downloadUrl?: string;
+  fileName?: string;
+  fileSize?: number; // bytes
 }
 
 /** 页工厂：每页 2-3 段 */

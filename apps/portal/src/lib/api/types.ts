@@ -198,7 +198,7 @@ export interface LibraryCoursesResponse {
   request_id: string;
 }
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab";
+export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides";
 
 export interface Material {
   id: string;
@@ -214,6 +214,10 @@ export interface Material {
   rating: number;
   downloads: number;
   favs: number;
+  /** Where the file is served from; absent when the owner has no file. */
+  downloadUrl?: string;
+  fileName?: string;
+  fileSize?: number;
 }
 
 export interface MaterialListResponse {

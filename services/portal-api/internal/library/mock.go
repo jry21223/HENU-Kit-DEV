@@ -15,6 +15,11 @@ type Material struct {
 	Rating       float64    `json:"rating"`
 	Downloads    int        `json:"downloads"`
 	Favs         int        `json:"favs"`
+	// Where the file is served from. Empty when the owner has no file for this
+	// material, in which case the Portal offers no download.
+	DownloadURL string `json:"downloadUrl,omitempty"`
+	FileName    string `json:"fileName,omitempty"`
+	FileSize    int64  `json:"fileSize,omitempty"`
 }
 
 // Course is the portal-gateway catalog course card.
