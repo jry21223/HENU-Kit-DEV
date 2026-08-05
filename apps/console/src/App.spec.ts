@@ -180,7 +180,7 @@ describe("Console Overview", () => {
     await flushPromises();
 
     expect(wrapper.findAll("[data-state='unavailable']")).toHaveLength(6);
-    expect(wrapper.get(".access-context").text()).toContain("0/6 可见");
+    expect(wrapper.get('[aria-label="服务端验证的访问上下文"]').text()).toContain("0/6 可见");
     expect(wrapper.text()).toContain("概览数据暂时不可用");
     wrapper.unmount();
   });
