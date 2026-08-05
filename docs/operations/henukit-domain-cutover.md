@@ -52,13 +52,33 @@ copy it exactly and keep it DNS-only.
 4. Validate the origin directly with explicit SNI before enabling a proxy.
 5. Add the Cloudflare zone and copy every web and DirectMail record. MX, SPF,
    DKIM, DMARC and ownership records remain DNS-only.
-6. Set SSL/TLS mode to Full (strict), enable the web proxy only for apex/www,
-   and then change nameservers at the registrar.
-7. Verify public DNS from multiple resolvers, apex HTTPS, `www` 308, OAuth,
-   Console, API failures, and the DirectMail domain status.
+6. Keep apex and `www` in DNS-only mode until the host Nginx has a reviewed
+   Cloudflare real-IP include with a current CIDR allowlist, `real_ip_header
+   CF-Connecting-IP`, and `real_ip_recursive on`.
+7. After the real-IP include is installed and tested, set SSL/TLS mode to Full
+   (strict), enable the web proxy only for apex/www, and then change nameservers
+   at the registrar.
+8. Verify public DNS from multiple resolvers, apex HTTPS, `www` 308, OAuth,
+   Console, API failures, DirectMail domain status, and a real client IP sample
+   in Platform Core rate-limit logs.
 
 Do not create account, study, quiz, API, Console or deploy subdomains until an
 independent service boundary is approved.
+
+## Cloudflare real-IP prerequisite
+
+Cloudflare proxying changes the host-side `$remote_addr` to a Cloudflare edge
+address unless Nginx trusts only Cloudflare CIDRs and reads `CF-Connecting-IP`.
+Do not enable orange-cloud proxying until this prerequisite is complete:
+
+1. Generate `/etc/nginx/snippets/cloudflare-real-ip.conf` from Cloudflare's
+   current IPv4 and IPv6 range endpoints.
+2. Confirm the file contains only `set_real_ip_from` entries for Cloudflare,
+   plus `real_ip_header CF-Connecting-IP;` and `real_ip_recursive on;`.
+3. Enable the include in `infra/nginx/henukit-host.conf.example` on the host.
+4. Run `nginx -t`, reload, and verify `/api/v1/auth/*` rate-limit logs record a
+   real visitor IP, not a Cloudflare edge address.
+5. If the real-IP file cannot be generated or verified, keep DNS-only mode.
 
 ## Application origins
 

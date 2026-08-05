@@ -1,11 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { useSyncExternalStore } from "react";
-import { CAMPUSES, CampusKey, foodStore, Post } from "@/lib/food/mock";
+import { useCallback, useEffect, useState } from "react";
+import {
+  fetchFoodPosts,
+  formatPortalError,
+  mockAllowed,
+} from "@/lib/api/client";
+import type { FoodPost } from "@/lib/api/types";
+import { CAMPUSES, CampusKey, foodStore } from "@/lib/food/mock";
 import Img from "@/components/ui/img";
 import { useReveal } from "@/components/account/use-reveal";
+import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
 
 const TABS = [
@@ -15,6 +21,8 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
+type LoadState = "loading" | "ready" | "error";
+type CampusPost = FoodPost & { commentCount?: number };
 
 function Avatar({ name }: { name: string }) {
   return (
@@ -24,7 +32,7 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-function PostCard({ post }: { post: Post & { commentCount?: number } }) {
+function PostCard({ post }: { post: CampusPost }) {
   return (
     <Link href={`/food/post/${post.id}`} className="group flex gap-4 border-b border-line py-5">
       <div className="min-w-0 flex-1">
@@ -61,25 +69,57 @@ function PostCard({ post }: { post: Post & { commentCount?: number } }) {
   );
 }
 
+function fallbackCampusPosts(campus: CampusKey): CampusPost[] {
+  const local = foodStore.get();
+  return local.posts
+    .filter((p) => p.campus === campus && !p.hidden)
+    .map((p) => ({
+      ...p,
+      commentCount: local.comments.filter((cm) => cm.postId === p.id).length,
+    }));
+}
+
 export default function CampusList({ campus }: { campus: CampusKey }) {
-  const data = useSyncExternalStore(foodStore.subscribe, foodStore.get, foodStore.getServer);
   const [tab, setTab] = useState<TabKey>("rec");
+  const [posts, setPosts] = useState<CampusPost[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [error, setError] = useState<string | null>(null);
   useReveal();
 
+  const load = useCallback(async () => {
+    setLoadState("loading");
+    setError(null);
+    try {
+      const response = await fetchFoodPosts(campus);
+      setPosts(response.posts.filter((p) => !p.hidden));
+      setLoadState("ready");
+    } catch (cause) {
+      if (mockAllowed) {
+        setPosts(fallbackCampusPosts(campus));
+        setLoadState("ready");
+        return;
+      }
+      setPosts([]);
+      setError(formatPortalError(cause) || "美食列表接口不可用。");
+      setLoadState("error");
+    }
+  }, [campus]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
   const c = CAMPUSES[campus];
-  const visible = data.posts.filter((p) => p.campus === campus && !p.hidden);
-  const withCounts = visible.map((p) => ({
-    ...p,
-    commentCount: data.comments.filter((cm) => cm.postId === p.id).length,
-  }));
+  const visible = posts;
   const sorted =
     tab === "hot"
-      ? [...withCounts].sort((a, b) => b.likes - a.likes)
+      ? [...visible].sort((a, b) => b.likes - a.likes)
       : tab === "new"
-        ? [...withCounts].sort((a, b) => (a.time === "刚刚" ? -1 : b.time === "刚刚" ? 1 : b.time.localeCompare(a.time)))
-        : [...withCounts].sort((a, b) => b.likes + b.stars - (a.likes + a.stars));
+        ? [...visible].sort((a, b) => (a.time === "刚刚" ? -1 : b.time === "刚刚" ? 1 : b.time.localeCompare(a.time)))
+        : [...visible].sort((a, b) => b.likes + b.stars - (a.likes + a.stars));
 
-  const top5 = [...withCounts].sort((a, b) => b.likes - a.likes).slice(0, 5);
+  const top5 = [...visible].sort((a, b) => b.likes - a.likes).slice(0, 5);
   const allTags = Array.from(new Set(visible.flatMap((p) => p.tags)));
 
   return (
@@ -97,7 +137,6 @@ export default function CampusList({ campus }: { campus: CampusKey }) {
       </p>
 
       <div className="mt-8 gap-10 lg:flex">
-        {/* 左列：文章卡 */}
         <div className="min-w-0 flex-1">
           <div data-enter className="flex gap-2 border-b border-ink/40 pb-3">
             {TABS.map((t) => (
@@ -117,17 +156,24 @@ export default function CampusList({ campus }: { campus: CampusKey }) {
             ))}
           </div>
           <div data-enter>
-            {sorted.length === 0 ? (
-              <p className="border-b border-line py-12 text-center font-mono text-xs tracking-[0.3em] text-ink/40">
-                暂无内容 / EMPTY
-              </p>
+            {loadState === "loading" ? (
+              <div className="py-10">
+                <LoadingBlock label="加载校区美食" />
+              </div>
+            ) : loadState === "error" ? (
+              <div className="py-8">
+                <ErrorBanner message={error ?? "美食列表接口不可用。"} onRetry={() => void load()} />
+              </div>
+            ) : sorted.length === 0 ? (
+              <div className="py-8">
+                <EmptyBlock label="暂无内容 / EMPTY" />
+              </div>
             ) : (
               sorted.map((p) => <PostCard key={p.id} post={p} />)
             )}
           </div>
         </div>
 
-        {/* 右侧栏 */}
         <aside className="mt-10 w-full shrink-0 lg:mt-0 lg:w-72">
           <div data-enter className="border border-ink/25 p-5">
             <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">CAMPUS / 校区信息</p>
@@ -141,29 +187,39 @@ export default function CampusList({ campus }: { campus: CampusKey }) {
 
           <div data-enter className="mt-5 border border-ink/25 p-5">
             <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">TOP5 / 本周热门</p>
-            <ul className="mt-3 space-y-2.5">
-              {top5.map((p, i) => (
-                <li key={p.id}>
-                  <Link href={`/food/post/${p.id}`} className="group flex items-baseline gap-2.5">
-                    <span className={cn("font-mono text-xs", i < 3 ? "text-accent" : "text-ink/30")}>
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span className="truncate text-sm group-hover:text-accent">{p.title}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            {loadState === "loading" ? (
+              <p className="mt-3 font-mono text-[10px] text-ink/40">加载中…</p>
+            ) : top5.length === 0 ? (
+              <p className="mt-3 font-mono text-[10px] text-ink/40">暂无榜单</p>
+            ) : (
+              <ul className="mt-3 space-y-2.5">
+                {top5.map((p, i) => (
+                  <li key={p.id}>
+                    <Link href={`/food/post/${p.id}`} className="group flex items-baseline gap-2.5">
+                      <span className={cn("font-mono text-xs", i < 3 ? "text-accent" : "text-ink/30")}>
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="truncate text-sm group-hover:text-accent">{p.title}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div data-enter className="mt-5 border border-ink/25 p-5">
             <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">TAGS / 标签云</p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {allTags.map((t) => (
-                <span key={t} className="border border-line px-2 py-0.5 font-mono text-[10px] text-ink/60">
-                  {t}
-                </span>
-              ))}
-            </div>
+            {allTags.length === 0 ? (
+              <p className="mt-3 font-mono text-[10px] text-ink/40">暂无标签</p>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {allTags.map((t) => (
+                  <span key={t} className="border border-line px-2 py-0.5 font-mono text-[10px] text-ink/60">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </aside>
       </div>

@@ -1,5 +1,10 @@
 # Host-side HENU Kit canonical entry.
 # Keep the legacy superhuazai.me vhost enabled in a separate file during rollback.
+#
+# Cloudflare proxy must stay DNS-only until the host has a reviewed real-IP
+# allowlist. When proxying is enabled, install/update
+# /etc/nginx/snippets/cloudflare-real-ip.conf from the matching example so
+# $remote_addr becomes the visitor IP rather than a shared Cloudflare edge IP.
 
 server {
     listen 80;
@@ -86,6 +91,11 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
+    # Required before enabling Cloudflare proxy. This file must contain only
+    # Cloudflare CIDRs plus `real_ip_header CF-Connecting-IP` and
+    # `real_ip_recursive on`. Keep it commented while DNS is not proxied.
+    # include /etc/nginx/snippets/cloudflare-real-ip.conf;
+
     client_max_body_size 32m;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
@@ -97,8 +107,9 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        # Do not trust a client-supplied X-Forwarded-For chain. Cloudflare
-        # real-IP trust requires a separately reviewed, current CIDR allowlist.
+        # Do not trust a client-supplied X-Forwarded-For chain. With the
+        # Cloudflare real-IP include enabled, $remote_addr is the visitor IP;
+        # without it, Cloudflare must remain DNS-only.
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;

@@ -23,6 +23,8 @@ test("henukit host ingress is canonical, hardened, and rollback-safe", () => {
   assert.match(config, /proxy_pass http:\/\/127\.0\.0\.1:8088/);
   assert.match(config, /Strict-Transport-Security/);
   assert.match(config, /X-Forwarded-For \$remote_addr/);
+  assert.match(config, /cloudflare-real-ip\.conf/);
+  assert.match(config, /CF-Connecting-IP/);
   assert.doesNotMatch(config, /X-Forwarded-For \$proxy_add_x_forwarded_for/);
   assert.doesNotMatch(config, /server_name _/);
   assert.match(runbook, /8\.146\.200\.82/);
@@ -31,6 +33,8 @@ test("henukit host ingress is canonical, hardened, and rollback-safe", () => {
   assert.match(runbook, /oauth_clients/);
   assert.match(runbook, /Full \(strict\)/);
   assert.match(runbook, /MX, SPF,\s+DKIM, DMARC and ownership records remain DNS-only/);
+  assert.match(runbook, /Cloudflare real-IP prerequisite/);
+  assert.match(runbook, /real visitor IP, not a Cloudflare edge address/);
   assert.match(runbook, /superhuazai\.me/);
 });
 
