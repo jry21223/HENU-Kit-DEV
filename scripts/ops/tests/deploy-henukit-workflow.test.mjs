@@ -31,6 +31,9 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
     "henukit-portal-api",
     "henukit-account-portfolio",
     "henukit-portal-gateway",
+    "henukit-notice",
+    "henukit-notice-worker",
+    "henukit-food",
   ];
 
   for (const image of expectedImages) {
@@ -218,7 +221,16 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "LIBRARY_CLIENT_SECRET",
       "LIBRARY_SUMMARY_CLIENT_SECRET",
       "NOTICE_CLIENT_SECRET",
+      "NOTICE_SUMMARY_CLIENT_ID",
       "NOTICE_SUMMARY_CLIENT_SECRET",
+      "NOTICE_SUMMARY_KEY_ID",
+      "NOTICE_DATABASE_URL",
+      "NOTICE_REDIS_URL",
+      "FOOD_DATABASE_URL",
+      "FOOD_REDIS_URL",
+      "FOOD_SUMMARY_CLIENT_ID",
+      "FOOD_SUMMARY_CLIENT_SECRET",
+      "FOOD_SUMMARY_KEY_ID",
       "PLATFORM_CLIENT_SECRET",
       "PLATFORM_CORE_IDEMPOTENCY_KEY",
       "PLATFORM_CORE_MAIL_DELIVERY_TOKEN",
@@ -289,6 +301,9 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-portal-api",
     "henukit-account-portfolio",
     "henukit-portal-gateway",
+    "henukit-notice",
+    "henukit-notice-worker",
+    "henukit-food",
   ];
 
   for (const image of expectedImages) {
@@ -407,6 +422,51 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "1",
     "production Console Gateway must reject the default Account Portfolio caller-secret placeholder",
   );
+  assert.equal(
+    config.services["console-gateway"].environment.NOTICE_API_URL,
+    "http://notice:8094",
+    "Console must use the private Notice owner endpoint",
+  );
+  assert.equal(
+    config.services["console-gateway"].environment.FOOD_API_URL,
+    "http://food:8096",
+    "Console must use the private Food owner endpoint",
+  );
+  assert.equal(
+    config.services["console-gateway"].environment.NOTICE_SUMMARY_URL,
+    "",
+    "Notice summary stays unset until the production env enables it",
+  );
+  assert.equal(
+    config.services["notice"].environment.NOTICE_SERVICE_CLIENT_ID,
+    config.services["console-gateway"].environment.NOTICE_SUMMARY_CLIENT_ID,
+    "Notice must verify the exact Gateway caller identity",
+  );
+  assert.equal(
+    config.services["notice"].environment.NOTICE_SERVICE_KEY_ID,
+    config.services["console-gateway"].environment.NOTICE_SUMMARY_KEY_ID,
+    "Notice must verify the exact Gateway key id",
+  );
+  assert.equal(
+    config.services["notice"].environment.NOTICE_SERVICE_SECRET,
+    config.services["console-gateway"].environment.NOTICE_SUMMARY_CLIENT_SECRET,
+    "Notice must verify the exact Gateway caller secret",
+  );
+  assert.equal(
+    config.services["food"].environment.FOOD_SERVICE_CLIENT_ID,
+    config.services["console-gateway"].environment.FOOD_SUMMARY_CLIENT_ID,
+    "Food must verify the exact Gateway caller identity",
+  );
+  assert.equal(
+    config.services["food"].environment.FOOD_SERVICE_KEY_ID,
+    config.services["console-gateway"].environment.FOOD_SUMMARY_KEY_ID,
+    "Food must verify the exact Gateway key id",
+  );
+  assert.equal(
+    config.services["food"].environment.FOOD_SERVICE_SECRET,
+    config.services["console-gateway"].environment.FOOD_SUMMARY_CLIENT_SECRET,
+    "Food must verify the exact Gateway caller secret",
+  );
   const publicConfig = renderRuntimeConfig({
     PLATFORM_ACCOUNT_ORIGIN: "https://henukit.cn/account-auth",
   });
@@ -442,6 +502,16 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     workflow,
     /cp services\/account-portfolio\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Account Portfolio recovery migrations",
+  );
+  assert.match(
+    workflow,
+    /cp services\/notice\/db\/migrations\/\*\.up\.sql/,
+    "the fixed-SHA runtime must carry Notice recovery migrations",
+  );
+  assert.match(
+    workflow,
+    /cp services\/food\/db\/migrations\/\*\.up\.sql/,
+    "the fixed-SHA runtime must carry Food recovery migrations",
   );
 });
 

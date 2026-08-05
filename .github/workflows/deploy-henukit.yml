@@ -117,6 +117,21 @@ jobs:
             context: services/account-portfolio
             dockerfile: services/account-portfolio/Dockerfile
             build_args: ""
+          - name: notice
+            image: henukit-notice
+            context: services/notice
+            dockerfile: services/notice/Dockerfile
+            build_args: ""
+          - name: notice-worker
+            image: henukit-notice-worker
+            context: services/notice
+            dockerfile: services/notice/Dockerfile.worker
+            build_args: ""
+          - name: food
+            image: henukit-food
+            context: services/food
+            dockerfile: services/food/Dockerfile
+            build_args: ""
           - name: portal-gateway
             image: henukit-portal-gateway
             context: services/portal-gateway
@@ -181,7 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           runtime="release/runtime"
-          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/infra/epay-gateway/patches" "$runtime/migrations/platform-core" "$runtime/migrations/account-portfolio" "$runtime/release-gates"
+          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/infra/epay-gateway/patches" "$runtime/migrations/platform-core" "$runtime/migrations/account-portfolio" "$runtime/migrations/notice" "$runtime/migrations/food" "$runtime/release-gates"
           docker compose \
             -f docker-compose.henukit.yml \
             -f docker-compose.henukit.prebuilt.yml \
@@ -191,6 +206,8 @@ jobs:
           cp infra/epay-gateway/patches/*.patch "$runtime/infra/epay-gateway/patches/"
           cp services/platform-core/db/migrations/*.up.sql "$runtime/migrations/platform-core/"
           cp services/account-portfolio/db/migrations/*.up.sql "$runtime/migrations/account-portfolio/"
+          cp services/notice/db/migrations/*.up.sql "$runtime/migrations/notice/"
+          cp services/food/db/migrations/*.up.sql "$runtime/migrations/food/"
           install -m 0555 scripts/ops/deploy-henukit-artifact.sh "$runtime/bin/deploy-henukit-artifact.sh"
           install -m 0555 scripts/ops/watch-henukit-actions.sh "$runtime/bin/watch-henukit-actions.sh"
           install -m 0555 scripts/ops/activate-henukit-release.sh "$runtime/bin/activate-henukit-release.sh"
