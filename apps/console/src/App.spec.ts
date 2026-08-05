@@ -58,6 +58,8 @@ describe("Console Overview", () => {
     for (const excluded of ["社区", "支付", "刷题", "积分", "会员"]) expect(wrapper.text()).not.toContain(excluded);
     await wrapper.findAll("button").find((button) => button.text() === "批准投稿")!.trigger("click");
     await flushPromises();
+    await wrapper.findAll("button").find((button) => button.text() === "确认批准")!.trigger("click");
+    await flushPromises();
     expect(wrapper.text()).toContain("投稿已批准");
     expect(wrapper.text()).not.toContain("批准投稿");
     wrapper.unmount();
@@ -169,5 +171,69 @@ describe("Console Overview", () => {
     expect(wrapper.find("section[aria-busy='true']").exists()).toBe(true);
     expect(wrapper.findAll("[data-state='loading']")).toHaveLength(6);
     expect(wrapper.findAll(".metric-tile")).toHaveLength(0);
+  });
+
+  it("counts zero visible modules when the overview feed is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(String(input).endsWith("/overview") ? new Response("", { status: 500 }) : new Response(JSON.stringify(authenticated), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.findAll("[data-state='unavailable']")).toHaveLength(6);
+    expect(wrapper.get('[aria-label="服务端验证的访问上下文"]').text()).toContain("0/6 可见");
+    expect(wrapper.text()).toContain("概览数据暂时不可用");
+    wrapper.unmount();
+  });
+
+  it("renders each degraded status message exactly once", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : authenticated), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    // A degraded card's explanation must appear in the state panel or the
+    // footer, never both (the footer only echoes it for metric-bearing cards).
+    expect(wrapper.text().match(/部分来源可用/g)).toHaveLength(1);
+    expect(wrapper.text().match(/摘要暂不可用/g)).toHaveLength(1);
+    expect(wrapper.text().match(/Portal 部署与只读探测正常/g)).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("links module cards to their operations pages and keeps Portal plain", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : authenticated), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    for (const [id, href] of [
+      ["platform", "/operations"],
+      ["notice", "/notices"],
+      ["library", "/library"],
+      ["food", "/food"],
+    ] as const) {
+      const card = wrapper.get(`[data-module-card='${id}']`);
+      expect(card.element.tagName).toBe("A");
+      expect(card.attributes("href")).toBe(href);
+    }
+    // Portal has no operations page: its card must stay a non-clickable
+    // article rather than a link that silently does nothing.
+    const portal = wrapper.get("[data-module-card='portal']");
+    expect(portal.element.tagName).toBe("ARTICLE");
+    expect(portal.attributes("href")).toBeUndefined();
+    expect(wrapper.get("[data-module-card='quizcraft']").element.tagName).toBe("ARTICLE");
+    wrapper.unmount();
+  });
+
+  it("formats overview timestamps in local time instead of raw UTC", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : authenticated), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("截至");
+    expect(wrapper.text()).toContain("最近成功");
+    expect(wrapper.text()).not.toContain("2026-07-19T00:00:00Z");
+    expect(wrapper.text()).not.toContain("2026-07-19T00:00:01Z");
+    wrapper.unmount();
   });
 });

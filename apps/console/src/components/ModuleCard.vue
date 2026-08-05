@@ -4,9 +4,11 @@ import type { Component } from "vue";
 import { computed } from "vue";
 
 import StatusBadge from "@/components/ui/StatusBadge.vue";
-import type { ModuleStatus, ModuleSummary } from "@/data/modules";
+import { moduleOpsPath, type ModuleStatus, type ModuleSummary } from "@/data/modules";
+import { consolePath } from "@/lib/base-path";
+import { localDateTime } from "@/lib/format";
 
-defineProps<{
+const props = defineProps<{
   summary: ModuleSummary;
   icon: Component;
 }>();
@@ -22,12 +24,25 @@ const statusLabels: Record<ModuleStatus, string> = {
 };
 
 const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKSHOP_URL?.trim() || "");
+
+// Modules with their own operations page navigate on card click. Portal has no
+// operations page, so its card stays a plain article, and QuizCraft links out
+// through the workshop button below instead of a Console route.
+const destinationHref = computed(() => {
+  const path = moduleOpsPath(props.summary.id);
+  return path ? consolePath(path) : undefined;
+});
 </script>
 
 <template>
-  <article
+  <component
+    :is="destinationHref ? 'a' : 'article'"
+    :href="destinationHref"
     class="min-w-0 scroll-mt-20 rounded-lg border border-border bg-card p-4"
-    :class="summary.status === 'denied' && 'border-dashed bg-muted/40'"
+    :class="[
+      summary.status === 'denied' && 'border-dashed bg-muted/40',
+      destinationHref && 'block transition-colors hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+    ]"
     :data-module-card="summary.id"
     :data-state="summary.status"
     :aria-label="`${summary.name}：${statusLabels[summary.status]}`"
@@ -98,14 +113,17 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
       </a>
 
       <footer
-        v-if="summary.metrics.length || summary.asOf"
+        v-if="summary.metrics.length || summary.asOf || (summary.status === 'stale' && summary.lastSuccessAt)"
         class="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground"
       >
         <span v-if="summary.metrics.length">{{ summary.statusMessage }}</span>
-        <span v-if="summary.asOf" class="ml-auto">截至 {{ summary.asOf }}</span>
+        <span class="ml-auto flex flex-col items-end gap-0.5">
+          <span v-if="summary.asOf">截至 {{ localDateTime(summary.asOf) }}</span>
+          <span v-if="summary.status === 'stale' && summary.lastSuccessAt">最近成功 {{ localDateTime(summary.lastSuccessAt) }}</span>
+        </span>
       </footer>
     </template>
-  </article>
+  </component>
 </template>
 
 <style scoped>

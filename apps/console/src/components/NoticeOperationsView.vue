@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
 import { Button, Input, Label, PageHeader, Textarea } from "@/components/ui";
-import { createNoticeSource, createNoticeVersion, distributeNoticeVersion, fetchNoticeSnapshot, resolveNoticeOperation, reviewNoticeVersion, type NoticeSnapshot, type NoticeVersion, type NoticeWriteResult } from "@/lib/console-gateway";
+import { createNoticeSource, createNoticeVersion, distributeNoticeVersion, fetchNoticeSnapshot, resolveNoticeOperation, reviewNoticeVersion, type NoticeAudience, type NoticeSnapshot, type NoticeVersion, type NoticeWriteResult } from "@/lib/console-gateway";
 
 const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; permissions: string[] }>();
 const snapshot = ref<NoticeSnapshot>();
@@ -20,6 +20,9 @@ const versionPublishedAt = ref("");
 const channel = ref<"in_app" | "email">("in_app");
 const audienceKind = ref<"all_students" | "college" | "role">("all_students");
 const audienceValue = ref("");
+const reviewReasons = ref<Record<string, string>>({});
+const pendingDistribution = ref<{ item: NoticeVersion; channel: "in_app" | "email"; audience: NoticeAudience }>();
+const confirmDialog = ref<HTMLDialogElement>();
 const canManage = computed(() => props.permissions.includes("notice.manage"));
 const canReview = computed(() => props.permissions.includes("notice.review"));
 const canDistribute = computed(() => props.permissions.includes("notice.distribute"));
@@ -29,6 +32,32 @@ function stateLabel(state: NoticeVersion["state"]) {
 }
 
 function operationKey(kind: string) { return `idem_notice_${kind}_${crypto.randomUUID()}`; }
+
+function currentAudience(): NoticeAudience {
+  return audienceKind.value === "all_students" ? { kind: "all_students" as const } : { kind: audienceKind.value, value: audienceValue.value };
+}
+
+function channelLabel(value: "in_app" | "email") { return value === "in_app" ? "站内" : "邮件"; }
+
+function audienceLabel(value: NoticeAudience) {
+  if (value.kind === "all_students") return "全体学生";
+  if (value.kind === "college") return `学院：${value.value ?? ""}`;
+  if (value.kind === "role") return `角色：${value.value ?? ""}`;
+  return "未知受众";
+}
+
+function reviewReason(item: NoticeVersion) { return (reviewReasons.value[item.id] ?? "").trim(); }
+
+function openDistributionConfirm(item: NoticeVersion) {
+  pendingDistribution.value = { item, channel: channel.value, audience: currentAudience() };
+  feedback.value = "";
+  void nextTick(() => { if (confirmDialog.value && !confirmDialog.value.open) confirmDialog.value.showModal(); });
+}
+
+function closeDistributionConfirm() {
+  if (confirmDialog.value?.open) confirmDialog.value.close();
+  pendingDistribution.value = undefined;
+}
 
 async function refresh() {
   if (props.authState !== "authenticated") { state.value = props.authState === "denied" ? "denied" : "unavailable"; return; }
@@ -64,14 +93,18 @@ async function addVersion() {
 }
 
 async function review(item: NoticeVersion, decision: "approved" | "rejected") {
+  const reason = reviewReason(item);
+  if (decision === "rejected" && !reason) { feedback.value = "请填写驳回理由后再提交。"; return; }
   busyID.value = item.id; feedback.value = "正在提交审核…"; const key = operationKey("review");
-  await finishOperation("review", key, reviewNoticeVersion(item.id, { decision, note: "Console 人工审核", expected_revision: item.revision }, key), decision === "approved" ? "审核已批准。" : "审核已拒绝。");
+  await finishOperation("review", key, reviewNoticeVersion(item.id, { decision, note: reason || undefined, expected_revision: item.revision }, key), decision === "approved" ? "审核已批准。" : "审核已拒绝。", () => { reviewReasons.value[item.id] = ""; });
 }
 
-async function distribute(item: NoticeVersion) {
-  busyID.value = item.id; feedback.value = "正在创建分发…"; const key = operationKey("distribution");
-  const audience = audienceKind.value === "all_students" ? { kind: "all_students" as const } : { kind: audienceKind.value, value: audienceValue.value };
-  await finishOperation("distribution", key, distributeNoticeVersion(item.id, { channel: channel.value, audience, expected_revision: item.revision }, key), "分发任务已创建，将陆续推送给用户。");
+async function confirmDistribution() {
+  const action = pendingDistribution.value;
+  if (!action) return;
+  busyID.value = action.item.id; feedback.value = "正在创建分发…"; const key = operationKey("distribution");
+  await finishOperation("distribution", key, distributeNoticeVersion(action.item.id, { channel: action.channel, audience: action.audience, expected_revision: action.item.revision }, key), "分发任务已创建，将陆续推送给用户。");
+  closeDistributionConfirm();
 }
 
 watch(() => props.authState, (value) => {
@@ -122,11 +155,38 @@ watch(() => props.authState, (value) => {
         <p class="mt-4 whitespace-pre-wrap leading-7">{{ item.body }}</p>
         <a :href="item.source_url" class="mt-3 inline-block text-sm underline" target="_blank" rel="noreferrer">核对原始来源</a>
         <div class="mt-5 flex flex-wrap gap-2">
-          <template v-if="item.state === 'pending_review' && canReview"><Button :disabled="busyID !== ''" @click="review(item, 'approved')">批准</Button><Button variant="ghost" :disabled="busyID !== ''" @click="review(item, 'rejected')">拒绝</Button></template>
-          <Button v-if="item.state === 'approved' && canDistribute" :disabled="busyID !== '' || (audienceKind !== 'all_students' && !audienceValue)" @click="distribute(item)">创建分发任务</Button>
+          <template v-if="item.state === 'pending_review' && canReview">
+            <Label class="grid w-full gap-1">审核理由<Textarea v-model="reviewReasons[item.id]" maxlength="1000" rows="2" class="min-h-[64px]" placeholder="驳回必须填写理由；批准可留空。" /></Label>
+            <Button :disabled="busyID !== ''" @click="review(item, 'approved')">批准</Button>
+            <Button variant="ghost" :disabled="busyID !== '' || !reviewReason(item)" @click="review(item, 'rejected')">拒绝</Button>
+          </template>
+          <Button v-if="item.state === 'approved' && canDistribute" :disabled="busyID !== '' || (audienceKind !== 'all_students' && !audienceValue)" @click="openDistributionConfirm(item)">创建分发任务</Button>
           <span v-if="item.state === 'distributed'" class="text-sm text-muted-foreground">已创建 {{ item.distribution_count }} 个分发任务 · {{ item.distribution_status ?? '状态待同步' }}</span>
         </div>
       </article>
     </div>
+    <dialog
+      ref="confirmDialog"
+      class="m-auto w-[min(92vw,36rem)] rounded-lg border border-border bg-background p-5 shadow-xl backdrop:bg-foreground/30"
+      aria-labelledby="distribution-confirm-heading"
+      @close="pendingDistribution = undefined"
+      @click.self="closeDistributionConfirm"
+    >
+      <form v-if="pendingDistribution" @submit.prevent="confirmDistribution">
+        <p class="eyebrow">分发确认</p>
+        <h2 id="distribution-confirm-heading" class="mt-1 text-xl font-semibold">确认创建分发任务</h2>
+        <p class="mt-2 text-sm leading-6 text-muted-foreground">取消不会产生任何写入；确认后按以下渠道与受众创建分发任务。</p>
+        <dl class="mt-4 grid gap-3 border-t border-border pt-4 text-sm">
+          <div class="flex flex-wrap items-baseline justify-between gap-2"><dt class="text-muted-foreground">通知</dt><dd class="max-w-[24rem] truncate font-medium">{{ pendingDistribution.item.title }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-muted-foreground">版本</dt><dd class="font-medium">v{{ pendingDistribution.item.revision }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-muted-foreground">渠道</dt><dd class="font-medium">{{ channelLabel(pendingDistribution.channel) }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-muted-foreground">受众</dt><dd class="font-medium">{{ audienceLabel(pendingDistribution.audience) }}</dd></div>
+        </dl>
+        <div class="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="ghost" :disabled="busyID !== ''" @click="closeDistributionConfirm">取消</Button>
+          <Button type="submit" :disabled="busyID !== ''">确认分发</Button>
+        </div>
+      </form>
+    </dialog>
   </section>
 </template>

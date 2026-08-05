@@ -13,6 +13,7 @@ const (
 	RevokeSessionRoute                  = "/api/v1/operations/sessions/{session_id}/revocations"
 	UpdateAccessRoute                   = "/api/v1/operations/users/{user_id}/access-updates"
 	OperationStatusRoute                = "/api/v1/operations/results/{operation}"
+	AccountLookupRoute                  = "/api/v1/operations/account-lookups"
 	NoticeSnapshotRoute                 = "/api/v1/notices"
 	NoticeSourceRoute                   = "/api/v1/notices/sources"
 	NoticeVersionRoute                  = "/api/v1/notices/sources/{source_id}/versions"
@@ -37,13 +38,21 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "5987f137ee26b95ae0d0a22ab22cfafafe0778c8b831eeab6f734cc5b8b4d630"
+	SourceSHA256                        = "103b62634296d48b673cc8c074c72469be4ec87f289f7f6af5fa8022cfcb05a7"
 )
 
 type ConsoleAccessContext struct {
 	Permissions []string       `json:"permissions"`
 	Scopes      []ConsoleScope `json:"scopes"`
 	VerifiedAt  time.Time      `json:"verified_at"`
+}
+
+type ConsoleAccountLookupRequest struct {
+	Email string `json:"email"`
+}
+
+type ConsoleAccountLookupResult struct {
+	Account any `json:"account"`
 }
 
 type ConsoleAccountMembership struct {
@@ -99,6 +108,12 @@ type ConsoleAccountTicketMessage struct {
 
 type ConsoleAccountTicketQueue struct {
 	Tickets []ConsoleAccountTicket `json:"tickets"`
+}
+
+type ConsoleLookedUpAccount struct {
+	DisplayName *string `json:"display_name,omitempty"`
+	ID          string  `json:"id"`
+	Status      string  `json:"status"`
 }
 
 type ConsoleMembershipMutationRequest struct {
@@ -494,6 +509,7 @@ type PlatformOperationResult struct {
 type PlatformOperationsAccount struct {
 	AuthorizationRevision int64                      `json:"authorization_revision"`
 	CreatedAt             time.Time                  `json:"created_at"`
+	DisplayName           *string                    `json:"display_name,omitempty"`
 	EmailVerified         bool                       `json:"email_verified"`
 	Grants                []PlatformAccessGrantInput `json:"grants"`
 	ID                    string                     `json:"id"`
@@ -504,6 +520,7 @@ type PlatformOperationsAuditEvent struct {
 	ActorUserID        string    `json:"actor_user_id"`
 	CreatedAt          time.Time `json:"created_at"`
 	Decision           string    `json:"decision"`
+	DisplayName        *string   `json:"display_name,omitempty"`
 	PermissionCode     string    `json:"permission_code"`
 	ReasonCode         string    `json:"reason_code"`
 	RequestID          string    `json:"request_id"`
@@ -544,13 +561,14 @@ type PlatformOperationsMailStatus struct {
 }
 
 type PlatformOperationsSession struct {
-	ClientID   *string    `json:"client_id,omitempty"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	ID         string     `json:"id"`
-	Kind       string     `json:"kind"`
-	LastSeenAt time.Time  `json:"last_seen_at"`
-	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
-	UserID     string     `json:"user_id"`
+	ClientID    *string    `json:"client_id,omitempty"`
+	DisplayName *string    `json:"display_name,omitempty"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	ID          string     `json:"id"`
+	Kind        string     `json:"kind"`
+	LastSeenAt  time.Time  `json:"last_seen_at"`
+	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
+	UserID      string     `json:"user_id"`
 }
 
 type PlatformOperationsSnapshot struct {

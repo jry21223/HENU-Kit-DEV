@@ -43,6 +43,10 @@ type fakePlatform struct {
 	foodPermissions    []string
 	accountPermissions []string
 	accountErrors      map[string]error
+	accountLookupBody  []byte
+	accountLookup      json.RawMessage
+	accountLookupErr   error
+	accountLookupCalls int
 }
 
 type fakeOverview struct{}
@@ -249,6 +253,13 @@ func (fake *fakePlatform) CheckAccount(_ context.Context, token, permission stri
 func (fake *fakePlatform) PlatformOperations(_ context.Context, token string) (json.RawMessage, error) {
 	fake.operationToken = token
 	return fake.operations, fake.checkErr
+}
+
+func (fake *fakePlatform) AccountLookup(_ context.Context, token string, body []byte) (json.RawMessage, error) {
+	fake.operationToken = token
+	fake.accountLookupBody = append([]byte(nil), body...)
+	fake.accountLookupCalls++
+	return fake.accountLookup, fake.accountLookupErr
 }
 
 func (fake *fakePlatform) RevokeSession(_ context.Context, token, _, key string, _ []byte) (json.RawMessage, error) {
@@ -1119,5 +1130,113 @@ func TestUnconfiguredOwnerClientsReturnUnavailableInsteadOfPanicking(t *testing.
 		if response.StatusCode != http.StatusServiceUnavailable {
 			t.Fatalf("%s status=%d body=%s, want 503 DEPENDENCY_UNAVAILABLE", path, response.StatusCode, body)
 		}
+	}
+}
+
+func TestAccountLookupForwardsEmailOnlyInBodyAndReturnsResolvedAccount(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	operatorID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{
+		exchange:      platformcore.Exchange{ExchangeToken: token},
+		accountLookup: json.RawMessage(`{"request_id":"req_lookup","account":{"id":"33333333-3333-4333-8333-333333333333","display_name":"张同学","status":"active"}}`),
+	}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, nil)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: operatorID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	const email = "student@stu.henu.edu.cn"
+	lookup, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/operations/account-lookups", strings.NewReader(`{"email":"`+email+`"}`))
+	lookup.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	lookup.Header.Set("Content-Type", "application/json")
+	response, err := server.Client().Do(lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "张同学") || !strings.Contains(string(body), "33333333-3333-4333-8333-333333333333") {
+		t.Fatalf("lookup status=%d body=%s", response.StatusCode, body)
+	}
+	if string(platform.accountLookupBody) != `{"email":"`+email+`"}` || platform.accountLookupCalls != 1 || platform.operationToken != token {
+		t.Fatalf("forwarded body=%q calls=%d token=%q", platform.accountLookupBody, platform.accountLookupCalls, platform.operationToken)
+	}
+}
+
+func TestAccountLookupReturnsNullAccountWithTheSameEnvelope(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}, accountLookup: json.RawMessage(`{"request_id":"req_lookup_miss","account":null}`)}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, nil)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	lookup, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/operations/account-lookups", strings.NewReader(`{"email":"absent@stu.henu.edu.cn"}`))
+	lookup.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	lookup.Header.Set("Content-Type", "application/json")
+	response, err := server.Client().Do(lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), `"account":null`) {
+		t.Fatalf("miss status=%d body=%s, want 200 with account null", response.StatusCode, body)
+	}
+}
+
+func TestAccountLookupRejectsInvalidEmailsBeforeForwarding(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, nil)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	for _, email := range []string{"", "not-an-email", "missing@domain", "spaces in@stu.henu.edu.cn", strings.Repeat("a@", 200)} {
+		lookup, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/operations/account-lookups", strings.NewReader(`{"email":"`+email+`"}`))
+		lookup.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+		lookup.Header.Set("Content-Type", "application/json")
+		response, err := server.Client().Do(lookup)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("email %q status=%d, want 400", email, response.StatusCode)
+		}
+	}
+	if platform.accountLookupCalls != 0 {
+		t.Fatalf("invalid emails reached Platform Core %d times", platform.accountLookupCalls)
+	}
+}
+
+func TestAccountLookupMapsPlatformCoreDenialsWithoutAConfusingMiss(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}, accountLookupErr: platformcore.ErrForbidden}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, nil)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	lookup, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/operations/account-lookups", strings.NewReader(`{"email":"student@stu.henu.edu.cn"}`))
+	lookup.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	lookup.Header.Set("Content-Type", "application/json")
+	response, err := server.Client().Do(lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden || strings.Contains(string(body), "null") && strings.Contains(string(body), "account") {
+		t.Fatalf("denied lookup status=%d body=%s, want 403 and no null-account miss", response.StatusCode, body)
 	}
 }
