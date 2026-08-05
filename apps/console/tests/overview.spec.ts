@@ -206,3 +206,123 @@ test("sidebar module anchors appear only on the overview page, not on an operati
   await expect(page.getByRole("heading", { name: "产品运行概览" })).toBeVisible();
   await expect(moduleAnchors).toHaveCount(6);
 });
+
+test("overview count drops to 0/6 when the overview feed is unavailable", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/api/v1/overview", (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+  await page.goto("/");
+
+  await expect(page.locator("[data-state='unavailable']")).toHaveCount(6);
+  await expect(page.getByText("0/6 可见", { exact: true })).toBeVisible();
+  await expect(page.getByText("概览数据暂时不可用，请稍后刷新页面。", { exact: true })).toHaveCount(6);
+});
+
+test("degraded status messages render exactly once per card", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  // Degraded card explanations must not appear both in the state panel and
+  // the footer; metric-bearing cards keep theirs in the footer only.
+  await expect(page.getByText("部分来源可用", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("摘要暂不可用", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Portal 部署与只读探测正常", { exact: true })).toHaveCount(1);
+});
+
+test("module cards navigate to their operations pages except Portal", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/api/v1/operations", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          accounts: [], sessions: [],
+          mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 0, failed: 0, dead_letters: 0 },
+          inbox_items: [], audit: [], dependencies: { postgres: "ready", redis: "ready" },
+          generated_at: "2026-07-19T00:00:00Z",
+        },
+        request_id: "req_operations_envelope",
+      }),
+    }),
+  );
+  await page.goto("/");
+
+  await expect(page.locator('[data-module-card="platform"]')).toHaveJSProperty("tagName", "A");
+  await expect(page.locator('[data-module-card="platform"]')).toHaveAttribute("href", /\/operations$/);
+  await expect(page.locator('[data-module-card="notice"]')).toHaveAttribute("href", /\/notices$/);
+  await expect(page.locator('[data-module-card="library"]')).toHaveAttribute("href", /\/library$/);
+  await expect(page.locator('[data-module-card="food"]')).toHaveAttribute("href", /\/food$/);
+  // Portal has no operations page and QuizCraft links out via its workshop
+  // button; both cards must stay plain articles instead of dead links.
+  await expect(page.locator('[data-module-card="portal"]')).toHaveJSProperty("tagName", "ARTICLE");
+  await expect(page.locator('[data-module-card="quizcraft"]')).toHaveJSProperty("tagName", "ARTICLE");
+
+  await page.locator('[data-module-card="platform"]').click();
+  await expect(page).toHaveURL(/\/operations$/);
+  await expect(page.getByRole("heading", { name: "平台运营工作台" })).toBeVisible();
+});
+
+test("overview timestamps render in local time instead of raw UTC", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  await expect(page.getByText(/^截至 /).first()).toBeVisible();
+  const library = page.locator('[data-module-card="library"]');
+  await expect(library.getByText(/^最近成功 /)).toBeVisible();
+  await expect(library).not.toContainText("2026-07-19T00:00:01Z");
+  await expect(page.locator('[data-module-card="portal"]')).not.toContainText("2026-07-19T00:00:00Z");
+});
+
+test("signing out asks for confirmation and cancel keeps the session", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/api/v1/session/logout", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.goto("/");
+
+  await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "退出登录" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toBeVisible();
+  await expect(confirm.getByText("退出登录？", { exact: true })).toBeVisible();
+  await confirm.getByRole("button", { name: "取消" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "确认退出" }).click();
+  await expect(page.getByRole("link", { name: "登录 Console" })).toBeVisible();
+  await expect(page.getByText("权限已验证", { exact: true })).toHaveCount(0);
+});
+
+test("switching accounts from the denied state also asks for confirmation", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 403, contentType: "application/json", body: "{}" }));
+  await page.route("**/api/v1/session/logout", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.goto("/");
+
+  await expect(page.getByText("权限不足", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "换个账户登录" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm.getByText("换个账户登录？", { exact: true })).toBeVisible();
+  await confirm.getByRole("button", { name: "取消" }).click();
+  await expect(page.getByText("权限不足", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "换个账户登录" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "换个账户登录", exact: true }).click();
+  await expect(page.getByRole("link", { name: "登录 Console" })).toBeVisible();
+});
+
+test("mobile navigation exposes a confirming sign-out entry", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/v1/session/logout", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "打开产品导航" }).click();
+  const navigation = page.getByRole("dialog");
+  await navigation.getByRole("button", { name: "退出登录" }).click();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await page.getByRole("alertdialog").getByRole("button", { name: "确认退出" }).click();
+
+  await expect(page.getByRole("link", { name: "登录 Console" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(page.locator("[data-module-card]")).toHaveCount(6);
+});

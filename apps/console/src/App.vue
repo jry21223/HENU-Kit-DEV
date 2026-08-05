@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Activity, Bell, BookOpen, Building2, Menu, MessageSquare, ShieldCheck, Utensils, X } from "@lucide/vue";
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from "reka-ui";
-import { computed, onMounted, ref } from "vue";
+import { Activity, Bell, BookOpen, Building2, LogOut, Menu, MessageSquare, ShieldCheck, Utensils, X } from "@lucide/vue";
+import { AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle, DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from "reka-ui";
+import { computed, nextTick, onMounted, ref } from "vue";
 
 import ModuleCard from "@/components/ModuleCard.vue";
 import { Button, PageHeader } from "@/components/ui";
@@ -77,6 +77,26 @@ async function refreshSession() {
   }
 }
 
+// Signing out (or switching accounts) must survive a confirmation dialog, so
+// the destructive call only runs after the operator confirms; the dialog copy
+// differs between a normal sign-out and a switch-account sign-out.
+const pendingSignOut = ref<"signout" | "switch_account" | null>(null);
+const signOutDialogOpen = computed({
+  get: () => pendingSignOut.value !== null,
+  set: (open: boolean) => {
+    if (!open) pendingSignOut.value = null;
+  },
+});
+
+function requestSignOut(kind: "signout" | "switch_account") {
+  mobileNavigationOpen.value = false;
+  // Let the mobile dialog unmount before the confirmation opens so the two
+  // reka-ui dialogs never fight over focus or dismissal.
+  void nextTick(() => {
+    pendingSignOut.value = kind;
+  });
+}
+
 async function signOut() {
   try {
     await logoutConsoleSession();
@@ -86,6 +106,11 @@ async function signOut() {
   } catch {
     authState.value = "unavailable";
   }
+}
+
+async function confirmSignOut() {
+  await signOut();
+  pendingSignOut.value = null;
 }
 
 onMounted(refreshSession);
@@ -114,7 +139,10 @@ const summaries = computed<ModuleSummary[]>(() =>
       : moduleSummaries.map((summary) => ({ ...summary, status: "denied", metrics: [], statusMessage: "登录后即可查看，或联系管理员开通权限。" })),
 );
 
-const visibleCount = computed(() => summaries.value.filter((summary) => summary.status !== "denied").length);
+// "可见" means the card actually shows content: denied cards are hidden behind
+// a login wall and unavailable cards are blank (e.g. the whole overview being
+// down renders every card "概览数据暂时不可用"), so neither counts.
+const visibleCount = computed(() => summaries.value.filter((summary) => summary.status !== "denied" && summary.status !== "unavailable").length);
 
 // One source of truth for the operations destinations. The desktop sidebar and
 // the mobile dialog previously repeated this list verbatim, so a permission or
@@ -232,6 +260,18 @@ const operationsNav = computed(() =>
                   </DialogClose>
                 </template>
               </nav>
+              <div v-if="authState === 'authenticated' || authState === 'denied'" class="mt-4 border-t border-border pt-3">
+                <DialogClose as-child>
+                  <Button
+                    variant="ghost"
+                    class="w-full justify-start"
+                    @click="requestSignOut(authState === 'denied' ? 'switch_account' : 'signout')"
+                  >
+                    <LogOut :size="16" aria-hidden="true" class="shrink-0" />
+                    {{ authState === "denied" ? "换个账户登录" : "退出登录" }}
+                  </Button>
+                </DialogClose>
+              </div>
             </DialogContent>
           </DialogPortal>
         </DialogRoot>
@@ -240,11 +280,11 @@ const operationsNav = computed(() =>
           <StatusBadge v-if="authState === 'loading'" status="loading">正在验证登录状态</StatusBadge>
           <template v-else-if="authState === 'authenticated'">
             <StatusBadge status="ok">权限已验证</StatusBadge>
-            <Button variant="outline" size="sm" @click="signOut">退出登录</Button>
+            <Button variant="outline" size="sm" @click="requestSignOut('signout')">退出登录</Button>
           </template>
           <template v-else-if="authState === 'denied'">
             <StatusBadge status="denied">权限不足</StatusBadge>
-            <Button variant="outline" size="sm" @click="signOut">换个账户登录</Button>
+            <Button variant="outline" size="sm" @click="requestSignOut('switch_account')">换个账户登录</Button>
           </template>
           <Button v-else-if="authState === 'unavailable'" size="sm" @click="refreshSession">重试连接</Button>
           <Button v-else as="a" size="sm" :href="consoleLoginHref()">登录 Console</Button>
@@ -298,5 +338,31 @@ const operationsNav = computed(() =>
         </template>
       </main>
     </div>
+
+    <AlertDialogRoot v-model:open="signOutDialogOpen">
+      <AlertDialogPortal>
+        <AlertDialogOverlay class="fixed inset-0 z-40 bg-foreground/30 backdrop-blur-sm" />
+        <AlertDialogContent
+          class="fixed left-1/2 top-1/2 z-50 w-[min(90vw,24rem)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-background p-5 shadow-lg"
+        >
+          <AlertDialogTitle class="text-sm font-semibold">
+            {{ pendingSignOut === "switch_account" ? "换个账户登录？" : "退出登录？" }}
+          </AlertDialogTitle>
+          <AlertDialogDescription class="mt-1.5 text-sm leading-6 text-muted-foreground">
+            {{ pendingSignOut === "switch_account" ? "将退出当前账户并返回登录页，可以选择其他账户登录。" : "将退出当前登录，未保存的更改不会保留。" }}
+          </AlertDialogDescription>
+          <div class="mt-4 flex justify-end gap-2">
+            <AlertDialogCancel as-child>
+              <Button variant="outline" size="sm">取消</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction as-child>
+              <Button size="sm" @click="confirmSignOut">
+                {{ pendingSignOut === "switch_account" ? "换个账户登录" : "确认退出" }}
+              </Button>
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialogPortal>
+    </AlertDialogRoot>
   </div>
 </template>
