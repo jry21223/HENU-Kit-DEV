@@ -1,21 +1,31 @@
 "use client";
 
-import { useRef } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import { cn } from "@/lib/cn";
+import { fetchFoodPosts, formatPortalError, mockAllowed } from "@/lib/api/client";
+import type { FoodPost } from "@/lib/api/types";
+import { FOOD_TIERS, groupFoodPostsByTier, type FoodTierKey } from "@/lib/food/ranking";
+import { foodStore } from "@/lib/food/mock";
 
-const RANKS = [
-  { rank: "01", name: "老碗面 · 西门", tag: "夯", review: "十年不换配方，汤头是真熬出来的，期末周的续命水。" },
-  { rank: "02", name: "鸡公煲 · 南门", tag: "夯", review: "微辣是谎言，点单请自觉降一档。分量够两个人。" },
-  { rank: "03", name: "烤盘饭 · 食堂三楼", tag: "拉", review: "排队二十分钟，吃饭五分钟，肉量看阿姨心情。" },
-  { rank: "04", name: "麻辣烫 · 东门", tag: "拉", review: "称重玄学发源地，同样的菜每次价格都不一样。" },
-  { rank: "05", name: "手打柠檬茶 · 商业街", tag: "夯", review: "冰块给得比茶多是事实，但夏天还是得靠它。" },
-];
+type LoadState = "loading" | "ready" | "error";
 
-function RankRow({ item }: { item: (typeof RANKS)[number] }) {
+interface RankRowItem {
+  rank: string;
+  name: string;
+  tag: string;
+  tagKey: string;
+  review: string;
+  href: string;
+}
+
+const TIER_EMPHASIS = new Set(["hang"]);
+
+function RankRow({ item }: { item: RankRowItem }) {
   const reviewRef = useRef<HTMLDivElement>(null);
 
   // 卸载时清理未完成的补间
@@ -46,11 +56,16 @@ function RankRow({ item }: { item: (typeof RANKS)[number] }) {
         <span className="font-display text-4xl font-bold text-ink/25 md:text-6xl">
           {item.rank}
         </span>
-        <span className="flex-1 text-lg font-medium md:text-2xl">{item.name}</span>
+        <Link
+          href={item.href}
+          className="flex-1 text-lg font-medium transition-colors hover:text-accent md:text-2xl"
+        >
+          {item.name}
+        </Link>
         <span
           className={cn(
             "border px-2.5 py-1 font-mono text-xs",
-            item.tag === "夯"
+            TIER_EMPHASIS.has(item.tagKey)
               ? "border-accent text-accent"
               : "border-ink/30 text-ink/50"
           )}
@@ -67,8 +82,74 @@ function RankRow({ item }: { item: (typeof RANKS)[number] }) {
   );
 }
 
+function toRankRows(posts: FoodPost[]): RankRowItem[] {
+  const tierOrder = new Map(FOOD_TIERS.map((tier, index) => [tier.key, index]));
+  const tierByPost = new Map<string, FoodTierKey>();
+  for (const group of groupFoodPostsByTier(posts)) {
+    for (const post of group.posts) tierByPost.set(post.id, group.tier.key);
+  }
+  const ranked = posts
+    .filter((post) => !post.hidden && tierByPost.has(post.id))
+    .map((post) => {
+      const tierKey = tierByPost.get(post.id)!;
+      return {
+        post,
+        tierKey,
+        tierIndex: tierOrder.get(tierKey) ?? 99,
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.tierIndex - right.tierIndex ||
+        right.post.likes - left.post.likes ||
+        left.post.id.localeCompare(right.post.id)
+    )
+    .slice(0, 5);
+
+  return ranked.map(({ post, tierKey }, index) => {
+    const tier = FOOD_TIERS.find((candidate) => candidate.key === tierKey);
+    return {
+      rank: String(index + 1).padStart(2, "0"),
+      name: post.shop.name,
+      tag: tier?.label ?? "上榜",
+      tagKey: tier?.key ?? "other",
+      review: post.excerpt || post.title,
+      href: `/food/post/${post.id}`,
+    };
+  });
+}
+
 export default function SectionFood() {
   const sectionRef = useRef<HTMLElement>(null);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [posts, setPosts] = useState<FoodPost[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoadState("loading");
+    setError(null);
+    try {
+      const response = await fetchFoodPosts();
+      setPosts(response.posts);
+      setLoadState("ready");
+    } catch (loadError) {
+      if (mockAllowed) {
+        setPosts(foodStore.get().posts);
+        setLoadState("ready");
+        return;
+      }
+      setPosts([]);
+      setError(formatPortalError(loadError));
+      setLoadState("error");
+    }
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const rows = useMemo(() => toRankRows(posts), [posts]);
 
   useGSAP(
     () => {
@@ -89,7 +170,7 @@ export default function SectionFood() {
       });
       return () => mm.revert();
     },
-    { scope: sectionRef }
+    { scope: sectionRef, dependencies: [loadState] }
   );
 
   return (
@@ -101,7 +182,7 @@ export default function SectionFood() {
             「从夯到拉，只说人话。」
           </p>
           <p className="mt-4 max-w-sm text-sm leading-7 text-ink/70">
-            全校学生真实打分，每周更新。不接受充值，不接受公关，
+            学生视角分档，档内按点赞排序；不接受充值，不接受公关，
             难吃就是难吃。
           </p>
           <MagneticButton href="/food" className="mt-8">
@@ -111,9 +192,34 @@ export default function SectionFood() {
         </div>
 
         <ul className="border-t border-line">
-          {RANKS.map((item) => (
-            <RankRow key={item.rank} item={item} />
-          ))}
+          {loadState === "loading" && (
+            <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/45">
+              榜单加载中…
+            </li>
+          )}
+          {loadState === "error" && (
+            <li className="border-b border-line py-5">
+              <p className="font-mono text-xs tracking-[0.18em] text-ink/60">
+                榜单暂时加载不出来，请稍后刷新试试。
+              </p>
+              {error ? (
+                <button
+                  type="button"
+                  onClick={() => void load()}
+                  className="mt-3 font-mono text-xs text-accent underline underline-offset-4"
+                >
+                  重新加载
+                </button>
+              ) : null}
+            </li>
+          )}
+          {loadState === "ready" && rows.length === 0 && (
+            <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/45">
+              还没有已审核的榜单条目。
+            </li>
+          )}
+          {loadState === "ready" &&
+            rows.map((item) => <RankRow key={item.rank + item.href} item={item} />)}
         </ul>
       </div>
     </section>
