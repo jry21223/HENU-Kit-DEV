@@ -31,6 +31,9 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.goto("/operations");
     for (const heading of ["平台运营工作台", "账户、角色与权限", "登录会话", "邮件基础设施", "运营收件箱", "授权审计"]) await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     await expect(page.getByLabel("角色代码")).toHaveValue("operations-operator");
+    // 无 display_name 的账户/会话/审计发起人统一走兜底呈现：主文本 + 灰字小号「用户 #后四位」。
+    await expect(page.getByText("未设置姓名").first()).toBeVisible();
+    await expect(page.getByText(/用户 #5302/).first()).toBeVisible();
     await page.getByRole("button", { name: "撤销登录" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
     await page.getByLabel("角色代码").fill("operations-reviewer");
@@ -38,6 +41,87 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(page.getByRole("status")).toContainText("结果还没确认");
     await page.getByRole("button", { name: "查询结果" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+
+  test(`${viewport.name} marking an account deleted requires confirmation and cancel performs no write`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const requests: Array<{ idempotencyKey?: string; status?: string }> = [];
+    await page.route("**/api/v1/operations/users/*/access-updates", async (route) => {
+      const body = await route.request().postDataJSON();
+      requests.push({ idempotencyKey: route.request().headers()["idempotency-key"], status: body.status });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "access_update", status: "succeeded", resource_id: operations.accounts[0].id, resource_version: 2 }, request_id: "req_access_deleted" }) });
+    });
+    await page.goto("/operations");
+    await expect(page.getByRole("heading", { name: "平台运营工作台", exact: true })).toBeVisible();
+
+    await page.getByLabel("账户状态").selectOption("deleted");
+    await page.getByRole("button", { name: "保存访问设置" }).click();
+    await expect(page.getByRole("button", { name: "确认标记已删除" })).toBeVisible();
+    await expect(page.getByText(/不会被物理删除/)).toBeVisible();
+    // 提交前出现确认步骤：确认面板展示期间与取消之前，不发生任何写入。
+    expect(requests).toHaveLength(0);
+
+    await page.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(page.getByRole("button", { name: "确认标记已删除" })).toHaveCount(0);
+    expect(requests).toHaveLength(0);
+
+    // 再次提交仍先确认；确认后才发起写入，且请求内容为「已删除」。
+    await page.getByRole("button", { name: "保存访问设置" }).click();
+    await expect(page.getByRole("button", { name: "确认标记已删除" })).toBeVisible();
+    await page.getByRole("button", { name: "确认标记已删除" }).click();
+    await expect(page.getByRole("status")).toContainText("操作已完成");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].status).toBe("deleted");
+    expect(requests[0].idempotencyKey).toMatch(/^idem_console_access_/);
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+
+  test(`${viewport.name} audit panel renders operable fields with readable reason mapping`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const auditOperations = {
+      ...operations,
+      accounts: [{ ...operations.accounts[0], status: "deleted" }],
+      audit: [
+        { request_id: "req_allowed", actor_user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", permission_code: "platform.operations.read", target_kind: "platform", decision: "allowed", reason_code: "GRANTED", created_at: "2026-07-19T00:00:00Z" },
+        { request_id: "req_denied", actor_user_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", permission_code: "quizcraft.attempt.write", target_kind: "resource", target_product_code: "quizcraft", target_resource_type: "attempt", target_resource_id: "attempt-9", decision: "denied", reason_code: "SESSION_EXPIRED", created_at: "2026-07-19T01:00:00Z" },
+        { request_id: "req_unknown_reason", actor_user_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", permission_code: "platform.operations.write", target_kind: "product", target_product_code: "notice", decision: "allowed", reason_code: "something_else", created_at: "2026-07-19T02:00:00Z" },
+      ],
+    };
+    await page.route("**/api/v1/operations", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: auditOperations, request_id: "req_audit_envelope" }) }));
+    await page.goto("/operations");
+
+    // 发起人（无 display_name 时兜底）、时间（本地时区）、权限码、结果。
+    await expect(page.getByText(/未设置姓名 · 用户 #5302/).first()).toBeVisible();
+    await expect(page.getByText(/2026/).first()).toBeVisible();
+    await expect(page.getByText("允许 · platform.operations.read")).toBeVisible();
+    await expect(page.getByText("拒绝 · quizcraft.attempt.write")).toBeVisible();
+    // 目标（产品/资源维度）与原因映射；未知原因码兜底为「其他原因」并保留原码小字。
+    await expect(page.getByText(/目标 平台/)).toBeVisible();
+    await expect(page.getByText(/目标 资源 \/ quizcraft \/ attempt \/ attempt-9/)).toBeVisible();
+    await expect(page.getByText(/目标 产品 \/ notice/)).toBeVisible();
+    await expect(page.getByText("原因：权限授予")).toBeVisible();
+    await expect(page.getByText("原因：会话已过期")).toBeVisible();
+    await expect(page.getByText(/原因：其他原因（something_else）/)).toBeVisible();
+    // 已删除账户的审计行不消失：同一行仍渲染完整字段。
+    await expect(page.getByText(/未设置姓名 · 用户 #5302.*目标 资源/)).toBeVisible();
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+
+  test(`${viewport.name} dependency health renders Chinese labels with distinct visuals`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.route("**/api/v1/operations", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { ...operations, dependencies: { postgres: "ready", redis: "unavailable" } }, request_id: "req_health_envelope" }) }));
+    await page.goto("/operations");
+    const database = page.locator(".operation-summary-grid article").filter({ hasText: "数据库" });
+    const cache = page.locator(".operation-summary-grid article").filter({ hasText: "缓存" });
+    await expect(database.getByText("正常")).toBeVisible();
+    await expect(cache.getByText("不可用")).toBeVisible();
+    // 正常与故障在视觉上可区分：绿色 success 徽标 vs 红色 destructive 徽标，而非仅文字差异。
+    await expect(database.locator("span.text-success")).toBeVisible();
+    await expect(cache.locator("span.text-destructive")).toBeVisible();
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
