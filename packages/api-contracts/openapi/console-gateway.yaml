@@ -197,7 +197,7 @@ paths:
       security: [{ consoleSession: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleAccountLookupRequest" } } } }
       responses:
-        "200": { description: Resolved account identity, or account null for an unknown email, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountLookupResult" } } }] } } } }
+        "200": { description: "Resolved account identity, or account null for an unknown email", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountLookupResult" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
