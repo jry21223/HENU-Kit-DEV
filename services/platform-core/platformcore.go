@@ -161,7 +161,7 @@ func New(config Config) (http.Handler, error) {
 	}
 	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL)
 	inbox := operationsinbox.New(queries, config.Database)
-	platformOperations := platformoperations.New(queries, config.Database, config.Redis, config.VerificationEncryptionKey)
+	platformOperations := platformoperations.New(queries, config.Database, config.Redis, config.VerificationEncryptionKey, config.StudentEmailDomains)
 	verificationFlow, err := verification.New(queries, config.Database, coordinator, passwordManager, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay, config.CoreSessionTTL)
 	if err != nil {
 		return nil, err

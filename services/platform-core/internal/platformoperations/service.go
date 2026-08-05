@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ type Service struct {
 	database        *pgxpool.Pool
 	redis           *redis.Client
 	verificationKey []byte
+	allowedDomains  map[string]struct{}
 }
 
 var (
@@ -163,8 +165,12 @@ type ScopeInput struct {
 	Kind, ProductCode, ResourceType, ResourceID string
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, verificationKey []byte) *Service {
-	return &Service{queries: queries, database: database, redis: redisClient, verificationKey: append([]byte(nil), verificationKey...)}
+func New(queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, verificationKey []byte, allowedDomains []string) *Service {
+	domains := make(map[string]struct{}, len(allowedDomains))
+	for _, domain := range allowedDomains {
+		domains[strings.ToLower(strings.TrimSpace(domain))] = struct{}{}
+	}
+	return &Service{queries: queries, database: database, redis: redisClient, verificationKey: append([]byte(nil), verificationKey...), allowedDomains: domains}
 }
 
 func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -231,9 +237,9 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 
 func (s *Service) LookupAccount(ctx context.Context, serviceID, email string) (AccountLookup, error) {
 	if serviceID == "" || s.verificationKey == nil {
-		return AccountLookup{}, ErrInvalid
+		return AccountLookup{}, ErrDependency
 	}
-	normalized, err := normalizeEmail(email)
+	normalized, err := s.normalizeEmail(email)
 	if err != nil {
 		return AccountLookup{}, ErrInvalid
 	}
@@ -244,8 +250,14 @@ func (s *Service) LookupAccount(ctx context.Context, serviceID, email string) (A
 	if limited {
 		return AccountLookup{}, ErrRateLimited
 	}
-	row, err := s.queries.GetPlatformOperationAccountByEmailLookupHash(ctx, emailLookupHash(s.verificationKey, normalized))
+	hash := emailLookupHash(s.verificationKey, normalized)
+	row, err := s.queries.GetPlatformOperationAccountByEmailLookupHash(ctx, hash)
 	if errors.Is(err, pgx.ErrNoRows) {
+		// A miss must cost a comparable index probe so the response time
+		// cannot be used to tell whether an account exists (#242).
+		var dummy [32]byte
+		_, _ = rand.Read(dummy[:])
+		_, _ = s.queries.GetPlatformOperationAccountByEmailLookupHash(ctx, dummy[:])
 		return AccountLookup{Account: nil}, nil
 	}
 	if err != nil {
@@ -275,14 +287,14 @@ func (s *Service) rateLimited(ctx context.Context, serviceID string) (bool, erro
 	return limited, nil
 }
 
-func normalizeEmail(value string) (string, error) {
+func (s *Service) normalizeEmail(value string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	parsed, err := mail.ParseAddress(normalized)
 	if err != nil || parsed.Address != normalized || strings.Count(normalized, "@") != 1 {
 		return "", ErrInvalid
 	}
 	domain := normalized[strings.LastIndexByte(normalized, '@')+1:]
-	if domain != "henu.edu.cn" {
+	if _, allowed := s.allowedDomains[domain]; !allowed {
 		return "", ErrInvalid
 	}
 	return normalized, nil

@@ -173,10 +173,8 @@ func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *htt
 }
 
 func (h *Handler) lookupPlatformOperationAccount(writer http.ResponseWriter, request *http.Request) {
-	rawBody, body, ok := decodeInboxBody[struct {
-		Email string `json:"email"`
-	}](writer, request)
-	if !ok {
+	rawBody, body, ok := decodeInboxBody[contract.PlatformOperationsAccountLookupRequest](writer, request)
+	if !ok || len(body.Email) > 320 {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation request is invalid")
 		return
 	}
