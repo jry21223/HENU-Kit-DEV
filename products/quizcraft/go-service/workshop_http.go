@@ -749,14 +749,31 @@ func (service *practiceHTTP) createFeedback(writer http.ResponseWriter, request 
 }
 
 func (service *practiceHTTP) getFeedbackStatus(writer http.ResponseWriter, request *http.Request) {
-	feedbackID, err := uuid.Parse(chi.URLParam(request, "feedback_id"))
-	if err != nil {
-		writeError(writer, http.StatusBadRequest, "invalid_feedback_id", "feedback_id must be a UUID")
-		return
-	}
 	actor, status, err := service.actor(writer, request)
 	if err != nil {
 		writeError(writer, status, "invalid_session", err.Error())
+		return
+	}
+	service.feedbackStatusForActor(writer, request, actor)
+}
+
+// portalFeedbackStatus serves the same caller-owned correction status read to
+// the narrow Portal Gateway boundary. authenticatePortalPersonalStats has
+// already verified the six-part HMAC over X-Actor-User-Id, so the actor key is
+// derived from the trusted header rather than a browser session.
+func (service *practiceHTTP) portalFeedbackStatus(writer http.ResponseWriter, request *http.Request) {
+	userID, err := portalActorUserID(request)
+	if err != nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read correction status")
+		return
+	}
+	service.feedbackStatusForActor(writer, request, practiceActor{userID: &userID, key: "user:" + userID.String()})
+}
+
+func (service *practiceHTTP) feedbackStatusForActor(writer http.ResponseWriter, request *http.Request, actor practiceActor) {
+	feedbackID, err := uuid.Parse(chi.URLParam(request, "feedback_id"))
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "invalid_feedback_id", "feedback_id must be a UUID")
 		return
 	}
 	_, err = service.loadFeedbackStatus(request.Context(), feedbackID, actor.key)

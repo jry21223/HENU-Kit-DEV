@@ -296,6 +296,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		// subject. authenticatePortalPersonalStats validates the six-part HMAC;
 		// catalog and rankings remain on their established five-part contract.
 		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/stats", service.personalStats)
+		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/feedback/{feedback_id}/status", service.portalFeedbackStatus)
 	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
@@ -329,6 +330,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		portalCommands := router.With(service.authenticatePortalCommand).With(service.requireWritesEnabled)
 		portalCommands.Post("/api/v1/portal/practice/sessions", service.createSession)
 		portalCommands.Post("/api/v1/portal/practice/sessions/{session_id}/answers", service.submitAnswer)
+		portalCommands.Post("/api/v1/portal/practice/feedback", service.createFeedback)
 	}
 	router.Get("/api/v1/operations/{operation_kind}", service.operationStatus)
 	router.Get("/api/v1/learning-state", service.learningState)

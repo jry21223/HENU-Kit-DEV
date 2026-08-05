@@ -6,6 +6,8 @@ const validPracticeSessionEnvelope = `{"request_id":"req_core_session","data":{"
 
 const validPracticeAnswerEnvelope = `{"request_id":"req_core_answer","data":{"question_id":"55555555-5555-4555-8555-555555555555","question_version_id":"66666666-6666-4666-8666-666666666666","correct":false,"replayed":false,"expected_answer":1,"analysis":"服务端讲解"}}`
 
+const validPracticeFeedbackEnvelope = `{"request_id":"req_core_feedback","data":{"operation_id":"77777777-7777-4777-8777-777777777777","state":"succeeded","idempotency_key":"feedback-retry-key-000001","request_id":"req_core_feedback","resource_id":"88888888-8888-4888-8888-888888888888"}}`
+
 func TestValidatePracticeSessionEnvelopeRejectsIncompleteOrUnclosedCoreData(t *testing.T) {
 	tests := []struct {
 		name string
@@ -33,6 +35,36 @@ func TestValidatePracticeSessionEnvelopeRejectsIncompleteOrUnclosedCoreData(t *t
 	}
 	if err := validatePracticeSessionEnvelope([]byte(validPracticeSessionEnvelope)); err != nil {
 		t.Fatalf("rejected valid Core session response: %v", err)
+	}
+}
+
+func TestValidatePracticeFeedbackEnvelopeRejectsIncompleteOrUnclosedCoreData(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "missing accepted resource id",
+			raw:  `{"request_id":"req_core_feedback","data":{"operation_id":"77777777-7777-4777-8777-777777777777","state":"succeeded","idempotency_key":"feedback-retry-key-000001","request_id":"req_core_feedback"}}`,
+		},
+		{
+			name: "operation did not succeed",
+			raw:  `{"request_id":"req_core_feedback","data":{"operation_id":"77777777-7777-4777-8777-777777777777","state":"failed","idempotency_key":"feedback-retry-key-000001","request_id":"req_core_feedback","resource_id":"88888888-8888-4888-8888-888888888888"}}`,
+		},
+		{
+			name: "unknown feedback write field",
+			raw:  `{"request_id":"req_core_feedback","data":{"operation_id":"77777777-7777-4777-8777-777777777777","state":"succeeded","idempotency_key":"feedback-retry-key-000001","request_id":"req_core_feedback","resource_id":"88888888-8888-4888-8888-888888888888","score":1}}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validatePracticeFeedbackEnvelope([]byte(test.raw)); err == nil {
+				t.Fatal("accepted an incomplete or unclosed Core feedback response")
+			}
+		})
+	}
+	if err := validatePracticeFeedbackEnvelope([]byte(validPracticeFeedbackEnvelope)); err != nil {
+		t.Fatalf("rejected valid Core feedback response: %v", err)
 	}
 }
 
