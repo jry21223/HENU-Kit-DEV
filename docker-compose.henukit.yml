@@ -419,6 +419,11 @@ services:
       - "127.0.0.1:${HENUKIT_EDGE_PORT:-8088}:80"
     volumes:
       - ./infra/nginx/henukit.conf.example:/etc/nginx/conf.d/default.conf:ro
+      # Course materials mirrored from the public HENU-Final-Review repository.
+      # Only reviewed subject directories are mirrored into this root; the git
+      # checkout and repository tooling stay outside it. Read-only, and the
+      # directory is expected to be absent on hosts that have not synced yet.
+      - ${HENUKIT_MATERIALS_ROOT:-/opt/henukit-materials/public}:/srv/materials:ro
 
 volumes:
   henukit_postgres_data:
