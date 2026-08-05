@@ -187,6 +187,13 @@ func (h *Handler) Router() chi.Router {
 	// matching actor-bound read and must never fall back to the generic proxy.
 	r.Post("/api/v1/practice/feedback", h.createPracticeFeedback)
 	r.Get("/api/v1/practice/feedback/{feedback_id}/status", h.getPracticeFeedbackStatus)
+	// Favorites are signed-in learning state: writes are explicit signed
+	// commands, reads are actor-bound like personal stats.
+	r.Get("/api/v1/practice/favorites", h.favoritesOverview)
+	r.Get("/api/v1/practice/banks/{bank_id}/favorites", h.favoritesList)
+	r.Put("/api/v1/practice/banks/{bank_id}/favorites/{question_id}", h.favoriteQuestion)
+	r.Delete("/api/v1/practice/banks/{bank_id}/favorites/{question_id}", h.unfavoriteQuestion)
+	r.Post("/api/v1/practice/banks/{bank_id}/favorites/practice-sessions", h.createFavoritesSession)
 
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
@@ -583,6 +590,10 @@ func validAccountIdempotencyKey(value string) bool {
 
 type practiceCommand func(context.Context, string, string, string, []byte, *http.Cookie) (practice.CommandResult, error)
 
+// practiceSignedInCommand is the signed-in-only command shape used by
+// favorites writes: no raw browser body, actor comes from the Portal Session.
+type practiceSignedInCommand func(context.Context, string, string, string, *http.Cookie) (practice.CommandResult, error)
+
 func (h *Handler) createPracticeSession(w http.ResponseWriter, r *http.Request) {
 	h.practiceCommand(w, r, http.StatusCreated, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.CreateSession(ctx, actorUserID, requestID, idempotencyKey, raw, anonymousCookie)
@@ -813,6 +824,122 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+// favoritesOverview lists the signed-in user's per-bank favorite folders.
+// It is an actor-bound read like personalPracticeStats.
+func (h *Handler) favoritesOverview(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.quizCraft == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are not enabled", "收藏暂时不可用，请稍后再试")
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
+		h.writePracticeReadPermissionError(w, r, err)
+		return
+	}
+	envelope, err := h.quizCraft.FavoritesOverview(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are temporarily unavailable", "收藏暂时不可用，请稍后再试")
+		return
+	}
+	writeJSON(w, http.StatusOK, envelope)
+}
+
+// favoritesList reads one bank's favorite references for the signed-in user.
+func (h *Handler) favoritesList(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.quizCraft == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are not enabled", "收藏暂时不可用，请稍后再试")
+		return
+	}
+	bankID := chi.URLParam(r, "bank_id")
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
+		h.writePracticeReadPermissionError(w, r, err)
+		return
+	}
+	envelope, err := h.quizCraft.FavoriteList(r.Context(), value.UserID, requestIDOf(w, r), bankID)
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are temporarily unavailable", "收藏暂时不可用，请稍后再试")
+		return
+	}
+	writeJSON(w, http.StatusOK, envelope)
+}
+
+// favoriteQuestion and unfavoriteQuestion are signed-in-only favorites writes.
+// Like corrections they never downgrade to a guest actor.
+func (h *Handler) favoriteQuestion(w http.ResponseWriter, r *http.Request) {
+	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+		return h.practiceCommands.FavoriteQuestion(ctx, chi.URLParam(r, "bank_id"), chi.URLParam(r, "question_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
+	})
+}
+
+func (h *Handler) unfavoriteQuestion(w http.ResponseWriter, r *http.Request) {
+	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+		return h.practiceCommands.UnfavoriteQuestion(ctx, chi.URLParam(r, "bank_id"), chi.URLParam(r, "question_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
+	})
+}
+
+// createFavoritesSession starts practice from one bank's available favorites.
+func (h *Handler) createFavoritesSession(w http.ResponseWriter, r *http.Request) {
+	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+		return h.practiceCommands.CreateFavoritesSession(ctx, chi.URLParam(r, "bank_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
+	})
+}
+
+// favoritesCommand is the signed-in-only favorites write path: session check,
+// idempotency key, one signed Core command, never a wildcard proxy write.
+func (h *Handler) favoritesCommand(w http.ResponseWriter, r *http.Request, command practiceSignedInCommand) {
+	setPrivateResponseHeaders(w)
+	if h.practiceCommands == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "请先登录后再操作收藏", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if !practice.ValidUUID(value.UserID) {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if !practice.ValidIdempotencyKey(idempotencyKey) {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	result, err := command(r.Context(), value.UserID, requestIDOf(w, r), idempotencyKey, coreAnonymousCookie(r))
+	if err != nil {
+		h.writePracticeCommandFailure(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result.Raw)
+}
+
+// writePracticeReadPermissionError maps Platform Core permission outcomes for
+// actor-bound practice reads (stats, feedback status, favorites).
+func (h *Handler) writePracticeReadPermissionError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, platformcore.ErrUnauthorized):
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+	case errors.Is(err, platformcore.ErrForbidden):
+		writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
+	default:
+		writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
+	}
 }
 
 // --- Proxy to portal-api ---

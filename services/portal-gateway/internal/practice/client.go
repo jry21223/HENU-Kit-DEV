@@ -335,6 +335,108 @@ func (c *Client) FeedbackStatus(ctx context.Context, actorUserID, requestID, fee
 	return result, nil
 }
 
+// FavoritesOverview reads the signed-in user's per-bank favorite folders
+// through the six-part actor-bound read contract.
+func (c *Client) FavoritesOverview(ctx context.Context, actorUserID, requestID string) (FavoritesOverviewEnvelope, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
+		return FavoritesOverviewEnvelope{}, ErrStatsUnauthorized
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+GetPortalFavoritesOverviewPath, nil)
+	if err != nil {
+		return FavoritesOverviewEnvelope{}, ErrStatsUnavailable
+	}
+	body, err := c.actorBoundFavoritesRead(ctx, req, actorUserID, requestID)
+	if err != nil {
+		return FavoritesOverviewEnvelope{}, err
+	}
+	defer body.Close()
+	var result FavoritesOverviewEnvelope
+	decoder := json.NewDecoder(io.LimitReader(body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview decode: %w", ErrInvalidStats)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview decode: %w", ErrInvalidStats)
+	}
+	if strings.TrimSpace(result.RequestID) == "" {
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview request id: %w", ErrInvalidStats)
+	}
+	for _, folder := range result.Data {
+		if !validUUID(folder.BankID) || strings.TrimSpace(folder.BankName) == "" || folder.AvailableCount < 0 || folder.UnavailableCount < 0 {
+			return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview folder: %w", ErrInvalidStats)
+		}
+	}
+	return result, nil
+}
+
+// FavoriteList reads one bank's favorite references for the signed-in actor.
+func (c *Client) FavoriteList(ctx context.Context, actorUserID, requestID, bankID string) (FavoriteListEnvelope, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" || !validUUID(bankID) {
+		return FavoriteListEnvelope{}, ErrStatsUnauthorized
+	}
+	path := strings.Replace(ListPortalFavoriteQuestionsPath, "{bank_id}", url.PathEscape(bankID), 1)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return FavoriteListEnvelope{}, ErrStatsUnavailable
+	}
+	body, err := c.actorBoundFavoritesRead(ctx, req, actorUserID, requestID)
+	if err != nil {
+		return FavoriteListEnvelope{}, err
+	}
+	defer body.Close()
+	var result FavoriteListEnvelope
+	decoder := json.NewDecoder(io.LimitReader(body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list decode: %w", ErrInvalidStats)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list decode: %w", ErrInvalidStats)
+	}
+	if strings.TrimSpace(result.RequestID) == "" {
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list request id: %w", ErrInvalidStats)
+	}
+	for _, item := range result.Data {
+		if !validUUID(item.BankID) || item.BankID != bankID || !validUUID(item.QuestionID) {
+			return FavoriteListEnvelope{}, fmt.Errorf("favorites list item: %w", ErrInvalidStats)
+		}
+		if item.QuestionVersionID != "" && !validUUID(item.QuestionVersionID) {
+			return FavoriteListEnvelope{}, fmt.Errorf("favorites list item version: %w", ErrInvalidStats)
+		}
+	}
+	return result, nil
+}
+
+// actorBoundFavoritesRead performs the six-part signed GET and returns the
+// response body; the caller decodes and validates the typed envelope.
+func (c *Client) actorBoundFavoritesRead(ctx context.Context, req *http.Request, actorUserID, requestID string) (io.ReadCloser, error) {
+	req.Header.Set("X-Request-Id", requestID)
+	req.Header.Set("X-Permission-Code", PortalReadPermission)
+	req.Header.Set("X-Scope-Kind", "product")
+	req.Header.Set("X-Product-Code", "quizcraft")
+	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
+		return nil, fmt.Errorf("portal favorites sign: %w", ErrStatsUnavailable)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("portal favorites request: %w", ErrStatsUnavailable)
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return resp.Body, nil
+	case http.StatusUnauthorized, http.StatusForbidden:
+		resp.Body.Close()
+		// Portal Gateway has already checked the browser's session and live
+		// permission. A Core 401/403 here is an internal service-auth failure.
+		return nil, fmt.Errorf("portal favorites service authentication: %w", ErrStatsUnavailable)
+	default:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		resp.Body.Close()
+		return nil, fmt.Errorf("portal favorites %d: %w", resp.StatusCode, ErrStatsUnavailable)
+	}
+}
+
 func validateFeedbackStatus(result FeedbackStatusEnvelope, expectedFeedbackID string) error {
 	status := result.Data
 	if strings.TrimSpace(result.RequestID) == "" || !validUUID(status.FeedbackID) || status.FeedbackID != expectedFeedbackID || !validUUID(status.BankID) || !validUUID(status.QuestionID) || !validUUID(status.QuestionVersionID) || !validFeedbackCategory(status.Category) || !validFeedbackStatus(status.Status) || strings.TrimSpace(status.CreatedAt) == "" || strings.TrimSpace(status.UpdatedAt) == "" {

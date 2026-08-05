@@ -140,6 +140,11 @@ func main() {
 	submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation := requireOperation(spec.Paths, "submitPortalPracticeAnswer")
 	createPortalPracticeFeedbackPath, createPortalPracticeFeedbackMethod, createPortalPracticeFeedbackOperation := requireOperation(spec.Paths, "createPortalPracticeFeedback")
 	getPortalPracticeFeedbackStatusPath, getPortalPracticeFeedbackStatusMethod, getPortalPracticeFeedbackStatusOperation := requireOperation(spec.Paths, "getPortalPracticeFeedbackStatus")
+	getPortalFavoritesOverviewPath, getPortalFavoritesOverviewMethod, getPortalFavoritesOverviewOperation := requireOperation(spec.Paths, "getPortalFavoritesOverview")
+	listPortalFavoriteQuestionsPath, listPortalFavoriteQuestionsMethod, listPortalFavoriteQuestionsOperation := requireOperation(spec.Paths, "listPortalFavoriteQuestions")
+	favoritePortalQuestionPath, favoritePortalQuestionMethod, favoritePortalQuestionOperation := requireOperation(spec.Paths, "favoritePortalQuestion")
+	unfavoritePortalQuestionPath, unfavoritePortalQuestionMethod, unfavoritePortalQuestionOperation := requireOperation(spec.Paths, "unfavoritePortalQuestion")
+	createPortalFavoritesSessionPath, createPortalFavoritesSessionMethod, createPortalFavoritesSessionOperation := requireOperation(spec.Paths, "createPortalFavoritesSession")
 	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope", catalogSecurityRequirements)
 	validatePortalReadOperation("getPersonalPracticeStats", statsMethod, statsOperation, "PersonalPracticeStatsEnvelope", personalStatsSecurityRequirements)
 	validatePersonalStatsActorBinding(statsOperation)
@@ -150,6 +155,13 @@ func main() {
 	validatePortalPracticeCommandOperation("createPortalPracticeFeedback", createPortalPracticeFeedbackPath, createPortalPracticeFeedbackMethod, createPortalPracticeFeedbackOperation, "202", "OperationEnvelope")
 	validatePortalReadOperation("getPortalPracticeFeedbackStatus", getPortalPracticeFeedbackStatusMethod, getPortalPracticeFeedbackStatusOperation, "FeedbackStatusEnvelope", personalStatsSecurityRequirements)
 	validatePersonalStatsActorBinding(getPortalPracticeFeedbackStatusOperation)
+	validatePortalReadOperation("getPortalFavoritesOverview", getPortalFavoritesOverviewMethod, getPortalFavoritesOverviewOperation, "FavoritesOverviewEnvelope", personalStatsSecurityRequirements)
+	validatePersonalStatsActorBinding(getPortalFavoritesOverviewOperation)
+	validatePortalReadOperation("listPortalFavoriteQuestions", listPortalFavoriteQuestionsMethod, listPortalFavoriteQuestionsOperation, "FavoriteListEnvelope", personalStatsSecurityRequirements)
+	validatePersonalStatsActorBinding(listPortalFavoriteQuestionsOperation)
+	validatePortalPracticeCommandOperation("favoritePortalQuestion", favoritePortalQuestionPath, favoritePortalQuestionMethod, favoritePortalQuestionOperation, "200", "OperationEnvelope")
+	validatePortalPracticeCommandOperation("unfavoritePortalQuestion", unfavoritePortalQuestionPath, unfavoritePortalQuestionMethod, unfavoritePortalQuestionOperation, "200", "OperationEnvelope")
+	validatePortalPracticeCommandOperation("createPortalFavoritesSession", createPortalFavoritesSessionPath, createPortalFavoritesSessionMethod, createPortalFavoritesSessionOperation, "201", "PracticeSessionEnvelope")
 	validateCatalogSecurity(spec.Components.SecuritySchemes, personalStatsSecurityRequirements)
 	validatePortalPracticeCommandSecurity(spec.Components.SecuritySchemes)
 	validateCatalogSchema(spec.Components.Schemas)
@@ -158,7 +170,7 @@ func main() {
 	validateFeedbackStatusSchema(spec.Components.Schemas)
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
-	generated, err := format.Source([]byte(render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, digest)))
+	generated, err := format.Source([]byte(render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath, digest)))
 	fail(err)
 	fail(os.WriteFile(*outputPath, generated, 0o644))
 }
@@ -217,8 +229,8 @@ func validatePortalReadOperation(operationID, method string, operation operation
 }
 
 func validatePortalPracticeCommandOperation(operationID, path, method string, operation operation, successStatus, envelope string) {
-	if method != "post" || !operation.Internal || !strings.HasPrefix(path, "/api/v1/portal/practice/") {
-		fail(fmt.Errorf("%s must be an internal Portal practice POST", operationID))
+	if (method != "post" && method != "put" && method != "delete") || !operation.Internal || !strings.HasPrefix(path, "/api/v1/portal/practice/") {
+		fail(fmt.Errorf("%s must be an internal Portal practice command (%s)", operationID, method))
 	}
 	response, ok := operation.Responses[successStatus]
 	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/"+envelope {
@@ -425,7 +437,7 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-func render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, digest string) string {
+func render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath, digest string) string {
 	return fmt.Sprintf(`// Code generated by cmd/quizcraftcontractgen from quizcraft.yaml; DO NOT EDIT.
 package practice
 
@@ -439,6 +451,11 @@ const CreatePortalPracticeSessionPath = %q
 const SubmitPortalPracticeAnswerPath = %q
 const CreatePortalPracticeFeedbackPath = %q
 const GetPortalPracticeFeedbackStatusPath = %q
+const GetPortalFavoritesOverviewPath = %q
+const ListPortalFavoriteQuestionsPath = %q
+const FavoritePortalQuestionPath = %q
+const UnfavoritePortalQuestionPath = %q
+const CreatePortalFavoritesSessionPath = %q
 
 // BankListEnvelope is the generated read-only QuizCraft catalog response.
 // Its data members are the published, and therefore available, bank versions.
@@ -532,7 +549,36 @@ type FeedbackStatus struct {
 	CreatedAt         string `+"`json:\"created_at\"`"+`
 	UpdatedAt         string `+"`json:\"updated_at\"`"+`
 }
-`, digest, catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath)
+
+// FavoritesOverviewEnvelope lists one signed-in Portal user's automatic
+// per-bank favorite folders. It never represents a mock response.
+type FavoritesOverviewEnvelope struct {
+	RequestID string           `+"`json:\"request_id\"`"+`
+	Data      []FavoriteFolder `+"`json:\"data\"`"+`
+}
+
+type FavoriteFolder struct {
+	BankID            string `+"`json:\"bank_id\"`"+`
+	BankName          string `+"`json:\"bank_name\"`"+`
+	AvailableCount    int    `+"`json:\"available_count\"`"+`
+	UnavailableCount  int    `+"`json:\"unavailable_count\"`"+`
+}
+
+// FavoriteListEnvelope lists one bank's favorite references for one user.
+// Unavailable items expose references only; available items carry the content
+// version id.
+type FavoriteListEnvelope struct {
+	RequestID string             `+"`json:\"request_id\"`"+`
+	Data      []FavoriteQuestion `+"`json:\"data\"`"+`
+}
+
+type FavoriteQuestion struct {
+	BankID            string `+"`json:\"bank_id\"`"+`
+	QuestionID        string `+"`json:\"question_id\"`"+`
+	Available         bool   `+"`json:\"available\"`"+`
+	QuestionVersionID string `+"`json:\"question_version_id,omitempty\"`"+`
+}
+`, digest, catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath)
 }
 
 func fail(err error) {

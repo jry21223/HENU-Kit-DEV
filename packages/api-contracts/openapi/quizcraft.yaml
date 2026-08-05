@@ -214,6 +214,103 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/ServiceReplay' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/favorites:
+    get:
+      x-internal: true
+      summary: List one signed-in user's per-bank favorite folders for Portal
+      description: The trusted Portal actor header is bound as the sixth line of the signed service request; guests cannot read favorites.
+      tags: [Favorites]
+      operationId: getPortalFavoritesOverview
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [], portalCatalogActor: [] }]
+      parameters:
+        - name: X-Actor-User-Id
+          in: header
+          required: true
+          description: UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Automatic per-bank folders, content: { application/json: { schema: { $ref: '#/components/schemas/FavoritesOverviewEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/banks/{bank_id}/favorites:
+    get:
+      x-internal: true
+      summary: List one bank's favorite references for Portal
+      description: The trusted Portal actor header is bound as the sixth line of the signed service request.
+      tags: [Favorites]
+      operationId: listPortalFavoriteQuestions
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [], portalCatalogActor: [] }]
+      parameters:
+        - name: bank_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: X-Actor-User-Id
+          in: header
+          required: true
+          description: UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Available items include content versions; unavailable items expose references only, content: { application/json: { schema: { $ref: '#/components/schemas/FavoriteListEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/banks/{bank_id}/favorites/{question_id}:
+    put:
+      x-internal: true
+      summary: Favorite a stable question reference through the Portal Gateway command boundary
+      tags: [Favorites]
+      operationId: favoritePortalQuestion
+      security: [{ portalPracticeBasic: [], portalPracticeSignature: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/QuestionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: Favorite write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    delete:
+      x-internal: true
+      summary: Remove a stable favorite through the Portal Gateway command boundary
+      tags: [Favorites]
+      operationId: unfavoritePortalQuestion
+      security: [{ portalPracticeBasic: [], portalPracticeSignature: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/QuestionID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: Unfavorite write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/banks/{bank_id}/favorites/practice-sessions:
+    post:
+      x-internal: true
+      summary: Start a Practice Core session from one bank's available favorites for Portal
+      tags: [Favorites]
+      operationId: createPortalFavoritesSession
+      security: [{ portalPracticeBasic: [], portalPracticeSignature: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BankID'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201': { description: Session excludes unavailable favorites and reports the excluded count, content: { application/json: { schema: { $ref: '#/components/schemas/PracticeSessionEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/learning-state:
     get:
       summary: Read signed-in progress and wrong-question state
