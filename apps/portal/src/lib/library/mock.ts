@@ -7,7 +7,7 @@
 
 // ---------------------------------------------------------------- 类型
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab";
+export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides";
 
 export const MATERIAL_TYPES: Record<MaterialType, { name: string; code: string }> = {
   note: { name: "学长笔记", code: "NOTE" },
@@ -15,7 +15,14 @@ export const MATERIAL_TYPES: Record<MaterialType, { name: string; code: string }
   mock: { name: "模拟卷", code: "MOCK" },
   path: { name: "学习路径", code: "PATH" },
   lab: { name: "实验报告", code: "LAB" },
+  slides: { name: "课件幻灯片", code: "SLIDES" },
 };
+
+/** 转换后的 PPT 单页 */
+export interface Slide {
+  title: string;
+  blocks?: string[];
+}
 
 export interface Material {
   id: string;
@@ -34,6 +41,11 @@ export interface Material {
   rating: number; // 0-5
   downloads: number;
   favs: number;
+  /** 镜像文件在 /materials/ 下的路径;有值时可下载 */
+  filePath?: string;
+  fileSize?: number;
+  /** 已转换的 PPT 页(详情接口返回) */
+  slides?: Slide[];
 }
 
 /** 页工厂：每页 2-3 段 */

@@ -198,7 +198,13 @@ export interface LibraryCoursesResponse {
   request_id: string;
 }
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab";
+export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides";
+
+/** 转换后的 PPT 单页 */
+export interface Slide {
+  title: string;
+  blocks?: string[];
+}
 
 export interface Material {
   id: string;
@@ -214,6 +220,11 @@ export interface Material {
   rating: number;
   downloads: number;
   favs: number;
+  /** 镜像文件在 /materials/ 下的路径;有值时可下载 */
+  filePath?: string;
+  fileSize?: number;
+  /** 已转换的 PPT 页(详情接口返回) */
+  slides?: Slide[];
 }
 
 export interface MaterialListResponse {

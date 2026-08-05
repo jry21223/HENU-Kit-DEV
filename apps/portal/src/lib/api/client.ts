@@ -34,6 +34,7 @@ import type {
   FoodPostListResponse,
   FoodVenuesResponse,
   LibraryCoursesResponse,
+  MaterialDetailResponse,
   MaterialListResponse,
   NoticeListResponse,
   PersonalPracticeStatsEnvelope,
@@ -404,6 +405,14 @@ export async function fetchLibraryMaterials(params?: {
   const query = qs.toString();
   return apiFetchRequired<MaterialListResponse>(
     `/api/v1/library/materials${query ? `?${query}` : ""}`
+  );
+}
+
+export async function fetchLibraryMaterialDetail(
+  id: string
+): Promise<MaterialDetailResponse | null> {
+  return apiFetch<MaterialDetailResponse>(
+    `/api/v1/library/materials/${encodeURIComponent(id)}`
   );
 }
 

@@ -2,16 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import {
-  MATERIAL_TYPES,
-  Material,
-  STATIC_MATERIALS,
-} from "@/lib/library/mock";
+import { MATERIAL_TYPES, type Material } from "@/lib/library/mock";
+import { getMaterialOrFallback, getMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
 
 export default function ItemDetail({ id }: { id: string }) {
-  const material = STATIC_MATERIALS.find((m) => m.id === id);
+  const material = getMaterialOrFallback(id);
   useReveal();
   const [tocOpen, setTocOpen] = useState(false);
 
@@ -28,10 +25,37 @@ export default function ItemDetail({ id }: { id: string }) {
 
   const t = MATERIAL_TYPES[material.type];
   const free = material.price === 0;
-  const related = STATIC_MATERIALS.filter(
+  const related = getMaterials().filter(
     (m) => m.id !== id && (m.subject === material.subject || m.type === material.type)
   ).slice(0, 3);
   const toc = tocOpen ? material.toc : material.toc.slice(0, 6);
+
+  const showSlides = material.type === "slides";
+  const hasPages = material.pages.length > 0;
+  const fileUrl = material.filePath
+    ? new URL(material.filePath, window.location.origin).toString()
+    : null;
+
+  const actions: { label: string; href: string; primary: boolean; external?: boolean }[] = [];
+  if (showSlides) {
+    actions.push({ label: "浏览幻灯片 →", href: `/library/slides/${id}`, primary: true });
+  } else if (hasPages) {
+    actions.push({ label: "立即阅读 →", href: `/library/read/${id}`, primary: true });
+  }
+  if (fileUrl) {
+    const size = material.fileSize ? `（${formatBytes(material.fileSize)}）` : "";
+    actions.push({
+      label: actions.length === 0 ? `下载资料 ↓` : `下载资料 ↓${size}`,
+      href: fileUrl,
+      primary: actions.length === 0,
+      external: true,
+    });
+  }
+
+  const meta =
+    material.filePath && material.fileSize
+      ? `${formatBytes(material.fileSize)} · ${material.subject}`
+      : `${material.pageCount ?? material.pages.length} 页 · ${material.subject}`;
 
   return (
     <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
@@ -50,9 +74,7 @@ export default function ItemDetail({ id }: { id: string }) {
           </div>
           <div>
             <p className="font-display text-2xl font-bold leading-snug">{material.title}</p>
-            <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">
-              {material.pageCount ?? material.pages.length} 页 · {material.subject}
-            </p>
+            <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">{meta}</p>
           </div>
         </div>
 
@@ -69,49 +91,73 @@ export default function ItemDetail({ id }: { id: string }) {
           <p data-enter className="mt-3 font-mono text-[11px] tracking-wider text-ink/50">
             {material.author} · ★ {material.rating.toFixed(1)} · ↓ {material.downloads} · 收藏 {material.favs}
           </p>
-          <p data-enter className="mt-2 font-mono text-[10px] tracking-wider text-ink/40">
-            当前页面为示例资料，正式内容接入中
-          </p>
           <p data-enter className="mt-5 max-w-xl text-sm leading-7 text-ink/75">
             {material.intro}
           </p>
 
           {/* 目录 */}
-          <div data-enter className="mt-6 max-w-xl">
-            <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">CONTENTS / 目录</p>
-            <ul className="mt-2 border-t border-line">
-              {toc.map((c, i) => (
-                <li key={i} className="flex gap-3 border-b border-line py-2 font-mono text-xs text-ink/70">
-                  <span className="text-ink/30">{String(i + 1).padStart(2, "0")}</span>
-                  {c}
-                </li>
-              ))}
-            </ul>
-            {material.toc.length > 6 && (
-              <button
-                type="button"
-                onClick={() => setTocOpen((v) => !v)}
-                className="mt-2 font-mono text-[10px] tracking-widest text-ink/50 hover:text-accent"
-              >
-                {tocOpen ? "收起 −" : `展开全部 ${material.toc.length} 节 +`}
-              </button>
-            )}
-          </div>
+          {material.toc.length > 0 && (
+            <div data-enter className="mt-6 max-w-xl">
+              <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">CONTENTS / 目录</p>
+              <ul className="mt-2 border-t border-line">
+                {toc.map((c, i) => (
+                  <li key={i} className="flex gap-3 border-b border-line py-2 font-mono text-xs text-ink/70">
+                    <span className="text-ink/30">{String(i + 1).padStart(2, "0")}</span>
+                    {c}
+                  </li>
+                ))}
+              </ul>
+              {material.toc.length > 6 && (
+                <button
+                  type="button"
+                  onClick={() => setTocOpen((v) => !v)}
+                  className="mt-2 font-mono text-[10px] tracking-widest text-ink/50 hover:text-accent"
+                >
+                  {tocOpen ? "收起 −" : `展开全部 ${material.toc.length} 节 +`}
+                </button>
+              )}
+            </div>
+          )}
 
-          {/* 三形态操作条 */}
+          {/* 操作条 */}
           <div data-enter className="mt-8 flex flex-wrap items-center gap-3">
             {free ? (
-              <>
-                <Link
-                  href={`/library/read/${id}`}
-                  className="border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
-                >
-                  立即阅读 →
-                </Link>
+              actions.length > 0 ? (
+                actions.map((action) =>
+                  action.external ? (
+                    <a
+                      key={action.label}
+                      href={action.href}
+                      download
+                      target="_blank"
+                      rel="noreferrer"
+                      className={
+                        action.primary
+                          ? "border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+                          : "border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/70 transition-colors hover:border-ink"
+                      }
+                    >
+                      {action.label}
+                    </a>
+                  ) : (
+                    <Link
+                      key={action.label}
+                      href={action.href}
+                      className={
+                        action.primary
+                          ? "border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+                          : "border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/70 transition-colors hover:border-ink"
+                      }
+                    >
+                      {action.label}
+                    </Link>
+                  )
+                )
+              ) : (
                 <p className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/55">
                   下载即将开放
                 </p>
-              </>
+              )
             ) : (
               <>
                 <Link
@@ -139,14 +185,22 @@ export default function ItemDetail({ id }: { id: string }) {
       </div>
 
       {/* 相关推荐 */}
-      <section data-enter className="mt-14">
-        <p className="font-mono text-xs tracking-[0.25em] text-ink/60">MORE / 同学也在看</p>
-        <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {related.map((m: Material) => (
-            <MaterialCard key={m.id} material={m} />
-          ))}
-        </div>
-      </section>
+      {related.length > 0 && (
+        <section data-enter className="mt-14">
+          <p className="font-mono text-xs tracking-[0.25em] text-ink/60">MORE / 同学也在看</p>
+          <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {related.map((m: Material) => (
+              <MaterialCard key={m.id} material={m} />
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
 }
