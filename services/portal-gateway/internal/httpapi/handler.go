@@ -757,6 +757,10 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Header.Set("X-Request-Id", w.Header().Get("X-Request-Id"))
+	// Let a cached food photo revalidate instead of transferring the bytes again.
+	if match := r.Header.Get("If-None-Match"); match != "" {
+		req.Header.Set("If-None-Match", match)
+	}
 
 	resp, err := h.portalAPI.Do(req)
 	if err != nil {
@@ -765,7 +769,20 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	w.Header().Set("Content-Type", "application/json")
+	// Most Portal API routes answer JSON, but food photos come back as image
+	// bytes; forwarding them as application/json would stop a browser rendering
+	// them. Carry the upstream content type, and the headers that let a photo be
+	// cached and revalidated, rather than assuming a single shape.
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	w.Header().Set("Content-Type", contentType)
+	for _, header := range []string{"Cache-Control", "ETag", "Content-Disposition", "X-Content-Type-Options"} {
+		if value := resp.Header.Get(header); value != "" {
+			w.Header().Set(header, value)
+		}
+	}
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 }

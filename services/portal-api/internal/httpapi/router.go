@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -91,6 +92,9 @@ func NewRouter() (http.Handler, error) {
 	})
 	r.Get("/api/v1/food/posts/{id}/comments", func(w http.ResponseWriter, req *http.Request) {
 		listFoodComments(w, req, foodSource, mode)
+	})
+	r.Get("/api/v1/food/posts/{id}/images/{position}", func(w http.ResponseWriter, req *http.Request) {
+		getFoodPostImage(w, req, foodSource)
 	})
 
 	// Practice
@@ -337,6 +341,54 @@ func listFoodPosts(w http.ResponseWriter, r *http.Request, src foodSource, mode 
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"posts": posts, "request_id": requestIDOf(w)})
+}
+
+// getFoodPostImage serves a photo stored alongside its post.
+//
+// Photos are immutable once written — an edit inserts a new position — so the
+// response is cacheable indefinitely and carries the content hash as its ETag
+// for revalidation. Mock mode has no stored photos and simply 404s.
+func getFoodPostImage(w http.ResponseWriter, r *http.Request, src foodSource) {
+	if src.portalDB == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "图片不存在"})
+		return
+	}
+
+	position, err := strconv.Atoi(chi.URLParam(r, "position"))
+	if err != nil || position < 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "图片不存在"})
+		return
+	}
+
+	image, err := src.portalDB.GetImage(chi.URLParam(r, "id"), position)
+	if err != nil {
+		writeServiceUnavailable(w, "portal_database_error", err.Error())
+		return
+	}
+	if image == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "图片不存在"})
+		return
+	}
+
+	etag := `"` + image.SHA256 + `"`
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Content-Type", image.ContentType)
+	// Photos are decorative user uploads: never let a browser interpret one as
+	// markup, and do not offer it as a download.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", "inline")
+
+	if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, image.SHA256) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	w.Header().Set("Content-Length", strconv.Itoa(len(image.Bytes)))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(image.Bytes); err != nil {
+		log.Printf("food image write failed: %v", err)
+	}
 }
 
 func getFoodPost(w http.ResponseWriter, r *http.Request, src foodSource, mode string) {

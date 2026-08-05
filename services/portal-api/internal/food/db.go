@@ -66,6 +66,9 @@ func (db *PortalDB) GetPosts(campusFilter string) ([]Post, error) {
 	if posts == nil {
 		posts = []Post{}
 	}
+	if err := db.attachStoredImages(posts); err != nil {
+		return nil, err
+	}
 	return posts, nil
 }
 
@@ -99,7 +102,11 @@ func (db *PortalDB) GetPost(id string) (*Post, error) {
 	if p.Tags == nil {
 		p.Tags = []string{}
 	}
-	return &p, nil
+	single := []Post{p}
+	if err := db.attachStoredImages(single); err != nil {
+		return nil, err
+	}
+	return &single[0], nil
 }
 
 // GetVenues derives venue cards from portal_food_posts shops.
