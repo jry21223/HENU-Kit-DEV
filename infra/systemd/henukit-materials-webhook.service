@@ -1,0 +1,24 @@
+[Unit]
+Description=Mirror HENU Final Review course materials on push
+Documentation=https://github.com/jry21223/HENU-Kit-DEV/blob/main/docs/operations/henukit-materials-mirror.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0022
+EnvironmentFile=/etc/henukit/materials-webhook.env
+ExecStart=/usr/bin/node /opt/henukit-materials/bin/henukit-materials-webhook.mjs
+Restart=on-failure
+RestartSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+# The mirror root is the only path this unit writes to.
+ReadWritePaths=/opt/henukit-materials
+
+[Install]
+WantedBy=multi-user.target
