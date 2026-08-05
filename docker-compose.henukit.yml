@@ -354,9 +354,9 @@ services:
       NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
       # Notice and Food are first-class compose owners; empty overrides degrade
       # the module to 503 instead of resolving a host that does not run.
-      NOTICE_API_URL: ${NOTICE_API_URL:-http://notice:8094}
+      NOTICE_API_URL: ${NOTICE_API_URL:-}
       LIBRARY_API_URL: ${LIBRARY_API_URL:-}
-      FOOD_API_URL: ${FOOD_API_URL:-http://food:8096}
+      FOOD_API_URL: ${FOOD_API_URL:-}
       NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
       NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
       NOTICE_SUMMARY_KEY_ID: ${NOTICE_SUMMARY_KEY_ID:-notice-summary-key}
