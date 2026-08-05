@@ -24,7 +24,7 @@ const props = withDefaults(
     <div class="grid gap-1.5">
       <p
         v-if="eyebrow"
-        class="font-mono text-xs font-bold uppercase tracking-[0.14em] text-[var(--hk-accent)]"
+        class="text-xs font-medium text-muted-foreground"
       >
         {{ eyebrow }}
       </p>

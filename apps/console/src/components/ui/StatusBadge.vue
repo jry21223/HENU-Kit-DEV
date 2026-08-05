@@ -5,27 +5,25 @@ import type { ModuleStatus } from "@/data/modules";
 
 const props = defineProps<{ status: ModuleStatus | "ok" }>();
 
-const variants = cva("inline-flex min-h-7 items-center rounded-full px-2.5 text-sm font-bold", {
-  variants: {
-    status: {
-      ok: "status-success",
-      loading: "status-neutral",
-      empty: "status-info",
-      partial: "status-warning",
-      stale: "status-warning",
-      unavailable: "status-danger",
-      denied: "status-neutral",
+// Tinted surface + saturated text, so status stays legible on a page that is
+// otherwise entirely neutral. Colour is never the only signal — every caller
+// pairs the badge with a text label.
+const variants = cva(
+  "inline-flex min-h-6 items-center rounded-md border px-2 text-xs font-medium whitespace-nowrap",
+  {
+    variants: {
+      status: {
+        ok: "border-success/25 bg-success/10 text-success",
+        loading: "border-border bg-muted text-muted-foreground",
+        empty: "border-info/25 bg-info/10 text-info",
+        partial: "border-warning/30 bg-warning/12 text-warning",
+        stale: "border-warning/30 bg-warning/12 text-warning",
+        unavailable: "border-destructive/25 bg-destructive/10 text-destructive",
+        denied: "border-border bg-muted text-muted-foreground",
+      },
     },
   },
-});
+);
 </script>
 
 <template><span :class="variants({ status: props.status })"><slot /></span></template>
-
-<style scoped>
-.status-success { background: var(--hk-accent-soft); color: var(--hk-success); }
-.status-info { background: color-mix(in srgb, var(--hk-info) 10%, var(--hk-paper-raised)); color: var(--hk-info); }
-.status-warning { background: color-mix(in srgb, var(--hk-warning) 12%, var(--hk-paper-raised)); color: var(--hk-warning); }
-.status-danger { background: color-mix(in srgb, var(--hk-danger) 10%, var(--hk-paper-raised)); color: var(--hk-danger); }
-.status-neutral { background: var(--hk-line); color: var(--hk-ink); }
-</style>

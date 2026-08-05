@@ -104,7 +104,7 @@ test("loading scenario marks all six modules busy without fake metrics", async (
   await page.goto("/?scenario=loading");
   await expect(page.locator("section[aria-busy='true']")).toBeVisible();
   await expect(page.locator("[data-state='loading']")).toHaveCount(6);
-  await expect(page.locator(".metric-tile")).toHaveCount(0);
+  await expect(page.locator("[data-metric-tile]")).toHaveCount(0);
 });
 
 test("expired session completes sign-in callback and returns to the intended path", async ({ page, context }) => {
@@ -145,12 +145,12 @@ test("expired session completes sign-in callback and returns to the intended pat
   await expect(login).toBeVisible();
   await expect(login).toHaveAttribute("href", /return_to=%2F%3Ftab%3Dinbox/);
   await expect(page.locator("[data-state='denied']")).toHaveCount(6);
-  await expect(page.locator(".metric-tile")).toHaveCount(0);
+  await expect(page.locator("[data-metric-tile]")).toHaveCount(0);
   await login.click();
 
   await expect(page).toHaveURL(/\/\?tab=inbox$/);
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
-  await expect(page.locator(".metric-tile")).not.toHaveCount(0);
+  await expect(page.locator("[data-metric-tile]")).not.toHaveCount(0);
   expect((await context.cookies()).some((cookie) => cookie.name === "henukit_console_e2e" && cookie.httpOnly)).toBe(true);
 });
 

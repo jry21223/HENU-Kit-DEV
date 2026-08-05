@@ -214,7 +214,7 @@ watch(
     <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
       <form class="operation-panel !mt-0" @submit.prevent="() => lookupMembership()">
         <h2>查找已开通账户</h2>
-        <p class="mt-2 text-sm leading-6 text-[var(--hk-ink-muted)]">请先输入已开通会员账户的用户 ID。</p>
+        <p class="mt-2 text-sm leading-6 text-muted-foreground">请先输入已开通会员账户的用户 ID。</p>
         <Label class="mt-5 grid gap-2">
           用户 ID
           <Input v-model="targetUserID" required inputmode="text" autocomplete="off" placeholder="已开通账户的用户 ID" :disabled="busy" class="font-mono" @input="resetLookup" />
@@ -223,22 +223,22 @@ watch(
       </form>
 
       <Card class="!mt-0 p-4" :data-account-membership-detail-state="detailState" aria-labelledby="account-membership-detail-heading">
-        <div v-if="detailState === 'idle'" class="text-[var(--hk-ink-muted)]">输入已开通账户的用户 ID 后查看其当前会员权益。</div>
+        <div v-if="detailState === 'idle'" class="text-muted-foreground">输入已开通账户的用户 ID 后查看其当前会员权益。</div>
         <div v-else-if="detailState === 'loading'" aria-busy="true">正在读取持久化会员权益…</div>
-        <div v-else-if="detailState === 'not_found'" class="text-[var(--hk-ink-muted)]">该用户还未开通会员账户，无法发放权益。</div>
-        <div v-else-if="detailState === 'invalid'" class="text-[var(--hk-ink-muted)]">用户 ID 格式不对，请检查后重试。</div>
-        <div v-else-if="detailState === 'unavailable'" class="text-[var(--hk-ink-muted)]"><p>会员权益暂不可用。</p><Button class="mt-3" @click="lookupMembership">重新加载</Button></div>
+        <div v-else-if="detailState === 'not_found'" class="text-muted-foreground">该用户还未开通会员账户，无法发放权益。</div>
+        <div v-else-if="detailState === 'invalid'" class="text-muted-foreground">用户 ID 格式不对，请检查后重试。</div>
+        <div v-else-if="detailState === 'unavailable'" class="text-muted-foreground"><p>会员权益暂不可用。</p><Button class="mt-3" @click="lookupMembership">重新加载</Button></div>
         <template v-else-if="membership">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="eyebrow">当前权益</p>
               <h2 id="account-membership-detail-heading" class="mt-1 text-xl font-bold">{{ membershipLabel(membership) }}</h2>
             </div>
-            <span class="rounded-full bg-[var(--hk-paper)] px-3 py-1 text-sm">版本 {{ membership.version }}</span>
+            <span class="rounded-full bg-muted px-3 py-1 text-sm">版本 {{ membership.version }}</span>
           </div>
-          <p class="mt-3 text-sm leading-6 text-[var(--hk-ink-muted)]">每次授权或撤销都写入不可变审计事件，并向用户创建一条持久化通知。</p>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">每次授权或撤销都写入不可变审计事件，并向用户创建一条持久化通知。</p>
 
-          <form class="mt-5 border-t border-[var(--hk-line)] pt-5" @submit.prevent="submitMutation">
+          <form class="mt-5 border-t border-border pt-5" @submit.prevent="submitMutation">
             <Label class="grid gap-2">
               操作原因
               <Textarea v-model="reason" required maxlength="1000" rows="4" :placeholder="membership.plan === 'free' ? '说明为何发放终身权益。' : '说明为何撤销终身权益。'"></Textarea>

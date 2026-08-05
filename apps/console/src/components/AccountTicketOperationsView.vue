@@ -73,6 +73,13 @@ function statusLabel(status: ConsoleAccountTicket["status"]) {
   return status === "open" ? "待处理" : status === "in_progress" ? "处理中" : "已解决";
 }
 
+// Success feedback must name the transition that actually happened. Reporting
+// "已解决" for an in_progress transition tells the operator the ticket is done,
+// so they stop working it and the queue silently accumulates open tickets.
+function transitionFeedback(status: ConsoleTicketTransitionRequest["status"]) {
+  return status === "in_progress" ? "工单已开始处理。" : "工单已标记为已解决。";
+}
+
 function timestamp(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
@@ -128,7 +135,7 @@ async function finishResult(command: PendingCommand, result: AccountTicketWriteR
     persistPending();
     updateQueue(result.ticket);
     if (command.kind === "reply") replyBody.value = "";
-    feedback.value = command.kind === "reply" ? "回复已写入工单。" : "工单已标记为已解决。";
+    feedback.value = command.kind === "reply" ? "回复已写入工单。" : transitionFeedback(command.input.status);
     await refreshQueue();
     await openTicket(command.ticketID);
   } else if (result.state === "conflict") {
@@ -212,39 +219,39 @@ watch(
     <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
       <Card class="!mt-0 p-4" aria-labelledby="account-ticket-queue-heading">
         <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="account-ticket-queue-heading">工单队列</h2><Button variant="ghost" @click="refreshQueue">刷新</Button></div>
-        <p v-if="queue.length === 0" class="mt-3 text-[var(--hk-ink-muted)]">暂无待处理工单。</p>
+        <p v-if="queue.length === 0" class="mt-3 text-muted-foreground">暂无待处理工单。</p>
         <div v-else class="mt-3 grid gap-2">
           <button
             v-for="ticket in queue"
             :key="ticket.id"
             type="button"
-            class="rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] p-3 text-left transition hover:bg-[var(--hk-paper)]"
-            :class="selectedID === ticket.id ? 'ring-2 ring-[var(--hk-accent)]' : ''"
+            class="rounded-md border border-border p-3 text-left transition hover:bg-muted"
+            :class="selectedID === ticket.id ? 'border-primary bg-accent' : ''"
             :aria-current="selectedID === ticket.id ? 'page' : undefined"
             @click="openTicket(ticket.id)"
           >
-            <div class="flex items-start justify-between gap-3"><strong>{{ ticket.title }}</strong><span class="shrink-0 rounded-full bg-[var(--hk-paper)] px-2 py-1 text-xs">{{ statusLabel(ticket.status) }}</span></div>
-            <p class="mt-1 break-all text-xs text-[var(--hk-ink-muted)]">{{ ticket.reference }}</p>
-            <p class="mt-1 text-xs text-[var(--hk-ink-muted)]">更新于 {{ timestamp(ticket.updated_at) }}</p>
+            <div class="flex items-start justify-between gap-3"><strong>{{ ticket.title }}</strong><span class="shrink-0 rounded-full bg-muted px-2 py-1 text-xs">{{ statusLabel(ticket.status) }}</span></div>
+            <p class="mt-1 break-all text-xs text-muted-foreground">{{ ticket.reference }}</p>
+            <p class="mt-1 text-xs text-muted-foreground">更新于 {{ timestamp(ticket.updated_at) }}</p>
           </button>
         </div>
       </Card>
 
       <Card class="!mt-0 p-4" aria-labelledby="account-ticket-detail-heading" :data-account-ticket-detail-state="detailState">
-        <div v-if="detailState === 'idle'" class="text-[var(--hk-ink-muted)]">选择队列中的工单查看详情、回复和状态流转。</div>
+        <div v-if="detailState === 'idle'" class="text-muted-foreground">选择队列中的工单查看详情、回复和状态流转。</div>
         <div v-else-if="detailState === 'loading'" aria-busy="true">正在读取工单详情…</div>
-        <div v-else-if="detailState === 'not_found'" class="text-[var(--hk-ink-muted)]">该工单已不可访问；请刷新队列。</div>
-        <div v-else-if="detailState === 'unavailable'" class="text-[var(--hk-ink-muted)]"><p>工单详情暂不可用。</p><Button class="mt-3" @click="selectedID && openTicket(selectedID)">重新加载</Button></div>
+        <div v-else-if="detailState === 'not_found'" class="text-muted-foreground">该工单已不可访问；请刷新队列。</div>
+        <div v-else-if="detailState === 'unavailable'" class="text-muted-foreground"><p>工单详情暂不可用。</p><Button class="mt-3" @click="selectedID && openTicket(selectedID)">重新加载</Button></div>
         <template v-else-if="detail">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div><p class="eyebrow">{{ detail.ticket.reference }}</p><h2 id="account-ticket-detail-heading" class="mt-1 text-xl font-bold">{{ detail.ticket.title }}</h2></div>
-            <span class="rounded-full bg-[var(--hk-paper)] px-3 py-1 text-sm">{{ statusLabel(detail.ticket.status) }}</span>
+            <span class="rounded-full bg-muted px-3 py-1 text-sm">{{ statusLabel(detail.ticket.status) }}</span>
           </div>
-          <p class="mt-2 text-sm text-[var(--hk-ink-muted)]">版本 {{ detail.ticket.version }} · 更新于 {{ timestamp(detail.ticket.updated_at) }}</p>
+          <p class="mt-2 text-sm text-muted-foreground">版本 {{ detail.ticket.version }} · 更新于 {{ timestamp(detail.ticket.updated_at) }}</p>
 
-          <div class="mt-5 grid gap-3 border-y border-[var(--hk-line)] py-5">
-            <article v-for="message in detail.messages" :key="message.id" class="border-l-2 border-[var(--hk-accent)] pl-3">
-              <p class="text-xs text-[var(--hk-ink-muted)]">{{ message.author_kind === 'operator' ? '客服' : '用户' }} · {{ timestamp(message.created_at) }}</p>
+          <div class="mt-5 grid gap-3 border-y border-border py-5">
+            <article v-for="message in detail.messages" :key="message.id" class="border-l-2 border-border pl-3">
+              <p class="text-xs text-muted-foreground">{{ message.author_kind === 'operator' ? '客服' : '用户' }} · {{ timestamp(message.created_at) }}</p>
               <p class="mt-1 whitespace-pre-wrap leading-7">{{ message.body }}</p>
             </article>
           </div>
@@ -254,11 +261,11 @@ watch(
             <Button class="mt-3" type="submit" :disabled="busy || !replyBody.trim()">发送回复</Button>
           </form>
 
-          <div v-if="canTransition && detail.ticket.status !== 'resolved'" class="mt-5 flex flex-wrap gap-3 border-t border-[var(--hk-line)] pt-5">
+          <div v-if="canTransition && detail.ticket.status !== 'resolved'" class="mt-5 flex flex-wrap gap-3 border-t border-border pt-5">
             <Button v-if="detail.ticket.status === 'open'" :disabled="busy" @click="transition('in_progress')">开始处理</Button>
             <Button :disabled="busy" variant="ghost" class="secondary-action" @click="transition('resolved')">标记已解决</Button>
           </div>
-          <p v-else-if="!canReply && !canTransition" class="mt-5 text-sm text-[var(--hk-ink-muted)]">当前账户仅拥有工单只读权限。</p>
+          <p v-else-if="!canReply && !canTransition" class="mt-5 text-sm text-muted-foreground">当前账户仅拥有工单只读权限。</p>
         </template>
       </Card>
     </div>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, CircleAlert, Clock3, LockKeyhole } from "@lucide/vue";
-import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
+import { CircleAlert, Clock3, LockKeyhole } from "@lucide/vue";
 import type { Component } from "vue";
 import { computed } from "vue";
 
@@ -27,145 +26,109 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
 
 <template>
   <article
-    class="module-card scroll-mt-24"
-    :class="`module-card--${summary.status}`"
+    class="min-w-0 scroll-mt-20 rounded-lg border border-border bg-card p-4"
+    :class="summary.status === 'denied' && 'border-dashed bg-muted/40'"
     :data-module-card="summary.id"
     :data-state="summary.status"
     :aria-label="`${summary.name}：${statusLabels[summary.status]}`"
   >
     <template v-if="summary.status === 'loading'">
       <div class="flex items-center gap-3">
-        <div class="skeleton size-11 rounded-[var(--hk-radius-card)]" />
-        <div class="flex-1 space-y-2"><div class="skeleton h-3 w-20" /><div class="skeleton h-5 w-32" /></div>
+        <div class="skeleton size-9 rounded-md" />
+        <div class="flex-1 space-y-2"><div class="skeleton h-2.5 w-16" /><div class="skeleton h-4 w-28" /></div>
       </div>
-      <div class="mt-5 grid grid-cols-2 gap-3"><div class="skeleton h-20 rounded-[var(--hk-radius-card)]" /><div class="skeleton h-20 rounded-[var(--hk-radius-card)]" /></div>
+      <div class="mt-4 grid grid-cols-2 gap-2"><div class="skeleton h-16 rounded-md" /><div class="skeleton h-16 rounded-md" /></div>
       <span class="sr-only">{{ summary.name }} 正在加载</span>
     </template>
 
     <template v-else>
       <header class="flex items-start gap-3">
-        <div class="module-icon"><component :is="icon" :size="20" aria-hidden="true" /></div>
+        <div class="grid size-9 flex-none place-items-center rounded-md border border-border bg-muted text-muted-foreground">
+          <component :is="icon" :size="17" aria-hidden="true" />
+        </div>
         <div class="min-w-0 flex-1">
-          <p class="text-sm font-bold uppercase tracking-[0.12em] text-[var(--hk-ink-muted)]">{{ summary.eyebrow }}</p>
-          <h2 class="mt-1 text-lg font-bold tracking-[-0.02em]">{{ summary.name }}</h2>
+          <p class="text-xs text-muted-foreground">{{ summary.eyebrow }}</p>
+          <h2 class="mt-0.5 truncate text-sm font-semibold tracking-tight">{{ summary.name }}</h2>
         </div>
         <StatusBadge :status="summary.status">{{ statusLabels[summary.status] }}</StatusBadge>
       </header>
 
-      <p class="mt-3 min-h-12 text-base leading-7 text-[var(--hk-ink-muted)]">{{ summary.description }}</p>
+      <p class="mt-3 text-sm leading-6 text-muted-foreground">{{ summary.description }}</p>
 
-      <div v-if="summary.metrics.length" class="mt-4 grid grid-cols-2 gap-3">
-        <div v-for="metric in summary.metrics" :key="metric.label" class="metric-tile" :aria-label="`${metric.label}：${metric.value}`">
-          <span>{{ metric.label }}</span><strong>{{ metric.value }}</strong><small v-if="metric.hint">{{ metric.hint }}</small>
+      <div v-if="summary.metrics.length" class="mt-4 grid grid-cols-2 gap-2">
+        <div
+          v-for="metric in summary.metrics"
+          :key="metric.label"
+          data-metric-tile
+          class="grid gap-0.5 rounded-md border border-border p-2.5"
+          :aria-label="`${metric.label}：${metric.value}`"
+        >
+          <span class="text-xs text-muted-foreground">{{ metric.label }}</span>
+          <strong class="text-base font-semibold tracking-tight tabular-nums">{{ metric.value }}</strong>
+          <small v-if="metric.hint" class="text-xs text-muted-foreground">{{ metric.hint }}</small>
         </div>
       </div>
 
-      <div v-else class="state-panel" :class="`state-panel--${summary.status}`">
-        <LockKeyhole v-if="summary.status === 'denied'" :size="18" aria-hidden="true" />
-        <CircleAlert v-else-if="summary.status === 'unavailable'" :size="18" aria-hidden="true" />
-        <Clock3 v-else :size="18" aria-hidden="true" />
+      <!-- Degraded modules carry their explanation here. It used to be repeated
+           verbatim in the footer below, which read as a rendering bug on every
+           unavailable / denied / partial card. -->
+      <div
+        v-else
+        class="mt-4 flex items-center gap-2.5 rounded-md border p-3 text-sm"
+        :class="
+          summary.status === 'unavailable'
+            ? 'border-destructive/25 bg-destructive/5 text-destructive'
+            : 'border-border bg-muted/50 text-muted-foreground'
+        "
+      >
+        <LockKeyhole v-if="summary.status === 'denied'" :size="16" aria-hidden="true" class="shrink-0" />
+        <CircleAlert v-else-if="summary.status === 'unavailable'" :size="16" aria-hidden="true" class="shrink-0" />
+        <Clock3 v-else :size="16" aria-hidden="true" class="shrink-0" />
         <span>{{ summary.statusMessage }}</span>
       </div>
 
-      <a v-if="summary.id === 'quizcraft' && quizcraftWorkshopURL" :href="quizcraftWorkshopURL" target="_blank" rel="noreferrer" class="mt-4 inline-flex min-h-11 items-center rounded-[var(--hk-radius-control)] border border-[var(--hk-line)] px-3 text-sm font-semibold text-[var(--hk-ink)]">打开 QuizCraft 题库工坊</a>
+      <a
+        v-if="summary.id === 'quizcraft' && quizcraftWorkshopURL"
+        :href="quizcraftWorkshopURL"
+        target="_blank"
+        rel="noreferrer"
+        class="mt-3 inline-flex min-h-9 items-center rounded-md border border-border px-3 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        打开 QuizCraft 题库工坊
+      </a>
 
-      <div v-if="summary.trend" class="mt-4 rounded-[var(--hk-radius-card)] border border-[var(--hk-line)] bg-[var(--hk-paper)]/45 p-3">
-        <div class="flex items-center justify-between gap-3">
-          <span class="text-sm font-semibold">关键页面监测 · 近 5 日</span>
-          <span class="text-sm text-[var(--hk-ink-muted)]">成功次数</span>
-        </div>
-        <div class="mt-3 flex h-16 items-end gap-2" role="img" aria-label="Portal 最近五日关键页面监测成功次数柱状图">
-          <div v-for="point in summary.trend" :key="point.label" class="flex flex-1 flex-col items-center gap-1">
-            <div class="w-full rounded-sm bg-[var(--hk-accent)]" :style="{ height: `${Math.max(12, point.value * 1.55)}px` }" />
-            <span class="text-sm text-[var(--hk-ink-muted)]">{{ point.label.slice(1) }}</span>
-          </div>
-        </div>
-        <CollapsibleRoot class="mt-2">
-          <CollapsibleTrigger class="flex min-h-11 w-full items-center justify-between rounded-[var(--hk-radius-control)] px-2 text-sm font-semibold text-[var(--hk-ink)] hover:bg-[var(--hk-accent-soft)]">
-            查看表格数据 <ChevronDown :size="15" aria-hidden="true" />
-          </CollapsibleTrigger>
-          <CollapsibleContent class="pt-2">
-            <table class="w-full text-left text-sm" aria-label="Portal 监测成功次数表格">
-              <thead><tr><th class="py-1">日期</th><th class="py-1 text-right">成功次数</th></tr></thead>
-              <tbody><tr v-for="point in summary.trend" :key="point.label"><td class="py-1">{{ point.label }}</td><td class="py-1 text-right tabular-nums">{{ point.value }}</td></tr></tbody>
-            </table>
-          </CollapsibleContent>
-        </CollapsibleRoot>
-      </div>
-
-      <footer class="mt-4 flex min-h-8 items-end justify-between gap-3 border-t border-[var(--hk-line)] pt-3 text-sm text-[var(--hk-ink-muted)]">
-        <span v-if="summary.status !== 'empty'">{{ summary.statusMessage }}</span>
-        <span v-else>暂无数据</span>
-        <span class="flex flex-col items-end gap-1 text-right">
-          <span v-if="summary.asOf">截至 {{ summary.asOf }}</span>
-          <span v-if="summary.status === 'stale'">最近成功 {{ summary.lastSuccessAt }}</span>
-        </span>
+      <footer
+        v-if="summary.metrics.length || summary.asOf"
+        class="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground"
+      >
+        <span v-if="summary.metrics.length">{{ summary.statusMessage }}</span>
+        <span v-if="summary.asOf" class="ml-auto">截至 {{ summary.asOf }}</span>
       </footer>
     </template>
   </article>
 </template>
 
 <style scoped>
-.module-card {
-  min-width: 0;
-  border: 1px solid var(--hk-line);
-  border-radius: var(--hk-radius-feature);
-  background: white;
-  padding: 1.15rem;
-  box-shadow: var(--hk-shadow-card);
-}
-
-.module-card--partial { border-top: 3px solid var(--hk-warning); }
-.module-card--stale { border-top: 3px solid var(--hk-warning); }
-.module-card--unavailable { border-top: 3px solid var(--hk-danger); }
-.module-card--denied { border-style: dashed; background: var(--hk-paper); }
-
-.module-icon {
-  display: grid;
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: none;
-  place-items: center;
-  border-radius: 0.25rem;
-  background: var(--hk-ink);
-  color: var(--hk-paper);
-}
-
-.metric-tile {
-  display: grid;
-  gap: 0.15rem;
-  border-radius: var(--hk-radius-card);
-  background: var(--hk-paper);
-  padding: 0.75rem;
-}
-
-.metric-tile span, .metric-tile small { color: var(--hk-ink-muted); font-size: var(--hk-font-size-meta); }
-.metric-tile strong { font-size: 1.25rem; letter-spacing: -0.03em; }
-
-.state-panel {
-  display: flex;
-  min-height: 5rem;
-  align-items: center;
-  gap: 0.65rem;
-  margin-top: 1rem;
-  border-radius: var(--hk-radius-card);
-  background: var(--hk-paper);
-  padding: 0.85rem;
-  color: var(--hk-ink-muted);
-  font-size: var(--hk-font-size-meta);
-  line-height: 1.45;
-}
-
-.state-panel--unavailable { background: color-mix(in srgb, var(--hk-danger) 10%, var(--hk-paper-raised)); color: var(--hk-danger); }
-.state-panel--denied { background: var(--hk-line); color: var(--hk-ink); }
-
 .skeleton {
-  background: linear-gradient(90deg, #ecebe7 20%, #f7f6f2 50%, #ecebe7 80%);
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--muted) 100%, transparent) 20%,
+    color-mix(in oklab, var(--background) 100%, transparent) 50%,
+    color-mix(in oklab, var(--muted) 100%, transparent) 80%
+  );
   background-size: 220% 100%;
   animation: shimmer 1.3s infinite linear;
 }
 
-@keyframes shimmer { to { background-position: -220% 0; } }
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
 
-@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
 </style>
