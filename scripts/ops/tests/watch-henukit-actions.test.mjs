@@ -32,6 +32,8 @@ function fixture({
   branchSha = releaseSha,
   canonicalQuizRedirect = false,
   failTargetAccountPortfolioHealth = false,
+  failTargetFoodHealth = false,
+  failTargetNoticeHealth = false,
   failTargetHealth = false,
   previousHasAccountPortfolio = true,
   previousSha = "b".repeat(40),
@@ -126,6 +128,9 @@ images=(
   henukit-portal
   henukit-portal-api
   henukit-account-portfolio
+  henukit-notice
+  henukit-notice-worker
+  henukit-food
   henukit-portal-gateway
 )
 for image in "\${images[@]}"; do
@@ -141,7 +146,7 @@ runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
 mkdir -p "$runtime_artifact" "$runtime_tree/bin" "$runtime_tree/release-gates"
 printf '%s\\n' "$FAKE_RELEASE_SHA" > "$runtime_tree/RELEASE_SHA"
-printf 'services:\\n  account-portfolio:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
+printf 'services:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
 cat > "$runtime_tree/release-gates/account-production-boundary.env" <<EOF
 release_sha=$FAKE_RELEASE_SHA
 status=$([[ "$FAKE_BAD_ACCOUNT_BOUNDARY" == "1" ]] && printf fail || printf pass)
@@ -192,14 +197,25 @@ if [[ "$1" == "ps" ]]; then
     if [[ "$sha" == "$FAKE_RELEASE_SHA" || "$FAKE_PREVIOUS_HAS_ACCOUNT_PORTFOLIO" == "1" ]]; then
       printf 'henukit-account-portfolio:%s\\n' "$sha"
     fi
+    if [[ "$sha" == "$FAKE_RELEASE_SHA" ]]; then
+      printf 'henukit-notice:%s\\nhenukit-notice-worker:%s\\nhenukit-food:%s\\n' "$sha" "$sha" "$sha"
+    fi
   fi
 elif [[ "$1" == "inspect" ]]; then
-  if [[ "$FAKE_FAIL_TARGET_ACCOUNT_PORTFOLIO_HEALTH" == "1" &&
+  if [[ "$*" == *"henukit-notice-1"* && "$FAKE_FAIL_TARGET_NOTICE_HEALTH" == "1" &&
         -s "$FAKE_ACTIVE_FILE" &&
         "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" ]]; then
-    printf 'unhealthy\n'
+    printf 'unhealthy\\n'
+  elif [[ "$*" == *"henukit-food-1"* && "$FAKE_FAIL_TARGET_FOOD_HEALTH" == "1" &&
+        -s "$FAKE_ACTIVE_FILE" &&
+        "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" ]]; then
+    printf 'unhealthy\\n'
+  elif [[ "$FAKE_FAIL_TARGET_ACCOUNT_PORTFOLIO_HEALTH" == "1" &&
+        -s "$FAKE_ACTIVE_FILE" &&
+        "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" ]]; then
+    printf 'unhealthy\\n'
   else
-    printf 'healthy\n'
+    printf 'healthy\\n'
   fi
 elif [[ "$1" == "exec" && "$*" == *"pg_dump"* ]]; then
   printf 'verified-platform-backup\\n'
@@ -266,6 +282,8 @@ fi
       FAKE_CANONICAL_QUIZ_REDIRECT: canonicalQuizRedirect ? "1" : "0",
       FAKE_CALL_LOG: log,
       FAKE_FAIL_TARGET_ACCOUNT_PORTFOLIO_HEALTH: failTargetAccountPortfolioHealth ? "1" : "0",
+      FAKE_FAIL_TARGET_FOOD_HEALTH: failTargetFoodHealth ? "1" : "0",
+      FAKE_FAIL_TARGET_NOTICE_HEALTH: failTargetNoticeHealth ? "1" : "0",
       FAKE_FAIL_TARGET_HEALTH: failTargetHealth ? "1" : "0",
       FAKE_PREVIOUS_HAS_ACCOUNT_PORTFOLIO: previousHasAccountPortfolio ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
@@ -299,7 +317,7 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 9);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 12);
   assert.match(calls, /deploy .*releases.*henukit\.env/);
   assert.match(calls, /grant-account-operator-role/);
   assert.match(calls, /operations-operator/);
@@ -477,8 +495,25 @@ test("first Account Portfolio rollout accepts a legacy eight-image release and r
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump.*account_portfolio/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 9);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 12);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), releaseSha);
+});
+
+test("failed Notice health restores and verifies the previous fixed-SHA release", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failTargetNoticeHealth: true, previousSha });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /rolled back/);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  assert.match(calls, /docker inspect .*henukit-notice-1/);
+  assert.equal((calls.match(/^deploy /gm) ?? []).length, 2);
 });
 
 test("first Account Portfolio rollout rolls back to a legacy eight-image release after failed verification", () => {

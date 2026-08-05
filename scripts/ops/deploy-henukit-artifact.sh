@@ -8,6 +8,9 @@ usage: deploy-henukit-artifact.sh <runtime-dir> <env-file> [platform-core-migrat
 The image tarballs must already have been verified and loaded into Docker.
 The optional value is a comma-separated list of filenames from
 <runtime-dir>/migrations/platform-core, applied in the supplied order.
+Numbered .up.sql migrations shipped under <runtime-dir>/migrations/notice
+and <runtime-dir>/migrations/food are applied automatically to their owner
+databases (created on demand on fresh hosts) before the release activates.
 EOF
 }
 
@@ -49,6 +52,33 @@ ensure_account_portfolio_database() {
   '
 }
 
+ensure_owner_database() {
+  local owner="$1"
+  "${compose[@]}" exec -T postgres sh -ceu '
+    if ! psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc \
+      "SELECT 1 FROM pg_database WHERE datname = '\''"$1"'\''" | grep -qx 1; then
+      createdb -U "$POSTGRES_USER" "$1"
+    fi
+  ' sh "$owner"
+}
+
+# Notice and Food own their schemas but carry no embedded migration runner,
+# so the release applies every numbered .up.sql migration shipped under
+# <runtime>/migrations/<owner> through postgres before activating. Existing
+# production databases are not recreated; createdb is only a fresh-host guard.
+apply_owner_migrations() {
+  local owner="$1"
+  local migration_dir="$runtime_dir/migrations/$owner"
+  [[ -d "$migration_dir" ]] || return 0
+  ensure_owner_database "$owner"
+  local migration_path
+  for migration_path in "$migration_dir"/*.up.sql; do
+    [[ -e "$migration_path" ]] || continue
+    echo "Applying $owner migration $(basename "$migration_path") to the $owner database"
+    "${compose[@]}" exec -T postgres sh -ceu 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -f -' sh "$owner" < "$migration_path"
+  done
+}
+
 ensure_postgres_ready() {
   local attempt
   "${compose[@]}" up -d postgres
@@ -78,6 +108,9 @@ if [[ -n "$migration_arg" ]]; then
     "${compose[@]}" exec -T postgres sh -ceu 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d platform -f -' < "$migration_path"
   done
 fi
+
+apply_owner_migrations notice
+apply_owner_migrations food
 
 echo "Ensuring Account Portfolio database exists"
 ensure_account_portfolio_database

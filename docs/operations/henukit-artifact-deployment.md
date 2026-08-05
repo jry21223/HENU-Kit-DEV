@@ -65,11 +65,11 @@ It deploys only the newest completed, successful `push` run of
    into isolated temporary databases with key-table and Account durable-fact
    count checks. On the first Account Portfolio release it records and
    restores an explicit empty-database baseline before schema creation;
-5. loads all nine fixed-SHA Docker images;
+5. loads all twelve fixed-SHA Docker images;
 6. calls the existing `deploy-henukit-artifact.sh`, then invokes Platform
    Core's owner-defined command to grant all eight Account Console permissions,
    bump the role revision, and append an immutable grant audit;
-7. verifies all nine running image tags, Account Portfolio health, and the public health routes, rolling
+7. verifies all twelve running image tags, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
 
@@ -139,7 +139,8 @@ only when that baseline's already-extracted
 `docker-compose.henukit.release.yml` explicitly lacks `account-portfolio`; it
 still requires all nine images and a healthy Account Portfolio container for
 the candidate. This prevents a partially broken new release from being treated
-as a legacy baseline.
+as a legacy baseline. Current releases carry twelve images: the nine above plus
+`notice`, `notice-worker`, and `food` (see `notice-food-production-onboarding.md`).
 
 The initial `--once` run creates and restore-tests an empty
 `account_portfolio` database if the old PostgreSQL volume does not contain one.
@@ -189,7 +190,7 @@ manifest, securely copies the existing MetaView HENU tenant identity into the
 Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017` and `000018`, deploys all nine fixed-SHA images, grants the eight
+`000017` and `000018`, deploys all twelve fixed-SHA images, grants the eight
 Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
@@ -236,7 +237,7 @@ requires a new explicit approval before the failed SHA can be attempted again.
 
 The process polls every 60 seconds by default and uses a kernel `flock` to
 prevent overlapping deployments; the lock is released even after a crash or
-power loss. A release already active on all nine image tags is an idempotent
+power loss. A release already active on all twelve image tags is an idempotent
 health-checked no-op. During the one-time 8-to-9 transition, the explicitly
 legacy eight-image baseline remains a valid rollback target. A failed check exits the process, and Systemd retries it
 after 30 seconds. Activation or public verification failure invokes the

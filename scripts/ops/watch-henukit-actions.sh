@@ -61,6 +61,8 @@ account_public_origin="https://henukit.cn"
 postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
 account_portfolio_container="${HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER:-henukit-account-portfolio-1}"
 platform_core_container="${HENUKIT_PLATFORM_CORE_CONTAINER:-henukit-platform-core-1}"
+notice_container="${HENUKIT_NOTICE_CONTAINER:-henukit-notice-1}"
+food_container="${HENUKIT_FOOD_CONTAINER:-henukit-food-1}"
 migration="${HENUKIT_PLATFORM_MIGRATIONS:-${HENUKIT_PLATFORM_MIGRATION:-}}"
 account_operator_role="${HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE:-}"
 
@@ -84,6 +86,9 @@ images=(
   henukit-portal
   henukit-portal-api
   "$account_portfolio_image"
+  henukit-notice
+  henukit-notice-worker
+  henukit-food
   henukit-portal-gateway
 )
 
@@ -295,7 +300,7 @@ download_artifacts() {
 
 active_release_matches() {
   local release_sha="$1"
-  local running image account_portfolio_state
+  local running image account_portfolio_state service
   running="$(docker ps --format '{{.Image}}')"
   for image in "${base_images[@]}"; do
     grep -Fqx "${image}:${release_sha}" <<<"$running" || return 1
@@ -310,17 +315,33 @@ active_release_matches() {
     1) ;;
     *) return 1 ;;
   esac
+  # Notice and Food releases must run their owner containers; a release that
+  # predates them remains a valid rollback target without those containers.
+  for service in notice notice-worker food; do
+    if release_has_service "$release_sha" "$service"; then
+      grep -Fqx "henukit-${service}:${release_sha}" <<<"$running" || return 1
+    fi
+  done
+}
+
+release_has_service() {
+  local release_sha="$1"
+  local service_name="$2"
+  local compose_file="$release_root/$release_sha/docker-compose.henukit.release.yml"
+  [[ -r "$compose_file" ]] || return 2
+  grep -Eq "^[[:space:]]{2}${service_name}:[[:space:]]*$" "$compose_file"
 }
 
 release_uses_account_portfolio() {
-  local release_sha="$1"
-  local compose_file="$release_root/$release_sha/docker-compose.henukit.release.yml"
-  [[ -r "$compose_file" ]] || return 2
-  grep -Eq '^[[:space:]]{2}account-portfolio:[[:space:]]*$' "$compose_file"
+  release_has_service "$1" "account-portfolio"
+}
+
+container_is_healthy() {
+  [[ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$1" 2>/dev/null)" == "healthy" ]]
 }
 
 account_portfolio_is_healthy() {
-  [[ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$account_portfolio_container" 2>/dev/null)" == "healthy" ]]
+  container_is_healthy "$account_portfolio_container"
 }
 
 current_release_sha() {
@@ -328,8 +349,10 @@ current_release_sha() {
   running="$(docker ps --format '{{.Image}}')" || return 1
   found_sha=""
   # The first Account Portfolio release must be able to roll back to the
-  # preceding eight-image runtime. Its presence is verified separately from
-  # the stable base image set using that release's extracted Compose contract.
+  # preceding eight-image runtime, and a Notice/Food release must be able to
+  # roll back to a runtime without those owners. Their presence is verified
+  # separately from the stable base image set using each release's extracted
+  # Compose contract.
   for image in "${base_images[@]}"; do
     line="$(grep -E "^${image}:[0-9a-f]{40}$" <<<"$running" | head -n 1)" || return 1
     image_sha="${line##*:}"
@@ -344,7 +367,7 @@ current_release_sha() {
 
 verify_active_release() {
   local release_sha="$1"
-  local account_portfolio_state account_status callback_status
+  local account_portfolio_state account_status callback_status service
   active_release_matches "$release_sha" || return 1
   if release_uses_account_portfolio "$release_sha"; then
     account_portfolio_state=0
@@ -356,6 +379,15 @@ verify_active_release() {
     1) ;;
     *) return 1 ;;
   esac
+  for service in notice food; do
+    if release_has_service "$release_sha" "$service"; then
+      if [[ "$service" == "notice" ]]; then
+        container_is_healthy "$notice_container" || return 1
+      else
+        container_is_healthy "$food_container" || return 1
+      fi
+    fi
+  done
   curl --fail --silent --show-error "$public_base_url/api/v1/healthz" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/practice" >/dev/null || return 1

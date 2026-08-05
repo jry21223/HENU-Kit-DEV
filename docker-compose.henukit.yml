@@ -175,6 +175,77 @@ services:
       retries: 12
       start_period: 5s
 
+  # Notice owns whitelisted sources, immutable versions, review, audience, and
+  # distribution. It accepts only signed Console Gateway calls and verifies the
+  # same NOTICE_SUMMARY_* credential pair the Gateway presents.
+  notice:
+    build:
+      context: ./services/notice
+    environment:
+      NOTICE_ADDR: ${NOTICE_ADDR:-:8094}
+      NOTICE_DATABASE_URL: ${NOTICE_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/notice?sslmode=disable}
+      NOTICE_REDIS_URL: ${NOTICE_REDIS_URL:-redis://redis:6379/3}
+      NOTICE_SERVICE_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
+      NOTICE_SERVICE_KEY_ID: ${NOTICE_SUMMARY_KEY_ID:-notice-summary-key}
+      NOTICE_SERVICE_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8094"
+    healthcheck:
+      test: ["CMD", "/notice-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # Notice delivery daemon: claims queued distributions with SKIP LOCKED,
+  # retries provider failures up to three times, and records audited outcomes.
+  # Delivery completes only when NOTICE_DELIVERY_URL / NOTICE_DELIVERY_TOKEN
+  # point at a provider webhook; until then distributions stay queued.
+  notice-worker:
+    build:
+      context: ./services/notice
+      dockerfile: Dockerfile.worker
+    environment:
+      NOTICE_DATABASE_URL: ${NOTICE_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/notice?sslmode=disable}
+      NOTICE_DELIVERY_URL: ${NOTICE_DELIVERY_URL:-}
+      NOTICE_DELIVERY_TOKEN: ${NOTICE_DELIVERY_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Food owns submissions, anomaly tickets, and tier adjustments. It accepts
+  # only signed Console Gateway calls and verifies the same FOOD_SUMMARY_*
+  # credential pair the Gateway presents.
+  food:
+    build:
+      context: ./services/food
+    environment:
+      FOOD_ADDR: ${FOOD_ADDR:-:8096}
+      FOOD_DATABASE_URL: ${FOOD_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/food?sslmode=disable}
+      FOOD_REDIS_URL: ${FOOD_REDIS_URL:-redis://redis:6379/4}
+      FOOD_SERVICE_CLIENT_ID: ${FOOD_SUMMARY_CLIENT_ID:-console-gateway-food}
+      FOOD_SERVICE_KEY_ID: ${FOOD_SUMMARY_KEY_ID:-food-summary-key}
+      FOOD_SERVICE_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:-replace-food-summary-client-secret-32bytes-min!!}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8096"
+    healthcheck:
+      test: ["CMD", "/food-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
   portal-gateway:
     build:
       context: ./services/portal-gateway
@@ -281,6 +352,8 @@ services:
       PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:-replace-platform-summary-client-secret-32bytes-min!!}
       PLATFORM_SUMMARY_KEY_ID: ${PLATFORM_SUMMARY_KEY_ID:-platform-summary-key}
       NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
+      # Notice and Food are first-class compose owners; empty overrides degrade
+      # the module to 503 instead of resolving a host that does not run.
       NOTICE_API_URL: ${NOTICE_API_URL:-}
       LIBRARY_API_URL: ${LIBRARY_API_URL:-}
       FOOD_API_URL: ${FOOD_API_URL:-}
@@ -312,6 +385,10 @@ services:
         condition: service_started
       account-portfolio:
         condition: service_healthy
+      notice:
+        condition: service_started
+      food:
+        condition: service_started
     ports:
       - "8082:8082"
     expose:
