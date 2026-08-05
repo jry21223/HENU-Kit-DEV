@@ -63,10 +63,12 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     expect(submissionCommandCount).toBe(1);
 
     await page.getByRole("button", { name: "标记已处理" }).click();
+    await page.getByLabel("操作理由").fill("已到现场复核");
     await page.getByRole("button", { name: "确认标记已处理" }).click();
     await expect(page.getByText("异常票已处理。", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "确认调档" }).click();
+    await page.getByLabel("操作理由").fill("档位调整依据充分");
     await page.getByRole("button", { name: "确认调档" }).click();
     await expect(page.getByText("调档已确认。", { exact: true })).toBeVisible();
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
