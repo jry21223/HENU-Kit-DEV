@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch HENU Kit materials sync webhook queue
+After=henukit-materials-webhook.service
+
+[Path]
+PathExistsGlob=/var/lib/henukit-materials-webhook/queue/*.json
+PathExists=/var/lib/henukit-materials-webhook/running.json
+Unit=henukit-materials-runner.service
+
+[Install]
+WantedBy=multi-user.target

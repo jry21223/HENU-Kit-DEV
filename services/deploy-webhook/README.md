@@ -79,3 +79,12 @@ manual high-risk approval, approved-SHA retry, and remote URL pinning.
 legacy deployment path. It is not the Monorepo release source of truth. Keep it
 running only until the new receiver and QuizCraft hook have been installed and
 verified on the server; remove it in a separate rollback-aware change.
+
+## Materials sync receiver
+
+`install.sh --enable-materials-sync` installs a second receiver instance for
+[jry21223/HENU-Final-Review](https://github.com/jry21223/HENU-Final-Review)
+push events, served by the same binary on `127.0.0.1:10088` at
+`/webhooks/materials`. Its runner executes
+`/usr/local/libexec/henukit/henukit-materials-sync` (mirror → slides → Study DB
+import). See [`../../docs/operations/henukit-materials-sync.md`](../../docs/operations/henukit-materials-sync.md).

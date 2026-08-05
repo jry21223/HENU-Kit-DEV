@@ -16,6 +16,7 @@ listen_addr="127.0.0.1:10087"
 clone_url=""
 enable_command_hook=0
 enable_study_hook=0
+enable_materials_sync=0
 
 usage() {
   cat <<'USAGE'
@@ -28,6 +29,7 @@ usage: sudo install.sh [options]
   --clone-url URL            clone the private repository after the read-only key is registered
   --enable-command-hook      enable the generic root-owned command hook
   --enable-study-hook        enable the existing Study artifact deployment hook
+  --enable-materials-sync    install the HENU-Final-Review materials sync webhook
 USAGE
 }
 
@@ -40,6 +42,7 @@ while (( "$#" )); do
     --clone-url) clone_url="${2:?}"; shift 2 ;;
     --enable-command-hook) enable_command_hook=1; shift ;;
     --enable-study-hook) enable_study_hook=1; shift ;;
+    --enable-materials-sync) enable_materials_sync=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 64 ;;
   esac
@@ -155,9 +158,41 @@ systemctl daemon-reload
 systemctl enable --now henukit-deploy-webhook.service
 systemctl disable --now henukit-deploy-webhook.path >/dev/null 2>&1 || true
 
+if (( enable_materials_sync )); then
+  # Materials sync webhook: 第二个接收器实例 + runner,共享同一二进制。
+  # runner 以 root 运行,需要 docker compose exec、git 与镜像目录写权限。
+  repo_root="$(cd -- "$source_dir/../.." && pwd)"
+  install -o root -g root -m 0755 "$repo_root/scripts/ops/sync-henukit-materials.sh" /usr/local/libexec/henukit/sync-henukit-materials.sh
+  install -o root -g root -m 0755 "$repo_root/scripts/ops/convert-henukit-slides.py" /usr/local/libexec/henukit/convert-henukit-slides.py
+  install -o root -g root -m 0755 "$repo_root/scripts/ops/import-henukit-materials.mjs" /usr/local/libexec/henukit/import-henukit-materials.mjs
+  install -o root -g root -m 0755 "$repo_root/scripts/ops/henukit-materials-sync.sh" /usr/local/libexec/henukit/henukit-materials-sync.sh
+
+  if [[ ! -f /etc/henukit-deploy/materials-webhook.env ]]; then
+    install -o root -g henukit-deploy -m 0640 "$source_dir/deploy/materials.env.example" /etc/henukit-deploy/materials-webhook.env
+  fi
+  if [[ ! -f /etc/henukit-deploy/materials-webhook-secret ]]; then
+    openssl rand -hex 32 > /etc/henukit-deploy/materials-webhook-secret
+  fi
+  chown root:root /etc/henukit-deploy/materials-webhook-secret
+  chmod 0400 /etc/henukit-deploy/materials-webhook-secret
+
+  install -o root -g root -m 0644 "$source_dir/deploy/systemd/henukit-materials-webhook.service" /etc/systemd/system/henukit-materials-webhook.service
+  install -o root -g root -m 0644 "$source_dir/deploy/systemd/henukit-materials-webhook.path" /etc/systemd/system/henukit-materials-webhook.path
+  install -o root -g root -m 0644 "$source_dir/deploy/systemd/henukit-materials-runner.service" /etc/systemd/system/henukit-materials-runner.service
+  systemctl daemon-reload
+  # 与主接收器同规则:先只启用接收器,验证 Nginx/GitHub webhook 后再启用队列。
+  systemctl enable --now henukit-materials-webhook.service
+  systemctl disable --now henukit-materials-webhook.path >/dev/null 2>&1 || true
+fi
+
 fingerprint="$(sha256sum /etc/henukit-deploy/webhook-secret | awk '{print $1}')"
 echo
 printf 'Webhook receiver installed. Secret SHA-256 fingerprint: %s\n' "$fingerprint"
+if (( enable_materials_sync )); then
+  materials_fingerprint="$(sha256sum /etc/henukit-deploy/materials-webhook-secret | awk '{print $1}')"
+  echo
+  printf 'Materials sync webhook installed. Secret SHA-256 fingerprint: %s\n' "$materials_fingerprint"
+fi
 echo "Read-only Deploy Key (add it to the repository, without write access):"
 cat "$ssh_dir/id_ed25519.pub"
 echo
