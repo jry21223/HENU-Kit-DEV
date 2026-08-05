@@ -147,4 +147,23 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
+
+  test(`${viewport.name} accounts, sessions, and audit actors render display_name when present`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const named = {
+      ...operations,
+      accounts: [{ ...operations.accounts[0], display_name: "张老师" }],
+      sessions: [{ ...operations.sessions[0], display_name: "李老师" }],
+      audit: [{ ...operations.audit[0], display_name: "王老师", created_at: "2026-07-19T03:00:00Z" }],
+    };
+    await page.route("**/api/v1/operations", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: named, request_id: "req_named_envelope" }) }));
+    await page.goto("/operations");
+    await expect(page.getByText("张老师").first()).toBeVisible();
+    await expect(page.getByText("李老师").first()).toBeVisible();
+    await expect(page.getByText(/王老师.*目标 平台/)).toBeVisible();
+    // display_name 存在时不再渲染兜底「未设置姓名」或 UUID 后缀。
+    await expect(page.getByText("未设置姓名")).toHaveCount(0);
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
 }

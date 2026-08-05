@@ -4,8 +4,9 @@ import type { Component } from "vue";
 import { computed } from "vue";
 
 import StatusBadge from "@/components/ui/StatusBadge.vue";
-import type { ModuleStatus, ModuleSummary } from "@/data/modules";
+import { moduleOpsPath, type ModuleStatus, type ModuleSummary } from "@/data/modules";
 import { consolePath } from "@/lib/base-path";
+import { localDateTime } from "@/lib/format";
 
 const props = defineProps<{
   summary: ModuleSummary;
@@ -27,20 +28,10 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
 // Modules with their own operations page navigate on card click. Portal has no
 // operations page, so its card stays a plain article, and QuizCraft links out
 // through the workshop button below instead of a Console route.
-const moduleDestinations: Partial<Record<ModuleSummary["id"], string>> = {
-  platform: consolePath("/operations"),
-  notice: consolePath("/notices"),
-  library: consolePath("/library"),
-  food: consolePath("/food"),
-};
-const destinationHref = computed(() => moduleDestinations[props.summary.id]);
-
-// Timestamps arrive as UTC strings; render them in the operator's local time
-// with the same formatter the rest of the Console uses.
-function timestamp(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
-}
+const destinationHref = computed(() => {
+  const path = moduleOpsPath(props.summary.id);
+  return path ? consolePath(path) : undefined;
+});
 </script>
 
 <template>
@@ -127,8 +118,8 @@ function timestamp(value: string) {
       >
         <span v-if="summary.metrics.length">{{ summary.statusMessage }}</span>
         <span class="ml-auto flex flex-col items-end gap-0.5">
-          <span v-if="summary.asOf">截至 {{ timestamp(summary.asOf) }}</span>
-          <span v-if="summary.status === 'stale' && summary.lastSuccessAt">最近成功 {{ timestamp(summary.lastSuccessAt) }}</span>
+          <span v-if="summary.asOf">截至 {{ localDateTime(summary.asOf) }}</span>
+          <span v-if="summary.status === 'stale' && summary.lastSuccessAt">最近成功 {{ localDateTime(summary.lastSuccessAt) }}</span>
         </span>
       </footer>
     </template>

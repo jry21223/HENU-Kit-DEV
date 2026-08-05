@@ -26,6 +26,25 @@ export interface ModuleSummary {
   trend?: TrendPoint[];
 }
 
+// The overview cards link into the same operations destinations the sidebar
+// offers; keep the mapping next to the module catalogue so the two cannot
+// drift. Modules without a dedicated operations page return undefined and the
+// card renders as explicitly non-navigable.
+export function moduleOpsPath(id: ModuleId): string | undefined {
+  switch (id) {
+    case "platform":
+      return "/operations";
+    case "notice":
+      return "/notices";
+    case "library":
+      return "/library";
+    case "food":
+      return "/food";
+    default:
+      return undefined;
+  }
+}
+
 const presentation = [
   ["portal", "Portal", "公共体验", "公开主站版本、入口与关键页面监测，只读呈现。"],
   ["platform", "Platform Operations", "共享平台", "账户、权限、登录会话、邮件、审计与运营收件箱。"],

@@ -167,7 +167,7 @@ watch(() => props.authState, (value) => {
     </div>
     <dialog
       ref="confirmDialog"
-      class="m-auto w-[min(92vw,36rem)] rounded-lg border border-border bg-white p-5 shadow-xl backdrop:bg-black/40"
+      class="m-auto w-[min(92vw,36rem)] rounded-lg border border-border bg-background p-5 shadow-xl backdrop:bg-foreground/30"
       aria-labelledby="distribution-confirm-heading"
       @close="pendingDistribution = undefined"
       @click.self="closeDistributionConfirm"

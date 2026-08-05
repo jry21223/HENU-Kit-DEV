@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 
 import { Button, Card, Input, Label, PageHeader, Textarea } from "@/components/ui";
+import { accountName, accountStatusLabel } from "@/lib/account-labels";
 import { adjustAccountPoints, lookupConsoleAccount, type ConsoleAccountPointAdjustmentResult, type ConsoleLookedUpAccount, type ConsolePointAdjustmentRequest } from "@/lib/console-gateway";
 
 const props = defineProps<{
@@ -79,19 +80,6 @@ function resetLookup() {
   account.value = undefined;
   lookupState.value = "idle";
   confirm.value = undefined;
-}
-
-function accountStatusLabel(status: string) {
-  if (status === "active") return "正常";
-  if (status === "suspended") return "已停用";
-  if (status === "deleted") return "已删除";
-  return status;
-}
-
-// accountName echoes the resolved display name; legacy rows may carry an empty
-// label, which must never render as a blank confirmation target.
-function accountName(value?: string) {
-  return value && value.trim().length > 0 ? value : "（未设置姓名）";
 }
 
 function formatPoints(value: number) {
