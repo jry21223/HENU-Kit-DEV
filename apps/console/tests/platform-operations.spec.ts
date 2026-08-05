@@ -79,6 +79,28 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
 
+  test(`${viewport.name} status changes other than deleted write without confirmation`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const requests: Array<{ status?: string }> = [];
+    await page.route("**/api/v1/operations/users/*/access-updates", async (route) => {
+      const body = await route.request().postDataJSON();
+      requests.push({ status: body.status });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "access_update", status: "succeeded", resource_id: operations.accounts[0].id, resource_version: 2 }, request_id: "req_access_suspended" }) });
+    });
+    await page.goto("/operations");
+    await expect(page.getByRole("heading", { name: "平台运营工作台", exact: true })).toBeVisible();
+
+    // 只有改为「已删除」才强制确认：正常 → 已停用 点保存直接写入，不出现确认面板。
+    await page.getByLabel("账户状态").selectOption("suspended");
+    await page.getByRole("button", { name: "保存访问设置" }).click();
+    await expect(page.getByRole("button", { name: "确认标记已删除" })).toHaveCount(0);
+    await expect(page.getByRole("status")).toContainText("操作已完成");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].status).toBe("suspended");
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+
   test(`${viewport.name} audit panel renders operable fields with readable reason mapping`, async ({ page }) => {
     await page.setViewportSize(viewport);
     const auditOperations = {
