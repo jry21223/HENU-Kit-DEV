@@ -270,14 +270,11 @@ watch(
         <div class="mt-5 flex items-end gap-2">
           <Label class="grid flex-1 gap-2">
             完整邮箱
-            <Input v-model="targetEmail" required type="email" inputmode="email" autocomplete="off" placeholder="student@stu.henu.edu.cn" :disabled="busy || lookupState === 'loading'" @input="resetLookup" />
+            <Input v-model="targetEmail" required type="email" inputmode="email" autocomplete="off" placeholder="student@stu.henu.edu.cn" :disabled="busy" @input="resetLookup" />
           </Label>
-          <Button type="button" :disabled="busy || lookupState === 'loading' || !targetEmail.trim()" @click="lookupAccount">查找账户</Button>
+          <Button type="button" :disabled="busy || !targetEmail.trim()" @click="lookupAccount">查找账户</Button>
         </div>
-        <div v-if="lookupState === 'not_found'" class="mt-3 text-sm leading-6 text-muted-foreground">没有找到该邮箱对应的账户。请核对邮箱后重试；这不是服务不可用。</div>
-        <div v-else-if="lookupState === 'invalid'" class="mt-3 text-sm leading-6 text-muted-foreground">邮箱格式不对，请检查后重试。</div>
-        <div v-else-if="lookupState === 'unavailable'" class="mt-3 text-sm leading-6 text-muted-foreground">账户查找服务暂时不可用，请稍后再试。</div>
-        <div v-else-if="lookupState === 'ready' && account" class="mt-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
+        <div v-if="lookupState === 'ready' && account" class="mt-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
           已核对账户：<strong>{{ accountName(account.display_name) }}</strong>（{{ accountStatusLabel(account.status) }}）
         </div>
 

@@ -284,9 +284,9 @@ watch(
         <p class="mt-2 text-sm leading-6 text-muted-foreground">输入完整邮箱查找账户，核对姓名后再执行发放或撤销。</p>
         <Label class="mt-5 grid gap-2">
           完整邮箱
-          <Input v-model="targetEmail" required type="email" inputmode="email" autocomplete="off" placeholder="student@stu.henu.edu.cn" :disabled="busy || lookupState === 'loading'" @input="resetLookup" />
+          <Input v-model="targetEmail" required type="email" inputmode="email" autocomplete="off" placeholder="student@stu.henu.edu.cn" :disabled="busy" @input="resetLookup" />
         </Label>
-        <Button class="mt-4" type="submit" :disabled="busy || lookupState === 'loading' || !targetEmail.trim()">查找账户</Button>
+        <Button class="mt-4" type="submit" :disabled="busy || !targetEmail.trim()">查找账户</Button>
       </form>
 
       <Card class="!mt-0 p-4" :data-account-lookup-state="lookupState" :data-account-membership-detail-state="detailState" aria-labelledby="account-membership-detail-heading">
