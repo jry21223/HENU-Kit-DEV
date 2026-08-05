@@ -72,7 +72,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(dialog).toContainText("确认创建分发任务");
     await expect(dialog).toContainText("暑期安排");
     await expect(dialog).toContainText("邮件");
-    await expect(dialog).toContainText("软件");
+    await expect(dialog).toContainText("学院");
     await expect(dialog).toContainText("software-college");
     await dialog.getByRole("button", { name: "确认分发" }).click();
     await expect(page.getByRole("status")).toContainText("分发任务已创建");
