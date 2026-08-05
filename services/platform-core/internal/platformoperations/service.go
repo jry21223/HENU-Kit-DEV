@@ -3,8 +3,12 @@ package platformoperations
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"net/mail"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,19 +17,23 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/platform-core/internal/coordination"
 	"henukit.dev/platform-core/internal/store"
 )
 
 type Service struct {
-	queries  *store.Queries
-	database *pgxpool.Pool
-	redis    *redis.Client
+	queries         *store.Queries
+	database        *pgxpool.Pool
+	redis           *redis.Client
+	verificationKey []byte
 }
 
 var (
 	ErrInvalid             = errors.New("invalid platform operation")
 	ErrNotFound            = errors.New("platform operation resource not found")
 	ErrConflict            = errors.New("platform operation state conflict")
+	ErrRateLimited         = errors.New("platform operation rate limit exceeded")
+	ErrDependency          = errors.New("platform operation dependency unavailable")
 	ErrIdempotencyConflict = errors.New("platform operation idempotency conflict")
 )
 
@@ -41,6 +49,7 @@ type Snapshot struct {
 
 type Account struct {
 	ID                    string        `json:"id"`
+	DisplayName           *string       `json:"display_name,omitempty"`
 	EmailVerified         bool          `json:"email_verified"`
 	Status                string        `json:"status"`
 	AuthorizationRevision int64         `json:"authorization_revision"`
@@ -61,13 +70,14 @@ type Scope struct {
 }
 
 type Session struct {
-	ID         string     `json:"id"`
-	UserID     string     `json:"user_id"`
-	Kind       string     `json:"kind"`
-	ClientID   *string    `json:"client_id,omitempty"`
-	LastSeenAt time.Time  `json:"last_seen_at"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	ID          string     `json:"id"`
+	UserID      string     `json:"user_id"`
+	DisplayName *string    `json:"display_name,omitempty"`
+	Kind        string     `json:"kind"`
+	ClientID    *string    `json:"client_id,omitempty"`
+	LastSeenAt  time.Time  `json:"last_seen_at"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
 }
 
 type MailStatus struct {
@@ -98,6 +108,7 @@ type InboxItem struct {
 type AuditEvent struct {
 	RequestID          string    `json:"request_id"`
 	ActorUserID        string    `json:"actor_user_id"`
+	DisplayName        *string   `json:"display_name,omitempty"`
 	PermissionCode     string    `json:"permission_code"`
 	TargetKind         string    `json:"target_kind"`
 	TargetProductCode  *string   `json:"target_product_code,omitempty"`
@@ -111,6 +122,16 @@ type AuditEvent struct {
 type Dependencies struct {
 	Postgres string `json:"postgres"`
 	Redis    string `json:"redis"`
+}
+
+type AccountLookup struct {
+	Account *AccountLookupAccount `json:"account"`
+}
+
+type AccountLookupAccount struct {
+	ID          string  `json:"id"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Status      string  `json:"status"`
 }
 
 type OperationResult struct {
@@ -142,8 +163,8 @@ type ScopeInput struct {
 	Kind, ProductCode, ResourceType, ResourceID string
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client) *Service {
-	return &Service{queries: queries, database: database, redis: redisClient}
+func New(queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, verificationKey []byte) *Service {
+	return &Service{queries: queries, database: database, redis: redisClient, verificationKey: append([]byte(nil), verificationKey...)}
 }
 
 func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -183,7 +204,7 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		Dependencies: Dependencies{Postgres: "ready", Redis: redisStatus}, GeneratedAt: time.Now().UTC(),
 	}
 	for _, row := range accountRows {
-		result.Accounts = append(result.Accounts, Account{ID: uuidString(row.ID), EmailVerified: row.EmailVerified, Status: row.Status, AuthorizationRevision: row.AuthorizationRevision, CreatedAt: row.CreatedAt.Time, Grants: []AccessGrant{}})
+		result.Accounts = append(result.Accounts, Account{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), EmailVerified: row.EmailVerified, Status: row.Status, AuthorizationRevision: row.AuthorizationRevision, CreatedAt: row.CreatedAt.Time, Grants: []AccessGrant{}})
 	}
 	accountIndexes := make(map[string]int, len(result.Accounts))
 	for index := range result.Accounts {
@@ -197,15 +218,82 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		result.Accounts[index].Grants = append(result.Accounts[index].Grants, AccessGrant{RoleCode: row.RoleCode, Scope: Scope{Kind: row.ScopeKind, ProductCode: textPointer(row.ProductCode), ResourceType: textPointer(row.ResourceType), ResourceID: textPointer(row.ResourceID)}})
 	}
 	for _, row := range sessionRows {
-		result.Sessions = append(result.Sessions, Session{ID: uuidString(row.ID), UserID: uuidString(row.UserID), Kind: row.Kind, ClientID: textPointer(row.ClientID), LastSeenAt: row.LastSeenAt.Time, ExpiresAt: row.ExpiresAt.Time, RevokedAt: timePointer(row.RevokedAt)})
+		result.Sessions = append(result.Sessions, Session{ID: uuidString(row.ID), UserID: uuidString(row.UserID), DisplayName: textPointer(row.DisplayName), Kind: row.Kind, ClientID: textPointer(row.ClientID), LastSeenAt: row.LastSeenAt.Time, ExpiresAt: row.ExpiresAt.Time, RevokedAt: timePointer(row.RevokedAt)})
 	}
 	for _, row := range inboxRows {
 		result.InboxItems = append(result.InboxItems, InboxItem{ID: uuidString(row.ID), SourceProductCode: row.SourceProductCode, SourceResourceType: row.SourceResourceType, SourceResourceID: row.SourceResourceID, SourceResourceURL: textPointer(row.SourceResourceUrl), OwnerUserID: uuidPointer(row.OwnerUserID), Priority: row.Priority, SLADueAt: timePointer(row.SlaDueAt), Status: row.Status, Version: row.Version, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time})
 	}
 	for _, row := range auditRows {
-		result.Audit = append(result.Audit, AuditEvent{RequestID: row.RequestID, ActorUserID: uuidString(row.ActorUserID), PermissionCode: row.PermissionCode, TargetKind: row.TargetKind, TargetProductCode: textPointer(row.TargetProductCode), TargetResourceType: textPointer(row.TargetResourceType), TargetResourceID: textPointer(row.TargetResourceID), Decision: row.Decision, ReasonCode: row.ReasonCode, CreatedAt: row.CreatedAt.Time})
+		result.Audit = append(result.Audit, AuditEvent{RequestID: row.RequestID, ActorUserID: uuidString(row.ActorUserID), DisplayName: textPointer(row.DisplayName), PermissionCode: row.PermissionCode, TargetKind: row.TargetKind, TargetProductCode: textPointer(row.TargetProductCode), TargetResourceType: textPointer(row.TargetResourceType), TargetResourceID: textPointer(row.TargetResourceID), Decision: row.Decision, ReasonCode: row.ReasonCode, CreatedAt: row.CreatedAt.Time})
 	}
 	return result, nil
+}
+
+func (s *Service) LookupAccount(ctx context.Context, serviceID, email string) (AccountLookup, error) {
+	if serviceID == "" || s.verificationKey == nil {
+		return AccountLookup{}, ErrInvalid
+	}
+	normalized, err := normalizeEmail(email)
+	if err != nil {
+		return AccountLookup{}, ErrInvalid
+	}
+	limited, err := s.rateLimited(ctx, serviceID)
+	if err != nil {
+		return AccountLookup{}, err
+	}
+	if limited {
+		return AccountLookup{}, ErrRateLimited
+	}
+	row, err := s.queries.GetPlatformOperationAccountByEmailLookupHash(ctx, emailLookupHash(s.verificationKey, normalized))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AccountLookup{Account: nil}, nil
+	}
+	if err != nil {
+		return AccountLookup{}, err
+	}
+	return AccountLookup{Account: &AccountLookupAccount{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), Status: row.Status}}, nil
+}
+
+func (s *Service) rateLimited(ctx context.Context, serviceID string) (bool, error) {
+	coordinator := coordination.NewRedis(s.redis)
+	dimensions := []struct {
+		key    string
+		limit  int64
+		window time.Duration
+	}{
+		{key: "account-lookup-minute:" + serviceID, limit: 30, window: time.Minute},
+		{key: "account-lookup-hour:" + serviceID, limit: 300, window: time.Hour},
+	}
+	limited := false
+	for _, dimension := range dimensions {
+		allowed, err := coordinator.Allow(ctx, "platform-core:"+dimension.key, dimension.limit, dimension.window)
+		if err != nil {
+			return false, ErrDependency
+		}
+		limited = limited || !allowed
+	}
+	return limited, nil
+}
+
+func normalizeEmail(value string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	parsed, err := mail.ParseAddress(normalized)
+	if err != nil || parsed.Address != normalized || strings.Count(normalized, "@") != 1 {
+		return "", ErrInvalid
+	}
+	domain := normalized[strings.LastIndexByte(normalized, '@')+1:]
+	if domain != "henu.edu.cn" {
+		return "", ErrInvalid
+	}
+	return normalized, nil
+}
+
+func emailLookupHash(key []byte, email string) []byte {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte("henukit-verification:email"))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write([]byte(email))
+	return mac.Sum(nil)
 }
 
 func (s *Service) RevokeSession(ctx context.Context, input WriteInput) (OperationResult, error) {

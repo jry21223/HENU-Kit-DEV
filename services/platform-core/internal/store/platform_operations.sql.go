@@ -132,6 +132,26 @@ func (q *Queries) CreatePlatformOperationUserGrant(ctx context.Context, arg Crea
 	return err
 }
 
+const getPlatformOperationAccountByEmailLookupHash = `-- name: GetPlatformOperationAccountByEmailLookupHash :one
+SELECT users.id, users.display_name, users.status
+FROM email_identities
+JOIN users ON users.id = email_identities.user_id
+WHERE email_identities.email_lookup_hash = $1
+`
+
+type GetPlatformOperationAccountByEmailLookupHashRow struct {
+	ID          pgtype.UUID `json:"id"`
+	DisplayName pgtype.Text `json:"display_name"`
+	Status      string      `json:"status"`
+}
+
+func (q *Queries) GetPlatformOperationAccountByEmailLookupHash(ctx context.Context, emailLookupHash []byte) (GetPlatformOperationAccountByEmailLookupHashRow, error) {
+	row := q.db.QueryRow(ctx, getPlatformOperationAccountByEmailLookupHash, emailLookupHash)
+	var i GetPlatformOperationAccountByEmailLookupHashRow
+	err := row.Scan(&i.ID, &i.DisplayName, &i.Status)
+	return i, err
+}
+
 const getPlatformOperationIdempotency = `-- name: GetPlatformOperationIdempotency :one
 SELECT request_hash, response_payload
 FROM platform_operations_idempotency
@@ -269,7 +289,7 @@ func (q *Queries) ListPlatformOperationAccountGrants(ctx context.Context) ([]Lis
 }
 
 const listPlatformOperationAccounts = `-- name: ListPlatformOperationAccounts :many
-SELECT id, email_verified, status, authorization_revision, created_at
+SELECT id, display_name, email_verified, status, authorization_revision, created_at
 FROM users
 ORDER BY created_at DESC, id
 LIMIT 20
@@ -277,6 +297,7 @@ LIMIT 20
 
 type ListPlatformOperationAccountsRow struct {
 	ID                    pgtype.UUID        `json:"id"`
+	DisplayName           pgtype.Text        `json:"display_name"`
 	EmailVerified         bool               `json:"email_verified"`
 	Status                string             `json:"status"`
 	AuthorizationRevision int64              `json:"authorization_revision"`
@@ -294,6 +315,7 @@ func (q *Queries) ListPlatformOperationAccounts(ctx context.Context) ([]ListPlat
 		var i ListPlatformOperationAccountsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.DisplayName,
 			&i.EmailVerified,
 			&i.Status,
 			&i.AuthorizationRevision,
@@ -310,9 +332,11 @@ func (q *Queries) ListPlatformOperationAccounts(ctx context.Context) ([]ListPlat
 }
 
 const listPlatformOperationAuditEvents = `-- name: ListPlatformOperationAuditEvents :many
-SELECT request_id, actor_user_id, permission_code, target_kind,
-       target_product_code, target_resource_type, target_resource_id,
-       decision, reason_code, created_at
+SELECT events.request_id, events.actor_user_id, users.display_name,
+       events.permission_code, events.target_kind,
+       events.target_product_code, events.target_resource_type,
+       events.target_resource_id, events.decision, events.reason_code,
+       events.created_at
 FROM (
     SELECT request_id, actor_user_id, permission_code, target_kind,
            target_product_code, target_resource_type, target_resource_id,
@@ -323,14 +347,16 @@ FROM (
            'resource'::text, NULL::text, resource_kind,
            resource_id::text, 'allowed'::text, operation || '_succeeded', created_at
     FROM platform_operations_audit_events
-) AS audit_events
-ORDER BY created_at DESC, request_id
+) AS events
+LEFT JOIN users ON users.id = events.actor_user_id
+ORDER BY events.created_at DESC, events.request_id
 LIMIT 20
 `
 
 type ListPlatformOperationAuditEventsRow struct {
 	RequestID          string             `json:"request_id"`
 	ActorUserID        pgtype.UUID        `json:"actor_user_id"`
+	DisplayName        pgtype.Text        `json:"display_name"`
 	PermissionCode     string             `json:"permission_code"`
 	TargetKind         string             `json:"target_kind"`
 	TargetProductCode  pgtype.Text        `json:"target_product_code"`
@@ -353,6 +379,7 @@ func (q *Queries) ListPlatformOperationAuditEvents(ctx context.Context) ([]ListP
 		if err := rows.Scan(
 			&i.RequestID,
 			&i.ActorUserID,
+			&i.DisplayName,
 			&i.PermissionCode,
 			&i.TargetKind,
 			&i.TargetProductCode,
@@ -430,20 +457,23 @@ func (q *Queries) ListPlatformOperationInboxItems(ctx context.Context) ([]ListPl
 }
 
 const listPlatformOperationSessions = `-- name: ListPlatformOperationSessions :many
-SELECT id, user_id, kind, client_id, last_seen_at, expires_at, revoked_at
+SELECT sessions.id, sessions.user_id, users.display_name, sessions.kind,
+       sessions.client_id, sessions.last_seen_at, sessions.expires_at, sessions.revoked_at
 FROM sessions
-ORDER BY created_at DESC, id
+LEFT JOIN users ON users.id = sessions.user_id
+ORDER BY sessions.created_at DESC, sessions.id
 LIMIT 20
 `
 
 type ListPlatformOperationSessionsRow struct {
-	ID         pgtype.UUID        `json:"id"`
-	UserID     pgtype.UUID        `json:"user_id"`
-	Kind       string             `json:"kind"`
-	ClientID   pgtype.Text        `json:"client_id"`
-	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
-	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
-	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	ID          pgtype.UUID        `json:"id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	DisplayName pgtype.Text        `json:"display_name"`
+	Kind        string             `json:"kind"`
+	ClientID    pgtype.Text        `json:"client_id"`
+	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt   pgtype.Timestamptz `json:"revoked_at"`
 }
 
 func (q *Queries) ListPlatformOperationSessions(ctx context.Context) ([]ListPlatformOperationSessionsRow, error) {
@@ -458,6 +488,7 @@ func (q *Queries) ListPlatformOperationSessions(ctx context.Context) ([]ListPlat
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
+			&i.DisplayName,
 			&i.Kind,
 			&i.ClientID,
 			&i.LastSeenAt,

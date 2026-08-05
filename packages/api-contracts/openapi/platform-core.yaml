@@ -770,6 +770,48 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  /platform-operations/account-lookups:
+    post:
+      tags: [Platform Operations]
+      operationId: lookupPlatformOperationAccount
+      summary: Locate one account by its exact normalized email identity
+      description: >-
+        Returns the account identifier, display name, and account status for
+        callers holding platform Scope read permission. The email is carried in
+        the request body only; it never appears in URLs, query strings, logs, or
+        audit records. The response shape is identical whether or not an account
+        matches, and the account is null when no account matches.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlatformOperationsAccountLookupRequest" }
+      responses:
+        "200":
+          description: Account located, or an identical-shaped response with a null account
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PlatformOperationsAccountLookupResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
   /platform-operations/sessions/{session_id}/revocations:
     post:
       tags: [Platform Operations]
@@ -1396,6 +1438,10 @@ components:
       required: [id, email_verified, status, authorization_revision, created_at, grants]
       properties:
         id: { type: string, format: uuid }
+        display_name:
+          type: string
+          description: Public profile label chosen at registration; may be empty for legacy rows.
+          maxLength: 80
         email_verified: { type: boolean }
         status: { type: string, enum: [active, suspended, deleted] }
         authorization_revision: { type: integer, format: int64, minimum: 1 }
@@ -1412,6 +1458,10 @@ components:
       properties:
         id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
+        display_name:
+          type: string
+          description: Public profile label of the Session owner; may be empty for legacy rows.
+          maxLength: 80
         kind: { type: string, enum: [core, client_exchange] }
         client_id: { type: string }
         last_seen_at: { type: string, format: date-time }
@@ -1438,6 +1488,10 @@ components:
       properties:
         request_id: { $ref: "#/components/schemas/RequestId" }
         actor_user_id: { type: string, format: uuid }
+        display_name:
+          type: string
+          description: Public profile label of the audit actor; may be empty for legacy rows or when the actor account no longer exists.
+          maxLength: 80
         permission_code: { type: string }
         target_kind: { type: string, enum: [platform, product, resource] }
         target_product_code: { type: string }
@@ -1454,6 +1508,40 @@ components:
       properties:
         postgres: { type: string, enum: [ready, unavailable] }
         redis: { type: string, enum: [ready, unavailable] }
+
+    PlatformOperationsAccountLookupRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 5
+          maxLength: 320
+          description: Complete student mailbox address; normalized exactly like the login path before matching.
+
+    PlatformOperationsAccountLookupAccount:
+      type: object
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        display_name:
+          type: string
+          description: Public profile label chosen at registration; may be empty for legacy rows.
+          maxLength: 80
+        status: { type: string, enum: [active, suspended, deleted] }
+
+    PlatformOperationsAccountLookupResult:
+      type: object
+      additionalProperties: false
+      required: [account]
+      properties:
+        account:
+          $ref: "#/components/schemas/PlatformOperationsAccountLookupAccount"
+          nullable: true
+          description: The matching account, or null when no account matches; both cases share one response shape.
 
     RevokePlatformSessionRequest:
       type: object

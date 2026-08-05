@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"gopkg.in/yaml.v3"
 
 	platformcore "henukit.dev/platform-core"
@@ -26,10 +27,11 @@ import (
 )
 
 type inboxFixture struct {
-	pool   *pgxpool.Pool
-	server *httptest.Server
-	token  string
-	userID uuid.UUID
+	pool        *pgxpool.Pool
+	server      *httptest.Server
+	token       string
+	userID      uuid.UUID
+	redisClient *redis.Client
 }
 
 func TestOperationsInboxStoresReferencesWithoutSourceContent(t *testing.T) {
@@ -358,13 +360,13 @@ func newInboxFixture(t *testing.T) inboxFixture {
 			t.Fatalf("seed Inbox grants: %v", err)
 		}
 	}
-	handler, err := platformcore.New(platformcore.Config{Database: pool, Redis: redisClient, Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), IdempotencyEncryptionKey: testIdempotencyEncryptionKey})
+	handler, err := platformcore.New(platformcore.Config{Database: pool, Redis: redisClient, Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), IdempotencyEncryptionKey: testIdempotencyEncryptionKey, VerificationEncryptionKey: testVerificationEncryptionKey})
 	if err != nil {
 		t.Fatalf("create Platform Core: %v", err)
 	}
 	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
-	return inboxFixture{pool: pool, server: server, token: token, userID: userID}
+	return inboxFixture{pool: pool, server: server, token: token, userID: userID, redisClient: redisClient}
 }
 
 func sendInboxRequest(t *testing.T, fixture inboxFixture, method, path, body, idempotencyKey, nonce, requestID string) *http.Response {

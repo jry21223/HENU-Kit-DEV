@@ -69,6 +69,7 @@ type schema struct {
 	Required   []string           `yaml:"required"`
 	Properties map[string]*schema `yaml:"properties"`
 	AllOf      []*schema          `yaml:"allOf"`
+	Nullable   bool               `yaml:"nullable"`
 }
 
 func main() {
@@ -98,7 +99,8 @@ func main() {
 	revokePlatformSessionPath, revokePlatformSession := findOperation(spec.Paths, "revokePlatformOperationSession")
 	updatePlatformAccessPath, updatePlatformAccess := findOperation(spec.Paths, "updatePlatformOperationAccess")
 	platformOperationStatusPath, platformOperationStatus := findOperation(spec.Paths, "getPlatformOperationStatus")
-	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil || platformOperations == nil || revokePlatformSession == nil || updatePlatformAccess == nil || platformOperationStatus == nil {
+	accountLookupPath, accountLookup := findOperation(spec.Paths, "lookupPlatformOperationAccount")
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil || platformOperations == nil || revokePlatformSession == nil || updatePlatformAccess == nil || platformOperationStatus == nil || accountLookup == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
@@ -115,6 +117,7 @@ func main() {
 	validateInboxOperation(revokePlatformSession, spec.Components.Parameters, true, true)
 	validateInboxOperation(updatePlatformAccess, spec.Components.Parameters, true, true)
 	validateInboxOperation(platformOperationStatus, spec.Components.Parameters, true, false)
+	validateInboxOperation(accountLookup, spec.Components.Parameters, false, true)
 	requestSchema := token.RequestBody.Content["application/json"].Schema
 	if requestSchema == nil {
 		fail(fmt.Errorf("token request application/json schema is missing"))
@@ -148,6 +151,12 @@ func main() {
 	operationStatusResponse := resolveSchema(responseDataSchema(operationStatus.Responses["200"].Content["application/json"].Schema), spec.Components.Schemas)
 	if inboxItem == nil || createInboxRequest == nil || updateInboxRequest == nil || operationStatusResponse == nil {
 		fail(fmt.Errorf("operations inbox schemas are missing"))
+	}
+	accountLookupRequest := resolveSchema(accountLookup.RequestBody.Content["application/json"].Schema, spec.Components.Schemas)
+	accountLookupAccount := spec.Components.Schemas["PlatformOperationsAccountLookupAccount"]
+	accountLookupResult := resolveSchema(responseDataSchema(accountLookup.Responses["200"].Content["application/json"].Schema), spec.Components.Schemas)
+	if accountLookupRequest == nil || accountLookupAccount == nil || accountLookupResult == nil {
+		fail(fmt.Errorf("account lookup schemas are missing"))
 	}
 	successEnvelope := spec.Components.Schemas["SuccessEnvelope"]
 	errorObject := spec.Components.Schemas["ErrorObject"]
@@ -183,6 +192,7 @@ const (
 	RevokePlatformOperationSessionRoute = %q
 	UpdatePlatformOperationAccessRoute = %q
 	PlatformOperationStatusRoute = %q
+	PlatformOperationsAccountLookupRoute = %q
 	SourceSHA256 = %q
 )
 
@@ -229,9 +239,15 @@ const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 %s
 
 %s
+
+%s
+
+%s
+
+%s
 `, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath,
 		listInboxPath, getInboxPath, createInboxPath, updateInboxPath, operationStatusPath,
-		platformOperationsPath, revokePlatformSessionPath, updatePlatformAccessPath, platformOperationStatusPath, fmt.Sprintf("%x", digest),
+		platformOperationsPath, revokePlatformSessionPath, updatePlatformAccessPath, platformOperationStatusPath, accountLookupPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),
@@ -253,6 +269,9 @@ const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 		renderStruct("CreateOperationsInboxItemRequest", createInboxRequest),
 		renderStruct("UpdateOperationsInboxItemRequest", updateInboxRequest),
 		renderStruct("OperationsInboxOperationStatus", operationStatusResponse),
+		renderStruct("PlatformOperationsAccountLookupRequest", accountLookupRequest),
+		renderStruct("PlatformOperationsAccountLookupAccount", accountLookupAccount),
+		renderStruct("PlatformOperationsAccountLookupResult", accountLookupResult),
 	)
 	formatted, err := format.Source([]byte(generated))
 	if err != nil {
@@ -580,7 +599,12 @@ func renderStruct(name string, value *schema) string {
 		}
 		goType := schemaType(property)
 		jsonName := field
-		if !required[field] {
+		if property.Nullable {
+			goType = "*" + goType
+			if !required[field] {
+				jsonName += ",omitempty"
+			}
+		} else if !required[field] {
 			goType = "*" + goType
 			jsonName += ",omitempty"
 		}
