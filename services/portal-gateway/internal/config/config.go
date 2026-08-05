@@ -28,8 +28,6 @@ type Config struct {
 
 	PortalAPIURL string
 
-	LibraryURL  string
-	FoodURL     string
 	PracticeURL string
 	// #160 catalog uses its established default-off flag and anonymous Banks
 	// read client. It must remain independent of account-bound stats.
@@ -43,8 +41,6 @@ type Config struct {
 	QuizCraftCoreURL        string
 	QuizCraftCoreAuth       ServiceAuth
 
-	LibraryAuth  ServiceAuth
-	FoodAuth     ServiceAuth
 	PracticeAuth ServiceAuth
 	// PracticeCommandAuth is deliberately distinct from PracticeAuth. The
 	// latter is reserved for read-only product contracts; the former is the
@@ -79,24 +75,12 @@ func FromEnv() (Config, error) {
 		SessionKey:            sessionKey,
 		RedisURL:              envOrDefault("REDIS_URL", "redis://127.0.0.1:6379/2"),
 		PortalAPIURL:          envOrDefault("PORTAL_API_URL", "http://127.0.0.1:8085"),
-		LibraryURL:            mustEnv("LIBRARY_SERVICE_URL"),
-		FoodURL:               mustEnv("FOOD_SERVICE_URL"),
 		PracticeURL:           mustEnv("PRACTICE_SERVICE_URL"),
 		// This remains dark by default. #166 is the only production cutover
 		// that may set it to 1 alongside the Portal UI flag.
 		QuizCraftCatalogEnabled: os.Getenv("PORTAL_ENABLE_QUIZCRAFT_CATALOG") == "1",
 		NoticeURL:               mustEnv("NOTICE_SERVICE_URL"),
 		AccountPortfolioURL:     mustEnv("ACCOUNT_PORTFOLIO_URL"),
-		LibraryAuth: ServiceAuth{
-			ClientID:     mustEnv("LIBRARY_CLIENT_ID"),
-			ClientSecret: mustEnv("LIBRARY_CLIENT_SECRET"),
-			KeyID:        mustEnv("LIBRARY_KEY_ID"),
-		},
-		FoodAuth: ServiceAuth{
-			ClientID:     mustEnv("FOOD_CLIENT_ID"),
-			ClientSecret: mustEnv("FOOD_CLIENT_SECRET"),
-			KeyID:        mustEnv("FOOD_KEY_ID"),
-		},
 		PracticeAuth: ServiceAuth{
 			ClientID:     mustEnv("PRACTICE_CLIENT_ID"),
 			ClientSecret: mustEnv("PRACTICE_CLIENT_SECRET"),

@@ -42,7 +42,7 @@ func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client)
 		host = parsed.Hostname()
 	}
 	ip := net.ParseIP(host)
-	loopback := err == nil && parsed.Scheme == "http" && (host == "localhost" || host == "study-api" || host == "platform-core" || host == "portal-api" || strings.HasSuffix(host, ".local") || (ip != nil && ip.IsLoopback()))
+	loopback := err == nil && parsed.Scheme == "http" && (host == "localhost" || host == "platform-core" || host == "portal-api" || strings.HasSuffix(host, ".local") || (ip != nil && ip.IsLoopback()))
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !loopback) || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || clientID == "" || len(clientSecret) < 32 || keyID == "" {
 		return nil, errors.New("invalid library client configuration")
 	}
