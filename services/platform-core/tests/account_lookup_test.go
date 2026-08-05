@@ -18,8 +18,6 @@ import (
 	platformcore "henukit.dev/platform-core"
 )
 
-const lookupEmail = "operator.target@henu.edu.cn"
-
 func TestAccountLookupFindsAccountByExactEmailAndKeepsOneShapeForMisses(t *testing.T) {
 	fixture := newLookupFixture(t, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	grantPlatformOperations(t, fixture)
