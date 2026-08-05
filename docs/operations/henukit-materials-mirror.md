@@ -16,13 +16,32 @@ confirms its provenance, and the mirror holds that same line.
 At the time of writing that is 182 of 248 assets, about 474 MB across 13
 subjects; the 66 pending-review assets stay in the repository only.
 
+## Two halves, one manifest
+
+Mirroring files is only half the job. The Library lists what the Study
+catalogue knows about, so a mirror without an index shows an empty page while
+the files sit there downloadable. `sync-henukit-materials.sh` therefore does
+both, and `index-henukit-materials.mjs` derives the catalogue from the same
+`manifest.json` — the catalogue is reproducible from the repository, never
+hand-maintained.
+
+Rows are keyed by a UUID derived from the subject name or the asset's public
+path, so re-indexing updates in place. A material that leaves the manifest —
+most likely a takedown — is soft-deleted, so it disappears from the Library
+without destroying the record. `storage_key` stays a repository-relative path
+and portal-api turns it into the served URL, so moving the mirror never
+requires rewriting rows.
+
+Indexing needs `STUDY_DATABASE_URL`. Without it the sync still mirrors the
+files and says it skipped indexing.
+
 ## Layout on the host
 
 ```
 /opt/henukit-materials/
 ├── repo/        git checkout — never served
 ├── public/      the mirror nginx serves
-├── bin/         sync script and webhook receiver
+├── bin/         sync script, catalogue indexer, webhook receiver
 └── SYNCED_SHA   commit the mirror was built from
 ```
 
@@ -36,6 +55,7 @@ The sync refuses to publish if a dotfile ends up in the mirror.
 ```bash
 install -d /opt/henukit-materials/bin
 install -m 0755 scripts/ops/sync-henukit-materials.sh /opt/henukit-materials/bin/
+install -m 0755 scripts/ops/index-henukit-materials.mjs /opt/henukit-materials/bin/
 install -m 0755 scripts/ops/henukit-materials-webhook.mjs /opt/henukit-materials/bin/
 /opt/henukit-materials/bin/sync-henukit-materials.sh
 ```
@@ -57,8 +77,12 @@ file extensions by default, which matters here: the origin uplink is about
 
    ```bash
    install -d -m 0700 /etc/henukit
-   printf 'HENUKIT_MATERIALS_WEBHOOK_SECRET=%s\n' "$(openssl rand -hex 32)" \
-     > /etc/henukit/materials-webhook.env
+   {
+     printf 'HENUKIT_MATERIALS_WEBHOOK_SECRET=%s\n' "$(openssl rand -hex 32)"
+     # Without this a push re-mirrors the files but never re-indexes, so the
+     # Library keeps listing the previous contents.
+     printf 'STUDY_DATABASE_URL=%s\n' "$STUDY_DATABASE_URL"
+   } > /etc/henukit/materials-webhook.env
    chmod 0600 /etc/henukit/materials-webhook.env
    ```
 
@@ -89,6 +113,10 @@ every time.
 ```bash
 cat /opt/henukit-materials/SYNCED_SHA
 find /opt/henukit-materials/public -type f | wc -l
+
+# The catalogue must match the mirror, or the Library lists the wrong thing.
+curl -s https://henukit.cn/api/v1/library/materials | python3 -c \
+  'import json,sys; print(len(json.load(sys.stdin)["materials"]), "materials")'
 journalctl -u henukit-materials-webhook --since '1 hour ago'
 
 # A published asset downloads; a dotfile and the checkout never do.

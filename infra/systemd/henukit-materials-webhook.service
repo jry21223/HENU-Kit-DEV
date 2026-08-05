@@ -9,6 +9,9 @@ Type=simple
 User=root
 Group=root
 UMask=0022
+# Carries HENUKIT_MATERIALS_WEBHOOK_SECRET and STUDY_DATABASE_URL. Without the
+# latter a push re-mirrors the files but never re-indexes the catalogue, so the
+# Library would keep listing the previous contents.
 EnvironmentFile=/etc/henukit/materials-webhook.env
 ExecStart=/usr/bin/node /opt/henukit-materials/bin/henukit-materials-webhook.mjs
 Restart=on-failure
