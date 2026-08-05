@@ -74,6 +74,13 @@ func (c *CommandClient) SubmitAnswer(ctx context.Context, sessionID, actorUserID
 	return c.command(ctx, path, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeAnswerEnvelope)
 }
 
+// CreateFeedback submits one signed-in user's correction. Core owns the
+// question reference validation, the per-user idempotency history, and the
+// 202 write result; Gateway only relays the accepted envelope.
+func (c *CommandClient) CreateFeedback(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
+	return c.command(ctx, CreatePortalPracticeFeedbackPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusAccepted, validatePracticeFeedbackEnvelope)
+}
+
 type commandEnvelopeValidator func([]byte) error
 
 func (c *CommandClient) command(ctx context.Context, path, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie, expectedStatus int, validate commandEnvelopeValidator) (CommandResult, error) {
@@ -232,6 +239,34 @@ func validatePracticeSessionEnvelope(raw []byte) error {
 		if options, present := question["options"]; present && !practiceStringArray(options) {
 			return errors.New("invalid practice question options")
 		}
+	}
+	return nil
+}
+
+func validatePracticeFeedbackEnvelope(raw []byte) error {
+	envelope, valid := practiceRequiredObject(raw)
+	if !valid || !practiceOnlyKeys(envelope, "request_id", "data") {
+		return errors.New("invalid practice feedback envelope")
+	}
+	requestID, valid := practiceRequiredString(envelope, "request_id")
+	if !valid || strings.TrimSpace(requestID) == "" {
+		return errors.New("invalid practice feedback request id")
+	}
+	dataRaw, valid := practiceRequiredRaw(envelope, "data")
+	if !valid {
+		return errors.New("invalid practice feedback data")
+	}
+	data, valid := practiceRequiredObject(dataRaw)
+	if !valid || !practiceOnlyKeys(data, "operation_id", "state", "idempotency_key", "request_id", "resource_id") {
+		return errors.New("invalid practice feedback data")
+	}
+	operationID, operationOK := practiceRequiredString(data, "operation_id")
+	state, stateOK := practiceRequiredString(data, "state")
+	_, idempotencyOK := practiceRequiredString(data, "idempotency_key")
+	_, innerRequestOK := practiceRequiredString(data, "request_id")
+	resourceID, resourceOK := practiceRequiredString(data, "resource_id")
+	if !operationOK || !validPracticeCommandUUID(operationID) || !stateOK || state != "succeeded" || !idempotencyOK || !innerRequestOK || !resourceOK || !validPracticeCommandUUID(resourceID) {
+		return errors.New("invalid practice feedback data")
 	}
 	return nil
 }

@@ -169,6 +169,51 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/feedback:
+    post:
+      x-internal: true
+      summary: Submit a correction through the narrow Portal Gateway command boundary
+      description: >
+        Internal-only service route. Portal Gateway signs the complete request
+        body and binds the signed-in Portal Session subject as X-Actor-User-Id
+        into the HMAC canonical form; corrections are a signed-in-only command.
+      tags: [Feedback]
+      operationId: createPortalPracticeFeedback
+      security: [{ portalPracticeBasic: [], portalPracticeSignature: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionFeedback' } } } }
+      responses:
+        '202': { description: Feedback write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/feedback/{feedback_id}/status:
+    get:
+      x-internal: true
+      summary: Read one authenticated user's correction processing status for Portal
+      description: The trusted Portal actor header is bound as the sixth line of the signed service request and cannot be substituted in transit.
+      tags: [Feedback]
+      operationId: getPortalPracticeFeedbackStatus
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [], portalCatalogActor: [] }]
+      parameters:
+        - name: feedback_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: X-Actor-User-Id
+          in: header
+          required: true
+          description: UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Caller-owned correction status, content: { application/json: { schema: { $ref: '#/components/schemas/FeedbackStatusEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/learning-state:
     get:
       summary: Read signed-in progress and wrong-question state
@@ -872,6 +917,7 @@ components:
         detail: { type: string, minLength: 1, maxLength: 4000 }
     FeedbackStatusEnvelope:
       type: object
+      additionalProperties: false
       required: [request_id, data]
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/FeedbackStatus' } }
     FeedbackStatusListEnvelope:

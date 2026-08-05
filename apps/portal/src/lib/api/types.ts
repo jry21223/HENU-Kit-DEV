@@ -198,7 +198,13 @@ export interface LibraryCoursesResponse {
   request_id: string;
 }
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab";
+export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides";
+
+/** 转换后的 PPT 单页 */
+export interface Slide {
+  title: string;
+  blocks?: string[];
+}
 
 export interface Material {
   id: string;
@@ -214,6 +220,11 @@ export interface Material {
   rating: number;
   downloads: number;
   favs: number;
+  /** 镜像文件在 /materials/ 下的路径;有值时可下载 */
+  filePath?: string;
+  fileSize?: number;
+  /** 已转换的 PPT 页(详情接口返回) */
+  slides?: Slide[];
 }
 
 export interface MaterialListResponse {
@@ -343,6 +354,50 @@ export interface PortalPracticeAnswerInput {
   question_id: string;
   question_version_id: string;
   answer: unknown;
+}
+
+export type PracticeFeedbackCategory =
+  | "wrong_answer"
+  | "ambiguous"
+  | "typo"
+  | "outdated"
+  | "other";
+
+export interface PortalPracticeFeedbackInput {
+  bank_id: string;
+  question_id: string;
+  question_version_id: string;
+  category: PracticeFeedbackCategory;
+  detail: string;
+}
+
+export interface PracticeFeedbackOperation {
+  operation_id: string;
+  state: string;
+  idempotency_key: string;
+  request_id: string;
+  resource_id: string;
+}
+
+export interface PortalPracticeFeedbackResponse {
+  request_id: string;
+  data: PracticeFeedbackOperation;
+}
+
+export interface PracticeFeedbackStatus {
+  feedback_id: string;
+  bank_id: string;
+  question_id: string;
+  question_version_id: string;
+  category: PracticeFeedbackCategory;
+  status: "pending" | "in_progress" | "blocked" | "resolved" | "archived";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortalPracticeFeedbackStatusResponse {
+  request_id: string;
+  data: PracticeFeedbackStatus;
 }
 
 /** Correctness and answer disclosure arrive only after server-side scoring. */

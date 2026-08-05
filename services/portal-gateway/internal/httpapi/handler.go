@@ -181,6 +181,12 @@ func (h *Handler) Router() chi.Router {
 	// has provisioned independent command credentials on both services.
 	r.Post("/api/v1/practice/sessions", h.createPracticeSession)
 	r.Post("/api/v1/practice/sessions/{session_id}/answers", h.submitPracticeAnswer)
+	// Corrections are the one user-created QuizCraft command after sessions and
+	// answers. Like them it is an explicit signed command, never a wildcard
+	// proxy write; unlike them it is signed-in-only. The status read is the
+	// matching actor-bound read and must never fall back to the generic proxy.
+	r.Post("/api/v1/practice/feedback", h.createPracticeFeedback)
+	r.Get("/api/v1/practice/feedback/{feedback_id}/status", h.getPracticeFeedbackStatus)
 
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
@@ -590,6 +596,45 @@ func (h *Handler) submitPracticeAnswer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// createPracticeFeedback is the signed-in-only correction command. Unlike
+// sessions and answers it never downgrades to a guest actor: a correction has
+// no durable anonymous identity, and the ticket requires an explicit login
+// path instead of a silent anonymous write.
+func (h *Handler) createPracticeFeedback(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.practiceCommands == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "请先登录后再提交纠错", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if !practice.ValidUUID(value.UserID) {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if !practice.ValidIdempotencyKey(idempotencyKey) {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	raw, err := readGatewayPracticeCommandBody(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	result, err := h.practiceCommands.CreateFeedback(r.Context(), value.UserID, requestIDOf(w, r), idempotencyKey, raw, coreAnonymousCookie(r))
+	if err != nil {
+		h.writePracticeCommandFailure(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write(result.Raw)
+}
+
 // practiceCommand turns a browser command into exactly one signed Core
 // command. It intentionally does not proxy headers, cookies, actor identity,
 // or mock data. An invalid Portal Session is a 401, while an absent Portal
@@ -734,6 +779,40 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 			Accuracy: stats.Data.Accuracy, StreakDays: stats.Data.StreakDays, Mastery: mastery,
 		},
 	})
+}
+
+// getPracticeFeedbackStatus reads one signed-in user's persisted correction
+// status. It is a narrow actor-bound read like personalPracticeStats, never
+// the generic practice proxy: the wildcard read stays public product data.
+func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.quizCraft == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "practice feedback status is not enabled", "反馈状态暂时不可用，请稍后再试")
+		return
+	}
+	feedbackID := chi.URLParam(r, "feedback_id")
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
+		switch {
+		case errors.Is(err, platformcore.ErrUnauthorized):
+			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		case errors.Is(err, platformcore.ErrForbidden):
+			writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
+		default:
+			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
+		}
+		return
+	}
+	status, err := h.quizCraft.FeedbackStatus(r.Context(), value.UserID, requestIDOf(w, r), feedbackID)
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "practice feedback status is temporarily unavailable", "反馈状态暂时不可用，请稍后再试")
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }
 
 // --- Proxy to portal-api ---

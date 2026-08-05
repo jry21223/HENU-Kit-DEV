@@ -1,0 +1,39 @@
+[Unit]
+Description=HENU Kit materials sync webhook receiver
+Documentation=https://github.com/jry21223/HENU-Kit-DEV/blob/main/docs/operations/henukit-materials-sync.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=henukit-deploy
+Group=henukit-deploy
+EnvironmentFile=/etc/henukit-deploy/materials-webhook.env
+LoadCredential=webhook_secret:/etc/henukit-deploy/materials-webhook-secret
+Environment=HENUKIT_WEBHOOK_SECRET_FILE=%d/webhook_secret
+ExecStart=/usr/local/bin/henukit-deploy-webhook serve
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+StateDirectory=henukit-materials-webhook
+StateDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/henukit-materials-webhook
+
+[Install]
+WantedBy=multi-user.target

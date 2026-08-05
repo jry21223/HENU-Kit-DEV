@@ -418,6 +418,96 @@ func TestPersonalStatsRejectsAnonymousOrMalformedActorWithoutCallingCore(t *test
 	}
 }
 
+const testFeedbackID = "88888888-8888-4888-8888-888888888888"
+
+func TestFeedbackStatusUsesGeneratedQuizCraftContract(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertFeedbackStatusRequest(t, request, testStatsUserID, "req_feedback_status", testFeedbackID)
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(FeedbackStatusEnvelope{
+			RequestID: "req_core_feedback_status",
+			Data: FeedbackStatus{
+				FeedbackID: testFeedbackID, BankID: "10ca9b18-c303-4b7a-ab14-1241e41b665a",
+				QuestionID: "55555555-5555-4555-8555-555555555555", QuestionVersionID: "66666666-6666-4666-8666-666666666666",
+				Category: "wrong_answer", Status: "pending", CreatedAt: "2026-08-01T02:00:00Z", UpdatedAt: "2026-08-01T02:00:00Z",
+			},
+		})
+	}))
+	defer server.Close()
+
+	result, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), testStatsUserID, "req_feedback_status", testFeedbackID)
+	if err != nil {
+		t.Fatalf("FeedbackStatus() error = %v", err)
+	}
+	if result.RequestID != "req_core_feedback_status" || result.Data.FeedbackID != testFeedbackID || result.Data.Status != "pending" || result.Data.Category != "wrong_answer" {
+		t.Fatalf("FeedbackStatus() = %+v", result)
+	}
+}
+
+func TestFeedbackStatusRejectsForeignOrMockShapedCoreData(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{
+			name:    "foreign feedback id is rejected",
+			body:    `{"request_id":"req_core_feedback_status","data":{"feedback_id":"99999999-9999-4999-8999-999999999999","bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","question_id":"55555555-5555-4555-8555-555555555555","question_version_id":"66666666-6666-4666-8666-666666666666","category":"wrong_answer","status":"pending","created_at":"2026-08-01T02:00:00Z","updated_at":"2026-08-01T02:00:00Z"}}`,
+			wantErr: true,
+		},
+		{
+			name:    "unknown feedback status field",
+			body:    `{"request_id":"req_core_feedback_status","data":{"feedback_id":"88888888-8888-4888-8888-888888888888","bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","question_id":"55555555-5555-4555-8555-555555555555","question_version_id":"66666666-6666-4666-8666-666666666666","category":"wrong_answer","status":"pending","created_at":"2026-08-01T02:00:00Z","updated_at":"2026-08-01T02:00:00Z","actor":"user"}}`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid processing status",
+			body:    `{"request_id":"req_core_feedback_status","data":{"feedback_id":"88888888-8888-4888-8888-888888888888","bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","question_id":"55555555-5555-4555-8555-555555555555","question_version_id":"66666666-6666-4666-8666-666666666666","category":"wrong_answer","status":"solved","created_at":"2026-08-01T02:00:00Z","updated_at":"2026-08-01T02:00:00Z"}}`,
+			wantErr: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assertFeedbackStatusRequest(t, request, testStatsUserID, "req_feedback_status", testFeedbackID)
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = writer.Write([]byte(test.body))
+			}))
+			defer server.Close()
+
+			result, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), testStatsUserID, "req_feedback_status", testFeedbackID)
+			if test.wantErr {
+				if !errors.Is(err, ErrInvalidStats) || result.RequestID != "" {
+					t.Fatalf("FeedbackStatus() = %+v, %v; want malformed mock error", result, err)
+				}
+				return
+			}
+			t.Fatalf("FeedbackStatus() accepted unexpected body: %+v", result)
+		})
+	}
+}
+
+func TestFeedbackStatusRejectsAnonymousOrMalformedActorWithoutCallingCore(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer server.Close()
+
+	for _, actor := range []string{"", AnonymousCatalogActor, "user-123"} {
+		if _, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), actor, "req_bad_actor", testFeedbackID); !errors.Is(err, ErrStatsUnauthorized) {
+			t.Fatalf("FeedbackStatus(%q) error = %v, want ErrStatsUnauthorized", actor, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("FeedbackStatus called Core for invalid actors %d times", calls)
+	}
+}
+
+func assertFeedbackStatusRequest(t *testing.T, request *http.Request, wantActor, wantRequestID, wantFeedbackID string) {
+	t.Helper()
+	wantPath := strings.Replace(GetPortalPracticeFeedbackStatusPath, "{feedback_id}", wantFeedbackID, 1)
+	assertPortalReadRequest(t, request, wantActor, wantRequestID, wantPath, true)
+}
+
 func TestGeneratedQuizCraftCatalogContractMatchesOpenAPI(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packages", "api-contracts", "openapi", "quizcraft.yaml"))
 	if err != nil {
