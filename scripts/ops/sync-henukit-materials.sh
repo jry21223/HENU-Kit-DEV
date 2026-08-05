@@ -123,16 +123,24 @@ echo "Mirror published at $PUBLIC ($(find "$PUBLIC" -type f | wc -l | tr -d ' ')
 # Files on disk are only half the job: the Library lists what the Study
 # catalogue knows about, so a mirror without an index shows an empty page.
 # Both halves come from the same manifest, so the catalogue is reproducible.
+# HENUKIT_STUDY_PSQL is the command that applies the catalogue, reading SQL on
+# stdin. It is configurable because the Study database is not necessarily
+# reachable from the host: on the production host the containerised PostgreSQL
+# publishes no port, and a *different* PostgreSQL answers on 127.0.0.1:5432, so
+# a plain `psql "$STUDY_DATABASE_URL"` would index the wrong database. There it
+# is set to run psql inside the container instead.
 indexer="$(dirname "$0")/index-henukit-materials.mjs"
-if [[ -z "${STUDY_DATABASE_URL:-}" ]]; then
-  echo "STUDY_DATABASE_URL is not set; skipping catalogue indexing" >&2
+study_psql="${HENUKIT_STUDY_PSQL:-}"
+if [[ -z "$study_psql" && -n "${STUDY_DATABASE_URL:-}" ]]; then
+  study_psql="psql \"\$STUDY_DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f -"
+fi
+
+if [[ -z "$study_psql" ]]; then
+  echo "neither HENUKIT_STUDY_PSQL nor STUDY_DATABASE_URL is set; skipping catalogue indexing" >&2
 elif [[ ! -f "$indexer" ]]; then
   echo "indexer missing at $indexer; skipping catalogue indexing" >&2
 else
   echo "Indexing the catalogue"
-  catalogue_sql="$(mktemp)"
-  trap 'rm -f "$catalogue_sql"' EXIT
-  HENUKIT_MATERIALS_ROOT="$ROOT" node "$indexer" > "$catalogue_sql"
-  psql "$STUDY_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$catalogue_sql"
+  HENUKIT_MATERIALS_ROOT="$ROOT" node "$indexer" | eval "$study_psql"
   echo "Catalogue indexed"
 fi
