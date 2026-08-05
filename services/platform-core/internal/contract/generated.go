@@ -9,22 +9,23 @@ import (
 )
 
 const (
-	AuthorizeRoute                      = "/api/v1/oauth/authorize"
-	TokenRoute                          = "/api/v1/oauth/token"
-	AuthorizationCheckRoute             = "/api/v1/authorization/check"
-	RequestVerificationCodeRoute        = "/api/v1/auth/email-codes"
-	VerifyVerificationCodeRoute         = "/api/v1/auth/email-codes/verify"
-	RecordMailDeliveryRoute             = "/api/v1/mail/deliveries"
-	ListOperationsInboxRoute            = "/api/v1/operations-inbox/items"
-	GetOperationsInboxRoute             = "/api/v1/operations-inbox/items/{item_id}"
-	CreateOperationsInboxRoute          = "/api/v1/operations-inbox/items"
-	UpdateOperationsInboxRoute          = "/api/v1/operations-inbox/items/{item_id}/updates"
-	OperationsInboxOperationStatusRoute = "/api/v1/operations-inbox/operations/{operation}"
-	PlatformOperationsRoute             = "/api/v1/platform-operations"
-	RevokePlatformOperationSessionRoute = "/api/v1/platform-operations/sessions/{session_id}/revocations"
-	UpdatePlatformOperationAccessRoute  = "/api/v1/platform-operations/users/{user_id}/access-updates"
-	PlatformOperationStatusRoute        = "/api/v1/platform-operations/operations/{operation}"
-	SourceSHA256                        = "a7f3f0cac813f6c87c513f052b9e1b039140f8449dca11dbf668ef53039ac6ba"
+	AuthorizeRoute                       = "/api/v1/oauth/authorize"
+	TokenRoute                           = "/api/v1/oauth/token"
+	AuthorizationCheckRoute              = "/api/v1/authorization/check"
+	RequestVerificationCodeRoute         = "/api/v1/auth/email-codes"
+	VerifyVerificationCodeRoute          = "/api/v1/auth/email-codes/verify"
+	RecordMailDeliveryRoute              = "/api/v1/mail/deliveries"
+	ListOperationsInboxRoute             = "/api/v1/operations-inbox/items"
+	GetOperationsInboxRoute              = "/api/v1/operations-inbox/items/{item_id}"
+	CreateOperationsInboxRoute           = "/api/v1/operations-inbox/items"
+	UpdateOperationsInboxRoute           = "/api/v1/operations-inbox/items/{item_id}/updates"
+	OperationsInboxOperationStatusRoute  = "/api/v1/operations-inbox/operations/{operation}"
+	PlatformOperationsRoute              = "/api/v1/platform-operations"
+	RevokePlatformOperationSessionRoute  = "/api/v1/platform-operations/sessions/{session_id}/revocations"
+	UpdatePlatformOperationAccessRoute   = "/api/v1/platform-operations/users/{user_id}/access-updates"
+	PlatformOperationStatusRoute         = "/api/v1/platform-operations/operations/{operation}"
+	PlatformOperationsAccountLookupRoute = "/api/v1/platform-operations/account-lookups"
+	SourceSHA256                         = "ea0f55238699220069a6a4b5608f656143572493026d9f6ae140cf82e7cd912a"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
@@ -274,4 +275,18 @@ type UpdateOperationsInboxItemRequest struct {
 type OperationsInboxOperationStatus struct {
 	Status string               `json:"status"`
 	Item   *OperationsInboxItem `json:"item,omitempty"`
+}
+
+type PlatformOperationsAccountLookupRequest struct {
+	Email string `json:"email"`
+}
+
+type PlatformOperationsAccountLookupAccount struct {
+	ID          string  `json:"id"`
+	Status      string  `json:"status"`
+	DisplayName *string `json:"display_name,omitempty"`
+}
+
+type PlatformOperationsAccountLookupResult struct {
+	Account *PlatformOperationsAccountLookupAccount `json:"account"`
 }

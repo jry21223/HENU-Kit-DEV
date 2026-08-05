@@ -91,6 +91,7 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Post(contract.UpdateOperationsInboxRoute, handler.updateOperationsInboxItem)
 	router.Get(contract.OperationsInboxOperationStatusRoute, handler.getOperationsInboxOperationStatus)
 	router.Get(contract.PlatformOperationsRoute, handler.getPlatformOperations)
+	router.Post(contract.PlatformOperationsAccountLookupRoute, handler.lookupPlatformOperationAccount)
 	router.Post(contract.RevokePlatformOperationSessionRoute, handler.revokePlatformOperationSession)
 	router.Post(contract.UpdatePlatformOperationAccessRoute, handler.updatePlatformOperationAccess)
 	router.Get(contract.PlatformOperationStatusRoute, handler.getPlatformOperationStatus)
@@ -169,6 +170,26 @@ func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *htt
 	}
 	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
 	writeSuccess(writer, request, http.StatusOK, snapshot)
+}
+
+func (h *Handler) lookupPlatformOperationAccount(writer http.ResponseWriter, request *http.Request) {
+	rawBody, body, ok := decodeInboxBody[contract.PlatformOperationsAccountLookupRequest](writer, request)
+	if !ok || len(body.Email) > 320 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation request is invalid")
+		return
+	}
+	decision, err := h.authorizeInbox(request, rawBody, "platform.operations.read", "platform", "", "", "")
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	result, err := h.platformOps.LookupAccount(request.Context(), request.Header.Get(contract.ServiceIDHeader), body.Email)
+	if err != nil {
+		h.writePlatformOperationError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, result)
 }
 
 func (h *Handler) revokePlatformOperationSession(writer http.ResponseWriter, request *http.Request) {
@@ -269,6 +290,8 @@ func (h *Handler) writePlatformOperationError(writer http.ResponseWriter, reques
 		writeError(writer, request, http.StatusConflict, "VERSION_CONFLICT", "Platform Operation resource state conflicts with the request")
 	case errors.Is(err, platformoperations.ErrIdempotencyConflict):
 		writeError(writer, request, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with another request")
+	case errors.Is(err, platformoperations.ErrRateLimited):
+		writeError(writer, request, http.StatusTooManyRequests, "RATE_LIMITED", "Platform Operation request is rate limited")
 	default:
 		h.logger.Error("platform_operation_error", "request_id", requestIDFrom(request.Context()), "error", err)
 		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")

@@ -192,16 +192,18 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 	var envelope struct {
 		Data struct {
 			Accounts []struct {
-				ID                    string `json:"id"`
-				Status                string `json:"status"`
-				AuthorizationRevision int64  `json:"authorization_revision"`
+				ID                    string  `json:"id"`
+				DisplayName           *string `json:"display_name"`
+				Status                string  `json:"status"`
+				AuthorizationRevision int64   `json:"authorization_revision"`
 				Grants                []struct {
 					RoleCode string `json:"role_code"`
 				} `json:"grants"`
 			} `json:"accounts"`
 			Sessions []struct {
-				ID     string `json:"id"`
-				UserID string `json:"user_id"`
+				ID          string  `json:"id"`
+				UserID      string  `json:"user_id"`
+				DisplayName *string `json:"display_name"`
 			} `json:"sessions"`
 			Mail struct {
 				Pending   int64 `json:"pending"`
@@ -213,8 +215,9 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 				SourceResourceID  string `json:"source_resource_id"`
 			} `json:"inbox_items"`
 			Audit []struct {
-				RequestID      string `json:"request_id"`
-				PermissionCode string `json:"permission_code"`
+				RequestID      string  `json:"request_id"`
+				PermissionCode string  `json:"permission_code"`
+				DisplayName    *string `json:"display_name"`
 			} `json:"audit"`
 			Dependencies struct {
 				Postgres string `json:"postgres"`
@@ -231,6 +234,15 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 	if len(envelope.Data.Accounts[0].Grants) == 0 {
 		t.Fatalf("snapshot omitted account permission grants: %+v", envelope.Data.Accounts[0])
 	}
+	if envelope.Data.Accounts[0].DisplayName == nil || *envelope.Data.Accounts[0].DisplayName == "" {
+		t.Fatalf("snapshot account omitted display_name: %+v", envelope.Data.Accounts[0])
+	}
+	if envelope.Data.Sessions[0].DisplayName == nil || *envelope.Data.Sessions[0].DisplayName == "" {
+		t.Fatalf("snapshot Session omitted display_name: %+v", envelope.Data.Sessions[0])
+	}
+	if envelope.Data.Audit[0].DisplayName == nil || *envelope.Data.Audit[0].DisplayName == "" {
+		t.Fatalf("snapshot audit event omitted display_name: %+v", envelope.Data.Audit[0])
+	}
 	if envelope.Data.Mail.Pending != 1 || envelope.Data.Mail.Delivered != 1 || envelope.Data.Mail.Failed != 1 {
 		t.Fatalf("mail status counts = %+v, want pending/delivered/failed = 1/1/1", envelope.Data.Mail)
 	}
@@ -238,6 +250,93 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 		t.Fatalf("dependency status = %+v, want ready/ready", envelope.Data.Dependencies)
 	}
 
+}
+
+func TestPlatformOperationsSnapshotRetainsAuditRowsAfterActorHardDelete(t *testing.T) {
+	fixture := newInboxFixture(t)
+	grantPlatformOperations(t, fixture)
+	ctx := context.Background()
+	actorID := uuid.New()
+	sessionID := uuid.New()
+	tokenHash := sha256.Sum256([]byte("audit-actor-session-" + actorID.String()))
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO users (id, email_verified, status, display_name) VALUES ($1, true, 'active', '已删除审计员')`, actorID); err != nil {
+		t.Fatalf("seed audit actor: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO sessions (id, user_id, kind, token_hash, expires_at) VALUES ($1, $2, 'core', $3, now() + interval '1 hour')`, sessionID, actorID, tokenHash[:]); err != nil {
+		t.Fatalf("seed audit actor Session: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `
+		INSERT INTO authorization_audit_events (
+			session_id, actor_user_id, request_id, service_id, permission_code,
+			target_kind, decision, reason_code
+		) VALUES ($1, $2, 'req_audit_actor_deleted', $3, 'platform.operations.read', 'platform', 'denied', 'NO_GRANT')
+	`, sessionID, actorID, testClientID); err != nil {
+		t.Fatalf("seed authorization audit event: %v", err)
+	}
+	before := snapshotAuditEvent(t, fixture, "req_audit_actor_deleted")
+	if before.DisplayName == nil || *before.DisplayName != "已删除审计员" {
+		t.Fatalf("audit event display_name = %v, want 已删除审计员", before.DisplayName)
+	}
+	if before.ActorUserID != actorID.String() || before.PermissionCode != "platform.operations.read" || before.TargetKind != "platform" || before.Decision != "denied" || before.ReasonCode != "NO_GRANT" || before.CreatedAt == "" || before.RequestID != "req_audit_actor_deleted" {
+		t.Fatalf("audit event missing auditable facts: %+v", before)
+	}
+
+	// Simulate an out-of-band hard delete that future FK policy could permit:
+	// the audit row must survive via LEFT JOIN and keep every other fact.
+	if _, err := fixture.pool.Exec(ctx, `ALTER TABLE authorization_audit_events DROP CONSTRAINT authorization_audit_events_actor_user_id_fkey, DROP CONSTRAINT authorization_audit_events_session_id_fkey`); err != nil {
+		t.Fatalf("drop audit actor foreign keys: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx := context.Background()
+		_, _ = fixture.pool.Exec(cleanupCtx, `DELETE FROM authorization_audit_events WHERE actor_user_id = $1`, actorID)
+		_, _ = fixture.pool.Exec(cleanupCtx, `ALTER TABLE authorization_audit_events ADD CONSTRAINT authorization_audit_events_actor_user_id_fkey FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE RESTRICT, ADD CONSTRAINT authorization_audit_events_session_id_fkey FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE RESTRICT`)
+	})
+	if _, err := fixture.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, actorID); err != nil {
+		t.Fatalf("hard delete audit actor: %v", err)
+	}
+	after := snapshotAuditEvent(t, fixture, "req_audit_actor_deleted")
+	if after.RequestID != before.RequestID || after.ActorUserID != before.ActorUserID || after.PermissionCode != before.PermissionCode || after.TargetKind != before.TargetKind || after.Decision != before.Decision || after.ReasonCode != before.ReasonCode {
+		t.Fatalf("audit row lost facts after actor hard delete: before=%+v after=%+v", before, after)
+	}
+	if after.DisplayName != nil {
+		t.Fatalf("audit row retained display_name of a deleted actor: %+v", after)
+	}
+}
+
+type snapshotAuditFact struct {
+	RequestID      string  `json:"request_id"`
+	ActorUserID    string  `json:"actor_user_id"`
+	DisplayName    *string `json:"display_name"`
+	PermissionCode string  `json:"permission_code"`
+	TargetKind     string  `json:"target_kind"`
+	Decision       string  `json:"decision"`
+	ReasonCode     string  `json:"reason_code"`
+	CreatedAt      string  `json:"created_at"`
+}
+
+func snapshotAuditEvent(t *testing.T, fixture inboxFixture, requestID string) snapshotAuditFact {
+	t.Helper()
+	response := sendInboxRequest(t, fixture, http.MethodGet, "/api/v1/platform-operations", "", "", "nonce_"+uuid.NewString(), "req_platform_snapshot_audit")
+	defer response.Body.Close()
+	payload, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("Platform Operations snapshot = %d: %s, want 200", response.StatusCode, payload)
+	}
+	var envelope struct {
+		Data struct {
+			Audit []snapshotAuditFact `json:"audit"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		t.Fatalf("decode audit snapshot: %v", err)
+	}
+	for _, event := range envelope.Data.Audit {
+		if event.RequestID == requestID {
+			return event
+		}
+	}
+	t.Fatalf("snapshot omitted audit event %s: %s", requestID, payload)
+	return snapshotAuditFact{}
 }
 
 func grantPlatformOperations(t *testing.T, fixture inboxFixture) {

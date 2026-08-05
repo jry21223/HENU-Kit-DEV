@@ -71,6 +71,8 @@ After the first operator signs in normally, run `cmd/grant-initial-operator` as 
 
 Operations Inbox uses `GET/POST /api/v1/operations-inbox/items`, `POST /api/v1/operations-inbox/items/{item_id}/updates`, and `GET /api/v1/operations-inbox/operations/{operation}` to resolve an unknown write outcome with the original idempotency key. Calls require Basic plus HMAC service authentication and the server-held `X-Session-Exchange-Token`; writes and operation-status lookups also require `Idempotency-Key`. The data model deliberately has no title, body, content or feedback-text field: full source content stays with the product identified by the immutable product/resource reference. Append-only audits retain a safe coordination snapshot for every committed version so owner, priority, SLA and status changes can be reconstructed without copying product content.
 
+`POST /api/v1/platform-operations/account-lookups` lets a platform-read-scoped service caller resolve an exact full email to an account id, display name, and status. The email appears only in the request body: never in URLs, logs, audit rows, or the response, and the Redis rate limit is keyed on the caller rather than the email. A miss returns the same 200 envelope shape as a hit and performs an equivalent index probe so response time cannot reveal whether an account exists. Email normalization and hashing reuse the login/verification path byte-for-byte, so the same mailbox always yields the same lookup hash. The operational snapshot, sessions, and audit events also carry the optional `display_name` (omitted for legacy rows) and audit rows survive the actor's hard deletion via `LEFT JOIN`.
+
 ## Verification
 
 From the repository root on Windows:
