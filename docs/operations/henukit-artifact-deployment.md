@@ -179,7 +179,6 @@ above, the runtime's release entry is the sole production approval command:
 sudo GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
   HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
   HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator \
-  HENUKIT_PLATFORM_MIGRATIONS=000017_account_portfolio_order_access.up.sql,000018_account_operator_role_grant_audit.up.sql \
   /usr/local/sbin/activate-henukit-release <full-main-sha> --execute
 ```
 
@@ -189,19 +188,22 @@ manifest, securely copies the existing MetaView HENU tenant identity into the
 Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017` and `000018`, deploys all nine fixed-SHA images, grants the eight
+`000014` through `000019`, deploys all nine fixed-SHA images, grants the eight
 Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
 `000006` and `000007` remain service-owned startup migrations.
+Migration `000019` declares the empty `operations-operator` role but grants it
+to no user; the audited release command grants the role's Account permissions,
+while assigning a human operator remains a separate explicit authorization.
 
 If activation fails, the watcher invokes the previous fixed-SHA helper with the
 pre-release environment snapshot before the outer command restores that file,
 so running containers and disk state agree. A crash after the new containers
 become healthy but before the grant is recorded converges on the next run: the
 active SHA path re-invokes Platform Core's idempotent audited grant before it
-writes `last-activated-sha`. Migration `000018` is itself safe to reapply after
-a later release step fails.
+writes `last-activated-sha`. Migrations `000014` through `000019` are safe to
+reapply after a later release step fails.
 
 The defaults assume SSH key access to `root@metaview.top` and gateway directory
 `/root/epay-gateway`; override only with

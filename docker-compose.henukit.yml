@@ -261,6 +261,8 @@ services:
   console-gateway:
     build:
       context: ./services/console-gateway
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       LISTEN_ADDR: ${CONSOLE_GATEWAY_LISTEN_ADDR:-:8082}
       PLATFORM_CORE_URL: ${PLATFORM_CORE_URL:-http://platform-core:8081}
