@@ -38,7 +38,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "90b526ae5a6ff24fd407c41f46165e0283f204ea2f350a6181bba2b300380915"
+	SourceSHA256                        = "e859fe1e27819ad0617f3e56d7a903d4c099ec9ef80f154ed201089b5550337f"
 )
 
 type ConsoleAccessContext struct {
@@ -509,6 +509,7 @@ type PlatformOperationResult struct {
 type PlatformOperationsAccount struct {
 	AuthorizationRevision int64                      `json:"authorization_revision"`
 	CreatedAt             time.Time                  `json:"created_at"`
+	DisplayName           *string                    `json:"display_name,omitempty"`
 	EmailVerified         bool                       `json:"email_verified"`
 	Grants                []PlatformAccessGrantInput `json:"grants"`
 	ID                    string                     `json:"id"`
@@ -519,6 +520,7 @@ type PlatformOperationsAuditEvent struct {
 	ActorUserID        string    `json:"actor_user_id"`
 	CreatedAt          time.Time `json:"created_at"`
 	Decision           string    `json:"decision"`
+	DisplayName        *string   `json:"display_name,omitempty"`
 	PermissionCode     string    `json:"permission_code"`
 	ReasonCode         string    `json:"reason_code"`
 	RequestID          string    `json:"request_id"`
@@ -559,13 +561,14 @@ type PlatformOperationsMailStatus struct {
 }
 
 type PlatformOperationsSession struct {
-	ClientID   *string    `json:"client_id,omitempty"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	ID         string     `json:"id"`
-	Kind       string     `json:"kind"`
-	LastSeenAt time.Time  `json:"last_seen_at"`
-	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
-	UserID     string     `json:"user_id"`
+	ClientID    *string    `json:"client_id,omitempty"`
+	DisplayName *string    `json:"display_name,omitempty"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	ID          string     `json:"id"`
+	Kind        string     `json:"kind"`
+	LastSeenAt  time.Time  `json:"last_seen_at"`
+	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
+	UserID      string     `json:"user_id"`
 }
 
 type PlatformOperationsSnapshot struct {

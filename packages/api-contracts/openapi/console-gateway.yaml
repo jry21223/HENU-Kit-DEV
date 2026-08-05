@@ -1505,6 +1505,7 @@ components:
       required: [id, email_verified, status, authorization_revision, created_at, grants]
       properties:
         id: { type: string, format: uuid }
+        display_name: { type: string, maxLength: 80 }
         email_verified: { type: boolean }
         status: { type: string, enum: [active, suspended, deleted] }
         authorization_revision: { type: integer, format: int64, minimum: 1 }
@@ -1533,6 +1534,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
+        display_name: { type: string, maxLength: 80 }
         kind: { type: string, enum: [core, client_exchange] }
         client_id: { type: string }
         last_seen_at: { type: string, format: date-time }
@@ -1574,6 +1576,7 @@ components:
       properties:
         request_id: { type: string }
         actor_user_id: { type: string, format: uuid }
+        display_name: { type: string, maxLength: 80 }
         permission_code: { type: string }
         target_kind: { type: string, enum: [platform, product, resource] }
         target_product_code: { type: string }
