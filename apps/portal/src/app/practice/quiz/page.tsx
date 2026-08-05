@@ -2,15 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  createPracticeFeedback,
   createPracticeSession,
+  fetchPracticeFeedbackStatus,
   formatPortalError,
+  PortalUnauthorizedError,
   submitPracticeAnswer,
 } from "@/lib/api/client";
 import type {
   PortalPracticeAnswerResponse,
+  PortalPracticeFeedbackInput,
+  PortalPracticeFeedbackStatusResponse,
   PortalPracticeQuestion,
   PortalPracticeSessionInput,
   PortalPracticeSessionResponse,
+  PracticeFeedbackCategory,
 } from "@/lib/api/types";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
@@ -21,6 +27,22 @@ const OPTION_LABEL = ["A", "B", "C", "D", "E", "F", "G", "H"];
 // Match the canonical UUID text form accepted by Gateway and QuizCraft Core;
 // do not unnecessarily reject a newer UUID version issued by a real bank.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const FEEDBACK_CATEGORIES: Array<{ value: PracticeFeedbackCategory; label: string }> = [
+  { value: "wrong_answer", label: "答案有误" },
+  { value: "ambiguous", label: "表述歧义" },
+  { value: "typo", label: "错别字" },
+  { value: "outdated", label: "内容过时" },
+  { value: "other", label: "其他" },
+];
+
+const FEEDBACK_STATUS_LABEL: Record<PortalPracticeFeedbackStatusResponse["data"]["status"], string> = {
+  pending: "已受理",
+  in_progress: "处理中",
+  blocked: "暂时受阻",
+  resolved: "已解决",
+  archived: "已归档",
+};
 
 type LoadState = "loading" | "ready" | "empty" | "missing-selection" | "error" | "finished";
 type AnswerResult = PortalPracticeAnswerResponse["data"];
@@ -163,6 +185,17 @@ export default function QuizPage() {
   const [submitting, setSubmitting] = useState(false);
   const [streak, setStreak] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  // Correction feedback (signed-in only; Gateway returns 401 for guests).
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackCategory, setFeedbackCategory] = useState<PracticeFeedbackCategory>("other");
+  const [feedbackDetail, setFeedbackDetail] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackID, setFeedbackID] = useState<string | null>(null);
+  const [feedbackStatus, setFeedbackStatus] = useState<
+    PortalPracticeFeedbackStatusResponse["data"]["status"] | null
+  >(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -273,6 +306,63 @@ export default function QuizPage() {
       })
       .catch((error: unknown) => setAnswerError(formatPortalError(error)))
       .finally(() => setSubmitting(false));
+  };
+
+  const refreshFeedbackStatus = async (id: string) => {
+    try {
+      const response = await fetchPracticeFeedbackStatus(id);
+      setFeedbackStatus(response.data.status);
+    } catch {
+      // A later status read can still succeed; never block the accepted write.
+    }
+  };
+
+  const openFeedback = () => {
+    setFeedbackOpen(true);
+    setFeedbackError("");
+    setFeedbackMessage("");
+  };
+
+  const submitFeedback = async () => {
+    const detail = feedbackDetail.trim();
+    if (!detail) {
+      setFeedbackError("请简单描述问题，方便题库维护者定位。");
+      return;
+    }
+    if (!question || !session) return;
+    const currentKeyValue = questionKey(question);
+    const idempotencyKey = idempotencyKeyFor(
+      `feedback:${currentKeyValue}`,
+      "practice-feedback",
+      idempotencyKeys
+    );
+    setFeedbackSubmitting(true);
+    setFeedbackError("");
+    setFeedbackMessage("");
+    try {
+      const input: PortalPracticeFeedbackInput = {
+        bank_id: session.bank_id,
+        question_id: question.question_id,
+        question_version_id: question.question_version_id,
+        category: feedbackCategory,
+        detail,
+      };
+      const response = await createPracticeFeedback(input, idempotencyKey);
+      setFeedbackID(response.data.resource_id);
+      setFeedbackDetail("");
+      setFeedbackMessage("反馈已提交，感谢你的建议！");
+      void refreshFeedbackStatus(response.data.resource_id);
+    } catch (error) {
+      if (error instanceof PortalUnauthorizedError) {
+        window.location.assign(
+          `/account/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
+        );
+        return;
+      }
+      setFeedbackError(formatPortalError(error));
+    } finally {
+      setFeedbackSubmitting(false);
+    }
   };
 
   const prepareSessionLoad = () => {
@@ -529,6 +619,93 @@ export default function QuizPage() {
                 >
                   {idx === questions.length - 1 ? "查看结算 →" : "下一题 →"}
                 </button>
+              )}
+            </div>
+
+            <div data-feedback className="mt-5 border-t border-line pt-4">
+              <button
+                type="button"
+                onClick={openFeedback}
+                aria-expanded={feedbackOpen}
+                className="font-mono text-xs text-ink/50 transition-colors hover:text-accent"
+              >
+                {feedbackOpen ? "收起纠错 −" : "这道题有问题？提交纠错 +"}
+              </button>
+
+              {feedbackOpen && (
+                <div className="mt-4 border border-dashed border-ink/25 p-5">
+                  <p className="font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                    CORRECTION / 题内纠错
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {FEEDBACK_CATEGORIES.map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => setFeedbackCategory(item.value)}
+                        aria-pressed={feedbackCategory === item.value}
+                        className={cn(
+                          "border px-3 py-1.5 font-mono text-xs transition-colors",
+                          feedbackCategory === item.value
+                            ? "border-ink bg-ink text-paper"
+                            : "border-line text-ink/60 hover:border-ink/40"
+                        )}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={feedbackDetail}
+                    onChange={(event) => setFeedbackDetail(event.target.value)}
+                    rows={3}
+                    maxLength={4000}
+                    placeholder="简单描述问题，例如：第 2 题解析里的公式有笔误。"
+                    className="mt-4 w-full border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none placeholder:text-ink/30 focus:border-ink"
+                  />
+                  {feedbackMessage && (
+                    <p className="mt-3 text-sm text-ink/70">
+                      {feedbackMessage}
+                      {feedbackStatus && (
+                        <span className="ml-2 border border-accent/60 px-1.5 py-0.5 font-mono text-[10px] text-accent">
+                          {FEEDBACK_STATUS_LABEL[feedbackStatus]}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  {feedbackError && (
+                    <p role="alert" className="mt-3 text-sm text-accent">
+                      {feedbackError}
+                    </p>
+                  )}
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void submitFeedback()}
+                      disabled={feedbackSubmitting}
+                      className={cn(
+                        "border px-5 py-2 font-mono text-xs tracking-widest transition-colors",
+                        feedbackSubmitting
+                          ? "cursor-not-allowed border-line text-ink/30"
+                          : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
+                      )}
+                    >
+                      {feedbackSubmitting ? "提交中…" : "提交纠错"}
+                    </button>
+                    {feedbackID && (
+                      <button
+                        type="button"
+                        onClick={() => void refreshFeedbackStatus(feedbackID)}
+                        className="border border-ink/30 px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
+                      >
+                        刷新状态
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-3 font-mono text-[10px] leading-5 text-ink/45">
+                    纠错需要登录后提交；内容会连同题目版本引用交给题库维护者处理。
+                  </p>
+                </div>
               )}
             </div>
           </div>

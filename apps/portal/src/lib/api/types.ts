@@ -356,6 +356,50 @@ export interface PortalPracticeAnswerInput {
   answer: unknown;
 }
 
+export type PracticeFeedbackCategory =
+  | "wrong_answer"
+  | "ambiguous"
+  | "typo"
+  | "outdated"
+  | "other";
+
+export interface PortalPracticeFeedbackInput {
+  bank_id: string;
+  question_id: string;
+  question_version_id: string;
+  category: PracticeFeedbackCategory;
+  detail: string;
+}
+
+export interface PracticeFeedbackOperation {
+  operation_id: string;
+  state: string;
+  idempotency_key: string;
+  request_id: string;
+  resource_id: string;
+}
+
+export interface PortalPracticeFeedbackResponse {
+  request_id: string;
+  data: PracticeFeedbackOperation;
+}
+
+export interface PracticeFeedbackStatus {
+  feedback_id: string;
+  bank_id: string;
+  question_id: string;
+  question_version_id: string;
+  category: PracticeFeedbackCategory;
+  status: "pending" | "in_progress" | "blocked" | "resolved" | "archived";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortalPracticeFeedbackStatusResponse {
+  request_id: string;
+  data: PracticeFeedbackStatus;
+}
+
 /** Correctness and answer disclosure arrive only after server-side scoring. */
 export interface PortalPracticeAnswerResponse {
   request_id: string;

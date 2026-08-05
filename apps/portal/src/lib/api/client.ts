@@ -41,6 +41,9 @@ import type {
   PortalSession,
 	PortalPracticeAnswerInput,
 	PortalPracticeAnswerResponse,
+	PortalPracticeFeedbackInput,
+	PortalPracticeFeedbackResponse,
+	PortalPracticeFeedbackStatusResponse,
 	PortalPracticeSessionInput,
 	PortalPracticeSessionResponse,
   PracticeBanksResponse,
@@ -523,6 +526,30 @@ export async function submitPracticeAnswer(
   return apiFetchRequired<PortalPracticeAnswerResponse>(
     `/api/v1/practice/sessions/${encodeURIComponent(sessionID)}/answers`,
     practiceCommandInit(idempotencyKey, input)
+  );
+}
+
+/**
+ * Submits a signed-in correction for one stable question. Core owns question
+ * reference validation and per-user idempotency; Gateway relays the accepted
+ * write result. The returned resource_id is the feedback_id for status reads.
+ */
+export async function createPracticeFeedback(
+  input: PortalPracticeFeedbackInput,
+  idempotencyKey: string
+): Promise<PortalPracticeFeedbackResponse> {
+  return apiFetchRequired<PortalPracticeFeedbackResponse>(
+    "/api/v1/practice/feedback",
+    practiceCommandInit(idempotencyKey, input)
+  );
+}
+
+/** Reads one signed-in user's correction processing status. */
+export async function fetchPracticeFeedbackStatus(
+  feedbackID: string
+): Promise<PortalPracticeFeedbackStatusResponse> {
+  return apiFetchRequired<PortalPracticeFeedbackStatusResponse>(
+    `/api/v1/practice/feedback/${encodeURIComponent(feedbackID)}/status`
   );
 }
 
