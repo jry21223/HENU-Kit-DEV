@@ -53,6 +53,34 @@ server {
     proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
+  # Course materials mirrored from the public HENU-Final-Review repository.
+  #
+  # The mirror root holds only reviewed subject directories. The git checkout,
+  # repository tooling and the 待复核 directories are deliberately kept outside
+  # it, so a mistake here cannot expose repository internals or unreviewed
+  # material. Serving is read-only and nothing under this root is ever executed.
+  #
+  # A dotfile must never be reachable even if one is mirrored by accident; this
+  # regex location outranks the prefix location below.
+  location ~ ^/materials/\. {
+    return 404;
+  }
+
+  location /materials/ {
+    alias /srv/materials/;
+    # No directory listing: the catalogue is the Library, not the file tree.
+    autoindex off;
+    # Materials only change when the sync replaces a whole file, and Cloudflare
+    # caches these extensions by default. A long TTL keeps the origin's narrow
+    # uplink out of the read path for repeat downloads.
+    add_header Cache-Control "public, max-age=86400" always;
+    # These are third-party documents: never sniff them, never let one render
+    # as markup in our origin, and always hand them over as a download.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Content-Disposition "attachment" always;
+    add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+  }
+
   # Portal gateway BFF (/api/v1/*)
   location /api/ {
     set $portal_gateway_upstream portal-gateway:8084;
