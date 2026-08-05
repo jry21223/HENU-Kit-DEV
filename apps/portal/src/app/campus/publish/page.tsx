@@ -68,27 +68,7 @@ function PublishForm() {
     const p = Number(price);
     if (!price || Number.isNaN(p) || p <= 0) return setError("请填写合法金额");
     if (!place.trim()) return setError("请填写位置");
-    setError("");
-
-    const payload = {
-      type,
-      category,
-      title: title.trim(),
-      desc: desc.trim(),
-      price: Math.round(p),
-      place: place.trim(),
-      deadline: type === "help" ? deadline.trim() || undefined : undefined,
-      seller: user.name,
-      images: images.length ? images : undefined,
-    };
-
-    if (editItem) {
-      campusStore.updateItem(editItem.id, payload);
-      router.push(`/campus/item/${editItem.id}`);
-    } else {
-      const id = campusStore.publish(payload);
-      router.push(`/campus/item/${id}`);
-    }
+    setError("发布接口尚未接通，暂无法提交。上线后即可发布单子。");
   };
 
   return (
@@ -103,7 +83,7 @@ function PublishForm() {
         {editItem ? "编辑单子" : "发布单子"}
       </h1>
       <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/50">
-        发布后赏金由平台托管，确认完成后才结算给对方。
+        发布与接单接口尚未接通，当前无法提交；上线后即可发布互助单。
       </p>
 
       <div className="mt-8 space-y-6">

@@ -1,91 +1,90 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useSyncExternalStore } from "react";
-import { authStore } from "@/lib/auth/store";
-import { campusStore, categoryOf } from "@/lib/campus/mock";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { categoryOf, campusStore } from "@/lib/campus/mock";
 import Img from "@/components/ui/img";
 import { useReveal } from "@/components/account/use-reveal";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
+import {
+  fetchCampusItemDetail,
+  formatPortalError,
+  mockAllowed,
+} from "@/lib/api/client";
+import type { CampusItem, CampusMessage } from "@/lib/api/types";
 
 const STATUS_LABEL = { open: "待接单", ongoing: "进行中", done: "已完成", hidden: "已隐藏" } as const;
-const FLOW_STEPS = ["发布", "赏金托管", "接单服务", "确认完成", "平台结算"];
 
-/** 担保流程条（SVG 五步描线，当前步橙色） */
-function EscrowFlow({ current }: { current: number }) {
-  return (
-    <svg viewBox="0 0 480 84" fill="none" className="w-full">
-      {FLOW_STEPS.map((_, i) =>
-        i < FLOW_STEPS.length - 1 ? (
-          <line
-            key={i}
-            x1={48 + i * 96 + 22}
-            y1={30}
-            x2={48 + (i + 1) * 96 - 22}
-            y2={30}
-            className={i < current - 1 ? "stroke-ink" : "stroke-line"}
-            strokeWidth="1.5"
-            strokeDasharray={i < current - 1 ? undefined : "4 5"}
-          />
-        ) : null
-      )}
-      {FLOW_STEPS.map((label, i) => {
-        const active = i < current;
-        const isNow = i === current - 1;
-        return (
-          <g key={label}>
-            <rect
-              x={48 + i * 96 - 22}
-              y={16}
-              width={44}
-              height={28}
-              className={cn(
-                isNow ? "stroke-accent fill-accent/10" : active ? "stroke-ink" : "stroke-line"
-              )}
-              strokeWidth="1.5"
-            />
-            <text
-              x={48 + i * 96}
-              y={34}
-              textAnchor="middle"
-              fontSize="10"
-              className={cn(isNow ? "fill-accent" : active ? "fill-ink" : "fill-ink/40")}
-            >
-              {String(i + 1).padStart(2, "0")}
-            </text>
-            <text
-              x={48 + i * 96}
-              y={66}
-              textAnchor="middle"
-              fontSize="9"
-              className={isNow ? "fill-accent" : "fill-ink/50"}
-            >
-              {label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
+type LoadState = "loading" | "ready" | "error";
 
 export default function ItemDetail({ id }: { id: string }) {
-  const router = useRouter();
-  const data = useSyncExternalStore(campusStore.subscribe, campusStore.get, campusStore.getServer);
-  const { user } = useSyncExternalStore(authStore.subscribe, authStore.get, authStore.getServer);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [item, setItem] = useState<CampusItem | null>(null);
+  const [messages, setMessages] = useState<CampusMessage[]>([]);
+  const [error, setError] = useState<string | null>(null);
   useReveal();
   const wantRef = useRef<HTMLButtonElement>(null);
-  const [draft, setDraft] = useState("");
+  const mounted = useRef(true);
 
-  const item = data.items.find((i) => i.id === id);
-  if (!item) {
+  const load = useCallback(async () => {
+    setLoadState("loading");
+    setError(null);
+    try {
+      const response = await fetchCampusItemDetail(id);
+      if (!mounted.current) return;
+      setItem(response.item);
+      setMessages(response.messages ?? []);
+      setLoadState("ready");
+    } catch (loadError) {
+      if (!mounted.current) return;
+      if (mockAllowed) {
+        const data = campusStore.get();
+        const mock = data.items.find((candidate) => candidate.id === id);
+        if (mock) {
+          setItem(mock);
+          setMessages(data.messages.filter((m) => m.itemId === id));
+          setLoadState("ready");
+          return;
+        }
+      }
+      setItem(null);
+      setError(formatPortalError(loadError));
+      setLoadState("error");
+    }
+  }, [id]);
+
+  useEffect(() => {
+    mounted.current = true;
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => {
+      mounted.current = false;
+      window.clearTimeout(timer);
+    };
+  }, [load]);
+
+  const bounce = () => {
+    if (window.matchMedia(REDUCED_MOTION).matches || !wantRef.current) return;
+    gsap.fromTo(wantRef.current, { scale: 1 }, { scale: 1.15, duration: 0.15, yoyo: true, repeat: 1 });
+  };
+
+  if (loadState === "loading") {
+    return (
+      <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">LOADING / 加载中</p>
+        <Link href="/campus" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
+          ← 返回市集
+        </Link>
+      </main>
+    );
+  }
+
+  if (loadState === "error" || !item) {
     return (
       <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
         <p className="font-mono text-xs tracking-[0.3em] text-ink/40">404 / NOT FOUND</p>
-        <p className="mt-4 font-display text-2xl font-bold">单子不存在或已删除</p>
+        <p className="mt-4 font-display text-2xl font-bold">单子不存在或已下架</p>
+        {error && <p className="mt-2 font-mono text-[11px] text-ink/50">{error}</p>}
         <Link href="/campus" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
           ← 返回市集
         </Link>
@@ -94,27 +93,6 @@ export default function ItemDetail({ id }: { id: string }) {
   }
 
   const cat = categoryOf(item.category);
-  const messages = data.messages.filter((m) => m.itemId === id);
-  const flowStep = item.status === "open" ? 2 : item.status === "ongoing" ? 3 : item.status === "done" ? 5 : 1;
-
-  const bounce = () => {
-    if (window.matchMedia(REDUCED_MOTION).matches) return;
-    gsap.fromTo(wantRef.current, { scale: 1 }, { scale: 1.15, duration: 0.15, yoyo: true, repeat: 1 });
-  };
-
-  const onAccept = () => {
-    if (!user) {
-      router.push(`/account/login?next=/campus/item/${id}`);
-      return;
-    }
-    campusStore.accept(id);
-  };
-
-  const onMessage = () => {
-    if (!user || !draft.trim()) return;
-    campusStore.addMessage(id, user.name, draft.trim());
-    setDraft("");
-  };
 
   return (
     <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
@@ -165,7 +143,7 @@ export default function ItemDetail({ id }: { id: string }) {
             <p>发布于 · {item.time}</p>
           </div>
 
-          {/* 留言区 */}
+          {/* 留言区（真实数据来自服务端；留言发布接口尚未接通） */}
           <section data-enter className="mt-10">
             <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
               MESSAGES / 留言 · {messages.length}
@@ -188,36 +166,12 @@ export default function ItemDetail({ id }: { id: string }) {
               ))}
             </ul>
             <div className="mt-6 border-t border-line pt-5">
-              {user ? (
-                <div className="flex gap-3">
-                  <input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="公开留言，咨询细节…"
-                    className="flex-1 border-b border-ink/30 bg-transparent py-2 text-sm outline-none placeholder:text-ink/30 focus:border-ink"
-                  />
-                  <button
-                    type="button"
-                    onClick={onMessage}
-                    disabled={!draft.trim()}
-                    className={cn(
-                      "border px-5 py-2 font-mono text-xs tracking-widest transition-colors",
-                      draft.trim()
-                        ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
-                        : "cursor-not-allowed border-line text-ink/30"
-                    )}
-                  >
-                    留言
-                  </button>
-                </div>
-              ) : (
-                <p className="font-mono text-xs text-ink/50">
-                  <Link href={`/account/login?next=/campus/item/${id}`} className="text-accent hover:underline">
-                    登录
-                  </Link>{" "}
-                  后留言咨询
-                </p>
-              )}
+              <p
+                data-campus-message-state="unavailable"
+                className="font-mono text-xs text-ink/50"
+              >
+                留言功能尚未接通，上线后即可咨询发单人。
+              </p>
             </div>
           </section>
         </div>
@@ -234,24 +188,20 @@ export default function ItemDetail({ id }: { id: string }) {
                 <span className="text-accent">¥</span>
                 {item.price}
               </p>
-              <p className="mt-3 flex items-center gap-2 border border-accent px-2.5 py-1.5 font-mono text-[10px] tracking-widest text-accent">
-                <span aria-hidden>▣</span> 平台担保 · 确认完成才结算
+              <p
+                data-campus-escrow-state="unavailable"
+                className="mt-3 border border-dashed border-ink/30 px-2.5 py-1.5 font-mono text-[10px] tracking-widest text-ink/50"
+              >
+                接单与结算功能尚未接通，暂不涉及资金托管。
               </p>
 
-              {item.isMine ? (
-                <Link
-                  href="/campus/deals"
-                  className="mt-5 block border border-ink/30 py-3 text-center font-mono text-sm tracking-widest transition-colors hover:border-ink"
-                >
-                  我发布的 · 去管理 →
-                </Link>
-              ) : item.status === "open" ? (
+              {item.status === "open" ? (
                 <button
                   type="button"
-                  onClick={onAccept}
-                  className="mt-5 w-full border border-ink bg-ink py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+                  disabled
+                  className="mt-5 w-full cursor-not-allowed border border-line py-3 font-mono text-sm tracking-widest text-ink/40"
                 >
-                  {item.type === "help" ? "我要接单" : "我想要"}
+                  {item.type === "help" ? "接单功能即将开放" : "想要功能即将开放"}
                 </button>
               ) : (
                 <p className="mt-5 border border-line py-3 text-center font-mono text-sm tracking-widest text-ink/40">
@@ -262,16 +212,11 @@ export default function ItemDetail({ id }: { id: string }) {
               <button
                 ref={wantRef}
                 type="button"
-                onClick={() => {
-                  campusStore.toggleWant(id);
-                  if (!item.wanted) bounce();
-                }}
-                className={cn(
-                  "mt-3 w-full border py-2.5 font-mono text-xs tracking-widest transition-colors",
-                  item.wanted ? "border-accent text-accent" : "border-ink/30 hover:border-ink"
-                )}
+                disabled
+                onClick={bounce}
+                className="mt-3 w-full cursor-not-allowed border border-line py-2.5 font-mono text-xs tracking-widest text-ink/40"
               >
-                {item.wanted ? "★ 已想要" : "☆ 想要"} · {item.wants}
+                ☆ 想要 · {item.wants}
               </button>
             </div>
 
@@ -291,16 +236,6 @@ export default function ItemDetail({ id }: { id: string }) {
                   <p className="font-display text-2xl font-bold text-accent">{item.credit}</p>
                   <p className="font-mono text-[9px] tracking-widest text-ink/40">信用分</p>
                 </div>
-              </div>
-            </div>
-
-            {/* 担保流程 */}
-            <div data-enter className="border border-ink/25 p-5">
-              <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
-                ESCROW / 担保流程
-              </p>
-              <div className="mt-4">
-                <EscrowFlow current={flowStep} />
               </div>
             </div>
           </div>
