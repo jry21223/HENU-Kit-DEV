@@ -18,7 +18,7 @@ async function routeAccountLookup(page: import("@playwright/test").Page, account
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ data: { request_id: "req_points_lookup_account", account }, request_id: "req_points_lookup_gateway" }),
+      body: JSON.stringify({ data: { account }, request_id: "req_points_lookup_gateway" }),
     })
   );
 }
@@ -179,7 +179,7 @@ test("Console distinguishes an unknown email from a lookup outage", async ({ pag
     lookupAttempts += 1;
     const { email } = await route.request().postDataJSON();
     if (email === "absent@stu.henu.edu.cn") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { request_id: "req_points_lookup_miss", account: null }, request_id: "req_points_lookup_gateway" }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: null }, request_id: "req_points_lookup_gateway" }) });
       return;
     }
     await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "unavailable", message: "retry later" }, request_id: "req_points_lookup_down" }) });
