@@ -7,6 +7,10 @@ import {
 } from "@/lib/practice/mock";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import DiffBadge from "@/components/practice/diff-badge";
+import {
+  PRACTICE_COMING_SOON_COPY,
+  PRACTICE_COMING_SOON_HINT,
+} from "@/lib/practice/coming-soon";
 import { cn } from "@/lib/cn";
 
 const STATUS_LABEL = ["未做", "已做", "做错"] as const;
@@ -56,10 +60,10 @@ export default function ListDetail({ list }: { list: QuizListMeta }) {
               disabled
               className="group relative inline-flex cursor-not-allowed items-center gap-3 overflow-hidden border border-line px-7 py-3.5 font-mono text-sm tracking-widest text-ink/40"
             >
-              练习入口接入中
+              {PRACTICE_COMING_SOON_COPY}
             </button>
             <p className="mt-3 font-mono text-[10px] tracking-wider text-ink/45">
-              题库对接完成后即可从题单开始刷题。
+              {PRACTICE_COMING_SOON_HINT}
             </p>
           </div>
         </div>
@@ -97,7 +101,7 @@ function QuestionRow({
     <li>
       <div
         className="group grid grid-cols-[3rem_1fr_4rem_4rem_3rem] items-center gap-3 border-b border-line py-3.5 md:grid-cols-[4rem_1fr_6rem_5rem_4rem]"
-        title="练习入口接入中"
+        title={PRACTICE_COMING_SOON_COPY}
       >
         <span className="font-mono text-xs text-ink/40 group-hover:text-accent">
           Q-{String(index + 1).padStart(2, "0")}
