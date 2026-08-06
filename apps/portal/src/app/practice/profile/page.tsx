@@ -111,6 +111,9 @@ export default function RankingProfilePage() {
         idempotencyKey.current
       );
       setSaved(true);
+      // A new save is a new logical write: drop the consumed key so the next
+      // submit mints a fresh one instead of replaying a 409 on Core.
+      idempotencyKey.current = null;
     } catch (error) {
       setSaveError(formatPortalError(error));
     } finally {

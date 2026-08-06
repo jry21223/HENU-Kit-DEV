@@ -33,14 +33,30 @@ const FORBIDDEN_SUBSTRINGS = [
 const SEPARATORS = /[ _\-.]/;
 const IDENTIFIER_SHAPE = /^[0-9a-fA-F]{32}$/;
 
-/** Han ranges matching Go's unicode.Han script set (main + extensions). */
+/** Han ranges matching Go's unicode.Han script set. */
 function isHanRune(code: number): boolean {
   return (
+    // CJK Radicals Supplement (U+2E80–U+2EF3) and Kangxi Radicals (U+2F00–U+2FD5).
+    (code >= 0x2e80 && code <= 0x2eff) ||
+    (code >= 0x2f00 && code <= 0x2fdf) ||
+    // Scattered Han marks inside CJK Symbols and Punctuation: U+3005, U+3007,
+    // U+3021–U+3029, U+3038–U+303B.
+    code === 0x3005 ||
+    code === 0x3007 ||
+    (code >= 0x3021 && code <= 0x3029) ||
+    (code >= 0x3038 && code <= 0x303b) ||
+    // CJK Unified Ideographs: Extension A (U+3400–U+4DBF) and the main block
+    // (U+4E00–U+9FFF).
     (code >= 0x3400 && code <= 0x4dbf) ||
     (code >= 0x4e00 && code <= 0x9fff) ||
+    // CJK Compatibility Ideographs (U+F900–U+FAFF).
     (code >= 0xf900 && code <= 0xfaff) ||
+    // Extensions B–F (U+20000–U+2EBEF) and the Compatibility Ideographs
+    // Supplement (U+2F800–U+2FA1F).
     (code >= 0x20000 && code <= 0x2ebef) ||
-    (code >= 0x2f800 && code <= 0x2fa1f)
+    (code >= 0x2f800 && code <= 0x2fa1f) ||
+    // Extensions G and H (U+30000–U+323AF).
+    (code >= 0x30000 && code <= 0x323af)
   );
 }
 

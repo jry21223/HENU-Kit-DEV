@@ -31,6 +31,11 @@ var (
 	ErrPracticeCommandInvalid      = errors.New("QuizCraft returned an invalid practice command response")
 )
 
+// UpdateRankingProfilePath mirrors quizcraft.yaml's updateRankingProfile
+// command. Unlike the favorites commands it has no /api/v1/portal/... variant
+// in the generated contract, so it is declared alongside its only consumer.
+const UpdateRankingProfilePath = "/api/v1/ranking-profile"
+
 // CommandClient owns only the two Portal-initiated practice commands. Its
 // service credential must never be the catalog/read credential.
 type CommandClient struct {
@@ -79,6 +84,13 @@ func (c *CommandClient) SubmitAnswer(ctx context.Context, sessionID, actorUserID
 // 202 write result; Gateway only relays the accepted envelope.
 func (c *CommandClient) CreateFeedback(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
 	return c.command(ctx, CreatePortalPracticeFeedbackPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusAccepted, validatePracticeFeedbackEnvelope)
+}
+
+// UpdateRankingProfile applies the signed-in user's public ranking identity.
+// Core owns nickname normalization and the per-user idempotency history; the
+// Gateway relays the accepted OperationEnvelope unchanged.
+func (c *CommandClient) UpdateRankingProfile(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
+	return c.command(ctx, http.MethodPatch, UpdateRankingProfilePath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeOperationEnvelope)
 }
 
 type commandEnvelopeValidator func([]byte) error

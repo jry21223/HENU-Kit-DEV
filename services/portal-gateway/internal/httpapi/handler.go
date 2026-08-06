@@ -174,6 +174,9 @@ func (h *Handler) Router() chi.Router {
 		// only release allowed to make the public read routes reachable.
 		r.Get(practice.OverallRankingPath, h.getQuizCraftOverallRanking)
 		r.Get(practice.BankRankingPath, h.getQuizCraftBankRanking)
+		// The signed-in ranking identity write is an explicit command like the
+		// favorites writes; Core owns nickname normalization and idempotency.
+		r.Patch("/api/v1/ranking-profile", h.updateRankingProfile)
 	}
 
 	// This is the sole browser-visible QuizCraft write boundary. It is not a
@@ -632,6 +635,44 @@ func (h *Handler) createPracticeFeedback(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write(result.Raw)
+}
+
+// updateRankingProfile is the signed-in-only ranking identity write. Like
+// corrections and favorites it never downgrades to a guest actor and relays
+// Core's OperationEnvelope unchanged.
+func (h *Handler) updateRankingProfile(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.practiceCommands == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "请先登录后再设置排行身份", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if !practice.ValidUUID(value.UserID) {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if !practice.ValidIdempotencyKey(idempotencyKey) {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	raw, err := readGatewayPracticeCommandBody(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	result, err := h.practiceCommands.UpdateRankingProfile(r.Context(), value.UserID, requestIDOf(w, r), idempotencyKey, raw, coreAnonymousCookie(r))
+	if err != nil {
+		h.writePracticeCommandFailure(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(result.Raw)
 }
 

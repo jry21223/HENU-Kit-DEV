@@ -15,7 +15,7 @@ import type {
   QuizCraftRankingPeriod,
   QuizCraftRankingResponse,
 } from "@/lib/api/types";
-import { quizCraftV2ReadsEnabled } from "@/lib/api/env";
+import { quizCraftCatalogEnabled, quizCraftV2ReadsEnabled } from "@/lib/api/env";
 import { cn } from "@/lib/cn";
 
 type RankingState =
@@ -37,6 +37,9 @@ const periods: Array<{ value: QuizCraftRankingPeriod; label: string }> = [
 
 export default function LeaderboardPage() {
   const enabled = quizCraftV2ReadsEnabled();
+  // The bank dimension needs the coordinated catalog cutover flag, not just the
+  // V2 reads gate: the catalog is a separate cutover surface from rankings.
+  const catalogEnabled = quizCraftCatalogEnabled();
   const [scope, setScope] = useState<"overall" | "bank">("overall");
   const [bankID, setBankID] = useState<string | null>(null);
   const [period, setPeriod] = useState<QuizCraftRankingPeriod>("weekly");
@@ -44,7 +47,9 @@ export default function LeaderboardPage() {
     enabled ? { status: "loading" } : { status: "disabled" }
   );
   const [banks, setBanks] = useState<BankSourceState>(
-    enabled ? { status: "loading" } : { status: "idle" }
+    catalogEnabled
+      ? { status: "loading" }
+      : { status: "error", message: "题库列表暂不可用，无法切换题库维度。" }
   );
   const [retry, setRetry] = useState(0);
   const requestVersion = useRef(0);
@@ -52,7 +57,7 @@ export default function LeaderboardPage() {
   // The Bank dimension needs the published V2 catalog to map a bank UUID to a
   // display name. A failed catalog read must never block the Overall ranking.
   useEffect(() => {
-    if (!enabled) return;
+    if (!catalogEnabled) return;
     let cancelled = false;
     void fetchQuizCraftCatalog().then(
       (response) => {
@@ -67,7 +72,7 @@ export default function LeaderboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [enabled, retry]);
+  }, [catalogEnabled, retry]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -102,7 +107,10 @@ export default function LeaderboardPage() {
     return () => {
       requestVersion.current += 1;
     };
-  }, [enabled, scope, bankID, period, retry, banks]);
+    // banks intentionally excluded: the catalog resolves once at startup and
+    // must not re-fire the ranking request when the bank list state settles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, scope, bankID, period, retry]);
 
   const selectPeriod = (value: QuizCraftRankingPeriod) => {
     if (!enabled || value === period) return;
