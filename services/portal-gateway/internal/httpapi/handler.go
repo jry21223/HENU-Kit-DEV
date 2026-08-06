@@ -187,6 +187,9 @@ func (h *Handler) Router() chi.Router {
 	// matching actor-bound read and must never fall back to the generic proxy.
 	r.Post("/api/v1/practice/feedback", h.createPracticeFeedback)
 	r.Get("/api/v1/practice/feedback/{feedback_id}/status", h.getPracticeFeedbackStatus)
+	// Learning state is the signed-in account's per-question wrong marks and
+	// counts, an actor-bound read like personal stats.
+	r.Get("/api/v1/learning-state", h.getLearningState)
 
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
@@ -813,6 +816,40 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+// getLearningState reads the signed-in user's server-derived per-question
+// learning state (wrong marks and counts). It is an actor-bound read like
+// personalPracticeStats; a disabled or failing Core read is an honest error,
+// never fabricated question facts.
+func (h *Handler) getLearningState(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.quizCraft == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "learning state is not enabled", "错题本暂时不可用，请稍后再试")
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
+		switch {
+		case errors.Is(err, platformcore.ErrUnauthorized):
+			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		case errors.Is(err, platformcore.ErrForbidden):
+			writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
+		default:
+			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
+		}
+		return
+	}
+	envelope, err := h.quizCraft.LearningState(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "learning state is temporarily unavailable", "错题本暂时不可用，请稍后再试")
+		return
+	}
+	writeJSON(w, http.StatusOK, envelope)
 }
 
 // --- Proxy to portal-api ---
