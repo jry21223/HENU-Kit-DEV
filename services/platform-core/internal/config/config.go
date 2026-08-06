@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+// RequiredCoreSessionTTL is the only accepted Core Session lifetime. 30 days
+// is a deliberate long-lived session: students get a stay-signed-in Portal
+// without re-entering the email code, at the cost of a longer theft window if
+// a cookie is stolen. The cookie stays HttpOnly+Secure and every permission
+// check still validates the server-side Core Session, so a revocation on the
+// account origin kills the Portal session too. Every deployment must pin
+// PLATFORM_CORE_CORE_SESSION_TTL to this value.
+const RequiredCoreSessionTTL = 30 * 24 * time.Hour
+
 type Config struct {
 	Address                     string
 	DatabaseURL                 string
@@ -47,7 +56,7 @@ func Load() (Config, error) {
 		RedisURL:                    env("PLATFORM_CORE_REDIS_URL", "redis://localhost:6379/0"),
 		CoreCookieName:              env("PLATFORM_CORE_COOKIE_NAME", "__Host-henukit_core_session"),
 		LocalCoreCookieName:         env("PLATFORM_CORE_LOCAL_COOKIE_NAME", "henukit_core_session_local"),
-		CoreSessionTTL:              durationEnv("PLATFORM_CORE_CORE_SESSION_TTL", 30*24*time.Hour),
+		CoreSessionTTL:              durationEnv("PLATFORM_CORE_CORE_SESSION_TTL", RequiredCoreSessionTTL),
 		AuthorizationTTL:            durationEnv("PLATFORM_CORE_AUTHORIZATION_TTL", 90*time.Second),
 		ExchangeSessionTTL:          durationEnv("PLATFORM_CORE_EXCHANGE_SESSION_TTL", 8*time.Hour),
 		ExchangeSessionTTLOverrides: make(map[string]time.Duration),
@@ -87,12 +96,7 @@ func Load() (Config, error) {
 	if config.AuthorizationTTL < 60*time.Second || config.AuthorizationTTL > 120*time.Second {
 		return Config{}, errors.New("PLATFORM_CORE_AUTHORIZATION_TTL must be between 60s and 120s")
 	}
-	// 30 days is a deliberate long-lived session: students get a stay-signed-in
-	// Portal without re-entering the email code, at the cost of a longer theft
-	// window if a cookie is stolen. The cookie stays HttpOnly+Secure and every
-	// permission check still validates the server-side Core Session, so a
-	// revocation on the account origin kills the Portal session too.
-	if config.CoreSessionTTL != 30*24*time.Hour {
+	if config.CoreSessionTTL != RequiredCoreSessionTTL {
 		return Config{}, errors.New("PLATFORM_CORE_CORE_SESSION_TTL must be 720h")
 	}
 	if config.ExchangeSessionTTL <= 0 || config.ExchangeSessionTTL > 8*time.Hour {
@@ -174,7 +178,7 @@ func splitNonEmpty(value string) []string {
 // the same contract, so the check lives here once.
 func ValidateExchangeSessionTTLOverrides(overrides map[string]time.Duration) error {
 	for clientID, ttl := range overrides {
-		if clientID == "" || ttl <= 0 || ttl > 30*24*time.Hour {
+		if clientID == "" || ttl <= 0 || ttl > RequiredCoreSessionTTL {
 			return errors.New("exchange Session TTL overrides must map client ids to positive durations of at most 720h")
 		}
 	}

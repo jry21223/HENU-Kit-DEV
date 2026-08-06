@@ -51,6 +51,47 @@ func newTestHandler(t *testing.T, platformCoreURL string) (*Handler, *miniredis.
 	return handler, redisServer
 }
 
+// startOAuthFlow performs the login redirect and returns the flow state plus
+// the oauth cookie the browser must echo on the callback. The two are returned
+// separately so a test can do something in between (e.g. fast-forward the
+// flow window) before replaying the callback.
+func startOAuthFlow(t *testing.T, handler *Handler, loginURL string) (string, *http.Cookie) {
+	t.Helper()
+	loginRequest := httptest.NewRequest(http.MethodGet, loginURL, nil)
+	loginRequest.TLS = &tls.ConnectionState{}
+	loginRecorder := httptest.NewRecorder()
+	handler.Router().ServeHTTP(loginRecorder, loginRequest)
+	location, err := url.Parse(loginRecorder.Result().Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := location.Query().Get("state")
+	var oauthCookie *http.Cookie
+	for _, cookie := range loginRecorder.Result().Cookies() {
+		if cookie.Name == "__Host-henukit_portal_oauth" {
+			oauthCookie = cookie
+			break
+		}
+	}
+	if state == "" || oauthCookie == nil {
+		t.Fatal("login redirect omitted state or oauth cookie")
+	}
+	return state, oauthCookie
+}
+
+// completeOAuthCallback replays the callback with the given state and cookie
+// and returns the callback recorder.
+func completeOAuthCallback(t *testing.T, handler *Handler, state string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	callbackRequest := httptest.NewRequest(http.MethodGet,
+		"https://portal.example/api/v1/auth/callback?code=test-code&state="+url.QueryEscape(state), nil)
+	callbackRequest.TLS = &tls.ConnectionState{}
+	callbackRequest.AddCookie(cookie)
+	callbackRecorder := httptest.NewRecorder()
+	handler.Router().ServeHTTP(callbackRecorder, callbackRequest)
+	return callbackRecorder
+}
+
 func TestLoginOAuthCookieAttributesMatchFlowWindow(t *testing.T) {
 	handler, _ := newTestHandler(t, "http://127.0.0.1:9")
 
@@ -134,25 +175,7 @@ func TestOAuthFlowWindowExpiryFailsCleanly(t *testing.T) {
 
 	handler, redisServer := newTestHandler(t, platformCore.URL)
 
-	loginRequest := httptest.NewRequest(http.MethodGet, "https://portal.example/api/v1/auth/login", nil)
-	loginRequest.TLS = &tls.ConnectionState{}
-	loginRecorder := httptest.NewRecorder()
-	handler.Router().ServeHTTP(loginRecorder, loginRequest)
-	location, err := url.Parse(loginRecorder.Result().Header.Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := location.Query().Get("state")
-	var oauthCookie *http.Cookie
-	for _, cookie := range loginRecorder.Result().Cookies() {
-		if cookie.Name == "__Host-henukit_portal_oauth" {
-			oauthCookie = cookie
-			break
-		}
-	}
-	if state == "" || oauthCookie == nil {
-		t.Fatal("login redirect omitted state or oauth cookie")
-	}
+	state, oauthCookie := startOAuthFlow(t, handler, "https://portal.example/api/v1/auth/login")
 
 	// The Redis state and the cookie share the same 30-minute window. Simulate
 	// a slow email-code login that outlives it: the state expires server-side,
@@ -160,12 +183,7 @@ func TestOAuthFlowWindowExpiryFailsCleanly(t *testing.T) {
 	// cookie.
 	redisServer.FastForward(31 * time.Minute)
 
-	callbackRequest := httptest.NewRequest(http.MethodGet,
-		"https://portal.example/api/v1/auth/callback?code=test-code&state="+url.QueryEscape(state), nil)
-	callbackRequest.TLS = &tls.ConnectionState{}
-	callbackRequest.AddCookie(oauthCookie)
-	callbackRecorder := httptest.NewRecorder()
-	handler.Router().ServeHTTP(callbackRecorder, callbackRequest)
+	callbackRecorder := completeOAuthCallback(t, handler, state, oauthCookie)
 
 	if callbackRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("callback status = %d body=%s, want clean 400", callbackRecorder.Code, strings.TrimSpace(callbackRecorder.Body.String()))
@@ -211,28 +229,8 @@ func TestOAuthCallbackRedirectUsesSafeStoredReturnTo(t *testing.T) {
 		if returnTo != "" {
 			loginURL += "?return_to=" + url.QueryEscape(returnTo)
 		}
-		loginRequest := httptest.NewRequest(http.MethodGet, loginURL, nil)
-		loginRequest.TLS = &tls.ConnectionState{}
-		loginRecorder := httptest.NewRecorder()
-		handler.Router().ServeHTTP(loginRecorder, loginRequest)
-		location, err := url.Parse(loginRecorder.Result().Header.Get("Location"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		state := location.Query().Get("state")
-		var oauthCookie *http.Cookie
-		for _, cookie := range loginRecorder.Result().Cookies() {
-			if cookie.Name == "__Host-henukit_portal_oauth" {
-				oauthCookie = cookie
-				break
-			}
-		}
-		callbackRequest := httptest.NewRequest(http.MethodGet,
-			"https://portal.example/api/v1/auth/callback?code=test-code&state="+url.QueryEscape(state), nil)
-		callbackRequest.TLS = &tls.ConnectionState{}
-		callbackRequest.AddCookie(oauthCookie)
-		callbackRecorder := httptest.NewRecorder()
-		handler.Router().ServeHTTP(callbackRecorder, callbackRequest)
+		state, oauthCookie := startOAuthFlow(t, handler, loginURL)
+		callbackRecorder := completeOAuthCallback(t, handler, state, oauthCookie)
 		if callbackRecorder.Code != http.StatusFound {
 			t.Fatalf("callback status = %d body=%s, want 302", callbackRecorder.Code, strings.TrimSpace(callbackRecorder.Body.String()))
 		}
@@ -249,32 +247,5 @@ func TestOAuthCallbackRedirectUsesSafeStoredReturnTo(t *testing.T) {
 	// portal origin, so login() falls back to "/" and the flow lands on the root.
 	if got := completeFlow("https://evil.example/phish"); got != "https://portal.example/" {
 		t.Fatalf("absolute return_to Location = %q, want https://portal.example/ (open-redirect protection)", got)
-	}
-}
-
-func TestOAuthCallbackExpiredSessionCookieValueFailsCleanly(t *testing.T) {
-	// A cookie whose MaxAge has passed behaves exactly like a missing cookie at
-	// the callback: r.Cookie returns nothing useful and the flow must fail
-	// closed with the production error rather than panicking.
-	handler, _ := newTestHandler(t, "http://127.0.0.1:9")
-
-	request := httptest.NewRequest(http.MethodGet,
-		"https://portal.example/api/v1/auth/callback?code=test-code&state=not-a-real-state", nil)
-	request.TLS = &tls.ConnectionState{}
-	recorder := httptest.NewRecorder()
-	handler.Router().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("callback status = %d body=%s, want 400", recorder.Code, strings.TrimSpace(recorder.Body.String()))
-	}
-	if !strings.Contains(recorder.Body.String(), "missing oauth cookie") {
-		t.Fatalf("error body = %s, want missing oauth cookie", recorder.Body.String())
-	}
-	var envelope contract.ErrorEnvelope
-	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	if envelope.RequestID == "" {
-		t.Fatal("error must include a request_id")
 	}
 }

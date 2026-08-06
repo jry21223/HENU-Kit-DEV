@@ -64,7 +64,7 @@ func TestAuthorizationCodeIsSingleUseAndCreatesDurableSession(t *testing.T) {
 	server.Client().CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
-	code := issueAuthorizationCode(t, server, verifier)
+	code := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
 	if err := redisClient.FlushDB(ctx).Err(); err != nil {
 		t.Fatalf("simulate Redis data loss: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestUnsafeCallbackAndWrongPKCEDoNotConsumeAuthorizationCode(t *testing.T) {
 		t.Fatalf("unsafe callback persisted %d authorization codes (query error %v)", codeCount, err)
 	}
 
-	code := issueAuthorizationCode(t, server, verifier)
+	code := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
 	wrongPKCE := exchangeCode(t, server, code, "wrong-pkce-verifier-that-is-at-least-forty-three-characters")
 	wrongPKCE.Body.Close()
 	if wrongPKCE.StatusCode != http.StatusBadRequest {
@@ -191,7 +191,7 @@ func TestRevokedCoreSessionBlocksCodeExchange(t *testing.T) {
 	server.Client().CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
-	code := issueAuthorizationCode(t, server, verifier)
+	code := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
 	if _, err := pool.Exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE kind = 'core'`); err != nil {
 		t.Fatalf("revoke Core Session: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestConcurrentAuthorizationCodeExchangeHasOneWinner(t *testing.T) {
 	server.Client().CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
-	code := issueAuthorizationCode(t, server, verifier)
+	code := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
 	var successes atomic.Int32
 	unexpected := make(chan string, 20)
 	var wait sync.WaitGroup
@@ -277,9 +277,9 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	server.Client().CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
-	code := issueAuthorizationCode(t, server, verifier)
+	code := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
 	idempotencyKey := "idem_" + uuid.NewString()
-	missingHeaderRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "", "")
+	missingHeaderRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "", "", exchangeClientCreds{})
 	missingHeaderRequest.Header.Del(contract.IdempotencyKeyHeader)
 	missingHeaderResponse, err := server.Client().Do(missingHeaderRequest)
 	if err != nil {
@@ -294,7 +294,7 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	if badSignature.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("bad signature status = %d, want 401", badSignature.StatusCode)
 	}
-	wrongKeyRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "", "")
+	wrongKeyRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), "", "", exchangeClientCreds{})
 	wrongKeyRequest.Header.Set(contract.KeyIDHeader, "revoked-key")
 	wrongKeyRequest.SetBasicAuth(testClientID, testRevokedSecret)
 	signExchangeRequestWithSecret(t, wrongKeyRequest, testRevokedSecret)
@@ -307,7 +307,7 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 		t.Fatalf("wrong key status = %d, want 401", wrongKeyResponse.StatusCode)
 	}
 	expiredTimestamp := fmt.Sprintf("%d", time.Now().Add(-6*time.Minute).Unix())
-	expiredRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), expiredTimestamp, "")
+	expiredRequest := signedExchangeRequest(t, server, code, verifier, idempotencyKey, "nonce_"+uuid.NewString(), expiredTimestamp, "", exchangeClientCreds{})
 	expiredResponse, err := server.Client().Do(expiredRequest)
 	if err != nil {
 		t.Fatalf("expired timestamp request: %v", err)
@@ -356,8 +356,8 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE kind = 'client_exchange'`).Scan(&sessions); err != nil || sessions != 1 {
 		t.Fatalf("idempotent retry created %d exchange sessions (query error %v)", sessions, err)
 	}
-	rotatingCode := issueAuthorizationCode(t, server, verifier)
-	rotatingRequest := signedExchangeRequest(t, server, rotatingCode, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "", "")
+	rotatingCode := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
+	rotatingRequest := signedExchangeRequest(t, server, rotatingCode, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "", "", exchangeClientCreds{})
 	rotatingRequest.Header.Set(contract.KeyIDHeader, "retiring-key")
 	rotatingRequest.SetBasicAuth(testClientID, testRetiringSecret)
 	signExchangeRequestWithSecret(t, rotatingRequest, testRetiringSecret)
@@ -369,8 +369,8 @@ func TestHMACNonceIdempotencyAndRequestAudit(t *testing.T) {
 	if rotatingResponse.StatusCode != http.StatusOK {
 		t.Fatalf("retiring key status = %d, want 200", rotatingResponse.StatusCode)
 	}
-	queryCode := issueAuthorizationCode(t, server, verifier)
-	queryRequest := signedExchangeRequest(t, server, queryCode, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "", "")
+	queryCode := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
+	queryRequest := signedExchangeRequest(t, server, queryCode, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "", "", exchangeClientCreds{})
 	queryRequest.URL.RawQuery = "trace=signed"
 	signExchangeRequest(t, queryRequest)
 	queryResponse, err := server.Client().Do(queryRequest)
@@ -410,7 +410,7 @@ func TestConcurrentIdempotentExchangesIssueOnlyOneCredential(t *testing.T) {
 	t.Cleanup(server.Close)
 	server.Client().CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
-	code := issueAuthorizationCode(t, server, verifier)
+	code := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
 	idempotencyKey := "idem_" + uuid.NewString()
 	results := make(chan string, 10)
 	var wait sync.WaitGroup
@@ -526,7 +526,7 @@ func exchangeCode(t *testing.T, server *httptest.Server, code, verifier string) 
 
 func exchangeCodeWith(t *testing.T, server *httptest.Server, code, verifier, idempotencyKey, nonce, signatureOverride string) *http.Response {
 	t.Helper()
-	req := signedExchangeRequest(t, server, code, verifier, idempotencyKey, nonce, "", signatureOverride)
+	req := signedExchangeRequest(t, server, code, verifier, idempotencyKey, nonce, "", signatureOverride, exchangeClientCreds{})
 	response, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("exchange code: %v", err)
@@ -534,14 +534,21 @@ func exchangeCodeWith(t *testing.T, server *httptest.Server, code, verifier, ide
 	return response
 }
 
-func signedExchangeRequest(t *testing.T, server *httptest.Server, code, verifier, idempotencyKey, nonce, timestamp, signatureOverride string, clientParams ...string) *http.Request {
+// exchangeClientCreds selects the OAuth client signing an exchange request.
+// The zero value resolves to the default console test client (testClientID,
+// testClientSecret, testRedirectURI, testKeyID).
+type exchangeClientCreds struct {
+	clientID     string
+	clientSecret string
+	redirectURI  string
+	keyID        string
+}
+
+func signedExchangeRequest(t *testing.T, server *httptest.Server, code, verifier, idempotencyKey, nonce, timestamp, signatureOverride string, creds exchangeClientCreds) *http.Request {
 	t.Helper()
-	clientID, clientSecret, redirectURI, keyID := testClientID, testClientSecret, testRedirectURI, testKeyID
-	if len(clientParams) > 0 {
-		if len(clientParams) != 4 {
-			t.Fatalf("signedExchangeRequest clientParams must be clientID, clientSecret, redirectURI, keyID, got %d values", len(clientParams))
-		}
-		clientID, clientSecret, redirectURI, keyID = clientParams[0], clientParams[1], clientParams[2], clientParams[3]
+	clientID, clientSecret, redirectURI, keyID := creds.clientID, creds.clientSecret, creds.redirectURI, creds.keyID
+	if clientID == "" {
+		clientID, clientSecret, redirectURI, keyID = testClientID, testClientSecret, testRedirectURI, testKeyID
 	}
 	body := fmt.Sprintf(`{"grant_type":"authorization_code","code":%q,"redirect_uri":%q,"client_id":%q,"code_verifier":%q}`, code, redirectURI, clientID, verifier)
 	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/oauth/token", strings.NewReader(body))
@@ -586,13 +593,22 @@ func signExchangeRequestWithSecret(t *testing.T, request *http.Request, secret s
 	request.Header.Set(contract.SignatureHeader, base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 }
 
-func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier string, clientRedirect ...string) string {
+// authorizeClientCreds selects the OAuth client for issueAuthorizationCode.
+// The zero value resolves to the default console test client (testClientID,
+// testRedirectURI).
+type authorizeClientCreds struct {
+	clientID    string
+	redirectURI string
+}
+
+func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier string, creds authorizeClientCreds) string {
 	t.Helper()
-	clientID, redirectURI := testClientID, testRedirectURI
-	if len(clientRedirect) == 2 {
-		clientID, redirectURI = clientRedirect[0], clientRedirect[1]
-	} else if len(clientRedirect) != 0 {
-		t.Fatalf("issueAuthorizationCode accepts 0 or 2 optional clientID/redirectURI args, got %d", len(clientRedirect))
+	clientID, redirectURI := creds.clientID, creds.redirectURI
+	if clientID == "" {
+		clientID = testClientID
+	}
+	if redirectURI == "" {
+		redirectURI = testRedirectURI
 	}
 	challengeBytes := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(challengeBytes[:])
@@ -638,7 +654,7 @@ func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier stri
 // test needs.
 func exchangeRemaining(t *testing.T, server *httptest.Server, code, verifier, clientID, secret, redirectURI string) time.Duration {
 	t.Helper()
-	req := signedExchangeRequest(t, server, code, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "", "", clientID, secret, redirectURI, "primary")
+	req := signedExchangeRequest(t, server, code, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "", "", exchangeClientCreds{clientID: clientID, clientSecret: secret, redirectURI: redirectURI, keyID: "primary"})
 	response, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("exchange code: %v", err)
@@ -713,13 +729,13 @@ func TestExchangeSessionTTLOverrideExtendsPortalSessionsOnly(t *testing.T) {
 
 	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
 
-	consoleCode := issueAuthorizationCode(t, server, verifier)
+	consoleCode := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{})
 	consoleRemaining := exchangeRemaining(t, server, consoleCode, verifier, testClientID, testClientSecret, testRedirectURI)
 	if consoleRemaining < 7*time.Hour+59*time.Minute || consoleRemaining > 8*time.Hour+time.Minute {
 		t.Fatalf("console exchange Session lifetime = %s, want the 8h default", consoleRemaining)
 	}
 
-	portalCode := issueAuthorizationCode(t, server, verifier, portalClientID, portalRedirectURI)
+	portalCode := issueAuthorizationCode(t, server, verifier, authorizeClientCreds{clientID: portalClientID, redirectURI: portalRedirectURI})
 	portalRemaining := exchangeRemaining(t, server, portalCode, verifier, portalClientID, portalSecret, portalRedirectURI)
 	if portalRemaining < 29*24*time.Hour+23*time.Hour || portalRemaining > 30*24*time.Hour+time.Minute {
 		t.Fatalf("portal exchange Session lifetime = %s, want the 30-day override", portalRemaining)

@@ -70,15 +70,12 @@ func New(config Config) (http.Handler, error) {
 		(&http.Cookie{Name: config.LocalCoreCookieName, Value: "valid"}).Valid() != nil {
 		return nil, errors.New("local core session cookie name must be a valid non-__Host- name")
 	}
-	// The Core Session is intentionally long-lived (30 days): students stay
-	// signed into the Portal without re-entering the email code. The cookie
-	// remains HttpOnly+Secure and every permission check validates the
-	// server-side Core Session, so account-origin revocation still revokes the
-	// session. This is the accepted trade-off for a stay-signed-in Portal.
+	// Core Session TTL is pinned to 30 days; the rationale lives on
+	// configpkg.RequiredCoreSessionTTL.
 	if config.CoreSessionTTL <= 0 {
-		config.CoreSessionTTL = 30 * 24 * time.Hour
+		config.CoreSessionTTL = configpkg.RequiredCoreSessionTTL
 	}
-	if config.CoreSessionTTL != 30*24*time.Hour {
+	if config.CoreSessionTTL != configpkg.RequiredCoreSessionTTL {
 		return nil, errors.New("core Session TTL must be 30 days")
 	}
 	if config.AuthorizationTTL <= 0 {
