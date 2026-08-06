@@ -68,7 +68,7 @@ func NewCommandClient(baseURL, clientID, clientSecret, keyID string) (*CommandCl
 }
 
 func (c *CommandClient) CreateSession(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
-	return c.command(ctx, CreatePortalPracticeSessionPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusCreated, validatePracticeSessionEnvelope)
+	return c.command(ctx, http.MethodPost, CreatePortalPracticeSessionPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusCreated, validatePracticeSessionEnvelope)
 }
 
 func (c *CommandClient) SubmitAnswer(ctx context.Context, sessionID, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
@@ -76,21 +76,14 @@ func (c *CommandClient) SubmitAnswer(ctx context.Context, sessionID, actorUserID
 		return CommandResult{}, ErrPracticeCommandBadRequest
 	}
 	path := strings.Replace(SubmitPortalPracticeAnswerPath, "{session_id}", url.PathEscape(sessionID), 1)
-	return c.command(ctx, path, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeAnswerEnvelope)
+	return c.command(ctx, http.MethodPost, path, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeAnswerEnvelope)
 }
 
 // CreateFeedback submits one signed-in user's correction. Core owns the
 // question reference validation, the per-user idempotency history, and the
 // 202 write result; Gateway only relays the accepted envelope.
 func (c *CommandClient) CreateFeedback(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
-	return c.command(ctx, CreatePortalPracticeFeedbackPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusAccepted, validatePracticeFeedbackEnvelope)
-}
-
-// UpdateRankingProfile applies the signed-in user's public ranking identity.
-// Core owns nickname normalization and the per-user idempotency history; the
-// Gateway relays the accepted OperationEnvelope unchanged.
-func (c *CommandClient) UpdateRankingProfile(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
-	return c.command(ctx, http.MethodPatch, UpdateRankingProfilePath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeOperationEnvelope)
+	return c.command(ctx, http.MethodPost, CreatePortalPracticeFeedbackPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusAccepted, validatePracticeFeedbackEnvelope)
 }
 
 // UpdateRankingProfile applies the signed-in user's public ranking identity.
@@ -102,7 +95,35 @@ func (c *CommandClient) UpdateRankingProfile(ctx context.Context, actorUserID, r
 
 type commandEnvelopeValidator func([]byte) error
 
-func (c *CommandClient) command(ctx context.Context, path, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie, expectedStatus int, validate commandEnvelopeValidator) (CommandResult, error) {
+func validatePracticeOperationEnvelope(raw []byte) error {
+	envelope, valid := practiceRequiredObject(raw)
+	if !valid || !practiceOnlyKeys(envelope, "request_id", "data") {
+		return errors.New("invalid practice operation envelope")
+	}
+	requestID, valid := practiceRequiredString(envelope, "request_id")
+	if !valid || strings.TrimSpace(requestID) == "" {
+		return errors.New("invalid practice operation request id")
+	}
+	dataRaw, valid := practiceRequiredRaw(envelope, "data")
+	if !valid {
+		return errors.New("invalid practice operation data")
+	}
+	data, valid := practiceRequiredObject(dataRaw)
+	if !valid || !practiceOnlyKeys(data, "operation_id", "state", "idempotency_key", "request_id", "resource_id") {
+		return errors.New("invalid practice operation data")
+	}
+	operationID, operationOK := practiceRequiredString(data, "operation_id")
+	state, stateOK := practiceRequiredString(data, "state")
+	_, idempotencyOK := practiceRequiredString(data, "idempotency_key")
+	_, innerRequestOK := practiceRequiredString(data, "request_id")
+	resourceID, resourceOK := practiceRequiredString(data, "resource_id")
+	if !operationOK || !validPracticeCommandUUID(operationID) || !stateOK || state != "succeeded" || !idempotencyOK || !innerRequestOK || !resourceOK || !validPracticeCommandUUID(resourceID) {
+		return errors.New("invalid practice operation data")
+	}
+	return nil
+}
+
+func (c *CommandClient) command(ctx context.Context, method, path, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie, expectedStatus int, validate commandEnvelopeValidator) (CommandResult, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" || !ValidIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > 2<<20 {
 		return CommandResult{}, ErrPracticeCommandBadRequest
 	}
@@ -110,7 +131,7 @@ func (c *CommandClient) command(ctx context.Context, path, actorUserID, requestI
 	if actorUserID != "" && !validPracticeCommandUUID(actorUserID) {
 		return CommandResult{}, ErrPracticeCommandUnauthorized
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(raw))
+	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(raw))
 	if err != nil {
 		return CommandResult{}, fmt.Errorf("create QuizCraft Portal command: %w", ErrPracticeCommandUnavailable)
 	}
