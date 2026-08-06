@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { categoryOf, campusStore } from "@/lib/campus/mock";
+import { categoryOf } from "@/lib/campus/mock";
 import Img from "@/components/ui/img";
 import { useReveal } from "@/components/account/use-reveal";
-import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
+import { getCampusItemOrFallback } from "@/lib/campus/gateway";
 import {
   fetchCampusItemDetail,
   formatPortalError,
-  mockAllowed,
 } from "@/lib/api/client";
 import type { CampusItem, CampusMessage } from "@/lib/api/types";
 
@@ -24,7 +23,6 @@ export default function ItemDetail({ id }: { id: string }) {
   const [messages, setMessages] = useState<CampusMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   useReveal();
-  const wantRef = useRef<HTMLButtonElement>(null);
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
@@ -38,15 +36,12 @@ export default function ItemDetail({ id }: { id: string }) {
       setLoadState("ready");
     } catch (loadError) {
       if (!mounted.current) return;
-      if (mockAllowed) {
-        const data = campusStore.get();
-        const mock = data.items.find((candidate) => candidate.id === id);
-        if (mock) {
-          setItem(mock);
-          setMessages(data.messages.filter((m) => m.itemId === id));
-          setLoadState("ready");
-          return;
-        }
+      const fallback = getCampusItemOrFallback(id);
+      if (fallback.item) {
+        setItem(fallback.item);
+        setMessages(fallback.messages);
+        setLoadState("ready");
+        return;
       }
       setItem(null);
       setError(formatPortalError(loadError));
@@ -62,11 +57,6 @@ export default function ItemDetail({ id }: { id: string }) {
       window.clearTimeout(timer);
     };
   }, [load]);
-
-  const bounce = () => {
-    if (window.matchMedia(REDUCED_MOTION).matches || !wantRef.current) return;
-    gsap.fromTo(wantRef.current, { scale: 1 }, { scale: 1.15, duration: 0.15, yoyo: true, repeat: 1 });
-  };
 
   if (loadState === "loading") {
     return (
@@ -210,10 +200,8 @@ export default function ItemDetail({ id }: { id: string }) {
               )}
 
               <button
-                ref={wantRef}
                 type="button"
                 disabled
-                onClick={bounce}
                 className="mt-3 w-full cursor-not-allowed border border-line py-2.5 font-mono text-xs tracking-widest text-ink/40"
               >
                 ☆ 想要 · {item.wants}
