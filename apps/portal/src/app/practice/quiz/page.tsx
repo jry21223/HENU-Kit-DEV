@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   createPracticeFeedback,
   createPracticeSession,
@@ -20,6 +21,7 @@ import type {
 } from "@/lib/api/types";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
+import SessionSetup, { type SessionSelection } from "@/components/practice/session-setup/session-setup";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 
@@ -44,7 +46,7 @@ const FEEDBACK_STATUS_LABEL: Record<PortalPracticeFeedbackStatusResponse["data"]
   archived: "已归档",
 };
 
-type LoadState = "loading" | "ready" | "empty" | "missing-selection" | "error" | "finished";
+type LoadState = "loading" | "setup" | "ready" | "empty" | "missing-selection" | "error" | "finished";
 type AnswerResult = PortalPracticeAnswerResponse["data"];
 
 function fmtTime(sec: number) {
@@ -61,7 +63,14 @@ function isUUID(value: string | null): value is string {
   return value !== null && UUID.test(value);
 }
 
-function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; error?: string; scope?: string } {
+function practiceInputFromLocation(): {
+  input?: PortalPracticeSessionInput;
+  error?: string;
+  scope?: string;
+  needsSetup?: boolean;
+  bankID?: string;
+  bankVersionID?: string;
+} {
   const params = new URLSearchParams(window.location.search);
   const bankID = params.get("bank_id")?.trim() ?? "";
   const bankVersionID = params.get("bank_version_id")?.trim() ?? "";
@@ -71,7 +80,12 @@ function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; erro
   if (!isUUID(bankID) || !isUUID(bankVersionID)) {
     return { error: "题库选择无效，请返回题库目录重新选择。" };
   }
-  const mode = params.get("mode")?.trim() || "random";
+  const mode = params.get("mode")?.trim() || "";
+  if (!mode) {
+    // No mode in the URL means the user has not composed a session yet;
+    // show the mode selection screen instead of silently defaulting.
+    return { needsSetup: true, bankID, bankVersionID };
+  }
   if (mode !== "random" && mode !== "difficult" && mode !== "chapter") {
     return { error: "练习模式无效，请从题库目录重新选择。" };
   }
@@ -169,8 +183,10 @@ function questionTypeLabel(type: PortalPracticeQuestion["type"]) {
 export default function QuizPage() {
   const cardRef = usePageEnter<HTMLDivElement>("question");
   const explainRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
   const idempotencyKeys = useRef<Record<string, string>>({});
   const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [setupBank, setSetupBank] = useState<{ bankID: string; bankVersionID: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [session, setSession] = useState<PortalPracticeSessionResponse["data"] | null>(null);
   const [restart, setRestart] = useState(0);
@@ -201,6 +217,18 @@ export default function QuizPage() {
     let cancelled = false;
     const load = async () => {
       const parsed = practiceInputFromLocation();
+      if (parsed.needsSetup) {
+        if (!cancelled) {
+          setLoadError(null);
+          setSetupBank(
+            parsed.bankID && parsed.bankVersionID
+              ? { bankID: parsed.bankID, bankVersionID: parsed.bankVersionID }
+              : null
+          );
+          setLoadState("setup");
+        }
+        return;
+      }
       if (!parsed.input || !parsed.scope) {
         if (!cancelled) {
           setLoadError(parsed.error ?? "未选择真实题库。");
@@ -390,8 +418,39 @@ export default function QuizPage() {
     retrySessionLoad();
   };
 
+  const startWithSettings = async (selection: SessionSelection) => {
+    if (!setupBank) return;
+    const params = new URLSearchParams();
+    params.set("bank_id", setupBank.bankID);
+    params.set("bank_version_id", setupBank.bankVersionID);
+    params.set("mode", selection.mode);
+    if (selection.chapterID) params.set("chapter_id", selection.chapterID);
+    if (Number.isInteger(selection.questionCount) && selection.questionCount >= 1) {
+      params.set("question_count", String(selection.questionCount));
+    }
+    prepareSessionLoad();
+    try {
+      await router.replace(`/practice/quiz?${params.toString()}`);
+    } catch {
+      // Navigation is best-effort; the restart below still re-reads the URL.
+    }
+    setRestart((value) => value + 1);
+  };
+
   if (loadState === "loading") {
     return <PracticeState title="正在连接题库" detail="正在创建练习会话…" />;
+  }
+  if (loadState === "setup") {
+    if (!setupBank) {
+      return <PracticeState title="请先选择题库" detail="请从题库目录选择练习后开始。" />;
+    }
+    return (
+      <SessionSetup
+        bankID={setupBank.bankID}
+        bankVersionID={setupBank.bankVersionID}
+        onStart={(selection) => void startWithSettings(selection)}
+      />
+    );
   }
   if (loadState === "missing-selection") {
     return <PracticeState title="请先选择题库" detail={loadError ?? "请从题库目录选择练习后开始。"} />;
