@@ -13,8 +13,14 @@ import {
 
 export type SessionMode = "random" | "difficult" | "chapter";
 
-/** Every supported session mode, in display order. */
-export const SESSION_MODES: SessionMode[] = ["random", "difficult", "chapter"];
+const MODES: Array<{ value: SessionMode; label: string; description: string }> = [
+  { value: "random", label: "随机", description: "从整个题库随机抽题，适合日常巩固。" },
+  { value: "difficult", label: "难题", description: "优先挑选历史答错率高的题，挑战一下。" },
+  { value: "chapter", label: "章节", description: "只练所选章节的题，按章节推进。" },
+];
+
+/** Every supported session mode, in display order (derived from MODES). */
+export const SESSION_MODES: SessionMode[] = MODES.map((mode) => mode.value);
 
 /** Narrowing guard for an untrusted URL-mode value. */
 export function isSessionMode(value: string): value is SessionMode {
@@ -27,12 +33,6 @@ export interface SessionSelection {
   chapterID?: string;
   questionCount: number;
 }
-
-const MODES: Array<{ value: SessionMode; label: string; description: string }> = [
-  { value: "random", label: "随机", description: "从整个题库随机抽题，适合日常巩固。" },
-  { value: "difficult", label: "难题", description: "优先挑选历史答错率高的题，挑战一下。" },
-  { value: "chapter", label: "章节", description: "只练所选章节的题，按章节推进。" },
-];
 
 type ChaptersState =
   | { kind: "loading" }
