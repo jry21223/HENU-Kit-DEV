@@ -139,15 +139,19 @@ func (service *practiceHTTP) authenticatePortalPersonalStats(next http.Handler) 
 	}, next)
 }
 
-// authenticatePortalCommand authorizes the two internal Portal -> QuizCraft
-// write routes. It intentionally does not reuse authenticateSignedGET: command
+// authenticatePortalCommand authorizes the internal Portal -> QuizCraft write
+// routes. It intentionally does not reuse authenticateSignedGET: command
 // signatures cover the exact raw JSON bytes and may additionally bind a Portal
 // user UUID. The Basic credential proves the caller is Portal Gateway; the
 // optional sixth canonical line proves the Gateway selected that user.
 func (service *practiceHTTP) authenticatePortalCommand(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost {
-			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal commands accept signed POST requests")
+		// POST covers session/answer/feedback/favorites-session commands; PUT and
+		// DELETE cover the favorite and unfavorite commands. The method is one of
+		// the signed canonical lines below, so a signature computed for one
+		// method cannot be replayed against another.
+		if request.Method != http.MethodPost && request.Method != http.MethodPut && request.Method != http.MethodDelete {
+			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft Portal commands accept signed POST, PUT, and DELETE requests")
 			return
 		}
 		if service.portalCommandClientID == "" || len(service.portalCommandKeys) == 0 {

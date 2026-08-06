@@ -702,6 +702,12 @@ func (service *practiceHTTP) portalChangeFavorite(writer http.ResponseWriter, re
 }
 
 func (service *practiceHTTP) changeFavoriteForActor(writer http.ResponseWriter, request *http.Request, actor practiceActor, add bool) {
+	// Favorites are per-user relations. A guest actor (anonymous cookie, or a
+	// five-part Portal command without an actor) has no userID to write under.
+	if actor.userID == nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to use favorites")
+		return
+	}
 	bankID, questionID, ok := parseFavoritePath(writer, request, true)
 	if !ok {
 		return
@@ -791,6 +797,12 @@ func (service *practiceHTTP) portalCreateFavoritesSession(writer http.ResponseWr
 }
 
 func (service *practiceHTTP) createFavoritesSessionForActor(writer http.ResponseWriter, request *http.Request, actor practiceActor) {
+	// Favorites practice sessions are bound to one user; a guest actor cannot
+	// build a session from another identity's relations.
+	if actor.userID == nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to use favorites")
+		return
+	}
 	bankID, _, ok := parseFavoritePath(writer, request, false)
 	if !ok {
 		return
