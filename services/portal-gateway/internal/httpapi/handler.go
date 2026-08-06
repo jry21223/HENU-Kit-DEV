@@ -26,6 +26,7 @@ import (
 	"henukit.dev/portal-gateway/internal/accountportfolio"
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
+	"henukit.dev/portal-gateway/internal/notice"
 	"henukit.dev/portal-gateway/internal/platformcore"
 	"henukit.dev/portal-gateway/internal/practice"
 	"henukit.dev/portal-gateway/internal/session"
@@ -39,6 +40,7 @@ type Handler struct {
 	portalAPI          *http.Client
 	portalAPIURL       string
 	accountPortfolio   *accountportfolio.Client
+	noticeClient       *notice.Client
 	practiceCommands   *practice.CommandClient
 	quizCraftCatalog   *practice.Client
 	redis              *redis.Client
@@ -58,6 +60,10 @@ var (
 )
 
 const quizCraftCatalogPath = "/api/v1/practice/catalog"
+
+// noticeReadPermission is the Portal-scoped permission the Gateway verifies
+// with Platform Core before any signed Notice owner read.
+const noticeReadPermission = "portal.notice.read"
 
 // New creates a Handler from config.
 func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
@@ -84,6 +90,15 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		if err != nil {
 			return nil, fmt.Errorf("accountportfolio.NewClient: %w", err)
 		}
+	}
+	var noticeClient *notice.Client
+	if strings.TrimSpace(cfg.NoticeURL) != "" {
+		noticeClient = notice.NewClient(
+			cfg.NoticeURL,
+			cfg.NoticeAuth.ClientID,
+			cfg.NoticeAuth.ClientSecret,
+			cfg.NoticeAuth.KeyID,
+		)
 	}
 	var practiceCommands *practice.CommandClient
 	if cfg.PracticeCommandsEnabled {
@@ -128,6 +143,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		portalAPI:          &http.Client{Timeout: 10 * time.Second},
 		portalAPIURL:       cfg.PortalAPIURL,
 		accountPortfolio:   portfolio,
+		noticeClient:       noticeClient,
 		practiceCommands:   practiceCommands,
 		quizCraftCatalog:   quizCraftCatalog,
 		redis:              rdb,
@@ -196,7 +212,10 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/practice/stats", h.personalPracticeStats)
 	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
-	r.Get("/api/v1/notices", h.proxyToPortalAPI)
+
+	// The notices read is not legacy aggregation data: it is a signed,
+	// actor-bound read from the Notice owner. See getNotices.
+	r.Get("/api/v1/notices", h.getNotices)
 
 	return r
 }
@@ -813,6 +832,48 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+// getNotices returns the Notice owner's bounded snapshot for the signed-in
+// Portal Session actor. It is an actor-bound read like personalPracticeStats:
+// it never falls back to the aggregation layer, a cache, or mock success.
+func (h *Handler) getNotices(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.noticeClient == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "notice_unavailable", "通知服务暂时不可用，请稍后再来")
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, noticeReadPermission); err != nil {
+		h.writeNoticePermissionError(w, r, err)
+		return
+	}
+	data, err := h.noticeClient.List(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "notice temporarily unavailable", "通知服务暂时不可用，请稍后再来")
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}{Data: data, RequestID: requestIDOf(w, r)})
+}
+
+// writeNoticePermissionError maps Platform Core permission outcomes for the
+// actor-bound Notice read.
+func (h *Handler) writeNoticePermissionError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, platformcore.ErrUnauthorized):
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+	case errors.Is(err, platformcore.ErrForbidden):
+		writeError(w, r, http.StatusForbidden, "notice access denied", "暂无通知权限，请联系管理员")
+	default:
+		writeError(w, r, http.StatusServiceUnavailable, "notice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
+	}
 }
 
 // --- Proxy to portal-api ---
