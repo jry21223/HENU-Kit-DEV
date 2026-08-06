@@ -1469,7 +1469,8 @@ components:
 
     NoticeFeed:
       type: object
-      required: [items, generated_at]
+      description: Snapshot forwarded from the Notice owner; the Gateway validates only that items is present (non-null).
+      required: [items]
       properties:
         items:
           type: array
@@ -1481,7 +1482,8 @@ components:
 
     NoticeFeedItem:
       type: object
-      required: [id, source, version, title, body, source_url, content_hash, state, revision, created_at, distribution_count]
+      description: A notice as forwarded from the owner. The Gateway inspects only state (only distributed items are returned, so state is always "distributed" here); the remaining fields are the owner's shape, forwarded unvalidated.
+      required: [state]
       properties:
         id:
           type: string
@@ -1519,7 +1521,6 @@ components:
 
     NoticeSource:
       type: object
-      required: [id, code, name]
       properties:
         id:
           type: string

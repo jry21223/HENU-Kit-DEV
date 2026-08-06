@@ -103,6 +103,13 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 // ScopeOf returns the product named by a permission code's first segment
 // (e.g. "portal.notice.read" -> "portal"). Codes without a product prefix
 // keep the reserved "platform" scope name.
+//
+// The derivation is only valid when the code's first segment is the product
+// code the receiving service validates. Services whose product code differs
+// from the permission-code prefix (e.g. the QuizCraft owner expects
+// "quizcraft" for "portal.practice.read") must set their own product code
+// instead of calling ScopeOf; the practice client hardcodes it for that
+// reason.
 func ScopeOf(permissionCode string) string {
 	product, _, _ := strings.Cut(permissionCode, ".")
 	if product == "" {
@@ -114,9 +121,9 @@ func ScopeOf(permissionCode string) string {
 // CheckPermission verifies a permission against Platform Core. Platform Core
 // rejects checks without a scope (validScope fails on an empty kind, which the
 // Gateway would surface as a 503), so the scope is derived from the permission
-// code via ScopeOf: the product named by the code's first segment (e.g.
-// "portal.notice.read" checks the "portal" product scope), and platform scope
-// for "platform.*" codes.
+// code via ScopeOf — valid here because Platform Core scopes checks by the
+// code's first segment (e.g. "portal.notice.read" checks the "portal" product
+// scope), with platform scope for "platform.*" codes.
 func (c *Client) CheckPermission(ctx context.Context, exchangeToken, permissionCode string) error {
 	scope := map[string]string{"kind": "platform"}
 	if product := ScopeOf(permissionCode); product != "platform" {

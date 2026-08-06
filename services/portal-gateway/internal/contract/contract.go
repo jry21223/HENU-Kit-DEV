@@ -1,5 +1,11 @@
 // Package contract defines Portal Gateway API types that are not generated
 // from the public OpenAPI schema.
+//
+// cmd/contractgen emits only the PortalSession and practice-stats schemas
+// (portal_session.generated.go). The Notice snapshot types below are
+// handwritten but mirror the schemas documented in portal-gateway.yaml
+// (NoticeFeedEnvelope/NoticeFeed/NoticeFeedItem/NoticeSource), which the
+// Gateway forwards to Portal as raw JSON.
 package contract
 
 import (
@@ -64,6 +70,23 @@ type BankSummary struct {
 type NoticeFeedEnvelope struct {
 	Data      json.RawMessage `json:"data"`
 	RequestID string          `json:"request_id"`
+}
+
+// NoticeFeed is the Notice owner's bounded snapshot. Items and GeneratedAt
+// stay raw JSON because the Gateway validates only that items is present
+// (non-null) and that each item's lifecycle state is "distributed"; every
+// other field is the owner's shape, forwarded unchanged. Documented in
+// portal-gateway.yaml (NoticeFeed).
+type NoticeFeed struct {
+	Items       []json.RawMessage `json:"items"`
+	GeneratedAt json.RawMessage   `json:"generated_at"`
+}
+
+// NoticeItemLifecycle is the per-item lifecycle subset the Gateway inspects
+// to filter the snapshot: only notices in the distributed state may leave
+// the Gateway.
+type NoticeItemLifecycle struct {
+	State string `json:"state"`
 }
 
 // ErrorEnvelope is the standard error response. Error is the machine-readable
