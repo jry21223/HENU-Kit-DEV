@@ -414,15 +414,6 @@ export interface PortalPracticeAnswerResponse {
 }
 
 /**
- * One published chapter fact of a QuizCraft bank version. Chapter practice
- * sessions send `chapter_id` back to the server; the name is display-only.
- */
-export interface QuizCraftCatalogChapter {
-  id: string;
-  name: string;
-}
-
-/**
  * Dark-until-cutover QuizCraft catalog data. This intentionally stays
  * separate from the legacy Portal API BankSummary shape, which cannot carry
  * the immutable QuizCraft bank-version identifier required to start V2 work.
@@ -433,8 +424,6 @@ export interface QuizCraftCatalogBank {
   name: string;
   question_count: number;
   available: boolean;
-  /** Published chapter facts; absent when the serving Gateway predates #268. */
-  chapters?: QuizCraftCatalogChapter[];
 }
 
 export interface QuizCraftCatalogResponse {
