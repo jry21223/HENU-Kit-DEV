@@ -1,44 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useReveal } from "@/components/account/use-reveal";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import Img from "@/components/ui/img";
 import { useScrollRestoration } from "@/components/use-scroll-restoration";
-import type { FoodPost } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
-import { loadFoodPosts } from "@/lib/food/gateway";
 import { CAMPUSES, CAMPUS_KEYS, type CampusKey } from "@/lib/food/mock";
-import { groupFoodPostsByTier } from "@/lib/food/ranking";
-
-type LoadState = "loading" | "ready" | "error";
+import { HANG_TIER_KEY, groupFoodPostsByTier } from "@/lib/food/ranking";
+import { useFoodPosts } from "@/lib/food/use-food-posts";
 
 export default function FoodBoardPage() {
-  const [posts, setPosts] = useState<FoodPost[]>([]);
+  const { posts, loadState, error, load } = useFoodPosts();
   const [campus, setCampus] = useState<CampusKey | "all">("all");
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoadState("loading");
-    setError(null);
-    const { posts: loadedPosts, error: loadError } = await loadFoodPosts();
-    if (loadError) {
-      setPosts([]);
-      setError(loadError);
-      setLoadState("error");
-      return;
-    }
-    setPosts(loadedPosts);
-    setLoadState("ready");
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
 
   useReveal([campus, loadState]);
   useScrollRestoration(loadState === "ready");
@@ -183,7 +159,7 @@ export default function FoodBoardPage() {
                       data-food-tier-label
                       className={cn(
                         "mt-2 font-display text-5xl font-bold tracking-tight md:text-6xl",
-                        tier.key === "hang" && "text-accent"
+                        tier.key === HANG_TIER_KEY && "text-accent"
                       )}
                     >
                       {tier.label}

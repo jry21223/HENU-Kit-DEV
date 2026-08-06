@@ -10,7 +10,6 @@ import {
   formatPortalError,
   hasGateway,
   mockAllowed,
-  PortalApiError,
   PortalConfigError,
 } from "@/lib/api/client";
 import type { FoodPost, VenueSummary } from "@/lib/api/types";
@@ -18,13 +17,8 @@ import { foodStore } from "@/lib/food/mock";
 
 const gatewayVenues = new Map<string, VenueSummary[]>();
 let gatewayPosts: FoodPost[] | null = null;
-let lastError: string | null = null;
-let lastErrorObject: unknown = null;
+let lastError: unknown = null;
 let loaded = false;
-
-export function getFoodGatewayError(): string | null {
-  return lastError;
-}
 
 export async function initFoodGateway(): Promise<void> {
   if (loaded) return;
@@ -33,12 +27,9 @@ export async function initFoodGateway(): Promise<void> {
     if (mockAllowed) {
       loaded = true;
       lastError = null;
-      lastErrorObject = null;
       return;
     }
-    lastError =
-      "Gateway 未配置。生产环境禁止 mock；请设置 NEXT_PUBLIC_PORTAL_GATEWAY_URL。";
-    lastErrorObject = new PortalConfigError("服务未就绪，请联系维护者。");
+    lastError = new PortalConfigError("服务未就绪，请联系维护者。");
     return;
   }
 
@@ -56,15 +47,8 @@ export async function initFoodGateway(): Promise<void> {
     }
     loaded = true;
     lastError = null;
-    lastErrorObject = null;
   } catch (e) {
-    lastErrorObject = e;
-    lastError =
-      e instanceof PortalApiError
-        ? e.message
-        : e instanceof Error
-          ? e.message
-          : "加载美食数据失败";
+    lastError = e;
     if (!mockAllowed) {
       gatewayPosts = null;
       loaded = false;
@@ -105,10 +89,10 @@ export async function loadFoodPosts(): Promise<FoodPostsResult> {
 
   if (mockAllowed) return { posts: foodStore.get().posts, error: null };
 
+  // 走到这里时 initFoodGateway 必然已记录错误（无 gateway 或拉取失败），
+  // ?? 仅为类型兜底；错误表示统一为 error object。
   return {
     posts: [],
-    error: lastErrorObject
-      ? formatPortalError(lastErrorObject)
-      : (getFoodGatewayError() ?? "榜单暂时加载不出来，请稍后刷新试试"),
+    error: formatPortalError(lastError ?? new Error("加载美食数据失败")),
   };
 }

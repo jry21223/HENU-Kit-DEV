@@ -1,17 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import { cn } from "@/lib/cn";
-import { loadFoodPosts } from "@/lib/food/gateway";
 import type { FoodPost } from "@/lib/api/types";
-import { groupFoodPostsByTier, type FoodTier } from "@/lib/food/ranking";
-
-type LoadState = "loading" | "ready" | "error";
+import { HANG_TIER_KEY, groupFoodPostsByTier, type FoodTier } from "@/lib/food/ranking";
+import { useFoodPosts } from "@/lib/food/use-food-posts";
 
 interface RankRowItem {
   rank: string;
@@ -61,7 +59,7 @@ function RankRow({ item }: { item: RankRowItem }) {
         <span
           className={cn(
             "border px-2.5 py-1 font-mono text-xs",
-            item.tier.key === "hang"
+            item.tier.key === HANG_TIER_KEY
               ? "border-accent text-accent"
               : "border-ink/30 text-ink/50"
           )}
@@ -81,6 +79,8 @@ function RankRow({ item }: { item: RankRowItem }) {
 function toRankRows(posts: FoodPost[]): RankRowItem[] {
   // groupFoodPostsByTier 保证档位按 FOOD_TIERS 顺序、档内按点赞降序 + id 升序；
   // 展平即「档位 → 点赞 → id」的全局榜单顺序，tier 结构上必然存在。
+  // 注意：这是档位优先的局部 TOP 5，序号是全局序——首档条数 ≥5 时
+  // 会出现 01-05 全为同一档的情况，属预期行为。
   return groupFoodPostsByTier(posts)
     .flatMap(({ tier, posts: tierPosts }) =>
       tierPosts.map((post) => ({ tier, post }))
@@ -97,28 +97,7 @@ function toRankRows(posts: FoodPost[]): RankRowItem[] {
 
 export default function SectionFood() {
   const sectionRef = useRef<HTMLElement>(null);
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [posts, setPosts] = useState<FoodPost[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    setLoadState("loading");
-    setError(null);
-    const { posts: loadedPosts, error: loadError } = await loadFoodPosts();
-    if (loadError) {
-      setPosts([]);
-      setError(loadError);
-      setLoadState("error");
-      return;
-    }
-    setPosts(loadedPosts);
-    setLoadState("ready");
-  };
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const { posts, loadState, error, load } = useFoodPosts();
 
   const rows = useMemo(() => toRankRows(posts), [posts]);
 
@@ -190,7 +169,7 @@ export default function SectionFood() {
             </li>
           )}
           {loadState === "ready" &&
-            rows.map((item) => <RankRow key={item.rank + item.href} item={item} />)}
+            rows.map((item) => <RankRow key={item.rank} item={item} />)}
         </ul>
       </div>
     </section>
