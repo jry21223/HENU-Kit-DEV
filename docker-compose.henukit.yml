@@ -249,6 +249,10 @@ services:
   # Library owns the Console materials operation surface. It wraps the retired
   # Study admin API over HTTP (STUDY_LEGACY_API_URL / STUDY_LEGACY_ADMIN_TOKEN);
   # those credentials are mandatory and the service fails closed when absent.
+  # The overrides below default to empty, so a bare `docker compose up` exits
+  # this container and blocks console-gateway (depends_on). Local dev must set
+  # STUDY_LEGACY_API_URL / STUDY_LEGACY_ADMIN_TOKEN in .env.henukit first;
+  # this stack has no legacy Study service (see .env.henukit.example).
   library:
     build:
       context: ./services/library

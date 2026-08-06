@@ -1,6 +1,6 @@
 ---
 status: accepted
-amends: 0013
+amends: 0013-portal-gateway-go.md
 ---
 
 # Library becomes an independent data-owner service wired into Console
