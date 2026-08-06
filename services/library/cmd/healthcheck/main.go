@@ -11,10 +11,15 @@ import (
 	"time"
 )
 
+// defaultAddr must stay in sync with LIBRARY_ADDR:-:8095 in
+// docker-compose.henukit.yml, which is the single source of truth for
+// the default runtime address.
+const defaultAddr = ":8095"
+
 func main() {
 	address := strings.TrimSpace(os.Getenv("LIBRARY_ADDR"))
 	if address == "" {
-		address = ":8095"
+		address = defaultAddr
 	}
 	_, port, err := net.SplitHostPort(address)
 	if err != nil || port == "" {

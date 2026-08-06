@@ -16,6 +16,11 @@ import (
 	library "henukit.dev/library"
 )
 
+// defaultAddr must stay in sync with LIBRARY_ADDR:-:8095 in
+// docker-compose.henukit.yml, which is the single source of truth for
+// the default runtime address.
+const defaultAddr = ":8095"
+
 func main() {
 	databaseURL, redisURL := os.Getenv("LIBRARY_DATABASE_URL"), os.Getenv("LIBRARY_REDIS_URL")
 	clientID, keyID, secret := os.Getenv("LIBRARY_SERVICE_CLIENT_ID"), os.Getenv("LIBRARY_SERVICE_KEY_ID"), os.Getenv("LIBRARY_SERVICE_SECRET")
@@ -40,7 +45,7 @@ func main() {
 	}
 	address := os.Getenv("LIBRARY_ADDR")
 	if strings.TrimSpace(address) == "" {
-		address = ":8095"
+		address = defaultAddr
 	}
 	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
