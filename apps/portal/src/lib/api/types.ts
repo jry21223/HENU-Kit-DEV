@@ -414,6 +414,15 @@ export interface PortalPracticeAnswerResponse {
 }
 
 /**
+ * One published chapter fact of a QuizCraft bank version. Chapter practice
+ * sessions send `chapter_id` back to the server; the name is display-only.
+ */
+export interface QuizCraftCatalogChapter {
+  id: string;
+  name: string;
+}
+
+/**
  * Dark-until-cutover QuizCraft catalog data. This intentionally stays
  * separate from the legacy Portal API BankSummary shape, which cannot carry
  * the immutable QuizCraft bank-version identifier required to start V2 work.
@@ -424,6 +433,8 @@ export interface QuizCraftCatalogBank {
   name: string;
   question_count: number;
   available: boolean;
+  /** Published chapter facts; absent when the serving Gateway predates #268. */
+  chapters?: QuizCraftCatalogChapter[];
 }
 
 export interface QuizCraftCatalogResponse {
@@ -533,4 +544,37 @@ export interface NoticeSummary {
 export interface NoticeListResponse {
   notices: NoticeSummary[];
   request_id: string;
+}
+
+// ---- QuizCraft ranking profile ----
+
+/**
+ * One of the four system avatars Core allows on the public ranking. The
+ * avatar is a controlled enum, never a user upload or account identifier.
+ */
+export type QuizCraftSystemAvatar =
+  | "scholar-blue"
+  | "coder-green"
+  | "reader-amber"
+  | "owl-purple";
+
+/** Body of the signed-in ranking profile write (PATCH /api/v1/ranking-profile). */
+export interface QuizCraftRankingProfileInput {
+  /** Leave empty to use the neutral anonymous public label. */
+  nickname: string;
+  system_avatar: QuizCraftSystemAvatar;
+  /** false opts the account out of public rankings entirely. */
+  visible: boolean;
+}
+
+/** Idempotent write result envelope returned by Core for profile updates. */
+export interface QuizCraftRankingProfileResponse {
+  request_id: string;
+  data: {
+    operation_id: string;
+    state: "succeeded";
+    idempotency_key: string;
+    request_id: string;
+    resource_id: string;
+  };
 }
