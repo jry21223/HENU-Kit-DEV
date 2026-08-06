@@ -7,14 +7,10 @@ import { useReveal } from "@/components/account/use-reveal";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import Img from "@/components/ui/img";
 import { useScrollRestoration } from "@/components/use-scroll-restoration";
-import {
-  fetchFoodPosts,
-  formatPortalError,
-  mockAllowed,
-} from "@/lib/api/client";
 import type { FoodPost } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
-import { CAMPUSES, CAMPUS_KEYS, type CampusKey, foodStore } from "@/lib/food/mock";
+import { loadFoodPosts } from "@/lib/food/gateway";
+import { CAMPUSES, CAMPUS_KEYS, type CampusKey } from "@/lib/food/mock";
 import { groupFoodPostsByTier } from "@/lib/food/ranking";
 
 type LoadState = "loading" | "ready" | "error";
@@ -28,20 +24,15 @@ export default function FoodBoardPage() {
   const load = useCallback(async () => {
     setLoadState("loading");
     setError(null);
-    try {
-      const response = await fetchFoodPosts();
-      setPosts(response.posts);
-      setLoadState("ready");
-    } catch (loadError) {
-      if (mockAllowed) {
-        setPosts(foodStore.get().posts);
-        setLoadState("ready");
-        return;
-      }
+    const { posts: loadedPosts, error: loadError } = await loadFoodPosts();
+    if (loadError) {
       setPosts([]);
-      setError(formatPortalError(loadError));
+      setError(loadError);
       setLoadState("error");
+      return;
     }
+    setPosts(loadedPosts);
+    setLoadState("ready");
   }, []);
 
   useEffect(() => {

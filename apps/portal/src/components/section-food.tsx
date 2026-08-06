@@ -7,23 +7,19 @@ import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import { cn } from "@/lib/cn";
-import { fetchFoodPosts, formatPortalError, mockAllowed } from "@/lib/api/client";
+import { loadFoodPosts } from "@/lib/food/gateway";
 import type { FoodPost } from "@/lib/api/types";
-import { FOOD_TIERS, groupFoodPostsByTier, type FoodTierKey } from "@/lib/food/ranking";
-import { foodStore } from "@/lib/food/mock";
+import { groupFoodPostsByTier, type FoodTier } from "@/lib/food/ranking";
 
 type LoadState = "loading" | "ready" | "error";
 
 interface RankRowItem {
   rank: string;
   name: string;
-  tag: string;
-  tagKey: string;
+  tier: FoodTier;
   review: string;
   href: string;
 }
-
-const TIER_EMPHASIS = new Set(["hang"]);
 
 function RankRow({ item }: { item: RankRowItem }) {
   const reviewRef = useRef<HTMLDivElement>(null);
@@ -65,12 +61,12 @@ function RankRow({ item }: { item: RankRowItem }) {
         <span
           className={cn(
             "border px-2.5 py-1 font-mono text-xs",
-            TIER_EMPHASIS.has(item.tagKey)
+            item.tier.key === "hang"
               ? "border-accent text-accent"
               : "border-ink/30 text-ink/50"
           )}
         >
-          {item.tag}
+          {item.tier.label}
         </span>
       </div>
       <div ref={reviewRef} className="h-0 overflow-hidden">
@@ -83,40 +79,20 @@ function RankRow({ item }: { item: RankRowItem }) {
 }
 
 function toRankRows(posts: FoodPost[]): RankRowItem[] {
-  const tierOrder = new Map(FOOD_TIERS.map((tier, index) => [tier.key, index]));
-  const tierByPost = new Map<string, FoodTierKey>();
-  for (const group of groupFoodPostsByTier(posts)) {
-    for (const post of group.posts) tierByPost.set(post.id, group.tier.key);
-  }
-  const ranked = posts
-    .filter((post) => !post.hidden && tierByPost.has(post.id))
-    .map((post) => {
-      const tierKey = tierByPost.get(post.id)!;
-      return {
-        post,
-        tierKey,
-        tierIndex: tierOrder.get(tierKey) ?? 99,
-      };
-    })
-    .sort(
-      (left, right) =>
-        left.tierIndex - right.tierIndex ||
-        right.post.likes - left.post.likes ||
-        left.post.id.localeCompare(right.post.id)
+  // groupFoodPostsByTier 保证档位按 FOOD_TIERS 顺序、档内按点赞降序 + id 升序；
+  // 展平即「档位 → 点赞 → id」的全局榜单顺序，tier 结构上必然存在。
+  return groupFoodPostsByTier(posts)
+    .flatMap(({ tier, posts: tierPosts }) =>
+      tierPosts.map((post) => ({ tier, post }))
     )
-    .slice(0, 5);
-
-  return ranked.map(({ post, tierKey }, index) => {
-    const tier = FOOD_TIERS.find((candidate) => candidate.key === tierKey);
-    return {
+    .slice(0, 5)
+    .map(({ tier, post }, index) => ({
       rank: String(index + 1).padStart(2, "0"),
       name: post.shop.name,
-      tag: tier?.label ?? "上榜",
-      tagKey: tier?.key ?? "other",
+      tier,
       review: post.excerpt || post.title,
       href: `/food/post/${post.id}`,
-    };
-  });
+    }));
 }
 
 export default function SectionFood() {
@@ -128,20 +104,15 @@ export default function SectionFood() {
   const load = async () => {
     setLoadState("loading");
     setError(null);
-    try {
-      const response = await fetchFoodPosts();
-      setPosts(response.posts);
-      setLoadState("ready");
-    } catch (loadError) {
-      if (mockAllowed) {
-        setPosts(foodStore.get().posts);
-        setLoadState("ready");
-        return;
-      }
+    const { posts: loadedPosts, error: loadError } = await loadFoodPosts();
+    if (loadError) {
       setPosts([]);
-      setError(formatPortalError(loadError));
+      setError(loadError);
       setLoadState("error");
+      return;
     }
+    setPosts(loadedPosts);
+    setLoadState("ready");
   };
 
   useEffect(() => {
