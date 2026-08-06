@@ -1,9 +1,15 @@
 package library
 
+// Slide is one converted PPT deck page rendered by the Portal slides viewer.
+type Slide struct {
+	Title  string   `json:"title"`
+	Blocks []string `json:"blocks,omitempty"`
+}
+
 // Material matches the frontend Material interface exactly.
 type Material struct {
 	ID           string     `json:"id"`
-	Type         string     `json:"type"` // note|exam|mock|path|lab
+	Type         string     `json:"type"` // note|exam|mock|path|lab|slides
 	Subject      string     `json:"subject"`
 	Title        string     `json:"title"`
 	Author       string     `json:"author"`
@@ -15,11 +21,12 @@ type Material struct {
 	Rating       float64    `json:"rating"`
 	Downloads    int        `json:"downloads"`
 	Favs         int        `json:"favs"`
-	// Where the file is served from. Empty when the owner has no file for this
-	// material, in which case the Portal offers no download.
-	DownloadURL string `json:"downloadUrl,omitempty"`
-	FileName    string `json:"fileName,omitempty"`
-	FileSize    int64  `json:"fileSize,omitempty"`
+	// FilePath is the mirrored file path under /materials/ (storage_key).
+	// Empty for entries that have no hosted file (mock only).
+	FilePath string `json:"filePath,omitempty"`
+	FileSize int64  `json:"fileSize,omitempty"`
+	// Slides carries the converted PPT deck when available (detail only).
+	Slides []Slide `json:"slides,omitempty"`
 }
 
 // Course is the portal-gateway catalog course card.

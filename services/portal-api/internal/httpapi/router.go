@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -256,22 +258,26 @@ func listMaterials(w http.ResponseWriter, r *http.Request, src librarySource, mo
 func getMaterial(w http.ResponseWriter, r *http.Request, src librarySource, mode string) {
 	id := chi.URLParam(r, "id")
 
-	var materials []library.Material
 	if src.studyDB != nil {
-		var err error
-		materials, err = src.studyDB.GetMaterials()
+		material, err := src.studyDB.GetMaterialByID(id)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
+				return
+			}
 			writeServiceUnavailable(w, "study_database_error", err.Error())
 			return
 		}
-	} else if mode == db.ModeLive {
-		writeServiceUnavailable(w, "study_database_unavailable", "STUDY_DATABASE_URL not connected")
+		writeJSON(w, http.StatusOK, map[string]any{"material": material, "request_id": requestIDOf(w)})
 		return
-	} else {
-		materials = library.MockMaterials()
 	}
 
-	for _, m := range materials {
+	if mode == db.ModeLive {
+		writeServiceUnavailable(w, "study_database_unavailable", "STUDY_DATABASE_URL not connected")
+		return
+	}
+
+	for _, m := range library.MockMaterials() {
 		if m.ID == id {
 			writeJSON(w, http.StatusOK, map[string]any{"material": m, "request_id": requestIDOf(w)})
 			return

@@ -423,11 +423,11 @@ services:
       # Only reviewed subject directories are mirrored into this root; the git
       # checkout and repository tooling stay outside it. Read-only, and the
       # directory is expected to be absent on hosts that have not synced yet.
-      #
       # Long form on purpose: the release artifact is rendered with
       # `config --no-interpolate`, which leaves `${VAR:-default}` in place, and
       # the short `source:target:mode` form cannot be parsed once the default
-      # adds its own colon.
+      # adds its own colon. Compose 2.x rejects it; 5.3.x silently renders
+      # `type: volume`, which mounts an empty anonymous volume instead.
       - type: bind
         source: ${HENUKIT_MATERIALS_ROOT:-/opt/henukit-materials/public}
         target: /srv/materials

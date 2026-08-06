@@ -138,6 +138,8 @@ func main() {
 	bankRankingPath, bankRankingMethod, bankRankingOperation := requireOperation(spec.Paths, "getBankRanking")
 	createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation := requireOperation(spec.Paths, "createPortalPracticeSession")
 	submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation := requireOperation(spec.Paths, "submitPortalPracticeAnswer")
+	createPortalPracticeFeedbackPath, createPortalPracticeFeedbackMethod, createPortalPracticeFeedbackOperation := requireOperation(spec.Paths, "createPortalPracticeFeedback")
+	getPortalPracticeFeedbackStatusPath, getPortalPracticeFeedbackStatusMethod, getPortalPracticeFeedbackStatusOperation := requireOperation(spec.Paths, "getPortalPracticeFeedbackStatus")
 	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope", catalogSecurityRequirements)
 	validatePortalReadOperation("getPersonalPracticeStats", statsMethod, statsOperation, "PersonalPracticeStatsEnvelope", personalStatsSecurityRequirements)
 	validatePersonalStatsActorBinding(statsOperation)
@@ -145,14 +147,18 @@ func main() {
 	validatePortalReadOperation("getBankRanking", bankRankingMethod, bankRankingOperation, "RankingEnvelope", catalogSecurityRequirements)
 	validatePortalPracticeCommandOperation("createPortalPracticeSession", createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation, "201", "PracticeSessionEnvelope")
 	validatePortalPracticeCommandOperation("submitPortalPracticeAnswer", submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation, "200", "AnswerResultEnvelope")
+	validatePortalPracticeCommandOperation("createPortalPracticeFeedback", createPortalPracticeFeedbackPath, createPortalPracticeFeedbackMethod, createPortalPracticeFeedbackOperation, "202", "OperationEnvelope")
+	validatePortalReadOperation("getPortalPracticeFeedbackStatus", getPortalPracticeFeedbackStatusMethod, getPortalPracticeFeedbackStatusOperation, "FeedbackStatusEnvelope", personalStatsSecurityRequirements)
+	validatePersonalStatsActorBinding(getPortalPracticeFeedbackStatusOperation)
 	validateCatalogSecurity(spec.Components.SecuritySchemes, personalStatsSecurityRequirements)
 	validatePortalPracticeCommandSecurity(spec.Components.SecuritySchemes)
 	validateCatalogSchema(spec.Components.Schemas)
 	validateRankingSchema(spec.Components.Schemas)
 	validatePersonalStatsSchema(spec.Components.Schemas)
+	validateFeedbackStatusSchema(spec.Components.Schemas)
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
-	generated, err := format.Source([]byte(render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, digest)))
+	generated, err := format.Source([]byte(render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, digest)))
 	fail(err)
 	fail(os.WriteFile(*outputPath, generated, 0o644))
 }
@@ -356,6 +362,28 @@ func validatePersonalStatsSchema(schemas map[string]schema) {
 	}
 }
 
+func validateFeedbackStatusSchema(schemas map[string]schema) {
+	requireObject(schemas, "FeedbackStatusEnvelope", []string{"request_id", "data"})
+	envelope := schemas["FeedbackStatusEnvelope"]
+	requireClosedObject(envelope, "FeedbackStatusEnvelope")
+	if data := envelope.Properties["data"]; data.Ref != "#/components/schemas/FeedbackStatus" {
+		fail(fmt.Errorf("FeedbackStatusEnvelope.data must be FeedbackStatus"))
+	}
+
+	requireObject(schemas, "FeedbackStatus", []string{"feedback_id", "bank_id", "question_id", "question_version_id", "category", "status", "created_at", "updated_at"})
+	feedback := schemas["FeedbackStatus"]
+	requireClosedObject(feedback, "FeedbackStatus")
+	for _, property := range []string{"feedback_id", "bank_id", "question_id", "question_version_id", "category", "status"} {
+		requireProperty(feedback, property, "string")
+	}
+	if category, ok := feedback.Properties["category"]; !ok || !contains(category.Enum, "wrong_answer") || !contains(category.Enum, "ambiguous") || !contains(category.Enum, "typo") || !contains(category.Enum, "outdated") || !contains(category.Enum, "other") {
+		fail(fmt.Errorf("FeedbackStatus.category must be the QuestionFeedback category enum"))
+	}
+	if status, ok := feedback.Properties["status"]; !ok || !contains(status.Enum, "pending") || !contains(status.Enum, "in_progress") || !contains(status.Enum, "blocked") || !contains(status.Enum, "resolved") || !contains(status.Enum, "archived") {
+		fail(fmt.Errorf("FeedbackStatus.status must be the processing status enum"))
+	}
+}
+
 func requireObject(schemas map[string]schema, name string, required []string) {
 	value, ok := schemas[name]
 	if !ok {
@@ -397,7 +425,7 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-func render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, digest string) string {
+func render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, digest string) string {
 	return fmt.Sprintf(`// Code generated by cmd/quizcraftcontractgen from quizcraft.yaml; DO NOT EDIT.
 package practice
 
@@ -409,6 +437,8 @@ const OverallRankingPath = %q
 const BankRankingPath = %q
 const CreatePortalPracticeSessionPath = %q
 const SubmitPortalPracticeAnswerPath = %q
+const CreatePortalPracticeFeedbackPath = %q
+const GetPortalPracticeFeedbackStatusPath = %q
 
 // BankListEnvelope is the generated read-only QuizCraft catalog response.
 // Its data members are the published, and therefore available, bank versions.
@@ -484,7 +514,25 @@ type MasterySubject struct {
 	TotalQuestions   int64  `+"`json:\"total_questions\"`"+`
 	CorrectQuestions int64  `+"`json:\"correct_questions\"`"+`
 }
-`, digest, catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath)
+
+// FeedbackStatusEnvelope is one authenticated Portal user's persisted
+// correction processing status. It never represents a mock response.
+type FeedbackStatusEnvelope struct {
+	RequestID string         `+"`json:\"request_id\"`"+`
+	Data      FeedbackStatus `+"`json:\"data\"`"+`
+}
+
+type FeedbackStatus struct {
+	FeedbackID        string `+"`json:\"feedback_id\"`"+`
+	BankID            string `+"`json:\"bank_id\"`"+`
+	QuestionID        string `+"`json:\"question_id\"`"+`
+	QuestionVersionID string `+"`json:\"question_version_id\"`"+`
+	Category          string `+"`json:\"category\"`"+`
+	Status            string `+"`json:\"status\"`"+`
+	CreatedAt         string `+"`json:\"created_at\"`"+`
+	UpdatedAt         string `+"`json:\"updated_at\"`"+`
+}
+`, digest, catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath)
 }
 
 func fail(err error) {

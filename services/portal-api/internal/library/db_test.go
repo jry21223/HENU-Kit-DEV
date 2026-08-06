@@ -1,48 +1,47 @@
 package library
 
-import (
-	"database/sql"
-	"testing"
-)
+import "testing"
 
-func TestDownloadURL(t *testing.T) {
+// The importer records storage_key as a repository-relative path, and the
+// Portal resolves the value against the site origin. A bare key would resolve
+// to the site root, miss /materials/ entirely, and 404 on every download.
+func TestMaterialFileURL(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		key  sql.NullString
+		key  string
 		want string
 	}{
 		{
-			// What the materials mirror writes: a repository-relative path.
 			name: "repository relative key resolves to the mirror",
-			key:  sql.NullString{String: "高等数学A（二）/复习讲义/讲义.pdf", Valid: true},
+			key:  "高等数学A（二）/复习讲义/讲义.pdf",
 			want: "/materials/高等数学A（二）/复习讲义/讲义.pdf",
 		},
 		{
 			name: "absolute path is left alone",
-			key:  sql.NullString{String: "/uploads/materials/legacy.pdf", Valid: true},
+			key:  "/uploads/materials/legacy.pdf",
 			want: "/uploads/materials/legacy.pdf",
 		},
 		{
 			name: "external URL is left alone",
-			key:  sql.NullString{String: "https://cdn.example.com/a.pdf", Valid: true},
+			key:  "https://cdn.example.com/a.pdf",
 			want: "https://cdn.example.com/a.pdf",
 		},
 		{
-			// No file means the Portal must offer no download rather than a
-			// link that 404s.
-			name: "null key yields no download",
-			key:  sql.NullString{Valid: false},
+			// No file means the Portal must offer no download rather than a link
+			// that 404s.
+			name: "empty key yields no download",
+			key:  "",
 			want: "",
 		},
 		{
 			name: "blank key yields no download",
-			key:  sql.NullString{String: "   ", Valid: true},
+			key:  "   ",
 			want: "",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := downloadURL(tc.key); got != tc.want {
-				t.Errorf("downloadURL() = %q, want %q", got, tc.want)
+			if got := materialFileURL(tc.key); got != tc.want {
+				t.Errorf("materialFileURL(%q) = %q, want %q", tc.key, got, tc.want)
 			}
 		})
 	}
