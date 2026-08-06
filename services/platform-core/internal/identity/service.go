@@ -55,7 +55,13 @@ type Service struct {
 	coordinator        Coordinator
 	authorizationTTL   time.Duration
 	exchangeSessionTTL time.Duration
-	idempotencyTTL     time.Duration
+	// exchangeSessionTTLs holds per-client overrides for the exchange Session
+	// TTL. The Portal OAuth client overrides the 8-hour default to 30 days so
+	// the Portal Session cookie and its permission checks survive for the whole
+	// Core Session window; clients without an override keep the short,
+	// high-privilege default.
+	exchangeSessionTTLs map[string]time.Duration
+	idempotencyTTL      time.Duration
 }
 
 type AuthorizeInput struct {
@@ -136,8 +142,8 @@ type serviceRequestCredentials struct {
 	NonceNamespace string
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL, idempotencyTTL time.Duration) *Service {
-	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, idempotencyTTL: idempotencyTTL}
+func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL time.Duration, exchangeSessionTTLs map[string]time.Duration, idempotencyTTL time.Duration) *Service {
+	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, exchangeSessionTTLs: exchangeSessionTTLs, idempotencyTTL: idempotencyTTL}
 }
 
 func (s *Service) authenticateServiceRequest(ctx context.Context, credentials serviceRequestCredentials) error {
@@ -321,7 +327,11 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 	if err != nil {
 		return Exchange{}, err
 	}
-	expiresAt := time.Now().UTC().Add(s.exchangeSessionTTL)
+	exchangeTTL := s.exchangeSessionTTL
+	if override, ok := s.exchangeSessionTTLs[input.ClientID]; ok {
+		exchangeTTL = override
+	}
+	expiresAt := time.Now().UTC().Add(exchangeTTL)
 	_, err = queries.CreateExchangeSession(ctx, store.CreateExchangeSessionParams{
 		UserID: code.UserID, TokenHash: sessionHash,
 		ClientID: pgtype.Text{String: input.ClientID, Valid: true}, ParentSessionID: code.CoreSessionID,

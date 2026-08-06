@@ -307,7 +307,7 @@ func TestAuthRetentionCleanupScrubsVerificationAndIdempotencySecretsAfterTwentyF
 	}
 }
 
-func TestLoginVerificationUsesStableRegisteredIdentityAndFifteenDayCoreSession(t *testing.T) {
+func TestLoginVerificationUsesStableRegisteredIdentityAndThirtyDayCoreSession(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
@@ -348,8 +348,8 @@ func TestLoginVerificationUsesStableRegisteredIdentityAndFifteenDayCoreSession(t
 			t.Fatalf("incomplete registered login response: %+v", envelope.Data)
 		}
 		remaining := time.Until(envelope.Data.SessionExpires)
-		if remaining < 14*24*time.Hour+23*time.Hour || remaining > 15*24*time.Hour+time.Minute {
-			t.Fatalf("core Session lifetime = %s, want 15 days", remaining)
+		if remaining < 29*24*time.Hour+23*time.Hour || remaining > 30*24*time.Hour+time.Minute {
+			t.Fatalf("core Session lifetime = %s, want 30 days", remaining)
 		}
 		accountURL, err := url.Parse(server.URL)
 		if err != nil {

@@ -26,29 +26,30 @@ import (
 )
 
 type Config struct {
-	Database                  *pgxpool.Pool
-	Redis                     *redis.Client
-	CoreCookieName            string
-	LocalCoreCookieName       string
-	CoreSessionTTL            time.Duration
-	AuthorizationTTL          time.Duration
-	ExchangeSessionTTL        time.Duration
-	IdempotencyEncryptionKey  []byte
-	IdempotencyTTL            time.Duration
-	Logger                    *slog.Logger
-	VerificationEncryptionKey []byte
-	StudentEmailDomains       []string
-	VerificationCodeTTL       time.Duration
-	VerificationResendDelay   time.Duration
-	MailDeliveryWebhookToken  string
-	MailDeliveryActiveKeyID   string
-	MailDeliveryRetiringToken string
-	MailDeliveryRetiringKeyID string
-	TrustedProxyCIDRs         []string
-	PasswordMemoryKiB         uint32
-	PasswordIterations        uint32
-	PasswordParallelism       uint8
-	PasswordHashConcurrency   int
+	Database                    *pgxpool.Pool
+	Redis                       *redis.Client
+	CoreCookieName              string
+	LocalCoreCookieName         string
+	CoreSessionTTL              time.Duration
+	AuthorizationTTL            time.Duration
+	ExchangeSessionTTL          time.Duration
+	ExchangeSessionTTLOverrides map[string]time.Duration
+	IdempotencyEncryptionKey    []byte
+	IdempotencyTTL              time.Duration
+	Logger                      *slog.Logger
+	VerificationEncryptionKey   []byte
+	StudentEmailDomains         []string
+	VerificationCodeTTL         time.Duration
+	VerificationResendDelay     time.Duration
+	MailDeliveryWebhookToken    string
+	MailDeliveryActiveKeyID     string
+	MailDeliveryRetiringToken   string
+	MailDeliveryRetiringKeyID   string
+	TrustedProxyCIDRs           []string
+	PasswordMemoryKiB           uint32
+	PasswordIterations          uint32
+	PasswordParallelism         uint8
+	PasswordHashConcurrency     int
 }
 
 func New(config Config) (http.Handler, error) {
@@ -68,11 +69,16 @@ func New(config Config) (http.Handler, error) {
 		(&http.Cookie{Name: config.LocalCoreCookieName, Value: "valid"}).Valid() != nil {
 		return nil, errors.New("local core session cookie name must be a valid non-__Host- name")
 	}
+	// The Core Session is intentionally long-lived (30 days): students stay
+	// signed into the Portal without re-entering the email code. The cookie
+	// remains HttpOnly+Secure and every permission check validates the
+	// server-side Core Session, so account-origin revocation still revokes the
+	// session. This is the accepted trade-off for a stay-signed-in Portal.
 	if config.CoreSessionTTL <= 0 {
-		config.CoreSessionTTL = 15 * 24 * time.Hour
+		config.CoreSessionTTL = 30 * 24 * time.Hour
 	}
-	if config.CoreSessionTTL != 15*24*time.Hour {
-		return nil, errors.New("core Session TTL must be 15 days")
+	if config.CoreSessionTTL != 30*24*time.Hour {
+		return nil, errors.New("core Session TTL must be 30 days")
 	}
 	if config.AuthorizationTTL <= 0 {
 		config.AuthorizationTTL = 90 * time.Second
@@ -85,6 +91,14 @@ func New(config Config) (http.Handler, error) {
 	}
 	if config.ExchangeSessionTTL > 8*time.Hour {
 		return nil, errors.New("exchange Session TTL must not exceed 8h")
+	}
+	// Per-client exchange Session TTL overrides (e.g. portal-gateway=720h) let
+	// the Portal Session live for the full 30-day Core Session window while
+	// Console and QuizCraft keep their short high-privilege exchange Sessions.
+	for clientID, ttl := range config.ExchangeSessionTTLOverrides {
+		if clientID == "" || ttl <= 0 || ttl > 30*24*time.Hour {
+			return nil, errors.New("exchange Session TTL overrides must map client ids to durations of at most 720h")
+		}
 	}
 	if len(config.IdempotencyEncryptionKey) != 32 {
 		return nil, errors.New("idempotency encryption key must be 32 bytes")
@@ -159,7 +173,7 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL)
+	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.ExchangeSessionTTLOverrides, config.IdempotencyTTL)
 	inbox := operationsinbox.New(queries, config.Database)
 	platformOperations := platformoperations.New(queries, config.Database, config.Redis, config.VerificationEncryptionKey, config.StudentEmailDomains)
 	verificationFlow, err := verification.New(queries, config.Database, coordinator, passwordManager, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay, config.CoreSessionTTL)
@@ -170,5 +184,5 @@ func New(config Config) (http.Handler, error) {
 	if config.MailDeliveryRetiringToken != "" {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
-	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
+	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, config.CoreSessionTTL, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
 }

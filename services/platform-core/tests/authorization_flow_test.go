@@ -632,3 +632,123 @@ func assertSecureHostCookie(t *testing.T, cookies []*http.Cookie) {
 	}
 	t.Fatal("Core Session cookie was not refreshed")
 }
+
+// The 30-day stay-signed-in Portal requirement is delivered through the
+// per-client exchange Session override: the portal-gateway client receives a
+// 30-day exchange Session (driving the Portal Session cookie MaxAge and every
+// subsequent permission check), while every other client keeps the short 8h
+// high-privilege default. The Core Session TTL alone cannot extend the Portal
+// Session because the exchange response's expires_at comes from the exchange
+// Session, not the Core Session.
+func TestExchangeSessionTTLOverrideExtendsPortalSessionsOnly(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	seedIdentity(t, ctx, pool)
+
+	const portalClientID = "portal-gateway"
+	const portalRedirectURI = "https://portal.henukit.test/api/v1/auth/callback"
+	const portalSecret = "portal-client-secret-with-enough-entropy"
+	portalSecretHash := sha256.Sum256([]byte(portalSecret))
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ($1, $2)`, portalClientID, []string{portalRedirectURI}); err != nil {
+		t.Fatalf("seed portal client: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_client_keys (client_id, key_id, secret_hash, status) VALUES ($1, 'primary', $2, 'active')`, portalClientID, portalSecretHash[:]); err != nil {
+		t.Fatalf("seed portal client key: %v", err)
+	}
+
+	handler, err := platformcore.New(platformcore.Config{
+		Database: pool, Redis: redisClient, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
+		ExchangeSessionTTL:          8 * time.Hour,
+		ExchangeSessionTTLOverrides: map[string]time.Duration{portalClientID: 30 * 24 * time.Hour},
+	})
+	if err != nil {
+		t.Fatalf("create platform core: %v", err)
+	}
+	server := httptest.NewTLSServer(handler)
+	t.Cleanup(server.Close)
+	server.Client().CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+
+	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
+	issueCode := func(clientID, redirectURI string) string {
+		t.Helper()
+		challengeBytes := sha256.Sum256([]byte(verifier))
+		challenge := base64.RawURLEncoding.EncodeToString(challengeBytes[:])
+		authorizeURL := server.URL + "/api/v1/oauth/authorize?" + url.Values{
+			"response_type": {"code"}, "client_id": {clientID}, "redirect_uri": {redirectURI},
+			"state": {"state_ttl_override"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"},
+		}.Encode()
+		request, _ := http.NewRequest(http.MethodGet, authorizeURL, nil)
+		request.AddCookie(&http.Cookie{Name: "__Host-henukit_core_session", Value: testCoreToken})
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatalf("authorize request: %v", err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusFound {
+			t.Fatalf("authorize status = %d, want 302", response.StatusCode)
+		}
+		location, err := url.Parse(response.Header.Get("Location"))
+		if err != nil {
+			t.Fatalf("parse callback: %v", err)
+		}
+		code := location.Query().Get("code")
+		if code == "" {
+			t.Fatal("authorize callback omitted the code")
+		}
+		return code
+	}
+	exchangeRemaining := func(clientID, secret, redirectURI, code string) time.Duration {
+		t.Helper()
+		body := fmt.Sprintf(`{"grant_type":"authorization_code","code":%q,"redirect_uri":%q,"client_id":%q,"code_verifier":%q}`, code, redirectURI, clientID, verifier)
+		request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/oauth/token", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.SetBasicAuth(clientID, secret)
+		request.Header.Set(contract.ServiceIDHeader, clientID)
+		request.Header.Set(contract.KeyIDHeader, "primary")
+		request.Header.Set(contract.TimestampHeader, fmt.Sprintf("%d", time.Now().Unix()))
+		request.Header.Set(contract.NonceHeader, "nonce_"+uuid.NewString())
+		signExchangeRequestWithSecret(t, request, secret)
+		request.Header.Set(contract.IdempotencyKeyHeader, "idem_"+uuid.NewString())
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatalf("exchange code: %v", err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("exchange status = %d, want 200", response.StatusCode)
+		}
+		var envelope struct {
+			Data struct {
+				ExpiresAt time.Time `json:"expires_at"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+			t.Fatalf("decode exchange response: %v", err)
+		}
+		if envelope.Data.ExpiresAt.IsZero() {
+			t.Fatal("exchange response omitted expires_at")
+		}
+		return time.Until(envelope.Data.ExpiresAt)
+	}
+
+	consoleCode := issueAuthorizationCode(t, server, verifier)
+	consoleRemaining := exchangeRemaining(testClientID, testClientSecret, testRedirectURI, consoleCode)
+	if consoleRemaining < 7*time.Hour+59*time.Minute || consoleRemaining > 8*time.Hour+time.Minute {
+		t.Fatalf("console exchange Session lifetime = %s, want the 8h default", consoleRemaining)
+	}
+
+	portalCode := issueCode(portalClientID, portalRedirectURI)
+	portalRemaining := exchangeRemaining(portalClientID, portalSecret, portalRedirectURI, portalCode)
+	if portalRemaining < 29*24*time.Hour+23*time.Hour || portalRemaining > 30*24*time.Hour+time.Minute {
+		t.Fatalf("portal exchange Session lifetime = %s, want the 30-day override", portalRemaining)
+	}
+
+	var portalSessions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE kind = 'client_exchange' AND client_id = $1`, portalClientID).Scan(&portalSessions); err != nil {
+		t.Fatalf("count portal exchange sessions: %v", err)
+	}
+	if portalSessions != 1 {
+		t.Fatalf("portal exchange sessions = %d, want 1", portalSessions)
+	}
+}
