@@ -45,10 +45,22 @@ else
   echo "henukit-materials-sync: WARNING slides conversion failed (files still synced)" >&2
 fi
 
-# 3) 归一化导入 study 库(courses/materials)。
+# 3) 贡献者归属:这些是别人的笔记、真题和课件,署名应归实际贡献者而不是平台。
+#    manifest 不记作者,镜像又是浅克隆没有历史,所以从 GitHub API 取提交历史。
+#    取不到时资料不署名,不阻塞同步。
+contributors_file="$root/contributors.json"
+if node "$script_dir/fetch-henukit-contributors.mjs" --out "$contributors_file"; then
+  echo "henukit-materials-sync: contributor attribution ok"
+else
+  echo "henukit-materials-sync: WARNING contributor attribution failed (materials stay uncredited)" >&2
+  contributors_file=""
+fi
+
+# 4) 归一化导入 study 库(courses/materials)。
 import_sql() {
   node "$script_dir/import-henukit-materials.mjs" \
-    --manifest "$manifest" --slides-dir "$slides_dir"
+    --manifest "$manifest" --slides-dir "$slides_dir" \
+    ${contributors_file:+--contributors "$contributors_file"}
 }
 
 if [[ -n "${HENUKIT_MATERIALS_DATABASE_URL:-}" ]]; then

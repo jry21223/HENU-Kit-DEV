@@ -17,6 +17,28 @@ const MARQUEE_ITEMS = [
   "KEEP IN TOUCH",
 ];
 
+/**
+ * 是否是够宽的屏幕（SSR 时按 false 处理，即先不上 3D）。
+ *
+ * 3D 场景在手机上是绝对定位铺满整个 hero 的，标题和正文压在它上面，密集的
+ * 线框把字彻底盖住；桌面端因为只占右侧 55% 才没暴露。加上它整套 three.js /
+ * fiber / drei 恰恰跑在最扛不住的设备上，所以窄屏直接不渲染，而不是靠 CSS
+ * 隐藏——那样画布照样会创建并逐帧渲染。
+ */
+const WIDE_VIEWPORT = "(min-width: 768px)";
+
+function useWideViewport() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(WIDE_VIEWPORT);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(WIDE_VIEWPORT).matches,
+    () => false
+  );
+}
+
 /** 订阅 prefers-reduced-motion（SSR 时按 false 处理） */
 function useReducedMotion() {
   return useSyncExternalStore(
@@ -55,6 +77,7 @@ export default function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
+  const wide = useWideViewport();
   // Hero 有任何一部分在视窗内才驱动 3D 渲染循环
   const [inView, setInView] = useState(true);
 
@@ -133,9 +156,9 @@ export default function Hero() {
       {/* 3D 场景 / 静态替代：常驻 Hero，不做滚动淡出 */}
       <div
         ref={sceneRef}
-        className="pointer-events-none absolute inset-y-0 right-0 w-full md:w-[55%]"
+        className="pointer-events-none absolute inset-y-0 right-0 hidden w-full md:block md:w-[55%]"
       >
-        {reduced ? (
+        {reduced || !wide ? (
           <div className="h-full w-full p-16 opacity-60">
             <StaticBlueprint />
           </div>

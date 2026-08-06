@@ -28,15 +28,34 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, basename, extname } from "node:path";
 
 const DEFAULT_SCHOOL = "河南大学";
+
+/**
+ * 读取 {publicPath: login} 归属表。
+ *
+ * 这些是别人的笔记、真题和课件，署名应当归实际贡献者，而不是硬编码的
+ * "HENU Kit"。归属由 fetch-henukit-contributors.mjs 从仓库提交历史得出；
+ * 表缺失或损坏时返回空表，资料不署名而不是让整次导入失败。
+ */
+function loadContributors(path) {
+  if (!path) return {};
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    console.error(`contributor attribution unavailable (${error.message}); materials stay uncredited`);
+    return {};
+  }
+}
 const DEFAULT_COLLEGE = "软件学院";
 const DEFAULT_MAJOR = "软件工程";
 const DEFAULT_GRADE = "通用";
 
 // role -> portal MaterialType
+// 讲义不是学习路径，课件资料也不是笔记：按资料本身的形态归类，学生筛选才对得上。
 const ROLE_TYPE = {
-  复习讲义: "path",
+  复习讲义: "note",
   课件PPT: "slides",
-  课件资料: "note",
+  课件资料: "slides",
   往年真题: "exam",
   题库练习: "mock",
   笔记总结: "note",
@@ -60,6 +79,7 @@ const args = process.argv.slice(2);
 const options = {
   manifest: process.env.HENUKIT_MATERIALS_MANIFEST || "",
   slidesDir: "",
+  contributors: "",
   school: DEFAULT_SCHOOL,
   college: DEFAULT_COLLEGE,
   major: DEFAULT_MAJOR,
@@ -71,6 +91,7 @@ function usage() {
 
   --manifest PATH   HENU-Final-Review manifest.json (or HENUKIT_MATERIALS_MANIFEST)
   --slides-dir DIR  幻灯片 JSON 目录(可选,课件PPT 资产按 <storage_key>.json 取)
+  --contributors F  贡献者归属 JSON(可选,{publicPath: login});缺省则不署名
   --school NAME     规范学校名(默认: ${DEFAULT_SCHOOL})
   --college NAME    规范学院名(默认: ${DEFAULT_COLLEGE})
   --major NAME      规范专业名(默认: ${DEFAULT_MAJOR})
@@ -86,7 +107,7 @@ for (let i = 0; i < args.length; i += 1) {
     usage();
     process.exit(0);
   }
-  if (arg === "--manifest" || arg === "--slides-dir" || arg === "--school" || arg === "--college" || arg === "--major" || arg === "--grade") {
+  if (arg === "--manifest" || arg === "--slides-dir" || arg === "--contributors" || arg === "--school" || arg === "--college" || arg === "--major" || arg === "--grade") {
     const value = args[i + 1];
     if (value === undefined) {
       console.error(`missing value for ${arg}`);
@@ -175,6 +196,7 @@ function loadSlidesIndex(slidesDir) {
 function main() {
   const manifest = loadManifest(options.manifest);
   const slidesIndex = loadSlidesIndex(options.slidesDir);
+  const contributors = loadContributors(options.contributors);
 
   const schoolSlug = slugOf(`school:${options.school}`);
   const collegeKey = `${schoolSlug}:${options.college}`;
@@ -223,6 +245,7 @@ function main() {
         fileSize: asset.bytes,
         sha256: asset.sha256,
         slides: slides || null,
+        contributor: contributors[publicPath] || "",
         reviewReason: asset.reviewStatus || "mirrored from HENU-Final-Review manifest",
       });
     }
@@ -236,6 +259,7 @@ function main() {
   lines.push("-- 归一化所需的补充列与幂等索引(重复执行安全)");
   lines.push("ALTER TABLE materials ADD COLUMN IF NOT EXISTS sha256 text;");
   lines.push("ALTER TABLE materials ADD COLUMN IF NOT EXISTS slides jsonb;");
+  lines.push("ALTER TABLE materials ADD COLUMN IF NOT EXISTS contributor text;");
   lines.push(
     "CREATE UNIQUE INDEX IF NOT EXISTS materials_storage_key_active_idx ON materials (storage_key) WHERE deleted_at IS NULL;",
   );
@@ -268,7 +292,7 @@ function main() {
   for (const row of rows) {
     const slidesSql = row.slides ? q(JSON.stringify(row.slides)) : "NULL";
     lines.push(
-      `INSERT INTO materials (id, course_id, title, type, description, storage_key, file_name, file_size, sha256, slides, access_level, status, reviewed_at, review_reason, created_at, updated_at) SELECT gen_random_uuid(), c.id, ${q(row.title)}, ${q(row.type)}, ${q(row.description)}, ${q(row.storageKey)}, ${q(row.fileName)}, ${row.fileSize}, ${q(row.sha256)}, ${slidesSql}::jsonb, 'free', 'published', now(), ${q(row.reviewReason)}, now(), now() FROM courses c WHERE c.name = ${q(row.subject)} AND c.deleted_at IS NULL ON CONFLICT (storage_key) WHERE deleted_at IS NULL DO UPDATE SET title = EXCLUDED.title, type = EXCLUDED.type, description = EXCLUDED.description, file_name = EXCLUDED.file_name, file_size = EXCLUDED.file_size, sha256 = EXCLUDED.sha256, slides = EXCLUDED.slides, access_level = EXCLUDED.access_level, status = EXCLUDED.status, updated_at = now();`,
+      `INSERT INTO materials (id, course_id, title, type, description, storage_key, file_name, file_size, sha256, slides, contributor, access_level, status, reviewed_at, review_reason, created_at, updated_at) SELECT gen_random_uuid(), c.id, ${q(row.title)}, ${q(row.type)}, ${q(row.description)}, ${q(row.storageKey)}, ${q(row.fileName)}, ${row.fileSize}, ${q(row.sha256)}, ${slidesSql}::jsonb, ${q(row.contributor)}, 'free', 'published', now(), ${q(row.reviewReason)}, now(), now() FROM courses c WHERE c.name = ${q(row.subject)} AND c.deleted_at IS NULL ON CONFLICT (storage_key) WHERE deleted_at IS NULL DO UPDATE SET title = EXCLUDED.title, type = EXCLUDED.type, description = EXCLUDED.description, file_name = EXCLUDED.file_name, file_size = EXCLUDED.file_size, sha256 = EXCLUDED.sha256, slides = EXCLUDED.slides, contributor = EXCLUDED.contributor, access_level = EXCLUDED.access_level, status = EXCLUDED.status, updated_at = now();`,
     );
   }
   lines.push("");

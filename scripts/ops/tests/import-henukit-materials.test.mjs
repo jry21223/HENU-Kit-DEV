@@ -92,16 +92,18 @@ test("import emits idempotent transaction SQL", () => {
 test("normalizes titles: strips course prefix, role marker and extension", () => {
   const { stdout } = runImport();
   // 标题列已归一化(去掉科目前缀/类型标记/扩展名),type 紧随其后。
-  assert.match(stdout, /'考前复习知识点讲义', 'path'/);
+  assert.match(stdout, /'考前复习知识点讲义', 'note'/);
   assert.match(stdout, /'D10-1二重积分概念', 'slides'/);
   // 原始文件名不得作为标题出现(它仍会以 storage_key 形式出现)。
-  assert.doesNotMatch(stdout, /'高等数学A（二）_考前复习知识点讲义\.pdf', 'path'/);
+  assert.doesNotMatch(stdout, /'高等数学A（二）_考前复习知识点讲义\.pdf', 'note'/);
 });
 
 test("maps roles to portal types", () => {
   const { stdout } = runImport();
   // VALUES 列序:id, course_id, title, type, description, ...
-  assert.match(stdout, /'考前复习知识点讲义', 'path', '科目简介'/);
+  // 讲义归 note 而不是学习路径，课件资料归 slides 而不是笔记：
+  // 按资料形态归类，学生的类型筛选才对得上。
+  assert.match(stdout, /'考前复习知识点讲义', 'note', '科目简介'/);
   assert.match(stdout, /'D10-1二重积分概念', 'slides', '老师课件/);
 });
 

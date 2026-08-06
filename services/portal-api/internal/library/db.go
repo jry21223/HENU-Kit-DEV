@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // StudyDB reads from the legacy Study API database.
@@ -56,12 +57,12 @@ func (db *StudyDB) GetCourses() ([]Course, error) {
 func (db *StudyDB) GetMaterials() ([]Material, error) {
 	rows, err := db.conn.Query(`
 		SELECT m.id, m.type, c.name as subject, m.title, m.description,
-		       m.access_level, m.file_size, m.storage_key, m.file_name
+		       m.access_level, m.file_size, m.storage_key, m.file_name,
+		       COALESCE(m.contributor, '')
 		FROM materials m
 		JOIN courses c ON c.id = m.course_id
 		WHERE m.status = 'published' AND m.deleted_at IS NULL
-		ORDER BY m.created_at DESC
-		LIMIT 500
+		ORDER BY c.name, m.title
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query materials: %w", err)
@@ -80,8 +81,9 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 			fileSize    sql.NullInt64
 			storageKey  sql.NullString
 			fileName    sql.NullString
+			contributor string
 		)
-		if err := rows.Scan(&id, &mtype, &subject, &title, &description, &accessLevel, &fileSize, &storageKey, &fileName); err != nil {
+		if err := rows.Scan(&id, &mtype, &subject, &title, &description, &accessLevel, &fileSize, &storageKey, &fileName, &contributor); err != nil {
 			return nil, fmt.Errorf("scan material: %w", err)
 		}
 
@@ -100,21 +102,23 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 		}
 
 		materials = append(materials, Material{
-			ID:           id,
-			Type:         portalType,
-			Subject:      subject,
-			Title:        title,
-			Author:       "HENU Kit",
-			Intro:        intro,
-			TOC:          []string{},
-			Pages:        [][]string{{"内容请下载查看"}},
-			Price:        price,
-			PreviewPages: 1,
-			Rating:       4.5,
-			Downloads:    0,
-			Favs:         0,
-			FilePath:     storageKey.String,
-			FileSize:     fileSize.Int64,
+			ID:      id,
+			Type:    portalType,
+			Subject: subject,
+			Title:   title,
+			// Whoever contributed the file, taken from the repository's commit
+			// history. Ratings, download counts, favourites and preview pages are
+			// recorded nowhere for mirrored materials, so they stay empty rather
+			// than being invented.
+			Author:    contributor,
+			Intro:     intro,
+			TOC:       []string{},
+			Pages:     [][]string{},
+			Price:     price,
+			Downloads: 0,
+			Favs:      0,
+			FilePath:  materialFileURL(storageKey.String),
+			FileSize:  fileSize.Int64,
 		})
 	}
 
@@ -179,7 +183,7 @@ func (db *StudyDB) GetMaterialByID(id string) (Material, error) {
 	material.Pages = [][]string{}
 	material.PreviewPages = 1
 	material.Rating = 4.5
-	material.FilePath = storageKey.String
+	material.FilePath = materialFileURL(storageKey.String)
 	material.FileSize = fileSize.Int64
 	if description.Valid {
 		material.Intro = description.String
@@ -190,6 +194,28 @@ func (db *StudyDB) GetMaterialByID(id string) (Material, error) {
 		}
 	}
 	return material, nil
+}
+
+// Path prefix nginx serves the course materials mirror from.
+const materialsMirrorPrefix = "/materials/"
+
+// materialFileURL turns a stored key into a path a browser can fetch.
+//
+// The importer records storage_key as a repository-relative path, so moving the
+// mirror never requires rewriting rows — but the Portal resolves the value
+// against the site origin, where a bare key would miss /materials/ entirely and
+// 404. Absolute paths and external URLs pass through so a differently hosted
+// material keeps working, and an empty key yields an empty URL so the Portal
+// offers no download rather than a broken one.
+func materialFileURL(storageKey string) string {
+	key := strings.TrimSpace(storageKey)
+	if key == "" {
+		return ""
+	}
+	if strings.HasPrefix(key, "/") || strings.HasPrefix(key, "http://") || strings.HasPrefix(key, "https://") {
+		return key
+	}
+	return materialsMirrorPrefix + key
 }
 
 // mapMaterialType maps Study API material types to Portal types.
@@ -205,7 +231,7 @@ func mapMaterialType(t string) string {
 		return "path"
 	case "lab_report", "lab":
 		return "lab"
-	case "slides":
+	case "courseware", "slides":
 		return "slides"
 	default:
 		return "note"
