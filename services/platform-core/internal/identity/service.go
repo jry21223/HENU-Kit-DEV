@@ -55,13 +55,13 @@ type Service struct {
 	coordinator        Coordinator
 	authorizationTTL   time.Duration
 	exchangeSessionTTL time.Duration
-	// exchangeSessionTTLs holds per-client overrides for the exchange Session
+	// exchangeSessionTTLByClientID holds per-client overrides for the exchange Session
 	// TTL. The Portal OAuth client overrides the 8-hour default to 30 days so
 	// the Portal Session cookie and its permission checks survive for the whole
 	// Core Session window; clients without an override keep the short,
 	// high-privilege default.
-	exchangeSessionTTLs map[string]time.Duration
-	idempotencyTTL      time.Duration
+	exchangeSessionTTLByClientID map[string]time.Duration
+	idempotencyTTL               time.Duration
 }
 
 type AuthorizeInput struct {
@@ -142,8 +142,8 @@ type serviceRequestCredentials struct {
 	NonceNamespace string
 }
 
-func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL time.Duration, exchangeSessionTTLs map[string]time.Duration, idempotencyTTL time.Duration) *Service {
-	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, exchangeSessionTTLs: exchangeSessionTTLs, idempotencyTTL: idempotencyTTL}
+func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL time.Duration, exchangeSessionTTLByClientID map[string]time.Duration, idempotencyTTL time.Duration) *Service {
+	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, exchangeSessionTTLByClientID: exchangeSessionTTLByClientID, idempotencyTTL: idempotencyTTL}
 }
 
 func (s *Service) authenticateServiceRequest(ctx context.Context, credentials serviceRequestCredentials) error {
@@ -328,7 +328,7 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, 
 		return Exchange{}, err
 	}
 	exchangeTTL := s.exchangeSessionTTL
-	if override, ok := s.exchangeSessionTTLs[input.ClientID]; ok {
+	if override, ok := s.exchangeSessionTTLByClientID[input.ClientID]; ok {
 		exchangeTTL = override
 	}
 	expiresAt := time.Now().UTC().Add(exchangeTTL)

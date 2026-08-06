@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	configpkg "henukit.dev/platform-core/internal/config"
 	"henukit.dev/platform-core/internal/coordination"
 	"henukit.dev/platform-core/internal/httpapi"
 	"henukit.dev/platform-core/internal/identity"
@@ -95,10 +96,8 @@ func New(config Config) (http.Handler, error) {
 	// Per-client exchange Session TTL overrides (e.g. portal-gateway=720h) let
 	// the Portal Session live for the full 30-day Core Session window while
 	// Console and QuizCraft keep their short high-privilege exchange Sessions.
-	for clientID, ttl := range config.ExchangeSessionTTLOverrides {
-		if clientID == "" || ttl <= 0 || ttl > 30*24*time.Hour {
-			return nil, errors.New("exchange Session TTL overrides must map client ids to durations of at most 720h")
-		}
+	if err := configpkg.ValidateExchangeSessionTTLOverrides(config.ExchangeSessionTTLOverrides); err != nil {
+		return nil, err
 	}
 	if len(config.IdempotencyEncryptionKey) != 32 {
 		return nil, errors.New("idempotency encryption key must be 32 bytes")

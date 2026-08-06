@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -97,10 +98,8 @@ func Load() (Config, error) {
 	if config.ExchangeSessionTTL <= 0 || config.ExchangeSessionTTL > 8*time.Hour {
 		return Config{}, errors.New("PLATFORM_CORE_EXCHANGE_SESSION_TTL must be greater than zero and at most 8h")
 	}
-	for clientID, ttl := range config.ExchangeSessionTTLOverrides {
-		if clientID == "" || ttl <= 0 || ttl > 30*24*time.Hour {
-			return Config{}, errors.New("PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES must map client ids to positive durations of at most 720h")
-		}
+	if err := ValidateExchangeSessionTTLOverrides(config.ExchangeSessionTTLOverrides); err != nil {
+		return Config{}, fmt.Errorf("PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES: %w", err)
 	}
 	if config.IdempotencyTTL < 24*time.Hour {
 		return Config{}, errors.New("PLATFORM_CORE_IDEMPOTENCY_TTL must be at least 24h")
@@ -168,6 +167,18 @@ func splitNonEmpty(value string) []string {
 		}
 	}
 	return values
+}
+
+// ValidateExchangeSessionTTLOverrides rejects empty client ids and non-positive
+// or longer-than-30-day durations. Both config.Load and platformcore.New enforce
+// the same contract, so the check lives here once.
+func ValidateExchangeSessionTTLOverrides(overrides map[string]time.Duration) error {
+	for clientID, ttl := range overrides {
+		if clientID == "" || ttl <= 0 || ttl > 30*24*time.Hour {
+			return errors.New("exchange Session TTL overrides must map client ids to positive durations of at most 720h")
+		}
+	}
+	return nil
 }
 
 // exchangeSessionTTLOverrides parses PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES,

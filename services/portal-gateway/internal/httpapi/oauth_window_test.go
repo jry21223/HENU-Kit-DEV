@@ -26,13 +26,18 @@ import (
 // cookie on henukit.cn).
 const wantOAuthCookieMaxAge = 1800
 
-func TestLoginOAuthCookieAttributesMatchFlowWindow(t *testing.T) {
+// newTestHandler boots the OAuth handler against an isolated miniredis and
+// returns it together with the Redis server, so tests can fast-forward the
+// flow window. platformCoreURL points at the stub Platform Core (a dead port
+// for tests that must not reach the token endpoint).
+func newTestHandler(t *testing.T, platformCoreURL string) (*Handler, *miniredis.Miniredis) {
+	t.Helper()
 	redisServer := miniredis.RunT(t)
 	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 	t.Cleanup(func() { _ = redisClient.Close() })
 
 	handler, err := New(config.Config{
-		PlatformCoreURL:   "http://127.0.0.1:9",
+		PlatformCoreURL:   platformCoreURL,
 		PlatformClientID:  "portal-gateway",
 		PlatformSecret:    "portal-client-secret-with-enough-entropy",
 		PlatformKeyID:     "active-key",
@@ -43,6 +48,11 @@ func TestLoginOAuthCookieAttributesMatchFlowWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return handler, redisServer
+}
+
+func TestLoginOAuthCookieAttributesMatchFlowWindow(t *testing.T) {
+	handler, _ := newTestHandler(t, "http://127.0.0.1:9")
 
 	httpsRequest := httptest.NewRequest(http.MethodGet, "https://portal.example/api/v1/auth/login", nil)
 	httpsRequest.TLS = &tls.ConnectionState{}
@@ -85,22 +95,7 @@ func assertOAuthCookieAttributes(t *testing.T, cookie *http.Cookie, secure bool)
 }
 
 func TestOAuthCallbackMissingOAuthCookieFailsCleanly(t *testing.T) {
-	redisServer := miniredis.RunT(t)
-	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	t.Cleanup(func() { _ = redisClient.Close() })
-
-	handler, err := New(config.Config{
-		PlatformCoreURL:   "http://127.0.0.1:9",
-		PlatformClientID:  "portal-gateway",
-		PlatformSecret:    "portal-client-secret-with-enough-entropy",
-		PlatformKeyID:     "active-key",
-		PortalRedirectURI: "https://portal.example/api/v1/auth/callback",
-		PortalOrigin:      "https://portal.example",
-		SessionKey:        []byte("0123456789abcdef0123456789abcdef"),
-	}, redisClient)
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler, _ := newTestHandler(t, "http://127.0.0.1:9")
 
 	// The production symptom of #264: callback arrives with code+state but the
 	// oauth cookie is gone (the browser deleted it after MaxAge expired while
@@ -130,10 +125,6 @@ func TestOAuthCallbackMissingOAuthCookieFailsCleanly(t *testing.T) {
 }
 
 func TestOAuthFlowWindowExpiryFailsCleanly(t *testing.T) {
-	redisServer := miniredis.RunT(t)
-	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	t.Cleanup(func() { _ = redisClient.Close() })
-
 	var tokenCalls atomic.Int32
 	platformCore := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		tokenCalls.Add(1)
@@ -141,18 +132,7 @@ func TestOAuthFlowWindowExpiryFailsCleanly(t *testing.T) {
 	}))
 	t.Cleanup(platformCore.Close)
 
-	handler, err := New(config.Config{
-		PlatformCoreURL:   platformCore.URL,
-		PlatformClientID:  "portal-gateway",
-		PlatformSecret:    "portal-client-secret-with-enough-entropy",
-		PlatformKeyID:     "active-key",
-		PortalRedirectURI: "https://portal.example/api/v1/auth/callback",
-		PortalOrigin:      "https://portal.example",
-		SessionKey:        []byte("0123456789abcdef0123456789abcdef"),
-	}, redisClient)
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler, redisServer := newTestHandler(t, platformCore.URL)
 
 	loginRequest := httptest.NewRequest(http.MethodGet, "https://portal.example/api/v1/auth/login", nil)
 	loginRequest.TLS = &tls.ConnectionState{}
@@ -203,10 +183,6 @@ func TestOAuthFlowWindowExpiryFailsCleanly(t *testing.T) {
 }
 
 func TestOAuthCallbackRedirectUsesSafeStoredReturnTo(t *testing.T) {
-	redisServer := miniredis.RunT(t)
-	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	t.Cleanup(func() { _ = redisClient.Close() })
-
 	expiresAt := time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second)
 	platformCore := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/oauth/token" {
@@ -227,18 +203,7 @@ func TestOAuthCallbackRedirectUsesSafeStoredReturnTo(t *testing.T) {
 	}))
 	t.Cleanup(platformCore.Close)
 
-	handler, err := New(config.Config{
-		PlatformCoreURL:   platformCore.URL,
-		PlatformClientID:  "portal-gateway",
-		PlatformSecret:    "portal-client-secret-with-enough-entropy",
-		PlatformKeyID:     "active-key",
-		PortalRedirectURI: "https://portal.example/api/v1/auth/callback",
-		PortalOrigin:      "https://portal.example",
-		SessionKey:        []byte("0123456789abcdef0123456789abcdef"),
-	}, redisClient)
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler, _ := newTestHandler(t, platformCore.URL)
 
 	completeFlow := func(returnTo string) string {
 		t.Helper()
@@ -291,22 +256,7 @@ func TestOAuthCallbackExpiredSessionCookieValueFailsCleanly(t *testing.T) {
 	// A cookie whose MaxAge has passed behaves exactly like a missing cookie at
 	// the callback: r.Cookie returns nothing useful and the flow must fail
 	// closed with the production error rather than panicking.
-	redisServer := miniredis.RunT(t)
-	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	t.Cleanup(func() { _ = redisClient.Close() })
-
-	handler, err := New(config.Config{
-		PlatformCoreURL:   "http://127.0.0.1:9",
-		PlatformClientID:  "portal-gateway",
-		PlatformSecret:    "portal-client-secret-with-enough-entropy",
-		PlatformKeyID:     "active-key",
-		PortalRedirectURI: "https://portal.example/api/v1/auth/callback",
-		PortalOrigin:      "https://portal.example",
-		SessionKey:        []byte("0123456789abcdef0123456789abcdef"),
-	}, redisClient)
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler, _ := newTestHandler(t, "http://127.0.0.1:9")
 
 	request := httptest.NewRequest(http.MethodGet,
 		"https://portal.example/api/v1/auth/callback?code=test-code&state=not-a-real-state", nil)

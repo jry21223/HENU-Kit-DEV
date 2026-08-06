@@ -534,20 +534,27 @@ func exchangeCodeWith(t *testing.T, server *httptest.Server, code, verifier, ide
 	return response
 }
 
-func signedExchangeRequest(t *testing.T, server *httptest.Server, code, verifier, idempotencyKey, nonce, timestamp, signatureOverride string) *http.Request {
+func signedExchangeRequest(t *testing.T, server *httptest.Server, code, verifier, idempotencyKey, nonce, timestamp, signatureOverride string, clientParams ...string) *http.Request {
 	t.Helper()
-	body := fmt.Sprintf(`{"grant_type":"authorization_code","code":%q,"redirect_uri":%q,"client_id":%q,"code_verifier":%q}`, code, testRedirectURI, testClientID, verifier)
+	clientID, clientSecret, redirectURI, keyID := testClientID, testClientSecret, testRedirectURI, testKeyID
+	if len(clientParams) > 0 {
+		if len(clientParams) != 4 {
+			t.Fatalf("signedExchangeRequest clientParams must be clientID, clientSecret, redirectURI, keyID, got %d values", len(clientParams))
+		}
+		clientID, clientSecret, redirectURI, keyID = clientParams[0], clientParams[1], clientParams[2], clientParams[3]
+	}
+	body := fmt.Sprintf(`{"grant_type":"authorization_code","code":%q,"redirect_uri":%q,"client_id":%q,"code_verifier":%q}`, code, redirectURI, clientID, verifier)
 	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/oauth/token", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(testClientID, testClientSecret)
+	req.SetBasicAuth(clientID, clientSecret)
 	if timestamp == "" {
 		timestamp = fmt.Sprintf("%d", time.Now().Unix())
 	}
-	req.Header.Set(contract.ServiceIDHeader, testClientID)
-	req.Header.Set(contract.KeyIDHeader, testKeyID)
+	req.Header.Set(contract.ServiceIDHeader, clientID)
+	req.Header.Set(contract.KeyIDHeader, keyID)
 	req.Header.Set(contract.TimestampHeader, timestamp)
 	req.Header.Set(contract.NonceHeader, nonce)
-	signExchangeRequest(t, req)
+	signExchangeRequestWithSecret(t, req, clientSecret)
 	signature := req.Header.Get(contract.SignatureHeader)
 	if signatureOverride != "" {
 		signature = signatureOverride
@@ -579,14 +586,20 @@ func signExchangeRequestWithSecret(t *testing.T, request *http.Request, secret s
 	request.Header.Set(contract.SignatureHeader, base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 }
 
-func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier string) string {
+func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier string, clientRedirect ...string) string {
 	t.Helper()
+	clientID, redirectURI := testClientID, testRedirectURI
+	if len(clientRedirect) == 2 {
+		clientID, redirectURI = clientRedirect[0], clientRedirect[1]
+	} else if len(clientRedirect) != 0 {
+		t.Fatalf("issueAuthorizationCode accepts 0 or 2 optional clientID/redirectURI args, got %d", len(clientRedirect))
+	}
 	challengeBytes := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(challengeBytes[:])
 	authorizeURL := server.URL + "/api/v1/oauth/authorize?" + url.Values{
 		"response_type":         {"code"},
-		"client_id":             {testClientID},
-		"redirect_uri":          {testRedirectURI},
+		"client_id":             {clientID},
+		"redirect_uri":          {redirectURI},
 		"state":                 {"state_test_0123456789"},
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
@@ -605,7 +618,7 @@ func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier stri
 	if err != nil {
 		t.Fatalf("parse callback: %v", err)
 	}
-	if location.Scheme+"://"+location.Host+location.Path != testRedirectURI {
+	if location.Scheme+"://"+location.Host+location.Path != redirectURI {
 		t.Fatalf("callback = %q, want exact registered URI", location.String())
 	}
 	code := location.Query().Get("code")
@@ -617,6 +630,35 @@ func issueAuthorizationCode(t *testing.T, server *httptest.Server, verifier stri
 		t.Fatal("authorization redirect must not be cached or leak its code through a Referer")
 	}
 	return code
+}
+
+// exchangeRemaining exchanges code for a Session and returns the time left
+// until the exchange Session expires. Unlike exchangeCodeWith it lets the
+// caller pick the OAuth client credentials, which the per-client TTL override
+// test needs.
+func exchangeRemaining(t *testing.T, server *httptest.Server, code, verifier, clientID, secret, redirectURI string) time.Duration {
+	t.Helper()
+	req := signedExchangeRequest(t, server, code, verifier, "idem_"+uuid.NewString(), "nonce_"+uuid.NewString(), "", "", clientID, secret, redirectURI, "primary")
+	response, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("exchange code: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("exchange status = %d, want 200", response.StatusCode)
+	}
+	var envelope struct {
+		Data struct {
+			ExpiresAt time.Time `json:"expires_at"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode exchange response: %v", err)
+	}
+	if envelope.Data.ExpiresAt.IsZero() {
+		t.Fatal("exchange response omitted expires_at")
+	}
+	return time.Until(envelope.Data.ExpiresAt)
 }
 
 func assertSecureHostCookie(t *testing.T, cookies []*http.Cookie) {
@@ -670,76 +712,15 @@ func TestExchangeSessionTTLOverrideExtendsPortalSessionsOnly(t *testing.T) {
 	server.Client().CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 	verifier := "test-pkce-verifier-that-is-at-least-forty-three-characters"
-	issueCode := func(clientID, redirectURI string) string {
-		t.Helper()
-		challengeBytes := sha256.Sum256([]byte(verifier))
-		challenge := base64.RawURLEncoding.EncodeToString(challengeBytes[:])
-		authorizeURL := server.URL + "/api/v1/oauth/authorize?" + url.Values{
-			"response_type": {"code"}, "client_id": {clientID}, "redirect_uri": {redirectURI},
-			"state": {"state_ttl_override"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"},
-		}.Encode()
-		request, _ := http.NewRequest(http.MethodGet, authorizeURL, nil)
-		request.AddCookie(&http.Cookie{Name: "__Host-henukit_core_session", Value: testCoreToken})
-		response, err := server.Client().Do(request)
-		if err != nil {
-			t.Fatalf("authorize request: %v", err)
-		}
-		defer response.Body.Close()
-		if response.StatusCode != http.StatusFound {
-			t.Fatalf("authorize status = %d, want 302", response.StatusCode)
-		}
-		location, err := url.Parse(response.Header.Get("Location"))
-		if err != nil {
-			t.Fatalf("parse callback: %v", err)
-		}
-		code := location.Query().Get("code")
-		if code == "" {
-			t.Fatal("authorize callback omitted the code")
-		}
-		return code
-	}
-	exchangeRemaining := func(clientID, secret, redirectURI, code string) time.Duration {
-		t.Helper()
-		body := fmt.Sprintf(`{"grant_type":"authorization_code","code":%q,"redirect_uri":%q,"client_id":%q,"code_verifier":%q}`, code, redirectURI, clientID, verifier)
-		request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/oauth/token", strings.NewReader(body))
-		request.Header.Set("Content-Type", "application/json")
-		request.SetBasicAuth(clientID, secret)
-		request.Header.Set(contract.ServiceIDHeader, clientID)
-		request.Header.Set(contract.KeyIDHeader, "primary")
-		request.Header.Set(contract.TimestampHeader, fmt.Sprintf("%d", time.Now().Unix()))
-		request.Header.Set(contract.NonceHeader, "nonce_"+uuid.NewString())
-		signExchangeRequestWithSecret(t, request, secret)
-		request.Header.Set(contract.IdempotencyKeyHeader, "idem_"+uuid.NewString())
-		response, err := server.Client().Do(request)
-		if err != nil {
-			t.Fatalf("exchange code: %v", err)
-		}
-		defer response.Body.Close()
-		if response.StatusCode != http.StatusOK {
-			t.Fatalf("exchange status = %d, want 200", response.StatusCode)
-		}
-		var envelope struct {
-			Data struct {
-				ExpiresAt time.Time `json:"expires_at"`
-			} `json:"data"`
-		}
-		if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
-			t.Fatalf("decode exchange response: %v", err)
-		}
-		if envelope.Data.ExpiresAt.IsZero() {
-			t.Fatal("exchange response omitted expires_at")
-		}
-		return time.Until(envelope.Data.ExpiresAt)
-	}
 
 	consoleCode := issueAuthorizationCode(t, server, verifier)
-	consoleRemaining := exchangeRemaining(testClientID, testClientSecret, testRedirectURI, consoleCode)
+	consoleRemaining := exchangeRemaining(t, server, consoleCode, verifier, testClientID, testClientSecret, testRedirectURI)
 	if consoleRemaining < 7*time.Hour+59*time.Minute || consoleRemaining > 8*time.Hour+time.Minute {
 		t.Fatalf("console exchange Session lifetime = %s, want the 8h default", consoleRemaining)
 	}
 
-	portalCode := issueCode(portalClientID, portalRedirectURI)
-	portalRemaining := exchangeRemaining(portalClientID, portalSecret, portalRedirectURI, portalCode)
+	portalCode := issueAuthorizationCode(t, server, verifier, portalClientID, portalRedirectURI)
+	portalRemaining := exchangeRemaining(t, server, portalCode, verifier, portalClientID, portalSecret, portalRedirectURI)
 	if portalRemaining < 29*24*time.Hour+23*time.Hour || portalRemaining > 30*24*time.Hour+time.Minute {
 		t.Fatalf("portal exchange Session lifetime = %s, want the 30-day override", portalRemaining)
 	}
