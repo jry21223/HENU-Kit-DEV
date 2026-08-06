@@ -5,7 +5,7 @@
 - Portal-specific OAuth callback, PKCE flow, and one-time state (Redis + browser-binding nonce).
 - Portal Session cookie (`__Host-henukit_portal_session`) with AES-256-GCM encryption.
 - Server-to-server signed forwarding to product services (Library, Food, Practice, Notice, Account Portfolio).
-- Portal-specific permission verification via Platform Core (`portal.library.read`, `portal.food.read`, `portal.practice.read`, `portal.notice.read`).
+- Portal-specific permission verification via Platform Core (`portal.practice.read`; `portal.library.read`/`portal.food.read` and their LIBRARY/FOOD owner clients were removed in #261).
 
 ## Does not own
 
@@ -31,7 +31,7 @@ Before QuizCraft #166, `/api/v1/practice/catalog` is a dark V2 handoff seam, not
 
 - **Portal Session**: An encrypted cookie containing UserID, the login-time Display Name snapshot, ExchangeToken, and ExpiresAt. The snapshot is presentation-only and refreshes on the next OAuth login; Platform Core remains the Display Name source of truth. Distinct from Console Session and Core Session.
 - **Exchange token**: A Platform Core session exchange token, stored server-side in the encrypted cookie, forwarded to Platform Core for permission checks.
-- **Portal permission**: A permission code prefixed with `portal.*` (e.g., `portal.library.read`), distinct from Console's `console.*` permissions.
+- **Portal permission**: A permission code prefixed with `portal.*` (e.g., `portal.practice.read`), distinct from Console's `console.*` permissions.
 - **Portal Practice command**: The ADR-0018-specific signed bridge for only create-session and submit-answer. It is not a product write proxy, and before #166 it must fail closed without contacting QuizCraft Core.
 
 ## Relationships

@@ -7,12 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"henukit.dev/console-gateway/internal/clientutil"
 	"henukit.dev/console-gateway/internal/serviceauth"
 )
 
@@ -37,12 +37,7 @@ func WithRequestID(ctx context.Context, requestID string) context.Context {
 
 func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client) (*Client, error) {
 	parsed, err := url.Parse(baseURL)
-	host := ""
-	if err == nil {
-		host = parsed.Hostname()
-	}
-	ip := net.ParseIP(host)
-	loopback := err == nil && parsed.Scheme == "http" && (host == "localhost" || host == "platform-core" || host == "portal-api" || strings.HasSuffix(host, ".local") || (ip != nil && ip.IsLoopback()))
+	loopback := err == nil && clientutil.IsTrustedLoopbackHTTP(parsed)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !loopback) || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || clientID == "" || len(clientSecret) < 32 || keyID == "" {
 		return nil, errors.New("invalid library client configuration")
 	}

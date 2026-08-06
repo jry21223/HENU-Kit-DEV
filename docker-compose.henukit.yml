@@ -269,10 +269,6 @@ services:
       PRACTICE_SERVICE_URL: ${PRACTICE_SERVICE_URL:-http://portal-api:8085}
       PORTAL_ENABLE_QUIZCRAFT_CATALOG: ${PORTAL_ENABLE_QUIZCRAFT_CATALOG:-0}
       NOTICE_SERVICE_URL: ${NOTICE_SERVICE_URL:-http://portal-api:8085}
-      LIBRARY_CLIENT_ID: ${LIBRARY_CLIENT_ID:-portal-library}
-      LIBRARY_KEY_ID: ${LIBRARY_KEY_ID:-library-key}
-      FOOD_CLIENT_ID: ${FOOD_CLIENT_ID:-portal-food}
-      FOOD_KEY_ID: ${FOOD_KEY_ID:-food-key}
       PRACTICE_CLIENT_ID: ${PRACTICE_CLIENT_ID:-portal-practice}
       PRACTICE_CLIENT_SECRET: ${PRACTICE_CLIENT_SECRET:-replace-practice-client-secret-32bytes-min!!}
       PRACTICE_KEY_ID: ${PRACTICE_KEY_ID:-practice-key}
