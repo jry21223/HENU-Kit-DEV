@@ -590,19 +590,15 @@ func validAccountIdempotencyKey(value string) bool {
 
 type practiceCommand func(context.Context, string, string, string, []byte, *http.Cookie) (practice.CommandResult, error)
 
-// practiceSignedInCommand is the signed-in-only command shape used by
-// favorites writes: no raw browser body, actor comes from the Portal Session.
-type practiceSignedInCommand func(context.Context, string, string, string, *http.Cookie) (practice.CommandResult, error)
-
 func (h *Handler) createPracticeSession(w http.ResponseWriter, r *http.Request) {
-	h.practiceCommand(w, r, http.StatusCreated, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+	h.practiceCommand(w, r, http.StatusCreated, true, true, "登录已过期，请重新登录", func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.CreateSession(ctx, actorUserID, requestID, idempotencyKey, raw, anonymousCookie)
 	})
 }
 
 func (h *Handler) submitPracticeAnswer(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "session_id")
-	h.practiceCommand(w, r, http.StatusOK, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+	h.practiceCommand(w, r, http.StatusOK, true, true, "登录已过期，请重新登录", func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.SubmitAnswer(ctx, sessionID, actorUserID, requestID, idempotencyKey, raw, anonymousCookie)
 	})
 }
@@ -648,17 +644,18 @@ func (h *Handler) createPracticeFeedback(w http.ResponseWriter, r *http.Request)
 
 // practiceCommand turns a browser command into exactly one signed Core
 // command. It intentionally does not proxy headers, cookies, actor identity,
-// or mock data. An invalid Portal Session is a 401, while an absent Portal
-// Session is a genuine guest request.
-func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
+// or mock data. An invalid Portal Session is a 401; an absent Portal Session
+// is a genuine guest request when guestAllowed, otherwise also a 401.
+// readBody=false skips raw-body validation for body-less commands.
+func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, successStatus int, guestAllowed, readBody bool, unauthorizedMessage string, command practiceCommand) {
 	setPrivateResponseHeaders(w)
 	if h.practiceCommands == nil {
 		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
 		return
 	}
-	actorUserID, anonymousCookie, status, err := h.practiceCommandActor(r)
+	actorUserID, anonymousCookie, status, err := h.practiceCommandActor(r, guestAllowed)
 	if err != nil {
-		writeJSON(w, status, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		writeJSON(w, status, contract.ErrorEnvelope{Error: "not authenticated", Message: unauthorizedMessage, RequestID: requestIDOf(w, r)})
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
@@ -666,10 +663,13 @@ func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, succes
 		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
 		return
 	}
-	raw, err := readGatewayPracticeCommandBody(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
-		return
+	var raw []byte
+	if readBody {
+		raw, err = readGatewayPracticeCommandBody(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+			return
+		}
 	}
 	result, err := command(r.Context(), actorUserID, requestIDOf(w, r), idempotencyKey, raw, anonymousCookie)
 	if err != nil {
@@ -705,7 +705,11 @@ func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Req
 	}
 }
 
-func (h *Handler) practiceCommandActor(r *http.Request) (string, *http.Cookie, int, error) {
+// practiceCommandActor resolves the actor for a browser practice command. A
+// valid Portal Session cookie yields the signed-in actor; an invalid one is a
+// 401. An absent cookie is a genuine guest request when guestAllowed,
+// otherwise also a 401 (signed-in-only commands like favorites).
+func (h *Handler) practiceCommandActor(r *http.Request, guestAllowed bool) (string, *http.Cookie, int, error) {
 	if _, err := r.Cookie(h.browserCookies(r).session); err == nil {
 		value, sessionErr := h.readSession(r)
 		if sessionErr != nil || !practice.ValidUUID(value.UserID) {
@@ -714,6 +718,9 @@ func (h *Handler) practiceCommandActor(r *http.Request) (string, *http.Cookie, i
 		return value.UserID, coreAnonymousCookie(r), 0, nil
 	} else if !errors.Is(err, http.ErrNoCookie) {
 		return "", nil, http.StatusUnauthorized, errors.New("invalid Portal Session")
+	}
+	if !guestAllowed {
+		return "", nil, http.StatusUnauthorized, errors.New("Portal Session required")
 	}
 	return "", coreAnonymousCookie(r), 0, nil
 }
@@ -756,14 +763,7 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
-		switch {
-		case errors.Is(err, platformcore.ErrUnauthorized):
-			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
-		case errors.Is(err, platformcore.ErrForbidden):
-			writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
-		default:
-			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
-		}
+		h.writePracticeReadPermissionError(w, r, err)
 		return
 	}
 	stats, err := h.quizCraft.PersonalStats(r.Context(), value.UserID, requestIDOf(w, r))
@@ -808,14 +808,7 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
-		switch {
-		case errors.Is(err, platformcore.ErrUnauthorized):
-			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
-		case errors.Is(err, platformcore.ErrForbidden):
-			writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
-		default:
-			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
-		}
+		h.writePracticeReadPermissionError(w, r, err)
 		return
 	}
 	status, err := h.quizCraft.FeedbackStatus(r.Context(), value.UserID, requestIDOf(w, r), feedbackID)
@@ -879,54 +872,29 @@ func (h *Handler) favoritesList(w http.ResponseWriter, r *http.Request) {
 // favoriteQuestion and unfavoriteQuestion are signed-in-only favorites writes.
 // Like corrections they never downgrade to a guest actor.
 func (h *Handler) favoriteQuestion(w http.ResponseWriter, r *http.Request) {
-	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.FavoriteQuestion(ctx, chi.URLParam(r, "bank_id"), chi.URLParam(r, "question_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
 	})
 }
 
 func (h *Handler) unfavoriteQuestion(w http.ResponseWriter, r *http.Request) {
-	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.UnfavoriteQuestion(ctx, chi.URLParam(r, "bank_id"), chi.URLParam(r, "question_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
 	})
 }
 
 // createFavoritesSession starts practice from one bank's available favorites.
 func (h *Handler) createFavoritesSession(w http.ResponseWriter, r *http.Request) {
-	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.CreateFavoritesSession(ctx, chi.URLParam(r, "bank_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
 	})
 }
 
-// favoritesCommand is the signed-in-only favorites write path: session check,
-// idempotency key, one signed Core command, never a wildcard proxy write.
-func (h *Handler) favoritesCommand(w http.ResponseWriter, r *http.Request, command practiceSignedInCommand) {
-	setPrivateResponseHeaders(w)
-	if h.practiceCommands == nil {
-		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
-		return
-	}
-	value, err := h.readSession(r)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "请先登录后再操作收藏", RequestID: requestIDOf(w, r)})
-		return
-	}
-	if !practice.ValidUUID(value.UserID) {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
-		return
-	}
-	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-	if !practice.ValidIdempotencyKey(idempotencyKey) {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
-		return
-	}
-	result, err := command(r.Context(), value.UserID, requestIDOf(w, r), idempotencyKey, coreAnonymousCookie(r))
-	if err != nil {
-		h.writePracticeCommandFailure(w, r, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(result.Raw)
+// favoritesCommand is the signed-in-only favorites write path: it shares the
+// practiceCommand skeleton but never downgrades to a guest actor and carries
+// no raw browser body.
+func (h *Handler) favoritesCommand(w http.ResponseWriter, r *http.Request, command practiceCommand) {
+	h.practiceCommand(w, r, http.StatusOK, false, false, "请先登录后再操作收藏", command)
 }
 
 // writePracticeReadPermissionError maps Platform Core permission outcomes for

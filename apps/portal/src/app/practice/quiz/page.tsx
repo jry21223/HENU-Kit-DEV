@@ -26,6 +26,7 @@ import { authStore } from "@/lib/auth/store";
 import { redirectToLogin } from "@/lib/auth/redirect";
 import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
 import { createIdempotencyKey, readPracticeSessionHandoff } from "@/lib/practice/session-handoff";
+import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
@@ -100,6 +101,10 @@ function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; erro
     ...(questionCount ? { question_count: questionCount } : {}),
   };
   return { input, scope: JSON.stringify(input) };
+}
+
+function sessionIDFromLocation(): string {
+  return new URLSearchParams(window.location.search).get("session_id")?.trim() ?? "";
 }
 
 type IdempotencyMemory = { current: Record<string, string> };
@@ -210,13 +215,12 @@ export default function QuizPage() {
   const [favorites, setFavorites] = useState<Set<string> | null>(null);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
-  const favoriteKeys = useRef<Record<string, string>>({});
+  const favoriteKeys = useIdempotencyKey("practice-favorite");
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const sessionParams = new URLSearchParams(window.location.search);
-      const sessionIDParam = sessionParams.get("session_id")?.trim() ?? "";
+      const sessionIDParam = sessionIDFromLocation();
       if (sessionIDParam) {
         // 收藏练习会话由收藏夹页通过 createFavoritesSession 创建，经
         // sessionStorage 交接到本页（不存在按 ID 读取会话的服务端接口）。
@@ -439,7 +443,7 @@ export default function QuizPage() {
   const startAnotherSession = () => {
     // A handoff favorites session carries no bank params to re-create from;
     // send the user back to the folder for a fresh favorites session.
-    if (new URLSearchParams(window.location.search).get("session_id")) {
+    if (sessionIDFromLocation()) {
       const bankIDValue = session?.bank_id;
       if (bankIDValue) {
         void router.replace(`/practice/favorites/${encodeURIComponent(bankIDValue)}`);
@@ -568,9 +572,7 @@ export default function QuizPage() {
     }
     const wasFavorited = favorites?.has(question.question_id) ?? false;
     const scope = `favorite:${session.bank_id}:${question.question_id}`;
-    const remembered = favoriteKeys.current[scope];
-    const idempotencyKey = remembered ?? createIdempotencyKey("practice-favorite");
-    if (!remembered) favoriteKeys.current[scope] = idempotencyKey;
+    const idempotencyKey = favoriteKeys.obtain(scope);
     setFavoriteBusy(true);
     setFavoriteError(null);
     const command = wasFavorited
@@ -580,7 +582,7 @@ export default function QuizPage() {
       .then(() => {
         // One logical toggle consumed the key; the next toggle mints a fresh
         // key so Core never replays a stale favorite/unfavorite record.
-        delete favoriteKeys.current[scope];
+        favoriteKeys.clear(scope);
         setFavorites((current) => {
           const next = new Set(current ?? []);
           if (wasFavorited) next.delete(question.question_id);

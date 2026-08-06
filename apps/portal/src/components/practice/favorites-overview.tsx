@@ -1,24 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import FavoritesLoginPrompt from "@/components/practice/favorites-login-prompt";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
-import {
-  fetchFavoritesOverview,
-  formatPortalError,
-  PortalUnauthorizedError,
-} from "@/lib/api/client";
+import { fetchFavoritesOverview } from "@/lib/api/client";
 import type { FavoriteFolder } from "@/lib/api/types";
-import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
-
-type OverviewState =
-  | { status: "loading" }
-  | { status: "anonymous" }
-  | { status: "error"; message: string }
-  | { status: "ready"; folders: FavoriteFolder[] };
+import { useFetchState } from "@/lib/api/use-fetch-state";
 
 function FolderCard({ folder, index }: { folder: FavoriteFolder; index: number }) {
   const total = folder.available_count + folder.unavailable_count;
@@ -52,24 +40,7 @@ function FolderCard({ folder, index }: { folder: FavoriteFolder; index: number }
 
 export default function FavoritesOverview() {
   usePageEnter(null);
-  const [state, setState] = useState<OverviewState>({ status: "loading" });
-  const { data, error, retry } = useDeferredFetch(() => fetchFavoritesOverview(), []);
-
-  useEffect(() => {
-    if (error !== undefined) {
-      if (error instanceof PortalUnauthorizedError) {
-        setState({ status: "anonymous" });
-        return;
-      }
-      setState({ status: "error", message: formatPortalError(error) });
-      return;
-    }
-    if (data) {
-      setState({ status: "ready", folders: data.data });
-      return;
-    }
-    setState({ status: "loading" });
-  }, [data, error]);
+  const { state, retry } = useFetchState<FavoriteFolder[]>(() => fetchFavoritesOverview(), []);
 
   return (
     <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8 md:py-16">
@@ -110,11 +81,11 @@ export default function FavoritesOverview() {
 
       {state.status === "ready" && (
         <section data-testid="practice-favorites-overview" className="mt-8">
-          {state.folders.length === 0 ? (
+          {state.data.length === 0 ? (
             <EmptyBlock label="还没有收藏任何题目，刷题时点击「收藏」即可加入" />
           ) : (
             <div data-enter className="grid gap-5 md:grid-cols-2">
-              {state.folders.map((folder, index) => (
+              {state.data.map((folder, index) => (
                 <FolderCard key={folder.bank_id} folder={folder} index={index} />
               ))}
             </div>

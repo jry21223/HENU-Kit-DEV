@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import FavoritesLoginPrompt from "@/components/practice/favorites-login-prompt";
@@ -16,15 +16,10 @@ import {
 } from "@/lib/api/client";
 import type { FavoriteQuestion } from "@/lib/api/types";
 import { redirectToLogin } from "@/lib/auth/redirect";
-import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
-import { createIdempotencyKey, writePracticeSessionHandoff } from "@/lib/practice/session-handoff";
+import { FetchState, useFetchState } from "@/lib/api/use-fetch-state";
+import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
+import { writePracticeSessionHandoff } from "@/lib/practice/session-handoff";
 import { cn } from "@/lib/cn";
-
-type ListState =
-  | { status: "loading" }
-  | { status: "anonymous" }
-  | { status: "error"; message: string }
-  | { status: "ready"; items: FavoriteQuestion[] };
 
 function FavoriteRow({
   item,
@@ -87,16 +82,13 @@ function FavoriteRow({
 export default function FavoritesFolder({ bankID }: { bankID: string }) {
   const heroRef = usePageEnter<HTMLDivElement>("list", bankID);
   const router = useRouter();
-  const [state, setState] = useState<ListState>({ status: "loading" });
-  const { data, error, retry } = useDeferredFetch(() => fetchBankFavorites(bankID), [bankID]);
+  const { state, setState, retry } = useFetchState<FavoriteQuestion[]>(() => fetchBankFavorites(bankID), [bankID]);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
-  // One live key per logical write; success consumes it, failure keeps it so
-  // a retry replays the same Core command instead of minting a second one.
-  const sessionKey = useRef<string | null>(null);
-  const removeKeys = useRef<Record<string, string>>({});
+  const favoriteKey = useIdempotencyKey("practice-unfavorite");
+  const sessionKeys = useIdempotencyKey("practice-favorites-session");
   const [bankName, setBankName] = useState("");
 
   useEffect(() => {
@@ -108,39 +100,24 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
   }, []);
 
   useEffect(() => {
-    if (error !== undefined) {
-      if (error instanceof PortalUnauthorizedError) {
-        setState({ status: "anonymous" });
-        return;
-      }
-      setState({ status: "error", message: formatPortalError(error) });
-      return;
-    }
-    if (data) {
-      setState({ status: "ready", items: data.data });
-      return;
-    }
-    setState({ status: "loading" });
-    setRemoveError(null);
-  }, [data, error]);
+    if (state.status === "loading") setRemoveError(null);
+  }, [state.status]);
 
   const removeFavorite = async (item: FavoriteQuestion) => {
     if (state.status !== "ready" || removing.has(item.question_id)) return;
     const scope = `unfavorite:${bankID}:${item.question_id}`;
-    const remembered = removeKeys.current[scope];
-    const idempotencyKey = remembered ?? createIdempotencyKey("practice-unfavorite");
-    if (!remembered) removeKeys.current[scope] = idempotencyKey;
+    const idempotencyKey = favoriteKey.obtain(scope);
     setRemoving((current) => new Set(current).add(item.question_id));
     setRemoveError(null);
     try {
       await unfavoriteQuestion(bankID, item.question_id, idempotencyKey);
       // A successful write consumed the key; the next toggle mints a fresh one.
-      delete removeKeys.current[scope];
+      favoriteKey.clear(scope);
       setState((current) =>
         current.status === "ready"
           ? {
               status: "ready",
-              items: current.items.filter((entry) => entry.question_id !== item.question_id),
+              data: current.data.filter((entry) => entry.question_id !== item.question_id),
             }
           : current
       );
@@ -161,14 +138,12 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
 
   const startSession = async () => {
     if (starting) return;
-    if (!sessionKey.current) {
-      sessionKey.current = createIdempotencyKey("practice-favorites-session");
-    }
+    const idempotencyKey = sessionKeys.obtain("create-favorites-session");
     setStarting(true);
     setStartError(null);
     try {
-      const response = await createFavoritesSession(bankID, sessionKey.current);
-      sessionKey.current = null;
+      const response = await createFavoritesSession(bankID, idempotencyKey);
+      sessionKeys.clear("create-favorites-session");
       const payload = response.data;
       try {
         // The quiz page has no endpoint to re-read an existing session by id,
@@ -190,7 +165,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
     }
   };
 
-  const items = state.status === "ready" ? state.items : [];
+  const items = state.status === "ready" ? state.data : [];
   const availableCount = items.filter((item) => item.available).length;
   const canStart = state.status === "ready" && availableCount > 0 && !starting;
 
