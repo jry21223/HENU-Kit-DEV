@@ -100,11 +100,20 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 	}, nil
 }
 
-// CheckPermission verifies a permission against Platform Core.
+// CheckPermission verifies a permission against Platform Core. Platform Core
+// rejects checks without a scope (validScope fails on an empty kind, which the
+// Gateway would surface as a 503), so the scope is derived from the permission
+// code: the product named by the code's first segment (e.g. "portal.notice.read"
+// checks the "portal" product scope), and platform scope for "platform.*" codes.
 func (c *Client) CheckPermission(ctx context.Context, exchangeToken, permissionCode string) error {
-	body, _ := json.Marshal(map[string]string{
+	scope := map[string]string{"kind": "platform"}
+	if product, _, ok := strings.Cut(permissionCode, "."); ok && product != "platform" {
+		scope = map[string]string{"kind": "product", "product_code": product}
+	}
+	body, _ := json.Marshal(map[string]any{
 		"session_exchange_token": exchangeToken,
 		"permission_code":        permissionCode,
+		"scope":                  scope,
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,

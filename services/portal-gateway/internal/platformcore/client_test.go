@@ -112,6 +112,65 @@ func TestExchangeCodeRejectsFlatJSONAndShortToken(t *testing.T) {
 	}
 }
 
+func TestCheckPermissionSendsProductScopeDerivedFromPermissionCode(t *testing.T) {
+	var got struct {
+		PermissionCode       string `json:"permission_code"`
+		SessionExchangeToken string `json:"session_exchange_token"`
+		Scope                struct {
+			Kind        string `json:"kind"`
+			ProductCode string `json:"product_code"`
+		} `json:"scope"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode check body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "https://portal.example/callback", "portal-gateway", "portal-client-secret-with-enough-entropy", "active-key")
+	client.httpClient = server.Client()
+	if err := client.CheckPermission(t.Context(), "exchange_token_with_at_least_32_characters", "portal.notice.read"); err != nil {
+		t.Fatalf("CheckPermission: %v", err)
+	}
+	if got.Scope.Kind != "product" || got.Scope.ProductCode != "portal" {
+		t.Fatalf("scope = %#v, want product scope for portal", got.Scope)
+	}
+	if got.PermissionCode != "portal.notice.read" || got.SessionExchangeToken != "exchange_token_with_at_least_32_characters" {
+		t.Fatalf("check body = %#v", got)
+	}
+}
+
+func TestCheckPermissionPlatformScopeForPlatformCodes(t *testing.T) {
+	var scope struct {
+		Kind        string `json:"kind"`
+		ProductCode string `json:"product_code"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Scope json.RawMessage `json:"scope"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode check body: %v", err)
+		}
+		if err := json.Unmarshal(body.Scope, &scope); err != nil {
+			t.Fatalf("decode scope: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "https://portal.example/callback", "portal-gateway", "portal-client-secret-with-enough-entropy", "active-key")
+	client.httpClient = server.Client()
+	if err := client.CheckPermission(t.Context(), "exchange_token_with_at_least_32_characters", "platform.operations.read"); err != nil {
+		t.Fatalf("CheckPermission: %v", err)
+	}
+	if scope.Kind != "platform" || scope.ProductCode != "" {
+		t.Fatalf("scope = %#v, want platform scope", scope)
+	}
+}
+
 func TestCheckPermissionStatusMapping(t *testing.T) {
 	for status, want := range map[int]error{
 		http.StatusUnauthorized: ErrUnauthorized,
