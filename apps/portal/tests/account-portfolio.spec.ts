@@ -784,6 +784,38 @@ test("notifications render and mark the server-returned notification as read at 
 });
 
 test("paid Library materials never use Account session mocks as a purchase or shelf result", async ({ page }) => {
+  // Detail and reader views fetch the owner material by id from the real
+  // detail contract instead of reading bundled static entries. Stub the
+  // exact payload: a paid material carries its full pages plus a preview
+  // window, so the reader locks after previewPages and the detail page
+  // never offers purchase.
+  const paidMaterial = {
+    id: "paid-math-exam25",
+    type: "exam",
+    subject: "高等数学A",
+    title: "高等数学A · 2025 期末试卷 + 逐题详解",
+    author: "刘助教",
+    intro: "2025 春季期末真题，每题附完整解题过程与评分点标注。",
+    toc: ["一、填空题", "二、计算题", "三、应用题", "四、证明题", "逐题详解"],
+    pages: Array.from({ length: 8 }, (_, pageIndex) => [
+      `第 ${pageIndex + 1} 页正文段落`,
+    ]),
+    price: 60,
+    previewPages: 2,
+    rating: 4.9,
+    downloads: 2876,
+    favs: 924,
+  };
+  await page.route("**/api/v1/library/materials/paid-math-exam25", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        material: paidMaterial,
+        request_id: "req_library_paid_material",
+      }),
+    });
+  });
+
   await page.goto("/library/item/paid-math-exam25", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-library-purchase-state="unavailable"]')).toBeVisible();
   await expect(page.locator('[data-library-favorite-state="unavailable"]')).toBeVisible();
