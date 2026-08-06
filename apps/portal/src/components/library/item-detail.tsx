@@ -9,24 +9,22 @@ import {
 import { getMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
-import {
-  LibraryLoading,
-  LibraryNotFound,
-  useMaterialDetail,
-} from "@/lib/library/use-material-detail";
+import { LibraryLoading, LibraryNotFound } from "@/components/library/material-states";
+import { useMaterialDetail } from "@/lib/library/use-material-detail";
 
 export default function ItemDetail({ id }: { id: string }) {
-  const { loadState, material, error } = useMaterialDetail(id);
+  const state = useMaterialDetail(id);
   useReveal();
   const [tocOpen, setTocOpen] = useState(false);
 
-  if (loadState === "loading") {
-    return <LibraryLoading />;
+  if (state.loadState !== "ready") {
+    return state.loadState === "error" ? (
+      <LibraryNotFound error={state.error} />
+    ) : (
+      <LibraryLoading />
+    );
   }
-
-  if (loadState === "error" || !material) {
-    return <LibraryNotFound error={error} />;
-  }
+  const { material } = state;
 
   const t = MATERIAL_TYPES[material.type];
   const free = material.price === 0;
