@@ -383,8 +383,12 @@ services:
       NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
       # Notice, Food and Library are first-class compose owners; empty overrides
       # degrade the module to 503 instead of resolving a host that does not run.
+      # Library additionally fails closed without STUDY_LEGACY_* credentials, so
+      # LIBRARY_API_URL stays empty by default like NOTICE/FOOD; production
+      # enables it by setting LIBRARY_API_URL=http://library:8095 plus the
+      # legacy credentials (see .env.henukit.example).
       NOTICE_API_URL: ${NOTICE_API_URL:-}
-      LIBRARY_API_URL: ${LIBRARY_API_URL:-http://library:8095}
+      LIBRARY_API_URL: ${LIBRARY_API_URL:-}
       FOOD_API_URL: ${FOOD_API_URL:-}
       NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
       NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
