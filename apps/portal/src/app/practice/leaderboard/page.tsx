@@ -28,12 +28,37 @@ type BankSourceState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; banks: QuizCraftCatalogBank[] }
-  | { status: "error"; message: string };
+  | { status: "error" };
 
 const periods: Array<{ value: QuizCraftRankingPeriod; label: string }> = [
   { value: "weekly", label: "本周" },
   { value: "lifetime", label: "总榜" },
 ];
+
+/** One segment of the dimension/period toggle groups on this page. */
+function SegmentedButton({
+  pressed,
+  onClick,
+  label,
+}: {
+  pressed: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={cn(
+        "border px-4 py-2 font-mono text-xs tracking-widest transition-colors",
+        pressed ? "border-ink bg-ink text-paper" : "border-ink/25 hover:border-ink"
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
 export default function LeaderboardPage() {
   const enabled = quizCraftV2ReadsEnabled();
@@ -49,7 +74,7 @@ export default function LeaderboardPage() {
   const [banks, setBanks] = useState<BankSourceState>(
     catalogEnabled
       ? { status: "loading" }
-      : { status: "error", message: "题库列表暂不可用，无法切换题库维度。" }
+      : { status: "error" }
   );
   const [retry, setRetry] = useState(0);
   const requestVersion = useRef(0);
@@ -65,7 +90,7 @@ export default function LeaderboardPage() {
       },
       (error: unknown) => {
         if (!cancelled) {
-          setBanks({ status: "error", message: formatPortalError(error) });
+          setBanks({ status: "error" });
         }
       }
     );
@@ -147,32 +172,16 @@ export default function LeaderboardPage() {
         {enabled && (
           <div className="mt-8 flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2" aria-label="排行榜维度">
-              <button
-                type="button"
-                aria-pressed={scope === "overall"}
+              <SegmentedButton
+                pressed={scope === "overall"}
                 onClick={() => selectScope("overall")}
-                className={cn(
-                  "border px-4 py-2 font-mono text-xs tracking-widest transition-colors",
-                  scope === "overall"
-                    ? "border-ink bg-ink text-paper"
-                    : "border-ink/25 hover:border-ink"
-                )}
-              >
-                综合榜
-              </button>
-              <button
-                type="button"
-                aria-pressed={scope === "bank"}
+                label="综合榜"
+              />
+              <SegmentedButton
+                pressed={scope === "bank"}
                 onClick={() => selectScope("bank")}
-                className={cn(
-                  "border px-4 py-2 font-mono text-xs tracking-widest transition-colors",
-                  scope === "bank"
-                    ? "border-ink bg-ink text-paper"
-                    : "border-ink/25 hover:border-ink"
-                )}
-              >
-                题库榜
-              </button>
+                label="题库榜"
+              />
               {scope === "bank" && banks.status === "ready" && (
                 <select
                   aria-label="选择题库"
@@ -198,20 +207,12 @@ export default function LeaderboardPage() {
             </div>
             <div className="flex gap-2" aria-label="排行榜周期">
               {periods.map((item) => (
-                <button
+                <SegmentedButton
                   key={item.value}
-                  type="button"
-                  aria-pressed={period === item.value}
+                  pressed={period === item.value}
                   onClick={() => selectPeriod(item.value)}
-                  className={cn(
-                    "border px-4 py-2 font-mono text-xs tracking-widest transition-colors",
-                    period === item.value
-                      ? "border-ink bg-ink text-paper"
-                      : "border-ink/25 hover:border-ink"
-                  )}
-                >
-                  {item.label}
-                </button>
+                  label={item.label}
+                />
               ))}
             </div>
           </div>

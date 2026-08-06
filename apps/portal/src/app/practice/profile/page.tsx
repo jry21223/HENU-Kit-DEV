@@ -17,6 +17,7 @@ import type {
 } from "@/lib/api/types";
 import { quizCraftV2ReadsEnabled } from "@/lib/api/env";
 import { publicDisplayName } from "@/lib/auth/display-name";
+import { createIdempotencyKey } from "@/lib/practice/idempotency";
 import { cn } from "@/lib/cn";
 import {
   DEFAULT_RANKING_NICKNAME,
@@ -93,10 +94,7 @@ export default function RankingProfilePage() {
     event.preventDefault();
     if (!validation.ok || saving) return;
     if (!idempotencyKey.current) {
-      const random =
-        globalThis.crypto?.randomUUID?.() ??
-        `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-      idempotencyKey.current = `ranking-profile:${random}`;
+      idempotencyKey.current = createIdempotencyKey("ranking-profile");
     }
     setSaving(true);
     setSaveError("");

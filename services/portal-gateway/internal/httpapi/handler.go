@@ -642,45 +642,19 @@ func (h *Handler) createPracticeFeedback(w http.ResponseWriter, r *http.Request)
 // corrections and favorites it never downgrades to a guest actor and relays
 // Core's OperationEnvelope unchanged.
 func (h *Handler) updateRankingProfile(w http.ResponseWriter, r *http.Request) {
-	setPrivateResponseHeaders(w)
-	if h.practiceCommands == nil {
-		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
-		return
-	}
-	value, err := h.readSession(r)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "请先登录后再设置排行身份", RequestID: requestIDOf(w, r)})
-		return
-	}
-	if !practice.ValidUUID(value.UserID) {
-		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
-		return
-	}
-	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-	if !practice.ValidIdempotencyKey(idempotencyKey) {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
-		return
-	}
-	raw, err := readGatewayPracticeCommandBody(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
-		return
-	}
-	result, err := h.practiceCommands.UpdateRankingProfile(r.Context(), value.UserID, requestIDOf(w, r), idempotencyKey, raw, coreAnonymousCookie(r))
-	if err != nil {
-		h.writePracticeCommandFailure(w, r, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(result.Raw)
+	h.practiceCommandRunner(w, r, http.StatusOK, false, "请先登录后再设置排行身份", func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+		return h.practiceCommands.UpdateRankingProfile(ctx, actorUserID, requestID, idempotencyKey, raw, anonymousCookie)
+	})
 }
 
-// practiceCommand turns a browser command into exactly one signed Core
-// command. It intentionally does not proxy headers, cookies, actor identity,
-// or mock data. An invalid Portal Session is a 401, while an absent Portal
-// Session is a genuine guest request.
-func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
+// practiceCommandRunner is the shared relay for every browser-visible
+// practice write: private response headers, the enabled gate, the actor
+// binding, the idempotency key, the exact-body read, the signed Core
+// command, and the relayed result. With guestAllowed the actor comes from
+// practiceCommandActor (an absent Portal Session is a genuine guest
+// request); without it the actor must come from a valid Portal Session, and
+// a guest request is answered with the route's login message instead.
+func (h *Handler) practiceCommandRunner(w http.ResponseWriter, r *http.Request, successStatus int, guestAllowed bool, loginMessage string, command practiceCommand) {
 	setPrivateResponseHeaders(w)
 	if h.practiceCommands == nil {
 		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
@@ -689,6 +663,10 @@ func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, succes
 	actorUserID, anonymousCookie, status, err := h.practiceCommandActor(r)
 	if err != nil {
 		writeJSON(w, status, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if !guestAllowed && actorUserID == "" {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: loginMessage, RequestID: requestIDOf(w, r)})
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
@@ -714,6 +692,14 @@ func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, succes
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(successStatus)
 	_, _ = w.Write(result.Raw)
+}
+
+// practiceCommand turns a browser command into exactly one signed Core
+// command. It intentionally does not proxy headers, cookies, actor identity,
+// or mock data. An invalid Portal Session is a 401, while an absent Portal
+// Session is a genuine guest request.
+func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
+	h.practiceCommandRunner(w, r, successStatus, true, "登录已过期，请重新登录", command)
 }
 
 func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Request, err error) {
