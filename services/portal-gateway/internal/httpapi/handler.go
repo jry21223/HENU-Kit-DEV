@@ -253,6 +253,10 @@ func (h *Handler) Router() chi.Router {
 	r.Delete("/api/v1/practice/banks/{bank_id}/favorites/{question_id}", h.unfavoriteQuestion)
 	r.Post("/api/v1/practice/banks/{bank_id}/favorites/practice-sessions", h.createFavoritesSession)
 
+	// Learning state is the signed-in account's per-question wrong marks and
+	// counts, an actor-bound read like personal stats.
+	r.Get("/api/v1/learning-state", h.getLearningState)
+
 	// The owner-backed download command must shadow the public-data wildcard.
 	// Browser callers select only a material ID, never a storage key or URL.
 	r.Get(contract.LibraryDownloadRoute, h.libraryDownload)
@@ -1150,6 +1154,33 @@ func (h *Handler) createFavoritesSession(w http.ResponseWriter, r *http.Request)
 // creation answers 201 like createPracticeSession.
 func (h *Handler) favoritesCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
 	h.practiceCommand(w, r, successStatus, false, false, "请先登录后再操作收藏", command)
+}
+
+// getLearningState reads the signed-in user's server-derived per-question
+// learning state (wrong marks and counts). It is an actor-bound read like
+// personalPracticeStats; a disabled or failing Core read is an honest error,
+// never fabricated question facts.
+func (h *Handler) getLearningState(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.quizCraft == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "learning state is not enabled", "错题本暂时不可用，请稍后再试")
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
+		h.writePracticeReadPermissionError(w, r, err)
+		return
+	}
+	envelope, err := h.quizCraft.LearningState(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "learning state is temporarily unavailable", "错题本暂时不可用，请稍后再试")
+		return
+	}
+	writeJSON(w, http.StatusOK, envelope)
 }
 
 // writePracticeReadPermissionError maps Platform Core permission outcomes for
