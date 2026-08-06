@@ -30,7 +30,12 @@ import type {
 	CampusItemListResponse,
   CategoryListResponse,
   ErrorEnvelope,
-  FoodPostDetailResponse,
+  	FavoritesOverviewResponse,
+  	FavoriteFolder,
+  	FavoriteListResponse,
+  	FavoriteQuestion,
+  	FavoriteWriteResponse,
+  	FoodPostDetailResponse,
   FoodPostListResponse,
   FoodVenuesResponse,
   LibraryCoursesResponse,
@@ -550,6 +555,79 @@ export async function fetchPracticeFeedbackStatus(
 ): Promise<PortalPracticeFeedbackStatusResponse> {
   return apiFetchRequired<PortalPracticeFeedbackStatusResponse>(
     `/api/v1/practice/feedback/${encodeURIComponent(feedbackID)}/status`
+  );
+}
+
+// ---- Practice favorites ----
+
+function favoriteCommandInit(
+  idempotencyKey: string,
+  method: "PUT" | "DELETE" | "POST"
+): RequestInit {
+  const key = idempotencyKey.trim();
+  if (key.length < 16 || key.length > 160) {
+    throw new PortalApiError("Invalid Practice idempotency key", {
+      code: "PORTAL_INVALID_PRACTICE_IDEMPOTENCY_KEY",
+    });
+  }
+  return {
+    method,
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": key,
+    },
+    body: JSON.stringify({}),
+  };
+}
+
+/** Lists the signed-in user's per-bank favorite folders. */
+export async function fetchFavoritesOverview(): Promise<FavoritesOverviewResponse> {
+  return apiFetchRequired<FavoritesOverviewResponse>("/api/v1/practice/favorites");
+}
+
+/** Lists one bank's favorite references for the signed-in user. */
+export async function fetchBankFavorites(
+  bankID: string
+): Promise<FavoriteListResponse> {
+  return apiFetchRequired<FavoriteListResponse>(
+    `/api/v1/practice/banks/${encodeURIComponent(bankID)}/favorites`
+  );
+}
+
+/** Favorites one stable question reference idempotently. */
+export async function favoriteQuestion(
+  bankID: string,
+  questionID: string,
+  idempotencyKey: string
+): Promise<FavoriteWriteResponse> {
+  return apiFetchRequired<FavoriteWriteResponse>(
+    `/api/v1/practice/banks/${encodeURIComponent(bankID)}/favorites/${encodeURIComponent(questionID)}`,
+    favoriteCommandInit(idempotencyKey, "PUT")
+  );
+}
+
+/** Removes one stable favorite idempotently. */
+export async function unfavoriteQuestion(
+  bankID: string,
+  questionID: string,
+  idempotencyKey: string
+): Promise<FavoriteWriteResponse> {
+  return apiFetchRequired<FavoriteWriteResponse>(
+    `/api/v1/practice/banks/${encodeURIComponent(bankID)}/favorites/${encodeURIComponent(questionID)}`,
+    favoriteCommandInit(idempotencyKey, "DELETE")
+  );
+}
+
+/** Starts a Practice Core session from one bank's available favorites. */
+export async function createFavoritesSession(
+  bankID: string,
+  idempotencyKey: string
+): Promise<PortalPracticeSessionResponse> {
+  return apiFetchRequired<PortalPracticeSessionResponse>(
+    `/api/v1/practice/banks/${encodeURIComponent(bankID)}/favorites/practice-sessions`,
+    favoriteCommandInit(idempotencyKey, "POST")
   );
 }
 
