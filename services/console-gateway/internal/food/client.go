@@ -44,7 +44,7 @@ func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client)
 	ip := net.ParseIP(host)
 	loopback := err == nil && parsed.Scheme == "http" && (host == "localhost" || host == "platform-core" || host == "portal-api" || strings.HasSuffix(host, ".local") || (ip != nil && ip.IsLoopback()))
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !loopback) || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || clientID == "" || len(clientSecret) < 32 || keyID == "" {
-		return nil, errors.New("invalid Notice client configuration")
+		return nil, errors.New("invalid Food client configuration")
 	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 5 * time.Second}

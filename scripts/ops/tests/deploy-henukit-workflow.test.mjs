@@ -216,9 +216,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "ACCOUNT_PORTFOLIO_CONSOLE_SECRET",
       "ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID",
       "ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY",
-      "FOOD_CLIENT_SECRET",
       "FOOD_SUMMARY_CLIENT_SECRET",
-      "LIBRARY_CLIENT_SECRET",
       "LIBRARY_SUMMARY_CLIENT_SECRET",
       "NOTICE_CLIENT_SECRET",
       "NOTICE_SUMMARY_CLIENT_ID",
@@ -376,6 +374,16 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["portal-gateway"].environment.PRACTICE_COMMAND_CLIENT_SECRET,
     "test-required-value",
     "the fixed-SHA runtime must carry the separately provisioned Practice command credential",
+  );
+  assert.equal(
+    Object.hasOwn(config.services["portal-gateway"].environment, "LIBRARY_CLIENT_SECRET"),
+    false,
+    "the fixed-SHA runtime must not force the retired Library gateway client secret",
+  );
+  assert.equal(
+    Object.hasOwn(config.services["portal-gateway"].environment, "FOOD_CLIENT_SECRET"),
+    false,
+    "the fixed-SHA runtime must not force the retired Food gateway client secret",
   );
   assert.equal(
     config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID,

@@ -173,5 +173,4 @@ data_owners:
   attempts: quizcraft_product
   wrong_questions: quizcraft_product
   rankings: quizcraft_product
-  food_rankings: campus_life
   tool_catalog: portal
