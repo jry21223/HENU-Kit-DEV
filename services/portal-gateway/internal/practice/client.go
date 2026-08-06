@@ -217,17 +217,17 @@ func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID strin
 	if !validUUID(actorUserID) {
 		return PersonalPracticeStatsEnvelope{}, ErrStatsUnauthorized
 	}
-	resp, err := c.actorBoundPersonalStats(ctx, actorUserID, requestID)
+	body, err := c.actorBoundRead(ctx, GetPersonalPracticeStatsPath, actorUserID, requestID, PortalReadPermission)
 	if err != nil {
 		return PersonalPracticeStatsEnvelope{}, err
 	}
-	defer resp.Body.Close()
+	defer body.Close()
 
 	var raw struct {
 		RequestID string          `json:"request_id"`
 		Data      json.RawMessage `json:"data"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&raw); err != nil {
+	if err := json.NewDecoder(io.LimitReader(body, 2<<20)).Decode(&raw); err != nil {
 		return PersonalPracticeStatsEnvelope{}, fmt.Errorf("stats decode: %w", ErrInvalidStats)
 	}
 	if strings.TrimSpace(raw.RequestID) == "" || len(raw.Data) == 0 || string(raw.Data) == "null" {
@@ -244,42 +244,44 @@ func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID strin
 	return result, nil
 }
 
-// actorBoundPersonalStats is intentionally separate from portalRead. Catalog
-// and ranking are public/read-shared facts; personal statistics are one
-// account's data, so the Core rejects a request unless the actor UUID is the
-// sixth HMAC canonical line.
-func (c *Client) actorBoundPersonalStats(ctx context.Context, actorUserID, requestID string) (*http.Response, error) {
+// actorBoundRead performs the six-part actor-bound signed GET shared by the
+// account-owned reads (personal stats, learning state). Unlike portalRead it
+// signs the actor as the sixth HMAC canonical line, so Core can reject any
+// request that claims an account the Gateway did not verify. The caller
+// decodes and validates the typed envelope from the returned body.
+func (c *Client) actorBoundRead(ctx context.Context, path, actorUserID, requestID, permissionCode string) (io.ReadCloser, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
 		return nil, ErrStatsUnauthorized
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+GetPersonalPracticeStatsPath, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return nil, ErrStatsUnavailable
 	}
 	req.Header.Set("X-Request-Id", requestID)
-	req.Header.Set("X-Permission-Code", PortalReadPermission)
+	req.Header.Set("X-Permission-Code", permissionCode)
 	req.Header.Set("X-Scope-Kind", "product")
 	req.Header.Set("X-Product-Code", "quizcraft")
 	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
-		return nil, fmt.Errorf("portal personal stats sign: %w", ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal actor read sign: %w", ErrStatsUnavailable)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("portal personal stats request: %w", ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal actor read request: %w", ErrStatsUnavailable)
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
-		return resp, nil
+		return resp.Body, nil
 	case http.StatusUnauthorized, http.StatusForbidden:
 		_ = resp.Body.Close()
 		// Portal Gateway has already checked the browser's session and live
 		// permission. A Core 401/403 here is an internal service-auth failure,
 		// never evidence that the browser should be asked to sign in again.
-		return nil, fmt.Errorf("portal personal stats service authentication: %w", ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal actor read service authentication: %w", ErrStatsUnavailable)
 	default:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("portal personal stats status %d: %w", resp.StatusCode, ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal actor read status %d: %w", resp.StatusCode, ErrStatsUnavailable)
 	}
 }
 

@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 )
 
 // GetPortalLearningStatePath is the signed-in persistent learning-state read
-// on QuizCraft Core. It is intentionally not emitted by the curated contract
-// generator: like personal stats and favorites it is an actor-bound read, and
-// the generator only emits the operations it is explicitly programmed to.
+// on QuizCraft Core. The operation is not yet on the curated
+// quizcraftcontractgen emit whitelist, so this constant is hand-written
+// alongside the generated contract; cutover should fold it into the
+// generator's whitelist.
 const GetPortalLearningStatePath = "/api/v1/learning-state"
 
 // LearningStateEnvelope is one signed-in Portal user's fact-derived
@@ -43,11 +43,7 @@ func (c *Client) LearningState(ctx context.Context, actorUserID, requestID strin
 	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
 		return LearningStateEnvelope{}, ErrStatsUnauthorized
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+GetPortalLearningStatePath, nil)
-	if err != nil {
-		return LearningStateEnvelope{}, ErrStatsUnavailable
-	}
-	body, err := c.actorBoundLearningStateRead(ctx, req, actorUserID, requestID)
+	body, err := c.actorBoundRead(ctx, GetPortalLearningStatePath, actorUserID, requestID, PortalReadPermission)
 	if err != nil {
 		return LearningStateEnvelope{}, err
 	}
@@ -65,36 +61,6 @@ func (c *Client) LearningState(ctx context.Context, actorUserID, requestID strin
 		return LearningStateEnvelope{}, err
 	}
 	return result, nil
-}
-
-// actorBoundLearningStateRead performs the six-part signed GET and returns the
-// response body; the caller decodes and validates the typed envelope.
-func (c *Client) actorBoundLearningStateRead(ctx context.Context, req *http.Request, actorUserID, requestID string) (io.ReadCloser, error) {
-	req.Header.Set("X-Request-Id", requestID)
-	req.Header.Set("X-Permission-Code", PortalReadPermission)
-	req.Header.Set("X-Scope-Kind", "product")
-	req.Header.Set("X-Product-Code", "quizcraft")
-	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
-		return nil, fmt.Errorf("portal learning state sign: %w", ErrStatsUnavailable)
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("portal learning state request: %w", ErrStatsUnavailable)
-	}
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return resp.Body, nil
-	case http.StatusUnauthorized, http.StatusForbidden:
-		resp.Body.Close()
-		// Portal Gateway has already checked the browser's session and live
-		// permission. A Core 401/403 here is an internal service-auth failure,
-		// never evidence that the browser should be asked to sign in again.
-		return nil, fmt.Errorf("portal learning state service authentication: %w", ErrStatsUnavailable)
-	default:
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-		resp.Body.Close()
-		return nil, fmt.Errorf("portal learning state %d: %w", resp.StatusCode, ErrStatsUnavailable)
-	}
 }
 
 func validateLearningState(result LearningStateEnvelope) error {
