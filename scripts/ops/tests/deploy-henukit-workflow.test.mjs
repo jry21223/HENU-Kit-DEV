@@ -34,6 +34,7 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
     "henukit-notice",
     "henukit-notice-worker",
     "henukit-food",
+    "henukit-library",
   ];
 
   for (const image of expectedImages) {
@@ -304,6 +305,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-notice",
     "henukit-notice-worker",
     "henukit-food",
+    "henukit-library",
   ];
 
   for (const image of expectedImages) {
