@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
 import {
   createPracticeFeedback,
   createPracticeSession,
+  favoriteQuestion,
+  fetchBankFavorites,
   fetchPracticeFeedbackStatus,
   formatPortalError,
   PortalUnauthorizedError,
   submitPracticeAnswer,
+  unfavoriteQuestion,
 } from "@/lib/api/client";
 import type {
   PortalPracticeAnswerResponse,
@@ -18,6 +22,7 @@ import type {
   PortalPracticeSessionResponse,
   PracticeFeedbackCategory,
 } from "@/lib/api/types";
+import { authStore } from "@/lib/auth/store";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
@@ -167,6 +172,7 @@ function questionTypeLabel(type: PortalPracticeQuestion["type"]) {
 }
 
 export default function QuizPage() {
+  const router = useRouter();
   const cardRef = usePageEnter<HTMLDivElement>("question");
   const explainRef = useRef<HTMLDivElement>(null);
   const idempotencyKeys = useRef<Record<string, string>>({});
@@ -196,10 +202,53 @@ export default function QuizPage() {
   const [feedbackStatus, setFeedbackStatus] = useState<
     PortalPracticeFeedbackStatusResponse["data"]["status"] | null
   >(null);
+  // In-question favorites are signed-in-only writes against the stable
+  // bank_id + question_id reference, never the question version.
+  const { user, ready: authReady } = useSyncExternalStore(
+    authStore.subscribe,
+    authStore.get,
+    authStore.getServer
+  );
+  const [favorites, setFavorites] = useState<Set<string> | null>(null);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const favoriteKeys = useRef<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      const sessionParams = new URLSearchParams(window.location.search);
+      const sessionIDParam = sessionParams.get("session_id")?.trim() ?? "";
+      if (sessionIDParam) {
+        // 收藏练习会话由收藏夹页通过 createFavoritesSession 创建，经
+        // sessionStorage 交接到本页（不存在按 ID 读取会话的服务端接口）。
+        let payload: PortalPracticeSessionResponse["data"] | null = null;
+        try {
+          const raw = window.sessionStorage.getItem(`henukit.practice.session.v1:${sessionIDParam}`);
+          if (raw) {
+            const parsedPayload = JSON.parse(raw) as PortalPracticeSessionResponse["data"];
+            if (
+              parsedPayload &&
+              parsedPayload.session_id === sessionIDParam &&
+              Array.isArray(parsedPayload.questions)
+            ) {
+              payload = parsedPayload;
+            }
+          }
+        } catch {
+          payload = null;
+        }
+        if (!cancelled) {
+          if (payload) {
+            setSession(payload);
+            setLoadState(payload.questions.length === 0 ? "empty" : "ready");
+          } else {
+            setLoadError("收藏练习会话已失效，请返回收藏夹重新发起。");
+            setLoadState("error");
+          }
+        }
+        return;
+      }
       const parsed = practiceInputFromLocation();
       if (!parsed.input || !parsed.scope) {
         if (!cancelled) {
@@ -231,6 +280,36 @@ export default function QuizPage() {
     const id = window.setInterval(() => setElapsed((value) => value + 1), 1000);
     return () => window.clearInterval(id);
   }, [loadState]);
+
+  const sessionID = session?.session_id;
+  const sessionBankID = session?.bank_id;
+  useEffect(() => {
+    // Best-effort seed of this bank's favorite set; a failed read keeps the
+    // toggle usable and the server write result remains the source of truth.
+    // The reset is deferred to a microtask so the effect never calls setState
+    // synchronously; it still lands before any fetch response can publish.
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => {
+        if (cancelled) return;
+        setFavorites(null);
+        setFavoriteError(null);
+      })
+      .then(() => {
+        if (cancelled || !user || !sessionBankID) return undefined;
+        return fetchBankFavorites(sessionBankID);
+      })
+      .then((response) => {
+        if (cancelled || !response) return;
+        setFavorites(new Set(response.data.map((item) => item.question_id)));
+      })
+      .catch(() => {
+        // Unknown favorite state is not an error the user must fix.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, sessionID, sessionBankID]);
 
   const questions = session?.questions ?? [];
   const question = questions[idx];
@@ -385,6 +464,15 @@ export default function QuizPage() {
   };
 
   const startAnotherSession = () => {
+    // A handoff favorites session carries no bank params to re-create from;
+    // send the user back to the folder for a fresh favorites session.
+    if (new URLSearchParams(window.location.search).get("session_id")) {
+      const bankIDValue = session?.bank_id;
+      if (bankIDValue) {
+        void router.replace(`/practice/favorites/${encodeURIComponent(bankIDValue)}`);
+        return;
+      }
+    }
     const parsed = practiceInputFromLocation();
     if (parsed.scope) clearIdempotencyKey(`create:${parsed.scope}`, idempotencyKeys);
     retrySessionLoad();
@@ -407,7 +495,14 @@ export default function QuizPage() {
     );
   }
   if (loadState === "empty") {
-    return <PracticeState title="当前题库没有可练习题目" detail="请返回题库目录重新选择。" />;
+    return session?.mode === "favorites" ? (
+      <PracticeState
+        title="收藏夹里暂时没有可练习题目"
+        detail="不可用的收藏不会进入练习；可以返回收藏夹查看或取消收藏。"
+      />
+    ) : (
+      <PracticeState title="当前题库没有可练习题目" detail="请返回题库目录重新选择。" />
+    );
   }
   if (!session || !question) {
     return <PracticeState title="练习会话无效" detail="请返回题库目录重新选择。" />;
@@ -478,6 +573,62 @@ export default function QuizPage() {
   }
 
   const confirmed = result !== undefined;
+  const isFavorited = !!(user && favorites?.has(question.question_id));
+  const favoriteLabel = !authReady
+    ? "收藏"
+    : !user
+      ? "登录后收藏"
+      : favoriteBusy
+        ? isFavorited
+          ? "取消收藏中…"
+          : "收藏中…"
+        : isFavorited
+          ? "已收藏 ✓"
+          : "收藏 +";
+
+  const toggleFavorite = () => {
+    if (!question || !session || favoriteBusy) return;
+    if (!authReady) return;
+    if (!user) {
+      window.location.assign(
+        `/account/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
+      );
+      return;
+    }
+    const wasFavorited = favorites?.has(question.question_id) ?? false;
+    const scope = `favorite:${session.bank_id}:${question.question_id}`;
+    const remembered = favoriteKeys.current[scope];
+    const idempotencyKey = remembered ?? createBrowserKey("practice-favorite");
+    if (!remembered) favoriteKeys.current[scope] = idempotencyKey;
+    setFavoriteBusy(true);
+    setFavoriteError(null);
+    const command = wasFavorited
+      ? unfavoriteQuestion(session.bank_id, question.question_id, idempotencyKey)
+      : favoriteQuestion(session.bank_id, question.question_id, idempotencyKey);
+    command
+      .then(() => {
+        // One logical toggle consumed the key; the next toggle mints a fresh
+        // key so Core never replays a stale favorite/unfavorite record.
+        delete favoriteKeys.current[scope];
+        setFavorites((current) => {
+          const next = new Set(current ?? []);
+          if (wasFavorited) next.delete(question.question_id);
+          else next.add(question.question_id);
+          return next;
+        });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof PortalUnauthorizedError) {
+          window.location.assign(
+            `/account/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
+          );
+          return;
+        }
+        setFavoriteError(formatPortalError(error));
+      })
+      .finally(() => setFavoriteBusy(false));
+  };
+
   const optionIndexes = Array.isArray(selected) ? selected.filter((value): value is number => typeof value === "number") : [];
   const options = question.options ?? [];
 
@@ -500,7 +651,32 @@ export default function QuizPage() {
               <span className="font-mono text-xs text-accent">Q-{String(idx + 1).padStart(2, "0")}</span>
               <span className="border border-line px-2 py-0.5 font-mono text-[10px] text-ink/60">{question.chapter}</span>
               <span className="border border-line px-2 py-0.5 font-mono text-[10px] text-ink/60">{questionTypeLabel(question.type)}</span>
+              <span className="ml-auto">
+                <button
+                  type="button"
+                  onClick={toggleFavorite}
+                  disabled={favoriteBusy || !authReady}
+                  aria-pressed={user ? isFavorited : undefined}
+                  className={cn(
+                    "border px-3 py-1.5 font-mono text-xs tracking-widest transition-colors",
+                    favoriteBusy || !authReady
+                      ? "cursor-not-allowed border-line text-ink/30"
+                      : !user
+                        ? "border-ink/30 text-ink/60 hover:border-ink hover:text-ink"
+                        : isFavorited
+                          ? "border-accent bg-accent/5 text-accent hover:border-ink hover:text-ink"
+                          : "border-ink/30 text-ink/60 hover:border-accent hover:text-accent"
+                  )}
+                >
+                  {favoriteLabel}
+                </button>
+              </span>
             </div>
+            {favoriteError && (
+              <p role="alert" className="mt-3 font-mono text-xs text-accent">
+                {favoriteError}
+              </p>
+            )}
             <h1 className="mt-5 text-xl font-medium leading-relaxed md:text-2xl">{question.content}</h1>
 
             <div className="mt-8 space-y-3">

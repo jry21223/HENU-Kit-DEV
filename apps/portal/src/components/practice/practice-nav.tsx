@@ -15,7 +15,8 @@ const TABS = [
     match: (p: string) => p === "/practice" || p.startsWith("/practice/lists"),
   },
   { href: "/practice/quiz", index: "P-02", label: "刷题", match: (p: string) => p.startsWith("/practice/quiz") },
-  { href: "/practice/stats", index: "P-03", label: "数据", match: (p: string) => p.startsWith("/practice/stats") },
+  { href: "/practice/favorites", index: "P-03", label: "收藏夹", match: (p: string) => p.startsWith("/practice/favorites") },
+  { href: "/practice/stats", index: "P-04", label: "数据", match: (p: string) => p.startsWith("/practice/stats") },
 ];
 
 export default function PracticeNav() {
@@ -42,7 +43,9 @@ export default function PracticeNav() {
         </div>
 
         <nav className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto border-t border-line px-5 py-2 scrollbar-none md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0 md:py-0">
-          {[...TABS, ...(quizCraftV2ReadsEnabled() ? [{ href: "/practice/leaderboard", index: "P-04", label: "排行榜", match: (p: string) => p.startsWith("/practice/leaderboard") }] : [])].map((tab) => {
+          {[...TABS, ...(quizCraftV2ReadsEnabled() ? [
+            { href: "/practice/leaderboard", index: "P-05", label: "排行榜", match: (p: string) => p.startsWith("/practice/leaderboard") },
+          ] : [])].map((tab) => {
             const active = tab.match(pathname);
             return (
               <TransitionLink
