@@ -62,15 +62,6 @@ function PublishForm() {
     }
   };
 
-  const submit = () => {
-    if (!title.trim()) return setError("请输入标题");
-    if (!desc.trim()) return setError("请输入描述");
-    const p = Number(price);
-    if (!price || Number.isNaN(p) || p <= 0) return setError("请填写合法金额");
-    if (!place.trim()) return setError("请填写位置");
-    setError("发布接口尚未接通，暂无法提交。上线后即可发布单子。");
-  };
-
   return (
     <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
       <div className="max-w-3xl">
@@ -227,8 +218,9 @@ function PublishForm() {
         {error && <p className="font-mono text-xs text-accent">{error}</p>}
         <button
           type="button"
-          onClick={submit}
-          className="border border-ink bg-ink px-8 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+          disabled
+          title="发布接口尚未接通，上线后即可发布互助单"
+          className="cursor-not-allowed border border-line px-8 py-3 font-mono text-sm tracking-widest text-ink/40"
         >
           {editItem ? "保存修改 →" : "发布 →"}
         </button>
