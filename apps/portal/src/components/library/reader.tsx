@@ -1,30 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import {
-  MATERIAL_TYPES,
-  getMaterial as getMockMaterial,
-  type Material,
-} from "@/lib/library/mock";
-import {
-  fetchLibraryMaterialDetail,
-  formatPortalError,
-  mockAllowed,
-} from "@/lib/api/client";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { MATERIAL_TYPES } from "@/lib/library/mock";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
+import {
+  LibraryLoading,
+  LibraryNotFound,
+  useMaterialDetail,
+} from "@/lib/library/use-material-detail";
 
 const subscribeToHydration = () => () => {};
 const hydratedSnapshot = () => true;
 const serverHydrationSnapshot = () => false;
 
-type LoadState = "loading" | "ready" | "error";
-
 export default function Reader({ id }: { id: string }) {
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [material, setMaterial] = useState<Material | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { loadState, material, error } = useMaterialDetail(id);
 
   const [page, setPage] = useState(0);
   const isInteractive = useSyncExternalStore(
@@ -34,54 +26,6 @@ export default function Reader({ id }: { id: string }) {
   );
   const dirRef = useRef(1);
   const contentRef = useRef<HTMLDivElement>(null);
-  const mounted = useRef(true);
-
-  const load = useCallback(async () => {
-    setLoadState("loading");
-    setError(null);
-    try {
-      const response = await fetchLibraryMaterialDetail(id);
-      if (!mounted.current) return;
-      if (response?.material) {
-        setMaterial(response.material);
-        setLoadState("ready");
-        return;
-      }
-      if (mockAllowed) {
-        const mock = getMockMaterial(id);
-        if (mock) {
-          setMaterial(mock);
-          setLoadState("ready");
-          return;
-        }
-      }
-      setMaterial(null);
-      setError("内容不存在或已下架");
-      setLoadState("error");
-    } catch (loadError) {
-      if (!mounted.current) return;
-      if (mockAllowed) {
-        const mock = getMockMaterial(id);
-        if (mock) {
-          setMaterial(mock);
-          setLoadState("ready");
-          return;
-        }
-      }
-      setMaterial(null);
-      setError(formatPortalError(loadError));
-      setLoadState("error");
-    }
-  }, [id]);
-
-  useEffect(() => {
-    mounted.current = true;
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => {
-      mounted.current = false;
-      window.clearTimeout(timer);
-    };
-  }, [load]);
 
   const total = material?.pageCount ?? material?.pages.length ?? 0;
   const free = !material || material.price === 0;
@@ -128,28 +72,11 @@ export default function Reader({ id }: { id: string }) {
   }, [page]);
 
   if (loadState === "loading") {
-    return (
-      <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">LOADING / 加载中</p>
-        <Link href="/library" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
-          ← 返回书库
-        </Link>
-      </main>
-    );
+    return <LibraryLoading />;
   }
 
   if (loadState === "error" || !material) {
-    return (
-      <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">404 / NOT FOUND</p>
-        <p className="mt-4 text-sm text-ink/60">
-          内容不存在或已下架{error ? `（${error}）` : ""}。
-        </p>
-        <Link href="/library" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
-          ← 返回书库
-        </Link>
-      </main>
-    );
+    return <LibraryNotFound error={error} />;
   }
 
   const progress = ((page + 1) / total) * 100;

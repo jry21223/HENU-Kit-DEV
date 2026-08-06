@@ -1,101 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   MATERIAL_TYPES,
-  getMaterial as getMockMaterial,
   type Material,
 } from "@/lib/library/mock";
 import { getMaterials } from "@/lib/library/gateway";
-import {
-  fetchLibraryMaterialDetail,
-  formatPortalError,
-  mockAllowed,
-} from "@/lib/api/client";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
-
-type LoadState = "loading" | "ready" | "error";
+import {
+  LibraryLoading,
+  LibraryNotFound,
+  useMaterialDetail,
+} from "@/lib/library/use-material-detail";
 
 export default function ItemDetail({ id }: { id: string }) {
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [material, setMaterial] = useState<Material | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { loadState, material, error } = useMaterialDetail(id);
   useReveal();
   const [tocOpen, setTocOpen] = useState(false);
-  const mounted = useRef(true);
-
-  const load = useCallback(async () => {
-    setLoadState("loading");
-    setError(null);
-    try {
-      const response = await fetchLibraryMaterialDetail(id);
-      if (!mounted.current) return;
-      if (response?.material) {
-        setMaterial(response.material);
-        setLoadState("ready");
-        return;
-      }
-      if (mockAllowed) {
-        const mock = getMockMaterial(id);
-        if (mock) {
-          setMaterial(mock);
-          setLoadState("ready");
-          return;
-        }
-      }
-      setMaterial(null);
-      setError("内容不存在或已下架");
-      setLoadState("error");
-    } catch (loadError) {
-      if (!mounted.current) return;
-      if (mockAllowed) {
-        const mock = getMockMaterial(id);
-        if (mock) {
-          setMaterial(mock);
-          setLoadState("ready");
-          return;
-        }
-      }
-      setMaterial(null);
-      setError(formatPortalError(loadError));
-      setLoadState("error");
-    }
-  }, [id]);
-
-  useEffect(() => {
-    mounted.current = true;
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => {
-      mounted.current = false;
-      window.clearTimeout(timer);
-    };
-  }, [load]);
 
   if (loadState === "loading") {
-    return (
-      <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">LOADING / 加载中</p>
-        <Link href="/library" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
-          ← 返回书库
-        </Link>
-      </main>
-    );
+    return <LibraryLoading />;
   }
 
   if (loadState === "error" || !material) {
-    return (
-      <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">404 / NOT FOUND</p>
-        <p className="mt-4 text-sm text-ink/60">
-          内容不存在或已下架{error ? `（${error}）` : ""}。
-        </p>
-        <Link href="/library" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
-          ← 返回书库
-        </Link>
-      </main>
-    );
+    return <LibraryNotFound error={error} />;
   }
 
   const t = MATERIAL_TYPES[material.type];
