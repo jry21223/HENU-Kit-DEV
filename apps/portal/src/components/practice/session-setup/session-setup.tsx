@@ -5,8 +5,21 @@ import { fetchQuizCraftCatalog } from "@/lib/api/client";
 import type { QuizCraftCatalogChapter } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import TransitionLink from "@/components/practice/transition/transition-link";
+import {
+  isValidQuestionCount,
+  MAX_QUESTION_COUNT,
+  MIN_QUESTION_COUNT,
+} from "@/lib/practice/question-count";
 
 export type SessionMode = "random" | "difficult" | "chapter";
+
+/** Every supported session mode, in display order. */
+export const SESSION_MODES: SessionMode[] = ["random", "difficult", "chapter"];
+
+/** Narrowing guard for an untrusted URL-mode value. */
+export function isSessionMode(value: string): value is SessionMode {
+  return SESSION_MODES.includes(value as SessionMode);
+}
 
 /** One composed session selection, ready for createPracticeSession. */
 export interface SessionSelection {
@@ -20,9 +33,6 @@ const MODES: Array<{ value: SessionMode; label: string; description: string }> =
   { value: "difficult", label: "难题", description: "优先挑选历史答错率高的题，挑战一下。" },
   { value: "chapter", label: "章节", description: "只练所选章节的题，按章节推进。" },
 ];
-
-const MIN_COUNT = 1;
-const MAX_COUNT = 500;
 
 type ChaptersState =
   | { kind: "loading" }
@@ -72,7 +82,7 @@ export default function SessionSetup({
   }, [bankID, bankVersionID, chaptersRetry]);
 
   const countValue = questionCount.trim() === "" ? Number.NaN : Number(questionCount);
-  const countValid = Number.isInteger(countValue) && countValue >= MIN_COUNT && countValue <= MAX_COUNT;
+  const countValid = isValidQuestionCount(countValue);
   const countTouched = questionCount.trim() !== "";
 
   const chaptersReady = chaptersState.kind === "ready" && chaptersState.chapters.length > 0;
@@ -96,8 +106,8 @@ export default function SessionSetup({
       <input
         id="session-question-count"
         type="number"
-        min={MIN_COUNT}
-        max={MAX_COUNT}
+        min={MIN_QUESTION_COUNT}
+        max={MAX_QUESTION_COUNT}
         inputMode="numeric"
         value={questionCount}
         onChange={(event) => setQuestionCount(event.target.value)}
@@ -105,7 +115,7 @@ export default function SessionSetup({
       />
       {countTouched && !countValid && (
         <p role="alert" className="mt-2 text-sm text-accent">
-          题数需为 {MIN_COUNT} 到 {MAX_COUNT} 之间的整数。
+          题数需为 {MIN_QUESTION_COUNT} 到 {MAX_QUESTION_COUNT} 之间的整数。
         </p>
       )}
     </div>

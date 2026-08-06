@@ -21,7 +21,11 @@ import type {
 } from "@/lib/api/types";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
-import SessionSetup, { type SessionSelection } from "@/components/practice/session-setup/session-setup";
+import SessionSetup, {
+  isSessionMode,
+  type SessionSelection,
+} from "@/components/practice/session-setup/session-setup";
+import { isValidQuestionCount } from "@/lib/practice/question-count";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 
@@ -86,7 +90,7 @@ function practiceInputFromLocation(): {
     // show the mode selection screen instead of silently defaulting.
     return { needsSetup: true, bankID, bankVersionID };
   }
-  if (mode !== "random" && mode !== "difficult" && mode !== "chapter") {
+  if (!isSessionMode(mode)) {
     return { error: "练习模式无效，请从题库目录重新选择。" };
   }
   const chapterID = params.get("chapter_id")?.trim() || undefined;
@@ -95,7 +99,7 @@ function practiceInputFromLocation(): {
   }
   const countParam = params.get("question_count")?.trim();
   const questionCount = countParam ? Number(countParam) : undefined;
-  if (questionCount !== undefined && (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 500)) {
+  if (questionCount !== undefined && !isValidQuestionCount(questionCount)) {
     return { error: "题目数量必须在 1 到 500 之间。" };
   }
   const input: PortalPracticeSessionInput = {
@@ -425,7 +429,7 @@ export default function QuizPage() {
     params.set("bank_version_id", setupBank.bankVersionID);
     params.set("mode", selection.mode);
     if (selection.chapterID) params.set("chapter_id", selection.chapterID);
-    if (Number.isInteger(selection.questionCount) && selection.questionCount >= 1) {
+    if (isValidQuestionCount(selection.questionCount)) {
       params.set("question_count", String(selection.questionCount));
     }
     prepareSessionLoad();
