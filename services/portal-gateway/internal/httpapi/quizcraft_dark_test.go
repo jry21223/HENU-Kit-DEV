@@ -200,6 +200,10 @@ func TestRouterServesRealQuizCraftCatalogOnlyWhenExplicitlyEnabled(t *testing.T)
 					Name          string `json:"name"`
 					QuestionCount int    `json:"question_count"`
 					Available     bool   `json:"available"`
+					Chapters      []struct {
+						ID   string `json:"id"`
+						Name string `json:"name"`
+					} `json:"chapters"`
 				} `json:"banks"`
 				RequestID string `json:"request_id"`
 			}
@@ -212,6 +216,9 @@ func TestRouterServesRealQuizCraftCatalogOnlyWhenExplicitlyEnabled(t *testing.T)
 			bank := payload.Banks[0]
 			if bank.BankID != "11111111-1111-4111-8111-111111111111" || bank.BankVersionID != "22222222-2222-4222-8222-222222222222" || bank.Name != "计算机基础" || bank.QuestionCount != 42 || !bank.Available {
 				t.Fatalf("enabled V2 catalog bank = %+v", bank)
+			}
+			if len(bank.Chapters) != 1 || bank.Chapters[0].ID != "chapter-1" || bank.Chapters[0].Name != "绪论" {
+				t.Fatalf("enabled V2 catalog bank chapters = %+v, want the published chapter facts passed through", bank.Chapters)
 			}
 		})
 	}

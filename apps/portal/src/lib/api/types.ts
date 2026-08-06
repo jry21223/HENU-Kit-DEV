@@ -424,6 +424,13 @@ export interface QuizCraftCatalogBank {
   name: string;
   question_count: number;
   available: boolean;
+  /** Published chapter facts; absent when the serving Gateway predates #268. */
+  chapters?: QuizCraftCatalogChapter[];
+}
+
+export interface QuizCraftCatalogChapter {
+  id: string;
+  name: string;
 }
 
 export interface QuizCraftCatalogResponse {

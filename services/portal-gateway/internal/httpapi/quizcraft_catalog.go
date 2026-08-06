@@ -11,18 +11,25 @@ import (
 // quizCraftCatalogResponse is deliberately local to the dark Portal handoff.
 // It is not added to the public OpenAPI contract before the #166 cutover.
 // Browser clients receive only the stable identifiers needed to start a
-// practice session and the honest published availability state.
+// practice session, the honest published availability state, and the
+// published chapter facts required to compose a chapter practice session.
 type quizCraftCatalogResponse struct {
 	Banks     []quizCraftCatalogBank `json:"banks"`
 	RequestID string                 `json:"request_id"`
 }
 
 type quizCraftCatalogBank struct {
-	BankID        string `json:"bank_id"`
-	BankVersionID string `json:"bank_version_id"`
-	Name          string `json:"name"`
-	QuestionCount int    `json:"question_count"`
-	Available     bool   `json:"available"`
+	BankID        string                    `json:"bank_id"`
+	BankVersionID string                    `json:"bank_version_id"`
+	Name          string                    `json:"name"`
+	QuestionCount int                       `json:"question_count"`
+	Available     bool                      `json:"available"`
+	Chapters      []quizCraftCatalogChapter `json:"chapters"`
+}
+
+type quizCraftCatalogChapter struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 func (h *Handler) getQuizCraftCatalog(w http.ResponseWriter, r *http.Request) {
@@ -44,6 +51,10 @@ func (h *Handler) getQuizCraftCatalog(w http.ResponseWriter, r *http.Request) {
 
 	banks := make([]quizCraftCatalogBank, 0, len(result.Data))
 	for _, bank := range result.Data {
+		chapters := make([]quizCraftCatalogChapter, 0, len(bank.Chapters))
+		for _, chapter := range bank.Chapters {
+			chapters = append(chapters, quizCraftCatalogChapter{ID: chapter.ID, Name: chapter.Name})
+		}
 		banks = append(banks, quizCraftCatalogBank{
 			BankID:        bank.BankID,
 			BankVersionID: bank.BankVersionID,
@@ -53,6 +64,7 @@ func (h *Handler) getQuizCraftCatalog(w http.ResponseWriter, r *http.Request) {
 			// published version is available to start; it is never invented
 			// from Portal-owned fallback data.
 			Available: true,
+			Chapters:  chapters,
 		})
 	}
 	writeJSON(w, http.StatusOK, quizCraftCatalogResponse{
