@@ -100,14 +100,26 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 	}, nil
 }
 
+// ScopeOf returns the product named by a permission code's first segment
+// (e.g. "portal.notice.read" -> "portal"). Codes without a product prefix
+// keep the reserved "platform" scope name.
+func ScopeOf(permissionCode string) string {
+	product, _, _ := strings.Cut(permissionCode, ".")
+	if product == "" {
+		return "platform"
+	}
+	return product
+}
+
 // CheckPermission verifies a permission against Platform Core. Platform Core
 // rejects checks without a scope (validScope fails on an empty kind, which the
 // Gateway would surface as a 503), so the scope is derived from the permission
-// code: the product named by the code's first segment (e.g. "portal.notice.read"
-// checks the "portal" product scope), and platform scope for "platform.*" codes.
+// code via ScopeOf: the product named by the code's first segment (e.g.
+// "portal.notice.read" checks the "portal" product scope), and platform scope
+// for "platform.*" codes.
 func (c *Client) CheckPermission(ctx context.Context, exchangeToken, permissionCode string) error {
 	scope := map[string]string{"kind": "platform"}
-	if product, _, ok := strings.Cut(permissionCode, "."); ok && product != "platform" {
+	if product := ScopeOf(permissionCode); product != "platform" {
 		scope = map[string]string{"kind": "product", "product_code": product}
 	}
 	body, _ := json.Marshal(map[string]any{

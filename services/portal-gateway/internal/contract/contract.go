@@ -2,7 +2,10 @@
 // from the public OpenAPI schema.
 package contract
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // ModuleSummary is a read-only product summary for Portal's module cards.
 type ModuleSummary struct {
@@ -54,17 +57,13 @@ type BankSummary struct {
 	QuestionCT int    `json:"question_count"`
 }
 
-// NoticeListResponse represents published notices.
-type NoticeListResponse struct {
-	Notices   []NoticeSummary `json:"notices"`
+// NoticeFeedEnvelope mirrors the Notice owner's bounded snapshot envelope.
+// Data is the owner's raw {"items": [...], "generated_at": ...} snapshot,
+// forwarded to Portal as-is; the schema is documented in portal-gateway.yaml
+// (NoticeFeedEnvelope/NoticeFeed/NoticeFeedItem).
+type NoticeFeedEnvelope struct {
+	Data      json.RawMessage `json:"data"`
 	RequestID string          `json:"request_id"`
-}
-
-type NoticeSummary struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Source    string    `json:"source"`
-	Published time.Time `json:"published_at"`
 }
 
 // ErrorEnvelope is the standard error response. Error is the machine-readable

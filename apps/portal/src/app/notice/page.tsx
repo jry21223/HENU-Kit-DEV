@@ -26,9 +26,9 @@ export default function NoticeBoardPage() {
     setError(null);
     try {
       const envelope = await fetchNoticeFeed();
-      // 通知服务的快照携带完整生命周期；只有已发布（进入分发）的内容
-      // 才是面向用户的公告，其余状态不对外呈现。
-      setItems(envelope.data.items.filter((item) => item.state === "distributed"));
+      // Gateway 已按生命周期过滤快照（只有 distributed 的公告才会离开
+      // 网关），前端直接渲染即可，无需重复过滤。
+      setItems(envelope.data.items);
       setLoadState("ready");
     } catch (cause) {
       if (cause instanceof PortalUnauthorizedError) {

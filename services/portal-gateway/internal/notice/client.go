@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"henukit.dev/portal-gateway/internal/platformcore"
 	"henukit.dev/portal-gateway/internal/serviceauth"
 )
 
@@ -24,34 +25,46 @@ const SnapshotPath = "/api/v1/console-notices"
 // must never be exposed to Portal users.
 const distributedState = "distributed"
 
-// Sentinel errors map Notice owner rejections to honest Gateway responses.
-var (
-	ErrUnauthorized = errors.New("notice rejected service authentication")
-	ErrForbidden    = errors.New("notice denied permission or scope")
+// readPermissionCode is the Notice owner's permission code for the signed
+// snapshot read. Its first segment names the owner's product scope, which the
+// Gateway derives via platformcore.ScopeOf.
+const readPermissionCode = "notice.read"
+
+// Header names the Notice owner requires on the signed actor-bound read.
+const (
+	actorUserIDHeader    = "X-Actor-User-Id"
+	requestIDHeader      = "X-Request-Id"
+	permissionCodeHeader = "X-Permission-Code"
+	scopeKindHeader      = "X-Scope-Kind"
+	productCodeHeader    = "X-Product-Code"
 )
+
+// scopeKindProduct is the scope kind of the Notice owner's product scope:
+// the read is always scoped to the notice product named by
+// readPermissionCode.
+const scopeKindProduct = "product"
 
 // Client proxies read-only requests to the Notice service.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	signer     *serviceauth.Signer
-	configErr  error
 }
 
-// NewClient validates the Notice service configuration. A misconfigured
-// client is still returned so existing call sites keep compiling, but every
-// operation fails with the explicit configuration error instead of silently
-// making signed requests with empty credentials.
-func NewClient(baseURL, clientID, clientSecret, keyID string) *Client {
+// NewClient validates the Notice service configuration and returns an error
+// immediately when any credential is missing or malformed, so a
+// misconfigured client can never make signed requests with empty
+// credentials.
+func NewClient(baseURL, clientID, clientSecret, keyID string) (*Client, error) {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || strings.TrimSpace(clientID) == "" || len(clientSecret) < 32 || strings.TrimSpace(keyID) == "" {
-		return &Client{configErr: errors.New("invalid Notice client configuration: baseURL must be an absolute http(s) URL without credentials and clientID, clientSecret, and keyID must be set")}
+		return nil, errors.New("invalid Notice client configuration: baseURL must be an absolute http(s) URL without credentials and clientID, clientSecret, and keyID must be set")
 	}
 	return &Client{
 		baseURL:    strings.TrimRight(parsed.String(), "/"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		signer:     serviceauth.NewSigner(clientID, clientSecret, keyID),
-	}
+	}, nil
 }
 
 // List fetches the Notice owner's bounded snapshot for the Portal Session
@@ -61,18 +74,15 @@ func NewClient(baseURL, clientID, clientSecret, keyID string) *Client {
 // the Gateway. A genuine empty items array is successful; absent or null
 // items are invalid.
 func (c *Client) List(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
-	if c.configErr != nil {
-		return nil, c.configErr
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+SnapshotPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("NewRequest: %w", err)
 	}
-	req.Header.Set("X-Actor-User-Id", actorUserID)
-	req.Header.Set("X-Request-Id", requestID)
-	req.Header.Set("X-Permission-Code", "notice.read")
-	req.Header.Set("X-Scope-Kind", "product")
-	req.Header.Set("X-Product-Code", "notice")
+	req.Header.Set(actorUserIDHeader, actorUserID)
+	req.Header.Set(requestIDHeader, requestID)
+	req.Header.Set(permissionCodeHeader, readPermissionCode)
+	req.Header.Set(scopeKindHeader, scopeKindProduct)
+	req.Header.Set(productCodeHeader, platformcore.ScopeOf(readPermissionCode))
 	if err := c.signer.Sign(req); err != nil {
 		return nil, fmt.Errorf("sign: %w", err)
 	}
@@ -83,13 +93,10 @@ func (c *Client) List(ctx context.Context, actorUserID, requestID string) (json.
 	}
 	defer resp.Body.Close()
 
-	switch resp.StatusCode {
-	case http.StatusUnauthorized:
-		return nil, ErrUnauthorized
-	case http.StatusForbidden:
-		return nil, ErrForbidden
-	case http.StatusOK:
-	default:
+	// Every failed owner read surfaces as a 503 for the Portal user, so the
+	// owner's 401/403 rejections fold into the same wrapped error with the
+	// status code retained for operator logs.
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("notice: status %d", resp.StatusCode)
 	}
 
