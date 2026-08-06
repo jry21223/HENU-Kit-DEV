@@ -93,6 +93,13 @@ func (c *CommandClient) UpdateRankingProfile(ctx context.Context, actorUserID, r
 	return c.command(ctx, http.MethodPatch, UpdateRankingProfilePath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeOperationEnvelope)
 }
 
+// UpdateRankingProfile applies the signed-in user's public ranking identity.
+// Core owns nickname normalization and the per-user idempotency history; the
+// Gateway relays the accepted OperationEnvelope unchanged.
+func (c *CommandClient) UpdateRankingProfile(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
+	return c.command(ctx, http.MethodPatch, UpdateRankingProfilePath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeOperationEnvelope)
+}
+
 type commandEnvelopeValidator func([]byte) error
 
 func (c *CommandClient) command(ctx context.Context, path, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie, expectedStatus int, validate commandEnvelopeValidator) (CommandResult, error) {
