@@ -15,6 +15,9 @@ import {
   unfavoriteQuestion,
 } from "@/lib/api/client";
 import type { FavoriteQuestion } from "@/lib/api/types";
+import { redirectToLogin } from "@/lib/auth/redirect";
+import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
+import { createIdempotencyKey, writePracticeSessionHandoff } from "@/lib/practice/session-handoff";
 import { cn } from "@/lib/cn";
 
 type ListState =
@@ -22,13 +25,6 @@ type ListState =
   | { status: "anonymous" }
   | { status: "error"; message: string }
   | { status: "ready"; items: FavoriteQuestion[] };
-
-function createIdempotencyKey(prefix: string) {
-  const random =
-    globalThis.crypto?.randomUUID?.() ??
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  return `${prefix}:${random}`;
-}
 
 function FavoriteRow({
   item,
@@ -92,7 +88,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
   const heroRef = usePageEnter<HTMLDivElement>("list", bankID);
   const router = useRouter();
   const [state, setState] = useState<ListState>({ status: "loading" });
-  const [retry, setRetry] = useState(0);
+  const { data, error, retry } = useDeferredFetch(() => fetchBankFavorites(bankID), [bankID]);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -112,35 +108,21 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
   }, []);
 
   useEffect(() => {
-    // Deferred to a microtask: the fetch starts here, so the pending state
-    // must still be published before any response arrives (and the effect
-    // body itself never calls setState synchronously).
-    let cancelled = false;
-    void Promise.resolve()
-      .then(() => {
-        if (cancelled) return;
-        setState({ status: "loading" });
-        setRemoveError(null);
-      })
-      .then(() => fetchBankFavorites(bankID))
-      .then(
-        (response) => {
-          if (cancelled) return;
-          setState({ status: "ready", items: response.data });
-        },
-        (error: unknown) => {
-          if (cancelled) return;
-          if (error instanceof PortalUnauthorizedError) {
-            setState({ status: "anonymous" });
-            return;
-          }
-          setState({ status: "error", message: formatPortalError(error) });
-        }
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, [bankID, retry]);
+    if (error !== undefined) {
+      if (error instanceof PortalUnauthorizedError) {
+        setState({ status: "anonymous" });
+        return;
+      }
+      setState({ status: "error", message: formatPortalError(error) });
+      return;
+    }
+    if (data) {
+      setState({ status: "ready", items: data.data });
+      return;
+    }
+    setState({ status: "loading" });
+    setRemoveError(null);
+  }, [data, error]);
 
   const removeFavorite = async (item: FavoriteQuestion) => {
     if (state.status !== "ready" || removing.has(item.question_id)) return;
@@ -164,9 +146,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
       );
     } catch (error) {
       if (error instanceof PortalUnauthorizedError) {
-        window.location.assign(
-          `/account/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
-        );
+        redirectToLogin();
         return;
       }
       setRemoveError(formatPortalError(error));
@@ -193,10 +173,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
       try {
         // The quiz page has no endpoint to re-read an existing session by id,
         // so the created session travels through sessionStorage.
-        window.sessionStorage.setItem(
-          `henukit.practice.session.v1:${payload.session_id}`,
-          JSON.stringify(payload)
-        );
+        writePracticeSessionHandoff(payload);
       } catch {
         setStartError("无法在本浏览器保存练习会话，请检查隐私设置后重试。");
         return;
@@ -204,9 +181,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
       router.push(`/practice/quiz?session_id=${encodeURIComponent(payload.session_id)}`);
     } catch (error) {
       if (error instanceof PortalUnauthorizedError) {
-        window.location.assign(
-          `/account/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
-        );
+        redirectToLogin();
         return;
       }
       setStartError(formatPortalError(error));
@@ -282,7 +257,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
         <section data-testid="practice-favorites-folder-error" className="mt-10">
           <ErrorBanner
             message={state.message}
-            onRetry={() => setRetry((value) => value + 1)}
+            onRetry={() => retry()}
           />
         </section>
       )}

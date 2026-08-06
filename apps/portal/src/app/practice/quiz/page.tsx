@@ -23,6 +23,9 @@ import type {
   PracticeFeedbackCategory,
 } from "@/lib/api/types";
 import { authStore } from "@/lib/auth/store";
+import { redirectToLogin } from "@/lib/auth/redirect";
+import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
+import { createIdempotencyKey, readPracticeSessionHandoff } from "@/lib/practice/session-handoff";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
@@ -99,11 +102,6 @@ function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; erro
   return { input, scope: JSON.stringify(input) };
 }
 
-function createBrowserKey(prefix: string) {
-  const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  return `${prefix}:${random}`;
-}
-
 type IdempotencyMemory = { current: Record<string, string> };
 
 function idempotencyKeyFor(scope: string, prefix: string, memory: IdempotencyMemory) {
@@ -116,7 +114,7 @@ function idempotencyKeyFor(scope: string, prefix: string, memory: IdempotencyMem
       memory.current[scope] = existing;
       return existing;
     }
-    const created = createBrowserKey(prefix);
+    const created = createIdempotencyKey(prefix);
     window.sessionStorage.setItem(storageKey, created);
     memory.current[scope] = created;
     return created;
@@ -124,7 +122,7 @@ function idempotencyKeyFor(scope: string, prefix: string, memory: IdempotencyMem
     // Storage can be disabled by the browser. Keep the key in this component
     // so a logical retry still reaches the same Core idempotency record; no
     // user answer or Core identity is persisted.
-    const created = createBrowserKey(prefix);
+    const created = createIdempotencyKey(prefix);
     memory.current[scope] = created;
     return created;
   }
@@ -222,22 +220,7 @@ export default function QuizPage() {
       if (sessionIDParam) {
         // 收藏练习会话由收藏夹页通过 createFavoritesSession 创建，经
         // sessionStorage 交接到本页（不存在按 ID 读取会话的服务端接口）。
-        let payload: PortalPracticeSessionResponse["data"] | null = null;
-        try {
-          const raw = window.sessionStorage.getItem(`henukit.practice.session.v1:${sessionIDParam}`);
-          if (raw) {
-            const parsedPayload = JSON.parse(raw) as PortalPracticeSessionResponse["data"];
-            if (
-              parsedPayload &&
-              parsedPayload.session_id === sessionIDParam &&
-              Array.isArray(parsedPayload.questions)
-            ) {
-              payload = parsedPayload;
-            }
-          }
-        } catch {
-          payload = null;
-        }
+        const payload = readPracticeSessionHandoff(sessionIDParam);
         if (!cancelled) {
           if (payload) {
             setSession(payload);
@@ -283,33 +266,23 @@ export default function QuizPage() {
 
   const sessionID = session?.session_id;
   const sessionBankID = session?.bank_id;
+  // Best-effort seed of this bank's favorite set; a failed read keeps the
+  // toggle usable and the server write result remains the source of truth.
+  const { data: favoritesData } = useDeferredFetch(
+    () => {
+      if (!user || !sessionBankID) return undefined;
+      return fetchBankFavorites(sessionBankID);
+    },
+    [user, sessionID, sessionBankID]
+  );
   useEffect(() => {
-    // Best-effort seed of this bank's favorite set; a failed read keeps the
-    // toggle usable and the server write result remains the source of truth.
-    // The reset is deferred to a microtask so the effect never calls setState
-    // synchronously; it still lands before any fetch response can publish.
-    let cancelled = false;
-    void Promise.resolve()
-      .then(() => {
-        if (cancelled) return;
-        setFavorites(null);
-        setFavoriteError(null);
-      })
-      .then(() => {
-        if (cancelled || !user || !sessionBankID) return undefined;
-        return fetchBankFavorites(sessionBankID);
-      })
-      .then((response) => {
-        if (cancelled || !response) return;
-        setFavorites(new Set(response.data.map((item) => item.question_id)));
-      })
-      .catch(() => {
-        // Unknown favorite state is not an error the user must fix.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user, sessionID, sessionBankID]);
+    if (favoritesData) {
+      setFavorites(new Set(favoritesData.data.map((item) => item.question_id)));
+      return;
+    }
+    setFavorites(null);
+    setFavoriteError(null);
+  }, [favoritesData]);
 
   const questions = session?.questions ?? [];
   const question = questions[idx];
@@ -590,15 +563,13 @@ export default function QuizPage() {
     if (!question || !session || favoriteBusy) return;
     if (!authReady) return;
     if (!user) {
-      window.location.assign(
-        `/account/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
-      );
+      redirectToLogin();
       return;
     }
     const wasFavorited = favorites?.has(question.question_id) ?? false;
     const scope = `favorite:${session.bank_id}:${question.question_id}`;
     const remembered = favoriteKeys.current[scope];
-    const idempotencyKey = remembered ?? createBrowserKey("practice-favorite");
+    const idempotencyKey = remembered ?? createIdempotencyKey("practice-favorite");
     if (!remembered) favoriteKeys.current[scope] = idempotencyKey;
     setFavoriteBusy(true);
     setFavoriteError(null);
@@ -619,9 +590,7 @@ export default function QuizPage() {
       })
       .catch((error: unknown) => {
         if (error instanceof PortalUnauthorizedError) {
-          window.location.assign(
-            `/account/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
-          );
+          redirectToLogin();
           return;
         }
         setFavoriteError(formatPortalError(error));

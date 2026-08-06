@@ -12,6 +12,7 @@ import {
   PortalUnauthorizedError,
 } from "@/lib/api/client";
 import type { FavoriteFolder } from "@/lib/api/types";
+import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
 
 type OverviewState =
   | { status: "loading" }
@@ -52,37 +53,23 @@ function FolderCard({ folder, index }: { folder: FavoriteFolder; index: number }
 export default function FavoritesOverview() {
   usePageEnter(null);
   const [state, setState] = useState<OverviewState>({ status: "loading" });
-  const [retry, setRetry] = useState(0);
+  const { data, error, retry } = useDeferredFetch(() => fetchFavoritesOverview(), []);
 
   useEffect(() => {
-    // Deferred to a microtask: the fetch starts here, so the pending state
-    // must still be published before any response arrives (and the effect
-    // body itself never calls setState synchronously).
-    let cancelled = false;
-    void Promise.resolve()
-      .then(() => {
-        if (cancelled) return;
-        setState({ status: "loading" });
-      })
-      .then(() => fetchFavoritesOverview())
-      .then(
-        (response) => {
-          if (cancelled) return;
-          setState({ status: "ready", folders: response.data });
-        },
-        (error: unknown) => {
-          if (cancelled) return;
-          if (error instanceof PortalUnauthorizedError) {
-            setState({ status: "anonymous" });
-            return;
-          }
-          setState({ status: "error", message: formatPortalError(error) });
-        }
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, [retry]);
+    if (error !== undefined) {
+      if (error instanceof PortalUnauthorizedError) {
+        setState({ status: "anonymous" });
+        return;
+      }
+      setState({ status: "error", message: formatPortalError(error) });
+      return;
+    }
+    if (data) {
+      setState({ status: "ready", folders: data.data });
+      return;
+    }
+    setState({ status: "loading" });
+  }, [data, error]);
 
   return (
     <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8 md:py-16">
@@ -116,7 +103,7 @@ export default function FavoritesOverview() {
         <section data-testid="practice-favorites-error" className="mt-8">
           <ErrorBanner
             message={state.message}
-            onRetry={() => setRetry((value) => value + 1)}
+            onRetry={() => retry()}
           />
         </section>
       )}
