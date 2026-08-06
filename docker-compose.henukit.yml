@@ -246,6 +246,35 @@ services:
       retries: 12
       start_period: 5s
 
+  # Library owns the Console materials operation surface. It wraps the retired
+  # Study admin API over HTTP (STUDY_LEGACY_API_URL / STUDY_LEGACY_ADMIN_TOKEN);
+  # those credentials are mandatory and the service fails closed when absent.
+  library:
+    build:
+      context: ./services/library
+    environment:
+      LIBRARY_ADDR: ${LIBRARY_ADDR:-:8095}
+      LIBRARY_DATABASE_URL: ${LIBRARY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/library?sslmode=disable}
+      LIBRARY_REDIS_URL: ${LIBRARY_REDIS_URL:-redis://redis:6379/5}
+      LIBRARY_SERVICE_CLIENT_ID: ${LIBRARY_SUMMARY_CLIENT_ID:-console-gateway-library}
+      LIBRARY_SERVICE_KEY_ID: ${LIBRARY_SUMMARY_KEY_ID:-library-summary-key}
+      LIBRARY_SERVICE_SECRET: ${LIBRARY_SUMMARY_CLIENT_SECRET:-replace-library-summary-client-secret-32bytes-min!!}
+      STUDY_LEGACY_API_URL: ${STUDY_LEGACY_API_URL:-}
+      STUDY_LEGACY_ADMIN_TOKEN: ${STUDY_LEGACY_ADMIN_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8095"
+    healthcheck:
+      test: ["CMD", "/library-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
   portal-gateway:
     build:
       context: ./services/portal-gateway
@@ -352,10 +381,10 @@ services:
       PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:-replace-platform-summary-client-secret-32bytes-min!!}
       PLATFORM_SUMMARY_KEY_ID: ${PLATFORM_SUMMARY_KEY_ID:-platform-summary-key}
       NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
-      # Notice and Food are first-class compose owners; empty overrides degrade
-      # the module to 503 instead of resolving a host that does not run.
+      # Notice, Food and Library are first-class compose owners; empty overrides
+      # degrade the module to 503 instead of resolving a host that does not run.
       NOTICE_API_URL: ${NOTICE_API_URL:-}
-      LIBRARY_API_URL: ${LIBRARY_API_URL:-}
+      LIBRARY_API_URL: ${LIBRARY_API_URL:-http://library:8095}
       FOOD_API_URL: ${FOOD_API_URL:-}
       NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
       NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
@@ -388,6 +417,8 @@ services:
       notice:
         condition: service_started
       food:
+        condition: service_started
+      library:
         condition: service_started
     ports:
       - "8082:8082"
