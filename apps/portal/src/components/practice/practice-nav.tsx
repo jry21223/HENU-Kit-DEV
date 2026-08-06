@@ -81,7 +81,6 @@ export default function PracticeNav() {
                 <span
                   key={tab.href}
                   title={PRACTICE_COMING_SOON_COPY}
-                  aria-disabled
                   className={cn(
                     "relative cursor-not-allowed py-1 font-mono text-xs tracking-widest",
                     active ? "text-ink" : "text-ink/50"

@@ -58,7 +58,7 @@ export default function ListDetail({ list }: { list: QuizListMeta }) {
             <button
               type="button"
               disabled
-              className="group relative inline-flex cursor-not-allowed items-center gap-3 overflow-hidden border border-line px-7 py-3.5 font-mono text-sm tracking-widest text-ink/40"
+              className="relative inline-flex cursor-not-allowed items-center gap-3 overflow-hidden border border-line px-7 py-3.5 font-mono text-sm tracking-widest text-ink/40"
             >
               {PRACTICE_COMING_SOON_COPY}
             </button>
@@ -100,10 +100,10 @@ function QuestionRow({
   return (
     <li>
       <div
-        className="group grid grid-cols-[3rem_1fr_4rem_4rem_3rem] items-center gap-3 border-b border-line py-3.5 md:grid-cols-[4rem_1fr_6rem_5rem_4rem]"
+        className="grid grid-cols-[3rem_1fr_4rem_4rem_3rem] items-center gap-3 border-b border-line py-3.5 md:grid-cols-[4rem_1fr_6rem_5rem_4rem]"
         title={PRACTICE_COMING_SOON_COPY}
       >
-        <span className="font-mono text-xs text-ink/40 group-hover:text-accent">
+        <span className="font-mono text-xs text-ink/40">
           Q-{String(index + 1).padStart(2, "0")}
         </span>
         <span className="truncate text-sm">{q.stem}</span>
