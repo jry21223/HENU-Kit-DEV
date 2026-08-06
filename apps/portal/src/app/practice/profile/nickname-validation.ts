@@ -1,8 +1,11 @@
 /**
- * Client-side mirror of QuizCraft Core's ranking nickname rules
- * (practice_http.go normalizeRankingNickname). The server remains the final
- * authority; this only gives the settings form immediate feedback so a write
- * is not attempted with a nickname Core would reject.
+ * Client-side mirror of QuizCraft Core's ranking nickname rules. The single
+ * source of truth is products/quizcraft/go-service/practice_http.go
+ * (normalizeRankingNickname); keep this file's Han ranges, reserved words,
+ * and identifier-shape rules in lockstep with it. The server remains the
+ * final authority; this only gives the settings form immediate feedback so a
+ * write is not attempted with a nickname Core would reject. Drift is caught
+ * by the accompanying nickname-validation.test.ts (same directory).
  */
 
 export interface RankingNicknameValidation {

@@ -559,11 +559,5 @@ export interface QuizCraftRankingProfileInput {
 /** Idempotent write result envelope returned by Core for profile updates. */
 export interface QuizCraftRankingProfileResponse {
   request_id: string;
-  data: {
-    operation_id: string;
-    state: "succeeded";
-    idempotency_key: string;
-    request_id: string;
-    resource_id: string;
-  };
+  data: PracticeFeedbackOperation;
 }

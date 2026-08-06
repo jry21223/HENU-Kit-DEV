@@ -31,12 +31,7 @@ var (
 	ErrPracticeCommandInvalid      = errors.New("QuizCraft returned an invalid practice command response")
 )
 
-// UpdateRankingProfilePath mirrors quizcraft.yaml's updateRankingProfile
-// command. Unlike the favorites commands it has no /api/v1/portal/... variant
-// in the generated contract, so it is declared alongside its only consumer.
-const UpdateRankingProfilePath = "/api/v1/ranking-profile"
-
-// CommandClient owns only the two Portal-initiated practice commands. Its
+// CommandClient owns only the Portal-initiated practice commands. Its
 // service credential must never be the catalog/read credential.
 type CommandClient struct {
 	baseURL    string
@@ -89,39 +84,43 @@ func (c *CommandClient) CreateFeedback(ctx context.Context, actorUserID, request
 // UpdateRankingProfile applies the signed-in user's public ranking identity.
 // Core owns nickname normalization and the per-user idempotency history; the
 // Gateway relays the accepted OperationEnvelope unchanged.
+//
+// The envelope validation is inlined here instead of being shared as a package
+// function: the favorites branch defines an identically-shaped
+// validatePracticeOperationEnvelope for its write results, and two copies of
+// that name would collide on merge. Consolidate both call sites onto one
+// shared validator once the favorites work is on main.
 func (c *CommandClient) UpdateRankingProfile(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
-	return c.command(ctx, http.MethodPatch, UpdateRankingProfilePath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeOperationEnvelope)
+	return c.command(ctx, http.MethodPatch, UpdateRankingProfilePath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, func(raw []byte) error {
+		envelope, valid := practiceRequiredObject(raw)
+		if !valid || !practiceOnlyKeys(envelope, "request_id", "data") {
+			return errors.New("invalid practice operation envelope")
+		}
+		envelopeRequestID, valid := practiceRequiredString(envelope, "request_id")
+		if !valid || strings.TrimSpace(envelopeRequestID) == "" {
+			return errors.New("invalid practice operation request id")
+		}
+		dataRaw, valid := practiceRequiredRaw(envelope, "data")
+		if !valid {
+			return errors.New("invalid practice operation data")
+		}
+		data, valid := practiceRequiredObject(dataRaw)
+		if !valid || !practiceOnlyKeys(data, "operation_id", "state", "idempotency_key", "request_id", "resource_id") {
+			return errors.New("invalid practice operation data")
+		}
+		operationID, operationOK := practiceRequiredString(data, "operation_id")
+		state, stateOK := practiceRequiredString(data, "state")
+		_, idempotencyOK := practiceRequiredString(data, "idempotency_key")
+		_, innerRequestOK := practiceRequiredString(data, "request_id")
+		resourceID, resourceOK := practiceRequiredString(data, "resource_id")
+		if !operationOK || !validPracticeCommandUUID(operationID) || !stateOK || state != "succeeded" || !idempotencyOK || !innerRequestOK || !resourceOK || !validPracticeCommandUUID(resourceID) {
+			return errors.New("invalid practice operation data")
+		}
+		return nil
+	})
 }
 
 type commandEnvelopeValidator func([]byte) error
-
-func validatePracticeOperationEnvelope(raw []byte) error {
-	envelope, valid := practiceRequiredObject(raw)
-	if !valid || !practiceOnlyKeys(envelope, "request_id", "data") {
-		return errors.New("invalid practice operation envelope")
-	}
-	requestID, valid := practiceRequiredString(envelope, "request_id")
-	if !valid || strings.TrimSpace(requestID) == "" {
-		return errors.New("invalid practice operation request id")
-	}
-	dataRaw, valid := practiceRequiredRaw(envelope, "data")
-	if !valid {
-		return errors.New("invalid practice operation data")
-	}
-	data, valid := practiceRequiredObject(dataRaw)
-	if !valid || !practiceOnlyKeys(data, "operation_id", "state", "idempotency_key", "request_id", "resource_id") {
-		return errors.New("invalid practice operation data")
-	}
-	operationID, operationOK := practiceRequiredString(data, "operation_id")
-	state, stateOK := practiceRequiredString(data, "state")
-	_, idempotencyOK := practiceRequiredString(data, "idempotency_key")
-	_, innerRequestOK := practiceRequiredString(data, "request_id")
-	resourceID, resourceOK := practiceRequiredString(data, "resource_id")
-	if !operationOK || !validPracticeCommandUUID(operationID) || !stateOK || state != "succeeded" || !idempotencyOK || !innerRequestOK || !resourceOK || !validPracticeCommandUUID(resourceID) {
-		return errors.New("invalid practice operation data")
-	}
-	return nil
-}
 
 func (c *CommandClient) command(ctx context.Context, method, path, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie, expectedStatus int, validate commandEnvelopeValidator) (CommandResult, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" || !ValidIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > 2<<20 {
