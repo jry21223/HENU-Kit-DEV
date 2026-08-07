@@ -534,3 +534,30 @@ export interface NoticeListResponse {
   notices: NoticeSummary[];
   request_id: string;
 }
+
+// ---- QuizCraft ranking profile ----
+
+/**
+ * One of the four system avatars Core allows on the public ranking. The
+ * avatar is a controlled enum, never a user upload or account identifier.
+ */
+export type QuizCraftSystemAvatar =
+  | "scholar-blue"
+  | "coder-green"
+  | "reader-amber"
+  | "owl-purple";
+
+/** Body of the signed-in ranking profile write (PATCH /api/v1/ranking-profile). */
+export interface QuizCraftRankingProfileInput {
+  /** Leave empty to use the neutral anonymous public label. */
+  nickname: string;
+  system_avatar: QuizCraftSystemAvatar;
+  /** false opts the account out of public rankings entirely. */
+  visible: boolean;
+}
+
+/** Idempotent write result envelope returned by Core for profile updates. */
+export interface QuizCraftRankingProfileResponse {
+  request_id: string;
+  data: PracticeFeedbackOperation;
+}

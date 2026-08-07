@@ -49,6 +49,8 @@ import type {
   PracticeBanksResponse,
 	QuizCraftCatalogResponse,
   QuizCraftRankingPeriod,
+  QuizCraftRankingProfileInput,
+  QuizCraftRankingProfileResponse,
   QuizCraftRankingResponse,
   SchoolListResponse,
 } from "./types";
@@ -599,4 +601,58 @@ export function formatPortalError(err: unknown): string {
   }
   if (err instanceof Error) return "加载失败，请稍后重试。";
   return "加载失败，请稍后重试。";
+}
+
+// ---- QuizCraft ranking profile ----
+
+/**
+ * Signed-in-only write init for the Core ranking profile command. The PATCH
+ * body carries the public nickname/avatar/opt-out choice; the idempotency key
+ * makes a retry resume the same profile write instead of double-applying it.
+ */
+function rankingProfileCommandInit(
+  idempotencyKey: string,
+  body: QuizCraftRankingProfileInput
+): RequestInit {
+  const key = idempotencyKey.trim();
+  if (key.length < 16 || key.length > 160) {
+    throw new PortalApiError("Invalid Practice idempotency key", {
+      code: "PORTAL_INVALID_PRACTICE_IDEMPOTENCY_KEY",
+    });
+  }
+  return {
+    method: "PATCH",
+    cache: "no-store",
+    // Same browser-to-Gateway boundary as the other Practice commands.
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": key,
+    },
+    body: JSON.stringify(body),
+  };
+}
+
+/**
+ * Saves the signed-in user's public ranking identity. Callers must first
+ * confirm a Portal Session exists; Core rejects anonymous writers with 401.
+ */
+export async function updateQuizCraftRankingProfile(
+  input: QuizCraftRankingProfileInput,
+  idempotencyKey: string
+): Promise<QuizCraftRankingProfileResponse> {
+  return apiFetchRequired<QuizCraftRankingProfileResponse>(
+    "/api/v1/ranking-profile",
+    rankingProfileCommandInit(idempotencyKey, input)
+  );
+}
+
+/** Reads one bank's public ranking for the given period (default weekly). */
+export async function fetchQuizCraftBankRanking(
+  bankID: string,
+  period: QuizCraftRankingPeriod
+): Promise<QuizCraftRankingResponse> {
+  return apiFetchRequired<QuizCraftRankingResponse>(
+    `/api/v1/banks/${encodeURIComponent(bankID)}/rankings?period=${encodeURIComponent(period)}`
+  );
 }

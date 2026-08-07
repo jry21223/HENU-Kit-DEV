@@ -174,6 +174,9 @@ func (h *Handler) Router() chi.Router {
 		// only release allowed to make the public read routes reachable.
 		r.Get(practice.OverallRankingPath, h.getQuizCraftOverallRanking)
 		r.Get(practice.BankRankingPath, h.getQuizCraftBankRanking)
+		// The signed-in ranking identity write is an explicit command like the
+		// favorites writes; Core owns nickname normalization and idempotency.
+		r.Patch("/api/v1/ranking-profile", h.updateRankingProfile)
 	}
 
 	// This is the sole browser-visible QuizCraft write boundary. It is not a
@@ -635,11 +638,23 @@ func (h *Handler) createPracticeFeedback(w http.ResponseWriter, r *http.Request)
 	_, _ = w.Write(result.Raw)
 }
 
-// practiceCommand turns a browser command into exactly one signed Core
-// command. It intentionally does not proxy headers, cookies, actor identity,
-// or mock data. An invalid Portal Session is a 401, while an absent Portal
-// Session is a genuine guest request.
-func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
+// updateRankingProfile is the signed-in-only ranking identity write. Like
+// corrections and favorites it never downgrades to a guest actor and relays
+// Core's OperationEnvelope unchanged.
+func (h *Handler) updateRankingProfile(w http.ResponseWriter, r *http.Request) {
+	h.practiceCommandRunner(w, r, http.StatusOK, false, "请先登录后再设置排行身份", func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+		return h.practiceCommands.UpdateRankingProfile(ctx, actorUserID, requestID, idempotencyKey, raw, anonymousCookie)
+	})
+}
+
+// practiceCommandRunner is the shared relay for every browser-visible
+// practice write: private response headers, the enabled gate, the actor
+// binding, the idempotency key, the exact-body read, the signed Core
+// command, and the relayed result. With guestAllowed the actor comes from
+// practiceCommandActor (an absent Portal Session is a genuine guest
+// request); without it the actor must come from a valid Portal Session, and
+// a guest request is answered with the route's login message instead.
+func (h *Handler) practiceCommandRunner(w http.ResponseWriter, r *http.Request, successStatus int, guestAllowed bool, loginMessage string, command practiceCommand) {
 	setPrivateResponseHeaders(w)
 	if h.practiceCommands == nil {
 		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "practice_commands_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
@@ -648,6 +663,10 @@ func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, succes
 	actorUserID, anonymousCookie, status, err := h.practiceCommandActor(r)
 	if err != nil {
 		writeJSON(w, status, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if !guestAllowed && actorUserID == "" {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: loginMessage, RequestID: requestIDOf(w, r)})
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
@@ -673,6 +692,14 @@ func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, succes
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(successStatus)
 	_, _ = w.Write(result.Raw)
+}
+
+// practiceCommand turns a browser command into exactly one signed Core
+// command. It intentionally does not proxy headers, cookies, actor identity,
+// or mock data. An invalid Portal Session is a 401, while an absent Portal
+// Session is a genuine guest request.
+func (h *Handler) practiceCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
+	h.practiceCommandRunner(w, r, successStatus, true, "登录已过期，请重新登录", command)
 }
 
 func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Request, err error) {

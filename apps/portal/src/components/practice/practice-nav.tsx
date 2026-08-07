@@ -42,7 +42,10 @@ export default function PracticeNav() {
         </div>
 
         <nav className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto border-t border-line px-5 py-2 scrollbar-none md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0 md:py-0">
-          {[...TABS, ...(quizCraftV2ReadsEnabled() ? [{ href: "/practice/leaderboard", index: "P-04", label: "排行榜", match: (p: string) => p.startsWith("/practice/leaderboard") }] : [])].map((tab) => {
+          {[...TABS, ...(quizCraftV2ReadsEnabled() ? [
+            { href: "/practice/leaderboard", index: "P-04", label: "排行榜", match: (p: string) => p.startsWith("/practice/leaderboard") },
+            { href: "/practice/profile", index: "P-05", label: "排行设置", match: (p: string) => p.startsWith("/practice/profile") },
+          ] : [])].map((tab) => {
             const active = tab.match(pathname);
             return (
               <TransitionLink
