@@ -864,29 +864,30 @@ func (h *Handler) favoritesList(w http.ResponseWriter, r *http.Request) {
 // favoriteQuestion and unfavoriteQuestion are signed-in-only favorites writes.
 // Like corrections they never downgrade to a guest actor.
 func (h *Handler) favoriteQuestion(w http.ResponseWriter, r *http.Request) {
-	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+	h.favoritesCommand(w, r, http.StatusOK, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.FavoriteQuestion(ctx, chi.URLParam(r, "bank_id"), chi.URLParam(r, "question_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
 	})
 }
 
 func (h *Handler) unfavoriteQuestion(w http.ResponseWriter, r *http.Request) {
-	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+	h.favoritesCommand(w, r, http.StatusOK, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.UnfavoriteQuestion(ctx, chi.URLParam(r, "bank_id"), chi.URLParam(r, "question_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
 	})
 }
 
 // createFavoritesSession starts practice from one bank's available favorites.
 func (h *Handler) createFavoritesSession(w http.ResponseWriter, r *http.Request) {
-	h.favoritesCommand(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
+	h.favoritesCommand(w, r, http.StatusCreated, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (practice.CommandResult, error) {
 		return h.practiceCommands.CreateFavoritesSession(ctx, chi.URLParam(r, "bank_id"), actorUserID, requestID, idempotencyKey, anonymousCookie)
 	})
 }
 
 // favoritesCommand is the signed-in-only favorites write path: it shares the
 // practiceCommand skeleton but never downgrades to a guest actor and carries
-// no raw browser body.
-func (h *Handler) favoritesCommand(w http.ResponseWriter, r *http.Request, command practiceCommand) {
-	h.practiceCommand(w, r, http.StatusOK, false, false, "请先登录后再操作收藏", command)
+// no raw browser body. PUT/DELETE mutations answer 200; the POST session
+// creation answers 201 like createPracticeSession.
+func (h *Handler) favoritesCommand(w http.ResponseWriter, r *http.Request, successStatus int, command practiceCommand) {
+	h.practiceCommand(w, r, successStatus, false, false, "请先登录后再操作收藏", command)
 }
 
 // writePracticeReadPermissionError maps Platform Core permission outcomes for
