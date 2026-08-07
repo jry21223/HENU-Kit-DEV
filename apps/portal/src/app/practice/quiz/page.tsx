@@ -10,6 +10,7 @@ import {
   fetchPracticeFeedbackStatus,
   formatPortalError,
   PortalUnauthorizedError,
+  redirectToLogin,
   submitPracticeAnswer,
   unfavoriteQuestion,
 } from "@/lib/api/client";
@@ -23,7 +24,6 @@ import type {
   PracticeFeedbackCategory,
 } from "@/lib/api/types";
 import { authStore } from "@/lib/auth/store";
-import { redirectToLogin } from "@/lib/auth/redirect";
 import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
 import { createIdempotencyKey, readPracticeSessionHandoff } from "@/lib/practice/session-handoff";
 import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
@@ -567,7 +567,7 @@ export default function QuizPage() {
     if (!question || !session || favoriteBusy) return;
     if (!authReady) return;
     if (!user) {
-      redirectToLogin();
+      redirectToLogin(window.location.pathname + window.location.search);
       return;
     }
     const wasFavorited = favorites?.has(question.question_id) ?? false;
@@ -592,7 +592,7 @@ export default function QuizPage() {
       })
       .catch((error: unknown) => {
         if (error instanceof PortalUnauthorizedError) {
-          redirectToLogin();
+          redirectToLogin(window.location.pathname + window.location.search);
           return;
         }
         setFavoriteError(formatPortalError(error));

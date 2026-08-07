@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { redirectToLogin } from "@/lib/api/client";
 
 /**
  * 收藏夹登录引导块。收藏读接口对未登录用户返回 401
@@ -13,12 +13,13 @@ export default function FavoritesLoginPrompt({ next }: { next: string }) {
       <p className="mt-3 text-sm leading-7 text-ink/65">
         登录后即可在刷题时收藏题目，并在收藏夹里发起练习。收藏保存在你的账号下，未登录的作答不会写入收藏。
       </p>
-      <Link
-        href={`/account/login?next=${encodeURIComponent(next)}`}
+      <button
+        type="button"
+        onClick={() => redirectToLogin(next)}
         className="mt-6 inline-flex border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
       >
         去登录 →
-      </Link>
+      </button>
     </div>
   );
 }

@@ -12,10 +12,10 @@ import {
   fetchBankFavorites,
   formatPortalError,
   PortalUnauthorizedError,
+  redirectToLogin,
   unfavoriteQuestion,
 } from "@/lib/api/client";
 import type { FavoriteQuestion } from "@/lib/api/types";
-import { redirectToLogin } from "@/lib/auth/redirect";
 import { FetchState, useFetchState } from "@/lib/api/use-fetch-state";
 import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
 import { writePracticeSessionHandoff } from "@/lib/practice/session-handoff";
@@ -123,7 +123,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
       );
     } catch (error) {
       if (error instanceof PortalUnauthorizedError) {
-        redirectToLogin();
+        redirectToLogin(window.location.pathname + window.location.search);
         return;
       }
       setRemoveError(formatPortalError(error));
@@ -156,7 +156,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
       router.push(`/practice/quiz?session_id=${encodeURIComponent(payload.session_id)}`);
     } catch (error) {
       if (error instanceof PortalUnauthorizedError) {
-        redirectToLogin();
+        redirectToLogin(window.location.pathname + window.location.search);
         return;
       }
       setStartError(formatPortalError(error));

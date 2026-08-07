@@ -819,9 +819,11 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, status)
 }
 
-// favoritesOverview lists the signed-in user's per-bank favorite folders.
-// It is an actor-bound read like personalPracticeStats.
-func (h *Handler) favoritesOverview(w http.ResponseWriter, r *http.Request) {
+// favoritesRead runs the shared actor-bound favorites read skeleton: private
+// response headers, service gate, session, permission, then the typed read
+// and JSON write. It mirrors personalPracticeStats/getPracticeFeedbackStatus
+// but stays scoped to favorites so the main-line handlers remain untouched.
+func (h *Handler) favoritesRead(w http.ResponseWriter, r *http.Request, read func(userID, requestID string) (any, error)) {
 	setPrivateResponseHeaders(w)
 	if h.quizCraft == nil {
 		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are not enabled", "收藏暂时不可用，请稍后再试")
@@ -836,7 +838,7 @@ func (h *Handler) favoritesOverview(w http.ResponseWriter, r *http.Request) {
 		h.writePracticeReadPermissionError(w, r, err)
 		return
 	}
-	envelope, err := h.quizCraft.FavoritesOverview(r.Context(), value.UserID, requestIDOf(w, r))
+	envelope, err := read(value.UserID, requestIDOf(w, r))
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are temporarily unavailable", "收藏暂时不可用，请稍后再试")
 		return
@@ -844,29 +846,19 @@ func (h *Handler) favoritesOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, envelope)
 }
 
+// favoritesOverview lists the signed-in user's per-bank favorite folders.
+func (h *Handler) favoritesOverview(w http.ResponseWriter, r *http.Request) {
+	h.favoritesRead(w, r, func(userID, requestID string) (any, error) {
+		return h.quizCraft.FavoritesOverview(r.Context(), userID, requestID)
+	})
+}
+
 // favoritesList reads one bank's favorite references for the signed-in user.
 func (h *Handler) favoritesList(w http.ResponseWriter, r *http.Request) {
-	setPrivateResponseHeaders(w)
-	if h.quizCraft == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are not enabled", "收藏暂时不可用，请稍后再试")
-		return
-	}
 	bankID := chi.URLParam(r, "bank_id")
-	value, err := h.readSession(r)
-	if err != nil {
-		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
-		return
-	}
-	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
-		h.writePracticeReadPermissionError(w, r, err)
-		return
-	}
-	envelope, err := h.quizCraft.FavoriteList(r.Context(), value.UserID, requestIDOf(w, r), bankID)
-	if err != nil {
-		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are temporarily unavailable", "收藏暂时不可用，请稍后再试")
-		return
-	}
-	writeJSON(w, http.StatusOK, envelope)
+	h.favoritesRead(w, r, func(userID, requestID string) (any, error) {
+		return h.quizCraft.FavoriteList(r.Context(), userID, requestID, bankID)
+	})
 }
 
 // favoriteQuestion and unfavoriteQuestion are signed-in-only favorites writes.
