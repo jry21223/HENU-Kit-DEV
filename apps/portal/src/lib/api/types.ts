@@ -400,6 +400,26 @@ export interface PortalPracticeFeedbackStatusResponse {
   data: PracticeFeedbackStatus;
 }
 
+/**
+ * One server-derived fact row of the signed-in user's per-question learning
+ * state. It carries no question content: the Portal displays these facts
+ * without fabricating a stem.
+ */
+export interface LearningStateItem {
+  bank_id: string;
+  question_id: string;
+  question_version_id: string;
+  wrong: boolean;
+  attempt_count: number;
+  correct_count: number;
+  updated_at: string;
+}
+
+export interface LearningStateEnvelope {
+  request_id: string;
+  data: LearningStateItem[];
+}
+
 /** Correctness and answer disclosure arrive only after server-side scoring. */
 export interface PortalPracticeAnswerResponse {
   request_id: string;

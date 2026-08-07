@@ -34,6 +34,7 @@ import type {
   FoodPostListResponse,
   FoodVenuesResponse,
   LibraryCoursesResponse,
+  LearningStateEnvelope,
   MaterialDetailResponse,
   MaterialListResponse,
   NoticeListResponse,
@@ -551,6 +552,17 @@ export async function fetchPracticeFeedbackStatus(
   return apiFetchRequired<PortalPracticeFeedbackStatusResponse>(
     `/api/v1/practice/feedback/${encodeURIComponent(feedbackID)}/status`
   );
+}
+
+// ---- Practice learning state ----
+
+/**
+ * Reads the signed-in user's server-derived learning state (wrong marks and
+ * counts). It is an actor-bound read with no mock success mode: an unavailable
+ * or unauthenticated response stays an error for the caller.
+ */
+export async function fetchLearningState(): Promise<LearningStateEnvelope> {
+  return apiFetchRequired<LearningStateEnvelope>("/api/v1/learning-state");
 }
 
 // ---- Campus ----

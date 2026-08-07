@@ -187,6 +187,9 @@ func (h *Handler) Router() chi.Router {
 	// matching actor-bound read and must never fall back to the generic proxy.
 	r.Post("/api/v1/practice/feedback", h.createPracticeFeedback)
 	r.Get("/api/v1/practice/feedback/{feedback_id}/status", h.getPracticeFeedbackStatus)
+	// Learning state is the signed-in account's per-question wrong marks and
+	// counts, an actor-bound read like personal stats.
+	r.Get("/api/v1/learning-state", h.getLearningState)
 
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
@@ -731,12 +734,26 @@ func readGatewayPracticeCommandBody(r *http.Request) ([]byte, error) {
 	return raw, nil
 }
 
-// personalPracticeStats returns only the signed-in user's Core-derived
-// statistics. It intentionally has no mock or Portal API success fallback.
-func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) {
+// practiceReadConfig carries the per-route wording of the shared
+// actor-bound practice read: the disabled gate code, the unavailable
+// fallback code, and the browser-facing message for both.
+type practiceReadConfig struct {
+	disabledCode    string
+	unavailableCode string
+	message         string
+}
+
+// actorBoundPracticeRead is the shared skeleton for the account-owned
+// QuizCraft practice reads: private response headers, the enabled gate, the
+// Portal Session check, the permission switch, then the caller's typed read.
+// A Core ErrActorReadUnauthorized surfaces as a browser 401; any other read
+// failure degrades to the route's unavailable 503. The read callback receives
+// the actor user id and gateway request id and returns the already-shaped
+// contract envelope to write.
+func (h *Handler) actorBoundPracticeRead(w http.ResponseWriter, r *http.Request, config practiceReadConfig, read func(actorUserID, requestID string) (any, error)) {
 	setPrivateResponseHeaders(w)
 	if h.quizCraft == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "practice statistics are not enabled", "学习统计暂时不可用，请稍后再试")
+		writeError(w, r, http.StatusServiceUnavailable, config.disabledCode, config.message)
 		return
 	}
 	value, err := h.readSession(r)
@@ -755,29 +772,45 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
-	stats, err := h.quizCraft.PersonalStats(r.Context(), value.UserID, requestIDOf(w, r))
+	envelope, err := read(value.UserID, requestIDOf(w, r))
 	if err != nil {
 		switch {
-		case errors.Is(err, practice.ErrStatsUnauthorized):
+		case errors.Is(err, practice.ErrActorReadUnauthorized):
 			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 		default:
-			writeError(w, r, http.StatusServiceUnavailable, "practice statistics are temporarily unavailable", "学习统计暂时不可用，请稍后再试")
+			writeError(w, r, http.StatusServiceUnavailable, config.unavailableCode, config.message)
 		}
 		return
 	}
-	mastery := make([]contract.MasterySubject, 0, len(stats.Data.Mastery))
-	for _, subject := range stats.Data.Mastery {
-		mastery = append(mastery, contract.MasterySubject{
-			BankID: subject.BankID, Label: subject.Label, Value: subject.Value,
-			TotalQuestions: subject.TotalQuestions, CorrectQuestions: subject.CorrectQuestions,
-		})
-	}
-	writeJSON(w, http.StatusOK, contract.PersonalPracticeStatsEnvelope{
-		RequestID: stats.RequestID,
-		Data: contract.PersonalPracticeStats{
-			TotalAnswers: stats.Data.TotalAnswers, CorrectAnswers: stats.Data.CorrectAnswers,
-			Accuracy: stats.Data.Accuracy, StreakDays: stats.Data.StreakDays, Mastery: mastery,
-		},
+	writeJSON(w, http.StatusOK, envelope)
+}
+
+// personalPracticeStats returns only the signed-in user's Core-derived
+// statistics. It intentionally has no mock or Portal API success fallback.
+func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) {
+	h.actorBoundPracticeRead(w, r, practiceReadConfig{
+		disabledCode:    "practice statistics are not enabled",
+		unavailableCode: "practice statistics are temporarily unavailable",
+		message:         "学习统计暂时不可用，请稍后再试",
+	}, func(actorUserID, requestID string) (any, error) {
+		stats, err := h.quizCraft.PersonalStats(r.Context(), actorUserID, requestID)
+		if err != nil {
+			return nil, err
+		}
+		mastery := make([]contract.MasterySubject, 0, len(stats.Data.Mastery))
+		for _, subject := range stats.Data.Mastery {
+			mastery = append(mastery, contract.MasterySubject{
+				BankID: subject.BankID, Label: subject.Label, Value: subject.Value,
+				TotalQuestions: subject.TotalQuestions, CorrectQuestions: subject.CorrectQuestions,
+			})
+		}
+		return contract.PersonalPracticeStatsEnvelope{
+			RequestID: stats.RequestID,
+			Data: contract.PersonalPracticeStats{
+				TotalAnswers: stats.Data.TotalAnswers, CorrectAnswers: stats.Data.CorrectAnswers,
+				Accuracy: stats.Data.Accuracy, StreakDays: stats.Data.StreakDays, Mastery: mastery,
+			},
+		}, nil
 	})
 }
 
@@ -813,6 +846,20 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+// getLearningState reads the signed-in user's server-derived per-question
+// learning state (wrong marks and counts). It is an actor-bound read like
+// personalPracticeStats; a disabled or failing Core read is an honest error,
+// never fabricated question facts.
+func (h *Handler) getLearningState(w http.ResponseWriter, r *http.Request) {
+	h.actorBoundPracticeRead(w, r, practiceReadConfig{
+		disabledCode:    "learning state is not enabled",
+		unavailableCode: "learning state is temporarily unavailable",
+		message:         "错题本暂时不可用，请稍后再试",
+	}, func(actorUserID, requestID string) (any, error) {
+		return h.quizCraft.LearningState(r.Context(), actorUserID, requestID)
+	})
 }
 
 // --- Proxy to portal-api ---
