@@ -391,7 +391,7 @@ func TestPersonalStatsAcceptsTrueZeroButRejectsMockShape(t *testing.T) {
 
 			result, err := testCatalogClient(t, server).PersonalStats(context.Background(), testStatsUserID, "req_stats_"+strings.ReplaceAll(test.name, " ", "_"))
 			if test.wantErr {
-				if !errors.Is(err, ErrInvalidStats) || result.RequestID != "" || result.Data.Mastery != nil {
+				if !errors.Is(err, ErrActorReadInvalid) || result.RequestID != "" || result.Data.Mastery != nil {
 					t.Fatalf("PersonalStats() = %+v, %v; want malformed mock error", result, err)
 				}
 				return
@@ -409,8 +409,8 @@ func TestPersonalStatsRejectsAnonymousOrMalformedActorWithoutCallingCore(t *test
 	defer server.Close()
 
 	for _, actor := range []string{"", AnonymousCatalogActor, "user-123"} {
-		if _, err := testCatalogClient(t, server).PersonalStats(context.Background(), actor, "req_bad_actor"); !errors.Is(err, ErrStatsUnauthorized) {
-			t.Fatalf("PersonalStats(%q) error = %v, want ErrStatsUnauthorized", actor, err)
+		if _, err := testCatalogClient(t, server).PersonalStats(context.Background(), actor, "req_bad_actor"); !errors.Is(err, ErrActorReadUnauthorized) {
+			t.Fatalf("PersonalStats(%q) error = %v, want ErrActorReadUnauthorized", actor, err)
 		}
 	}
 	if calls != 0 {
@@ -477,7 +477,7 @@ func TestFeedbackStatusRejectsForeignOrMockShapedCoreData(t *testing.T) {
 
 			result, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), testStatsUserID, "req_feedback_status", testFeedbackID)
 			if test.wantErr {
-				if !errors.Is(err, ErrInvalidStats) || result.RequestID != "" {
+				if !errors.Is(err, ErrActorReadInvalid) || result.RequestID != "" {
 					t.Fatalf("FeedbackStatus() = %+v, %v; want malformed mock error", result, err)
 				}
 				return
@@ -493,8 +493,8 @@ func TestFeedbackStatusRejectsAnonymousOrMalformedActorWithoutCallingCore(t *tes
 	defer server.Close()
 
 	for _, actor := range []string{"", AnonymousCatalogActor, "user-123"} {
-		if _, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), actor, "req_bad_actor", testFeedbackID); !errors.Is(err, ErrStatsUnauthorized) {
-			t.Fatalf("FeedbackStatus(%q) error = %v, want ErrStatsUnauthorized", actor, err)
+		if _, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), actor, "req_bad_actor", testFeedbackID); !errors.Is(err, ErrActorReadUnauthorized) {
+			t.Fatalf("FeedbackStatus(%q) error = %v, want ErrActorReadUnauthorized", actor, err)
 		}
 	}
 	if calls != 0 {

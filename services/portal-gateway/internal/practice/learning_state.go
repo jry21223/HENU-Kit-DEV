@@ -40,9 +40,6 @@ type LearningStateItem struct {
 // FavoritesOverview it is an account-bound read: Core rejects the request
 // unless the actor UUID is the sixth HMAC canonical line.
 func (c *Client) LearningState(ctx context.Context, actorUserID, requestID string) (LearningStateEnvelope, error) {
-	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
-		return LearningStateEnvelope{}, ErrStatsUnauthorized
-	}
 	body, err := c.actorBoundRead(ctx, GetPortalLearningStatePath, actorUserID, requestID, PortalReadPermission)
 	if err != nil {
 		return LearningStateEnvelope{}, err
@@ -52,10 +49,10 @@ func (c *Client) LearningState(ctx context.Context, actorUserID, requestID strin
 	decoder := json.NewDecoder(io.LimitReader(body, 2<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
-		return LearningStateEnvelope{}, fmt.Errorf("learning state decode: %w", ErrInvalidStats)
+		return LearningStateEnvelope{}, fmt.Errorf("learning state decode: %w", ErrActorReadInvalid)
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return LearningStateEnvelope{}, fmt.Errorf("learning state decode: %w", ErrInvalidStats)
+		return LearningStateEnvelope{}, fmt.Errorf("learning state decode: %w", ErrActorReadInvalid)
 	}
 	if err := validateLearningState(result); err != nil {
 		return LearningStateEnvelope{}, err
@@ -65,11 +62,11 @@ func (c *Client) LearningState(ctx context.Context, actorUserID, requestID strin
 
 func validateLearningState(result LearningStateEnvelope) error {
 	if strings.TrimSpace(result.RequestID) == "" {
-		return fmt.Errorf("learning state request id: %w", ErrInvalidStats)
+		return fmt.Errorf("learning state request id: %w", ErrActorReadInvalid)
 	}
 	for _, item := range result.Data {
 		if !validUUID(item.BankID) || !validUUID(item.QuestionID) || !validUUID(item.QuestionVersionID) || item.AttemptCount < 1 || item.CorrectCount < 0 || item.CorrectCount > item.AttemptCount || strings.TrimSpace(item.UpdatedAt) == "" {
-			return fmt.Errorf("learning state item: %w", ErrInvalidStats)
+			return fmt.Errorf("learning state item: %w", ErrActorReadInvalid)
 		}
 	}
 	return nil
