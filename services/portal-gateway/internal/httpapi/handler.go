@@ -26,6 +26,7 @@ import (
 	"henukit.dev/portal-gateway/internal/accountportfolio"
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
+	"henukit.dev/portal-gateway/internal/notice"
 	"henukit.dev/portal-gateway/internal/platformcore"
 	"henukit.dev/portal-gateway/internal/practice"
 	"henukit.dev/portal-gateway/internal/session"
@@ -39,6 +40,7 @@ type Handler struct {
 	portalAPI          *http.Client
 	portalAPIURL       string
 	accountPortfolio   *accountportfolio.Client
+	noticeClient       *notice.Client
 	practiceCommands   *practice.CommandClient
 	quizCraftCatalog   *practice.Client
 	redis              *redis.Client
@@ -58,6 +60,10 @@ var (
 )
 
 const quizCraftCatalogPath = "/api/v1/practice/catalog"
+
+// noticeReadPermission is the Portal-scoped permission the Gateway verifies
+// with Platform Core before any signed Notice owner read.
+const noticeReadPermission = "portal.notice.read"
 
 // New creates a Handler from config.
 func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
@@ -83,6 +89,18 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		)
 		if err != nil {
 			return nil, fmt.Errorf("accountportfolio.NewClient: %w", err)
+		}
+	}
+	var noticeClient *notice.Client
+	if strings.TrimSpace(cfg.NoticeURL) != "" {
+		noticeClient, err = notice.NewClient(
+			cfg.NoticeURL,
+			cfg.NoticeAuth.ClientID,
+			cfg.NoticeAuth.ClientSecret,
+			cfg.NoticeAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("notice.NewClient: %w", err)
 		}
 	}
 	var practiceCommands *practice.CommandClient
@@ -128,6 +146,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		portalAPI:          &http.Client{Timeout: 10 * time.Second},
 		portalAPIURL:       cfg.PortalAPIURL,
 		accountPortfolio:   portfolio,
+		noticeClient:       noticeClient,
 		practiceCommands:   practiceCommands,
 		quizCraftCatalog:   quizCraftCatalog,
 		redis:              rdb,
@@ -196,7 +215,10 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/practice/stats", h.personalPracticeStats)
 	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
-	r.Get("/api/v1/notices", h.proxyToPortalAPI)
+
+	// The notices read is not legacy aggregation data: it is a signed,
+	// actor-bound read from the Notice owner. See getNotices.
+	r.Get("/api/v1/notices", h.getNotices)
 
 	return r
 }
@@ -745,14 +767,7 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
-		switch {
-		case errors.Is(err, platformcore.ErrUnauthorized):
-			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
-		case errors.Is(err, platformcore.ErrForbidden):
-			writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
-		default:
-			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
-		}
+		h.writePlatformPermissionError(w, r, err, practicePermissionCopy)
 		return
 	}
 	stats, err := h.quizCraft.PersonalStats(r.Context(), value.UserID, requestIDOf(w, r))
@@ -797,14 +812,7 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
-		switch {
-		case errors.Is(err, platformcore.ErrUnauthorized):
-			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
-		case errors.Is(err, platformcore.ErrForbidden):
-			writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
-		default:
-			writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
-		}
+		h.writePlatformPermissionError(w, r, err, practicePermissionCopy)
 		return
 	}
 	status, err := h.quizCraft.FeedbackStatus(r.Context(), value.UserID, requestIDOf(w, r), feedbackID)
@@ -813,6 +821,74 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+// getNotices returns the Notice owner's bounded snapshot for the signed-in
+// Portal Session actor. It is an actor-bound read like personalPracticeStats:
+// it never falls back to the aggregation layer, a cache, or mock success.
+func (h *Handler) getNotices(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	if h.noticeClient == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "notice_unavailable", "通知服务暂时不可用，请稍后再来")
+		return
+	}
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, noticeReadPermission); err != nil {
+		h.writePlatformPermissionError(w, r, err, noticePermissionCopy)
+		return
+	}
+	data, err := h.noticeClient.List(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "notice temporarily unavailable", "通知服务暂时不可用，请稍后再来")
+		return
+	}
+	writeJSON(w, http.StatusOK, contract.NoticeFeedEnvelope{
+		Data:      data,
+		RequestID: requestIDOf(w, r),
+	})
+}
+
+// permissionCopy is the per-resource error payload for platform permission
+// failures. Codes are machine-readable branch keys; Messages are the
+// user-facing Chinese copy and must never be assembled from the resource
+// identifier (these values restore the pre-extraction text verbatim).
+type permissionCopy struct {
+	deniedCode      string // 403 machine code
+	deniedMessage   string // 403 user-facing message
+	unavailableCode string // 503 machine code (the 503 message is shared)
+}
+
+var (
+	practicePermissionCopy = permissionCopy{
+		deniedCode:      "practice access denied",
+		deniedMessage:   "暂无练习权限，请联系管理员",
+		unavailableCode: "practice authorization is temporarily unavailable",
+	}
+	noticePermissionCopy = permissionCopy{
+		deniedCode:      "notice access denied",
+		deniedMessage:   "暂无通知权限，请联系管理员",
+		unavailableCode: "notice authorization is temporarily unavailable",
+	}
+)
+
+// writePlatformPermissionError maps Platform Core permission outcomes for
+// actor-bound reads. The practice reads and the Notice read share one
+// CheckPermission path, so the mapping is shared; the only variance is the
+// per-resource copy. (#269's learning-state read carries its own copy of
+// this switch and should switch to this helper at cutover.)
+func (h *Handler) writePlatformPermissionError(w http.ResponseWriter, r *http.Request, err error, payload permissionCopy) {
+	switch {
+	case errors.Is(err, platformcore.ErrUnauthorized):
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+	case errors.Is(err, platformcore.ErrForbidden):
+		writeError(w, r, http.StatusForbidden, payload.deniedCode, payload.deniedMessage)
+	default:
+		writeError(w, r, http.StatusServiceUnavailable, payload.unavailableCode, "服务暂时不可用，请稍后再来")
+	}
 }
 
 // --- Proxy to portal-api ---

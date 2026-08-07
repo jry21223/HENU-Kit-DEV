@@ -710,16 +710,18 @@ paths:
         - portalSession: []
       responses:
         "200":
-          description: Notice list
+          description: Published notices snapshot
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NoticeListResponse"
+                $ref: "#/components/schemas/NoticeFeedEnvelope"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
 components:
@@ -1456,30 +1458,76 @@ components:
         data:
           $ref: "#/components/schemas/PersonalPracticeStats"
 
-    NoticeListResponse:
+    NoticeFeedEnvelope:
       type: object
-      required: [notices, request_id]
+      required: [request_id, data]
       properties:
-        notices:
-          type: array
-          items:
-            $ref: "#/components/schemas/NoticeSummary"
         request_id:
           type: string
+        data:
+          $ref: "#/components/schemas/NoticeFeed"
 
-    NoticeSummary:
+    NoticeFeed:
       type: object
-      required: [id, title, source, published_at]
+      description: Snapshot forwarded from the Notice owner; the Gateway validates only that items is present (non-null).
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoticeFeedItem"
+        generated_at:
+          type: string
+          format: date-time
+
+    NoticeFeedItem:
+      type: object
+      description: A notice as forwarded from the owner. The Gateway inspects only state (only distributed items are returned, so state is always "distributed" here); the remaining fields are the owner's shape, forwarded unvalidated.
+      required: [state]
       properties:
         id:
           type: string
+        source:
+          $ref: "#/components/schemas/NoticeSource"
+        version:
+          type: integer
+          format: int64
         title:
           type: string
-        source:
+        body:
           type: string
-        published_at:
+        source_url:
+          type: string
+        content_hash:
+          type: string
+        state:
+          type: string
+          enum: [pending_review, approved, rejected, distributed]
+        revision:
+          type: integer
+          format: int64
+        source_published_at:
           type: string
           format: date-time
+        created_at:
+          type: string
+          format: date-time
+        distribution_count:
+          type: integer
+          format: int64
+        distribution_status:
+          type: string
+          enum: [queued, processing, delivered, failed]
+
+    NoticeSource:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
 
   responses:
     BadRequest:
