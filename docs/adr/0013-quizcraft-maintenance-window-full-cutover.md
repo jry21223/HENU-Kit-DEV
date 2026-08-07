@@ -11,3 +11,7 @@ Go 接受首笔持久化写入后，不得直接将流量切回旧库；故障�
 Platform Core 必须先以独立服务部署在 `account.superhuazai.me`，完成真实邮箱发送、邮箱所有者从实际邮件中读取并在隐藏终端提示中人工输入当次验证码、邮箱身份、15 天绝对 Core Session、OAuth 客户端与最小权限首位操作员验证。邮箱密码不交给系统；验证码不得进入环境变量、命令参数或日志。旧 QuizCraft 不自动映射到邮箱身份，历史排行只读保留。
 
 比例分桶、浏览器 cohort、在线影子流量和旧服务在线观察不再是验收门禁；离线对比工具保留。切换后 FastAPI 停止并脱离 Nginx，以数据库只读的冷备形式保留 7 天；经人工批准后移除服务，最终双库备份及 SHA-256 记录保留 30 天。
+
+## 修订注记
+
+2026-08-07（#264）：Core Session 已由 15 天调整为 30 天（`PLATFORM_CORE_CORE_SESSION_TTL=720h`；Portal 客户端经 `PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES=portal-gateway=720h` 延长至 30 天）。执行本切换门禁中的「15 天绝对 Core Session」验证项时，以 30 天为准。
