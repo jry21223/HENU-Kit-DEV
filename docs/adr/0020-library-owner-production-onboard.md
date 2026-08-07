@@ -1,6 +1,6 @@
 ---
 status: accepted
-amends: 0013-portal-gateway-go.md
+amends: 0013
 ---
 
 # Library becomes an independent data-owner service wired into Console
@@ -11,6 +11,11 @@ with its own Postgres database and Redis-backed HMAC nonce store. It wraps the
 retired Study admin API over HTTP for legacy data, and it must be deployable
 as a fixed-SHA release unit and reachable from Console Gateway through the same
 credential pairing Notice and Food use.
+
+`amends: 0013` refers to `0013-portal-gateway-go.md`. The repository also
+carries an unrelated `0013-quizcraft-maintenance-window-full-cutover.md` with
+the same number; ADR-0017 and ADR-0018 use the same bare number to amend the
+portal-gateway ADR.
 
 ## Decision
 
