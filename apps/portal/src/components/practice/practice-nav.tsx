@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import AccountEntry from "@/components/account/account-entry";
-import { quizCraftV2ReadsEnabled } from "@/lib/api/env";
+import { quizCraftCatalogEnabled, quizCraftV2ReadsEnabled } from "@/lib/api/env";
 import { PRACTICE_COMING_SOON_COPY } from "@/lib/practice/coming-soon";
 import { cn } from "@/lib/cn";
 
@@ -12,8 +12,8 @@ type Tab = {
   href: string;
   index: string;
   label: string;
-  /** Renders the tab disabled instead of navigating while the bank wiring is pending. */
-  disabled?: true;
+  /** Renders the tab disabled (instead of navigating) while the QuizCraft V2 catalog flag is off. */
+  disabled?: boolean;
   match: (p: string) => boolean;
 };
 
@@ -28,7 +28,7 @@ const TABS: Tab[] = [
     href: "/practice/quiz",
     index: "P-02",
     label: "刷题",
-    disabled: true,
+    disabled: !quizCraftCatalogEnabled(),
     match: (p: string) => p.startsWith("/practice/quiz"),
   },
   { href: "/practice/stats", index: "P-03", label: "数据", match: (p: string) => p.startsWith("/practice/stats") },
