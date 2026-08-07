@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -128,7 +128,7 @@ func (c *Client) List(ctx context.Context, actorUserID, requestID string) (json.
 			if len(itemSummary) > 100 {
 				itemSummary = itemSummary[:100]
 			}
-			log.Printf("portal-gateway notice item skipped: unmarshal failed request_id=%s item=%q", requestID, itemSummary)
+			slog.Warn("portal-gateway notice item skipped: unmarshal failed", "request_id", requestID, "item", itemSummary)
 			continue
 		}
 		if lifecycle.State == distributedState {

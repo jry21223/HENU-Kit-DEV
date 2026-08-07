@@ -63,7 +63,7 @@ export default function NoticeBoardPage() {
               通知公告
             </h1>
             <p className="mt-5 max-w-2xl text-sm leading-7 text-paper/65 md:text-base">
-              来自通知服务的真实公告：学校办公室、学院与社团发布的通知按公告创建时间在这里展示。
+              来自通知服务的真实公告：学校办公室、学院与社团发布的通知在这里展示。
             </p>
           </div>
         </div>
@@ -121,7 +121,7 @@ export default function NoticeBoardPage() {
           <div className="mt-8">
             <NoticeFeed items={items} />
             <p className="mt-5 border-t border-line pt-5 font-mono text-[10px] leading-5 text-ink/45">
-              内容来自通知服务发布的真实公告，按公告创建时间排序；仅展示已发布的公告。
+              内容来自通知服务发布的真实公告，仅展示已发布的公告。
             </p>
           </div>
         ) : null}
