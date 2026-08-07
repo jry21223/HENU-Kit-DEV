@@ -115,6 +115,10 @@ export default function RankingProfilePage() {
       idempotencyKey.current = null;
     } catch (error) {
       setSaveError(formatPortalError(error));
+      // Core keys idempotency on (key, body hash): a failed save must not keep
+      // the key, or an edited retry would 409 forever. Drop it so the next
+      // submit mints a fresh key.
+      idempotencyKey.current = null;
     } finally {
       setSaving(false);
     }
