@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -118,7 +119,19 @@ func (c *Client) List(ctx context.Context, actorUserID, requestID string) (json.
 		var lifecycle contract.NoticeItemLifecycle
 		// Items whose lifecycle cannot be parsed are skipped: only notices
 		// known to be distributed may leave the Gateway.
-		if err := json.Unmarshal(item, &lifecycle); err == nil && lifecycle.State == distributedState {
+		if err := json.Unmarshal(item, &lifecycle); err != nil {
+			// A failed parse means the owner contract drifted (for example a
+			// renamed state field). Never let that masquerade as a genuinely
+			// empty feed: log the skipped item so operators see the break
+			// instead of "no published announcements".
+			itemSummary := string(item)
+			if len(itemSummary) > 100 {
+				itemSummary = itemSummary[:100]
+			}
+			log.Printf("portal-gateway notice item skipped: unmarshal failed request_id=%s item=%q", requestID, itemSummary)
+			continue
+		}
+		if lifecycle.State == distributedState {
 			distributed = append(distributed, item)
 		}
 	}
