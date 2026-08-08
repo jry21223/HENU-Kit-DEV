@@ -7,6 +7,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -140,11 +141,27 @@ function assertBuildBoundary(root) {
   }
 
   const workflow = read(root, ".github/workflows/deploy-henukit.yml");
-  if (!/NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1/.test(workflow)) {
-    die("release workflow does not build Portal in require-Gateway mode");
+  if (!/henukit-release-images\.sh --github-matrix/.test(workflow)) {
+    die("release workflow does not use the canonical image inventory");
   }
-  if (/NEXT_PUBLIC_PORTAL_ALLOW_MOCK\s*=\s*1/.test(workflow)) {
-    die("release workflow enables Portal mock mode");
+
+  const inventory = join(root, "scripts/ops/henukit-release-images.sh");
+  let portalBuildArgs;
+  try {
+    execFileSync(inventory, ["--check"], { stdio: "pipe" });
+    portalBuildArgs = execFileSync(
+      inventory,
+      ["--field", "portal", "build_args"],
+      { encoding: "utf8", stdio: "pipe" },
+    );
+  } catch (error) {
+    die(`cannot validate canonical release image inventory: ${error.message}`);
+  }
+  if (!/^NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1$/m.test(portalBuildArgs)) {
+    die("release inventory does not build Portal in require-Gateway mode");
+  }
+  if (/NEXT_PUBLIC_PORTAL_ALLOW_MOCK\s*=\s*1/.test(portalBuildArgs)) {
+    die("release inventory enables Portal mock mode");
   }
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -55,8 +56,15 @@ function fixture() {
   write(
     root,
     ".github/workflows/deploy-henukit.yml",
-    "build_args: |-\n  NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1\n",
+    "run: scripts/ops/henukit-release-images.sh --github-matrix\n",
   );
+  const inventory = join(root, "scripts/ops/henukit-release-images.sh");
+  write(
+    root,
+    "scripts/ops/henukit-release-images.sh",
+    "#!/usr/bin/env bash\ncase \"$*\" in\n  --check) exit 0 ;;\n  '--field portal build_args') printf 'NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1\\n' ;;\n  *) exit 64 ;;\nesac\n",
+  );
+  chmodSync(inventory, 0o755);
   write(
     root,
     "services/account-portfolio/cmd/server/main.go",

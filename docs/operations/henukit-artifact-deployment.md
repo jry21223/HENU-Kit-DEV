@@ -1,6 +1,9 @@
 # HENU Kit fixed-artifact deployment
 
-HENU Kit production is deployed from the Docker images and runtime tarball built by GitHub Actions. The host does not compile the repository and does not read secrets from the release artifact.
+HENU Kit production is deployed from fixed Docker images and a runtime tarball
+built either by GitHub Actions or by the controlled WSL Linux/amd64 builder
+described below. The host does not compile the repository and does not read
+secrets from the release artifact.
 
 ## Release procedure
 
@@ -44,6 +47,142 @@ HENU Kit production is deployed from the Docker images and runtime tarball built
 
 Do not delete PostgreSQL databases, Docker volumes, or the retained QuizCraft/Study data as part of this runtime retirement. `--remove-orphans` removes old service containers only; any container that remains causes the helper to fail closed.
 
+## Controlled WSL Linux/amd64 artifact path (when Actions is unavailable)
+
+This path is a replacement for artifact *construction*, not a bypass of the
+release gates. Its only permissible source is the exact, current
+`origin/main` commit. An unmerged pull request (including a reviewed candidate)
+must first be merged under the repository's normal human governance; never
+build or deploy its branch directly.
+
+Use a clean WSL2 checkout on Linux `x86_64` with an `linux/amd64` Docker daemon.
+The WSL host has two separate roles: a dedicated builder account holds the
+private signing key but has no production SSH, database, or application secrets;
+a deployment operator account owns the `henu-prod` SSH alias but cannot read the
+signing key. From the builder's clean detached checkout, fetch and select the
+target before building:
+
+```bash
+git fetch --prune origin main
+git switch --detach origin/main
+release_sha="$(git rev-parse HEAD)"
+scripts/ops/build-henukit-release-local.sh \
+  --sha "$release_sha" \
+  --output-dir /srv/henukit-artifacts \
+  --signing-key /etc/henukit-release-builder/ed25519
+```
+
+The builder fails closed unless the worktree is clean, `HEAD` equals the given
+SHA, the remote `origin/main` head still equals that SHA before and after the
+build, Docker reports `linux/amd64`, every image matches the trusted inventory,
+the signing key is a private non-group/world-writable file, and the output
+directory is non-symlinked and non-group/world-writable. It emits one
+flat `henukit-release-<sha>` directory containing all thirteen image archives,
+the runtime archive, checksums, `RELEASE_SHA`, and a signed manifest.
+
+### Source worktree to WSL to production boundary
+
+The controlled path is a clean source worktree → WSL2 builder worktree →
+`henu-prod` production SSH alias. Synchronize the complete, clean source
+worktree into a new, dedicated WSL builder directory; never reuse a mixed
+developer checkout or make the production host a source mirror. The WSL builder
+must still fetch `origin/main`, detach the exact SHA, and pass its clean-tree
+checks before it builds, so a file copy alone is not release evidence.
+
+Before any artifact transfer, the WSL deployment operator must inspect
+`ssh -G henu-prod` and compare the resolved user, host, port, identity file,
+and host-key policy with the approved production connection record. A result
+that leaves `hostname henu-prod` unchanged is not a configured alias. The
+operator must retain an approved `known_hosts` fingerprint and use strict host
+key checking; a noninteractive read-only preflight is:
+
+```bash
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 henu-prod \
+  'test -x /usr/local/sbin/watch-henukit-actions && \
+   test -x /usr/local/sbin/activate-henukit-release && \
+   test -r /etc/henukit/release-signers'
+```
+
+Only after that preflight and the out-of-band trust-root bootstrap below may the
+deployment operator copy the **flat, already signed** directory to its
+root-owned production incoming path. It must record the transferred SHA-256
+digest and let the production verifier validate the manifest before any archive
+is extracted. The final production activation is invoked through `henu-prod`,
+never from macOS; it remains the same exact-SHA, backup/restore, smoke-test, and
+rollback-gated command shown below.
+
+### Out-of-band local trust-root bootstrap
+
+Before the first local-artifact activation, a production administrator must
+install the corresponding public key in the root-owned, non-group/world-writable
+allowed-signers file at `/etc/henukit/release-signers`. The long-lived watcher,
+activation entry, verifier, image inventory, and allowed-signers file are local
+trust roots. Never copy any of those control-plane files from a candidate
+bundle, including its runtime archive.
+
+This is an exceptional, out-of-band root-admin action performed **before** a
+local candidate is transferred. Obtain a separate clean checkout of the
+reviewed current `origin/main` SHA and an independently reviewed SHA-256 record
+for exactly these four source basenames: `watch-henukit-actions.sh`,
+`activate-henukit-release.sh`, `henukit-release-images.sh`, and
+`verify-henukit-local-release.sh`. The hash record is created and approved from
+the reviewed commit on a separate trusted admin station; do not generate it
+from the checkout being installed or from the candidate artifact.
+
+Copy that approved record to `/etc/henukit/release-trust-root-<sha>.sha256`
+with owner `root:root` and mode `0400`, then use a root-owned staging directory
+to close the source-copy race before installing the four long-lived helpers:
+
+```bash
+tooling=/srv/henukit-release-tooling
+release_sha=<reviewed-current-main-sha>
+test "$(git -C "$tooling" rev-parse HEAD)" = "$release_sha"
+test -z "$(git -C "$tooling" status --porcelain --untracked-files=all)"
+test "$(git -C "$tooling" ls-remote --exit-code origin refs/heads/main | awk 'NR == 1 { print $1 }')" = "$release_sha"
+
+stage="/opt/henukit-trust-root/$release_sha"
+sudo install -d -o root -g root -m 0700 "$stage"
+sudo install -o root -g root -m 0555 "$tooling/scripts/ops/watch-henukit-actions.sh" "$stage/watch-henukit-actions.sh"
+sudo install -o root -g root -m 0555 "$tooling/scripts/ops/activate-henukit-release.sh" "$stage/activate-henukit-release.sh"
+sudo install -o root -g root -m 0555 "$tooling/scripts/ops/henukit-release-images.sh" "$stage/henukit-release-images.sh"
+sudo install -o root -g root -m 0555 "$tooling/scripts/ops/verify-henukit-local-release.sh" "$stage/verify-henukit-local-release.sh"
+sudo sh -c "cd '$stage' && sha256sum -c /etc/henukit/release-trust-root-$release_sha.sha256"
+sudo install -o root -g root -m 0555 "$stage/watch-henukit-actions.sh" /usr/local/sbin/watch-henukit-actions
+sudo install -o root -g root -m 0555 "$stage/activate-henukit-release.sh" /usr/local/sbin/activate-henukit-release
+sudo install -o root -g root -m 0555 "$stage/henukit-release-images.sh" /usr/local/sbin/henukit-release-images.sh
+sudo install -o root -g root -m 0555 "$stage/verify-henukit-local-release.sh" /usr/local/sbin/verify-henukit-local-release.sh
+```
+
+The local watcher rejects non-root-owned trust files or writable parent
+directories. This bootstrap reads reviewed scripts only; it does not build,
+upload, extract, or deploy a candidate. Transfer the completed flat directory
+only after this trust-root record is retained, to a root-owned incoming path
+such as `/opt/henukit-incoming/henukit-release-<sha>` without extracting or
+modifying it. Record the transfer digest and make the target SHA, maintenance
+window, backup reviewer, rollback owner, and signing-key authorization explicit
+before the approval command.
+
+The existing activation entry then prepares and restores backups before it
+creates its single-use approval. It rechecks the current GitHub `main` head,
+verifies the signed bundle with the trusted `allowed-signers` file, applies the
+same Account/EPay gates, and uses the existing smoke checks and rollback:
+
+```bash
+sudo GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
+  HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
+  HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator \
+  HENUKIT_PLATFORM_MIGRATIONS=<reviewed-exact-list> \
+  /usr/local/sbin/activate-henukit-release <full-main-sha> \
+    --local-artifacts /opt/henukit-incoming/henukit-release-<full-main-sha> \
+    --execute
+```
+
+Do not run this command until the target SHA is confirmed as the current
+`origin/main` equivalent, the signature trust root is installed, the prepared
+backup/restore evidence is reviewed, and an operator is available to own the
+rollback. The production host still needs its read-only GitHub token to verify
+that exact branch head; local artifacts never relax the main-only check.
+
 ## Server-side GitHub Actions watcher
 
 The production host can poll GitHub Actions and download successful `main`
@@ -65,11 +204,11 @@ It deploys only the newest completed, successful `push` run of
    into isolated temporary databases with key-table and Account durable-fact
    count checks. On the first Account Portfolio release it records and
    restores an explicit empty-database baseline before schema creation;
-5. loads all twelve fixed-SHA Docker images;
+5. loads all thirteen fixed-SHA Docker images;
 6. calls the existing `deploy-henukit-artifact.sh`, then invokes Platform
    Core's owner-defined command to grant all eight Account Console permissions,
    bump the role revision, and append an immutable grant audit;
-7. verifies all twelve running image tags, Account Portfolio health, and the public health routes, rolling
+7. verifies all thirteen running image tags, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
 
@@ -87,7 +226,8 @@ sudo chown root:root /etc/henukit/github-actions-read.token
 sudo chmod 0600 /etc/henukit/github-actions-read.token
 ```
 
-Install the watcher and its unit from a verified runtime artifact:
+When a verified GitHub Actions runtime artifact exists, install the watcher and
+its unit from that artifact:
 
 ```bash
 sudo install -d -o root -g root -m 0700 \
@@ -99,10 +239,19 @@ sudo install -o root -g root -m 0555 \
 sudo install -o root -g root -m 0555 \
   /opt/henukit-releases/<sha>/bin/activate-henukit-release.sh \
   /usr/local/sbin/activate-henukit-release
+sudo install -o root -g root -m 0555 \
+  /opt/henukit-releases/<sha>/bin/henukit-release-images.sh \
+  /usr/local/sbin/henukit-release-images.sh
+sudo install -o root -g root -m 0555 \
+  /opt/henukit-releases/<sha>/bin/verify-henukit-local-release.sh \
+  /usr/local/sbin/verify-henukit-local-release.sh
 sudo install -o root -g root -m 0644 \
   /opt/henukit-releases/<sha>/infra/systemd/henukit-actions-watch.service \
   /etc/systemd/system/henukit-actions-watch.service
 ```
+
+This Actions-artifact bootstrap is not valid for the first local-artifact
+release. Use the out-of-band local trust-root bootstrap above instead.
 
 Point the watcher at the existing production environment file. This file stores
 only watcher configuration; application secrets stay in the referenced file:
@@ -139,8 +288,9 @@ only when that baseline's already-extracted
 `docker-compose.henukit.release.yml` explicitly lacks `account-portfolio`; it
 still requires all nine images and a healthy Account Portfolio container for
 the candidate. This prevents a partially broken new release from being treated
-as a legacy baseline. Current releases carry twelve images: the nine above plus
-`notice`, `notice-worker`, and `food` (see `notice-food-production-onboarding.md`).
+as a legacy baseline. Current releases carry thirteen images: the nine above plus
+`notice`, `notice-worker`, `food`, and `library` (see
+`notice-food-production-onboarding.md`).
 
 The initial `--once` run creates and restore-tests an empty
 `account_portfolio` database if the old PostgreSQL volume does not contain one.
@@ -190,7 +340,7 @@ manifest, securely copies the existing MetaView HENU tenant identity into the
 Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017` and `000018`, deploys all twelve fixed-SHA images, grants the eight
+`000017` and `000018`, deploys all thirteen fixed-SHA images, grants the eight
 Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
@@ -237,7 +387,7 @@ requires a new explicit approval before the failed SHA can be attempted again.
 
 The process polls every 60 seconds by default and uses a kernel `flock` to
 prevent overlapping deployments; the lock is released even after a crash or
-power loss. A release already active on all twelve image tags is an idempotent
+power loss. A release already active on all thirteen image tags is an idempotent
 health-checked no-op. During the one-time 8-to-9 transition, the explicitly
 legacy eight-image baseline remains a valid rollback target. A failed check exits the process, and Systemd retries it
 after 30 seconds. Activation or public verification failure invokes the

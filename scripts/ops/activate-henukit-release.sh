@@ -9,6 +9,7 @@ program="activate-henukit-release"
 usage() {
   cat >&2 <<'EOF'
 usage: activate-henukit-release.sh <full-main-sha> --execute
+       activate-henukit-release.sh <full-main-sha> --local-artifacts <artifact-dir> --execute
 
 The command is the production approval action. It first asks the watcher to
 prepare and restore-test backups without approval, installs the tested EasyPay
@@ -23,12 +24,19 @@ die() {
   exit 1
 }
 
-if [[ $# -ne 2 || "$2" != "--execute" ]]; then
+release_source="actions"
+local_artifact_dir=""
+if [[ $# -eq 2 && "$2" == "--execute" ]]; then
+  release_sha="$1"
+elif [[ $# -eq 4 && "$2" == "--local-artifacts" && "$4" == "--execute" ]]; then
+  release_sha="$1"
+  release_source="local"
+  local_artifact_dir="$3"
+else
   usage
   exit 64
 fi
 
-release_sha="$1"
 repo="${HENUKIT_REPO:-jry21223/HENU-Kit-DEV}"
 blocker_issue="${HENUKIT_BLOCKER_ISSUE:-166}"
 branch="${HENUKIT_BRANCH:-main}"
@@ -42,6 +50,10 @@ epay_ssh_target="${HENUKIT_EPAY_GATEWAY_SSH_TARGET:-root@metaview.top}"
 epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
 
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release SHA must be 40 lowercase hexadecimal characters"
+if [[ "$release_source" == "local" ]]; then
+  [[ -d "$local_artifact_dir" && ! -L "$local_artifact_dir" ]] ||
+    die "--local-artifacts must name a non-symlink artifact directory"
+fi
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$blocker_issue" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_BLOCKER_ISSUE must be a positive issue number"
 [[ "$branch" =~ ^[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_BRANCH contains unsupported characters"
@@ -75,6 +87,9 @@ verify_release_current() {
   local branch_head run_row run_sha run_status run_conclusion
   branch_head="$(gh api "repos/$repo/branches/$branch" --jq '.commit.sha')"
   [[ "$branch_head" == "$release_sha" ]] || die "requested release is not the current $branch head"
+  if [[ "$release_source" == "local" ]]; then
+    return
+  fi
   run_row="$(gh run list --repo "$repo" --workflow "$workflow" --branch "$branch" --event push --limit 1 --json headSha,status,conclusion --jq 'first(.[]) | [.headSha,.status,.conclusion] | @tsv')"
   IFS=$'\t' read -r run_sha run_status run_conclusion <<< "$run_row"
   [[ "$run_sha" == "$release_sha" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] ||
@@ -89,6 +104,11 @@ fi
 
 [[ -n "$env_file" && -r "$env_file" && -w "$env_file" && ! -L "$env_file" ]] ||
   die "HENUKIT_ENV_FILE must be a writable, non-symlink production environment file"
+
+watcher_args=(--once)
+if [[ "$release_source" == "local" ]]; then
+  watcher_args=(--local-artifacts "$local_artifact_dir" --sha "$release_sha")
+fi
 
 tenant_credentials="$(ssh "$epay_ssh_target" bash -s -- "$epay_gateway_dir" <<'REMOTE'
 set -Eeuo pipefail
@@ -152,7 +172,7 @@ set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_ENABLED 1 || die "could not atom
 # No approval exists during this first pass, so the watcher can only download,
 # validate Account's mock-free manifest and production env, then backup and
 # restore-test both databases. Any failure exits before an approval is written.
-"$watcher" --once
+"$watcher" "${watcher_args[@]}"
 [[ -s "$prepared" ]] || die "watcher did not prepare verified backup evidence for release $release_sha"
 prepared_backup="$(tr -d '\r\n' < "$prepared")"
 [[ "$prepared_backup" =~ ^/[A-Za-z0-9_./-]+$ && "$prepared_backup" != "/" ]] ||
@@ -194,7 +214,7 @@ approval_incoming=""
 
 # The approval is single-use. The watcher consumes it before loading an image,
 # refreshes both verified backups, activates, verifies, and rolls back on error.
-"$watcher" --once
+"$watcher" "${watcher_args[@]}"
 [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]] ||
   die "watcher returned without activating release $release_sha"
 rm -f -- "$environment_backup"

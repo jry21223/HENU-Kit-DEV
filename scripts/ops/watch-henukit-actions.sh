@@ -9,6 +9,7 @@ mode=""
 usage() {
   cat >&2 <<'EOF'
 usage: watch-henukit-actions.sh --once|--watch
+       watch-henukit-actions.sh --local-artifacts <artifact-dir> --sha <full-main-sha>
 
 Required configuration:
   HENUKIT_ENV_FILE       Existing production Compose environment file
@@ -27,6 +28,9 @@ Optional configuration:
   HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE Active role receiving Account Console permissions
   HENUKIT_PLATFORM_MIGRATIONS Comma-separated reviewed Platform Core migrations
   HENUKIT_PLATFORM_CORE_CONTAINER Platform Core container name
+  HENUKIT_IMAGE_INVENTORY Trusted canonical image inventory beside this script
+  HENUKIT_LOCAL_ARTIFACT_VERIFIER Trusted signed-artifact verifier beside this script
+  HENUKIT_RELEASE_SIGNERS_FILE Root-managed allowed-signers file for local artifacts
 EOF
 }
 
@@ -39,11 +43,18 @@ die() {
   exit 1
 }
 
-if [[ $# -ne 1 || ( "$1" != "--once" && "$1" != "--watch" ) ]]; then
+local_artifact_dir=""
+local_release_sha=""
+if [[ $# -eq 1 && ( "$1" == "--once" || "$1" == "--watch" ) ]]; then
+  mode="$1"
+elif [[ $# -eq 4 && "$1" == "--local-artifacts" && "$3" == "--sha" ]]; then
+  mode="--local-artifacts"
+  local_artifact_dir="$2"
+  local_release_sha="$4"
+else
   usage
   exit 64
 fi
-mode="$1"
 
 repo="${HENUKIT_REPO:-jry21223/HENU-Kit-DEV}"
 workflow="${HENUKIT_WORKFLOW:-deploy-henukit.yml}"
@@ -63,34 +74,19 @@ account_portfolio_container="${HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER:-henukit-acco
 platform_core_container="${HENUKIT_PLATFORM_CORE_CONTAINER:-henukit-platform-core-1}"
 notice_container="${HENUKIT_NOTICE_CONTAINER:-henukit-notice-1}"
 food_container="${HENUKIT_FOOD_CONTAINER:-henukit-food-1}"
+library_container="${HENUKIT_LIBRARY_CONTAINER:-henukit-library-1}"
 migration="${HENUKIT_PLATFORM_MIGRATIONS:-${HENUKIT_PLATFORM_MIGRATION:-}}"
 account_operator_role="${HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE:-}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+image_inventory="${HENUKIT_IMAGE_INVENTORY:-$script_dir/henukit-release-images.sh}"
+local_artifact_verifier="${HENUKIT_LOCAL_ARTIFACT_VERIFIER:-$script_dir/verify-henukit-local-release.sh}"
+release_signers_file="${HENUKIT_RELEASE_SIGNERS_FILE:-/etc/henukit/release-signers}"
 
-base_images=(
-  henukit-console
-  henukit-console-gateway
-  henukit-platform-core
-  henukit-platform-mail-worker
-  henukit-platform-smtp-provider
-  henukit-portal
-  henukit-portal-api
-  henukit-portal-gateway
-)
-account_portfolio_image="henukit-account-portfolio"
-images=(
-  henukit-console
-  henukit-console-gateway
-  henukit-platform-core
-  henukit-platform-mail-worker
-  henukit-platform-smtp-provider
-  henukit-portal
-  henukit-portal-api
-  "$account_portfolio_image"
-  henukit-notice
-  henukit-notice-worker
-  henukit-food
-  henukit-portal-gateway
-)
+images=()
+load_images=()
+base_images=()
+conditional_services=()
+conditional_images=()
 
 [[ -n "$env_file" && -r "$env_file" ]] || die "HENUKIT_ENV_FILE must point to a readable production environment file"
 [[ -n "$rollback_env_file" && -r "$rollback_env_file" && ! -L "$rollback_env_file" ]] ||
@@ -106,6 +102,80 @@ command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v flock >/dev/null 2>&1 || die "flock is required"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+
+file_mode() {
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
+}
+
+file_owner() {
+  stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1"
+}
+
+trusted_root_file() {
+  local file="$1"
+  local label="$2"
+  local mode owner directory
+  [[ "$file" == /* ]] || die "$label must use an absolute path: $file"
+  [[ -f "$file" && ! -L "$file" ]] ||
+    die "$label must be a regular non-symlink file: $file"
+  mode="$(file_mode "$file")"
+  owner="$(file_owner "$file")"
+  [[ "$mode" =~ ^[0-7]{3,4}$ ]] || die "could not determine $label mode: $file"
+  [[ "$owner" == "0" ]] || die "$label must be owned by root: $file"
+  (( (8#$mode & 8#022) == 0 )) || die "$label must not be group- or world-writable: $file"
+
+  directory="$(dirname "$file")"
+  while [[ "$directory" != "/" ]]; do
+    [[ -d "$directory" && ! -L "$directory" ]] ||
+      die "$label parent must be a real directory: $directory"
+    mode="$(file_mode "$directory")"
+    owner="$(file_owner "$directory")"
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || die "could not determine $label parent mode: $directory"
+    [[ "$owner" == "0" ]] || die "$label parent must be owned by root: $directory"
+    (( (8#$mode & 8#022) == 0 )) ||
+      die "$label parent must not be group- or world-writable: $directory"
+    directory="$(dirname "$directory")"
+  done
+}
+
+trusted_helper() {
+  local file="$1"
+  trusted_root_file "$file" "trusted helper"
+  [[ -x "$file" ]] ||
+    die "trusted helper must be executable: $file"
+}
+
+trusted_helper "$image_inventory"
+"$image_inventory" --check
+while IFS= read -r image; do
+  [[ "$image" =~ ^henukit-[a-z0-9][a-z0-9-]*$ ]] || die "image inventory emitted an invalid artifact image"
+  images+=("$image")
+done < <("$image_inventory" --artifact-images)
+while IFS= read -r image; do
+  [[ "$image" =~ ^henukit-[a-z0-9][a-z0-9-]*$ ]] || die "image inventory emitted an invalid load image"
+  load_images+=("$image")
+done < <("$image_inventory" --load-images)
+while IFS= read -r image; do
+  [[ "$image" =~ ^henukit-[a-z0-9][a-z0-9-]*$ ]] || die "image inventory emitted an invalid baseline image"
+  base_images+=("$image")
+done < <("$image_inventory" --baseline-images)
+while IFS=$'\t' read -r service image; do
+  [[ "$service" =~ ^[a-z0-9][a-z0-9-]*$ && "$image" =~ ^henukit-[a-z0-9][a-z0-9-]*$ ]] ||
+    die "image inventory emitted an invalid conditional service record"
+  conditional_services+=("$service")
+  conditional_images+=("$image")
+done < <("$image_inventory" --conditional-services)
+[[ "${#images[@]}" -gt 0 && "${#load_images[@]}" -gt 0 && "${#base_images[@]}" -gt 0 ]] ||
+  die "image inventory is incomplete"
+if [[ "$mode" == "--local-artifacts" ]]; then
+  [[ "$local_release_sha" =~ ^[0-9a-f]{40}$ ]] || die "--sha must be a full lowercase Git SHA"
+  [[ "$branch" == "main" ]] || die "local artifacts may only be activated from main"
+  [[ -d "$local_artifact_dir" && ! -L "$local_artifact_dir" ]] ||
+    die "--local-artifacts must name a non-symlink directory"
+  trusted_helper "$local_artifact_verifier"
+  trusted_root_file "$release_signers_file" "HENUKIT_RELEASE_SIGNERS_FILE"
+  [[ -r "$release_signers_file" ]] || die "HENUKIT_RELEASE_SIGNERS_FILE must be readable"
+fi
 
 environment_value() {
   local key="$1"
@@ -174,8 +244,8 @@ verify_account_boundary_manifest() {
 
 verify_production_data_boundary
 
-token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || stat -f '%Lp' "$token_file")"
-token_owner="$(stat -c '%u' "$token_file" 2>/dev/null || stat -f '%u' "$token_file")"
+token_mode="$(file_mode "$token_file")"
+token_owner="$(file_owner "$token_file")"
 [[ "$token_mode" == "600" || "$token_mode" == "400" ]] || die "GitHub token file mode must be 0600 or 0400"
 [[ "$token_owner" == "$(id -u)" ]] || die "GitHub token file must be owned by the watcher user"
 GH_TOKEN="$(tr -d '\r\n' < "$token_file")"
@@ -214,6 +284,7 @@ trap cleanup EXIT
 expected_name() {
   local candidate="$1"
   local release_sha="$2"
+  local signature_policy="${3:-unsigned}"
   local image
   for image in "${images[@]}"; do
     if [[ "$candidate" == "${image}-${release_sha}.docker.tar.gz" ||
@@ -221,14 +292,23 @@ expected_name() {
       return 0
     fi
   done
-  [[ "$candidate" == "henukit-runtime-${release_sha}.tar.gz" ||
-     "$candidate" == "henukit-runtime-${release_sha}.tar.gz.sha256" ]]
+  if [[ "$candidate" == "henukit-runtime-${release_sha}.tar.gz" ||
+        "$candidate" == "henukit-runtime-${release_sha}.tar.gz.sha256" ]]; then
+    return 0
+  fi
+  [[ "$signature_policy" == "signed" &&
+     ( "$candidate" == "henukit-release-${release_sha}.manifest" ||
+       "$candidate" == "henukit-release-${release_sha}.manifest.sig" ) ]]
 }
 
 verify_artifact_dir() {
   local artifact_dir="$1"
   local release_sha="$2"
-  local image name file base directory
+  local signature_policy="${3:-unsigned}"
+  local image name file base directory manifest
+
+  [[ "$signature_policy" == "unsigned" || "$signature_policy" == "signed" ]] ||
+    die "unknown artifact signature policy"
 
   [[ -s "$artifact_dir/RELEASE_SHA" ]] || die "artifact set has no RELEASE_SHA marker"
   while IFS= read -r -d '' file; do
@@ -243,7 +323,7 @@ verify_artifact_dir() {
       [[ "$(tr -d '[:space:]' < "$file")" == "$release_sha" ]] ||
         die "artifact cache RELEASE_SHA does not match"
     else
-      expected_name "$base" "$release_sha" || die "unexpected artifact file $base"
+      expected_name "$base" "$release_sha" "$signature_policy" || die "unexpected artifact file $base"
     fi
   done < <(find "$artifact_dir" -type f -print0)
 
@@ -255,6 +335,11 @@ verify_artifact_dir() {
   name="henukit-runtime-${release_sha}.tar.gz"
   [[ -s "$artifact_dir/$name" ]] || die "artifact set is missing $name"
   [[ -s "$artifact_dir/$name.sha256" ]] || die "artifact set is missing $name.sha256"
+  if [[ "$signature_policy" == "signed" ]]; then
+    manifest="henukit-release-${release_sha}.manifest"
+    [[ -s "$artifact_dir/$manifest" && -s "$artifact_dir/${manifest}.sig" ]] ||
+      die "signed artifact set is missing its manifest or signature"
+  fi
 
   (
     cd "$artifact_dir"
@@ -298,28 +383,69 @@ download_artifacts() {
   downloaded_artifact_dir="$final_dir"
 }
 
+stage_local_artifacts() {
+  local source_dir="$1"
+  local release_sha="$2"
+  local final_dir="$staging_root/$release_sha"
+  local incoming image archive manifest
+
+  if [[ -d "$final_dir" ]]; then
+    "$local_artifact_verifier" \
+      --artifact-dir "$final_dir" \
+      --sha "$release_sha" \
+      --inventory "$image_inventory" \
+      --allowed-signers "$release_signers_file" >&2
+    verify_artifact_dir "$final_dir" "$release_sha" signed
+    downloaded_artifact_dir="$final_dir"
+    return
+  fi
+
+  "$local_artifact_verifier" \
+    --artifact-dir "$source_dir" \
+    --sha "$release_sha" \
+    --inventory "$image_inventory" \
+    --allowed-signers "$release_signers_file" >&2
+  incoming="$(mktemp -d "$staging_root/.${release_sha}.incoming.XXXXXX")"
+  scratch_dirs+=("$incoming")
+  install -m 0400 "$source_dir/RELEASE_SHA" "$incoming/RELEASE_SHA"
+  for image in "${images[@]}"; do
+    archive="${image}-${release_sha}.docker.tar.gz"
+    install -m 0400 "$source_dir/$archive" "$incoming/$archive"
+    install -m 0400 "$source_dir/${archive}.sha256" "$incoming/${archive}.sha256"
+  done
+  archive="henukit-runtime-${release_sha}.tar.gz"
+  install -m 0400 "$source_dir/$archive" "$incoming/$archive"
+  install -m 0400 "$source_dir/${archive}.sha256" "$incoming/${archive}.sha256"
+  manifest="henukit-release-${release_sha}.manifest"
+  install -m 0400 "$source_dir/$manifest" "$incoming/$manifest"
+  install -m 0400 "$source_dir/${manifest}.sig" "$incoming/${manifest}.sig"
+  # Re-verify after the copy. The source directory is outside the root-owned
+  # staging cache, so validating it only before copying would leave a TOCTOU
+  # window in which the archive, checksums, and manifest could be replaced.
+  "$local_artifact_verifier" \
+    --artifact-dir "$incoming" \
+    --sha "$release_sha" \
+    --inventory "$image_inventory" \
+    --allowed-signers "$release_signers_file" >&2
+  verify_artifact_dir "$incoming" "$release_sha" signed
+  mv "$incoming" "$final_dir"
+  downloaded_artifact_dir="$final_dir"
+}
+
 active_release_matches() {
   local release_sha="$1"
-  local running image account_portfolio_state service
+  local running image index service
   running="$(docker ps --format '{{.Image}}')"
   for image in "${base_images[@]}"; do
     grep -Fqx "${image}:${release_sha}" <<<"$running" || return 1
   done
-  if release_uses_account_portfolio "$release_sha"; then
-    account_portfolio_state=0
-  else
-    account_portfolio_state=$?
-  fi
-  case "$account_portfolio_state" in
-    0) grep -Fqx "${account_portfolio_image}:${release_sha}" <<<"$running" || return 1 ;;
-    1) ;;
-    *) return 1 ;;
-  esac
-  # Notice and Food releases must run their owner containers; a release that
-  # predates them remains a valid rollback target without those containers.
-  for service in notice notice-worker food; do
+  # Conditional owners are asserted only when the extracted fixed-SHA Compose
+  # contract includes them. That preserves rollback to older runtimes while
+  # requiring every owner (including Library) in a current release to run.
+  for ((index = 0; index < ${#conditional_services[@]}; index++)); do
+    service="${conditional_services[$index]}"
     if release_has_service "$release_sha" "$service"; then
-      grep -Fqx "henukit-${service}:${release_sha}" <<<"$running" || return 1
+      grep -Fqx "${conditional_images[$index]}:${release_sha}" <<<"$running" || return 1
     fi
   done
 }
@@ -367,7 +493,7 @@ current_release_sha() {
 
 verify_active_release() {
   local release_sha="$1"
-  local account_portfolio_state account_status callback_status service
+  local account_portfolio_state account_status callback_status service index
   active_release_matches "$release_sha" || return 1
   if release_uses_account_portfolio "$release_sha"; then
     account_portfolio_state=0
@@ -379,13 +505,14 @@ verify_active_release() {
     1) ;;
     *) return 1 ;;
   esac
-  for service in notice food; do
+  for ((index = 0; index < ${#conditional_services[@]}; index++)); do
+    service="${conditional_services[$index]}"
     if release_has_service "$release_sha" "$service"; then
-      if [[ "$service" == "notice" ]]; then
-        container_is_healthy "$notice_container" || return 1
-      else
-        container_is_healthy "$food_container" || return 1
-      fi
+      case "$service" in
+        notice) container_is_healthy "$notice_container" || return 1 ;;
+        food) container_is_healthy "$food_container" || return 1 ;;
+        library) container_is_healthy "$library_container" || return 1 ;;
+      esac
     fi
   done
   curl --fail --silent --show-error "$public_base_url/api/v1/healthz" >/dev/null || return 1
@@ -578,8 +705,8 @@ release_is_approved() {
   local approval="$state_root/approvals/$release_sha"
   local approval_mode approval_owner
   [[ -f "$approval" && -r "$approval" ]] || return 1
-  approval_mode="$(stat -c '%a' "$approval" 2>/dev/null || stat -f '%Lp' "$approval")"
-  approval_owner="$(stat -c '%u' "$approval" 2>/dev/null || stat -f '%u' "$approval")"
+  approval_mode="$(file_mode "$approval")"
+  approval_owner="$(file_owner "$approval")"
   [[ "$approval_mode" == "600" || "$approval_mode" == "400" ]] || return 1
   [[ "$approval_owner" == "$(id -u)" ]] || return 1
   [[ "$(tr -d '\r\n' < "$approval")" == "$release_sha" ]]
@@ -625,10 +752,11 @@ deploy_release() {
   local run_id="$1"
   local release_sha="$2"
   local run_url="$3"
+  local artifact_override="${4:-}"
   local artifact_dir runtime_archive release_dir release_incoming
   local image helper previous_sha activation_status
 
-  [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "GitHub returned an invalid release SHA"
+  [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release source returned an invalid SHA"
 
   if active_release_matches "$release_sha"; then
     verify_active_release "$release_sha" || die "active release failed public health verification"
@@ -640,10 +768,16 @@ deploy_release() {
     return
   fi
 
-  log "downloading successful main artifact set from $run_url"
-  downloaded_artifact_dir=""
-  download_artifacts "$run_id" "$release_sha"
-  artifact_dir="$downloaded_artifact_dir"
+  if [[ -n "$artifact_override" ]]; then
+    log "using verified local main artifact set from $run_url"
+    verify_artifact_dir "$artifact_override" "$release_sha" signed
+    artifact_dir="$artifact_override"
+  else
+    log "downloading successful main artifact set from $run_url"
+    downloaded_artifact_dir=""
+    download_artifacts "$run_id" "$release_sha"
+    artifact_dir="$downloaded_artifact_dir"
+  fi
   runtime_archive="$artifact_dir/henukit-runtime-${release_sha}.tar.gz"
   release_dir="$release_root/$release_sha"
 
@@ -652,7 +786,7 @@ deploy_release() {
     scratch_dirs+=("$release_incoming")
     tar -xzf "$runtime_archive" -C "$release_incoming"
     [[ "$(tr -d '[:space:]' < "$release_incoming/RELEASE_SHA")" == "$release_sha" ]] ||
-      die "runtime RELEASE_SHA does not match the workflow run"
+      die "runtime RELEASE_SHA does not match the release source"
     [[ -x "$release_incoming/bin/deploy-henukit-artifact.sh" ]] ||
       die "runtime artifact has no executable deployment helper"
     mv "$release_incoming" "$release_dir"
@@ -680,7 +814,7 @@ deploy_release() {
   [[ "$(github_branch_head)" == "$release_sha" ]] ||
     die "GitHub branch head changed during preparation; refusing stale activation"
   consume_approval "$release_sha"
-  for image in "${images[@]}"; do
+  for image in "${load_images[@]}"; do
     log "loading ${image}:${release_sha}"
     gzip -dc "$artifact_dir/${image}-${release_sha}.docker.tar.gz" | docker load >/dev/null
   done
@@ -745,6 +879,25 @@ check_once() {
   fi
   deploy_release "$run_id" "$release_sha" "$run_url"
 }
+
+check_local_artifacts() {
+  local branch_head
+  branch_head="$(github_branch_head)"
+  [[ "$branch_head" =~ ^[0-9a-f]{40}$ ]] || die "GitHub returned an invalid $branch head SHA"
+  [[ "$branch_head" == "$local_release_sha" ]] ||
+    die "local artifact SHA is no longer the current $branch head"
+  stage_local_artifacts "$local_artifact_dir" "$local_release_sha"
+  deploy_release \
+    "local-${local_release_sha}" \
+    "$local_release_sha" \
+    "$local_artifact_dir" \
+    "$downloaded_artifact_dir"
+}
+
+if [[ "$mode" == "--local-artifacts" ]]; then
+  check_local_artifacts
+  exit 0
+fi
 
 if [[ "$mode" == "--once" ]]; then
   check_once

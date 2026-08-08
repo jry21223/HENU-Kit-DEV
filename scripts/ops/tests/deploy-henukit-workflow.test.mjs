@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const workflow = readFileSync(
   new URL("../../../.github/workflows/deploy-henukit.yml", import.meta.url),
@@ -19,6 +20,19 @@ const exampleEnvironment = readFileSync(
   new URL("../../../.env.henukit.example", import.meta.url),
   "utf8",
 );
+const runtimePackager = readFileSync(
+  new URL("../package-henukit-runtime.sh", import.meta.url),
+  "utf8",
+);
+const imageInventory = fileURLToPath(
+  new URL("../henukit-release-images.sh", import.meta.url),
+);
+
+function releaseImageMatrix() {
+  return JSON.parse(
+    execFileSync(imageInventory, ["--github-matrix"], { encoding: "utf8" }),
+  );
+}
 
 test("CI builds the primary HENU runtime without legacy Study or QuizCraft images", () => {
   const expectedImages = [
@@ -30,19 +44,28 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
     "henukit-portal",
     "henukit-portal-api",
     "henukit-account-portfolio",
-    "henukit-portal-gateway",
     "henukit-notice",
     "henukit-notice-worker",
     "henukit-food",
     "henukit-library",
+    "henukit-portal-gateway",
   ];
 
-  for (const image of expectedImages) {
-    assert.match(workflow, new RegExp(`image: ${image.replaceAll("-", "\\-")}`));
-  }
-  assert.doesNotMatch(workflow, /image: henukit-study/);
-  assert.doesNotMatch(workflow, /image: henukit-quizcraft/);
-  assert.doesNotMatch(workflow, /VITE_QUIZCRAFT_WORKSHOP_URL=\/quiz/);
+  assert.match(workflow, /release-image-matrix:/);
+  assert.match(workflow, /scripts\/ops\/henukit-release-images\.sh --github-matrix/);
+  assert.match(workflow, /fromJSON\(needs\.release-image-matrix\.outputs\.matrix\)/);
+  assert.match(workflow, /docker build[\s\S]*--platform linux\/amd64/);
+  assert.match(workflow, /\.Os}}\/{{\.Architecture}}.*linux\/amd64/);
+  assert.deepEqual(
+    releaseImageMatrix().include.map(({ image }) => image),
+    expectedImages,
+  );
+  assert.deepEqual(
+    execFileSync(imageInventory, ["--load-images"], { encoding: "utf8" })
+      .trim()
+      .split("\n"),
+    expectedImages,
+  );
 });
 
 test("CI runs the Account Portfolio browser behavior spec", () => {
@@ -57,27 +80,7 @@ test("CI runs the enabled QuizCraft V2 ranking behavior spec", () => {
 test("release artifacts carry an exact-SHA Account mock-free boundary manifest", () => {
   assert.match(
     workflow,
-    /node scripts\/ops\/check-account-production-boundary\.mjs/,
-  );
-  assert.match(
-    workflow,
-    /RELEASE_SHA="\$GITHUB_SHA" node scripts\/ops\/check-account-production-boundary\.mjs --report "\$runtime\/release-gates\/account-production-boundary\.env"/,
-  );
-  assert.match(
-    workflow,
-    /install -d .*"\$runtime\/release-gates"/,
-  );
-  assert.match(
-    workflow,
-    /install -m 0555 scripts\/ops\/activate-henukit-release\.sh "\$runtime\/bin\/activate-henukit-release\.sh"/,
-  );
-  assert.match(
-    workflow,
-    /install -m 0555 scripts\/ops\/deploy-epay-gateway-patches\.sh "\$runtime\/bin\/deploy-epay-gateway-patches\.sh"/,
-  );
-  assert.match(
-    workflow,
-    /cp infra\/epay-gateway\/patches\/\*\.patch "\$runtime\/infra\/epay-gateway\/patches\/"/,
+    /scripts\/ops\/package-henukit-runtime\.sh --sha "\$GITHUB_SHA" --output-dir release/,
   );
 });
 
@@ -94,14 +97,9 @@ test("Portal V2 cutover flags are enabled in production artifacts after HC-166",
     developmentCompose,
     /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS:\s+\$\{NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS:-0\}/,
   );
-  assert.match(
-    workflow,
-    /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1/,
-  );
-  assert.match(
-    workflow,
-    /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=1/,
-  );
+  const portal = releaseImageMatrix().include.find(({ name }) => name === "portal");
+  assert.match(portal.build_args, /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1/);
+  assert.match(portal.build_args, /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=1/);
 });
 
 test("development Compose forwards an explicit Portal V2 read build flag", () => {
@@ -507,37 +505,40 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     /henukit_dev_change_me|replace-[a-z]|0123456789abcdef|cUUpjiEH/,
   );
   assert.match(workflow, /name: henukit-runtime-\$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /scripts\/ops\/package-henukit-runtime\.sh --sha "\$GITHUB_SHA" --output-dir release/);
   assert.match(
-    workflow,
+    runtimePackager,
     /config --no-interpolate --no-path-resolution > "\$runtime\/docker-compose\.henukit\.release\.yml"[\s\S]*infra\/nginx\/henukit\.conf\.example/,
   );
-  assert.match(workflow, /install -m 0555 scripts\/ops\/deploy-henukit-artifact\.sh/);
-  assert.match(workflow, /install -m 0555 scripts\/ops\/watch-henukit-actions\.sh/);
-  assert.match(workflow, /infra\/systemd\/henukit-actions-watch\.service/);
-  assert.match(workflow, /migrations\/platform-core/);
-  assert.match(workflow, /migrations\/account-portfolio/);
+  assert.match(runtimePackager, /deploy-henukit-artifact\.sh/);
+  assert.match(runtimePackager, /watch-henukit-actions\.sh/);
+  assert.match(runtimePackager, /henukit-release-images\.sh/);
+  assert.match(runtimePackager, /verify-henukit-local-release\.sh/);
+  assert.match(runtimePackager, /infra\/systemd\/henukit-actions-watch\.service/);
+  assert.match(runtimePackager, /migrations\/platform-core/);
+  assert.match(runtimePackager, /migrations\/account-portfolio/);
   assert.doesNotMatch(
     workflow,
     /cp docker-compose\.henukit\.yml|cp docker-compose\.henukit\.prebuilt\.yml|init-henukit-dbs\.sh/,
   );
   assert.match(
-    workflow,
-    /cp services\/platform-core\/db\/migrations\/\*\.up\.sql/,
+    runtimePackager,
+    /cp "\$repo_root"\/services\/platform-core\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry the registration migration",
   );
   assert.match(
-    workflow,
-    /cp services\/account-portfolio\/db\/migrations\/\*\.up\.sql/,
+    runtimePackager,
+    /cp "\$repo_root"\/services\/account-portfolio\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Account Portfolio recovery migrations",
   );
   assert.match(
-    workflow,
-    /cp services\/notice\/db\/migrations\/\*\.up\.sql/,
+    runtimePackager,
+    /cp "\$repo_root"\/services\/notice\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Notice recovery migrations",
   );
   assert.match(
-    workflow,
-    /cp services\/food\/db\/migrations\/\*\.up\.sql/,
+    runtimePackager,
+    /cp "\$repo_root"\/services\/food\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Food recovery migrations",
   );
 });

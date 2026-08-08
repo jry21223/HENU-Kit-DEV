@@ -165,6 +165,29 @@ test("one command prepares, exact-SHA approves, and activates a release", () => 
   assert.equal((calls.match(/^gh run list/gm) ?? []).length, 3);
 });
 
+test("one command keeps the Account payment gates when its fixed-SHA artifacts come from the signed local path", () => {
+  const setup = fixture();
+  const artifacts = join(setup.root, "signed-local-artifacts");
+  mkdirSync(artifacts);
+
+  const output = execFileSync(
+    command,
+    [releaseSha, "--local-artifacts", artifacts, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.match(output, new RegExp(`release ${releaseSha} activated`));
+  assert.equal((calls.match(/^watcher /gm) ?? []).length, 2);
+  assert.equal(
+    (calls.match(/watcher --local-artifacts .* --sha a{40}/g) ?? []).length,
+    2,
+  );
+  assert.equal((calls.match(/^gh run list/gm) ?? []).length, 0);
+  assert.equal((calls.match(/gh api .*\/branches\//g) ?? []).length, 3);
+  assert.match(calls, /ssh root@metaview\.top .*deploy-epay-gateway-patches\.sh.*--execute/);
+});
+
 test("one command refuses while QuizCraft cutover blocker remains open", () => {
   const setup = fixture({ blockerState: "open" });
 
