@@ -5,13 +5,13 @@ Provision the QuizCraft OAuth redirect and rotatable HMAC client key after apply
 Independent Go service for platform-owned identity and operations data. The delivered HC-05 through HC-08 slices implement:
 
 - host-only Core Session validation;
-- Account Center registration at `/register`; it atomically verifies the HENU mailbox, creates the encrypted Email Identity and Argon2id password credential, consumes the code, and issues one non-rolling 15-day Core Session;
+- Account Center registration at `/register`; it atomically verifies the HENU mailbox, creates the encrypted Email Identity and Argon2id password credential, consumes the code, and issues one non-rolling 30-day Core Session;
 - password and email-code login at `/login`; neither login path creates an account, and successful password authentication upgrades stale Argon2id parameters;
 - email-code password recovery at `/recover`, which atomically replaces the credential, revokes every old Core and exchange Session, consumes the code, and issues exactly one new Core Session;
 - authenticated password changes at `/account/security`, which require the current password plus a fresh email code, retain only the current Core Session, and revoke every other Core and exchange Session;
 - exact-callback OAuth authorization with S256 PKCE;
 - 60–120 second, hash-only, single-use Authorization Codes;
-- eight-hour product-local exchange Sessions for Console and Workshop high-privilege work, with immediate server-side revocation;
+- eight-hour product-local exchange Sessions for Console and Workshop high-privilege work, with immediate server-side revocation; the `portal-gateway` OAuth client overrides this to 30 days (`PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES`) so the Portal Session stays valid for the full Core Session window;
 - server-to-server code exchange protected by Basic client authentication, S256 PKCE, HMAC-SHA256, a five-minute timestamp window, and Redis nonce replay prevention;
 - hash-only Session persistence; completed OAuth exchange replays return a safe conflict and require restarting OAuth rather than recovering a prior credential;
 - PostgreSQL as the durable source of truth and Redis only for short-lived coordination;

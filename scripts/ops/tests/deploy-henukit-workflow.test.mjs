@@ -34,6 +34,7 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
     "henukit-notice",
     "henukit-notice-worker",
     "henukit-food",
+    "henukit-library",
   ];
 
   for (const image of expectedImages) {
@@ -216,10 +217,12 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "ACCOUNT_PORTFOLIO_CONSOLE_SECRET",
       "ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID",
       "ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY",
-      "FOOD_CLIENT_SECRET",
       "FOOD_SUMMARY_CLIENT_SECRET",
-      "LIBRARY_CLIENT_SECRET",
+      "LIBRARY_DATABASE_URL",
+      "LIBRARY_REDIS_URL",
+      "LIBRARY_SUMMARY_CLIENT_ID",
       "LIBRARY_SUMMARY_CLIENT_SECRET",
+      "LIBRARY_SUMMARY_KEY_ID",
       "NOTICE_CLIENT_SECRET",
       "NOTICE_SUMMARY_CLIENT_ID",
       "NOTICE_SUMMARY_CLIENT_SECRET",
@@ -255,6 +258,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET",
       "QUIZCRAFT_PORTAL_CATALOG_KEY_ID",
       "QUIZCRAFT_SUMMARY_CLIENT_SECRET",
+      "STUDY_LEGACY_ADMIN_TOKEN",
+      "STUDY_LEGACY_API_URL",
     ].map((name) => [name, "test-required-value"]),
   );
   const renderRuntimeConfig = (overrides = {}) =>
@@ -304,6 +309,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-notice",
     "henukit-notice-worker",
     "henukit-food",
+    "henukit-library",
   ];
 
   for (const image of expectedImages) {
@@ -376,6 +382,16 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["portal-gateway"].environment.PRACTICE_COMMAND_CLIENT_SECRET,
     "test-required-value",
     "the fixed-SHA runtime must carry the separately provisioned Practice command credential",
+  );
+  assert.equal(
+    Object.hasOwn(config.services["portal-gateway"].environment, "LIBRARY_CLIENT_SECRET"),
+    false,
+    "the fixed-SHA runtime must not force the retired Library gateway client secret",
+  );
+  assert.equal(
+    Object.hasOwn(config.services["portal-gateway"].environment, "FOOD_CLIENT_SECRET"),
+    false,
+    "the fixed-SHA runtime must not force the retired Food gateway client secret",
   );
   assert.equal(
     config.services["account-portfolio"].environment.ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID,

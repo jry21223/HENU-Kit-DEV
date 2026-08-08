@@ -46,6 +46,7 @@ type Handler struct {
 	redis            *redis.Client
 	cookieName       string
 	localCookieName  string
+	coreSessionTTL   time.Duration
 	logger           *slog.Logger
 	deliveryKeys     map[string][]byte
 	deviceKey        []byte
@@ -59,8 +60,8 @@ type browserCookieProfile struct {
 
 const explicitFormResponseHeader = "X-Henukit-Form-Response"
 
-func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
-	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
+func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, coreSessionTTL time.Duration, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
+	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, coreSessionTTL: coreSessionTTL, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -576,7 +577,7 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f7f
 <label for="email">学校邮箱</label><input id="email" name="email" type="email" value="{{.Email}}" autocomplete="email" required {{if .CodeRequested}}readonly{{end}}>
 {{if .CodeRequested}}<label for="code">6 位验证码</label><input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required autofocus>{{end}}
 <button type="submit">{{if .CodeRequested}}登录并继续{{else}}发送验证码{{end}}</button>
-	</form><p class="hint">当前仅允许 henu.edu.cn 邮箱。会话绝对有效期为 15 天。</p></main></body></html>`))
+	</form>{{if .SessionDays}}<p class="hint">当前仅允许 henu.edu.cn 邮箱。会话绝对有效期为 {{.SessionDays}} 天。</p>{{end}}</main></body></html>`))
 
 var accountRegisterTemplate = template.Must(template.New("account-register").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -615,6 +616,7 @@ var accountSecurityTemplate = template.Must(template.New("account-security").Par
 type accountLoginView struct {
 	CSRFToken, ReturnTo, Email, Error, PathPrefix string
 	CodeRequested                                 bool
+	SessionDays                                   int
 }
 
 type accountRegisterView struct {
@@ -1122,6 +1124,12 @@ func (h *Handler) renderLogin(writer http.ResponseWriter, request *http.Request,
 	writer.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	// The session hint must track the configured Core Session TTL instead of
+	// drifting from it: renderLogin is the single place that converts the TTL
+	// into the user-visible day count.
+	if days := int(h.coreSessionTTL.Hours() / 24); days > 0 {
+		view.SessionDays = days
+	}
 	if err := accountLoginTemplate.Execute(writer, view); err != nil {
 		h.logger.Error("account_login_template_error", "request_id", requestIDFrom(request.Context()), "error", err)
 	}

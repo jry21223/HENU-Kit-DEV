@@ -2,26 +2,29 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { MATERIAL_TYPES, type Material } from "@/lib/library/mock";
-import { getMaterialOrFallback, getMaterials } from "@/lib/library/gateway";
+import {
+  MATERIAL_TYPES,
+  type Material,
+} from "@/lib/library/mock";
+import { getMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
+import { LibraryLoading, LibraryNotFound } from "@/components/library/material-states";
+import { useMaterialDetail } from "@/lib/library/use-material-detail";
 
 export default function ItemDetail({ id }: { id: string }) {
-  const material = getMaterialOrFallback(id);
+  const state = useMaterialDetail(id);
   useReveal();
   const [tocOpen, setTocOpen] = useState(false);
 
-  if (!material) {
-    return (
-      <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">404 / NOT FOUND</p>
-        <Link href="/library" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
-          ← 返回书库
-        </Link>
-      </main>
+  if (state.loadState !== "ready") {
+    return state.loadState === "error" ? (
+      <LibraryNotFound error={state.error} />
+    ) : (
+      <LibraryLoading />
     );
   }
+  const { material } = state;
 
   const t = MATERIAL_TYPES[material.type];
   const free = material.price === 0;

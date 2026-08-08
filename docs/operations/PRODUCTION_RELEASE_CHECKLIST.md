@@ -81,7 +81,7 @@
 - [ ] 24 小时验证码、Nonce、幂等事实和相关加密负载清理任务已在生产调度并验证。
 - [ ] 正式登录代码和生产配置只接受 `henu.edu.cn` 边界；没有可配置扩域漏洞。
 - [ ] OAuth state、PKCE、精确 Callback、协议相对/外部 `return_to`、授权码单次交换与撤销全部通过。
-- [ ] 15 天 Core Session、8 小时业务/Console Session、注销、Core 撤销及撤销后拒绝重新授权通过。
+- [ ] 30 天 Core Session、8 小时业务/Console Session（Portal 客户端按 `PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES` 延长至 30 天）、注销、Core 撤销及撤销后拒绝重新授权通过。
 - [ ] 浏览器自报的 `user_id`、角色、会员和 Entitlement 不作为权限或所有权事实。
 - [ ] 日志中不存在完整邮箱、验证码、Authorization、Cookie、Session Token、服务密钥、SMTP 密码或邮件正文。
 - [ ] 所有正式页面展示“学生自主运营 · 非河南大学官方项目”。

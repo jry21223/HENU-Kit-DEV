@@ -61,9 +61,13 @@ services:
       PLATFORM_CORE_PUBLIC_PATH_PREFIX: ${PLATFORM_CORE_PUBLIC_PATH_PREFIX:-/account-auth}
       PLATFORM_CORE_TRUSTED_PROXY_CIDRS: ${PLATFORM_CORE_TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
       PLATFORM_CORE_LOCAL_COOKIE_NAME: ${PLATFORM_CORE_LOCAL_COOKIE_NAME:-henukit_core_session_local}
-      PLATFORM_CORE_CORE_SESSION_TTL: ${PLATFORM_CORE_CORE_SESSION_TTL:-360h}
+      PLATFORM_CORE_CORE_SESSION_TTL: ${PLATFORM_CORE_CORE_SESSION_TTL:-720h}
       PLATFORM_CORE_AUTHORIZATION_TTL: ${PLATFORM_CORE_AUTHORIZATION_TTL:-90s}
       PLATFORM_CORE_EXCHANGE_SESSION_TTL: ${PLATFORM_CORE_EXCHANGE_SESSION_TTL:-8h}
+      # The Portal client's exchange Session outlives the 8h default so the
+      # Portal Session (cookie MaxAge + permission checks) stays valid for the
+      # full 30-day Core Session window. Console and QuizCraft keep 8h.
+      PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES: ${PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES:-portal-gateway=720h}
       PLATFORM_CORE_IDEMPOTENCY_TTL: ${PLATFORM_CORE_IDEMPOTENCY_TTL:-24h}
       PLATFORM_CORE_VERIFICATION_CODE_TTL: ${PLATFORM_CORE_VERIFICATION_CODE_TTL:-10m}
       PLATFORM_CORE_VERIFICATION_RESEND_DELAY: ${PLATFORM_CORE_VERIFICATION_RESEND_DELAY:-60s}
@@ -246,6 +250,34 @@ services:
       retries: 12
       start_period: 5s
 
+  # Library owns the Console materials operation surface over the retired
+  # Study admin API and fails closed without the credentials below (ADR-0020).
+  library:
+    build:
+      context: ./services/library
+    environment:
+      LIBRARY_ADDR: ${LIBRARY_ADDR:-:8095}
+      LIBRARY_DATABASE_URL: ${LIBRARY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/library?sslmode=disable}
+      LIBRARY_REDIS_URL: ${LIBRARY_REDIS_URL:-redis://redis:6379/5}
+      LIBRARY_SERVICE_CLIENT_ID: ${LIBRARY_SUMMARY_CLIENT_ID:-console-gateway-library}
+      LIBRARY_SERVICE_KEY_ID: ${LIBRARY_SUMMARY_KEY_ID:-library-summary-key}
+      LIBRARY_SERVICE_SECRET: ${LIBRARY_SUMMARY_CLIENT_SECRET:-replace-library-summary-client-secret-32bytes-min!!}
+      STUDY_LEGACY_API_URL: ${STUDY_LEGACY_API_URL:-}
+      STUDY_LEGACY_ADMIN_TOKEN: ${STUDY_LEGACY_ADMIN_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8095"
+    healthcheck:
+      test: ["CMD", "/library-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
   portal-gateway:
     build:
       context: ./services/portal-gateway
@@ -264,17 +296,9 @@ services:
       PORTAL_TRUSTED_PROXY_CIDRS: ${PORTAL_TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
       REDIS_URL: ${PORTAL_GATEWAY_REDIS_URL:-redis://redis:6379/2}
       PORTAL_API_URL: ${PORTAL_API_URL:-http://portal-api:8085}
-      LIBRARY_SERVICE_URL: ${LIBRARY_SERVICE_URL:-http://portal-api:8085}
-      FOOD_SERVICE_URL: ${FOOD_SERVICE_URL:-http://portal-api:8085}
       PRACTICE_SERVICE_URL: ${PRACTICE_SERVICE_URL:-http://portal-api:8085}
       PORTAL_ENABLE_QUIZCRAFT_CATALOG: ${PORTAL_ENABLE_QUIZCRAFT_CATALOG:-0}
       NOTICE_SERVICE_URL: ${NOTICE_SERVICE_URL:-http://portal-api:8085}
-      LIBRARY_CLIENT_ID: ${LIBRARY_CLIENT_ID:-portal-library}
-      LIBRARY_CLIENT_SECRET: ${LIBRARY_CLIENT_SECRET:-replace-library-client-secret-32bytes-min!!}
-      LIBRARY_KEY_ID: ${LIBRARY_KEY_ID:-library-key}
-      FOOD_CLIENT_ID: ${FOOD_CLIENT_ID:-portal-food}
-      FOOD_CLIENT_SECRET: ${FOOD_CLIENT_SECRET:-replace-food-client-secret-32bytes-min!!}
-      FOOD_KEY_ID: ${FOOD_KEY_ID:-food-key}
       PRACTICE_CLIENT_ID: ${PRACTICE_CLIENT_ID:-portal-practice}
       PRACTICE_CLIENT_SECRET: ${PRACTICE_CLIENT_SECRET:-replace-practice-client-secret-32bytes-min!!}
       PRACTICE_KEY_ID: ${PRACTICE_KEY_ID:-practice-key}
@@ -352,8 +376,8 @@ services:
       PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:-replace-platform-summary-client-secret-32bytes-min!!}
       PLATFORM_SUMMARY_KEY_ID: ${PLATFORM_SUMMARY_KEY_ID:-platform-summary-key}
       NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
-      # Notice and Food are first-class compose owners; empty overrides degrade
-      # the module to 503 instead of resolving a host that does not run.
+      # Notice, Food and Library are first-class compose owners; empty overrides
+      # degrade the module to 503 (Library fails closed: ADR-0020).
       NOTICE_API_URL: ${NOTICE_API_URL:-}
       LIBRARY_API_URL: ${LIBRARY_API_URL:-}
       FOOD_API_URL: ${FOOD_API_URL:-}
@@ -388,6 +412,8 @@ services:
       notice:
         condition: service_started
       food:
+        condition: service_started
+      library:
         condition: service_started
     ports:
       - "8082:8082"

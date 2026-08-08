@@ -545,6 +545,20 @@ export interface CampusItemListResponse {
   request_id: string;
 }
 
+export interface CampusMessage {
+  id: string;
+  itemId: string;
+  author: string;
+  time: string;
+  text: string;
+}
+
+export interface CampusItemDetailResponse {
+  item: CampusItem;
+  messages: CampusMessage[];
+  request_id: string;
+}
+
 export interface CategoryListResponse {
   categories: CampusCategory[];
   request_id: string;

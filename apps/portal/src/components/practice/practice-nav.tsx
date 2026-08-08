@@ -4,17 +4,33 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import AccountEntry from "@/components/account/account-entry";
-import { quizCraftV2ReadsEnabled } from "@/lib/api/env";
+import { quizCraftCatalogEnabled, quizCraftV2ReadsEnabled } from "@/lib/api/env";
+import { PRACTICE_COMING_SOON_COPY } from "@/lib/practice/coming-soon";
 import { cn } from "@/lib/cn";
 
-const TABS = [
+type Tab = {
+  href: string;
+  index: string;
+  label: string;
+  /** Renders the tab disabled (instead of navigating) while the QuizCraft V2 catalog flag is off. */
+  disabled?: boolean;
+  match: (p: string) => boolean;
+};
+
+const TABS: Tab[] = [
   {
     href: "/practice",
     index: "P-01",
     label: "题库",
     match: (p: string) => p === "/practice" || p.startsWith("/practice/lists"),
   },
-  { href: "/practice/quiz", index: "P-02", label: "刷题", match: (p: string) => p.startsWith("/practice/quiz") },
+  {
+    href: "/practice/quiz",
+    index: "P-02",
+    label: "刷题",
+    disabled: !quizCraftCatalogEnabled(),
+    match: (p: string) => p.startsWith("/practice/quiz"),
+  },
   { href: "/practice/favorites", index: "P-03", label: "收藏夹", match: (p: string) => p.startsWith("/practice/favorites") },
   { href: "/practice/stats", index: "P-04", label: "数据", match: (p: string) => p.startsWith("/practice/stats") },
 ];
@@ -47,6 +63,36 @@ export default function PracticeNav() {
             { href: "/practice/leaderboard", index: "P-05", label: "排行榜", match: (p: string) => p.startsWith("/practice/leaderboard") },
           ] : [])].map((tab) => {
             const active = tab.match(pathname);
+            const content = (
+              <>
+                <span className={cn("mr-1", active ? "text-accent" : "text-ink/30")}>
+                  {tab.index}
+                </span>
+                {tab.label}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute inset-x-0 -bottom-0.5 h-px origin-left bg-accent transition-transform duration-300",
+                    active ? "scale-x-100" : "scale-x-0",
+                    tab.disabled ? "" : "group-hover:scale-x-100"
+                  )}
+                />
+              </>
+            );
+            if (tab.disabled) {
+              return (
+                <span
+                  key={tab.href}
+                  title={PRACTICE_COMING_SOON_COPY}
+                  className={cn(
+                    "relative cursor-not-allowed py-1 font-mono text-xs tracking-widest",
+                    active ? "text-ink" : "text-ink/50"
+                  )}
+                >
+                  {content}
+                </span>
+              );
+            }
             return (
               <TransitionLink
                 key={tab.href}
@@ -56,17 +102,7 @@ export default function PracticeNav() {
                   active ? "text-ink" : "text-ink/50 hover:text-ink"
                 )}
               >
-                <span className={cn("mr-1", active ? "text-accent" : "text-ink/30")}>
-                  {tab.index}
-                </span>
-                {tab.label}
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute inset-x-0 -bottom-0.5 h-px origin-left bg-accent transition-transform duration-300",
-                    active ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"
-                  )}
-                />
+                {content}
               </TransitionLink>
             );
           })}

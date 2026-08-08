@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	configpkg "henukit.dev/platform-core/internal/config"
 	"henukit.dev/platform-core/internal/coordination"
 	"henukit.dev/platform-core/internal/httpapi"
 	"henukit.dev/platform-core/internal/identity"
@@ -26,29 +27,30 @@ import (
 )
 
 type Config struct {
-	Database                  *pgxpool.Pool
-	Redis                     *redis.Client
-	CoreCookieName            string
-	LocalCoreCookieName       string
-	CoreSessionTTL            time.Duration
-	AuthorizationTTL          time.Duration
-	ExchangeSessionTTL        time.Duration
-	IdempotencyEncryptionKey  []byte
-	IdempotencyTTL            time.Duration
-	Logger                    *slog.Logger
-	VerificationEncryptionKey []byte
-	StudentEmailDomains       []string
-	VerificationCodeTTL       time.Duration
-	VerificationResendDelay   time.Duration
-	MailDeliveryWebhookToken  string
-	MailDeliveryActiveKeyID   string
-	MailDeliveryRetiringToken string
-	MailDeliveryRetiringKeyID string
-	TrustedProxyCIDRs         []string
-	PasswordMemoryKiB         uint32
-	PasswordIterations        uint32
-	PasswordParallelism       uint8
-	PasswordHashConcurrency   int
+	Database                    *pgxpool.Pool
+	Redis                       *redis.Client
+	CoreCookieName              string
+	LocalCoreCookieName         string
+	CoreSessionTTL              time.Duration
+	AuthorizationTTL            time.Duration
+	ExchangeSessionTTL          time.Duration
+	ExchangeSessionTTLOverrides map[string]time.Duration
+	IdempotencyEncryptionKey    []byte
+	IdempotencyTTL              time.Duration
+	Logger                      *slog.Logger
+	VerificationEncryptionKey   []byte
+	StudentEmailDomains         []string
+	VerificationCodeTTL         time.Duration
+	VerificationResendDelay     time.Duration
+	MailDeliveryWebhookToken    string
+	MailDeliveryActiveKeyID     string
+	MailDeliveryRetiringToken   string
+	MailDeliveryRetiringKeyID   string
+	TrustedProxyCIDRs           []string
+	PasswordMemoryKiB           uint32
+	PasswordIterations          uint32
+	PasswordParallelism         uint8
+	PasswordHashConcurrency     int
 }
 
 func New(config Config) (http.Handler, error) {
@@ -68,11 +70,13 @@ func New(config Config) (http.Handler, error) {
 		(&http.Cookie{Name: config.LocalCoreCookieName, Value: "valid"}).Valid() != nil {
 		return nil, errors.New("local core session cookie name must be a valid non-__Host- name")
 	}
+	// Core Session TTL is pinned to 30 days; the rationale lives on
+	// configpkg.RequiredCoreSessionTTL.
 	if config.CoreSessionTTL <= 0 {
-		config.CoreSessionTTL = 15 * 24 * time.Hour
+		config.CoreSessionTTL = configpkg.RequiredCoreSessionTTL
 	}
-	if config.CoreSessionTTL != 15*24*time.Hour {
-		return nil, errors.New("core Session TTL must be 15 days")
+	if config.CoreSessionTTL != configpkg.RequiredCoreSessionTTL {
+		return nil, errors.New("core Session TTL must be 30 days")
 	}
 	if config.AuthorizationTTL <= 0 {
 		config.AuthorizationTTL = 90 * time.Second
@@ -85,6 +89,12 @@ func New(config Config) (http.Handler, error) {
 	}
 	if config.ExchangeSessionTTL > 8*time.Hour {
 		return nil, errors.New("exchange Session TTL must not exceed 8h")
+	}
+	// Per-client exchange Session TTL overrides (e.g. portal-gateway=720h) let
+	// the Portal Session live for the full 30-day Core Session window while
+	// Console and QuizCraft keep their short high-privilege exchange Sessions.
+	if err := configpkg.ValidateExchangeSessionTTLOverrides(config.ExchangeSessionTTLOverrides); err != nil {
+		return nil, err
 	}
 	if len(config.IdempotencyEncryptionKey) != 32 {
 		return nil, errors.New("idempotency encryption key must be 32 bytes")
@@ -159,7 +169,7 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.IdempotencyTTL)
+	flow := identity.New(queries, config.Database, coordinator, config.AuthorizationTTL, config.ExchangeSessionTTL, config.ExchangeSessionTTLOverrides, config.IdempotencyTTL)
 	inbox := operationsinbox.New(queries, config.Database)
 	platformOperations := platformoperations.New(queries, config.Database, config.Redis, config.VerificationEncryptionKey, config.StudentEmailDomains)
 	verificationFlow, err := verification.New(queries, config.Database, coordinator, passwordManager, config.VerificationEncryptionKey, config.StudentEmailDomains, config.VerificationCodeTTL, config.VerificationResendDelay, config.CoreSessionTTL)
@@ -170,5 +180,5 @@ func New(config Config) (http.Handler, error) {
 	if config.MailDeliveryRetiringToken != "" {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
-	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
+	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, config.CoreSessionTTL, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
 }

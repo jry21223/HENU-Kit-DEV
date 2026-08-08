@@ -28,6 +28,7 @@ import type {
 	AccountTicketResponse,
 	AccountTicketsResponse,
 	CampusItemListResponse,
+	CampusItemDetailResponse,
   CategoryListResponse,
   ErrorEnvelope,
   	FavoritesOverviewResponse,
@@ -645,6 +646,14 @@ export async function fetchCampusItems(params?: {
   const query = qs.toString();
   return apiFetchRequired<CampusItemListResponse>(
     `/api/v1/campus/items${query ? `?${query}` : ""}`
+  );
+}
+
+export async function fetchCampusItemDetail(
+  id: string
+): Promise<CampusItemDetailResponse> {
+  return apiFetchRequired<CampusItemDetailResponse>(
+    `/api/v1/campus/items/${encodeURIComponent(id)}`
   );
 }
 
