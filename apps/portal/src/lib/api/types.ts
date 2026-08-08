@@ -322,7 +322,7 @@ export interface PracticeBanksResponse {
 export interface PortalPracticeSessionInput {
   bank_id: string;
   bank_version_id: string;
-  mode: "random" | "difficult" | "chapter";
+  mode: "random" | "difficult" | "chapter" | "favorites";
   chapter_id?: string;
   question_count?: number;
 }
@@ -344,7 +344,7 @@ export interface PortalPracticeSessionResponse {
     session_id: string;
     bank_id: string;
     bank_version_id: string;
-    mode: "random" | "difficult" | "chapter";
+    mode: "random" | "difficult" | "chapter" | "favorites";
     excluded_unavailable_count: number;
     questions: PortalPracticeQuestion[];
   };
@@ -398,6 +398,35 @@ export interface PracticeFeedbackStatus {
 export interface PortalPracticeFeedbackStatusResponse {
   request_id: string;
   data: PracticeFeedbackStatus;
+}
+
+export interface FavoriteFolder {
+  bank_id: string;
+  bank_name: string;
+  available_count: number;
+  unavailable_count: number;
+}
+
+export interface FavoritesOverviewResponse {
+  request_id: string;
+  data: FavoriteFolder[];
+}
+
+export interface FavoriteQuestion {
+  bank_id: string;
+  question_id: string;
+  available: boolean;
+  question_version_id?: string;
+}
+
+export interface FavoriteListResponse {
+  request_id: string;
+  data: FavoriteQuestion[];
+}
+
+export interface FavoriteWriteResponse {
+  request_id: string;
+  data: PracticeFeedbackOperation;
 }
 
 /** Correctness and answer disclosure arrive only after server-side scoring. */

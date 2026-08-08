@@ -63,7 +63,7 @@ func NewCommandClient(baseURL, clientID, clientSecret, keyID string) (*CommandCl
 }
 
 func (c *CommandClient) CreateSession(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
-	return c.command(ctx, CreatePortalPracticeSessionPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusCreated, validatePracticeSessionEnvelope)
+	return c.command(ctx, http.MethodPost, CreatePortalPracticeSessionPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusCreated, validatePracticeSessionEnvelope)
 }
 
 func (c *CommandClient) SubmitAnswer(ctx context.Context, sessionID, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
@@ -71,19 +71,49 @@ func (c *CommandClient) SubmitAnswer(ctx context.Context, sessionID, actorUserID
 		return CommandResult{}, ErrPracticeCommandBadRequest
 	}
 	path := strings.Replace(SubmitPortalPracticeAnswerPath, "{session_id}", url.PathEscape(sessionID), 1)
-	return c.command(ctx, path, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeAnswerEnvelope)
+	return c.command(ctx, http.MethodPost, path, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusOK, validatePracticeAnswerEnvelope)
 }
 
 // CreateFeedback submits one signed-in user's correction. Core owns the
 // question reference validation, the per-user idempotency history, and the
 // 202 write result; Gateway only relays the accepted envelope.
 func (c *CommandClient) CreateFeedback(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie) (CommandResult, error) {
-	return c.command(ctx, CreatePortalPracticeFeedbackPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusAccepted, validatePracticeFeedbackEnvelope)
+	return c.command(ctx, http.MethodPost, CreatePortalPracticeFeedbackPath, actorUserID, requestID, idempotencyKey, raw, anonymousCookie, http.StatusAccepted, validatePracticeFeedbackEnvelope)
+}
+
+// FavoriteQuestion adds one stable question reference for the signed-in actor.
+func (c *CommandClient) FavoriteQuestion(ctx context.Context, bankID, questionID, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (CommandResult, error) {
+	if !validPracticeCommandUUID(bankID) || !validPracticeCommandUUID(questionID) {
+		return CommandResult{}, ErrPracticeCommandBadRequest
+	}
+	path := strings.Replace(FavoritePortalQuestionPath, "{bank_id}", url.PathEscape(bankID), 1)
+	path = strings.Replace(path, "{question_id}", url.PathEscape(questionID), 1)
+	return c.command(ctx, http.MethodPut, path, actorUserID, requestID, idempotencyKey, []byte("{}"), anonymousCookie, http.StatusOK, validatePracticeOperationEnvelope)
+}
+
+// UnfavoriteQuestion removes one stable question reference idempotently.
+func (c *CommandClient) UnfavoriteQuestion(ctx context.Context, bankID, questionID, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (CommandResult, error) {
+	if !validPracticeCommandUUID(bankID) || !validPracticeCommandUUID(questionID) {
+		return CommandResult{}, ErrPracticeCommandBadRequest
+	}
+	path := strings.Replace(UnfavoritePortalQuestionPath, "{bank_id}", url.PathEscape(bankID), 1)
+	path = strings.Replace(path, "{question_id}", url.PathEscape(questionID), 1)
+	return c.command(ctx, http.MethodDelete, path, actorUserID, requestID, idempotencyKey, []byte("{}"), anonymousCookie, http.StatusOK, validatePracticeOperationEnvelope)
+}
+
+// CreateFavoritesSession starts a Practice Core session from one bank's
+// available favorites for the signed-in actor.
+func (c *CommandClient) CreateFavoritesSession(ctx context.Context, bankID, actorUserID, requestID, idempotencyKey string, anonymousCookie *http.Cookie) (CommandResult, error) {
+	if !validPracticeCommandUUID(bankID) {
+		return CommandResult{}, ErrPracticeCommandBadRequest
+	}
+	path := strings.Replace(CreatePortalFavoritesSessionPath, "{bank_id}", url.PathEscape(bankID), 1)
+	return c.command(ctx, http.MethodPost, path, actorUserID, requestID, idempotencyKey, []byte("{}"), anonymousCookie, http.StatusCreated, validatePracticeSessionEnvelope)
 }
 
 type commandEnvelopeValidator func([]byte) error
 
-func (c *CommandClient) command(ctx context.Context, path, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie, expectedStatus int, validate commandEnvelopeValidator) (CommandResult, error) {
+func (c *CommandClient) command(ctx context.Context, method, path, actorUserID, requestID, idempotencyKey string, raw []byte, anonymousCookie *http.Cookie, expectedStatus int, validate commandEnvelopeValidator) (CommandResult, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" || !ValidIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > 2<<20 {
 		return CommandResult{}, ErrPracticeCommandBadRequest
 	}
@@ -91,7 +121,7 @@ func (c *CommandClient) command(ctx context.Context, path, actorUserID, requestI
 	if actorUserID != "" && !validPracticeCommandUUID(actorUserID) {
 		return CommandResult{}, ErrPracticeCommandUnauthorized
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(raw))
+	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(raw))
 	if err != nil {
 		return CommandResult{}, fmt.Errorf("create QuizCraft Portal command: %w", ErrPracticeCommandUnavailable)
 	}
@@ -267,6 +297,36 @@ func validatePracticeFeedbackEnvelope(raw []byte) error {
 	resourceID, resourceOK := practiceRequiredString(data, "resource_id")
 	if !operationOK || !validPracticeCommandUUID(operationID) || !stateOK || state != "succeeded" || !idempotencyOK || !innerRequestOK || !resourceOK || !validPracticeCommandUUID(resourceID) {
 		return errors.New("invalid practice feedback data")
+	}
+	return nil
+}
+
+// validatePracticeOperationEnvelope guards the favorites write results, which
+// share the OperationEnvelope shape with feedback writes.
+func validatePracticeOperationEnvelope(raw []byte) error {
+	envelope, valid := practiceRequiredObject(raw)
+	if !valid || !practiceOnlyKeys(envelope, "request_id", "data") {
+		return errors.New("invalid practice operation envelope")
+	}
+	requestID, valid := practiceRequiredString(envelope, "request_id")
+	if !valid || strings.TrimSpace(requestID) == "" {
+		return errors.New("invalid practice operation request id")
+	}
+	dataRaw, valid := practiceRequiredRaw(envelope, "data")
+	if !valid {
+		return errors.New("invalid practice operation data")
+	}
+	data, valid := practiceRequiredObject(dataRaw)
+	if !valid || !practiceOnlyKeys(data, "operation_id", "state", "idempotency_key", "request_id", "resource_id") {
+		return errors.New("invalid practice operation data")
+	}
+	operationID, operationOK := practiceRequiredString(data, "operation_id")
+	state, stateOK := practiceRequiredString(data, "state")
+	_, idempotencyOK := practiceRequiredString(data, "idempotency_key")
+	_, innerRequestOK := practiceRequiredString(data, "request_id")
+	resourceID, resourceOK := practiceRequiredString(data, "resource_id")
+	if !operationOK || !validPracticeCommandUUID(operationID) || !stateOK || state != "succeeded" || !idempotencyOK || !innerRequestOK || !resourceOK || !validPracticeCommandUUID(resourceID) {
+		return errors.New("invalid practice operation data")
 	}
 	return nil
 }

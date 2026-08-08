@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +45,7 @@ func TestPortalPracticeCommandsAreDarkUntilEnabledAndBindTrustedActors(t *testin
 	}
 	darkServer := httptest.NewServer(darkHandler)
 	defer darkServer.Close()
-	darkRequest := newPortalPracticeCommandRequest(t, darkServer.URL, "/api/v1/portal/practice/sessions", payload, "", "portal-command-dark-0001")
+	darkRequest := newPortalPracticeCommandRequest(t, http.MethodPost, darkServer.URL, "/api/v1/portal/practice/sessions", payload, "", "portal-command-dark-0001")
 	darkStatus, darkBody, _ := sendPortalPracticeCommand(t, darkRequest)
 	if darkStatus != http.StatusNotFound || bytes.Contains(darkBody, []byte(`"questions"`)) {
 		t.Fatalf("default-dark Portal command = %d %s", darkStatus, darkBody)
@@ -63,7 +64,7 @@ func TestPortalPracticeCommandsAreDarkUntilEnabledAndBindTrustedActors(t *testin
 	}
 	writesDisabledServer := httptest.NewServer(writesDisabledHandler)
 	defer writesDisabledServer.Close()
-	writesDisabledRequest := newPortalPracticeCommandRequest(t, writesDisabledServer.URL, "/api/v1/portal/practice/sessions", payload, "", "portal-command-writes-disabled-0001")
+	writesDisabledRequest := newPortalPracticeCommandRequest(t, http.MethodPost, writesDisabledServer.URL, "/api/v1/portal/practice/sessions", payload, "", "portal-command-writes-disabled-0001")
 	writesDisabledStatus, writesDisabledBody, _ := sendPortalPracticeCommand(t, writesDisabledRequest)
 	if writesDisabledStatus != http.StatusServiceUnavailable || !bytes.Contains(writesDisabledBody, []byte(`"code":"writes_disabled"`)) {
 		t.Fatalf("writes-disabled Portal command = %d %s", writesDisabledStatus, writesDisabledBody)
@@ -82,7 +83,7 @@ func TestPortalPracticeCommandsAreDarkUntilEnabledAndBindTrustedActors(t *testin
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	guestRequest := newPortalPracticeCommandRequest(t, server.URL, "/api/v1/portal/practice/sessions", payload, "", "portal-command-guest-0001")
+	guestRequest := newPortalPracticeCommandRequest(t, http.MethodPost, server.URL, "/api/v1/portal/practice/sessions", payload, "", "portal-command-guest-0001")
 	guestStatus, guestBody, guestCookies := sendPortalPracticeCommand(t, guestRequest)
 	if guestStatus != http.StatusCreated {
 		t.Fatalf("guest Portal command = %d %s", guestStatus, guestBody)
@@ -112,7 +113,7 @@ func TestPortalPracticeCommandsAreDarkUntilEnabledAndBindTrustedActors(t *testin
 	// The middleware must consume Basic service credentials without allowing
 	// actor() to treat them as a browser Bearer credential.
 	actorID := uuid.NewString()
-	userRequest := newPortalPracticeCommandRequest(t, server.URL, "/api/v1/portal/practice/sessions", payload, actorID, "portal-command-user-0001")
+	userRequest := newPortalPracticeCommandRequest(t, http.MethodPost, server.URL, "/api/v1/portal/practice/sessions", payload, actorID, "portal-command-user-0001")
 	userRequest.AddCookie(guestCookie)
 	userStatus, userBody, _ := sendPortalPracticeCommand(t, userRequest)
 	if userStatus != http.StatusCreated {
@@ -137,7 +138,7 @@ func TestPortalPracticeCommandsAreDarkUntilEnabledAndBindTrustedActors(t *testin
 	answerPayload := mustJSON(map[string]any{
 		"question_id": guestQuestion.QuestionID, "question_version_id": guestQuestion.QuestionVersionID, "answer": 0,
 	})
-	claimRequest := newPortalPracticeCommandRequest(t, server.URL, "/api/v1/portal/practice/sessions/"+guestSession.Data.SessionID+"/answers", answerPayload, actorID, "portal-command-claim-answer-0001")
+	claimRequest := newPortalPracticeCommandRequest(t, http.MethodPost, server.URL, "/api/v1/portal/practice/sessions/"+guestSession.Data.SessionID+"/answers", answerPayload, actorID, "portal-command-claim-answer-0001")
 	claimRequest.AddCookie(guestCookie)
 	claimStatus, claimBody, _ := sendPortalPracticeCommand(t, claimRequest)
 	if claimStatus != http.StatusOK || !bytes.Contains(claimBody, []byte(`"expected_answer"`)) {
@@ -154,13 +155,13 @@ func TestPortalPracticeCommandsAreDarkUntilEnabledAndBindTrustedActors(t *testin
 
 	// A service client cannot spoof a user by changing the header after the
 	// six-part signature has been calculated.
-	spoofed := newPortalPracticeCommandRequest(t, server.URL, "/api/v1/portal/practice/sessions", payload, actorID, "portal-command-spoof-0001")
+	spoofed := newPortalPracticeCommandRequest(t, http.MethodPost, server.URL, "/api/v1/portal/practice/sessions", payload, actorID, "portal-command-spoof-0001")
 	spoofed.Header.Set("X-Actor-User-Id", uuid.NewString())
 	spoofedStatus, spoofedBody, _ := sendPortalPracticeCommand(t, spoofed)
 	if spoofedStatus != http.StatusUnauthorized || bytes.Contains(spoofedBody, []byte(`"questions"`)) {
 		t.Fatalf("tampered Portal actor = %d %s", spoofedStatus, spoofedBody)
 	}
-	bodyTampered := newPortalPracticeCommandRequest(t, server.URL, "/api/v1/portal/practice/sessions", payload, "", "portal-command-body-tamper-0001")
+	bodyTampered := newPortalPracticeCommandRequest(t, http.MethodPost, server.URL, "/api/v1/portal/practice/sessions", payload, "", "portal-command-body-tamper-0001")
 	changedPayload := append([]byte(nil), payload...)
 	changedPayload[len(changedPayload)-2] = '2'
 	bodyTampered.Body = io.NopCloser(bytes.NewReader(changedPayload))
@@ -202,9 +203,99 @@ func TestPortalPracticeCommandsRequireCompleteDedicatedConfiguration(t *testing.
 	}
 }
 
-func newPortalPracticeCommandRequest(t *testing.T, baseURL, path string, raw []byte, actor, idempotencyKey string) *http.Request {
+func TestPortalFavoriteCommandsSignPutDeleteAndStayBoundToTheSignedActor(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "portal-favorites-put-delete-"+uuid.NewString())
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		Database:              pool,
+		AuthHMACSecret:        []byte(practiceAuthSecret),
+		PortalCommandsEnabled: true,
+		PortalCommandClientID: portalCommandClientID,
+		PortalCommandKeys:     map[string]string{portalCommandKeyID: portalCommandSecret},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	actorID := uuid.NewString()
+	question := report.Questions[0]
+	favoritePath := fmt.Sprintf("/api/v1/portal/practice/banks/%s/favorites/%s", report.BankID, question.QuestionID)
+
+	putRequest := newPortalPracticeCommandRequest(t, http.MethodPut, server.URL, favoritePath, []byte(`{}`), actorID, "portal-favorite-put-0001")
+	putStatus, putBody, _ := sendPortalPracticeCommand(t, putRequest)
+	if putStatus != http.StatusOK || !bytes.Contains(putBody, []byte(`"state":"succeeded"`)) {
+		t.Fatalf("signed Portal PUT favorite = %d %s", putStatus, putBody)
+	}
+	var relationCount int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_favorites WHERE bank_id=$1 AND question_id=$2`, report.BankID, question.QuestionID).Scan(&relationCount); err != nil || relationCount != 1 {
+		t.Fatalf("favorite relation after PUT = %d, err=%v", relationCount, err)
+	}
+
+	// The PUT command shares the middleware's nonce replay protection with the
+	// POST commands: resending the identical signed request must conflict.
+	replayStatus, replayBody, _ := sendPortalPracticeCommand(t, putRequest)
+	if replayStatus != http.StatusConflict || !bytes.Contains(replayBody, []byte(`"code":"service_replay"`)) {
+		t.Fatalf("Portal PUT favorite nonce replay = %d %s", replayStatus, replayBody)
+	}
+
+	// The method is one of the signed canonical lines: a signature computed for
+	// PUT must be rejected when the request is sent as POST.
+	methodTampered := newPortalPracticeCommandRequest(t, http.MethodPut, server.URL, favoritePath, []byte(`{}`), actorID, "portal-favorite-method-tamper-0001")
+	methodTampered.Method = http.MethodPost
+	tamperStatus, tamperBody, _ := sendPortalPracticeCommand(t, methodTampered)
+	if tamperStatus != http.StatusUnauthorized || !bytes.Contains(tamperBody, []byte(`"code":"invalid_service_auth"`)) {
+		t.Fatalf("method-tampered Portal favorite = %d %s", tamperStatus, tamperBody)
+	}
+
+	deleteStatus, deleteBody, _ := sendPortalPracticeCommand(t, newPortalPracticeCommandRequest(t, http.MethodDelete, server.URL, favoritePath, []byte(`{}`), actorID, "portal-favorite-delete-0001"))
+	if deleteStatus != http.StatusOK || !bytes.Contains(deleteBody, []byte(`"state":"succeeded"`)) {
+		t.Fatalf("signed Portal DELETE favorite = %d %s", deleteStatus, deleteBody)
+	}
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_favorites WHERE bank_id=$1 AND question_id=$2`, report.BankID, question.QuestionID).Scan(&relationCount); err != nil || relationCount != 0 {
+		t.Fatalf("favorite relation after DELETE = %d, err=%v", relationCount, err)
+	}
+}
+
+func TestPortalGuestFavoriteCommandsRequireASignedInActor(t *testing.T) {
+	pool := practicePool(t)
+	report := importPracticeBank(t, pool, "portal-favorites-guest-"+uuid.NewString())
+	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		Database:              pool,
+		AuthHMACSecret:        []byte(practiceAuthSecret),
+		PortalCommandsEnabled: true,
+		PortalCommandClientID: portalCommandClientID,
+		PortalCommandKeys:     map[string]string{portalCommandKeyID: portalCommandSecret},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	question := report.Questions[0]
+	favoritePath := fmt.Sprintf("/api/v1/portal/practice/banks/%s/favorites/%s", report.BankID, question.QuestionID)
+
+	// Five-part guest commands carry no actor user ID; the favorites handlers
+	// must answer 401 instead of dereferencing a nil userID.
+	guestPutStatus, guestPutBody, _ := sendPortalPracticeCommand(t, newPortalPracticeCommandRequest(t, http.MethodPut, server.URL, favoritePath, []byte(`{}`), "", "portal-favorite-guest-0001"))
+	if guestPutStatus != http.StatusUnauthorized || !bytes.Contains(guestPutBody, []byte(`"code":"authentication_required"`)) {
+		t.Fatalf("guest Portal PUT favorite = %d %s", guestPutStatus, guestPutBody)
+	}
+	guestDeleteStatus, guestDeleteBody, _ := sendPortalPracticeCommand(t, newPortalPracticeCommandRequest(t, http.MethodDelete, server.URL, favoritePath, []byte(`{}`), "", "portal-favorite-guest-delete-0001"))
+	if guestDeleteStatus != http.StatusUnauthorized || !bytes.Contains(guestDeleteBody, []byte(`"code":"authentication_required"`)) {
+		t.Fatalf("guest Portal DELETE favorite = %d %s", guestDeleteStatus, guestDeleteBody)
+	}
+	guestSessionStatus, guestSessionBody, _ := sendPortalPracticeCommand(t, newPortalPracticeCommandRequest(t, http.MethodPost, server.URL, fmt.Sprintf("/api/v1/portal/practice/banks/%s/favorites/practice-sessions", report.BankID), []byte(`{}`), "", "portal-favorites-session-guest-0001"))
+	if guestSessionStatus != http.StatusUnauthorized || !bytes.Contains(guestSessionBody, []byte(`"code":"authentication_required"`)) {
+		t.Fatalf("guest Portal favorites session = %d %s", guestSessionStatus, guestSessionBody)
+	}
+}
+
+func newPortalPracticeCommandRequest(t *testing.T, method, baseURL, path string, raw []byte, actor, idempotencyKey string) *http.Request {
 	t.Helper()
-	request, err := http.NewRequest(http.MethodPost, baseURL+path, bytes.NewReader(raw))
+	request, err := http.NewRequest(method, baseURL+path, bytes.NewReader(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +306,7 @@ func newPortalPracticeCommandRequest(t *testing.T, baseURL, path string, raw []b
 	nonceText := base64.RawURLEncoding.EncodeToString(nonce)
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	digest := sha256.Sum256(raw)
-	canonicalParts := []string{http.MethodPost, request.URL.RequestURI(), timestamp, nonceText, hex.EncodeToString(digest[:])}
+	canonicalParts := []string{method, request.URL.RequestURI(), timestamp, nonceText, hex.EncodeToString(digest[:])}
 	if actor != "" {
 		canonicalParts = append(canonicalParts, actor)
 		request.Header.Set("X-Actor-User-Id", actor)

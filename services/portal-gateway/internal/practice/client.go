@@ -217,7 +217,7 @@ func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID strin
 	if !validUUID(actorUserID) {
 		return PersonalPracticeStatsEnvelope{}, ErrStatsUnauthorized
 	}
-	resp, err := c.actorBoundPersonalStats(ctx, actorUserID, requestID)
+	resp, err := c.actorBoundRead(ctx, GetPersonalPracticeStatsPath, actorUserID, requestID, PortalReadPermission)
 	if err != nil {
 		return PersonalPracticeStatsEnvelope{}, err
 	}
@@ -244,45 +244,6 @@ func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID strin
 	return result, nil
 }
 
-// actorBoundPersonalStats is intentionally separate from portalRead. Catalog
-// and ranking are public/read-shared facts; personal statistics are one
-// account's data, so the Core rejects a request unless the actor UUID is the
-// sixth HMAC canonical line.
-func (c *Client) actorBoundPersonalStats(ctx context.Context, actorUserID, requestID string) (*http.Response, error) {
-	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
-		return nil, ErrStatsUnauthorized
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+GetPersonalPracticeStatsPath, nil)
-	if err != nil {
-		return nil, ErrStatsUnavailable
-	}
-	req.Header.Set("X-Request-Id", requestID)
-	req.Header.Set("X-Permission-Code", PortalReadPermission)
-	req.Header.Set("X-Scope-Kind", "product")
-	req.Header.Set("X-Product-Code", "quizcraft")
-	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
-		return nil, fmt.Errorf("portal personal stats sign: %w", ErrStatsUnavailable)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("portal personal stats request: %w", ErrStatsUnavailable)
-	}
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return resp, nil
-	case http.StatusUnauthorized, http.StatusForbidden:
-		_ = resp.Body.Close()
-		// Portal Gateway has already checked the browser's session and live
-		// permission. A Core 401/403 here is an internal service-auth failure,
-		// never evidence that the browser should be asked to sign in again.
-		return nil, fmt.Errorf("portal personal stats service authentication: %w", ErrStatsUnavailable)
-	default:
-		_ = resp.Body.Close()
-		return nil, fmt.Errorf("portal personal stats status %d: %w", resp.StatusCode, ErrStatsUnavailable)
-	}
-}
-
 // FeedbackStatus reads one signed-in user's persisted correction processing
 // status. Like PersonalStats it is actor-bound: Core rejects the read unless
 // the actor UUID is the sixth HMAC canonical line, so a feedback id from
@@ -292,33 +253,11 @@ func (c *Client) FeedbackStatus(ctx context.Context, actorUserID, requestID, fee
 		return FeedbackStatusEnvelope{}, ErrStatsUnauthorized
 	}
 	path := strings.Replace(GetPortalPracticeFeedbackStatusPath, "{feedback_id}", url.PathEscape(feedbackID), 1)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	resp, err := c.actorBoundRead(ctx, path, actorUserID, requestID, PortalReadPermission)
 	if err != nil {
-		return FeedbackStatusEnvelope{}, ErrStatsUnavailable
-	}
-	req.Header.Set("X-Request-Id", requestID)
-	req.Header.Set("X-Permission-Code", PortalReadPermission)
-	req.Header.Set("X-Scope-Kind", "product")
-	req.Header.Set("X-Product-Code", "quizcraft")
-	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
-		return FeedbackStatusEnvelope{}, fmt.Errorf("portal feedback status sign: %w", ErrStatsUnavailable)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return FeedbackStatusEnvelope{}, fmt.Errorf("portal feedback status request: %w", ErrStatsUnavailable)
+		return FeedbackStatusEnvelope{}, err
 	}
 	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK:
-	case http.StatusUnauthorized, http.StatusForbidden:
-		// Portal Gateway has already checked the browser's session and live
-		// permission. A Core 401/403 here is an internal service-auth failure,
-		// never evidence that the browser should be asked to sign in again.
-		return FeedbackStatusEnvelope{}, fmt.Errorf("portal feedback status service authentication: %w", ErrStatsUnavailable)
-	default:
-		return FeedbackStatusEnvelope{}, fmt.Errorf("portal feedback status %d: %w", resp.StatusCode, ErrStatsUnavailable)
-	}
 
 	var result FeedbackStatusEnvelope
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
@@ -333,6 +272,111 @@ func (c *Client) FeedbackStatus(ctx context.Context, actorUserID, requestID, fee
 		return FeedbackStatusEnvelope{}, err
 	}
 	return result, nil
+}
+
+// FavoritesOverview reads the signed-in user's per-bank favorite folders
+// through the six-part actor-bound read contract.
+func (c *Client) FavoritesOverview(ctx context.Context, actorUserID, requestID string) (FavoritesOverviewEnvelope, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
+		return FavoritesOverviewEnvelope{}, ErrStatsUnauthorized
+	}
+	resp, err := c.actorBoundRead(ctx, GetPortalFavoritesOverviewPath, actorUserID, requestID, PortalReadPermission)
+	if err != nil {
+		return FavoritesOverviewEnvelope{}, err
+	}
+	defer resp.Body.Close()
+	var result FavoritesOverviewEnvelope
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview decode: %w", ErrInvalidStats)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview decode: %w", ErrInvalidStats)
+	}
+	if strings.TrimSpace(result.RequestID) == "" {
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview request id: %w", ErrInvalidStats)
+	}
+	for _, folder := range result.Data {
+		if !validUUID(folder.BankID) || strings.TrimSpace(folder.BankName) == "" || folder.AvailableCount < 0 || folder.UnavailableCount < 0 {
+			return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview folder: %w", ErrInvalidStats)
+		}
+	}
+	return result, nil
+}
+
+// FavoriteList reads one bank's favorite references for the signed-in actor.
+func (c *Client) FavoriteList(ctx context.Context, actorUserID, requestID, bankID string) (FavoriteListEnvelope, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" || !validUUID(bankID) {
+		return FavoriteListEnvelope{}, ErrStatsUnauthorized
+	}
+	path := strings.Replace(ListPortalFavoriteQuestionsPath, "{bank_id}", url.PathEscape(bankID), 1)
+	resp, err := c.actorBoundRead(ctx, path, actorUserID, requestID, PortalReadPermission)
+	if err != nil {
+		return FavoriteListEnvelope{}, err
+	}
+	defer resp.Body.Close()
+	var result FavoriteListEnvelope
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list decode: %w", ErrInvalidStats)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list decode: %w", ErrInvalidStats)
+	}
+	if strings.TrimSpace(result.RequestID) == "" {
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list request id: %w", ErrInvalidStats)
+	}
+	for _, item := range result.Data {
+		if !validUUID(item.BankID) || item.BankID != bankID || !validUUID(item.QuestionID) {
+			return FavoriteListEnvelope{}, fmt.Errorf("favorites list item: %w", ErrInvalidStats)
+		}
+		if item.QuestionVersionID != "" && !validUUID(item.QuestionVersionID) {
+			return FavoriteListEnvelope{}, fmt.Errorf("favorites list item version: %w", ErrInvalidStats)
+		}
+	}
+	return result, nil
+}
+
+// actorBoundRead performs the six-part actor-bound signed GET shared by every
+// signed-in practice read (personal stats, feedback status, favorites). The
+// actor UUID is the sixth HMAC canonical line, so Core rejects a request
+// unless it is a valid UUID. Returns the response with the body still open;
+// the caller decodes and validates the typed envelope.
+func (c *Client) actorBoundRead(ctx context.Context, path, actorUserID, requestID, permissionCode string) (*http.Response, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
+		return nil, ErrStatsUnauthorized
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return nil, ErrStatsUnavailable
+	}
+	req.Header.Set("X-Request-Id", requestID)
+	req.Header.Set("X-Permission-Code", permissionCode)
+	req.Header.Set("X-Scope-Kind", "product")
+	req.Header.Set("X-Product-Code", "quizcraft")
+	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
+		return nil, fmt.Errorf("portal actor read %s sign: %w", path, ErrStatsUnavailable)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("portal actor read %s request: %w", path, ErrStatsUnavailable)
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return resp, nil
+	case http.StatusUnauthorized, http.StatusForbidden:
+		_ = resp.Body.Close()
+		// Portal Gateway has already checked the browser's session and live
+		// permission. A Core 401/403 here is an internal service-auth failure,
+		// never evidence that the browser should be asked to sign in again.
+		return nil, fmt.Errorf("portal actor read %s service authentication: %w", path, ErrStatsUnavailable)
+	default:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("portal actor read %s status %d: %w", path, resp.StatusCode, ErrStatsUnavailable)
+	}
 }
 
 func validateFeedbackStatus(result FeedbackStatusEnvelope, expectedFeedbackID string) error {

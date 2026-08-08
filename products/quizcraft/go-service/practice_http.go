@@ -297,6 +297,8 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		// catalog and rankings remain on their established five-part contract.
 		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/stats", service.personalStats)
 		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/feedback/{feedback_id}/status", service.portalFeedbackStatus)
+		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/favorites", service.portalFavoritesOverview)
+		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/banks/{bank_id}/favorites", service.portalFavoritesList)
 	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
@@ -331,6 +333,9 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		portalCommands.Post("/api/v1/portal/practice/sessions", service.createSession)
 		portalCommands.Post("/api/v1/portal/practice/sessions/{session_id}/answers", service.submitAnswer)
 		portalCommands.Post("/api/v1/portal/practice/feedback", service.createFeedback)
+		portalCommands.Put("/api/v1/portal/practice/banks/{bank_id}/favorites/{question_id}", service.portalFavoriteQuestion)
+		portalCommands.Delete("/api/v1/portal/practice/banks/{bank_id}/favorites/{question_id}", service.portalUnfavoriteQuestion)
+		portalCommands.Post("/api/v1/portal/practice/banks/{bank_id}/favorites/practice-sessions", service.portalCreateFavoritesSession)
 	}
 	router.Get("/api/v1/operations/{operation_kind}", service.operationStatus)
 	router.Get("/api/v1/learning-state", service.learningState)
@@ -594,6 +599,22 @@ func (service *practiceHTTP) listFavoriteFolders(writer http.ResponseWriter, req
 	if !ok {
 		return
 	}
+	service.listFavoriteFoldersForActor(writer, request, actor)
+}
+
+// portalFavoritesOverview serves the same per-bank folder overview to the
+// narrow Portal Gateway boundary. authenticatePortalPersonalStats has already
+// verified the six-part HMAC over X-Actor-User-Id.
+func (service *practiceHTTP) portalFavoritesOverview(writer http.ResponseWriter, request *http.Request) {
+	userID, err := portalActorUserID(request)
+	if err != nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read favorites")
+		return
+	}
+	service.listFavoriteFoldersForActor(writer, request, practiceActor{userID: &userID, key: "user:" + userID.String()})
+}
+
+func (service *practiceHTTP) listFavoriteFoldersForActor(writer http.ResponseWriter, request *http.Request, actor practiceActor) {
 	rows, err := service.queries.ListFavoriteFolders(request.Context(), *actor.userID)
 	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
@@ -611,6 +632,19 @@ func (service *practiceHTTP) listFavoriteQuestions(writer http.ResponseWriter, r
 	if !ok {
 		return
 	}
+	service.listFavoriteQuestionsForActor(writer, request, actor)
+}
+
+func (service *practiceHTTP) portalFavoritesList(writer http.ResponseWriter, request *http.Request) {
+	userID, err := portalActorUserID(request)
+	if err != nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read favorites")
+		return
+	}
+	service.listFavoriteQuestionsForActor(writer, request, practiceActor{userID: &userID, key: "user:" + userID.String()})
+}
+
+func (service *practiceHTTP) listFavoriteQuestionsForActor(writer http.ResponseWriter, request *http.Request, actor practiceActor) {
 	bankID, _, ok := parseFavoritePath(writer, request, false)
 	if !ok {
 		return
@@ -642,6 +676,36 @@ func (service *practiceHTTP) unfavoriteQuestion(writer http.ResponseWriter, requ
 func (service *practiceHTTP) changeFavorite(writer http.ResponseWriter, request *http.Request, add bool) {
 	actor, ok := service.requireUser(writer, request)
 	if !ok {
+		return
+	}
+	service.changeFavoriteForActor(writer, request, actor, add)
+}
+
+// portalFavoriteQuestion and portalUnfavoriteQuestion are the Portal Gateway
+// write boundary. authenticatePortalCommand verified the service signature and
+// placed the actor in context; service.actor derives the key from it.
+func (service *practiceHTTP) portalFavoriteQuestion(writer http.ResponseWriter, request *http.Request) {
+	service.portalChangeFavorite(writer, request, true)
+}
+
+func (service *practiceHTTP) portalUnfavoriteQuestion(writer http.ResponseWriter, request *http.Request) {
+	service.portalChangeFavorite(writer, request, false)
+}
+
+func (service *practiceHTTP) portalChangeFavorite(writer http.ResponseWriter, request *http.Request, add bool) {
+	actor, status, err := service.actor(writer, request)
+	if err != nil {
+		writeError(writer, status, "invalid_session", err.Error())
+		return
+	}
+	service.changeFavoriteForActor(writer, request, actor, add)
+}
+
+func (service *practiceHTTP) changeFavoriteForActor(writer http.ResponseWriter, request *http.Request, actor practiceActor, add bool) {
+	// Favorites are per-user relations. A guest actor (anonymous cookie, or a
+	// five-part Portal command without an actor) has no userID to write under.
+	if actor.userID == nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to use favorites")
 		return
 	}
 	bankID, questionID, ok := parseFavoritePath(writer, request, true)
@@ -716,6 +780,27 @@ func (service *practiceHTTP) changeFavorite(writer http.ResponseWriter, request 
 func (service *practiceHTTP) createFavoritesSession(writer http.ResponseWriter, request *http.Request) {
 	actor, ok := service.requireUser(writer, request)
 	if !ok {
+		return
+	}
+	service.createFavoritesSessionForActor(writer, request, actor)
+}
+
+// portalCreateFavoritesSession is the Portal Gateway write boundary for
+// starting practice from one bank's available favorites.
+func (service *practiceHTTP) portalCreateFavoritesSession(writer http.ResponseWriter, request *http.Request) {
+	actor, status, err := service.actor(writer, request)
+	if err != nil {
+		writeError(writer, status, "invalid_session", err.Error())
+		return
+	}
+	service.createFavoritesSessionForActor(writer, request, actor)
+}
+
+func (service *practiceHTTP) createFavoritesSessionForActor(writer http.ResponseWriter, request *http.Request, actor practiceActor) {
+	// Favorites practice sessions are bound to one user; a guest actor cannot
+	// build a session from another identity's relations.
+	if actor.userID == nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to use favorites")
 		return
 	}
 	bankID, _, ok := parseFavoritePath(writer, request, false)
