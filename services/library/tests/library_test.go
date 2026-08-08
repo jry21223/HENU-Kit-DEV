@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -156,11 +157,11 @@ func TestCreateReturnsLegacyResourceIDAndAuditsTarget(t *testing.T) {
 }
 
 func TestUnknownLegacyWriteIsQueryableAndNeverBlindlyRetried(t *testing.T) {
-	var commandCalls int
+	var commandCalls atomic.Int32
 	legacy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodPost {
-			commandCalls++
+			commandCalls.Add(1)
 			panic(http.ErrAbortHandler)
 		}
 		switch r.URL.Path {
@@ -193,8 +194,8 @@ func TestUnknownLegacyWriteIsQueryableAndNeverBlindlyRetried(t *testing.T) {
 	if payload := readBody(t, second); !bytes.Contains(payload, []byte(`"state":"unknown"`)) {
 		t.Fatalf("replayed unknown = %s", payload)
 	}
-	if commandCalls != 1 {
-		t.Fatalf("unknown write called legacy %d times", commandCalls)
+	if commandCalls.Load() != 1 {
+		t.Fatalf("unknown write called legacy %d times", commandCalls.Load())
 	}
 	operation := send(t, server.URL, "library.review", http.MethodGet, "/api/v1/operations/submission_approve", nil, unknownKey)
 	if payload := readBody(t, operation); !bytes.Contains(payload, []byte(`"state":"unknown"`)) {

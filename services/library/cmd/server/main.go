@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	library "henukit.dev/library"
+	"henukit.dev/library/internal/listenaddr"
 )
 
 func main() {
@@ -40,7 +41,7 @@ func main() {
 	}
 	address := os.Getenv("LIBRARY_ADDR")
 	if strings.TrimSpace(address) == "" {
-		address = ":8095"
+		address = listenaddr.DefaultAddr
 	}
 	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

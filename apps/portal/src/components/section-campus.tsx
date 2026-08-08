@@ -5,17 +5,9 @@ import { gsap, useGSAP, FINE_MOTION, ScrollTrigger } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 
-const FEATURES = ["平台担保，完成才付款", "实名认证，同校接单", "快递 / 搬运 / 小项目全覆盖"];
+const FEATURES = ["实名认证，同校接单", "快递 / 搬运 / 小项目全覆盖"];
 
-const ORDER = {
-  id: "ORD-260719",
-  title: "代取快递",
-  desc: "菜鸟驿站 3 件，送到 6 号宿舍楼",
-  price: "¥ 3.00",
-  status: "担保中",
-};
-
-/** 发单 → 平台担保 → 接单完成 流程描线图 */
+/** 发单 → 接单完成 流程描线图（去除了无后端支撑的“平台担保”节点） */
 function FlowDiagram() {
   return (
     <svg viewBox="0 0 480 140" fill="none" className="w-full max-w-lg">
@@ -31,8 +23,8 @@ function FlowDiagram() {
         <text x="40" y="74" textAnchor="middle" fontSize="13" fill="#161513">发单</text>
       </g>
       <g data-flow-node>
-        <rect x="204" y="46" width="76" height="48" stroke="#ff4d00" />
-        <text x="242" y="74" textAnchor="middle" fontSize="13" fill="#ff4d00">平台担保</text>
+        <rect x="204" y="46" width="76" height="48" stroke="#161513" />
+        <text x="242" y="74" textAnchor="middle" fontSize="13" fill="#161513">接单</text>
       </g>
       <g data-flow-node>
         <rect x="414" y="46" width="60" height="48" stroke="#161513" />
@@ -129,7 +121,7 @@ export default function SectionCampus() {
           <SectionHeading index="04" en="CAMPUS MUTUAL AID" title="互助平台" />
           <p className="mt-6 max-w-sm text-sm leading-7 text-ink/70">
             代取快递、搬行李、组队做小项目——发单有人接，
-            平台担保，完成才付款。
+            同校互帮互助。
           </p>
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {FEATURES.map((f) => (
@@ -148,23 +140,24 @@ export default function SectionCampus() {
           </div>
         </div>
 
-        {/* 订单卡示例 */}
+        {/* 订单卡：当前互助平台的发布/接单/结算尚未接通后端，
+            不再展示硬编码示例订单；待真实订单可用后再接数据。 */}
         <div className="flex items-center">
           <article
             data-order-card
-            className="group w-full max-w-sm border border-ink/25 bg-paper p-6 transition-colors duration-300 hover:border-accent"
+            className="group w-full max-w-sm border border-dashed border-ink/25 bg-paper p-6"
           >
             <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/50">
-              <span>{ORDER.id}</span>
-              <span className="border border-accent px-2 py-0.5 text-accent">{ORDER.status}</span>
+              <span>CAMPUS AID</span>
+              <span className="border border-ink/30 px-2 py-0.5 text-ink/50">待接入</span>
             </div>
-            <h3 className="mt-5 font-display text-3xl font-bold">{ORDER.title}</h3>
-            <p className="mt-2 text-sm text-ink/60">{ORDER.desc}</p>
+            <h3 className="mt-5 font-display text-3xl font-bold">真实订单即将上线</h3>
+            <p className="mt-2 text-sm text-ink/60">
+              互助平台的发布与接单正在接入服务端，上线后会在这里展示最新真实订单。
+            </p>
             <div className="mt-6 flex items-end justify-between border-t border-line pt-4">
-              <span className="font-mono text-xs text-ink/50">悬赏金额</span>
-              <span className="font-display text-2xl font-bold text-accent transition-transform duration-300 group-hover:-translate-y-0.5">
-                {ORDER.price}
-              </span>
+              <span className="font-mono text-xs text-ink/50">当前状态</span>
+              <span className="font-mono text-xs text-ink/60">开发中</span>
             </div>
           </article>
         </div>

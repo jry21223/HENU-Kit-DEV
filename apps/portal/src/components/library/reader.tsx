@@ -2,19 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import {
-  MATERIAL_TYPES,
-  getMaterial,
-} from "@/lib/library/mock";
+import { MATERIAL_TYPES } from "@/lib/library/mock";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
+import { LibraryLoading, LibraryNotFound } from "@/components/library/material-states";
+import { useMaterialDetail } from "@/lib/library/use-material-detail";
 
 const subscribeToHydration = () => () => {};
 const hydratedSnapshot = () => true;
 const serverHydrationSnapshot = () => false;
 
 export default function Reader({ id }: { id: string }) {
-  const material = getMaterial(id);
+  const state = useMaterialDetail(id);
 
   const [page, setPage] = useState(0);
   const isInteractive = useSyncExternalStore(
@@ -25,10 +24,10 @@ export default function Reader({ id }: { id: string }) {
   const dirRef = useRef(1);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const total = material?.pageCount ?? material?.pages.length ?? 0;
-  const free = !material || material.price === 0;
-  const visiblePages = material && !free
-    ? Math.min(material.previewPages, material.pages.length)
+  const total = state.material?.pageCount ?? state.material?.pages.length ?? 0;
+  const free = !state.material || state.material.price === 0;
+  const visiblePages = state.material && !free
+    ? Math.min(state.material.previewPages, state.material.pages.length)
     : total;
   const locked = !free && page >= visiblePages;
   const previousDisabled = !isInteractive || page === 0;
@@ -69,17 +68,17 @@ export default function Reader({ id }: { id: string }) {
     );
   }, [page]);
 
-  if (!material) {
-    return (
-      <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">404 / NOT FOUND</p>
-        <Link href="/library" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
-          ← 返回书库
-        </Link>
-      </main>
+  if (state.loadState !== "ready") {
+    return state.loadState === "error" ? (
+      <LibraryNotFound error={state.error} />
+    ) : (
+      <LibraryLoading />
     );
   }
+  const { material } = state;
 
+  // pageCount 元数据可能大于实际交付的 pages，渲染前钳制索引，避免越界静默渲染空页。
+  const safePage = Math.min(Math.max(page, 0), material.pages.length - 1);
   const progress = ((page + 1) / total) * 100;
 
   return (
@@ -136,7 +135,7 @@ export default function Reader({ id }: { id: string }) {
               )}
             </p>
             <div className="mt-6 space-y-5">
-              {material.pages[page].map((para, i) => (
+              {(material.pages[safePage] ?? []).map((para, i) => (
                 <p key={i} className="text-[15px] leading-8 text-ink/85">
                   {para}
                 </p>
