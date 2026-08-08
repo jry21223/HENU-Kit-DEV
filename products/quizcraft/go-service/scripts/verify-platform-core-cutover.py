@@ -78,8 +78,8 @@ response, body = request(
 data = json.loads(body)['data']
 expiry = datetime.fromisoformat(data['session_expires_at'].replace('Z', '+00:00'))
 remaining = (expiry - datetime.now(timezone.utc)).total_seconds()
-if response.status != 200 or not data.get('user', {}).get('id') or not 14.9 * 86400 <= remaining <= 15 * 86400 + 60:
-    raise SystemExit('15-day Core Session verification failed')
+if response.status != 200 or not data.get('user', {}).get('id') or not 29.9 * 86400 <= remaining <= 30 * 86400 + 60:
+    raise SystemExit('30-day Core Session verification failed')
 
 response, _ = request(f'{console_origin}/api/v1/auth/login?return_to=%2F', 'GET')
 if response.status != 200 or urllib.parse.urlparse(response.geturl()).netloc != urllib.parse.urlparse(console_origin).netloc:

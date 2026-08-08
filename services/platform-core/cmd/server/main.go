@@ -40,7 +40,7 @@ func main() {
 	handler, err := platformcore.New(platformcore.Config{
 		Database: database, Redis: redisClient, CoreCookieName: settings.CoreCookieName, LocalCoreCookieName: settings.LocalCoreCookieName,
 		CoreSessionTTL:   settings.CoreSessionTTL,
-		AuthorizationTTL: settings.AuthorizationTTL, ExchangeSessionTTL: settings.ExchangeSessionTTL,
+		AuthorizationTTL: settings.AuthorizationTTL, ExchangeSessionTTL: settings.ExchangeSessionTTL, ExchangeSessionTTLOverrides: settings.ExchangeSessionTTLOverrides,
 		IdempotencyEncryptionKey: settings.IdempotencyEncryptionKey, Logger: logger,
 		IdempotencyTTL:            settings.IdempotencyTTL,
 		VerificationEncryptionKey: settings.VerificationKey, StudentEmailDomains: settings.StudentEmailDomains,

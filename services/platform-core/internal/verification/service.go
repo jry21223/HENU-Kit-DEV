@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"henukit.dev/platform-core/internal/config"
 	"henukit.dev/platform-core/internal/password"
 	"henukit.dev/platform-core/internal/securebox"
 	"henukit.dev/platform-core/internal/store"
@@ -131,8 +132,8 @@ func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator
 	if codeTTL < 5*time.Minute || codeTTL > 10*time.Minute || resendDelay < 60*time.Second {
 		return nil, errors.New("verification TTL must be 5-10m and resend delay at least 60s")
 	}
-	if coreSessionTTL != 15*24*time.Hour {
-		return nil, errors.New("core Session TTL must be 15 days")
+	if coreSessionTTL != config.RequiredCoreSessionTTL {
+		return nil, errors.New("core Session TTL must be 30 days")
 	}
 	if len(allowedDomains) != 1 || strings.ToLower(strings.TrimSpace(allowedDomains[0])) != "henu.edu.cn" {
 		return nil, errors.New("student email domain must be exactly henu.edu.cn")

@@ -3,7 +3,7 @@
 ## Owns
 
 - Platform users and their account status.
-- 15-day absolute Core Sessions on the account origin and revocable eight-hour client exchange Sessions for high-privilege product work.
+- 30-day absolute Core Sessions on the account origin and revocable client exchange Sessions: eight hours by default for high-privilege product work, with the `portal-gateway` client extended to 30 days so the Portal Session survives the full Core Session window.
 - Registered OAuth clients, exact callbacks, PKCE challenges, and single-use Authorization Codes.
 - Permission codes, authorization roles, user Scope grants, authorization revisions, and authorization audit events.
 - Verification-code security facts and the encrypted critical mail Outbox.
