@@ -1,110 +1,58 @@
 # HENU Kit 资料库同步(HENU-Final-Review → henukit.cn)
 
 资料库内容来自公开仓库 [jry21223/HENU-Final-Review](https://github.com/jry21223/HENU-Final-Review)。
-仓库 `manifest.json` 是唯一事实来源:它给每个资产标注了 role(复习讲义 / 课件PPT /
-往年真题 / 题库练习 / 笔记总结 / 待复核资料)、sha256 与字节数。
+仓库 `manifest.json` 是候选资料的事实来源：每个资产都带有 role、SHA-256 和字节数。
 
-## 架构
+## #306-A 状态：仅准备，默认拒绝激活
 
-```
-GitHub push (HENU-Final-Review, refs/heads/main)
-        │  webhook (secret 校验 / 队列 / 去重,deploy-webhook 第二实例)
-        ▼
-henukit-materials-webhook.service (127.0.0.1:10088)
-        │  systemd path 触发
-        ▼
-henukit-materials-runner.service (root, oneshot)
-        │  henukit-materials-sync.sh
-        ├─ 1. sync-henukit-materials.sh   git clone/fetch → 只镜像非"待复核"资产,
-        │     原子换入 /opt/henukit-materials/public(nginx 只服务这个目录)
-        ├─ 2. convert-henukit-slides.py   "课件PPT" → 门户 Slides JSON
-        │     (python-pptx;.ppt 先经 LibreOffice 转 pptx)
-        └─ 3. import-henukit-materials.mjs   manifest → courses/materials 幂等 upsert
-              (school/college/major/course 规范化;storage_key 唯一索引;下线已移除资产)
-```
+本切片**没有启用** webhook、队列、root runner、Nginx 切换、目录镜像、数据库导入或生产
+配置。不要运行旧的 `henukit-materials-sync.sh`、`sync-henukit-materials.sh`、root
+systemd 安装/启用命令，或直接将导入 SQL 交给生产数据库。它们都需要后续 activation
+切片的锁、回滚、审计和明确批准，当前没有安全授权路径。
 
-- **nginx(容器内)** 以只读卷挂载 `$HENUKIT_MATERIALS_ROOT/public` 到 `/srv/materials`,
-  `/materials/` 前缀禁止目录列举、拒绝点文件、强制下载(`Content-Disposition: attachment`)。
-  git checkout 与仓库工具目录**永远不在**服务目录内,`/.git/` 不可能被暴露。
-- **portal-api** 从遗留 Study 库读 `courses`/`materials`(新增 `sha256`/`slides` 列),
-  列表接口带 `filePath`/`fileSize`,`GET /api/v1/library/materials/{id}` 详情带 `slides`。
-- **portal** 资料详情页:slides 类型主操作"浏览幻灯片"(`/library/slides/[id]`,
-  浏览器内翻页浏览,无需下载 5–19MB 的 PPT),其余资料提供原文件下载入口。
+旧脚本仅作为迁移期历史实现保留；它们不是 #306-A 的操作说明，也不代表任何生产能力已启用。
 
-## 首次部署(服务器,root)
+## 候选准备（仓库本地、非 root）
 
-前置:GitHub Actions 已部署过的宿主(HENU Kit release),`git`、`python3`、
-`python3-pptx`、`node`(≥18)、docker CLI;处理历史 `.ppt` 还需要 `libreoffice-impress`
-(仅转换器用到,缺失时文件同步照常,幻灯片转换跳过并告警)。
+当前唯一可执行的公开边界是仓库中的 CLI：
 
 ```bash
-# 1. 安装 webhook 第二实例(复用 deploy-webhook 二进制与安装器)
-sudo services/deploy-webhook/deploy/install.sh --enable-materials-sync
-#    生成 /etc/henukit-deploy/materials-webhook.env 与 materials-webhook-secret
-
-# 2. 检查 env:数据库走 compose postgres 时无需改动;
-#    若 STUDY_DATABASE_URL 指向其他实例,设置 HENUKIT_MATERIALS_DATABASE_URL
-#    (需主机上有 psql)。
-cat /etc/henukit-deploy/materials-webhook.env
-
-# 3. 首次同步 + 导入(webhook 之外先手动跑一遍)
-HENUKIT_MATERIALS_ROOT=/opt/henukit-materials \
-  /usr/local/libexec/henukit/henukit-materials-sync.sh
-# 预期:mirrored 182 assets, skipped 66 pending review;slides converted ~90;
-#      导入 summary imported 182
-
-# 4. 校验
-curl -sI https://henukit.cn/materials/高等数学A（二）/复习讲义/高等数学A（二）_考前复习知识点讲义.pdf | head -5   # 200 + attachment
-curl -s https://henukit.cn/api/v1/library/materials | head -c 300
-curl -s https://henukit.cn/api/v1/library/courses | head -c 300
-
-# 5. 配置 host 级 nginx(与 /webhooks/github 同一 HTTPS 段):
-#    复制 services/deploy-webhook/deploy/nginx-materials.conf.example
-
-# 6. GitHub 仓库设置 → Webhooks → 添加:
-#    Payload URL: https://henukit.cn/webhooks/materials
-#    Content type: application/json;Secret: /etc/henukit-deploy/materials-webhook-secret 的内容
-#    Events: 只勾 push
-
-# 7. 发一个 Ping 与一次真实 push,确认队列落盘,然后启用队列触发器:
-systemctl enable --now henukit-materials-webhook.path
-journalctl -u henukit-materials-runner.service -f
+node scripts/ops/prepare-henukit-materials.mjs \
+  --repository https://github.com/jry21223/HENU-Final-Review.git \
+  --ref refs/heads/main \
+  --sha <accepted-lowercase-40-character-sha> \
+  --candidate-dir /var/lib/henukit-materials/candidates/<accepted-sha>
 ```
 
-## 幂等与安全性质
+它必须由非 root 帐户执行。CLI 只在新的候选目录中生成 detached checkout、已复核资料镜像、
+Slides JSON 和 `READY`；它不接受公开目录、数据库或激活参数。默认受保护的公开根是
+`/opt/henukit-materials/public`；运维可用绝对路径的
+`HENUKIT_MATERIALS_PUBLIC_ROOT` 追加当前宿主的公开根。候选目录位于任一受保护根内，
+或通过符号链接解析到其中，都会被拒绝。
 
-- 重跑安全:同步按 manifest 重建镜像,导入按 `storage_key` 唯一索引 upsert;
-  幻灯片按源文件 mtime 跳过已转换文件。
-- 下线一致性:manifest 中移除的资产会同时从镜像消失并在库中置 `archived`
-  (仅限带 `sha256` 标记的镜像行,不影响遗留资料)。
-- 路径安全:manifest 路径在 Python 与 SQL 两侧都做了越界检查;镜像目录
-  不含点文件;`/materials/.` 由 nginx 显式 404。
-- 内容安全:第三方文档一律 `nosniff` + `Content-Disposition: attachment` +
-  CSP `default-src 'none'; sandbox`,任何文档都不会在我们的源站以 HTML 执行。
-- 待复核资料(role 以"待复核"开头)在镜像、转换、导入三个环节全部跳过,
-  与仓库 PUBLICATION_POLICY.md 保持一致。
+接受的完整 ref 和 SHA 必须同时提供。CLI 抓取 ref、独立解析其 SHA，并在不匹配时停止；
+它不会改用源仓库的当前默认分支。它还会在复制前验证每个已复核资产的安全相对路径、常规
+文件类型、字节数、SHA-256、重复 path 和重复 SHA-256。`READY` 只表示候选准备成功，
+不表示公开发布。
 
-## 手动命令速查
+## 派生目录预检（不是导入批准）
 
-```bash
-# 仅镜像文件
-sudo /usr/local/libexec/henukit/sync-henukit-materials.sh
-# 仅转幻灯片
-sudo python3 /usr/local/libexec/henukit/convert-henukit-slides.py \
-  --mirror /opt/henukit-materials/public --out /opt/henukit-materials/slides \
-  --manifest /opt/henukit-materials/repo/manifest.json
-# 仅导入(本地调试)
-node scripts/ops/import-henukit-materials.mjs --manifest manifest.json \
-  | psql "$STUDY_DATABASE_URL" -v ON_ERROR_STOP=1 -f -
-# 状态
-curl -s http://127.0.0.1:10088/statusz
-```
+`import-henukit-materials.mjs` 只生成 DML，并在 `BEGIN` 前生成只读 psql 预检。预检把
+`search_path` 固定到 `pg_catalog, public`，要求 `materials.sha256`、`materials.slides`，
+以及可用、ready、live 的 `materials_storage_key_active_idx` 部分唯一索引。缺少任何条件时，
+psql 会在开始事务前停止，且不会尝试 `ALTER TABLE`、`CREATE INDEX`、GORM AutoMigrate 或
+其他运行时 schema 修改。
 
-## 测试
+遗留 Study API 目前没有经审核、随发布包交付的 migration owner。因此本切片不提供
+schema 安装或数据库写入命令。后续批准的 owner 流程必须先安装前置 schema，才可在单独的
+activation 切片中执行导入。
+
+## 本地验证
 
 ```bash
-bash -n scripts/ops/sync-henukit-materials.sh scripts/ops/henukit-materials-sync.sh services/deploy-webhook/deploy/install.sh
-python3 -m py_compile scripts/ops/convert-henukit-slides.py
+node --check scripts/ops/prepare-henukit-materials.mjs
+node --check scripts/ops/import-henukit-materials.mjs
+node --test scripts/ops/tests/prepare-henukit-materials.test.mjs
 node --test scripts/ops/tests/import-henukit-materials.test.mjs
-cd services/deploy-webhook && go test -race ./... && go vet ./...
+node --test scripts/ops/tests/import-henukit-materials-preflight.test.mjs
 ```

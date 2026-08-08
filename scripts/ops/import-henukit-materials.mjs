@@ -172,6 +172,34 @@ function loadSlidesIndex(slidesDir) {
   return index;
 }
 
+function appendReviewedSchemaPreflight(lines) {
+  // This is deliberately outside BEGIN: a missing prerequisite must stop psql
+  // before any catalog row can change. It is read-only; schema installation is
+  // a separately reviewed owner operation.
+  // Keep pg_catalog first so unqualified built-ins cannot be shadowed by a
+  // writable application schema; public remains the only application schema
+  // used by the preflight and generated DML below.
+  lines.push("SET search_path TO pg_catalog, public;");
+  lines.push("");
+  lines.push("-- Required reviewed schema preflight; runtime import performs no DDL.");
+  lines.push("SELECT (");
+  lines.push("  to_regclass('public.materials') IS NOT NULL");
+  lines.push("  AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'materials' AND column_name = 'storage_key')");
+  lines.push("  AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'materials' AND column_name = 'deleted_at')");
+  lines.push("  AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'materials' AND column_name = 'sha256' AND data_type = 'text')");
+  lines.push("  AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'materials' AND column_name = 'slides' AND udt_name = 'jsonb')");
+  lines.push("  AND EXISTS (SELECT 1 FROM pg_class material_table JOIN pg_namespace material_namespace ON material_namespace.oid = material_table.relnamespace JOIN pg_index material_index ON material_index.indrelid = material_table.oid JOIN pg_class index_class ON index_class.oid = material_index.indexrelid WHERE material_namespace.nspname = 'public' AND material_table.relname = 'materials' AND index_class.relname = 'materials_storage_key_active_idx' AND material_index.indisunique AND material_index.indisvalid AND material_index.indisready AND material_index.indislive AND material_index.indnkeyatts = 1 AND EXISTS (SELECT 1 FROM unnest(material_index.indkey) WITH ORDINALITY AS indexed_key(attnum, key_position) JOIN pg_attribute indexed_attribute ON indexed_attribute.attrelid = material_table.oid AND indexed_attribute.attnum = indexed_key.attnum WHERE indexed_key.key_position = 1 AND indexed_attribute.attname = 'storage_key' AND NOT indexed_attribute.attisdropped) AND pg_get_expr(material_index.indpred, material_index.indrelid) = '(deleted_at IS NULL)')");
+  lines.push(") AS henukit_materials_schema_ready;");
+  lines.push("\\gset");
+  lines.push("\\if :henukit_materials_schema_ready");
+  lines.push("\\else");
+  lines.push("\\echo 'Materials import refused: apply the reviewed materials schema prerequisite, then rerun this command.'");
+  lines.push("\\set ON_ERROR_STOP on");
+  lines.push("SELECT 1 / 0 AS henukit_materials_schema_preflight_failed;");
+  lines.push("\\endif");
+  lines.push("");
+}
+
 function main() {
   const manifest = loadManifest(options.manifest);
   const slidesIndex = loadSlidesIndex(options.slidesDir);
@@ -231,14 +259,8 @@ function main() {
   const dupes = [...duplicateSha.entries()].filter(([, paths]) => paths.length > 1);
 
   const lines = [];
+  appendReviewedSchemaPreflight(lines);
   lines.push("BEGIN;");
-  lines.push("");
-  lines.push("-- 归一化所需的补充列与幂等索引(重复执行安全)");
-  lines.push("ALTER TABLE materials ADD COLUMN IF NOT EXISTS sha256 text;");
-  lines.push("ALTER TABLE materials ADD COLUMN IF NOT EXISTS slides jsonb;");
-  lines.push(
-    "CREATE UNIQUE INDEX IF NOT EXISTS materials_storage_key_active_idx ON materials (storage_key) WHERE deleted_at IS NULL;",
-  );
   lines.push("");
 
   lines.push("-- 规范组织行(学校/学院/专业)");

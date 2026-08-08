@@ -80,12 +80,16 @@ function runImport({ slidesDir } = {}) {
   return { stdout: result.stdout, stderr: result.stderr };
 }
 
-test("import emits idempotent transaction SQL", () => {
+test("import requires the reviewed schema and emits only transactional DML", () => {
   const { stdout } = runImport();
+  assert.match(stdout, /henukit_materials_schema_ready/);
+  assert.match(stdout, /materials_storage_key_active_idx/);
+  assert.match(stdout, /material_index\.indnkeyatts = 1/);
+  assert.match(stdout, /unnest\(material_index\.indkey\)/);
+  assert.match(stdout, /apply the reviewed materials schema prerequisite/i);
+  assert.doesNotMatch(stdout, /\b(?:ALTER|CREATE|DROP)\b/i);
   assert.match(stdout, /^BEGIN;/m);
   assert.match(stdout, /COMMIT;$/m);
-  assert.match(stdout, /ALTER TABLE materials ADD COLUMN IF NOT EXISTS sha256 text;/);
-  assert.match(stdout, /ALTER TABLE materials ADD COLUMN IF NOT EXISTS slides jsonb;/);
   assert.match(stdout, /ON CONFLICT \(storage_key\) WHERE deleted_at IS NULL DO UPDATE/);
 });
 
