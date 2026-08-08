@@ -11,7 +11,8 @@ import {
   mockAllowed,
   PortalApiError,
 } from "@/lib/api/client";
-import type { CampusCategory, CampusItem } from "@/lib/api/types";
+import type { CampusCategory, CampusItem, CampusMessage } from "@/lib/api/types";
+import { campusStore } from "@/lib/campus/mock";
 
 let gatewayItems: CampusItem[] | null = null;
 let gatewayCategories: CampusCategory[] | null = null;
@@ -64,6 +65,30 @@ export async function initCampusGateway(): Promise<void> {
 
 export function getGatewayItems(): CampusItem[] | null {
   return gatewayItems;
+}
+
+/**
+ * 单条单子 fallback 决策（detail 页复用，与列表页同一 gateway-first 语义）：
+ * gateway 已缓存 → mock store → 无。
+ */
+export function getCampusItemOrFallback(
+  id: string
+): { item: CampusItem | null; messages: CampusMessage[] } {
+  if (gatewayItems) {
+    const item = gatewayItems.find((candidate) => candidate.id === id);
+    if (item) return { item, messages: [] };
+  }
+  if (mockAllowed) {
+    const data = campusStore.get();
+    const item = data.items.find((candidate) => candidate.id === id);
+    if (item) {
+      return {
+        item,
+        messages: data.messages.filter((m) => m.itemId === id),
+      };
+    }
+  }
+  return { item: null, messages: [] };
 }
 
 export function getGatewayCategories(): CampusCategory[] | null {

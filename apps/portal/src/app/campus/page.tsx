@@ -135,7 +135,7 @@ export default function MarketPage() {
         index="04"
         en="CAMPUS MARKET"
         title="互助平台"
-        slogan="代取快递、搬行李、小项目、出闲置——发单有人接，赏金平台托管，完成才结算。"
+        slogan="代取快递、搬行李、小项目、出闲置——发单有人接，同校互帮互助。"
         counters={[
           { label: "在架单子", value: openCount },
           { label: "累计成交", value: doneCount },

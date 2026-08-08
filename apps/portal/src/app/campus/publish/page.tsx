@@ -62,35 +62,6 @@ function PublishForm() {
     }
   };
 
-  const submit = () => {
-    if (!title.trim()) return setError("请输入标题");
-    if (!desc.trim()) return setError("请输入描述");
-    const p = Number(price);
-    if (!price || Number.isNaN(p) || p <= 0) return setError("请填写合法金额");
-    if (!place.trim()) return setError("请填写位置");
-    setError("");
-
-    const payload = {
-      type,
-      category,
-      title: title.trim(),
-      desc: desc.trim(),
-      price: Math.round(p),
-      place: place.trim(),
-      deadline: type === "help" ? deadline.trim() || undefined : undefined,
-      seller: user.name,
-      images: images.length ? images : undefined,
-    };
-
-    if (editItem) {
-      campusStore.updateItem(editItem.id, payload);
-      router.push(`/campus/item/${editItem.id}`);
-    } else {
-      const id = campusStore.publish(payload);
-      router.push(`/campus/item/${id}`);
-    }
-  };
-
   return (
     <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
       <div className="max-w-3xl">
@@ -103,7 +74,7 @@ function PublishForm() {
         {editItem ? "编辑单子" : "发布单子"}
       </h1>
       <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/50">
-        发布后赏金由平台托管，确认完成后才结算给对方。
+        发布与接单接口尚未接通，当前无法提交；上线后即可发布互助单。
       </p>
 
       <div className="mt-8 space-y-6">
@@ -247,8 +218,9 @@ function PublishForm() {
         {error && <p className="font-mono text-xs text-accent">{error}</p>}
         <button
           type="button"
-          onClick={submit}
-          className="border border-ink bg-ink px-8 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+          disabled
+          title="发布接口尚未接通，上线后即可发布互助单"
+          className="cursor-not-allowed border border-line px-8 py-3 font-mono text-sm tracking-widest text-ink/40"
         >
           {editItem ? "保存修改 →" : "发布 →"}
         </button>
