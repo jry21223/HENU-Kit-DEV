@@ -368,15 +368,19 @@ REMOTE_VERIFY
   remote_stage=""
 fi
 
+remote_platform_migrations="${platform_migrations:--}"
 ssh "${ssh_options[@]}" "$production_alias" sh -s -- \
   "$release_sha" "$remote_release_dir" "$remote_env_file" \
-  "$account_operator_role" "$platform_migrations" <<'REMOTE_ACTIVATE'
+  "$account_operator_role" "$remote_platform_migrations" <<'REMOTE_ACTIVATE'
 set -eu
 release_sha="$1"
 release_dir="$2"
 remote_env_file="$3"
 account_operator_role="$4"
-platform_migrations="$5"
+case "$5" in
+  -) platform_migrations="" ;;
+  *) platform_migrations="$5" ;;
+esac
 trusted_root_file() {
   file="$1"
   case "$file" in /*) ;; *) return 1 ;; esac
