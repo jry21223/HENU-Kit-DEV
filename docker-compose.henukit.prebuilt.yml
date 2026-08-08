@@ -126,8 +126,6 @@ services:
     environment:
       PLATFORM_CLIENT_SECRET: ${PLATFORM_CLIENT_SECRET:?PLATFORM_CLIENT_SECRET is required}
       PORTAL_SESSION_KEY: ${PORTAL_SESSION_KEY:?PORTAL_SESSION_KEY is required}
-      LIBRARY_CLIENT_SECRET: ${LIBRARY_CLIENT_SECRET:?LIBRARY_CLIENT_SECRET is required}
-      FOOD_CLIENT_SECRET: ${FOOD_CLIENT_SECRET:?FOOD_CLIENT_SECRET is required}
       # The fixed-SHA cutover catalog must call the internal QuizCraft Core.
       # Reusing the development Portal API defaults makes the public catalog
       # fail with 503 even while Core and its dedicated credentials are valid.

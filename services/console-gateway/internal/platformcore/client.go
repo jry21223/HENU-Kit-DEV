@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"henukit.dev/console-gateway/internal/clientutil"
 	"henukit.dev/console-gateway/internal/serviceauth"
 )
 
@@ -102,9 +102,7 @@ func New(baseURL, clientID, clientSecret, keyID string, client *http.Client) (*C
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" || clientID == "" || clientSecret == "" || keyID == "" {
 		return nil, errors.New("invalid platform core client configuration")
 	}
-	host := parsed.Hostname()
-	ip := net.ParseIP(host)
-	loopback := parsed.Scheme == "http" && (host == "localhost" || host == "platform-core" || strings.HasSuffix(host, ".local") || (ip != nil && ip.IsLoopback()))
+	loopback := clientutil.IsTrustedLoopbackHTTP(parsed, "platform-core")
 	if parsed.Scheme != "https" && !loopback {
 		return nil, errors.New("platform core URL must use HTTPS outside loopback development")
 	}

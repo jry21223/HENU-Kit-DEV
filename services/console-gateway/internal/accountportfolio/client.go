@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"henukit.dev/console-gateway/internal/clientutil"
 	"henukit.dev/console-gateway/internal/serviceauth"
 )
 
@@ -48,12 +48,7 @@ func WithRequestID(ctx context.Context, requestID string) context.Context {
 // origins; public owner endpoints must use HTTPS.
 func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client) (*Client, error) {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
-	host := ""
-	if err == nil {
-		host = parsed.Hostname()
-	}
-	ip := net.ParseIP(host)
-	loopback := err == nil && parsed.Scheme == "http" && (host == "localhost" || host == "account-portfolio" || strings.HasSuffix(host, ".local") || (ip != nil && ip.IsLoopback()))
+	loopback := err == nil && clientutil.IsTrustedLoopbackHTTP(parsed, "account-portfolio")
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "https" && !loopback) || strings.TrimSpace(clientID) == "" || len(clientSecret) < 32 || strings.TrimSpace(keyID) == "" {
 		return nil, errors.New("invalid Account Portfolio Console client configuration")
 	}
