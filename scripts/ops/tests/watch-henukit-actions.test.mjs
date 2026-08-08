@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -13,14 +15,86 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 
 const script = fileURLToPath(
   new URL("../watch-henukit-actions.sh", import.meta.url),
 );
 const releaseSha = "a".repeat(40);
+const releaseImages = [
+  "henukit-console",
+  "henukit-console-gateway",
+  "henukit-platform-core",
+  "henukit-platform-mail-worker",
+  "henukit-platform-smtp-provider",
+  "henukit-portal",
+  "henukit-portal-api",
+  "henukit-account-portfolio",
+  "henukit-notice",
+  "henukit-notice-worker",
+  "henukit-food",
+  "henukit-library",
+  "henukit-portal-gateway",
+];
 
 function writeExecutable(path, body) {
   writeFileSync(path, body, { mode: 0o755 });
+}
+
+function writeChecksum(directory, name, content) {
+  writeFileSync(join(directory, name), content, { mode: 0o400 });
+  const digest = createHash("sha256").update(content).digest("hex");
+  writeFileSync(join(directory, `${name}.sha256`), `${digest}  ${name}\n`, {
+    mode: 0o400,
+  });
+}
+
+function writeLocalArtifacts(root) {
+  const artifacts = join(root, "local-artifacts");
+  const runtimeTree = join(root, "local-runtime");
+  mkdirSync(artifacts);
+  mkdirSync(join(runtimeTree, "bin"), { recursive: true });
+  mkdirSync(join(runtimeTree, "release-gates"), { recursive: true });
+  writeFileSync(join(artifacts, "RELEASE_SHA"), `${releaseSha}\n`, { mode: 0o400 });
+  for (const image of releaseImages) {
+    writeChecksum(
+      artifacts,
+      `${image}-${releaseSha}.docker.tar.gz`,
+      gzipSync(`${image}\n`),
+    );
+  }
+  writeFileSync(join(runtimeTree, "RELEASE_SHA"), `${releaseSha}\n`);
+  writeFileSync(
+    join(runtimeTree, "docker-compose.henukit.release.yml"),
+    "services:\n  account-portfolio:\n  notice:\n  notice-worker:\n  food:\n  library:\n",
+  );
+  writeFileSync(
+    join(runtimeTree, "release-gates", "account-production-boundary.env"),
+    `release_sha=${releaseSha}\nstatus=pass\naccount_console_mock_sources=absent\naccount_transitive_mock_sources=absent\naccount_payment_provider=easypay_or_disabled\nportal_require_gateway=1\nportal_allow_mock=0\nportal_api_default_mode=live\n`,
+  );
+  writeExecutable(
+    join(runtimeTree, "bin", "deploy-henukit-artifact.sh"),
+    `#!/usr/bin/env bash
+set -Eeuo pipefail
+cat "$1/RELEASE_SHA" > "$FAKE_ACTIVE_FILE"
+printf 'deploy %s %s\\n' "$1" "$2" >> "$FAKE_CALL_LOG"
+`,
+  );
+  const runtimeArchive = `henukit-runtime-${releaseSha}.tar.gz`;
+  execFileSync("tar", ["-C", runtimeTree, "-czf", join(artifacts, runtimeArchive), "."]);
+  const runtimeContent = readFileSync(join(artifacts, runtimeArchive));
+  writeFileSync(
+    join(artifacts, `${runtimeArchive}.sha256`),
+    `${createHash("sha256").update(runtimeContent).digest("hex")}  ${runtimeArchive}\n`,
+    { mode: 0o400 },
+  );
+  writeFileSync(join(artifacts, `henukit-release-${releaseSha}.manifest`), "verified-by-fixture\n", {
+    mode: 0o400,
+  });
+  writeFileSync(join(artifacts, `henukit-release-${releaseSha}.manifest.sig`), "fixture-signature\n", {
+    mode: 0o400,
+  });
+  return artifacts;
 }
 
 function fixture({
@@ -35,6 +109,8 @@ function fixture({
   failTargetFoodHealth = false,
   failTargetNoticeHealth = false,
   failTargetHealth = false,
+  missingLibraryArtifact = false,
+  nonRootTrustRoot = "",
   previousHasAccountPortfolio = true,
   previousSha = "b".repeat(40),
   portalAllowMock = false,
@@ -43,7 +119,10 @@ function fixture({
   runConclusion = "success",
   runStatus = "completed",
 } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "henukit-actions-watch-"));
+  // macOS exposes its temporary directory through /var, which is a symlink.
+  // The production trust-root check deliberately rejects symlinked parents, so
+  // create the fixture below tmpdir's canonical path instead.
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "henukit-actions-watch-"));
   const bin = join(root, "bin");
   const staging = join(root, "staging");
   const releases = join(root, "releases");
@@ -52,6 +131,9 @@ function fixture({
   const log = join(root, "calls.log");
   const active = join(root, "active-sha");
   const token = join(root, "github.token");
+  const releaseSigners = join(root, "release-signers");
+  const imageInventory = join(bin, "henukit-release-images.sh");
+  const localVerifier = join(bin, "verify-henukit-local-release.sh");
   const envFile = join(root, "henukit.env");
   const rollbackEnvFile = join(root, "henukit.rollback.env");
   mkdirSync(bin);
@@ -72,6 +154,76 @@ function fixture({
   );
   writeFileSync(rollbackEnvFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
   writeFileSync(log, "");
+  writeFileSync(releaseSigners, "henukit-release fixture-key\n", { mode: 0o600 });
+  writeExecutable(
+    localVerifier,
+    `#!/usr/bin/env bash
+set -Eeuo pipefail
+printf 'verify-local %s\\n' "$*" >> "$FAKE_CALL_LOG"
+`,
+  );
+  writeExecutable(
+    imageInventory,
+    `#!/usr/bin/env bash
+set -Eeuo pipefail
+images=(
+  henukit-console
+  henukit-console-gateway
+  henukit-platform-core
+  henukit-platform-mail-worker
+  henukit-platform-smtp-provider
+  henukit-portal
+  henukit-portal-api
+  henukit-account-portfolio
+  henukit-notice
+  henukit-notice-worker
+  henukit-food
+  henukit-library
+  henukit-portal-gateway
+)
+case "\${1:-}" in
+  --check) ;;
+  --artifact-images|--load-images) printf '%s\\n' "\${images[@]}" ;;
+  --baseline-images)
+    printf '%s\\n' henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-api henukit-portal-gateway
+    ;;
+  --conditional-services)
+    printf '%s\\n' $'account-portfolio\\thenukit-account-portfolio' $'notice\\thenukit-notice' $'notice-worker\\thenukit-notice-worker' $'food\\thenukit-food' $'library\\thenukit-library'
+    ;;
+  *) exit 64 ;;
+esac
+`,
+  );
+  writeExecutable(
+    join(bin, "stat"),
+    `#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ "\${1:-}" != "-c" ]]; then
+  exec /usr/bin/stat "$@"
+fi
+format="\${2:-}"
+path="\${3:-}"
+if [[ "$format" == "%a" ]]; then
+  if [[ -d "$path" ]]; then printf '700'; else printf '600'; fi
+  exit 0
+fi
+if [[ "$format" == "%u" ]]; then
+  if [[ -d "$path" ]]; then
+    printf '0'
+  elif [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "inventory" && "$path" == "$FAKE_TRUSTED_INVENTORY" ]] ||
+       [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "verifier" && "$path" == "$FAKE_TRUSTED_VERIFIER" ]] ||
+       [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "signers" && "$path" == "$FAKE_TRUSTED_SIGNERS" ]]; then
+    id -u
+  elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" ]]; then
+    printf '0'
+  else
+    id -u
+  fi
+  exit 0
+fi
+exec /usr/bin/stat "$@"
+`,
+  );
   if (previousSha) {
     const previousRelease = join(releases, previousSha);
     mkdirSync(join(previousRelease, "bin"), { recursive: true });
@@ -131,9 +283,13 @@ images=(
   henukit-notice
   henukit-notice-worker
   henukit-food
+  henukit-library
   henukit-portal-gateway
 )
 for image in "\${images[@]}"; do
+  if [[ "$image" == "henukit-library" && "$FAKE_MISSING_LIBRARY_ARTIFACT" == "1" ]]; then
+    continue
+  fi
   artifact="$dest/$image-$FAKE_RELEASE_SHA"
   mkdir -p "$artifact"
   printf '%s\\n' "$image" | gzip > "$artifact/$image-$FAKE_RELEASE_SHA.docker.tar.gz"
@@ -146,7 +302,7 @@ runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
 mkdir -p "$runtime_artifact" "$runtime_tree/bin" "$runtime_tree/release-gates"
 printf '%s\\n' "$FAKE_RELEASE_SHA" > "$runtime_tree/RELEASE_SHA"
-printf 'services:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
+printf 'services:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n  library:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
 cat > "$runtime_tree/release-gates/account-production-boundary.env" <<EOF
 release_sha=$FAKE_RELEASE_SHA
 status=$([[ "$FAKE_BAD_ACCOUNT_BOUNDARY" == "1" ]] && printf fail || printf pass)
@@ -198,7 +354,7 @@ if [[ "$1" == "ps" ]]; then
       printf 'henukit-account-portfolio:%s\\n' "$sha"
     fi
     if [[ "$sha" == "$FAKE_RELEASE_SHA" ]]; then
-      printf 'henukit-notice:%s\\nhenukit-notice-worker:%s\\nhenukit-food:%s\\n' "$sha" "$sha" "$sha"
+      printf 'henukit-notice:%s\\nhenukit-notice-worker:%s\\nhenukit-food:%s\\nhenukit-library:%s\\n' "$sha" "$sha" "$sha" "$sha"
     fi
   fi
 elif [[ "$1" == "inspect" ]]; then
@@ -285,6 +441,7 @@ fi
       FAKE_FAIL_TARGET_FOOD_HEALTH: failTargetFoodHealth ? "1" : "0",
       FAKE_FAIL_TARGET_NOTICE_HEALTH: failTargetNoticeHealth ? "1" : "0",
       FAKE_FAIL_TARGET_HEALTH: failTargetHealth ? "1" : "0",
+      FAKE_MISSING_LIBRARY_ARTIFACT: missingLibraryArtifact ? "1" : "0",
       FAKE_PREVIOUS_HAS_ACCOUNT_PORTFOLIO: previousHasAccountPortfolio ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
       FAKE_NO_SUCCESS: "0",
@@ -294,9 +451,16 @@ fi
       HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE: accountOperatorRole,
       HENUKIT_BACKUP_ROOT: backups,
       HENUKIT_ENV_FILE: envFile,
+      HENUKIT_IMAGE_INVENTORY: imageInventory,
       HENUKIT_RELEASE_ROOT: releases,
+      HENUKIT_RELEASE_SIGNERS_FILE: releaseSigners,
       HENUKIT_STAGING_ROOT: staging,
       HENUKIT_STATE_ROOT: state,
+      HENUKIT_LOCAL_ARTIFACT_VERIFIER: localVerifier,
+      FAKE_NON_ROOT_TRUST_ROOT: nonRootTrustRoot,
+      FAKE_TRUSTED_INVENTORY: imageInventory,
+      FAKE_TRUSTED_SIGNERS: releaseSigners,
+      FAKE_TRUSTED_VERIFIER: localVerifier,
       HENUKIT_PUBLIC_BASE_URL: "https://example.test",
       HENUKIT_ROLLBACK_ENV_FILE: rollbackEnvFile,
     },
@@ -317,7 +481,7 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 12);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 13);
   assert.match(calls, /deploy .*releases.*henukit\.env/);
   assert.match(calls, /grant-account-operator-role/);
   assert.match(calls, /operations-operator/);
@@ -415,6 +579,72 @@ test("one-shot prepares a verified backup but does not activate without exact-SH
   assert.doesNotMatch(calls, /docker load|^deploy /m);
 });
 
+test("a signed local artifact set uses the same backup, exact-SHA approval, and rollback path", () => {
+  const setup = fixture({ approved: false });
+  const artifacts = writeLocalArtifacts(setup.root);
+  const args = ["--local-artifacts", artifacts, "--sha", releaseSha];
+
+  const prepared = execFileSync(script, args, {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  let calls = readFileSync(setup.log, "utf8");
+  assert.match(prepared, /awaits exact-SHA approval/);
+  assert.match(calls, /verify-local .*--artifact-dir/);
+  assert.equal(
+    (calls.match(/verify-local/g) ?? []).length,
+    2,
+    "the root-owned staging copy is signature-verified again after transfer",
+  );
+  assert.match(calls, /pg_dump/);
+  assert.doesNotMatch(calls, /docker load|^deploy /m);
+
+  writeFileSync(join(setup.state, "approvals", releaseSha), `${releaseSha}\n`, {
+    mode: 0o600,
+  });
+  const activated = execFileSync(script, args, {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  calls = readFileSync(setup.log, "utf8");
+  assert.match(activated, /activated and deterministic smoke checks passed/);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 13);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("a local artifact path rejects every non-root trust root before backup or deployment", () => {
+  for (const trustRoot of ["inventory", "verifier", "signers"]) {
+    const setup = fixture({ nonRootTrustRoot: trustRoot });
+    const artifacts = writeLocalArtifacts(setup.root);
+    const result = spawnSync(
+      script,
+      ["--local-artifacts", artifacts, "--sha", releaseSha],
+      { encoding: "utf8", env: setup.env },
+    );
+
+    assert.notEqual(result.status, 0, `${trustRoot} must be root-owned`);
+    assert.match(result.stderr, /must be owned by root/i);
+    assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+  }
+});
+
+test("a relative trust-root override fails closed before backup or deployment", () => {
+  const setup = fixture();
+  const artifacts = writeLocalArtifacts(setup.root);
+  const result = spawnSync(
+    script,
+    ["--local-artifacts", artifacts, "--sha", releaseSha],
+    {
+      encoding: "utf8",
+      env: { ...setup.env, HENUKIT_IMAGE_INVENTORY: "relative-inventory" },
+    },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /absolute path/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
 test("checksum failure stops before backup, image load, and deploy", () => {
   const setup = fixture({ badChecksum: true });
 
@@ -426,6 +656,20 @@ test("checksum failure stops before backup, image load, and deploy", () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /checksum|FAILED/i);
+  assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+});
+
+test("a missing Library archive stops before backup, image load, and deploy", () => {
+  const setup = fixture({ missingLibraryArtifact: true });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /missing henukit-library/i);
   assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
 });
 
@@ -495,7 +739,7 @@ test("first Account Portfolio rollout accepts a legacy eight-image release and r
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump.*account_portfolio/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 12);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 13);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), releaseSha);
 });
 
