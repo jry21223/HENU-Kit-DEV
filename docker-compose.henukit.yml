@@ -450,7 +450,12 @@ services:
       # Only reviewed subject directories are mirrored into this root; the git
       # checkout and repository tooling stay outside it. Read-only, and the
       # directory is expected to be absent on hosts that have not synced yet.
-      - ${HENUKIT_MATERIALS_ROOT:-/opt/henukit-materials/public}:/srv/materials:ro
+      - type: bind
+        source: ${HENUKIT_MATERIALS_ROOT:-/opt/henukit-materials/public}
+        target: /srv/materials
+        read_only: true
+        bind:
+          create_host_path: true
 
 volumes:
   henukit_postgres_data:
