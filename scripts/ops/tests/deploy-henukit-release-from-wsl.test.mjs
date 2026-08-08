@@ -185,7 +185,10 @@ function remoteSandbox() {
   }
   writeExecutable(
     join(sbin, "activate-henukit-release"),
-    "#!/usr/bin/env bash\nexit \"${FAKE_ACTIVATE_STATUS:-0}\"\n",
+    `#!/usr/bin/env bash
+[[ "\${HENUKIT_PLATFORM_MIGRATIONS-}" == "\${FAKE_EXPECT_PLATFORM_MIGRATIONS-}" ]] || exit 93
+exit "\${FAKE_ACTIVATE_STATUS:-0}"
+`,
   );
   writeFileSync(join(etc, "release-signers"), "fixture\n", { mode: 0o400 });
   writeFileSync(join(etc, "github-actions-read.token"), "fixture\n", { mode: 0o400 });
@@ -258,6 +261,7 @@ esac
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       FAKE_ACTIVATE_STATUS: "0",
+      FAKE_EXPECT_PLATFORM_MIGRATIONS: "",
       FAKE_BAD_MODE_PATH: "",
       FAKE_BAD_OWNER_PATH: "",
       FAKE_QUIESCE_FILE: join(state, "quiesce.request"),
@@ -333,6 +337,17 @@ test("the real remote activation restores the watcher after activation failure",
   assert.equal(readFileSync(setup.serviceState, "utf8").trim(), "active");
   assert.equal(existsSync(join(setup.state, "quiesce.request")), false);
   assert.equal(existsSync(join(setup.state, "quiesced")), false);
+});
+
+test("the real remote activation decodes the no-migrations sentinel", () => {
+  const setup = remoteSandbox();
+  const result = runRemote(
+    setup.activateBlock,
+    [releaseSha, join(setup.incoming, `henukit-release-${releaseSha}`), setup.envFile, "operations-operator", "-"],
+    setup.env,
+  );
+
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("the real remote activation reports watcher restart failure as exit 74", () => {
@@ -471,6 +486,7 @@ test("execute safely resumes a previously verified production bundle without ret
   assert.doesNotMatch(calls, /rsync /);
   assert.match(calls, /verify-henukit-local-release\.sh/);
   assert.match(calls, /activate-henukit-release/);
+  assert.match(calls, /operations-operator - :: set -eu/);
 });
 
 test("execute transfers the signed bundle directly from WSL to henu-prod and uses the guarded activation entry", () => {
@@ -486,5 +502,6 @@ test("execute transfers the signed bundle directly from WSL to henu-prod and use
   assert.match(calls, /rsync .*henu-prod:\/opt\/henukit-incoming\/\.incoming-a{40}-[0-9]+-[0-9]+\//);
   assert.match(calls, /ssh .*henu-prod.*verify-henukit-local-release\.sh/);
   assert.match(calls, /ssh .*henu-prod.*activate-henukit-release/);
+  assert.match(calls, /operations-operator - :: set -eu/);
   assert.doesNotMatch(calls, /scp|jerry-wsl|henukit-rel-/);
 });
