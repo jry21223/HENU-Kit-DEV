@@ -539,6 +539,21 @@ verify_active_release() {
     return 1
 }
 
+wait_for_active_release() {
+  local release_sha="$1"
+  local attempt
+  for ((attempt = 1; attempt <= 30; attempt++)); do
+    if verify_active_release "$release_sha"; then
+      return 0
+    fi
+    if ((attempt < 30)); then
+      log "release $release_sha is not ready yet (attempt $attempt/30)"
+      sleep 2
+    fi
+  done
+  return 1
+}
+
 grant_account_operator_permissions() {
   local release_sha="$1"
   docker exec "$platform_core_container" grant-account-operator-role \
@@ -741,7 +756,7 @@ rollback_release() {
   [[ -x "$previous_helper" ]] || return 1
   log "rolling back to release $previous_sha"
   "$previous_helper" "$previous_dir" "$rollback_env_file" || return 1
-  verify_active_release "$previous_sha"
+  wait_for_active_release "$previous_sha"
 }
 
 rollback_release_is_ready() {
@@ -841,7 +856,7 @@ deploy_release() {
     die "release activation failed; rolled back to $previous_sha"
   fi
 
-  if ! verify_active_release "$release_sha"; then
+  if ! wait_for_active_release "$release_sha"; then
     rollback_release "$previous_sha" ||
       die "release verification failed and rollback to $previous_sha also failed"
     die "release verification failed; rolled back to $previous_sha"
