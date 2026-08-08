@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -685,6 +685,59 @@ test("watch mode exits on a failed check so systemd can restart it cleanly", () 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /checksum|FAILED/i);
   assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+});
+
+test("watch mode honors a maintenance request bound to its live instance at a safe boundary", async () => {
+  const setup = fixture();
+  const quiesce = join(setup.state, "quiesce.request");
+  const instance = join(setup.state, "watcher.instance");
+  const child = spawn(script, ["--watch"], {
+    env: { ...setup.env, HENUKIT_POLL_SECONDS: "1" },
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(instance) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(existsSync(instance), true, "watcher did not publish its instance id");
+  const instanceId = readFileSync(instance, "utf8").trim();
+  assert.match(instanceId, /^[1-9][0-9]*$/);
+  const nonce = "b".repeat(32);
+  writeFileSync(quiesce, `${releaseSha} ${instanceId} ${nonce}\n`, { mode: 0o600 });
+  chmodSync(quiesce, 0o600);
+
+  const status = await new Promise((resolve) => child.on("close", resolve));
+
+  assert.equal(status, 0, stderr);
+  assert.match(stdout, /quiesce requested (at a safe boundary|after a completed check)/i);
+  assert.equal(
+    readFileSync(join(setup.state, "quiesced"), "utf8").trim(),
+    `${releaseSha} ${instanceId} ${nonce}`,
+  );
+});
+
+test("watch mode ignores a stale request bound to a prior watcher instance", () => {
+  const setup = fixture({ badChecksum: true });
+  writeFileSync(
+    join(setup.state, "quiesce.request"),
+    `${releaseSha} 999999 ${"c".repeat(32)}\n`,
+    { mode: 0o600 },
+  );
+
+  const result = spawnSync(script, ["--watch"], {
+    encoding: "utf8",
+    env: { ...setup.env, HENUKIT_POLL_SECONDS: "1" },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ignoring stale quiesce request/i);
+  assert.match(result.stderr, /checksum|FAILED/i);
 });
 
 test("failed public verification restores and verifies the previous fixed-SHA release", () => {

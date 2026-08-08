@@ -35,6 +35,7 @@ jobs:
             scripts/ops/tests/package-henukit-runtime.test.mjs \
             scripts/ops/tests/verify-henukit-local-release.test.mjs \
             scripts/ops/tests/build-henukit-release-local.test.mjs \
+            scripts/ops/tests/deploy-henukit-release-from-wsl.test.mjs \
             scripts/ops/tests/watch-henukit-actions.test.mjs \
             scripts/ops/tests/activate-henukit-release.test.mjs
       - name: Reject Account mock and fallback sources

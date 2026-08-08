@@ -69,47 +69,85 @@ release_sha="$(git rev-parse HEAD)"
 scripts/ops/build-henukit-release-local.sh \
   --sha "$release_sha" \
   --output-dir /srv/henukit-artifacts \
-  --signing-key /etc/henukit-release-builder/ed25519
+  --signing-key /etc/henukit-release-builder/ed25519 \
+  --handoff-group henukit-release-deployers
 ```
 
 The builder fails closed unless the worktree is clean, `HEAD` equals the given
 SHA, the remote `origin/main` head still equals that SHA before and after the
 build, Docker reports `linux/amd64`, every image matches the trusted inventory,
 the signing key is a private non-group/world-writable file, and the output
-directory is non-symlinked and non-group/world-writable. It emits one
+directory is non-symlinked and non-group/world-writable. The builder must be a
+member of the dedicated handoff group; after verification it sets the output
+root to `0750`, completed bundle directories to `0550`, and bundle files to
+`0440`, all group-owned by `henukit-release-deployers`. The deployment identity
+can therefore read but not modify the bundle, while the signing key remains
+owner-only outside that tree. It emits one
 flat `henukit-release-<sha>` directory containing all thirteen image archives,
 the runtime archive, checksums, `RELEASE_SHA`, and a signed manifest.
 
-### Source worktree to WSL to production boundary
+### Direct WSL2-to-production transport
 
-The controlled path is a clean source worktree → WSL2 builder worktree →
-`henu-prod` production SSH alias. Synchronize the complete, clean source
-worktree into a new, dedicated WSL builder directory; never reuse a mixed
-developer checkout or make the production host a source mirror. The WSL builder
-must still fetch `origin/main`, detach the exact SHA, and pass its clean-tree
-checks before it builds, so a file copy alone is not release evidence.
+The controlled path is clean `origin/main` → dedicated WSL2 builder → signed
+flat bundle → separate WSL2 deployment operator → `henu-prod`. Synchronize the
+complete, clean source worktree into a new WSL directory; never reuse a mixed
+developer checkout or make production a source mirror. Both WSL identities must
+fetch `origin/main`, detach the same exact SHA, and pass clean-tree checks. The
+builder hands the immutable bundle to the deployment operator through a
+read-only local artifact location; the private signing key is not handed over.
 
-Before any artifact transfer, the WSL deployment operator must inspect
-`ssh -G henu-prod` and compare the resolved user, host, port, identity file,
-and host-key policy with the approved production connection record. A result
-that leaves `hostname henu-prod` unchanged is not a configured alias. The
-operator must retain an approved `known_hosts` fingerprint and use strict host
-key checking; a noninteractive read-only preflight is:
+The stable transport entry is
+`scripts/ops/deploy-henukit-release-from-wsl.sh`. It runs only on WSL2
+Linux/x86_64, resolves the fixed `henu-prod` SSH alias with strict host-key
+checking (`BatchMode=yes`, `StrictHostKeyChecking=yes`), locally verifies the
+signed bundle, rejects configured `ProxyJump`/`ProxyCommand` relays, explicitly
+disables both proxy mechanisms for transfer, and rechecks the exact current
+`origin/main` SHA. First run its read-only preflight from the deployment
+operator's clean checkout:
 
 ```bash
-ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 henu-prod \
-  'test -x /usr/local/sbin/watch-henukit-actions && \
-   test -x /usr/local/sbin/activate-henukit-release && \
-   test -r /etc/henukit/release-signers'
+release_sha="$(git rev-parse HEAD)"
+scripts/ops/deploy-henukit-release-from-wsl.sh \
+  --sha "$release_sha" \
+  --artifact-dir "/srv/henukit-artifacts/henukit-release-$release_sha" \
+  --allowed-signers /etc/henukit-release-deployer/release-signers \
+  --remote-env-file /opt/henukit/.env.henukit \
+  --account-operator-role operations-operator \
+  --preflight
 ```
 
-Only after that preflight and the out-of-band trust-root bootstrap below may the
-deployment operator copy the **flat, already signed** directory to its
-root-owned production incoming path. It must record the transferred SHA-256
-digest and let the production verifier validate the manifest before any archive
-is extracted. The final production activation is invoked through `henu-prod`,
-never from macOS; it remains the same exact-SHA, backup/restore, smoke-test, and
-rollback-gated command shown below.
+Before approving execution, compare `ssh -G henu-prod` with the approved
+production connection record without copying its host or identity details into
+release logs. A result that leaves `hostname henu-prod` unchanged is not a
+configured alias. Retain the approved `known_hosts` fingerprint and the
+out-of-band trust roots described below.
+
+After the target SHA, migration list, backup reviewer, rollback owner, and
+maintenance window are approved, replace `--preflight` with `--execute` (and
+add `--platform-migrations <reviewed-comma-separated-list>` when required).
+The script transfers the bundle directly from WSL2 to production with `rsync`;
+the local workstation is not a transfer hop. Production verifies the signature
+again with its root-owned verifier and allowed-signers file, atomically moves
+the bundle into its final incoming directory, and calls the existing
+`activate-henukit-release` entry. That entry retains the single-use exact-SHA
+approval, backup/restore validation, smoke checks, and rollback behavior.
+Immediately before each root helper execution, the transport rechecks that the
+helper, inventory, allowed-signers file, and every ancestor are root-owned,
+non-symlinked, and not group/world-writable. During activation it quiesces an
+active `henukit-actions-watch.service` through a root-owned request. The watcher
+binds the request to its current systemd `MainPID`, acknowledges it, and exits
+only before or after a complete poll/deploy cycle. A restarted process cannot
+acknowledge an older instance's request. A separate root-owned transport
+`flock` serializes direct deployments, while a per-execution random nonce binds
+each request and acknowledgement to that handoff. The transport never sends
+`systemctl stop` into an active release. It waits for both the acknowledgement
+and released service, and restores the service from an `EXIT` trap on both
+success and failure. If a prior
+service restart fails, the transport itself returns failure rather than claiming
+the release sequence completed. If a prior
+attempt already placed the same final bundle, the next run verifies it again
+with production trust roots and resumes activation without retransferring or
+deleting it; an invalid residual bundle fails closed for administrator review.
 
 ### Out-of-band local trust-root bootstrap
 
