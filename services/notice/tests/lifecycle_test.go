@@ -27,6 +27,7 @@ import (
 )
 
 const testSecret = "notice-gateway-secret-at-least-32-bytes"
+const portalReadSecret = "notice-portal-read-secret-at-least-32-bytes"
 
 func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), os.Getenv("NOTICE_TEST_DATABASE_URL"))
@@ -39,7 +40,11 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	handler, err := notice.New(notice.Config{Database: pool, Redis: redisClient, ClientID: "console-gateway", Keys: map[string]string{"active": testSecret}})
+	handler, err := notice.New(notice.Config{
+		Database: pool, Redis: redisClient,
+		ClientID: "console-gateway", Keys: map[string]string{"active": testSecret},
+		ReadClientID: "portal-gateway", ReadKeys: map[string]string{"portal-read": portalReadSecret},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,6 +107,13 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	}
 	if bytes.Contains(snapshot, []byte(`"source_published_at"`)) {
 		t.Fatalf("snapshot emitted nullable source_published_at: %s", snapshot)
+	}
+	portalSnapshot := sendAs(t, server.URL, "portal-gateway", "portal-read", portalReadSecret, actor, "notice.read", http.MethodGet, "/api/v1/console-notices", "", "")
+	if !bytes.Contains(portalSnapshot, []byte(`"title":"暑期安排"`)) {
+		t.Fatalf("Portal read credential could not read snapshot: %s", portalSnapshot)
+	}
+	if status := sendStatusAs(t, server.URL, "portal-gateway", "portal-read", portalReadSecret, actor, "notice.manage", "product", http.MethodPost, "/api/v1/sources", sourceBody, "portal_must_not_write"); status != http.StatusForbidden {
+		t.Fatalf("Portal read credential write status = %d, want 403", status)
 	}
 	operation := send(t, server.URL, actor, "notice.read", http.MethodGet, "/api/v1/operations/review", "", "idem_review_1")
 	if dataString(t, operation, "state") != "approved" {
@@ -182,7 +194,12 @@ func (alwaysFailSender) Deliver(context.Context, notice.Delivery) error {
 
 func send(t *testing.T, baseURL, actor, permission, method, path, body, key string) []byte {
 	t.Helper()
-	response := signedRequest(t, baseURL, actor, permission, "product", method, path, body, key)
+	return sendAs(t, baseURL, "console-gateway", "active", testSecret, actor, permission, method, path, body, key)
+}
+
+func sendAs(t *testing.T, baseURL, clientID, keyID, secret, actor, permission, method, path, body, key string) []byte {
+	t.Helper()
+	response := signedRequestAs(t, baseURL, clientID, keyID, secret, actor, permission, "product", method, path, body, key)
 	defer response.Body.Close()
 	payload, _ := io.ReadAll(response.Body)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -193,32 +210,47 @@ func send(t *testing.T, baseURL, actor, permission, method, path, body, key stri
 
 func sendStatus(t *testing.T, baseURL, actor, permission, scope, method, path, body, key string) int {
 	t.Helper()
-	response := signedRequest(t, baseURL, actor, permission, scope, method, path, body, key)
+	return sendStatusAs(t, baseURL, "console-gateway", "active", testSecret, actor, permission, scope, method, path, body, key)
+}
+
+func sendStatusAs(t *testing.T, baseURL, clientID, keyID, secret, actor, permission, scope, method, path, body, key string) int {
+	t.Helper()
+	response := signedRequestAs(t, baseURL, clientID, keyID, secret, actor, permission, scope, method, path, body, key)
 	defer response.Body.Close()
 	return response.StatusCode
 }
 
 func signedRequest(t *testing.T, baseURL, actor, permission, scope, method, path, body, key string) *http.Response {
 	t.Helper()
+	return signedRequestAs(t, baseURL, "console-gateway", "active", testSecret, actor, permission, scope, method, path, body, key)
+}
+
+func signedRequestAs(t *testing.T, baseURL, clientID, keyID, secret, actor, permission, scope, method, path, body, key string) *http.Response {
+	t.Helper()
 	nonce := base64.RawURLEncoding.EncodeToString([]byte(uuid.NewString()[:24]))
-	return signedRequestWithNonce(t, baseURL, actor, permission, scope, method, path, body, key, nonce)
+	return signedRequestWithCredentialsAndNonce(t, baseURL, clientID, keyID, secret, actor, permission, scope, method, path, body, key, nonce)
 }
 
 func signedRequestWithNonce(t *testing.T, baseURL, actor, permission, scope, method, path, body, key, nonce string) *http.Response {
+	t.Helper()
+	return signedRequestWithCredentialsAndNonce(t, baseURL, "console-gateway", "active", testSecret, actor, permission, scope, method, path, body, key, nonce)
+}
+
+func signedRequestWithCredentialsAndNonce(t *testing.T, baseURL, clientID, keyID, secret, actor, permission, scope, method, path, body, key, nonce string) *http.Response {
 	t.Helper()
 	request, err := http.NewRequest(method, baseURL+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.SetBasicAuth("console-gateway", testSecret)
+	request.SetBasicAuth(clientID, secret)
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	digest := sha256.Sum256([]byte(body))
 	canonical := strings.Join([]string{method, path, timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
-	mac := hmac.New(sha256.New, []byte(testSecret))
+	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(canonical))
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Service-Id", "console-gateway")
-	request.Header.Set("X-Key-Id", "active")
+	request.Header.Set("X-Service-Id", clientID)
+	request.Header.Set("X-Key-Id", keyID)
 	request.Header.Set("X-Timestamp", timestamp)
 	request.Header.Set("X-Nonce", nonce)
 	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))

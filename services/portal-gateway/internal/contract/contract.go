@@ -1,8 +1,11 @@
 // Package contract defines Portal Gateway API types that are not generated
-// from the public OpenAPI schema.
+// from the public OpenAPI schema. Contract-derived Portal Session, practice
+// statistics, and Notice feed types live in portal_session.generated.go.
 package contract
 
-import "time"
+import (
+	"time"
+)
 
 // ModuleSummary is a read-only product summary for Portal's module cards.
 type ModuleSummary struct {
@@ -52,19 +55,6 @@ type BankSummary struct {
 	Name       string `json:"name"`
 	Subject    string `json:"subject"`
 	QuestionCT int    `json:"question_count"`
-}
-
-// NoticeListResponse represents published notices.
-type NoticeListResponse struct {
-	Notices   []NoticeSummary `json:"notices"`
-	RequestID string          `json:"request_id"`
-}
-
-type NoticeSummary struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Source    string    `json:"source"`
-	Published time.Time `json:"published_at"`
 }
 
 // ErrorEnvelope is the standard error response. Error is the machine-readable

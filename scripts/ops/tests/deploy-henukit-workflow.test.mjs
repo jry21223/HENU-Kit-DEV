@@ -359,6 +359,26 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "production Portal Gateway must reject the default Account Portfolio client-secret placeholder",
   );
   assert.equal(
+    config.services["portal-gateway"].environment.NOTICE_SERVICE_URL,
+    "http://notice:8094",
+    "Portal Gateway must call the Notice owner instead of legacy Portal API",
+  );
+  assert.equal(
+    config.services.notice.environment.NOTICE_PORTAL_CLIENT_ID,
+    config.services["portal-gateway"].environment.NOTICE_CLIENT_ID,
+    "Notice owner and Portal Gateway must agree on the snapshot-only client ID",
+  );
+  assert.equal(
+    config.services.notice.environment.NOTICE_PORTAL_KEY_ID,
+    config.services["portal-gateway"].environment.NOTICE_KEY_ID,
+    "Notice owner and Portal Gateway must agree on the snapshot-only key ID",
+  );
+  assert.equal(
+    config.services.notice.environment.NOTICE_PORTAL_SECRET,
+    config.services["portal-gateway"].environment.NOTICE_CLIENT_SECRET,
+    "Notice owner and Portal Gateway must receive the same snapshot-only secret",
+  );
+  assert.equal(
     config.services["portal-gateway"].environment.PRACTICE_SERVICE_URL,
     "http://host.docker.internal:10089",
     "the fixed-SHA Gateway catalog seam must call QuizCraft Core, not legacy Portal API",

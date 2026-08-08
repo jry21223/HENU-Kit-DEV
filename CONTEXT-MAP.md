@@ -29,6 +29,7 @@ Do not create empty context files. Move a term when its owning implementation co
 - **Console Gateway → Platform Core and product services**: the Gateway validates Console access, aggregates summaries, and forwards controlled operations without owning business data.
 - **Platform Core → all products**: supplies identity, permission codes, scopes, sessions, mail infrastructure, audit, and Operations Inbox references.
 - **Portal Gateway → Account Portfolio**: forwards only a verified Portal Session actor through signed service requests; Account Portfolio remains the durable account-data owner.
+- **Portal Gateway → Notice**: forwards a verified Portal Session actor through a distinct snapshot-only credential; Notice remains the lifecycle and content owner.
 - **Portal Gateway → QuizCraft**: ADR-0018 permits only dark, signed create-session and submit-answer commands; QuizCraft retains question, scoring, attempt, and anonymous-identity ownership.
 - **Notice, Library, QuizCraft, and Food → Console Gateway**: each remains the sole data owner and exposes versioned contracts.
 - **Study Legacy Admin → Study Legacy API**: remains physically separate from HENUKit Console during migration and retirement.

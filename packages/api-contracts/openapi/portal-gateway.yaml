@@ -710,16 +710,18 @@ paths:
         - portalSession: []
       responses:
         "200":
-          description: Notice list
+          description: Published notices snapshot
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NoticeListResponse"
+                $ref: "#/components/schemas/NoticeFeedEnvelope"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
 components:
@@ -1456,30 +1458,88 @@ components:
         data:
           $ref: "#/components/schemas/PersonalPracticeStats"
 
-    NoticeListResponse:
+    NoticeFeedEnvelope:
       type: object
-      required: [notices, request_id]
+      required: [request_id, data]
       properties:
-        notices:
-          type: array
-          items:
-            $ref: "#/components/schemas/NoticeSummary"
         request_id:
           type: string
+        data:
+          $ref: "#/components/schemas/NoticeFeed"
 
-    NoticeSummary:
+    NoticeFeed:
       type: object
-      required: [id, title, source, published_at]
+      additionalProperties: false
+      description: Contract-validated snapshot from the Notice owner after the Gateway removes non-distributed items.
+      required: [items, generated_at]
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/NoticeFeedItem"
+        generated_at:
+          type: string
+          format: date-time
+
+    NoticeFeedItem:
+      type: object
+      additionalProperties: false
+      description: A contract-valid published notice forwarded from the owner; state is always distributed at this boundary.
+      required: [id, source, version, title, body, source_url, content_hash, state, revision, created_at, distribution_count]
       properties:
         id:
           type: string
+          format: uuid
+        source:
+          $ref: "#/components/schemas/NoticeSource"
+        version:
+          type: integer
+          format: int64
+          minimum: 1
         title:
           type: string
-        source:
+        body:
           type: string
-        published_at:
+        source_url:
+          type: string
+          format: uri
+        content_hash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        state:
+          type: string
+          enum: [distributed]
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        source_published_at:
           type: string
           format: date-time
+        created_at:
+          type: string
+          format: date-time
+        distribution_count:
+          type: integer
+          format: int64
+          minimum: 0
+        distribution_status:
+          type: string
+          enum: [queued, processing, delivered, failed]
+
+    NoticeSource:
+      type: object
+      additionalProperties: false
+      required: [id, code, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
 
   responses:
     BadRequest:

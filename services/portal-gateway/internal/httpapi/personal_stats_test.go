@@ -30,12 +30,22 @@ func TestPersonalPracticeStatsUsesSignedInUserAcrossFreshPortalSessionsAndNeverF
 			t.Fatalf("Platform Core path = %q", request.URL.Path)
 		}
 		platformCalls.Add(1)
-		var payload map[string]string
+		var payload struct {
+			PermissionCode       string `json:"permission_code"`
+			SessionExchangeToken string `json:"session_exchange_token"`
+			Scope                struct {
+				Kind        string `json:"kind"`
+				ProductCode string `json:"product_code"`
+			} `json:"scope"`
+		}
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
-		if payload["permission_code"] != practice.CatalogReadPermission || payload["session_exchange_token"] != strings.Repeat("x", 32) {
+		if payload.PermissionCode != practice.CatalogReadPermission || payload.SessionExchangeToken != strings.Repeat("x", 32) {
 			t.Fatalf("Platform authorization payload = %#v", payload)
+		}
+		if payload.Scope.Kind != "product" || payload.Scope.ProductCode != "portal" {
+			t.Fatalf("Platform authorization scope = %#v, want product scope for portal", payload.Scope)
 		}
 		writer.WriteHeader(http.StatusOK)
 	}))

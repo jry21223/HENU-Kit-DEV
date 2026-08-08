@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"henukit.dev/notice/internal/contract"
 )
 
 func (h *service) requestContext(next http.Handler) http.Handler {
@@ -29,8 +31,9 @@ func (h *service) requestContext(next http.Handler) http.Handler {
 func (h *service) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientID, basicSecret, basic := r.BasicAuth()
-		secret, keyKnown := h.keys[r.Header.Get("X-Key-Id")]
-		if !basic || clientID != h.clientID || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
+		client, clientKnown := h.clients[clientID]
+		secret, keyKnown := client.keys[r.Header.Get("X-Key-Id")]
+		if !basic || !clientKnown || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
 			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
 			return
 		}
@@ -66,6 +69,10 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 		}
 		if !accepted {
 			writeError(w, r, http.StatusConflict, "REPLAY_DETECTED", "service nonce was already used")
+			return
+		}
+		if client.snapshotOnly && r.URL.Path != contract.SnapshotRoute {
+			writeError(w, r, http.StatusForbidden, "READ_ONLY_CLIENT", "service credential is limited to the Notice snapshot")
 			return
 		}
 		if r.URL.Path == "/api/v1/console-summary" {
