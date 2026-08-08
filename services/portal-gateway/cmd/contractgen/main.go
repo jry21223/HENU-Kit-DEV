@@ -17,6 +17,7 @@ import (
 type schema struct {
 	Type       schemaType        `yaml:"type"`
 	Format     string            `yaml:"format"`
+	Enum       []string          `yaml:"enum"`
 	Required   []string          `yaml:"required"`
 	Properties map[string]schema `yaml:"properties"`
 	Items      *schema           `yaml:"items"`
@@ -81,17 +82,18 @@ func main() {
 		}
 	}
 	validatePersonalPracticeStats(spec.Components.Schemas)
+	validateNoticeFeed(spec.Components.Schemas)
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
-	goSource, err := format.Source([]byte(renderGo(portalSession, digest)))
+	goSource, err := format.Source([]byte(renderGo(portalSession, spec.Components.Schemas, digest)))
 	if err != nil {
 		fail(fmt.Errorf("format generated Go: %w", err))
 	}
 	write(*goOutput, goSource)
-	write(*tsOutput, []byte(renderTypeScript(portalSession, digest)))
+	write(*tsOutput, []byte(renderTypeScript(portalSession, spec.Components.Schemas, digest)))
 }
 
-func renderGo(value schema, digest string) string {
+func renderGo(value schema, schemas map[string]schema, digest string) string {
 	required := stringSet(value.Required)
 	var fields strings.Builder
 	for _, property := range sortedProperties(value.Properties) {
@@ -133,10 +135,12 @@ type PersonalPracticeStatsEnvelope struct {
 	RequestID string                `+"`json:\"request_id\"`"+`
 	Data      PersonalPracticeStats `+"`json:\"data\"`"+`
 }
-`, digest, fields.String())
+
+%s
+`, digest, fields.String(), renderGoObjects(schemas, "NoticeSource", "NoticeFeedItem", "NoticeFeed", "NoticeFeedEnvelope"))
 }
 
-func renderTypeScript(value schema, digest string) string {
+func renderTypeScript(value schema, schemas map[string]schema, digest string) string {
 	required := stringSet(value.Required)
 	var fields strings.Builder
 	for _, property := range sortedProperties(value.Properties) {
@@ -170,7 +174,9 @@ export interface PersonalPracticeStatsEnvelope {
   request_id: string;
   data: PersonalPracticeStats;
 }
-`, digest, fields.String())
+
+%s
+`, digest, fields.String(), renderTypeScriptObjects(schemas, "NoticeSource", "NoticeFeedItem", "NoticeFeed", "NoticeFeedEnvelope"))
 }
 
 func validatePersonalPracticeStats(schemas map[string]schema) {
@@ -203,6 +209,111 @@ func validatePersonalPracticeStats(schemas map[string]schema) {
 			fail(fmt.Errorf("MasterySubject.%s must be integer", property))
 		}
 	}
+}
+
+func validateNoticeFeed(schemas map[string]schema) {
+	requireObjectSchema(schemas, "NoticeFeedEnvelope", []string{"request_id", "data"})
+	if data := schemas["NoticeFeedEnvelope"].Properties["data"]; data.Ref != "#/components/schemas/NoticeFeed" {
+		fail(fmt.Errorf("NoticeFeedEnvelope.data must reference NoticeFeed"))
+	}
+
+	requireObjectSchema(schemas, "NoticeFeed", []string{"items", "generated_at"})
+	feed := schemas["NoticeFeed"]
+	if items := feed.Properties["items"]; !items.Type.isExactly("array") || items.Items == nil || items.Items.Ref != "#/components/schemas/NoticeFeedItem" {
+		fail(fmt.Errorf("NoticeFeed.items must reference NoticeFeedItem items"))
+	}
+
+	requireObjectSchema(schemas, "NoticeFeedItem", []string{"id", "source", "version", "title", "body", "source_url", "content_hash", "state", "revision", "created_at", "distribution_count"})
+	if source := schemas["NoticeFeedItem"].Properties["source"]; source.Ref != "#/components/schemas/NoticeSource" {
+		fail(fmt.Errorf("NoticeFeedItem.source must reference NoticeSource"))
+	}
+
+	requireObjectSchema(schemas, "NoticeSource", []string{"id", "code", "name"})
+}
+
+func renderGoObjects(schemas map[string]schema, names ...string) string {
+	var output strings.Builder
+	for index, name := range names {
+		if index > 0 {
+			output.WriteString("\n\n")
+		}
+		value := schemas[name]
+		required := stringSet(value.Required)
+		fmt.Fprintf(&output, "type %s struct {\n", name)
+		for _, property := range sortedProperties(value.Properties) {
+			fieldType := goContractType(value.Properties[property])
+			tag := property
+			if !required[property] {
+				fieldType = "*" + fieldType
+				tag += ",omitempty"
+			}
+			fmt.Fprintf(&output, "\t%s %s `json:\"%s\"`\n", goName(property), fieldType, tag)
+		}
+		output.WriteString("}")
+	}
+	return output.String()
+}
+
+func renderTypeScriptObjects(schemas map[string]schema, names ...string) string {
+	var output strings.Builder
+	for index, name := range names {
+		if index > 0 {
+			output.WriteString("\n\n")
+		}
+		value := schemas[name]
+		required := stringSet(value.Required)
+		fmt.Fprintf(&output, "export interface %s {\n", name)
+		for _, property := range sortedProperties(value.Properties) {
+			optional := ""
+			if !required[property] {
+				optional = "?"
+			}
+			fmt.Fprintf(&output, "  %s%s: %s;\n", property, optional, tsContractType(value.Properties[property]))
+		}
+		output.WriteString("}")
+	}
+	return output.String()
+}
+
+func goContractType(value schema) string {
+	if value.Ref != "" {
+		return referencedSchemaName(value.Ref)
+	}
+	if value.Type.isExactly("array") && value.Items != nil {
+		return "[]" + goContractType(*value.Items)
+	}
+	if value.Type.isExactly("integer") {
+		return "int64"
+	}
+	return goType(value)
+}
+
+func tsContractType(value schema) string {
+	if value.Ref != "" {
+		return referencedSchemaName(value.Ref)
+	}
+	if value.Type.isExactly("array") && value.Items != nil {
+		return tsContractType(*value.Items) + "[]"
+	}
+	if value.Type.isExactly("integer") {
+		return "number"
+	}
+	if value.Type.isExactly("string") && len(value.Enum) > 0 {
+		quoted := make([]string, 0, len(value.Enum))
+		for _, item := range value.Enum {
+			quoted = append(quoted, fmt.Sprintf("%q", item))
+		}
+		return strings.Join(quoted, " | ")
+	}
+	return tsType(value)
+}
+
+func referencedSchemaName(ref string) string {
+	const prefix = "#/components/schemas/"
+	if !strings.HasPrefix(ref, prefix) || strings.TrimPrefix(ref, prefix) == "" {
+		fail(fmt.Errorf("unsupported schema reference %q", ref))
+	}
+	return strings.TrimPrefix(ref, prefix)
 }
 
 func requireObjectSchema(schemas map[string]schema, name string, required []string) {
@@ -276,7 +387,8 @@ func goName(value string) string {
 		}
 		output = append(output, char)
 	}
-	return strings.ReplaceAll(string(output), "Id", "ID")
+	name := strings.ReplaceAll(string(output), "Id", "ID")
+	return strings.ReplaceAll(name, "Url", "URL")
 }
 
 func write(path string, content []byte) {

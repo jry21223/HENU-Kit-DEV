@@ -3,7 +3,7 @@ package contract
 
 import "time"
 
-const PortalSessionSourceSHA256 = "59e9a741aac3a66e00902b805145305bb764c7cd87a8ef7ea259612236f4d387"
+const PortalSessionSourceSHA256 = "c477f83ae2590d9d239ab616090bb0fa5907139a97f70a0f56cda0d3aaa80b0f"
 
 type PortalSession struct {
 	DisplayName *string   `json:"display_name,omitempty"`
@@ -30,4 +30,36 @@ type PersonalPracticeStats struct {
 type PersonalPracticeStatsEnvelope struct {
 	RequestID string                `json:"request_id"`
 	Data      PersonalPracticeStats `json:"data"`
+}
+
+type NoticeSource struct {
+	Code string `json:"code"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type NoticeFeedItem struct {
+	Body               string       `json:"body"`
+	ContentHash        string       `json:"content_hash"`
+	CreatedAt          time.Time    `json:"created_at"`
+	DistributionCount  int64        `json:"distribution_count"`
+	DistributionStatus *string      `json:"distribution_status,omitempty"`
+	ID                 string       `json:"id"`
+	Revision           int64        `json:"revision"`
+	Source             NoticeSource `json:"source"`
+	SourcePublishedAt  *time.Time   `json:"source_published_at,omitempty"`
+	SourceURL          string       `json:"source_url"`
+	State              string       `json:"state"`
+	Title              string       `json:"title"`
+	Version            int64        `json:"version"`
+}
+
+type NoticeFeed struct {
+	GeneratedAt time.Time        `json:"generated_at"`
+	Items       []NoticeFeedItem `json:"items"`
+}
+
+type NoticeFeedEnvelope struct {
+	Data      NoticeFeed `json:"data"`
+	RequestID string     `json:"request_id"`
 }

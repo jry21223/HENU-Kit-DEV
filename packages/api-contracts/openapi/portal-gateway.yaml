@@ -1469,11 +1469,13 @@ components:
 
     NoticeFeed:
       type: object
-      description: Snapshot forwarded from the Notice owner; the Gateway validates only that items is present (non-null).
-      required: [items]
+      additionalProperties: false
+      description: Contract-validated snapshot from the Notice owner after the Gateway removes non-distributed items.
+      required: [items, generated_at]
       properties:
         items:
           type: array
+          maxItems: 50
           items:
             $ref: "#/components/schemas/NoticeFeedItem"
         generated_at:
@@ -1482,30 +1484,36 @@ components:
 
     NoticeFeedItem:
       type: object
-      description: A notice as forwarded from the owner. The Gateway inspects only state (only distributed items are returned, so state is always "distributed" here); the remaining fields are the owner's shape, forwarded unvalidated.
-      required: [state]
+      additionalProperties: false
+      description: A contract-valid published notice forwarded from the owner; state is always distributed at this boundary.
+      required: [id, source, version, title, body, source_url, content_hash, state, revision, created_at, distribution_count]
       properties:
         id:
           type: string
+          format: uuid
         source:
           $ref: "#/components/schemas/NoticeSource"
         version:
           type: integer
           format: int64
+          minimum: 1
         title:
           type: string
         body:
           type: string
         source_url:
           type: string
+          format: uri
         content_hash:
           type: string
+          pattern: '^[a-f0-9]{64}$'
         state:
           type: string
-          enum: [pending_review, approved, rejected, distributed]
+          enum: [distributed]
         revision:
           type: integer
           format: int64
+          minimum: 1
         source_published_at:
           type: string
           format: date-time
@@ -1515,15 +1523,19 @@ components:
         distribution_count:
           type: integer
           format: int64
+          minimum: 0
         distribution_status:
           type: string
           enum: [queued, processing, delivered, failed]
 
     NoticeSource:
       type: object
+      additionalProperties: false
+      required: [id, code, name]
       properties:
         id:
           type: string
+          format: uuid
         code:
           type: string
         name:

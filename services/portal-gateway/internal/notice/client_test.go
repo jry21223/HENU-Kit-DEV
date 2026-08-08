@@ -2,7 +2,7 @@ package notice
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +13,14 @@ import (
 // http(s) URL without credentials and a clientSecret of at least 32 bytes.
 const testClientSecret = "notice-test-client-secret-at-least-32-bytes"
 
+func noticeItemJSON(id, state, title string) string {
+	return fmt.Sprintf(`{"id":%q,"source":{"id":"11111111-1111-4111-8111-111111111111","code":"registrar","name":"教务处"},"version":1,"title":%q,"body":"正文","source_url":"https://example.edu/notices/1","content_hash":"0000000000000000000000000000000000000000000000000000000000000000","state":%q,"revision":1,"created_at":"2026-08-07T00:00:00Z","distribution_count":0}`, id, title, state)
+}
+
+func noticeOwnerEnvelope(data string) string {
+	return `{"data":` + data + `,"request_id":"req_notice_owner"}`
+}
+
 func newTestClient(t *testing.T, serverURL string) *Client {
 	t.Helper()
 	client, err := NewClient(serverURL, "notice-test-client", testClientSecret, "notice-test-key")
@@ -22,19 +30,16 @@ func newTestClient(t *testing.T, serverURL string) *Client {
 	return client
 }
 
-// TestListReturnsOnlyDistributedItems verifies that only items in the
-// distributed lifecycle state leave the Gateway, that items whose lifecycle
-// cannot be parsed are skipped without failing the whole read, and that a
-// genuine empty feed stays a success.
+// TestListReturnsOnlyDistributedItems verifies that only contract-valid items
+// in the distributed lifecycle state leave the Gateway.
 func TestListReturnsOnlyDistributedItems(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"items":[` +
-			`{"state":"distributed","title":"已发布公告"},` +
-			`{"state":"approved","title":"待发布公告"},` +
-			`{"state":123,"title":"畸形条目"},` +
-			`{"state":"pending","title":"草稿公告"}` +
-			`],"generated_at":"2026-08-07T00:00:00Z"}}`))
+		_, _ = w.Write([]byte(noticeOwnerEnvelope(`{"items":[` +
+			noticeItemJSON("22222222-2222-4222-8222-222222222221", "distributed", "已发布公告") + `,` +
+			noticeItemJSON("22222222-2222-4222-8222-222222222222", "approved", "待发布公告") + `,` +
+			noticeItemJSON("22222222-2222-4222-8222-222222222223", "pending_review", "草稿公告") +
+			`],"generated_at":"2026-08-07T00:00:00Z"}`)))
 	}))
 	defer server.Close()
 
@@ -43,20 +48,11 @@ func TestListReturnsOnlyDistributedItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	var feed struct {
-		Items []struct {
-			State string `json:"state"`
-			Title string `json:"title"`
-		} `json:"items"`
+	if len(data.Items) != 1 {
+		t.Fatalf("filtered items = %d, want 1 (distributed only)", len(data.Items))
 	}
-	if err := json.Unmarshal(data, &feed); err != nil {
-		t.Fatalf("unmarshal filtered feed: %v", err)
-	}
-	if len(feed.Items) != 1 {
-		t.Fatalf("filtered items = %d, want 1 (distributed only)", len(feed.Items))
-	}
-	if feed.Items[0].State != "distributed" || feed.Items[0].Title != "已发布公告" {
-		t.Fatalf("filtered item = %+v, want the distributed one", feed.Items[0])
+	if data.Items[0].State != "distributed" || data.Items[0].Title != "已发布公告" {
+		t.Fatalf("filtered item = %+v, want the distributed one", data.Items[0])
 	}
 }
 
@@ -65,7 +61,7 @@ func TestListReturnsOnlyDistributedItems(t *testing.T) {
 func TestListEmptyItemsSucceeds(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"items":[],"generated_at":"2026-08-07T00:00:00Z"}}`))
+		_, _ = w.Write([]byte(noticeOwnerEnvelope(`{"items":[],"generated_at":"2026-08-07T00:00:00Z"}`)))
 	}))
 	defer server.Close()
 
@@ -74,8 +70,8 @@ func TestListEmptyItemsSucceeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if !strings.Contains(string(data), `"items":[]`) {
-		t.Fatalf("filtered feed = %s, want empty items array", data)
+	if data.Items == nil || len(data.Items) != 0 {
+		t.Fatalf("filtered items = %#v, want non-nil empty items", data.Items)
 	}
 }
 
@@ -83,8 +79,8 @@ func TestListEmptyItemsSucceeds(t *testing.T) {
 // an invalid snapshot rather than a genuine empty feed.
 func TestListRejectsMissingItems(t *testing.T) {
 	for _, body := range []string{
-		`{"data":{"generated_at":"2026-08-07T00:00:00Z"}}`,
-		`{"data":{"items":null,"generated_at":"2026-08-07T00:00:00Z"}}`,
+		noticeOwnerEnvelope(`{"generated_at":"2026-08-07T00:00:00Z"}`),
+		noticeOwnerEnvelope(`{"items":null,"generated_at":"2026-08-07T00:00:00Z"}`),
 	} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -96,6 +92,89 @@ func TestListRejectsMissingItems(t *testing.T) {
 			t.Fatalf("List with %s: want error, got nil", body)
 		}
 		server.Close()
+	}
+}
+
+func TestListRejectsMissingGeneratedAt(t *testing.T) {
+	for _, body := range []string{
+		noticeOwnerEnvelope(`{"items":[]}`),
+		noticeOwnerEnvelope(`{"items":[],"generated_at":null}`),
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		}))
+		client := newTestClient(t, server.URL)
+		if _, err := client.List(context.Background(), "actor-user", "req-missing-generated-at"); err == nil {
+			server.Close()
+			t.Fatalf("List with %s: want error, got nil", body)
+		}
+		server.Close()
+	}
+}
+
+// TestListRejectsDistributedItemMissingPortalFields locks the browser-facing
+// contract at the owner boundary: a distributed item is not safe to forward
+// unless it contains the fields the Portal renders, including its source.
+func TestListRejectsDistributedItemMissingPortalFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(noticeOwnerEnvelope(`{"items":[{"id":"notice-1","state":"distributed","body":"正文"}],"generated_at":"2026-08-07T00:00:00Z"}`)))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	if _, err := client.List(context.Background(), "actor-user", "req-missing-fields"); err == nil {
+		t.Fatal("List: want error for distributed item missing title and source, got nil")
+	}
+}
+
+func TestListRejectsFieldsOutsidePortalContract(t *testing.T) {
+	itemWithExtraField := strings.TrimSuffix(noticeItemJSON("22222222-2222-4222-8222-222222222224", "distributed", "公告"), "}") + `,"owner_internal":true}`
+	for _, body := range []string{
+		noticeOwnerEnvelope(`{"items":[],"generated_at":"2026-08-07T00:00:00Z","owner_internal":true}`),
+		noticeOwnerEnvelope(`{"items":[` + itemWithExtraField + `],"generated_at":"2026-08-07T00:00:00Z"}`),
+		`{"data":{"items":[],"generated_at":"2026-08-07T00:00:00Z"},"request_id":"req_notice_owner","owner_internal":true}`,
+		noticeOwnerEnvelope(`{"items":[],"generated_at":"2026-08-07T00:00:00Z"}`) + `{}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		}))
+		client := newTestClient(t, server.URL)
+		if _, err := client.List(context.Background(), "actor-user", "req-extra-field"); err == nil {
+			server.Close()
+			t.Fatalf("List with %s: want error, got nil", body)
+		}
+		server.Close()
+	}
+}
+
+func TestListRejectsMissingOwnerRequestID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"items":[],"generated_at":"2026-08-07T00:00:00Z"}}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	if _, err := client.List(context.Background(), "actor-user", "req-missing-owner-request-id"); err == nil {
+		t.Fatal("List: want error for missing owner request_id, got nil")
+	}
+}
+
+func TestListRejectsSnapshotOverOwnerLimit(t *testing.T) {
+	item := noticeItemJSON("22222222-2222-4222-8222-222222222225", "distributed", "公告")
+	body := noticeOwnerEnvelope(`{"items":[` + strings.Repeat(item+`,`, 50) + item + `],"generated_at":"2026-08-07T00:00:00Z"}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	if _, err := client.List(context.Background(), "actor-user", "req-too-many-items"); err == nil {
+		t.Fatal("List: want error for 51 owner items, got nil")
 	}
 }
 

@@ -937,13 +937,13 @@ func (h *Handler) writePracticeReadPermissionError(w http.ResponseWriter, r *htt
 // it never falls back to the aggregation layer, a cache, or mock success.
 func (h *Handler) getNotices(w http.ResponseWriter, r *http.Request) {
 	setPrivateResponseHeaders(w)
-	if h.noticeClient == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "notice_unavailable", "通知服务暂时不可用，请稍后再来")
-		return
-	}
 	value, err := h.readSession(r)
 	if err != nil {
 		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if h.noticeClient == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "notice_unavailable", "通知服务暂时不可用，请稍后再来")
 		return
 	}
 	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, noticeReadPermission); err != nil {

@@ -24,19 +24,26 @@ const nonceTTL = 5 * time.Minute
 var requestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
 
 type Config struct {
-	Database *pgxpool.Pool
-	Redis    redis.UniversalClient
-	ClientID string
-	Keys     map[string]string
+	Database     *pgxpool.Pool
+	Redis        redis.UniversalClient
+	ClientID     string
+	Keys         map[string]string
+	ReadClientID string
+	ReadKeys     map[string]string
 }
 
 type service struct {
 	database  *pgxpool.Pool
 	redis     redis.UniversalClient
 	clientID  string
-	keys      map[string]string
+	clients   map[string]serviceClient
 	now       func() time.Time
 	lifecycle *lifecycleStore
+}
+
+type serviceClient struct {
+	keys         map[string]string
+	snapshotOnly bool
 }
 
 type actor struct {
@@ -51,20 +58,18 @@ const (
 )
 
 func New(config Config) (http.Handler, error) {
-	if config.Database == nil || config.Redis == nil || config.ClientID == "" || len(config.Keys) == 0 || len(config.Keys) > 2 {
+	if config.Database == nil || config.Redis == nil {
 		return nil, errors.New("notice database and service credentials are required")
 	}
 	secrets := map[string]struct{}{}
-	for keyID, secret := range config.Keys {
-		if keyID == "" || len(secret) < 32 {
-			return nil, errors.New("notice service key ring is invalid")
-		}
-		if _, exists := secrets[secret]; exists {
-			return nil, errors.New("notice service secrets must be distinct")
-		}
-		secrets[secret] = struct{}{}
+	clients := map[string]serviceClient{}
+	if err := addServiceClient(clients, secrets, config.ClientID, config.Keys, false); err != nil {
+		return nil, err
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, now: time.Now, lifecycle: &lifecycleStore{database: config.Database}}
+	if err := addServiceClient(clients, secrets, config.ReadClientID, config.ReadKeys, true); err != nil {
+		return nil, err
+	}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, clients: clients, now: time.Now, lifecycle: &lifecycleStore{database: config.Database}}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +86,26 @@ func New(config Config) (http.Handler, error) {
 		protected.Get(contract.OperationRoute, h.operationStatus)
 	})
 	return router, nil
+}
+
+func addServiceClient(clients map[string]serviceClient, secrets map[string]struct{}, clientID string, keys map[string]string, snapshotOnly bool) error {
+	if clientID == "" || len(keys) == 0 || len(keys) > 2 {
+		return errors.New("notice service key ring is invalid")
+	}
+	if _, exists := clients[clientID]; exists {
+		return errors.New("notice service client IDs must be distinct")
+	}
+	for keyID, secret := range keys {
+		if keyID == "" || len(secret) < 32 {
+			return errors.New("notice service key ring is invalid")
+		}
+		if _, exists := secrets[secret]; exists {
+			return errors.New("notice service secrets must be distinct")
+		}
+		secrets[secret] = struct{}{}
+	}
+	clients[clientID] = serviceClient{keys: keys, snapshotOnly: snapshotOnly}
+	return nil
 }
 
 func (h *service) consoleSummary(w http.ResponseWriter, r *http.Request) {
