@@ -43,7 +43,6 @@ import type {
   MaterialDetailResponse,
   MaterialListResponse,
   NoticeFeedEnvelope,
-  NoticeListResponse,
   PersonalPracticeStatsEnvelope,
   PortalSession,
 	PortalPracticeAnswerInput,
@@ -663,10 +662,6 @@ export async function fetchCampusCategories(): Promise<CategoryListResponse> {
 }
 
 // ---- Notices ----
-
-export async function fetchNotices(): Promise<NoticeListResponse | null> {
-  return apiFetch<NoticeListResponse>("/api/v1/notices");
-}
 
 /** Human-readable error for UI banners. */
 export function formatPortalError(err: unknown): string {

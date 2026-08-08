@@ -93,12 +93,15 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 	}
 	var noticeClient *notice.Client
 	if strings.TrimSpace(cfg.NoticeURL) != "" {
-		noticeClient = notice.NewClient(
+		noticeClient, err = notice.NewClient(
 			cfg.NoticeURL,
 			cfg.NoticeAuth.ClientID,
 			cfg.NoticeAuth.ClientSecret,
 			cfg.NoticeAuth.KeyID,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("notice.NewClient: %w", err)
+		}
 	}
 	var practiceCommands *practice.CommandClient
 	if cfg.PracticeCommandsEnabled {
@@ -944,7 +947,7 @@ func (h *Handler) getNotices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, noticeReadPermission); err != nil {
-		h.writeNoticePermissionError(w, r, err)
+		h.writePlatformPermissionError(w, r, err, "notice")
 		return
 	}
 	data, err := h.noticeClient.List(r.Context(), value.UserID, requestIDOf(w, r))
@@ -952,22 +955,25 @@ func (h *Handler) getNotices(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "notice temporarily unavailable", "通知服务暂时不可用，请稍后再来")
 		return
 	}
-	writeJSON(w, http.StatusOK, struct {
-		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
-	}{Data: data, RequestID: requestIDOf(w, r)})
+	writeJSON(w, http.StatusOK, contract.NoticeFeedEnvelope{
+		Data:      data,
+		RequestID: requestIDOf(w, r),
+	})
 }
 
-// writeNoticePermissionError maps Platform Core permission outcomes for the
-// actor-bound Notice read.
-func (h *Handler) writeNoticePermissionError(w http.ResponseWriter, r *http.Request, err error) {
+// writePlatformPermissionError maps Platform Core permission outcomes for
+// actor-bound reads. The practice reads and the Notice read share one
+// CheckPermission path, so the mapping is shared; the only variance is the
+// resource named in the error payloads. (#269's learning-state read carries
+// its own copy of this switch and should switch to this helper at cutover.)
+func (h *Handler) writePlatformPermissionError(w http.ResponseWriter, r *http.Request, err error, resource string) {
 	switch {
 	case errors.Is(err, platformcore.ErrUnauthorized):
 		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 	case errors.Is(err, platformcore.ErrForbidden):
-		writeError(w, r, http.StatusForbidden, "notice access denied", "暂无通知权限，请联系管理员")
+		writeError(w, r, http.StatusForbidden, resource+" access denied", "暂无"+resource+"权限，请联系管理员")
 	default:
-		writeError(w, r, http.StatusServiceUnavailable, "notice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
+		writeError(w, r, http.StatusServiceUnavailable, resource+" authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
 	}
 }
 

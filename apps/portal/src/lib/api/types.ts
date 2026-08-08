@@ -564,20 +564,6 @@ export interface CategoryListResponse {
   request_id: string;
 }
 
-// ---- Notices ----
-
-export interface NoticeSummary {
-  id: string;
-  title: string;
-  source: string;
-  published_at: string;
-}
-
-export interface NoticeListResponse {
-  notices: NoticeSummary[];
-  request_id: string;
-}
-
 // ---- Notices (Notice service snapshot) ----
 
 /**
