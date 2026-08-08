@@ -1,21 +1,25 @@
 "use client";
 
-import { useRef } from "react";
+import Link from "next/link";
+import { useMemo, useRef } from "react";
 import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import { cn } from "@/lib/cn";
+import type { FoodPost } from "@/lib/api/types";
+import { HANG_TIER_KEY, groupFoodPostsByTier, type FoodTier } from "@/lib/food/ranking";
+import { useFoodPosts } from "@/lib/food/use-food-posts";
 
-const RANKS = [
-  { rank: "01", name: "老碗面 · 西门", tag: "夯", review: "十年不换配方，汤头是真熬出来的，期末周的续命水。" },
-  { rank: "02", name: "鸡公煲 · 南门", tag: "夯", review: "微辣是谎言，点单请自觉降一档。分量够两个人。" },
-  { rank: "03", name: "烤盘饭 · 食堂三楼", tag: "拉", review: "排队二十分钟，吃饭五分钟，肉量看阿姨心情。" },
-  { rank: "04", name: "麻辣烫 · 东门", tag: "拉", review: "称重玄学发源地，同样的菜每次价格都不一样。" },
-  { rank: "05", name: "手打柠檬茶 · 商业街", tag: "夯", review: "冰块给得比茶多是事实，但夏天还是得靠它。" },
-];
+interface RankRowItem {
+  rank: string;
+  name: string;
+  tier: FoodTier;
+  review: string;
+  href: string;
+}
 
-function RankRow({ item }: { item: (typeof RANKS)[number] }) {
+function RankRow({ item }: { item: RankRowItem }) {
   const reviewRef = useRef<HTMLDivElement>(null);
 
   // 卸载时清理未完成的补间
@@ -46,16 +50,21 @@ function RankRow({ item }: { item: (typeof RANKS)[number] }) {
         <span className="font-display text-4xl font-bold text-ink/25 md:text-6xl">
           {item.rank}
         </span>
-        <span className="flex-1 text-lg font-medium md:text-2xl">{item.name}</span>
+        <Link
+          href={item.href}
+          className="flex-1 text-lg font-medium transition-colors hover:text-accent md:text-2xl"
+        >
+          {item.name}
+        </Link>
         <span
           className={cn(
             "border px-2.5 py-1 font-mono text-xs",
-            item.tag === "夯"
+            item.tier.key === HANG_TIER_KEY
               ? "border-accent text-accent"
               : "border-ink/30 text-ink/50"
           )}
         >
-          {item.tag}
+          {item.tier.label}
         </span>
       </div>
       <div ref={reviewRef} className="h-0 overflow-hidden">
@@ -67,8 +76,30 @@ function RankRow({ item }: { item: (typeof RANKS)[number] }) {
   );
 }
 
+function toRankRows(posts: FoodPost[]): RankRowItem[] {
+  // groupFoodPostsByTier 保证档位按 FOOD_TIERS 顺序、档内按点赞降序 + id 升序；
+  // 展平即「档位 → 点赞 → id」的全局榜单顺序，tier 结构上必然存在。
+  // 注意：这是档位优先的局部 TOP 5，序号是全局序——首档条数 ≥5 时
+  // 会出现 01-05 全为同一档的情况，属预期行为。
+  return groupFoodPostsByTier(posts)
+    .flatMap(({ tier, posts: tierPosts }) =>
+      tierPosts.map((post) => ({ tier, post }))
+    )
+    .slice(0, 5)
+    .map(({ tier, post }, index) => ({
+      rank: String(index + 1).padStart(2, "0"),
+      name: post.shop.name,
+      tier,
+      review: post.excerpt || post.title,
+      href: `/food/post/${post.id}`,
+    }));
+}
+
 export default function SectionFood() {
   const sectionRef = useRef<HTMLElement>(null);
+  const { posts, loadState, error, load } = useFoodPosts();
+
+  const rows = useMemo(() => toRankRows(posts), [posts]);
 
   useGSAP(
     () => {
@@ -89,7 +120,7 @@ export default function SectionFood() {
       });
       return () => mm.revert();
     },
-    { scope: sectionRef }
+    { scope: sectionRef, dependencies: [loadState] }
   );
 
   return (
@@ -101,7 +132,7 @@ export default function SectionFood() {
             「从夯到拉，只说人话。」
           </p>
           <p className="mt-4 max-w-sm text-sm leading-7 text-ink/70">
-            全校学生真实打分，每周更新。不接受充值，不接受公关，
+            学生视角分档，档内按点赞排序；不接受充值，不接受公关，
             难吃就是难吃。
           </p>
           <MagneticButton href="/food" className="mt-8">
@@ -111,9 +142,34 @@ export default function SectionFood() {
         </div>
 
         <ul className="border-t border-line">
-          {RANKS.map((item) => (
-            <RankRow key={item.rank} item={item} />
-          ))}
+          {loadState === "loading" && (
+            <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/45">
+              榜单加载中…
+            </li>
+          )}
+          {loadState === "error" && (
+            <li className="border-b border-line py-5">
+              <p className="font-mono text-xs tracking-[0.18em] text-ink/60">
+                榜单暂时加载不出来，请稍后刷新试试。
+              </p>
+              {error ? (
+                <button
+                  type="button"
+                  onClick={() => void load()}
+                  className="mt-3 font-mono text-xs text-accent underline underline-offset-4"
+                >
+                  重新加载
+                </button>
+              ) : null}
+            </li>
+          )}
+          {loadState === "ready" && rows.length === 0 && (
+            <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/45">
+              还没有已审核的榜单条目。
+            </li>
+          )}
+          {loadState === "ready" &&
+            rows.map((item) => <RankRow key={item.rank} item={item} />)}
         </ul>
       </div>
     </section>

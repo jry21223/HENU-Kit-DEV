@@ -39,6 +39,9 @@ export const FOOD_TIERS = [
 export type FoodTierKey = (typeof FOOD_TIERS)[number]["key"];
 export type FoodTier = (typeof FOOD_TIERS)[number];
 
+/** 夯档 key：首页榜单行强调色与 /food 页标题高亮共用。 */
+export const HANG_TIER_KEY: FoodTierKey = "hang";
+
 export interface RankableFoodPost {
   id: string;
   campus: string;
