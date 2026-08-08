@@ -87,3 +87,58 @@ Out of scope: enabling or installing a service, production packaging or
 deployment, public-tree activation, Nginx switching, Study catalog import,
 database migration, root runtime processes, Console or Library ownership, and
 Git-topology ordering.
+
+## HC-306-C0: seal one source-derived release without activation
+
+This slice creates a root-only repository template for making an independently
+verified, immutable raw-material release associated with one B01 attempt. It
+is not a root commit path and does not change any public or database state.
+
+Public seam:
+
+1. `henukit-materials-seal --attempt .attempt.<10-alphanumeric-characters>`
+   accepts only the constrained B01 attempt locator, which is audit correlation
+   rather than a filesystem locator or release input. The fixed root-owned
+   configuration supplies a pre-existing sealed root, source repository, full
+   source branch ref, and exact lowercase SHA. Its successful output is a
+   canonical sealed release ID and receipt digest. The attempt token is kept in
+   a separate root-owned audit record and cannot affect that canonical identity.
+
+Acceptance criteria:
+
+- [ ] The command accepts no caller-selected source URL/ref, command, public
+  root, Study target, approval, or activation flag. Its fixed configuration is
+  a regular root-owned file that is not writable by group or other. The sealed
+  root, every resolved sealed-root ancestor, existing release, receipt, and
+  inventory must also be non-symlinked, root-owned, and not writable by group
+  or other before reuse.
+- [ ] It independently resolves the configured source ref to its configured
+  lowercase 40-character SHA, uses a new root-owned detached checkout, and
+  validates the fixed-source manifest plus every reviewed raw asset's path,
+  byte count, SHA-256, and duplicate boundary with a deterministic UTF-8
+  bytewise tree digest.
+- [ ] C0 does not traverse, open, hash, parse, copy, or otherwise consume a
+  B01 candidate directory. `--attempt` is a syntax-validated audit correlation
+  token only. `课件PPT` remains a raw sealed asset; all derived Slides are
+  explicitly deferred to a later independently bounded conversion slice.
+- [ ] A malformed source manifest, source/ref/SHA mismatch, unsafe source
+  path/hash, or malicious pre-seeded sealed release fails closed without
+  leaving a receipt or mutating public/Study sentinel state.
+- [ ] A successful seal writes only a newly-created root-owned sealed release
+  and canonical inventory through an atomic receipt boundary, with every new
+  output directory fsynced before rename. Its SHA/manifest identity is
+  idempotent across different attempt tokens; each accepted token appends only
+  a root-owned audit correlation record. A different receipt for that identity
+  is rejected.
+- [ ] B01 receiver/runner units and the fixed preparation wrapper do not invoke
+  sealing or reference a database/public-tree target. The seal template is not
+  installed, enabled, packaged for activation, or connected to an approval.
+- [ ] Tests use temporary local Git fixtures and disposable local Linux/Docker
+  only where ownership behavior requires it; they never contact a material
+  source repository, a production host, or a production database.
+
+Dependencies: HC-306-A01 and HC-306-B01.
+
+Out of scope: Study/catalog writes or migrations, public-tree/Nginx changes,
+approval or activation, service installation/enablement, root production
+actions, rollback, Console or Library ownership, and Git-topology ordering.

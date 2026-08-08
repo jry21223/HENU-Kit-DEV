@@ -5,13 +5,18 @@ on:
     paths:
       - services/deploy-webhook/**
       - scripts/ops/prepare-henukit-materials.mjs
+      - scripts/ops/seal-henukit-materials.mjs
       - scripts/ops/convert-henukit-slides.py
       - scripts/ops/tests/prepare-henukit-materials.test.mjs
       - scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs
       - scripts/ops/tests/henukit-materials-systemd.test.mjs
+      - scripts/ops/tests/henukit-materials-seal.test.mjs
+      - scripts/ops/tests/henukit-materials-seal-wrapper.test.mjs
+      - scripts/ops/tests/henukit-materials-seal-linux.test.mjs
       - scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
       - docs/adr/0022-materials-candidate-preparation.md
       - docs/adr/0023-materials-latest-arrival-queue.md
+      - docs/adr/0024-materials-sealed-release-boundary.md
       - docs/adr/README.md
       - docs/development/306-materials-secure-preparation.md
       - docs/operations/henukit-materials-sync.md
@@ -26,13 +31,18 @@ on:
     paths:
       - services/deploy-webhook/**
       - scripts/ops/prepare-henukit-materials.mjs
+      - scripts/ops/seal-henukit-materials.mjs
       - scripts/ops/convert-henukit-slides.py
       - scripts/ops/tests/prepare-henukit-materials.test.mjs
       - scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs
       - scripts/ops/tests/henukit-materials-systemd.test.mjs
+      - scripts/ops/tests/henukit-materials-seal.test.mjs
+      - scripts/ops/tests/henukit-materials-seal-wrapper.test.mjs
+      - scripts/ops/tests/henukit-materials-seal-linux.test.mjs
       - scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
       - docs/adr/0022-materials-candidate-preparation.md
       - docs/adr/0023-materials-latest-arrival-queue.md
+      - docs/adr/0024-materials-sealed-release-boundary.md
       - docs/adr/README.md
       - docs/development/306-materials-secure-preparation.md
       - docs/operations/henukit-materials-sync.md
@@ -91,12 +101,15 @@ jobs:
             services/deploy-webhook/deploy/henukit-deploy \
             services/deploy-webhook/deploy/henukit-approve-release \
             services/deploy-webhook/deploy/henukit-materials-prepare \
+            services/deploy-webhook/deploy/henukit-materials-seal \
             services/deploy-webhook/deploy/install.sh \
             services/deploy-webhook/deploy/hooks/10-command.example \
             services/deploy-webhook/deploy/hooks/20-study.example
           bash -n services/deploy-webhook/deploy/henukit-deploy
           bash -n services/deploy-webhook/deploy/henukit-approve-release
           bash -n services/deploy-webhook/deploy/henukit-materials-prepare
+          sh -n services/deploy-webhook/deploy/henukit-materials-seal
+          bash -n services/deploy-webhook/deploy/henukit-materials-seal
           bash -n services/deploy-webhook/deploy/install.sh
           bash -n services/deploy-webhook/deploy/hooks/10-command.example
           bash -n services/deploy-webhook/deploy/hooks/20-study.example
@@ -104,13 +117,17 @@ jobs:
         run: |
           sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook
           systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
-      - name: Validate materials candidate boundaries
+      - name: Validate materials preparation and sealing boundaries
         run: |
           node --check scripts/ops/prepare-henukit-materials.mjs
+          node --check scripts/ops/seal-henukit-materials.mjs
           node --test \
             scripts/ops/tests/prepare-henukit-materials.test.mjs \
             scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs \
             scripts/ops/tests/henukit-materials-systemd.test.mjs \
+            scripts/ops/tests/henukit-materials-seal.test.mjs \
+            scripts/ops/tests/henukit-materials-seal-wrapper.test.mjs \
+            scripts/ops/tests/henukit-materials-seal-linux.test.mjs \
             scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
       - name: Reject committed deployment secrets
         run: |
