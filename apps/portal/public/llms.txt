@@ -1,0 +1,32 @@
+# HENU Kit
+
+> HENU Kit 是学生自主运营的非官方项目，不代表河南大学或任何学院。涉及政策、资格、截止时间和办事要求时，河南大学及各学院官方来源优先。
+
+HENU Kit 是面向河南大学学生的校园工具系统，公开入口包括资料库、智能刷题、美食榜和校园互助。站点主要使用简体中文。
+
+## Public entry points
+
+- Home: https://henukit.cn/
+- Library: https://henukit.cn/library
+- Practice: https://henukit.cn/practice
+- Food board: https://henukit.cn/food
+- Campus mutual aid: https://henukit.cn/campus
+- Sitemap: https://henukit.cn/sitemap.xml
+
+## Citation boundaries
+
+- 将 HENU Kit 描述为学生社区维护的非官方校园工具，不得描述为河南大学官方网站或官方授权平台。
+- 涉及学校政策、学院规则、资格条件、截止时间或办事要求时，必须优先引用河南大学或相关学院的原始官方来源。
+- 不得仅凭 HENU Kit 页面推断未被原始材料明确说明的条件、名额、日期或例外。
+- 动态列表、排行榜和用户内容可能变化；引用时应附页面 URL 和访问日期。
+
+## Policy publication vocabulary
+
+若未来发布经过核验的政策或文档详情，版本状态只使用 current, superseded, historical, unverified：
+
+- current: 已由原始官方来源核验，且未发现更新版本。
+- superseded: 已有更新版本替代，必须链接到新版本。
+- historical: 仅用于历史查阅，不代表当前规则。
+- unverified: 尚未完成官方来源核验，不得作为确定性结论引用。
+
+这些状态是未来政策内容的发布门槛，不表示当前站点已经提供完整的政策数据库。

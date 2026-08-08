@@ -2,6 +2,8 @@
 
 面向校园的综合性学生平台，集成刷题、美食、互助、资料库四大子站。
 
+> HENU Kit 是学生自主运营的非官方项目，不代表河南大学或任何学院；涉及政策和办事要求时，以学校及学院官方来源为准。
+
 ## 技术栈
 
 | 层级 | 技术 |
@@ -31,6 +33,16 @@ npm run dev
 | `npm run build` | 生产构建（必须通过） |
 | `npm run lint` | ESLint 检查（必须通过） |
 | `npm run start` | 生产服务器 |
+
+## SEO / GEO 基础设施
+
+- `/robots.txt` 允许普通搜索与回答型搜索爬虫访问公开 HTML，仅阻止 API 抓取；账户、写入、个性化和阅读器路由通过 `X-Robots-Tag: noindex, nofollow` 禁止索引。
+- `/sitemap.xml` 只列出构建时确定存在的公开入口，不伪造动态详情 URL。
+- `/llms.txt` 提供项目定位、公开入口、非官方边界与引用规则。
+- 根页面提供 canonical、Open Graph、Twitter Card 与 `WebSite`/社区维护者 JSON-LD。
+- canonical origin 由构建变量 `NEXT_PUBLIC_SITE_URL` 决定，默认 `https://henukit.cn`；变量必须是无路径、查询或片段的 HTTP(S) origin。
+
+站长平台提交、WAF 验证、内容版本规则和验收方法见 [`../../docs/product/seo-geo.md`](../../docs/product/seo-geo.md)。
 
 ## 子站路由
 

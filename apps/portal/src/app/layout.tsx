@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import GatewayBootstrap from "@/components/gateway-bootstrap";
 import LangBotWidget from "@/components/langbot-widget";
+import { siteMetadata, websiteStructuredData } from "@/lib/seo";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -15,23 +16,28 @@ const plexMono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
-export const metadata: Metadata = {
-  title: "henukit — Keep In Touch",
-  description:
-    "henukit 是面向校园的综合性学生平台：资料库、AI 智能刷题、美食排行榜、校园互助，一个站点全部搞定。",
-};
+export const metadata: Metadata = siteMetadata;
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const structuredData = JSON.stringify(websiteStructuredData()).replace(
+    /</g,
+    "\\u003c"
+  );
+
   return (
     <html
       lang="zh-CN"
       className={`${spaceGrotesk.variable} ${plexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: structuredData }}
+        />
         <GatewayBootstrap />
         {children}
         <LangBotWidget />

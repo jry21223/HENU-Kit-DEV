@@ -33,6 +33,7 @@
 - [`product/DESIGN_SYSTEM.md`](./product/DESIGN_SYSTEM.md)
 - [`product/ROADMAP.md`](./product/ROADMAP.md)
 - [`product/material-library-format.md`](./product/material-library-format.md)
+- [`product/seo-geo.md`](./product/seo-geo.md)：Portal 搜索发现与内容引用治理。
 
 ### 迁移
 

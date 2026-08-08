@@ -7,6 +7,23 @@ const nextConfig: NextConfig = {
   // same-origin HMR connection so browser acceptance tests exercise hydrated
   // client state instead of the SSR-only auth shell.
   allowedDevOrigins: ["127.0.0.1"],
+  async headers() {
+    const noIndexHeaders = [
+      { key: "X-Robots-Tag", value: "noindex, nofollow" },
+    ];
+
+    return [
+      "/account/:path*",
+      "/campus/deals",
+      "/campus/publish",
+      "/food/publish",
+      "/library/read/:path*",
+      "/library/shelf",
+      "/practice/favorites/:path*",
+      "/practice/quiz",
+      "/practice/stats",
+    ].map((source) => ({ source, headers: noIndexHeaders }));
+  },
   async redirects() {
     return [
       // The five-tier board is now the Food home page. Keep the previous
