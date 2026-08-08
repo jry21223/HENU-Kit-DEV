@@ -9,11 +9,13 @@ program="build-henukit-release-local"
 usage() {
   cat >&2 <<'EOF'
 usage: build-henukit-release-local.sh --sha <full-main-sha> --output-dir <directory> \
-  --signing-key <private-key>
+  --signing-key <private-key> --handoff-group <deployment-reader-group>
 
 The builder must be a clean checkout at the exact current origin/main SHA, on
 Linux x86_64 with a linux/amd64 Docker daemon. It writes a signed artifact
 directory but never uploads or deploys it.
+After signature verification it makes only the completed bundle read-only to
+the named deployment-reader group; the private signing key remains owner-only.
 EOF
 }
 
@@ -72,6 +74,7 @@ require_wsl2() {
 release_sha=""
 output_dir=""
 signing_key=""
+handoff_group=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sha)
@@ -89,6 +92,11 @@ while [[ $# -gt 0 ]]; do
       signing_key="$2"
       shift 2
       ;;
+    --handoff-group)
+      [[ $# -ge 2 ]] || { usage; exit 64; }
+      handoff_group="$2"
+      shift 2
+      ;;
     *)
       usage
       exit 64
@@ -97,7 +105,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "--sha must be a full lowercase Git SHA"
-[[ -n "$output_dir" && -n "$signing_key" ]] || { usage; exit 64; }
+[[ -n "$output_dir" && -n "$signing_key" && -n "$handoff_group" ]] || { usage; exit 64; }
+[[ "$handoff_group" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] ||
+  die "--handoff-group contains unsupported characters"
 [[ "$(uname -s)" == "Linux" ]] || die "builder must run on Linux; use the x86_64 WSL builder, not macOS Docker"
 case "$(uname -m)" in
   x86_64|amd64) ;;
@@ -105,10 +115,15 @@ case "$(uname -m)" in
 esac
 require_wsl2
 safe_private_key "$signing_key"
+signing_key="$(cd "$(dirname "$signing_key")" && pwd -P)/$(basename "$signing_key")"
 command -v git >/dev/null 2>&1 || die "git is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v gzip >/dev/null 2>&1 || die "gzip is required"
 command -v ssh-keygen >/dev/null 2>&1 || die "ssh-keygen with -Y support is required"
+command -v getent >/dev/null 2>&1 || die "getent is required to validate the handoff group"
+getent group "$handoff_group" >/dev/null || die "--handoff-group does not exist"
+id -nG | tr ' ' '\n' | grep -Fx -- "$handoff_group" >/dev/null ||
+  die "builder must belong to --handoff-group"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 inventory="$repo_root/scripts/ops/henukit-release-images.sh"
@@ -143,9 +158,14 @@ namespace="${HENUKIT_RELEASE_SIGNATURE_NAMESPACE:-henukit-release}"
 [[ "$signer" =~ ^[A-Za-z0-9_.@-]+$ ]] || die "HENUKIT_RELEASE_SIGNER contains unsupported characters"
 [[ "$namespace" =~ ^[A-Za-z0-9_.@-]+$ ]] || die "HENUKIT_RELEASE_SIGNATURE_NAMESPACE contains unsupported characters"
 
-install -d -m 0700 "$output_dir"
+install -d -m 0750 "$output_dir"
+chgrp -- "$handoff_group" "$output_dir"
+chmod 0750 "$output_dir"
 safe_output_directory "$output_dir"
 output_dir="$(cd "$output_dir" && pwd -P)"
+case "$signing_key" in
+  "$output_dir"/*) die "--signing-key must remain outside the artifact handoff tree" ;;
+esac
 final_dir="$output_dir/henukit-release-$release_sha"
 [[ ! -e "$final_dir" ]] || die "refusing to overwrite existing artifact directory: $final_dir"
 incoming="$(mktemp -d "$output_dir/.henukit-release-${release_sha}.incoming.XXXXXX")"
@@ -210,6 +230,12 @@ chmod 0400 "$manifest"
 assert_source_snapshot
 ssh-keygen -Y sign -f "$signing_key" -n "$namespace" "$manifest" >/dev/null
 chmod 0400 "${manifest}.sig"
+
+# The deployment identity receives only a read-only signed bundle. It cannot
+# modify artifacts or traverse to the owner-only signing key.
+chgrp -R -- "$handoff_group" "$incoming"
+find "$incoming" -type d -exec chmod 0550 {} +
+find "$incoming" -type f -exec chmod 0440 {} +
 
 printf '%s %s\n' "$signer" "$(ssh-keygen -y -f "$signing_key")" > "$signers_file"
 chmod 0600 "$signers_file"

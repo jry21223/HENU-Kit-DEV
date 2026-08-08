@@ -31,6 +31,11 @@ test("the local builder is WSL-only and locks every artifact to the current clea
   assert.match(source, /docker build[\s\S]*--platform linux\/amd64/);
   assert.match(source, /Docker server must be linux\/amd64/);
   assert.match(source, /--output-dir must not be group- or world-writable/);
+  assert.match(source, /--handoff-group <deployment-reader-group>/);
+  assert.match(source, /chgrp -R -- "\$handoff_group" "\$incoming"/);
+  assert.match(source, /find "\$incoming" -type d -exec chmod 0550/);
+  assert.match(source, /find "\$incoming" -type f -exec chmod 0440/);
+  assert.match(source, /--signing-key must remain outside the artifact handoff tree/);
   assert.match(source, /ssh-keygen -Y sign/);
   assert.match(source, /"\$runtime_packager" --sha/);
   assert.match(source, /"\$verifier"[\s\S]*--allowed-signers/);
@@ -54,6 +59,7 @@ test("the builder rejects a generic Linux amd64 host before it can read a signin
       "--sha", releaseSha,
       "--output-dir", join(root, "output"),
       "--signing-key", join(root, "missing-key"),
+      "--handoff-group", "henukit-release-deployers",
     ],
     {
       encoding: "utf8",
@@ -83,6 +89,7 @@ test("the builder rejects WSL1 before it can read a signing key", () => {
       "--sha", releaseSha,
       "--output-dir", join(root, "output"),
       "--signing-key", join(root, "missing-key"),
+      "--handoff-group", "henukit-release-deployers",
     ],
     {
       encoding: "utf8",

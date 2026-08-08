@@ -258,6 +258,8 @@ install -d -m 0700 \
 scratch_dirs=()
 restore_database=""
 restore_account_database=""
+watcher_instance_file="$state_root/watcher.instance"
+watcher_instance_owned=0
 exec 9>"$state_root/watcher.lock"
 flock -n 9 || die "another watcher process holds $state_root/watcher.lock"
 cleanup() {
@@ -278,6 +280,10 @@ cleanup() {
       rm -rf -- "$scratch"
     fi
   done
+  if [[ "$watcher_instance_owned" == "1" && -f "$watcher_instance_file" &&
+        "$(tr -d '\r\n' < "$watcher_instance_file")" == "$$" ]]; then
+    rm -f -- "$watcher_instance_file"
+  fi
 }
 trap cleanup EXIT
 
@@ -894,6 +900,40 @@ check_local_artifacts() {
     "$downloaded_artifact_dir"
 }
 
+quiesce_file="$state_root/quiesce.request"
+quiesced_file="$state_root/quiesced"
+quiesce_sha=""
+quiesce_instance=""
+quiesce_nonce=""
+quiesce_requested() {
+  local mode owner
+  [[ -e "$quiesce_file" ]] || return 1
+  [[ -f "$quiesce_file" && ! -L "$quiesce_file" ]] ||
+    die "watcher quiesce request must be a regular non-symlink file"
+  mode="$(file_mode "$quiesce_file")"
+  owner="$(file_owner "$quiesce_file")"
+  [[ "$owner" == "$(id -u)" ]] || die "watcher quiesce request has the wrong owner"
+  [[ "$mode" == "600" || "$mode" == "400" ]] ||
+    die "watcher quiesce request mode must be 0600 or 0400"
+  read -r quiesce_sha quiesce_instance quiesce_nonce extra < "$quiesce_file"
+  [[ "$quiesce_sha" =~ ^[0-9a-f]{40}$ && "$quiesce_instance" =~ ^[1-9][0-9]*$ &&
+     "$quiesce_nonce" =~ ^[0-9a-f]{32}$ && -z "${extra:-}" ]] ||
+    die "watcher quiesce request is not bound to this watcher instance"
+  if [[ "$quiesce_instance" != "$$" ]]; then
+    log "ignoring stale quiesce request for watcher instance $quiesce_instance"
+    return 1
+  fi
+  return 0
+}
+
+acknowledge_quiesce() {
+  local incoming="$state_root/.quiesced.$$"
+  umask 077
+  printf '%s %s %s\n' "$quiesce_sha" "$quiesce_instance" "$quiesce_nonce" > "$incoming"
+  chmod 0600 "$incoming"
+  mv "$incoming" "$quiesced_file"
+}
+
 if [[ "$mode" == "--local-artifacts" ]]; then
   check_local_artifacts
   exit 0
@@ -905,7 +945,23 @@ if [[ "$mode" == "--once" ]]; then
 fi
 
 log "watching $repo $workflow on $branch every ${poll_seconds}s"
+instance_incoming="$state_root/.watcher.instance.$$"
+umask 077
+printf '%s\n' "$$" > "$instance_incoming"
+chmod 0600 "$instance_incoming"
+mv "$instance_incoming" "$watcher_instance_file"
+watcher_instance_owned=1
 while true; do
+  if quiesce_requested; then
+    acknowledge_quiesce
+    log "quiesce requested at a safe boundary; releasing the watcher lock"
+    exit 0
+  fi
   check_once
+  if quiesce_requested; then
+    acknowledge_quiesce
+    log "quiesce requested after a completed check; releasing the watcher lock"
+    exit 0
+  fi
   sleep "$poll_seconds"
 done

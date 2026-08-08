@@ -120,6 +120,13 @@ test("the operator guide keeps the WSL artifact path main-only, signed, and appr
   assert.match(deploymentGuide, /StrictHostKeyChecking=yes/);
   assert.match(deploymentGuide, /source worktree.*WSL/i);
   assert.match(deploymentGuide, /build-henukit-release-local\.sh/);
+  assert.match(deploymentGuide, /deploy-henukit-release-from-wsl\.sh/);
+  assert.match(deploymentGuide, /directly from WSL2 to production/i);
+  assert.match(deploymentGuide, /--preflight/);
+  assert.match(deploymentGuide, /--execute/);
+  assert.match(deploymentGuide, /restores the service from an `EXIT` trap/i);
+  assert.match(deploymentGuide, /resumes activation without retransferring/i);
+  assert.doesNotMatch(deploymentGuide, /macOS relay/i);
   assert.match(deploymentGuide, /--local-artifacts/);
   assert.match(deploymentGuide, /allowed-signers/i);
   assert.match(deploymentGuide, /out-of-band/i);
