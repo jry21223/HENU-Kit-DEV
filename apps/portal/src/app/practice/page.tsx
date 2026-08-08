@@ -16,6 +16,7 @@ import type {
   QuizCraftCatalogBank,
 } from "@/lib/api/types";
 import { SCHOOLS, QuizListMeta, type School } from "@/lib/practice/mock";
+import { PRACTICE_COMING_SOON_COPY } from "@/lib/practice/coming-soon";
 import {
   getGatewayBanks,
   getGatewaySchools,
@@ -82,6 +83,11 @@ function BankCard({ bank, index }: { bank: BankSummary; index: number }) {
       <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">
         {bank.subject} · {bank.question_count} 题
       </p>
+      <div className="mt-5 border-t border-line pt-3">
+        <span className="font-mono text-[10px] tracking-wider text-ink/45">
+          {PRACTICE_COMING_SOON_COPY}
+        </span>
+      </div>
     </div>
   );
 }
