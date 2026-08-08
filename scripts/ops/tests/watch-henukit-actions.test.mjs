@@ -109,6 +109,7 @@ function fixture({
   failTargetFoodHealth = false,
   failTargetNoticeHealth = false,
   failTargetHealth = false,
+  targetLibraryStartingAttempts = 0,
   missingLibraryArtifact = false,
   nonRootTrustRoot = "",
   previousHasAccountPortfolio = true,
@@ -130,6 +131,7 @@ function fixture({
   const state = join(root, "state");
   const log = join(root, "calls.log");
   const active = join(root, "active-sha");
+  const libraryHealthAttempts = join(root, "library-health-attempts");
   const token = join(root, "github.token");
   const releaseSigners = join(root, "release-signers");
   const imageInventory = join(bin, "henukit-release-images.sh");
@@ -358,7 +360,20 @@ if [[ "$1" == "ps" ]]; then
     fi
   fi
 elif [[ "$1" == "inspect" ]]; then
-  if [[ "$*" == *"henukit-notice-1"* && "$FAKE_FAIL_TARGET_NOTICE_HEALTH" == "1" &&
+  if [[ "$*" == *"henukit-library-1"* && -s "$FAKE_ACTIVE_FILE" &&
+        "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" ]]; then
+    attempts=0
+    if [[ -f "$FAKE_LIBRARY_HEALTH_ATTEMPTS" ]]; then
+      attempts="$(cat "$FAKE_LIBRARY_HEALTH_ATTEMPTS")"
+    fi
+    attempts=$((attempts + 1))
+    printf '%s' "$attempts" > "$FAKE_LIBRARY_HEALTH_ATTEMPTS"
+    if ((attempts <= FAKE_TARGET_LIBRARY_STARTING_ATTEMPTS)); then
+      printf 'starting\n'
+    else
+      printf 'healthy\n'
+    fi
+  elif [[ "$*" == *"henukit-notice-1"* && "$FAKE_FAIL_TARGET_NOTICE_HEALTH" == "1" &&
         -s "$FAKE_ACTIVE_FILE" &&
         "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" ]]; then
     printf 'unhealthy\\n'
@@ -423,6 +438,13 @@ fi
 `,
   );
 
+  writeExecutable(
+    join(bin, "sleep"),
+    `#!/usr/bin/env bash
+printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
+`,
+  );
+
   return {
     root,
     log,
@@ -441,9 +463,11 @@ fi
       FAKE_FAIL_TARGET_FOOD_HEALTH: failTargetFoodHealth ? "1" : "0",
       FAKE_FAIL_TARGET_NOTICE_HEALTH: failTargetNoticeHealth ? "1" : "0",
       FAKE_FAIL_TARGET_HEALTH: failTargetHealth ? "1" : "0",
+      FAKE_LIBRARY_HEALTH_ATTEMPTS: libraryHealthAttempts,
       FAKE_MISSING_LIBRARY_ARTIFACT: missingLibraryArtifact ? "1" : "0",
       FAKE_PREVIOUS_HAS_ACCOUNT_PORTFOLIO: previousHasAccountPortfolio ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
+      FAKE_TARGET_LIBRARY_STARTING_ATTEMPTS: String(targetLibraryStartingAttempts),
       FAKE_NO_SUCCESS: "0",
       FAKE_RUN_CONCLUSION: runConclusion,
       FAKE_RUN_STATUS: runStatus,
@@ -496,6 +520,23 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
   execFileSync(script, ["--once"], { env: setup.env });
   const secondCalls = readFileSync(setup.log, "utf8");
   assert.equal((secondCalls.match(/^deploy /gm) ?? []).length, 1);
+});
+
+test("one-shot waits for a newly started Library healthcheck before accepting the release", () => {
+  const setup = fixture({ targetLibraryStartingAttempts: 3 });
+
+  const output = execFileSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.match(
+    output,
+    new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
+  );
+  assert.equal(readFileSync(join(setup.root, "library-health-attempts"), "utf8"), "4");
+  assert.equal((calls.match(/^sleep 2$/gm) ?? []).length, 3);
 });
 
 test("one-shot accepts the canonical retired Quiz redirect when its final response is 404", () => {
