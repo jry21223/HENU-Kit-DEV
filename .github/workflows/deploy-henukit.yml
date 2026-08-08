@@ -132,6 +132,11 @@ jobs:
             context: services/food
             dockerfile: services/food/Dockerfile
             build_args: ""
+          - name: library
+            image: henukit-library
+            context: services/library
+            dockerfile: services/library/Dockerfile
+            build_args: ""
           - name: portal-gateway
             image: henukit-portal-gateway
             context: services/portal-gateway
@@ -196,7 +201,7 @@ jobs:
         run: |
           set -euo pipefail
           runtime="release/runtime"
-          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/infra/epay-gateway/patches" "$runtime/migrations/platform-core" "$runtime/migrations/account-portfolio" "$runtime/migrations/notice" "$runtime/migrations/food" "$runtime/migrations/portal" "$runtime/release-gates"
+          install -d "$runtime/bin" "$runtime/infra/nginx" "$runtime/infra/systemd" "$runtime/infra/epay-gateway/patches" "$runtime/migrations/platform-core" "$runtime/migrations/account-portfolio" "$runtime/migrations/notice" "$runtime/migrations/food" "$runtime/migrations/library" "$runtime/migrations/portal" "$runtime/release-gates"
           docker compose \
             -f docker-compose.henukit.yml \
             -f docker-compose.henukit.prebuilt.yml \
@@ -208,6 +213,7 @@ jobs:
           cp services/account-portfolio/db/migrations/*.up.sql "$runtime/migrations/account-portfolio/"
           cp services/notice/db/migrations/*.up.sql "$runtime/migrations/notice/"
           cp services/food/db/migrations/*.up.sql "$runtime/migrations/food/"
+          cp services/library/db/migrations/*.up.sql "$runtime/migrations/library/"
           # Portal API keeps a MySQL variant beside the PostgreSQL one; only the
           # postgres/ directory is what production runs.
           cp services/portal-api/db/migrations/postgres/*.up.sql "$runtime/migrations/portal/"

@@ -9,9 +9,9 @@ The image tarballs must already have been verified and loaded into Docker.
 The optional value is a comma-separated list of filenames from
 <runtime-dir>/migrations/platform-core, applied in the supplied order.
 Numbered .up.sql migrations shipped under <runtime-dir>/migrations/notice,
-<runtime-dir>/migrations/food and <runtime-dir>/migrations/portal are applied
-automatically to their owner databases (created on demand on fresh hosts)
-before the release activates.
+<runtime-dir>/migrations/food, <runtime-dir>/migrations/library and
+<runtime-dir>/migrations/portal are applied automatically to their owner
+databases (created on demand on fresh hosts) before the release activates.
 EOF
 }
 
@@ -63,7 +63,7 @@ ensure_owner_database() {
   ' sh "$owner"
 }
 
-# Notice, Food and Portal own their schemas but carry no embedded migration runner,
+# Notice, Food, Library and Portal own their schemas but carry no embedded migration runner,
 # so the release applies every numbered .up.sql migration shipped under
 # <runtime>/migrations/<owner> through postgres before activating. Existing
 # production databases are not recreated; createdb is only a fresh-host guard.
@@ -112,6 +112,7 @@ fi
 
 apply_owner_migrations notice
 apply_owner_migrations food
+apply_owner_migrations library
 apply_owner_migrations portal
 
 echo "Ensuring Account Portfolio database exists"
