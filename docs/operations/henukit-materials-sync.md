@@ -3,14 +3,17 @@
 资料库内容来自公开仓库 [jry21223/HENU-Final-Review](https://github.com/jry21223/HENU-Final-Review)。
 仓库 `manifest.json` 是候选资料的事实来源：每个资产都带有 role、SHA-256 和字节数。
 
-## #306-A 状态：仅准备，默认拒绝激活
+## #306-A / B01 状态：仅准备与队列边界，默认拒绝激活
 
-本切片**没有启用** webhook、队列、root runner、Nginx 切换、目录镜像、数据库导入或生产
-配置。不要运行旧的 `henukit-materials-sync.sh`、`sync-henukit-materials.sh`、root
-systemd 安装/启用命令，或直接将导入 SQL 交给生产数据库。它们都需要后续 activation
-切片的锁、回滚、审计和明确批准，当前没有安全授权路径。
+本切片只定义材料实例的候选队列和非 root 准备边界；它**没有启用或安装** webhook、runner、
+root runtime、Nginx 切换、目录镜像、公开发布、数据库导入或生产配置。不要运行旧的
+`henukit-materials-sync.sh`、`sync-henukit-materials.sh`、root systemd 安装/启用命令，或直接
+将导入 SQL 交给生产数据库。它们都需要后续 activation 切片的锁、回滚、审计和明确批准，
+当前没有安全授权路径。
 
-旧脚本仅作为迁移期历史实现保留；它们不是 #306-A 的操作说明，也不代表任何生产能力已启用。
+旧脚本仅作为迁移期历史实现保留；它们不是 #306-A 或 B01 的操作说明，也不代表任何生产
+能力已启用。仓库中的 unit 或 wrapper 模板同样不构成安装、root commit、公开发布或 Study
+导入授权。
 
 ## 候选准备（仓库本地、非 root）
 

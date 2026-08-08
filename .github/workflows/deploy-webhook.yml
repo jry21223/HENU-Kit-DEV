@@ -4,6 +4,17 @@ on:
   pull_request:
     paths:
       - services/deploy-webhook/**
+      - scripts/ops/prepare-henukit-materials.mjs
+      - scripts/ops/convert-henukit-slides.py
+      - scripts/ops/tests/prepare-henukit-materials.test.mjs
+      - scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs
+      - scripts/ops/tests/henukit-materials-systemd.test.mjs
+      - scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
+      - docs/adr/0022-materials-candidate-preparation.md
+      - docs/adr/0023-materials-latest-arrival-queue.md
+      - docs/adr/README.md
+      - docs/development/306-materials-secure-preparation.md
+      - docs/operations/henukit-materials-sync.md
       - docs/operations/github-webhook-deploy.md
       - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
       - docs/operations/README.md
@@ -14,6 +25,17 @@ on:
     branches: [main]
     paths:
       - services/deploy-webhook/**
+      - scripts/ops/prepare-henukit-materials.mjs
+      - scripts/ops/convert-henukit-slides.py
+      - scripts/ops/tests/prepare-henukit-materials.test.mjs
+      - scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs
+      - scripts/ops/tests/henukit-materials-systemd.test.mjs
+      - scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
+      - docs/adr/0022-materials-candidate-preparation.md
+      - docs/adr/0023-materials-latest-arrival-queue.md
+      - docs/adr/README.md
+      - docs/development/306-materials-secure-preparation.md
+      - docs/operations/henukit-materials-sync.md
       - docs/operations/github-webhook-deploy.md
       - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
       - docs/operations/README.md
@@ -57,6 +79,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Install packaging validators
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Validate shell scripts
@@ -65,11 +90,13 @@ jobs:
           shellcheck \
             services/deploy-webhook/deploy/henukit-deploy \
             services/deploy-webhook/deploy/henukit-approve-release \
+            services/deploy-webhook/deploy/henukit-materials-prepare \
             services/deploy-webhook/deploy/install.sh \
             services/deploy-webhook/deploy/hooks/10-command.example \
             services/deploy-webhook/deploy/hooks/20-study.example
           bash -n services/deploy-webhook/deploy/henukit-deploy
           bash -n services/deploy-webhook/deploy/henukit-approve-release
+          bash -n services/deploy-webhook/deploy/henukit-materials-prepare
           bash -n services/deploy-webhook/deploy/install.sh
           bash -n services/deploy-webhook/deploy/hooks/10-command.example
           bash -n services/deploy-webhook/deploy/hooks/20-study.example
@@ -77,6 +104,14 @@ jobs:
         run: |
           sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook
           systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
+      - name: Validate materials candidate boundaries
+        run: |
+          node --check scripts/ops/prepare-henukit-materials.mjs
+          node --test \
+            scripts/ops/tests/prepare-henukit-materials.test.mjs \
+            scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs \
+            scripts/ops/tests/henukit-materials-systemd.test.mjs \
+            scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
       - name: Reject committed deployment secrets
         run: |
           set -euo pipefail

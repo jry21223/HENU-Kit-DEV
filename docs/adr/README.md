@@ -26,6 +26,7 @@
 20. [`0020-library-owner-production-onboard.md`](./0020-library-owner-production-onboard.md) — Library 独立数据所有者服务接入 Console 的生产上线边界。
 21. [`0021-portal-favorites-write-boundary.md`](./0021-portal-favorites-write-boundary.md) — Portal Gateway 的三条默认关闭收藏写命令边界。
 22. [`0022-materials-candidate-preparation.md`](./0022-materials-candidate-preparation.md) — 固定 SHA、非 root 的资料候选准备与派生目录预检边界。
+23. [`0023-materials-latest-arrival-queue.md`](./0023-materials-latest-arrival-queue.md) — 资料候选准备的实例隔离、最近验收事件队列与同一无特权身份边界。
 
 ## 使用规则
 

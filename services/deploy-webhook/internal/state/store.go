@@ -21,6 +21,15 @@ var (
 	fullSHAPathPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 )
 
+const (
+	genericFIFOMode            = "generic-fifo"
+	materialsLatestArrivalMode = "materials-latest-arrival"
+)
+
+type queueModeMarker struct {
+	Mode string `json:"mode"`
+}
+
 type Event struct {
 	Delivery   string    `json:"delivery"`
 	Repository string    `json:"repository"`
@@ -52,12 +61,24 @@ type EnqueueResult struct {
 }
 
 type Store struct {
-	dir       string
-	maxQueue  int
-	retention time.Duration
+	dir           string
+	maxQueue      int
+	retention     time.Duration
+	latestArrival bool
 }
 
 func New(dir string, maxQueue int, retention time.Duration) (*Store, error) {
+	return newStore(dir, maxQueue, retention, false)
+}
+
+// NewMaterialsLatestArrival creates the materials-only queue policy. It keeps
+// at most one waiting delivery, replacing it with each later accepted delivery
+// while preserving the generic Store's FIFO default.
+func NewMaterialsLatestArrival(dir string, retention time.Duration) (*Store, error) {
+	return newStore(dir, 1, retention, true)
+}
+
+func newStore(dir string, maxQueue int, retention time.Duration, latestArrival bool) (*Store, error) {
 	dir = filepath.Clean(strings.TrimSpace(dir))
 	if dir == "." || !filepath.IsAbs(dir) {
 		return nil, errors.New("state directory must be an absolute path")
@@ -68,8 +89,21 @@ func New(dir string, maxQueue int, retention time.Duration) (*Store, error) {
 	if retention <= 0 {
 		return nil, errors.New("processed delivery retention must be positive")
 	}
-	s := &Store{dir: dir, maxQueue: maxQueue, retention: retention}
-	for _, path := range []string{s.dir, s.queueDir(), s.processedDir(), s.failedDir()} {
+	s := &Store{dir: dir, maxQueue: maxQueue, retention: retention, latestArrival: latestArrival}
+	if err := os.MkdirAll(s.dir, 0o750); err != nil {
+		return nil, fmt.Errorf("create state directory %s: %w", s.dir, err)
+	}
+	if err := validateStateDirectory(s.dir); err != nil {
+		return nil, err
+	}
+	if err := s.withLock(s.ensureQueueModeLocked); err != nil {
+		return nil, err
+	}
+	paths := []string{s.queueDir(), s.processedDir(), s.failedDir()}
+	if s.latestArrival {
+		paths = append(paths, s.supersededDir())
+	}
+	for _, path := range paths {
 		if err := os.MkdirAll(path, 0o750); err != nil {
 			return nil, fmt.Errorf("create state directory %s: %w", path, err)
 		}
@@ -99,15 +133,30 @@ func (s *Store) Enqueue(event Event) (EnqueueResult, error) {
 			result.Duplicate = true
 			return nil
 		}
+		if event.ReceivedAt.IsZero() {
+			event.ReceivedAt = time.Now().UTC()
+		}
+		if s.latestArrival {
+			var waiting Event
+			if err := readJSON(s.latestArrivalQueuePath(), &waiting); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("read waiting materials delivery: %w", err)
+			} else if err == nil && waiting.Delivery != event.Delivery {
+				if err := s.markSupersededLocked(waiting); err != nil {
+					return err
+				}
+			}
+			if err := writeJSONAtomic(s.latestArrivalQueuePath(), event); err != nil {
+				return err
+			}
+			result.Queued = true
+			return nil
+		}
 		files, err := s.queueFiles()
 		if err != nil {
 			return err
 		}
 		if len(files) >= s.maxQueue {
 			return ErrQueueFull
-		}
-		if event.ReceivedAt.IsZero() {
-			event.ReceivedAt = time.Now().UTC()
 		}
 		name := fmt.Sprintf("%020d-%s.json", event.ReceivedAt.UnixNano(), event.Delivery)
 		if err := writeJSONAtomic(filepath.Join(s.queueDir(), name), event); err != nil {
@@ -124,6 +173,9 @@ func (s *Store) Enqueue(event Event) (EnqueueResult, error) {
 // been reviewed; successful deliveries remain deduplicated.
 func (s *Store) RetryFailedSHA(sha string) (EnqueueResult, error) {
 	var result EnqueueResult
+	if s.latestArrival {
+		return result, errors.New("retry is not supported for the materials latest-arrival queue")
+	}
 	sha = strings.ToLower(strings.TrimSpace(sha))
 	if !fullSHAPathPattern.MatchString(sha) {
 		return result, errors.New("retry SHA must be a full lowercase hexadecimal SHA")
@@ -189,9 +241,53 @@ func (s *Store) RecoverInterrupted() error {
 			}
 			return err
 		}
+		if err := validateEvent(event); err != nil {
+			return fmt.Errorf("invalid running event: %w", err)
+		}
 		processed, err := s.isProcessed(event.Delivery)
 		if err != nil {
 			return err
+		}
+		if s.latestArrival {
+			superseded, err := s.isSuperseded(event.Delivery)
+			if err != nil {
+				return err
+			}
+			if superseded {
+				if err := os.Remove(path); err != nil {
+					return err
+				}
+				return syncDir(s.dir)
+			}
+			var waiting Event
+			err = readJSON(s.latestArrivalQueuePath(), &waiting)
+			switch {
+			case err == nil:
+				if waiting.Delivery != event.Delivery {
+					if err := s.markSupersededLocked(event); err != nil {
+						return err
+					}
+				}
+				if err := os.Remove(path); err != nil {
+					return err
+				}
+				return syncDir(s.dir)
+			case !errors.Is(err, fs.ErrNotExist):
+				return fmt.Errorf("read waiting materials delivery: %w", err)
+			}
+			if processed {
+				return os.Remove(path)
+			}
+			if event.ReceivedAt.IsZero() {
+				event.ReceivedAt = time.Now().UTC()
+			}
+			if err := writeJSONAtomic(s.latestArrivalQueuePath(), event); err != nil {
+				return err
+			}
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+			return syncDir(s.dir)
 		}
 		queued, err := s.hasQueuedDelivery(event.Delivery)
 		if err != nil {
@@ -233,11 +329,21 @@ func (s *Store) Claim() (*Event, error) {
 			if err := readJSON(source, &event); err != nil {
 				return fmt.Errorf("read queued event %s: %w", source, err)
 			}
+			if err := validateEvent(event); err != nil {
+				return fmt.Errorf("invalid queued event %s: %w", source, err)
+			}
 			processed, err := s.isProcessed(event.Delivery)
 			if err != nil {
 				return err
 			}
-			if processed {
+			superseded := false
+			if s.latestArrival {
+				superseded, err = s.isSuperseded(event.Delivery)
+				if err != nil {
+					return err
+				}
+			}
+			if processed || superseded {
 				if err := os.Remove(source); err != nil {
 					return err
 				}
@@ -298,6 +404,25 @@ func (s *Store) Snapshot() (Snapshot, error) {
 		if err != nil {
 			return err
 		}
+		if s.latestArrival && len(files) == 1 {
+			var waiting Event
+			if err := readJSON(filepath.Join(s.queueDir(), files[0]), &waiting); err != nil {
+				return err
+			}
+			superseded, err := s.isSuperseded(waiting.Delivery)
+			if err != nil {
+				return err
+			}
+			if superseded {
+				if err := os.Remove(filepath.Join(s.queueDir(), files[0])); err != nil {
+					return err
+				}
+				if err := syncDir(s.queueDir()); err != nil {
+					return err
+				}
+				files = nil
+			}
+		}
 		snapshot.QueueDepth = len(files)
 		var running Event
 		if err := readJSON(s.runningPath(), &running); err == nil {
@@ -335,6 +460,62 @@ func (s *Store) withLock(fn func() error) error {
 	return fn()
 }
 
+// ensureQueueModeLocked atomically claims the queue policy for a new state
+// directory. It must run under withLock: otherwise a generic constructor and a
+// materials constructor can both observe an unmarked empty directory and
+// return stores with incompatible queue semantics.
+func (s *Store) ensureQueueModeLocked() error {
+	markerPath := s.queueModeMarkerPath()
+	info, err := os.Lstat(markerPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		entries, err := os.ReadDir(s.dir)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			// withLock creates this file before calling us. It is not state
+			// content and therefore must not make a fresh directory look used.
+			if entry.Name() != ".lock" {
+				if !s.latestArrival {
+					// Existing generic FIFO state predates queue-policy.json and
+					// remains supported without retroactively changing it.
+					return nil
+				}
+				return errors.New("materials latest-arrival state directory must not reuse an unmarked queue")
+			}
+		}
+		mode := genericFIFOMode
+		if s.latestArrival {
+			mode = materialsLatestArrivalMode
+		}
+		return writeJSONAtomic(markerPath, queueModeMarker{Mode: mode})
+	}
+	if err != nil {
+		return fmt.Errorf("inspect queue mode marker: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return fmt.Errorf("queue mode marker is not a regular file: %s", markerPath)
+	}
+	var marker queueModeMarker
+	if err := readJSON(markerPath, &marker); err != nil {
+		return fmt.Errorf("read queue mode marker: %w", err)
+	}
+	expectedMode := genericFIFOMode
+	if s.latestArrival {
+		expectedMode = materialsLatestArrivalMode
+	}
+	if marker.Mode != expectedMode {
+		if !s.latestArrival && marker.Mode == materialsLatestArrivalMode {
+			return errors.New("generic FIFO queue cannot use a materials latest-arrival state directory")
+		}
+		if s.latestArrival && marker.Mode == genericFIFOMode {
+			return errors.New("materials latest-arrival state directory cannot use a generic FIFO queue")
+		}
+		return fmt.Errorf("unsupported queue mode: %q", marker.Mode)
+	}
+	return nil
+}
+
 func (s *Store) queueFiles() ([]string, error) {
 	entries, err := os.ReadDir(s.queueDir())
 	if err != nil {
@@ -343,6 +524,9 @@ func (s *Store) queueFiles() ([]string, error) {
 	files := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			if s.latestArrival && entry.Name() != "latest.json" {
+				return nil, fmt.Errorf("materials queue contains an unexpected file: %s", entry.Name())
+			}
 			files = append(files, entry.Name())
 		}
 	}
@@ -354,6 +538,12 @@ func (s *Store) isDuplicateLocked(delivery string) (bool, error) {
 	processed, err := s.isProcessed(delivery)
 	if err != nil || processed {
 		return processed, err
+	}
+	if s.latestArrival {
+		superseded, err := s.isSuperseded(delivery)
+		if err != nil || superseded {
+			return superseded, err
+		}
 	}
 	queued, err := s.hasQueuedDelivery(delivery)
 	if err != nil || queued {
@@ -367,6 +557,16 @@ func (s *Store) isDuplicateLocked(delivery string) (bool, error) {
 }
 
 func (s *Store) hasQueuedDelivery(delivery string) (bool, error) {
+	if s.latestArrival {
+		var event Event
+		if err := readJSON(s.latestArrivalQueuePath(), &event); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return false, nil
+			}
+			return false, err
+		}
+		return event.Delivery == delivery, nil
+	}
 	files, err := s.queueFiles()
 	if err != nil {
 		return false, err
@@ -406,9 +606,41 @@ func (s *Store) isProcessed(delivery string) (bool, error) {
 	return true, nil
 }
 
+func (s *Store) isSuperseded(delivery string) (bool, error) {
+	if err := validateDelivery(delivery); err != nil {
+		return false, err
+	}
+	path := filepath.Join(s.supersededDir(), delivery+".json")
+	info, err := os.Lstat(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return false, fmt.Errorf("superseded delivery marker is not a regular file: %s", path)
+	}
+	return true, nil
+}
+
+func (s *Store) markSupersededLocked(event Event) error {
+	if err := validateEvent(event); err != nil {
+		return err
+	}
+	if err := writeJSONAtomic(filepath.Join(s.supersededDir(), event.Delivery+".json"), event); err != nil {
+		return fmt.Errorf("record superseded materials delivery: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) cleanupTerminalLocked(now time.Time) error {
 	cutoff := now.Add(-s.retention)
-	for _, dir := range []string{s.processedDir(), s.failedDir()} {
+	dirs := []string{s.processedDir(), s.failedDir()}
+	if s.latestArrival {
+		dirs = append(dirs, s.supersededDir())
+	}
+	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return err
@@ -450,11 +682,18 @@ func validateStateDirectory(path string) error {
 }
 
 func validateEvent(event Event) error {
-	if strings.TrimSpace(event.Delivery) == "" || strings.ContainsAny(event.Delivery, `/\\`) {
-		return errors.New("delivery ID is invalid")
+	if err := validateDelivery(event.Delivery); err != nil {
+		return err
 	}
 	if strings.TrimSpace(event.Repository) == "" || strings.TrimSpace(event.Ref) == "" || strings.TrimSpace(event.After) == "" {
 		return errors.New("event repository, ref, and after SHA are required")
+	}
+	return nil
+}
+
+func validateDelivery(delivery string) error {
+	if strings.TrimSpace(delivery) == "" || strings.ContainsAny(delivery, `/\\`) {
+		return errors.New("delivery ID is invalid")
 	}
 	return nil
 }
@@ -513,9 +752,14 @@ func syncDir(dir string) error {
 	return file.Sync()
 }
 
-func (s *Store) queueDir() string        { return filepath.Join(s.dir, "queue") }
-func (s *Store) processedDir() string    { return filepath.Join(s.dir, "processed") }
-func (s *Store) failedDir() string       { return filepath.Join(s.dir, "failed") }
-func (s *Store) runningPath() string     { return filepath.Join(s.dir, "running.json") }
-func (s *Store) lastSuccessPath() string { return filepath.Join(s.dir, "last-success.json") }
-func (s *Store) lastFailurePath() string { return filepath.Join(s.dir, "last-failure.json") }
+func (s *Store) queueDir() string { return filepath.Join(s.dir, "queue") }
+func (s *Store) latestArrivalQueuePath() string {
+	return filepath.Join(s.queueDir(), "latest.json")
+}
+func (s *Store) queueModeMarkerPath() string { return filepath.Join(s.dir, "queue-policy.json") }
+func (s *Store) processedDir() string        { return filepath.Join(s.dir, "processed") }
+func (s *Store) failedDir() string           { return filepath.Join(s.dir, "failed") }
+func (s *Store) supersededDir() string       { return filepath.Join(s.dir, "superseded") }
+func (s *Store) runningPath() string         { return filepath.Join(s.dir, "running.json") }
+func (s *Store) lastSuccessPath() string     { return filepath.Join(s.dir, "last-success.json") }
+func (s *Store) lastFailurePath() string     { return filepath.Join(s.dir, "last-failure.json") }

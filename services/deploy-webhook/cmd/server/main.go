@@ -20,16 +20,25 @@ import (
 	"henukit.dev/deploy-webhook/internal/webhook"
 )
 
-const usage = `usage: henukit-deploy-webhook [serve|run|retry <sha>]
+const materialsPreparationCommand = "/usr/local/libexec/henukit/henukit-materials-prepare"
+
+const usage = `usage: henukit-deploy-webhook [serve|run|retry <sha>|materials-serve|materials-run]
 
 serve        receive and persist verified GitHub webhook deliveries
 run          process all persisted deliveries with the fixed deploy command
 retry <sha>  requeue the newest failed delivery for an approved full SHA
+materials-serve receive materials deliveries with latest-arrival coalescing
+materials-run process materials candidates with the fixed preparation wrapper
 `
 
 type commonConfig struct {
 	StateDir  string
 	MaxQueue  int
+	Retention time.Duration
+}
+
+type materialsConfig struct {
+	StateDir  string
 	Retention time.Duration
 }
 
@@ -45,6 +54,10 @@ func main() {
 		err = serve(logger)
 	case "run":
 		err = runPending(logger)
+	case "materials-serve":
+		err = serveMaterials(logger)
+	case "materials-run":
+		err = runMaterials(logger)
 	case "retry":
 		if len(os.Args) != 3 {
 			fmt.Fprint(os.Stderr, usage)
@@ -73,6 +86,22 @@ func serve(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	return serveStore(logger, store)
+}
+
+func serveMaterials(logger *slog.Logger) error {
+	config, err := loadMaterialsConfig()
+	if err != nil {
+		return err
+	}
+	store, err := state.NewMaterialsLatestArrival(config.StateDir, config.Retention)
+	if err != nil {
+		return err
+	}
+	return serveStore(logger, store)
+}
+
+func serveStore(logger *slog.Logger, store *state.Store) error {
 	secretPath, err := requiredEnv("HENUKIT_WEBHOOK_SECRET_FILE")
 	if err != nil {
 		return err
@@ -148,16 +177,38 @@ func runPending(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	return runStore(
+		logger,
+		store,
+		envOr("HENUKIT_DEPLOY_COMMAND", "/usr/local/libexec/henukit/henukit-deploy"),
+		"HENUKIT_DEPLOY_TIMEOUT",
+		45*time.Minute,
+	)
+}
+
+func runMaterials(logger *slog.Logger) error {
+	config, err := loadMaterialsConfig()
+	if err != nil {
+		return err
+	}
+	store, err := state.NewMaterialsLatestArrival(config.StateDir, config.Retention)
+	if err != nil {
+		return err
+	}
+	return runStore(logger, store, materialsPreparationCommand, "HENUKIT_MATERIALS_PREPARATION_TIMEOUT", 2*time.Hour)
+}
+
+func runStore(logger *slog.Logger, store *state.Store, command, timeoutName string, fallbackTimeout time.Duration) error {
 	if err := store.RecoverInterrupted(); err != nil {
 		return fmt.Errorf("recover interrupted deployment: %w", err)
 	}
-	timeout, err := durationEnv("HENUKIT_DEPLOY_TIMEOUT", 45*time.Minute)
+	timeout, err := durationEnv(timeoutName, fallbackTimeout)
 	if err != nil {
 		return err
 	}
 	deploymentRunner, err := runner.New(
 		store,
-		envOr("HENUKIT_DEPLOY_COMMAND", "/usr/local/libexec/henukit/henukit-deploy"),
+		command,
 		timeout,
 		logger,
 	)
@@ -198,6 +249,17 @@ func loadCommonConfig() (commonConfig, error) {
 	return commonConfig{
 		StateDir:  envOr("HENUKIT_WEBHOOK_STATE_DIR", "/var/lib/henukit-deploy-webhook"),
 		MaxQueue:  maxQueue,
+		Retention: retention,
+	}, nil
+}
+
+func loadMaterialsConfig() (materialsConfig, error) {
+	retention, err := durationEnv("HENUKIT_WEBHOOK_PROCESSED_RETENTION", 30*24*time.Hour)
+	if err != nil {
+		return materialsConfig{}, err
+	}
+	return materialsConfig{
+		StateDir:  envOr("HENUKIT_WEBHOOK_STATE_DIR", "/var/lib/henukit-materials-webhook"),
 		Retention: retention,
 	}, nil
 }

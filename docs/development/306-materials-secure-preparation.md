@@ -50,3 +50,40 @@ Acceptance criteria:
 
 Dependencies: HC-306-A01 is independent; both slices are required before a
 future activation slice.
+
+## HC-306-B01: queue only the newest accepted candidate preparation
+
+This slice adds a materials-instance receiver/runner seam for the candidate
+command in HC-306-A01. It does not make a candidate public or authorize a
+catalog import.
+
+Acceptance criteria:
+
+- [ ] `henukit-deploy-webhook materials-serve` and
+  `henukit-deploy-webhook materials-run` select a materials-only queue policy;
+  generic `serve`, `run`, and `retry` retain their existing FIFO behavior.
+- [ ] A materials state directory has zero or one running delivery and zero or
+  one waiting delivery. A newly accepted delivery atomically replaces the
+  waiting delivery without interrupting the running preparation.
+- [ ] “Newest” is the last accepted webhook delivery in arrival order, not a
+  Git topology or commit-time inference. A replaced delivery remains
+  deduplicated during terminal retention, and restart recovery never requeues
+  an old running delivery ahead of a newer waiting one.
+- [ ] The materials receiver and runner use the same unprivileged
+  `henukit-deploy` account. The runner invokes only a fixed wrapper with a
+  configuration-bound source repository, allowed ref, and candidate root; an
+  event cannot select commands, paths, public roots, or database targets.
+- [ ] Tests prove generic FIFO remains unchanged; materials A/B/C coalescing,
+  active A plus B/C, duplicate delivery, recovery, and concurrent queue access
+  retain the one-running/one-waiting invariant.
+- [ ] Tests prove the materials runner passes only fixed candidate-preparation
+  inputs and the unit templates run as `henukit-deploy` without root, Docker,
+  psql, public-tree, or Study-catalog write access.
+- [ ] CI runs the affected Go, Node, and systemd-template checks.
+
+Dependencies: HC-306-A01.
+
+Out of scope: enabling or installing a service, production packaging or
+deployment, public-tree activation, Nginx switching, Study catalog import,
+database migration, root runtime processes, Console or Library ownership, and
+Git-topology ordering.

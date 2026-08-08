@@ -1,9 +1,9 @@
 [Unit]
-Description=Watch HENU Kit materials sync webhook queue
+Description=Watch HENU Kit materials candidate webhook queue
 After=henukit-materials-webhook.service
 
 [Path]
-PathExistsGlob=/var/lib/henukit-materials-webhook/queue/*.json
+PathExists=/var/lib/henukit-materials-webhook/queue/latest.json
 PathExists=/var/lib/henukit-materials-webhook/running.json
 Unit=henukit-materials-runner.service
 

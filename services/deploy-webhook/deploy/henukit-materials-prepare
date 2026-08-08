@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+readonly config_path="/etc/henukit-deploy/materials-webhook.env"
+readonly config_owner="0"
+readonly runtime_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly prepare_script="$runtime_dir/prepare-henukit-materials.mjs"
+readonly sha_pattern='^[a-f0-9]{40}$'
+readonly delivery_pattern='^[A-Za-z0-9][A-Za-z0-9-]{0,127}$'
+
+fail() {
+  echo "henukit-materials-prepare: $*" >&2
+  exit 64
+}
+
+usage() {
+  fail "expected --sha <40-lowercase-hex> --delivery <github-delivery> --repository <owner/name> --ref <refs/heads/name>"
+}
+
+config_owner_and_mode() {
+  if stat -c '%u:%a' -- "$config_path" >/dev/null 2>&1; then
+    stat -c '%u:%a' -- "$config_path"
+    return
+  fi
+  stat -f '%u:%Lp' -- "$config_path"
+}
+
+if (( "$#" != 8 )); then
+  usage
+fi
+if [[ "$1" != "--sha" || "$3" != "--delivery" || "$5" != "--repository" || "$7" != "--ref" ]]; then
+  usage
+fi
+
+readonly accepted_sha="$2"
+readonly delivery="$4"
+readonly event_repository="$6"
+readonly event_ref="$8"
+
+[[ "$accepted_sha" =~ $sha_pattern ]] || fail "SHA must be a lowercase 40-character Git SHA"
+[[ "$delivery" =~ $delivery_pattern ]] || fail "delivery ID is invalid"
+[[ "$event_repository" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail "event repository is invalid"
+[[ "$event_ref" =~ ^refs/heads/[A-Za-z0-9._/-]+$ && "$event_ref" != *..* && "$event_ref" != *//* ]] || fail "event ref is invalid"
+
+[[ ! -L "$config_path" && -f "$config_path" ]] || fail "configuration must be a regular file"
+IFS=: read -r actual_owner config_mode <<<"$(config_owner_and_mode)"
+[[ "$actual_owner" == "$config_owner" ]] || fail "configuration must be owned by root"
+[[ "$config_mode" =~ ^[0-7]{3,4}$ ]] || fail "configuration mode is invalid"
+if (( (8#$config_mode & 8#022) != 0 )); then
+  fail "configuration must not be writable by group or other"
+fi
+
+configured_repository=""
+configured_branch=""
+state_dir=""
+source_repository=""
+candidate_root=""
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line%$'\r'}"
+  [[ -z "$line" || "$line" == \#* ]] && continue
+  key="${line%%=*}"
+  value="${line#*=}"
+  case "$key" in
+    HENUKIT_WEBHOOK_REPOSITORY)
+      [[ -z "$configured_repository" ]] || fail "configuration contains a duplicate key"
+      configured_repository="$value"
+      ;;
+    HENUKIT_WEBHOOK_BRANCH)
+      [[ -z "$configured_branch" ]] || fail "configuration contains a duplicate key"
+      configured_branch="$value"
+      ;;
+    HENUKIT_WEBHOOK_STATE_DIR)
+      [[ -z "$state_dir" ]] || fail "configuration contains a duplicate key"
+      state_dir="$value"
+      ;;
+    HENUKIT_MATERIALS_SOURCE_REPOSITORY)
+      [[ -z "$source_repository" ]] || fail "configuration contains a duplicate key"
+      source_repository="$value"
+      ;;
+    HENUKIT_MATERIALS_CANDIDATE_ROOT)
+      [[ -z "$candidate_root" ]] || fail "configuration contains a duplicate key"
+      candidate_root="$value"
+      ;;
+    HENUKIT_WEBHOOK_LISTEN_ADDR|HENUKIT_WEBHOOK_PATH|HENUKIT_WEBHOOK_PROCESSED_RETENTION|HENUKIT_WEBHOOK_MAX_BODY_BYTES|HENUKIT_MATERIALS_PREPARATION_TIMEOUT)
+      ;;
+    *)
+      fail "configuration contains an unsupported key"
+      ;;
+  esac
+done < "$config_path"
+
+[[ -n "$configured_repository" ]] || fail "configuration is missing HENUKIT_WEBHOOK_REPOSITORY"
+[[ -n "$configured_branch" ]] || fail "configuration is missing HENUKIT_WEBHOOK_BRANCH"
+[[ -n "$state_dir" ]] || fail "configuration is missing HENUKIT_WEBHOOK_STATE_DIR"
+[[ -n "$source_repository" ]] || fail "configuration is missing HENUKIT_MATERIALS_SOURCE_REPOSITORY"
+[[ -n "$candidate_root" ]] || fail "configuration is missing HENUKIT_MATERIALS_CANDIDATE_ROOT"
+
+readonly configured_repository
+readonly configured_branch
+readonly state_dir="${state_dir%/}"
+readonly source_repository
+readonly candidate_root="${candidate_root%/}"
+
+[[ "$event_repository" == "$configured_repository" ]] || fail "event repository does not match configured webhook repository"
+[[ "$configured_branch" =~ ^[A-Za-z0-9._/-]+$ && "$configured_branch" != *..* && "$configured_branch" != *//* ]] || fail "configured webhook branch is invalid"
+[[ "$event_ref" == "refs/heads/$configured_branch" ]] || fail "event ref does not match configured webhook branch"
+[[ "$state_dir" == /* && "$state_dir" != "/" && "$state_dir" != *$'\n'* ]] || fail "configured state directory is invalid"
+[[ "$source_repository" != *[[:space:]]* ]] || fail "configured source repository is invalid"
+[[ "$candidate_root" == "$state_dir/candidates" ]] || fail "candidate root must be the configured state directory candidates path"
+[[ ! -L "$state_dir" ]] || fail "state directory must not be a symbolic link"
+
+mkdir -p -m 0700 -- "$candidate_root"
+[[ ! -L "$candidate_root" && -d "$candidate_root" ]] || fail "candidate root must be a real directory"
+attempt_dir="$(mktemp -d "$candidate_root/.attempt.XXXXXXXXXX")"
+readonly candidate_dir="$attempt_dir/candidate"
+
+[[ ! -L "$prepare_script" && -f "$prepare_script" ]] || fail "fixed candidate preparation command is unavailable"
+node_bin=""
+for candidate in /usr/bin/node /usr/local/bin/node; do
+  if [[ -x "$candidate" ]]; then
+    node_bin="$candidate"
+    break
+  fi
+done
+[[ -n "$node_bin" ]] || fail "fixed Node runtime is unavailable"
+
+exec env -i \
+  HOME=/var/lib/henukit-deploy \
+  PATH=/usr/bin:/bin \
+  "$node_bin" "$prepare_script" \
+  --repository "$source_repository" \
+  --ref "$event_ref" \
+  --sha "$accepted_sha" \
+  --candidate-dir "$candidate_dir" \
+  --python /usr/bin/python3
