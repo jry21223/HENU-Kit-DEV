@@ -18,6 +18,10 @@ import (
 
 //go:generate go run ../../cmd/quizcraftcontractgen -contract ../../../../packages/api-contracts/openapi/quizcraft.yaml -output contract_generated.go
 
+// PortalReadPermission is the QuizCraft Portal read permission. Its first
+// segment ("portal") is the Gateway product, not the QuizCraft owner's
+// product code ("quizcraft"), so the signed reads below hardcode
+// "quizcraft" rather than deriving it via platformcore.ScopeOf.
 const (
 	PortalReadPermission  = "portal.practice.read"
 	CatalogReadPermission = PortalReadPermission

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/platformcore"
 	"henukit.dev/portal-gateway/internal/serviceauth"
 )
@@ -107,29 +108,24 @@ func (c *Client) List(ctx context.Context, actorUserID, requestID string) (json.
 	if err := decoder.Decode(&envelope); err != nil || len(envelope.Data) == 0 {
 		return nil, errors.New("invalid Notice response")
 	}
-	var snapshot struct {
-		Items       []json.RawMessage `json:"items"`
-		GeneratedAt json.RawMessage   `json:"generated_at"`
-	}
+	var snapshot contract.NoticeFeed
 	if err := json.Unmarshal(envelope.Data, &snapshot); err != nil || snapshot.Items == nil {
 		return nil, errors.New("invalid Notice snapshot")
 	}
 
 	distributed := make([]json.RawMessage, 0, len(snapshot.Items))
 	for _, item := range snapshot.Items {
-		var lifecycle struct {
-			State string `json:"state"`
-		}
+		var lifecycle contract.NoticeItemLifecycle
 		// Items whose lifecycle cannot be parsed are skipped: only notices
 		// known to be distributed may leave the Gateway.
 		if err := json.Unmarshal(item, &lifecycle); err == nil && lifecycle.State == distributedState {
 			distributed = append(distributed, item)
 		}
 	}
-	filtered, err := json.Marshal(struct {
-		Items       []json.RawMessage `json:"items"`
-		GeneratedAt json.RawMessage   `json:"generated_at"`
-	}{Items: distributed, GeneratedAt: snapshot.GeneratedAt})
+	filtered, err := json.Marshal(contract.NoticeFeed{
+		Items:       distributed,
+		GeneratedAt: snapshot.GeneratedAt,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("encode Notice snapshot: %w", err)
 	}

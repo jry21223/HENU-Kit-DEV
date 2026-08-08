@@ -110,10 +110,6 @@ export default function NoticeBoardPage() {
           <div className="mt-8">
             <LoadingBlock label="加载通知" />
           </div>
-        ) : loadState === "error" ? (
-          <div className="mt-8">
-            <EmptyBlock label="通知暂时加载不出来，请稍后刷新试试" />
-          </div>
         ) : loadState === "ready" && items.length === 0 ? (
           <div className="mt-8">
             <EmptyBlock label="暂无已发布公告" />

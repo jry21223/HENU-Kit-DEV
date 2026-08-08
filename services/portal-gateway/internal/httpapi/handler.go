@@ -947,7 +947,7 @@ func (h *Handler) getNotices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, noticeReadPermission); err != nil {
-		h.writePlatformPermissionError(w, r, err, "notice")
+		h.writePlatformPermissionError(w, r, err, noticePermissionCopy)
 		return
 	}
 	data, err := h.noticeClient.List(r.Context(), value.UserID, requestIDOf(w, r))
@@ -961,19 +961,42 @@ func (h *Handler) getNotices(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// permissionCopy is the per-resource error payload for platform permission
+// failures. Codes are machine-readable branch keys; Messages are the
+// user-facing Chinese copy and must never be assembled from the resource
+// identifier (these values restore the pre-extraction text verbatim).
+type permissionCopy struct {
+	deniedCode      string // 403 machine code
+	deniedMessage   string // 403 user-facing message
+	unavailableCode string // 503 machine code (the 503 message is shared)
+}
+
+var (
+	practicePermissionCopy = permissionCopy{
+		deniedCode:      "practice access denied",
+		deniedMessage:   "暂无练习权限，请联系管理员",
+		unavailableCode: "practice authorization is temporarily unavailable",
+	}
+	noticePermissionCopy = permissionCopy{
+		deniedCode:      "notice access denied",
+		deniedMessage:   "暂无通知权限，请联系管理员",
+		unavailableCode: "notice authorization is temporarily unavailable",
+	}
+)
+
 // writePlatformPermissionError maps Platform Core permission outcomes for
 // actor-bound reads. The practice reads and the Notice read share one
 // CheckPermission path, so the mapping is shared; the only variance is the
-// resource named in the error payloads. (#269's learning-state read carries
-// its own copy of this switch and should switch to this helper at cutover.)
-func (h *Handler) writePlatformPermissionError(w http.ResponseWriter, r *http.Request, err error, resource string) {
+// per-resource copy. (#269's learning-state read carries its own copy of
+// this switch and should switch to this helper at cutover.)
+func (h *Handler) writePlatformPermissionError(w http.ResponseWriter, r *http.Request, err error, payload permissionCopy) {
 	switch {
 	case errors.Is(err, platformcore.ErrUnauthorized):
 		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 	case errors.Is(err, platformcore.ErrForbidden):
-		writeError(w, r, http.StatusForbidden, resource+" access denied", "暂无"+resource+"权限，请联系管理员")
+		writeError(w, r, http.StatusForbidden, payload.deniedCode, payload.deniedMessage)
 	default:
-		writeError(w, r, http.StatusServiceUnavailable, resource+" authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
+		writeError(w, r, http.StatusServiceUnavailable, payload.unavailableCode, "服务暂时不可用，请稍后再来")
 	}
 }
 
