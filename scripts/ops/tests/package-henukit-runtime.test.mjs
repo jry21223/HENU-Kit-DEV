@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,6 +11,14 @@ const packager = fileURLToPath(
 );
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const releaseSha = "a".repeat(40);
+
+test("the materials mount stays an explicit bind when runtime packaging disables interpolation", () => {
+  const compose = readFileSync(join(repoRoot, "docker-compose.henukit.yml"), "utf8");
+  assert.match(
+    compose,
+    /- type: bind\n\s+source: \$\{HENUKIT_MATERIALS_ROOT:-\/opt\/henukit-materials\/public\}\n\s+target: \/srv\/materials\n\s+read_only: true/,
+  );
+});
 
 test("the shared runtime packager produces the same fixed-SHA operator payload for local and Actions builds", () => {
   const outputDirectory = mkdtempSync(join(tmpdir(), "henukit-runtime-package-"));
