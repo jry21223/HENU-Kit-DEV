@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/navbar";
 import Hero from "@/components/hero";
 import SectionLibrary from "@/components/section-library";
@@ -6,6 +7,9 @@ import SectionFood from "@/components/section-food";
 import SectionCampus from "@/components/section-campus";
 import Footer from "@/components/footer";
 import SnapScroll from "@/components/snap-scroll";
+import { homeMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = homeMetadata;
 
 export default function Home() {
   return (

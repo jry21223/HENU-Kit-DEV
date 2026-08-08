@@ -14,6 +14,7 @@ HENU Kit 是由河南大学学生自主发起并维护的统一校园工具系�
 - [`docs/development/henukit-console-executable-spec.md`](docs/development/henukit-console-executable-spec.md)：HENUKit Console 与 QuizCraft 重构的当前执行规格。
 - [`docs/development/implementation-plan.md`](docs/development/implementation-plan.md)：面向 1–2 名开发、1–2 名测试的实施计划。
 - [`docs/development/go-no-go-checklist.md`](docs/development/go-no-go-checklist.md)：启动决策、第一周行动和停止条件。
+- [`docs/product/seo-geo.md`](docs/product/seo-geo.md)：Portal 的搜索发现、机器可读说明、内容版本语义与站长平台验收边界。
 
 新开发者应从文档中心进入，不再直接使用散落或已从工作树移除的旧 V1/V2 文档作为当前规范。
 
@@ -119,6 +120,8 @@ pnpm run dev:henukit
 | `/practice` | Portal 集成刷题 |
 
 构建镜像：`pnpm run build:henukit`。
+
+Portal 在构建时使用 `NEXT_PUBLIC_SITE_URL` 生成 canonical、Open Graph、`robots.txt` 和 `sitemap.xml`；生产默认值为 `https://henukit.cn`。公开机器说明位于 `/llms.txt`。这些文件只声明仓库中真实存在且可稳定访问的公开入口，不把登录、写入、个性化页面或尚未落地的政策数据库暴露为可索引内容。完整治理规则见 [`docs/product/seo-geo.md`](docs/product/seo-geo.md)。
 
 ### 兼容：Study-only 遗留栈
 
