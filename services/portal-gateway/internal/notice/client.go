@@ -3,12 +3,24 @@ package notice
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
-	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/serviceauth"
+)
+
+// SnapshotPath is the Notice service's read route. The Notice owner exposes a
+// single bounded lifecycle snapshot; there is no separate public list or
+// detail endpoint.
+const SnapshotPath = "/api/v1/console-notices"
+
+// Sentinel errors map Notice owner rejections to honest Gateway responses.
+var (
+	ErrUnauthorized = errors.New("notice rejected service authentication")
+	ErrForbidden    = errors.New("notice denied permission or scope")
 )
 
 // Client proxies read-only requests to the Notice service.
@@ -26,35 +38,51 @@ func NewClient(baseURL, clientID, clientSecret, keyID string) *Client {
 	}
 }
 
-// List fetches published notices.
-func (c *Client) List(ctx context.Context, actorUserID, requestID string) (contract.NoticeListResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/api/v1/notices", nil)
+// List fetches the Notice owner's bounded snapshot for the Portal Session
+// actor and returns the raw snapshot data ({"items": [...], "generated_at"}).
+// A genuine empty items array is successful; absent or null items are invalid.
+func (c *Client) List(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+SnapshotPath, nil)
 	if err != nil {
-		return contract.NoticeListResponse{}, fmt.Errorf("NewRequest: %w", err)
+		return nil, fmt.Errorf("NewRequest: %w", err)
 	}
 	req.Header.Set("X-Actor-User-Id", actorUserID)
 	req.Header.Set("X-Request-Id", requestID)
+	req.Header.Set("X-Permission-Code", "notice.read")
+	req.Header.Set("X-Scope-Kind", "product")
+	req.Header.Set("X-Product-Code", "notice")
 	if err := c.signer.Sign(req); err != nil {
-		return contract.NoticeListResponse{}, fmt.Errorf("sign: %w", err)
+		return nil, fmt.Errorf("sign: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return contract.NoticeListResponse{}, fmt.Errorf("do: %w", err)
+		return nil, fmt.Errorf("do: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return contract.NoticeListResponse{}, fmt.Errorf("unauthorized")
-	}
-	if resp.StatusCode != http.StatusOK {
-		return contract.NoticeListResponse{}, fmt.Errorf("notice: status %d", resp.StatusCode)
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		return nil, ErrUnauthorized
+	case http.StatusForbidden:
+		return nil, ErrForbidden
+	case http.StatusOK:
+	default:
+		return nil, fmt.Errorf("notice: status %d", resp.StatusCode)
 	}
 
-	var result contract.NoticeListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return contract.NoticeListResponse{}, fmt.Errorf("decode: %w", err)
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
 	}
-	return result, nil
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
+	if err := decoder.Decode(&envelope); err != nil || len(envelope.Data) == 0 {
+		return nil, errors.New("invalid Notice response")
+	}
+	var snapshot struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal(envelope.Data, &snapshot); err != nil || snapshot.Items == nil {
+		return nil, errors.New("invalid Notice snapshot")
+	}
+	return envelope.Data, nil
 }

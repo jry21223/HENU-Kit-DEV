@@ -42,6 +42,7 @@ import type {
   LibraryCoursesResponse,
   MaterialDetailResponse,
   MaterialListResponse,
+  NoticeFeedEnvelope,
   NoticeListResponse,
   PersonalPracticeStatsEnvelope,
   PortalSession,
@@ -686,4 +687,14 @@ export function formatPortalError(err: unknown): string {
   }
   if (err instanceof Error) return "加载失败，请稍后重试。";
   return "加载失败，请稍后重试。";
+}
+
+/**
+ * Loads the Notice owner's real published snapshot through Portal Gateway.
+ * The Gateway returns the Notice service's bounded snapshot envelope, so the
+ * full immutable content travels with the feed and detail expands in place.
+ * This read never falls back to mock or cached data.
+ */
+export async function fetchNoticeFeed(): Promise<NoticeFeedEnvelope> {
+  return apiFetchRequired<NoticeFeedEnvelope>("/api/v1/notices");
 }

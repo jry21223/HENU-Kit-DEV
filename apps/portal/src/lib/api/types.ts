@@ -577,3 +577,41 @@ export interface NoticeListResponse {
   notices: NoticeSummary[];
   request_id: string;
 }
+
+// ---- Notices (Notice service snapshot) ----
+
+/**
+ * Immutable Notice content as published by the Notice service. The service
+ * exposes a single bounded snapshot; there is no separate detail endpoint, so
+ * the full body travels with the feed and detail expands in place.
+ */
+export interface NoticeFeedItem {
+  id: string;
+  source: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  version: number;
+  title: string;
+  body: string;
+  source_url: string;
+  content_hash: string;
+  state: "pending_review" | "approved" | "rejected" | "distributed";
+  revision: number;
+  source_published_at?: string;
+  created_at: string;
+  distribution_count: number;
+  distribution_status?: "queued" | "processing" | "delivered" | "failed";
+}
+
+export interface NoticeFeed {
+  items: NoticeFeedItem[];
+  generated_at: string;
+}
+
+/** Gateway envelope mirroring the Notice owner's snapshot contract. */
+export interface NoticeFeedEnvelope {
+  data: NoticeFeed;
+  request_id: string;
+}
