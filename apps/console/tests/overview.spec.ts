@@ -1,6 +1,16 @@
 import { expect, test } from "@playwright/test";
 
 const moduleNames = ["Portal", "Platform Operations", "Notice", "Library", "QuizCraft", "Food"];
+const broadPermissionTargets = [
+  ["产品运行概览", "/"],
+  ["平台运营工作台", "/operations"],
+  ["校园通知审核与分发", "/notices"],
+  ["资料库运营", "/library"],
+  ["美食运营", "/food"],
+  ["会员权益运营", "/account/memberships"],
+  ["积分账本运营", "/account/points"],
+  ["账户工单运营", "/account"],
+] as const;
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/session", async (route) => {
@@ -79,16 +89,21 @@ test("desktop overview renders interpolated copy instead of raw template syntax"
   await expect(page.locator("body")).not.toContainText("{{");
 });
 
-test("390px overview keeps every module and mobile navigation usable", async ({ page }) => {
+test("390px overview keeps its single real navigation target usable without overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
   await expect(page.locator("[data-module-card]")).toHaveCount(6);
-  await page.getByRole("button", { name: "打开产品导航" }).click();
-  const navigation = page.getByRole("navigation", { name: "移动端产品模块" });
-  await expect(navigation.getByRole("link")).toHaveCount(6);
-  for (const name of moduleNames) await expect(navigation.getByRole("link", { name })).toBeVisible();
-  await page.getByRole("button", { name: "关闭产品导航" }).click();
+  await page.getByRole("button", { name: "打开运营导航" }).click();
+  const navigation = page.getByRole("navigation", { name: "移动端运营导航" });
+  await expect(navigation.getByRole("link")).toHaveCount(1);
+  const overviewLink = navigation.getByRole("link", { name: "产品运行概览" });
+  await expect(overviewLink).toHaveAttribute("href", "/");
+  expect(await overviewLink.evaluate((link) => link.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  await expect(navigation.locator('a[href^="#"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "关闭运营导航" })).toBeVisible();
+  await page.getByRole("button", { name: "关闭运营导航" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
 
   const portal = page.locator('[data-module-card="portal"]');
   await expect(portal).toHaveAccessibleName("Portal：正常");
@@ -154,14 +169,9 @@ test("expired session completes sign-in callback and returns to the intended pat
   expect((await context.cookies()).some((cookie) => cookie.name === "henukit_console_e2e" && cookie.httpOnly)).toBe(true);
 });
 
-// The sidebar rendered two navigation systems at once for any operator with
-// broad permissions: the granted-permission shortcuts (e.g. "平台运营工作台")
-// AND the overview's module-summary anchors (e.g. "Portal", "Platform
-// Operations") — the latter targeting `#module-<id>` elements that only exist
-// in the DOM on the overview page itself, so on any operations sub-page they
-// were both confusing duplicates and dead links. The anchors must appear only
-// on the overview page.
-test("sidebar module anchors appear only on the overview page, not on an operations sub-page", async ({ page }) => {
+// A broadly authorized operator used to receive both workspace links and
+// English module-card anchors. Assert one canonical link for every real route.
+test("overview navigation exposes each permitted operational target once", async ({ page }) => {
   await page.route("**/api/v1/session", (route) =>
     route.fulfill({
       status: 200,
@@ -170,7 +180,16 @@ test("sidebar module anchors appear only on the overview page, not on an operati
         data: {
           user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" },
           access_context: {
-            permissions: ["console.overview.read", "platform.operations.read", "platform.operations.write"],
+            permissions: [
+              "console.overview.read",
+              "platform.operations.read",
+              "notice.read",
+              "library.read",
+              "food.read",
+              "account.membership.write",
+              "account.points.adjust",
+              "account.tickets.read",
+            ],
             scopes: [{ kind: "platform" }],
             verified_at: "2026-07-19T00:00:00Z",
           },
@@ -196,15 +215,129 @@ test("sidebar module anchors appear only on the overview page, not on an operati
     }),
   );
 
-  const moduleAnchors = page.locator('nav[aria-label="产品模块"] a[href^="#module-"]');
-
-  await page.goto("/operations");
-  await expect(page.getByRole("heading", { name: "平台运营工作台" })).toBeVisible();
-  await expect(moduleAnchors).toHaveCount(0);
-
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "产品运行概览" })).toBeVisible();
-  await expect(moduleAnchors).toHaveCount(6);
+  const navigation = page.getByRole("navigation", { name: "运营导航" });
+
+  await expect(navigation.getByRole("link")).toHaveCount(broadPermissionTargets.length);
+  await expect(navigation.locator('a[href^="#"]')).toHaveCount(0);
+  for (const [label, href] of broadPermissionTargets) {
+    await expect(navigation.getByRole("link", { name: label, exact: true })).toHaveCount(1);
+    await expect(navigation.getByRole("link", { name: label, exact: true })).toHaveAttribute("href", href);
+  }
+
+  const consoleRouteLinks = page.locator('[data-console-shell] a[href^="/"]');
+  await expect(consoleRouteLinks).toHaveCount(broadPermissionTargets.length);
+  expect(await consoleRouteLinks.evaluateAll((links) => new Set(links.map((link) => link.getAttribute("href"))).size)).toBe(broadPermissionTargets.length);
+
+  const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+
+  const platform = navigation.getByRole("link", { name: "平台运营工作台", exact: true });
+  await platform.focus();
+  await expect(platform).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/operations$/);
+  await expect(page.getByRole("heading", { name: "平台运营工作台" })).toBeVisible();
+});
+
+test("390px navigation exposes distinct permitted operational targets without horizontal overflow", async ({ page }) => {
+  await page.route("**/api/v1/session", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" },
+          access_context: {
+            permissions: [
+              "console.overview.read",
+              "platform.operations.read",
+              "notice.read",
+              "library.read",
+              "food.read",
+              "account.membership.write",
+              "account.points.adjust",
+              "account.tickets.read",
+            ],
+            scopes: [{ kind: "platform" }],
+            verified_at: "2026-07-19T00:00:00Z",
+          },
+          expires_at: "2026-07-19T00:05:00Z",
+        },
+        request_id: "req_browser_console_mobile",
+      }),
+    }),
+  );
+  await page.route("**/api/v1/operations", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          accounts: [], sessions: [],
+          mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 0, failed: 0, dead_letters: 0 },
+          inbox_items: [], audit: [], dependencies: { postgres: "ready", redis: "ready" },
+          generated_at: "2026-07-19T00:00:00Z",
+        },
+        request_id: "req_operations_mobile_envelope",
+      }),
+    }),
+  );
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "打开运营导航" }).click();
+
+  const navigation = page.getByRole("navigation", { name: "移动端运营导航" });
+  await expect(navigation.getByRole("link")).toHaveCount(broadPermissionTargets.length);
+  await expect(navigation.locator('a[href^="#"]')).toHaveCount(0);
+  for (const [label, href] of broadPermissionTargets) {
+    const link = navigation.getByRole("link", { name: label, exact: true });
+    await expect(link).toHaveCount(1);
+    await expect(link).toHaveAttribute("href", href);
+    expect(await link.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  }
+
+  const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+
+  await navigation.getByRole("link", { name: "平台运营工作台", exact: true }).click();
+  await expect(page).toHaveURL(/\/operations$/);
+  await expect(page.getByRole("heading", { name: "平台运营工作台" })).toBeVisible();
+});
+
+test("overview navigation does not expose an unverified workspace", async ({ page }) => {
+  await page.route("**/api/v1/session", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" },
+          access_context: {
+            permissions: ["console.overview.read", "food.read"],
+            scopes: [{ kind: "product", product_code: "food" }],
+            verified_at: "2026-07-19T00:00:00Z",
+          },
+          expires_at: "2026-07-19T00:05:00Z",
+        },
+        request_id: "req_browser_limited_console",
+      }),
+    }),
+  );
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  const navigation = page.getByRole("navigation", { name: "运营导航" });
+  await expect(navigation.getByRole("link")).toHaveCount(2);
+  await expect(navigation.getByRole("link", { name: "产品运行概览", exact: true })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "美食运营", exact: true })).toBeVisible();
+  for (const hiddenWorkspace of ["平台运营工作台", "校园通知审核与分发", "资料库运营", "会员权益运营", "积分账本运营", "账户工单运营"]) {
+    await expect(navigation.getByRole("link", { name: hiddenWorkspace, exact: true })).toHaveCount(0);
+  }
 });
 
 test("overview count drops to 0/6 when the overview feed is unavailable", async ({ page }) => {
@@ -228,38 +361,15 @@ test("degraded status messages render exactly once per card", async ({ page }) =
   await expect(page.getByText("Portal 部署与只读探测正常", { exact: true })).toHaveCount(1);
 });
 
-test("module cards navigate to their operations pages except Portal", async ({ page }) => {
+test("module cards are informational while Console navigation remains canonical", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.route("**/api/v1/operations", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        data: {
-          accounts: [], sessions: [],
-          mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 0, failed: 0, dead_letters: 0 },
-          inbox_items: [], audit: [], dependencies: { postgres: "ready", redis: "ready" },
-          generated_at: "2026-07-19T00:00:00Z",
-        },
-        request_id: "req_operations_envelope",
-      }),
-    }),
-  );
   await page.goto("/");
 
-  await expect(page.locator('[data-module-card="platform"]')).toHaveJSProperty("tagName", "A");
-  await expect(page.locator('[data-module-card="platform"]')).toHaveAttribute("href", /\/operations$/);
-  await expect(page.locator('[data-module-card="notice"]')).toHaveAttribute("href", /\/notices$/);
-  await expect(page.locator('[data-module-card="library"]')).toHaveAttribute("href", /\/library$/);
-  await expect(page.locator('[data-module-card="food"]')).toHaveAttribute("href", /\/food$/);
-  // Portal has no operations page and QuizCraft links out via its workshop
-  // button; both cards must stay plain articles instead of dead links.
-  await expect(page.locator('[data-module-card="portal"]')).toHaveJSProperty("tagName", "ARTICLE");
-  await expect(page.locator('[data-module-card="quizcraft"]')).toHaveJSProperty("tagName", "ARTICLE");
-
-  await page.locator('[data-module-card="platform"]').click();
-  await expect(page).toHaveURL(/\/operations$/);
-  await expect(page.getByRole("heading", { name: "平台运营工作台" })).toBeVisible();
+  for (const moduleID of ["portal", "platform", "notice", "library", "quizcraft", "food"]) {
+    const card = page.locator(`[data-module-card="${moduleID}"]`);
+    await expect(card).toHaveJSProperty("tagName", "ARTICLE");
+    expect(await card.getAttribute("href")).toBeNull();
+  }
 });
 
 test("overview timestamps render in local time instead of raw UTC", async ({ page }) => {
@@ -316,7 +426,7 @@ test("mobile navigation exposes a confirming sign-out entry", async ({ page }) =
   await page.route("**/api/v1/session/logout", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
   await page.goto("/");
 
-  await page.getByRole("button", { name: "打开产品导航" }).click();
+  await page.getByRole("button", { name: "打开运营导航" }).click();
   const navigation = page.getByRole("dialog");
   await navigation.getByRole("button", { name: "退出登录" }).click();
   await expect(page.getByRole("alertdialog")).toBeVisible();

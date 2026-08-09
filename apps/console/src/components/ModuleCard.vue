@@ -4,11 +4,10 @@ import type { Component } from "vue";
 import { computed } from "vue";
 
 import StatusBadge from "@/components/ui/StatusBadge.vue";
-import { moduleOpsPath, type ModuleStatus, type ModuleSummary } from "@/data/modules";
-import { consolePath } from "@/lib/base-path";
+import { type ModuleStatus, type ModuleSummary } from "@/data/modules";
 import { localDateTime } from "@/lib/format";
 
-const props = defineProps<{
+defineProps<{
   summary: ModuleSummary;
   icon: Component;
 }>();
@@ -24,25 +23,12 @@ const statusLabels: Record<ModuleStatus, string> = {
 };
 
 const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKSHOP_URL?.trim() || "");
-
-// Modules with their own operations page navigate on card click. Portal has no
-// operations page, so its card stays a plain article, and QuizCraft links out
-// through the workshop button below instead of a Console route.
-const destinationHref = computed(() => {
-  const path = moduleOpsPath(props.summary.id);
-  return path ? consolePath(path) : undefined;
-});
 </script>
 
 <template>
-  <component
-    :is="destinationHref ? 'a' : 'article'"
-    :href="destinationHref"
-    class="min-w-0 scroll-mt-20 rounded-lg border border-border bg-card p-4"
-    :class="[
-      summary.status === 'denied' && 'border-dashed bg-muted/40',
-      destinationHref && 'block transition-colors hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-    ]"
+  <article
+    class="min-w-0 rounded-lg border border-border bg-card p-4"
+    :class="summary.status === 'denied' && 'border-dashed bg-muted/40'"
     :data-module-card="summary.id"
     :data-state="summary.status"
     :aria-label="`${summary.name}：${statusLabels[summary.status]}`"
@@ -123,7 +109,7 @@ const destinationHref = computed(() => {
         </span>
       </footer>
     </template>
-  </component>
+  </article>
 </template>
 
 <style scoped>
