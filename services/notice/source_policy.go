@@ -100,7 +100,7 @@ func samePublicSourceOrigin(canonicalURL, versionURL string) bool {
 }
 
 func isPublicSourceHost(host string) bool {
-	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || host == "home.arpa" || strings.HasSuffix(host, ".home.arpa") {
 		return false
 	}
 	// Notice keeps its owner-managed whitelist to ASCII DNS hostnames. This

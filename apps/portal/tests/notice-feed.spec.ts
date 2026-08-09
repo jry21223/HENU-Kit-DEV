@@ -252,6 +252,90 @@ test("notice loading status remains readable", async ({ page }) => {
   expect(routeCalls).toBeLessThanOrEqual(2);
 });
 
+for (const malformedCase of [
+  {
+    name: "missing source",
+    notice: {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      title: "Malformed notice",
+      body: "This item must not reach the render tree.",
+      created_at: "2026-08-01T00:00:00Z",
+    },
+  },
+  {
+    name: "missing source URL",
+    notice: {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      title: "Malformed notice",
+      body: "This item must not reach the render tree.",
+      source: { name: "Example source" },
+      created_at: "2026-08-01T00:00:00Z",
+    },
+  },
+  {
+    name: "linked to a home.arpa source",
+    notice: {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      title: "Malformed notice",
+      body: "This item must not reach the render tree.",
+      source: { name: "Local router", url: "https://router.home.arpa/admin" },
+      created_at: "2026-08-01T00:00:00Z",
+    },
+  },
+]) {
+  test(`notice feed degrades safely when an item is ${malformedCase.name}`, async ({ page }) => {
+    const pageErrors: Error[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error));
+    await page.route("**/api/v1/notices", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { notices: [malformedCase.notice] },
+          request_id: "req_malformed_notice",
+        }),
+      });
+    });
+
+    await page.goto("/notice", { waitUntil: "domcontentloaded" });
+    await expect(page.locator('[data-testid="notice-feed-error"]')).toBeVisible();
+    await expect(page.locator('[data-testid="notice-feed-ready"]')).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+  });
+}
+
+test("notice retry preserves keyboard focus across success and repeated failure", async ({ page }) => {
+  let responseState: "unavailable" | "valid" = "unavailable";
+  await page.route("**/api/v1/notices", async (route) => {
+    if (responseState === "unavailable") {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "notice_unavailable", request_id: "req_retry_down" }),
+      });
+      return;
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(feed) });
+  });
+
+  await page.goto("/notice", { waitUntil: "domcontentloaded" });
+  const retry = page.getByRole("button", { name: "重新加载" });
+  await retry.focus();
+  await expect(retry).toBeFocused();
+  responseState = "valid";
+  await page.keyboard.press("Enter");
+  const resultFocus = page.locator('[data-testid="notice-feed-result-focus"]');
+  await expect(resultFocus).toHaveAttribute("aria-label", "通知加载结果");
+  await expect(resultFocus).toBeFocused();
+  await expect(page.locator('[data-testid="notice-feed-ready-status"]')).not.toBeFocused();
+
+  responseState = "unavailable";
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await retry.focus();
+  await expect(retry).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(retry).toBeFocused();
+});
+
 test("notice feed keeps signed-out and retryable-unavailable actions usable at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   let state: "empty" | "unavailable" | "valid" | "signed-out" | "denied" = "empty";

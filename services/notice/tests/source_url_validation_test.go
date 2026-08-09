@@ -210,6 +210,8 @@ func TestNoticeWriteRejectsMalformedNonPublicAndCrossOriginSourceURLs(t *testing
 		url  string
 	}{
 		{name: "localhost", code: "invalid-localhost", url: "https://localhost/notices"},
+		{name: "home.arpa", code: "invalid-home-arpa", url: "https://router.home.arpa/admin"},
+		{name: "home.arpa subdomain", code: "invalid-home-arpa-subdomain", url: "https://status.router.home.arpa/admin"},
 		{name: "loopback IPv4", code: "invalid-loopback-ip", url: "https://127.0.0.1/notices"},
 		{name: "public IPv4 literal", code: "invalid-public-ip", url: "https://8.8.8.8/notices"},
 		// Chromium normalizes each of these non-canonical spellings to

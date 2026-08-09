@@ -19,7 +19,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "./node_modules/.bin/next dev -p 3004",
+    command: "pnpm --filter @henukit/portal exec next dev -p 3004",
     url: "http://127.0.0.1:3004",
     env: {
       ...process.env,

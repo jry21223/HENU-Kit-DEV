@@ -668,11 +668,87 @@ type CurrentPortalNoticeFeedEnvelope = PortalNoticeFeedEnvelope & {
   data: PortalNoticeFeed;
 };
 
+const portalNoticeUUIDPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isBoundedNoticeText(value: unknown, maximum: number): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    Array.from(value).length <= maximum
+  );
+}
+
+function isPublicNoticeSourceURL(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value !== value.trim() ||
+    Array.from(value).length > 2048 ||
+    new TextEncoder().encode(value).length > 2048
+  ) {
+    return false;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  const localUseHost =
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    host === "home.arpa" ||
+    host.endsWith(".home.arpa");
+  const ipLiteral = host.includes(":") || /^\d+(?:\.\d+){3}$/.test(host);
+
+  return (
+    parsed.protocol === "https:" &&
+    parsed.username === "" &&
+    parsed.password === "" &&
+    host.includes(".") &&
+    !localUseHost &&
+    !ipLiteral
+  );
+}
+
+function isPortalNoticeItem(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const source = value.source;
+  if (!isRecord(source)) return false;
+
+  return (
+    typeof value.id === "string" &&
+    portalNoticeUUIDPattern.test(value.id) &&
+    isBoundedNoticeText(value.title, 200) &&
+    isBoundedNoticeText(value.body, 100000) &&
+    isBoundedNoticeText(source.name, 120) &&
+    isPublicNoticeSourceURL(source.url) &&
+    typeof value.created_at === "string" &&
+    value.created_at.trim().length > 0 &&
+    Number.isFinite(Date.parse(value.created_at))
+  );
+}
+
 export async function fetchPortalNotices(): Promise<CurrentPortalNoticeFeedEnvelope> {
   const response = await apiFetchRequired<PortalNoticeFeedEnvelope>("/api/v1/notices", {
     cache: "no-store",
   });
-  if (!response.data || !Array.isArray(response.data.notices)) {
+  if (
+    !response.data ||
+    !Array.isArray(response.data.notices) ||
+    response.data.notices.length > 50 ||
+    !response.data.notices.every(isPortalNoticeItem)
+  ) {
     throw new PortalApiError("Notice feed response is incomplete", {
       code: "PORTAL_NOTICE_FEED_INVALID",
       path: "/api/v1/notices",

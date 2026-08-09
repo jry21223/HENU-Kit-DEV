@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { redirectToLogin, fetchPortalNotices, PortalHttpError, PortalUnauthorizedError } from "@/lib/api/client";
 import type { PortalNoticeFeed } from "@/lib/api/types";
 
@@ -28,9 +28,11 @@ function intakeTime(value: string) {
 export default function NoticeFeed() {
   const [state, setState] = useState<NoticeFeedState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const retryPending = useRef(false);
+  const retryButton = useRef<HTMLButtonElement>(null);
+  const retryResult = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
-    setState({ status: "loading" });
     try {
       const response = await fetchPortalNotices();
       setState({ status: "ready", data: response.data });
@@ -48,10 +50,25 @@ export default function NoticeFeed() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [attempt, load]);
 
-  const retry = () => setAttempt((value) => value + 1);
+  useEffect(() => {
+    if (!retryPending.current || state.status === "loading") return;
+    retryPending.current = false;
+    if (state.status === "error") {
+      retryButton.current?.focus();
+      return;
+    }
+    retryResult.current?.focus();
+  }, [state.status]);
+
+  const retry = () => {
+    retryPending.current = true;
+    setState({ status: "loading" });
+    setAttempt((value) => value + 1);
+  };
 
   return (
     <main className="mx-auto min-h-svh max-w-5xl px-5 pb-16 pt-28 md:px-8 md:pb-24 md:pt-32">
@@ -66,6 +83,8 @@ export default function NoticeFeed() {
           这里展示面向全校学生的站内通知。来源链接可供核对，正文在本页展开查看。
         </p>
       </header>
+
+      <div ref={retryResult} tabIndex={-1} aria-label="通知加载结果" data-testid="notice-feed-result-focus" className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink">
 
       {state.status === "loading" && (
         <section data-testid="notice-feed-loading" role="status" aria-live="polite" aria-atomic="true" className="mt-8 border border-dashed border-ink/30 px-5 py-16 text-center font-mono text-base tracking-[0.18em] text-ink/65">
@@ -98,7 +117,7 @@ export default function NoticeFeed() {
             <h2 className="font-display text-2xl font-bold">通知暂时无法加载</h2>
             <p className="mt-3 text-base leading-7 text-ink/65">请稍后重试。</p>
           </div>
-          <button type="button" onClick={retry} className="mt-6 inline-flex min-h-11 items-center border border-ink px-4 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper">
+          <button ref={retryButton} type="button" onClick={retry} className="mt-6 inline-flex min-h-11 items-center border border-ink px-4 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper">
             重新加载
           </button>
         </section>
@@ -110,7 +129,7 @@ export default function NoticeFeed() {
         </section>
       ) : (
         <section data-testid="notice-feed-ready" className="mt-8 divide-y divide-line border-y border-line">
-          <p data-testid="notice-feed-ready-status" role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          <p id="notice-feed-ready-status" data-testid="notice-feed-ready-status" role="status" aria-live="polite" aria-atomic="true" className="sr-only">
             已加载 {state.data.notices.length} 条通知
           </p>
           {state.data.notices.map((notice, index) => (
@@ -134,6 +153,7 @@ export default function NoticeFeed() {
           ))}
         </section>
       ))}
+      </div>
     </main>
   );
 }

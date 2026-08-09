@@ -71,7 +71,11 @@ jobs:
           git diff --exit-code -- services/console-gateway/internal/contract services/console-gateway/internal/notice/contract_generated.go services/console-gateway/internal/library/contract_generated.go services/console-gateway/internal/food/contract_generated.go services/console-gateway/internal/accountportfolio/contract_generated.go apps/console/src/lib/console-gateway.ts
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/console-gateway.yaml
           node --test scripts/ops/tests/console-gateway-oasdiff-exception.test.mjs
-          if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/console-gateway.yaml" 2>/dev/null; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/console-gateway.yaml" || {
+              echo "::error::Console Gateway OpenAPI base contract is unavailable"
+              exit 1
+            }
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/console-gateway.yaml" > /tmp/console-gateway-base.yaml
             go run github.com/oasdiff/oasdiff@v1.23.0 breaking --err-ignore docs/adr/0025-portal-notice-feed-oasdiff.err-ignore.txt --fail-on ERR /tmp/console-gateway-base.yaml packages/api-contracts/openapi/console-gateway.yaml
           fi

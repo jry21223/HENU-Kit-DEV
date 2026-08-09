@@ -30,8 +30,8 @@ const (
 )
 
 var (
-	ErrUnavailable       = errors.New("Notice Owner is unavailable")
-	ErrInvalid           = errors.New("Notice Owner returned an invalid response")
+	ErrUnavailable       = errors.New("notice Owner is unavailable")
+	ErrInvalid           = errors.New("notice Owner returned an invalid response")
 	publicDNSIDNAProfile = idna.New(
 		idna.MapForLookup(),
 		idna.BidiRule(),
@@ -115,23 +115,26 @@ func (c *Client) List(ctx context.Context, actorUserID, requestID string) (contr
 	if err != nil || len(payload) > 6<<20 {
 		return contract.PortalNoticeFeed{}, ErrInvalid
 	}
-	var envelope contract.PortalNoticeFeedEnvelope
+	var envelope struct {
+		Data      contract.PortalNoticeFeed `json:"data"`
+		RequestID string                    `json:"request_id"`
+	}
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&envelope); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return contract.PortalNoticeFeed{}, ErrInvalid
 	}
-	if err := validateFeed(envelope); err != nil {
+	if err := validateFeed(envelope.RequestID, envelope.Data); err != nil {
 		return contract.PortalNoticeFeed{}, ErrInvalid
 	}
 	return envelope.Data, nil
 }
 
-func validateFeed(envelope contract.PortalNoticeFeedEnvelope) error {
-	if !noticeRequestIDPattern.MatchString(envelope.RequestID) || envelope.Data.Notices == nil || len(envelope.Data.Notices) > 50 {
+func validateFeed(requestID string, feed contract.PortalNoticeFeed) error {
+	if !noticeRequestIDPattern.MatchString(requestID) || feed.Notices == nil || len(feed.Notices) > 50 {
 		return errors.New("invalid Notice Owner envelope")
 	}
-	for _, item := range envelope.Data.Notices {
+	for _, item := range feed.Notices {
 		if !noticeUUIDPattern.MatchString(item.ID) || strings.TrimSpace(item.Title) == "" || utf8.RuneCountInString(item.Title) > 200 || strings.TrimSpace(item.Body) == "" || utf8.RuneCountInString(item.Body) > 100000 || strings.TrimSpace(item.Source.Name) == "" || utf8.RuneCountInString(item.Source.Name) > 120 || item.CreatedAt.IsZero() {
 			return errors.New("invalid Notice Owner item")
 		}
@@ -169,7 +172,7 @@ func validPublicSourceURL(raw string) bool {
 }
 
 func isPublicDNSHost(host string) bool {
-	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || !isASCIIHostname(host) || !isValidASCIIDNALabelHost(host) {
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || host == "home.arpa" || strings.HasSuffix(host, ".home.arpa") || !isASCIIHostname(host) || !isValidASCIIDNALabelHost(host) {
 		return false
 	}
 	if _, err := netip.ParseAddr(host); err == nil || isNumericIPv4Host(host) || hasNumericIPv4FinalLabel(host) {

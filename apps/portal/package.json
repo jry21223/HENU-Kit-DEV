@@ -8,7 +8,7 @@
     "start": "next start -p 3001",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run src/lib/auth/display-name.test.ts src/lib/api/account-portfolio.test.ts src/lib/api/membership-order.test.ts src/lib/api/practice-session.test.ts src/lib/api/favorites.test.ts src/lib/api/env.test.ts src/lib/food/ranking.test.ts src/lib/food/detail.test.ts",
+    "test": "vitest run src/lib/auth/display-name.test.ts src/lib/api/account-portfolio.test.ts src/lib/api/membership-order.test.ts src/lib/api/practice-session.test.ts src/lib/api/favorites.test.ts src/lib/api/env.test.ts src/lib/food/ranking.test.ts src/lib/food/detail.test.ts src/app/search-discovery.test.ts",
     "test:unit": "node --experimental-strip-types --test src/components/practice/bank-hero-mastery.test.mjs src/components/account/account-console-boundary.test.mjs",
     "test:e2e:responsive": "playwright test tests/responsive.spec.ts tests/practice-leaderboard.spec.ts tests/quizcraft-catalog-dark.spec.ts",
     "test:e2e:notice": "playwright test --config playwright.notice-feed.config.ts",

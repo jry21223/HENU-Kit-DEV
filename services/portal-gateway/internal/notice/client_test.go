@@ -125,9 +125,12 @@ func TestListConsumesLargeBoundedOwnerEnvelope(t *testing.T) {
 			CreatedAt: time.Date(2026, time.August, 1, 0, index, 0, 0, time.UTC),
 		})
 	}
-	payload, err := json.Marshal(contract.PortalNoticeFeedEnvelope{
-		RequestID: "req_owner_large",
+	payload, err := json.Marshal(struct {
+		Data      contract.PortalNoticeFeed `json:"data"`
+		RequestID string                    `json:"request_id"`
+	}{
 		Data:      contract.PortalNoticeFeed{Notices: items},
+		RequestID: "req_owner_large",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -155,6 +158,7 @@ func TestListRejectsUnknownOrOversizedOwnerPayloads(t *testing.T) {
 		payload string
 	}{
 		{name: "required notices omitted", payload: `{"data":{},"request_id":"req_owner"}`},
+		{name: "browser compatibility facade is not part of Owner response", payload: strings.Replace(valid, `,"request_id"`, `,"notices":[],"request_id"`, 1)},
 		{name: "unknown field", payload: strings.Replace(valid, `"created_at":"2026-08-01T00:00:00Z"`, `"created_at":"2026-08-01T00:00:00Z","state":"distributed"`, 1)},
 		{name: "request ID outside contract", payload: strings.Replace(valid, `"request_id":"req_owner"`, `"request_id":"owner"`, 1)},
 		{name: "title exceeds contract maximum", payload: strings.Replace(valid, "开学安排", strings.Repeat("题", 201), 1)},
@@ -164,6 +168,8 @@ func TestListRejectsUnknownOrOversizedOwnerPayloads(t *testing.T) {
 		{name: "source URL has Unicode hostname", payload: strings.Replace(valid, "https://example.edu/notices/1", "https://学校.example.edu/notices/1", 1)},
 		{name: "source URL has Kelvin sign hostname", payload: strings.Replace(valid, "https://example.edu/notices/1", "https://\u212A.example.edu/notices/1", 1)},
 		{name: "source URL targets numeric loopback host", payload: strings.Replace(valid, "https://example.edu/notices/1", "https://127.1/notices/1", 1)},
+		{name: "source URL targets home.arpa", payload: strings.Replace(valid, "https://example.edu/notices/1", "https://router.home.arpa/admin", 1)},
+		{name: "source URL targets a home.arpa subdomain", payload: strings.Replace(valid, "https://example.edu/notices/1", "https://status.router.home.arpa/admin", 1)},
 		{name: "source URL has DNS underscore", payload: strings.Replace(valid, "https://example.edu/notices/1", "https://foo_.example.edu/notices/1", 1)},
 		{name: "source URL has DNS punctuation", payload: strings.Replace(valid, "https://example.edu/notices/1", "https://foo!.example.edu/notices/1", 1)},
 		{name: "source URL has DNS label over 63 characters", payload: strings.Replace(valid, "https://example.edu/notices/1", "https://"+strings.Repeat("a", 64)+".example.edu/notices/1", 1)},

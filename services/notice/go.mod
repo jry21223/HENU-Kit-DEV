@@ -9,7 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/testcontainers/testcontainers-go v0.40.0
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.55.0
 )
 
 require (
@@ -76,7 +76,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.39.0 // indirect

@@ -743,14 +743,14 @@ func (h *Handler) practiceCommandActor(r *http.Request, guestAllowed bool) (stri
 	if _, err := r.Cookie(h.browserCookies(r).session); err == nil {
 		value, sessionErr := h.readSession(r)
 		if sessionErr != nil || !practice.ValidUUID(value.UserID) {
-			return "", nil, http.StatusUnauthorized, errors.New("invalid Portal Session")
+			return "", nil, http.StatusUnauthorized, errors.New("invalid portal session")
 		}
 		return value.UserID, coreAnonymousCookie(r), 0, nil
 	} else if !errors.Is(err, http.ErrNoCookie) {
-		return "", nil, http.StatusUnauthorized, errors.New("invalid Portal Session")
+		return "", nil, http.StatusUnauthorized, errors.New("invalid portal session")
 	}
 	if !guestAllowed {
-		return "", nil, http.StatusUnauthorized, errors.New("Portal Session required")
+		return "", nil, http.StatusUnauthorized, errors.New("portal session required")
 	}
 	return "", coreAnonymousCookie(r), 0, nil
 }

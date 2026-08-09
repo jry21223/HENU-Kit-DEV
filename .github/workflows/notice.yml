@@ -7,6 +7,8 @@ on:
       - services/console-gateway/cmd/noticecontractgen/**
       - services/console-gateway/internal/notice/**
       - packages/api-contracts/openapi/notice.yaml
+      - docs/adr/0025-portal-notice-feed-oasdiff.err-ignore.txt
+      - scripts/ops/tests/console-gateway-oasdiff-exception.test.mjs
       - .github/workflows/notice.yml
   push:
     branches: [main]
@@ -15,6 +17,8 @@ on:
       - services/console-gateway/cmd/noticecontractgen/**
       - services/console-gateway/internal/notice/**
       - packages/api-contracts/openapi/notice.yaml
+      - docs/adr/0025-portal-notice-feed-oasdiff.err-ignore.txt
+      - scripts/ops/tests/console-gateway-oasdiff-exception.test.mjs
       - .github/workflows/notice.yml
 
 permissions:
@@ -83,10 +87,14 @@ jobs:
           cd ../..
           git diff --exit-code -- services/notice/internal/contract services/console-gateway/internal/notice/contract_generated.go
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/notice.yaml
-          if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/notice.yaml" 2>/dev/null; then
+          node --test scripts/ops/tests/console-gateway-oasdiff-exception.test.mjs
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/notice.yaml" || {
+              echo "::error::Notice OpenAPI base contract is unavailable"
+              exit 1
+            }
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/notice.yaml" > /tmp/notice-base.yaml
-            cd services/notice
-            go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/notice-base.yaml ../../packages/api-contracts/openapi/notice.yaml
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking --err-ignore docs/adr/0025-portal-notice-feed-oasdiff.err-ignore.txt --fail-on ERR /tmp/notice-base.yaml packages/api-contracts/openapi/notice.yaml
           fi
       - name: Vet, test, and build
         working-directory: services/notice

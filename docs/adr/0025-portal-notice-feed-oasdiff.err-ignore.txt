@@ -1,7 +1,10 @@
-# ADR-0025 intentionally relaxes only these Console Gateway fields from URI
-# to IRI so owner-managed public URLs may retain UTF-8 path/query text. Each
-# line is an exact oasdiff API/path/message match; every other ERROR remains
-# gated with --fail-on ERR in .github/workflows/console-gateway.yml.
+# ADR-0025 intentionally relaxes only these Notice and Console Gateway fields
+# from URI to IRI so owner-managed public URLs may retain UTF-8 path/query
+# text. Each line is an exact oasdiff API/path/message match; every other ERR
+# remains gated with --fail-on ERR in the affected API workflows.
+GET /api/v1/console-notices the `data/items/items/source_url` response's property `format` changed from `uri` to `iri` for status `200`
+POST /api/v1/sources the `canonical_url` request property `format` changed from `uri` to `iri`
+POST /api/v1/sources/{source_id}/versions the `source_url` request property `format` changed from `uri` to `iri`
 GET /notices the `allOf[subschema #2]/data/items/items/source_url` response's property `format` changed from `uri` to `iri` for status `200`
 POST /notices/sources the `canonical_url` request property `format` changed from `uri` to `iri`
 POST /notices/sources/{source_id}/versions the `source_url` request property `format` changed from `uri` to `iri`
