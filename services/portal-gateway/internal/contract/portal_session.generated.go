@@ -3,7 +3,7 @@ package contract
 
 import "time"
 
-const PortalSessionSourceSHA256 = "626730a5a2fe6c9ff1f431349c5ec99559a0494ee7cae58766493a34ba877a81"
+const PortalSessionSourceSHA256 = "891c35be9e983932591d33ece0a3869912e9e03fc946bd6507cd2b5992da6492"
 
 type PortalSession struct {
 	DisplayName *string   `json:"display_name,omitempty"`
@@ -30,4 +30,23 @@ type PersonalPracticeStats struct {
 type PersonalPracticeStatsEnvelope struct {
 	RequestID string                `json:"request_id"`
 	Data      PersonalPracticeStats `json:"data"`
+}
+
+type QuizCraftCatalogChapter struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type QuizCraftCatalogBank struct {
+	BankID        string                    `json:"bank_id"`
+	BankVersionID string                    `json:"bank_version_id"`
+	Name          string                    `json:"name"`
+	QuestionCount int                       `json:"question_count"`
+	Available     bool                      `json:"available"`
+	Chapters      []QuizCraftCatalogChapter `json:"chapters"`
+}
+
+type QuizCraftCatalogResponse struct {
+	Banks     []QuizCraftCatalogBank `json:"banks"`
+	RequestID string                 `json:"request_id"`
 }

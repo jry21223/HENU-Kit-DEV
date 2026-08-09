@@ -25,7 +25,9 @@ import type {
 } from "@/lib/api/types";
 import { authStore } from "@/lib/auth/store";
 import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
+import SessionSetup, { type SessionSelection } from "@/components/practice/session-setup/session-setup";
 import { createIdempotencyKey, readPracticeSessionHandoff } from "@/lib/practice/session-handoff";
+import { isValidQuestionCount } from "@/lib/practice/question-count";
 import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
@@ -53,8 +55,9 @@ const FEEDBACK_STATUS_LABEL: Record<PortalPracticeFeedbackStatusResponse["data"]
   archived: "已归档",
 };
 
-type LoadState = "loading" | "ready" | "empty" | "missing-selection" | "error" | "finished";
+type LoadState = "loading" | "setup" | "ready" | "empty" | "missing-selection" | "error" | "finished";
 type AnswerResult = PortalPracticeAnswerResponse["data"];
+type PracticeSetup = { bankID: string; bankVersionID: string };
 
 function fmtTime(sec: number) {
   const m = Math.floor(sec / 60);
@@ -70,7 +73,7 @@ function isUUID(value: string | null): value is string {
   return value !== null && UUID.test(value);
 }
 
-function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; error?: string; scope?: string } {
+function practiceSetupFromLocation(): { setup?: PracticeSetup; error?: string } {
   const params = new URLSearchParams(window.location.search);
   const bankID = params.get("bank_id")?.trim() ?? "";
   const bankVersionID = params.get("bank_version_id")?.trim() ?? "";
@@ -80,27 +83,9 @@ function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; erro
   if (!isUUID(bankID) || !isUUID(bankVersionID)) {
     return { error: "题库选择无效，请返回题库目录重新选择。" };
   }
-  const mode = params.get("mode")?.trim() || "random";
-  if (mode !== "random" && mode !== "difficult" && mode !== "chapter") {
-    return { error: "练习模式无效，请从题库目录重新选择。" };
-  }
-  const chapterID = params.get("chapter_id")?.trim() || undefined;
-  if (mode === "chapter" && !chapterID) {
-    return { error: "章节练习需要指定章节。" };
-  }
-  const countParam = params.get("question_count")?.trim();
-  const questionCount = countParam ? Number(countParam) : undefined;
-  if (questionCount !== undefined && (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 500)) {
-    return { error: "题目数量必须在 1 到 500 之间。" };
-  }
-  const input: PortalPracticeSessionInput = {
-    bank_id: bankID,
-    bank_version_id: bankVersionID,
-    mode,
-    ...(chapterID ? { chapter_id: chapterID } : {}),
-    ...(questionCount ? { question_count: questionCount } : {}),
-  };
-  return { input, scope: JSON.stringify(input) };
+  // URL state selects only the published bank version. It is never a command
+  // payload: mode, chapter, and count come from the explicit setup confirmation.
+  return { setup: { bankID, bankVersionID } };
 }
 
 function sessionIDFromLocation(): string {
@@ -181,6 +166,7 @@ export default function QuizPage() {
   const idempotencyKeys = useRef<Record<string, string>>({});
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [setup, setSetup] = useState<PracticeSetup | null>(null);
   const [session, setSession] = useState<PortalPracticeSessionResponse["data"] | null>(null);
   const [restart, setRestart] = useState(0);
   const [idx, setIdx] = useState(0);
@@ -236,24 +222,18 @@ export default function QuizPage() {
         }
         return;
       }
-      const parsed = practiceInputFromLocation();
-      if (!parsed.input || !parsed.scope) {
+      const parsed = practiceSetupFromLocation();
+      if (!parsed.setup) {
         if (!cancelled) {
           setLoadError(parsed.error ?? "未选择真实题库。");
           setLoadState("missing-selection");
         }
         return;
       }
-      const key = idempotencyKeyFor(`create:${parsed.scope}`, "practice-create", idempotencyKeys);
-      try {
-        const response = await createPracticeSession(parsed.input, key);
-        if (cancelled) return;
-        setSession(response.data);
-        setLoadState(response.data.questions.length === 0 ? "empty" : "ready");
-      } catch (error) {
-        if (cancelled) return;
-        setLoadError(formatPortalError(error));
-        setLoadState("error");
+      if (!cancelled) {
+        setSetup(parsed.setup);
+        setLoadError(null);
+        setLoadState("setup");
       }
     };
     void load();
@@ -421,8 +401,7 @@ export default function QuizPage() {
     }
   };
 
-  const prepareSessionLoad = () => {
-    setLoadState("loading");
+  const resetSessionView = () => {
     setLoadError(null);
     setSession(null);
     setIdx(0);
@@ -436,8 +415,41 @@ export default function QuizPage() {
   };
 
   const retrySessionLoad = () => {
-    prepareSessionLoad();
+    resetSessionView();
+    setLoadState("loading");
     setRestart((value) => value + 1);
+  };
+
+  const startCommittedSession = async (selection: SessionSelection): Promise<string | null> => {
+    if (!setup || !isValidQuestionCount(selection.questionCount)) {
+      return "当前组卷设置无效，请重新选择题数。";
+    }
+    if (selection.mode === "chapter" && !selection.chapterID) {
+      return "章节练习需要选择一个真实章节。";
+    }
+    const input: PortalPracticeSessionInput = {
+      bank_id: setup.bankID,
+      bank_version_id: setup.bankVersionID,
+      mode: selection.mode,
+      ...(selection.mode === "chapter" ? { chapter_id: selection.chapterID } : {}),
+      question_count: selection.questionCount,
+    };
+    const scope = `create:${JSON.stringify(input)}`;
+    const key = idempotencyKeyFor(scope, "practice-create", idempotencyKeys);
+    try {
+      const response = await createPracticeSession(input, key);
+      // A confirmed Core result consumes this logical command. The same setup
+      // can later start a fresh session with a new key; failures retain it.
+      clearIdempotencyKey(scope, idempotencyKeys);
+      resetSessionView();
+      setSession(response.data);
+      setLoadState(response.data.questions.length === 0 ? "empty" : "ready");
+      return null;
+    } catch (error) {
+      // Keep the setup mounted with its exact selection. Retry uses the same
+      // command body and idempotency key, never a second read of the URL.
+      return formatPortalError(error);
+    }
   };
 
   const startAnotherSession = () => {
@@ -450,13 +462,15 @@ export default function QuizPage() {
         return;
       }
     }
-    const parsed = practiceInputFromLocation();
-    if (parsed.scope) clearIdempotencyKey(`create:${parsed.scope}`, idempotencyKeys);
-    retrySessionLoad();
+    resetSessionView();
+    setLoadState("setup");
   };
 
   if (loadState === "loading") {
-    return <PracticeState title="正在连接题库" detail="正在创建练习会话…" />;
+    return <PracticeState title="正在连接题库" detail="正在读取练习入口…" />;
+  }
+  if (loadState === "setup" && setup) {
+    return <SessionSetup bankID={setup.bankID} bankVersionID={setup.bankVersionID} onStart={startCommittedSession} />;
   }
   if (loadState === "missing-selection") {
     return <PracticeState title="请先选择题库" detail={loadError ?? "请从题库目录选择练习后开始。"} />;

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Portal Gateway
-  version: 0.2.0
+  version: 0.3.0
   description: >
     Default-read BFF for HENU Kit Portal (henukit.cn). It authenticates users
     via Platform Core OAuth and proxies GET requests to product services with
@@ -1380,7 +1380,7 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [bank_id, bank_version_id, name, question_count, available]
+            required: [bank_id, bank_version_id, name, question_count, available, chapters]
             properties:
               bank_id:
                 type: string
@@ -1396,6 +1396,21 @@ components:
                 minimum: 0
               available:
                 type: boolean
+              chapters:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [id, name]
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 160
+                    name:
+                      type: string
+                      minLength: 1
+                      maxLength: 240
         request_id:
           type: string
           minLength: 1
