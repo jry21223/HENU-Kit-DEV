@@ -7,7 +7,8 @@ Notice（通知审核与分发）与 Food（美食运营）是完整实现的独
 - `notice`：`services/notice`，端口 `:8094`，容器名 `henukit-notice`
 - `notice-worker`：`services/notice/Dockerfile.worker`，通知分发守护进程（SKIP LOCKED 领取队列、失败重试 3 次、记录审计结果）
 - `food`：`services/food`，端口 `:8096`，容器名 `henukit-food`
-- 三个服务只接受 console-gateway 的签名调用，校验 `NOTICE_SUMMARY_*` / `FOOD_SUMMARY_*` 凭据对（Gateway 侧展示的同一对凭据）
+- Notice 固定区分两名签名调用方：Console 管理调用由 `NOTICE_SERVICE_*` 校验，并与 console-gateway 的 `NOTICE_SUMMARY_*` 一一对应；Portal 只读通知流由 `NOTICE_PORTAL_*` 校验，并与 portal-gateway 的 `NOTICE_CLIENT_*` 一一对应。两对凭据必须分别生成，不得复用。
+- Food 只接受 console-gateway 的签名调用，校验 `FOOD_SUMMARY_*` 凭据对（Gateway 侧展示的同一对凭据）
 - Console 网关通过 `NOTICE_API_URL` / `FOOD_API_URL` 指向对应服务；未配置时网关照旧优雅降级为不可用，不会 panic
 
 生产 PostgreSQL 中 `notice` 与 `food` 数据库已存在，无需建库；迁移文件随发布产物打包（`runtime/migrations/notice/`、`runtime/migrations/food/`），由 `deploy-henukit-artifact.sh` 在激活发布前按文件名顺序逐条应用到对应 owner 数据库（两个服务没有内嵌迁移运行器；全新主机上数据库不存在时脚本会先 `createdb`，既有生产库不受影响）。
@@ -21,7 +22,8 @@ Notice（通知审核与分发）与 Food（美食运营）是完整实现的独
 | `NOTICE_SUMMARY_URL` / `FOOD_SUMMARY_URL` | 概览汇总接口基地址；未配置则对应模块在概览页降级 | 空 |
 | `NOTICE_DATABASE_URL` / `FOOD_DATABASE_URL` | 各自数据库连接 | compose 内默认指向 `postgres:5432/notice`、`/food` |
 | `NOTICE_REDIS_URL` / `FOOD_REDIS_URL` | 幂等/队列使用的 Redis（DB 3 / 4） | `redis://redis:6379/3`、`/4` |
-| `NOTICE_SERVICE_CLIENT_ID/SECRET/KEY_ID` | notice 校验的服务间凭据 | 复用 `NOTICE_SUMMARY_*` |
+| `NOTICE_SERVICE_CLIENT_ID/SECRET/KEY_ID` | notice 的 Console 管理调用校验凭据 | 与 console-gateway 的 `NOTICE_SUMMARY_*` 一一对应；不得与 Portal 对复用 |
+| `NOTICE_PORTAL_CLIENT_ID/SECRET/KEY_ID` | notice 的 Portal 只读通知流校验凭据 | 与 portal-gateway 的 `NOTICE_CLIENT_*` 一一对应；不得与 Console 对复用 |
 | `FOOD_SERVICE_CLIENT_ID/SECRET/KEY_ID` | food 校验的服务间凭据 | 复用 `FOOD_SUMMARY_*` |
 | `NOTICE_DELIVERY_URL` / `NOTICE_DELIVERY_TOKEN` | 通知分发 webhook 提供方；为空时分发任务留在队列中，worker 重试但不影响发布 | 空 |
 
@@ -29,7 +31,7 @@ Notice（通知审核与分发）与 Food（美食运营）是完整实现的独
 
 1. `deploy-henukit.yml` 构建并固定 SHA：`henukit-notice`、`henukit-notice-worker`、`henukit-food` 三个镜像，与其余服务同一流程（构建 → 校验 → 加载）。
 2. 发布产物包含三个服务的迁移文件与 `docker-compose.henukit.prebuilt.yml` 中的 `!reset null` 服务块（`image: henukit-*:${RELEASE_SHA:?RELEASE_SHA is required}`、`pull_policy: never`）。
-3. 激活发布时设置上表环境变量；`NOTICE_DATABASE_URL` / `FOOD_DATABASE_URL` / Redis / 服务间凭据缺失时 compose 直接报错（`:-?`），避免「以为在跑其实没接上」的半配置状态。这与其余服务的强制校验一致。`NOTICE_API_URL` / `FOOD_API_URL` / 两个 `*_SUMMARY_URL` 未配置或置空时保持空值（与 `LIBRARY_API_URL` 同模式），网关照旧降级为不可用。
+3. 激活发布时设置上表环境变量；`NOTICE_DATABASE_URL` / `FOOD_DATABASE_URL` / Redis / 服务间凭据（包括彼此独立的 `NOTICE_SERVICE_*` 与 `NOTICE_PORTAL_*`）缺失时 compose 直接报错（`:-?`），避免「以为在跑其实没接上」的半配置状态。这与其余服务的强制校验一致。`NOTICE_API_URL` / `FOOD_API_URL` / 两个 `*_SUMMARY_URL` 未配置或置空时保持空值（与 `LIBRARY_API_URL` 同模式），网关照旧降级为不可用。
 4. 健康检查：`/notice-healthcheck`（food 同款），compose `service_healthy` 依赖 `postgres` / `redis`。
 
 ## 回滚

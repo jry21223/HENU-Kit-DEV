@@ -54,19 +54,6 @@ type BankSummary struct {
 	QuestionCT int    `json:"question_count"`
 }
 
-// NoticeListResponse represents published notices.
-type NoticeListResponse struct {
-	Notices   []NoticeSummary `json:"notices"`
-	RequestID string          `json:"request_id"`
-}
-
-type NoticeSummary struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Source    string    `json:"source"`
-	Published time.Time `json:"published_at"`
-}
-
 // ErrorEnvelope is the standard error response. Error is the machine-readable
 // code clients may branch on; Message is the user-facing Chinese text.
 type ErrorEnvelope struct {

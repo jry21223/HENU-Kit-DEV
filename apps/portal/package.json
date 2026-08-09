@@ -11,6 +11,7 @@
     "test": "vitest run src/lib/auth/display-name.test.ts src/lib/api/account-portfolio.test.ts src/lib/api/membership-order.test.ts src/lib/api/practice-session.test.ts src/lib/api/favorites.test.ts src/lib/api/env.test.ts src/lib/food/ranking.test.ts src/lib/food/detail.test.ts",
     "test:unit": "node --experimental-strip-types --test src/components/practice/bank-hero-mastery.test.mjs src/components/account/account-console-boundary.test.mjs",
     "test:e2e:responsive": "playwright test tests/responsive.spec.ts tests/practice-leaderboard.spec.ts tests/quizcraft-catalog-dark.spec.ts",
+    "test:e2e:notice": "playwright test --config playwright.notice-feed.config.ts",
     "test:e2e:food": "playwright test --workers=1 tests/food-ranking.spec.ts tests/food-detail.spec.ts tests/food-publish.spec.ts tests/food-scroll-restoration.spec.ts",
     "test:e2e:practice": "playwright test tests/practice-session.spec.ts",
     "test:e2e:quizcraft-catalog": "playwright test --config playwright.quizcraft-catalog.config.ts",

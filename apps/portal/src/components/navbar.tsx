@@ -11,6 +11,7 @@ const LINKS = [
   { index: "02", label: "智能刷题", href: "/practice" },
   { index: "03", label: "美食榜", href: "/food" },
   { index: "04", label: "互助平台", href: "/campus" },
+  { index: "05", label: "通知", href: "/notice" },
 ];
 
 export default function Navbar() {
@@ -70,24 +71,24 @@ export default function Navbar() {
       )}
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:px-10">
-        <Link href="/" className="flex items-baseline gap-3">
+        <Link href="/" className="inline-flex min-h-11 min-w-11 items-center gap-3">
           <span className="font-display text-xl font-bold tracking-tight">
             henukit<span className="text-accent">®</span>
           </span>
-          <span className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/50 sm:inline">
+          <span className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/65 sm:inline">
             KEEP IN TOUCH
           </span>
         </Link>
 
         {/* 桌面导航 */}
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav aria-label="主导航" className="hidden items-center gap-8 md:flex">
           {LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="group relative py-1 font-mono text-xs tracking-widest text-ink/80 transition-colors hover:text-ink"
+              className="group relative inline-flex min-h-11 min-w-11 items-center py-1 font-mono text-xs tracking-widest text-ink/80 transition-colors hover:text-ink"
             >
-              <span className="mr-1.5 text-accent">{link.index}</span>
+              <span className="mr-1.5 text-ink/65">{link.index}</span>
               {link.label}
               <span
                 aria-hidden
@@ -102,10 +103,10 @@ export default function Navbar() {
         {/* 移动端汉堡 */}
         <button
           type="button"
-          aria-label="打开菜单"
+          aria-label={open ? "关闭菜单" : "打开菜单"}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="flex h-10 w-10 flex-col items-center justify-center gap-1.5 md:hidden"
+          className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1.5 md:hidden"
         >
           <span
             className={cn(
@@ -124,7 +125,7 @@ export default function Navbar() {
 
       {/* 移动端下拉面板 */}
       {open && (
-        <nav className="border-t border-line bg-paper md:hidden">
+        <nav aria-label="主导航" className="border-t border-line bg-paper md:hidden">
           {LINKS.map((link) => (
             <Link
               key={link.href}
@@ -132,12 +133,12 @@ export default function Navbar() {
               onClick={() => setOpen(false)}
               className="flex items-center gap-3 border-b border-line px-5 py-4 font-mono text-sm"
             >
-              <span className="text-accent">{link.index}</span>
+              <span className="text-ink/65">{link.index}</span>
               {link.label}
             </Link>
           ))}
           <div className="flex items-center gap-3 px-5 py-4">
-            <span className="font-mono text-sm text-accent">ACC</span>
+            <span className="font-mono text-sm text-ink/65">账户</span>
             <AccountEntry />
           </div>
         </nav>

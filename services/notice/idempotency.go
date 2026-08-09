@@ -61,6 +61,10 @@ func (h *service) writeOperation(w http.ResponseWriter, r *http.Request, operati
 		return
 	}
 	data, err := apply(tx)
+	if errors.Is(err, errInvalidPublicSourceOrigin) {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "source URL must use the approved public source origin")
+		return
+	}
 	if errors.Is(err, errConflict) {
 		writeError(w, r, http.StatusConflict, "NOTICE_CONFLICT", "Notice state or revision changed")
 		return

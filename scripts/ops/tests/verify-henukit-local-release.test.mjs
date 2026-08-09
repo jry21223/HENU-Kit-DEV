@@ -24,6 +24,10 @@ const deploymentGuide = readFileSync(
   new URL("../../../docs/operations/henukit-artifact-deployment.md", import.meta.url),
   "utf8",
 );
+const noticeFoodOnboarding = readFileSync(
+  new URL("../../../docs/operations/notice-food-production-onboarding.md", import.meta.url),
+  "utf8",
+);
 const releaseSha = "a".repeat(40);
 const images = [
   "henukit-console",
@@ -135,4 +139,25 @@ test("the operator guide keeps the WSL artifact path main-only, signed, and appr
   assert.match(deploymentGuide, /origin\/main/);
   assert.match(deploymentGuide, /backup/i);
   assert.match(deploymentGuide, /rollback/i);
+});
+
+test("the operator guide keeps the Portal notice grant migration an explicit reviewed input", () => {
+  assert.match(
+    deploymentGuide,
+    /HENUKIT_PLATFORM_MIGRATIONS=000017_account_portfolio_order_access\.up\.sql,000018_account_operator_role_grant_audit\.up\.sql,000019_portal_notice_read\.up\.sql/,
+  );
+  assert.match(deploymentGuide, /applies Platform Core\s+`000017`, `000018`, and `000019`/);
+  assert.match(deploymentGuide, /Automatic schema selection is intentionally disabled\./);
+  assert.match(
+    deploymentGuide,
+    /Set the reviewed,[\s\S]*?Platform Core migration filenames with[\s\S]*?`HENUKIT_PLATFORM_MIGRATIONS` for that deployment and remove the setting\s+afterward\./,
+  );
+});
+
+test("the Notice onboarding guide keeps Console and Portal credentials capability-separated", () => {
+  assert.match(noticeFoodOnboarding, /`NOTICE_SERVICE_CLIENT_ID\/SECRET\/KEY_ID`/);
+  assert.match(noticeFoodOnboarding, /`NOTICE_PORTAL_CLIENT_ID\/SECRET\/KEY_ID`/);
+  assert.match(noticeFoodOnboarding, /`NOTICE_SUMMARY_\*`/);
+  assert.match(noticeFoodOnboarding, /`NOTICE_CLIENT_\*`/);
+  assert.match(noticeFoodOnboarding, /不得复用/);
 });

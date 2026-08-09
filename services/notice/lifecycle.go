@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,11 @@ import (
 type lifecycleStore struct {
 	database *pgxpool.Pool
 }
+
+// portalFeedCandidateScanLimit bounds database rows and JSON marshaling per
+// Portal read. It is intentionally larger than the 50 public items so invalid
+// legacy URLs and over-budget candidates do not consume the final feed cap.
+const portalFeedCandidateScanLimit = 200
 
 func (s *lifecycleStore) createSource(ctx context.Context, tx pgx.Tx, value actor, requestID string, input sourceInput) (map[string]any, error) {
 	id := uuid.New()
@@ -28,9 +34,12 @@ func (s *lifecycleStore) createSource(ctx context.Context, tx pgx.Tx, value acto
 }
 
 func (s *lifecycleStore) createVersion(ctx context.Context, tx pgx.Tx, value actor, requestID string, sourceID uuid.UUID, input versionInput) (map[string]any, error) {
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT true FROM notice_sources WHERE id=$1 FOR UPDATE`, sourceID).Scan(&exists); err != nil {
+	var canonicalURL string
+	if err := tx.QueryRow(ctx, `SELECT canonical_url FROM notice_sources WHERE id=$1 FOR UPDATE`, sourceID).Scan(&canonicalURL); err != nil {
 		return nil, err
+	}
+	if !samePublicSourceOrigin(canonicalURL, input.SourceURL) {
+		return nil, errInvalidPublicSourceOrigin
 	}
 	var version int
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(max(version),0)+1 FROM notice_versions WHERE source_id=$1`, sourceID).Scan(&version); err != nil {
@@ -139,6 +148,100 @@ func (s *lifecycleStore) snapshot(ctx context.Context) ([]map[string]any, error)
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// portalFeed is intentionally separate from the Console lifecycle snapshot.
+// The lifecycle/audience predicate runs in Notice's data owner, then the 200
+// newest database candidates are checked against the same public source-origin
+// policy before the final response-byte and 50-item caps. Invalid old rows in
+// that bounded window cannot poison Gateway's all-or-nothing response or
+// consume a final feed item; rows after the window are not promised.
+func (s *lifecycleStore) portalFeed(ctx context.Context, responseRequestID string) ([]map[string]any, error) {
+	rows, err := s.database.Query(ctx, `
+SELECT v.id, v.title, v.body, s.name, s.canonical_url, v.source_url, v.created_at
+FROM notice_versions AS v
+JOIN notice_sources AS s ON s.id = v.source_id
+JOIN notice_lifecycles AS l ON l.notice_version_id = v.id
+WHERE l.state = 'distributed'
+  AND EXISTS (
+    SELECT 1
+    FROM notice_distributions AS d
+    WHERE d.notice_version_id = v.id
+      AND d.channel = 'in_app'
+      AND d.audience_kind = 'all_students'
+      AND d.audience_value IS NULL
+  )
+ORDER BY v.created_at DESC, v.id DESC
+LIMIT $1`, portalFeedCandidateScanLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0)
+	budget, err := newPortalFeedResponseBudget(responseRequestID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		var title, body, sourceName, canonicalURL, sourceURL string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &title, &body, &sourceName, &canonicalURL, &sourceURL, &createdAt); err != nil {
+			return nil, err
+		}
+		if !samePublicSourceOrigin(canonicalURL, sourceURL) {
+			continue
+		}
+		item := map[string]any{
+			"id": id.String(), "title": title, "body": body,
+			"source":     map[string]string{"name": sourceName, "url": sourceURL},
+			"created_at": createdAt,
+		}
+		accepted, err := budget.accepts(item)
+		if err != nil {
+			return nil, err
+		}
+		if !accepted {
+			continue
+		}
+		items = append(items, item)
+		if len(items) == 50 {
+			break
+		}
+	}
+	return items, rows.Err()
+}
+
+type portalFeedResponseBudget struct {
+	responseBytesWithoutNotices int
+	encodedItemBytes            int
+	itemCount                   int
+}
+
+func newPortalFeedResponseBudget(responseRequestID string) (portalFeedResponseBudget, error) {
+	emptyResponse, err := portalFeedResponseBytes(make([]map[string]any, 0), responseRequestID)
+	if err != nil {
+		return portalFeedResponseBudget{}, err
+	}
+	// The empty response has a literal [] for notices. Each accepted item later
+	// replaces those two bytes and adds one comma after every prior item.
+	return portalFeedResponseBudget{responseBytesWithoutNotices: len(emptyResponse) - len("[]")}, nil
+}
+
+func (b *portalFeedResponseBudget) accepts(item map[string]any) (bool, error) {
+	encodedItem, err := json.Marshal(item)
+	if err != nil {
+		return false, err
+	}
+	// json.Marshal is the same serializer used by portalFeedResponseBytes;
+	// account for exact UTF-8 bytes and JSON escaping, not rune counts.
+	candidateResponseBytes := b.responseBytesWithoutNotices + b.encodedItemBytes + len(encodedItem) + b.itemCount
+	if candidateResponseBytes > portalFeedResponseByteLimit {
+		return false, nil
+	}
+	b.encodedItemBytes += len(encodedItem)
+	b.itemCount++
+	return true, nil
 }
 
 func audit(ctx context.Context, tx pgx.Tx, value actor, action, resourceType string, resourceID uuid.UUID, requestID string) error {

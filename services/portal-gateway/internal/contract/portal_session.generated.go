@@ -3,7 +3,7 @@ package contract
 
 import "time"
 
-const PortalSessionSourceSHA256 = "626730a5a2fe6c9ff1f431349c5ec99559a0494ee7cae58766493a34ba877a81"
+const PortalSessionSourceSHA256 = "4cc511563e8f674e29520348697d9ce3720ff716903fd9c8604c4c762634b9ca"
 
 type PortalSession struct {
 	DisplayName *string   `json:"display_name,omitempty"`
@@ -30,4 +30,34 @@ type PersonalPracticeStats struct {
 type PersonalPracticeStatsEnvelope struct {
 	RequestID string                `json:"request_id"`
 	Data      PersonalPracticeStats `json:"data"`
+}
+
+type PortalNoticeSource struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+type PortalNotice struct {
+	ID        string             `json:"id"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	Source    PortalNoticeSource `json:"source"`
+	CreatedAt time.Time          `json:"created_at"`
+}
+
+type PortalNoticeFeed struct {
+	Notices []PortalNotice `json:"notices"`
+}
+
+type NoticeSummary struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Source      string    `json:"source"`
+	PublishedAt time.Time `json:"published_at"`
+}
+
+type PortalNoticeFeedEnvelope struct {
+	RequestID string           `json:"request_id"`
+	Notices   []NoticeSummary  `json:"notices"`
+	Data      PortalNoticeFeed `json:"data"`
 }

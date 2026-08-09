@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"henukit.dev/notice/internal/contract"
 )
 
 func (h *service) requestContext(next http.Handler) http.Handler {
@@ -26,11 +28,30 @@ func (h *service) requestContext(next http.Handler) http.Handler {
 	})
 }
 
-func (h *service) authenticate(next http.Handler) http.Handler {
+// authenticateConsole preserves the established Console management signature
+// contract. Portal reads use authenticatePortal instead, so a Console caller
+// cannot use its credential as a Portal audience-read capability.
+func (h *service) authenticateConsole(next http.Handler) http.Handler {
+	return h.authenticate(next, h.clientID, h.keys, false, true, false)
+}
+
+// authenticatePortal accepts only the dedicated Portal-read credential and
+// binds the verified actor to the six-part HMAC form. The fixed Portal route
+// owns its capability, therefore it deliberately does not accept caller
+// supplied Notice permission or product-scope headers.
+func (h *service) authenticatePortal(next http.Handler) http.Handler {
+	return h.authenticate(next, h.portalClientID, h.portalKeys, true, false, true)
+}
+
+func (h *service) authenticate(next http.Handler, clientID string, keys map[string]string, bindActor, console, fixedPortalFeed bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientID, basicSecret, basic := r.BasicAuth()
-		secret, keyKnown := h.keys[r.Header.Get("X-Key-Id")]
-		if !basic || clientID != h.clientID || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
+		if fixedPortalFeed && (r.Method != http.MethodGet || r.URL.Path != contract.PortalFeedRoute || r.URL.RawQuery != "" || r.URL.ForceQuery) {
+			writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Portal feed route does not accept a query")
+			return
+		}
+		requestClientID, basicSecret, basic := r.BasicAuth()
+		secret, keyKnown := keys[r.Header.Get("X-Key-Id")]
+		if !basic || requestClientID != clientID || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
 			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
 			return
 		}
@@ -45,14 +66,27 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service nonce is invalid")
 			return
 		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 256<<10))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, noticeRequestBodyByteLimit))
 		if err != nil {
 			writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "request body is too large")
 			return
 		}
+		if fixedPortalFeed && len(body) != 0 {
+			writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Portal feed route does not accept a request body")
+			return
+		}
 		r.Body = io.NopCloser(strings.NewReader(string(body)))
 		digest := sha256.Sum256(body)
-		canonical := strings.Join([]string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}, "\n")
+		canonicalParts := []string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
+		actorUserID := r.Header.Get("X-Actor-User-Id")
+		if bindActor {
+			if _, err := uuid.Parse(actorUserID); err != nil {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_ACTOR", "actor context is invalid")
+				return
+			}
+			canonicalParts = append(canonicalParts, actorUserID)
+		}
+		canonical := strings.Join(canonicalParts, "\n")
 		mac := hmac.New(sha256.New, []byte(secret))
 		_, _ = mac.Write([]byte(canonical))
 		if !hmac.Equal([]byte(r.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
@@ -68,20 +102,22 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 			writeError(w, r, http.StatusConflict, "REPLAY_DETECTED", "service nonce was already used")
 			return
 		}
-		if r.URL.Path == "/api/v1/console-summary" {
+		if console && r.URL.Path == contract.ConsoleSummaryRoute {
 			next.ServeHTTP(w, r)
 			return
 		}
-		userID := r.Header.Get("X-Actor-User-Id")
-		if _, err := uuid.Parse(userID); err != nil {
+		if _, err := uuid.Parse(actorUserID); err != nil {
 			writeError(w, r, http.StatusUnauthorized, "INVALID_ACTOR", "actor context is invalid")
 			return
 		}
-		if r.Header.Get("X-Scope-Kind") != "product" || r.Header.Get("X-Product-Code") != "notice" {
+		if console && (r.Header.Get("X-Scope-Kind") != "product" || r.Header.Get("X-Product-Code") != "notice") {
 			writeError(w, r, http.StatusForbidden, "SCOPE_DENIED", "Notice product Scope is required")
 			return
 		}
-		permission := r.Header.Get("X-Permission-Code")
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID, permission: permission})))
+		permission := ""
+		if console {
+			permission = r.Header.Get("X-Permission-Code")
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: actorUserID, permission: permission})))
 	})
 }

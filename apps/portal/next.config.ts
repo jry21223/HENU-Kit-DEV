@@ -19,6 +19,7 @@ const nextConfig: NextConfig = {
       "/food/publish",
       "/library/read/:path*",
       "/library/shelf",
+      "/notice",
       "/practice/favorites/:path*",
       "/practice/quiz",
       "/practice/stats",

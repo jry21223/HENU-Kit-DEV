@@ -39,7 +39,7 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	handler, err := notice.New(notice.Config{Database: pool, Redis: redisClient, ClientID: "console-gateway", Keys: map[string]string{"active": testSecret}})
+	handler, err := notice.New(notice.Config{Database: pool, Redis: redisClient, ClientID: "console-gateway", Keys: map[string]string{"active": testSecret}, PortalClientID: "portal-gateway-notice-read", PortalKeys: map[string]string{"portal-active": portalFeedSecret}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	}
 
 	var reviews, distributions, audits int
-	if err := pool.QueryRow(context.Background(), "SELECT (SELECT count(*) FROM notice_reviews), (SELECT count(*) FROM notice_distributions), (SELECT count(*) FROM notice_audit_events)").Scan(&reviews, &distributions, &audits); err != nil {
+	if err := pool.QueryRow(context.Background(), "SELECT (SELECT count(*) FROM notice_reviews), (SELECT count(*) FROM notice_distributions), (SELECT count(*) FROM notice_audit_events WHERE actor_user_id=$1)", actor).Scan(&reviews, &distributions, &audits); err != nil {
 		t.Fatal(err)
 	}
 	if reviews != 1 || distributions != 2 || audits != 9 {

@@ -440,6 +440,13 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (Verified, 
 	if err != nil {
 		return Verified{}, err
 	}
+	grants, err := queries.GrantRegisteredUserPortalNoticeRead(ctx, created.ID)
+	if err != nil {
+		return Verified{}, err
+	}
+	if grants != 1 {
+		return Verified{}, ErrDependency
+	}
 	if err := queries.CreateEmailIdentity(ctx, store.CreateEmailIdentityParams{
 		UserID: created.ID, EmailLookupHash: emailHash, EmailCiphertext: emailCiphertext,
 	}); err != nil {

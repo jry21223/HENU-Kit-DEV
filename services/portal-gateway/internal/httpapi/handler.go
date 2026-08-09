@@ -26,6 +26,7 @@ import (
 	"henukit.dev/portal-gateway/internal/accountportfolio"
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
+	portalnotice "henukit.dev/portal-gateway/internal/notice"
 	"henukit.dev/portal-gateway/internal/platformcore"
 	"henukit.dev/portal-gateway/internal/practice"
 	"henukit.dev/portal-gateway/internal/session"
@@ -38,6 +39,7 @@ type Handler struct {
 	quizCraft          *practice.Client
 	portalAPI          *http.Client
 	portalAPIURL       string
+	noticeFeed         portalNoticeFeedClient
 	accountPortfolio   *accountportfolio.Client
 	practiceCommands   *practice.CommandClient
 	quizCraftCatalog   *practice.Client
@@ -50,6 +52,14 @@ type Handler struct {
 	localOAuthCookie   string
 	localSessionCookie string
 	trustedProxies     []*net.IPNet
+}
+
+// portalNoticeFeedClient keeps the HTTP boundary testable without widening the
+// Owner client's fixed origin policy. Production always installs the dedicated
+// portalnotice.Client; tests can exercise this Handler's public route without
+// binding the real owner port.
+type portalNoticeFeedClient interface {
+	List(context.Context, string, string) (contract.PortalNoticeFeed, error)
 }
 
 var (
@@ -97,6 +107,18 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			return nil, fmt.Errorf("practice.NewCommandClient: %w", err)
 		}
 	}
+	var noticeFeed portalNoticeFeedClient
+	if strings.TrimSpace(cfg.NoticeURL) != "" {
+		noticeFeed, err = portalnotice.NewClient(
+			cfg.NoticeURL,
+			cfg.NoticeAuth.ClientID,
+			cfg.NoticeAuth.ClientSecret,
+			cfg.NoticeAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("notice.NewClient: %w", err)
+		}
+	}
 	var quizCraftCatalog *practice.Client
 	if cfg.QuizCraftCatalogEnabled {
 		quizCraftCatalog, err = practice.NewClient(
@@ -127,6 +149,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		quizCraft:          quizCraft,
 		portalAPI:          &http.Client{Timeout: 10 * time.Second},
 		portalAPIURL:       cfg.PortalAPIURL,
+		noticeFeed:         noticeFeed,
 		accountPortfolio:   portfolio,
 		practiceCommands:   practiceCommands,
 		quizCraftCatalog:   quizCraftCatalog,
@@ -203,7 +226,7 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/practice/stats", h.personalPracticeStats)
 	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
-	r.Get("/api/v1/notices", h.proxyToPortalAPI)
+	r.Get("/api/v1/notices", h.portalNotices)
 
 	return r
 }
@@ -908,6 +931,76 @@ func (h *Handler) writePracticeReadPermissionError(w http.ResponseWriter, r *htt
 	default:
 		writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
 	}
+}
+
+const portalNoticeReadPermission = "portal.notice.read"
+
+// portalNotices is the dedicated signed-in-only Owner read. It intentionally
+// replaces the historical public Portal API proxy for this exact route.
+func (h *Handler) portalNotices(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	decision, err := h.platform.CheckProductPermission(r.Context(), value.ExchangeToken, portalNoticeReadPermission, "portal")
+	if err != nil {
+		switch {
+		case errors.Is(err, platformcore.ErrUnauthorized):
+			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		case errors.Is(err, platformcore.ErrForbidden):
+			writeError(w, r, http.StatusForbidden, "notice access denied", "你暂时没有查看通知的权限，请联系管理员")
+		default:
+			writeError(w, r, http.StatusServiceUnavailable, "notice_authorization_unavailable", "通知暂时无法加载，请稍后重试")
+		}
+		return
+	}
+	if decision.ActorUserID != value.UserID {
+		writeError(w, r, http.StatusServiceUnavailable, "notice_authorization_invalid", "通知暂时无法加载，请稍后重试")
+		return
+	}
+	if h.noticeFeed == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "notice_unavailable", "通知暂时无法加载，请稍后重试")
+		return
+	}
+	feed, err := h.noticeFeed.List(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		if errors.Is(err, portalnotice.ErrInvalid) {
+			writeError(w, r, http.StatusBadGateway, "notice_invalid_response", "通知暂时无法加载，请稍后重试")
+			return
+		}
+		writeError(w, r, http.StatusServiceUnavailable, "notice_unavailable", "通知暂时无法加载，请稍后重试")
+		return
+	}
+	// The dedicated Owner client rejects a missing notices array. Preserve that
+	// invariant even for an injected implementation: browser clients always see
+	// arrays, never null, on both the rich and legacy-safe response shapes.
+	if feed.Notices == nil {
+		feed.Notices = []contract.PortalNotice{}
+	}
+	writeJSON(w, http.StatusOK, contract.PortalNoticeFeedEnvelope{
+		Data:      feed,
+		Notices:   legacyNoticeSummaries(feed.Notices),
+		RequestID: requestIDOf(w, r),
+	})
+}
+
+// legacyNoticeSummaries keeps the former public Portal shape available without
+// calling Portal API or exposing a Notice management snapshot. Owner's
+// created_at is intake time, so the compatibility published_at value never
+// claims email delivery completion.
+func legacyNoticeSummaries(notices []contract.PortalNotice) []contract.NoticeSummary {
+	legacy := make([]contract.NoticeSummary, 0, len(notices))
+	for _, item := range notices {
+		legacy = append(legacy, contract.NoticeSummary{
+			ID:          item.ID,
+			Title:       item.Title,
+			Source:      item.Source.Name,
+			PublishedAt: item.CreatedAt,
+		})
+	}
+	return legacy
 }
 
 // --- Proxy to portal-api ---

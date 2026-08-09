@@ -65,6 +65,31 @@ INSERT INTO users (email_verified, status, display_name)
 VALUES (true, 'active', $1)
 RETURNING id, email_verified, status, created_at, display_name;
 
+-- name: GrantRegisteredUserPortalNoticeRead :execrows
+INSERT INTO user_role_grants (user_id, role_id, scope_kind, product_code)
+SELECT users.id, roles.id, 'product', 'portal'
+FROM users
+JOIN authorization_roles AS roles ON roles.code = 'portal-notice-reader' AND roles.status = 'active'
+JOIN role_permissions AS permissions ON permissions.role_id = roles.id AND permissions.permission_code = 'portal.notice.read'
+JOIN permission_codes AS codes ON codes.code = permissions.permission_code AND codes.status = 'active'
+WHERE users.id = $1
+  AND users.email_verified
+  AND users.status = 'active'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM role_permissions AS extra_permissions
+      WHERE extra_permissions.role_id = roles.id
+        AND extra_permissions.permission_code <> 'portal.notice.read'
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM user_role_grants AS existing
+      WHERE existing.user_id = users.id
+        AND existing.role_id = roles.id
+        AND existing.scope_kind = 'product'
+        AND existing.product_code = 'portal'
+  );
+
 -- name: CreateEmailIdentity :exec
 INSERT INTO email_identities (user_id, email_lookup_hash, email_ciphertext, verified_at)
 VALUES ($1, $2, $3, now());

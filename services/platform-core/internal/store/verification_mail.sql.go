@@ -734,6 +734,40 @@ func (q *Queries) GetVerificationRequestByKey(ctx context.Context, requestKey pg
 	return i, err
 }
 
+const grantRegisteredUserPortalNoticeRead = `-- name: GrantRegisteredUserPortalNoticeRead :execrows
+INSERT INTO user_role_grants (user_id, role_id, scope_kind, product_code)
+SELECT users.id, roles.id, 'product', 'portal'
+FROM users
+JOIN authorization_roles AS roles ON roles.code = 'portal-notice-reader' AND roles.status = 'active'
+JOIN role_permissions AS permissions ON permissions.role_id = roles.id AND permissions.permission_code = 'portal.notice.read'
+JOIN permission_codes AS codes ON codes.code = permissions.permission_code AND codes.status = 'active'
+WHERE users.id = $1
+  AND users.email_verified
+  AND users.status = 'active'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM role_permissions AS extra_permissions
+      WHERE extra_permissions.role_id = roles.id
+        AND extra_permissions.permission_code <> 'portal.notice.read'
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM user_role_grants AS existing
+      WHERE existing.user_id = users.id
+        AND existing.role_id = roles.id
+        AND existing.scope_kind = 'product'
+        AND existing.product_code = 'portal'
+  )
+`
+
+func (q *Queries) GrantRegisteredUserPortalNoticeRead(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, grantRegisteredUserPortalNoticeRead, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listMailOutboxAuditEvents = `-- name: ListMailOutboxAuditEvents :many
 SELECT request_id, actor_kind, actor_id, action, attempt_count, reason_code, created_at
 FROM mail_outbox_audit_events

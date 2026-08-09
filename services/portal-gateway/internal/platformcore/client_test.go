@@ -1,15 +1,18 @@
 package platformcore
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -127,5 +130,61 @@ func TestCheckPermissionStatusMapping(t *testing.T) {
 		if err != want {
 			t.Errorf("status %d = %v, want %v", status, err, want)
 		}
+	}
+}
+
+func TestCheckProductPermissionUsesDirectClientWithoutProxy(t *testing.T) {
+	const actorID = "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	var proxyCalls atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		proxyCalls.Add(1)
+	}))
+	defer proxy.Close()
+
+	core := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Host != "platform.internal.test" {
+			t.Errorf("Core Host = %q, want configured host", request.Host)
+		}
+		var payload struct {
+			PermissionCode string `json:"permission_code"`
+			Scope          struct {
+				Kind        string `json:"kind"`
+				ProductCode string `json:"product_code"`
+			} `json:"scope"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.PermissionCode != "portal.notice.read" || payload.Scope.Kind != "product" || payload.Scope.ProductCode != "portal" {
+			t.Fatalf("authorization payload = %#v", payload)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"data":{"allowed":true,"actor_user_id":"` + actorID + `","permission_code":"portal.notice.read","scope":{"kind":"product","product_code":"portal"},"grant_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","authorization_revision":1,"checked_at":"2026-08-01T00:00:00Z"},"request_id":"req_platform"}`))
+	}))
+	defer core.Close()
+
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("http_proxy", proxy.URL)
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	client := NewClient("http://platform.internal.test", "https://portal.example/callback", "portal-gateway", "portal-client-secret-with-enough-entropy", "active-key")
+	transport, ok := client.authorizationHTTPClient.Transport.(*http.Transport)
+	if !ok || transport.Proxy != nil {
+		t.Fatal("product authorization client must not consult environment proxy configuration")
+	}
+	coreAddress := strings.TrimPrefix(core.URL, "http://")
+	directTransport := transport.Clone()
+	directTransport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, coreAddress)
+	}
+	client.authorizationHTTPClient.Transport = directTransport
+
+	decision, err := client.CheckProductPermission(t.Context(), strings.Repeat("x", 32), "portal.notice.read", "portal")
+	if err != nil {
+		t.Fatalf("CheckProductPermission error: %v", err)
+	}
+	if decision.ActorUserID != actorID || proxyCalls.Load() != 0 {
+		t.Fatalf("direct authorization = actor:%q proxy calls:%d", decision.ActorUserID, proxyCalls.Load())
 	}
 }

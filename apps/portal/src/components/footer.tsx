@@ -95,14 +95,14 @@ export default function Footer() {
           <p className="font-display text-xl font-bold">
             henukit<span className="text-accent">®</span>
           </p>
-          <nav className="flex flex-wrap gap-x-8 gap-y-3">
+          <nav aria-label="页脚导航" className="flex flex-wrap gap-x-8 gap-y-3">
             {LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="group relative font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-ink"
+                className="group relative inline-flex min-h-11 min-w-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-ink"
               >
-                <span className="mr-1.5 text-accent">{link.index}</span>
+                <span className="mr-1.5 text-ink/65">{link.index}</span>
                 {link.label}
                 <span
                   aria-hidden
@@ -111,10 +111,10 @@ export default function Footer() {
               </Link>
             ))}
           </nav>
-          <p className="font-mono text-xs tracking-widest text-ink/50">
+          <p className="font-mono text-base tracking-widest text-ink/65">
             © {new Date().getFullYear()} henukit
           </p>
-          <p className="mt-2 max-w-xs font-mono text-xs leading-5 tracking-wider text-ink/50">
+          <p className="mt-2 max-w-xs font-mono text-base leading-6 tracking-wider text-ink/65">
             学生自主运营 · 非河南大学官方项目
           </p>
         </div>

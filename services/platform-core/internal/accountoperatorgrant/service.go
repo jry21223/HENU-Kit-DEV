@@ -26,6 +26,11 @@ var permissionCodes = []string{
 	"account.orders.refund",
 }
 
+// portalNoticeReaderRoleCode is the narrowly permissioned baseline role that
+// registration and migration assign to eligible Portal users. This release
+// helper mutates a role's permissions, so it must never target that role.
+const portalNoticeReaderRoleCode = "portal-notice-reader"
+
 type Input struct {
 	RoleCode  string
 	Actor     string
@@ -39,6 +44,7 @@ type Result struct {
 
 func Grant(ctx context.Context, database *pgxpool.Pool, input Input) (Result, error) {
 	if database == nil || !roleCodePattern.MatchString(input.RoleCode) ||
+		input.RoleCode == portalNoticeReaderRoleCode ||
 		!requestIDPattern.MatchString(input.RequestID) || len(input.Actor) < 1 || len(input.Actor) > 120 ||
 		len(input.Reason) < 8 || len(input.Reason) > 500 {
 		return Result{}, errors.New("invalid account operator role grant input")

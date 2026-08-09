@@ -1,4 +1,4 @@
-// Code generated from notice.yaml (SHA256 6cab2e977b2024a9bac339bca4d92b98d735d523b9de235cd43b4d361bfbc30f); DO NOT EDIT.
+// Code generated from notice.yaml (SHA256 580e2f63df33e8b3747373afc1fdaca8b6ac5d02142b2221f5780c53d1cbc6d1); DO NOT EDIT.
 package notice
 
 const (

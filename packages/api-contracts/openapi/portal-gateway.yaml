@@ -109,6 +109,33 @@ paths:
                     type: string
                     example: signed_out
 
+  /api/v1/notices:
+    get:
+      operationId: getPortalNotices
+      summary: Return the signed-in student's all-students in-app Notice feed
+      description: >
+        Portal Gateway validates the Portal Session and the exact
+        `portal.notice.read` product `portal` permission before it calls the
+        dedicated Notice Owner route. Targeted, email-only, and lifecycle
+        management data are not part of this response.
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Notice-owned public feed; `created_at` is Notice intake time, not delivery completion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticeListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/account/summary:
     get:
       operationId: getAccountSummary
@@ -700,26 +727,6 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
         "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-
-  /api/v1/notices:
-    get:
-      operationId: noticeList
-      summary: List published notices
-      security:
-        - portalSession: []
-      responses:
-        "200":
-          description: Notice list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NoticeListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "502":
           $ref: "#/components/responses/ServiceUnavailable"
 
 components:
@@ -1456,8 +1463,47 @@ components:
         data:
           $ref: "#/components/schemas/PersonalPracticeStats"
 
+    PortalNoticeSource:
+      type: object
+      additionalProperties: false
+      required: [name, url]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        url:
+          type: string
+          format: iri
+          pattern: '^https://'
+          maxLength: 2048
+          description: Public source URL. maxLength gives clients a 2,048-character upper bound; Gateway also rejects a decoded URL over 2,048 UTF-8 bytes or without a valid ASCII public-DNS hostname, while retaining UTF-8 path and query text.
+
+    PortalNotice:
+      type: object
+      additionalProperties: false
+      required: [id, title, body, source, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        body:
+          type: string
+          minLength: 1
+          maxLength: 100000
+        source:
+          $ref: "#/components/schemas/PortalNoticeSource"
+        created_at:
+          type: string
+          format: date-time
+
     NoticeListResponse:
       type: object
+      description: Compatibility facade for the retired public notice proxy. `notices` remains the required legacy list; the current dedicated Owner feed also emits the richer optional `data` object.
       required: [notices, request_id]
       properties:
         notices:
@@ -1466,6 +1512,9 @@ components:
             $ref: "#/components/schemas/NoticeSummary"
         request_id:
           type: string
+        data:
+          description: Additive rich Portal notice feed. Current Portal Gateway always emits it after verifying the dedicated Notice Owner response, while legacy clients may ignore it.
+          $ref: "#/components/schemas/PortalNoticeFeed"
 
     NoticeSummary:
       type: object
@@ -1477,9 +1526,22 @@ components:
           type: string
         source:
           type: string
+          description: Verified public source name.
         published_at:
           type: string
           format: date-time
+          description: Compatibility timestamp. The current dedicated Owner feed supplies Notice intake time, not email-delivery completion.
+
+    PortalNoticeFeed:
+      type: object
+      additionalProperties: false
+      required: [notices]
+      properties:
+        notices:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/PortalNotice"
 
   responses:
     BadRequest:
@@ -1514,6 +1576,12 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
     ServiceUnavailable:
       description: Product service unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    BadGateway:
+      description: A private Owner response failed the Gateway contract
       content:
         application/json:
           schema:

@@ -25,6 +25,7 @@
 19. [`0019-membership-order-purchase-surface.md`](./0019-membership-order-purchase-surface.md) — 用户自建会员订单的 Portal 写入例外与不泄漏商户订单号的收银台句柄。
 20. [`0020-library-owner-production-onboard.md`](./0020-library-owner-production-onboard.md) — Library 独立数据所有者服务接入 Console 的生产上线边界。
 21. [`0021-portal-favorites-write-boundary.md`](./0021-portal-favorites-write-boundary.md) — Portal Gateway 的三条默认关闭收藏写命令边界。
+22. [`0025-portal-notice-feed-read-boundary.md`](./0025-portal-notice-feed-read-boundary.md) — Portal Notice 的独立授权、Owner 读取和全校 in-app 边界。
 
 ## 使用规则
 

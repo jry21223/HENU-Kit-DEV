@@ -42,7 +42,8 @@ import type {
   LibraryCoursesResponse,
   MaterialDetailResponse,
   MaterialListResponse,
-  NoticeListResponse,
+  PortalNoticeFeed,
+  PortalNoticeFeedEnvelope,
   PersonalPracticeStatsEnvelope,
   PortalSession,
 	PortalPracticeAnswerInput,
@@ -663,8 +664,21 @@ export async function fetchCampusCategories(): Promise<CategoryListResponse> {
 
 // ---- Notices ----
 
-export async function fetchNotices(): Promise<NoticeListResponse | null> {
-  return apiFetch<NoticeListResponse>("/api/v1/notices");
+type CurrentPortalNoticeFeedEnvelope = PortalNoticeFeedEnvelope & {
+  data: PortalNoticeFeed;
+};
+
+export async function fetchPortalNotices(): Promise<CurrentPortalNoticeFeedEnvelope> {
+  const response = await apiFetchRequired<PortalNoticeFeedEnvelope>("/api/v1/notices", {
+    cache: "no-store",
+  });
+  if (!response.data || !Array.isArray(response.data.notices)) {
+    throw new PortalApiError("Notice feed response is incomplete", {
+      code: "PORTAL_NOTICE_FEED_INVALID",
+      path: "/api/v1/notices",
+    });
+  }
+  return response as CurrentPortalNoticeFeedEnvelope;
 }
 
 /** Human-readable error for UI banners. */

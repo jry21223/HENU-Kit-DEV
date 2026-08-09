@@ -495,6 +495,16 @@ func resetIdentityTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	if err := redisClient.FlushDB(ctx).Err(); err != nil {
 		t.Fatalf("flush Redis: %v", err)
 	}
+	// resetIdentityTables truncates authorization seed data, including the
+	// baseline required for an atomic Registration. Restore the exact migration
+	// rather than weakening Registration when that mandatory grant is absent.
+	portalNoticeMigration, err := os.ReadFile("../db/migrations/000019_portal_notice_read.up.sql")
+	if err != nil {
+		t.Fatalf("read Portal notice access migration: %v", err)
+	}
+	if _, err := pool.Exec(ctx, string(portalNoticeMigration)); err != nil {
+		t.Fatalf("restore Portal notice access migration: %v", err)
+	}
 }
 
 func seedIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {

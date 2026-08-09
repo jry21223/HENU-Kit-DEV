@@ -19,16 +19,16 @@ export default function AccountEntry({ compact = false }: { compact?: boolean })
     return (
       <Link
         href="/account/login"
-        className="font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-accent"
+        className="inline-flex min-h-11 min-w-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-ink"
       >
-        登录<span className="text-ink/30">/</span>注册
+        登录<span>/</span>注册
       </Link>
     );
   }
 
   return (
-    <Link href="/account" className="group flex items-center gap-2">
-      <span className="flex h-7 w-7 items-center justify-center border border-ink bg-paper font-display text-sm font-bold transition-colors group-hover:border-accent group-hover:text-accent">
+    <Link href="/account" className="group inline-flex min-h-11 min-w-11 items-center gap-2">
+      <span className="flex h-7 w-7 items-center justify-center border border-ink bg-paper font-display text-sm font-bold transition-colors group-hover:border-accent group-hover:text-ink">
         {user.name.slice(0, 1)}
       </span>
       {!compact && (

@@ -20,6 +20,14 @@ const exampleEnvironment = readFileSync(
   new URL("../../../.env.henukit.example", import.meta.url),
   "utf8",
 );
+const noticeEnvironmentExample = readFileSync(
+  new URL("../../../services/notice/.env.example", import.meta.url),
+  "utf8",
+);
+const noticeReadme = readFileSync(
+  new URL("../../../services/notice/README.md", import.meta.url),
+  "utf8",
+);
 const runtimePackager = readFileSync(
   new URL("../package-henukit-runtime.sh", import.meta.url),
   "utf8",
@@ -75,6 +83,49 @@ test("CI runs the Account Portfolio browser behavior spec", () => {
 test("CI runs the enabled QuizCraft V2 ranking behavior spec", () => {
   assert.match(workflow, /Verify enabled QuizCraft V2 stats and rankings/);
   assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:stats/);
+});
+
+test("CI runs the Portal notice-feed browser behavior spec", () => {
+  assert.match(workflow, /Verify Portal notice feed behavior/);
+  assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:notice/);
+});
+
+test("Notice credential placeholders meet the Owner secret length boundary", () => {
+  for (const name of ["NOTICE_CLIENT_SECRET", "NOTICE_SUMMARY_CLIENT_SECRET"]) {
+    const example = new RegExp(`^${name}=([^\\r\\n]+)$`, "m").exec(exampleEnvironment)?.[1];
+    assert.ok(example, `${name} must be present in the release environment example`);
+    assert.ok(example.length >= 32, `${name} example placeholder must meet Notice's 32-character secret floor`);
+
+    const composeDefault = new RegExp(`\\$\\{${name}:-([^}]+)\\}`).exec(developmentCompose)?.[1];
+    assert.ok(composeDefault, `${name} must have a development Compose placeholder`);
+    assert.ok(composeDefault.length >= 32, `${name} Compose placeholder must meet Notice's 32-character secret floor`);
+  }
+});
+
+test("Notice standalone setup requires a distinct Portal read credential", () => {
+  for (const name of [
+    "NOTICE_SERVICE_CLIENT_ID",
+    "NOTICE_SERVICE_KEY_ID",
+    "NOTICE_SERVICE_SECRET",
+    "NOTICE_PORTAL_CLIENT_ID",
+    "NOTICE_PORTAL_KEY_ID",
+    "NOTICE_PORTAL_SECRET",
+  ]) {
+    assert.match(
+      noticeEnvironmentExample,
+      new RegExp(`^${name}=[^\\r\\n]+$`, "m"),
+      `${name} must be present in the standalone Notice example`,
+    );
+  }
+  const consoleSecret = /^NOTICE_SERVICE_SECRET=([^\r\n]+)$/m.exec(noticeEnvironmentExample)?.[1];
+  const portalSecret = /^NOTICE_PORTAL_SECRET=([^\r\n]+)$/m.exec(noticeEnvironmentExample)?.[1];
+  assert.ok(consoleSecret && consoleSecret.length >= 32, "standalone Console placeholder must meet Notice's secret floor");
+  assert.ok(portalSecret && portalSecret.length >= 32, "standalone Portal placeholder must meet Notice's secret floor");
+  assert.notEqual(portalSecret, consoleSecret, "standalone Portal and Console placeholders must remain distinct");
+  assert.match(noticeReadme, /Console Gateway.*NOTICE_SERVICE_\*/s);
+  assert.match(noticeReadme, /Portal Gateway.*NOTICE_PORTAL_\*/s);
+  assert.match(noticeReadme, /distinct/i);
+  assert.doesNotMatch(noticeReadme, /Console Gateway is the only supported API client/);
 });
 
 test("release artifacts carry an exact-SHA Account mock-free boundary manifest", () => {
@@ -222,6 +273,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "LIBRARY_SUMMARY_CLIENT_SECRET",
       "LIBRARY_SUMMARY_KEY_ID",
       "NOTICE_CLIENT_SECRET",
+      "NOTICE_CLIENT_ID",
+      "NOTICE_KEY_ID",
       "NOTICE_SUMMARY_CLIENT_ID",
       "NOTICE_SUMMARY_CLIENT_SECRET",
       "NOTICE_SUMMARY_KEY_ID",
@@ -476,6 +529,44 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["notice"].environment.NOTICE_SERVICE_SECRET,
     config.services["console-gateway"].environment.NOTICE_SUMMARY_CLIENT_SECRET,
     "Notice must verify the exact Gateway caller secret",
+  );
+  assert.equal(
+    config.services["portal-gateway"].environment.NOTICE_SERVICE_URL,
+    "http://notice:8094",
+    "Portal Gateway must use the exact internal Notice Owner origin, never portal-api",
+  );
+  const distinctNoticeConfig = renderRuntimeConfig({
+    NOTICE_CLIENT_ID: "portal-gateway-notice-read",
+    NOTICE_CLIENT_SECRET: "portal-notice-read-secret-for-release-test",
+    NOTICE_KEY_ID: "portal-notice-read-key",
+    NOTICE_SUMMARY_CLIENT_ID: "console-gateway-notice",
+    NOTICE_SUMMARY_CLIENT_SECRET: "console-notice-summary-secret-for-release-test",
+    NOTICE_SUMMARY_KEY_ID: "console-notice-summary-key",
+  });
+  assert.equal(
+    distinctNoticeConfig.services["notice"].environment.NOTICE_PORTAL_CLIENT_ID,
+    distinctNoticeConfig.services["portal-gateway"].environment.NOTICE_CLIENT_ID,
+    "Notice Portal-read capability must verify the dedicated Portal caller ID",
+  );
+  assert.equal(
+    distinctNoticeConfig.services["notice"].environment.NOTICE_PORTAL_KEY_ID,
+    distinctNoticeConfig.services["portal-gateway"].environment.NOTICE_KEY_ID,
+    "Notice Portal-read capability must verify the dedicated Portal key ID",
+  );
+  assert.equal(
+    distinctNoticeConfig.services["notice"].environment.NOTICE_PORTAL_SECRET,
+    distinctNoticeConfig.services["portal-gateway"].environment.NOTICE_CLIENT_SECRET,
+    "Notice Portal-read capability must verify the dedicated Portal secret",
+  );
+  assert.notEqual(
+    distinctNoticeConfig.services["notice"].environment.NOTICE_PORTAL_CLIENT_ID,
+    distinctNoticeConfig.services["notice"].environment.NOTICE_SERVICE_CLIENT_ID,
+    "Portal and Console Notice callers must not share a credential identity",
+  );
+  assert.notEqual(
+    distinctNoticeConfig.services["notice"].environment.NOTICE_PORTAL_SECRET,
+    distinctNoticeConfig.services["notice"].environment.NOTICE_SERVICE_SECRET,
+    "Portal and Console Notice callers must not share a credential secret",
   );
   assert.equal(
     config.services["food"].environment.FOOD_SERVICE_CLIENT_ID,

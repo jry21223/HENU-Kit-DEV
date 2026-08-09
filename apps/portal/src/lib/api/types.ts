@@ -8,6 +8,10 @@ export type {
   MasterySubject,
   PersonalPracticeStats,
   PersonalPracticeStatsEnvelope,
+  PortalNotice,
+  PortalNoticeFeed,
+  PortalNoticeFeedEnvelope,
+  PortalNoticeSource,
   PortalSession,
 } from "./portal-session.generated";
 
@@ -561,19 +565,5 @@ export interface CampusItemDetailResponse {
 
 export interface CategoryListResponse {
   categories: CampusCategory[];
-  request_id: string;
-}
-
-// ---- Notices ----
-
-export interface NoticeSummary {
-  id: string;
-  title: string;
-  source: string;
-  published_at: string;
-}
-
-export interface NoticeListResponse {
-  notices: NoticeSummary[];
   request_id: string;
 }
