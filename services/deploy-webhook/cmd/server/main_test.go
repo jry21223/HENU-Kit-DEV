@@ -68,8 +68,8 @@ func TestLoadMaterialsConfigDoesNotReadGenericQueueCapacity(t *testing.T) {
 	}
 }
 
-func TestMaterialsPreparationCommandIsFixed(t *testing.T) {
-	if materialsPreparationCommand != "/usr/local/libexec/henukit/henukit-materials-prepare" {
-		t.Fatalf("materials preparation command = %q", materialsPreparationCommand)
+func TestMaterialsOrchestrationCommandIsFixed(t *testing.T) {
+	if materialsOrchestrationCommand != "/usr/local/libexec/henukit/henukit-materials-orchestrate" {
+		t.Fatalf("materials orchestration command = %q", materialsOrchestrationCommand)
 	}
 }

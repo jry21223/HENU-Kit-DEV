@@ -20,7 +20,7 @@ import (
 	"henukit.dev/deploy-webhook/internal/webhook"
 )
 
-const materialsPreparationCommand = "/usr/local/libexec/henukit/henukit-materials-prepare"
+const materialsOrchestrationCommand = "/usr/local/libexec/henukit/henukit-materials-orchestrate"
 
 const usage = `usage: henukit-deploy-webhook [serve|run|retry <sha>|materials-serve|materials-run]
 
@@ -28,7 +28,7 @@ serve        receive and persist verified GitHub webhook deliveries
 run          process all persisted deliveries with the fixed deploy command
 retry <sha>  requeue the newest failed delivery for an approved full SHA
 materials-serve receive materials deliveries with latest-arrival coalescing
-materials-run process materials candidates with the fixed preparation wrapper
+materials-run process materials through the fixed privileged orchestration wrapper
 `
 
 type commonConfig struct {
@@ -191,11 +191,11 @@ func runMaterials(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	store, err := state.NewMaterialsLatestArrival(config.StateDir, config.Retention)
+	store, err := state.NewMaterialsLatestArrivalPrivilegedConsumer(config.StateDir, config.Retention)
 	if err != nil {
 		return err
 	}
-	return runStore(logger, store, materialsPreparationCommand, "HENUKIT_MATERIALS_PREPARATION_TIMEOUT", 2*time.Hour)
+	return runStore(logger, store, materialsOrchestrationCommand, "HENUKIT_MATERIALS_PREPARATION_TIMEOUT", 2*time.Hour)
 }
 
 func runStore(logger *slog.Logger, store *state.Store, command, timeoutName string, fallbackTimeout time.Duration) error {

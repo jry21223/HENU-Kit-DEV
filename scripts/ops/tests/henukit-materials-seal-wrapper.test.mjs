@@ -54,7 +54,6 @@ function writeConfig(path, root) {
       `HENUKIT_MATERIALS_SEALED_ROOT=${sealedRoot}`,
       "HENUKIT_MATERIALS_SOURCE_REPOSITORY=https://example.test/HENU-Final-Review.git",
       "HENUKIT_MATERIALS_SOURCE_REF=refs/heads/main",
-      `HENUKIT_MATERIALS_SOURCE_SHA=${"a".repeat(40)}`,
       "",
     ].join("\n"),
     { mode: 0o600 },
@@ -83,7 +82,7 @@ test("materials sealing wrapper fixes every authority-bearing input in root-owne
     writeConfig(configPath, root);
     const wrapper = stageWrapper(root, configPath, outputPath);
 
-    const result = runWrapper(wrapper, ["--attempt", ".attempt.Ab1Cd2Ef3G"]);
+    const result = runWrapper(wrapper, ["--attempt", ".attempt.Ab1Cd2Ef3G", "--sha", "a".repeat(40)]);
 
     assert.equal(result.status, 0, result.stderr);
     const invocation = JSON.parse(readFileSync(outputPath, "utf8"));
@@ -128,7 +127,7 @@ test("materials sealing wrapper ignores a caller-controlled command lookup envir
     writeConfig(configPath, root);
     const wrapper = stageWrapper(root, configPath, outputPath);
 
-    const result = runWrapper(wrapper, ["--attempt", ".attempt.Ab1Cd2Ef3G"], {
+    const result = runWrapper(wrapper, ["--attempt", ".attempt.Ab1Cd2Ef3G", "--sha", "a".repeat(40)], {
       PATH: attackerBin,
       BASH_ENV: attackerBashEnv,
       ENV: attackerBashEnv,
@@ -161,7 +160,7 @@ test("materials sealing wrapper rejects caller-selected paths and unsafe root co
       },
       {
         name: "invalid locator",
-        args: ["--attempt", "/tmp/attacker"],
+        args: ["--attempt", "/tmp/attacker", "--sha", "a".repeat(40)],
         expected: /attempt locator is invalid/,
       },
     ]) {
@@ -172,7 +171,7 @@ test("materials sealing wrapper rejects caller-selected paths and unsafe root co
     }
 
     chmodSync(configPath, 0o660);
-    const writableConfig = runWrapper(wrapper, ["--attempt", ".attempt.Ab1Cd2Ef3G"]);
+    const writableConfig = runWrapper(wrapper, ["--attempt", ".attempt.Ab1Cd2Ef3G", "--sha", "a".repeat(40)]);
     assert.notEqual(writableConfig.status, 0);
     assert.match(writableConfig.stderr, /must not be writable by group or other/);
     assert.equal(existsSync(outputPath), false);
@@ -181,7 +180,7 @@ test("materials sealing wrapper rejects caller-selected paths and unsafe root co
     const symlinkConfig = join(root, "materials-seal-link.env");
     symlinkSync(configPath, symlinkConfig);
     const linkedWrapper = stageWrapper(root, symlinkConfig, outputPath);
-    const linkedConfig = runWrapper(linkedWrapper, ["--attempt", ".attempt.Ab1Cd2Ef3G"]);
+    const linkedConfig = runWrapper(linkedWrapper, ["--attempt", ".attempt.Ab1Cd2Ef3G", "--sha", "a".repeat(40)]);
     assert.notEqual(linkedConfig.status, 0);
     assert.match(linkedConfig.stderr, /configuration must be a regular file/);
   } finally {
@@ -208,7 +207,8 @@ test("sealed-release template stays root-only and cannot become a B01 runner tar
   assert.match(template, /readonly env_bin="\/usr\/bin\/env"/);
   assert.match(template, /^\[ "\$\("\$id_bin" -u\)" = "\$config_owner" \] \|\| fail "must run as root"$/m);
   assert.match(template, /^exec "\$env_bin" -i \\$/m);
-  assert.match(template, /HENUKIT_MATERIALS_SOURCE_SHA/);
+  assert.doesNotMatch(template, /HENUKIT_MATERIALS_SOURCE_SHA/);
+  assert.match(template, /--sha "\$accepted_sha"/);
   assert.match(template, /--sealed-owner "\$config_owner"/);
   assert.doesNotMatch(template, /HENUKIT_MATERIALS_CANDIDATE_ROOT|--candidate-root/);
   assert.doesNotMatch(template, /HENUKIT_MATERIALS_DATABASE_URL|HENUKIT_MATERIALS_PUBLIC_ROOT|--public|--database|--activate|--approve/);
@@ -219,5 +219,5 @@ test("sealed-release template stays root-only and cannot become a B01 runner tar
   assert.match(program, /fsyncOutputDirectories\(provisional\)/);
   assert.doesNotMatch(receiver, /henukit-materials-seal/);
   assert.doesNotMatch(runner, /henukit-materials-seal/);
-  assert.doesNotMatch(installer, /henukit-materials-seal/);
+  assert.match(installer, /henukit-materials-seal/);
 });

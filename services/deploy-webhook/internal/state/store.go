@@ -65,6 +65,9 @@ type Store struct {
 	maxQueue      int
 	retention     time.Duration
 	latestArrival bool
+	consumerOnly  bool
+	ownerUID      int
+	ownerGID      int
 }
 
 func New(dir string, maxQueue int, retention time.Duration) (*Store, error) {
@@ -78,16 +81,36 @@ func NewMaterialsLatestArrival(dir string, retention time.Duration) (*Store, err
 	return newStore(dir, 1, retention, true)
 }
 
+// NewMaterialsLatestArrivalPrivilegedConsumer opens an existing materials
+// queue for the fixed root runner. The unprivileged receiver remains the queue
+// owner; this constructor never initializes or takes ownership of queue state.
+func NewMaterialsLatestArrivalPrivilegedConsumer(dir string, retention time.Duration) (*Store, error) {
+	dir, err := validateStoreOptions(dir, 1, retention)
+	if err != nil {
+		return nil, err
+	}
+	if os.Geteuid() != 0 {
+		return nil, errors.New("privileged materials consumer must run as root")
+	}
+
+	ownerUID, ownerGID, err := validatePrivilegedMaterialsState(dir)
+	if err != nil {
+		return nil, err
+	}
+	store := &Store{
+		dir: dir, maxQueue: 1, retention: retention, latestArrival: true,
+		consumerOnly: true, ownerUID: ownerUID, ownerGID: ownerGID,
+	}
+	if err := store.withLock(func() error { return nil }); err != nil {
+		return nil, err
+	}
+	return store, nil
+}
+
 func newStore(dir string, maxQueue int, retention time.Duration, latestArrival bool) (*Store, error) {
-	dir = filepath.Clean(strings.TrimSpace(dir))
-	if dir == "." || !filepath.IsAbs(dir) {
-		return nil, errors.New("state directory must be an absolute path")
-	}
-	if maxQueue <= 0 || maxQueue > 10000 {
-		return nil, errors.New("max queue must be between 1 and 10000")
-	}
-	if retention <= 0 {
-		return nil, errors.New("processed delivery retention must be positive")
+	dir, err := validateStoreOptions(dir, maxQueue, retention)
+	if err != nil {
+		return nil, err
 	}
 	s := &Store{dir: dir, maxQueue: maxQueue, retention: retention, latestArrival: latestArrival}
 	if err := os.MkdirAll(s.dir, 0o750); err != nil {
@@ -114,10 +137,27 @@ func newStore(dir string, maxQueue int, retention time.Duration, latestArrival b
 	return s, nil
 }
 
+func validateStoreOptions(dir string, maxQueue int, retention time.Duration) (string, error) {
+	dir = filepath.Clean(strings.TrimSpace(dir))
+	if dir == "." || !filepath.IsAbs(dir) {
+		return "", errors.New("state directory must be an absolute path")
+	}
+	if maxQueue <= 0 || maxQueue > 10000 {
+		return "", errors.New("max queue must be between 1 and 10000")
+	}
+	if retention <= 0 {
+		return "", errors.New("processed delivery retention must be positive")
+	}
+	return dir, nil
+}
+
 func (s *Store) Dir() string { return s.dir }
 
 func (s *Store) Enqueue(event Event) (EnqueueResult, error) {
 	var result EnqueueResult
+	if s.consumerOnly {
+		return result, errors.New("privileged materials consumer cannot enqueue deliveries")
+	}
 	err := s.withLock(func() error {
 		if err := validateEvent(event); err != nil {
 			return err
@@ -145,7 +185,7 @@ func (s *Store) Enqueue(event Event) (EnqueueResult, error) {
 					return err
 				}
 			}
-			if err := writeJSONAtomic(s.latestArrivalQueuePath(), event); err != nil {
+			if err := s.writeJSONAtomic(s.latestArrivalQueuePath(), event); err != nil {
 				return err
 			}
 			result.Queued = true
@@ -159,7 +199,7 @@ func (s *Store) Enqueue(event Event) (EnqueueResult, error) {
 			return ErrQueueFull
 		}
 		name := fmt.Sprintf("%020d-%s.json", event.ReceivedAt.UnixNano(), event.Delivery)
-		if err := writeJSONAtomic(filepath.Join(s.queueDir(), name), event); err != nil {
+		if err := s.writeJSONAtomic(filepath.Join(s.queueDir(), name), event); err != nil {
 			return err
 		}
 		result.Queued = true
@@ -173,6 +213,9 @@ func (s *Store) Enqueue(event Event) (EnqueueResult, error) {
 // been reviewed; successful deliveries remain deduplicated.
 func (s *Store) RetryFailedSHA(sha string) (EnqueueResult, error) {
 	var result EnqueueResult
+	if s.consumerOnly {
+		return result, errors.New("privileged materials consumer cannot retry deliveries")
+	}
 	if s.latestArrival {
 		return result, errors.New("retry is not supported for the materials latest-arrival queue")
 	}
@@ -218,7 +261,7 @@ func (s *Store) RetryFailedSHA(sha string) (EnqueueResult, error) {
 			}
 			event.ReceivedAt = time.Now().UTC()
 			queueName := fmt.Sprintf("%020d-%s.json", event.ReceivedAt.UnixNano(), event.Delivery)
-			if err := writeJSONAtomic(filepath.Join(s.queueDir(), queueName), event); err != nil {
+			if err := s.writeJSONAtomic(filepath.Join(s.queueDir(), queueName), event); err != nil {
 				return err
 			}
 			result.Queued = true
@@ -281,7 +324,7 @@ func (s *Store) RecoverInterrupted() error {
 			if event.ReceivedAt.IsZero() {
 				event.ReceivedAt = time.Now().UTC()
 			}
-			if err := writeJSONAtomic(s.latestArrivalQueuePath(), event); err != nil {
+			if err := s.writeJSONAtomic(s.latestArrivalQueuePath(), event); err != nil {
 				return err
 			}
 			if err := os.Remove(path); err != nil {
@@ -300,7 +343,7 @@ func (s *Store) RecoverInterrupted() error {
 			event.ReceivedAt = time.Now().UTC()
 		}
 		name := fmt.Sprintf("%020d-%s.json", event.ReceivedAt.UnixNano(), event.Delivery)
-		if err := writeJSONAtomic(filepath.Join(s.queueDir(), name), event); err != nil {
+		if err := s.writeJSONAtomic(filepath.Join(s.queueDir(), name), event); err != nil {
 			return err
 		}
 		return os.Remove(path)
@@ -372,18 +415,18 @@ func (s *Store) Complete(attempt Attempt) error {
 			return errors.New("attempt timestamps are invalid")
 		}
 		if attempt.Succeeded {
-			if err := writeJSONAtomic(filepath.Join(s.processedDir(), attempt.Event.Delivery+".json"), attempt); err != nil {
+			if err := s.writeJSONAtomic(filepath.Join(s.processedDir(), attempt.Event.Delivery+".json"), attempt); err != nil {
 				return err
 			}
-			if err := writeJSONAtomic(s.lastSuccessPath(), attempt); err != nil {
+			if err := s.writeJSONAtomic(s.lastSuccessPath(), attempt); err != nil {
 				return err
 			}
 		} else {
 			name := fmt.Sprintf("%020d-%s.json", attempt.FinishedAt.UnixNano(), attempt.Event.Delivery)
-			if err := writeJSONAtomic(filepath.Join(s.failedDir(), name), attempt); err != nil {
+			if err := s.writeJSONAtomic(filepath.Join(s.failedDir(), name), attempt); err != nil {
 				return err
 			}
-			if err := writeJSONAtomic(s.lastFailurePath(), attempt); err != nil {
+			if err := s.writeJSONAtomic(s.lastFailurePath(), attempt); err != nil {
 				return err
 			}
 		}
@@ -448,15 +491,51 @@ func (s *Store) Snapshot() (Snapshot, error) {
 }
 
 func (s *Store) withLock(fn func() error) error {
-	file, err := os.OpenFile(filepath.Join(s.dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	lockPath := filepath.Join(s.dir, ".lock")
+	flags := os.O_RDWR
+	if !s.consumerOnly {
+		flags |= os.O_CREATE
+	}
+	before, err := os.Lstat(lockPath)
+	if err != nil && (s.consumerOnly || !errors.Is(err, fs.ErrNotExist)) {
+		return err
+	}
+	if err == nil && (before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular()) {
+		return errors.New("state lock must be a regular file")
+	}
+	file, err := os.OpenFile(lockPath, flags, 0o600)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+	if s.consumerOnly {
+		after, err := file.Stat()
+		if err != nil {
+			return err
+		}
+		if before == nil || !os.SameFile(before, after) {
+			return errors.New("state lock changed while opening privileged consumer")
+		}
+		if err := validatePrivilegedOwnedInfo(lockPath, after, s.ownerUID, s.ownerGID, false); err != nil {
+			return err
+		}
+	}
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
 		return err
 	}
 	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN) //nolint:errcheck
+	if s.consumerOnly {
+		ownerUID, ownerGID, err := validatePrivilegedMaterialsState(s.dir)
+		if err != nil {
+			return err
+		}
+		if ownerUID != s.ownerUID || ownerGID != s.ownerGID {
+			return errors.New("materials state owner changed while opening privileged consumer")
+		}
+		if err := s.requireQueueModeLocked(materialsLatestArrivalMode); err != nil {
+			return err
+		}
+	}
 	return fn()
 }
 
@@ -488,7 +567,7 @@ func (s *Store) ensureQueueModeLocked() error {
 		if s.latestArrival {
 			mode = materialsLatestArrivalMode
 		}
-		return writeJSONAtomic(markerPath, queueModeMarker{Mode: mode})
+		return s.writeJSONAtomic(markerPath, queueModeMarker{Mode: mode})
 	}
 	if err != nil {
 		return fmt.Errorf("inspect queue mode marker: %w", err)
@@ -496,13 +575,18 @@ func (s *Store) ensureQueueModeLocked() error {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return fmt.Errorf("queue mode marker is not a regular file: %s", markerPath)
 	}
-	var marker queueModeMarker
-	if err := readJSON(markerPath, &marker); err != nil {
-		return fmt.Errorf("read queue mode marker: %w", err)
-	}
 	expectedMode := genericFIFOMode
 	if s.latestArrival {
 		expectedMode = materialsLatestArrivalMode
+	}
+	return s.requireQueueModeLocked(expectedMode)
+}
+
+func (s *Store) requireQueueModeLocked(expectedMode string) error {
+	markerPath := s.queueModeMarkerPath()
+	var marker queueModeMarker
+	if err := readJSON(markerPath, &marker); err != nil {
+		return fmt.Errorf("read queue mode marker: %w", err)
 	}
 	if marker.Mode != expectedMode {
 		if !s.latestArrival && marker.Mode == materialsLatestArrivalMode {
@@ -628,7 +712,7 @@ func (s *Store) markSupersededLocked(event Event) error {
 	if err := validateEvent(event); err != nil {
 		return err
 	}
-	if err := writeJSONAtomic(filepath.Join(s.supersededDir(), event.Delivery+".json"), event); err != nil {
+	if err := s.writeJSONAtomic(filepath.Join(s.supersededDir(), event.Delivery+".json"), event); err != nil {
 		return fmt.Errorf("record superseded materials delivery: %w", err)
 	}
 	return nil
@@ -681,6 +765,70 @@ func validateStateDirectory(path string) error {
 	return nil
 }
 
+func validatePrivilegedMaterialsState(path string) (int, int, error) {
+	root, err := os.Lstat(path)
+	if err != nil {
+		return 0, 0, fmt.Errorf("inspect existing materials state root %s: %w", path, err)
+	}
+	if root.Mode()&os.ModeSymlink != 0 || !root.IsDir() {
+		return 0, 0, fmt.Errorf("materials state root must be a real directory: %s", path)
+	}
+	stat, ok := root.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, fmt.Errorf("inspect materials state owner: %s", path)
+	}
+	ownerUID := int(stat.Uid)
+	ownerGID := int(stat.Gid)
+	if ownerUID == 0 {
+		return 0, 0, errors.New("materials state must be initialized by a non-root receiver")
+	}
+	if err := validatePrivilegedOwnedInfo(path, root, ownerUID, ownerGID, true); err != nil {
+		return 0, 0, err
+	}
+
+	for _, child := range []string{"queue", "processed", "failed", "superseded"} {
+		childPath := filepath.Join(path, child)
+		info, err := os.Lstat(childPath)
+		if err != nil {
+			return 0, 0, fmt.Errorf("inspect existing materials state directory %s: %w", childPath, err)
+		}
+		if err := validatePrivilegedOwnedInfo(childPath, info, ownerUID, ownerGID, true); err != nil {
+			return 0, 0, err
+		}
+	}
+	for _, child := range []string{".lock", "queue-policy.json"} {
+		childPath := filepath.Join(path, child)
+		info, err := os.Lstat(childPath)
+		if err != nil {
+			return 0, 0, fmt.Errorf("inspect existing materials state file %s: %w", childPath, err)
+		}
+		if err := validatePrivilegedOwnedInfo(childPath, info, ownerUID, ownerGID, false); err != nil {
+			return 0, 0, err
+		}
+	}
+	return ownerUID, ownerGID, nil
+}
+
+func validatePrivilegedOwnedInfo(path string, info os.FileInfo, ownerUID, ownerGID int, directory bool) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("privileged materials state path must not be a symbolic link: %s", path)
+	}
+	if directory && !info.IsDir() {
+		return fmt.Errorf("privileged materials state path must be a directory: %s", path)
+	}
+	if !directory && !info.Mode().IsRegular() {
+		return fmt.Errorf("privileged materials state path must be a regular file: %s", path)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != ownerUID || int(stat.Gid) != ownerGID {
+		return fmt.Errorf("privileged materials state path has a different owner: %s", path)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("privileged materials state path must not be writable by group or other: %s", path)
+	}
+	return nil
+}
+
 func validateEvent(event Event) error {
 	if err := validateDelivery(event.Delivery); err != nil {
 		return err
@@ -709,10 +857,20 @@ func readJSON(path string, destination any) error {
 	return nil
 }
 
-func writeJSONAtomic(path string, value any) error {
+func (s *Store) writeJSONAtomic(path string, value any) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
+	if s.consumerOnly {
+		info, err := os.Lstat(dir)
+		if err != nil {
+			return err
+		}
+		if err := validatePrivilegedOwnedInfo(dir, info, s.ownerUID, s.ownerGID, true); err != nil {
+			return err
+		}
+	} else {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return err
+		}
 	}
 	temp, err := os.CreateTemp(dir, ".tmp-*")
 	if err != nil {
@@ -720,6 +878,12 @@ func writeJSONAtomic(path string, value any) error {
 	}
 	tempName := temp.Name()
 	defer os.Remove(tempName)
+	if s.consumerOnly {
+		if err := temp.Chown(s.ownerUID, s.ownerGID); err != nil {
+			temp.Close()
+			return err
+		}
+	}
 	if err := temp.Chmod(0o600); err != nil {
 		temp.Close()
 		return err

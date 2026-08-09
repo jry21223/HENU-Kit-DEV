@@ -91,19 +91,18 @@ cat > /etc/henukit-deploy/materials-seal.env <<EOF
 HENUKIT_MATERIALS_SEALED_ROOT=$sealed_root
 HENUKIT_MATERIALS_SOURCE_REPOSITORY=$source
 HENUKIT_MATERIALS_SOURCE_REF=refs/heads/main
-HENUKIT_MATERIALS_SOURCE_SHA=$accepted_sha
 EOF
 chown root:root /etc/henukit-deploy/materials-seal.env
 chmod 0600 /etc/henukit-deploy/materials-seal.env
 
-if su candidate -s /bin/bash -c '/fixture/henukit-materials-seal --attempt .attempt.Ab1Cd2Ef3G' > /tmp/unprivileged.out 2>&1; then
+if su candidate -s /bin/bash -c "/fixture/henukit-materials-seal --attempt .attempt.Ab1Cd2Ef3G --sha $accepted_sha" > /tmp/unprivileged.out 2>&1; then
   echo 'unprivileged seal unexpectedly succeeded' >&2
   exit 1
 fi
 grep -F 'must run as root' /tmp/unprivileged.out >/dev/null
 
 chmod 0660 /etc/henukit-deploy/materials-seal.env
-if /fixture/henukit-materials-seal --attempt "$attempt" > /tmp/writable-config.out 2>&1; then
+if /fixture/henukit-materials-seal --attempt "$attempt" --sha "$accepted_sha" > /tmp/writable-config.out 2>&1; then
   echo 'group-writable config unexpectedly succeeded' >&2
   exit 1
 fi
@@ -121,11 +120,10 @@ cat > /etc/henukit-deploy/materials-seal.env <<EOF
 HENUKIT_MATERIALS_SEALED_ROOT=$unsafe_sealed_root
 HENUKIT_MATERIALS_SOURCE_REPOSITORY=$source
 HENUKIT_MATERIALS_SOURCE_REF=refs/heads/main
-HENUKIT_MATERIALS_SOURCE_SHA=$accepted_sha
 EOF
 chown root:root /etc/henukit-deploy/materials-seal.env
 chmod 0600 /etc/henukit-deploy/materials-seal.env
-if /fixture/henukit-materials-seal --attempt "$attempt" > /tmp/attacker-parent.out 2>&1; then
+if /fixture/henukit-materials-seal --attempt "$attempt" --sha "$accepted_sha" > /tmp/attacker-parent.out 2>&1; then
   echo 'attacker-owned sealed-root ancestor unexpectedly succeeded' >&2
   exit 1
 fi
@@ -135,13 +133,12 @@ cat > /etc/henukit-deploy/materials-seal.env <<EOF
 HENUKIT_MATERIALS_SEALED_ROOT=$sealed_root
 HENUKIT_MATERIALS_SOURCE_REPOSITORY=$source
 HENUKIT_MATERIALS_SOURCE_REF=refs/heads/main
-HENUKIT_MATERIALS_SOURCE_SHA=$accepted_sha
 EOF
 chown root:root /etc/henukit-deploy/materials-seal.env
 chmod 0600 /etc/henukit-deploy/materials-seal.env
 
 chmod 0770 "$sealed_root"
-if /fixture/henukit-materials-seal --attempt "$attempt" > /tmp/writable-root.out 2>&1; then
+if /fixture/henukit-materials-seal --attempt "$attempt" --sha "$accepted_sha" > /tmp/writable-root.out 2>&1; then
   echo 'group-writable sealed root unexpectedly succeeded' >&2
   exit 1
 fi
@@ -151,7 +148,7 @@ chmod 0700 "$sealed_root"
 mkdir "$sealed_root/$release_id"
 printf 'malicious preseed\\n' > "$sealed_root/$release_id/sentinel"
 chown -R candidate:candidate "$sealed_root/$release_id"
-if /fixture/henukit-materials-seal --attempt "$attempt" > /tmp/foreign-release.out 2>&1; then
+if /fixture/henukit-materials-seal --attempt "$attempt" --sha "$accepted_sha" > /tmp/foreign-release.out 2>&1; then
   echo 'foreign pre-seeded release unexpectedly succeeded' >&2
   exit 1
 fi
@@ -163,7 +160,7 @@ test "$(cat "$study_sentinel")" = 'study sentinel'
 rm -rf "$sealed_root/$release_id"
 
 ln -s /does-not-exist "$sealed_root/$release_id"
-if /fixture/henukit-materials-seal --attempt "$attempt" > /tmp/dangling-release.out 2>&1; then
+if /fixture/henukit-materials-seal --attempt "$attempt" --sha "$accepted_sha" > /tmp/dangling-release.out 2>&1; then
   echo 'dangling pre-seeded release symlink unexpectedly succeeded' >&2
   exit 1
 fi
@@ -173,7 +170,7 @@ test "$(cat "$public_sentinel")" = 'public sentinel'
 test "$(cat "$study_sentinel")" = 'study sentinel'
 rm "$sealed_root/$release_id"
 
-/fixture/henukit-materials-seal --attempt "$attempt" > /tmp/seal.out &
+/fixture/henukit-materials-seal --attempt "$attempt" --sha "$accepted_sha" > /tmp/seal.out &
 seal_pid=$!
 while kill -0 "$seal_pid" 2>/dev/null; do
   for entry in "$sealed_root"/*; do

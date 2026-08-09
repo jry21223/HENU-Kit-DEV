@@ -1,19 +1,17 @@
 [Unit]
-Description=Run queued HENU Kit materials candidate preparations
+Description=Run queued HENU Kit materials fixed release orchestration
 Documentation=https://github.com/jry21223/HENU-Kit-DEV/blob/main/docs/operations/henukit-materials-sync.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=henukit-deploy
-Group=henukit-deploy
+User=root
+Group=root
 EnvironmentFile=/etc/henukit-deploy/materials-webhook.env
-Environment=HOME=/var/lib/henukit-deploy
+Environment=HOME=/root
 ExecStart=/usr/local/bin/henukit-deploy-webhook materials-run
 TimeoutStartSec=2h
-StateDirectory=henukit-materials-webhook
-StateDirectoryMode=0750
 UMask=0077
 Nice=10
 IOSchedulingClass=best-effort
@@ -31,4 +29,4 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
-ReadWritePaths=/var/lib/henukit-materials-webhook
+ReadWritePaths=/var/lib/henukit-materials-webhook /opt/henukit-materials

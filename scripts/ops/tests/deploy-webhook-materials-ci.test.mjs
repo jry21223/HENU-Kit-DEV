@@ -7,19 +7,38 @@ import test from "node:test";
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const workflow = readFileSync(join(repositoryRoot, ".github", "workflows", "deploy-webhook.yml"), "utf8");
 const sealLinuxTest = readFileSync(join(repositoryRoot, "scripts", "ops", "tests", "henukit-materials-seal-linux.test.mjs"), "utf8");
+const server = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "cmd", "server", "main.go"), "utf8");
 
-test("deploy-webhook CI gates materials preparation, sealing, and unit-template boundaries", () => {
+function goFunction(name) {
+  const start = server.indexOf(`func ${name}(`);
+  const end = server.indexOf("\nfunc ", start + 1);
+  return server.slice(start, end === -1 ? undefined : end);
+}
+
+test("deploy-webhook CI gates the complete materials release boundary", () => {
   for (const path of [
+    "docker-compose.henukit.yml",
+    "infra/nginx/henukit.conf.example",
     "scripts/ops/prepare-henukit-materials.mjs",
     "scripts/ops/seal-henukit-materials.mjs",
+    "scripts/ops/activate-henukit-materials.mjs",
+    "scripts/ops/convert-henukit-slides.py",
+    "scripts/ops/import-henukit-materials.mjs",
     "scripts/ops/tests/prepare-henukit-materials.test.mjs",
     "scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs",
     "scripts/ops/tests/henukit-materials-systemd.test.mjs",
     "scripts/ops/tests/henukit-materials-seal.test.mjs",
     "scripts/ops/tests/henukit-materials-seal-wrapper.test.mjs",
     "scripts/ops/tests/henukit-materials-seal-linux.test.mjs",
+    "scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs",
+    "scripts/ops/tests/activate-henukit-materials.test.mjs",
+    "scripts/ops/tests/convert-henukit-slides.test.mjs",
+    "scripts/ops/tests/import-henukit-materials.test.mjs",
+    "scripts/ops/tests/henukit-materials-nginx.test.mjs",
+    "scripts/ops/tests/henukit-materials-orchestrate.test.mjs",
     "docs/adr/0023-materials-latest-arrival-queue.md",
     "docs/adr/0024-materials-sealed-release-boundary.md",
+    "docs/adr/0025-materials-atomic-activation.md",
     "docs/development/306-materials-secure-preparation.md",
   ]) {
     assert.match(workflow, new RegExp(`- ${path.replaceAll(".", "\\.")}$`, "m"), path);
@@ -27,15 +46,39 @@ test("deploy-webhook CI gates materials preparation, sealing, and unit-template 
   assert.match(workflow, /uses: actions\/setup-node@v4/);
   assert.match(workflow, /node --check scripts\/ops\/prepare-henukit-materials\.mjs/);
   assert.match(workflow, /node --check scripts\/ops\/seal-henukit-materials\.mjs/);
+  assert.match(workflow, /node --check scripts\/ops\/activate-henukit-materials\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/prepare-henukit-materials\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-prepare-wrapper\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-systemd\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-seal\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-seal-wrapper\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-seal-linux\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-activate-wrapper\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/activate-henukit-materials\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/convert-henukit-slides\.test\.mjs/);
+  assert.equal(
+    [...workflow.matchAll(/scripts\/ops\/tests\/import-henukit-materials\.test\.mjs/g)].length,
+    3,
+    "the importer test must trigger both workflow events and run in the Node suite",
+  );
+  assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-nginx\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-orchestrate\.test\.mjs/);
   assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-prepare/);
   assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-seal/);
+  assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-activate/);
+  assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-orchestrate/);
   assert.match(workflow, /sh -n services\/deploy-webhook\/deploy\/henukit-materials-seal/);
+  assert.match(workflow, /sh -n services\/deploy-webhook\/deploy\/henukit-materials-activate/);
+  assert.match(workflow, /bash -n services\/deploy-webhook\/deploy\/henukit-materials-orchestrate/);
+  assert.match(workflow, /docker compose -f docker-compose\.henukit\.yml config --quiet/);
+  assert.match(workflow, /nginx:1\.27-alpine nginx -t/);
+  assert.match(
+    workflow,
+    /sudo "\$\(command -v go\)" test -count=1 \.\/internal\/state -run '\^TestPrivilegedMaterialsConsumer'/,
+  );
+  assert.match(goFunction("serveMaterials"), /state\.NewMaterialsLatestArrival\(/);
+  assert.doesNotMatch(goFunction("serveMaterials"), /PrivilegedConsumer/);
+  assert.match(goFunction("runMaterials"), /state\.NewMaterialsLatestArrivalPrivilegedConsumer\(/);
   assert.match(sealLinuxTest, /process\.env\.CI === "true" && !dockerAvailable/);
   assert.match(sealLinuxTest, /Docker is required to verify root-owned materials sealing in CI/);
 });

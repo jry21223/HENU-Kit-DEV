@@ -159,17 +159,73 @@ systemctl enable --now henukit-deploy-webhook.service
 systemctl disable --now henukit-deploy-webhook.path >/dev/null 2>&1 || true
 
 if (( enable_materials_sync )); then
-  # Materials sync webhook: 第二个接收器实例 + runner,共享同一二进制。
-  # runner 以 root 运行,需要 docker compose exec、git 与镜像目录写权限。
+  for command in node python3 psql; do
+    command -v "$command" >/dev/null || { echo "missing required materials command: $command" >&2; exit 69; }
+  done
+  python3 -c 'import pptx' >/dev/null 2>&1 || { echo "missing required Python module: python3-pptx" >&2; exit 69; }
+  if ! command -v soffice >/dev/null && ! command -v libreoffice >/dev/null; then
+    echo "missing required materials command: soffice or libreoffice" >&2
+    exit 69
+  fi
+  # Materials webhook receiver remains unprivileged. The queue runner is a
+  # confined root service whose binary can invoke only this fixed chain.
   repo_root="$(cd -- "$source_dir/../.." && pwd)"
-  install -o root -g root -m 0755 "$repo_root/scripts/ops/sync-henukit-materials.sh" /usr/local/libexec/henukit/sync-henukit-materials.sh
+  install -d -o root -g root -m 0700 /opt/henukit-materials
+  install -d -o root -g root -m 0700 /opt/henukit-materials/sealed
+  install -d -o root -g root -m 0755 /opt/henukit-materials/public
+  install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-orchestrate" /usr/local/libexec/henukit/henukit-materials-orchestrate
+  install -o root -g root -m 0755 "$source_dir/deploy/henukit-materials-prepare" /usr/local/libexec/henukit/henukit-materials-prepare
+  install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-seal" /usr/local/libexec/henukit/henukit-materials-seal
+  install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-activate" /usr/local/libexec/henukit/henukit-materials-activate
+  install -o root -g root -m 0644 "$repo_root/scripts/ops/prepare-henukit-materials.mjs" /usr/local/libexec/henukit/prepare-henukit-materials.mjs
+  install -o root -g root -m 0600 "$repo_root/scripts/ops/seal-henukit-materials.mjs" /usr/local/libexec/henukit/seal-henukit-materials.mjs
+  install -o root -g root -m 0600 "$repo_root/scripts/ops/activate-henukit-materials.mjs" /usr/local/libexec/henukit/activate-henukit-materials.mjs
   install -o root -g root -m 0755 "$repo_root/scripts/ops/convert-henukit-slides.py" /usr/local/libexec/henukit/convert-henukit-slides.py
   install -o root -g root -m 0755 "$repo_root/scripts/ops/import-henukit-materials.mjs" /usr/local/libexec/henukit/import-henukit-materials.mjs
-  install -o root -g root -m 0755 "$repo_root/scripts/ops/henukit-materials-sync.sh" /usr/local/libexec/henukit/henukit-materials-sync.sh
 
   if [[ ! -f /etc/henukit-deploy/materials-webhook.env ]]; then
     install -o root -g henukit-deploy -m 0640 "$source_dir/deploy/materials.env.example" /etc/henukit-deploy/materials-webhook.env
   fi
+  if [[ ! -f /etc/henukit-deploy/materials-seal.env ]]; then
+    cat > /etc/henukit-deploy/materials-seal.env <<'MATERIALS_SEAL_ENV'
+HENUKIT_MATERIALS_SEALED_ROOT=/opt/henukit-materials/sealed
+HENUKIT_MATERIALS_SOURCE_REPOSITORY=https://github.com/jry21223/HENU-Final-Review.git
+HENUKIT_MATERIALS_SOURCE_REF=refs/heads/main
+MATERIALS_SEAL_ENV
+  fi
+  chown root:root /etc/henukit-deploy/materials-seal.env
+  chmod 0600 /etc/henukit-deploy/materials-seal.env
+  if [[ ! -f /etc/henukit-deploy/materials-activate.env ]]; then
+    cat > /etc/henukit-deploy/materials-activate.env <<'MATERIALS_ACTIVATE_ENV'
+HENUKIT_MATERIALS_SEALED_ROOT=/opt/henukit-materials/sealed
+HENUKIT_MATERIALS_PUBLIC_ROOT=/opt/henukit-materials/public
+HENUKIT_MATERIALS_CONVERTER=/usr/local/libexec/henukit/convert-henukit-slides.py
+HENUKIT_MATERIALS_IMPORTER=/usr/local/libexec/henukit/import-henukit-materials.mjs
+HENUKIT_MATERIALS_PSQL=/usr/bin/psql
+HENUKIT_MATERIALS_PG_SERVICE_FILE=/etc/henukit-deploy/materials-postgresql.conf
+HENUKIT_MATERIALS_PG_SERVICE=henukit-materials
+HENUKIT_MATERIALS_LEGACY_INVENTORY=/etc/henukit-deploy/materials-legacy-inventory.json
+MATERIALS_ACTIVATE_ENV
+  fi
+  chown root:root /etc/henukit-deploy/materials-activate.env
+  chmod 0600 /etc/henukit-deploy/materials-activate.env
+  if [[ ! -f /etc/henukit-deploy/materials-postgresql.conf ]]; then
+    cat > /etc/henukit-deploy/materials-postgresql.conf <<'MATERIALS_POSTGRESQL'
+[henukit-materials]
+host=configure-before-enable.invalid
+dbname=study
+user=henukit
+password=configure-before-enable
+sslmode=require
+MATERIALS_POSTGRESQL
+  fi
+  chown root:root /etc/henukit-deploy/materials-postgresql.conf
+  chmod 0600 /etc/henukit-deploy/materials-postgresql.conf
+  if [[ ! -f /etc/henukit-deploy/materials-legacy-inventory.json ]]; then
+    printf '%s\n' '{"version":1,"storage_keys":[]}' > /etc/henukit-deploy/materials-legacy-inventory.json
+  fi
+  chown root:root /etc/henukit-deploy/materials-legacy-inventory.json
+  chmod 0600 /etc/henukit-deploy/materials-legacy-inventory.json
   if [[ ! -f /etc/henukit-deploy/materials-webhook-secret ]]; then
     openssl rand -hex 32 > /etc/henukit-deploy/materials-webhook-secret
   fi

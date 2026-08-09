@@ -490,7 +490,7 @@ func TestMaterialsLatestArrivalStoreRejectsManualRetry(t *testing.T) {
 
 func TestMaterialsLatestArrivalStoreRecoveryRejectsCorruptDeliveryBeforeWritingMarker(t *testing.T) {
 	store := newMaterialsLatestArrivalTestStore(t)
-	if err := writeJSONAtomic(store.runningPath(), Event{
+	if err := store.writeJSONAtomic(store.runningPath(), Event{
 		Delivery: "../../outside-marker", Repository: "jry21223/HENU-Final-Review", Ref: "refs/heads/main",
 		After: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ReceivedAt: time.Unix(1, 0).UTC(),
 	}); err != nil {

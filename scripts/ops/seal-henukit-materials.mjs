@@ -495,8 +495,10 @@ function main() {
     const sealedEntries = [
       { path: "sealed-release.json", bytes: receiptBytes.length, sha256: receiptSha256 },
       { path: "inventory.json", bytes: inventoryBytes.length, sha256: digest(inventoryBytes) },
+      { path: "manifest.json", bytes: sourceManifest.length, sha256: manifestSha256 },
       ...treeEntries,
     ].sort((left, right) => compareBytewise(left.path, right.path));
+    writePrivate(join(provisional, "manifest.json"), sourceManifest);
     writePrivate(join(provisional, "inventory.json"), inventoryBytes);
     writePrivate(join(provisional, "sealed-release.json"), receiptBytes);
     fsyncOutputDirectories(provisional);

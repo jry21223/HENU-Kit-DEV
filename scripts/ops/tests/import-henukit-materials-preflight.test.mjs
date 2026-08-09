@@ -151,11 +151,18 @@ function startPostgres(container) {
   waitForPostgres(container);
 }
 
-function writeGeneratedSql(root) {
+function writeGeneratedSql(root, sourceManifest = MANIFEST, legacyKeys = []) {
   const manifest = join(root, "manifest.json");
   const sql = join(root, "import.sql");
-  writeFileSync(manifest, JSON.stringify(MANIFEST));
-  const generated = run(process.execPath, [importer, "--manifest", manifest]);
+  const legacyInventory = join(root, "legacy-inventory.json");
+  writeFileSync(manifest, JSON.stringify(sourceManifest));
+  writeFileSync(legacyInventory, JSON.stringify({ version: 1, storage_keys: legacyKeys }));
+  const generated = run(process.execPath, [
+    importer,
+    "--manifest", manifest,
+    "--release-id", `${"a".repeat(40)}-${"b".repeat(16)}`,
+    "--legacy-inventory", legacyInventory,
+  ]);
   assert.match(generated.stdout, /SET search_path TO pg_catalog, public;/);
   assert.match(generated.stdout, /material_index\.indisvalid/);
   assert.match(generated.stdout, /material_index\.indisready/);
@@ -163,6 +170,64 @@ function writeGeneratedSql(root) {
   writeFileSync(sql, generated.stdout);
   return sql;
 }
+
+integration("an empty reviewed release archives only prior release-owned catalog rows", () => {
+  const root = mkdtempSync(join(tmpdir(), "henukit-materials-empty-release-"));
+  const container = `henukit-materials-empty-release-${process.pid}-${Date.now()}`;
+  try {
+    const sql = writeGeneratedSql(root, {
+      subjects: [{
+        name: "离散数学",
+        assets: [{
+          role: "待复核资料",
+          publicPath: "materials/pending.pdf",
+          reviewStatus: "needs_review",
+          bytes: 1,
+          sha256: "c".repeat(64),
+        }],
+      }],
+    });
+    startPostgres(container);
+    psql(container, `${PUBLIC_SCHEMA_SQL} CREATE UNIQUE INDEX materials_storage_key_active_idx ON public.materials(storage_key) WHERE deleted_at IS NULL;`);
+    psql(container, `
+      INSERT INTO public.materials(storage_key, sha256, status, created_at, updated_at) VALUES
+        ('releases/${"c".repeat(40)}-${"d".repeat(16)}/materials/old.pdf', '${"e".repeat(64)}', 'published', now(), now()),
+        ('manual/checksummed.pdf', '${"f".repeat(64)}', 'published', now(), now());
+    `);
+    const imported = runGeneratedSql(container, sql);
+    assert.equal(imported.status, 0, imported.stderr);
+    assert.equal(scalar(container, `SELECT status FROM public.materials WHERE storage_key LIKE 'releases/%';`), "archived");
+    assert.equal(scalar(container, `SELECT status FROM public.materials WHERE storage_key = 'manual/checksummed.pdf';`), "published");
+  } finally {
+    if (existsSync(root)) rmSync(root, { recursive: true, force: true });
+    spawnSync("docker", ["rm", "-f", container], { encoding: "utf8" });
+  }
+});
+
+integration("the first immutable import archives only legacy keys named by the reviewed manifest", () => {
+  const root = mkdtempSync(join(tmpdir(), "henukit-materials-first-cut-"));
+  const container = `henukit-materials-first-cut-${process.pid}-${Date.now()}`;
+  try {
+    const sql = writeGeneratedSql(root, MANIFEST, ["materials/outline.pdf", "materials/removed.pdf"]);
+    startPostgres(container);
+    psql(container, `${PUBLIC_SCHEMA_SQL} CREATE UNIQUE INDEX materials_storage_key_active_idx ON public.materials(storage_key) WHERE deleted_at IS NULL;`);
+    psql(container, `
+      INSERT INTO public.materials(storage_key, sha256, status, created_at, updated_at) VALUES
+        ('materials/outline.pdf', '${"e".repeat(64)}', 'published', now(), now()),
+        ('materials/removed.pdf', '${"d".repeat(64)}', 'published', now(), now()),
+        ('manual/checksummed.pdf', '${"f".repeat(64)}', 'published', now(), now());
+    `);
+    const imported = runGeneratedSql(container, sql);
+    assert.equal(imported.status, 0, imported.stderr);
+    assert.equal(scalar(container, `SELECT status FROM public.materials WHERE storage_key = 'materials/outline.pdf';`), "archived");
+    assert.equal(scalar(container, `SELECT status FROM public.materials WHERE storage_key = 'materials/removed.pdf';`), "archived");
+    assert.equal(scalar(container, `SELECT status FROM public.materials WHERE storage_key = 'manual/checksummed.pdf';`), "published");
+    assert.equal(scalar(container, `SELECT count(*) FROM public.materials WHERE storage_key LIKE 'releases/%' AND status = 'published';`), "1");
+  } finally {
+    if (existsSync(root)) rmSync(root, { recursive: true, force: true });
+    spawnSync("docker", ["rm", "-f", container], { encoding: "utf8" });
+  }
+});
 
 function runGeneratedSql(container, sql) {
   run("docker", ["cp", sql, `${container}:/tmp/import.sql`]);
@@ -242,7 +307,7 @@ integration("a hostile connection search_path cannot divert DML away from public
 
     const imported = runGeneratedSql(container, sql);
     assert.equal(imported.status, 0, imported.stderr);
-    assert.equal(scalar(container, "SELECT count(*) FROM public.materials WHERE storage_key = 'materials/outline.pdf';"), "1");
+    assert.equal(scalar(container, `SELECT count(*) FROM public.materials WHERE storage_key = 'releases/${"a".repeat(40)}-${"b".repeat(16)}/materials/outline.pdf';`), "1");
     assert.equal(scalar(container, "SELECT count(*) FROM hostile.materials WHERE storage_key = 'materials/outline.pdf';"), "0");
   } finally {
     if (existsSync(root)) rmSync(root, { recursive: true, force: true });

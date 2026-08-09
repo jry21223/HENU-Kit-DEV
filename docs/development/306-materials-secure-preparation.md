@@ -1,13 +1,16 @@
-# #306-A Materials secure preparation executable addendum
+# #306 Materials canonical synchronization executable spec
 
-Source: GitHub issue #306. This addendum freezes only the first vertical slice
-of that issue; it does not replace the issue's later queue, activation,
-rollback, or production-runner work.
+Source: GitHub issue #306. Sections A01, A02, B01, and C0 preserve the reviewed
+prerequisite contracts. D01 below is the canonical end-to-end activation path;
+the earlier statements that activation remained future or inert are superseded.
 
 ## Public seams
 
 1. `node scripts/ops/prepare-henukit-materials.mjs --repository <url> --ref <refs/heads/name> --sha <40-lowercase-hex> --candidate-dir <new-directory>` prepares an unprivileged candidate.
-2. `node scripts/ops/import-henukit-materials.mjs --manifest <path> | psql -v ON_ERROR_STOP=1 -f -` is the legacy derived-catalog import boundary.
+2. `node scripts/ops/import-henukit-materials.mjs --manifest <path> --release-id <approved-id> | psql -v ON_ERROR_STOP=1 -f -` is the derived-catalog import boundary; the privileged activation wrapper supplies the private PostgreSQL service configuration.
+3. `henukit-deploy-webhook materials-serve` is the sole materials receiver.
+4. `henukit-deploy-webhook materials-run` invokes only the fixed privileged orchestrator.
+5. `henukit-materials-activate --release-id <id> --receipt-sha256 <digest>` activates or rolls back to one sealed release.
 
 ## HC-306-A01: prepare one immutable candidate
 
@@ -48,8 +51,7 @@ Acceptance criteria:
 - [ ] No new `services/api` migration is added until that legacy service has a
   reviewed, release-packaged migration owner.
 
-Dependencies: HC-306-A01 is independent; both slices are required before a
-future activation slice.
+Dependencies: HC-306-A01 is independent; both slices are prerequisites for D01.
 
 ## HC-306-B01: queue only the newest accepted candidate preparation
 
@@ -69,24 +71,21 @@ Acceptance criteria:
   Git topology or commit-time inference. A replaced delivery remains
   deduplicated during terminal retention, and restart recovery never requeues
   an old running delivery ahead of a newer waiting one.
-- [ ] The materials receiver and runner use the same unprivileged
-  `henukit-deploy` account. The runner invokes only a fixed wrapper with a
-  configuration-bound source repository, allowed ref, and candidate root; an
+- [ ] The materials receiver remains unprivileged. The root queue runner invokes
+  only the fixed orchestrator; preparation is run as `henukit-deploy`, and an
   event cannot select commands, paths, public roots, or database targets.
 - [ ] Tests prove generic FIFO remains unchanged; materials A/B/C coalescing,
   active A plus B/C, duplicate delivery, recovery, and concurrent queue access
   retain the one-running/one-waiting invariant.
-- [ ] Tests prove the materials runner passes only fixed candidate-preparation
-  inputs and the unit templates run as `henukit-deploy` without root, Docker,
-  psql, public-tree, or Study-catalog write access.
+- [ ] Tests prove the receiver is `henukit-deploy`, the runner is a confined
+  root unit, and its fixed chain alone may cross the seal/activation boundary.
 - [ ] CI runs the affected Go, Node, and systemd-template checks.
 
 Dependencies: HC-306-A01.
 
-Out of scope: enabling or installing a service, production packaging or
-deployment, public-tree activation, Nginx switching, Study catalog import,
-database migration, root runtime processes, Console or Library ownership, and
-Git-topology ordering.
+B01 alone does not authorize activation; D01 supplies the reviewed privileged
+boundary. Database migration, Console ownership, and Git-topology inference
+remain out of scope.
 
 ## HC-306-C0: seal one source-derived release without activation
 
@@ -96,13 +95,14 @@ is not a root commit path and does not change any public or database state.
 
 Public seam:
 
-1. `henukit-materials-seal --attempt .attempt.<10-alphanumeric-characters>`
+1. `henukit-materials-seal --attempt .attempt.<10-alphanumeric-characters> --sha <40-lowercase-hex>`
    accepts only the constrained B01 attempt locator, which is audit correlation
-   rather than a filesystem locator or release input. The fixed root-owned
-   configuration supplies a pre-existing sealed root, source repository, full
-   source branch ref, and exact lowercase SHA. Its successful output is a
-   canonical sealed release ID and receipt digest. The attempt token is kept in
-   a separate root-owned audit record and cannot affect that canonical identity.
+   rather than a filesystem locator or release input, plus the exact SHA from
+   the authenticated queued event. The fixed root-owned configuration supplies
+   a pre-existing sealed root, source repository, and full source branch ref.
+   Its successful output is a canonical sealed release ID and receipt digest.
+   The attempt token is kept in a separate root-owned audit record and cannot
+   affect that canonical identity.
 
 Acceptance criteria:
 
@@ -112,8 +112,8 @@ Acceptance criteria:
   root, every resolved sealed-root ancestor, existing release, receipt, and
   inventory must also be non-symlinked, root-owned, and not writable by group
   or other before reuse.
-- [ ] It independently resolves the configured source ref to its configured
-  lowercase 40-character SHA, uses a new root-owned detached checkout, and
+- [ ] It independently resolves the configured source ref to the accepted
+  lowercase 40-character event SHA, uses a new root-owned detached checkout, and
   validates the fixed-source manifest plus every reviewed raw asset's path,
   byte count, SHA-256, and duplicate boundary with a deterministic UTF-8
   bytewise tree digest.
@@ -130,9 +130,9 @@ Acceptance criteria:
   idempotent across different attempt tokens; each accepted token appends only
   a root-owned audit correlation record. A different receipt for that identity
   is rejected.
-- [ ] B01 receiver/runner units and the fixed preparation wrapper do not invoke
-  sealing or reference a database/public-tree target. The seal template is not
-  installed, enabled, packaged for activation, or connected to an approval.
+- [ ] The preparation wrapper does not invoke sealing or reference a
+  database/public-tree target. Only D01's fixed root orchestrator may invoke
+  the seal wrapper, and sealing itself cannot publish or write the catalog.
 - [ ] Tests use temporary local Git fixtures and disposable local Linux/Docker
   only where ownership behavior requires it; they never contact a material
   source repository, a production host, or a production database.
@@ -142,3 +142,23 @@ Dependencies: HC-306-A01 and HC-306-B01.
 Out of scope: Study/catalog writes or migrations, public-tree/Nginx changes,
 approval or activation, service installation/enablement, root production
 actions, rollback, Console or Library ownership, and Git-topology ordering.
+
+## HC-306-D01: canonical privileged activation and rollback
+
+- `/webhooks/materials`, `henukit-materials-webhook.service`, its credential
+  secret, latest-arrival state directory, path unit, and root runner are the
+  only supported materials delivery path. Retired sync scripts are forbidden.
+- The root runner validates repository/ref against root-owned configuration and
+  validates the accepted full SHA from the authenticated queue event, runs A01
+  as `henukit-deploy`, performs C0 sealing as root, and activates only the
+  returned release ID plus receipt digest.
+- Activation holds the fixed lock, creates `.maintenance`, writes the durable
+  journal, durably installs the release, switches the internal recovery pointer,
+  imports immutable release-prefixed catalog keys transactionally, writes
+  `ACTIVE_RELEASE`, then removes journal and fence.
+- `database_running` is uncertain and remains fenced. Retry exactly the same
+  approved release; never delete the journal or fence manually.
+  `database_committed` recovery finalizes without a second catalog transaction.
+- Explicit rollback invokes the same activation wrapper with a retained prior
+  sealed release ID and matching receipt digest. This forward reconciliation
+  replaces both public tree and catalog; manual symlink or SQL rollback is invalid.

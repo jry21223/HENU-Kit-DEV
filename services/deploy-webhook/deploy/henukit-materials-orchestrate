@@ -1,0 +1,119 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 077
+
+export PATH="/usr/bin:/bin"
+readonly PATH
+unset CDPATH ENV BASH_ENV
+
+readonly webhook_config="/etc/henukit-deploy/materials-webhook.env"
+readonly seal_config="/etc/henukit-deploy/materials-seal.env"
+readonly config_owner="0"
+readonly runtime_owner="0"
+readonly prepare_wrapper="/usr/local/libexec/henukit/henukit-materials-prepare"
+readonly seal_wrapper="/usr/local/libexec/henukit/henukit-materials-seal"
+readonly activate_wrapper="/usr/local/libexec/henukit/henukit-materials-activate"
+readonly runuser_bin="/usr/sbin/runuser"
+
+fail() {
+  echo "henukit-materials-orchestrate: $*" >&2
+  exit 64
+}
+
+owner_and_mode() {
+  if /usr/bin/stat -c '%u:%a' -- "$1" >/dev/null 2>&1; then
+    /usr/bin/stat -c '%u:%a' -- "$1"
+  else
+    /usr/bin/stat -f '%u:%Lp' -- "$1"
+  fi
+}
+
+require_root_config() {
+  local path="$1"
+  local label="$2"
+  [[ ! -L "$path" && -f "$path" ]] || fail "$label must be a regular file"
+  local owner_mode actual_owner file_mode
+  owner_mode="$(owner_and_mode "$path")"
+  actual_owner="${owner_mode%%:*}"
+  file_mode="${owner_mode#*:}"
+  [[ "$actual_owner" == "$config_owner" ]] || fail "$label must be owned by root"
+  [[ "$file_mode" =~ ^[0-7]{3,4}$ ]] || fail "$label mode is invalid"
+  (( (8#$file_mode & 8#022) == 0 )) || fail "$label must not be writable by group or other"
+}
+
+require_fixed_command() {
+  [[ ! -L "$1" && -f "$1" && -x "$1" ]] || fail "$2 is unavailable"
+}
+
+[[ "$(/usr/bin/id -u)" == "$runtime_owner" ]] || fail "must run as root"
+(( $# == 8 )) || fail "expected --sha SHA --delivery ID --repository OWNER/NAME --ref REF"
+[[ "$1" == "--sha" && "$3" == "--delivery" && "$5" == "--repository" && "$7" == "--ref" ]] || fail "expected --sha SHA --delivery ID --repository OWNER/NAME --ref REF"
+readonly event_sha="$2"
+readonly delivery="$4"
+readonly event_repository="$6"
+readonly event_ref="$8"
+[[ "$event_sha" =~ ^[a-f0-9]{40}$ ]] || fail "event SHA is invalid"
+[[ "$delivery" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,127}$ ]] || fail "delivery ID is invalid"
+[[ "$event_repository" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail "event repository is invalid"
+[[ "$event_ref" =~ ^refs/heads/[A-Za-z0-9._/-]+$ && "$event_ref" != *..* && "$event_ref" != *//* ]] || fail "event ref is invalid"
+
+require_root_config "$webhook_config" "webhook configuration"
+require_root_config "$seal_config" "sealing configuration"
+require_fixed_command "$prepare_wrapper" "fixed preparation wrapper"
+require_fixed_command "$seal_wrapper" "fixed sealing wrapper"
+require_fixed_command "$activate_wrapper" "fixed activation wrapper"
+require_fixed_command "$runuser_bin" "fixed runuser command"
+
+configured_repository=""
+configured_branch=""
+prepared_source_repository=""
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line%$'\r'}"
+  [[ -z "$line" || "$line" == \#* ]] && continue
+  key="${line%%=*}"
+  value="${line#*=}"
+  case "$key" in
+    HENUKIT_WEBHOOK_REPOSITORY) configured_repository="$value" ;;
+    HENUKIT_WEBHOOK_BRANCH) configured_branch="$value" ;;
+    HENUKIT_MATERIALS_SOURCE_REPOSITORY) prepared_source_repository="$value" ;;
+    HENUKIT_WEBHOOK_LISTEN_ADDR|HENUKIT_WEBHOOK_PATH|HENUKIT_WEBHOOK_STATE_DIR|HENUKIT_WEBHOOK_PROCESSED_RETENTION|HENUKIT_WEBHOOK_MAX_BODY_BYTES|HENUKIT_MATERIALS_CANDIDATE_ROOT|HENUKIT_MATERIALS_PREPARATION_TIMEOUT) ;;
+    *) fail "webhook configuration contains an unsupported key" ;;
+  esac
+done < "$webhook_config"
+
+sealed_source_repository=""
+sealed_source_ref=""
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line%$'\r'}"
+  [[ -z "$line" || "$line" == \#* ]] && continue
+  key="${line%%=*}"
+  value="${line#*=}"
+  case "$key" in
+    HENUKIT_MATERIALS_SEALED_ROOT) ;;
+    HENUKIT_MATERIALS_SOURCE_REPOSITORY) sealed_source_repository="$value" ;;
+    HENUKIT_MATERIALS_SOURCE_REF) sealed_source_ref="$value" ;;
+    *) fail "sealing configuration contains an unsupported key" ;;
+  esac
+done < "$seal_config"
+
+[[ "$event_repository" == "$configured_repository" ]] || fail "event repository does not match root configuration"
+[[ "$event_ref" == "refs/heads/$configured_branch" ]] || fail "event ref does not match root configuration"
+[[ "$prepared_source_repository" == "$sealed_source_repository" ]] || fail "prepare and seal source repositories differ"
+[[ "$event_ref" == "$sealed_source_ref" ]] || fail "event ref does not match root-approved source ref"
+
+prepare_output="$($runuser_bin -u henukit-deploy -- "$prepare_wrapper" \
+  --sha "$event_sha" --delivery "$delivery" --repository "$event_repository" --ref "$event_ref")"
+attempt_line="${prepare_output##*$'\n'}"
+[[ "$attempt_line" =~ ^attempt_locator=(\.attempt\.[A-Za-z0-9]{10})$ ]] || fail "preparation did not return a valid attempt locator"
+readonly attempt="${BASH_REMATCH[1]}"
+
+seal_output="$("$seal_wrapper" --attempt "$attempt" --sha "$event_sha")"
+seal_line="${seal_output##*$'\n'}"
+readonly seal_result_pattern='^\{"attempt_locator":"([.A-Za-z0-9]+)","release_id":"([a-f0-9]{40}-[a-f0-9]{16})","receipt_sha256":"([a-f0-9]{64})"\}$'
+if [[ ! "$seal_line" =~ $seal_result_pattern ]] || [[ "${BASH_REMATCH[1]:-}" != "$attempt" ]]; then
+  fail "sealing did not return a valid release identity"
+fi
+readonly release_id="${BASH_REMATCH[2]}"
+readonly receipt_sha256="${BASH_REMATCH[3]}"
+
+exec "$activate_wrapper" --release-id "$release_id" --receipt-sha256 "$receipt_sha256"

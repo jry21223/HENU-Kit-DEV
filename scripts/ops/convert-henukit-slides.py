@@ -13,7 +13,7 @@
   {"slides": [{"title": str, "blocks": [str, ...]}, ...]}
 
 依赖: python3-pptx;处理 .ppt 还需要 libreoffice-impress。
-依赖缺失时按退出码 2/3 结束,由调用方决定是否继续(不阻塞文件同步);
+依赖缺失时按退出码 2/3 结束；发布激活必须失败关闭，不能跳过派生产物;
 镜像文件本身永远不会被修改。
 
 幂等:输出已存在且不早于源文件时跳过,避免每次同步都重转。
@@ -146,6 +146,10 @@ def main() -> None:
                 converted += 1
             except Exception as error:  # noqa: BLE001 - 单个文件失败不中断整体
                 failed.append(f"{public_path}: {error}")
+
+    # Scratch files are never publication artifacts. Remove converted legacy
+    # decks before the release tree is validated and made immutable.
+    shutil.rmtree(scratch, ignore_errors=True)
 
     print(
         f"convert-henukit-slides: converted {converted}, skipped {skipped}, "

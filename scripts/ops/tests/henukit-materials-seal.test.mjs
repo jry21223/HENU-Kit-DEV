@@ -114,14 +114,13 @@ function stageSeal(root, configPath, { renameBarrier } = {}) {
   return stagedTemplate;
 }
 
-function writeConfig(path, setup, sha = setup.sha) {
+function writeConfig(path, setup) {
   writeFileSync(
     path,
     [
       `HENUKIT_MATERIALS_SEALED_ROOT=${setup.sealedRoot}`,
       `HENUKIT_MATERIALS_SOURCE_REPOSITORY=${setup.repository}`,
       "HENUKIT_MATERIALS_SOURCE_REF=refs/heads/main",
-      `HENUKIT_MATERIALS_SOURCE_SHA=${sha}`,
       "",
     ].join("\n"),
     { mode: 0o600 },
@@ -132,15 +131,15 @@ function releaseID(setup, sha = setup.sha) {
   return `${sha}-${sha256(readFileSync(join(setup.repository, "manifest.json"))).slice(0, 16)}`;
 }
 
-function runSeal(setup, configPath, { attempt = setup.attempt, env = {} } = {}) {
-  return spawnSync(stageSeal(setup.root, configPath), ["--attempt", attempt], {
+function runSeal(setup, configPath, { attempt = setup.attempt, sha = setup.sha, env = {} } = {}) {
+  return spawnSync(stageSeal(setup.root, configPath), ["--attempt", attempt, "--sha", sha], {
     encoding: "utf8",
     env: { ...process.env, ...env },
   });
 }
 
-function startSeal(setup, configPath, { attempt = setup.attempt, renameBarrier } = {}) {
-  return spawn(stageSeal(setup.root, configPath, { renameBarrier }), ["--attempt", attempt], {
+function startSeal(setup, configPath, { attempt = setup.attempt, sha = setup.sha, renameBarrier } = {}) {
+  return spawn(stageSeal(setup.root, configPath, { renameBarrier }), ["--attempt", attempt, "--sha", sha], {
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -193,6 +192,7 @@ test("seals source-derived raw assets through the constrained attempt CLI", () =
     const release = join(setup.sealedRoot, output.release_id);
     const inventory = JSON.parse(readFileSync(join(release, "inventory.json"), "utf8"));
     const receipt = JSON.parse(readFileSync(join(release, "sealed-release.json"), "utf8"));
+    assert.deepEqual(readFileSync(join(release, "manifest.json")), readFileSync(join(setup.repository, "manifest.json")));
     assert.deepEqual(readFileSync(join(release, "public", "materials", "outline.pdf")), setup.bytes);
     assert.equal(Object.hasOwn(receipt, "attempt_locator"), false);
     assert.equal(Object.hasOwn(inventory, "attempt_locator"), false);
@@ -429,7 +429,7 @@ test("a writable sealed root is rejected before any provisional receipt is creat
   }
 });
 
-test("a source ref advance fails closed against the root-configured exact SHA", () => {
+test("a source ref advance fails closed against the accepted event SHA", () => {
   const setup = fixture();
   try {
     const configPath = join(setup.root, "materials-seal.env");
@@ -458,9 +458,9 @@ test("a duplicate reviewed source manifest is rejected before a sealed receipt e
     writeFileSync(manifestPath, JSON.stringify(manifest));
     const updatedSHA = commit(setup.repository);
     const configPath = join(setup.root, "materials-seal.env");
-    writeConfig(configPath, setup, updatedSHA);
+    writeConfig(configPath, setup);
 
-    const result = runSeal(setup, configPath);
+    const result = runSeal(setup, configPath, { sha: updatedSHA });
 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /duplicate reviewed asset path/);
@@ -496,11 +496,11 @@ test("canonical inventory order is UTF-8 bytewise and does not depend on caller 
     );
     const updatedSHA = commit(setup.repository);
     const configPath = join(setup.root, "materials-seal.env");
-    writeConfig(configPath, setup, updatedSHA);
+    writeConfig(configPath, setup);
 
-    const first = runSeal(setup, configPath, { env: { LC_ALL: "C" } });
+    const first = runSeal(setup, configPath, { sha: updatedSHA, env: { LC_ALL: "C" } });
     assert.equal(first.status, 0, first.stderr);
-    const second = runSeal(setup, configPath, { env: { LC_ALL: "zh_CN.UTF-8" } });
+    const second = runSeal(setup, configPath, { sha: updatedSHA, env: { LC_ALL: "zh_CN.UTF-8" } });
     assert.equal(second.status, 0, second.stderr);
     assert.deepEqual(JSON.parse(second.stdout), JSON.parse(first.stdout));
     const output = JSON.parse(first.stdout);
@@ -535,10 +535,10 @@ test("source slide decks remain raw assets and derived Slides are explicitly def
     );
     const updatedSHA = commit(setup.repository);
     const configPath = join(setup.root, "materials-seal.env");
-    writeConfig(configPath, setup, updatedSHA);
+    writeConfig(configPath, setup);
     writeFileSync(join(setup.candidate, "untrusted-slide.json"), "{not JSON");
 
-    const result = runSeal(setup, configPath);
+    const result = runSeal(setup, configPath, { sha: updatedSHA });
 
     assert.equal(result.status, 0, result.stderr);
     const output = JSON.parse(result.stdout);

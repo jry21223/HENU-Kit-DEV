@@ -7,7 +7,9 @@
  * 管道给 psql:
  *
  *   node import-henukit-materials.mjs --manifest manifest.json \
- *     --slides-dir ./slides | psql "$STUDY_DATABASE_URL" -v ON_ERROR_STOP=1 -f -
+ *     --slides-dir ./slides --release-id <approved-release-id> | \
+ *     PGSERVICEFILE=/etc/henukit-deploy/materials-postgresql.conf \
+ *     PGSERVICE=henukit-materials psql -v ON_ERROR_STOP=1 -f -
  *
  * 归一化规则:
  *   - 只导入 role 不以 "待复核" 开头的资产,与镜像脚本保持同一条线;
@@ -18,7 +20,7 @@
  *   - 同一 storage_key 的资产幂等 upsert(局部唯一索引,deleted_at IS NULL);
  *   - 幻灯片:课件PPT 资产若 --slides-dir 下有 <storage_key>.json,写入
  *     materials.slides(jsonb);
- *   - 不再出现在 manifest 中的镜像资料(有 sha256 的行)置为 archived。
+ *   - 受审 legacy inventory 与不再出现在新 release 中的镜像资料置为 archived。
  *
  * 依赖仅 Node 内置模块;数据库写入由调用方负责(psql / 驱动脚本)。
  */
@@ -60,6 +62,8 @@ const args = process.argv.slice(2);
 const options = {
   manifest: process.env.HENUKIT_MATERIALS_MANIFEST || "",
   slidesDir: "",
+  releaseId: "",
+  legacyInventory: "",
   school: DEFAULT_SCHOOL,
   college: DEFAULT_COLLEGE,
   major: DEFAULT_MAJOR,
@@ -71,6 +75,8 @@ function usage() {
 
   --manifest PATH   HENU-Final-Review manifest.json (or HENUKIT_MATERIALS_MANIFEST)
   --slides-dir DIR  幻灯片 JSON 目录(可选,课件PPT 资产按 <storage_key>.json 取)
+  --release-id ID   已批准的不可变发布 ID（写入公开 storage_key 时必需）
+  --legacy-inventory PATH  首切前审核的旧镜像 storage_key inventory
   --school NAME     规范学校名(默认: ${DEFAULT_SCHOOL})
   --college NAME    规范学院名(默认: ${DEFAULT_COLLEGE})
   --major NAME      规范专业名(默认: ${DEFAULT_MAJOR})
@@ -86,14 +92,14 @@ for (let i = 0; i < args.length; i += 1) {
     usage();
     process.exit(0);
   }
-  if (arg === "--manifest" || arg === "--slides-dir" || arg === "--school" || arg === "--college" || arg === "--major" || arg === "--grade") {
+  if (arg === "--manifest" || arg === "--slides-dir" || arg === "--release-id" || arg === "--legacy-inventory" || arg === "--school" || arg === "--college" || arg === "--major" || arg === "--grade") {
     const value = args[i + 1];
     if (value === undefined) {
       console.error(`missing value for ${arg}`);
       usage();
       process.exit(2);
     }
-    const key = arg === "--slides-dir" ? "slidesDir" : arg.slice(2);
+    const key = arg === "--slides-dir" ? "slidesDir" : arg === "--release-id" ? "releaseId" : arg === "--legacy-inventory" ? "legacyInventory" : arg.slice(2);
     options[key] = value;
     i += 1;
     continue;
@@ -107,6 +113,32 @@ if (!options.manifest) {
   console.error("--manifest is required");
   usage();
   process.exit(2);
+}
+
+if (!/^[a-f0-9]{40}-[a-f0-9]{16}$/.test(options.releaseId)) {
+  console.error("release ID must be an approved immutable release identifier");
+  process.exit(2);
+}
+if (!options.legacyInventory) {
+  console.error("--legacy-inventory is required");
+  process.exit(2);
+}
+let legacyInventory;
+try {
+  legacyInventory = JSON.parse(readFileSync(options.legacyInventory, "utf8"));
+} catch {
+  console.error("legacy inventory is not readable JSON");
+  process.exit(2);
+}
+if (legacyInventory?.version !== 1 || !Array.isArray(legacyInventory.storage_keys)) {
+  throw new Error("legacy inventory must contain version 1 storage_keys");
+}
+const legacyStorageKeys = [...new Set(legacyInventory.storage_keys)];
+if (legacyStorageKeys.length !== legacyInventory.storage_keys.length || legacyStorageKeys.some((key) => {
+  if (typeof key !== "string" || !key || key.startsWith("releases/") || key.includes("\\") || key.includes("\0")) return true;
+  return key.split("/").some((segment) => !segment || segment === "." || segment === ".." || segment.startsWith("."));
+})) {
+  throw new Error("legacy inventory contains an unsafe or duplicate storage key");
 }
 
 const sqlEscape = (value) => String(value).replace(/'/g, "''");
@@ -246,7 +278,8 @@ function main() {
         type: ROLE_TYPE[role] || "note",
         title: normalizeTitle(subject.name, role, asset.title || basename(publicPath)),
         description: (asset.sourceNote || subject.note || "").slice(0, 1000),
-        storageKey: publicPath,
+        storageKey: `releases/${options.releaseId}/${publicPath}`,
+        legacyStorageKey: publicPath,
         fileName: basename(publicPath),
         fileSize: asset.bytes,
         sha256: asset.sha256,
@@ -295,13 +328,23 @@ function main() {
   }
   lines.push("");
 
-  if (rows.length > 0) {
-    const keys = rows.map((row) => q(row.storageKey)).join(", ");
-    lines.push("-- 不再出现在 manifest 中的镜像资料(有 sha256 标记的行)下线");
+  const reviewedLegacyKeys = [...new Set([...legacyStorageKeys, ...rows.map((row) => row.legacyStorageKey)])];
+  if (reviewedLegacyKeys.length > 0) {
+    const legacyKeys = reviewedLegacyKeys.map(q).join(", ");
+    lines.push("-- 首切迁移：只归档受审 legacy inventory 与本次 manifest 精确列出的旧裸路径");
     lines.push(
-      `UPDATE materials SET status = 'archived', updated_at = now() WHERE status = 'published' AND deleted_at IS NULL AND sha256 IS NOT NULL AND storage_key NOT IN (${keys});`,
+      `UPDATE materials SET status = 'archived', updated_at = now() WHERE status = 'published' AND deleted_at IS NULL AND storage_key !~ '^releases/[a-f0-9]{40}-[a-f0-9]{16}/' AND storage_key IN (${legacyKeys});`,
     );
   }
+  lines.push("");
+
+  const retainedKeys = rows.length > 0
+    ? ` AND storage_key NOT IN (${rows.map((row) => q(row.storageKey)).join(", ")})`
+    : "";
+  lines.push("-- 只下线由不可变 release storage_key 明确标记、且不属于本次 release 的镜像资料");
+  lines.push(
+    `UPDATE materials SET status = 'archived', updated_at = now() WHERE status = 'published' AND deleted_at IS NULL AND storage_key ~ '^releases/[a-f0-9]{40}-[a-f0-9]{16}/'${retainedKeys};`,
+  );
   lines.push("");
   lines.push("COMMIT;");
   lines.push("");

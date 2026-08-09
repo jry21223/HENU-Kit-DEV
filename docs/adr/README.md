@@ -28,6 +28,7 @@
 22. [`0022-materials-candidate-preparation.md`](./0022-materials-candidate-preparation.md) — 固定 SHA、非 root 的资料候选准备与派生目录预检边界。
 23. [`0023-materials-latest-arrival-queue.md`](./0023-materials-latest-arrival-queue.md) — 资料候选准备的实例隔离、最近验收事件队列与同一无特权身份边界。
 24. [`0024-materials-sealed-release-boundary.md`](./0024-materials-sealed-release-boundary.md) — root-owned、非激活的资料来源封存与可审计 release identity 边界。
+25. [`0025-materials-atomic-activation.md`](./0025-materials-atomic-activation.md) — 单一 webhook、特权 runner、维护围栏、恢复 journal 与显式回滚边界。
 
 ## 使用规则
 

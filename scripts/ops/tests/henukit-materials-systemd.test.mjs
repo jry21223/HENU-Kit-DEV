@@ -11,7 +11,7 @@ function read(relativePath) {
   return readFileSync(join(deployDir, relativePath), "utf8");
 }
 
-test("materials unit templates keep receiver and candidate consumer unprivileged and confined", () => {
+test("materials unit templates keep the receiver unprivileged and confine the privileged fixed-flow runner", () => {
   const receiver = read("systemd/henukit-materials-webhook.service");
   const runner = read("systemd/henukit-materials-runner.service");
   const path = read("systemd/henukit-materials-webhook.path");
@@ -20,17 +20,14 @@ test("materials unit templates keep receiver and candidate consumer unprivileged
   assert.match(receiver, /^User=henukit-deploy$/m);
   assert.match(receiver, /^Group=henukit-deploy$/m);
   assert.match(receiver, /^ExecStart=\/usr\/local\/bin\/henukit-deploy-webhook materials-serve$/m);
-  assert.match(runner, /^User=henukit-deploy$/m);
-  assert.match(runner, /^Group=henukit-deploy$/m);
-  assert.match(runner, /^Environment=HOME=\/var\/lib\/henukit-deploy$/m);
+  assert.match(runner, /^User=root$/m);
+  assert.match(runner, /^Group=root$/m);
+  assert.match(runner, /^Environment=HOME=\/root$/m);
   assert.match(runner, /^ExecStart=\/usr\/local\/bin\/henukit-deploy-webhook materials-run$/m);
-  assert.match(runner, /^StateDirectory=henukit-materials-webhook$/m);
-  assert.match(runner, /^StateDirectoryMode=0750$/m);
+  assert.doesNotMatch(runner, /^StateDirectory=/m, "root runner must not take ownership away from the receiver");
   assert.match(runner, /^NoNewPrivileges=yes$/m);
   assert.match(runner, /^ProtectSystem=strict$/m);
-  assert.match(runner, /^ReadWritePaths=\/var\/lib\/henukit-materials-webhook$/m);
-  assert.doesNotMatch(runner, /^(?:User|Group)=root$/m);
-  assert.doesNotMatch(runner, /(?:henukit-materials-seal|docker|psql|\/opt\/henukit-materials|HENUKIT_MATERIALS_DATABASE_URL|HENUKIT_MATERIALS_PUBLIC_ROOT)/i);
+  assert.match(runner, /^ReadWritePaths=\/var\/lib\/henukit-materials-webhook \/opt\/henukit-materials$/m);
   assert.doesNotMatch(receiver, /(?:henukit-materials-seal|docker|psql|\/opt\/henukit-materials|HENUKIT_MATERIALS_DATABASE_URL|HENUKIT_MATERIALS_PUBLIC_ROOT)/i);
   assert.doesNotMatch(preparationWrapper, /(?:henukit-materials-seal|docker|psql|\/opt\/henukit-materials|HENUKIT_MATERIALS_DATABASE_URL|HENUKIT_MATERIALS_PUBLIC_ROOT)/i);
   assert.match(path, /^PathExists=\/var\/lib\/henukit-materials-webhook\/queue\/latest\.json$/m);

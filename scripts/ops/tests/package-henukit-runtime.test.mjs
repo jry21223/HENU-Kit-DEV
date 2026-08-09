@@ -16,7 +16,7 @@ test("the materials mount stays an explicit bind when runtime packaging disables
   const compose = readFileSync(join(repoRoot, "docker-compose.henukit.yml"), "utf8");
   assert.match(
     compose,
-    /- type: bind\n\s+source: \$\{HENUKIT_MATERIALS_ROOT:-\/opt\/henukit-materials\/public\}\n\s+target: \/srv\/materials\n\s+read_only: true/,
+    /- type: bind\n\s+source: \$\{HENUKIT_MATERIALS_PUBLIC_ROOT:-\/opt\/henukit-materials\/public\}\n\s+target: \/srv\/materials\n\s+read_only: true/,
   );
 });
 
