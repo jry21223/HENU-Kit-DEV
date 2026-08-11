@@ -29,6 +29,7 @@
 23. [`0023-materials-latest-arrival-queue.md`](./0023-materials-latest-arrival-queue.md) — 资料候选准备的实例隔离、最近验收事件队列与同一无特权身份边界。
 24. [`0024-materials-sealed-release-boundary.md`](./0024-materials-sealed-release-boundary.md) — root-owned、非激活的资料来源封存与可审计 release identity 边界。
 25. [`0025-materials-atomic-activation.md`](./0025-materials-atomic-activation.md) — 单一 webhook、特权 runner、维护围栏、恢复 journal 与显式回滚边界。
+26. [`0026-materials-oss-canary-publication.md`](./0026-materials-oss-canary-publication.md) — 单份封存审核资料到私有 OSS、可重放且不激活的 canary 发布边界。
 
 ## 使用规则
 
