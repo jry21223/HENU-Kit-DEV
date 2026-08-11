@@ -106,11 +106,19 @@ SET question_version_id=CASE
     END,
     updated_at=GREATEST(quizcraft_learning_state.updated_at,EXCLUDED.updated_at);
 
+-- name: CountLearningState :one
+SELECT count(*)::bigint
+FROM quizcraft_learning_state
+WHERE user_id=sqlc.arg(user_id)
+  AND (sqlc.narg(wrong)::boolean IS NULL OR wrong=sqlc.narg(wrong)::boolean);
+
 -- name: ListLearningState :many
 SELECT bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,updated_at
 FROM quizcraft_learning_state
-WHERE user_id=$1
-ORDER BY updated_at DESC;
+WHERE user_id=sqlc.arg(user_id)
+  AND (sqlc.narg(wrong)::boolean IS NULL OR wrong=sqlc.narg(wrong)::boolean)
+ORDER BY updated_at DESC,bank_id,question_id
+LIMIT sqlc.arg(page_size)::bigint OFFSET sqlc.arg(page_offset)::bigint;
 
 -- name: GetLearningStateReconciliation :one
 WITH aggregates AS (

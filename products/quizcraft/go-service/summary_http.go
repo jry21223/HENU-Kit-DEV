@@ -47,6 +47,9 @@ func portalPracticeCommandIdentityFromContext(ctx context.Context) (portalPracti
 
 func (service *practiceHTTP) authenticateSignedGET(requirement serviceAuthRequirement, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if requirement.actorBound {
+			writer.Header().Set("X-Request-Id", serviceRequestIDFromHeader(request))
+		}
 		if request.Method != http.MethodGet || request.ContentLength != 0 {
 			writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" accepts signed GET requests without a body")
 			return
@@ -75,9 +78,9 @@ func (service *practiceHTTP) authenticateSignedGET(requirement serviceAuthRequir
 		digest := sha256.Sum256(nil)
 		canonicalParts := []string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
 		if requirement.actorBound {
-			// Only personal stats opts into this branch. The strict parser keeps
-			// malformed and guest actors out before any fact query, while the
-			// original header text remains the sixth canonical HMAC line.
+			// Actor-bound Portal reads opt into this branch. The strict parser
+			// keeps malformed and guest actors out before any fact query, while
+			// the original header text remains the sixth canonical HMAC line.
 			if _, err := portalActorUserID(request); err != nil {
 				writeError(writer, http.StatusUnauthorized, "invalid_service_auth", "QuizCraft "+requirement.label+" actor is invalid")
 				return
@@ -128,12 +131,12 @@ func (service *practiceHTTP) authenticatePortalRead(next http.Handler) http.Hand
 	}, next)
 }
 
-func (service *practiceHTTP) authenticatePortalPersonalStats(next http.Handler) http.Handler {
+func (service *practiceHTTP) authenticatePortalActorRead(next http.Handler) http.Handler {
 	return service.authenticateSignedGET(serviceAuthRequirement{
 		clientID:           service.catalogClientID,
 		keys:               service.catalogKeys,
-		unavailableCode:    "catalog_auth_unavailable",
-		label:              "personal statistics",
+		unavailableCode:    "portal_actor_read_auth_unavailable",
+		label:              "Portal actor read",
 		requiredPermission: "portal.practice.read",
 		actorBound:         true,
 	}, next)

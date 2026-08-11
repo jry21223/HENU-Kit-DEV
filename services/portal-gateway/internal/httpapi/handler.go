@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -224,6 +225,7 @@ func (h *Handler) Router() chi.Router {
 	// This private V2 route is never proxied to legacy Portal API data. Before
 	// #166 enables the V2 client it returns an honest unavailable response.
 	r.Get("/api/v1/practice/stats", h.personalPracticeStats)
+	r.Get("/api/v1/learning-state", h.learningState)
 	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/notices", h.portalNotices)
@@ -799,7 +801,7 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 	stats, err := h.quizCraft.PersonalStats(r.Context(), value.UserID, requestIDOf(w, r))
 	if err != nil {
 		switch {
-		case errors.Is(err, practice.ErrStatsUnauthorized):
+		case errors.Is(err, practice.ErrActorReadUnauthorized):
 			writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 		default:
 			writeError(w, r, http.StatusServiceUnavailable, "practice statistics are temporarily unavailable", "学习统计暂时不可用，请稍后再试")
@@ -820,6 +822,111 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 			Accuracy: stats.Data.Accuracy, StreakDays: stats.Data.StreakDays, Mastery: mastery,
 		},
 	})
+}
+
+// learningState is the only browser-visible persistent wrong-question read.
+// It verifies that Platform Core's current authorization actor is the same
+// actor sealed into the Portal Session before signing that UUID to QuizCraft.
+func (h *Handler) learningState(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录后查看跨设备同步的错题")
+		return
+	}
+	page, pageSize, wrong, err := parseLearningStatePagination(r)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid learning state pagination", "分页参数无效，请刷新后重试")
+		return
+	}
+	requestID := requestIDOf(w, r)
+	decision, err := h.platform.CheckProductPermissionWithRequestID(r.Context(), value.ExchangeToken, practice.PortalReadPermission, "quizcraft", requestID)
+	if err != nil {
+		h.writePracticeReadPermissionError(w, r, err)
+		return
+	}
+	if decision.ActorUserID != value.UserID {
+		writeError(w, r, http.StatusServiceUnavailable, "practice authorization is invalid", "错题本暂时不可用，请稍后再试")
+		return
+	}
+	if h.quizCraft == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "learning state is not enabled", "错题本暂时不可用，请稍后再试")
+		return
+	}
+	state, err := h.quizCraft.LearningStatePageWithOptions(r.Context(), value.UserID, requestID, practice.LearningStatePageOptions{Page: page, PageSize: pageSize, Wrong: wrong})
+	if err != nil {
+		if errors.Is(err, practice.ErrInvalidActorRead) {
+			writeError(w, r, http.StatusBadGateway, "learning state response is invalid", "错题本暂时不可用，请稍后再试")
+			return
+		}
+		writeError(w, r, http.StatusServiceUnavailable, "learning state is temporarily unavailable", "错题本暂时不可用，请稍后再试")
+		return
+	}
+	items := make([]contract.LearningStateItem, 0, len(state.Data.Items))
+	for _, item := range state.Data.Items {
+		updatedAt, err := time.Parse(time.RFC3339Nano, item.UpdatedAt)
+		if err != nil {
+			writeError(w, r, http.StatusBadGateway, "learning state response is invalid", "错题本暂时不可用，请稍后再试")
+			return
+		}
+		items = append(items, contract.LearningStateItem{
+			BankID: item.BankID, QuestionID: item.QuestionID, QuestionVersionID: item.QuestionVersionID,
+			Wrong: item.Wrong, AttemptCount: item.AttemptCount, CorrectCount: item.CorrectCount, UpdatedAt: updatedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, contract.LearningStateEnvelope{
+		RequestID: state.RequestID,
+		Data: contract.LearningStatePage{
+			Items: items,
+			Pagination: contract.LearningStatePagination{
+				Page: state.Data.Pagination.Page, PageSize: state.Data.Pagination.PageSize,
+				Total: state.Data.Pagination.Total, TotalPages: state.Data.Pagination.TotalPages,
+			},
+		},
+	})
+}
+
+func parseLearningStatePagination(r *http.Request) (int64, int64, *bool, error) {
+	values, queryErr := url.ParseQuery(r.URL.RawQuery)
+	if queryErr != nil {
+		return 0, 0, nil, errors.New("invalid learning state query encoding")
+	}
+	for name := range values {
+		if name != "page" && name != "page_size" && name != "wrong" {
+			return 0, 0, nil, errors.New("unknown learning state query parameter")
+		}
+		if len(values[name]) != 1 {
+			return 0, 0, nil, errors.New("duplicate learning state query parameter")
+		}
+	}
+	parse := func(name string, fallback, maximum int64) (int64, error) {
+		raw := values.Get(name)
+		if raw == "" {
+			return fallback, nil
+		}
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value < 1 || maximum > 0 && value > maximum {
+			return 0, errors.New("invalid learning state query parameter")
+		}
+		return value, nil
+	}
+	page, err := parse("page", 1, 0)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	pageSize, err := parse("page_size", 20, 100)
+	if err != nil || page-1 > math.MaxInt64/pageSize {
+		return 0, 0, nil, errors.New("invalid learning state page offset")
+	}
+	var wrong *bool
+	if raw, ok := values["wrong"]; ok {
+		if raw[0] != "true" && raw[0] != "false" {
+			return 0, 0, nil, errors.New("invalid learning state wrong filter")
+		}
+		parsed := raw[0] == "true"
+		wrong = &parsed
+	}
+	return page, pageSize, wrong, nil
 }
 
 // getPracticeFeedbackStatus reads one signed-in user's persisted correction

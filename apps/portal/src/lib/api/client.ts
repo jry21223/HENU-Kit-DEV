@@ -40,6 +40,7 @@ import type {
   FoodPostListResponse,
   FoodVenuesResponse,
   LibraryCoursesResponse,
+  LearningStateEnvelope,
   MaterialDetailResponse,
   MaterialListResponse,
   PortalNoticeFeed,
@@ -477,6 +478,36 @@ export async function fetchQuizCraftOverallRanking(
  */
 export async function fetchPersonalPracticeStats(): Promise<PersonalPracticeStatsEnvelope> {
   return apiFetchRequired<PersonalPracticeStatsEnvelope>("/api/v1/practice/stats");
+}
+
+/** Reads only Core-owned wrong marks and counts through Portal Gateway. */
+export async function fetchLearningState(
+  page = 1,
+  pageSize = 20,
+  wrong?: boolean
+): Promise<LearningStateEnvelope> {
+  if (
+    !Number.isSafeInteger(page) ||
+    page < 1 ||
+    !Number.isSafeInteger(pageSize) ||
+    pageSize < 1 ||
+    pageSize > 100 ||
+    (wrong !== undefined && typeof wrong !== "boolean")
+  ) {
+    throw new PortalApiError("Invalid learning-state pagination", {
+      code: "PORTAL_INVALID_LEARNING_STATE_PAGINATION",
+      path: "/api/v1/learning-state",
+    });
+  }
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  if (wrong !== undefined) query.set("wrong", String(wrong));
+  return apiFetchRequired<LearningStateEnvelope>(
+    `/api/v1/learning-state?${query.toString()}`,
+    { cache: "no-store" }
+  );
 }
 
 export async function fetchPracticeSchools(): Promise<SchoolListResponse> {

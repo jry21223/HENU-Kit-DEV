@@ -5,6 +5,10 @@
  */
 
 export type {
+  LearningStateEnvelope,
+  LearningStateItem,
+  LearningStatePage,
+  LearningStatePagination,
   MasterySubject,
   PersonalPracticeStats,
   PersonalPracticeStatsEnvelope,

@@ -3,7 +3,7 @@ package contract
 
 import "time"
 
-const PortalSessionSourceSHA256 = "4cc511563e8f674e29520348697d9ce3720ff716903fd9c8604c4c762634b9ca"
+const PortalSessionSourceSHA256 = "26f6e9cc77c77380f880e4bf2a9f869b7a342259c4d65155db2f32413898b873"
 
 type PortalSession struct {
 	DisplayName *string   `json:"display_name,omitempty"`
@@ -30,6 +30,33 @@ type PersonalPracticeStats struct {
 type PersonalPracticeStatsEnvelope struct {
 	RequestID string                `json:"request_id"`
 	Data      PersonalPracticeStats `json:"data"`
+}
+
+type LearningStateItem struct {
+	BankID            string    `json:"bank_id"`
+	QuestionID        string    `json:"question_id"`
+	QuestionVersionID string    `json:"question_version_id"`
+	Wrong             bool      `json:"wrong"`
+	AttemptCount      int64     `json:"attempt_count"`
+	CorrectCount      int64     `json:"correct_count"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type LearningStateEnvelope struct {
+	RequestID string            `json:"request_id"`
+	Data      LearningStatePage `json:"data"`
+}
+
+type LearningStatePage struct {
+	Items      []LearningStateItem     `json:"items"`
+	Pagination LearningStatePagination `json:"pagination"`
+}
+
+type LearningStatePagination struct {
+	Page       int64 `json:"page"`
+	PageSize   int64 `json:"page_size"`
+	Total      int64 `json:"total"`
+	TotalPages int64 `json:"total_pages"`
 }
 
 type PortalNoticeSource struct {

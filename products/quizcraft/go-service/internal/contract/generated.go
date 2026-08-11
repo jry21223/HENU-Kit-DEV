@@ -1,4 +1,4 @@
-// Code generated from quizcraft.yaml (SHA256 7d4f5f3e720e85aa03ed0c0d3839e91367186600865d7e00472a237f421caecf); DO NOT EDIT.
+// Code generated from quizcraft.yaml (SHA256 2715c4751d8de7c415879210259bf119db84f56850ba54725db9af00e299e6dc); DO NOT EDIT.
 package contract
 
 const (
@@ -11,6 +11,7 @@ const (
 	ListFeedbackStatusesRoute = "/api/v1/feedback"
 	OverallRankingRoute       = "/api/v1/rankings/overall"
 	PersonalStatsRoute        = "/api/v1/stats"
+	PortalLearningStateRoute  = "/api/v1/portal/practice/learning-state"
 	SubmitAnswerRoute         = "/api/v1/practice/sessions/{session_id}/answers"
 	SubmitPortalAnswerRoute   = "/api/v1/portal/practice/sessions/{session_id}/answers"
 	WorkshopImportRoute       = "/api/v1/workshop/banks/{bank_id}/imports"

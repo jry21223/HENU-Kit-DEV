@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,13 +44,13 @@ var (
 	ErrRankingUnavailable  = ErrPortalReadUnavailable
 	ErrInvalidRanking      = ErrInvalidPortalRead
 
-	ErrStatsUnauthorized = errors.New("QuizCraft statistics actor is invalid")
-	ErrStatsUnavailable  = errors.New("QuizCraft statistics are unavailable")
-	ErrInvalidStats      = errors.New("QuizCraft returned invalid personal statistics")
+	ErrActorReadUnauthorized = errors.New("QuizCraft Portal actor is invalid")
+	ErrActorReadUnavailable  = errors.New("QuizCraft actor-bound read is unavailable")
+	ErrInvalidActorRead      = errors.New("QuizCraft returned an invalid actor-bound read response")
 )
 
-// Client is an internal, read-only client for QuizCraft catalog and ranking
-// facts. It is not registered on Portal Gateway's public router until #166.
+// Client is Portal Gateway's internal read-only client for QuizCraft public
+// facts and signed-in actor-bound state.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
@@ -62,10 +64,18 @@ func NewClient(baseURL, clientID, clientSecret, keyID string) (*Client, error) {
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || clientID == "" || len(clientSecret) < 32 || keyID == "" {
 		return nil, errors.New("invalid QuizCraft Portal read client configuration")
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
 	return &Client{
-		baseURL:    strings.TrimRight(parsed.String(), "/"),
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		signer:     serviceauth.NewSigner(clientID, clientSecret, keyID),
+		baseURL: strings.TrimRight(parsed.String(), "/"),
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		signer: serviceauth.NewSigner(clientID, clientSecret, keyID),
 	}, nil
 }
 
@@ -211,11 +221,11 @@ func validateCatalog(result BankListEnvelope) error {
 // no legacy or mock-shaped response is ever accepted as a fallback.
 func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID string) (PersonalPracticeStatsEnvelope, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" {
-		return PersonalPracticeStatsEnvelope{}, ErrStatsUnavailable
+		return PersonalPracticeStatsEnvelope{}, ErrActorReadUnavailable
 	}
 	actorUserID = strings.TrimSpace(actorUserID)
 	if !validUUID(actorUserID) {
-		return PersonalPracticeStatsEnvelope{}, ErrStatsUnauthorized
+		return PersonalPracticeStatsEnvelope{}, ErrActorReadUnauthorized
 	}
 	resp, err := c.actorBoundRead(ctx, GetPersonalPracticeStatsPath, actorUserID, requestID, PortalReadPermission)
 	if err != nil {
@@ -228,14 +238,14 @@ func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID strin
 		Data      json.RawMessage `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&raw); err != nil {
-		return PersonalPracticeStatsEnvelope{}, fmt.Errorf("stats decode: %w", ErrInvalidStats)
+		return PersonalPracticeStatsEnvelope{}, fmt.Errorf("stats decode: %w", ErrInvalidActorRead)
 	}
 	if strings.TrimSpace(raw.RequestID) == "" || len(raw.Data) == 0 || string(raw.Data) == "null" {
-		return PersonalPracticeStatsEnvelope{}, ErrInvalidStats
+		return PersonalPracticeStatsEnvelope{}, ErrInvalidActorRead
 	}
 	var result PersonalPracticeStatsEnvelope
 	if err := json.Unmarshal(raw.Data, &result.Data); err != nil {
-		return PersonalPracticeStatsEnvelope{}, ErrInvalidStats
+		return PersonalPracticeStatsEnvelope{}, ErrInvalidActorRead
 	}
 	result.RequestID = raw.RequestID
 	if err := validatePersonalStats(result); err != nil {
@@ -244,13 +254,124 @@ func (c *Client) PersonalStats(ctx context.Context, actorUserID, requestID strin
 	return result, nil
 }
 
+// LearningState reads one signed-in Portal user's Core-derived wrong marks
+// and attempt counts. It uses the internal actor-bound route; the cookie-only
+// QuizCraft browser route is intentionally not a supported Gateway seam.
+func (c *Client) LearningState(ctx context.Context, actorUserID, requestID string) (LearningStateEnvelope, error) {
+	return c.LearningStatePage(ctx, actorUserID, requestID, 1, 20)
+}
+
+// LearningStatePageOptions describes a bounded owner query. Wrong is optional
+// so existing Gateway consumers retain the complete collection semantics.
+type LearningStatePageOptions struct {
+	Page     int64
+	PageSize int64
+	Wrong    *bool
+}
+
+// LearningStatePage reads one documented, bounded page of learning-state
+// facts. Page values are signed as part of the request URI.
+func (c *Client) LearningStatePage(ctx context.Context, actorUserID, requestID string, page, pageSize int64) (LearningStateEnvelope, error) {
+	return c.LearningStatePageWithOptions(ctx, actorUserID, requestID, LearningStatePageOptions{Page: page, PageSize: pageSize})
+}
+
+// LearningStatePageWithOptions reads a filtered page and signs every query
+// parameter as part of the actor-bound request URI.
+func (c *Client) LearningStatePageWithOptions(ctx context.Context, actorUserID, requestID string, options LearningStatePageOptions) (LearningStateEnvelope, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
+		return LearningStateEnvelope{}, ErrActorReadUnauthorized
+	}
+	page, pageSize := options.Page, options.PageSize
+	if page < 1 || pageSize < 1 || pageSize > 100 || page-1 > math.MaxInt64/pageSize {
+		return LearningStateEnvelope{}, ErrInvalidActorRead
+	}
+	query := url.Values{}
+	query.Set("page", strconv.FormatInt(page, 10))
+	query.Set("page_size", strconv.FormatInt(pageSize, 10))
+	if options.Wrong != nil {
+		query.Set("wrong", strconv.FormatBool(*options.Wrong))
+	}
+	path := GetPortalLearningStatePath + "?" + query.Encode()
+	resp, err := c.actorBoundRead(ctx, path, actorUserID, requestID, PortalReadPermission)
+	if err != nil {
+		return LearningStateEnvelope{}, err
+	}
+	defer resp.Body.Close()
+	if resp.Header.Get("X-Request-Id") != requestID {
+		return LearningStateEnvelope{}, fmt.Errorf("learning state response request id header: %w", ErrInvalidActorRead)
+	}
+
+	var result LearningStateEnvelope
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return LearningStateEnvelope{}, fmt.Errorf("learning state decode: %w", ErrInvalidActorRead)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return LearningStateEnvelope{}, fmt.Errorf("learning state decode: %w", ErrInvalidActorRead)
+	}
+	if result.RequestID != requestID {
+		return LearningStateEnvelope{}, fmt.Errorf("learning state response request id body: %w", ErrInvalidActorRead)
+	}
+	if err := validateLearningState(result, page, pageSize, options.Wrong); err != nil {
+		return LearningStateEnvelope{}, err
+	}
+	return result, nil
+}
+
+func validateLearningState(result LearningStateEnvelope, expectedPage, expectedPageSize int64, expectedWrong *bool) error {
+	page := result.Data
+	if strings.TrimSpace(result.RequestID) == "" || page.Items == nil || page.Pagination.Page != expectedPage || page.Pagination.PageSize != expectedPageSize || page.Pagination.Total < 0 {
+		return fmt.Errorf("learning state envelope: %w", ErrInvalidActorRead)
+	}
+	wantTotalPages := int64(0)
+	if page.Pagination.Total > 0 {
+		wantTotalPages = 1 + (page.Pagination.Total-1)/expectedPageSize
+	}
+	if page.Pagination.TotalPages != wantTotalPages || int64(len(page.Items)) > expectedPageSize {
+		return fmt.Errorf("learning state pagination: %w", ErrInvalidActorRead)
+	}
+	if expectedPage-1 > math.MaxInt64/expectedPageSize {
+		return fmt.Errorf("learning state page offset: %w", ErrInvalidActorRead)
+	}
+	offset := (expectedPage - 1) * expectedPageSize
+	wantItems := int64(0)
+	if offset < page.Pagination.Total {
+		wantItems = page.Pagination.Total - offset
+		if wantItems > expectedPageSize {
+			wantItems = expectedPageSize
+		}
+	}
+	if int64(len(page.Items)) != wantItems {
+		return fmt.Errorf("learning state page length: %w", ErrInvalidActorRead)
+	}
+	seen := make(map[string]struct{}, len(page.Items))
+	for _, item := range page.Items {
+		if expectedWrong != nil && item.Wrong != *expectedWrong {
+			return fmt.Errorf("learning state wrong filter: %w", ErrInvalidActorRead)
+		}
+		if !validUUID(item.BankID) || !validUUID(item.QuestionID) || !validUUID(item.QuestionVersionID) || item.AttemptCount < 1 || item.CorrectCount < 0 || item.CorrectCount > item.AttemptCount {
+			return fmt.Errorf("learning state item: %w", ErrInvalidActorRead)
+		}
+		if _, err := time.Parse(time.RFC3339Nano, item.UpdatedAt); err != nil {
+			return fmt.Errorf("learning state timestamp: %w", ErrInvalidActorRead)
+		}
+		key := item.BankID + "\x00" + item.QuestionID
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("duplicate learning state item: %w", ErrInvalidActorRead)
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
 // FeedbackStatus reads one signed-in user's persisted correction processing
 // status. Like PersonalStats it is actor-bound: Core rejects the read unless
 // the actor UUID is the sixth HMAC canonical line, so a feedback id from
 // another account is indistinguishable from a missing one.
 func (c *Client) FeedbackStatus(ctx context.Context, actorUserID, requestID, feedbackID string) (FeedbackStatusEnvelope, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" || !validUUID(feedbackID) {
-		return FeedbackStatusEnvelope{}, ErrStatsUnauthorized
+		return FeedbackStatusEnvelope{}, ErrActorReadUnauthorized
 	}
 	path := strings.Replace(GetPortalPracticeFeedbackStatusPath, "{feedback_id}", url.PathEscape(feedbackID), 1)
 	resp, err := c.actorBoundRead(ctx, path, actorUserID, requestID, PortalReadPermission)
@@ -263,10 +384,10 @@ func (c *Client) FeedbackStatus(ctx context.Context, actorUserID, requestID, fee
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
-		return FeedbackStatusEnvelope{}, fmt.Errorf("feedback status decode: %w", ErrInvalidStats)
+		return FeedbackStatusEnvelope{}, fmt.Errorf("feedback status decode: %w", ErrInvalidActorRead)
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return FeedbackStatusEnvelope{}, fmt.Errorf("feedback status decode: %w", ErrInvalidStats)
+		return FeedbackStatusEnvelope{}, fmt.Errorf("feedback status decode: %w", ErrInvalidActorRead)
 	}
 	if err := validateFeedbackStatus(result, feedbackID); err != nil {
 		return FeedbackStatusEnvelope{}, err
@@ -278,7 +399,7 @@ func (c *Client) FeedbackStatus(ctx context.Context, actorUserID, requestID, fee
 // through the six-part actor-bound read contract.
 func (c *Client) FavoritesOverview(ctx context.Context, actorUserID, requestID string) (FavoritesOverviewEnvelope, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
-		return FavoritesOverviewEnvelope{}, ErrStatsUnauthorized
+		return FavoritesOverviewEnvelope{}, ErrActorReadUnauthorized
 	}
 	resp, err := c.actorBoundRead(ctx, GetPortalFavoritesOverviewPath, actorUserID, requestID, PortalReadPermission)
 	if err != nil {
@@ -289,17 +410,17 @@ func (c *Client) FavoritesOverview(ctx context.Context, actorUserID, requestID s
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
-		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview decode: %w", ErrInvalidStats)
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview decode: %w", ErrInvalidActorRead)
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview decode: %w", ErrInvalidStats)
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview decode: %w", ErrInvalidActorRead)
 	}
 	if strings.TrimSpace(result.RequestID) == "" {
-		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview request id: %w", ErrInvalidStats)
+		return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview request id: %w", ErrInvalidActorRead)
 	}
 	for _, folder := range result.Data {
 		if !validUUID(folder.BankID) || strings.TrimSpace(folder.BankName) == "" || folder.AvailableCount < 0 || folder.UnavailableCount < 0 {
-			return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview folder: %w", ErrInvalidStats)
+			return FavoritesOverviewEnvelope{}, fmt.Errorf("favorites overview folder: %w", ErrInvalidActorRead)
 		}
 	}
 	return result, nil
@@ -308,7 +429,7 @@ func (c *Client) FavoritesOverview(ctx context.Context, actorUserID, requestID s
 // FavoriteList reads one bank's favorite references for the signed-in actor.
 func (c *Client) FavoriteList(ctx context.Context, actorUserID, requestID, bankID string) (FavoriteListEnvelope, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" || !validUUID(bankID) {
-		return FavoriteListEnvelope{}, ErrStatsUnauthorized
+		return FavoriteListEnvelope{}, ErrActorReadUnauthorized
 	}
 	path := strings.Replace(ListPortalFavoriteQuestionsPath, "{bank_id}", url.PathEscape(bankID), 1)
 	resp, err := c.actorBoundRead(ctx, path, actorUserID, requestID, PortalReadPermission)
@@ -320,48 +441,48 @@ func (c *Client) FavoriteList(ctx context.Context, actorUserID, requestID, bankI
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
-		return FavoriteListEnvelope{}, fmt.Errorf("favorites list decode: %w", ErrInvalidStats)
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list decode: %w", ErrInvalidActorRead)
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return FavoriteListEnvelope{}, fmt.Errorf("favorites list decode: %w", ErrInvalidStats)
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list decode: %w", ErrInvalidActorRead)
 	}
 	if strings.TrimSpace(result.RequestID) == "" {
-		return FavoriteListEnvelope{}, fmt.Errorf("favorites list request id: %w", ErrInvalidStats)
+		return FavoriteListEnvelope{}, fmt.Errorf("favorites list request id: %w", ErrInvalidActorRead)
 	}
 	for _, item := range result.Data {
 		if !validUUID(item.BankID) || item.BankID != bankID || !validUUID(item.QuestionID) {
-			return FavoriteListEnvelope{}, fmt.Errorf("favorites list item: %w", ErrInvalidStats)
+			return FavoriteListEnvelope{}, fmt.Errorf("favorites list item: %w", ErrInvalidActorRead)
 		}
 		if item.QuestionVersionID != "" && !validUUID(item.QuestionVersionID) {
-			return FavoriteListEnvelope{}, fmt.Errorf("favorites list item version: %w", ErrInvalidStats)
+			return FavoriteListEnvelope{}, fmt.Errorf("favorites list item version: %w", ErrInvalidActorRead)
 		}
 	}
 	return result, nil
 }
 
 // actorBoundRead performs the six-part actor-bound signed GET shared by every
-// signed-in practice read (personal stats, feedback status, favorites). The
+// signed-in practice read (statistics, learning state, feedback, favorites). The
 // actor UUID is the sixth HMAC canonical line, so Core rejects a request
 // unless it is a valid UUID. Returns the response with the body still open;
 // the caller decodes and validates the typed envelope.
 func (c *Client) actorBoundRead(ctx context.Context, path, actorUserID, requestID, permissionCode string) (*http.Response, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || !validUUID(actorUserID) || strings.TrimSpace(requestID) == "" {
-		return nil, ErrStatsUnauthorized
+		return nil, ErrActorReadUnauthorized
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
-		return nil, ErrStatsUnavailable
+		return nil, ErrActorReadUnavailable
 	}
 	req.Header.Set("X-Request-Id", requestID)
 	req.Header.Set("X-Permission-Code", permissionCode)
 	req.Header.Set("X-Scope-Kind", "product")
 	req.Header.Set("X-Product-Code", "quizcraft")
 	if err := c.signer.SignWithActor(req, actorUserID); err != nil {
-		return nil, fmt.Errorf("portal actor read %s sign: %w", path, ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal actor read %s sign: %w", path, ErrActorReadUnavailable)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("portal actor read %s request: %w", path, ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal actor read %s request: %w", path, ErrActorReadUnavailable)
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -371,18 +492,18 @@ func (c *Client) actorBoundRead(ctx context.Context, path, actorUserID, requestI
 		// Portal Gateway has already checked the browser's session and live
 		// permission. A Core 401/403 here is an internal service-auth failure,
 		// never evidence that the browser should be asked to sign in again.
-		return nil, fmt.Errorf("portal actor read %s service authentication: %w", path, ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal actor read %s service authentication: %w", path, ErrActorReadUnavailable)
 	default:
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("portal actor read %s status %d: %w", path, resp.StatusCode, ErrStatsUnavailable)
+		return nil, fmt.Errorf("portal actor read %s status %d: %w", path, resp.StatusCode, ErrActorReadUnavailable)
 	}
 }
 
 func validateFeedbackStatus(result FeedbackStatusEnvelope, expectedFeedbackID string) error {
 	status := result.Data
 	if strings.TrimSpace(result.RequestID) == "" || !validUUID(status.FeedbackID) || status.FeedbackID != expectedFeedbackID || !validUUID(status.BankID) || !validUUID(status.QuestionID) || !validUUID(status.QuestionVersionID) || !validFeedbackCategory(status.Category) || !validFeedbackStatus(status.Status) || strings.TrimSpace(status.CreatedAt) == "" || strings.TrimSpace(status.UpdatedAt) == "" {
-		return ErrInvalidStats
+		return ErrInvalidActorRead
 	}
 	return nil
 }
@@ -408,15 +529,15 @@ func validFeedbackStatus(value string) bool {
 func validatePersonalStats(result PersonalPracticeStatsEnvelope) error {
 	stats := result.Data
 	if strings.TrimSpace(result.RequestID) == "" || stats.TotalAnswers < 0 || stats.CorrectAnswers < 0 || stats.CorrectAnswers > stats.TotalAnswers || stats.Accuracy < 0 || stats.Accuracy > 100 || stats.Accuracy != roundedPercent(stats.CorrectAnswers, stats.TotalAnswers) || stats.StreakDays < 0 || stats.Mastery == nil {
-		return ErrInvalidStats
+		return ErrInvalidActorRead
 	}
 	seenBanks := make(map[string]struct{}, len(stats.Mastery))
 	for _, subject := range stats.Mastery {
 		if !validUUID(subject.BankID) || strings.TrimSpace(subject.Label) == "" || subject.Value < 0 || subject.Value > 100 || subject.TotalQuestions < 0 || subject.CorrectQuestions < 0 || subject.CorrectQuestions > subject.TotalQuestions || subject.Value != roundedPercent(subject.CorrectQuestions, subject.TotalQuestions) {
-			return ErrInvalidStats
+			return ErrInvalidActorRead
 		}
 		if _, exists := seenBanks[subject.BankID]; exists {
-			return ErrInvalidStats
+			return ErrInvalidActorRead
 		}
 		seenBanks[subject.BankID] = struct{}{}
 	}

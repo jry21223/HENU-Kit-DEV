@@ -110,6 +110,25 @@ func (q *Queries) CountFavoritesForBank(ctx context.Context, arg CountFavoritesF
 	return column_1, err
 }
 
+const countLearningState = `-- name: CountLearningState :one
+SELECT count(*)::bigint
+FROM quizcraft_learning_state
+WHERE user_id=$1
+  AND ($2::boolean IS NULL OR wrong=$2::boolean)
+`
+
+type CountLearningStateParams struct {
+	UserID uuid.UUID   `json:"user_id"`
+	Wrong  pgtype.Bool `json:"wrong"`
+}
+
+func (q *Queries) CountLearningState(ctx context.Context, arg CountLearningStateParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countLearningState, arg.UserID, arg.Wrong)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createPracticeAttempt = `-- name: CreatePracticeAttempt :one
 INSERT INTO quizcraft_practice_attempts(id,session_id,bank_id,bank_version_id,question_id,question_version_id,user_id,submitted_answer,correct,expected_answer,analysis,response_body)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
@@ -754,8 +773,17 @@ const listLearningState = `-- name: ListLearningState :many
 SELECT bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,updated_at
 FROM quizcraft_learning_state
 WHERE user_id=$1
-ORDER BY updated_at DESC
+  AND ($2::boolean IS NULL OR wrong=$2::boolean)
+ORDER BY updated_at DESC,bank_id,question_id
+LIMIT $4::bigint OFFSET $3::bigint
 `
+
+type ListLearningStateParams struct {
+	UserID     uuid.UUID   `json:"user_id"`
+	Wrong      pgtype.Bool `json:"wrong"`
+	PageOffset int64       `json:"page_offset"`
+	PageSize   int64       `json:"page_size"`
+}
 
 type ListLearningStateRow struct {
 	BankID            uuid.UUID          `json:"bank_id"`
@@ -767,8 +795,13 @@ type ListLearningStateRow struct {
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 }
 
-func (q *Queries) ListLearningState(ctx context.Context, userID uuid.UUID) ([]ListLearningStateRow, error) {
-	rows, err := q.db.Query(ctx, listLearningState, userID)
+func (q *Queries) ListLearningState(ctx context.Context, arg ListLearningStateParams) ([]ListLearningStateRow, error) {
+	rows, err := q.db.Query(ctx, listLearningState,
+		arg.UserID,
+		arg.Wrong,
+		arg.PageOffset,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
