@@ -20,6 +20,7 @@ var required = []operation{
 	{"noticeHealth", "GET", "/healthz", "HealthRoute"},
 	{"getNoticeConsoleSummary", "GET", "/api/v1/console-summary", "ConsoleSummaryRoute"},
 	{"listConsoleNotices", "GET", "/api/v1/console-notices", "SnapshotRoute"},
+	{"listPortalNotices", "GET", "/api/v1/portal/notices", "PortalFeedRoute"},
 	{"createNoticeSource", "POST", "/api/v1/sources", "SourceCreateRoute"},
 	{"createNoticeVersion", "POST", "/api/v1/sources/{source_id}/versions", "VersionCreateRoute"},
 	{"reviewNoticeVersion", "POST", "/api/v1/versions/{version_id}/reviews", "ReviewRoute"},

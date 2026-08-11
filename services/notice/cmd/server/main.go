@@ -21,8 +21,11 @@ func main() {
 	clientID := os.Getenv("NOTICE_SERVICE_CLIENT_ID")
 	keyID := os.Getenv("NOTICE_SERVICE_KEY_ID")
 	secret := os.Getenv("NOTICE_SERVICE_SECRET")
+	portalClientID := os.Getenv("NOTICE_PORTAL_CLIENT_ID")
+	portalKeyID := os.Getenv("NOTICE_PORTAL_KEY_ID")
+	portalSecret := os.Getenv("NOTICE_PORTAL_SECRET")
 	redisURL := os.Getenv("NOTICE_REDIS_URL")
-	if databaseURL == "" || redisURL == "" || clientID == "" || keyID == "" || secret == "" {
+	if databaseURL == "" || redisURL == "" || clientID == "" || keyID == "" || secret == "" || portalClientID == "" || portalKeyID == "" || portalSecret == "" {
 		log.Fatal("Notice database and service credentials are required")
 	}
 	pool, err := pgxpool.New(context.Background(), databaseURL)
@@ -36,7 +39,7 @@ func main() {
 	}
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
-	handler, err := notice.New(notice.Config{Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret}})
+	handler, err := notice.New(notice.Config{Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret}, PortalClientID: portalClientID, PortalKeys: map[string]string{portalKeyID: portalSecret}})
 	if err != nil {
 		log.Fatal(err)
 	}

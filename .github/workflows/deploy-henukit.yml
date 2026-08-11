@@ -65,6 +65,8 @@ jobs:
         run: pnpm --filter @henukit/portal exec playwright install --with-deps chromium
       - name: Verify responsive Portal layout
         run: pnpm --filter @henukit/portal test:e2e:responsive
+      - name: Verify Portal notice feed behavior
+        run: pnpm --filter @henukit/portal test:e2e:notice
       - name: Verify enabled QuizCraft V2 stats and rankings
         run: pnpm --filter @henukit/portal test:e2e:stats
       - name: Verify Food ranking, detail, and recommendation behavior

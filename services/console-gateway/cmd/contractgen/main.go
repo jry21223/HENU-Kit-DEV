@@ -24,6 +24,7 @@ type schema struct {
 	Ref                  string            `yaml:"$ref"`
 	Type                 string            `yaml:"type"`
 	Format               string            `yaml:"format"`
+	Description          string            `yaml:"description"`
 	Const                any               `yaml:"const"`
 	Enum                 []string          `yaml:"enum"`
 	MinItems             int               `yaml:"minItems"`
@@ -82,6 +83,9 @@ func main() {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
+	}
+	if err := validateNoticeURLContracts(spec.Components.Schemas); err != nil {
+		fail(err)
 	}
 	sessionSchema, ok := spec.Components.Schemas["ConsoleSession"]
 	if !ok || sessionSchema.Example == nil || sessionSchema.InvalidExample == nil {
@@ -160,6 +164,31 @@ func main() {
 	}
 	write(*goOutput, formatted)
 	write(*tsOutput, []byte(renderTypeScript(spec, routes, digest)))
+}
+
+// validateNoticeURLContracts keeps Console's write and snapshot boundary in
+// lockstep with Notice Owner's public-source URL policy. IRI retains allowed
+// UTF-8 paths/query text, while the explicit 2 KiB maximum is compatible with
+// Owner's decoded UTF-8 byte guard.
+func validateNoticeURLContracts(schemas map[string]schema) error {
+	for _, expected := range []struct {
+		schemaName   string
+		propertyName string
+	}{
+		{schemaName: "CreateNoticeSourceRequest", propertyName: "canonical_url"},
+		{schemaName: "CreateNoticeVersionRequest", propertyName: "source_url"},
+		{schemaName: "NoticeVersion", propertyName: "source_url"},
+	} {
+		value, ok := schemas[expected.schemaName]
+		if !ok {
+			return fmt.Errorf("missing %s schema", expected.schemaName)
+		}
+		property, ok := value.Properties[expected.propertyName]
+		if !ok || property.Type != "string" || property.Format != "iri" || property.Pattern != "^https://" || property.MaxLength != 2048 || strings.TrimSpace(property.Description) == "" {
+			return fmt.Errorf("%s.%s must be a documented bounded HTTPS IRI", expected.schemaName, expected.propertyName)
+		}
+	}
+	return nil
 }
 
 func operationRoutes(spec document) map[string]string {

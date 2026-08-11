@@ -815,7 +815,12 @@ components:
       properties:
         code: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$' }
         name: { type: string, minLength: 1, maxLength: 120 }
-        canonical_url: { type: string, format: uri, pattern: '^https://' }
+        canonical_url:
+          type: string
+          format: iri
+          pattern: '^https://'
+          maxLength: 2048
+          description: Public HTTPS canonical IRI for this Notice-owner-managed source whitelist. maxLength gives clients a 2,048-character upper bound; Owner also rejects a decoded URL over 2,048 UTF-8 bytes before persistence. Its hostname must be a valid ASCII public-DNS name, while UTF-8 path and query text remain supported.
     CreateNoticeVersionRequest:
       type: object
       additionalProperties: false
@@ -823,7 +828,12 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         body: { type: string, minLength: 1, maxLength: 100000 }
-        source_url: { type: string, format: uri, pattern: '^https://' }
+        source_url:
+          type: string
+          format: iri
+          pattern: '^https://'
+          maxLength: 2048
+          description: Public HTTPS IRI on the same normalized valid ASCII public-DNS origin and numeric port as the selected source's canonical URL. maxLength gives clients a 2,048-character upper bound; Owner also rejects a decoded URL over 2,048 UTF-8 bytes before persistence, while retaining UTF-8 path and query text.
         source_published_at: { type: string, format: date-time }
     NoticeReviewRequest:
       type: object
@@ -878,7 +888,12 @@ components:
         version: { type: integer, minimum: 1 }
         title: { type: string }
         body: { type: string }
-        source_url: { type: string, format: uri }
+        source_url:
+          type: string
+          format: iri
+          pattern: '^https://'
+          maxLength: 2048
+          description: Public HTTPS source IRI recorded for this immutable version. maxLength gives clients a 2,048-character upper bound; Owner admits newly written URLs only when their decoded form is at most 2,048 UTF-8 bytes and has a valid ASCII public-DNS hostname, while UTF-8 path and query text remain supported.
         content_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
         state: { type: string, enum: [pending_review, approved, rejected, distributed] }
         revision: { type: integer, minimum: 1 }

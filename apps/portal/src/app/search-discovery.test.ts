@@ -68,6 +68,7 @@ describe("Portal search discovery routes", () => {
       "/food/publish",
       "/library/read/:path*",
       "/library/shelf",
+      "/notice",
       "/practice/favorites/:path*",
       "/practice/quiz",
       "/practice/stats",

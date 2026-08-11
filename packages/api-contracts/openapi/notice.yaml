@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Notice API
-  version: 0.1.0
+  version: 0.2.0
   description: Notice-owned sources, immutable content versions, review, audience, and distribution lifecycle.
   license: { name: MIT, url: https://opensource.org/license/mit }
 servers:
@@ -35,6 +35,21 @@ paths:
               schema: { $ref: "#/components/schemas/NoticeSnapshotEnvelope" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+  /api/v1/portal/notices:
+    get:
+      summary: List the fixed all-students in-app Notice feed for Portal
+      description: The dedicated Portal-read caller signs the verified actor as the sixth HMAC canonical component. The route has no caller-selected Notice permission or scope, query string, or request body.
+      operationId: listPortalNotices
+      parameters: [{ $ref: "#/components/parameters/Actor" }]
+      responses:
+        "200":
+          description: Bounded public Notice feed. `distributed` records lifecycle distribution acceptance and does not claim external delivery completion. Owner considers only the 200 newest ordered database candidates after its lifecycle and audience SQL predicates; records outside that fixed window are not promised. Within the window, source-origin-invalid and over-budget candidates are skipped without consuming the final 50-item cap; the exact JSON envelope remains at most 5 MiB.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalNoticeFeedEnvelope" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /api/v1/console-summary:
     get:
       summary: Read the bounded Notice module summary
@@ -129,7 +144,7 @@ components:
     keyId: { type: apiKey, in: header, name: X-Key-Id, description: "Selects the active or retiring HMAC key." }
     timestamp: { type: apiKey, in: header, name: X-Timestamp, description: "Unix seconds within the five-minute acceptance window." }
     nonce: { type: apiKey, in: header, name: X-Nonce, description: "Base64url-encoded 24-byte nonce atomically consumed in Redis." }
-    signature: { type: apiKey, in: header, name: X-Signature, description: "Base64url HMAC-SHA256 over method, path and query, timestamp, nonce, and body SHA256." }
+    signature: { type: apiKey, in: header, name: X-Signature, description: "Base64url HMAC-SHA256 over method, path and query, timestamp, nonce, and body SHA256. The Portal feed additionally includes X-Actor-User-Id as a sixth canonical component." }
   parameters:
     Actor: { name: X-Actor-User-Id, in: header, required: true, schema: { type: string, format: uuid } }
     Permission: { name: X-Permission-Code, in: header, required: true, schema: { type: string, enum: [notice.read, notice.manage, notice.review, notice.distribute] } }
@@ -158,7 +173,12 @@ components:
       properties:
         code: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$' }
         name: { type: string, minLength: 1, maxLength: 120 }
-        canonical_url: { type: string, format: uri, pattern: '^https://' }
+        canonical_url:
+          type: string
+          format: iri
+          pattern: '^https://'
+          maxLength: 2048
+          description: Public HTTPS canonical URL for this Notice-owner-managed source whitelist. maxLength gives clients a 2,048-character upper bound; Owner also rejects a decoded URL over 2,048 UTF-8 bytes before persistence. Its hostname must be a valid ASCII DNS name (1–63-character alphanumeric/hyphen labels without edge hyphens, total at most 253), while UTF-8 path and query text remain supported. A specified port is numeric 1 through 65535; user info and localhost, numeric IP, loopback, private, or link-local hosts are rejected.
       example: { code: henu-office, name: 学校办公室, canonical_url: https://example.edu/notices }
       x-invalid-examples:
         - { code: "INVALID", name: 学校办公室, canonical_url: http://example.edu/notices }
@@ -168,8 +188,17 @@ components:
       required: [title, body, source_url]
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
-        body: { type: string, minLength: 1, maxLength: 100000 }
-        source_url: { type: string, format: uri, pattern: '^https://' }
+        body:
+          type: string
+          minLength: 1
+          maxLength: 100000
+          description: At most 100,000 Unicode characters. The signed raw request remains bounded at 2 MiB, which admits this maximum even when non-BMP characters use JSON surrogate-pair escapes.
+        source_url:
+          type: string
+          format: iri
+          pattern: '^https://'
+          maxLength: 2048
+          description: Public HTTPS URL on the same normalized valid ASCII DNS origin and numeric port as the selected source's canonical URL. maxLength gives clients a 2,048-character upper bound; Owner also rejects a decoded URL over 2,048 UTF-8 bytes before persistence, while retaining UTF-8 path and query text. The implicit HTTPS default and numeric :443 are equivalent. It is carried inside the bounded 2 MiB signed request body; historical stored rows are separately constrained by the same source policy and Owner feed's encoded response budget.
         source_published_at: { type: string, format: date-time }
       example: { title: 暑期安排, body: 不可变正文, source_url: https://example.edu/notices/1, source_published_at: "2026-07-19T08:00:00Z" }
       x-invalid-examples:
@@ -226,7 +255,12 @@ components:
         version: { type: integer, minimum: 1 }
         title: { type: string }
         body: { type: string }
-        source_url: { type: string, format: uri }
+        source_url:
+          type: string
+          format: iri
+          pattern: '^https://'
+          maxLength: 2048
+          description: Public HTTPS source IRI recorded for this immutable version. maxLength gives clients a 2,048-character upper bound; Owner admits newly written URLs only when their decoded form is at most 2,048 UTF-8 bytes and has a valid ASCII public-DNS hostname, while UTF-8 path and query text remain supported.
         content_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
         state: { type: string, enum: [pending_review, approved, rejected, distributed] }
         revision: { type: integer, minimum: 1 }
@@ -247,6 +281,41 @@ components:
       required: [data, request_id]
       properties:
         data: { $ref: "#/components/schemas/NoticeSnapshot" }
+        request_id: { $ref: "#/components/schemas/RequestId" }
+    PortalNoticeSource:
+      type: object
+      additionalProperties: false
+      required: [name, url]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        url:
+          type: string
+          format: iri
+          pattern: '^https://'
+          maxLength: 2048
+          description: Owner-approved public source URL. maxLength gives clients a 2,048-character upper bound; Owner and Gateway also enforce a decoded 2,048 UTF-8-byte limit and a valid ASCII public-DNS hostname while retaining UTF-8 path and query text.
+    PortalNotice:
+      type: object
+      additionalProperties: false
+      required: [id, title, body, source, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 100000 }
+        source: { $ref: "#/components/schemas/PortalNoticeSource" }
+        created_at: { type: string, format: date-time, description: "When Notice recorded this version; not a source-publication or delivery-completion claim." }
+    PortalNoticeFeed:
+      type: object
+      additionalProperties: false
+      required: [notices]
+      properties:
+        notices: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/PortalNotice" } }
+    PortalNoticeFeedEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data: { $ref: "#/components/schemas/PortalNoticeFeed" }
         request_id: { $ref: "#/components/schemas/RequestId" }
     GenericSuccessEnvelope:
       type: object

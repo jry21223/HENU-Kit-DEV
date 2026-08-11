@@ -180,8 +180,9 @@ services:
       start_period: 5s
 
   # Notice owns whitelisted sources, immutable versions, review, audience, and
-  # distribution. It accepts only signed Console Gateway calls and verifies the
-  # same NOTICE_SUMMARY_* credential pair the Gateway presents.
+  # distribution. Console management and Portal's fixed public-read feed use
+  # separate signed caller credentials; neither capability can impersonate the
+  # other route family.
   notice:
     build:
       context: ./services/notice
@@ -192,6 +193,9 @@ services:
       NOTICE_SERVICE_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
       NOTICE_SERVICE_KEY_ID: ${NOTICE_SUMMARY_KEY_ID:-notice-summary-key}
       NOTICE_SERVICE_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
+      NOTICE_PORTAL_CLIENT_ID: ${NOTICE_CLIENT_ID:-portal-gateway-notice-read}
+      NOTICE_PORTAL_KEY_ID: ${NOTICE_KEY_ID:-portal-notice-read-key}
+      NOTICE_PORTAL_SECRET: ${NOTICE_CLIENT_SECRET:-replace-notice-portal-read-client-secret-32bytes-min!!}
     depends_on:
       postgres:
         condition: service_healthy
@@ -298,13 +302,15 @@ services:
       PORTAL_API_URL: ${PORTAL_API_URL:-http://portal-api:8085}
       PRACTICE_SERVICE_URL: ${PRACTICE_SERVICE_URL:-http://portal-api:8085}
       PORTAL_ENABLE_QUIZCRAFT_CATALOG: ${PORTAL_ENABLE_QUIZCRAFT_CATALOG:-0}
-      NOTICE_SERVICE_URL: ${NOTICE_SERVICE_URL:-http://portal-api:8085}
+      # This exact Owner origin is enforced again by the Portal Notice client;
+      # it is never the legacy Portal API proxy.
+      NOTICE_SERVICE_URL: ${NOTICE_SERVICE_URL:-http://notice:8094}
       PRACTICE_CLIENT_ID: ${PRACTICE_CLIENT_ID:-portal-practice}
       PRACTICE_CLIENT_SECRET: ${PRACTICE_CLIENT_SECRET:-replace-practice-client-secret-32bytes-min!!}
       PRACTICE_KEY_ID: ${PRACTICE_KEY_ID:-practice-key}
-      NOTICE_CLIENT_ID: ${NOTICE_CLIENT_ID:-portal-notice}
-      NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:-replace-notice-client-secret-32bytes-min!!}
-      NOTICE_KEY_ID: ${NOTICE_KEY_ID:-notice-key}
+      NOTICE_CLIENT_ID: ${NOTICE_CLIENT_ID:-portal-gateway-notice-read}
+      NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:-replace-notice-portal-read-client-secret-32bytes-min!!}
+      NOTICE_KEY_ID: ${NOTICE_KEY_ID:-portal-notice-read-key}
       ACCOUNT_PORTFOLIO_URL: ${ACCOUNT_PORTFOLIO_URL:-http://account-portfolio:8097}
       ACCOUNT_PORTFOLIO_CLIENT_ID: ${ACCOUNT_PORTFOLIO_CLIENT_ID:-portal-gateway}
       ACCOUNT_PORTFOLIO_CLIENT_SECRET: ${ACCOUNT_PORTFOLIO_CLIENT_SECRET:-replace-account-portfolio-client-secret-32bytes-min!!}

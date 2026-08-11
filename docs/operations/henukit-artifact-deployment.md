@@ -368,7 +368,7 @@ above, the runtime's release entry is the sole production approval command:
 sudo GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
   HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
   HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator \
-  HENUKIT_PLATFORM_MIGRATIONS=000017_account_portfolio_order_access.up.sql,000018_account_operator_role_grant_audit.up.sql \
+  HENUKIT_PLATFORM_MIGRATIONS=000017_account_portfolio_order_access.up.sql,000018_account_operator_role_grant_audit.up.sql,000019_portal_notice_read.up.sql \
   /usr/local/sbin/activate-henukit-release <full-main-sha> --execute
 ```
 
@@ -378,7 +378,7 @@ manifest, securely copies the existing MetaView HENU tenant identity into the
 Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017` and `000018`, deploys all thirteen fixed-SHA images, grants the eight
+`000017`, `000018`, and `000019`, deploys all thirteen fixed-SHA images, grants the eight
 Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations

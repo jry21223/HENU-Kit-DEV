@@ -125,3 +125,54 @@ func TestAccountOperatorRoleGrantIsOwnedAuditedAndIdempotent(t *testing.T) {
 		t.Fatal("account operator grant audit accepted deletion")
 	}
 }
+
+func TestAccountOperatorRoleGrantCannotEscalatePortalNoticeReader(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	for migration := 14; migration <= 17; migration++ {
+		matches, err := filepath.Glob(fmt.Sprintf("../db/migrations/%06d_*.up.sql", migration))
+		if err != nil {
+			t.Fatalf("find Account operator permission migration %d: %v", migration, err)
+		}
+		if len(matches) != 1 {
+			t.Fatalf("Account operator permission migration %d matches %d files", migration, len(matches))
+		}
+		contents, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatalf("read Account operator permission migration %s: %v", matches[0], err)
+		}
+		if _, err := pool.Exec(ctx, string(contents)); err != nil {
+			t.Fatalf("apply Account operator permission migration %s: %v", matches[0], err)
+		}
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO users (email_verified, status) VALUES (true, 'active')`); err != nil {
+		t.Fatalf("create active Portal reader: %v", err)
+	}
+	portalNoticeMigration, err := os.ReadFile("../db/migrations/000019_portal_notice_read.up.sql")
+	if err != nil {
+		t.Fatalf("read Portal notice migration: %v", err)
+	}
+	if _, err := pool.Exec(ctx, string(portalNoticeMigration)); err != nil {
+		t.Fatalf("apply Portal notice migration: %v", err)
+	}
+
+	result, grantErr := accountoperatorgrant.Grant(ctx, pool, accountoperatorgrant.Input{
+		RoleCode: "portal-notice-reader", Actor: "henukit-release", RequestID: "req_release_portal_notice_attack",
+		Reason: "Account Portfolio production release aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	})
+	var permissionCount, accountPermissionCount, auditCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT
+			count(*),
+			count(*) FILTER (WHERE permission_code LIKE 'account.%'),
+			(SELECT count(*) FROM account_operator_role_grant_audit_events WHERE role_code = 'portal-notice-reader')
+		FROM role_permissions
+		WHERE role_id = (SELECT id FROM authorization_roles WHERE code = 'portal-notice-reader')`).Scan(&permissionCount, &accountPermissionCount, &auditCount); err != nil {
+		t.Fatalf("read Portal notice role after Account grant attack: %v", err)
+	}
+	if grantErr == nil || result.Changed || permissionCount != 1 || accountPermissionCount != 0 || auditCount != 0 {
+		t.Fatalf("Account operator grant escalated Portal notice reader: changed=%t err=%v permissions=%d account_permissions=%d audits=%d", result.Changed, grantErr, permissionCount, accountPermissionCount, auditCount)
+	}
+}

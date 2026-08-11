@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,21 +16,23 @@ import (
 
 // Client communicates with Platform Core for auth and authorization.
 type Client struct {
-	baseURL     string
-	redirectURI string
-	clientID    string
-	httpClient  *http.Client
-	signer      *serviceauth.Signer
+	baseURL                 string
+	redirectURI             string
+	clientID                string
+	httpClient              *http.Client
+	authorizationHTTPClient *http.Client
+	signer                  *serviceauth.Signer
 }
 
 // NewClient creates a Platform Core client.
 func NewClient(baseURL, redirectURI, clientID, clientSecret, keyID string) *Client {
 	return &Client{
-		baseURL:     baseURL,
-		redirectURI: redirectURI,
-		clientID:    clientID,
-		httpClient:  &http.Client{Timeout: 10 * time.Second},
-		signer:      serviceauth.NewSigner(clientID, clientSecret, keyID),
+		baseURL:                 baseURL,
+		redirectURI:             redirectURI,
+		clientID:                clientID,
+		httpClient:              &http.Client{Timeout: 10 * time.Second},
+		authorizationHTTPClient: directAuthorizationClient(),
+		signer:                  serviceauth.NewSigner(clientID, clientSecret, keyID),
 	}
 }
 
@@ -135,8 +138,115 @@ func (c *Client) CheckPermission(ctx context.Context, exchangeToken, permissionC
 	}
 }
 
+// ProductPermissionDecision is the verified Core subject for a product-scoped
+// Portal read. Gateway compares ActorUserID with its decoded Portal Session
+// before it sends that actor to a downstream Owner.
+type ProductPermissionDecision struct {
+	ActorUserID string
+}
+
+// CheckProductPermission uses Platform Core's required structured scope
+// rather than the historical incomplete CheckPermission request. It is kept
+// separate so unrelated callers retain their existing contracts.
+func (c *Client) CheckProductPermission(ctx context.Context, exchangeToken, permissionCode, productCode string) (ProductPermissionDecision, error) {
+	body, err := json.Marshal(struct {
+		SessionExchangeToken string `json:"session_exchange_token"`
+		PermissionCode       string `json:"permission_code"`
+		Scope                struct {
+			Kind        string `json:"kind"`
+			ProductCode string `json:"product_code"`
+		} `json:"scope"`
+	}{
+		SessionExchangeToken: exchangeToken,
+		PermissionCode:       permissionCode,
+		Scope: struct {
+			Kind        string `json:"kind"`
+			ProductCode string `json:"product_code"`
+		}{Kind: "product", ProductCode: productCode},
+	})
+	if err != nil {
+		return ProductPermissionDecision{}, fmt.Errorf("marshal authorization/check request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/authorization/check", bytes.NewReader(body))
+	if err != nil {
+		return ProductPermissionDecision{}, fmt.Errorf("NewRequest: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if err := c.signer.Sign(req); err != nil {
+		return ProductPermissionDecision{}, fmt.Errorf("sign: %w", err)
+	}
+	if c.authorizationHTTPClient == nil {
+		return ProductPermissionDecision{}, fmt.Errorf("authorization client is unavailable")
+	}
+	resp, err := c.authorizationHTTPClient.Do(req)
+	if err != nil {
+		return ProductPermissionDecision{}, fmt.Errorf("do: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusUnauthorized:
+		return ProductPermissionDecision{}, ErrUnauthorized
+	case http.StatusForbidden:
+		return ProductPermissionDecision{}, ErrForbidden
+	default:
+		return ProductPermissionDecision{}, fmt.Errorf("authorization/check: status %d", resp.StatusCode)
+	}
+	var envelope struct {
+		RequestID string `json:"request_id"`
+		Data      struct {
+			Allowed        bool   `json:"allowed"`
+			ActorUserID    string `json:"actor_user_id"`
+			PermissionCode string `json:"permission_code"`
+			Scope          struct {
+				Kind        string `json:"kind"`
+				ProductCode string `json:"product_code"`
+			} `json:"scope"`
+			GrantID               string    `json:"grant_id"`
+			AuthorizationRevision int64     `json:"authorization_revision"`
+			CheckedAt             time.Time `json:"checked_at"`
+		} `json:"data"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil {
+		return ProductPermissionDecision{}, fmt.Errorf("decode authorization/check response: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return ProductPermissionDecision{}, fmt.Errorf("invalid authorization/check response")
+	}
+	if strings.TrimSpace(envelope.RequestID) == "" || !envelope.Data.Allowed || envelope.Data.PermissionCode != permissionCode || envelope.Data.Scope.Kind != "product" || envelope.Data.Scope.ProductCode != productCode || envelope.Data.AuthorizationRevision < 1 || envelope.Data.CheckedAt.IsZero() {
+		return ProductPermissionDecision{}, fmt.Errorf("invalid authorization/check decision")
+	}
+	if !authorizationUUIDPattern.MatchString(envelope.Data.ActorUserID) {
+		return ProductPermissionDecision{}, fmt.Errorf("invalid authorization/check actor")
+	}
+	if !authorizationUUIDPattern.MatchString(envelope.Data.GrantID) {
+		return ProductPermissionDecision{}, fmt.Errorf("invalid authorization/check grant")
+	}
+	return ProductPermissionDecision{ActorUserID: envelope.Data.ActorUserID}, nil
+}
+
 // Sentinel errors.
 var (
 	ErrUnauthorized = fmt.Errorf("unauthorized")
 	ErrForbidden    = fmt.Errorf("forbidden")
 )
+
+var authorizationUUIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// directAuthorizationClient keeps the fresh session exchange token and HMAC
+// credential on the configured Core origin. Existing generic Core callers
+// retain their established client behavior; only this new actor-bearing
+// authorization step gets the stricter transport.
+func directAuthorizationClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: transport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
