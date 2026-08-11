@@ -23,14 +23,17 @@ on:
       - scripts/ops/tests/import-henukit-materials.test.mjs
       - scripts/ops/tests/henukit-materials-nginx.test.mjs
       - scripts/ops/tests/henukit-materials-orchestrate.test.mjs
+      - scripts/ops/tests/henukit-materials-publish-oss-wrapper.test.mjs
       - scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
       - docs/adr/0022-materials-candidate-preparation.md
       - docs/adr/0023-materials-latest-arrival-queue.md
       - docs/adr/0024-materials-sealed-release-boundary.md
       - docs/adr/0025-materials-atomic-activation.md
+      - docs/adr/0026-materials-oss-canary-publication.md
       - docs/adr/README.md
       - docs/development/306-materials-secure-preparation.md
       - docs/operations/henukit-materials-sync.md
+      - docs/operations/henukit-materials-oss-canary.md
       - docs/operations/github-webhook-deploy.md
       - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
       - docs/operations/README.md
@@ -60,14 +63,17 @@ on:
       - scripts/ops/tests/import-henukit-materials.test.mjs
       - scripts/ops/tests/henukit-materials-nginx.test.mjs
       - scripts/ops/tests/henukit-materials-orchestrate.test.mjs
+      - scripts/ops/tests/henukit-materials-publish-oss-wrapper.test.mjs
       - scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
       - docs/adr/0022-materials-candidate-preparation.md
       - docs/adr/0023-materials-latest-arrival-queue.md
       - docs/adr/0024-materials-sealed-release-boundary.md
       - docs/adr/0025-materials-atomic-activation.md
+      - docs/adr/0026-materials-oss-canary-publication.md
       - docs/adr/README.md
       - docs/development/306-materials-secure-preparation.md
       - docs/operations/henukit-materials-sync.md
+      - docs/operations/henukit-materials-oss-canary.md
       - docs/operations/github-webhook-deploy.md
       - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
       - docs/operations/README.md
@@ -105,6 +111,8 @@ jobs:
         run: sudo "$(command -v go)" test -count=1 ./internal/state -run '^TestPrivilegedMaterialsConsumer'
       - name: Build static receiver
         run: CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/henukit-deploy-webhook ./cmd/server
+      - name: Build inert OSS canary publisher
+        run: CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/materials-oss-canary ./cmd/materials-oss-canary
       - name: Vulnerability scan
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
@@ -128,6 +136,7 @@ jobs:
             services/deploy-webhook/deploy/henukit-materials-seal \
             services/deploy-webhook/deploy/henukit-materials-activate \
             services/deploy-webhook/deploy/henukit-materials-orchestrate \
+            services/deploy-webhook/deploy/henukit-materials-publish-oss \
             services/deploy-webhook/deploy/install.sh \
             services/deploy-webhook/deploy/hooks/10-command.example \
             services/deploy-webhook/deploy/hooks/20-study.example
@@ -137,6 +146,7 @@ jobs:
           sh -n services/deploy-webhook/deploy/henukit-materials-seal
           sh -n services/deploy-webhook/deploy/henukit-materials-activate
           bash -n services/deploy-webhook/deploy/henukit-materials-orchestrate
+          sh -n services/deploy-webhook/deploy/henukit-materials-publish-oss
           bash -n services/deploy-webhook/deploy/henukit-materials-seal
           bash -n services/deploy-webhook/deploy/install.sh
           bash -n services/deploy-webhook/deploy/hooks/10-command.example
@@ -163,6 +173,7 @@ jobs:
             scripts/ops/tests/import-henukit-materials.test.mjs \
             scripts/ops/tests/henukit-materials-nginx.test.mjs \
             scripts/ops/tests/henukit-materials-orchestrate.test.mjs \
+            scripts/ops/tests/henukit-materials-publish-oss-wrapper.test.mjs \
             scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
           docker compose -f docker-compose.henukit.yml config --quiet
           docker run --rm \

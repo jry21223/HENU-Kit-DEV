@@ -8,6 +8,13 @@ const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..",
 const workflow = readFileSync(join(repositoryRoot, ".github", "workflows", "deploy-webhook.yml"), "utf8");
 const sealLinuxTest = readFileSync(join(repositoryRoot, "scripts", "ops", "tests", "henukit-materials-seal-linux.test.mjs"), "utf8");
 const server = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "cmd", "server", "main.go"), "utf8");
+const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install.sh"), "utf8");
+const orchestrator = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "henukit-materials-orchestrate"), "utf8");
+const materialsUnits = [
+  "henukit-materials-runner.service",
+  "henukit-materials-webhook.path",
+  "henukit-materials-webhook.service",
+].map((name) => readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "systemd", name), "utf8")).join("\n");
 
 function goFunction(name) {
   const start = server.indexOf(`func ${name}(`);
@@ -36,10 +43,13 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
     "scripts/ops/tests/import-henukit-materials.test.mjs",
     "scripts/ops/tests/henukit-materials-nginx.test.mjs",
     "scripts/ops/tests/henukit-materials-orchestrate.test.mjs",
+    "scripts/ops/tests/henukit-materials-publish-oss-wrapper.test.mjs",
     "docs/adr/0023-materials-latest-arrival-queue.md",
     "docs/adr/0024-materials-sealed-release-boundary.md",
     "docs/adr/0025-materials-atomic-activation.md",
+    "docs/adr/0026-materials-oss-canary-publication.md",
     "docs/development/306-materials-secure-preparation.md",
+    "docs/operations/henukit-materials-oss-canary.md",
   ]) {
     assert.match(workflow, new RegExp(`- ${path.replaceAll(".", "\\.")}$`, "m"), path);
   }
@@ -63,6 +73,10 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   );
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-nginx\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-orchestrate\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-publish-oss-wrapper\.test\.mjs/);
+  assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-publish-oss/);
+  assert.match(workflow, /sh -n services\/deploy-webhook\/deploy\/henukit-materials-publish-oss/);
+  assert.match(workflow, /\.\/cmd\/materials-oss-canary/);
   assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-prepare/);
   assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-seal/);
   assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-activate/);
@@ -81,4 +95,7 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   assert.match(goFunction("runMaterials"), /state\.NewMaterialsLatestArrivalPrivilegedConsumer\(/);
   assert.match(sealLinuxTest, /process\.env\.CI === "true" && !dockerAvailable/);
   assert.match(sealLinuxTest, /Docker is required to verify root-owned materials sealing in CI/);
+  assert.doesNotMatch(installer, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);
+  assert.doesNotMatch(orchestrator, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);
+  assert.doesNotMatch(materialsUnits, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);
 });
