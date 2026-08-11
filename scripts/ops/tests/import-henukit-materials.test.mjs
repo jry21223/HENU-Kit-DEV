@@ -51,10 +51,12 @@ const MANIFEST = {
   ],
 };
 
-function runImport({ slidesDir } = {}) {
+function runImport({ slidesDir, releaseID = `${"a".repeat(40)}-${"b".repeat(16)}`, manifest = MANIFEST, legacyKeys = [] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "henukit-import-"));
   const manifestPath = join(dir, "manifest.json");
-  writeFileSync(manifestPath, JSON.stringify(MANIFEST));
+  const legacyInventoryPath = join(dir, "legacy-inventory.json");
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  writeFileSync(legacyInventoryPath, JSON.stringify({ version: 1, storage_keys: legacyKeys }));
   const args = ["--manifest", manifestPath];
   if (slidesDir) {
     const slidesPath = join(
@@ -72,6 +74,8 @@ function runImport({ slidesDir } = {}) {
     );
     args.push("--slides-dir", slidesDir);
   }
+  args.push("--release-id", releaseID);
+  args.push("--legacy-inventory", legacyInventoryPath);
   const result = spawnSync(process.execPath, [script, ...args], {
     encoding: "utf8",
   });
@@ -80,12 +84,35 @@ function runImport({ slidesDir } = {}) {
   return { stdout: result.stdout, stderr: result.stderr };
 }
 
-test("import emits idempotent transaction SQL", () => {
+test("prefixes storage keys with the immutable published release path", () => {
+  const releaseID = `${"a".repeat(40)}-${"b".repeat(16)}`;
+  const { stdout } = runImport({ releaseID });
+  assert.match(stdout, new RegExp(`releases/${releaseID}/高等数学A（二）/复习讲义/`));
+  assert.match(stdout, new RegExp(`storage_key NOT IN \\('releases/${releaseID}/`));
+});
+
+test("rejects an invalid or mutable release ID", () => {
+  const dir = mkdtempSync(join(tmpdir(), "henukit-prefix-"));
+  const manifestPath = join(dir, "manifest.json");
+  writeFileSync(manifestPath, JSON.stringify(MANIFEST));
+  for (const releaseID of ["current", "../releases", "/absolute"]) {
+    const result = spawnSync(process.execPath, [script, "--manifest", manifestPath, "--release-id", releaseID], { encoding: "utf8" });
+    assert.notEqual(result.status, 0, releaseID);
+    assert.match(result.stderr, /release ID/i);
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("import requires the reviewed schema and emits only transactional DML", () => {
   const { stdout } = runImport();
+  assert.match(stdout, /henukit_materials_schema_ready/);
+  assert.match(stdout, /materials_storage_key_active_idx/);
+  assert.match(stdout, /material_index\.indnkeyatts = 1/);
+  assert.match(stdout, /unnest\(material_index\.indkey\)/);
+  assert.match(stdout, /apply the reviewed materials schema prerequisite/i);
+  assert.doesNotMatch(stdout, /\b(?:ALTER|CREATE|DROP)\b/i);
   assert.match(stdout, /^BEGIN;/m);
   assert.match(stdout, /COMMIT;$/m);
-  assert.match(stdout, /ALTER TABLE materials ADD COLUMN IF NOT EXISTS sha256 text;/);
-  assert.match(stdout, /ALTER TABLE materials ADD COLUMN IF NOT EXISTS slides jsonb;/);
   assert.match(stdout, /ON CONFLICT \(storage_key\) WHERE deleted_at IS NULL DO UPDATE/);
 });
 
@@ -126,15 +153,44 @@ test("attaches converted slides jsonb for slides assets", () => {
 
 test("deactivates mirror rows no longer present in the manifest", () => {
   const { stdout } = runImport();
-  assert.match(stdout, /storage_key NOT IN \('高等数学A（二）\/复习讲义\//);
-  assert.match(stdout, /AND sha256 IS NOT NULL/);
+  assert.match(stdout, /storage_key !~ '\^releases\/\[a-f0-9\]\{40\}-\[a-f0-9\]\{16\}\/' AND storage_key IN \('高等数学A（二）\/复习讲义\//);
+  assert.match(stdout, /storage_key NOT IN \('releases\/[a-f0-9-]+\/高等数学A（二）\/复习讲义\//);
+  assert.match(stdout, /storage_key ~ '\^releases\/\[a-f0-9\]\{40\}-\[a-f0-9\]\{16\}\/'/);
+  assert.doesNotMatch(stdout, /AND sha256 IS NOT NULL/);
+});
+
+test("an empty reviewed release archives prior mirrored releases without touching unrelated checksummed rows", () => {
+  const manifest = {
+    subjects: [{
+      name: "软件工程",
+      assets: [{
+        role: "待复核资料",
+        publicPath: "软件工程/待复核资料/草稿.pdf",
+        reviewStatus: "needs_review",
+        bytes: 1,
+        sha256: "a".repeat(64),
+      }],
+    }],
+  };
+  const { stdout } = runImport({ manifest });
+  assert.match(stdout, /UPDATE materials SET status = 'archived'/);
+  assert.match(stdout, /storage_key ~ '\^releases\/\[a-f0-9\]\{40\}-\[a-f0-9\]\{16\}\/'/);
+  assert.doesNotMatch(stdout, /sha256 IS NOT NULL/);
+});
+
+test("archives removed legacy mirror keys only when named by the reviewed legacy inventory", () => {
+  const { stdout } = runImport({ legacyKeys: ["软件工程/已删除讲义.pdf"] });
+  assert.match(stdout, /storage_key IN \([^;]*'软件工程\/已删除讲义\.pdf'/);
+  assert.doesNotMatch(stdout, /sha256 IS NOT NULL/);
 });
 
 test("rejects a manifest without subjects", () => {
   const dir = mkdtempSync(join(tmpdir(), "henukit-bad-"));
   const manifestPath = join(dir, "manifest.json");
   writeFileSync(manifestPath, JSON.stringify({ version: 1 }));
-  const result = spawnSync(process.execPath, [script, "--manifest", manifestPath]);
+  const legacyInventoryPath = join(dir, "legacy-inventory.json");
+  writeFileSync(legacyInventoryPath, JSON.stringify({ version: 1, storage_keys: [] }));
+  const result = spawnSync(process.execPath, [script, "--manifest", manifestPath, "--release-id", `${"a".repeat(40)}-${"b".repeat(16)}`, "--legacy-inventory", legacyInventoryPath]);
   assert.notEqual(result.status, 0);
   assert.match(String(result.stderr), /manifest\.subjects must be an array/);
   rmSync(dir, { recursive: true, force: true });

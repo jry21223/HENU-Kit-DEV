@@ -32,6 +32,7 @@ jobs:
             scripts/ops/tests/account-portfolio-workflow.test.mjs \
             scripts/ops/tests/check-account-production-boundary.test.mjs \
             scripts/ops/tests/henukit-release-images.test.mjs \
+            scripts/ops/tests/import-henukit-materials-preflight.test.mjs \
             scripts/ops/tests/package-henukit-runtime.test.mjs \
             scripts/ops/tests/verify-henukit-local-release.test.mjs \
             scripts/ops/tests/build-henukit-release-local.test.mjs \

@@ -1,110 +1,98 @@
-# HENU Kit 资料库同步(HENU-Final-Review → henukit.cn)
+# HENU Kit 资料库同步（HENU-Final-Review → henukit.cn）
 
-资料库内容来自公开仓库 [jry21223/HENU-Final-Review](https://github.com/jry21223/HENU-Final-Review)。
-仓库 `manifest.json` 是唯一事实来源:它给每个资产标注了 role(复习讲义 / 课件PPT /
-往年真题 / 题库练习 / 笔记总结 / 待复核资料)、sha256 与字节数。
+仓库能力不等于生产已启用。以下是 #306 唯一受支持的生产路径；启用 watcher 前仍须完成
+主机配置、Nginx 检查、数据库 schema 预检和受控 smoke。
 
-## 架构
+## 唯一入口与信任边界
 
-```
-GitHub push (HENU-Final-Review, refs/heads/main)
-        │  webhook (secret 校验 / 队列 / 去重,deploy-webhook 第二实例)
-        ▼
-henukit-materials-webhook.service (127.0.0.1:10088)
-        │  systemd path 触发
-        ▼
-henukit-materials-runner.service (root, oneshot)
-        │  henukit-materials-sync.sh
-        ├─ 1. sync-henukit-materials.sh   git clone/fetch → 只镜像非"待复核"资产,
-        │     原子换入 /opt/henukit-materials/public(nginx 只服务这个目录)
-        ├─ 2. convert-henukit-slides.py   "课件PPT" → 门户 Slides JSON
-        │     (python-pptx;.ppt 先经 LibreOffice 转 pptx)
-        └─ 3. import-henukit-materials.mjs   manifest → courses/materials 幂等 upsert
-              (school/college/major/course 规范化;storage_key 唯一索引;下线已移除资产)
-```
+| 边界 | 固定值 |
+| --- | --- |
+| Webhook URL | `https://henukit.cn/webhooks/materials` |
+| Listener | `henukit-materials-webhook.service`，`127.0.0.1:10088` |
+| Secret | systemd credential `/etc/henukit-deploy/materials-webhook-secret` |
+| Queue | `/var/lib/henukit-materials-webhook` latest-arrival：最多一个 running、一个 waiting |
+| Runner | `henukit-materials-runner.service`（root、固定 orchestrator） |
+| Public root | `/opt/henukit-materials/public` |
+| Sealed root | `/opt/henukit-materials/sealed` |
 
-- **nginx(容器内)** 以只读卷挂载 `$HENUKIT_MATERIALS_ROOT/public` 到 `/srv/materials`,
-  `/materials/` 前缀禁止目录列举、拒绝点文件、强制下载(`Content-Disposition: attachment`)。
-  git checkout 与仓库工具目录**永远不在**服务目录内,`/.git/` 不可能被暴露。
-- **portal-api** 从遗留 Study 库读 `courses`/`materials`(新增 `sha256`/`slides` 列),
-  列表接口带 `filePath`/`fileSize`,`GET /api/v1/library/materials/{id}` 详情带 `slides`。
-- **portal** 资料详情页:slides 类型主操作"浏览幻灯片"(`/library/slides/[id]`,
-  浏览器内翻页浏览,无需下载 5–19MB 的 PPT),其余资料提供原文件下载入口。
+接收器以 `henukit-deploy` 运行，恒定时间校验 GitHub HMAC，并只接受配置仓库与目标 ref。
+root runner 不接受 payload 指定命令、路径或数据库：它核对 root-owned 配置后，将准备步骤
+降权给 `henukit-deploy`，再依次 seal 和 activate。不要运行退休的
+`sync-henukit-materials.sh` 或 `henukit-materials-sync.sh`，也不要建立第二套 webhook/service。
 
-## 首次部署(服务器,root)
+## 启用前
 
-前置:GitHub Actions 已部署过的宿主(HENU Kit release),`git`、`python3`、
-`python3-pptx`、`node`(≥18)、docker CLI;处理历史 `.ppt` 还需要 `libreoffice-impress`
-(仅转换器用到,缺失时文件同步照常,幻灯片转换跳过并告警)。
+1. 安装 Node、Python 3、`python3-pptx`、PostgreSQL client 与 LibreOffice（`soffice`），再用
+   `install.sh --enable-materials-sync` 安装固定 wrapper、unit 和拒绝连接的配置模板；安装器会
+   对这些依赖失败关闭。
+2. 核对 `/etc/henukit-deploy/materials-seal.env` 的 repository 和 ref 与
+   `materials-webhook.env` 一致。精确 SHA 只能来自已验签并入队的 push 事件；配置中没有
+   可人工漂移的 `HENUKIT_MATERIALS_SOURCE_SHA`。
+3. 将 root-owned `0600` 的 `/etc/henukit-deploy/materials-postgresql.conf` 改为实际 Study
+   PostgreSQL service 配置；`materials-activate.env` 只保存该文件路径和 service 名称。public
+   root 必须是宿主的 `/opt/henukit-materials/public`，不是容器内 `/srv/materials`。
+4. 首次切换前，从现有 catalog 导出并人工核对旧镜像的全部裸 `storage_key`（包括已从新
+   manifest 删除的资料），写入 root-owned `0600` 的
+   `/etc/henukit-deploy/materials-legacy-inventory.json`：
+   `{"version":1,"storage_keys":["科目/资料.pdf"]}`。新安装且没有旧 catalog 时保留空数组。
+5. 验证配置与 legacy inventory 均为 root-owned、不可被 group/other 写；secret 为 `root:root 0400`。
+6. 安装 `infra/nginx/henukit.conf.example`，运行 `nginx -t`。Compose 只读挂载 public root
+   到 `/srv/materials`；Nginx 只将 `/materials/releases/<release-id>/<public-path>` 映射到
+   `/srv/materials/releases/<release-id>/public/<public-path>`，不公开内部 `current` 指针。
+7. 先保持 `henukit-materials-webhook.path` disabled；完成 schema preflight、备份和回滚演练后
+   才 `systemctl enable --now henukit-materials-webhook.path`。
 
-```bash
-# 1. 安装 webhook 第二实例(复用 deploy-webhook 二进制与安装器)
-sudo services/deploy-webhook/deploy/install.sh --enable-materials-sync
-#    生成 /etc/henukit-deploy/materials-webhook.env 与 materials-webhook-secret
+## 激活、故障恢复与维护围栏
 
-# 2. 检查 env:数据库走 compose postgres 时无需改动;
-#    若 STUDY_DATABASE_URL 指向其他实例,设置 HENUKIT_MATERIALS_DATABASE_URL
-#    (需主机上有 psql)。
-cat /etc/henukit-deploy/materials-webhook.env
+激活持有 `/run/henukit-materials-activate.lock`。它先创建
+`/opt/henukit-materials/public/.maintenance`；此时 `/materials/`、Portal Library API 与
+Console Library API 均返回 503。随后 `activation-journal.json` 依次记录：
 
-# 3. 首次同步 + 导入(webhook 之外先手动跑一遍)
-HENUKIT_MATERIALS_ROOT=/opt/henukit-materials \
-  /usr/local/libexec/henukit/henukit-materials-sync.sh
-# 预期:mirrored 182 assets, skipped 66 pending review;slides converted ~90;
-#      导入 summary imported 182
+1. `prepared`：目标 release 的文件和目录已校验并持久化；
+2. `static_switched`：`current` 已指向目标公开树；
+3. `database_running`：catalog 事务结果可能未知；
+4. `database_committed`：数据库已提交，只需完成 marker/pointer；
+5. 写入 `ACTIVE_RELEASE`，删除 journal，最后删除 fence。
 
-# 4. 校验
-curl -sI https://henukit.cn/materials/高等数学A（二）/复习讲义/高等数学A（二）_考前复习知识点讲义.pdf | head -5   # 200 + attachment
-curl -s https://henukit.cn/api/v1/library/materials | head -c 300
-curl -s https://henukit.cn/api/v1/library/courses | head -c 300
+`prepared` 或 `static_switched` 阶段失败会恢复旧 pointer/marker。`database_running` 失败必须
+保持 503：确认数据库可用后，用同一 release ID 和 receipt digest 重试；导入是幂等的。
+`database_committed` 重试不会再次执行 catalog SQL。不要手工删除 fence、journal 或修改
+`current`，否则会丢失恢复依据。
 
-# 5. 配置 host 级 nginx(与 /webhooks/github 同一 HTTPS 段):
-#    复制 services/deploy-webhook/deploy/nginx-materials.conf.example
+Catalog 的 `storage_key` 带不可变 release 前缀，因此浏览器的一天缓存不会把旧文件伪装成
+新 catalog 内容。数据库凭据只在 root-only PostgreSQL service file 中，client 通过
+`PGSERVICEFILE`/`PGSERVICE` 选择它；凭据不得出现在命令行参数、环境变量或日志中。
+第一次切换时，事务只会归档受审 legacy inventory 与本次 manifest 精确列出的旧裸路径；
+它不会按 `sha256` 扫描或归档其他来源的资料。首切 smoke 还应确认 Library 不再返回旧裸路径。
 
-# 6. GitHub 仓库设置 → Webhooks → 添加:
-#    Payload URL: https://henukit.cn/webhooks/materials
-#    Content type: application/json;Secret: /etc/henukit-deploy/materials-webhook-secret 的内容
-#    Events: 只勾 push
+## 显式 rollback
 
-# 7. 发一个 Ping 与一次真实 push,确认队列落盘,然后启用队列触发器:
-systemctl enable --now henukit-materials-webhook.path
-journalctl -u henukit-materials-runner.service -f
-```
-
-## 幂等与安全性质
-
-- 重跑安全:同步按 manifest 重建镜像,导入按 `storage_key` 唯一索引 upsert;
-  幻灯片按源文件 mtime 跳过已转换文件。
-- 下线一致性:manifest 中移除的资产会同时从镜像消失并在库中置 `archived`
-  (仅限带 `sha256` 标记的镜像行,不影响遗留资料)。
-- 路径安全:manifest 路径在 Python 与 SQL 两侧都做了越界检查;镜像目录
-  不含点文件;`/materials/.` 由 nginx 显式 404。
-- 内容安全:第三方文档一律 `nosniff` + `Content-Disposition: attachment` +
-  CSP `default-src 'none'; sandbox`,任何文档都不会在我们的源站以 HTML 执行。
-- 待复核资料(role 以"待复核"开头)在镜像、转换、导入三个环节全部跳过,
-  与仓库 PUBLICATION_POLICY.md 保持一致。
-
-## 手动命令速查
+Rollback 是把上一个仍保留的 sealed release 再做一次完整激活，而不是单独回退文件：
 
 ```bash
-# 仅镜像文件
-sudo /usr/local/libexec/henukit/sync-henukit-materials.sh
-# 仅转幻灯片
-sudo python3 /usr/local/libexec/henukit/convert-henukit-slides.py \
-  --mirror /opt/henukit-materials/public --out /opt/henukit-materials/slides \
-  --manifest /opt/henukit-materials/repo/manifest.json
-# 仅导入(本地调试)
-node scripts/ops/import-henukit-materials.mjs --manifest manifest.json \
-  | psql "$STUDY_DATABASE_URL" -v ON_ERROR_STOP=1 -f -
-# 状态
-curl -s http://127.0.0.1:10088/statusz
+sudo /usr/local/libexec/henukit/henukit-materials-activate \
+  --release-id <previous-release-id> \
+  --receipt-sha256 <previous-sealed-receipt-sha256>
 ```
 
-## 测试
+该命令使用相同 lock、fence、journal、catalog 事务和恢复规则。执行前核对 previous release、
+receipt、数据库备份及当前 `ACTIVE_RELEASE`；完成后同时验证资料 URL、Library API catalog 和
+`ACTIVE_RELEASE`。禁止只改 symlink、只跑 SQL 或恢复旧同步脚本。
+
+## 验证
 
 ```bash
-bash -n scripts/ops/sync-henukit-materials.sh scripts/ops/henukit-materials-sync.sh services/deploy-webhook/deploy/install.sh
-python3 -m py_compile scripts/ops/convert-henukit-slides.py
-node --test scripts/ops/tests/import-henukit-materials.test.mjs
-cd services/deploy-webhook && go test -race ./... && go vet ./...
+go test -race -count=1 ./... # cwd: services/deploy-webhook
+node --test scripts/ops/tests/deploy-webhook-materials-ci.test.mjs \
+  scripts/ops/tests/activate-henukit-materials.test.mjs \
+  scripts/ops/tests/henukit-materials-nginx.test.mjs \
+  scripts/ops/tests/henukit-materials-orchestrate.test.mjs \
+  scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs
+docker compose -f docker-compose.henukit.yml config --quiet
+docker run --rm \
+  -v "$PWD/infra/nginx/henukit.conf.example:/etc/nginx/conf.d/default.conf:ro" \
+  nginx:1.27-alpine nginx -t
 ```
+
+生产完成证据还必须包含 webhook delivery、queue drain、runner 日志、目标 SHA/release/receipt、
+无 fence/journal 残留、真实资料下载、两侧 Library API 和 rollback 演练结果。

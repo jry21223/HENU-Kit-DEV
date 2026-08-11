@@ -31,6 +31,8 @@ tree with `git pull && restart`.
 henukit-deploy-webhook serve
 henukit-deploy-webhook run
 henukit-deploy-webhook retry <full-sha>
+henukit-deploy-webhook materials-serve
+henukit-deploy-webhook materials-run
 ```
 
 The receiver exposes loopback endpoints:
@@ -80,11 +82,17 @@ legacy deployment path. It is not the Monorepo release source of truth. Keep it
 running only until the new receiver and QuizCraft hook have been installed and
 verified on the server; remove it in a separate rollback-aware change.
 
-## Materials sync receiver
+## Materials candidate queue template
 
-`install.sh --enable-materials-sync` installs a second receiver instance for
-[jry21223/HENU-Final-Review](https://github.com/jry21223/HENU-Final-Review)
-push events, served by the same binary on `127.0.0.1:10088` at
-`/webhooks/materials`. Its runner executes
-`/usr/local/libexec/henukit/henukit-materials-sync` (mirror → slides → Study DB
-import). See [`../../docs/operations/henukit-materials-sync.md`](../../docs/operations/henukit-materials-sync.md).
+`materials-serve` and `materials-run` are a source-only B01 boundary for
+[jry21223/HENU-Final-Review](https://github.com/jry21223/HENU-Final-Review).
+They use a materials-only latest-arrival queue: one preparation may run while
+only the most recently accepted delivery waits. The fixed consumer invokes the
+unprivileged candidate-preparation command with its source, ref, and candidate
+root bound by operator configuration.
+
+This is not an installation or activation path. Do not use the legacy
+`install.sh --enable-materials-sync` path, which installs the retired root sync
+driver. B01 neither enables a host service nor changes an Nginx-served tree or
+the Study catalog. See
+[`../../docs/operations/henukit-materials-sync.md`](../../docs/operations/henukit-materials-sync.md).

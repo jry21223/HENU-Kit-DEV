@@ -55,3 +55,21 @@ func TestLoadSecretRejectsSymbolicLink(t *testing.T) {
 		t.Fatal("symbolic-link secret was accepted")
 	}
 }
+
+func TestLoadMaterialsConfigDoesNotReadGenericQueueCapacity(t *testing.T) {
+	t.Setenv("HENUKIT_WEBHOOK_STATE_DIR", "/var/lib/henukit-materials-webhook")
+	t.Setenv("HENUKIT_WEBHOOK_MAX_QUEUE", "not-a-number")
+	config, err := loadMaterialsConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.StateDir != "/var/lib/henukit-materials-webhook" {
+		t.Fatalf("materials state directory = %q", config.StateDir)
+	}
+}
+
+func TestMaterialsOrchestrationCommandIsFixed(t *testing.T) {
+	if materialsOrchestrationCommand != "/usr/local/libexec/henukit/henukit-materials-orchestrate" {
+		t.Fatalf("materials orchestration command = %q", materialsOrchestrationCommand)
+	}
+}

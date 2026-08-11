@@ -1,5 +1,5 @@
 [Unit]
-Description=HENU Kit materials sync webhook receiver
+Description=HENU Kit materials candidate webhook receiver
 Documentation=https://github.com/jry21223/HENU-Kit-DEV/blob/main/docs/operations/henukit-materials-sync.md
 After=network-online.target
 Wants=network-online.target
@@ -11,7 +11,7 @@ Group=henukit-deploy
 EnvironmentFile=/etc/henukit-deploy/materials-webhook.env
 LoadCredential=webhook_secret:/etc/henukit-deploy/materials-webhook-secret
 Environment=HENUKIT_WEBHOOK_SECRET_FILE=%d/webhook_secret
-ExecStart=/usr/local/bin/henukit-deploy-webhook serve
+ExecStart=/usr/local/bin/henukit-deploy-webhook materials-serve
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=15s

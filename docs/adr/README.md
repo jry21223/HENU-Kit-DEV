@@ -25,6 +25,10 @@
 19. [`0019-membership-order-purchase-surface.md`](./0019-membership-order-purchase-surface.md) — 用户自建会员订单的 Portal 写入例外与不泄漏商户订单号的收银台句柄。
 20. [`0020-library-owner-production-onboard.md`](./0020-library-owner-production-onboard.md) — Library 独立数据所有者服务接入 Console 的生产上线边界。
 21. [`0021-portal-favorites-write-boundary.md`](./0021-portal-favorites-write-boundary.md) — Portal Gateway 的三条默认关闭收藏写命令边界。
+22. [`0022-materials-candidate-preparation.md`](./0022-materials-candidate-preparation.md) — 固定 SHA、非 root 的资料候选准备与派生目录预检边界。
+23. [`0023-materials-latest-arrival-queue.md`](./0023-materials-latest-arrival-queue.md) — 资料候选准备的实例隔离、最近验收事件队列与同一无特权身份边界。
+24. [`0024-materials-sealed-release-boundary.md`](./0024-materials-sealed-release-boundary.md) — root-owned、非激活的资料来源封存与可审计 release identity 边界。
+25. [`0025-materials-atomic-activation.md`](./0025-materials-atomic-activation.md) — 单一 webhook、特权 runner、维护围栏、恢复 journal 与显式回滚边界。
 
 ## 使用规则
 

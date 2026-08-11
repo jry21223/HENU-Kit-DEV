@@ -1,22 +1,22 @@
 [Unit]
-Description=Run queued HENU Kit materials syncs
+Description=Run queued HENU Kit materials fixed release orchestration
 Documentation=https://github.com/jry21223/HENU-Kit-DEV/blob/main/docs/operations/henukit-materials-sync.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-# 需要 docker compose exec、git clone 与写入镜像目录,因此以 root 运行。
 User=root
 Group=root
 EnvironmentFile=/etc/henukit-deploy/materials-webhook.env
 Environment=HOME=/root
-ExecStart=/usr/local/bin/henukit-deploy-webhook run
+ExecStart=/usr/local/bin/henukit-deploy-webhook materials-run
 TimeoutStartSec=2h
-UMask=0027
+UMask=0077
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=6
+NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
@@ -28,4 +28,5 @@ ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
 ReadWritePaths=/var/lib/henukit-materials-webhook /opt/henukit-materials

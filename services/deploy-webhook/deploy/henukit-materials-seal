@@ -1,0 +1,177 @@
+#!/bin/sh
+set -eu
+umask 077
+
+# A non-interactive POSIX shell does not source caller-controlled BASH_ENV.
+# Fix command lookup before evaluating the template location or invoking any
+# external utility, so a caller-controlled environment cannot change the root
+# boundary.
+export PATH="/usr/bin:/bin"
+readonly PATH
+unset CDPATH
+
+if [ -x /usr/bin/stat ]; then
+  readonly stat_bin="/usr/bin/stat"
+else
+  readonly stat_bin="/bin/stat"
+fi
+if [ -x /usr/bin/dirname ]; then
+  readonly dirname_bin="/usr/bin/dirname"
+else
+  readonly dirname_bin="/bin/dirname"
+fi
+if [ -x /usr/bin/id ]; then
+  readonly id_bin="/usr/bin/id"
+else
+  readonly id_bin="/bin/id"
+fi
+if [ -x /usr/bin/env ]; then
+  readonly env_bin="/usr/bin/env"
+else
+  readonly env_bin="/bin/env"
+fi
+
+# The privileged orchestrator installs and invokes this root-only boundary.
+# Repository, ref, and output root remain fixed in root-owned configuration;
+# the exact SHA comes only from the verified queued event. This step seals an
+# immutable release but cannot publish files or write the Study catalog.
+readonly config_path="/etc/henukit-deploy/materials-seal.env"
+readonly config_owner="0"
+runtime_dir="$(CDPATH='' cd -- "$("$dirname_bin" -- "$0")" && pwd)"
+readonly runtime_dir
+readonly seal_script="$runtime_dir/seal-henukit-materials.mjs"
+
+fail() {
+  echo "henukit-materials-seal: $*" >&2
+  exit 64
+}
+
+usage() {
+  fail "expected --attempt .attempt.<10-alphanumeric-characters> --sha <40-lowercase-hex>"
+}
+
+owner_and_mode() {
+  if "$stat_bin" -c '%u:%a' -- "$1" >/dev/null 2>&1; then
+    "$stat_bin" -c '%u:%a' -- "$1"
+    return
+  fi
+  "$stat_bin" -f '%u:%Lp' -- "$1"
+}
+
+require_fixed_regular_file() {
+  path="$1"
+  label="$2"
+  if [ -L "$path" ] || [ ! -f "$path" ]; then
+    fail "$label must be a regular file"
+  fi
+  owner_mode="$(owner_and_mode "$path")"
+  actual_owner="${owner_mode%%:*}"
+  file_mode="${owner_mode#*:}"
+  [ "$actual_owner" = "$config_owner" ] || fail "$label must be owned by root"
+  case "$file_mode" in
+    [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+    *) fail "$label mode is invalid" ;;
+  esac
+  mode_value=$((0$file_mode))
+  if [ $((mode_value & 18)) -ne 0 ]; then
+    fail "$label must not be writable by group or other"
+  fi
+}
+
+[ "$("$id_bin" -u)" = "$config_owner" ] || fail "must run as root"
+if [ "$#" -ne 4 ] || [ "$1" != "--attempt" ] || [ "$3" != "--sha" ]; then
+  usage
+fi
+readonly attempt="$2"
+readonly accepted_sha="$4"
+case "$attempt" in
+  .attempt.??????????) ;;
+  *) fail "attempt locator is invalid" ;;
+esac
+case "${attempt#.attempt.}" in
+  *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*) fail "attempt locator is invalid" ;;
+esac
+[ "${#accepted_sha}" -eq 40 ] || fail "event SHA is invalid"
+case "$accepted_sha" in
+  *[!0123456789abcdef]*) fail "event SHA is invalid" ;;
+esac
+
+require_fixed_regular_file "$config_path" "configuration"
+
+sealed_root=""
+source_repository=""
+source_ref=""
+carriage_return="$(printf '\r')"
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%"$carriage_return"}"
+  case "$line" in
+    ""|\#*) continue ;;
+  esac
+  key="${line%%=*}"
+  value="${line#*=}"
+  case "$key" in
+    HENUKIT_MATERIALS_SEALED_ROOT)
+      [ -z "$sealed_root" ] || fail "configuration contains a duplicate key"
+      sealed_root="$value"
+      ;;
+    HENUKIT_MATERIALS_SOURCE_REPOSITORY)
+      [ -z "$source_repository" ] || fail "configuration contains a duplicate key"
+      source_repository="$value"
+      ;;
+    HENUKIT_MATERIALS_SOURCE_REF)
+      [ -z "$source_ref" ] || fail "configuration contains a duplicate key"
+      source_ref="$value"
+      ;;
+    *)
+      fail "configuration contains an unsupported key"
+      ;;
+  esac
+done < "$config_path"
+
+[ -n "$sealed_root" ] || fail "configuration is missing HENUKIT_MATERIALS_SEALED_ROOT"
+[ -n "$source_repository" ] || fail "configuration is missing HENUKIT_MATERIALS_SOURCE_REPOSITORY"
+[ -n "$source_ref" ] || fail "configuration is missing HENUKIT_MATERIALS_SOURCE_REF"
+
+readonly sealed_root="${sealed_root%/}"
+readonly source_repository
+readonly source_ref
+
+if [ "${sealed_root#/}" = "$sealed_root" ] || [ "$sealed_root" = "/" ]; then
+  fail "sealed root is invalid"
+fi
+case "$source_repository" in
+  -*|*[[:space:]]*) fail "source repository is invalid" ;;
+esac
+case "$source_ref" in
+  refs/heads/*) ;;
+  *) fail "source ref is invalid" ;;
+esac
+branch="${source_ref#refs/heads/}"
+[ -n "$branch" ] || fail "source ref is invalid"
+case "$branch" in
+  *..*|*//*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/-]*) fail "source ref is invalid" ;;
+esac
+if [ -L "$sealed_root" ] || [ ! -d "$sealed_root" ]; then
+  fail "sealed root must be a real directory"
+fi
+require_fixed_regular_file "$seal_script" "fixed sealing command"
+
+node_bin=""
+for candidate in /usr/bin/node /usr/local/bin/node; do
+  if [ -x "$candidate" ]; then
+    node_bin="$candidate"
+    break
+  fi
+done
+[ -n "$node_bin" ] || fail "fixed Node runtime is unavailable"
+
+exec "$env_bin" -i \
+  HOME=/root \
+  PATH=/usr/bin:/bin \
+  "$node_bin" "$seal_script" \
+  --attempt "$attempt" \
+  --sealed-root "$sealed_root" \
+  --repository "$source_repository" \
+  --ref "$source_ref" \
+  --sha "$accepted_sha" \
+  --sealed-owner "$config_owner"

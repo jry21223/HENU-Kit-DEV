@@ -1,0 +1,186 @@
+#!/bin/sh
+set -eu
+umask 077
+
+export PATH="/usr/bin:/bin"
+readonly PATH
+unset CDPATH ENV BASH_ENV
+
+readonly config_path="/etc/henukit-deploy/materials-activate.env"
+readonly runtime_owner="0"
+readonly config_owner="0"
+readonly lock_path="/run/henukit-materials-activate.lock"
+readonly flock_bin="/usr/bin/flock"
+
+if [ -x /usr/bin/stat ]; then
+  readonly stat_bin="/usr/bin/stat"
+else
+  readonly stat_bin="/bin/stat"
+fi
+if [ -x /usr/bin/dirname ]; then
+  readonly dirname_bin="/usr/bin/dirname"
+else
+  readonly dirname_bin="/bin/dirname"
+fi
+if [ -x /usr/bin/id ]; then
+  readonly id_bin="/usr/bin/id"
+else
+  readonly id_bin="/bin/id"
+fi
+if [ -x /usr/bin/env ]; then
+  readonly env_bin="/usr/bin/env"
+else
+  readonly env_bin="/bin/env"
+fi
+
+runtime_dir="$(CDPATH='' cd -- "$("$dirname_bin" -- "$0")" && pwd)"
+readonly runtime_dir
+readonly activate_script="$runtime_dir/activate-henukit-materials.mjs"
+
+fail() {
+  echo "henukit-materials-activate: $*" >&2
+  exit 64
+}
+
+owner_and_mode() {
+  if "$stat_bin" -c '%u:%a' -- "$1" >/dev/null 2>&1; then
+    "$stat_bin" -c '%u:%a' -- "$1"
+    return
+  fi
+  "$stat_bin" -f '%u:%Lp' -- "$1"
+}
+
+require_regular() {
+  path="$1"
+  label="$2"
+  expected_owner="$3"
+  exact_mode="${4:-}"
+  if [ -L "$path" ] || [ ! -f "$path" ]; then
+    fail "$label must be a regular file"
+  fi
+  owner_mode="$(owner_and_mode "$path")"
+  actual_owner="${owner_mode%%:*}"
+  file_mode="${owner_mode#*:}"
+  [ "$actual_owner" = "$expected_owner" ] || fail "$label must be owned by root"
+  if [ -n "$exact_mode" ]; then
+    case "$file_mode" in
+      "$exact_mode"|"0$exact_mode") ;;
+      *) fail "$label must have mode $exact_mode" ;;
+    esac
+    return
+  fi
+  case "$file_mode" in
+    [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+    *) fail "$label mode is invalid" ;;
+  esac
+  mode_value=$((0$file_mode))
+  [ $((mode_value & 18)) -eq 0 ] || fail "$label must not be writable by group or other"
+}
+
+require_directory() {
+  path="$1"
+  label="$2"
+  if [ -L "$path" ] || [ ! -d "$path" ]; then
+    fail "$label must be a real directory"
+  fi
+  owner_mode="$(owner_and_mode "$path")"
+  actual_owner="${owner_mode%%:*}"
+  directory_mode="${owner_mode#*:}"
+  [ "$actual_owner" = "$config_owner" ] || fail "$label must be owned by root"
+  mode_value=$((0$directory_mode))
+  [ $((mode_value & 18)) -eq 0 ] || fail "$label must not be writable by group or other"
+}
+
+[ "$("$id_bin" -u)" = "$runtime_owner" ] || fail "must run as root"
+[ "$#" -eq 4 ] || fail "expected --release-id ID --receipt-sha256 SHA256"
+[ "$1" = "--release-id" ] || fail "expected --release-id ID --receipt-sha256 SHA256"
+[ "$3" = "--receipt-sha256" ] || fail "expected --release-id ID --receipt-sha256 SHA256"
+readonly release_id="$2"
+readonly receipt_sha256="$4"
+case "$release_id" in
+  [0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]-[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) ;;
+  *) fail "release ID is invalid" ;;
+esac
+[ "${#receipt_sha256}" -eq 64 ] || fail "receipt SHA-256 is invalid"
+case "$receipt_sha256" in
+  *[!0123456789abcdef]*) fail "receipt SHA-256 is invalid" ;;
+esac
+
+require_regular "$config_path" "configuration" "$config_owner" "600"
+
+sealed_root=""
+public_root=""
+converter=""
+importer=""
+psql=""
+pg_service_file=""
+pg_service=""
+legacy_inventory=""
+carriage_return="$(printf '\r')"
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%"$carriage_return"}"
+  case "$line" in
+    ""|\#*) continue ;;
+  esac
+  key="${line%%=*}"
+  value="${line#*=}"
+  case "$key" in
+    HENUKIT_MATERIALS_SEALED_ROOT) [ -z "$sealed_root" ] || fail "configuration contains a duplicate key"; sealed_root="$value" ;;
+    HENUKIT_MATERIALS_PUBLIC_ROOT) [ -z "$public_root" ] || fail "configuration contains a duplicate key"; public_root="$value" ;;
+    HENUKIT_MATERIALS_CONVERTER) [ -z "$converter" ] || fail "configuration contains a duplicate key"; converter="$value" ;;
+    HENUKIT_MATERIALS_IMPORTER) [ -z "$importer" ] || fail "configuration contains a duplicate key"; importer="$value" ;;
+    HENUKIT_MATERIALS_PSQL) [ -z "$psql" ] || fail "configuration contains a duplicate key"; psql="$value" ;;
+    HENUKIT_MATERIALS_PG_SERVICE_FILE) [ -z "$pg_service_file" ] || fail "configuration contains a duplicate key"; pg_service_file="$value" ;;
+    HENUKIT_MATERIALS_PG_SERVICE) [ -z "$pg_service" ] || fail "configuration contains a duplicate key"; pg_service="$value" ;;
+    HENUKIT_MATERIALS_LEGACY_INVENTORY) [ -z "$legacy_inventory" ] || fail "configuration contains a duplicate key"; legacy_inventory="$value" ;;
+    *) fail "configuration contains an unsupported key" ;;
+  esac
+done < "$config_path"
+
+for value in "$sealed_root" "$public_root" "$converter" "$importer" "$psql" "$pg_service_file" "$pg_service" "$legacy_inventory"; do
+  [ -n "$value" ] || fail "configuration is incomplete"
+done
+for path in "$sealed_root" "$public_root" "$converter" "$importer" "$psql" "$pg_service_file" "$legacy_inventory"; do
+  case "$path" in
+    /*) [ "$path" != "/" ] || fail "configuration path is invalid" ;;
+    *) fail "configuration path is invalid" ;;
+  esac
+done
+case "$pg_service" in
+  *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-]*|"") fail "PostgreSQL service name is invalid" ;;
+esac
+
+require_directory "$sealed_root" "sealed root"
+require_directory "$public_root" "public root"
+require_regular "$converter" "fixed converter" "$config_owner"
+require_regular "$importer" "fixed importer" "$config_owner"
+require_regular "$psql" "fixed psql" "$config_owner"
+require_regular "$pg_service_file" "PostgreSQL service file" "$config_owner" "600"
+require_regular "$legacy_inventory" "reviewed legacy inventory" "$config_owner" "600"
+require_regular "$activate_script" "fixed activation command" "$config_owner" "600"
+[ -x "$flock_bin" ] || fail "fixed flock command is unavailable"
+
+node_bin=""
+for candidate in /usr/bin/node /usr/local/bin/node; do
+  if [ -x "$candidate" ]; then
+    node_bin="$candidate"
+    break
+  fi
+done
+[ -n "$node_bin" ] || fail "fixed Node runtime is unavailable"
+
+exec "$flock_bin" -n "$lock_path" "$env_bin" -i \
+  HOME=/root \
+  PATH=/usr/bin:/bin \
+  PGSERVICEFILE="$pg_service_file" \
+  PGSERVICE="$pg_service" \
+  "$node_bin" "$activate_script" \
+  --release-id "$release_id" \
+  --receipt-sha256 "$receipt_sha256" \
+  --sealed-root "$sealed_root" \
+  --public-root "$public_root" \
+  --converter "$converter" \
+  --importer "$importer" \
+  --psql "$psql" \
+  --legacy-inventory "$legacy_inventory" \
+  --activation-owner "$runtime_owner"

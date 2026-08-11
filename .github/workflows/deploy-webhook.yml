@@ -3,7 +3,34 @@ name: Deploy webhook
 on:
   pull_request:
     paths:
+      - docker-compose.henukit.yml
+      - infra/nginx/henukit.conf.example
       - services/deploy-webhook/**
+      - scripts/ops/prepare-henukit-materials.mjs
+      - scripts/ops/seal-henukit-materials.mjs
+      - scripts/ops/activate-henukit-materials.mjs
+      - scripts/ops/import-henukit-materials.mjs
+      - scripts/ops/convert-henukit-slides.py
+      - scripts/ops/tests/prepare-henukit-materials.test.mjs
+      - scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs
+      - scripts/ops/tests/henukit-materials-systemd.test.mjs
+      - scripts/ops/tests/henukit-materials-seal.test.mjs
+      - scripts/ops/tests/henukit-materials-seal-wrapper.test.mjs
+      - scripts/ops/tests/henukit-materials-seal-linux.test.mjs
+      - scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs
+      - scripts/ops/tests/activate-henukit-materials.test.mjs
+      - scripts/ops/tests/convert-henukit-slides.test.mjs
+      - scripts/ops/tests/import-henukit-materials.test.mjs
+      - scripts/ops/tests/henukit-materials-nginx.test.mjs
+      - scripts/ops/tests/henukit-materials-orchestrate.test.mjs
+      - scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
+      - docs/adr/0022-materials-candidate-preparation.md
+      - docs/adr/0023-materials-latest-arrival-queue.md
+      - docs/adr/0024-materials-sealed-release-boundary.md
+      - docs/adr/0025-materials-atomic-activation.md
+      - docs/adr/README.md
+      - docs/development/306-materials-secure-preparation.md
+      - docs/operations/henukit-materials-sync.md
       - docs/operations/github-webhook-deploy.md
       - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
       - docs/operations/README.md
@@ -13,7 +40,34 @@ on:
   push:
     branches: [main]
     paths:
+      - docker-compose.henukit.yml
+      - infra/nginx/henukit.conf.example
       - services/deploy-webhook/**
+      - scripts/ops/prepare-henukit-materials.mjs
+      - scripts/ops/seal-henukit-materials.mjs
+      - scripts/ops/activate-henukit-materials.mjs
+      - scripts/ops/import-henukit-materials.mjs
+      - scripts/ops/convert-henukit-slides.py
+      - scripts/ops/tests/prepare-henukit-materials.test.mjs
+      - scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs
+      - scripts/ops/tests/henukit-materials-systemd.test.mjs
+      - scripts/ops/tests/henukit-materials-seal.test.mjs
+      - scripts/ops/tests/henukit-materials-seal-wrapper.test.mjs
+      - scripts/ops/tests/henukit-materials-seal-linux.test.mjs
+      - scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs
+      - scripts/ops/tests/activate-henukit-materials.test.mjs
+      - scripts/ops/tests/convert-henukit-slides.test.mjs
+      - scripts/ops/tests/import-henukit-materials.test.mjs
+      - scripts/ops/tests/henukit-materials-nginx.test.mjs
+      - scripts/ops/tests/henukit-materials-orchestrate.test.mjs
+      - scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
+      - docs/adr/0022-materials-candidate-preparation.md
+      - docs/adr/0023-materials-latest-arrival-queue.md
+      - docs/adr/0024-materials-sealed-release-boundary.md
+      - docs/adr/0025-materials-atomic-activation.md
+      - docs/adr/README.md
+      - docs/development/306-materials-secure-preparation.md
+      - docs/operations/henukit-materials-sync.md
       - docs/operations/github-webhook-deploy.md
       - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
       - docs/operations/README.md
@@ -47,6 +101,8 @@ jobs:
         run: go vet ./...
       - name: Race tests
         run: go test -race -count=1 ./...
+      - name: Privileged materials consumer cross-UID test
+        run: sudo "$(command -v go)" test -count=1 ./internal/state -run '^TestPrivilegedMaterialsConsumer'
       - name: Build static receiver
         run: CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/henukit-deploy-webhook ./cmd/server
       - name: Vulnerability scan
@@ -57,6 +113,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Install packaging validators
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Validate shell scripts
@@ -65,11 +124,20 @@ jobs:
           shellcheck \
             services/deploy-webhook/deploy/henukit-deploy \
             services/deploy-webhook/deploy/henukit-approve-release \
+            services/deploy-webhook/deploy/henukit-materials-prepare \
+            services/deploy-webhook/deploy/henukit-materials-seal \
+            services/deploy-webhook/deploy/henukit-materials-activate \
+            services/deploy-webhook/deploy/henukit-materials-orchestrate \
             services/deploy-webhook/deploy/install.sh \
             services/deploy-webhook/deploy/hooks/10-command.example \
             services/deploy-webhook/deploy/hooks/20-study.example
           bash -n services/deploy-webhook/deploy/henukit-deploy
           bash -n services/deploy-webhook/deploy/henukit-approve-release
+          bash -n services/deploy-webhook/deploy/henukit-materials-prepare
+          sh -n services/deploy-webhook/deploy/henukit-materials-seal
+          sh -n services/deploy-webhook/deploy/henukit-materials-activate
+          bash -n services/deploy-webhook/deploy/henukit-materials-orchestrate
+          bash -n services/deploy-webhook/deploy/henukit-materials-seal
           bash -n services/deploy-webhook/deploy/install.sh
           bash -n services/deploy-webhook/deploy/hooks/10-command.example
           bash -n services/deploy-webhook/deploy/hooks/20-study.example
@@ -77,6 +145,29 @@ jobs:
         run: |
           sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook
           systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
+      - name: Validate the complete materials release boundary
+        run: |
+          node --check scripts/ops/prepare-henukit-materials.mjs
+          node --check scripts/ops/seal-henukit-materials.mjs
+          node --check scripts/ops/activate-henukit-materials.mjs
+          node --test \
+            scripts/ops/tests/prepare-henukit-materials.test.mjs \
+            scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs \
+            scripts/ops/tests/henukit-materials-systemd.test.mjs \
+            scripts/ops/tests/henukit-materials-seal.test.mjs \
+            scripts/ops/tests/henukit-materials-seal-wrapper.test.mjs \
+            scripts/ops/tests/henukit-materials-seal-linux.test.mjs \
+            scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs \
+            scripts/ops/tests/activate-henukit-materials.test.mjs \
+            scripts/ops/tests/convert-henukit-slides.test.mjs \
+            scripts/ops/tests/import-henukit-materials.test.mjs \
+            scripts/ops/tests/henukit-materials-nginx.test.mjs \
+            scripts/ops/tests/henukit-materials-orchestrate.test.mjs \
+            scripts/ops/tests/deploy-webhook-materials-ci.test.mjs
+          docker compose -f docker-compose.henukit.yml config --quiet
+          docker run --rm \
+            -v "$PWD/infra/nginx/henukit.conf.example:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:1.27-alpine nginx -t
       - name: Reject committed deployment secrets
         run: |
           set -euo pipefail
