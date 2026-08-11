@@ -71,6 +71,9 @@ type operation struct {
 type response struct {
 	Ref     string            `yaml:"$ref"`
 	Headers map[string]header `yaml:"headers"`
+	Content map[string]struct {
+		Schema schema `yaml:"schema"`
+	} `yaml:"content"`
 }
 
 type header struct {
@@ -103,6 +106,7 @@ func main() {
 	}
 	validatePersonalPracticeStats(spec.Components.Schemas)
 	validateLibraryDownloadFacade(spec.Paths)
+	validateLibraryCatalogFacade(spec.Paths)
 	if err := validateQuizCraftCatalog(spec.Components.Schemas); err != nil {
 		fail(err)
 	}
@@ -114,6 +118,30 @@ func main() {
 	}
 	write(*goOutput, goSource)
 	write(*tsOutput, []byte(renderTypeScript(portalSession, digest)))
+}
+
+func validateLibraryCatalogFacade(paths map[string]pathItem) {
+	for route, responseRef := range map[string]string{
+		"/api/v1/library/materials":               "#/components/schemas/PublicLibraryCatalogResponse",
+		"/api/v1/library/materials/{material_id}": "#/components/schemas/PublicLibraryMaterialResponse",
+	} {
+		operation := paths[route].Get
+		if operation == nil {
+			fail(fmt.Errorf("Library owner facade GET %s is missing", route))
+		}
+		if operation.Security == nil || len(operation.Security) != 0 {
+			fail(fmt.Errorf("Library owner facade GET %s must be explicitly anonymous", route))
+		}
+		for _, status := range []string{"200", "503"} {
+			if _, ok := operation.Responses[status]; !ok {
+				fail(fmt.Errorf("Library owner facade GET %s response %s is missing", route, status))
+			}
+		}
+		response := operation.Responses["200"]
+		if response.Content["application/json"].Schema.Ref != responseRef {
+			fail(fmt.Errorf("Library owner facade GET %s must return %s", route, responseRef))
+		}
+	}
 }
 
 func validateLibraryDownloadFacade(paths map[string]pathItem) {

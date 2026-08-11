@@ -213,6 +213,10 @@ func (h *Handler) Router() chi.Router {
 	// The owner-backed download command must shadow the public-data wildcard.
 	// Browser callers select only a material ID, never a storage key or URL.
 	r.Get(contract.LibraryDownloadRoute, h.libraryDownload)
+	// The complete owner snapshot shadows Portal API's legacy mock catalog. It
+	// carries no browser filters so the global facts remain filter-independent.
+	r.Get("/api/v1/library/materials", h.libraryCatalog)
+	r.Get("/api/v1/library/materials/{material_id}", h.libraryMaterial)
 
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
@@ -225,6 +229,95 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/notices", h.proxyToPortalAPI)
 
 	return r
+}
+
+type browserLibraryMaterial struct {
+	ID                string     `json:"id"`
+	Type              string     `json:"type"`
+	Subject           string     `json:"subject"`
+	Title             string     `json:"title"`
+	Author            string     `json:"author"`
+	Intro             string     `json:"intro"`
+	TOC               []string   `json:"toc"`
+	Pages             [][]string `json:"pages"`
+	Price             int64      `json:"price"`
+	PreviewPages      int64      `json:"previewPages"`
+	Downloads         int64      `json:"downloads"`
+	DownloadAvailable bool       `json:"downloadAvailable"`
+	FileSize          int64      `json:"fileSize"`
+}
+
+func (h *Handler) libraryCatalog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.RawQuery != "" {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "资料库筛选请在页面内完成。")
+		return
+	}
+	if h.libraryDownloads == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "LIBRARY_TEMPORARILY_UNAVAILABLE", "资料库暂时无法加载，请稍后重试。")
+		return
+	}
+	catalog, err := h.libraryDownloads.Catalog(r.Context(), requestIDOf(w, r))
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "LIBRARY_TEMPORARILY_UNAVAILABLE", "资料库暂时无法加载，请稍后重试。")
+		return
+	}
+	materials := make([]browserLibraryMaterial, 0, len(catalog.Materials))
+	for _, material := range catalog.Materials {
+		materials = append(materials, toBrowserLibraryMaterial(material))
+	}
+	releaseID := any(nil)
+	if catalog.ReleaseID != nil {
+		releaseID = *catalog.ReleaseID
+	}
+	countingSince := any(nil)
+	if catalog.CountingSince != nil {
+		countingSince = catalog.CountingSince.UTC().Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"materials": materials,
+		"statistics": map[string]any{
+			"releaseId": releaseID, "materialCount": catalog.MaterialCount,
+			"downloadStarts": catalog.DownloadStarts,
+			"countingSince":  countingSince,
+			"asOf":           catalog.AsOf.UTC().Format(time.RFC3339),
+		},
+		"request_id": requestIDOf(w, r),
+	})
+}
+
+func (h *Handler) libraryMaterial(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.RawQuery != "" {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "资料请求无效，请返回资料库重新选择。")
+		return
+	}
+	if h.libraryDownloads == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "LIBRARY_TEMPORARILY_UNAVAILABLE", "资料库暂时无法加载，请稍后重试。")
+		return
+	}
+	catalog, err := h.libraryDownloads.Catalog(r.Context(), requestIDOf(w, r))
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "LIBRARY_TEMPORARILY_UNAVAILABLE", "资料库暂时无法加载，请稍后重试。")
+		return
+	}
+	id := chi.URLParam(r, "material_id")
+	for _, material := range catalog.Materials {
+		if material.ID == id {
+			writeJSON(w, http.StatusOK, map[string]any{"material": toBrowserLibraryMaterial(material), "request_id": requestIDOf(w, r)})
+			return
+		}
+	}
+	writeError(w, r, http.StatusNotFound, "MATERIAL_NOT_AVAILABLE", "资料不存在或已下架，请返回资料库重新选择。")
+}
+
+func toBrowserLibraryMaterial(material librarydownload.PublicMaterial) browserLibraryMaterial {
+	return browserLibraryMaterial{
+		ID: material.ID, Type: material.Type, Subject: material.Subject, Title: material.Title,
+		Author: "资料库收录", Intro: "", TOC: []string{}, Pages: [][]string{}, Price: 0,
+		PreviewPages: 0, Downloads: material.Downloads, DownloadAvailable: material.DownloadAvailable,
+		FileSize: material.FileSize,
+	}
 }
 
 func (h *Handler) libraryDownload(w http.ResponseWriter, r *http.Request) {

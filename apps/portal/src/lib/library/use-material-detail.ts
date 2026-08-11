@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchLibraryMaterialDetail, formatPortalError } from "@/lib/api/client";
-import { getMaterialOrFallback } from "@/lib/library/gateway";
+import { fetchLibraryMaterialDetail, formatPortalError, PortalHttpError } from "@/lib/api/client";
 import type { Material } from "@/lib/library/mock";
 
 /**
@@ -12,11 +11,12 @@ import type { Material } from "@/lib/library/mock";
 export type MaterialDetailState =
   | { loadState: "loading"; material: null; error: null }
   | { loadState: "ready"; material: Material; error: null }
-  | { loadState: "error"; material: null; error: string | null };
+  | { loadState: "not-found"; material: null; error: null }
+  | { loadState: "error"; material: null; error: string; retry: () => void };
 
 /**
- * 资料详情统一加载：真实 detail 接口 → gateway 缓存/mock 回退 → error。
- * fallback 只取一次，按分支使用：成功路径 response 优先，失败路径用 fallback。
+ * 资料详情统一从 Library owner 加载。owner 失败必须保持失败态，不能用缓存或 mock
+ * 伪装成一次成功读取。
  */
 export function useMaterialDetail(id: string): MaterialDetailState {
   const [state, setState] = useState<MaterialDetailState>({
@@ -28,24 +28,30 @@ export function useMaterialDetail(id: string): MaterialDetailState {
 
   const load = useCallback(async () => {
     setState({ loadState: "loading", material: null, error: null });
-    const fallback = getMaterialOrFallback(id);
     try {
       const response = await fetchLibraryMaterialDetail(id);
       if (!mounted.current) return;
-      const found = response?.material ?? fallback;
+      const found = response?.material;
       if (found) {
         setState({ loadState: "ready", material: found, error: null });
         return;
       }
       // 内容不存在：404 文案由展示组件提供，error 保持 null，避免文案叠加。
-      setState({ loadState: "error", material: null, error: null });
+      setState({ loadState: "not-found", material: null, error: null });
     } catch (loadError) {
       if (!mounted.current) return;
-      if (fallback) {
-        setState({ loadState: "ready", material: fallback, error: null });
+      if (loadError instanceof PortalHttpError && loadError.status === 404) {
+        setState({ loadState: "not-found", material: null, error: null });
         return;
       }
-      setState({ loadState: "error", material: null, error: formatPortalError(loadError) });
+      setState({
+        loadState: "error",
+        material: null,
+        error: loadError instanceof PortalHttpError
+          ? "资料详情暂时无法加载，请稍后重试。"
+          : formatPortalError(loadError),
+        retry: () => void load(),
+      });
     }
   }, [id]);
 

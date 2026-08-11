@@ -172,16 +172,35 @@ if (( enable_materials_sync )); then
   repo_root="$(cd -- "$source_dir/../.." && pwd)"
   install -d -o root -g root -m 0700 /opt/henukit-materials
   install -d -o root -g root -m 0700 /opt/henukit-materials/sealed
+  install -d -o root -g root -m 0700 /opt/henukit-materials/oss-audit
+  install -d -o root -g root -m 0700 /opt/henukit-materials/activation-staging
   install -d -o root -g root -m 0755 /opt/henukit-materials/public
   install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-orchestrate" /usr/local/libexec/henukit/henukit-materials-orchestrate
   install -o root -g root -m 0755 "$source_dir/deploy/henukit-materials-prepare" /usr/local/libexec/henukit/henukit-materials-prepare
   install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-seal" /usr/local/libexec/henukit/henukit-materials-seal
   install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-activate" /usr/local/libexec/henukit/henukit-materials-activate
+  install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-publish-release-oss" /usr/local/libexec/henukit/henukit-materials-publish-release-oss
   install -o root -g root -m 0644 "$repo_root/scripts/ops/prepare-henukit-materials.mjs" /usr/local/libexec/henukit/prepare-henukit-materials.mjs
   install -o root -g root -m 0600 "$repo_root/scripts/ops/seal-henukit-materials.mjs" /usr/local/libexec/henukit/seal-henukit-materials.mjs
   install -o root -g root -m 0600 "$repo_root/scripts/ops/activate-henukit-materials.mjs" /usr/local/libexec/henukit/activate-henukit-materials.mjs
+  install -o root -g root -m 0600 "$repo_root/scripts/ops/build-henukit-library-activation-bundle.mjs" /usr/local/libexec/henukit/build-henukit-library-activation-bundle.mjs
   install -o root -g root -m 0755 "$repo_root/scripts/ops/convert-henukit-slides.py" /usr/local/libexec/henukit/convert-henukit-slides.py
   install -o root -g root -m 0755 "$repo_root/scripts/ops/import-henukit-materials.mjs" /usr/local/libexec/henukit/import-henukit-materials.mjs
+  materials_release_binary="$(mktemp)"
+  library_activation_binary="$(mktemp)"
+  trap 'rm -f "$temp_binary" "$materials_release_binary" "$library_activation_binary"' EXIT
+  (
+    cd "$source_dir"
+    CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$materials_release_binary" ./cmd/materials-oss-release
+  )
+  install -o root -g root -m 0700 "$materials_release_binary" /usr/local/libexec/henukit/materials-oss-release
+  rm -f "$materials_release_binary"
+  (
+    cd "$repo_root/services/library"
+    CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$library_activation_binary" ./cmd/activate-public-release
+  )
+  install -o root -g root -m 0700 "$library_activation_binary" /usr/local/libexec/henukit/library-activate-public-release
+  rm -f "$library_activation_binary"
 
   if [[ ! -f /etc/henukit-deploy/materials-webhook.env ]]; then
     install -o root -g henukit-deploy -m 0640 "$source_dir/deploy/materials.env.example" /etc/henukit-deploy/materials-webhook.env
@@ -195,6 +214,11 @@ MATERIALS_SEAL_ENV
   fi
   chown root:root /etc/henukit-deploy/materials-seal.env
   chmod 0600 /etc/henukit-deploy/materials-seal.env
+  if [[ ! -f /etc/henukit-deploy/materials-oss.env ]]; then
+    install -o root -g root -m 0600 "$source_dir/deploy/materials-oss.env.example" /etc/henukit-deploy/materials-oss.env
+  fi
+  chown root:root /etc/henukit-deploy/materials-oss.env
+  chmod 0600 /etc/henukit-deploy/materials-oss.env
   if [[ ! -f /etc/henukit-deploy/materials-activate.env ]]; then
     cat > /etc/henukit-deploy/materials-activate.env <<'MATERIALS_ACTIVATE_ENV'
 HENUKIT_MATERIALS_SEALED_ROOT=/opt/henukit-materials/sealed
@@ -205,6 +229,10 @@ HENUKIT_MATERIALS_PSQL=/usr/bin/psql
 HENUKIT_MATERIALS_PG_SERVICE_FILE=/etc/henukit-deploy/materials-postgresql.conf
 HENUKIT_MATERIALS_PG_SERVICE=henukit-materials
 HENUKIT_MATERIALS_LEGACY_INVENTORY=/etc/henukit-deploy/materials-legacy-inventory.json
+HENUKIT_MATERIALS_OSS_AUDIT_ROOT=/opt/henukit-materials/oss-audit
+HENUKIT_MATERIALS_ACTIVATION_STAGING_ROOT=/opt/henukit-materials/activation-staging
+LIBRARY_DATABASE_URL=postgres://configure-before-enable.invalid/library
+LIBRARY_OSS_ECS_RAM_ROLE=configure-before-enable
 MATERIALS_ACTIVATE_ENV
   fi
   chown root:root /etc/henukit-deploy/materials-activate.env

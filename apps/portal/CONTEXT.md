@@ -34,6 +34,13 @@ owner façade for the selected material ID. It never constructs `/materials/`
 or OSS URLs from `storage_key`, stores a signed URL in component state, counts a
 click locally, or treats a failed grant as a successful download.
 
+The Library homepage reads one complete active owner snapshot through Portal
+Gateway. Its collection count comes from that full snapshot and its cumulative
+download count comes from Library's append-only Download Start ledger; browser
+search and filters change only visible cards. Loading and failed reads expose
+no numeric claim, while an empty successful owner snapshot may truthfully show
+zero.
+
 ## Design language
 
 "Industrial Minimal" — warm paper white (#F2F0EA), deep ink text (#161513), safety orange accent (#FF4D00). Typography: Space Grotesk (display), IBM Plex Mono (labels), system Chinese fonts (body). Visual elements: 1px structural lines, crosshair alignment marks, mono numbering, engineering blueprint grid backgrounds.

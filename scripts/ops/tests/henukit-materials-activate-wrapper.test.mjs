@@ -22,8 +22,12 @@ function createFixture() {
   const root = mkdtempSync(join(tmpdir(), "henukit-materials-activate-wrapper-"));
   const sealedRoot = join(root, "sealed");
   const publicRoot = join(root, "public");
+  const ossAuditRoot = join(root, "oss-audit");
+  const activationStagingRoot = join(root, "activation-staging");
   mkdirSync(sealedRoot, { mode: 0o700 });
   mkdirSync(publicRoot, { mode: 0o700 });
+  mkdirSync(ossAuditRoot, { mode: 0o700 });
+  mkdirSync(activationStagingRoot, { mode: 0o700 });
   const converter = join(root, "converter");
   const importer = join(root, "importer");
   const psql = join(root, "psql");
@@ -36,6 +40,11 @@ function createFixture() {
     { mode: 0o600 },
   );
   chmodSync(activation, 0o600);
+  const bundleBuilder = join(root, "build-henukit-library-activation-bundle.mjs");
+  writeFileSync(bundleBuilder, "// fixed bundle builder\n", { mode: 0o600 });
+  chmodSync(bundleBuilder, 0o600);
+  const libraryActivator = join(root, "library-activate-public-release");
+  executable(libraryActivator, "#!/bin/sh\nexit 0\n");
   const flock = join(root, "flock");
   executable(flock, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
   const config = join(root, "materials-activate.env");
@@ -56,6 +65,10 @@ function createFixture() {
       `HENUKIT_MATERIALS_PG_SERVICE_FILE=${pgServiceFile}`,
       "HENUKIT_MATERIALS_PG_SERVICE=materials",
       `HENUKIT_MATERIALS_LEGACY_INVENTORY=${legacyInventory}`,
+      `HENUKIT_MATERIALS_OSS_AUDIT_ROOT=${ossAuditRoot}`,
+      `HENUKIT_MATERIALS_ACTIVATION_STAGING_ROOT=${activationStagingRoot}`,
+      "LIBRARY_DATABASE_URL=postgres://fixed.example/library",
+      "LIBRARY_OSS_ECS_RAM_ROLE=henukit-library-activation",
       "",
     ].join("\n"),
     { mode: 0o600 },
@@ -72,7 +85,7 @@ function createFixture() {
   const wrapper = join(root, "henukit-materials-activate");
   writeFileSync(wrapper, template, { mode: 0o700 });
   chmodSync(wrapper, 0o700);
-  return { root, wrapper, output, config, activation, sealedRoot, publicRoot, converter, importer, psql, pgServiceFile, legacyInventory };
+  return { root, wrapper, output, config, activation, sealedRoot, publicRoot, converter, importer, psql, pgServiceFile, legacyInventory, ossAuditRoot, activationStagingRoot, bundleBuilder, libraryActivator };
 }
 
 test("root activation wrapper accepts only one approved release identity and fixes every authority-bearing input", () => {
@@ -101,6 +114,10 @@ test("root activation wrapper accepts only one approved release identity and fix
       "--importer", fixture.importer,
       "--psql", fixture.psql,
       "--legacy-inventory", fixture.legacyInventory,
+      "--oss-audit-root", fixture.ossAuditRoot,
+      "--activation-staging-root", fixture.activationStagingRoot,
+      "--bundle-builder", fixture.bundleBuilder,
+      "--library-activator", fixture.libraryActivator,
       "--activation-owner", String(process.getuid()),
     ]);
     assert.equal(invocation.env.PATH, "/usr/bin:/bin");
@@ -108,6 +125,8 @@ test("root activation wrapper accepts only one approved release identity and fix
     assert.equal(invocation.env.HENUKIT_MATERIALS_DATABASE_URL, undefined);
     assert.equal(invocation.env.PGSERVICEFILE, fixture.pgServiceFile);
     assert.equal(invocation.env.PGSERVICE, "materials");
+    assert.equal(invocation.env.LIBRARY_DATABASE_URL, "postgres://fixed.example/library");
+    assert.equal(invocation.env.LIBRARY_OSS_ECS_RAM_ROLE, "henukit-library-activation");
     assert.doesNotMatch(invocation.argv.join("\n"), /postgres:\/\//);
     assert.equal(invocation.env.NODE_OPTIONS, undefined);
   } finally {
@@ -185,7 +204,7 @@ test("root activation wrapper holds one kernel lock across the activation proces
   const root = mkdtempSync(join(tmpdir(), "henukit-materials-activate-lock-"));
   const container = `henukit-materials-activate-lock-${process.pid}-${Date.now()}`;
   try {
-    for (const directory of ["sealed", "public"]) mkdirSync(join(root, directory), { mode: 0o700 });
+    for (const directory of ["sealed", "public", "oss-audit", "activation-staging"]) mkdirSync(join(root, directory), { mode: 0o700 });
     for (const tool of ["converter", "importer", "psql"]) executable(join(root, tool), "#!/bin/sh\nexit 0\n");
     writeFileSync(join(root, "pg_service.conf"), "[materials]\nhost=trusted.example\ndbname=study\n", { mode: 0o600 });
     chmodSync(join(root, "pg_service.conf"), 0o600);
@@ -202,6 +221,10 @@ test("root activation wrapper holds one kernel lock across the activation proces
         "HENUKIT_MATERIALS_PG_SERVICE_FILE=/fixture/pg_service.conf",
         "HENUKIT_MATERIALS_PG_SERVICE=materials",
         "HENUKIT_MATERIALS_LEGACY_INVENTORY=/fixture/legacy-inventory.json",
+        "HENUKIT_MATERIALS_OSS_AUDIT_ROOT=/fixture/oss-audit",
+        "HENUKIT_MATERIALS_ACTIVATION_STAGING_ROOT=/fixture/activation-staging",
+        "LIBRARY_DATABASE_URL=postgres://fixed.example/library",
+        "LIBRARY_OSS_ECS_RAM_ROLE=henukit-library-activation",
         "",
       ].join("\n"),
       { mode: 0o600 },
@@ -213,6 +236,9 @@ test("root activation wrapper holds one kernel lock across the activation proces
       { mode: 0o600 },
     );
     chmodSync(join(root, "activate-henukit-materials.mjs"), 0o600);
+    writeFileSync(join(root, "build-henukit-library-activation-bundle.mjs"), "// fixed bundle builder\n", { mode: 0o600 });
+    chmodSync(join(root, "build-henukit-library-activation-bundle.mjs"), 0o600);
+    executable(join(root, "library-activate-public-release"), "#!/bin/sh\nexit 0\n");
     let wrapper = readFileSync(templatePath, "utf8")
       .replace('readonly config_path="/etc/henukit-deploy/materials-activate.env"', 'readonly config_path="/fixture/materials-activate.env"')
       .replace('readonly lock_path="/run/henukit-materials-activate.lock"', 'readonly lock_path="/fixture/activation.lock"');
@@ -259,6 +285,9 @@ test("materials installation keeps the activation program root-readable only", (
     installer,
     /install -o root -g root -m 0600 "\$repo_root\/scripts\/ops\/activate-henukit-materials\.mjs" \/usr\/local\/libexec\/henukit\/activate-henukit-materials\.mjs/,
   );
+  assert.match(installer, /build-henukit-library-activation-bundle\.mjs/);
+  assert.match(installer, /\.\/cmd\/activate-public-release/);
+  assert.match(installer, /library-activate-public-release/);
   assert.doesNotMatch(installer, /materials-activate\.env\.example.*materials-activate\.env/);
   assert.match(installer, /chown root:root \/etc\/henukit-deploy\/materials-postgresql\.conf/);
   assert.match(installer, /chmod 0600 \/etc\/henukit-deploy\/materials-postgresql\.conf/);

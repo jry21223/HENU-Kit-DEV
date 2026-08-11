@@ -217,9 +217,9 @@ export interface Material {
   pages: string[][];
   price: number;
   previewPages: number;
-  rating: number;
+  rating?: number;
   downloads: number;
-  favs: number;
+  favs?: number;
   /** 是否展示唯一 owner 下载入口；最终资格由点击后的 Library 请求重验 */
   downloadAvailable: boolean;
   fileSize?: number;
@@ -229,6 +229,13 @@ export interface Material {
 
 export interface MaterialListResponse {
   materials: Material[];
+  statistics: {
+    releaseId: string | null;
+    materialCount: number;
+    downloadStarts: number;
+    countingSince: string | null;
+    asOf: string;
+  };
   request_id: string;
 }
 

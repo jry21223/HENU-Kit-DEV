@@ -109,6 +109,48 @@ paths:
                     type: string
                     example: signed_out
 
+  /api/v1/library/materials:
+    get:
+      operationId: getPublicLibraryCatalog
+      summary: Return one complete Library-owned active public catalog snapshot
+      description: >
+        Returns the full active public-free catalog and the Library ledger's
+        global Download Start aggregate from one owner snapshot. Browser search
+        and filters are local presentation only and never alter these totals.
+      security: []
+      responses:
+        "200":
+          description: Complete active catalog, including an honest empty success
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicLibraryCatalogResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/library/materials/{material_id}:
+    get:
+      operationId: getPublicLibraryMaterial
+      summary: Return one browser-safe material from the active owner catalog
+      security: []
+      parameters:
+        - name: material_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Active public-free material
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicLibraryMaterialResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/MaterialNotAvailable" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
   /api/v1/library/materials/{material_id}/download:
     get:
       operationId: startPublicMaterialDownload
@@ -1192,6 +1234,61 @@ components:
           type: string
         material_count:
           type: integer
+
+    PublicLibraryCatalogResponse:
+      type: object
+      additionalProperties: false
+      required: [materials, statistics, request_id]
+      properties:
+        materials:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/PublicLibraryMaterial" }
+        statistics: { $ref: "#/components/schemas/PublicLibraryStatistics" }
+        request_id: { type: string }
+
+    PublicLibraryMaterialResponse:
+      type: object
+      additionalProperties: false
+      required: [material, request_id]
+      properties:
+        material: { $ref: "#/components/schemas/PublicLibraryMaterial" }
+        request_id: { type: string }
+
+    PublicLibraryStatistics:
+      type: object
+      additionalProperties: false
+      required: [releaseId, materialCount, downloadStarts, countingSince, asOf]
+      properties:
+        releaseId:
+          type: [string, "null"]
+          pattern: '^[a-f0-9]{40}-[a-f0-9]{16}$'
+        materialCount: { type: integer, format: int64, minimum: 0 }
+        downloadStarts: { type: integer, format: int64, minimum: 0 }
+        countingSince: { type: [string, "null"], format: date-time }
+        asOf: { type: string, format: date-time }
+
+    PublicLibraryMaterial:
+      type: object
+      additionalProperties: false
+      required: [id, type, subject, title, author, intro, toc, pages, price, previewPages, downloads, downloadAvailable, fileSize]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [note, exam, mock, path, lab, slides] }
+        subject: { type: string, minLength: 1, maxLength: 255 }
+        title: { type: string, minLength: 1, maxLength: 255 }
+        author:
+          type: string
+          const: 资料库收录
+          description: Honest presentation label; the owner manifest role is not represented as a personal author.
+        intro: { type: string }
+        toc: { type: array, maxItems: 0 }
+        pages: { type: array, maxItems: 0 }
+        price: { type: integer, const: 0 }
+        previewPages: { type: integer, const: 0 }
+        downloads: { type: integer, format: int64, minimum: 0 }
+        downloadAvailable: { type: boolean, const: true }
+        fileSize: { type: integer, format: int64, minimum: 0 }
 
     FoodVenuesResponse:
       type: object

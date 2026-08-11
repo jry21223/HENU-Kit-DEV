@@ -9,7 +9,7 @@ import {
 import { getMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
-import { LibraryLoading, LibraryNotFound } from "@/components/library/material-states";
+import { LibraryLoading, LibraryNotFound, LibraryUnavailable } from "@/components/library/material-states";
 import { useMaterialDetail } from "@/lib/library/use-material-detail";
 import MaterialDownloadButton from "@/components/library/material-download-button";
 
@@ -19,11 +19,9 @@ export default function ItemDetail({ id }: { id: string }) {
   const [tocOpen, setTocOpen] = useState(false);
 
   if (state.loadState !== "ready") {
-    return state.loadState === "error" ? (
-      <LibraryNotFound error={state.error} />
-    ) : (
-      <LibraryLoading />
-    );
+    if (state.loadState === "loading") return <LibraryLoading />;
+    if (state.loadState === "not-found") return <LibraryNotFound />;
+    return <LibraryUnavailable message={state.error} onRetry={state.retry} />;
   }
   const { material } = state;
 
@@ -79,11 +77,16 @@ export default function ItemDetail({ id }: { id: string }) {
             {material.title}
           </h1>
           <p data-enter className="mt-3 font-mono text-[11px] tracking-wider text-ink/50">
-            {material.author} · ★ {material.rating.toFixed(1)} · ↓ {material.downloads} · 收藏 {material.favs}
+            {material.author}
+            {material.rating !== undefined ? ` · ★ ${material.rating.toFixed(1)}` : ""}
+            {` · ↓ ${material.downloads}`}
+            {material.favs !== undefined ? ` · 收藏 ${material.favs}` : ""}
           </p>
-          <p data-enter className="mt-5 max-w-xl text-sm leading-7 text-ink/75">
-            {material.intro}
-          </p>
+          {material.intro && (
+            <p data-enter className="mt-5 max-w-xl text-sm leading-7 text-ink/75">
+              {material.intro}
+            </p>
+          )}
 
           {/* 目录 */}
           {material.toc.length > 0 && (
