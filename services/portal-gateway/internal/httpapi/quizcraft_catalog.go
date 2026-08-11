@@ -8,23 +8,9 @@ import (
 	"henukit.dev/portal-gateway/internal/practice"
 )
 
-// quizCraftCatalogResponse is deliberately local to the dark Portal handoff.
-// It is not added to the public OpenAPI contract before the #166 cutover.
-// Browser clients receive only the stable identifiers needed to start a
-// practice session and the honest published availability state.
-type quizCraftCatalogResponse struct {
-	Banks     []quizCraftCatalogBank `json:"banks"`
-	RequestID string                 `json:"request_id"`
-}
-
-type quizCraftCatalogBank struct {
-	BankID        string `json:"bank_id"`
-	BankVersionID string `json:"bank_version_id"`
-	Name          string `json:"name"`
-	QuestionCount int    `json:"question_count"`
-	Available     bool   `json:"available"`
-}
-
+// getQuizCraftCatalog maps the Core owner contract into the generated Portal
+// Gateway response: only the identifiers and chapter labels needed for setup,
+// plus the honest published availability fact, cross the browser boundary.
 func (h *Handler) getQuizCraftCatalog(w http.ResponseWriter, r *http.Request) {
 	if h.quizCraftCatalog == nil {
 		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "not found", Message: "内容不存在或已下架", RequestID: requestIDOf(w, r)})
@@ -42,9 +28,13 @@ func (h *Handler) getQuizCraftCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	banks := make([]quizCraftCatalogBank, 0, len(result.Data))
+	banks := make([]contract.QuizCraftCatalogBank, 0, len(result.Data))
 	for _, bank := range result.Data {
-		banks = append(banks, quizCraftCatalogBank{
+		chapters := make([]contract.QuizCraftCatalogChapter, 0, len(bank.Chapters))
+		for _, chapter := range bank.Chapters {
+			chapters = append(chapters, contract.QuizCraftCatalogChapter{ID: chapter.ID, Name: chapter.Name})
+		}
+		banks = append(banks, contract.QuizCraftCatalogBank{
 			BankID:        bank.BankID,
 			BankVersionID: bank.BankVersionID,
 			Name:          bank.Name,
@@ -53,9 +43,10 @@ func (h *Handler) getQuizCraftCatalog(w http.ResponseWriter, r *http.Request) {
 			// published version is available to start; it is never invented
 			// from Portal-owned fallback data.
 			Available: true,
+			Chapters:  chapters,
 		})
 	}
-	writeJSON(w, http.StatusOK, quizCraftCatalogResponse{
+	writeJSON(w, http.StatusOK, contract.QuizCraftCatalogResponse{
 		Banks:     banks,
 		RequestID: requestIDOf(w, r),
 	})

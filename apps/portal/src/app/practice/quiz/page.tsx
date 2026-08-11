@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type TouchEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   createPracticeFeedback,
@@ -25,7 +25,9 @@ import type {
 } from "@/lib/api/types";
 import { authStore } from "@/lib/auth/store";
 import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
+import SessionSetup, { type SessionSelection } from "@/components/practice/session-setup/session-setup";
 import { createIdempotencyKey, readPracticeSessionHandoff } from "@/lib/practice/session-handoff";
+import { isValidQuestionCount } from "@/lib/practice/question-count";
 import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
@@ -36,6 +38,9 @@ const OPTION_LABEL = ["A", "B", "C", "D", "E", "F", "G", "H"];
 // Match the canonical UUID text form accepted by Gateway and QuizCraft Core;
 // do not unnecessarily reject a newer UUID version issued by a real bank.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SWIPE_DISTANCE = 56;
+const SWIPE_INTENT_DISTANCE = 12;
+const SWIPE_HORIZONTAL_RATIO = 1.25;
 
 const FEEDBACK_CATEGORIES: Array<{ value: PracticeFeedbackCategory; label: string }> = [
   { value: "wrong_answer", label: "答案有误" },
@@ -53,8 +58,10 @@ const FEEDBACK_STATUS_LABEL: Record<PortalPracticeFeedbackStatusResponse["data"]
   archived: "已归档",
 };
 
-type LoadState = "loading" | "ready" | "empty" | "missing-selection" | "error" | "finished";
+type LoadState = "loading" | "setup" | "ready" | "empty" | "missing-selection" | "error" | "finished";
 type AnswerResult = PortalPracticeAnswerResponse["data"];
+type PracticeSetup = { bankID: string; bankVersionID: string };
+type SwipeStart = { x: number; y: number; deltaX: number; horizontal: boolean };
 
 function fmtTime(sec: number) {
   const m = Math.floor(sec / 60);
@@ -70,7 +77,7 @@ function isUUID(value: string | null): value is string {
   return value !== null && UUID.test(value);
 }
 
-function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; error?: string; scope?: string } {
+function practiceSetupFromLocation(): { setup?: PracticeSetup; error?: string } {
   const params = new URLSearchParams(window.location.search);
   const bankID = params.get("bank_id")?.trim() ?? "";
   const bankVersionID = params.get("bank_version_id")?.trim() ?? "";
@@ -80,27 +87,9 @@ function practiceInputFromLocation(): { input?: PortalPracticeSessionInput; erro
   if (!isUUID(bankID) || !isUUID(bankVersionID)) {
     return { error: "题库选择无效，请返回题库目录重新选择。" };
   }
-  const mode = params.get("mode")?.trim() || "random";
-  if (mode !== "random" && mode !== "difficult" && mode !== "chapter") {
-    return { error: "练习模式无效，请从题库目录重新选择。" };
-  }
-  const chapterID = params.get("chapter_id")?.trim() || undefined;
-  if (mode === "chapter" && !chapterID) {
-    return { error: "章节练习需要指定章节。" };
-  }
-  const countParam = params.get("question_count")?.trim();
-  const questionCount = countParam ? Number(countParam) : undefined;
-  if (questionCount !== undefined && (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 500)) {
-    return { error: "题目数量必须在 1 到 500 之间。" };
-  }
-  const input: PortalPracticeSessionInput = {
-    bank_id: bankID,
-    bank_version_id: bankVersionID,
-    mode,
-    ...(chapterID ? { chapter_id: chapterID } : {}),
-    ...(questionCount ? { question_count: questionCount } : {}),
-  };
-  return { input, scope: JSON.stringify(input) };
+  // URL state selects only the published bank version. It is never a command
+  // payload: mode, chapter, and count come from the explicit setup confirmation.
+  return { setup: { bankID, bankVersionID } };
 }
 
 function sessionIDFromLocation(): string {
@@ -174,13 +163,19 @@ function questionTypeLabel(type: PortalPracticeQuestion["type"]) {
   return { single: "单选题", multi: "多选题", judge: "判断题", blank: "填空题" }[type];
 }
 
+function isInteractiveTarget(target: EventTarget | null) {
+  return target instanceof Element && target.closest("button, input, textarea, select, a, [contenteditable='true']") !== null;
+}
+
 export default function QuizPage() {
   const router = useRouter();
   const cardRef = usePageEnter<HTMLDivElement>("question");
   const explainRef = useRef<HTMLDivElement>(null);
+  const swipeStartRef = useRef<SwipeStart | null>(null);
   const idempotencyKeys = useRef<Record<string, string>>({});
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [setup, setSetup] = useState<PracticeSetup | null>(null);
   const [session, setSession] = useState<PortalPracticeSessionResponse["data"] | null>(null);
   const [restart, setRestart] = useState(0);
   const [idx, setIdx] = useState(0);
@@ -190,7 +185,7 @@ export default function QuizPage() {
   // that question. An error means retry the same Core command, never change
   // the answer underneath its idempotency key.
   const [lockedDrafts, setLockedDrafts] = useState<Record<string, unknown>>({});
-  const [answerError, setAnswerError] = useState<string | null>(null);
+  const [answerErrors, setAnswerErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [streak, setStreak] = useState(0);
   const [elapsed, setElapsed] = useState(0);
@@ -236,24 +231,18 @@ export default function QuizPage() {
         }
         return;
       }
-      const parsed = practiceInputFromLocation();
-      if (!parsed.input || !parsed.scope) {
+      const parsed = practiceSetupFromLocation();
+      if (!parsed.setup) {
         if (!cancelled) {
           setLoadError(parsed.error ?? "未选择真实题库。");
           setLoadState("missing-selection");
         }
         return;
       }
-      const key = idempotencyKeyFor(`create:${parsed.scope}`, "practice-create", idempotencyKeys);
-      try {
-        const response = await createPracticeSession(parsed.input, key);
-        if (cancelled) return;
-        setSession(response.data);
-        setLoadState(response.data.questions.length === 0 ? "empty" : "ready");
-      } catch (error) {
-        if (cancelled) return;
-        setLoadError(formatPortalError(error));
-        setLoadState("error");
+      if (!cancelled) {
+        setSetup(parsed.setup);
+        setLoadError(null);
+        setLoadState("setup");
       }
     };
     void load();
@@ -294,6 +283,7 @@ export default function QuizPage() {
   const result = currentKey ? answers[currentKey] : undefined;
   const answerLocked = currentKey !== "" && Object.hasOwn(lockedDrafts, currentKey);
   const selected = currentKey ? (answerLocked ? lockedDrafts[currentKey] : drafts[currentKey]) : undefined;
+  const answerError = currentKey ? answerErrors[currentKey] ?? null : null;
   const correctCount = Object.values(answers).filter((item) => item.correct).length;
   const answeredCount = Object.keys(answers).length;
 
@@ -307,9 +297,8 @@ export default function QuizPage() {
     }
   };
 
-  const goToQuestion = (nextIndex: number) => {
+  const goToQuestion = useCallback((nextIndex: number) => {
     setIdx(nextIndex);
-    setAnswerError(null);
     if (explainRef.current) gsap.set(explainRef.current, { height: 0 });
     if (cardRef.current && !window.matchMedia(REDUCED_MOTION).matches) {
       gsap.fromTo(
@@ -318,6 +307,59 @@ export default function QuizPage() {
         { x: 0, autoAlpha: 1, duration: 0.35, ease: "power2.out" }
       );
     }
+  }, [cardRef]);
+
+  useEffect(() => {
+    if (loadState !== "ready") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing || isInteractiveTarget(event.target) || submitting) return;
+      if (event.key === "ArrowLeft" && idx > 0) {
+        event.preventDefault();
+        goToQuestion(idx - 1);
+      } else if (event.key === "ArrowRight" && idx < questions.length - 1) {
+        event.preventDefault();
+        goToQuestion(idx + 1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [goToQuestion, idx, loadState, questions.length, submitting]);
+
+  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    if (window.innerWidth > 768 || submitting || event.touches.length !== 1 || isInteractiveTarget(event.target)) {
+      swipeStartRef.current = null;
+      return;
+    }
+    const touch = event.touches[0];
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY, deltaX: 0, horizontal: false };
+  };
+
+  const handleTouchMove = (event: TouchEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    if (!start || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
+    if (absY >= SWIPE_INTENT_DISTANCE && absX <= absY * SWIPE_HORIZONTAL_RATIO) {
+      swipeStartRef.current = null;
+      return;
+    }
+    if (!start.horizontal) {
+      if (absX < SWIPE_INTENT_DISTANCE || absX <= absY * SWIPE_HORIZONTAL_RATIO) return;
+      start.horizontal = true;
+    }
+    start.deltaX = deltaX;
+    event.preventDefault();
+  };
+
+  const handleTouchEnd = () => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start?.horizontal || Math.abs(start.deltaX) < SWIPE_DISTANCE) return;
+    if (start.deltaX < 0 && idx < questions.length - 1) goToQuestion(idx + 1);
+    if (start.deltaX > 0 && idx > 0) goToQuestion(idx - 1);
   };
 
   const setSelected = (value: unknown) => {
@@ -332,7 +374,11 @@ export default function QuizPage() {
       setLockedDrafts((current) => ({ ...current, [currentKey]: submittedAnswer }));
     }
     setSubmitting(true);
-    setAnswerError(null);
+    setAnswerErrors((current) => {
+      const next = { ...current };
+      delete next[currentKey];
+      return next;
+    });
     const idempotencyKey = idempotencyKeyFor(
       `answer:${session.session_id}:${question.question_id}:${question.question_version_id}`,
       "practice-answer",
@@ -360,7 +406,7 @@ export default function QuizPage() {
         }
         animateExplanation();
       })
-      .catch((error: unknown) => setAnswerError(formatPortalError(error)))
+      .catch((error: unknown) => setAnswerErrors((current) => ({ ...current, [currentKey]: formatPortalError(error) })))
       .finally(() => setSubmitting(false));
   };
 
@@ -421,23 +467,55 @@ export default function QuizPage() {
     }
   };
 
-  const prepareSessionLoad = () => {
-    setLoadState("loading");
+  const resetSessionView = () => {
     setLoadError(null);
     setSession(null);
     setIdx(0);
     setAnswers({});
     setDrafts({});
     setLockedDrafts({});
-    setAnswerError(null);
+    setAnswerErrors({});
     setStreak(0);
     setElapsed(0);
     if (explainRef.current) gsap.set(explainRef.current, { height: 0 });
   };
 
   const retrySessionLoad = () => {
-    prepareSessionLoad();
+    resetSessionView();
+    setLoadState("loading");
     setRestart((value) => value + 1);
+  };
+
+  const startCommittedSession = async (selection: SessionSelection): Promise<string | null> => {
+    if (!setup || !isValidQuestionCount(selection.questionCount)) {
+      return "当前组卷设置无效，请重新选择题数。";
+    }
+    if (selection.mode === "chapter" && !selection.chapterID) {
+      return "章节练习需要选择一个真实章节。";
+    }
+    const input: PortalPracticeSessionInput = {
+      bank_id: setup.bankID,
+      bank_version_id: setup.bankVersionID,
+      mode: selection.mode,
+      ...(selection.mode === "chapter" ? { chapter_id: selection.chapterID } : {}),
+      question_count: selection.questionCount,
+    };
+    const scope = `create:${JSON.stringify(input)}`;
+    const key = idempotencyKeyFor(scope, "practice-create", idempotencyKeys);
+    try {
+      const response = await createPracticeSession(input, key);
+      // A confirmed Core result consumes this logical command. The same setup
+      // can later start a fresh session with a new key; failures retain it.
+      clearIdempotencyKey(scope, idempotencyKeys);
+      resetSessionView();
+      setSession(response.data);
+      setLoadState(response.data.questions.length === 0 ? "empty" : "ready");
+      return null;
+    } catch (error) {
+      // Keep the setup mounted with its exact selection. Retry uses the same
+      // command body and idempotency key, never a second read of the URL.
+      return formatPortalError(error);
+    }
   };
 
   const startAnotherSession = () => {
@@ -450,13 +528,15 @@ export default function QuizPage() {
         return;
       }
     }
-    const parsed = practiceInputFromLocation();
-    if (parsed.scope) clearIdempotencyKey(`create:${parsed.scope}`, idempotencyKeys);
-    retrySessionLoad();
+    resetSessionView();
+    setLoadState("setup");
   };
 
   if (loadState === "loading") {
-    return <PracticeState title="正在连接题库" detail="正在创建练习会话…" />;
+    return <PracticeState title="正在连接题库" detail="正在读取练习入口…" />;
+  }
+  if (loadState === "setup" && setup) {
+    return <SessionSetup bankID={setup.bankID} bankVersionID={setup.bankVersionID} onStart={startCommittedSession} />;
   }
   if (loadState === "missing-selection") {
     return <PracticeState title="请先选择题库" detail={loadError ?? "请从题库目录选择练习后开始。"} />;
@@ -616,8 +696,16 @@ export default function QuizPage() {
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_12rem]">
-        <div data-block>
-          <div ref={cardRef} className="border border-ink bg-paper p-6 md:p-8">
+        <div data-block className="min-w-0 overflow-x-clip">
+          <div
+            ref={cardRef}
+            data-testid="practice-question-card"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={() => { swipeStartRef.current = null; }}
+            className="touch-pan-y border border-ink bg-paper p-6 md:p-8"
+          >
             <div className="flex flex-wrap items-center gap-3">
               <span className="font-mono text-xs text-accent">Q-{String(idx + 1).padStart(2, "0")}</span>
               <span className="border border-line px-2 py-0.5 font-mono text-[10px] text-ink/60">{question.chapter}</span>
@@ -767,6 +855,27 @@ export default function QuizPage() {
                   {idx === questions.length - 1 ? "查看结算 →" : "下一题 →"}
                 </button>
               )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-3 lg:hidden" aria-label="题目导航">
+              <button
+                type="button"
+                aria-label="上一道题"
+                disabled={idx === 0 || submitting}
+                onClick={() => goToQuestion(idx - 1)}
+                className="min-h-11 border border-ink/30 px-4 font-mono text-xs tracking-widest disabled:cursor-not-allowed disabled:border-line disabled:text-ink/30"
+              >
+                ← 上一题
+              </button>
+              <button
+                type="button"
+                aria-label="下一道题"
+                disabled={idx === questions.length - 1 || submitting}
+                onClick={() => goToQuestion(idx + 1)}
+                className="min-h-11 border border-ink/30 px-4 font-mono text-xs tracking-widest disabled:cursor-not-allowed disabled:border-line disabled:text-ink/30"
+              >
+                下一题 →
+              </button>
             </div>
 
             <div data-feedback className="mt-5 border-t border-line pt-4">

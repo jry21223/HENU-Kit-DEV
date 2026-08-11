@@ -103,6 +103,9 @@ func main() {
 	}
 	validatePersonalPracticeStats(spec.Components.Schemas)
 	validateLibraryDownloadFacade(spec.Paths)
+	if err := validateQuizCraftCatalog(spec.Components.Schemas); err != nil {
+		fail(err)
+	}
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
 	goSource, err := format.Source([]byte(renderGo(portalSession, digest)))
@@ -190,6 +193,25 @@ type PersonalPracticeStatsEnvelope struct {
 	RequestID string                `+"`json:\"request_id\"`"+`
 	Data      PersonalPracticeStats `+"`json:\"data\"`"+`
 }
+
+type QuizCraftCatalogChapter struct {
+	ID   string `+"`json:\"id\"`"+`
+	Name string `+"`json:\"name\"`"+`
+}
+
+type QuizCraftCatalogBank struct {
+	BankID        string                    `+"`json:\"bank_id\"`"+`
+	BankVersionID string                    `+"`json:\"bank_version_id\"`"+`
+	Name          string                    `+"`json:\"name\"`"+`
+	QuestionCount int                       `+"`json:\"question_count\"`"+`
+	Available     bool                      `+"`json:\"available\"`"+`
+	Chapters      []QuizCraftCatalogChapter `+"`json:\"chapters\"`"+`
+}
+
+type QuizCraftCatalogResponse struct {
+	Banks     []QuizCraftCatalogBank `+"`json:\"banks\"`"+`
+	RequestID string                 `+"`json:\"request_id\"`"+`
+}
 `, digest, fields.String())
 }
 
@@ -227,7 +249,122 @@ export interface PersonalPracticeStatsEnvelope {
   request_id: string;
   data: PersonalPracticeStats;
 }
+
+export interface QuizCraftCatalogChapter {
+  id: string;
+  name: string;
+}
+
+export interface QuizCraftCatalogBank {
+  bank_id: string;
+  bank_version_id: string;
+  name: string;
+  question_count: number;
+  available: boolean;
+  chapters: QuizCraftCatalogChapter[];
+}
+
+export interface QuizCraftCatalogResponse {
+  banks: QuizCraftCatalogBank[];
+  request_id: string;
+}
 `, digest, fields.String())
+}
+
+func validateQuizCraftCatalog(schemas map[string]schema) error {
+	catalog, ok := schemas["QuizCraftCatalogResponse"]
+	if !ok {
+		return fmt.Errorf("QuizCraftCatalogResponse object schema is missing")
+	}
+	if err := requireExactObject(catalog, "QuizCraftCatalogResponse", []string{"banks", "request_id"}); err != nil {
+		return err
+	}
+	if err := requireExactScalar(catalog.Properties["request_id"], "QuizCraftCatalogResponse.request_id", "string", ""); err != nil {
+		return err
+	}
+
+	bank, err := requireExactArrayItem(catalog.Properties["banks"], "QuizCraftCatalogResponse.banks")
+	if err != nil {
+		return err
+	}
+	bankProperties := []string{"bank_id", "bank_version_id", "name", "question_count", "available", "chapters"}
+	if err := requireExactObject(*bank, "QuizCraftCatalogResponse.banks[]", bankProperties); err != nil {
+		return err
+	}
+	for _, property := range []string{"bank_id", "bank_version_id"} {
+		if err := requireExactScalar(bank.Properties[property], "QuizCraftCatalogResponse.banks[]."+property, "string", "uuid"); err != nil {
+			return err
+		}
+	}
+	for _, scalar := range []struct {
+		property   string
+		scalarType string
+	}{
+		{property: "name", scalarType: "string"},
+		{property: "question_count", scalarType: "integer"},
+		{property: "available", scalarType: "boolean"},
+	} {
+		if err := requireExactScalar(bank.Properties[scalar.property], "QuizCraftCatalogResponse.banks[]."+scalar.property, scalar.scalarType, ""); err != nil {
+			return err
+		}
+	}
+
+	chapter, err := requireExactArrayItem(bank.Properties["chapters"], "QuizCraftCatalogResponse.banks[].chapters")
+	if err != nil {
+		return err
+	}
+	if err := requireExactObject(*chapter, "QuizCraftCatalogResponse.banks[].chapters[]", []string{"id", "name"}); err != nil {
+		return err
+	}
+	for _, property := range []string{"id", "name"} {
+		if err := requireExactScalar(chapter.Properties[property], "QuizCraftCatalogResponse.banks[].chapters[]."+property, "string", ""); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requireExactObject(value schema, path string, properties []string) error {
+	if !value.Type.isExactly("object") || value.Format != "" {
+		return fmt.Errorf("%s must be an object without a format", path)
+	}
+	if !sameNames(sortedProperties(value.Properties), properties) {
+		return fmt.Errorf("%s properties must be exactly %v", path, properties)
+	}
+	if !sameNames(value.Required, properties) {
+		return fmt.Errorf("%s required properties must be exactly %v", path, properties)
+	}
+	return nil
+}
+
+func requireExactArrayItem(value schema, path string) (*schema, error) {
+	if !value.Type.isExactly("array") || value.Format != "" || value.Items == nil {
+		return nil, fmt.Errorf("%s must be an array without a format", path)
+	}
+	return value.Items, nil
+}
+
+func requireExactScalar(value schema, path, scalarType, format string) error {
+	if !value.Type.isExactly(scalarType) || value.Format != format {
+		return fmt.Errorf("%s must be %s with format %q", path, scalarType, format)
+	}
+	return nil
+}
+
+func sameNames(got, want []string) bool {
+	gotCopy := append([]string(nil), got...)
+	wantCopy := append([]string(nil), want...)
+	sort.Strings(gotCopy)
+	sort.Strings(wantCopy)
+	if len(gotCopy) != len(wantCopy) {
+		return false
+	}
+	for index := range gotCopy {
+		if gotCopy[index] != wantCopy[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func validatePersonalPracticeStats(schemas map[string]schema) {

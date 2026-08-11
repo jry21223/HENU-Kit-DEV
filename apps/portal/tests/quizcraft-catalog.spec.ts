@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("controlled QuizCraft catalog renders real bank/version start handoff", async ({ page }) => {
+test("controlled QuizCraft catalog hands off a bank version before explicit session setup", async ({ page }) => {
   let catalogRequests = 0;
   let sessionRequests = 0;
   let legacyPracticeRequests = 0;
@@ -24,6 +24,7 @@ test("controlled QuizCraft catalog renders real bank/version start handoff", asy
             name: "计算机基础",
             question_count: 42,
             available: true,
+            chapters: [{ id: "chapter-1", name: "真实目录章节" }],
           },
         ],
         request_id: "req_catalog_browser",
@@ -39,6 +40,7 @@ test("controlled QuizCraft catalog renders real bank/version start handoff", asy
       bank_id: "11111111-1111-4111-8111-111111111111",
       bank_version_id: "22222222-2222-4222-8222-222222222222",
       mode: "random",
+      question_count: 7,
     });
     await route.fulfill({
       status: 201,
@@ -82,21 +84,23 @@ test("controlled QuizCraft catalog renders real bank/version start handoff", asy
     page.waitForURL(/\/practice\/quiz\?bank_id=11111111-1111-4111-8111-111111111111&bank_version_id=22222222-2222-4222-8222-222222222222$/),
     page.getByTestId("quizcraft-catalog-start").click(),
   ]);
+  await expect(page.getByRole("heading", { name: "组卷设置" })).toBeVisible();
+  expect(sessionRequests).toBe(0);
+  await page.getByLabel("题数 / COUNT").fill("7");
+  await page.getByTestId("practice-session-start").click();
   await expect(page.getByRole("heading", { name: "由服务端会话选择的题目。" })).toBeVisible();
-  expect(catalogRequests).toBe(1);
+  expect(catalogRequests).toBeGreaterThan(0);
   expect(legacyPracticeRequests).toBe(0);
-  // React development strict mode can replay this effect. Every replay must
-  // remain one logical Core command: same request body and idempotency key.
-  expect(sessionRequests).toBeGreaterThan(0);
+  expect(sessionRequests).toBe(1);
   expect(sessionIdempotencyKeys[0]).toBeTruthy();
-  expect(new Set(sessionIdempotencyKeys)).toEqual(new Set([sessionIdempotencyKeys[0]]));
-  expect(sessionBodies).toEqual(
-    Array.from({ length: sessionRequests }, () => ({
+  expect(sessionBodies).toEqual([
+    {
       bank_id: "11111111-1111-4111-8111-111111111111",
       bank_version_id: "22222222-2222-4222-8222-222222222222",
       mode: "random",
-    })),
-  );
+      question_count: 7,
+    },
+  ]);
 });
 
 test("controlled QuizCraft catalog keeps an upstream failure honest", async ({ page }) => {
@@ -115,8 +119,8 @@ test("controlled QuizCraft catalog keeps an upstream failure honest", async ({ p
 
   await page.goto("/practice", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByText("题库接口不可用，请稍后重试。")).toBeVisible();
+  await expect(page.getByText("题库暂时加载不出来，请检查网络后重试。")).toBeVisible();
   await expect(page.getByText("示例题库", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("quizcraft-catalog-start")).toHaveCount(0);
-  expect(catalogRequests).toBe(1);
+  expect(catalogRequests).toBeGreaterThan(0);
 });

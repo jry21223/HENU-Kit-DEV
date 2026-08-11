@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Activity, Bell, BookOpen, Building2, LogOut, Menu, MessageSquare, ShieldCheck, Utensils, X } from "@lucide/vue";
+import { Activity, Bell, BookOpen, Building2, LayoutDashboard, LogOut, Menu, MessageSquare, ShieldCheck, Utensils, X } from "@lucide/vue";
 import { AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle, DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from "reka-ui";
 import { computed, nextTick, onMounted, ref } from "vue";
 
@@ -41,12 +41,7 @@ const foodHref = consolePath("/food");
 const accountMembershipsHref = consolePath("/account/memberships");
 const accountPointsHref = consolePath("/account/points");
 const accountTicketsHref = consolePath("/account");
-// The sidebar's module-summary links are `#module-<id>` anchors into the
-// ModuleCard grid that only exists in the DOM on the overview page (every
-// operations sub-page renders a dedicated view instead, see <main> below).
-// Showing them elsewhere put two full navigation lists in the sidebar at
-// once — the granted-permission shortcuts and a set of anchors with nothing
-// to scroll to — which is exactly what read as a tangled, duplicated menu.
+const overviewHref = consolePath("/");
 const isOverviewPage = !isPlatformOperations && !isNoticeOperations && !isLibraryOperations && !isFoodOperations && !isAccountMembershipOperations && !isAccountPointOperations && !isAccountTicketOperations;
 const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
@@ -144,13 +139,13 @@ const summaries = computed<ModuleSummary[]>(() =>
 // down renders every card "概览数据暂时不可用"), so neither counts.
 const visibleCount = computed(() => summaries.value.filter((summary) => summary.status !== "denied" && summary.status !== "unavailable").length);
 
-// One source of truth for the operations destinations. The desktop sidebar and
-// the mobile dialog previously repeated this list verbatim, so a permission or
-// label fix had to be made twice and the two drifted apart.
-const operationsNav = computed(() =>
+// This is the only Console route navigation surface. Each item names a real route
+// and remains hidden unless the server-verified access context grants it.
+const consoleNav = computed(() =>
   [
+    { href: overviewHref, label: "产品运行概览", icon: LayoutDashboard, permission: "console.overview.read", active: isOverviewPage },
     { href: operationsHref, label: "平台运营工作台", icon: ShieldCheck, permission: "platform.operations.read", active: isPlatformOperations },
-    { href: noticesHref, label: "通知审核与分发", icon: Bell, permission: "notice.read", active: isNoticeOperations },
+    { href: noticesHref, label: "校园通知审核与分发", icon: Bell, permission: "notice.read", active: isNoticeOperations },
     { href: libraryHref, label: "资料库运营", icon: BookOpen, permission: "library.read", active: isLibraryOperations },
     { href: foodHref, label: "美食运营", icon: Utensils, permission: "food.read", active: isFoodOperations },
     { href: accountMembershipsHref, label: "会员权益运营", icon: ShieldCheck, permission: "account.membership.write", active: isAccountMembershipOperations },
@@ -171,15 +166,15 @@ const operationsNav = computed(() =>
         <span class="truncate text-sm font-semibold tracking-tight">HENUKit Console</span>
       </div>
 
-      <nav class="flex-1 overflow-y-auto p-3" aria-label="产品模块">
+      <nav class="flex-1 overflow-y-auto p-3" aria-label="运营导航">
         <p class="px-2 pb-1.5 text-xs font-medium text-muted-foreground">运营</p>
         <ul class="grid gap-0.5">
-          <li v-for="item in operationsNav" :key="item.href">
+          <li v-for="item in consoleNav" :key="item.href">
             <a
               :href="item.href"
               :aria-current="item.active ? 'page' : undefined"
               :class="[
-                'flex min-h-9 items-center gap-2.5 rounded-md px-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                'flex min-h-11 items-center gap-2.5 rounded-md px-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                 item.active
                   ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
                   : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
@@ -191,20 +186,6 @@ const operationsNav = computed(() =>
           </li>
         </ul>
 
-        <template v-if="isOverviewPage">
-          <p class="px-2 pt-4 pb-1.5 text-xs font-medium text-muted-foreground">本页模块</p>
-          <ul class="grid gap-0.5">
-            <li v-for="module in moduleSummaries" :key="module.id">
-              <a
-                :href="`#module-${module.id}`"
-                class="flex min-h-9 items-center gap-2.5 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              >
-                <component :is="icons[module.id]" :size="16" aria-hidden="true" class="shrink-0" />
-                <span class="truncate">{{ module.name }}</span>
-              </a>
-            </li>
-          </ul>
-        </template>
       </nav>
 
       <p class="border-t border-sidebar-border px-5 py-3 text-xs leading-5 text-muted-foreground">
@@ -218,7 +199,7 @@ const operationsNav = computed(() =>
       >
         <DialogRoot v-model:open="mobileNavigationOpen">
           <DialogTrigger as-child>
-            <Button variant="ghost" size="icon" class="lg:hidden" aria-label="打开产品导航">
+            <Button variant="ghost" size="icon" class="lg:hidden" aria-label="打开运营导航">
               <Menu :size="20" />
             </Button>
           </DialogTrigger>
@@ -227,20 +208,20 @@ const operationsNav = computed(() =>
             <DialogContent class="fixed inset-y-0 left-0 z-50 flex w-[min(84vw,18rem)] flex-col bg-background p-4 shadow-lg">
               <div class="flex items-start justify-between gap-4">
                 <div>
-                  <DialogTitle class="text-sm font-semibold">产品模块</DialogTitle>
-                  <DialogDescription class="mt-0.5 text-xs text-muted-foreground">专属工作台与 {{ summaries.length }} 个已确认的运营模块</DialogDescription>
+                  <DialogTitle class="text-sm font-semibold">运营导航</DialogTitle>
+                  <DialogDescription class="mt-0.5 text-xs text-muted-foreground">已获授权的概览与运营工作台</DialogDescription>
                 </div>
                 <DialogClose as-child>
-                  <Button variant="ghost" size="icon" aria-label="关闭产品导航"><X :size="18" /></Button>
+                  <Button variant="ghost" size="icon" aria-label="关闭运营导航"><X :size="18" /></Button>
                 </DialogClose>
               </div>
-              <nav class="mt-4 grid gap-0.5 overflow-y-auto" aria-label="移动端产品模块">
-                <DialogClose v-for="item in operationsNav" :key="item.href" as-child>
+              <nav class="mt-4 grid gap-0.5 overflow-y-auto" aria-label="移动端运营导航">
+                <DialogClose v-for="item in consoleNav" :key="item.href" as-child>
                   <a
                     :href="item.href"
                     :aria-current="item.active ? 'page' : undefined"
                     :class="[
-                      'flex min-h-10 items-center gap-2.5 rounded-md px-2 text-sm',
+                      'flex min-h-11 items-center gap-2.5 rounded-md px-2 text-sm',
                       item.active ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                     ]"
                   >
@@ -248,17 +229,6 @@ const operationsNav = computed(() =>
                     <span class="truncate">{{ item.label }}</span>
                   </a>
                 </DialogClose>
-                <template v-if="isOverviewPage">
-                  <DialogClose v-for="module in moduleSummaries" :key="module.id" as-child>
-                    <a
-                      :href="`#module-${module.id}`"
-                      class="flex min-h-10 items-center gap-2.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                    >
-                      <component :is="icons[module.id]" :size="16" aria-hidden="true" class="shrink-0" />
-                      <span class="truncate">{{ module.name }}</span>
-                    </a>
-                  </DialogClose>
-                </template>
               </nav>
               <div v-if="authState === 'authenticated' || authState === 'denied'" class="mt-4 border-t border-border pt-3">
                 <DialogClose as-child>
@@ -315,7 +285,6 @@ const operationsNav = computed(() =>
         <section class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" :aria-busy="loading">
           <ModuleCard
             v-for="module in summaries"
-            :id="`module-${module.id}`"
             :key="module.id"
             :summary="module"
             :icon="icons[module.id]"
