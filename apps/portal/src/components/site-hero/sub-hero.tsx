@@ -3,13 +3,83 @@
 import { useRef } from "react";
 import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 
+export type HeroCounterState = "loading" | "ready" | "unavailable";
+
 export interface HeroCounter {
   label: string;
-  value: number;
+  value: number | null;
+  state?: HeroCounterState;
 }
 
 function formatNum(n: number) {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function CounterValue({ counter, index }: { counter: HeroCounter; index: number }) {
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const previousValueRef = useRef(0);
+  const state = counter.state ?? "ready";
+  const readyValue = state === "ready" ? counter.value : null;
+  const statusText = state === "loading" ? "加载中" : "未知";
+  const resolvedText = readyValue === null ? statusText : formatNum(readyValue);
+
+  useGSAP(
+    () => {
+      const element = valueRef.current;
+      if (!element) return;
+
+      if (readyValue === null) {
+        previousValueRef.current = 0;
+        element.textContent = resolvedText;
+        return;
+      }
+
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        previousValueRef.current = readyValue;
+        element.textContent = formatNum(readyValue);
+        return;
+      }
+
+      const animated = { value: previousValueRef.current };
+      element.textContent = formatNum(animated.value);
+      const tween = gsap.to(animated, {
+        value: readyValue,
+        duration: 1.8,
+        delay: 0.4 + index * 0.2,
+        ease: "power2.out",
+        onUpdate: () => {
+          previousValueRef.current = animated.value;
+          element.textContent = formatNum(animated.value);
+        },
+        onComplete: () => {
+          previousValueRef.current = readyValue;
+          element.textContent = formatNum(readyValue);
+        },
+      });
+
+      return () => tween.kill();
+    },
+    { dependencies: [index, readyValue, resolvedText] },
+  );
+
+  const initialText = readyValue === null ? resolvedText : "0";
+  const accessibleText = `${counter.label}${resolvedText}`;
+
+  return (
+    <>
+      <span
+        ref={valueRef}
+        aria-hidden="true"
+        data-counter-state={state}
+        data-counter-value
+      >
+        {initialText}
+      </span>
+      <span className="sr-only" aria-live="polite" aria-atomic="true">
+        {accessibleText}
+      </span>
+    </>
+  );
 }
 
 /**
@@ -35,7 +105,6 @@ export default function SubHero({
   scene: React.ReactNode;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
-  const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
 
   useGSAP(
     () => {
@@ -49,27 +118,6 @@ export default function SubHero({
             "-=0.4"
           )
           .from("[data-hero-scene]", { opacity: 0, duration: 0.7 }, "-=0.3");
-
-        counters.forEach((c, i) => {
-          const el = counterRefs.current[i];
-          if (!el) return;
-          const obj = { v: 0 };
-          gsap.to(obj, {
-            v: c.value,
-            duration: 1.8,
-            delay: 0.4 + i * 0.2,
-            ease: "power2.out",
-            onUpdate: () => {
-              el.textContent = formatNum(obj.v);
-            },
-          });
-        });
-      });
-      mm.add("(prefers-reduced-motion: reduce)", () => {
-        counters.forEach((c, i) => {
-          const el = counterRefs.current[i];
-          if (el) el.textContent = formatNum(c.value);
-        });
       });
       return () => mm.revert();
     },
@@ -94,11 +142,11 @@ export default function SubHero({
             {slogan}
           </p>
           <div data-hero-title className="mt-8 flex flex-wrap gap-x-10 gap-y-4">
-            {counters.map((c, i) => (
+            {counters.map((c, index) => (
               <div key={c.label}>
                 <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">{c.label}</p>
                 <p className="mt-1 font-display text-3xl font-bold tabular-nums">
-                  <span ref={(el) => { counterRefs.current[i] = el; }}>0</span>
+                  <CounterValue counter={c} index={index} />
                 </p>
               </div>
             ))}

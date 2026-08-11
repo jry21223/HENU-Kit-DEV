@@ -13,11 +13,6 @@ import {
   STATIC_MATERIALS,
   type Material,
 } from "@/lib/library/mock";
-import {
-  getLibraryGatewayError,
-  getMaterials,
-  initGateway,
-} from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneBooks } from "@/components/site-hero/scenes";
@@ -69,32 +64,15 @@ export default function LibraryHomePage() {
       setLoadState("ready");
       return;
     } catch (e) {
-      // Fall through to gateway cache / mock (dev only).
-      try {
-        await initGateway();
-        const cached = getMaterials();
-        if (cached.length > 0) {
-          setMaterials(cached);
-          setLoadState("ready");
-          return;
-        }
-        if (mockAllowed) {
-          setMaterials(STATIC_MATERIALS);
-          setLoadState("ready");
-          return;
-        }
-        setMaterials([]);
-        setError(
-          getLibraryGatewayError() ||
-            formatPortalError(e) ||
-            "资料库暂时加载不出来，请稍后刷新试试。"
-        );
-        setLoadState("error");
-      } catch (e2) {
-        setMaterials([]);
-        setError(formatPortalError(e2));
-        setLoadState("error");
+      if (mockAllowed) {
+        setMaterials(STATIC_MATERIALS);
+        setLoadState("ready");
+        return;
       }
+      // A warm adapter cache is not evidence that this request succeeded.
+      setMaterials([]);
+      setError(formatPortalError(e) || "资料库暂时加载不出来，请稍后刷新试试。");
+      setLoadState("error");
     }
   }, []);
 
@@ -119,6 +97,12 @@ export default function LibraryHomePage() {
   );
 
   const totalDownloads = materials.reduce((s, m) => s + m.downloads, 0);
+  const counterState =
+    loadState === "ready"
+      ? "ready"
+      : loadState === "loading"
+        ? "loading"
+        : "unavailable";
 
   return (
     <main>
@@ -128,8 +112,16 @@ export default function LibraryHomePage() {
         title="资料库"
         slogan="学长笔记、往年试卷、模拟卷、学习路径、实验报告——免费资料可直接阅读，收费资料可试读，积分兑换将在真实账户服务接通后开放。"
         counters={[
-          { label: "收录资料", value: materials.length },
-          { label: "累计下载", value: totalDownloads },
+          {
+            label: "收录资料",
+            value: loadState === "ready" ? materials.length : null,
+            state: counterState,
+          },
+          {
+            label: "累计下载",
+            value: loadState === "ready" ? totalDownloads : null,
+            state: counterState,
+          },
         ]}
         fig="FIG.02 书脊 / SPINES"
         scene={<SceneBooks />}
