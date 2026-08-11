@@ -24,6 +24,7 @@ type parameter struct {
 	Name     string `yaml:"name"`
 	In       string `yaml:"in"`
 	Required bool   `yaml:"required"`
+	Ref      string `yaml:"$ref"`
 	Schema   schema `yaml:"schema"`
 }
 
@@ -134,6 +135,7 @@ func main() {
 
 	catalogPath, catalogMethod, catalogOperation := requireOperation(spec.Paths, "listPracticeBanks")
 	statsPath, statsMethod, statsOperation := requireOperation(spec.Paths, "getPersonalPracticeStats")
+	learningStatePath, learningStateMethod, learningStateOperation := requireOperation(spec.Paths, "getPortalLearningState")
 	overallRankingPath, overallRankingMethod, overallRankingOperation := requireOperation(spec.Paths, "getOverallRanking")
 	bankRankingPath, bankRankingMethod, bankRankingOperation := requireOperation(spec.Paths, "getBankRanking")
 	createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation := requireOperation(spec.Paths, "createPortalPracticeSession")
@@ -147,18 +149,21 @@ func main() {
 	createPortalFavoritesSessionPath, createPortalFavoritesSessionMethod, createPortalFavoritesSessionOperation := requireOperation(spec.Paths, "createPortalFavoritesSession")
 	validatePortalReadOperation("listPracticeBanks", catalogMethod, catalogOperation, "BankListEnvelope", catalogSecurityRequirements)
 	validatePortalReadOperation("getPersonalPracticeStats", statsMethod, statsOperation, "PersonalPracticeStatsEnvelope", personalStatsSecurityRequirements)
-	validatePersonalStatsActorBinding(statsOperation)
+	validateActorBinding("getPersonalPracticeStats", statsOperation)
+	validatePortalReadOperation("getPortalLearningState", learningStateMethod, learningStateOperation, "PortalLearningStateEnvelope", personalStatsSecurityRequirements)
+	validateActorBinding("getPortalLearningState", learningStateOperation)
+	fail(validateLearningStatePaginationOperation(learningStateOperation))
 	validatePortalReadOperation("getOverallRanking", overallRankingMethod, overallRankingOperation, "RankingEnvelope", catalogSecurityRequirements)
 	validatePortalReadOperation("getBankRanking", bankRankingMethod, bankRankingOperation, "RankingEnvelope", catalogSecurityRequirements)
 	validatePortalPracticeCommandOperation("createPortalPracticeSession", createPortalPracticeSessionPath, createPortalPracticeSessionMethod, createPortalPracticeSessionOperation, "201", "PracticeSessionEnvelope")
 	validatePortalPracticeCommandOperation("submitPortalPracticeAnswer", submitPortalPracticeAnswerPath, submitPortalPracticeAnswerMethod, submitPortalPracticeAnswerOperation, "200", "AnswerResultEnvelope")
 	validatePortalPracticeCommandOperation("createPortalPracticeFeedback", createPortalPracticeFeedbackPath, createPortalPracticeFeedbackMethod, createPortalPracticeFeedbackOperation, "202", "OperationEnvelope")
 	validatePortalReadOperation("getPortalPracticeFeedbackStatus", getPortalPracticeFeedbackStatusMethod, getPortalPracticeFeedbackStatusOperation, "FeedbackStatusEnvelope", personalStatsSecurityRequirements)
-	validatePersonalStatsActorBinding(getPortalPracticeFeedbackStatusOperation)
+	validateActorBinding("getPortalPracticeFeedbackStatus", getPortalPracticeFeedbackStatusOperation)
 	validatePortalReadOperation("getPortalFavoritesOverview", getPortalFavoritesOverviewMethod, getPortalFavoritesOverviewOperation, "FavoritesOverviewEnvelope", personalStatsSecurityRequirements)
-	validatePersonalStatsActorBinding(getPortalFavoritesOverviewOperation)
+	validateActorBinding("getPortalFavoritesOverview", getPortalFavoritesOverviewOperation)
 	validatePortalReadOperation("listPortalFavoriteQuestions", listPortalFavoriteQuestionsMethod, listPortalFavoriteQuestionsOperation, "FavoriteListEnvelope", personalStatsSecurityRequirements)
-	validatePersonalStatsActorBinding(listPortalFavoriteQuestionsOperation)
+	validateActorBinding("listPortalFavoriteQuestions", listPortalFavoriteQuestionsOperation)
 	validatePortalPracticeCommandOperation("favoritePortalQuestion", favoritePortalQuestionPath, favoritePortalQuestionMethod, favoritePortalQuestionOperation, "200", "OperationEnvelope")
 	validatePortalPracticeCommandOperation("unfavoritePortalQuestion", unfavoritePortalQuestionPath, unfavoritePortalQuestionMethod, unfavoritePortalQuestionOperation, "200", "OperationEnvelope")
 	validatePortalPracticeCommandOperation("createPortalFavoritesSession", createPortalFavoritesSessionPath, createPortalFavoritesSessionMethod, createPortalFavoritesSessionOperation, "201", "PracticeSessionEnvelope")
@@ -167,10 +172,11 @@ func main() {
 	validateCatalogSchema(spec.Components.Schemas)
 	validateRankingSchema(spec.Components.Schemas)
 	validatePersonalStatsSchema(spec.Components.Schemas)
+	validateLearningStateSchema(spec.Components.Schemas)
 	validateFeedbackStatusSchema(spec.Components.Schemas)
 
 	digest := fmt.Sprintf("%x", sha256.Sum256(source))
-	generated, err := format.Source([]byte(render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath, digest)))
+	generated, err := format.Source([]byte(render(catalogPath, statsPath, learningStatePath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath, digest)))
 	fail(err)
 	fail(os.WriteFile(*outputPath, generated, 0o644))
 }
@@ -258,13 +264,41 @@ func validatePortalPracticeCommandOperation(operationID, path, method string, op
 	}
 }
 
-func validatePersonalStatsActorBinding(operation operation) {
+func validateActorBinding(operationID string, operation operation) {
 	for _, parameter := range operation.Parameters {
 		if parameter.Name == "X-Actor-User-Id" && parameter.In == "header" && parameter.Required && parameter.Schema.Type == "string" && parameter.Schema.Format == "uuid" {
 			return
 		}
 	}
-	fail(fmt.Errorf("getPersonalPracticeStats must require UUID X-Actor-User-Id header binding"))
+	fail(fmt.Errorf("%s must require UUID X-Actor-User-Id header binding", operationID))
+}
+
+func validateLearningStatePaginationOperation(operation operation) error {
+	wantParameters := map[string]bool{
+		"#/components/parameters/LearningStatePageQuery":     false,
+		"#/components/parameters/LearningStatePageSizeQuery": false,
+		"#/components/parameters/LearningStateWrongQuery":    false,
+	}
+	if len(operation.Parameters) != len(wantParameters)+1 {
+		return fmt.Errorf("getPortalLearningState must declare actor, page, page_size, and wrong parameters")
+	}
+	for _, parameter := range operation.Parameters {
+		if parameter.Ref == "" {
+			if parameter.Name != "X-Actor-User-Id" || parameter.In != "header" || !parameter.Required || parameter.Schema.Type != "string" || parameter.Schema.Format != "uuid" {
+				return fmt.Errorf("getPortalLearningState must declare only the actor, page, page_size, and wrong parameters")
+			}
+			continue
+		}
+		if _, ok := wantParameters[parameter.Ref]; !ok || wantParameters[parameter.Ref] {
+			return fmt.Errorf("getPortalLearningState must declare page, page_size, and wrong parameters exactly once")
+		}
+		wantParameters[parameter.Ref] = true
+	}
+	badRequest, ok := operation.Responses["400"]
+	if !ok || badRequest.Ref != "#/components/responses/BadRequest" {
+		return fmt.Errorf("getPortalLearningState 400 response must reference BadRequest")
+	}
+	return nil
 }
 
 func validateCatalogSecurity(schemes map[string]securityScheme, requirements []catalogSecurityRequirement) {
@@ -374,6 +408,44 @@ func validatePersonalStatsSchema(schemas map[string]schema) {
 	}
 }
 
+func validateLearningStateSchema(schemas map[string]schema) {
+	requireObject(schemas, "PortalLearningStateEnvelope", []string{"request_id", "data"})
+	envelope := schemas["PortalLearningStateEnvelope"]
+	requireClosedObject(envelope, "PortalLearningStateEnvelope")
+	data, ok := envelope.Properties["data"]
+	if !ok || data.Ref != "#/components/schemas/PortalLearningStatePage" {
+		fail(fmt.Errorf("PortalLearningStateEnvelope.data must reference PortalLearningStatePage"))
+	}
+
+	requireObject(schemas, "PortalLearningStatePage", []string{"items", "pagination"})
+	page := schemas["PortalLearningStatePage"]
+	requireClosedObject(page, "PortalLearningStatePage")
+	items, ok := page.Properties["items"]
+	if !ok || items.Type != "array" || items.Items == nil || items.Items.Ref != "#/components/schemas/PortalLearningStateItem" {
+		fail(fmt.Errorf("PortalLearningStatePage.items must be an array of PortalLearningStateItem"))
+	}
+	if pagination := page.Properties["pagination"]; pagination.Ref != "#/components/schemas/PortalLearningStatePagination" {
+		fail(fmt.Errorf("PortalLearningStatePage.pagination must reference PortalLearningStatePagination"))
+	}
+
+	requireObject(schemas, "PortalLearningStatePagination", []string{"page", "page_size", "total", "total_pages"})
+	pagination := schemas["PortalLearningStatePagination"]
+	requireClosedObject(pagination, "PortalLearningStatePagination")
+	for _, property := range []string{"page", "page_size", "total", "total_pages"} {
+		requireProperty(pagination, property, "integer")
+	}
+
+	requireObject(schemas, "PortalLearningStateItem", []string{"bank_id", "question_id", "question_version_id", "wrong", "attempt_count", "correct_count", "updated_at"})
+	item := schemas["PortalLearningStateItem"]
+	requireClosedObject(item, "PortalLearningStateItem")
+	for _, property := range []string{"bank_id", "question_id", "question_version_id", "updated_at"} {
+		requireProperty(item, property, "string")
+	}
+	requireProperty(item, "wrong", "boolean")
+	requireProperty(item, "attempt_count", "integer")
+	requireProperty(item, "correct_count", "integer")
+}
+
 func validateFeedbackStatusSchema(schemas map[string]schema) {
 	requireObject(schemas, "FeedbackStatusEnvelope", []string{"request_id", "data"})
 	envelope := schemas["FeedbackStatusEnvelope"]
@@ -437,7 +509,7 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-func render(catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath, digest string) string {
+func render(catalogPath, statsPath, learningStatePath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath, digest string) string {
 	return fmt.Sprintf(`// Code generated by cmd/quizcraftcontractgen from quizcraft.yaml; DO NOT EDIT.
 package practice
 
@@ -445,6 +517,7 @@ const QuizCraftCatalogContractSHA256 = %q
 const QuizCraftRankingContractSHA256 = QuizCraftCatalogContractSHA256
 const ListPracticeBanksPath = %q
 const GetPersonalPracticeStatsPath = %q
+const GetPortalLearningStatePath = %q
 const OverallRankingPath = %q
 const BankRankingPath = %q
 const CreatePortalPracticeSessionPath = %q
@@ -532,6 +605,35 @@ type MasterySubject struct {
 	CorrectQuestions int64  `+"`json:\"correct_questions\"`"+`
 }
 
+// LearningStateEnvelope contains only Core-derived facts for one signed-in
+// Portal actor. Question content is deliberately absent.
+type LearningStateEnvelope struct {
+	RequestID string            `+"`json:\"request_id\"`"+`
+	Data      LearningStatePage `+"`json:\"data\"`"+`
+}
+
+type LearningStatePage struct {
+	Items      []LearningStateItem     `+"`json:\"items\"`"+`
+	Pagination LearningStatePagination `+"`json:\"pagination\"`"+`
+}
+
+type LearningStatePagination struct {
+	Page       int64 `+"`json:\"page\"`"+`
+	PageSize   int64 `+"`json:\"page_size\"`"+`
+	Total      int64 `+"`json:\"total\"`"+`
+	TotalPages int64 `+"`json:\"total_pages\"`"+`
+}
+
+type LearningStateItem struct {
+	BankID            string `+"`json:\"bank_id\"`"+`
+	QuestionID        string `+"`json:\"question_id\"`"+`
+	QuestionVersionID string `+"`json:\"question_version_id\"`"+`
+	Wrong             bool   `+"`json:\"wrong\"`"+`
+	AttemptCount      int64  `+"`json:\"attempt_count\"`"+`
+	CorrectCount      int64  `+"`json:\"correct_count\"`"+`
+	UpdatedAt         string `+"`json:\"updated_at\"`"+`
+}
+
 // FeedbackStatusEnvelope is one authenticated Portal user's persisted
 // correction processing status. It never represents a mock response.
 type FeedbackStatusEnvelope struct {
@@ -578,7 +680,7 @@ type FavoriteQuestion struct {
 	Available         bool   `+"`json:\"available\"`"+`
 	QuestionVersionID string `+"`json:\"question_version_id,omitempty\"`"+`
 }
-`, digest, catalogPath, statsPath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath)
+`, digest, catalogPath, statsPath, learningStatePath, overallRankingPath, bankRankingPath, createPortalPracticeSessionPath, submitPortalPracticeAnswerPath, createPortalPracticeFeedbackPath, getPortalPracticeFeedbackStatusPath, getPortalFavoritesOverviewPath, listPortalFavoriteQuestionsPath, favoritePortalQuestionPath, unfavoritePortalQuestionPath, createPortalFavoritesSessionPath)
 }
 
 func fail(err error) {

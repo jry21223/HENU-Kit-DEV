@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -164,6 +165,28 @@ type personalPracticeStats struct {
 	Mastery        []masterySubject `json:"mastery"`
 }
 
+type learningStateItem struct {
+	BankID            uuid.UUID `json:"bank_id"`
+	QuestionID        uuid.UUID `json:"question_id"`
+	QuestionVersionID uuid.UUID `json:"question_version_id"`
+	Wrong             bool      `json:"wrong"`
+	AttemptCount      int64     `json:"attempt_count"`
+	CorrectCount      int64     `json:"correct_count"`
+	UpdatedAt         string    `json:"updated_at"`
+}
+
+type learningStatePagination struct {
+	Page       int64 `json:"page"`
+	PageSize   int64 `json:"page_size"`
+	Total      int64 `json:"total"`
+	TotalPages int64 `json:"total_pages"`
+}
+
+type learningStatePage struct {
+	Items      []learningStateItem     `json:"items"`
+	Pagination learningStatePagination `json:"pagination"`
+}
+
 type responseEnvelope struct {
 	RequestID string `json:"request_id"`
 	Data      any    `json:"data"`
@@ -292,13 +315,15 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		portalRead.Get("/api/v1/banks", service.listBanks)
 		portalRead.Get("/api/v1/rankings/overall", service.overallRanking)
 		portalRead.Get("/api/v1/banks/{bank_id}/rankings", service.bankRanking)
-		// This is the one read endpoint whose signed identity is an account
-		// subject. authenticatePortalPersonalStats validates the six-part HMAC;
-		// catalog and rankings remain on their established five-part contract.
-		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/stats", service.personalStats)
-		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/feedback/{feedback_id}/status", service.portalFeedbackStatus)
-		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/favorites", service.portalFavoritesOverview)
-		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/banks/{bank_id}/favorites", service.portalFavoritesList)
+		// These caller-owned reads bind the account subject as the sixth HMAC
+		// line. Catalog and rankings remain on their established five-part
+		// public-read contract.
+		portalActorRead := router.With(service.authenticatePortalActorRead)
+		portalActorRead.Get("/api/v1/stats", service.personalStats)
+		portalActorRead.Get("/api/v1/portal/practice/learning-state", service.portalLearningState)
+		portalActorRead.Get("/api/v1/portal/practice/feedback/{feedback_id}/status", service.portalFeedbackStatus)
+		portalActorRead.Get("/api/v1/portal/practice/favorites", service.portalFavoritesOverview)
+		portalActorRead.Get("/api/v1/portal/practice/banks/{bank_id}/favorites", service.portalFavoritesList)
 	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
@@ -1244,20 +1269,156 @@ func (service *practiceHTTP) learningState(writer http.ResponseWriter, request *
 		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read persistent learning state")
 		return
 	}
-	rows, err := service.queries.ListLearningState(request.Context(), *actor.userID)
+	requestID := serviceRequestIDFromHeader(request)
+	writer.Header().Set("X-Request-Id", requestID)
+	service.legacyLearningStateForUser(writer, request, *actor.userID, requestID, "QuizCraft is temporarily unavailable")
+}
+
+func (service *practiceHTTP) portalLearningState(writer http.ResponseWriter, request *http.Request) {
+	requestID := serviceRequestIDFromHeader(request)
+	writer.Header().Set("X-Request-Id", requestID)
+	userID, err := portalActorUserID(request)
 	if err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
+		writeErrorWithRequestID(writer, http.StatusUnauthorized, "authentication_required", "sign in to read persistent learning state", requestID)
 		return
 	}
-	items := make([]map[string]any, 0)
-	for _, row := range rows {
-		if !row.UpdatedAt.Valid {
+	service.portalLearningStateForUser(writer, request, userID, requestID, "QuizCraft learning state is temporarily unavailable")
+}
+
+func (service *practiceHTTP) portalLearningStateForUser(writer http.ResponseWriter, request *http.Request, userID uuid.UUID, requestID, unavailableMessage string) {
+	page, pageSize, pageOffset, wrong, err := parseLearningStatePagination(request)
+	if err != nil {
+		writeErrorWithRequestID(writer, http.StatusBadRequest, "invalid_pagination", "page and page_size must be positive integers and page_size cannot exceed 100", requestID)
+		return
+	}
+	tx, err := service.database.BeginTx(request.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		writeErrorWithRequestID(writer, http.StatusServiceUnavailable, "database_unavailable", unavailableMessage, requestID)
+		return
+	}
+	defer func() { _ = tx.Rollback(request.Context()) }()
+	queries := store.New(tx)
+	wrongFilter := pgtype.Bool{}
+	if wrong != nil {
+		wrongFilter = pgtype.Bool{Bool: *wrong, Valid: true}
+	}
+	total, err := queries.CountLearningState(request.Context(), store.CountLearningStateParams{UserID: userID, Wrong: wrongFilter})
+	if err != nil {
+		writeErrorWithRequestID(writer, http.StatusServiceUnavailable, "database_unavailable", unavailableMessage, requestID)
+		return
+	}
+	rows, err := queries.ListLearningState(request.Context(), store.ListLearningStateParams{UserID: userID, Wrong: wrongFilter, PageOffset: pageOffset, PageSize: pageSize})
+	if err != nil {
+		writeErrorWithRequestID(writer, http.StatusServiceUnavailable, "database_unavailable", unavailableMessage, requestID)
+		return
+	}
+	items, err := mapLearningStateRows(rows)
+	if err != nil {
+		writeErrorWithRequestID(writer, http.StatusServiceUnavailable, "invalid_learning_state", "stored learning state timestamp is invalid", requestID)
+		return
+	}
+	if err := tx.Commit(request.Context()); err != nil {
+		writeErrorWithRequestID(writer, http.StatusServiceUnavailable, "database_unavailable", unavailableMessage, requestID)
+		return
+	}
+	totalPages := int64(0)
+	if total > 0 {
+		totalPages = 1 + (total-1)/pageSize
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID, Data: learningStatePage{
+		Items: items,
+		Pagination: learningStatePagination{
+			Page: page, PageSize: pageSize, Total: total, TotalPages: totalPages,
+		},
+	}})
+}
+
+// legacyLearningStateForUser preserves the existing cookie-authenticated
+// QuizCraft response shape. It walks the snapshot in bounded SQL pages; the
+// new Portal owner boundary above is the contractually paginated API.
+func (service *practiceHTTP) legacyLearningStateForUser(writer http.ResponseWriter, request *http.Request, userID uuid.UUID, requestID, unavailableMessage string) {
+	tx, err := service.database.BeginTx(request.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", unavailableMessage)
+		return
+	}
+	defer func() { _ = tx.Rollback(request.Context()) }()
+	queries := store.New(tx)
+	total, err := queries.CountLearningState(request.Context(), store.CountLearningStateParams{UserID: userID})
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", unavailableMessage)
+		return
+	}
+	items := make([]learningStateItem, 0)
+	const batchSize int64 = 100
+	for offset := int64(0); offset < total; offset += batchSize {
+		rows, err := queries.ListLearningState(request.Context(), store.ListLearningStateParams{UserID: userID, PageOffset: offset, PageSize: batchSize})
+		if err != nil {
+			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", unavailableMessage)
+			return
+		}
+		pageItems, err := mapLearningStateRows(rows)
+		if err != nil {
 			writeError(writer, http.StatusServiceUnavailable, "invalid_learning_state", "stored learning state timestamp is invalid")
 			return
 		}
-		items = append(items, map[string]any{"bank_id": row.BankID, "question_id": row.QuestionID, "question_version_id": row.QuestionVersionID, "wrong": row.Wrong, "attempt_count": row.AttemptCount, "correct_count": row.CorrectCount, "updated_at": row.UpdatedAt.Time.UTC().Format(time.RFC3339Nano)})
+		items = append(items, pageItems...)
 	}
-	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: items})
+	if err := tx.Commit(request.Context()); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", unavailableMessage)
+		return
+	}
+	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID, Data: items})
+}
+
+func mapLearningStateRows(rows []store.ListLearningStateRow) ([]learningStateItem, error) {
+	items := make([]learningStateItem, 0, len(rows))
+	for _, row := range rows {
+		if !row.UpdatedAt.Valid {
+			return nil, errors.New("invalid learning state timestamp")
+		}
+		items = append(items, learningStateItem{BankID: row.BankID, QuestionID: row.QuestionID, QuestionVersionID: row.QuestionVersionID, Wrong: row.Wrong, AttemptCount: row.AttemptCount, CorrectCount: row.CorrectCount, UpdatedAt: row.UpdatedAt.Time.UTC().Format(time.RFC3339Nano)})
+	}
+	return items, nil
+}
+
+func parseLearningStatePagination(request *http.Request) (page, pageSize, pageOffset int64, wrong *bool, err error) {
+	values, queryErr := url.ParseQuery(request.URL.RawQuery)
+	if queryErr != nil {
+		return 0, 0, 0, nil, errors.New("invalid learning state query encoding")
+	}
+	for name, entries := range values {
+		if name != "page" && name != "page_size" && name != "wrong" || len(entries) != 1 {
+			return 0, 0, 0, nil, errors.New("invalid learning state query")
+		}
+	}
+	parse := func(name string, fallback, maximum int64) (int64, error) {
+		raw := values.Get(name)
+		if raw == "" {
+			return fallback, nil
+		}
+		value, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || value < 1 || maximum > 0 && value > maximum {
+			return 0, errors.New("invalid learning state page")
+		}
+		return value, nil
+	}
+	page, err = parse("page", 1, 0)
+	if err != nil {
+		return 0, 0, 0, nil, err
+	}
+	pageSize, err = parse("page_size", 20, 100)
+	if err != nil || page-1 > math.MaxInt64/pageSize {
+		return 0, 0, 0, nil, errors.New("invalid learning state page offset")
+	}
+	if raw := values.Get("wrong"); raw != "" {
+		if raw != "true" && raw != "false" {
+			return 0, 0, 0, nil, errors.New("invalid learning state wrong filter")
+		}
+		value := raw == "true"
+		wrong = &value
+	}
+	return page, pageSize, (page - 1) * pageSize, wrong, nil
 }
 
 func (service *practiceHTTP) personalStats(writer http.ResponseWriter, request *http.Request) {
@@ -1327,7 +1488,7 @@ func (service *practiceHTTP) personalStats(writer http.ResponseWriter, request *
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID, Data: stats})
 }
 
-// portalActorUserID is called only after authenticatePortalPersonalStats has
+// portalActorUserID is called only after authenticatePortalActorRead has
 // verified a six-part signature over this exact header. It intentionally
 // refuses all guest, nil, duplicate, and malformed values before stats query
 // execution.
@@ -1787,7 +1948,15 @@ func serviceRequestIDFromHeader(request *http.Request) string {
 }
 
 func writeError(writer http.ResponseWriter, status int, code, message string) {
-	response := errorEnvelope{RequestID: requestID()}
+	responseRequestID := strings.TrimSpace(writer.Header().Get("X-Request-Id"))
+	if len(responseRequestID) > 120 || !serviceRequestIDPattern.MatchString(responseRequestID) {
+		responseRequestID = requestID()
+	}
+	writeErrorWithRequestID(writer, status, code, message, responseRequestID)
+}
+
+func writeErrorWithRequestID(writer http.ResponseWriter, status int, code, message, responseRequestID string) {
+	response := errorEnvelope{RequestID: responseRequestID}
 	response.Error.Code = code
 	response.Error.Message = message
 	writeJSON(writer, status, response)

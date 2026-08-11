@@ -941,6 +941,37 @@ type PersonalPracticeStatsEnvelope struct {
 	RequestId RequestID             `json:"request_id"`
 }
 
+// PortalLearningStateEnvelope defines model for PortalLearningStateEnvelope.
+type PortalLearningStateEnvelope struct {
+	Data      PortalLearningStatePage `json:"data"`
+	RequestId RequestID               `json:"request_id"`
+}
+
+// PortalLearningStateItem defines model for PortalLearningStateItem.
+type PortalLearningStateItem struct {
+	AttemptCount      int64              `json:"attempt_count"`
+	BankId            openapi_types.UUID `json:"bank_id"`
+	CorrectCount      int64              `json:"correct_count"`
+	QuestionId        openapi_types.UUID `json:"question_id"`
+	QuestionVersionId openapi_types.UUID `json:"question_version_id"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+	Wrong             bool               `json:"wrong"`
+}
+
+// PortalLearningStatePage defines model for PortalLearningStatePage.
+type PortalLearningStatePage struct {
+	Items      []PortalLearningStateItem     `json:"items"`
+	Pagination PortalLearningStatePagination `json:"pagination"`
+}
+
+// PortalLearningStatePagination defines model for PortalLearningStatePagination.
+type PortalLearningStatePagination struct {
+	Page       int64 `json:"page"`
+	PageSize   int   `json:"page_size"`
+	Total      int64 `json:"total"`
+	TotalPages int64 `json:"total_pages"`
+}
+
 // PracticeQuestion defines model for PracticeQuestion.
 type PracticeQuestion struct {
 	union json.RawMessage
@@ -1155,6 +1186,15 @@ type BankVersionID = openapi_types.UUID
 // IdempotencyKey defines model for IdempotencyKey.
 type IdempotencyKey = string
 
+// LearningStatePageQuery defines model for LearningStatePageQuery.
+type LearningStatePageQuery = int
+
+// LearningStatePageSizeQuery defines model for LearningStatePageSizeQuery.
+type LearningStatePageSizeQuery = int
+
+// LearningStateWrongQuery defines model for LearningStateWrongQuery.
+type LearningStateWrongQuery = bool
+
 // OperationKindParam defines model for OperationKindParam.
 type OperationKindParam = OperationKind
 
@@ -1225,6 +1265,56 @@ type CreateQuestionFeedbackParams struct {
 // GetQuizCraftOperationParams defines parameters for GetQuizCraftOperation.
 type GetQuizCraftOperationParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// ListPortalFavoriteQuestionsParams defines parameters for ListPortalFavoriteQuestions.
+type ListPortalFavoriteQuestionsParams struct {
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
+}
+
+// CreatePortalFavoritesSessionParams defines parameters for CreatePortalFavoritesSession.
+type CreatePortalFavoritesSessionParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// UnfavoritePortalQuestionParams defines parameters for UnfavoritePortalQuestion.
+type UnfavoritePortalQuestionParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// FavoritePortalQuestionParams defines parameters for FavoritePortalQuestion.
+type FavoritePortalQuestionParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// GetPortalFavoritesOverviewParams defines parameters for GetPortalFavoritesOverview.
+type GetPortalFavoritesOverviewParams struct {
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
+}
+
+// CreatePortalPracticeFeedbackParams defines parameters for CreatePortalPracticeFeedback.
+type CreatePortalPracticeFeedbackParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// GetPortalPracticeFeedbackStatusParams defines parameters for GetPortalPracticeFeedbackStatus.
+type GetPortalPracticeFeedbackStatusParams struct {
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
+}
+
+// GetPortalLearningStateParams defines parameters for GetPortalLearningState.
+type GetPortalLearningStateParams struct {
+	Page     *LearningStatePageQuery     `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *LearningStatePageSizeQuery `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// Wrong Filter by the Core-owned latest wrong mark before counting and paginating.
+	Wrong *LearningStateWrongQuery `form:"wrong,omitempty" json:"wrong,omitempty"`
+
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
 }
 
 // CreatePortalPracticeSessionParams defines parameters for CreatePortalPracticeSession.
@@ -1314,6 +1404,9 @@ type StartQuizCraftPlatformLoginParams struct {
 
 // CreateQuestionFeedbackJSONRequestBody defines body for CreateQuestionFeedback for application/json ContentType.
 type CreateQuestionFeedbackJSONRequestBody = QuestionFeedback
+
+// CreatePortalPracticeFeedbackJSONRequestBody defines body for CreatePortalPracticeFeedback for application/json ContentType.
+type CreatePortalPracticeFeedbackJSONRequestBody = QuestionFeedback
 
 // CreatePortalPracticeSessionJSONRequestBody defines body for CreatePortalPracticeSession for application/json ContentType.
 type CreatePortalPracticeSessionJSONRequestBody = CreatePracticeSession

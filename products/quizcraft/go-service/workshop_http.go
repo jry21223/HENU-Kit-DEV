@@ -758,7 +758,7 @@ func (service *practiceHTTP) getFeedbackStatus(writer http.ResponseWriter, reque
 }
 
 // portalFeedbackStatus serves the same caller-owned correction status read to
-// the narrow Portal Gateway boundary. authenticatePortalPersonalStats has
+// the narrow Portal Gateway boundary. authenticatePortalActorRead has
 // already verified the six-part HMAC over X-Actor-User-Id, so the actor key is
 // derived from the trusted header rather than a browser session.
 func (service *practiceHTTP) portalFeedbackStatus(writer http.ResponseWriter, request *http.Request) {

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -391,7 +392,7 @@ func TestPersonalStatsAcceptsTrueZeroButRejectsMockShape(t *testing.T) {
 
 			result, err := testCatalogClient(t, server).PersonalStats(context.Background(), testStatsUserID, "req_stats_"+strings.ReplaceAll(test.name, " ", "_"))
 			if test.wantErr {
-				if !errors.Is(err, ErrInvalidStats) || result.RequestID != "" || result.Data.Mastery != nil {
+				if !errors.Is(err, ErrInvalidActorRead) || result.RequestID != "" || result.Data.Mastery != nil {
 					t.Fatalf("PersonalStats() = %+v, %v; want malformed mock error", result, err)
 				}
 				return
@@ -409,12 +410,280 @@ func TestPersonalStatsRejectsAnonymousOrMalformedActorWithoutCallingCore(t *test
 	defer server.Close()
 
 	for _, actor := range []string{"", AnonymousCatalogActor, "user-123"} {
-		if _, err := testCatalogClient(t, server).PersonalStats(context.Background(), actor, "req_bad_actor"); !errors.Is(err, ErrStatsUnauthorized) {
-			t.Fatalf("PersonalStats(%q) error = %v, want ErrStatsUnauthorized", actor, err)
+		if _, err := testCatalogClient(t, server).PersonalStats(context.Background(), actor, "req_bad_actor"); !errors.Is(err, ErrActorReadUnauthorized) {
+			t.Fatalf("PersonalStats(%q) error = %v, want ErrActorReadUnauthorized", actor, err)
 		}
 	}
 	if calls != 0 {
 		t.Fatalf("PersonalStats called Core for invalid actors %d times", calls)
+	}
+}
+
+func TestLearningStateUsesGeneratedActorBoundQuizCraftContract(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertPortalReadRequest(t, request, testStatsUserID, "req_learning_state_success", GetPortalLearningStatePath, true)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("X-Request-Id", "req_learning_state_success")
+		_ = json.NewEncoder(writer).Encode(LearningStateEnvelope{
+			RequestID: "req_learning_state_success",
+			Data: LearningStatePage{Items: []LearningStateItem{{
+				BankID:            "10ca9b18-c303-4b7a-ab14-1241e41b665a",
+				QuestionID:        "55555555-5555-4555-8555-555555555555",
+				QuestionVersionID: "66666666-6666-4666-8666-666666666666",
+				Wrong:             true,
+				AttemptCount:      3,
+				CorrectCount:      1,
+				UpdatedAt:         "2026-08-06T08:00:00Z",
+			}}, Pagination: LearningStatePagination{Page: 1, PageSize: 20, Total: 1, TotalPages: 1}},
+		})
+	}))
+	defer server.Close()
+
+	result, err := testCatalogClient(t, server).LearningState(context.Background(), testStatsUserID, "req_learning_state_success")
+	if err != nil {
+		t.Fatalf("LearningState() error = %v", err)
+	}
+	if result.RequestID != "req_learning_state_success" || len(result.Data.Items) != 1 || !result.Data.Items[0].Wrong || result.Data.Items[0].AttemptCount != 3 || result.Data.Items[0].CorrectCount != 1 {
+		t.Fatalf("LearningState() = %+v", result)
+	}
+}
+
+func TestLearningStateWrongFilterIsSignedAndEnforced(t *testing.T) {
+	wantWrong := true
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertPortalReadRequest(t, request, testStatsUserID, "req_learning_state_wrong", GetPortalLearningStatePath, true)
+		if request.URL.RawQuery != "page=1&page_size=20&wrong=true" {
+			t.Fatalf("learning-state query = %q", request.URL.RawQuery)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("X-Request-Id", "req_learning_state_wrong")
+		_ = json.NewEncoder(writer).Encode(LearningStateEnvelope{
+			RequestID: "req_learning_state_wrong",
+			Data: LearningStatePage{Items: []LearningStateItem{{
+				BankID:            "10ca9b18-c303-4b7a-ab14-1241e41b665a",
+				QuestionID:        "55555555-5555-4555-8555-555555555555",
+				QuestionVersionID: "66666666-6666-4666-8666-666666666666",
+				Wrong:             false,
+				AttemptCount:      1,
+				CorrectCount:      1,
+				UpdatedAt:         "2026-08-06T08:00:00Z",
+			}}, Pagination: LearningStatePagination{Page: 1, PageSize: 20, Total: 1, TotalPages: 1}},
+		})
+	}))
+	defer server.Close()
+
+	_, err := testCatalogClient(t, server).LearningStatePageWithOptions(context.Background(), testStatsUserID, "req_learning_state_wrong", LearningStatePageOptions{Page: 1, PageSize: 20, Wrong: &wantWrong})
+	if !errors.Is(err, ErrInvalidActorRead) {
+		t.Fatalf("filtered LearningState() error = %v, want ErrInvalidActorRead", err)
+	}
+}
+
+func TestLearningStateRejectsInvalidPaginationBeforeCallingCore(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer server.Close()
+
+	for _, pagination := range []struct {
+		page     int64
+		pageSize int64
+	}{
+		{page: 0, pageSize: 20},
+		{page: 1, pageSize: 0},
+		{page: 1, pageSize: 101},
+		{page: math.MaxInt64, pageSize: 2},
+	} {
+		if _, err := testCatalogClient(t, server).LearningStatePage(context.Background(), testStatsUserID, "req_invalid_pagination", pagination.page, pagination.pageSize); !errors.Is(err, ErrInvalidActorRead) {
+			t.Fatalf("LearningStatePage(%d, %d) error = %v, want ErrInvalidActorRead", pagination.page, pagination.pageSize, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("LearningStatePage called Core for invalid pagination %d times", calls)
+	}
+}
+
+func TestLearningStateRejectsRedirectsBeforeReplayingActorCredentials(t *testing.T) {
+	for _, status := range []int{http.StatusFound, http.StatusTemporaryRedirect} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var targetCalls int
+			target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				targetCalls++
+				writer.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(writer).Encode(LearningStateEnvelope{
+					RequestID: "req_learning_state_redirect",
+					Data: LearningStatePage{
+						Items: []LearningStateItem{}, Pagination: LearningStatePagination{Page: 1, PageSize: 20},
+					},
+				})
+			}))
+			defer target.Close()
+
+			redirector := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Location", target.URL+GetPortalLearningStatePath)
+				writer.WriteHeader(status)
+			}))
+			defer redirector.Close()
+
+			client, err := NewClient(redirector.URL, testCatalogClientID, testCatalogSecret, testCatalogKeyID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := client.LearningState(context.Background(), testStatsUserID, "req_learning_state_redirect"); !errors.Is(err, ErrActorReadUnavailable) {
+				t.Fatalf("LearningState() redirect error = %v, want ErrActorReadUnavailable", err)
+			}
+			if targetCalls != 0 {
+				t.Fatalf("redirect target received %d actor-bound request(s), want none", targetCalls)
+			}
+		})
+	}
+}
+
+func TestLearningStateDoesNotExposeActorCredentialsToEnvironmentProxy(t *testing.T) {
+	var proxyCalls int
+	var proxySawActorCredentials bool
+	proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		proxyCalls++
+		proxySawActorCredentials = request.Header.Get("X-Actor-User-Id") != "" ||
+			request.Header.Get("X-Signature") != "" || request.Header.Get("Authorization") != ""
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("X-Request-Id", "req_learning_state_proxy")
+		_ = json.NewEncoder(writer).Encode(LearningStateEnvelope{
+			RequestID: "req_learning_state_proxy",
+			Data: LearningStatePage{
+				Items: []LearningStateItem{}, Pagination: LearningStatePagination{Page: 1, PageSize: 20},
+			},
+		})
+	}))
+	defer proxy.Close()
+
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
+		t.Setenv(key, proxy.URL)
+	}
+	for _, key := range []string{"NO_PROXY", "no_proxy"} {
+		t.Setenv(key, "")
+	}
+
+	client, err := NewClient("http://quizcraft.invalid", testCatalogClientID, testCatalogSecret, testCatalogKeyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.LearningState(ctx, testStatsUserID, "req_learning_state_proxy"); !errors.Is(err, ErrActorReadUnavailable) {
+		t.Fatalf("LearningState() proxy error = %v, want ErrActorReadUnavailable", err)
+	}
+	if proxyCalls != 0 || proxySawActorCredentials {
+		t.Fatalf("environment proxy calls = %d, saw actor credentials = %t; want no proxy contact", proxyCalls, proxySawActorCredentials)
+	}
+}
+
+func TestLearningStateRejectsOwnerRequestIDMismatch(t *testing.T) {
+	const outboundRequestID = "req_learning_state_identity"
+	for _, test := range []struct {
+		name       string
+		headerID   string
+		responseID string
+	}{
+		{name: "missing response header", responseID: outboundRequestID},
+		{name: "different response header", headerID: "req_different_header", responseID: outboundRequestID},
+		{name: "different response body", headerID: outboundRequestID, responseID: "req_different_body"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assertPortalReadRequest(t, request, testStatsUserID, outboundRequestID, GetPortalLearningStatePath, true)
+				writer.Header().Set("Content-Type", "application/json")
+				if test.headerID != "" {
+					writer.Header().Set("X-Request-Id", test.headerID)
+				}
+				_ = json.NewEncoder(writer).Encode(LearningStateEnvelope{
+					RequestID: test.responseID,
+					Data: LearningStatePage{
+						Items: []LearningStateItem{}, Pagination: LearningStatePagination{Page: 1, PageSize: 20},
+					},
+				})
+			}))
+			defer server.Close()
+
+			if _, err := testCatalogClient(t, server).LearningState(context.Background(), testStatsUserID, outboundRequestID); !errors.Is(err, ErrInvalidActorRead) {
+				t.Fatalf("LearningState() request-ID mismatch error = %v, want ErrInvalidActorRead", err)
+			}
+		})
+	}
+}
+
+func TestLearningStateAcceptsRealEmptyButRejectsInvalidOwnerResponses(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{
+			name: "real empty learning state",
+			body: `{"request_id":"$REQUEST_ID","data":{"items":[],"pagination":{"page":1,"page_size":20,"total":0,"total_pages":0}}}`,
+		},
+		{
+			name:    "null data",
+			body:    `{"request_id":"$REQUEST_ID","data":null}`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid owner count",
+			body:    `{"request_id":"$REQUEST_ID","data":{"items":[{"bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","question_id":"55555555-5555-4555-8555-555555555555","question_version_id":"66666666-6666-4666-8666-666666666666","wrong":true,"attempt_count":1,"correct_count":2,"updated_at":"2026-08-06T08:00:00Z"}],"pagination":{"page":1,"page_size":20,"total":1,"total_pages":1}}}`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid owner timestamp",
+			body:    `{"request_id":"$REQUEST_ID","data":{"items":[{"bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","question_id":"55555555-5555-4555-8555-555555555555","question_version_id":"66666666-6666-4666-8666-666666666666","wrong":true,"attempt_count":1,"correct_count":0,"updated_at":"sometime"}],"pagination":{"page":1,"page_size":20,"total":1,"total_pages":1}}}`,
+			wantErr: true,
+		},
+		{
+			name:    "duplicate question fact",
+			body:    `{"request_id":"$REQUEST_ID","data":{"items":[{"bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","question_id":"55555555-5555-4555-8555-555555555555","question_version_id":"66666666-6666-4666-8666-666666666666","wrong":true,"attempt_count":1,"correct_count":0,"updated_at":"2026-08-06T08:00:00Z"},{"bank_id":"10ca9b18-c303-4b7a-ab14-1241e41b665a","question_id":"55555555-5555-4555-8555-555555555555","question_version_id":"66666666-6666-4666-8666-666666666666","wrong":true,"attempt_count":2,"correct_count":0,"updated_at":"2026-08-07T08:00:00Z"}],"pagination":{"page":1,"page_size":20,"total":2,"total_pages":1}}}`,
+			wantErr: true,
+		},
+		{
+			name:    "unknown owner field",
+			body:    `{"request_id":"$REQUEST_ID","data":{"items":[],"pagination":{"page":1,"page_size":20,"total":0,"total_pages":0}},"questions":[{"content":"fabricated"}]}`,
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requestID := "req_learning_state_" + strings.ReplaceAll(test.name, " ", "_")
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assertPortalReadRequest(t, request, testStatsUserID, requestID, GetPortalLearningStatePath, true)
+				writer.Header().Set("Content-Type", "application/json")
+				writer.Header().Set("X-Request-Id", requestID)
+				_, _ = writer.Write([]byte(strings.ReplaceAll(test.body, "$REQUEST_ID", requestID)))
+			}))
+			defer server.Close()
+
+			result, err := testCatalogClient(t, server).LearningState(context.Background(), testStatsUserID, requestID)
+			if test.wantErr {
+				if !errors.Is(err, ErrInvalidActorRead) || result.RequestID != "" || result.Data.Items != nil {
+					t.Fatalf("LearningState() = %+v, %v; want invalid owner response", result, err)
+				}
+				return
+			}
+			if err != nil || result.RequestID != requestID || result.Data.Items == nil || len(result.Data.Items) != 0 {
+				t.Fatalf("LearningState() real empty = %+v, %v", result, err)
+			}
+		})
+	}
+}
+
+func TestLearningStateRejectsAnonymousOrMalformedActorWithoutCallingCore(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer server.Close()
+
+	for _, actor := range []string{"", AnonymousCatalogActor, "user-123"} {
+		if _, err := testCatalogClient(t, server).LearningState(context.Background(), actor, "req_bad_actor"); !errors.Is(err, ErrActorReadUnauthorized) {
+			t.Fatalf("LearningState(%q) error = %v, want ErrActorReadUnauthorized", actor, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("LearningState called Core for invalid actors %d times", calls)
 	}
 }
 
@@ -477,7 +746,7 @@ func TestFeedbackStatusRejectsForeignOrMockShapedCoreData(t *testing.T) {
 
 			result, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), testStatsUserID, "req_feedback_status", testFeedbackID)
 			if test.wantErr {
-				if !errors.Is(err, ErrInvalidStats) || result.RequestID != "" {
+				if !errors.Is(err, ErrInvalidActorRead) || result.RequestID != "" {
 					t.Fatalf("FeedbackStatus() = %+v, %v; want malformed mock error", result, err)
 				}
 				return
@@ -493,8 +762,8 @@ func TestFeedbackStatusRejectsAnonymousOrMalformedActorWithoutCallingCore(t *tes
 	defer server.Close()
 
 	for _, actor := range []string{"", AnonymousCatalogActor, "user-123"} {
-		if _, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), actor, "req_bad_actor", testFeedbackID); !errors.Is(err, ErrStatsUnauthorized) {
-			t.Fatalf("FeedbackStatus(%q) error = %v, want ErrStatsUnauthorized", actor, err)
+		if _, err := testCatalogClient(t, server).FeedbackStatus(context.Background(), actor, "req_bad_actor", testFeedbackID); !errors.Is(err, ErrActorReadUnauthorized) {
+			t.Fatalf("FeedbackStatus(%q) error = %v, want ErrActorReadUnauthorized", actor, err)
 		}
 	}
 	if calls != 0 {

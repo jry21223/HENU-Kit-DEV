@@ -149,6 +149,20 @@ type ProductPermissionDecision struct {
 // rather than the historical incomplete CheckPermission request. It is kept
 // separate so unrelated callers retain their existing contracts.
 func (c *Client) CheckProductPermission(ctx context.Context, exchangeToken, permissionCode, productCode string) (ProductPermissionDecision, error) {
+	return c.checkProductPermission(ctx, exchangeToken, permissionCode, productCode, "")
+}
+
+// CheckProductPermissionWithRequestID preserves the Gateway's inbound request
+// ID across the live authorization check. The existing method remains for
+// callers whose established contract does not provide a request ID.
+func (c *Client) CheckProductPermissionWithRequestID(ctx context.Context, exchangeToken, permissionCode, productCode, requestID string) (ProductPermissionDecision, error) {
+	if !authorizationRequestIDPattern.MatchString(requestID) {
+		return ProductPermissionDecision{}, fmt.Errorf("invalid authorization/check request id")
+	}
+	return c.checkProductPermission(ctx, exchangeToken, permissionCode, productCode, requestID)
+}
+
+func (c *Client) checkProductPermission(ctx context.Context, exchangeToken, permissionCode, productCode, requestID string) (ProductPermissionDecision, error) {
 	body, err := json.Marshal(struct {
 		SessionExchangeToken string `json:"session_exchange_token"`
 		PermissionCode       string `json:"permission_code"`
@@ -172,6 +186,9 @@ func (c *Client) CheckProductPermission(ctx context.Context, exchangeToken, perm
 		return ProductPermissionDecision{}, fmt.Errorf("NewRequest: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if requestID != "" {
+		req.Header.Set("X-Request-Id", requestID)
+	}
 	if err := c.signer.Sign(req); err != nil {
 		return ProductPermissionDecision{}, fmt.Errorf("sign: %w", err)
 	}
@@ -234,6 +251,7 @@ var (
 )
 
 var authorizationUUIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+var authorizationRequestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]{1,116}$`)
 
 // directAuthorizationClient keeps the fresh session exchange token and HMAC
 // credential on the configured Core origin. Existing generic Core callers

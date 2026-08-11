@@ -46,6 +46,7 @@ func main() {
 	required := map[string]string{
 		"ListBanksRoute":            "listPracticeBanks",
 		"PersonalStatsRoute":        "getPersonalPracticeStats",
+		"PortalLearningStateRoute":  "getPortalLearningState",
 		"CreateSessionRoute":        "createPracticeSession",
 		"SubmitAnswerRoute":         "submitPracticeAnswer",
 		"CreatePortalSessionRoute":  "createPortalPracticeSession",

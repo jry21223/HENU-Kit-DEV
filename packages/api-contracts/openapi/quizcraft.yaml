@@ -311,6 +311,30 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/learning-state:
+    get:
+      x-internal: true
+      summary: Read one signed-in Portal user's persistent learning state
+      description: The trusted Portal actor UUID is bound as the sixth line of the signed service request; Core derives every wrong mark and count from its own immutable Practice attempts.
+      tags: [Practice]
+      operationId: getPortalLearningState
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [], portalCatalogActor: [] }]
+      parameters:
+        - name: X-Actor-User-Id
+          in: header
+          required: true
+          description: UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/LearningStatePageQuery'
+        - $ref: '#/components/parameters/LearningStatePageSizeQuery'
+        - $ref: '#/components/parameters/LearningStateWrongQuery'
+      responses:
+        '200': { description: Caller-owned wrong marks and attempt counts, content: { application/json: { schema: { $ref: '#/components/schemas/PortalLearningStateEnvelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/learning-state:
     get:
       summary: Read signed-in progress and wrong-question state
@@ -721,6 +745,9 @@ components:
     SessionID: { name: session_id, in: path, required: true, schema: { type: string, format: uuid } }
     OperationKindParam: { name: operation_kind, in: path, required: true, schema: { $ref: '#/components/schemas/OperationKind' } }
     RankingPeriodParam: { name: period, in: query, required: false, schema: { type: string, enum: [weekly, lifetime], default: weekly } }
+    LearningStatePageQuery: { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+    LearningStatePageSizeQuery: { name: page_size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+    LearningStateWrongQuery: { name: wrong, in: query, required: false, description: Filter by the Core-owned latest wrong mark before counting and paginating., schema: { type: boolean } }
   responses:
     BadRequest: { description: Invalid request, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     Unauthorized: { description: Missing or invalid actor credentials, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
@@ -910,6 +937,18 @@ components:
         analysis: { type: string }
     LearningStateItem:
       type: object
+      required: [bank_id, question_id, question_version_id, wrong, attempt_count, correct_count, updated_at]
+      properties:
+        bank_id: { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        wrong: { type: boolean }
+        attempt_count: { type: integer, format: int64, minimum: 1 }
+        correct_count: { type: integer, format: int64, minimum: 0 }
+        updated_at: { type: string, format: date-time }
+    PortalLearningStateItem:
+      type: object
+      additionalProperties: false
       required: [bank_id, question_id, question_version_id, wrong, attempt_count, correct_count, updated_at]
       properties:
         bank_id: { type: string, format: uuid }
@@ -1206,6 +1245,25 @@ components:
       type: object
       required: [request_id, data]
       properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { type: array, items: { $ref: '#/components/schemas/LearningStateItem' } } }
+    PortalLearningStateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request_id, data]
+      properties: { request_id: { $ref: '#/components/schemas/RequestID' }, data: { $ref: '#/components/schemas/PortalLearningStatePage' } }
+    PortalLearningStatePage:
+      type: object
+      additionalProperties: false
+      required: [items, pagination]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/PortalLearningStateItem' } }, pagination: { $ref: '#/components/schemas/PortalLearningStatePagination' } }
+    PortalLearningStatePagination:
+      type: object
+      additionalProperties: false
+      required: [page, page_size, total, total_pages]
+      properties:
+        page: { type: integer, format: int64, minimum: 1 }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+        total_pages: { type: integer, format: int64, minimum: 0 }
     PersonalPracticeStatsEnvelope:
       type: object
       additionalProperties: false

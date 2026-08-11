@@ -126,3 +126,93 @@ func TestPortalNoticeSourceContractRequiresBoundedIRIURL(t *testing.T) {
 		})
 	}
 }
+
+func TestLearningStateOperationRequiresSessionAndHonestOwnerFailures(t *testing.T) {
+	spec, err := parseDocument(readPortalGatewayContract(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateLearningStateOperation(spec.Paths); err != nil {
+		t.Fatalf("safe learning-state operation rejected: %v", err)
+	}
+
+	path := spec.Paths["/api/v1/learning-state"]
+	unsafe := *path.Get
+	unsafe.Security = nil
+	path.Get = &unsafe
+	spec.Paths["/api/v1/learning-state"] = path
+	if err := validateLearningStateOperation(spec.Paths); err == nil || !strings.Contains(err.Error(), "portalSession") {
+		t.Fatalf("unsigned learning-state operation error = %v", err)
+	}
+
+	path = spec.Paths["/api/v1/learning-state"]
+	unpaged := *path.Get
+	unpaged.Security = []map[string][]string{{"portalSession": {}}}
+	unpaged.Parameters = nil
+	path.Get = &unpaged
+	spec.Paths["/api/v1/learning-state"] = path
+	if err := validateLearningStateOperation(spec.Paths); err == nil || !strings.Contains(err.Error(), "page") {
+		t.Fatalf("unpaginated learning-state operation error = %v", err)
+	}
+
+	path = spec.Paths["/api/v1/learning-state"]
+	missingBadRequest := *path.Get
+	missingBadRequest.Parameters = []parameter{{Ref: "#/components/parameters/LearningStatePageQuery"}, {Ref: "#/components/parameters/LearningStatePageSizeQuery"}, {Ref: "#/components/parameters/LearningStateWrongQuery"}}
+	delete(missingBadRequest.Responses, "400")
+	path.Get = &missingBadRequest
+	spec.Paths["/api/v1/learning-state"] = path
+	if err := validateLearningStateOperation(spec.Paths); err == nil || !strings.Contains(err.Error(), "400") {
+		t.Fatalf("learning-state operation without 400 error = %v", err)
+	}
+}
+
+func TestLearningStateSchemasContainOnlyCoreOwnedFacts(t *testing.T) {
+	spec, err := parseDocument(readPortalGatewayContract(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateLearningStateSchemas(spec.Components.Schemas); err != nil {
+		t.Fatalf("safe learning-state schemas rejected: %v", err)
+	}
+
+	item := spec.Components.Schemas["LearningStateItem"]
+	item.Properties["question_content"] = schema{Type: schemaType{"string"}}
+	spec.Components.Schemas["LearningStateItem"] = item
+	if err := validateLearningStateSchemas(spec.Components.Schemas); err == nil || !strings.Contains(err.Error(), "additional properties") {
+		t.Fatalf("fabricated question-content schema error = %v", err)
+	}
+}
+
+func TestLearningStateSchemasAcceptOnlyStandardPaginatedCollection(t *testing.T) {
+	spec, err := parseDocument(readPortalGatewayContract(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	envelope := spec.Components.Schemas["LearningStateEnvelope"]
+	envelope.Properties["data"] = schema{Ref: "#/components/schemas/LearningStatePage"}
+	spec.Components.Schemas["LearningStateEnvelope"] = envelope
+	spec.Components.Schemas["LearningStatePage"] = schema{
+		Type:                 schemaType{"object"},
+		AdditionalProperties: &closed,
+		Required:             []string{"items", "pagination"},
+		Properties: map[string]schema{
+			"items":      {Type: schemaType{"array"}, Items: &schema{Ref: "#/components/schemas/LearningStateItem"}},
+			"pagination": {Ref: "#/components/schemas/LearningStatePagination"},
+		},
+	}
+	spec.Components.Schemas["LearningStatePagination"] = schema{
+		Type:                 schemaType{"object"},
+		AdditionalProperties: &closed,
+		Required:             []string{"page", "page_size", "total", "total_pages"},
+		Properties: map[string]schema{
+			"page":        {Type: schemaType{"integer"}},
+			"page_size":   {Type: schemaType{"integer"}},
+			"total":       {Type: schemaType{"integer"}},
+			"total_pages": {Type: schemaType{"integer"}},
+		},
+	}
+	if err := validateLearningStateSchemas(spec.Components.Schemas); err != nil {
+		t.Fatalf("standard paginated learning-state schemas rejected: %v", err)
+	}
+}

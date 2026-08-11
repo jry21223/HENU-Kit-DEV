@@ -68,7 +68,12 @@ type pathItem struct {
 type operation struct {
 	OperationID string                `yaml:"operationId"`
 	Security    []map[string][]string `yaml:"security"`
+	Parameters  []parameter           `yaml:"parameters"`
 	Responses   map[string]response   `yaml:"responses"`
+}
+
+type parameter struct {
+	Ref string `yaml:"$ref"`
 }
 
 type response struct {
@@ -104,8 +109,14 @@ func main() {
 		}
 	}
 	validatePersonalPracticeStats(spec.Components.Schemas)
+	if err := validateLearningStateSchemas(spec.Components.Schemas); err != nil {
+		fail(err)
+	}
 	validatePortalNoticeFeed(spec.Components.Schemas)
 	if err := validatePortalNoticeOperation(spec.Paths); err != nil {
+		fail(err)
+	}
+	if err := validateLearningStateOperation(spec.Paths); err != nil {
 		fail(err)
 	}
 
@@ -204,6 +215,33 @@ type PersonalPracticeStatsEnvelope struct {
 	Data      PersonalPracticeStats `+"`json:\"data\"`"+`
 }
 
+type LearningStateItem struct {
+	BankID            string    `+"`json:\"bank_id\"`"+`
+	QuestionID        string    `+"`json:\"question_id\"`"+`
+	QuestionVersionID string    `+"`json:\"question_version_id\"`"+`
+	Wrong             bool      `+"`json:\"wrong\"`"+`
+	AttemptCount      int64     `+"`json:\"attempt_count\"`"+`
+	CorrectCount      int64     `+"`json:\"correct_count\"`"+`
+	UpdatedAt         time.Time `+"`json:\"updated_at\"`"+`
+}
+
+type LearningStateEnvelope struct {
+	RequestID string            `+"`json:\"request_id\"`"+`
+	Data      LearningStatePage `+"`json:\"data\"`"+`
+}
+
+type LearningStatePage struct {
+	Items      []LearningStateItem    `+"`json:\"items\"`"+`
+	Pagination LearningStatePagination `+"`json:\"pagination\"`"+`
+}
+
+type LearningStatePagination struct {
+	Page       int64 `+"`json:\"page\"`"+`
+	PageSize   int64 `+"`json:\"page_size\"`"+`
+	Total      int64 `+"`json:\"total\"`"+`
+	TotalPages int64 `+"`json:\"total_pages\"`"+`
+}
+
 type PortalNoticeSource struct {
 	Name string `+"`json:\"name\"`"+`
 	URL  string `+"`json:\"url\"`"+`
@@ -271,6 +309,33 @@ export interface PersonalPracticeStatsEnvelope {
   data: PersonalPracticeStats;
 }
 
+export interface LearningStateItem {
+  bank_id: string;
+  question_id: string;
+  question_version_id: string;
+  wrong: boolean;
+  attempt_count: number;
+  correct_count: number;
+  updated_at: string;
+}
+
+export interface LearningStateEnvelope {
+  request_id: string;
+  data: LearningStatePage;
+}
+
+export interface LearningStatePage {
+  items: LearningStateItem[];
+  pagination: LearningStatePagination;
+}
+
+export interface LearningStatePagination {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 export interface PortalNoticeSource {
   name: string;
   url: string;
@@ -333,6 +398,85 @@ func validatePersonalPracticeStats(schemas map[string]schema) {
 			fail(fmt.Errorf("MasterySubject.%s must be integer", property))
 		}
 	}
+}
+
+func validateLearningStateSchemas(schemas map[string]schema) error {
+	envelope, ok := schemas["LearningStateEnvelope"]
+	if !ok || !envelope.Type.isExactly("object") {
+		return fmt.Errorf("LearningStateEnvelope object schema is missing")
+	}
+	if envelope.AdditionalProperties == nil || *envelope.AdditionalProperties {
+		return fmt.Errorf("LearningStateEnvelope must forbid additional properties")
+	}
+	if !contains(envelope.Required, "request_id") || !contains(envelope.Required, "data") {
+		return fmt.Errorf("LearningStateEnvelope request_id and data must be required")
+	}
+	if requestID := envelope.Properties["request_id"]; !requestID.Type.isExactly("string") {
+		return fmt.Errorf("LearningStateEnvelope.request_id must be string")
+	}
+	if data := envelope.Properties["data"]; data.Ref != "#/components/schemas/LearningStatePage" {
+		return fmt.Errorf("LearningStateEnvelope.data must reference LearningStatePage")
+	}
+
+	page, ok := schemas["LearningStatePage"]
+	if !ok || !page.Type.isExactly("object") {
+		return fmt.Errorf("LearningStatePage object schema is missing")
+	}
+	if page.AdditionalProperties == nil || *page.AdditionalProperties || len(page.Properties) != 2 || !contains(page.Required, "items") || !contains(page.Required, "pagination") {
+		return fmt.Errorf("LearningStatePage must be a closed items and pagination object")
+	}
+	if items := page.Properties["items"]; !items.Type.isExactly("array") || items.Items == nil || items.Items.Ref != "#/components/schemas/LearningStateItem" {
+		return fmt.Errorf("LearningStatePage.items must reference LearningStateItem items")
+	}
+	if pagination := page.Properties["pagination"]; pagination.Ref != "#/components/schemas/LearningStatePagination" {
+		return fmt.Errorf("LearningStatePage.pagination must reference LearningStatePagination")
+	}
+
+	pagination, ok := schemas["LearningStatePagination"]
+	if !ok || !pagination.Type.isExactly("object") {
+		return fmt.Errorf("LearningStatePagination object schema is missing")
+	}
+	if pagination.AdditionalProperties == nil || *pagination.AdditionalProperties || len(pagination.Properties) != 4 {
+		return fmt.Errorf("LearningStatePagination must forbid additional properties")
+	}
+	for _, property := range []string{"page", "page_size", "total", "total_pages"} {
+		if !contains(pagination.Required, property) || !pagination.Properties[property].Type.isExactly("integer") {
+			return fmt.Errorf("LearningStatePagination.%s must be a required integer", property)
+		}
+	}
+
+	item, ok := schemas["LearningStateItem"]
+	if !ok || !item.Type.isExactly("object") {
+		return fmt.Errorf("LearningStateItem object schema is missing")
+	}
+	if item.AdditionalProperties == nil || *item.AdditionalProperties || len(item.Properties) != 7 {
+		return fmt.Errorf("LearningStateItem must forbid and not declare additional properties")
+	}
+	required := []string{"bank_id", "question_id", "question_version_id", "wrong", "attempt_count", "correct_count", "updated_at"}
+	for _, property := range required {
+		if !contains(item.Required, property) {
+			return fmt.Errorf("LearningStateItem.%s must be required", property)
+		}
+	}
+	for _, property := range []string{"bank_id", "question_id", "question_version_id"} {
+		value := item.Properties[property]
+		if !value.Type.isExactly("string") || value.Format != "uuid" {
+			return fmt.Errorf("LearningStateItem.%s must be UUID string", property)
+		}
+	}
+	if !item.Properties["wrong"].Type.isExactly("boolean") {
+		return fmt.Errorf("LearningStateItem.wrong must be boolean")
+	}
+	for _, property := range []string{"attempt_count", "correct_count"} {
+		if !item.Properties[property].Type.isExactly("integer") {
+			return fmt.Errorf("LearningStateItem.%s must be integer", property)
+		}
+	}
+	updatedAt := item.Properties["updated_at"]
+	if !updatedAt.Type.isExactly("string") || updatedAt.Format != "date-time" {
+		return fmt.Errorf("LearningStateItem.updated_at must be date-time")
+	}
+	return nil
 }
 
 func validatePortalNoticeFeed(schemas map[string]schema) {
@@ -431,6 +575,53 @@ func validatePortalNoticeOperation(paths map[string]pathItem) error {
 	} {
 		if response, ok := operation.Responses[status]; !ok || response.Ref != wantRef {
 			return fmt.Errorf("/api/v1/notices GET %s must reference %s", status, wantRef)
+		}
+	}
+	return nil
+}
+
+func validateLearningStateOperation(paths map[string]pathItem) error {
+	path, ok := paths["/api/v1/learning-state"]
+	if !ok || path.Get == nil {
+		return fmt.Errorf("/api/v1/learning-state GET operation is missing")
+	}
+	operation := path.Get
+	if operation.OperationID != "getPortalLearningState" {
+		return fmt.Errorf("/api/v1/learning-state GET operationId must be getPortalLearningState")
+	}
+	if len(operation.Security) != 1 || len(operation.Security[0]) != 1 {
+		return fmt.Errorf("/api/v1/learning-state GET must require portalSession")
+	}
+	if _, ok := operation.Security[0]["portalSession"]; !ok {
+		return fmt.Errorf("/api/v1/learning-state GET must require portalSession")
+	}
+	wantParameters := map[string]bool{
+		"#/components/parameters/LearningStatePageQuery":     false,
+		"#/components/parameters/LearningStatePageSizeQuery": false,
+		"#/components/parameters/LearningStateWrongQuery":    false,
+	}
+	if len(operation.Parameters) != len(wantParameters) {
+		return fmt.Errorf("/api/v1/learning-state GET must declare page, page_size, and wrong parameters")
+	}
+	for _, parameter := range operation.Parameters {
+		if _, ok := wantParameters[parameter.Ref]; !ok || wantParameters[parameter.Ref] {
+			return fmt.Errorf("/api/v1/learning-state GET must declare page, page_size, and wrong parameters exactly once")
+		}
+		wantParameters[parameter.Ref] = true
+	}
+	response, ok := operation.Responses["200"]
+	if !ok || response.Content["application/json"].Schema.Ref != "#/components/schemas/LearningStateEnvelope" {
+		return fmt.Errorf("/api/v1/learning-state GET 200 must return LearningStateEnvelope")
+	}
+	for status, wantRef := range map[string]string{
+		"400": "#/components/responses/BadRequest",
+		"401": "#/components/responses/Unauthorized",
+		"403": "#/components/responses/Forbidden",
+		"502": "#/components/responses/BadGateway",
+		"503": "#/components/responses/ServiceUnavailable",
+	} {
+		if response, ok := operation.Responses[status]; !ok || response.Ref != wantRef {
+			return fmt.Errorf("/api/v1/learning-state GET %s must reference %s", status, wantRef)
 		}
 	}
 	return nil

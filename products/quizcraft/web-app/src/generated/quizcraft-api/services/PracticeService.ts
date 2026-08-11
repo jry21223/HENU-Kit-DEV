@@ -12,6 +12,7 @@ import type { LearningStateEnvelope } from '../models/LearningStateEnvelope';
 import type { OperationEnvelope } from '../models/OperationEnvelope';
 import type { OperationKind } from '../models/OperationKind';
 import type { PersonalPracticeStatsEnvelope } from '../models/PersonalPracticeStatsEnvelope';
+import type { PortalLearningStateEnvelope } from '../models/PortalLearningStateEnvelope';
 import type { PracticeSessionEnvelope } from '../models/PracticeSessionEnvelope';
 import type { ReadinessEnvelope } from '../models/ReadinessEnvelope';
 import type { CancelablePromise } from '../core/CancelablePromise';
@@ -215,6 +216,49 @@ export class PracticeService {
                 403: `Permission code or product Scope denied`,
                 404: `Resource or operation is unknown to this actor`,
                 409: `Idempotency payload or optimistic version conflict`,
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
+    /**
+     * Read one signed-in Portal user's persistent learning state
+     * The trusted Portal actor UUID is bound as the sixth line of the signed service request; Core derives every wrong mark and count from its own immutable Practice attempts.
+     * @returns PortalLearningStateEnvelope Caller-owned wrong marks and attempt counts
+     * @throws ApiError
+     */
+    public static getPortalLearningState({
+        xActorUserId,
+        page = 1,
+        pageSize = 20,
+        wrong,
+    }: {
+        /**
+         * UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+         */
+        xActorUserId: string,
+        page?: number,
+        pageSize?: number,
+        /**
+         * Filter by the Core-owned latest wrong mark before counting and paginating.
+         */
+        wrong?: boolean,
+    }): CancelablePromise<PortalLearningStateEnvelope> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/portal/practice/learning-state',
+            headers: {
+                'X-Actor-User-Id': xActorUserId,
+            },
+            query: {
+                'page': page,
+                'page_size': pageSize,
+                'wrong': wrong,
+            },
+            errors: {
+                400: `Invalid request`,
+                401: `Missing or invalid actor credentials`,
+                403: `Permission code or product Scope denied`,
+                409: `Dedicated service request nonce was already used`,
                 503: `PostgreSQL or a required service is unavailable`,
             },
         });
