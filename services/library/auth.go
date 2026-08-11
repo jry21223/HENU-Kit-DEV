@@ -31,10 +31,18 @@ func (h *service) requestContext(next http.Handler) http.Handler {
 }
 
 func (h *service) authenticate(next http.Handler) http.Handler {
+	return h.authenticateService(h.clientID, h.keys, true, next)
+}
+
+func (h *service) authenticateDownload(next http.Handler) http.Handler {
+	return h.authenticateService(h.downloadClientID, h.downloadKeys, false, next)
+}
+
+func (h *service) authenticateService(expectedClientID string, keys map[string]string, requireActor bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientID, basicSecret, basic := r.BasicAuth()
-		secret, keyKnown := h.keys[r.Header.Get("X-Key-Id")]
-		if !basic || clientID != h.clientID || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
+		secret, keyKnown := keys[r.Header.Get("X-Key-Id")]
+		if !basic || clientID != expectedClientID || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
 			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
 			return
 		}
@@ -72,7 +80,7 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 			writeError(w, r, http.StatusConflict, "REPLAY_DETECTED", "service nonce was already used")
 			return
 		}
-		if r.URL.Path == contract.SummaryRoute {
+		if !requireActor || r.URL.Path == contract.SummaryRoute {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -1,6 +1,7 @@
 package library
 
 import (
+	"crypto/hmac"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,22 +21,28 @@ import (
 var requestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
 
 type Config struct {
-	Database      *pgxpool.Pool
-	Redis         redis.UniversalClient
-	ClientID      string
-	Keys          map[string]string
-	LegacyBaseURL string
-	LegacyToken   string
-	HTTPClient    *http.Client
+	Database         *pgxpool.Pool
+	Redis            redis.UniversalClient
+	ClientID         string
+	Keys             map[string]string
+	LegacyBaseURL    string
+	LegacyToken      string
+	HTTPClient       *http.Client
+	DownloadClientID string
+	DownloadKeys     map[string]string
+	DownloadStore    DownloadObjectStore
 }
 
 type service struct {
-	database *pgxpool.Pool
-	redis    redis.UniversalClient
-	clientID string
-	keys     map[string]string
-	now      func() time.Time
-	legacy   *legacyAdapter
+	database         *pgxpool.Pool
+	redis            redis.UniversalClient
+	clientID         string
+	keys             map[string]string
+	now              func() time.Time
+	legacy           *legacyAdapter
+	downloadClientID string
+	downloadKeys     map[string]string
+	downloadStore    DownloadObjectStore
 }
 
 type actor struct{ userID, permission string }
@@ -47,19 +54,23 @@ const (
 )
 
 func New(config Config) (http.Handler, error) {
-	if config.Database == nil || config.Redis == nil || config.ClientID == "" || len(config.Keys) == 0 || len(config.Keys) > 2 {
+	if config.Database == nil || config.Redis == nil || config.ClientID == "" || len(config.Keys) == 0 || len(config.Keys) > 2 || config.DownloadClientID == "" || len(config.DownloadKeys) == 0 || len(config.DownloadKeys) > 2 || config.DownloadStore == nil {
 		return nil, errors.New("library database and service credentials are required")
 	}
-	for keyID, secret := range config.Keys {
-		if keyID == "" || len(secret) < 32 {
-			return nil, errors.New("library service key ring is invalid")
-		}
+	if !validKeyRing(config.Keys) || !validKeyRing(config.DownloadKeys) {
+		return nil, errors.New("library service key ring is invalid")
 	}
 	legacy, err := newLegacyAdapter(config.LegacyBaseURL, config.LegacyToken, config.HTTPClient)
 	if err != nil {
 		return nil, err
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, now: time.Now, legacy: legacy}
+	if config.DownloadClientID == config.ClientID {
+		return nil, errors.New("library download service capability must be independent")
+	}
+	if keyRingsOverlap(config.Keys, config.DownloadKeys) {
+		return nil, errors.New("library download service secret must be independent")
+	}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, now: time.Now, legacy: legacy, downloadClientID: config.DownloadClientID, downloadKeys: config.DownloadKeys, downloadStore: config.DownloadStore}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +83,33 @@ func New(config Config) (http.Handler, error) {
 		protected.Post(contract.CommandRoute, h.command)
 		protected.Get(contract.OperationRoute, h.operationStatus)
 	})
+	router.Group(func(download chi.Router) {
+		download.Use(h.authenticateDownload)
+		download.Post(contract.DownloadStartRoute, h.startPublicDownload)
+		download.Get(contract.GlobalDownloadAggregateRoute, h.globalDownloadAggregate)
+		download.Get(contract.MaterialDownloadAggregateRoute, h.materialDownloadAggregate)
+	})
 	return router, nil
+}
+
+func keyRingsOverlap(first, second map[string]string) bool {
+	for _, firstSecret := range first {
+		for _, secondSecret := range second {
+			if hmac.Equal([]byte(firstSecret), []byte(secondSecret)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func validKeyRing(ring map[string]string) bool {
+	for keyID, secret := range ring {
+		if keyID == "" || len(secret) < 32 {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *service) require(w http.ResponseWriter, r *http.Request, permission string) (actor, bool) {

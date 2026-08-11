@@ -17,6 +17,7 @@ import (
 type schema struct {
 	Type       schemaType        `yaml:"type"`
 	Format     string            `yaml:"format"`
+	Const      string            `yaml:"const"`
 	Required   []string          `yaml:"required"`
 	Properties map[string]schema `yaml:"properties"`
 	Items      *schema           `yaml:"items"`
@@ -52,9 +53,29 @@ func (value schemaType) isExactly(want string) bool {
 }
 
 type document struct {
+	Paths      map[string]pathItem `yaml:"paths"`
 	Components struct {
 		Schemas map[string]schema `yaml:"schemas"`
 	} `yaml:"components"`
+}
+
+type pathItem struct {
+	Get *operation `yaml:"get"`
+}
+
+type operation struct {
+	Security  []map[string][]string `yaml:"security"`
+	Responses map[string]response   `yaml:"responses"`
+}
+
+type response struct {
+	Ref     string            `yaml:"$ref"`
+	Headers map[string]header `yaml:"headers"`
+}
+
+type header struct {
+	Required bool   `yaml:"required"`
+	Schema   schema `yaml:"schema"`
 }
 
 func main() {
@@ -81,6 +102,7 @@ func main() {
 		}
 	}
 	validatePersonalPracticeStats(spec.Components.Schemas)
+	validateLibraryDownloadFacade(spec.Paths)
 	if err := validateQuizCraftCatalog(spec.Components.Schemas); err != nil {
 		fail(err)
 	}
@@ -92,6 +114,40 @@ func main() {
 	}
 	write(*goOutput, goSource)
 	write(*tsOutput, []byte(renderTypeScript(portalSession, digest)))
+}
+
+func validateLibraryDownloadFacade(paths map[string]pathItem) {
+	const route = "/api/v1/library/materials/{material_id}/download"
+	operation := paths[route].Get
+	if operation == nil {
+		fail(fmt.Errorf("Library download facade GET %s is missing", route))
+	}
+	if operation.Security == nil || len(operation.Security) != 0 {
+		fail(fmt.Errorf("Library download facade must be explicitly anonymous"))
+	}
+	for _, status := range []string{"303", "404", "503"} {
+		if _, ok := operation.Responses[status]; !ok {
+			fail(fmt.Errorf("Library download facade response %s is missing", status))
+		}
+	}
+	if operation.Responses["404"].Ref != "#/components/responses/MaterialNotAvailable" || operation.Responses["503"].Ref != "#/components/responses/DownloadTemporarilyUnavailable" {
+		fail(fmt.Errorf("Library download facade must use its frozen 404 and 503 responses"))
+	}
+	redirect := operation.Responses["303"]
+	for name, expected := range map[string]string{
+		"Cache-Control":          "no-store",
+		"Referrer-Policy":        "no-referrer",
+		"X-Content-Type-Options": "nosniff",
+	} {
+		value, ok := redirect.Headers[name]
+		if !ok || !value.Required || value.Schema.Const != expected {
+			fail(fmt.Errorf("Library download facade 303 header %s must be required const %q", name, expected))
+		}
+	}
+	location, ok := redirect.Headers["Location"]
+	if !ok || !location.Required || !location.Schema.Type.isExactly("string") || location.Schema.Format != "uri" {
+		fail(fmt.Errorf("Library download facade 303 Location must be a required URI string"))
+	}
 }
 
 func renderGo(value schema, digest string) string {
@@ -112,6 +168,7 @@ package contract
 import "time"
 
 const PortalSessionSourceSHA256 = %q
+const LibraryDownloadRoute = "/api/v1/library/materials/{material_id}/download"
 
 type PortalSession struct {
 %s}

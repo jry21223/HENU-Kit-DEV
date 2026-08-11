@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Material } from "@/lib/library/mock";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
+import MaterialDownloadButton from "@/components/library/material-download-button";
 
 /**
  * 课件幻灯片查看器:PPT 转换后的结构化页面,支持 ←/→ 键与按钮翻页。
@@ -18,9 +19,6 @@ export default function SlidesViewer({ material }: { material: Material }) {
 
   const total = slides.length;
   const slide = slides[index];
-  const fileUrl = material.filePath
-    ? new URL(material.filePath, window.location.origin).toString()
-    : null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,18 +54,16 @@ export default function SlidesViewer({ material }: { material: Material }) {
           本课件尚未完成幻灯片转换
         </p>
         <p className="mt-4 text-sm leading-7 text-ink/70">
-          可以直接下载原文件查看完整内容。
+          {material.downloadAvailable
+            ? "可直接下载原文件查看完整内容。"
+            : "原文件暂时无法下载，请返回详情查看其他内容。"}
         </p>
-        {fileUrl && (
-          <a
-            href={fileUrl}
-            download
-            target="_blank"
-            rel="noreferrer"
-            className="mt-6 inline-block border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
-          >
-            下载原文件 ↓
-          </a>
+        {material.price === 0 && material.downloadAvailable && (
+          <MaterialDownloadButton
+            materialId={material.id}
+            label="下载原文件 ↓"
+            className="mt-6 border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+          />
         )}
         <Link
           href={`/library/item/${material.id}`}
@@ -166,17 +162,13 @@ export default function SlidesViewer({ material }: { material: Material }) {
           </button>
         </div>
 
-        {fileUrl && (
+        {material.price === 0 && material.downloadAvailable && (
           <div className="mt-4 flex justify-end">
-            <a
-              href={fileUrl}
-              download
-              target="_blank"
-              rel="noreferrer"
+            <MaterialDownloadButton
+              materialId={material.id}
+              label={`下载原文件 ↓${material.fileSize ? `（${formatBytes(material.fileSize)}）` : ""}`}
               className="font-mono text-xs text-ink/50 underline-offset-4 hover:text-accent hover:underline"
-            >
-              下载原文件 ↓{material.fileSize ? `（${formatBytes(material.fileSize)}）` : ""}
-            </a>
+            />
           </div>
         )}
       </div>

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: HENU Kit Library Compatibility API
+  title: HENU Kit Library API
   version: 0.1.0
-  description: Bounded migration adapter for courses, materials, downloads, material submissions, reviews, and corrections only.
+  description: Library-owned public material download facts plus a bounded legacy compatibility surface for Console operations.
   license: { name: MIT, identifier: MIT }
 servers:
   - url: https://library.internal
@@ -12,13 +12,13 @@ security:
     serviceActor: []
 tags:
   - name: Library
-    description: Confirmed Library operations exposed through a bounded migration adapter.
+    description: Library-owned public material operations and explicitly bounded compatibility operations.
 paths:
   /healthz:
     get:
       tags: [Library]
       operationId: getLibraryHealth
-      summary: Check the Library adapter process
+      summary: Check the Library service process
       security: []
       responses:
         "200":
@@ -113,17 +113,109 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/public-materials/{material_id}/download-starts:
+    post:
+      tags: [Library]
+      operationId: createPublicMaterialDownloadStart
+      summary: Create a bounded public-free material download grant
+      description: The caller supplies only the owner material ID. Library verifies the active snapshot and exact private OSS object, persists an immutable download-start fact, and returns a transient GET capability that expires within 60 seconds.
+      security:
+        - downloadServiceBasic: []
+          downloadServiceSignature: []
+      parameters:
+        - $ref: "#/components/parameters/MaterialID"
+        - $ref: "#/components/parameters/DownloadServiceID"
+        - $ref: "#/components/parameters/DownloadKeyID"
+        - $ref: "#/components/parameters/ServiceTimestamp"
+        - $ref: "#/components/parameters/ServiceNonce"
+      responses:
+        "201":
+          description: Download start persisted and bounded GET grant created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties: { data: { $ref: "#/components/schemas/DownloadGrant" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/public-materials/download-starts/aggregate:
+    get:
+      tags: [Library]
+      operationId: getGlobalDownloadStartAggregate
+      summary: Read the global persisted download-start count
+      security:
+        - downloadServiceBasic: []
+          downloadServiceSignature: []
+      parameters:
+        - $ref: "#/components/parameters/DownloadServiceID"
+        - $ref: "#/components/parameters/DownloadKeyID"
+        - $ref: "#/components/parameters/ServiceTimestamp"
+        - $ref: "#/components/parameters/ServiceNonce"
+      responses:
+        "200":
+          description: Global aggregate from the append-only owner ledger
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties: { data: { $ref: "#/components/schemas/DownloadStartAggregate" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/public-materials/{material_id}/download-starts/aggregate:
+    get:
+      tags: [Library]
+      operationId: getMaterialDownloadStartAggregate
+      summary: Read one material's persisted download-start count
+      security:
+        - downloadServiceBasic: []
+          downloadServiceSignature: []
+      parameters:
+        - $ref: "#/components/parameters/MaterialID"
+        - $ref: "#/components/parameters/DownloadServiceID"
+        - $ref: "#/components/parameters/DownloadKeyID"
+        - $ref: "#/components/parameters/ServiceTimestamp"
+        - $ref: "#/components/parameters/ServiceNonce"
+      responses:
+        "200":
+          description: Stable material aggregate from the append-only owner ledger
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties: { data: { $ref: "#/components/schemas/MaterialDownloadStartAggregate" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 components:
   securitySchemes:
     serviceBasic: { type: http, scheme: basic }
     serviceSignature: { type: apiKey, in: header, name: X-Signature }
     serviceActor: { type: apiKey, in: header, name: X-Actor-User-Id }
+    downloadServiceBasic: { type: http, scheme: basic, description: Dedicated least-privilege Portal Gateway to Library credential }
+    downloadServiceSignature: { type: apiKey, in: header, name: X-Signature }
   parameters:
     ActorUserID: { name: X-Actor-User-Id, in: header, required: true, schema: { type: string, format: uuid } }
     LibraryReadPermission: { name: X-Permission-Code, in: header, required: true, schema: { type: string, const: library.read } }
     LibraryWritePermission: { name: X-Permission-Code, in: header, required: true, schema: { type: string, enum: [library.manage, library.review] } }
     ProductScope: { name: X-Product-Code, in: header, required: true, schema: { type: string, const: library } }
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
+    MaterialID: { name: material_id, in: path, required: true, schema: { type: string, format: uuid } }
+    DownloadServiceID: { name: X-Service-Id, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 120 } }
+    DownloadKeyID: { name: X-Key-Id, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 120 } }
+    ServiceTimestamp: { name: X-Timestamp, in: header, required: true, schema: { type: string, pattern: '^[0-9]{10,}$' } }
+    ServiceNonce: { name: X-Nonce, in: header, required: true, schema: { type: string, minLength: 32, maxLength: 32 } }
   schemas:
     SuccessEnvelope:
       type: object
@@ -140,6 +232,32 @@ components:
           required: [code, message]
           properties: { code: { type: string }, message: { type: string } }
         request_id: { type: string, pattern: '^req_[A-Za-z0-9_-]+$', maxLength: 120 }
+    DownloadGrant:
+      type: object
+      additionalProperties: false
+      required: [download_start_id, method, location, expires_at]
+      properties:
+        download_start_id: { type: string, format: uuid }
+        method: { type: string, const: GET }
+        location: { type: string, format: uri, description: Transient exact-object OSS bearer capability; never persist or log }
+        expires_at: { type: string, format: date-time }
+    DownloadStartAggregate:
+      type: object
+      additionalProperties: false
+      required: [download_starts, counting_since, as_of]
+      properties:
+        download_starts: { type: integer, format: int64, minimum: 0 }
+        counting_since: { type: string, format: date-time }
+        as_of: { type: string, format: date-time }
+    MaterialDownloadStartAggregate:
+      type: object
+      additionalProperties: false
+      required: [material_id, download_starts, counting_since, as_of]
+      properties:
+        material_id: { type: string, format: uuid }
+        download_starts: { type: integer, format: int64, minimum: 0 }
+        counting_since: { type: string, format: date-time }
+        as_of: { type: string, format: date-time }
     LibraryWorkspace:
       type: object
       additionalProperties: false
@@ -363,4 +481,5 @@ components:
     Unauthorized: { description: Invalid service or actor identity, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
     Forbidden: { description: Required Library permission or product Scope is missing, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
     Conflict: { description: "Idempotency, version, or legacy state conflict", content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+    NotFound: { description: "Public material is unknown, inactive, withdrawn, or not public-free", content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
     ServiceUnavailable: { description: "Coordination or legacy result is unavailable or unknown", content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }

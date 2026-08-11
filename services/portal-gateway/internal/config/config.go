@@ -26,7 +26,9 @@ type Config struct {
 
 	RedisURL string
 
-	PortalAPIURL string
+	PortalAPIURL        string
+	LibraryDownloadURL  string
+	LibraryDownloadAuth ServiceAuth
 
 	PracticeURL string
 	// #160 catalog uses its established default-off flag and anonymous Banks
@@ -75,6 +77,7 @@ func FromEnv() (Config, error) {
 		SessionKey:            sessionKey,
 		RedisURL:              envOrDefault("REDIS_URL", "redis://127.0.0.1:6379/2"),
 		PortalAPIURL:          envOrDefault("PORTAL_API_URL", "http://127.0.0.1:8085"),
+		LibraryDownloadURL:    strings.TrimSpace(os.Getenv("LIBRARY_DOWNLOAD_URL")),
 		PracticeURL:           mustEnv("PRACTICE_SERVICE_URL"),
 		// This remains dark by default. #166 is the only production cutover
 		// that may set it to 1 alongside the Portal UI flag.
@@ -101,6 +104,11 @@ func FromEnv() (Config, error) {
 			ClientID:     mustEnv("ACCOUNT_PORTFOLIO_CLIENT_ID"),
 			ClientSecret: mustEnv("ACCOUNT_PORTFOLIO_CLIENT_SECRET"),
 			KeyID:        mustEnv("ACCOUNT_PORTFOLIO_KEY_ID"),
+		},
+		LibraryDownloadAuth: ServiceAuth{
+			ClientID:     strings.TrimSpace(os.Getenv("LIBRARY_DOWNLOAD_CLIENT_ID")),
+			ClientSecret: os.Getenv("LIBRARY_DOWNLOAD_CLIENT_SECRET"),
+			KeyID:        strings.TrimSpace(os.Getenv("LIBRARY_DOWNLOAD_KEY_ID")),
 		},
 		PortalOrigin:           mustEnv("PORTAL_ORIGIN"),
 		LocalOAuthCookieName:   envOrDefault("PORTAL_LOCAL_OAUTH_COOKIE_NAME", "henukit_portal_oauth_local"),

@@ -43,6 +43,7 @@ function toMaterial(m: ApiMaterial): Material {
     rating: m.rating,
     downloads: m.downloads,
     favs: m.favs,
+    downloadAvailable: m.downloadAvailable,
   };
 }
 

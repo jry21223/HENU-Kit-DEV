@@ -21,10 +21,11 @@ type Material struct {
 	Rating       float64    `json:"rating"`
 	Downloads    int        `json:"downloads"`
 	Favs         int        `json:"favs"`
-	// FilePath is the mirrored file path under /materials/ (storage_key).
-	// Empty for entries that have no hosted file (mock only).
-	FilePath string `json:"filePath,omitempty"`
-	FileSize int64  `json:"fileSize,omitempty"`
+	// FilePath remains an internal database projection only. Browser responses
+	// expose only an advisory owner-entry flag, never the storage key or grant.
+	FilePath          string `json:"-"`
+	DownloadAvailable bool   `json:"downloadAvailable"`
+	FileSize          int64  `json:"fileSize,omitempty"`
 	// Slides carries the converted PPT deck when available (detail only).
 	Slides []Slide `json:"slides,omitempty"`
 }

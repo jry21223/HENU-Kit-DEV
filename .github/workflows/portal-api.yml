@@ -1,0 +1,49 @@
+name: Portal API
+
+on:
+  pull_request:
+    paths:
+      - services/portal-api/**
+      - apps/portal/src/lib/api/types.ts
+      - packages/api-contracts/openapi/portal-api.yaml
+      - .github/workflows/portal-api.yml
+  push:
+    branches: [main]
+    paths:
+      - services/portal-api/**
+      - apps/portal/src/lib/api/types.ts
+      - packages/api-contracts/openapi/portal-api.yaml
+      - .github/workflows/portal-api.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/portal-api/go.mod
+          cache-dependency-path: services/portal-api/go.sum
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Verify Portal API contract
+        run: |
+          set -euo pipefail
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/portal-api.yaml
+          if git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/portal-api.yaml" 2>/dev/null; then
+            git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/portal-api.yaml" > /tmp/portal-api-base.yaml
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/portal-api-base.yaml packages/api-contracts/openapi/portal-api.yaml
+          fi
+      - name: Vet and test
+        working-directory: services/portal-api
+        run: |
+          set -euo pipefail
+          gofmt -d . | tee /tmp/gofmt.diff
+          test ! -s /tmp/gofmt.diff
+          go vet ./...
+          go test -race -count=1 ./...

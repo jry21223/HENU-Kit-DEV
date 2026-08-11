@@ -12,12 +12,19 @@
 - Admin operations or write APIs (owned by individual product services).
 - Product databases (will own when connected to real data sources).
 - Portal frontend implementation (owned by apps/portal).
+- Library download eligibility, signed grants, Download Start facts, and their
+  aggregates (owned by Library under ADR-0027).
 
 ## Current boundary
 
 Portal API serves mock data that is a 1:1 translation of the Portal frontend's TypeScript mock interfaces into Go structs. The API contract (`packages/api-contracts/openapi/portal-api.yaml`) is derived entirely from the frontend mock data — the frontend is the contract truth.
 
 All endpoints are public (no auth required). The Portal Gateway proxies product data requests to this service.
+
+The legacy Library material list/detail reads do not authorize a download.
+ADR-0027's exact download route is intercepted by Portal Gateway and sent to
+Library; Portal API must not translate `storage_key` into a URL, sign OSS
+requests, record a download, or provide a fallback grant.
 
 ## Key terms
 

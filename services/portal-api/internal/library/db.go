@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // StudyDB reads from the legacy Study API database.
@@ -100,21 +101,22 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 		}
 
 		materials = append(materials, Material{
-			ID:           id,
-			Type:         portalType,
-			Subject:      subject,
-			Title:        title,
-			Author:       "HENU Kit",
-			Intro:        intro,
-			TOC:          []string{},
-			Pages:        [][]string{{"内容请下载查看"}},
-			Price:        price,
-			PreviewPages: 1,
-			Rating:       4.5,
-			Downloads:    0,
-			Favs:         0,
-			FilePath:     storageKey.String,
-			FileSize:     fileSize.Int64,
+			ID:                id,
+			Type:              portalType,
+			Subject:           subject,
+			Title:             title,
+			Author:            "HENU Kit",
+			Intro:             intro,
+			TOC:               []string{},
+			Pages:             [][]string{{"内容请下载查看"}},
+			Price:             price,
+			PreviewPages:      1,
+			Rating:            4.5,
+			Downloads:         0,
+			Favs:              0,
+			FilePath:          storageKey.String,
+			DownloadAvailable: publicDownloadAvailable(accessLevel, storageKey),
+			FileSize:          fileSize.Int64,
 		})
 	}
 
@@ -179,7 +181,12 @@ func (db *StudyDB) GetMaterialByID(id string) (Material, error) {
 	material.Pages = [][]string{}
 	material.PreviewPages = 1
 	material.Rating = 4.5
+	material.Price = 0
+	if accessLevel != "free" {
+		material.Price = 50
+	}
 	material.FilePath = storageKey.String
+	material.DownloadAvailable = publicDownloadAvailable(accessLevel, storageKey)
 	material.FileSize = fileSize.Int64
 	if description.Valid {
 		material.Intro = description.String
@@ -190,6 +197,10 @@ func (db *StudyDB) GetMaterialByID(id string) (Material, error) {
 		}
 	}
 	return material, nil
+}
+
+func publicDownloadAvailable(accessLevel string, storageKey sql.NullString) bool {
+	return accessLevel == "free" && storageKey.Valid && strings.TrimSpace(storageKey.String) != ""
 }
 
 // mapMaterialType maps Study API material types to Portal types.

@@ -11,6 +11,7 @@ import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
 import { LibraryLoading, LibraryNotFound } from "@/components/library/material-states";
 import { useMaterialDetail } from "@/lib/library/use-material-detail";
+import MaterialDownloadButton from "@/components/library/material-download-button";
 
 export default function ItemDetail({ id }: { id: string }) {
   const state = useMaterialDetail(id);
@@ -35,28 +36,14 @@ export default function ItemDetail({ id }: { id: string }) {
 
   const showSlides = material.type === "slides";
   const hasPages = material.pages.length > 0;
-  const fileUrl = material.filePath
-    ? new URL(material.filePath, window.location.origin).toString()
-    : null;
-
-  const actions: { label: string; href: string; primary: boolean; external?: boolean }[] = [];
+  const actions: { label: string; href: string; primary: boolean }[] = [];
   if (showSlides) {
     actions.push({ label: "浏览幻灯片 →", href: `/library/slides/${id}`, primary: true });
   } else if (hasPages) {
     actions.push({ label: "立即阅读 →", href: `/library/read/${id}`, primary: true });
   }
-  if (fileUrl) {
-    const size = material.fileSize ? `（${formatBytes(material.fileSize)}）` : "";
-    actions.push({
-      label: actions.length === 0 ? `下载资料 ↓` : `下载资料 ↓${size}`,
-      href: fileUrl,
-      primary: actions.length === 0,
-      external: true,
-    });
-  }
-
   const meta =
-    material.filePath && material.fileSize
+    material.fileSize
       ? `${formatBytes(material.fileSize)} · ${material.subject}`
       : `${material.pageCount ?? material.pages.length} 页 · ${material.subject}`;
 
@@ -127,22 +114,6 @@ export default function ItemDetail({ id }: { id: string }) {
             {free ? (
               actions.length > 0 ? (
                 actions.map((action) =>
-                  action.external ? (
-                    <a
-                      key={action.label}
-                      href={action.href}
-                      download
-                      target="_blank"
-                      rel="noreferrer"
-                      className={
-                        action.primary
-                          ? "border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
-                          : "border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/70 transition-colors hover:border-ink"
-                      }
-                    >
-                      {action.label}
-                    </a>
-                  ) : (
                     <Link
                       key={action.label}
                       href={action.href}
@@ -154,13 +125,12 @@ export default function ItemDetail({ id }: { id: string }) {
                     >
                       {action.label}
                     </Link>
-                  )
                 )
-              ) : (
+              ) : !material.downloadAvailable ? (
                 <p className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/55">
                   下载即将开放
                 </p>
-              )
+              ) : null
             ) : (
               <>
                 <Link
@@ -176,6 +146,13 @@ export default function ItemDetail({ id }: { id: string }) {
                   积分兑换暂未开放
                 </p>
               </>
+            )}
+            {free && material.downloadAvailable && (
+              <MaterialDownloadButton
+                materialId={material.id}
+                label={`下载资料 ↓${material.fileSize ? `（${formatBytes(material.fileSize)}）` : ""}`}
+                className="border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-60"
+              />
             )}
             <p
               data-library-favorite-state="unavailable"

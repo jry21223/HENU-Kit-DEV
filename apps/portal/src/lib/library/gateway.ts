@@ -41,7 +41,7 @@ function toMaterial(m: ApiMaterial): Material {
     rating: m.rating,
     downloads: m.downloads,
     favs: m.favs,
-    filePath: m.filePath,
+    downloadAvailable: m.downloadAvailable,
     fileSize: m.fileSize,
     slides: m.slides,
   };

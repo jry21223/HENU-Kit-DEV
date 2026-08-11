@@ -220,7 +220,7 @@ func newLibraryServer(t *testing.T, legacyURL string) (*httptest.Server, *pgxpoo
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	handler, err := library.New(library.Config{Database: pool, Redis: redisClient, ClientID: "console-gateway", Keys: map[string]string{"active": serviceSecret}, LegacyBaseURL: legacyURL, LegacyToken: "legacy-admin-token", HTTPClient: http.DefaultClient})
+	handler, err := library.New(library.Config{Database: pool, Redis: redisClient, ClientID: "console-gateway", Keys: map[string]string{"active": serviceSecret}, DownloadClientID: "portal-gateway", DownloadKeys: map[string]string{"active": downloadServiceSecret}, DownloadStore: &fakeDownloadStore{}, LegacyBaseURL: legacyURL, LegacyToken: "legacy-admin-token", HTTPClient: http.DefaultClient})
 	if err != nil {
 		t.Fatal(err)
 	}

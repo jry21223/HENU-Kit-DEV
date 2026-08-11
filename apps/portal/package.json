@@ -16,6 +16,7 @@
     "test:e2e:quizcraft-catalog": "playwright test --config playwright.quizcraft-catalog.config.ts",
     "test:e2e:stats": "PLAYWRIGHT_ENABLE_QUIZCRAFT_V2_READS=1 playwright test tests/personal-stats.spec.ts tests/practice-leaderboard-live.spec.ts",
     "test:e2e:account": "playwright test tests/account-portfolio.spec.ts tests/account-ticket-loop.spec.ts tests/membership-purchase.spec.ts",
+    "test:e2e:library-download": "playwright test tests/library-download.spec.ts --workers=1",
     "test:library-public-artifact": "node scripts/check-paid-library-public-artifact.mjs"
   },
   "dependencies": {
