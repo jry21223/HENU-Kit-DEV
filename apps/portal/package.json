@@ -12,7 +12,7 @@
     "test:unit": "node --experimental-strip-types --test src/components/practice/bank-hero-mastery.test.mjs src/components/account/account-console-boundary.test.mjs",
     "test:e2e:responsive": "playwright test tests/responsive.spec.ts tests/practice-leaderboard.spec.ts tests/quizcraft-catalog-dark.spec.ts tests/library-owner-stats.spec.ts",
     "test:e2e:food": "playwright test --workers=1 tests/food-ranking.spec.ts tests/food-detail.spec.ts tests/food-publish.spec.ts tests/food-scroll-restoration.spec.ts",
-    "test:e2e:practice": "playwright test tests/practice-session.spec.ts",
+    "test:e2e:practice": "playwright test tests/practice-session.spec.ts tests/practice-swipe.spec.ts",
     "test:e2e:quizcraft-catalog": "playwright test --config playwright.quizcraft-catalog.config.ts",
     "test:e2e:stats": "PLAYWRIGHT_ENABLE_QUIZCRAFT_V2_READS=1 playwright test tests/personal-stats.spec.ts tests/practice-leaderboard-live.spec.ts",
     "test:e2e:account": "playwright test tests/account-portfolio.spec.ts tests/account-ticket-loop.spec.ts tests/membership-purchase.spec.ts",

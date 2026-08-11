@@ -199,28 +199,17 @@ describe("Console Overview", () => {
     wrapper.unmount();
   });
 
-  it("links module cards to their operations pages and keeps Portal plain", async () => {
+  it("keeps module cards informational while Console navigation is canonical", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : authenticated), { status: 200 }))));
     window.history.replaceState({}, "", "/");
     const wrapper = mount(App);
     await flushPromises();
 
-    for (const [id, href] of [
-      ["platform", "/operations"],
-      ["notice", "/notices"],
-      ["library", "/library"],
-      ["food", "/food"],
-    ] as const) {
+    for (const id of ["portal", "platform", "notice", "library", "quizcraft", "food"]) {
       const card = wrapper.get(`[data-module-card='${id}']`);
-      expect(card.element.tagName).toBe("A");
-      expect(card.attributes("href")).toBe(href);
+      expect(card.element.tagName).toBe("ARTICLE");
+      expect(card.attributes("href")).toBeUndefined();
     }
-    // Portal has no operations page: its card must stay a non-clickable
-    // article rather than a link that silently does nothing.
-    const portal = wrapper.get("[data-module-card='portal']");
-    expect(portal.element.tagName).toBe("ARTICLE");
-    expect(portal.attributes("href")).toBeUndefined();
-    expect(wrapper.get("[data-module-card='quizcraft']").element.tagName).toBe("ARTICLE");
     wrapper.unmount();
   });
 

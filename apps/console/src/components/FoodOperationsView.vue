@@ -161,7 +161,7 @@ watch(() => props.authState, (value) => {
 
 <template>
   <section aria-labelledby="food-heading">
-    <PageHeader eyebrow="美食运营" title="Food 运营" title-id="food-heading" description="投稿、异常与调档均由服务端处理。">
+    <PageHeader eyebrow="美食运营" title="美食运营" title-id="food-heading" description="投稿、异常与调档均由服务端处理。">
       <div class="access-context"><strong>{{ workspaceStatusLabel(workspace?.status ?? "loading") }}</strong></div>
     </PageHeader>
     <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取美食运营数据…</div>

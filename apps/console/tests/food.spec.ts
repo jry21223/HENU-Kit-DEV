@@ -46,7 +46,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
   test(`${viewport.name} Food operations resolve unknown writes and stay responsive`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/food");
-    await expect(page.getByRole("heading", { name: "Food 运营" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "美食运营" })).toBeVisible();
     for (const heading of ["投稿审核", "异常票处理", "调档确认"]) await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     await expect(page.getByRole("status")).toContainText("Food 数据可能已过期");
     await expect(page.getByText("标准 → 推荐")).toHaveCount(1);

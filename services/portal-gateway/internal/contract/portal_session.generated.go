@@ -3,7 +3,7 @@ package contract
 
 import "time"
 
-const PortalSessionSourceSHA256 = "cc6e6cce2579543d58ffafdee34f26803edd26d737daa6fcd3b212d5f3310264"
+const PortalSessionSourceSHA256 = "b8dfdc09736641efa2d7479461a13c58d326ee120230451498c16fcb08aedf7f"
 const LibraryDownloadRoute = "/api/v1/library/materials/{material_id}/download"
 
 type PortalSession struct {
@@ -31,4 +31,23 @@ type PersonalPracticeStats struct {
 type PersonalPracticeStatsEnvelope struct {
 	RequestID string                `json:"request_id"`
 	Data      PersonalPracticeStats `json:"data"`
+}
+
+type QuizCraftCatalogChapter struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type QuizCraftCatalogBank struct {
+	BankID        string                    `json:"bank_id"`
+	BankVersionID string                    `json:"bank_version_id"`
+	Name          string                    `json:"name"`
+	QuestionCount int                       `json:"question_count"`
+	Available     bool                      `json:"available"`
+	Chapters      []QuizCraftCatalogChapter `json:"chapters"`
+}
+
+type QuizCraftCatalogResponse struct {
+	Banks     []QuizCraftCatalogBank `json:"banks"`
+	RequestID string                 `json:"request_id"`
 }
