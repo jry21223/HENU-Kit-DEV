@@ -2,22 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  formatPortalError,
   fetchLibraryMaterials,
-  mockAllowed,
 } from "@/lib/api/client";
 import type { Material as ApiMaterial } from "@/lib/api/types";
 import {
   MATERIAL_TYPES,
   MaterialType,
-  STATIC_MATERIALS,
   type Material,
 } from "@/lib/library/mock";
-import {
-  getLibraryGatewayError,
-  getMaterials,
-  initGateway,
-} from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneBooks } from "@/components/site-hero/scenes";
@@ -48,6 +40,10 @@ function toMaterial(m: ApiMaterial): Material {
 }
 
 type LoadState = "loading" | "ready" | "error";
+type LibraryStatistics = {
+  materialCount: number;
+  downloadStarts: number;
+};
 
 export default function LibraryHomePage() {
   const [query, setQuery] = useState("");
@@ -55,6 +51,7 @@ export default function LibraryHomePage() {
   const [price, setPrice] = useState<"all" | "free" | "paid">("all");
   const [subject, setSubject] = useState("all");
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [statistics, setStatistics] = useState<LibraryStatistics | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   useReveal();
@@ -63,39 +60,27 @@ export default function LibraryHomePage() {
   const load = useCallback(async () => {
     setLoadState("loading");
     setError(null);
+    setMaterials([]);
+    setStatistics(null);
     try {
-      // Direct list endpoint first (portal-api materials).
       const resp = await fetchLibraryMaterials();
+      if (
+        resp.statistics.materialCount !== resp.materials.length ||
+        resp.statistics.materialCount < 0 ||
+        resp.statistics.downloadStarts < 0
+      ) {
+        throw new Error("资料库返回了不一致的目录统计，请稍后重试。");
+      }
       setMaterials(resp.materials.map(toMaterial));
+      setStatistics({
+        materialCount: resp.statistics.materialCount,
+        downloadStarts: resp.statistics.downloadStarts,
+      });
       setLoadState("ready");
       return;
-    } catch (e) {
-      // Fall through to gateway cache / mock (dev only).
-      try {
-        await initGateway();
-        const cached = getMaterials();
-        if (cached.length > 0) {
-          setMaterials(cached);
-          setLoadState("ready");
-          return;
-        }
-        if (mockAllowed) {
-          setMaterials(STATIC_MATERIALS);
-          setLoadState("ready");
-          return;
-        }
-        setMaterials([]);
-        setError(
-          getLibraryGatewayError() ||
-            formatPortalError(e) ||
-            "资料库暂时加载不出来，请稍后刷新试试。"
-        );
-        setLoadState("error");
-      } catch (e2) {
-        setMaterials([]);
-        setError(formatPortalError(e2));
-        setLoadState("error");
-      }
+    } catch {
+      setError("资料库暂时无法加载，请稍后重试。");
+      setLoadState("error");
     }
   }, []);
 
@@ -118,8 +103,7 @@ export default function LibraryHomePage() {
         m.title.includes(query.trim()) ||
         m.subject.includes(query.trim()))
   );
-
-  const totalDownloads = materials.reduce((s, m) => s + m.downloads, 0);
+  const hasActiveFilter = query.trim() !== "" || type !== "all" || price !== "all" || subject !== "all";
 
   return (
     <main>
@@ -127,10 +111,18 @@ export default function LibraryHomePage() {
         index="01"
         en="LIBRARY"
         title="资料库"
-        slogan="学长笔记、往年试卷、模拟卷、学习路径、实验报告——免费资料可直接阅读，收费资料可试读，积分兑换将在真实账户服务接通后开放。"
+        slogan="公开免费资料，可按科目和类型浏览；累计下载从本资料库启用下载后开始统计。"
         counters={[
-          { label: "收录资料", value: materials.length },
-          { label: "累计下载", value: totalDownloads },
+          {
+            label: "收录资料",
+            value: loadState === "ready" ? statistics?.materialCount ?? null : null,
+            busy: loadState === "loading",
+          },
+          {
+            label: "累计下载",
+            value: loadState === "ready" ? statistics?.downloadStarts ?? null : null,
+            busy: loadState === "loading",
+          },
         ]}
         fig="FIG.02 书脊 / SPINES"
         scene={<SceneBooks />}
@@ -196,7 +188,7 @@ export default function LibraryHomePage() {
           ) : loadState === "error" ? (
             <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />
           ) : items.length === 0 ? (
-            <EmptyBlock label="无匹配资料" />
+            <EmptyBlock label={materials.length === 0 && !hasActiveFilter ? "资料库当前暂无公开资料" : "无匹配资料"} />
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {items.map((m) => (

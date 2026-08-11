@@ -21,15 +21,43 @@ import (
 	"henukit.dev/portal-gateway/internal/serviceauth"
 )
 
+// 500 contract-bounded rows can exceed 1 MiB after encoding because Go escapes
+// HTML-sensitive characters as six-byte JSON sequences. The field maxima total
+// less than 2.5 MiB for 500 rows; 4 MiB leaves bounded envelope overhead.
+const maxCatalogBodyBytes = 4 << 20
+
 const PublicOSSHost = "henukit.oss-cn-beijing.aliyuncs.com"
 
 var (
 	materialIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	releaseIDPattern  = regexp.MustCompile(`^[a-f0-9]{40}-[a-f0-9]{16}$`)
+	ownerUUIDPattern  = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	ErrBadRequest     = errors.New("invalid Library download request")
 	ErrNotFound       = errors.New("Library material is unavailable")
 	ErrUnavailable    = errors.New("Library download owner is unavailable")
 	ErrInvalid        = errors.New("Library download owner returned an invalid capability")
 )
+
+type PublicMaterial struct {
+	ID                string `json:"id"`
+	Type              string `json:"type"`
+	Subject           string `json:"subject"`
+	Title             string `json:"title"`
+	Role              string `json:"role"`
+	FileName          string `json:"file_name"`
+	FileSize          int64  `json:"file_size"`
+	Downloads         int64  `json:"downloads"`
+	DownloadAvailable bool   `json:"download_available"`
+}
+
+type Catalog struct {
+	ReleaseID      *string          `json:"release_id"`
+	Materials      []PublicMaterial `json:"materials"`
+	MaterialCount  int64            `json:"material_count"`
+	DownloadStarts int64            `json:"download_starts"`
+	CountingSince  *time.Time
+	AsOf           time.Time
+}
 
 type Grant struct {
 	DownloadStartID string
@@ -186,6 +214,108 @@ func (c *Client) Start(ctx context.Context, materialID, requestID string) (Grant
 		return Grant{}, ErrInvalid
 	}
 	return Grant{DownloadStartID: envelope.Data.DownloadStartID, Method: envelope.Data.Method, Location: location.String(), ExpiresAt: expiresAt}, nil
+}
+
+// Catalog reads one complete active public-material snapshot and its ledger
+// aggregates. It never accepts browser filters or storage coordinates.
+func (c *Client) Catalog(ctx context.Context, requestID string) (Catalog, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" {
+		return Catalog{}, ErrBadRequest
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/public-materials", nil)
+	if err != nil {
+		return Catalog{}, ErrUnavailable
+	}
+	request.Header.Set("X-Request-Id", requestID)
+	if err := c.signer.Sign(request); err != nil {
+		return Catalog{}, ErrUnavailable
+	}
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return Catalog{}, ErrUnavailable
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		return Catalog{}, ErrUnavailable
+	}
+
+	var envelope struct {
+		Data struct {
+			ReleaseID      *string          `json:"release_id"`
+			Materials      []PublicMaterial `json:"materials"`
+			MaterialCount  int64            `json:"material_count"`
+			DownloadStarts int64            `json:"download_starts"`
+			CountingSince  *string          `json:"counting_since"`
+			AsOf           string           `json:"as_of"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxCatalogBodyBytes+1))
+	if err != nil || len(body) > maxCatalogBodyBytes {
+		return Catalog{}, ErrInvalid
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil || strings.TrimSpace(envelope.RequestID) == "" {
+		return Catalog{}, ErrInvalid
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return Catalog{}, ErrInvalid
+	}
+	asOf, err := time.Parse(time.RFC3339, envelope.Data.AsOf)
+	if err != nil || envelope.Data.MaterialCount < 0 || envelope.Data.DownloadStarts < 0 || envelope.Data.MaterialCount != int64(len(envelope.Data.Materials)) || len(envelope.Data.Materials) > 500 {
+		return Catalog{}, ErrInvalid
+	}
+	var countingSince *time.Time
+	if envelope.Data.CountingSince != nil {
+		parsed, parseErr := time.Parse(time.RFC3339, *envelope.Data.CountingSince)
+		if parseErr != nil || asOf.Before(parsed) {
+			return Catalog{}, ErrInvalid
+		}
+		countingSince = &parsed
+	}
+	if envelope.Data.ReleaseID == nil {
+		if len(envelope.Data.Materials) != 0 {
+			return Catalog{}, ErrInvalid
+		}
+	} else if !releaseIDPattern.MatchString(*envelope.Data.ReleaseID) {
+		return Catalog{}, ErrInvalid
+	}
+	seen := make(map[string]struct{}, len(envelope.Data.Materials))
+	for _, material := range envelope.Data.Materials {
+		if !validPublicMaterial(material) {
+			return Catalog{}, ErrInvalid
+		}
+		if _, duplicate := seen[material.ID]; duplicate {
+			return Catalog{}, ErrInvalid
+		}
+		seen[material.ID] = struct{}{}
+	}
+	return Catalog{
+		ReleaseID: envelope.Data.ReleaseID, Materials: envelope.Data.Materials,
+		MaterialCount: envelope.Data.MaterialCount, DownloadStarts: envelope.Data.DownloadStarts,
+		CountingSince: countingSince, AsOf: asOf,
+	}, nil
+}
+
+func validPublicMaterial(material PublicMaterial) bool {
+	allowedTypes := map[string]bool{"note": true, "exam": true, "mock": true, "path": true, "lab": true, "slides": true}
+	if !ownerUUIDPattern.MatchString(material.ID) || !allowedTypes[material.Type] || material.FileSize < 0 || material.Downloads < 0 || !material.DownloadAvailable {
+		return false
+	}
+	for _, value := range []string{material.Subject, material.Title, material.Role, material.FileName} {
+		if strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value || len(value) > 255 {
+			return false
+		}
+		for _, char := range value {
+			if unicode.IsControl(char) {
+				return false
+			}
+		}
+	}
+	return !strings.ContainsAny(material.FileName, `/\\`)
 }
 
 func safeAttachmentDisposition(value string) bool {

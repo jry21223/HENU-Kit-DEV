@@ -1,0 +1,150 @@
+#!/bin/sh
+set -eu
+umask 077
+
+export PATH="/usr/bin:/bin"
+readonly PATH
+unset CDPATH ENV BASH_ENV
+
+readonly config_path="/etc/henukit-deploy/materials-oss.env"
+readonly config_owner="0"
+readonly runtime_owner="0"
+readonly trusted_ancestor="/"
+
+if [ -x /usr/bin/stat ]; then readonly stat_bin=/usr/bin/stat; else readonly stat_bin=/bin/stat; fi
+if [ -x /usr/bin/dirname ]; then readonly dirname_bin=/usr/bin/dirname; else readonly dirname_bin=/bin/dirname; fi
+if [ -x /usr/bin/id ]; then readonly id_bin=/usr/bin/id; else readonly id_bin=/bin/id; fi
+if [ -x /usr/bin/env ]; then readonly env_bin=/usr/bin/env; else readonly env_bin=/bin/env; fi
+
+runtime_dir="$(CDPATH='' cd -- "$("$dirname_bin" -- "$0")" && pwd)"
+readonly runtime_dir
+readonly publish_command="$runtime_dir/materials-oss-release"
+
+fail() {
+  echo "henukit-materials-publish-release-oss: $*" >&2
+  exit 64
+}
+
+owner_and_mode() {
+  if "$stat_bin" -c '%u:%a' -- "$1" >/dev/null 2>&1; then
+    "$stat_bin" -c '%u:%a' -- "$1"
+  else
+    "$stat_bin" -f '%u:%Lp' -- "$1"
+  fi
+}
+
+require_fixed_regular_file() {
+  path="$1"
+  label="$2"
+  [ ! -L "$path" ] && [ -f "$path" ] || fail "$label must be a regular file"
+  owner_mode="$(owner_and_mode "$path")"
+  [ "${owner_mode%%:*}" = "$config_owner" ] || fail "$label must be owned by root"
+  file_mode="${owner_mode#*:}"
+  case "$file_mode" in
+    [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+    *) fail "$label mode is invalid" ;;
+  esac
+  mode_value=$((0$file_mode))
+  [ $((mode_value & 18)) -eq 0 ] || fail "$label must not be writable by group or other"
+}
+
+require_fixed_directory() {
+  path="$1"
+  label="$2"
+  [ ! -L "$path" ] && [ -d "$path" ] || fail "$label must be a real directory"
+  owner_mode="$(owner_and_mode "$path")"
+  [ "${owner_mode%%:*}" = "$config_owner" ] || fail "$label must be owned by root"
+  directory_mode="${owner_mode#*:}"
+  case "$directory_mode" in
+    [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+    *) fail "$label mode is invalid" ;;
+  esac
+  mode_value=$((0$directory_mode))
+  [ $((mode_value & 18)) -eq 0 ] || fail "$label must not be writable by group or other"
+}
+
+require_trusted_directory_chain() {
+  cursor="$1"
+  label="$2"
+  while :; do
+    require_fixed_directory "$cursor" "$label"
+    [ "$cursor" = "$trusted_ancestor" ] && return
+    parent="$("$dirname_bin" -- "$cursor")"
+    [ "$parent" != "$cursor" ] || fail "$label escapes the trusted ancestor"
+    cursor="$parent"
+  done
+}
+
+[ "$("$id_bin" -u)" = "$runtime_owner" ] || fail "must run as root"
+[ "$#" -eq 4 ] || fail "expected --release-id ID --receipt-sha256 SHA256"
+[ "$1" = "--release-id" ] || fail "expected --release-id ID --receipt-sha256 SHA256"
+[ "$3" = "--receipt-sha256" ] || fail "expected --release-id ID --receipt-sha256 SHA256"
+readonly release_id="$2"
+readonly receipt_sha256="$4"
+
+case "$release_id" in
+  [0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]-[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) ;;
+  *) fail "release ID is invalid" ;;
+esac
+[ "${#receipt_sha256}" -eq 64 ] || fail "SHA-256 is invalid"
+case "$receipt_sha256" in *[!0123456789abcdef]*) fail "SHA-256 is invalid" ;; esac
+
+require_fixed_regular_file "$config_path" "configuration"
+config_mode="$(owner_and_mode "$config_path")"
+case "${config_mode#*:}" in 600|0600) ;; *) fail "configuration must have mode 0600" ;; esac
+require_fixed_regular_file "$publish_command" "fixed complete OSS release publisher"
+[ -x "$publish_command" ] || fail "fixed complete OSS release publisher is not executable"
+
+sealed_root=""
+audit_root=""
+bucket=""
+region=""
+endpoint=""
+ram_role=""
+carriage_return="$(printf '\r')"
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%"$carriage_return"}"
+  case "$line" in ""|\#*) continue ;; esac
+  key="${line%%=*}"
+  value="${line#*=}"
+  case "$key" in
+    HENUKIT_MATERIALS_SEALED_ROOT) [ -z "$sealed_root" ] || fail "configuration contains a duplicate key"; sealed_root="$value" ;;
+    HENUKIT_MATERIALS_OSS_AUDIT_ROOT) [ -z "$audit_root" ] || fail "configuration contains a duplicate key"; audit_root="$value" ;;
+    HENUKIT_MATERIALS_OSS_BUCKET) [ -z "$bucket" ] || fail "configuration contains a duplicate key"; bucket="$value" ;;
+    HENUKIT_MATERIALS_OSS_REGION) [ -z "$region" ] || fail "configuration contains a duplicate key"; region="$value" ;;
+    HENUKIT_MATERIALS_OSS_ENDPOINT) [ -z "$endpoint" ] || fail "configuration contains a duplicate key"; endpoint="$value" ;;
+    HENUKIT_MATERIALS_OSS_RAM_ROLE) [ -z "$ram_role" ] || fail "configuration contains a duplicate key"; ram_role="$value" ;;
+    *) fail "configuration contains an unsupported key" ;;
+  esac
+done < "$config_path"
+
+[ -n "$sealed_root" ] || fail "configuration is missing HENUKIT_MATERIALS_SEALED_ROOT"
+[ -n "$audit_root" ] || fail "configuration is missing HENUKIT_MATERIALS_OSS_AUDIT_ROOT"
+[ "$bucket" = "henukit" ] || fail "configured OSS bucket is not approved"
+[ "$region" = "cn-beijing" ] || fail "configured OSS region is not approved"
+[ "$endpoint" = "oss-cn-beijing-internal.aliyuncs.com" ] || fail "configured OSS endpoint is not approved"
+case "$ram_role" in ""|-*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) fail "configured OSS RAM role is invalid" ;; esac
+case "$sealed_root" in /*) ;; *) fail "sealed root is invalid" ;; esac
+case "$audit_root" in /*) ;; *) fail "OSS audit root is invalid" ;; esac
+[ "$sealed_root" != "/" ] || fail "sealed root is invalid"
+[ "$audit_root" != "/" ] || fail "OSS audit root is invalid"
+require_trusted_directory_chain "$sealed_root" "sealed root"
+require_trusted_directory_chain "$audit_root" "OSS audit root"
+sealed_root="$(CDPATH='' cd -- "$sealed_root" && pwd -P)"
+audit_root="$(CDPATH='' cd -- "$audit_root" && pwd -P)"
+case "$audit_root/" in "$sealed_root/"*) fail "OSS audit root must be separate from the sealed root" ;; esac
+case "$sealed_root/" in "$audit_root/"*) fail "OSS audit root must be separate from the sealed root" ;; esac
+
+exec "$env_bin" -i \
+  HOME=/root \
+  PATH=/usr/bin:/bin \
+  ALIBABA_CLOUD_IMDSV1_DISABLE=true \
+  HENUKIT_MATERIALS_SEALED_ROOT="$sealed_root" \
+  HENUKIT_MATERIALS_OSS_AUDIT_ROOT="$audit_root" \
+  HENUKIT_MATERIALS_OSS_BUCKET="$bucket" \
+  HENUKIT_MATERIALS_OSS_REGION="$region" \
+  HENUKIT_MATERIALS_OSS_ENDPOINT="$endpoint" \
+  HENUKIT_MATERIALS_OSS_RAM_ROLE="$ram_role" \
+  "$publish_command" \
+  --release-id "$release_id" \
+  --receipt-sha256 "$receipt_sha256"

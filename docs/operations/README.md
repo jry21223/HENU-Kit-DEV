@@ -9,6 +9,8 @@
 - [`PRODUCTION_RELEASE_CHECKLIST.md`](./PRODUCTION_RELEASE_CHECKLIST.md)：整套服务生产发布唯一 Go/No-Go 汇总入口。
 - [`PRODUCTION_RELEASE_REPORT-2026-07-24.md`](./PRODUCTION_RELEASE_REPORT-2026-07-24.md)：本次 Webhook 交付与最终生产发布证据审计，当前结论按证据更新。
 - [`internal-smoke.md`](./internal-smoke.md)：内部测试和部署后 Smoke Runbook。
+- [`henukit-materials-oss-canary.md`](./henukit-materials-oss-canary.md)：单对象私有 OSS canary 的验证与精确版本清理边界。
+- [`henukit-materials-oss-release.md`](./henukit-materials-oss-release.md)：完整资料 OSS release commit、跨表面激活恢复与 forward rollback Runbook。
 - [`wechat-pay-native.md`](./wechat-pay-native.md)：微信支付 Native 联调与上线准备。
 
 Monorepo 的统一 CI/CD、灰度和回滚规范以 [`../development/engineering-release-spec.md`](../development/engineering-release-spec.md) 为准。目录中的旧部署命令仅适用于相应旧服务，不能直接推广到 Platform Core、Portal 或 QuizCraft。

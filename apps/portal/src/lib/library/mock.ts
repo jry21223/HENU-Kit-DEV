@@ -38,9 +38,9 @@ export interface Material {
   pageCount?: number; // 完整资料页数元数据；付费静态资料只保留试读正文
   price: number; // 0 = 免费（积分）
   previewPages: number; // 收费资料的免费试读页数
-  rating: number; // 0-5
+  rating?: number; // 0-5；owner 未提供时不展示伪造评分
   downloads: number;
-  favs: number;
+  favs?: number;
   /** 是否展示 owner 下载入口；静态 mock 不构造下载地址或授权 */
   downloadAvailable: boolean;
   fileSize?: number;

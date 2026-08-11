@@ -31,6 +31,8 @@
 25. [`0025-materials-atomic-activation.md`](./0025-materials-atomic-activation.md) — 单一 webhook、特权 runner、维护围栏、恢复 journal 与显式回滚边界。
 26. [`0026-materials-oss-canary-publication.md`](./0026-materials-oss-canary-publication.md) — 单份封存审核资料到私有 OSS、可重放且不激活的 canary 发布边界。
 27. [`0027-library-public-download-owner.md`](./0027-library-public-download-owner.md) — Library 对活动公开免费资料、短期下载 grant、下载开始账本与聚合的独立 owner 边界。
+28. [`0028-materials-complete-oss-release.md`](./0028-materials-complete-oss-release.md) — 完整审核资料的 OSS exact-version commit、跨静态/派生/Library owner 激活与单调恢复边界。
+29. [`0029-library-oss-owner-atomic-activation.md`](./0029-library-oss-owner-atomic-activation.md) — Library 对完整 OSS owner catalog 的验证、原子激活、聚合统计与前向回滚边界。
 
 ## 使用规则
 

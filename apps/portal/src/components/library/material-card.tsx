@@ -31,7 +31,9 @@ export default function MaterialCard({ material }: { material: Material }) {
         </p>
         <div className="mt-3 flex items-center gap-3 border-t border-line pt-3 font-mono text-[10px] text-ink/50">
           <span className="truncate">{material.author}</span>
-          <span className="ml-auto shrink-0">★ {material.rating.toFixed(1)}</span>
+          {material.rating !== undefined && (
+            <span className="ml-auto shrink-0">★ {material.rating.toFixed(1)}</span>
+          )}
           <span className="shrink-0">↓ {material.downloads}</span>
         </div>
         {!free && material.previewPages > 0 && (

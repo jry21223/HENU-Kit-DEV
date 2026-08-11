@@ -26,6 +26,11 @@ ADR-0027's exact download route is intercepted by Portal Gateway and sent to
 Library; Portal API must not translate `storage_key` into a URL, sign OSS
 requests, record a download, or provide a fallback grant.
 
+After #334, Portal Gateway also intercepts the public material list/detail
+routes for the active OSS catalog. Portal API's legacy mock/Study projections
+are not a fallback catalog and their historical `downloads` fields are not a
+source for homepage totals.
+
 ## Key terms
 
 - **Material**: A library resource (note, exam, mock paper, learning path, lab report) with full content pages.

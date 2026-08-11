@@ -113,6 +113,34 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/public-materials:
+    get:
+      tags: [Library]
+      operationId: getPublicMaterialCatalog
+      summary: Read the complete active public-free owner catalog
+      description: Returns one database snapshot containing the complete active release catalog, stable per-material Download Start counts, and the global Download Start aggregate. No browser filter is accepted or applied.
+      security:
+        - downloadServiceBasic: []
+          downloadServiceSignature: []
+      parameters:
+        - $ref: "#/components/parameters/DownloadServiceID"
+        - $ref: "#/components/parameters/DownloadKeyID"
+        - $ref: "#/components/parameters/ServiceTimestamp"
+        - $ref: "#/components/parameters/ServiceNonce"
+      responses:
+        "200":
+          description: Complete active catalog and owner-ledger aggregates, or an explicit empty success when no release is active
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties: { data: { $ref: "#/components/schemas/PublicMaterialCatalog" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/v1/public-materials/{material_id}/download-starts:
     post:
       tags: [Library]
@@ -258,6 +286,36 @@ components:
         download_starts: { type: integer, format: int64, minimum: 0 }
         counting_since: { type: string, format: date-time }
         as_of: { type: string, format: date-time }
+    PublicMaterialCatalog:
+      type: object
+      additionalProperties: false
+      required: [release_id, materials, material_count, download_starts, counting_since, as_of]
+      properties:
+        release_id:
+          type: [string, "null"]
+          pattern: '^[a-f0-9]{40}-[a-f0-9]{16}$'
+        materials:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/PublicCatalogMaterial" }
+        material_count: { type: integer, minimum: 0, maximum: 500 }
+        download_starts: { type: integer, format: int64, minimum: 0 }
+        counting_since: { type: [string, "null"], format: date-time }
+        as_of: { type: string, format: date-time }
+    PublicCatalogMaterial:
+      type: object
+      additionalProperties: false
+      required: [id, type, subject, title, role, file_name, file_size, downloads, download_available]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [note, exam, mock, path, lab, slides] }
+        subject: { type: string, minLength: 1, maxLength: 160 }
+        title: { type: string, minLength: 1, maxLength: 255 }
+        role: { type: string, minLength: 1, maxLength: 160 }
+        file_name: { type: string, minLength: 1, maxLength: 255 }
+        file_size: { type: integer, format: int64, minimum: 0 }
+        downloads: { type: integer, format: int64, minimum: 0 }
+        download_available: { type: boolean, const: true }
     LibraryWorkspace:
       type: object
       additionalProperties: false

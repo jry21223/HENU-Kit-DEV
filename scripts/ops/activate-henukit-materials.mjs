@@ -51,8 +51,12 @@ function parseOptions(argv) {
     ["--psql", "psql"],
     ["--legacy-inventory", "legacyInventory"],
     ["--activation-owner", "activationOwner"],
+    ["--oss-audit-root", "ossAuditRoot"],
+    ["--activation-staging-root", "activationStagingRoot"],
+    ["--bundle-builder", "bundleBuilder"],
+    ["--library-activator", "libraryActivator"],
   ]);
-  if (argv.length !== names.size * 2) fail("expected exactly nine fixed activation options");
+  if (argv.length !== names.size * 2) fail("expected exactly thirteen fixed activation options");
   const options = {};
   for (let index = 0; index < argv.length; index += 2) {
     const name = names.get(argv[index]);
@@ -70,7 +74,7 @@ function validateOptions(options) {
   options.pgService = process.env.PGSERVICE || "";
   if (!RELEASE_PATTERN.test(options.releaseID || "")) fail("release ID is invalid");
   if (!HASH_PATTERN.test(options.receiptSha256 || "")) fail("receipt SHA-256 is invalid");
-  for (const key of ["sealedRoot", "publicRoot", "converter", "importer", "psql", "legacyInventory"]) {
+  for (const key of ["sealedRoot", "publicRoot", "converter", "importer", "psql", "legacyInventory", "ossAuditRoot", "activationStagingRoot", "bundleBuilder", "libraryActivator"]) {
     if (!isAbsolute(options[key] || "") || resolve(options[key]) === sep || options[key].includes("\0")) {
       fail(`${key} must be a non-root absolute path`);
     }
@@ -84,6 +88,10 @@ function validateOptions(options) {
   if (typeof process.getuid !== "function" || process.getuid() !== options.activationOwner) {
     fail("activation process identity does not match the fixed owner");
   }
+  for (const forbidden of ["ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALIBABA_CLOUD_SECURITY_TOKEN", "LIBRARY_OSS_BUCKET", "LIBRARY_OSS_REGION", "LIBRARY_OSS_INTERNAL_ENDPOINT", "LIBRARY_OSS_PUBLIC_ENDPOINT", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]) {
+    if (process.env[forbidden]) fail(`forbidden activation environment: ${forbidden}`);
+  }
+  if (!process.env.LIBRARY_DATABASE_URL || !process.env.LIBRARY_OSS_ECS_RAM_ROLE) fail("fixed Library activation configuration is incomplete");
 }
 
 function assertDirectory(path, label, owner) {
@@ -200,6 +208,7 @@ function copyRelease(stage, sealed) {
   ]) {
     writeFileSync(join(stage, name), bytes, { mode: 0o400 });
   }
+  mkdirSync(join(stage, "public"), { mode: 0o755 });
   for (const asset of sealed.assets) {
     const target = join(stage, "public", ...asset.segments);
     mkdirSync(dirname(target), { recursive: true, mode: 0o755 });
@@ -415,7 +424,9 @@ function readJournal(publicRoot) {
     state?.version !== 1 ||
     !RELEASE_PATTERN.test(state.target_release || "") ||
     !HASH_PATTERN.test(state.receipt_sha256 || "") ||
-    !["prepared", "static_switched", "database_running", "database_committed"].includes(state.phase) ||
+    !HASH_PATTERN.test(state.oss_commit_sha256 || "") ||
+    !HASH_PATTERN.test(state.library_bundle_sha256 || "") ||
+    !["prepared", "static_switched", "library_running", "library_committed", "database_running", "database_committed"].includes(state.phase) ||
     (state.previous_target !== null && typeof state.previous_target !== "string") ||
     (state.previous_release !== null && !RELEASE_PATTERN.test(state.previous_release || ""))
   ) {
@@ -466,7 +477,9 @@ function main() {
   const options = parseOptions(process.argv.slice(2));
   validateOptions(options);
   assertDirectory(options.publicRoot, "public root", options.activationOwner);
-  for (const [path, label] of [[options.converter, "converter"], [options.importer, "importer"], [options.psql, "psql"]]) {
+  assertDirectory(options.ossAuditRoot, "OSS audit root", options.activationOwner);
+  assertDirectory(options.activationStagingRoot, "activation staging root", options.activationOwner);
+  for (const [path, label] of [[options.converter, "converter"], [options.importer, "importer"], [options.psql, "psql"], [options.bundleBuilder, "bundle builder"], [options.libraryActivator, "Library activator"]]) {
     const metadata = lstatSync(path);
     if (metadata.isSymbolicLink() || !metadata.isFile()) fail(`${label} must be a regular file`);
     if (metadata.uid !== options.activationOwner && metadata.uid !== 0) fail(`${label} has an unexpected owner`);
@@ -512,6 +525,23 @@ function main() {
   }
   verifyInstalledRelease(finalRelease, sealed, options.activationOwner, options.releaseID);
 
+  const bundleDirectory = join(options.activationStagingRoot, options.releaseID);
+  if (!existsSync(bundleDirectory)) mkdirSync(bundleDirectory, { mode: 0o700 });
+  assertDirectory(bundleDirectory, "release activation staging directory", options.activationOwner);
+  const libraryBundle = join(bundleDirectory, `${options.receiptSha256}.json`);
+  const cleanEnvironment = { PATH: "/usr/bin:/bin" };
+  const bundleEvidence = parseJSON(run(process.execPath, [options.bundleBuilder,
+    "--release-id", options.releaseID,
+    "--receipt-sha256", options.receiptSha256,
+    "--oss-commit", join(options.ossAuditRoot, options.releaseID, "release-commit.json"),
+    "--sealed-release", join(sealed.release, "sealed-release.json"),
+    "--installed-release", finalRelease,
+    "--output", libraryBundle,
+  ], { env: cleanEnvironment }), "activation bundle response");
+  if (bundleEvidence?.release_id !== options.releaseID || !HASH_PATTERN.test(bundleEvidence?.bundle_sha256 || "") || !HASH_PATTERN.test(bundleEvidence?.oss_commit_sha256 || "") || !Number.isSafeInteger(bundleEvidence?.material_count) || bundleEvidence.material_count < 0 || bundleEvidence.material_count > 500) {
+    fail("activation bundle response is invalid");
+  }
+
   const existingJournal = readJournal(options.publicRoot);
   if (existingJournal && existingJournal.target_release !== options.releaseID) {
     fail(`activation recovery requires release ${existingJournal.target_release}`);
@@ -522,18 +552,44 @@ function main() {
     receipt_sha256: options.receiptSha256,
     previous_target: currentTarget(options.publicRoot),
     previous_release: readActiveRelease(options.publicRoot),
+    oss_commit_sha256: bundleEvidence.oss_commit_sha256,
+    library_bundle_sha256: bundleEvidence.bundle_sha256,
     phase: "prepared",
   };
   if (state.receipt_sha256 !== options.receiptSha256) fail("activation journal receipt does not match approval");
+  if (state.oss_commit_sha256 !== bundleEvidence.oss_commit_sha256 || state.library_bundle_sha256 !== bundleEvidence.bundle_sha256) fail("activation journal does not match the complete OSS release bundle");
 
   const fence = ensureFence(options.publicRoot);
   if (!existingJournal) writeJournal(options.publicRoot, state);
   let phase = state.phase;
   try {
-    if (phase !== "database_committed") {
+    if (phase === "prepared") {
       replaceCurrent(options.publicRoot, join(finalRelease, "public"));
       phase = "static_switched";
       writeJournal(options.publicRoot, { ...state, phase });
+    }
+    if (phase === "static_switched") {
+      phase = "library_running";
+      writeJournal(options.publicRoot, { ...state, phase });
+    }
+    if (phase === "library_running") {
+      const libraryEnvironment = {
+        PATH: "/usr/bin:/bin",
+        LIBRARY_DATABASE_URL: process.env.LIBRARY_DATABASE_URL,
+        LIBRARY_OSS_ECS_RAM_ROLE: process.env.LIBRARY_OSS_ECS_RAM_ROLE,
+      };
+      const libraryResponse = parseJSON(run(options.libraryActivator, ["--bundle", libraryBundle], { env: libraryEnvironment }), "Library activation response");
+      const previousReleaseMatches = libraryResponse?.replayed === true
+        ? libraryResponse.previous_release_id === ""
+        : libraryResponse?.previous_release_id === (state.previous_release ?? "");
+      if (libraryResponse?.release_id !== options.releaseID || !previousReleaseMatches || libraryResponse.material_count !== bundleEvidence.material_count || typeof libraryResponse.replayed !== "boolean") {
+        fail("Library activation response is invalid");
+      }
+      phase = "library_committed";
+      writeJournal(options.publicRoot, { ...state, phase });
+    }
+    if (phase !== "database_committed") {
+      replaceCurrent(options.publicRoot, join(finalRelease, "public"));
       const sql = run(process.execPath, [
         options.importer,
         "--manifest", join(finalRelease, "manifest.json"),

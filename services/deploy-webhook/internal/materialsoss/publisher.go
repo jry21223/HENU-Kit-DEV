@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	releasePattern = regexp.MustCompile(`^[a-f0-9]{40}-[a-f0-9]{16}$`)
-	hashPattern    = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	releasePattern     = regexp.MustCompile(`^[a-f0-9]{40}-[a-f0-9]{16}$`)
+	hashPattern        = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	errPublicationBusy = errors.New("another OSS canary publication is already running")
 )
 
 const approvedSourceRepository = "https://github.com/jry21223/HENU-Final-Review.git"
@@ -587,7 +588,7 @@ func lockAuditRoot(root string) (func(), error) {
 	}
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		lock.Close()
-		return nil, errors.New("another OSS canary publication is already running")
+		return nil, errPublicationBusy
 	}
 	return func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); _ = lock.Close() }, nil
 }

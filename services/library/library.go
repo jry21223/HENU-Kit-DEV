@@ -85,6 +85,7 @@ func New(config Config) (http.Handler, error) {
 	})
 	router.Group(func(download chi.Router) {
 		download.Use(h.authenticateDownload)
+		download.Get(contract.PublicMaterialCatalogRoute, h.publicMaterialCatalog)
 		download.Post(contract.DownloadStartRoute, h.startPublicDownload)
 		download.Get(contract.GlobalDownloadAggregateRoute, h.globalDownloadAggregate)
 		download.Get(contract.MaterialDownloadAggregateRoute, h.materialDownloadAggregate)

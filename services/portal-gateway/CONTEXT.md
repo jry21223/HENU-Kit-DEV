@@ -26,6 +26,13 @@ and returns a no-store, no-referrer `303`. This exact route fails closed before
 the legacy Library wildcard; it never forwards browser storage authority,
 returns the grant as page JSON, or falls back to Portal API or `/materials/`.
 
+Issue #334 also shadows the legacy Portal API material list/detail routes with
+an anonymous, signed Library owner catalog read. Gateway exposes only the
+browser-safe active public-free fields plus the owner material/global Download
+Start aggregates. It accepts no browser catalog filters, never sums advisory
+card fields into a global fact, and fails the whole response rather than mixing
+an owner catalog with mock or stale statistics.
+
 ADR-0019 adds exactly one Account Portfolio membership-order command: an
 authenticated Portal Session user may create their own order with an empty
 browser-owned payload and a required idempotency key. Portal Gateway binds the

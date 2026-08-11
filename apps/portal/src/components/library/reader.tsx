@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MATERIAL_TYPES } from "@/lib/library/mock";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
-import { LibraryLoading, LibraryNotFound } from "@/components/library/material-states";
+import { LibraryLoading, LibraryNotFound, LibraryUnavailable } from "@/components/library/material-states";
 import { useMaterialDetail } from "@/lib/library/use-material-detail";
 
 const subscribeToHydration = () => () => {};
@@ -69,11 +69,9 @@ export default function Reader({ id }: { id: string }) {
   }, [page]);
 
   if (state.loadState !== "ready") {
-    return state.loadState === "error" ? (
-      <LibraryNotFound error={state.error} />
-    ) : (
-      <LibraryLoading />
-    );
+    if (state.loadState === "loading") return <LibraryLoading />;
+    if (state.loadState === "not-found") return <LibraryNotFound />;
+    return <LibraryUnavailable message={state.error} onRetry={state.retry} />;
   }
   const { material } = state;
 
