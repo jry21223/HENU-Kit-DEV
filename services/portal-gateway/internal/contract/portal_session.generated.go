@@ -3,7 +3,8 @@ package contract
 
 import "time"
 
-const PortalSessionSourceSHA256 = "626730a5a2fe6c9ff1f431349c5ec99559a0494ee7cae58766493a34ba877a81"
+const PortalSessionSourceSHA256 = "56d95a241ee121f7abaf9aee47703a48a428785b0c1bc014471bbd42e2eda695"
+const LibraryDownloadRoute = "/api/v1/library/materials/{material_id}/download"
 
 type PortalSession struct {
 	DisplayName *string   `json:"display_name,omitempty"`

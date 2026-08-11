@@ -26,7 +26,7 @@ func main() {
 			routes[operation.OperationID] = path
 		}
 	}
-	required := map[string]string{"HealthRoute": "getLibraryHealth", "SummaryRoute": "getLibraryConsoleSummary", "WorkspaceRoute": "getLibraryWorkspace", "CommandRoute": "executeLibraryCommand", "OperationRoute": "getLibraryOperation"}
+	required := map[string]string{"HealthRoute": "getLibraryHealth", "SummaryRoute": "getLibraryConsoleSummary", "WorkspaceRoute": "getLibraryWorkspace", "CommandRoute": "executeLibraryCommand", "OperationRoute": "getLibraryOperation", "DownloadStartRoute": "createPublicMaterialDownloadStart", "GlobalDownloadAggregateRoute": "getGlobalDownloadStartAggregate", "MaterialDownloadAggregateRoute": "getMaterialDownloadStartAggregate"}
 	for _, operationID := range required {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required Library operation %s is missing", operationID))
@@ -42,8 +42,11 @@ const (
 	WorkspaceRoute = %q
 	CommandRoute = %q
 	OperationRoute = %q
+	DownloadStartRoute = %q
+	GlobalDownloadAggregateRoute = %q
+	MaterialDownloadAggregateRoute = %q
 )
-`, digest, routes["getLibraryHealth"], routes["getLibraryConsoleSummary"], routes["getLibraryWorkspace"], routes["executeLibraryCommand"], routes["getLibraryOperation"])
+`, digest, routes["getLibraryHealth"], routes["getLibraryConsoleSummary"], routes["getLibraryWorkspace"], routes["executeLibraryCommand"], routes["getLibraryOperation"], routes["createPublicMaterialDownloadStart"], routes["getGlobalDownloadStartAggregate"], routes["getMaterialDownloadStartAggregate"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/contract", 0o755))

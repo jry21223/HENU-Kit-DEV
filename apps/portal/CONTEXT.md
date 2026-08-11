@@ -14,7 +14,9 @@
 ## Does not own
 
 - QuizCraft question banks, attempts, rankings, or practice logic (owned by QuizCraft product).
-- Library material files, downloads, or business data (owned by Study API).
+- Library public-free material eligibility, signed download grants, Download
+  Start facts, and aggregates (owned by Library); remaining legacy operational
+  facts stay behind the Study compatibility boundary.
 - Food submissions, anomaly tickets, or tier adjustments (owned by Food service).
 - Campus market transaction data (owned by campus_life).
 - Credential validation, account records, Core Sessions, recovery policy, or mail delivery (owned by Platform Core).
@@ -26,6 +28,11 @@
 Portal owns the public account page presentation at `/account/login`, `/account/recover`, `/account/security`, and the account overview. These existing pages submit same-origin forms through `/account-auth` to Platform Core; Portal never validates credentials or treats a local response as authenticated. Successful login, registration, and recovery continue through OAuth so Portal Gateway establishes the Portal Session. The account overview reads Account Portfolio only through that Gateway and shows an explicit error instead of session or local mock data when the owner is unavailable. Production mock authentication is prohibited. See ADR-0014 and ADR-0016.
 
 The QuizCraft V2 catalog preparation is explicitly dark by default: without `NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1`, `/practice` does not request or render a V2 catalog. When the browser flag and Gateway's `PORTAL_ENABLE_QUIZCRAFT_CATALOG=1` are both deliberately coordinated, Portal renders only Gateway-provided real bank and immutable bank-version facts, emits both IDs to `/practice/quiz`, and treats loading, empty, and error states honestly. A failed V2 catalog read must not fall back to legacy Practice, cache, or local mock success. The merged default-off Practice session boundary owns the browser `create-session` command; this catalog ticket verifies its real bank/version handoff into that boundary, including a stable idempotency key under React development replay.
+
+For ADR-0027 public-free downloads, Portal navigates only to the same-origin
+owner façade for the selected material ID. It never constructs `/materials/`
+or OSS URLs from `storage_key`, stores a signed URL in component state, counts a
+click locally, or treats a failed grant as a successful download.
 
 ## Design language
 

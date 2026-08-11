@@ -20,9 +20,16 @@ import (
 func main() {
 	databaseURL, redisURL := os.Getenv("LIBRARY_DATABASE_URL"), os.Getenv("LIBRARY_REDIS_URL")
 	clientID, keyID, secret := os.Getenv("LIBRARY_SERVICE_CLIENT_ID"), os.Getenv("LIBRARY_SERVICE_KEY_ID"), os.Getenv("LIBRARY_SERVICE_SECRET")
+	downloadClientID, downloadKeyID, downloadSecret := os.Getenv("LIBRARY_DOWNLOAD_SERVICE_CLIENT_ID"), os.Getenv("LIBRARY_DOWNLOAD_SERVICE_KEY_ID"), os.Getenv("LIBRARY_DOWNLOAD_SERVICE_SECRET")
 	legacyURL, legacyToken := os.Getenv("STUDY_LEGACY_API_URL"), os.Getenv("STUDY_LEGACY_ADMIN_TOKEN")
-	if databaseURL == "" || redisURL == "" || clientID == "" || keyID == "" || secret == "" || legacyURL == "" || legacyToken == "" {
-		log.Fatal("Library adapter configuration is incomplete")
+	ossBucket, ossRegion := os.Getenv("LIBRARY_OSS_BUCKET"), os.Getenv("LIBRARY_OSS_REGION")
+	ossInternalEndpoint, ossPublicEndpoint, ossRAMRole := os.Getenv("LIBRARY_OSS_INTERNAL_ENDPOINT"), os.Getenv("LIBRARY_OSS_PUBLIC_ENDPOINT"), os.Getenv("LIBRARY_OSS_ECS_RAM_ROLE")
+	if databaseURL == "" || redisURL == "" || clientID == "" || keyID == "" || secret == "" || downloadClientID == "" || downloadKeyID == "" || downloadSecret == "" || legacyURL == "" || legacyToken == "" || ossBucket == "" || ossRegion == "" || ossInternalEndpoint == "" || ossPublicEndpoint == "" || ossRAMRole == "" {
+		log.Fatal("Library service configuration is incomplete")
+	}
+	downloadStore, err := library.NewAliyunDownloadStore(library.DownloadOSSConfig{Bucket: ossBucket, Region: ossRegion, InternalEndpoint: ossInternalEndpoint, PublicEndpoint: ossPublicEndpoint, ECSRAMRole: ossRAMRole})
+	if err != nil {
+		log.Fatal(err)
 	}
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
@@ -35,7 +42,7 @@ func main() {
 	}
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
-	handler, err := library.New(library.Config{Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret}, LegacyBaseURL: legacyURL, LegacyToken: legacyToken})
+	handler, err := library.New(library.Config{Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret}, DownloadClientID: downloadClientID, DownloadKeys: map[string]string{downloadKeyID: downloadSecret}, DownloadStore: downloadStore, LegacyBaseURL: legacyURL, LegacyToken: legacyToken})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,7 +59,7 @@ func main() {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("Library adapter listening on %s", address)
+	log.Printf("Library service listening on %s", address)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}

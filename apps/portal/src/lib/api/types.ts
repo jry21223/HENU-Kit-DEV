@@ -220,8 +220,8 @@ export interface Material {
   rating: number;
   downloads: number;
   favs: number;
-  /** 镜像文件在 /materials/ 下的路径;有值时可下载 */
-  filePath?: string;
+  /** 是否展示唯一 owner 下载入口；最终资格由点击后的 Library 请求重验 */
+  downloadAvailable: boolean;
   fileSize?: number;
   /** 已转换的 PPT 页(详情接口返回) */
   slides?: Slide[];

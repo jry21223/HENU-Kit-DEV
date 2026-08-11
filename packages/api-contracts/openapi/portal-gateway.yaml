@@ -109,6 +109,45 @@ paths:
                     type: string
                     example: signed_out
 
+  /api/v1/library/materials/{material_id}/download:
+    get:
+      operationId: startPublicMaterialDownload
+      summary: Start the sole owner-backed public material download flow
+      description: >
+        Selects only a material ID. Portal Gateway asks Library to validate the
+        active public-free snapshot and persist a Download Start, then relays
+        the exact GET-only OSS capability as a no-store 303. The Location is a
+        short-lived bearer capability and is never returned as page JSON.
+      security: []
+      parameters:
+        - name: material_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+      responses:
+        "303":
+          description: Redirect to the validated exact-version OSS attachment
+          headers:
+            Location:
+              required: true
+              description: Exact-object OSS GET capability with temporary ECS role credentials and at most 60 seconds of validity.
+              schema: { type: string, format: uri }
+            Cache-Control:
+              required: true
+              schema: { type: string, const: no-store }
+            Referrer-Policy:
+              required: true
+              schema: { type: string, const: no-referrer }
+            X-Content-Type-Options:
+              required: true
+              schema: { type: string, const: nosniff }
+        "404": { $ref: "#/components/responses/MaterialNotAvailable" }
+        "503": { $ref: "#/components/responses/DownloadTemporarilyUnavailable" }
+
   /api/v1/account/summary:
     get:
       operationId: getAccountSummary
@@ -759,6 +798,8 @@ components:
       required: [error]
       properties:
         error:
+          type: string
+        message:
           type: string
         detail:
           type: string
@@ -1482,6 +1523,26 @@ components:
           format: date-time
 
   responses:
+    MaterialNotAvailable:
+      description: Material is unknown, inactive, withdrawn, or not public-free
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error: MATERIAL_NOT_AVAILABLE
+            message: 资料不存在或已下架，请返回资料库重新选择。
+            request_id: req_example
+    DownloadTemporarilyUnavailable:
+      description: The exact owner-backed download capability could not be created
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error: DOWNLOAD_TEMPORARILY_UNAVAILABLE
+            message: 暂时无法生成下载链接，请稍后重试。
+            request_id: req_example
     BadRequest:
       description: Invalid command input or identifier
       content:

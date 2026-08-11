@@ -425,6 +425,12 @@ export async function fetchLibraryMaterialDetail(
   );
 }
 
+/** Returns only the same-origin owner entry; signed OSS URLs never enter state. */
+export function libraryMaterialDownloadURL(id: string): string {
+  assertGatewayConfigured();
+  return `${gatewayUrlRaw()}/api/v1/library/materials/${encodeURIComponent(id)}/download`;
+}
+
 // ---- Food ----
 
 export async function fetchFoodVenues(

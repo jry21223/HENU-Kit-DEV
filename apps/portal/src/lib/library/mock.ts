@@ -41,8 +41,8 @@ export interface Material {
   rating: number; // 0-5
   downloads: number;
   favs: number;
-  /** 镜像文件在 /materials/ 下的路径;有值时可下载 */
-  filePath?: string;
+  /** 是否展示 owner 下载入口；静态 mock 不构造下载地址或授权 */
+  downloadAvailable: boolean;
   fileSize?: number;
   /** 已转换的 PPT 页(详情接口返回) */
   slides?: Slide[];
@@ -77,7 +77,7 @@ const MATERIALS: Material[] = [
       pg("§8 考前 checklist：重要极限 2 个、等价无穷小 6 组、连续性定义 1 条、间断点 4 类。",
          "本章在全卷占 15-20 分，性价比最高，务必拿满。"),
     ],
-    price: 0, previewPages: 0, rating: 4.8, downloads: 2103, favs: 486,
+    price: 0, previewPages: 0, rating: 4.8, downloads: 2103, favs: 486, downloadAvailable: false,
   },
   {
     id: "free-ds-exam24", type: "exam", subject: "数据结构",
@@ -106,7 +106,7 @@ const MATERIALS: Material[] = [
       pg("参考答案要点：选择 1.C 2.B 3.C；填空 1. n+1 2. 2^(k-1), 2^k-1 3. O(n log n), O(n²)。",
          "应用题 1. 后序：GDBHEFCA。算法题评分点：边界条件 4 分、正确性 4 分、复杂度分析 2 分。"),
     ],
-    price: 0, previewPages: 0, rating: 4.9, downloads: 3567, favs: 812,
+    price: 0, previewPages: 0, rating: 4.9, downloads: 3567, favs: 812, downloadAvailable: false,
   },
   {
     id: "free-la-cards", type: "note", subject: "线性代数",
@@ -126,7 +126,7 @@ const MATERIALS: Material[] = [
          "这 6 个反例覆盖历年选择题 80% 的坑。"),
       pg("考前默写清单：(AB)ᵀ、(AB)⁻¹、AA*、|A*|、r(AB) 上限，共 5 条，进考场前再背一遍。"),
     ],
-    price: 0, previewPages: 0, rating: 4.6, downloads: 1588, favs: 302,
+    price: 0, previewPages: 0, rating: 4.6, downloads: 1588, favs: 302, downloadAvailable: false,
   },
   {
     id: "free-cet4-path", type: "path", subject: "大学英语",
@@ -146,7 +146,7 @@ const MATERIALS: Material[] = [
       pg("资料清单：近 6 年真题 12 套、高频词表 800 词、写作模板 3 套（本页笔记末页附）。",
          "祝各位一次过。"),
     ],
-    price: 0, previewPages: 0, rating: 4.7, downloads: 1921, favs: 445,
+    price: 0, previewPages: 0, rating: 4.7, downloads: 1921, favs: 445, downloadAvailable: false,
   },
   {
     id: "free-phy-pendulum", type: "lab", subject: "大学物理",
@@ -167,7 +167,7 @@ const MATERIALS: Material[] = [
       pg("教师批注的易扣分点：① 有效数字位数 ② 单位必须随数据给出 ③ 不确定度保留 1-2 位 ④ 结论要带 ± 区间。",
          "本报告格式可直接套用其他力学实验。"),
     ],
-    price: 0, previewPages: 0, rating: 4.5, downloads: 986, favs: 158,
+    price: 0, previewPages: 0, rating: 4.5, downloads: 986, favs: 158, downloadAvailable: false,
   },
   {
     id: "free-ds-graph-note", type: "note", subject: "数据结构",
@@ -189,7 +189,7 @@ const MATERIALS: Material[] = [
          "Dijkstra 每一步把 dist 最小且未确定的点加入 S 集合并松弛其邻边——手算题画表格。"),
       pg("考前自测：给一个邻接矩阵，能 3 分钟写出 Prim 全过程；给先序中序能 2 分钟画出树。达不到就回到第 2、5 页。"),
     ],
-    price: 0, previewPages: 0, rating: 4.8, downloads: 1754, favs: 398,
+    price: 0, previewPages: 0, rating: 4.8, downloads: 1754, favs: 398, downloadAvailable: false,
   },
   {
     id: "free-math-mid-mock", type: "mock", subject: "高等数学A",
@@ -216,7 +216,7 @@ const MATERIALS: Material[] = [
       pg("评分标准：填空每题 4 分；计算题按步骤给分，结果错扣 2 分；证明题构造函数 6 分、应用定理 6 分、结论 2 分。",
          "第 2 题提示：构造 F(x) = e^x·f(x)，应用罗尔定理。"),
     ],
-    price: 0, previewPages: 0, rating: 4.4, downloads: 1245, favs: 211,
+    price: 0, previewPages: 0, rating: 4.4, downloads: 1245, favs: 211, downloadAvailable: false,
   },
   {
     id: "free-ds-path", type: "path", subject: "数据结构",
@@ -239,7 +239,7 @@ const MATERIALS: Material[] = [
       pg("第 12 周 总复习：用本库 2023-2025 三年真题模考三遍，错题回到对应章节笔记。",
          "考试当天带一张 A4 默写纸：树 5 性质 + 排序对照表 + Dijkstra 步骤。"),
     ],
-    price: 0, previewPages: 0, rating: 4.7, downloads: 1432, favs: 366,
+    price: 0, previewPages: 0, rating: 4.7, downloads: 1432, favs: 366, downloadAvailable: false,
   },
 
   // ---- 收费 ----
@@ -259,7 +259,7 @@ const MATERIALS: Material[] = [
          "4. 级数 Σ(n=1→∞) 1/(n²+n) 的和为 ____。",
          "5. 曲线 y = x² 与 y = 2 - x² 围成图形的面积为 ____。"),
     ],
-    pageCount: 8, price: 60, previewPages: 2, rating: 4.9, downloads: 2876, favs: 924,
+    pageCount: 8, price: 60, previewPages: 2, rating: 4.9, downloads: 2876, favs: 924, downloadAvailable: false,
   },
   {
     id: "paid-ds-3years", type: "exam", subject: "数据结构",
@@ -274,7 +274,7 @@ const MATERIALS: Material[] = [
       pg("2024 A 卷见本库免费页（free-ds-exam24）。",
          "2024 B 卷考点：BFS 生成树、折半查找判定树、希尔排序增量序列。"),
     ],
-    pageCount: 7, price: 80, previewPages: 3, rating: 4.9, downloads: 3122, favs: 1105,
+    pageCount: 7, price: 80, previewPages: 3, rating: 4.9, downloads: 3122, favs: 1105, downloadAvailable: false,
   },
   {
     id: "paid-la-eigen", type: "note", subject: "线性代数",
@@ -287,7 +287,7 @@ const MATERIALS: Material[] = [
       pg("相似：B = P⁻¹AP 则 A、B 有相同特征值/迹/行列式/秩。",
          "A 可对角化 ⟺ A 有 n 个线性无关特征向量 ⟺ 每个特征值的代数重数 = 几何重数。"),
     ],
-    pageCount: 6, price: 45, previewPages: 2, rating: 4.7, downloads: 1654, favs: 431,
+    pageCount: 6, price: 45, previewPages: 2, rating: 4.7, downloads: 1654, favs: 431, downloadAvailable: false,
   },
   {
     id: "paid-phy-em-labs", type: "lab", subject: "大学物理",
@@ -300,7 +300,7 @@ const MATERIALS: Material[] = [
       pg("数据（节选）：I = 10.00 mA，B 从 0 到 300 mT 每 50 mT 一点，U_H 线性度 R² = 0.9998。",
          "不确定度主要来自电压表分辨率，合成约 1.2%。"),
     ],
-    pageCount: 5, price: 50, previewPages: 2, rating: 4.6, downloads: 987, favs: 203,
+    pageCount: 5, price: 50, previewPages: 2, rating: 4.6, downloads: 987, favs: 203, downloadAvailable: false,
   },
   {
     id: "paid-math-5mocks", type: "mock", subject: "高等数学A",
@@ -315,7 +315,7 @@ const MATERIALS: Material[] = [
       pg("卷二（基础+）节选：求 lim(x→0) (sin 3x)/(tan 5x)；计算 ∫₀¹ x/(1+x²) dx。",
          "应用：求 y = x³ - 3x² + 2 的极值与拐点。"),
     ],
-    pageCount: 6, price: 70, previewPages: 3, rating: 4.8, downloads: 2210, favs: 687,
+    pageCount: 6, price: 70, previewPages: 3, rating: 4.8, downloads: 2210, favs: 687, downloadAvailable: false,
   },
   {
     id: "paid-la-sprint", type: "path", subject: "线性代数",
@@ -327,7 +327,7 @@ const MATERIALS: Material[] = [
          "每天投入 4 小时：2h 知识点 + 1.5h 真题 + 0.5h 错题。"),
       pg("D1 行列式：性质 5 条（换行变号、提公因子、拆行、倍加不变、三角形=对角积）；三阶对角线法则；含参行列式因式分解套路。"),
     ],
-    pageCount: 6, price: 30, previewPages: 2, rating: 4.5, downloads: 1308, favs: 296,
+    pageCount: 6, price: 30, previewPages: 2, rating: 4.5, downloads: 1308, favs: 296, downloadAvailable: false,
   },
   {
     id: "paid-cet6-writing", type: "note", subject: "大学英语",
@@ -342,7 +342,7 @@ const MATERIALS: Material[] = [
       pg("主体论证（高分句式）：It is universally acknowledged that ...（强调句）It is not the load that breaks you down, but the way you carry it.",
          "（倒装）Only in this way can we ...（独立主格）All things considered, ..."),
     ],
-    pageCount: 5, price: 40, previewPages: 3, rating: 4.6, downloads: 1517, favs: 354,
+    pageCount: 5, price: 40, previewPages: 3, rating: 4.6, downloads: 1517, favs: 354, downloadAvailable: false,
   },
   {
     id: "paid-ds-lab", type: "lab", subject: "数据结构",
@@ -355,7 +355,7 @@ const MATERIALS: Material[] = [
       pg("核心代码（节选）：逆置——p = L->next; L->next = NULL; while(p){ q = p->next; p->next = L->next; L->next = p; p = q; }",
          "注意先断链再逐个前插，避免成环。"),
     ],
-    pageCount: 5, price: 35, previewPages: 2, rating: 4.7, downloads: 876, favs: 167,
+    pageCount: 5, price: 35, previewPages: 2, rating: 4.7, downloads: 876, favs: 167, downloadAvailable: false,
   },
 ];
 

@@ -72,6 +72,8 @@ jobs:
         run: pnpm --filter @henukit/portal test:e2e:food
       - name: Verify Account Portfolio browser behavior
         run: pnpm --filter @henukit/portal test:e2e:account
+      - name: Verify Library owner download behavior
+        run: pnpm --filter @henukit/portal test:e2e:library-download
 
   release-image-matrix:
     name: release-image-matrix

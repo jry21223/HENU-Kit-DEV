@@ -26,6 +26,7 @@ import (
 	"henukit.dev/portal-gateway/internal/accountportfolio"
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
+	"henukit.dev/portal-gateway/internal/librarydownload"
 	"henukit.dev/portal-gateway/internal/platformcore"
 	"henukit.dev/portal-gateway/internal/practice"
 	"henukit.dev/portal-gateway/internal/session"
@@ -38,6 +39,7 @@ type Handler struct {
 	quizCraft          *practice.Client
 	portalAPI          *http.Client
 	portalAPIURL       string
+	libraryDownloads   *librarydownload.Client
 	accountPortfolio   *accountportfolio.Client
 	practiceCommands   *practice.CommandClient
 	quizCraftCatalog   *practice.Client
@@ -85,6 +87,18 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			return nil, fmt.Errorf("accountportfolio.NewClient: %w", err)
 		}
 	}
+	var libraryDownloads *librarydownload.Client
+	if strings.TrimSpace(cfg.LibraryDownloadURL) != "" {
+		libraryDownloads, err = librarydownload.NewClient(
+			cfg.LibraryDownloadURL,
+			cfg.LibraryDownloadAuth.ClientID,
+			cfg.LibraryDownloadAuth.ClientSecret,
+			cfg.LibraryDownloadAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("librarydownload.NewClient: %w", err)
+		}
+	}
 	var practiceCommands *practice.CommandClient
 	if cfg.PracticeCommandsEnabled {
 		practiceCommands, err = practice.NewCommandClient(
@@ -127,6 +141,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		quizCraft:          quizCraft,
 		portalAPI:          &http.Client{Timeout: 10 * time.Second},
 		portalAPIURL:       cfg.PortalAPIURL,
+		libraryDownloads:   libraryDownloads,
 		accountPortfolio:   portfolio,
 		practiceCommands:   practiceCommands,
 		quizCraftCatalog:   quizCraftCatalog,
@@ -195,6 +210,10 @@ func (h *Handler) Router() chi.Router {
 	r.Delete("/api/v1/practice/banks/{bank_id}/favorites/{question_id}", h.unfavoriteQuestion)
 	r.Post("/api/v1/practice/banks/{bank_id}/favorites/practice-sessions", h.createFavoritesSession)
 
+	// The owner-backed download command must shadow the public-data wildcard.
+	// Browser callers select only a material ID, never a storage key or URL.
+	r.Get(contract.LibraryDownloadRoute, h.libraryDownload)
+
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/food/*", h.proxyToPortalAPI)
@@ -206,6 +225,32 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/notices", h.proxyToPortalAPI)
 
 	return r
+}
+
+func (h *Handler) libraryDownload(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if h.libraryDownloads == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DOWNLOAD_TEMPORARILY_UNAVAILABLE", "暂时无法生成下载链接，请稍后重试。")
+		return
+	}
+	grant, err := h.libraryDownloads.Start(r.Context(), chi.URLParam(r, "material_id"), requestIDOf(w, r))
+	if err != nil {
+		switch {
+		case errors.Is(err, librarydownload.ErrBadRequest):
+			writeError(w, r, http.StatusNotFound, "MATERIAL_NOT_AVAILABLE", "资料不存在或已下架，请返回资料库重新选择。")
+		case errors.Is(err, librarydownload.ErrNotFound):
+			writeError(w, r, http.StatusNotFound, "MATERIAL_NOT_AVAILABLE", "资料不存在或已下架，请返回资料库重新选择。")
+		case errors.Is(err, librarydownload.ErrInvalid):
+			writeError(w, r, http.StatusServiceUnavailable, "DOWNLOAD_TEMPORARILY_UNAVAILABLE", "暂时无法生成下载链接，请稍后重试。")
+		default:
+			writeError(w, r, http.StatusServiceUnavailable, "DOWNLOAD_TEMPORARILY_UNAVAILABLE", "暂时无法生成下载链接，请稍后重试。")
+		}
+		return
+	}
+	w.Header().Set("Location", grant.Location)
+	w.WriteHeader(http.StatusSeeOther)
 }
 
 // --- Middleware ---

@@ -30,6 +30,7 @@
 24. [`0024-materials-sealed-release-boundary.md`](./0024-materials-sealed-release-boundary.md) — root-owned、非激活的资料来源封存与可审计 release identity 边界。
 25. [`0025-materials-atomic-activation.md`](./0025-materials-atomic-activation.md) — 单一 webhook、特权 runner、维护围栏、恢复 journal 与显式回滚边界。
 26. [`0026-materials-oss-canary-publication.md`](./0026-materials-oss-canary-publication.md) — 单份封存审核资料到私有 OSS、可重放且不激活的 canary 发布边界。
+27. [`0027-library-public-download-owner.md`](./0027-library-public-download-owner.md) — Library 对活动公开免费资料、短期下载 grant、下载开始账本与聚合的独立 owner 边界。
 
 ## 使用规则
 
