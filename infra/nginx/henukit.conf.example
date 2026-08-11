@@ -55,19 +55,20 @@ server {
 
   # Course materials mirrored from the public HENU-Final-Review repository.
   #
-  # The mirror root holds only reviewed subject directories. The git checkout,
-  # repository tooling and the 待复核 directories are deliberately kept outside
-  # it, so a mistake here cannot expose repository internals or unreviewed
-  # material. Serving is read-only and nothing under this root is ever executed.
+  # The bind root is stable for the lifetime of the container. The sync runner
+  # atomically switches its `current` symlink between reviewed snapshots; the
+  # git checkout, repository tooling, Slides metadata and 待复核 directories stay
+  # outside the aliased `files` subtree. Serving is read-only and nothing here
+  # is ever executed.
   #
   # A dotfile must never be reachable even if one is mirrored by accident; this
   # regex location outranks the prefix location below.
-  location ~ ^/materials/\. {
+  location ~ ^/materials/(?:[^/]+/)*\. {
     return 404;
   }
 
   location /materials/ {
-    alias /srv/materials/;
+    alias /srv/materials/current/files/;
     # No directory listing: the catalogue is the Library, not the file tree.
     autoindex off;
     # Materials only change when the sync replaces a whole file, and Cloudflare

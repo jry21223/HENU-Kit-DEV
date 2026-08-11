@@ -1,0 +1,7 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+# Queue handling remains under henukit-deploy. Only this fixed, root-owned
+# command crosses the privilege boundary, and the target validates the complete
+# event tuple again before loading privileged configuration.
+exec /usr/bin/sudo -n -- /usr/local/libexec/henukit/henukit-materials-root "$@"

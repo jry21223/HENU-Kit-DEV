@@ -1,0 +1,61 @@
+#!/bin/bash -p
+set -Eeuo pipefail
+umask 077
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+
+die() {
+  echo "henukit-materials-root: $*" >&2
+  exit 64
+}
+
+[[ "$EUID" -eq 0 ]] || die "must run as root"
+manual_mode=0
+if (( $# == 1 )) && [[ "$1" == --manual ]]; then
+  manual_mode=1
+else
+  (( $# == 8 )) || die "requires --manual or one complete webhook event tuple"
+  [[ "$1" == --sha && "$3" == --delivery && "$5" == --repository && "$7" == --ref ]] || {
+    die "event arguments must use the fixed runner order"
+  }
+  [[ "$2" =~ ^[0-9a-f]{40}$ ]] || die "invalid event SHA"
+  [[ "$4" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,127}$ ]] || die "invalid delivery ID"
+  [[ "$6" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "invalid repository"
+  [[ "$8" =~ ^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*$ && "$8" != *..* && "$8" != *//* ]] || {
+    die "invalid ref"
+  }
+fi
+if (( manual_mode )) && [[ "${SUDO_USER:-}" == henukit-deploy ]]; then
+  die "the queue service account cannot request manual synchronization"
+fi
+
+config_file=/etc/henukit-deploy/materials-runner.env
+[[ -f "$config_file" && ! -L "$config_file" ]] || die "privileged config must be a regular file"
+config_owner="$(stat -c '%u' "$config_file")"
+config_mode="$(stat -c '%a' "$config_file")"
+[[ "$config_owner" == 0 ]] || die "privileged config must be root-owned"
+(( (8#$config_mode & 8#077) == 0 )) || die "privileged config must have mode 0600"
+
+while IFS= read -r line || [[ -n "$line" ]]; do
+  [[ -z "$line" || "$line" == \#* ]] && continue
+  [[ "$line" == *=* ]] || die "invalid privileged config line"
+  key="${line%%=*}"
+  value="${line#*=}"
+  case "$key" in
+    HENUKIT_MATERIALS_ROOT|HENUKIT_MATERIALS_REPOSITORY|HENUKIT_MATERIALS_REPO_URL|HENUKIT_MATERIALS_REPO_REF|HENUKIT_MATERIALS_DATABASE_URL|HENUKIT_MATERIALS_RELEASE_DIR|HENUKIT_MATERIALS_ENV_FILE|HENUKIT_MATERIALS_ACTIVE_SHA_FILE|POSTGRES_USER)
+      export "$key=$value"
+      ;;
+    *) die "unsupported privileged config key: $key" ;;
+  esac
+done < "$config_file"
+
+expected_repository="${HENUKIT_MATERIALS_REPOSITORY:-jry21223/HENU-Final-Review}"
+expected_ref="refs/heads/${HENUKIT_MATERIALS_REPO_REF:-main}"
+if (( ! manual_mode )); then
+  [[ "$6" == "$expected_repository" ]] || die "repository does not match privileged policy"
+  [[ "$8" == "$expected_ref" ]] || die "ref does not match privileged policy"
+fi
+
+exec /bin/bash -p /usr/local/libexec/henukit/henukit-materials-sync "$@"

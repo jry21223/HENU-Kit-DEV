@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 )
 
 // StudyDB reads from the legacy Study API database.
@@ -113,7 +115,7 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 			Rating:       4.5,
 			Downloads:    0,
 			Favs:         0,
-			FilePath:     storageKey.String,
+			FilePath:     publicMaterialFilePath(storageKey.String),
 			FileSize:     fileSize.Int64,
 		})
 	}
@@ -179,17 +181,45 @@ func (db *StudyDB) GetMaterialByID(id string) (Material, error) {
 	material.Pages = [][]string{}
 	material.PreviewPages = 1
 	material.Rating = 4.5
-	material.FilePath = storageKey.String
+	material.FilePath = publicMaterialFilePath(storageKey.String)
 	material.FileSize = fileSize.Int64
 	if description.Valid {
 		material.Intro = description.String
 	}
 	if len(slidesJSON) > 0 && string(slidesJSON) != "null" {
-		if err := json.Unmarshal(slidesJSON, &material.Slides); err != nil {
+		slides, err := decodeSlidesJSON(slidesJSON)
+		if err != nil {
 			return Material{}, fmt.Errorf("decode slides: %w", err)
 		}
+		material.Slides = slides
 	}
 	return material, nil
+}
+
+// publicMaterialFilePath keeps storage_key as the database identity while
+// exposing the origin-relative, path-escaped URL served by the Nginx materials
+// alias. Invalid non-file keys fail closed instead of escaping /materials/.
+func publicMaterialFilePath(storageKey string) string {
+	if storageKey == "" || strings.HasPrefix(storageKey, "/") {
+		return ""
+	}
+	for _, segment := range strings.Split(storageKey, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return ""
+		}
+	}
+	return (&url.URL{Path: "/materials/" + storageKey}).EscapedPath()
+}
+
+func decodeSlidesJSON(raw []byte) ([]Slide, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var slides []Slide
+	if err := json.Unmarshal(raw, &slides); err != nil {
+		return nil, err
+	}
+	return slides, nil
 }
 
 // mapMaterialType maps Study API material types to Portal types.

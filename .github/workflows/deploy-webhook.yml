@@ -4,6 +4,19 @@ on:
   pull_request:
     paths:
       - services/deploy-webhook/**
+      - scripts/ops/sync-henukit-materials.sh
+      - scripts/ops/henukit-materials-sync.sh
+      - scripts/ops/convert-henukit-slides.py
+      - scripts/ops/import-henukit-materials.mjs
+      - scripts/ops/tests/import-henukit-materials.test.mjs
+      - scripts/ops/tests/henukit-materials-sync.test.mjs
+      - scripts/ops/tests/henukit-materials-deploy-path.test.mjs
+      - services/portal-api/internal/library/db.go
+      - services/portal-api/internal/library/db_test.go
+      - services/api/migrations/0002_henukit_materials_sync_expand.*
+      - docs/operations/henukit-materials-sync.md
+      - infra/nginx/henukit.conf.example
+      - docker-compose.henukit.yml
       - docs/operations/github-webhook-deploy.md
       - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
       - docs/operations/README.md
@@ -14,6 +27,19 @@ on:
     branches: [main]
     paths:
       - services/deploy-webhook/**
+      - scripts/ops/sync-henukit-materials.sh
+      - scripts/ops/henukit-materials-sync.sh
+      - scripts/ops/convert-henukit-slides.py
+      - scripts/ops/import-henukit-materials.mjs
+      - scripts/ops/tests/import-henukit-materials.test.mjs
+      - scripts/ops/tests/henukit-materials-sync.test.mjs
+      - scripts/ops/tests/henukit-materials-deploy-path.test.mjs
+      - services/portal-api/internal/library/db.go
+      - services/portal-api/internal/library/db_test.go
+      - services/api/migrations/0002_henukit_materials_sync_expand.*
+      - docs/operations/henukit-materials-sync.md
+      - infra/nginx/henukit.conf.example
+      - docker-compose.henukit.yml
       - docs/operations/github-webhook-deploy.md
       - docs/operations/PRODUCTION_RELEASE_CHECKLIST.md
       - docs/operations/README.md
@@ -45,8 +71,13 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: Vet
         run: go vet ./...
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
       - name: Race tests
         run: go test -race -count=1 ./...
+      - name: Portal slides decode contract
+        working-directory: services/portal-api
+        run: go test -count=1 ./internal/library
       - name: Build static receiver
         run: CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/henukit-deploy-webhook ./cmd/server
       - name: Vulnerability scan
@@ -55,24 +86,56 @@ jobs:
   packaging:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - name: Install packaging validators
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client python3-pptx shellcheck
       - name: Validate shell scripts
         run: |
           set -euo pipefail
           shellcheck \
+            scripts/ops/sync-henukit-materials.sh \
+            scripts/ops/henukit-materials-sync.sh \
             services/deploy-webhook/deploy/henukit-deploy \
+            services/deploy-webhook/deploy/henukit-materials-root \
+            services/deploy-webhook/deploy/henukit-materials-sudo \
             services/deploy-webhook/deploy/henukit-approve-release \
             services/deploy-webhook/deploy/install.sh \
             services/deploy-webhook/deploy/hooks/10-command.example \
             services/deploy-webhook/deploy/hooks/20-study.example
-          bash -n services/deploy-webhook/deploy/henukit-deploy
+          bash -n \
+            scripts/ops/sync-henukit-materials.sh \
+            scripts/ops/henukit-materials-sync.sh \
+            services/deploy-webhook/deploy/henukit-deploy
+          bash -n services/deploy-webhook/deploy/henukit-materials-root
+          bash -n services/deploy-webhook/deploy/henukit-materials-sudo
           bash -n services/deploy-webhook/deploy/henukit-approve-release
           bash -n services/deploy-webhook/deploy/install.sh
           bash -n services/deploy-webhook/deploy/hooks/10-command.example
           bash -n services/deploy-webhook/deploy/hooks/20-study.example
+          python3 -m py_compile scripts/ops/convert-henukit-slides.py
+      - name: Test materials deployment path
+        env:
+          HENUKIT_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+        run: |
+          node --test \
+            scripts/ops/tests/henukit-materials-sync.test.mjs \
+            scripts/ops/tests/henukit-materials-deploy-path.test.mjs \
+            scripts/ops/tests/import-henukit-materials.test.mjs
       - name: Validate systemd units
         run: |
           sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook

@@ -31,6 +31,7 @@ type commonConfig struct {
 	StateDir  string
 	MaxQueue  int
 	Retention time.Duration
+	QueueMode state.QueueMode
 }
 
 func main() {
@@ -69,7 +70,7 @@ func serve(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	store, err := state.New(common.StateDir, common.MaxQueue, common.Retention)
+	store, err := state.NewWithQueueMode(common.StateDir, common.MaxQueue, common.Retention, common.QueueMode)
 	if err != nil {
 		return err
 	}
@@ -144,7 +145,7 @@ func runPending(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	store, err := state.New(common.StateDir, common.MaxQueue, common.Retention)
+	store, err := state.NewWithQueueMode(common.StateDir, common.MaxQueue, common.Retention, common.QueueMode)
 	if err != nil {
 		return err
 	}
@@ -174,7 +175,7 @@ func retryFailed(logger *slog.Logger, sha string) error {
 	if err != nil {
 		return err
 	}
-	store, err := state.New(common.StateDir, common.MaxQueue, common.Retention)
+	store, err := state.NewWithQueueMode(common.StateDir, common.MaxQueue, common.Retention, common.QueueMode)
 	if err != nil {
 		return err
 	}
@@ -195,10 +196,15 @@ func loadCommonConfig() (commonConfig, error) {
 	if err != nil {
 		return commonConfig{}, err
 	}
+	queueMode := state.QueueMode(strings.ToLower(envOr("HENUKIT_WEBHOOK_QUEUE_MODE", string(state.QueueModeFIFO))))
+	if queueMode != state.QueueModeFIFO && queueMode != state.QueueModeLatest {
+		return commonConfig{}, fmt.Errorf("HENUKIT_WEBHOOK_QUEUE_MODE must be %q or %q", state.QueueModeFIFO, state.QueueModeLatest)
+	}
 	return commonConfig{
 		StateDir:  envOr("HENUKIT_WEBHOOK_STATE_DIR", "/var/lib/henukit-deploy-webhook"),
 		MaxQueue:  maxQueue,
 		Retention: retention,
+		QueueMode: queueMode,
 	}, nil
 }
 

@@ -117,10 +117,20 @@ def main() -> None:
 
     for subject in data.get("subjects", []):
         for asset in subject.get("assets", []):
+            public_path = asset.get("publicPath", "")
+            asset_bytes = asset.get("bytes")
+            # bool is a subclass of int in Python, so isinstance(True, int)
+            # would silently admit the exact malformed manifest value guarded
+            # here. The manifest contract requires a real non-negative integer.
+            if type(asset_bytes) is not int or asset_bytes < 0:
+                failed.append(
+                    f"{public_path or '<missing-publicPath>'}: "
+                    "asset.bytes must be a non-negative integer"
+                )
+                continue
             role = asset.get("role", "")
             if role != SLIDE_ROLE or role.startswith(REVIEW_MARKER):
                 continue
-            public_path = asset.get("publicPath", "")
             if not public_path:
                 continue
             source = (mirror / public_path).resolve()

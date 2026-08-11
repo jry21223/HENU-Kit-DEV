@@ -24,7 +24,7 @@ func TestRunnerPassesValidatedValuesAsArgumentsWithoutShell(t *testing.T) {
 	t.Setenv("OUTPUT", output)
 	store := newRunnerStore(t)
 	event := state.Event{
-		Delivery: "delivery;touch-pwned", Repository: "jry21223/HENU-Kit-DEV", Ref: "refs/heads/main",
+		Delivery: "delivery-touch-pwned", Repository: "jry21223/HENU-Kit-DEV", Ref: "refs/heads/main",
 		Before: "1111111111111111111111111111111111111111", After: "2222222222222222222222222222222222222222",
 		ReceivedAt: time.Now().UTC(),
 	}

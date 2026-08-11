@@ -1,6 +1,7 @@
 package state
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,9 @@ var (
 	ErrAlreadyRunning  = errors.New("a deployment is already running")
 	ErrFailedNotFound  = errors.New("no failed deployment found for SHA")
 	fullSHAPathPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+	deliveryPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,127}$`)
+	repositoryPattern  = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	refPattern         = regexp.MustCompile(`^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 )
 
 type Event struct {
@@ -49,15 +53,28 @@ type Snapshot struct {
 type EnqueueResult struct {
 	Queued    bool `json:"queued"`
 	Duplicate bool `json:"duplicate"`
+	Coalesced bool `json:"coalesced"`
 }
+
+type QueueMode string
+
+const (
+	QueueModeFIFO   QueueMode = "fifo"
+	QueueModeLatest QueueMode = "latest"
+)
 
 type Store struct {
 	dir       string
 	maxQueue  int
 	retention time.Duration
+	queueMode QueueMode
 }
 
 func New(dir string, maxQueue int, retention time.Duration) (*Store, error) {
+	return NewWithQueueMode(dir, maxQueue, retention, QueueModeFIFO)
+}
+
+func NewWithQueueMode(dir string, maxQueue int, retention time.Duration, queueMode QueueMode) (*Store, error) {
 	dir = filepath.Clean(strings.TrimSpace(dir))
 	if dir == "." || !filepath.IsAbs(dir) {
 		return nil, errors.New("state directory must be an absolute path")
@@ -68,13 +85,27 @@ func New(dir string, maxQueue int, retention time.Duration) (*Store, error) {
 	if retention <= 0 {
 		return nil, errors.New("processed delivery retention must be positive")
 	}
-	s := &Store{dir: dir, maxQueue: maxQueue, retention: retention}
-	for _, path := range []string{s.dir, s.queueDir(), s.processedDir(), s.failedDir()} {
+	if queueMode != QueueModeFIFO && queueMode != QueueModeLatest {
+		return nil, fmt.Errorf("unsupported queue mode %q", queueMode)
+	}
+	s := &Store{dir: dir, maxQueue: maxQueue, retention: retention, queueMode: queueMode}
+	for _, path := range []string{s.dir, s.queueDir(), s.processedDir(), s.failedDir(), s.coalescedDir()} {
 		if err := os.MkdirAll(path, 0o750); err != nil {
 			return nil, fmt.Errorf("create state directory %s: %w", path, err)
 		}
 		if err := validateStateDirectory(path); err != nil {
 			return nil, err
+		}
+	}
+	if s.queueMode == QueueModeLatest {
+		if err := s.withLock(func() error {
+			files, err := s.queueFiles()
+			if err != nil || len(files) <= 1 {
+				return err
+			}
+			return s.markQueuedFilesCoalesced(files[:len(files)-1])
+		}); err != nil {
+			return nil, fmt.Errorf("normalize latest-only queue: %w", err)
 		}
 	}
 	return s, nil
@@ -103,15 +134,37 @@ func (s *Store) Enqueue(event Event) (EnqueueResult, error) {
 		if err != nil {
 			return err
 		}
-		if len(files) >= s.maxQueue {
+		if s.queueMode == QueueModeFIFO && len(files) >= s.maxQueue {
 			return ErrQueueFull
 		}
 		if event.ReceivedAt.IsZero() {
 			event.ReceivedAt = time.Now().UTC()
 		}
+		if s.queueMode == QueueModeLatest && len(files) > 0 {
+			newest, err := s.readQueuedEvent(files[len(files)-1])
+			if err != nil {
+				return err
+			}
+			if newest.ReceivedAt.After(event.ReceivedAt) {
+				if err := s.markCoalesced(event); err != nil {
+					return err
+				}
+				result.Coalesced = true
+				return nil
+			}
+			if err := s.validateQueuedFiles(files); err != nil {
+				return err
+			}
+		}
 		name := fmt.Sprintf("%020d-%s.json", event.ReceivedAt.UnixNano(), event.Delivery)
 		if err := writeJSONAtomic(filepath.Join(s.queueDir(), name), event); err != nil {
 			return err
+		}
+		if s.queueMode == QueueModeLatest {
+			if err := s.markQueuedFilesCoalesced(files); err != nil {
+				return err
+			}
+			result.Coalesced = len(files) > 0
 		}
 		result.Queued = true
 		return nil
@@ -145,11 +198,14 @@ func (s *Store) RetryFailedSHA(sha string) (EnqueueResult, error) {
 			if err := readJSON(filepath.Join(s.failedDir(), name), &attempt); err != nil {
 				return err
 			}
+			if err := validateEvent(attempt.Event); err != nil {
+				return fmt.Errorf("validate failed event %s: %w", name, err)
+			}
 			if strings.ToLower(attempt.Event.After) != sha {
 				continue
 			}
 			event := attempt.Event
-			duplicate, err := s.isDuplicateLocked(event.Delivery)
+			duplicate, err := s.isRetryDuplicateLocked(event.Delivery)
 			if err != nil {
 				return err
 			}
@@ -161,13 +217,24 @@ func (s *Store) RetryFailedSHA(sha string) (EnqueueResult, error) {
 			if err != nil {
 				return err
 			}
-			if len(files) >= s.maxQueue {
+			if s.queueMode == QueueModeFIFO && len(files) >= s.maxQueue {
 				return ErrQueueFull
+			}
+			if s.queueMode == QueueModeLatest {
+				if err := s.validateQueuedFiles(files); err != nil {
+					return err
+				}
 			}
 			event.ReceivedAt = time.Now().UTC()
 			queueName := fmt.Sprintf("%020d-%s.json", event.ReceivedAt.UnixNano(), event.Delivery)
 			if err := writeJSONAtomic(filepath.Join(s.queueDir(), queueName), event); err != nil {
 				return err
+			}
+			if s.queueMode == QueueModeLatest {
+				if err := s.markQueuedFilesCoalesced(files); err != nil {
+					return err
+				}
+				result.Coalesced = len(files) > 0
 			}
 			result.Queued = true
 			return nil
@@ -189,7 +256,14 @@ func (s *Store) RecoverInterrupted() error {
 			}
 			return err
 		}
-		processed, err := s.isProcessed(event.Delivery)
+		if err := validateEvent(event); err != nil {
+			return fmt.Errorf("validate interrupted event: %w", err)
+		}
+		processed, err := s.isTerminal(event.Delivery)
+		if err != nil {
+			return err
+		}
+		failed, err := s.hasFailedGeneration(event)
 		if err != nil {
 			return err
 		}
@@ -197,8 +271,23 @@ func (s *Store) RecoverInterrupted() error {
 		if err != nil {
 			return err
 		}
-		if processed || queued {
+		if processed || failed || queued {
 			return os.Remove(path)
+		}
+		if s.queueMode == QueueModeLatest {
+			files, err := s.queueFiles()
+			if err != nil {
+				return err
+			}
+			if len(files) > 0 {
+				if err := s.markCoalesced(event); err != nil {
+					return err
+				}
+				if err := os.Remove(path); err != nil {
+					return err
+				}
+				return syncDir(s.dir)
+			}
 		}
 		if event.ReceivedAt.IsZero() {
 			event.ReceivedAt = time.Now().UTC()
@@ -229,11 +318,11 @@ func (s *Store) Claim() (*Event, error) {
 				return nil
 			}
 			source := filepath.Join(s.queueDir(), files[0])
-			var event Event
-			if err := readJSON(source, &event); err != nil {
-				return fmt.Errorf("read queued event %s: %w", source, err)
+			event, err := s.readQueuedEvent(files[0])
+			if err != nil {
+				return err
 			}
-			processed, err := s.isProcessed(event.Delivery)
+			processed, err := s.isTerminal(event.Delivery)
 			if err != nil {
 				return err
 			}
@@ -259,6 +348,12 @@ func (s *Store) Complete(attempt Attempt) error {
 		if err := readJSON(s.runningPath(), &running); err != nil {
 			return fmt.Errorf("read running event: %w", err)
 		}
+		if err := validateEvent(running); err != nil {
+			return fmt.Errorf("validate running event: %w", err)
+		}
+		if err := validateEvent(attempt.Event); err != nil {
+			return fmt.Errorf("validate completed event: %w", err)
+		}
 		if running.Delivery != attempt.Event.Delivery || running.After != attempt.Event.After {
 			return errors.New("attempt does not match running event")
 		}
@@ -266,7 +361,7 @@ func (s *Store) Complete(attempt Attempt) error {
 			return errors.New("attempt timestamps are invalid")
 		}
 		if attempt.Succeeded {
-			if err := writeJSONAtomic(filepath.Join(s.processedDir(), attempt.Event.Delivery+".json"), attempt); err != nil {
+			if err := writeJSONAtomic(filepath.Join(s.processedDir(), deliveryMarkerName(attempt.Event.Delivery)), attempt); err != nil {
 				return err
 			}
 			if err := writeJSONAtomic(s.lastSuccessPath(), attempt); err != nil {
@@ -301,6 +396,9 @@ func (s *Store) Snapshot() (Snapshot, error) {
 		snapshot.QueueDepth = len(files)
 		var running Event
 		if err := readJSON(s.runningPath(), &running); err == nil {
+			if err := validateEvent(running); err != nil {
+				return fmt.Errorf("validate running event: %w", err)
+			}
 			snapshot.Running = &running
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return err
@@ -351,10 +449,29 @@ func (s *Store) queueFiles() ([]string, error) {
 }
 
 func (s *Store) isDuplicateLocked(delivery string) (bool, error) {
-	processed, err := s.isProcessed(delivery)
+	processed, err := s.isTerminal(delivery)
 	if err != nil || processed {
 		return processed, err
 	}
+	failed, err := s.hasFailedDelivery(delivery)
+	if err != nil || failed {
+		return failed, err
+	}
+	return s.isActiveLocked(delivery)
+}
+
+// isRetryDuplicateLocked intentionally excludes failed attempts. A failed
+// delivery is terminal for ordinary webhook intake, but RetryFailedSHA is the
+// single explicit approval path that may enqueue that same delivery again.
+func (s *Store) isRetryDuplicateLocked(delivery string) (bool, error) {
+	terminal, err := s.isTerminal(delivery)
+	if err != nil || terminal {
+		return terminal, err
+	}
+	return s.isActiveLocked(delivery)
+}
+
+func (s *Store) isActiveLocked(delivery string) (bool, error) {
 	queued, err := s.hasQueuedDelivery(delivery)
 	if err != nil || queued {
 		return queued, err
@@ -366,14 +483,68 @@ func (s *Store) isDuplicateLocked(delivery string) (bool, error) {
 	return running == delivery, nil
 }
 
+func (s *Store) hasFailedDelivery(delivery string) (bool, error) {
+	if !deliveryPattern.MatchString(delivery) {
+		return false, errors.New("delivery ID is invalid")
+	}
+	return s.failedAttemptMatches(func(attempt Attempt) bool {
+		return attempt.Event.Delivery == delivery
+	})
+}
+
+func (s *Store) hasFailedGeneration(event Event) (bool, error) {
+	if err := validateEvent(event); err != nil {
+		return false, err
+	}
+	return s.failedAttemptMatches(func(attempt Attempt) bool {
+		failedEvent := attempt.Event
+		return failedEvent.Delivery == event.Delivery &&
+			failedEvent.Repository == event.Repository &&
+			failedEvent.Ref == event.Ref &&
+			failedEvent.Before == event.Before &&
+			failedEvent.After == event.After &&
+			failedEvent.ReceivedAt.Equal(event.ReceivedAt)
+	})
+}
+
+func (s *Store) failedAttemptMatches(match func(Attempt) bool) (bool, error) {
+	entries, err := os.ReadDir(s.failedDir())
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		var attempt Attempt
+		path := filepath.Join(s.failedDir(), entry.Name())
+		if err := readJSON(path, &attempt); err != nil {
+			return false, fmt.Errorf("read failed attempt %s: %w", path, err)
+		}
+		if err := validateEvent(attempt.Event); err != nil {
+			return false, fmt.Errorf("validate failed attempt %s: %w", path, err)
+		}
+		if match(attempt) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (s *Store) hasQueuedDelivery(delivery string) (bool, error) {
+	if !deliveryPattern.MatchString(delivery) {
+		return false, errors.New("delivery ID is invalid")
+	}
 	files, err := s.queueFiles()
 	if err != nil {
 		return false, err
 	}
-	suffix := "-" + delivery + ".json"
 	for _, name := range files {
-		if strings.HasSuffix(name, suffix) {
+		event, err := s.readQueuedEvent(name)
+		if err != nil {
+			return false, err
+		}
+		if event.Delivery == delivery {
 			return true, nil
 		}
 	}
@@ -388,27 +559,57 @@ func (s *Store) runningDelivery() (string, error) {
 		}
 		return "", err
 	}
+	if err := validateEvent(event); err != nil {
+		return "", fmt.Errorf("validate running event: %w", err)
+	}
 	return event.Delivery, nil
 }
 
 func (s *Store) isProcessed(delivery string) (bool, error) {
-	path := filepath.Join(s.processedDir(), delivery+".json")
-	info, err := os.Lstat(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return false, nil
+	if !deliveryPattern.MatchString(delivery) {
+		return false, errors.New("delivery ID is invalid")
+	}
+	return markerExists(s.processedDir(), delivery, "processed")
+}
+
+func (s *Store) markQueuedFilesCoalesced(files []string) error {
+	for _, name := range files {
+		path := filepath.Join(s.queueDir(), name)
+		event, err := s.readQueuedEvent(name)
+		if err != nil {
+			return err
 		}
-		return false, err
+		if err := s.markCoalesced(event); err != nil {
+			return err
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove superseded event %s: %w", path, err)
+		}
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return false, fmt.Errorf("processed delivery marker is not a regular file: %s", path)
+	return syncDir(s.queueDir())
+}
+
+func (s *Store) markCoalesced(event Event) error {
+	if err := validateEvent(event); err != nil {
+		return fmt.Errorf("validate superseded event: %w", err)
 	}
-	return true, nil
+	if err := writeJSONAtomic(filepath.Join(s.coalescedDir(), deliveryMarkerName(event.Delivery)), event); err != nil {
+		return fmt.Errorf("record superseded delivery %s: %w", event.Delivery, err)
+	}
+	return nil
+}
+
+func (s *Store) isTerminal(delivery string) (bool, error) {
+	processed, err := s.isProcessed(delivery)
+	if err != nil || processed {
+		return processed, err
+	}
+	return markerExists(s.coalescedDir(), delivery, "coalesced")
 }
 
 func (s *Store) cleanupTerminalLocked(now time.Time) error {
 	cutoff := now.Add(-s.retention)
-	for _, dir := range []string{s.processedDir(), s.failedDir()} {
+	for _, dir := range []string{s.processedDir(), s.failedDir(), s.coalescedDir()} {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return err
@@ -450,13 +651,69 @@ func validateStateDirectory(path string) error {
 }
 
 func validateEvent(event Event) error {
-	if strings.TrimSpace(event.Delivery) == "" || strings.ContainsAny(event.Delivery, `/\\`) {
+	if !deliveryPattern.MatchString(event.Delivery) {
 		return errors.New("delivery ID is invalid")
 	}
-	if strings.TrimSpace(event.Repository) == "" || strings.TrimSpace(event.Ref) == "" || strings.TrimSpace(event.After) == "" {
-		return errors.New("event repository, ref, and after SHA are required")
+	if !repositoryPattern.MatchString(event.Repository) {
+		return errors.New("event repository is invalid")
+	}
+	if !refPattern.MatchString(event.Ref) || strings.Contains(event.Ref, "..") || strings.Contains(event.Ref, "//") {
+		return errors.New("event ref is invalid")
+	}
+	if !fullSHAPathPattern.MatchString(event.After) {
+		return errors.New("event after SHA is invalid")
+	}
+	if event.Before != "" && !fullSHAPathPattern.MatchString(event.Before) && strings.Trim(event.Before, "0") != "" {
+		return errors.New("event before SHA is invalid")
 	}
 	return nil
+}
+
+func (s *Store) readQueuedEvent(name string) (Event, error) {
+	var event Event
+	path := filepath.Join(s.queueDir(), name)
+	if err := readJSON(path, &event); err != nil {
+		return Event{}, fmt.Errorf("read queued event %s: %w", path, err)
+	}
+	if err := validateEvent(event); err != nil {
+		return Event{}, fmt.Errorf("validate queued event %s: %w", path, err)
+	}
+	return event, nil
+}
+
+func (s *Store) validateQueuedFiles(files []string) error {
+	for _, name := range files {
+		if _, err := s.readQueuedEvent(name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func deliveryMarkerName(delivery string) string {
+	digest := sha256.Sum256([]byte(delivery))
+	return fmt.Sprintf("%x.json", digest)
+}
+
+func markerExists(dir, delivery, kind string) (bool, error) {
+	// The hashed name is the canonical containment boundary. The literal name
+	// is checked read-only for upgrade compatibility after strict validation;
+	// all new writes use only the hashed form.
+	for _, name := range []string{deliveryMarkerName(delivery), delivery + ".json"} {
+		path := filepath.Join(dir, name)
+		info, err := os.Lstat(path)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return false, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return false, fmt.Errorf("%s delivery marker is not a regular file: %s", kind, path)
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 func readJSON(path string, destination any) error {
@@ -516,6 +773,7 @@ func syncDir(dir string) error {
 func (s *Store) queueDir() string        { return filepath.Join(s.dir, "queue") }
 func (s *Store) processedDir() string    { return filepath.Join(s.dir, "processed") }
 func (s *Store) failedDir() string       { return filepath.Join(s.dir, "failed") }
+func (s *Store) coalescedDir() string    { return filepath.Join(s.dir, "coalesced") }
 func (s *Store) runningPath() string     { return filepath.Join(s.dir, "running.json") }
 func (s *Store) lastSuccessPath() string { return filepath.Join(s.dir, "last-success.json") }
 func (s *Store) lastFailurePath() string { return filepath.Join(s.dir, "last-failure.json") }

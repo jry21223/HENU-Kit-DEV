@@ -67,6 +67,26 @@ func TestHandlerQueuesValidMainPush(t *testing.T) {
 	}
 }
 
+func TestHandlerReportsWhenAQueuedPushWasCoalesced(t *testing.T) {
+	queue := &fakeQueue{result: state.EnqueueResult{Queued: true, Coalesced: true}}
+	handler := newTestHandler(t, queue, 1024*1024)
+	payload := map[string]any{
+		"ref":    "refs/heads/main",
+		"before": "1111111111111111111111111111111111111111",
+		"after":  "2222222222222222222222222222222222222222",
+		"repository": map[string]any{
+			"full_name": "jry21223/HENU-Kit-DEV",
+		},
+	}
+	response := deliver(t, handler, "push", "delivery-coalesced", payload, true)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"coalesced":true`)) {
+		t.Fatalf("response does not expose coalescing: %s", response.Body.String())
+	}
+}
+
 func TestHandlerRejectsInvalidSignature(t *testing.T) {
 	queue := &fakeQueue{}
 	handler := newTestHandler(t, queue, 1024)

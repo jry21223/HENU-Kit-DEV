@@ -6,11 +6,15 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# 需要 docker compose exec、git clone 与写入镜像目录,因此以 root 运行。
-User=root
-Group=root
+# The queue is receiver-owned and is always parsed as the unprivileged service
+# account. A root-owned, argument-validating sudo target performs only the
+# canonical mirror/slides/database transaction.
+User=henukit-deploy
+Group=henukit-deploy
 EnvironmentFile=/etc/henukit-deploy/materials-webhook.env
-Environment=HOME=/root
+Environment=HENUKIT_DEPLOY_COMMAND=/usr/local/libexec/henukit/henukit-materials-sudo
+Environment=HENUKIT_DEPLOY_TIMEOUT=2h
+Environment=HOME=/var/lib/henukit-deploy
 ExecStart=/usr/local/bin/henukit-deploy-webhook run
 TimeoutStartSec=2h
 UMask=0027

@@ -21,7 +21,8 @@ type Material struct {
 	Rating       float64    `json:"rating"`
 	Downloads    int        `json:"downloads"`
 	Favs         int        `json:"favs"`
-	// FilePath is the mirrored file path under /materials/ (storage_key).
+	// FilePath is the path-escaped, origin-relative public URL under /materials/.
+	// The database storage_key remains a separate relative identity key.
 	// Empty for entries that have no hosted file (mock only).
 	FilePath string `json:"filePath,omitempty"`
 	FileSize int64  `json:"fileSize,omitempty"`

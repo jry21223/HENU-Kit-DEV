@@ -211,11 +211,13 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		"after", strings.ToLower(payload.After),
 		"queued", queued.Queued,
 		"duplicate", queued.Duplicate,
+		"coalesced", queued.Coalesced,
 	)
 	writeJSON(writer, http.StatusAccepted, map[string]any{
 		"accepted":  true,
 		"queued":    queued.Queued,
 		"duplicate": queued.Duplicate,
+		"coalesced": queued.Coalesced,
 		"delivery":  delivery,
 	})
 }

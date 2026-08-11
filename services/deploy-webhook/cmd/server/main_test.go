@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"henukit.dev/deploy-webhook/internal/state"
 )
 
 func TestValidateLoopbackAddress(t *testing.T) {
@@ -53,5 +55,26 @@ func TestLoadSecretRejectsSymbolicLink(t *testing.T) {
 	}
 	if _, err := loadSecret(link); err == nil {
 		t.Fatal("symbolic-link secret was accepted")
+	}
+}
+
+func TestLoadCommonConfigAcceptsLatestQueueModeForCoalescingReceivers(t *testing.T) {
+	t.Setenv("HENUKIT_WEBHOOK_STATE_DIR", t.TempDir())
+	t.Setenv("HENUKIT_WEBHOOK_MAX_QUEUE", "1")
+	t.Setenv("HENUKIT_WEBHOOK_QUEUE_MODE", "latest")
+
+	config, err := loadCommonConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.QueueMode != state.QueueModeLatest {
+		t.Fatalf("queue mode = %q, want %q", config.QueueMode, state.QueueModeLatest)
+	}
+}
+
+func TestLoadCommonConfigRejectsUnknownQueueMode(t *testing.T) {
+	t.Setenv("HENUKIT_WEBHOOK_QUEUE_MODE", "drop-randomly")
+	if _, err := loadCommonConfig(); err == nil {
+		t.Fatal("unknown queue mode was accepted")
 	}
 }

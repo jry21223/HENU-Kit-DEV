@@ -1,25 +1,18 @@
-#!/usr/bin/env bash
-# Mirror reviewed course materials from the public HENU-Final-Review repository
-# into the directory nginx serves.
+#!/bin/bash
+# Prepare one manifest-approved materials snapshot for the privileged driver.
 #
-# The git checkout and the served root are deliberately separate directories.
-# Serving the checkout itself would expose .git — the whole repository history —
-# plus the repository's tooling, so only files named by manifest.json are copied
-# across, and only those whose role is not a 待复核 (pending review) one. The
-# repository's own PUBLICATION_POLICY.md keeps unreviewed material out of the
-# formal directories until a maintainer confirms its provenance; this mirror
-# holds that same line.
-#
-# Safe to re-run: the mirror is rebuilt from the manifest every time, so files
-# removed or renamed upstream disappear here too.
+# This helper never mutates the public mirror. The caller owns publication and
+# database reconciliation so a failed pipeline cannot leave half of the new
+# snapshot live.
 set -Eeuo pipefail
 
 REPO_URL="${HENUKIT_MATERIALS_REPO_URL:-https://github.com/jry21223/HENU-Final-Review.git}"
 REPO_REF="${HENUKIT_MATERIALS_REPO_REF:-main}"
+EXPECTED_SHA="${HENUKIT_MATERIALS_EXPECTED_SHA:-}"
 ROOT="${HENUKIT_MATERIALS_ROOT:-/opt/henukit-materials}"
 CHECKOUT="$ROOT/repo"
-PUBLIC="$ROOT/public"
-STAGING="$ROOT/.staging"
+STAGING_ROOT="${HENUKIT_MATERIALS_STAGING_ROOT:-$ROOT/.staging}"
+STAGING_PUBLIC="$STAGING_ROOT/public"
 
 die() {
   echo "sync-henukit-materials: $*" >&2
@@ -28,10 +21,16 @@ die() {
 
 command -v git >/dev/null || die "git is required"
 command -v python3 >/dev/null || die "python3 is required"
+[[ "$REPO_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || die "invalid repository ref"
+if [[ -n "$EXPECTED_SHA" && ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  die "expected SHA must be a full lowercase Git SHA"
+fi
 
 mkdir -p "$ROOT"
 
 if [[ -d "$CHECKOUT/.git" ]]; then
+  actual_remote="$(git -C "$CHECKOUT" remote get-url origin)"
+  [[ "$actual_remote" == "$REPO_URL" ]] || die "checkout origin does not match configured repository"
   echo "Fetching $REPO_REF"
   git -C "$CHECKOUT" fetch --depth 1 origin "$REPO_REF"
   git -C "$CHECKOUT" reset --hard "origin/$REPO_REF"
@@ -45,14 +44,16 @@ fi
 [[ -f "$CHECKOUT/manifest.json" ]] || die "manifest.json missing from the checkout"
 
 synced_sha="$(git -C "$CHECKOUT" rev-parse HEAD)"
-echo "Mirroring reviewed assets from $synced_sha"
+if [[ -n "$EXPECTED_SHA" && "$synced_sha" != "$EXPECTED_SHA" ]]; then
+  die "target branch is at $synced_sha, expected webhook SHA $EXPECTED_SHA"
+fi
+echo "Preparing reviewed assets from $synced_sha"
 
-rm -rf "$STAGING"
-mkdir -p "$STAGING"
+rm -rf "$STAGING_ROOT"
+mkdir -p "$STAGING_PUBLIC"
 
-# The manifest is the only source of truth for what is published. Copying the
-# tree wholesale would also publish repository tooling and unreviewed material.
-python3 - "$CHECKOUT" "$STAGING" <<'PY'
+python3 - "$CHECKOUT" "$STAGING_PUBLIC" <<'PY'
+import hashlib
 import json
 import pathlib
 import shutil
@@ -62,12 +63,18 @@ checkout = pathlib.Path(sys.argv[1]).resolve()
 staging = pathlib.Path(sys.argv[2]).resolve()
 manifest = json.loads((checkout / "manifest.json").read_text(encoding="utf-8"))
 
+subjects = manifest.get("subjects")
+if not isinstance(subjects, list):
+    raise SystemExit("manifest.subjects must be an array")
+
 copied = 0
 skipped_pending = 0
-missing = []
 
-for subject in manifest.get("subjects", []):
-    for asset in subject.get("assets", []):
+for subject in subjects:
+    assets = subject.get("assets")
+    if not isinstance(assets, list):
+        raise SystemExit(f"subject {subject.get('name', '<unnamed>')} has no assets array")
+    for asset in assets:
         role = asset.get("role", "")
         if role.startswith("待复核"):
             skipped_pending += 1
@@ -75,47 +82,66 @@ for subject in manifest.get("subjects", []):
 
         public_path = asset.get("publicPath", "")
         if not public_path:
-            continue
+            raise SystemExit("publishable manifest asset is missing publicPath")
 
-        source = (checkout / public_path).resolve()
-        # A manifest entry must not be able to reach outside the checkout.
+        expected_sha = asset.get("sha256", "")
+        expected_bytes = asset.get("bytes")
+        if (
+            not isinstance(expected_sha, str)
+            or len(expected_sha) != 64
+            or any(character not in "0123456789abcdef" for character in expected_sha)
+        ):
+            raise SystemExit(f"manifest asset has invalid sha256: {public_path}")
+        if type(expected_bytes) is not int or expected_bytes < 0:
+            raise SystemExit(f"manifest asset has invalid byte count: {public_path}")
+
+        relative_path = pathlib.PurePosixPath(public_path)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise SystemExit(f"manifest path escapes the checkout: {public_path}")
+        source_path = checkout.joinpath(*relative_path.parts)
+        cursor = checkout
+        for part in relative_path.parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise SystemExit(f"manifest asset is missing or not a regular file: {public_path}")
+        source = source_path.resolve()
         if not source.is_relative_to(checkout):
             raise SystemExit(f"manifest path escapes the checkout: {public_path}")
         if not source.is_file():
-            missing.append(public_path)
-            continue
+            raise SystemExit(f"manifest asset is missing or not a regular file: {public_path}")
+
+        actual_bytes = source.stat().st_size
+        if actual_bytes != expected_bytes:
+            raise SystemExit(
+                f"manifest byte count mismatch for {public_path}: "
+                f"expected {expected_bytes}, got {actual_bytes}"
+            )
+        digest = hashlib.sha256()
+        with source.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        actual_sha = digest.hexdigest()
+        if actual_sha != expected_sha:
+            raise SystemExit(
+                f"manifest sha256 mismatch for {public_path}: "
+                f"expected {expected_sha}, got {actual_sha}"
+            )
 
         target = (staging / public_path).resolve()
         if not target.is_relative_to(staging):
             raise SystemExit(f"manifest path escapes the mirror: {public_path}")
-
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         copied += 1
 
-print(f"mirrored {copied} assets, skipped {skipped_pending} pending review")
-if missing:
-    print(f"WARNING: {len(missing)} manifest entries have no file:")
-    for path in missing[:20]:
-        print(f"  {path}")
-    if len(missing) > 20:
-        print(f"  ... and {len(missing) - 20} more")
+print(f"prepared {copied} assets, skipped {skipped_pending} pending review")
 PY
 
-# Nothing under the mirror is executable, and nothing there is a dotfile.
-find "$STAGING" -type f -exec chmod 0444 {} +
-find "$STAGING" -type d -exec chmod 0755 {} +
-if find "$STAGING" -name '.*' -mindepth 1 | grep -q .; then
+find "$STAGING_PUBLIC" -type f -exec chmod 0444 {} +
+find "$STAGING_PUBLIC" -type d -exec chmod 0755 {} +
+if find "$STAGING_PUBLIC" -name '.*' -mindepth 1 | grep -q .; then
   die "refusing to publish: the mirror contains dotfiles"
 fi
 
-# Swap atomically so a reader never sees a half-written mirror.
-rm -rf "$PUBLIC.previous"
-if [[ -d "$PUBLIC" ]]; then
-  mv "$PUBLIC" "$PUBLIC.previous"
-fi
-mv "$STAGING" "$PUBLIC"
-rm -rf "$PUBLIC.previous"
-
-printf '%s\n' "$synced_sha" > "$ROOT/SYNCED_SHA"
-echo "Mirror published at $PUBLIC ($(find "$PUBLIC" -type f | wc -l | tr -d ' ') files, $(du -sh "$PUBLIC" | cut -f1))"
+printf '%s\n' "$synced_sha" > "$STAGING_ROOT/SYNCED_SHA"
+echo "Snapshot prepared at $STAGING_PUBLIC ($(find "$STAGING_PUBLIC" -type f | wc -l | tr -d ' ') files)"

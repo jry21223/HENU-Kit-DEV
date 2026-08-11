@@ -85,6 +85,7 @@ verified on the server; remove it in a separate rollback-aware change.
 `install.sh --enable-materials-sync` installs a second receiver instance for
 [jry21223/HENU-Final-Review](https://github.com/jry21223/HENU-Final-Review)
 push events, served by the same binary on `127.0.0.1:10088` at
-`/webhooks/materials`. Its runner executes
-`/usr/local/libexec/henukit/henukit-materials-sync` (mirror → slides → Study DB
-import). See [`../../docs/operations/henukit-materials-sync.md`](../../docs/operations/henukit-materials-sync.md).
+`/webhooks/materials`. Its queue runner stays under `henukit-deploy`; one exact
+sudo target revalidates the event tuple, loads root-only sync configuration, and
+executes `henukit-materials-sync` (mirror → slides → Study DB import). See
+[`../../docs/operations/henukit-materials-sync.md`](../../docs/operations/henukit-materials-sync.md).
