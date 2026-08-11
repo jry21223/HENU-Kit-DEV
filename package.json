@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "docker compose -f docker-compose.dev.yml up --build",
     "dev:henukit": "docker compose -f docker-compose.henukit.yml --env-file .env.henukit up --build",
+    "prototype:assistant": "pnpm --filter @henukit/portal run prototype:assistant",
     "build:henukit": "docker compose -f docker-compose.henukit.yml --env-file .env.henukit build",
     "build": "pnpm run build:portal && pnpm run build:console && pnpm run build:quizcraft",
     "build:all": "pnpm run build && pnpm run build:study-legacy-admin",

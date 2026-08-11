@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
+    "prototype:assistant": "next dev -p 3110",
     "build": "next build && pnpm run test:library-public-artifact",
     "start": "next start -p 3001",
     "lint": "eslint",
