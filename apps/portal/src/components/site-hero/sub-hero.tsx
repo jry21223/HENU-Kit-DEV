@@ -5,7 +5,8 @@ import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 
 export interface HeroCounter {
   label: string;
-  value: number;
+  value: number | null;
+  busy?: boolean;
 }
 
 function formatNum(n: number) {
@@ -36,6 +37,9 @@ export default function SubHero({
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const counterSignature = counters
+    .map((counter) => `${counter.label}:${counter.value ?? "unknown"}`)
+    .join("|");
 
   useGSAP(
     () => {
@@ -50,30 +54,55 @@ export default function SubHero({
           )
           .from("[data-hero-scene]", { opacity: 0, duration: 0.7 }, "-=0.3");
 
-        counters.forEach((c, i) => {
-          const el = counterRefs.current[i];
-          if (!el) return;
-          const obj = { v: 0 };
-          gsap.to(obj, {
-            v: c.value,
+      });
+      return () => mm.revert();
+    },
+    { scope: sectionRef }
+  );
+
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(FINE_MOTION, () => {
+        counters.forEach((counter, index) => {
+          const element = counterRefs.current[index];
+          if (!element) return;
+          if (counter.value === null) {
+            element.textContent = "—";
+            return;
+          }
+
+          const previous = Number(element.textContent?.replaceAll(",", ""));
+          const animated = {
+            value: Number.isFinite(previous) ? previous : 0,
+          };
+          gsap.to(animated, {
+            value: counter.value,
             duration: 1.8,
-            delay: 0.4 + i * 0.2,
+            delay: 0.4 + index * 0.2,
             ease: "power2.out",
             onUpdate: () => {
-              el.textContent = formatNum(obj.v);
+              element.textContent = formatNum(animated.value);
             },
           });
         });
       });
       mm.add("(prefers-reduced-motion: reduce)", () => {
-        counters.forEach((c, i) => {
-          const el = counterRefs.current[i];
-          if (el) el.textContent = formatNum(c.value);
+        counters.forEach((counter, index) => {
+          const element = counterRefs.current[index];
+          if (element) {
+            element.textContent =
+              counter.value === null ? "—" : formatNum(counter.value);
+          }
         });
       });
       return () => mm.revert();
     },
-    { scope: sectionRef }
+    {
+      scope: sectionRef,
+      dependencies: [counterSignature],
+      revertOnUpdate: true,
+    }
   );
 
   return (
@@ -95,10 +124,19 @@ export default function SubHero({
           </p>
           <div data-hero-title className="mt-8 flex flex-wrap gap-x-10 gap-y-4">
             {counters.map((c, i) => (
-              <div key={c.label}>
+              <div key={c.label} aria-busy={c.busy ?? false}>
                 <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">{c.label}</p>
                 <p className="mt-1 font-display text-3xl font-bold tabular-nums">
-                  <span ref={(el) => { counterRefs.current[i] = el; }}>0</span>
+                  <span ref={(el) => { counterRefs.current[i] = el; }} aria-hidden="true">
+                    {c.value === null ? "—" : formatNum(c.value)}
+                  </span>
+                  <span className="sr-only" aria-live="polite">
+                    {c.value === null
+                      ? c.busy
+                        ? "加载中"
+                        : "暂不可用"
+                      : formatNum(c.value)}
+                  </span>
                 </p>
               </div>
             ))}
