@@ -139,6 +139,22 @@ describe("Console Overview", () => {
     wrapper.unmount();
   });
 
+  it("labels an operator-disabled owner distinctly from an outage", async () => {
+    const disabled = structuredClone(overview);
+    (disabled.data.modules as Array<Record<string, unknown>>)[2] = {
+      id: "notice", status: "unavailable", unavailable_reason: "operator_disabled", metrics: [],
+      status_message: "校园通知摘要已由运营配置停用；如需恢复，请重新配置摘要地址", request_id: "req_notice_disabled",
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? disabled : authenticated), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get("[data-module-card='notice']").attributes("aria-label")).toContain("已停用");
+    expect(wrapper.text()).toContain("校园通知摘要已由运营配置停用");
+    expect(wrapper.text()).toContain("如需恢复，请重新配置摘要地址");
+    wrapper.unmount();
+  });
+
   it("shows a signed-out state without exposing mock metrics", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
     window.history.replaceState({}, "", "/operations?tab=inbox");

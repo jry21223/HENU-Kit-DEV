@@ -32,6 +32,7 @@ const images = [
   "henukit-platform-mail-worker",
   "henukit-platform-smtp-provider",
   "henukit-portal",
+  "henukit-portal-summary",
   "henukit-portal-api",
   "henukit-account-portfolio",
   "henukit-notice",

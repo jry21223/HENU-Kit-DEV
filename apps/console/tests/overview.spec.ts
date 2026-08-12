@@ -115,6 +115,44 @@ test("390px overview keeps its single real navigation target usable without over
   expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
 });
 
+test("desktop and 390px overview distinguish owners that are not onboarded", async ({ page }) => {
+  await page.unroute("**/api/v1/overview");
+  await page.route("**/api/v1/overview", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          modules: [
+            { id: "portal", status: "ok", metrics: [], status_message: "Portal 摘要可用", as_of: "2026-08-12T12:00:00Z", request_id: "req_portal_onboarded" },
+            { id: "platform", status: "unavailable", unavailable_reason: "not_onboarded", metrics: [], status_message: "Platform Operations 摘要尚未接入，请前往平台运营工作台查看实时数据", request_id: "req_platform_not_onboarded" },
+            { id: "notice", status: "empty", metrics: [], status_message: "当前无待办", as_of: "2026-08-12T12:00:00Z", request_id: "req_notice_onboarded" },
+            { id: "library", status: "ok", metrics: [], status_message: "Library 摘要可用", as_of: "2026-08-12T12:00:00Z", request_id: "req_library_onboarded" },
+            { id: "quizcraft", status: "unavailable", unavailable_reason: "not_onboarded", metrics: [], status_message: "QuizCraft 摘要尚未接入；题库工坊入口尚未配置", request_id: "req_quizcraft_not_onboarded" },
+            { id: "food", status: "ok", metrics: [], status_message: "Food 摘要可用", as_of: "2026-08-12T12:00:00Z", request_id: "req_food_onboarded" },
+          ],
+          generated_at: "2026-08-12T12:00:00Z",
+        },
+        request_id: "req_overview_not_onboarded",
+      }),
+    }),
+  );
+
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    const platform = page.locator('[data-module-card="platform"]');
+    const quizcraft = page.locator('[data-module-card="quizcraft"]');
+    await expect(platform.getByText("尚未接入", { exact: true })).toBeVisible();
+    await expect(platform.getByText("Platform Operations 摘要尚未接入，请前往平台运营工作台查看实时数据", { exact: true })).toBeVisible();
+    await expect(quizcraft.getByText("尚未接入", { exact: true })).toBeVisible();
+    await expect(quizcraft.getByText("QuizCraft 摘要尚未接入；题库工坊入口尚未配置", { exact: true })).toBeVisible();
+    await expect(quizcraft.getByRole("link", { name: "打开 QuizCraft 题库工坊" })).toHaveCount(0);
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  }
+});
+
 test("loading scenario marks all six modules busy without fake metrics", async ({ page }) => {
   await page.goto("/?scenario=loading");
   await expect(page.locator("section[aria-busy='true']")).toBeVisible();

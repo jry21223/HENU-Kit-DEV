@@ -38,6 +38,10 @@ release_sha="$(tr -d '[:space:]' < "$runtime_dir/RELEASE_SHA")"
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "RELEASE_SHA is not a full lowercase Git SHA"
 
 export RELEASE_SHA="$release_sha"
+export PORTAL_VERSION="$release_sha"
+# Compose validates the complete release contract before migrations. The real
+# value is replaced immediately before the application activation below.
+export PORTAL_DEPLOYED_AT="1970-01-01T00:00:00Z"
 compose=(docker compose --env-file "$env_file" -f "$runtime_dir/docker-compose.henukit.release.yml")
 "${compose[@]}" config --quiet
 
@@ -117,6 +121,13 @@ apply_owner_migrations portal
 
 echo "Ensuring Account Portfolio database exists"
 ensure_account_portfolio_database
+# This records this concrete application activation, after migrations and just
+# before Compose replaces the runtime. A retry is a new deploy attempt and gets
+# a new timestamp; build-time and operator-supplied values are never reused.
+portal_deployed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+[[ "$portal_deployed_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
+  die "could not determine the Portal activation time"
+export PORTAL_DEPLOYED_AT="$portal_deployed_at"
 echo "Activating HENU Kit release $release_sha"
 "${compose[@]}" up -d --remove-orphans
 

@@ -29,6 +29,7 @@ const releaseImages = [
   "henukit-platform-mail-worker",
   "henukit-platform-smtp-provider",
   "henukit-portal",
+  "henukit-portal-summary",
   "henukit-portal-api",
   "henukit-account-portfolio",
   "henukit-notice",
@@ -67,7 +68,7 @@ function writeLocalArtifacts(root) {
   writeFileSync(join(runtimeTree, "RELEASE_SHA"), `${releaseSha}\n`);
   writeFileSync(
     join(runtimeTree, "docker-compose.henukit.release.yml"),
-    "services:\n  account-portfolio:\n  notice:\n  notice-worker:\n  food:\n  library:\n",
+    "services:\n  portal-summary:\n  account-portfolio:\n  notice:\n  notice-worker:\n  food:\n  library:\n",
   );
   writeFileSync(
     join(runtimeTree, "release-gates", "account-production-boundary.env"),
@@ -180,6 +181,7 @@ images=(
   henukit-platform-mail-worker
   henukit-platform-smtp-provider
   henukit-portal
+  henukit-portal-summary
   henukit-portal-api
   henukit-account-portfolio
   henukit-notice
@@ -192,7 +194,7 @@ case "\${1:-}" in
   --check) ;;
   --artifact-images|--load-images) printf '%s\\n' "\${images[@]}" ;;
   --baseline-images)
-    printf '%s\\n' henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-api henukit-portal-gateway
+    printf '%s\\n' henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-summary henukit-portal-api henukit-portal-gateway
     ;;
   --conditional-services)
     printf '%s\\n' $'account-portfolio\\thenukit-account-portfolio' $'notice\\thenukit-notice' $'notice-worker\\thenukit-notice-worker' $'food\\thenukit-food' $'library\\thenukit-library'
@@ -301,6 +303,7 @@ images=(
   henukit-platform-mail-worker
   henukit-platform-smtp-provider
   henukit-portal
+  henukit-portal-summary
   henukit-portal-api
   henukit-account-portfolio
   henukit-notice
@@ -325,7 +328,7 @@ runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
 mkdir -p "$runtime_artifact" "$runtime_tree/bin" "$runtime_tree/release-gates"
 printf '%s\\n' "$FAKE_RELEASE_SHA" > "$runtime_tree/RELEASE_SHA"
-printf 'services:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n  library:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
+printf 'services:\\n  portal-summary:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n  library:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
 cat > "$runtime_tree/release-gates/account-production-boundary.env" <<EOF
 release_sha=$FAKE_RELEASE_SHA
 status=$([[ "$FAKE_BAD_ACCOUNT_BOUNDARY" == "1" ]] && printf fail || printf pass)
@@ -373,6 +376,9 @@ if [[ "$1" == "ps" ]]; then
     for image in henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-api henukit-portal-gateway; do
       printf '%s:%s\\n' "$image" "$sha"
     done
+    if [[ "$sha" == "$FAKE_RELEASE_SHA" ]]; then
+      printf 'henukit-portal-summary:%s\\n' "$sha"
+    fi
     if [[ "$sha" == "$FAKE_RELEASE_SHA" || "$FAKE_PREVIOUS_HAS_ACCOUNT_PORTFOLIO" == "1" ]]; then
       printf 'henukit-account-portfolio:%s\\n' "$sha"
     fi
@@ -544,7 +550,8 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 13);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 14);
+  assert.match(calls, /docker exec henukit-portal-summary-1 .*verify-summary/);
   assert.match(calls, /deploy .*releases.*henukit\.env/);
   assert.match(calls, /grant-account-operator-role/);
   assert.match(calls, /operations-operator/);
@@ -688,7 +695,8 @@ test("a signed local artifact set uses the same backup, exact-SHA approval, and 
   });
   calls = readFileSync(setup.log, "utf8");
   assert.match(activated, /activated and deterministic smoke checks passed/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 13);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 14);
+  assert.match(calls, /docker exec henukit-portal-summary-1 .*verify-summary/);
   assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
 });
 
@@ -1114,7 +1122,7 @@ test("first Account Portfolio rollout accepts a legacy eight-image release and r
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump.*account_portfolio/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 13);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 14);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), releaseSha);
 });
 

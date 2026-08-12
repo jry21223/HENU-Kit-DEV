@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -153,6 +154,74 @@ func TestAggregatorRequiresServiceCredentials(t *testing.T) {
 	if _, err := New(map[string]string{"portal": "https://portal.internal/summary", "platform": "https://platform.internal/summary"}, &http.Client{}, client, credentials, Options{}); err == nil {
 		t.Fatal("aggregator accepted a summary secret shared across modules")
 	}
+}
+
+func TestAggregatorAcceptsOnlyExactComposeSummaryHostsOverHTTP(t *testing.T) {
+	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { _ = client.Close() })
+	credentials := testCredentials()
+	for id, endpoint := range map[string]string{
+		"portal":  "http://portal-summary:8083/api/v1/console-summary",
+		"notice":  "http://notice:8094/api/v1/console-summary",
+		"library": "http://library:8095/api/v1/console-summary",
+		"food":    "http://food:8096/api/v1/console-summary",
+	} {
+		if _, err := New(map[string]string{id: endpoint}, &http.Client{}, client, credentials, Options{}); err != nil {
+			t.Fatalf("trusted %s Compose endpoint was rejected: %v", id, err)
+		}
+	}
+	if _, err := New(map[string]string{"portal": "http://portal-summary.attacker:8083/api/v1/console-summary"}, &http.Client{}, client, credentials, Options{}); err == nil {
+		t.Fatal("lookalike Compose summary host was accepted")
+	}
+	if _, err := New(map[string]string{"portal": "http://attacker.local:8083/api/v1/console-summary"}, &http.Client{}, client, credentials, Options{}); err == nil {
+		t.Fatal("arbitrary .local summary host was accepted")
+	}
+	for id, endpoint := range map[string]string{
+		"portal":  "http://notice:8094/api/v1/console-summary",
+		"notice":  "http://food:8096/api/v1/console-summary",
+		"library": "http://portal-summary:8083/api/v1/console-summary",
+		"food":    "http://library:8095/api/v1/console-summary",
+	} {
+		called := atomic.Bool{}
+		transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+			called.Store(true)
+			return nil, errors.New("must not send")
+		})
+		if _, err := New(map[string]string{id: endpoint}, &http.Client{Transport: transport}, client, credentials, Options{}); err == nil {
+			t.Fatalf("%s accepted a cross-owner endpoint", id)
+		}
+		if called.Load() {
+			t.Fatalf("%s credentials were sent to a rejected cross-owner endpoint", id)
+		}
+	}
+}
+
+func TestAggregatorNamesOwnersThatAreNotOnboarded(t *testing.T) {
+	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { _ = client.Close() })
+	aggregator, err := New(nil, &http.Client{}, client, testCredentials(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := aggregator.Fetch(t.Context(), "req_not_onboarded")
+	for _, index := range []int{1, 4} {
+		summary := result.Modules[index]
+		if summary.Status != "unavailable" || summary.UnavailableReason == nil || *summary.UnavailableReason != "not_onboarded" || summary.StatusMessage == "摘要暂不可用" {
+			t.Fatalf("not-onboarded summary = %+v", summary)
+		}
+	}
+	for _, index := range []int{0, 2, 3, 5} {
+		summary := result.Modules[index]
+		if summary.Status != "unavailable" || summary.UnavailableReason == nil || *summary.UnavailableReason != "operator_disabled" || summary.StatusMessage == "摘要暂不可用" || !strings.Contains(summary.StatusMessage, "运营配置停用") {
+			t.Fatalf("operator-disabled summary = %+v", summary)
+		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }
 
 func TestRetryUsesDistinctNonces(t *testing.T) {

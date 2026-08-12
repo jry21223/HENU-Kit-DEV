@@ -2,8 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,12 +20,20 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/portal-summary/internal/contract"
 	"henukit.dev/portal-summary/internal/httpapi"
 	"henukit.dev/portal-summary/internal/summary"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if len(os.Args) == 2 && os.Args[1] == "verify-summary" {
+		if err := verifySummary(); err != nil {
+			logger.Error("verify_summary", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	deployedAt, err := time.Parse(time.RFC3339, os.Getenv("PORTAL_DEPLOYED_AT"))
 	if err != nil {
 		logger.Error("invalid_deployed_at", "error", err)
@@ -88,6 +102,53 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(ctx)
+}
+
+func verifySummary() error {
+	target := strings.TrimSpace(os.Getenv("PORTAL_SUMMARY_VERIFY_URL"))
+	if target == "" {
+		target = "http://127.0.0.1:8083/api/v1/console-summary"
+	}
+	request, err := http.NewRequest(http.MethodGet, target, nil)
+	if err != nil {
+		return err
+	}
+	clientID := strings.TrimSpace(os.Getenv("PORTAL_SUMMARY_CLIENT_ID"))
+	keyID := strings.TrimSpace(os.Getenv("PORTAL_SUMMARY_ACTIVE_KEY_ID"))
+	secret := os.Getenv("PORTAL_SUMMARY_ACTIVE_SECRET")
+	if clientID == "" || keyID == "" || len(secret) < 16 {
+		return errors.New("Portal summary verification credentials are incomplete")
+	}
+	nonceBytes := make([]byte, 24)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		return err
+	}
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
+	digest := sha256.Sum256(nil)
+	canonical := strings.Join([]string{request.Method, request.URL.RequestURI(), timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(canonical))
+	request.SetBasicAuth(clientID, secret)
+	request.Header.Set("X-Service-Id", clientID)
+	request.Header.Set("X-Key-Id", keyID)
+	request.Header.Set("X-Timestamp", timestamp)
+	request.Header.Set("X-Nonce", nonce)
+	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
+	request.Header.Set("X-Request-Id", "req_portal_release_verify")
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("Portal summary returned HTTP %d", response.StatusCode)
+	}
+	var envelope contract.PortalSummaryEnvelope
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		return err
+	}
+	return contract.ValidatePortalSummaryEnvelope(envelope)
 }
 
 func keyRing(activeID, activeSecret, retiringID, retiringSecret string) (map[string]string, error) {
