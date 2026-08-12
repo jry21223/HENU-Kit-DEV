@@ -10,6 +10,8 @@ usage() {
   cat >&2 <<'EOF'
 usage: activate-henukit-release.sh <full-main-sha> --execute
        activate-henukit-release.sh <full-main-sha> --local-artifacts <artifact-dir> --execute
+       activate-henukit-release.sh <full-main-sha> --local-artifacts <artifact-dir> \
+         --recover-degraded-baseline <full-current-sha> --execute
 
 The command is the production approval action. It first asks the watcher to
 prepare and restore-test backups without approval, installs the tested EasyPay
@@ -26,12 +28,19 @@ die() {
 
 release_source="actions"
 local_artifact_dir=""
+recovery_baseline_sha=""
 if [[ $# -eq 2 && "$2" == "--execute" ]]; then
   release_sha="$1"
 elif [[ $# -eq 4 && "$2" == "--local-artifacts" && "$4" == "--execute" ]]; then
   release_sha="$1"
   release_source="local"
   local_artifact_dir="$3"
+elif [[ $# -eq 6 && "$2" == "--local-artifacts" &&
+        "$4" == "--recover-degraded-baseline" && "$6" == "--execute" ]]; then
+  release_sha="$1"
+  release_source="local"
+  local_artifact_dir="$3"
+  recovery_baseline_sha="$5"
 else
   usage
   exit 64
@@ -53,6 +62,12 @@ epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
 if [[ "$release_source" == "local" ]]; then
   [[ -d "$local_artifact_dir" && ! -L "$local_artifact_dir" ]] ||
     die "--local-artifacts must name a non-symlink artifact directory"
+  if [[ -n "$recovery_baseline_sha" ]]; then
+    [[ "$recovery_baseline_sha" =~ ^[0-9a-f]{40}$ ]] ||
+      die "--recover-degraded-baseline must be a full lowercase Git SHA"
+    [[ "$recovery_baseline_sha" != "$release_sha" ]] ||
+      die "recovery baseline and candidate SHA must differ"
+  fi
 fi
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$blocker_issue" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_BLOCKER_ISSUE must be a positive issue number"
@@ -108,6 +123,9 @@ fi
 watcher_args=(--once)
 if [[ "$release_source" == "local" ]]; then
   watcher_args=(--local-artifacts "$local_artifact_dir" --sha "$release_sha")
+  if [[ -n "$recovery_baseline_sha" ]]; then
+    watcher_args+=(--recover-degraded-baseline "$recovery_baseline_sha")
+  fi
 fi
 
 tenant_credentials="$(ssh "$epay_ssh_target" bash -s -- "$epay_gateway_dir" <<'REMOTE'
