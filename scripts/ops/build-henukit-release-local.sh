@@ -9,13 +9,15 @@ program="build-henukit-release-local"
 usage() {
   cat >&2 <<'EOF'
 usage: build-henukit-release-local.sh --sha <full-main-sha> --output-dir <directory> \
-  --signing-key <private-key> --handoff-group <deployment-reader-group>
+  --signing-key <private-key-or-agent-public-key> --handoff-group <deployment-reader-group>
 
 The builder must be a clean checkout at the exact current origin/main SHA, on
 Linux x86_64 with a linux/amd64 Docker daemon. It writes a signed artifact
 directory but never uploads or deploys it.
 After signature verification it makes only the completed bundle read-only to
 the named deployment-reader group; the private signing key remains owner-only.
+For a passphrase-protected key, pass its owner-only `.pub` file as a public key
+handle after loading the matching private key into a temporary ssh-agent.
 EOF
 }
 
@@ -43,7 +45,7 @@ write_checksum() {
   fi
 }
 
-safe_private_key() {
+safe_signing_key() {
   local file="$1"
   local mode
   [[ -f "$file" && -r "$file" && ! -L "$file" ]] ||
@@ -114,7 +116,7 @@ case "$(uname -m)" in
   *) die "builder CPU must be x86_64/amd64" ;;
 esac
 require_wsl2
-safe_private_key "$signing_key"
+safe_signing_key "$signing_key"
 signing_key="$(cd "$(dirname "$signing_key")" && pwd -P)/$(basename "$signing_key")"
 command -v git >/dev/null 2>&1 || die "git is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
@@ -124,6 +126,20 @@ command -v getent >/dev/null 2>&1 || die "getent is required to validate the han
 getent group "$handoff_group" >/dev/null || die "--handoff-group does not exist"
 id -nG | tr ' ' '\n' | grep -Fx -- "$handoff_group" >/dev/null ||
   die "builder must belong to --handoff-group"
+
+if [[ "$signing_key" == *.pub ]]; then
+  command -v ssh-add >/dev/null 2>&1 || die "ssh-add is required for an agent-backed signing key"
+  [[ -n "${SSH_AUTH_SOCK:-}" ]] || die "public key handle requires a temporary ssh-agent"
+  signing_fingerprint="$(ssh-keygen -l -E sha256 -f "$signing_key" | awk 'NR == 1 { print $2 }')"
+  ssh-add -l -E sha256 | awk '{print $2}' | grep -Fx -- "$signing_fingerprint" >/dev/null ||
+    die "public key handle has no matching key in ssh-agent"
+  read -r signing_type signing_blob signing_comment < "$signing_key" || die "public key handle is empty"
+  [[ "$signing_type" == "ssh-ed25519" && -n "$signing_blob" ]] ||
+    die "public key handle must contain one ssh-ed25519 key"
+  signing_public_key="$signing_type $signing_blob"
+else
+  signing_public_key="$(ssh-keygen -y -f "$signing_key")"
+fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 inventory="$repo_root/scripts/ops/henukit-release-images.sh"
@@ -237,7 +253,7 @@ chgrp -R -- "$handoff_group" "$incoming"
 find "$incoming" -type d -exec chmod 0550 {} +
 find "$incoming" -type f -exec chmod 0440 {} +
 
-printf '%s %s\n' "$signer" "$(ssh-keygen -y -f "$signing_key")" > "$signers_file"
+printf '%s %s\n' "$signer" "$signing_public_key" > "$signers_file"
 chmod 0600 "$signers_file"
 "$verifier" \
   --artifact-dir "$incoming" \

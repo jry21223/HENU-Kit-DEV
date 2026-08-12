@@ -131,6 +131,9 @@ test("the operator guide keeps the WSL artifact path main-only, signed, and appr
   assert.match(deploymentGuide, /allowed-signers/i);
   assert.match(deploymentGuide, /out-of-band/i);
   assert.match(deploymentGuide, /release-trust-root/i);
+  assert.match(deploymentGuide, /rotate-henukit-release-signers\.sh/);
+  assert.match(deploymentGuide, /retain-fingerprint/);
+  assert.match(deploymentGuide, /temporary[\s\S]{0,40}`ssh-agent`/i);
   assert.match(deploymentGuide, /sha256sum -c/);
   assert.match(deploymentGuide, /origin\/main/);
   assert.match(deploymentGuide, /backup/i);
