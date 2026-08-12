@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 const ticketID = "88888888-8888-4888-8888-888888888888";
+const missingIdentityTicketID = "77777777-7777-4777-8777-777777777777";
 const baseTicket = {
   id: ticketID,
   reference: "HKT-88888888-8888-4888-8888-888888888888",
+  display_name: "李同学",
+  email: "very.long.support.ticket.owner@henu.edu.cn",
   title: "练习记录问题",
   category: "practice",
   status: "open",
@@ -54,7 +57,7 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_account_session" }) })
   );
   await page.route("**/api/v1/account/tickets", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { tickets: [ticket()] }, request_id: "req_account_queue" }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { tickets: [ticket(), { ...ticket(), id: missingIdentityTicketID, reference: `HKT-${missingIdentityTicketID}`, title: "身份资料缺失", display_name: undefined, email: undefined }] }, request_id: "req_account_queue" }) })
   );
   await page.route(`**/api/v1/account/tickets/${ticketID}`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: detail(), request_id: "req_account_detail" }) })
@@ -84,6 +87,11 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await page.goto("/account");
     await expect(page.getByRole("heading", { name: "账户工单运营" })).toBeVisible();
+    await expect(page.getByText("李同学").first()).toBeVisible();
+    await expect(page.getByText("very.long.support.ticket.owner@henu.edu.cn").first()).toBeVisible();
+    await expect(page.getByText("未设置姓名")).toBeVisible();
+    await expect(page.getByText("邮箱不可用")).toBeVisible();
+    await expect(page.getByText(/用户 #[0-9a-f]{4}/)).toHaveCount(0);
     await page.getByRole("button", { name: "练习记录问题" }).click();
     await expect(page.getByText("请帮我核对本次练习记录。", { exact: true })).toBeVisible();
     await page.getByLabel("客服回复").fill("我们已核对并正在处理。");

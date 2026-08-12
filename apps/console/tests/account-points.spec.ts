@@ -13,7 +13,7 @@ const session = {
   expires_at: "2026-07-28T01:00:00Z",
 };
 
-async function routeAccountLookup(page: import("@playwright/test").Page, account: { id: string; display_name: string; status: string } | null) {
+async function routeAccountLookup(page: import("@playwright/test").Page, account: { id: string; display_name: string; email: string; status: string } | null) {
   await page.route("**/api/v1/operations/account-lookups", (route) =>
     route.fulfill({
       status: 200,
@@ -34,7 +34,7 @@ for (const viewport of [
     await page.route("**/api/v1/session", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_points_session" }) }),
     );
-    await routeAccountLookup(page, { id: targetUserID, display_name: targetName, status: "active" });
+    await routeAccountLookup(page, { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" });
     await page.route("**/api/v1/account/points/adjustments", async (route) => {
       attempts += 1;
       expect(route.request().headers()["idempotency-key"]).toMatch(/^idem_account_points_/);
@@ -98,7 +98,7 @@ test("Console preserves JavaScript-safe point boundaries without rounding a brow
   await page.route("**/api/v1/session", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_points_session" }) }),
   );
-  await routeAccountLookup(page, { id: targetUserID, display_name: targetName, status: "active" });
+  await routeAccountLookup(page, { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" });
   await page.route("**/api/v1/account/points/adjustments", async (route) => {
     attempts += 1;
     const input = await route.request().postDataJSON();
@@ -150,7 +150,7 @@ test("Console writes nothing when the operator cancels the point confirmation", 
   await page.route("**/api/v1/session", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_points_session" }) }),
   );
-  await routeAccountLookup(page, { id: targetUserID, display_name: targetName, status: "active" });
+  await routeAccountLookup(page, { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" });
   await page.route("**/api/v1/account/points/adjustments", (route) => {
     adjustAttempts += 1;
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { balance: 120, entry: { id: "aaaaaaa6-aaaa-4aaa-8aaa-aaaaaaaaaaaa", amount: 120, reason: "canceled", created_at: "2026-07-28T00:00:00Z" } }, request_id: "req_points_canceled" }) });
@@ -196,13 +196,15 @@ test("Console distinguishes an unknown email from a lookup outage", async ({ pag
   expect(lookupAttempts).toBe(2);
 });
 
-test("Console retries an unknown point adjustment with its original idempotency key and never persists the email", async ({ page }) => {
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+test(`${viewport.name} Console retries an unknown point adjustment with its original identity and idempotency key`, async ({ page }) => {
+  await page.setViewportSize(viewport);
   const keys: string[] = [];
   let attempts = 0;
   await page.route("**/api/v1/session", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_points_session" }) }),
   );
-  await routeAccountLookup(page, { id: targetUserID, display_name: targetName, status: "active" });
+  await routeAccountLookup(page, { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" });
   await page.route("**/api/v1/account/points/adjustments", async (route) => {
     attempts += 1;
     keys.push(route.request().headers()["idempotency-key"] ?? "");
@@ -225,15 +227,19 @@ test("Console retries an unknown point adjustment with its original idempotency 
   await page.getByLabel("操作原因").fill("网关结果未确认时重试");
   await page.getByRole("button", { name: "提交积分调整" }).click();
   await page.getByRole("button", { name: "确认写入" }).click();
-  await expect(page.getByText("结果还没确认，可点下方按钮按原请求重试。")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("同一已确认目标");
+  await expect(page.getByRole("status")).toContainText(`${targetName} · ${targetEmail}`);
+  await expect(page.getByRole("status")).toContainText("沿用原操作请求，系统会避免重复执行");
   const stored = await page.evaluate(() => sessionStorage.getItem("henukit.account-points.pending-command"));
   expect(stored).toContain(targetUserID);
-  expect(stored).not.toContain(targetEmail);
-  await page.getByRole("button", { name: "确认并按原请求重试" }).click();
+  expect(stored).toContain(targetName);
+  expect(stored).toContain(targetEmail);
+  await page.getByRole("button", { name: "按原请求重试" }).click();
   await expect(page.getByText("积分调整已写入账本，并已为目标用户创建持久化通知。")).toBeVisible();
   expect(keys).toHaveLength(2);
   expect(keys[1]).toBe(keys[0]);
 });
+}
 
 test("Console fails closed without the exact point-adjustment permission", async ({ page }) => {
   let writeAttempted = false;

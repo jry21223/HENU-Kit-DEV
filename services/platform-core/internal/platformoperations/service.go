@@ -19,6 +19,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/platform-core/internal/coordination"
+	"henukit.dev/platform-core/internal/securebox"
 	"henukit.dev/platform-core/internal/store"
 )
 
@@ -28,6 +29,7 @@ type Service struct {
 	redis           *redis.Client
 	verificationKey []byte
 	allowedDomains  map[string]struct{}
+	emailCodec      *securebox.Codec
 }
 
 var (
@@ -52,6 +54,7 @@ type Snapshot struct {
 type Account struct {
 	ID                    string        `json:"id"`
 	DisplayName           *string       `json:"display_name,omitempty"`
+	Email                 string        `json:"email"`
 	EmailVerified         bool          `json:"email_verified"`
 	Status                string        `json:"status"`
 	AuthorizationRevision int64         `json:"authorization_revision"`
@@ -75,6 +78,7 @@ type Session struct {
 	ID          string     `json:"id"`
 	UserID      string     `json:"user_id"`
 	DisplayName *string    `json:"display_name,omitempty"`
+	Email       string     `json:"email"`
 	Kind        string     `json:"kind"`
 	ClientID    *string    `json:"client_id,omitempty"`
 	LastSeenAt  time.Time  `json:"last_seen_at"`
@@ -111,6 +115,7 @@ type AuditEvent struct {
 	RequestID          string    `json:"request_id"`
 	ActorUserID        string    `json:"actor_user_id"`
 	DisplayName        *string   `json:"display_name,omitempty"`
+	Email              string    `json:"email"`
 	PermissionCode     string    `json:"permission_code"`
 	TargetKind         string    `json:"target_kind"`
 	TargetProductCode  *string   `json:"target_product_code,omitempty"`
@@ -133,7 +138,12 @@ type AccountLookup struct {
 type AccountLookupAccount struct {
 	ID          string  `json:"id"`
 	DisplayName *string `json:"display_name,omitempty"`
+	Email       string  `json:"email"`
 	Status      string  `json:"status"`
+}
+
+type IdentityResolution struct {
+	Identities []AccountLookupAccount `json:"identities"`
 }
 
 type OperationResult struct {
@@ -170,7 +180,8 @@ func New(queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Clie
 	for _, domain := range allowedDomains {
 		domains[strings.ToLower(strings.TrimSpace(domain))] = struct{}{}
 	}
-	return &Service{queries: queries, database: database, redis: redisClient, verificationKey: append([]byte(nil), verificationKey...), allowedDomains: domains}
+	emailCodec, _ := securebox.New(verificationKey, "email-identity")
+	return &Service{queries: queries, database: database, redis: redisClient, verificationKey: append([]byte(nil), verificationKey...), allowedDomains: domains, emailCodec: emailCodec}
 }
 
 func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -210,7 +221,11 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		Dependencies: Dependencies{Postgres: "ready", Redis: redisStatus}, GeneratedAt: time.Now().UTC(),
 	}
 	for _, row := range accountRows {
-		result.Accounts = append(result.Accounts, Account{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), EmailVerified: row.EmailVerified, Status: row.Status, AuthorizationRevision: row.AuthorizationRevision, CreatedAt: row.CreatedAt.Time, Grants: []AccessGrant{}})
+		email, err := s.openEmail(row.EmailCiphertext)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		result.Accounts = append(result.Accounts, Account{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), Email: email, EmailVerified: row.EmailVerified, Status: row.Status, AuthorizationRevision: row.AuthorizationRevision, CreatedAt: row.CreatedAt.Time, Grants: []AccessGrant{}})
 	}
 	accountIndexes := make(map[string]int, len(result.Accounts))
 	for index := range result.Accounts {
@@ -224,13 +239,21 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		result.Accounts[index].Grants = append(result.Accounts[index].Grants, AccessGrant{RoleCode: row.RoleCode, Scope: Scope{Kind: row.ScopeKind, ProductCode: textPointer(row.ProductCode), ResourceType: textPointer(row.ResourceType), ResourceID: textPointer(row.ResourceID)}})
 	}
 	for _, row := range sessionRows {
-		result.Sessions = append(result.Sessions, Session{ID: uuidString(row.ID), UserID: uuidString(row.UserID), DisplayName: textPointer(row.DisplayName), Kind: row.Kind, ClientID: textPointer(row.ClientID), LastSeenAt: row.LastSeenAt.Time, ExpiresAt: row.ExpiresAt.Time, RevokedAt: timePointer(row.RevokedAt)})
+		email, err := s.openOptionalEmail(row.EmailCiphertext)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		result.Sessions = append(result.Sessions, Session{ID: uuidString(row.ID), UserID: uuidString(row.UserID), DisplayName: textPointer(row.DisplayName), Email: email, Kind: row.Kind, ClientID: textPointer(row.ClientID), LastSeenAt: row.LastSeenAt.Time, ExpiresAt: row.ExpiresAt.Time, RevokedAt: timePointer(row.RevokedAt)})
 	}
 	for _, row := range inboxRows {
 		result.InboxItems = append(result.InboxItems, InboxItem{ID: uuidString(row.ID), SourceProductCode: row.SourceProductCode, SourceResourceType: row.SourceResourceType, SourceResourceID: row.SourceResourceID, SourceResourceURL: textPointer(row.SourceResourceUrl), OwnerUserID: uuidPointer(row.OwnerUserID), Priority: row.Priority, SLADueAt: timePointer(row.SlaDueAt), Status: row.Status, Version: row.Version, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time})
 	}
 	for _, row := range auditRows {
-		result.Audit = append(result.Audit, AuditEvent{RequestID: row.RequestID, ActorUserID: uuidString(row.ActorUserID), DisplayName: textPointer(row.DisplayName), PermissionCode: row.PermissionCode, TargetKind: row.TargetKind, TargetProductCode: textPointer(row.TargetProductCode), TargetResourceType: textPointer(row.TargetResourceType), TargetResourceID: textPointer(row.TargetResourceID), Decision: row.Decision, ReasonCode: row.ReasonCode, CreatedAt: row.CreatedAt.Time})
+		email, err := s.openOptionalEmail(row.EmailCiphertext)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		result.Audit = append(result.Audit, AuditEvent{RequestID: row.RequestID, ActorUserID: uuidString(row.ActorUserID), DisplayName: textPointer(row.DisplayName), Email: email, PermissionCode: row.PermissionCode, TargetKind: row.TargetKind, TargetProductCode: textPointer(row.TargetProductCode), TargetResourceType: textPointer(row.TargetResourceType), TargetResourceID: textPointer(row.TargetResourceID), Decision: row.Decision, ReasonCode: row.ReasonCode, CreatedAt: row.CreatedAt.Time})
 	}
 	return result, nil
 }
@@ -263,7 +286,61 @@ func (s *Service) LookupAccount(ctx context.Context, serviceID, email string) (A
 	if err != nil {
 		return AccountLookup{}, err
 	}
-	return AccountLookup{Account: &AccountLookupAccount{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), Status: row.Status}}, nil
+	resolvedEmail, err := s.openEmail(row.EmailCiphertext)
+	if err != nil {
+		return AccountLookup{}, err
+	}
+	return AccountLookup{Account: &AccountLookupAccount{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), Email: resolvedEmail, Status: row.Status}}, nil
+}
+
+func (s *Service) ResolveIdentities(ctx context.Context, userIDs []string) (IdentityResolution, error) {
+	if len(userIDs) == 0 || len(userIDs) > 100 {
+		return IdentityResolution{}, ErrInvalid
+	}
+	ids := make([]pgtype.UUID, 0, len(userIDs))
+	seen := make(map[uuid.UUID]struct{}, len(userIDs))
+	for _, rawID := range userIDs {
+		id, err := uuid.Parse(rawID)
+		if err != nil {
+			return IdentityResolution{}, ErrInvalid
+		}
+		if _, exists := seen[id]; exists {
+			return IdentityResolution{}, ErrInvalid
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, pgtype.UUID{Bytes: id, Valid: true})
+	}
+	rows, err := s.queries.ListConsoleUserIdentities(ctx, ids)
+	if err != nil {
+		return IdentityResolution{}, err
+	}
+	result := IdentityResolution{Identities: make([]AccountLookupAccount, 0, len(rows))}
+	for _, row := range rows {
+		email, err := s.openEmail(row.EmailCiphertext)
+		if err != nil {
+			return IdentityResolution{}, err
+		}
+		result.Identities = append(result.Identities, AccountLookupAccount{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), Email: email, Status: row.Status})
+	}
+	return result, nil
+}
+
+func (s *Service) openEmail(ciphertext []byte) (string, error) {
+	if s.emailCodec == nil {
+		return "", ErrDependency
+	}
+	plaintext, err := s.emailCodec.Open(ciphertext)
+	if err != nil || len(plaintext) == 0 {
+		return "", ErrDependency
+	}
+	return string(plaintext), nil
+}
+
+func (s *Service) openOptionalEmail(ciphertext []byte) (string, error) {
+	if len(ciphertext) == 0 {
+		return "", nil
+	}
+	return s.openEmail(ciphertext)
 }
 
 func (s *Service) rateLimited(ctx context.Context, serviceID string) (bool, error) {

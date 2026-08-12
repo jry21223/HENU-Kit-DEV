@@ -1,7 +1,8 @@
 -- name: ListPlatformOperationAccounts :many
-SELECT id, display_name, email_verified, status, authorization_revision, created_at
+SELECT users.id, users.display_name, identities.email_ciphertext, users.email_verified, users.status, users.authorization_revision, users.created_at
 FROM users
-ORDER BY created_at DESC, id
+JOIN email_identities AS identities ON identities.user_id = users.id
+ORDER BY users.created_at DESC, users.id
 LIMIT 20;
 
 -- name: ListPlatformOperationAccountGrants :many
@@ -18,10 +19,17 @@ ORDER BY grants.user_id, roles.code, grants.scope_kind,
          grants.resource_id NULLS FIRST;
 
 -- name: GetPlatformOperationAccountByEmailLookupHash :one
-SELECT users.id, users.display_name, users.status
+SELECT users.id, users.display_name, email_identities.email_ciphertext, users.status
 FROM email_identities
 JOIN users ON users.id = email_identities.user_id
 WHERE email_identities.email_lookup_hash = $1;
+
+-- name: ListConsoleUserIdentities :many
+SELECT users.id, users.display_name, email_identities.email_ciphertext, users.status
+FROM users
+JOIN email_identities ON email_identities.user_id = users.id
+WHERE users.id = ANY($1::uuid[])
+ORDER BY users.id;
 
 -- name: GetPlatformOperationSession :one
 SELECT id, user_id, revoked_at, expires_at
@@ -79,10 +87,11 @@ INSERT INTO platform_operations_audit_events (
 ) VALUES ($1, $2, $3, $4, $5, $6);
 
 -- name: ListPlatformOperationSessions :many
-SELECT sessions.id, sessions.user_id, users.display_name, sessions.kind,
+SELECT sessions.id, sessions.user_id, users.display_name, identities.email_ciphertext, sessions.kind,
        sessions.client_id, sessions.last_seen_at, sessions.expires_at, sessions.revoked_at
 FROM sessions
 LEFT JOIN users ON users.id = sessions.user_id
+LEFT JOIN email_identities AS identities ON identities.user_id = sessions.user_id
 ORDER BY sessions.created_at DESC, sessions.id
 LIMIT 20;
 
@@ -106,7 +115,7 @@ ORDER BY updated_at DESC, id
 LIMIT 20;
 
 -- name: ListPlatformOperationAuditEvents :many
-SELECT events.request_id, events.actor_user_id, users.display_name,
+SELECT events.request_id, events.actor_user_id, users.display_name, identities.email_ciphertext,
        events.permission_code, events.target_kind,
        events.target_product_code, events.target_resource_type,
        events.target_resource_id, events.decision, events.reason_code,
@@ -123,5 +132,6 @@ FROM (
     FROM platform_operations_audit_events
 ) AS events
 LEFT JOIN users ON users.id = events.actor_user_id
+LEFT JOIN email_identities AS identities ON identities.user_id = events.actor_user_id
 ORDER BY events.created_at DESC, events.request_id
 LIMIT 20;

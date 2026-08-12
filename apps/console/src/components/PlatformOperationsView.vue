@@ -14,24 +14,20 @@ const statuses = ref<Record<string, "active" | "suspended" | "deleted">>({});
 const grants = ref<Record<string, PlatformAccessGrantInput[]>>({});
 const confirmTarget = ref<string>();
 
-// display_name 契约：后端在账户/会话/审计行上提供可选 display_name（string，未设置时省略或 null）。
-// 消费必须防御（字段可能缺失或为 null，类型上尚未放行），故以 unknown 读取；
-// 兜底呈现全页一致：主文本「未设置姓名」+ 灰字小号「用户 #后四位」。
+// Platform Core owns both identity fields. Display names are optional for
+// legacy rows, while the verified email remains the stable human identifier.
 function personName(value: unknown) {
   const name = (value as { display_name?: unknown } | null | undefined)?.display_name;
   return typeof name === "string" && name.trim() ? name.trim() : "";
-}
-
-function hasDisplayName(value: unknown) {
-  return personName(value) !== "";
 }
 
 function personLabel(value: unknown) {
   return personName(value) || "未设置姓名";
 }
 
-function shortUserID(userID: string) {
-  return `用户 #${userID.slice(-4)}`;
+function personEmail(value: unknown) {
+  const email = (value as { email?: unknown } | null | undefined)?.email;
+  return typeof email === "string" && email.trim() ? email.trim() : "邮箱不可用";
 }
 
 function idempotencyKey(prefix: string) {
@@ -204,8 +200,8 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); });
           <template v-for="account in operations.accounts" :key="account.id">
             <article class="operation-row">
               <div class="account-access-editor">
-                <strong>{{ personLabel(account) }}</strong> <span v-if="!hasDisplayName(account)" class="text-xs text-muted-foreground">{{ shortUserID(account.id) }}</span>
-                <p>账户 {{ account.id }} · 授权版本 {{ account.authorization_revision }} · {{ account.email_verified ? "邮箱已验证" : "邮箱未验证" }}</p>
+                <strong>{{ personLabel(account) }}</strong>
+                <p class="break-all">{{ personEmail(account) }} · 授权版本 {{ account.authorization_revision }} · {{ account.email_verified ? "邮箱已验证" : "邮箱未验证" }}</p>
                 <div v-for="(grant, index) in grants[account.id]" :key="index" class="grant-editor">
                   <label>角色代码<input v-model="grant.role_code" :disabled="!canWrite" pattern="[a-z][a-z0-9-]+" /></label>
                   <label>权限范围<select v-model="grant.scope.kind" :disabled="!canWrite" @change="normalizeScope(grant)"><option value="platform">平台</option><option value="product">产品</option><option value="resource">资源</option></select></label>
@@ -230,13 +226,13 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); });
         </div>
       </section>
 
-      <section class="operation-panel" aria-labelledby="sessions-heading"><h2 id="sessions-heading">登录会话</h2><div class="operation-list"><article v-for="session in operations.sessions" :key="session.id" class="operation-row"><div><strong>{{ personLabel(session) }}</strong> <span v-if="!hasDisplayName(session)" class="text-xs text-muted-foreground">{{ shortUserID(session.user_id) }}</span><p>{{ sessionKindLabel(session.kind) }} · 会话 {{ session.id }} · 到期 {{ localDateTime(session.expires_at) }}</p></div><button v-if="canWrite" type="button" :disabled="Boolean(session.revoked_at)" @click="revoke(session.id)">{{ session.revoked_at ? "已撤销" : "撤销登录" }}</button><span v-else>只读权限</span></article></div></section>
+      <section class="operation-panel" aria-labelledby="sessions-heading"><h2 id="sessions-heading">登录会话</h2><div class="operation-list"><article v-for="session in operations.sessions" :key="session.id" class="operation-row"><div><strong>{{ personLabel(session) }}</strong><p class="break-all">{{ personEmail(session) }} · {{ sessionKindLabel(session.kind) }} · 到期 {{ localDateTime(session.expires_at) }}</p></div><button v-if="canWrite" type="button" :disabled="Boolean(session.revoked_at)" @click="revoke(session.id)">{{ session.revoked_at ? "已撤销" : "撤销登录" }}</button><span v-else>只读权限</span></article></div></section>
 
       <div class="operation-two-column">
         <section class="operation-panel"><h2>邮件基础设施</h2><dl class="mail-grid"><template v-for="(value, key) in operations.mail" :key="key"><dt>{{ mailLabel(key) }}</dt><dd>{{ value }}</dd></template></dl></section>
         <section class="operation-panel"><h2>运营收件箱</h2><article v-for="item in operations.inbox_items" :key="item.id" class="compact-row"><strong>{{ item.source_product_code }} / {{ item.source_resource_type }}</strong><span>{{ item.source_resource_id }} · {{ inboxStatusLabel(item.status) }} · v{{ item.version }}</span></article><p v-if="!operations.inbox_items.length">暂无引用项</p></section>
       </div>
-      <section class="operation-panel"><h2>授权审计</h2><article v-for="event in operations.audit" :key="event.request_id + event.created_at" class="compact-row"><strong>{{ decisionLabel(event.decision) }} · {{ event.permission_code }}</strong><span>{{ personLabel(event) }}<template v-if="!hasDisplayName(event)"> · {{ shortUserID(event.actor_user_id) }}</template> · {{ localDateTime(event.created_at) }} · 目标 {{ targetLabel(event) }}</span><span>原因：{{ reasonLabel(event.reason_code) }}<template v-if="unknownReason(event.reason_code)">（{{ event.reason_code }}）</template> · {{ event.request_id }}</span></article><p v-if="!operations.audit.length">暂无审计事件</p></section>
+      <section class="operation-panel"><h2>授权审计</h2><article v-for="event in operations.audit" :key="event.request_id + event.created_at" class="compact-row"><strong>{{ decisionLabel(event.decision) }} · {{ event.permission_code }}</strong><span class="break-all">{{ personLabel(event) }} · {{ personEmail(event) }} · {{ localDateTime(event.created_at) }} · 目标 {{ targetLabel(event) }}</span><span>原因：{{ reasonLabel(event.reason_code) }}<template v-if="unknownReason(event.reason_code)">（{{ event.reason_code }}）</template> · {{ event.request_id }}</span></article><p v-if="!operations.audit.length">暂无审计事件</p></section>
     </template>
   </section>
 </template>

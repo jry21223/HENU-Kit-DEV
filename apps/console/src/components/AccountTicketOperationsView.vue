@@ -231,6 +231,8 @@ watch(
             @click="openTicket(ticket.id)"
           >
             <div class="flex items-start justify-between gap-3"><strong>{{ ticket.title }}</strong><span class="shrink-0 rounded-full bg-muted px-2 py-1 text-xs">{{ statusLabel(ticket.status) }}</span></div>
+            <p class="mt-1 font-medium">{{ ticket.display_name || "未设置姓名" }}</p>
+            <p class="mt-1 break-all text-xs text-muted-foreground">{{ ticket.email || "邮箱不可用" }}</p>
             <p class="mt-1 break-all text-xs text-muted-foreground">{{ ticket.reference }}</p>
             <p class="mt-1 text-xs text-muted-foreground">更新于 {{ timestamp(ticket.updated_at) }}</p>
           </button>
@@ -244,7 +246,7 @@ watch(
         <div v-else-if="detailState === 'unavailable'" class="text-muted-foreground"><p>工单详情暂不可用。</p><Button class="mt-3" @click="selectedID && openTicket(selectedID)">重新加载</Button></div>
         <template v-else-if="detail">
           <div class="flex flex-wrap items-start justify-between gap-3">
-            <div><p class="eyebrow">{{ detail.ticket.reference }}</p><h2 id="account-ticket-detail-heading" class="mt-1 text-xl font-bold">{{ detail.ticket.title }}</h2></div>
+            <div><p class="eyebrow">{{ detail.ticket.reference }}</p><h2 id="account-ticket-detail-heading" class="mt-1 text-xl font-bold">{{ detail.ticket.title }}</h2><p class="mt-1 font-medium">{{ detail.ticket.display_name || "未设置姓名" }}</p><p class="break-all text-sm text-muted-foreground">{{ detail.ticket.email || "邮箱不可用" }}</p></div>
             <span class="rounded-full bg-muted px-3 py-1 text-sm">{{ statusLabel(detail.ticket.status) }}</span>
           </div>
           <p class="mt-2 text-sm text-muted-foreground">版本 {{ detail.ticket.version }} · 更新于 {{ timestamp(detail.ticket.updated_at) }}</p>

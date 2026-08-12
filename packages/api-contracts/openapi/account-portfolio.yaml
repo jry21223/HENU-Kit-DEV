@@ -440,7 +440,7 @@ paths:
           description: Durable support-ticket queue, possibly empty
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TicketsEnvelope' }
+              schema: { $ref: '#/components/schemas/ConsoleTicketsEnvelope' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/ReplayDetected' }
@@ -461,7 +461,7 @@ paths:
           description: Durable support-ticket detail
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TicketDetailEnvelope' }
+              schema: { $ref: '#/components/schemas/ConsoleTicketDetailEnvelope' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -490,7 +490,7 @@ paths:
           description: Updated support ticket after the operator reply or its idempotent retry
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TicketEnvelope' }
+              schema: { $ref: '#/components/schemas/ConsoleTicketEnvelope' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -519,7 +519,7 @@ paths:
           description: Updated support ticket after the lifecycle transition or its idempotent retry
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TicketEnvelope' }
+              schema: { $ref: '#/components/schemas/ConsoleTicketEnvelope' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -961,6 +961,58 @@ components:
         version: { type: integer, minimum: 1 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    ConsoleTicket:
+      type: object
+      required: [id, reference, user_id, title, category, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string, pattern: '^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' }
+        user_id: { type: string, format: uuid }
+        title: { type: string }
+        category: { type: string }
+        status: { type: string, enum: [open, in_progress, resolved] }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ConsoleTicketsEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [tickets]
+          properties:
+            tickets:
+              type: array
+              maxItems: 100
+              items: { $ref: '#/components/schemas/ConsoleTicket' }
+        request_id: { type: string }
+    ConsoleTicketEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [ticket]
+          properties:
+            ticket: { $ref: '#/components/schemas/ConsoleTicket' }
+        request_id: { type: string }
+    ConsoleTicketDetailEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [ticket, messages, events]
+          properties:
+            ticket: { $ref: '#/components/schemas/ConsoleTicket' }
+            messages:
+              type: array
+              items: { $ref: '#/components/schemas/TicketMessage' }
+            events:
+              type: array
+              items: { $ref: '#/components/schemas/TicketEvent' }
+        request_id: { type: string }
     TicketEnvelope:
       type: object
       required: [data, request_id]

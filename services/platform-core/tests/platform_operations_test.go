@@ -194,6 +194,7 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 			Accounts []struct {
 				ID                    string  `json:"id"`
 				DisplayName           *string `json:"display_name"`
+				Email                 string  `json:"email"`
 				Status                string  `json:"status"`
 				AuthorizationRevision int64   `json:"authorization_revision"`
 				Grants                []struct {
@@ -204,6 +205,7 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 				ID          string  `json:"id"`
 				UserID      string  `json:"user_id"`
 				DisplayName *string `json:"display_name"`
+				Email       string  `json:"email"`
 			} `json:"sessions"`
 			Mail struct {
 				Pending   int64 `json:"pending"`
@@ -218,6 +220,7 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 				RequestID      string  `json:"request_id"`
 				PermissionCode string  `json:"permission_code"`
 				DisplayName    *string `json:"display_name"`
+				Email          string  `json:"email"`
 			} `json:"audit"`
 			Dependencies struct {
 				Postgres string `json:"postgres"`
@@ -236,6 +239,9 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 	}
 	if envelope.Data.Accounts[0].DisplayName == nil || *envelope.Data.Accounts[0].DisplayName == "" {
 		t.Fatalf("snapshot account omitted display_name: %+v", envelope.Data.Accounts[0])
+	}
+	if envelope.Data.Accounts[0].Email == "" || envelope.Data.Sessions[0].Email == "" || envelope.Data.Audit[0].Email == "" {
+		t.Fatalf("snapshot omitted Platform Core-owned email: account=%+v session=%+v audit=%+v", envelope.Data.Accounts[0], envelope.Data.Sessions[0], envelope.Data.Audit[0])
 	}
 	if envelope.Data.Sessions[0].DisplayName == nil || *envelope.Data.Sessions[0].DisplayName == "" {
 		t.Fatalf("snapshot Session omitted display_name: %+v", envelope.Data.Sessions[0])

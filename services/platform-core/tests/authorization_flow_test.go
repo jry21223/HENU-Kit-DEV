@@ -27,6 +27,7 @@ import (
 
 	platformcore "henukit.dev/platform-core"
 	"henukit.dev/platform-core/internal/contract"
+	"henukit.dev/platform-core/internal/securebox"
 )
 
 const (
@@ -508,6 +509,10 @@ func seedIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	if _, err := pool.Exec(ctx, `INSERT INTO users (id, email_verified, status, display_name) VALUES ($1, true, 'active', 'OAuth 测试用户')`, userID); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
+	seedEmail := "oauth.test@henu.edu.cn"
+	if _, err := pool.Exec(ctx, `INSERT INTO email_identities (user_id, email_lookup_hash, email_ciphertext, verified_at) VALUES ($1, $2, $3, now())`, userID, lookupHash(seedEmail), sealTestEmail(t, seedEmail)); err != nil {
+		t.Fatalf("seed email identity: %v", err)
+	}
 	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ($1, $2)`, testClientID, []string{testRedirectURI}); err != nil {
 		t.Fatalf("seed client: %v", err)
 	}
@@ -517,6 +522,19 @@ func seedIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	if _, err := pool.Exec(ctx, `INSERT INTO sessions (id, user_id, kind, token_hash, expires_at) VALUES ($1, $2, 'core', $3, now() + interval '1 hour')`, sessionID, userID, tokenHash[:]); err != nil {
 		t.Fatalf("seed core session: %v", err)
 	}
+}
+
+func sealTestEmail(t *testing.T, email string) []byte {
+	t.Helper()
+	codec, err := securebox.New(testVerificationEncryptionKey, "email-identity")
+	if err != nil {
+		t.Fatalf("create email codec: %v", err)
+	}
+	ciphertext, err := codec.Seal([]byte(email))
+	if err != nil {
+		t.Fatalf("seal email identity: %v", err)
+	}
+	return ciphertext
 }
 
 func exchangeCode(t *testing.T, server *httptest.Server, code, verifier string) *http.Response {

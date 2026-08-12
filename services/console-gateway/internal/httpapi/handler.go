@@ -48,6 +48,7 @@ type platformClient interface {
 	UpdateAccess(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	OperationStatus(context.Context, string, string, string) (json.RawMessage, error)
 	AccountLookup(context.Context, string, []byte) (json.RawMessage, error)
+	UserIdentities(context.Context, string, string, []string) (json.RawMessage, error)
 	CheckNotice(context.Context, string, string) error
 	CheckLibrary(context.Context, string, string) error
 	CheckFood(context.Context, string, string) error
@@ -332,6 +333,9 @@ func (h *Handler) getAccountTickets(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	data, err := h.account.Tickets(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID)
+	if err == nil {
+		data, err = h.enrichTicketIdentities(request.Context(), value.ExchangeToken, "account.tickets.read", ticketQueueEnvelope, data)
+	}
 	h.writeAccountResult(writer, request, data, err)
 }
 
@@ -476,6 +480,9 @@ func (h *Handler) getAccountTicket(writer http.ResponseWriter, request *http.Req
 		return
 	}
 	data, err := h.account.Ticket(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "ticket_id"))
+	if err == nil {
+		data, err = h.enrichTicketIdentities(request.Context(), value.ExchangeToken, "account.tickets.read", ticketDetailEnvelope, data)
+	}
 	h.writeAccountResult(writer, request, data, err)
 }
 
@@ -494,6 +501,9 @@ func (h *Handler) replyAccountTicket(writer http.ResponseWriter, request *http.R
 		return
 	}
 	data, err := h.account.Reply(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "ticket_id"), request.Header.Get("Idempotency-Key"), body)
+	if err == nil {
+		data, err = h.enrichTicketIdentities(request.Context(), value.ExchangeToken, "account.tickets.reply", ticketCommandEnvelope, data)
+	}
 	h.writeAccountResult(writer, request, data, err)
 }
 
@@ -512,7 +522,115 @@ func (h *Handler) transitionAccountTicket(writer http.ResponseWriter, request *h
 		return
 	}
 	data, err := h.account.Transition(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "ticket_id"), request.Header.Get("Idempotency-Key"), body)
+	if err == nil {
+		data, err = h.enrichTicketIdentities(request.Context(), value.ExchangeToken, "account.tickets.transition", ticketCommandEnvelope, data)
+	}
 	h.writeAccountResult(writer, request, data, err)
+}
+
+type ticketEnvelopeKind uint8
+
+const (
+	ticketQueueEnvelope ticketEnvelopeKind = iota
+	ticketDetailEnvelope
+	ticketCommandEnvelope
+)
+
+type ticketQueueIdentityEnvelope struct {
+	Tickets []map[string]any `json:"tickets"`
+}
+
+type ticketDetailIdentityEnvelope struct {
+	Ticket   map[string]any  `json:"ticket"`
+	Messages json.RawMessage `json:"messages"`
+	Events   json.RawMessage `json:"events"`
+}
+
+type ticketCommandIdentityEnvelope struct {
+	Ticket map[string]any `json:"ticket"`
+}
+
+func (h *Handler) enrichTicketIdentities(ctx context.Context, exchangeToken, permission string, kind ticketEnvelopeKind, data json.RawMessage) (json.RawMessage, error) {
+	var tickets []map[string]any
+	var queue ticketQueueIdentityEnvelope
+	var detail ticketDetailIdentityEnvelope
+	var command ticketCommandIdentityEnvelope
+	switch kind {
+	case ticketQueueEnvelope:
+		if err := json.Unmarshal(data, &queue); err != nil {
+			return nil, err
+		}
+		tickets = queue.Tickets
+	case ticketDetailEnvelope:
+		if err := json.Unmarshal(data, &detail); err != nil {
+			return nil, err
+		}
+		tickets = []map[string]any{detail.Ticket}
+	case ticketCommandEnvelope:
+		if err := json.Unmarshal(data, &command); err != nil {
+			return nil, err
+		}
+		tickets = []map[string]any{command.Ticket}
+	default:
+		return nil, errors.New("unsupported ticket envelope")
+	}
+	userIDs := make([]string, 0, len(tickets))
+	seen := map[string]struct{}{}
+	for _, ticket := range tickets {
+		if rawID, ok := ticket["user_id"].(string); ok {
+			if _, exists := seen[rawID]; !exists {
+				seen[rawID] = struct{}{}
+				userIDs = append(userIDs, rawID)
+			}
+		}
+	}
+	if len(userIDs) == 0 {
+		return data, nil
+	}
+	raw, err := h.platform.UserIdentities(ctx, exchangeToken, permission, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		Identities []map[string]any `json:"identities"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	identities := make(map[string]map[string]any, len(result.Identities))
+	for _, identity := range result.Identities {
+		if id, ok := identity["id"].(string); ok {
+			identities[id] = identity
+		}
+	}
+	for _, ticket := range tickets {
+		rawID, ok := ticket["user_id"].(string)
+		if !ok {
+			continue
+		}
+		if identity := identities[rawID]; identity != nil {
+			if name, ok := identity["display_name"].(string); ok && strings.TrimSpace(name) != "" {
+				ticket["display_name"] = name
+			}
+			if email, ok := identity["email"].(string); ok && strings.TrimSpace(email) != "" {
+				ticket["email"] = email
+			}
+		}
+		delete(ticket, "user_id")
+	}
+	switch kind {
+	case ticketQueueEnvelope:
+		queue.Tickets = tickets
+		return json.Marshal(queue)
+	case ticketDetailEnvelope:
+		detail.Ticket = tickets[0]
+		return json.Marshal(detail)
+	case ticketCommandEnvelope:
+		command.Ticket = tickets[0]
+		return json.Marshal(command)
+	default:
+		return nil, errors.New("unsupported ticket envelope")
+	}
 }
 
 func (h *Handler) authorizeAccount(writer http.ResponseWriter, request *http.Request, permission string) (session.Value, bool) {
@@ -549,9 +667,9 @@ func (h *Handler) writeAccountOwnerResult(writer http.ResponseWriter, request *h
 		return
 	}
 	switch {
-	case errors.Is(err, accountportfolioapi.ErrUnauthorized):
+	case errors.Is(err, accountportfolioapi.ErrUnauthorized), errors.Is(err, platformcore.ErrUnauthorized):
 		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
-	case errors.Is(err, accountportfolioapi.ErrForbidden):
+	case errors.Is(err, accountportfolioapi.ErrForbidden), errors.Is(err, platformcore.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "暂无操作权限，请联系管理员")
 	case errors.Is(err, accountportfolioapi.ErrNotFound):
 		writeError(writer, request, http.StatusNotFound, messages.notFoundCode, messages.notFoundMessage)

@@ -17,6 +17,7 @@ type PendingCommand = {
   operatorID: string;
   input: ConsolePointAdjustmentRequest;
   key: string;
+  identity: { displayName?: string; email: string };
 };
 
 const targetEmail = ref("");
@@ -64,7 +65,7 @@ function restorePending(operatorID: string) {
   feedback.value = "";
   try {
     const stored = JSON.parse(sessionStorage.getItem(pendingStorageKey) ?? "null") as Partial<PendingCommand> | null;
-    if (!stored || stored.operatorID !== operatorID || typeof stored.key !== "string" || !stored.input || typeof stored.input !== "object" || !validInput(stored.input as ConsolePointAdjustmentRequest)) {
+    if (!stored || stored.operatorID !== operatorID || typeof stored.key !== "string" || !stored.input || typeof stored.input !== "object" || !validInput(stored.input as ConsolePointAdjustmentRequest) || !stored.identity || typeof stored.identity !== "object" || typeof stored.identity.email !== "string" || !stored.identity.email) {
       sessionStorage.removeItem(pendingStorageKey);
       return;
     }
@@ -153,7 +154,7 @@ async function finish(command: PendingCommand) {
     persistPending();
     feedback.value = "积分不足或数据有变化，未写入记录，请刷新后重试。";
   } else if (result.state === "unavailable") {
-    feedback.value = "结果还没确认，可点下方按钮按原请求重试。";
+    feedback.value = "结果还没确认；可对同一已确认目标按原请求重试，系统会避免重复执行。";
   } else {
     if (result.state === "signed_out" || result.state === "denied") persistPending(command);
     if (result.state === "signed_out") workspaceState.value = "signed_out";
@@ -173,8 +174,8 @@ async function finish(command: PendingCommand) {
 // account-name echo with the #238 write confirmation: it restates the target
 // name and the signed amount and states that the ledger entry is irreversible.
 // Cancel performs no write, and nothing is persisted before confirmation. The
-// pending retry record stores only the resolved account id inside the request,
-// never the lookup email.
+// pending retry record also stores the exact identity snapshot the operator
+// confirmed, so an unknown result can be retried without ambiguity.
 function requestAdjustment() {
   const input: ConsolePointAdjustmentRequest = {
     user_id: account.value?.id ?? "",
@@ -185,7 +186,7 @@ function requestAdjustment() {
     feedback.value = "请先查找并核对账户，再填写非零整数积分和不超过 1000 字的操作原因。";
     return;
   }
-  confirm.value = { operatorID: props.operatorID, input, key: operationKey() };
+  confirm.value = { operatorID: props.operatorID, input, key: operationKey(), identity: { displayName: account.value.display_name, email: account.value.email } };
 }
 
 // While the confirmation step is open, form submission (including Enter)
@@ -242,8 +243,8 @@ watch(
 
     <p v-if="feedback" class="operation-notice mt-5" role="status">
       {{ feedback }}
-      <span v-if="pending" class="mt-2 block text-sm">待确认操作：用户 <code>{{ pending.input.user_id }}</code> {{ pending.input.amount > 0 ? "增加" : "扣减" }} {{ formatPoints(Math.abs(pending.input.amount)) }} 积分。</span>
-      <Button v-if="pending && !busy" class="mt-3" @click="finish(pending)">确认并按原请求重试</Button>
+      <span v-if="pending" class="mt-2 block break-all text-sm">待重试操作：为「{{ accountName(pending.identity.displayName) }} · {{ pending.identity.email }}」{{ pending.input.amount > 0 ? "增加" : "扣减" }} {{ formatPoints(Math.abs(pending.input.amount)) }} 积分。这是刚才已确认的同一目标，重试会沿用原操作请求，系统会避免重复执行。</span>
+      <Button v-if="pending && !busy" class="mt-3" @click="finish(pending)">按原请求重试</Button>
     </p>
 
     <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在验证积分调整权限…</div>
@@ -263,7 +264,7 @@ watch(
           <Button type="button" :disabled="busy || !targetEmail.trim()" @click="lookupAccount">查找账户</Button>
         </div>
         <div v-if="lookupState === 'ready' && account" class="mt-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
-          已核对账户：<strong>{{ accountName(account.display_name) }}</strong>（{{ accountStatusLabel(account.status) }}）
+          已核对账户：<strong>{{ accountName(account.display_name) }}</strong><span class="break-all"> · {{ account.email }}</span>（{{ accountStatusLabel(account.status) }}）
         </div>
 
         <Label class="mt-4 grid gap-2">
@@ -278,7 +279,7 @@ watch(
         <div v-if="confirm && account" class="mt-4 rounded-md border border-border p-3" data-points-confirm-step>
           <p class="font-medium">确认写入这笔积分流水？</p>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            将向「{{ accountName(account.display_name) }}」{{ confirm.input.amount > 0 ? "增加" : "扣减" }} {{ formatPoints(Math.abs(confirm.input.amount)) }} 积分，写入不可撤销的积分流水，并向该用户发送通知。
+            将向「{{ accountName(account.display_name) }} · {{ account.email }}」{{ confirm.input.amount > 0 ? "增加" : "扣减" }} {{ formatPoints(Math.abs(confirm.input.amount)) }} 积分，写入不可撤销的积分流水，并向该用户发送通知。
           </p>
           <div class="mt-3 flex gap-3">
             <Button :disabled="busy" @click="confirmAdjustment">确认写入</Button>
@@ -297,7 +298,7 @@ watch(
         <template v-else-if="account">
           <p class="eyebrow">账户核对</p>
           <h2 id="account-points-result-heading" class="mt-1 text-xl font-bold">{{ accountName(account.display_name) }}</h2>
-          <p class="mt-1 text-sm text-muted-foreground">账户状态：{{ accountStatusLabel(account.status) }}。请核对姓名后再提交。</p>
+          <p class="mt-1 break-all text-sm text-muted-foreground">{{ account.email }} · 账户状态：{{ accountStatusLabel(account.status) }}。请核对姓名和邮箱后再提交。</p>
           <template v-if="adjustment">
             <div class="mt-5 flex flex-wrap items-start justify-between gap-3 border-t border-border pt-5">
               <div>

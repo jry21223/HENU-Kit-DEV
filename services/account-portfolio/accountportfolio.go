@@ -79,6 +79,7 @@ const (
 type ticketView struct {
 	ID        string    `json:"id"`
 	Reference string    `json:"reference"`
+	UserID    string    `json:"user_id,omitempty"`
 	Title     string    `json:"title"`
 	Category  string    `json:"category"`
 	Status    string    `json:"status"`
@@ -677,7 +678,7 @@ func (h *service) consoleTickets(w http.ResponseWriter, r *http.Request) {
 		Tickets []ticketView `json:"tickets"`
 	}{Tickets: make([]ticketView, 0)}
 	rows, err := h.database.Query(r.Context(), `
-		SELECT id, title, category, status, version, created_at, updated_at
+		SELECT id, user_id, title, category, status, version, created_at, updated_at
 		FROM account_portfolio_tickets
 		ORDER BY updated_at DESC, id DESC
 		LIMIT 100
@@ -689,7 +690,7 @@ func (h *service) consoleTickets(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	for rows.Next() {
 		var value ticketView
-		if err := rows.Scan(&value.ID, &value.Title, &value.Category, &value.Status, &value.Version, &value.CreatedAt, &value.UpdatedAt); err != nil {
+		if err := rows.Scan(&value.ID, &value.UserID, &value.Title, &value.Category, &value.Status, &value.Version, &value.CreatedAt, &value.UpdatedAt); err != nil {
 			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio Console queue is unavailable")
 			return
 		}
@@ -731,6 +732,7 @@ func (h *service) consoleTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio Console ticket is unavailable")
 		return
 	}
+	value.Ticket.UserID = value.UserID
 	writeData(w, r, http.StatusOK, struct {
 		Ticket   ticketView          `json:"ticket"`
 		Messages []ticketMessageView `json:"messages"`
@@ -825,6 +827,7 @@ func (h *service) replyConsoleTicket(w http.ResponseWriter, r *http.Request) {
 			return nil, failure
 		}
 		current.Ticket.Reference = ticketReference(current.Ticket.ID)
+		current.Ticket.UserID = current.UserID
 		return map[string]any{"ticket": current.Ticket}, nil
 	})
 	if failure != nil {
@@ -907,6 +910,7 @@ func (h *service) transitionConsoleTicket(w http.ResponseWriter, r *http.Request
 			return nil, failure
 		}
 		current.Ticket.Reference = ticketReference(current.Ticket.ID)
+		current.Ticket.UserID = current.UserID
 		return map[string]any{"ticket": current.Ticket}, nil
 	})
 	if failure != nil {

@@ -58,10 +58,31 @@ func (c *Client) OperationStatus(ctx context.Context, exchangeToken, operation, 
 }
 
 // AccountLookup resolves one exact full email to the owning Platform account.
-// The email travels only inside the request body and is never echoed back, so
+// The email travels only inside the request body and returned owner identity;
 // it cannot appear in a URL, query string, or gateway log line.
 func (c *Client) AccountLookup(ctx context.Context, exchangeToken string, body []byte) (json.RawMessage, error) {
 	return c.operationRequest(ctx, http.MethodPost, "/api/v1/platform-operations/account-lookups", exchangeToken, "", body)
+}
+
+func (c *Client) UserIdentities(ctx context.Context, exchangeToken, permission string, userIDs []string) (json.RawMessage, error) {
+	if len(userIDs) == 0 || len(userIDs) > 100 || (permission != "account.tickets.read" && permission != "account.tickets.reply" && permission != "account.tickets.transition") {
+		return nil, ErrInvalid
+	}
+	seen := make(map[string]struct{}, len(userIDs))
+	for _, userID := range userIDs {
+		if _, err := uuid.Parse(userID); err != nil {
+			return nil, ErrInvalid
+		}
+		if _, exists := seen[userID]; exists {
+			return nil, ErrInvalid
+		}
+		seen[userID] = struct{}{}
+	}
+	body, err := json.Marshal(map[string]any{"user_ids": userIDs, "permission_code": permission})
+	if err != nil {
+		return nil, err
+	}
+	return c.operationRequest(ctx, http.MethodPost, "/api/v1/console-user-identities/resolutions", exchangeToken, "", body)
 }
 
 func (c *Client) operationRequest(ctx context.Context, method, path, exchangeToken, idempotencyKey string, body []byte) (json.RawMessage, error) {

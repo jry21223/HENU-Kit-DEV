@@ -38,7 +38,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "103b62634296d48b673cc8c074c72469be4ec87f289f7f6af5fa8022cfcb05a7"
+	SourceSHA256                        = "641bbcab428cde499a48ecf940aa753592c5aab4e23a1426e14549b62917e527"
 )
 
 type ConsoleAccessContext struct {
@@ -71,14 +71,16 @@ type ConsoleAccountPointAdjustmentResult struct {
 }
 
 type ConsoleAccountTicket struct {
-	Category  string    `json:"category"`
-	CreatedAt time.Time `json:"created_at"`
-	ID        string    `json:"id"`
-	Reference string    `json:"reference"`
-	Status    string    `json:"status"`
-	Title     string    `json:"title"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Version   int64     `json:"version"`
+	Category    string    `json:"category"`
+	CreatedAt   time.Time `json:"created_at"`
+	DisplayName *string   `json:"display_name,omitempty"`
+	Email       *string   `json:"email,omitempty"`
+	ID          string    `json:"id"`
+	Reference   string    `json:"reference"`
+	Status      string    `json:"status"`
+	Title       string    `json:"title"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Version     int64     `json:"version"`
 }
 
 type ConsoleAccountTicketCommandResult struct {
@@ -112,6 +114,7 @@ type ConsoleAccountTicketQueue struct {
 
 type ConsoleLookedUpAccount struct {
 	DisplayName *string `json:"display_name,omitempty"`
+	Email       string  `json:"email"`
 	ID          string  `json:"id"`
 	Status      string  `json:"status"`
 }
@@ -510,6 +513,7 @@ type PlatformOperationsAccount struct {
 	AuthorizationRevision int64                      `json:"authorization_revision"`
 	CreatedAt             time.Time                  `json:"created_at"`
 	DisplayName           *string                    `json:"display_name,omitempty"`
+	Email                 string                     `json:"email"`
 	EmailVerified         bool                       `json:"email_verified"`
 	Grants                []PlatformAccessGrantInput `json:"grants"`
 	ID                    string                     `json:"id"`
@@ -521,6 +525,7 @@ type PlatformOperationsAuditEvent struct {
 	CreatedAt          time.Time `json:"created_at"`
 	Decision           string    `json:"decision"`
 	DisplayName        *string   `json:"display_name,omitempty"`
+	Email              *string   `json:"email,omitempty"`
 	PermissionCode     string    `json:"permission_code"`
 	ReasonCode         string    `json:"reason_code"`
 	RequestID          string    `json:"request_id"`
@@ -563,6 +568,7 @@ type PlatformOperationsMailStatus struct {
 type PlatformOperationsSession struct {
 	ClientID    *string    `json:"client_id,omitempty"`
 	DisplayName *string    `json:"display_name,omitempty"`
+	Email       string     `json:"email"`
 	ExpiresAt   time.Time  `json:"expires_at"`
 	ID          string     `json:"id"`
 	Kind        string     `json:"kind"`

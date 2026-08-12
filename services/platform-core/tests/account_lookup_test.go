@@ -35,10 +35,9 @@ func TestAccountLookupFindsAccountByExactEmailAndKeepsOneShapeForMisses(t *testi
 	if hitEnvelope.Account.DisplayName == nil || *hitEnvelope.Account.DisplayName != "目标运营员" {
 		t.Fatalf("lookup display_name = %v, want 目标运营员", hitEnvelope.Account.DisplayName)
 	}
-	if bytes.Contains(hitEnvelope.Raw, []byte("operator.target@henu.edu.cn")) || bytes.Contains(hitEnvelope.Raw, []byte("Operator.Target@HENU.EDU.CN")) {
-		t.Fatalf("lookup response leaked the email: %s", hitEnvelope.Raw)
+	if hitEnvelope.Account.Email != "operator.target@henu.edu.cn" {
+		t.Fatalf("lookup email = %q, want normalized owner email", hitEnvelope.Account.Email)
 	}
-
 	miss := sendLookupRequest(t, fixture, "nobody@henu.edu.cn")
 	missEnvelope := decodeLookupEnvelope(t, miss, http.StatusOK)
 	if missEnvelope.Account != nil {
@@ -49,6 +48,28 @@ func TestAccountLookupFindsAccountByExactEmailAndKeepsOneShapeForMisses(t *testi
 	}
 	if missEnvelope.RequestID == "" {
 		t.Fatal("lookup response omitted request_id")
+	}
+}
+
+func TestConsoleIdentityBatchUsesTicketPermissionAndOmitsMissingUsers(t *testing.T) {
+	fixture := newLookupFixture(t, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	targetID := seedLookupIdentity(t, fixture, "ticket.owner@henu.edu.cn", "工单用户")
+	grantAccountTicketRead(t, fixture)
+	missingID := uuid.NewString()
+	body := `{"user_ids":["` + targetID + `","` + missingID + `"],"permission_code":"account.tickets.read"}`
+	response := sendInboxRequest(t, fixture, http.MethodPost, "/api/v1/console-user-identities/resolutions", body, "", "nonce_"+uuid.NewString(), "req_ticket_identity_batch")
+	defer response.Body.Close()
+	payload, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("ticket identity batch = %d: %s, want 200", response.StatusCode, payload)
+	}
+	if !bytes.Contains(payload, []byte(`"email":"ticket.owner@henu.edu.cn"`)) || !bytes.Contains(payload, []byte(`"display_name":"工单用户"`)) || bytes.Contains(payload, []byte(missingID)) {
+		t.Fatalf("ticket identity batch did not return the owner identity or leaked a missing identity: %s", payload)
+	}
+	platformSnapshot := sendInboxRequest(t, fixture, http.MethodGet, "/api/v1/platform-operations", "", "", "nonce_"+uuid.NewString(), "req_ticket_identity_no_platform_read")
+	platformSnapshot.Body.Close()
+	if platformSnapshot.StatusCode != http.StatusForbidden {
+		t.Fatalf("ticket-only operator unexpectedly gained platform.operations.read: %d", platformSnapshot.StatusCode)
 	}
 }
 
@@ -151,6 +172,7 @@ type lookupEnvelope struct {
 	Account   *struct {
 		ID          string  `json:"id"`
 		DisplayName *string `json:"display_name"`
+		Email       string  `json:"email"`
 		Status      string  `json:"status"`
 	} `json:"account"`
 }
@@ -214,7 +236,7 @@ func strconvQuote(value string) string {
 	return string(encoded)
 }
 
-func seedLookupIdentity(t *testing.T, fixture inboxFixture, email, displayName string) {
+func seedLookupIdentity(t *testing.T, fixture inboxFixture, email, displayName string) string {
 	t.Helper()
 	ctx := context.Background()
 	userID := uuid.New()
@@ -226,9 +248,30 @@ func seedLookupIdentity(t *testing.T, fixture inboxFixture, email, displayName s
 	}
 	if _, err := fixture.pool.Exec(ctx, `
 		INSERT INTO email_identities (user_id, email_lookup_hash, email_ciphertext, verified_at)
-		VALUES ($1, $2, decode(repeat('aa', 40), 'hex'), now())
-	`, userID, hash); err != nil {
+		VALUES ($1, $2, $3, now())
+	`, userID, hash, sealTestEmail(t, email)); err != nil {
 		t.Fatalf("seed lookup identity: %v", err)
+	}
+	return userID.String()
+}
+
+func grantAccountTicketRead(t *testing.T, fixture inboxFixture) {
+	t.Helper()
+	ctx := context.Background()
+	roleID := uuid.New()
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO permission_codes (code, description) VALUES ('account.tickets.read', 'Read Account tickets') ON CONFLICT DO NOTHING`, nil},
+		{`INSERT INTO authorization_roles (id, code, display_name) VALUES ($1, 'account-ticket-operator', 'Account ticket operator')`, []any{roleID}},
+		{`INSERT INTO role_permissions (role_id, permission_code) VALUES ($1, 'account.tickets.read')`, []any{roleID}},
+		{`INSERT INTO user_role_grants (user_id, role_id, scope_kind, product_code) VALUES ($1, $2, 'product', 'account-portfolio')`, []any{fixture.userID, roleID}},
+	}
+	for _, statement := range statements {
+		if _, err := fixture.pool.Exec(ctx, statement.query, statement.args...); err != nil {
+			t.Fatalf("grant Account ticket read: %v", err)
+		}
 	}
 }
 

@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 103b62634296d48b673cc8c074c72469be4ec87f289f7f6af5fa8022cfcb05a7); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 641bbcab428cde499a48ecf940aa753592c5aab4e23a1426e14549b62917e527); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -31,6 +31,8 @@ export interface ConsoleAccountPointAdjustmentResult {
 export interface ConsoleAccountTicket {
   category: string;
   created_at: string;
+  display_name?: string;
+  email?: string;
   id: string;
   reference: string;
   status: "open" | "in_progress" | "resolved";
@@ -70,6 +72,7 @@ export interface ConsoleAccountTicketQueue {
 
 export interface ConsoleLookedUpAccount {
   display_name?: string;
+  email: string;
   id: string;
   status: "active" | "suspended" | "deleted";
 }
@@ -468,6 +471,7 @@ export interface PlatformOperationsAccount {
   authorization_revision: number;
   created_at: string;
   display_name?: string;
+  email: string;
   email_verified: boolean;
   grants: Array<PlatformAccessGrantInput>;
   id: string;
@@ -479,6 +483,7 @@ export interface PlatformOperationsAuditEvent {
   created_at: string;
   decision: "allowed" | "denied";
   display_name?: string;
+  email?: string;
   permission_code: string;
   reason_code: string;
   request_id: string;
@@ -521,6 +526,7 @@ export interface PlatformOperationsMailStatus {
 export interface PlatformOperationsSession {
   client_id?: string;
   display_name?: string;
+  email: string;
   expires_at: string;
   id: string;
   kind: "core" | "client_exchange";
@@ -610,7 +616,7 @@ function isConsoleAccountPointAdjustmentResult(value: unknown): value is Console
 }
 
 function isConsoleAccountTicket(value: unknown): value is ConsoleAccountTicket {
-  return isRecord(value) && "category" in value && typeof value["category"] === "string" && value["category"].length <= 80 && new RegExp("^[a-z][a-z0-9_-]*$").test(value["category"]) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["category","created_at","id","reference","status","title","updated_at","version"].includes(key));
+  return isRecord(value) && "category" in value && typeof value["category"] === "string" && value["category"].length <= 80 && new RegExp("^[a-z][a-z0-9_-]*$").test(value["category"]) && "created_at" in value && isDateTime(value["created_at"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && (!("email" in value) || typeof value["email"] === "string" && value["email"].length <= 320) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["category","created_at","display_name","email","id","reference","status","title","updated_at","version"].includes(key));
 }
 
 function isConsoleAccountTicketCommandResult(value: unknown): value is ConsoleAccountTicketCommandResult {
@@ -634,7 +640,7 @@ function isConsoleAccountTicketQueue(value: unknown): value is ConsoleAccountTic
 }
 
 function isConsoleLookedUpAccount(value: unknown): value is ConsoleLookedUpAccount {
-  return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","id","status"].includes(key));
+  return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","email","id","status"].includes(key));
 }
 
 function isConsoleMembershipMutationRequest(value: unknown): value is ConsoleMembershipMutationRequest {
@@ -854,11 +860,11 @@ function isPlatformOperationResult(value: unknown): value is PlatformOperationRe
 }
 
 function isPlatformOperationsAccount(value: unknown): value is PlatformOperationsAccount {
-  return isRecord(value) && "authorization_revision" in value && typeof value["authorization_revision"] === "number" && Number.isSafeInteger(value["authorization_revision"]) && value["authorization_revision"] >= 1 && "created_at" in value && isDateTime(value["created_at"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email_verified" in value && typeof value["email_verified"] === "boolean" && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["authorization_revision","created_at","display_name","email_verified","grants","id","status"].includes(key));
+  return isRecord(value) && "authorization_revision" in value && typeof value["authorization_revision"] === "number" && Number.isSafeInteger(value["authorization_revision"]) && value["authorization_revision"] >= 1 && "created_at" in value && isDateTime(value["created_at"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "email_verified" in value && typeof value["email_verified"] === "boolean" && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["authorization_revision","created_at","display_name","email","email_verified","grants","id","status"].includes(key));
 }
 
 function isPlatformOperationsAuditEvent(value: unknown): value is PlatformOperationsAuditEvent {
-  return isRecord(value) && "actor_user_id" in value && isUUID(value["actor_user_id"]) && "created_at" in value && isDateTime(value["created_at"]) && "decision" in value && typeof value["decision"] === "string" && ["allowed","denied"].includes(value["decision"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "permission_code" in value && typeof value["permission_code"] === "string" && "reason_code" in value && typeof value["reason_code"] === "string" && "request_id" in value && typeof value["request_id"] === "string" && "target_kind" in value && typeof value["target_kind"] === "string" && ["platform","product","resource"].includes(value["target_kind"]) && (!("target_product_code" in value) || typeof value["target_product_code"] === "string") && (!("target_resource_id" in value) || typeof value["target_resource_id"] === "string") && (!("target_resource_type" in value) || typeof value["target_resource_type"] === "string") && Object.keys(value).every((key) => ["actor_user_id","created_at","decision","display_name","permission_code","reason_code","request_id","target_kind","target_product_code","target_resource_id","target_resource_type"].includes(key));
+  return isRecord(value) && "actor_user_id" in value && isUUID(value["actor_user_id"]) && "created_at" in value && isDateTime(value["created_at"]) && "decision" in value && typeof value["decision"] === "string" && ["allowed","denied"].includes(value["decision"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && (!("email" in value) || typeof value["email"] === "string" && value["email"].length <= 320) && "permission_code" in value && typeof value["permission_code"] === "string" && "reason_code" in value && typeof value["reason_code"] === "string" && "request_id" in value && typeof value["request_id"] === "string" && "target_kind" in value && typeof value["target_kind"] === "string" && ["platform","product","resource"].includes(value["target_kind"]) && (!("target_product_code" in value) || typeof value["target_product_code"] === "string") && (!("target_resource_id" in value) || typeof value["target_resource_id"] === "string") && (!("target_resource_type" in value) || typeof value["target_resource_type"] === "string") && Object.keys(value).every((key) => ["actor_user_id","created_at","decision","display_name","email","permission_code","reason_code","request_id","target_kind","target_product_code","target_resource_id","target_resource_type"].includes(key));
 }
 
 function isPlatformOperationsDependencies(value: unknown): value is PlatformOperationsDependencies {
@@ -874,7 +880,7 @@ function isPlatformOperationsMailStatus(value: unknown): value is PlatformOperat
 }
 
 function isPlatformOperationsSession(value: unknown): value is PlatformOperationsSession {
-  return isRecord(value) && (!("client_id" in value) || typeof value["client_id"] === "string") && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "expires_at" in value && isDateTime(value["expires_at"]) && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["core","client_exchange"].includes(value["kind"]) && "last_seen_at" in value && isDateTime(value["last_seen_at"]) && (!("revoked_at" in value) || isDateTime(value["revoked_at"])) && "user_id" in value && isUUID(value["user_id"]) && Object.keys(value).every((key) => ["client_id","display_name","expires_at","id","kind","last_seen_at","revoked_at","user_id"].includes(key));
+  return isRecord(value) && (!("client_id" in value) || typeof value["client_id"] === "string") && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "expires_at" in value && isDateTime(value["expires_at"]) && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["core","client_exchange"].includes(value["kind"]) && "last_seen_at" in value && isDateTime(value["last_seen_at"]) && (!("revoked_at" in value) || isDateTime(value["revoked_at"])) && "user_id" in value && isUUID(value["user_id"]) && Object.keys(value).every((key) => ["client_id","display_name","email","expires_at","id","kind","last_seen_at","revoked_at","user_id"].includes(key));
 }
 
 function isPlatformOperationsSnapshot(value: unknown): value is PlatformOperationsSnapshot {

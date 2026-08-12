@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -47,6 +48,11 @@ type fakePlatform struct {
 	accountLookup      json.RawMessage
 	accountLookupErr   error
 	accountLookupCalls int
+	identityErr        error
+	identityCalls      int
+	identityPermission string
+	identityUserIDs    []string
+	missingIdentityID  string
 }
 
 type fakeOverview struct{}
@@ -214,6 +220,27 @@ func (fake *fakePlatform) CheckPlatformOperationsWrite(_ context.Context, token 
 		return platformcore.ErrUnauthorized
 	}
 	return fake.checkErr
+}
+
+func (fake *fakePlatform) UserIdentities(_ context.Context, token, permission string, userIDs []string) (json.RawMessage, error) {
+	if token != fake.exchange.ExchangeToken {
+		return nil, platformcore.ErrUnauthorized
+	}
+	fake.identityCalls++
+	fake.identityPermission = permission
+	fake.identityUserIDs = append([]string(nil), userIDs...)
+	if fake.identityErr != nil {
+		return nil, fake.identityErr
+	}
+	identities := make([]map[string]any, 0, len(userIDs))
+	for _, userID := range userIDs {
+		if userID == fake.missingIdentityID {
+			continue
+		}
+		identities = append(identities, map[string]any{"id": userID, "display_name": "测试用户", "email": "student@henu.edu.cn", "status": "active"})
+	}
+	payload, _ := json.Marshal(map[string]any{"identities": identities})
+	return payload, nil
 }
 
 func (fake *fakePlatform) CheckNotice(_ context.Context, token, _ string) error {
@@ -452,9 +479,9 @@ func TestAccountTicketForwardingUsesExactPermissionAndServerSessionOperator(t *t
 	token := "exchange_token_with_at_least_32_characters"
 	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
 	owner := &fakeAccountPortfolio{
-		queue:  json.RawMessage(`{"tickets":[]}`),
-		detail: json.RawMessage(`{"ticket":{"id":"22222222-2222-4222-8222-222222222222","reference":"HKT-22222222-2222-4222-8222-222222222222","title":"Need help","category":"account","status":"open","version":1,"created_at":"2026-07-28T00:00:00Z","updated_at":"2026-07-28T00:00:00Z"},"messages":[],"events":[]}`),
-		result: json.RawMessage(`{"ticket":{"id":"22222222-2222-4222-8222-222222222222","reference":"HKT-22222222-2222-4222-8222-222222222222","title":"Need help","category":"account","status":"open","version":1,"created_at":"2026-07-28T00:00:00Z","updated_at":"2026-07-28T00:00:00Z"}}`),
+		queue:  json.RawMessage(`{"tickets":[{"id":"22222222-2222-4222-8222-222222222222","reference":"HKT-22222222-2222-4222-8222-222222222222","user_id":"171f1c6f-7b10-4c92-91a2-b39bf5af5302","title":"Need help","category":"account","status":"open","version":1,"created_at":"2026-07-28T00:00:00Z","updated_at":"2026-07-28T00:00:00Z"}]}`),
+		detail: json.RawMessage(`{"ticket":{"id":"22222222-2222-4222-8222-222222222222","reference":"HKT-22222222-2222-4222-8222-222222222222","user_id":"171f1c6f-7b10-4c92-91a2-b39bf5af5302","title":"Need help","category":"account","status":"open","version":1,"created_at":"2026-07-28T00:00:00Z","updated_at":"2026-07-28T00:00:00Z"},"messages":[{"body":"diagnostic metadata","metadata":{"user_id":"nested-diagnostic-id"}}],"events":[]}`),
+		result: json.RawMessage(`{"ticket":{"id":"22222222-2222-4222-8222-222222222222","reference":"HKT-22222222-2222-4222-8222-222222222222","user_id":"171f1c6f-7b10-4c92-91a2-b39bf5af5302","title":"Need help","category":"account","status":"open","version":1,"created_at":"2026-07-28T00:00:00Z","updated_at":"2026-07-28T00:00:00Z"}}`),
 	}
 	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
 	server := httptest.NewTLSServer(handler)
@@ -468,9 +495,13 @@ func TestAccountTicketForwardingUsesExactPermissionAndServerSessionOperator(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
+	queuePayload, _ := io.ReadAll(response.Body)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || owner.actor != userID {
 		t.Fatalf("Account ticket queue status/actor=%d/%s", response.StatusCode, owner.actor)
+	}
+	if !strings.Contains(string(queuePayload), `"display_name":"测试用户"`) || !strings.Contains(string(queuePayload), `"email":"student@henu.edu.cn"`) || strings.Contains(string(queuePayload), `"user_id"`) {
+		t.Fatalf("Account ticket queue did not replace the owner resource id with Platform Core identity: %s", queuePayload)
 	}
 
 	detail, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/account/tickets/22222222-2222-4222-8222-222222222222", nil)
@@ -479,9 +510,13 @@ func TestAccountTicketForwardingUsesExactPermissionAndServerSessionOperator(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
+	detailPayload, _ := io.ReadAll(response.Body)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("Account ticket detail = %d", response.StatusCode)
+	}
+	if !strings.Contains(string(detailPayload), `"user_id":"nested-diagnostic-id"`) || strings.Contains(string(detailPayload), `"user_id":"`+userID+`"`) {
+		t.Fatalf("Account ticket detail must replace only the explicit ticket owner identity: %s", detailPayload)
 	}
 
 	replyRaw := "{\n  \"body\": \"We are investigating.\", \"expected_version\": 1\n}"
@@ -513,6 +548,69 @@ func TestAccountTicketForwardingUsesExactPermissionAndServerSessionOperator(t *t
 	wantPermissions := []string{"account.tickets.read", "account.tickets.read", "account.tickets.reply", "account.tickets.transition"}
 	if strings.Join(platform.accountPermissions, ",") != strings.Join(wantPermissions, ",") {
 		t.Fatalf("Account permission checks=%v, want %v", platform.accountPermissions, wantPermissions)
+	}
+	platform.identityErr = platformcore.ErrUnauthorized
+	expired, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/account/tickets", nil)
+	expired.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err = server.Client().Do(expired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expired identity lookup status=%d, want 401", response.StatusCode)
+	}
+}
+
+func TestAccountTicketQueueBatchesOneHundredIdentitiesAndKeepsMissingNeutral(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	operatorID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	missingID := "10000000-0000-4000-8000-000000000099"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}, missingIdentityID: missingID}
+	tickets := make([]map[string]any, 0, 100)
+	for index := 0; index < 100; index++ {
+		tickets = append(tickets, map[string]any{
+			"id": fmt.Sprintf("20000000-0000-4000-8000-%012d", index), "reference": fmt.Sprintf("HKT-20000000-0000-4000-8000-%012d", index),
+			"user_id": fmt.Sprintf("10000000-0000-4000-8000-%012d", index), "title": "Need help", "category": "account", "status": "open", "version": 1,
+			"created_at": "2026-07-28T00:00:00Z", "updated_at": "2026-07-28T00:00:00Z",
+		})
+	}
+	queue, _ := json.Marshal(map[string]any{"tickets": tickets})
+	owner := &fakeAccountPortfolio{queue: queue}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: operatorID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/account/tickets", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	payload, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK || platform.identityCalls != 1 || platform.identityPermission != "account.tickets.read" || len(platform.identityUserIDs) != 100 {
+		t.Fatalf("ticket identity batch status/calls/permission/ids=%d/%d/%s/%d: %s", response.StatusCode, platform.identityCalls, platform.identityPermission, len(platform.identityUserIDs), payload)
+	}
+	if strings.Contains(string(payload), `"user_id"`) {
+		t.Fatalf("browser queue leaked owner resource ids: %s", payload)
+	}
+	var envelope struct {
+		Data struct {
+			Tickets []map[string]any `json:"tickets"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil || len(envelope.Data.Tickets) != 100 {
+		t.Fatalf("decode 100-ticket queue: err=%v body=%s", err, payload)
+	}
+	missing := envelope.Data.Tickets[99]
+	if _, ok := missing["display_name"]; ok {
+		t.Fatalf("Gateway manufactured a missing display name: %+v", missing)
+	}
+	if _, ok := missing["email"]; ok {
+		t.Fatalf("Gateway manufactured a missing email: %+v", missing)
 	}
 }
 
