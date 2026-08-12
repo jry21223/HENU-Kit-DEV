@@ -55,6 +55,7 @@ watcher="${HENUKIT_WATCHER:-/usr/local/sbin/watch-henukit-actions}"
 env_file="${HENUKIT_ENV_FILE:-}"
 token_file="${GH_TOKEN_FILE:-/etc/henukit/github-actions-read.token}"
 release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
+trust_anchor="${HENUKIT_TRUST_ANCHOR:-/}"
 epay_ssh_target="${HENUKIT_EPAY_GATEWAY_SSH_TARGET:-root@metaview.top}"
 epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
 
@@ -88,15 +89,106 @@ GH_TOKEN="$(tr -d '\r\n' < "$token_file")"
 [[ -n "$GH_TOKEN" ]] || die "GitHub token file is empty"
 export GH_TOKEN
 
-install -d -m 0700 "$state_root" "$state_root/approvals" "$state_root/prepared"
+trusted_private_directory() {
+  local path="$1" parent mode owner
+  [[ "$path" == /* && "$trust_anchor" == /* ]] || return 1
+  [[ -d "$path" && ! -L "$path" ]] || return 1
+  mode="$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")"
+  owner="$(stat -c '%u' "$path" 2>/dev/null || stat -f '%u' "$path")"
+  [[ "$owner" == "$(id -u)" ]] || return 1
+  (( (8#$mode & 8#077) == 0 )) || return 1
+  [[ "$path" == "$trust_anchor" ]] && return 0
+  parent="$(dirname "$path")"
+  while :; do
+    [[ -d "$parent" && ! -L "$parent" ]] || return 1
+    mode="$(stat -c '%a' "$parent" 2>/dev/null || stat -f '%Lp' "$parent")"
+    owner="$(stat -c '%u' "$parent" 2>/dev/null || stat -f '%u' "$parent")"
+    [[ "$owner" == "$(id -u)" ]] || return 1
+    (( (8#$mode & 8#022) == 0 )) || return 1
+    [[ "$parent" == "$trust_anchor" ]] && return 0
+    [[ "$parent" != "/" ]] || return 1
+    parent="$(dirname "$parent")"
+  done
+}
+
+trusted_nonwritable_directory_chain() {
+  local parent="$1" mode owner
+  while :; do
+    [[ -d "$parent" && ! -L "$parent" ]] || return 1
+    mode="$(stat -c '%a' "$parent" 2>/dev/null || stat -f '%Lp' "$parent")"
+    owner="$(stat -c '%u' "$parent" 2>/dev/null || stat -f '%u' "$parent")"
+    [[ "$owner" == "$(id -u)" ]] || return 1
+    (( (8#$mode & 8#022) == 0 )) || return 1
+    [[ "$parent" == "$trust_anchor" ]] && return 0
+    [[ "$parent" != "/" ]] || return 1
+    parent="$(dirname "$parent")"
+  done
+}
+
+for directory in "$state_root" "$state_root/approvals" "$state_root/prepared"; do
+  if [[ ! -e "$directory" ]]; then
+    trusted_nonwritable_directory_chain "$(dirname "$directory")" ||
+      die "cannot create release state below an untrusted parent chain: $directory"
+    install -d -m 0700 "$directory"
+  fi
+  trusted_private_directory "$directory" ||
+    die "release state directory is not owned by the release user with a trusted private parent chain: $directory"
+done
 approval="$state_root/approvals/$release_sha"
 prepared="$state_root/prepared/$release_sha"
+recovery_binding="$state_root/prepared/${release_sha}.recovery-baseline"
 active="$state_root/last-activated-sha"
+resume_existing_approval=0
+
+validate_private_file() {
+  local path="$1" label="$2" mode owner
+  [[ -f "$path" && -r "$path" && ! -L "$path" ]] || die "$label is missing or untrusted"
+  mode="$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")"
+  owner="$(stat -c '%u' "$path" 2>/dev/null || stat -f '%u' "$path")"
+  [[ "$mode" == "600" || "$mode" == "400" ]] || die "$label must use mode 0600 or 0400"
+  [[ "$owner" == "$(id -u)" ]] || die "$label must be owned by the release user"
+}
+
+validate_prepared_evidence() {
+  local prepared_backup prepared_metadata
+  validate_private_file "$prepared" "prepared backup evidence"
+  [[ -s "$prepared" ]] || die "prepared backup evidence is empty"
+  prepared_backup="$(tr -d '\r\n' < "$prepared")"
+  [[ "$prepared_backup" =~ ^/[A-Za-z0-9_./-]+$ && "$prepared_backup" != "/" ]] ||
+    die "prepared backup evidence contains an invalid backup path"
+  prepared_metadata="${prepared_backup}.meta"
+  validate_private_file "$prepared_backup" "prepared backup"
+  validate_private_file "$prepared_metadata" "prepared backup metadata"
+  [[ "$(grep -c '^release_sha=' "$prepared_metadata")" == "1" ]] ||
+    die "prepared backup metadata must contain exactly one release SHA"
+  [[ "$(sed -n 's/^release_sha=//p' "$prepared_metadata")" == "$release_sha" ]] ||
+    die "prepared backup evidence is not bound to release $release_sha"
+}
+
+validate_existing_approval() {
+  validate_private_file "$approval" "existing approval"
+  [[ "$(tr -d '\r\n' < "$approval")" == "$release_sha" ]] ||
+    die "existing approval is not bound to release $release_sha"
+}
+
+validate_recovery_binding() {
+  validate_private_file "$recovery_binding" "recovery approval binding"
+  [[ "$(tr -d '\r\n' < "$recovery_binding")" == "$recovery_baseline_sha" ]] ||
+    die "existing approval is not bound to recovery baseline $recovery_baseline_sha"
+}
 
 blocker_state="$(gh api "repos/$repo/issues/$blocker_issue" --jq '.state')"
 [[ "$blocker_state" == "closed" ]] || die "blocker issue #$blocker_issue must be closed before Account Portfolio deployment"
 
-[[ ! -e "$approval" ]] || die "an approval already exists for release $release_sha"
+if [[ -e "$approval" ]]; then
+  [[ "$release_source" == "local" && -n "$recovery_baseline_sha" ]] ||
+    die "an approval already exists for release $release_sha"
+  validate_existing_approval
+  validate_prepared_evidence
+  validate_recovery_binding
+  resume_existing_approval=1
+  printf '%s: resuming valid unconsumed approval for release %s\n' "$program" "$release_sha"
+fi
 
 verify_release_current() {
   local branch_head run_row run_sha run_status run_conclusion
@@ -162,7 +254,8 @@ set_account_env_value() {
   mv "$incoming" "$env_file"
 }
 
-approval_incoming="$state_root/approvals/.${release_sha}.$$"
+approval_incoming=""
+recovery_binding_incoming=""
 remote_stage=""
 environment_backup="$(dirname "$env_file")/.henukit-env.backup.$$"
 cp -p "$env_file" "$environment_backup"
@@ -171,6 +264,9 @@ export HENUKIT_ROLLBACK_ENV_FILE="$environment_backup"
 cleanup() {
   if [[ -n "${approval_incoming:-}" && -f "$approval_incoming" ]]; then
     rm -f -- "$approval_incoming"
+  fi
+  if [[ -n "${recovery_binding_incoming:-}" && -f "$recovery_binding_incoming" ]]; then
+    rm -f -- "$recovery_binding_incoming"
   fi
   if [[ "$remote_stage" =~ ^/tmp/henukit-epay-release\.[A-Za-z0-9]+$ ]]; then
     ssh "$epay_ssh_target" "rm -rf -- '$remote_stage'" >/dev/null 2>&1 || true
@@ -187,21 +283,15 @@ set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL "https://henukit.cn/a
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL "https://henukit.cn/account/membership" || die "could not configure the EasyPay return URL"
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_ENABLED 1 || die "could not atomically enable Account Portfolio EasyPay"
 
-# No approval exists during this first pass, so the watcher can only download,
-# validate Account's mock-free manifest and production env, then backup and
-# restore-test both databases. Any failure exits before an approval is written.
-"$watcher" "${watcher_args[@]}"
-[[ -s "$prepared" ]] || die "watcher did not prepare verified backup evidence for release $release_sha"
-prepared_backup="$(tr -d '\r\n' < "$prepared")"
-[[ "$prepared_backup" =~ ^/[A-Za-z0-9_./-]+$ && "$prepared_backup" != "/" ]] ||
-  die "prepared backup evidence contains an invalid backup path"
-prepared_metadata="${prepared_backup}.meta"
-[[ -f "$prepared_metadata" && -r "$prepared_metadata" && ! -L "$prepared_metadata" ]] ||
-  die "prepared backup evidence has no readable metadata"
-[[ "$(grep -c '^release_sha=' "$prepared_metadata")" == "1" ]] ||
-  die "prepared backup metadata must contain exactly one release SHA"
-[[ "$(sed -n 's/^release_sha=//p' "$prepared_metadata")" == "$release_sha" ]] ||
-  die "prepared backup evidence is not bound to release $release_sha"
+# With no approval, the first pass can only verify artifacts and restore-test
+# backups. An exact local recovery may resume an approval left unconsumed by a
+# fail-closed pre-load rejection, but only after independently validating the
+# approval and its SHA-bound prepared evidence above.
+if [[ "$resume_existing_approval" -eq 0 ]]; then
+  "$watcher" "${watcher_args[@]}"
+  [[ -s "$prepared" ]] || die "watcher did not prepare verified backup evidence for release $release_sha"
+  validate_prepared_evidence
+fi
 
 release_dir="$release_root/$release_sha"
 epay_installer="$release_dir/bin/deploy-epay-gateway-patches.sh"
@@ -224,11 +314,23 @@ ssh "$epay_ssh_target" \
   --execute
 verify_release_current
 
-umask 077
-printf '%s\n' "$release_sha" > "$approval_incoming"
-chmod 0600 "$approval_incoming"
-mv "$approval_incoming" "$approval"
-approval_incoming=""
+if [[ "$resume_existing_approval" -eq 0 ]]; then
+  umask 077
+  if [[ -n "$recovery_baseline_sha" ]]; then
+    recovery_binding_incoming="$(mktemp "$state_root/prepared/.${release_sha}.recovery-baseline.XXXXXX")"
+    printf '%s\n' "$recovery_baseline_sha" > "$recovery_binding_incoming"
+    chmod 0600 "$recovery_binding_incoming"
+    mv "$recovery_binding_incoming" "$recovery_binding"
+    recovery_binding_incoming=""
+  elif [[ -e "$recovery_binding" ]]; then
+    die "routine activation found a stale recovery approval binding"
+  fi
+  approval_incoming="$(mktemp "$state_root/approvals/.${release_sha}.XXXXXX")"
+  printf '%s\n' "$release_sha" > "$approval_incoming"
+  chmod 0600 "$approval_incoming"
+  mv "$approval_incoming" "$approval"
+  approval_incoming=""
+fi
 
 # The approval is single-use. The watcher consumes it before loading an image,
 # refreshes both verified backups, activates, verifies, and rolls back on error.

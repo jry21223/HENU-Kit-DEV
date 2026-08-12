@@ -3,9 +3,11 @@ import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +19,7 @@ const command = fileURLToPath(
   new URL("../activate-henukit-release.sh", import.meta.url),
 );
 const releaseSha = "a".repeat(40);
+const recoveryBaselineSha = "c".repeat(40);
 
 function executable(path, contents) {
   writeFileSync(path, contents, { mode: 0o755 });
@@ -31,6 +34,8 @@ function fixture({
   metadataReleaseSha = releaseSha,
   metadataSymlink = false,
   preparationFails = false,
+  existingApproval = false,
+  existingApprovalBaseline = recoveryBaselineSha,
   runConclusion = "success",
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), "activate-henukit-release-"));
@@ -43,6 +48,9 @@ function fixture({
   mkdirSync(bin);
   mkdirSync(join(state, "approvals"), { recursive: true });
   mkdirSync(join(state, "prepared"), { recursive: true });
+  chmodSync(state, 0o700);
+  chmodSync(join(state, "approvals"), 0o700);
+  chmodSync(join(state, "prepared"), 0o700);
   const releases = join(root, "releases");
   const release = join(releases, releaseSha);
   mkdirSync(join(release, "bin"), { recursive: true });
@@ -52,6 +60,18 @@ function fixture({
   writeFileSync(log, "");
   writeFileSync(envFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
   writeFileSync(tokenFile, "test-token\n", { mode: 0o600 });
+  if (existingApproval) {
+    const backup = join(state, `platform-backup-${releaseSha.slice(0, 12)}.dump`);
+    writeFileSync(backup, "verified backup\n", { mode: 0o600 });
+    writeFileSync(`${backup}.meta`, `release_sha=${releaseSha}\n`, { mode: 0o600 });
+    writeFileSync(join(state, "prepared", releaseSha), `${backup}\n`, { mode: 0o600 });
+    writeFileSync(
+      join(state, "prepared", `${releaseSha}.recovery-baseline`),
+      `${existingApprovalBaseline}\n`,
+      { mode: 0o600 },
+    );
+    writeFileSync(join(state, "approvals", releaseSha), `${releaseSha}\n`, { mode: 0o600 });
+  }
 
   executable(
     join(bin, "gh"),
@@ -95,6 +115,7 @@ else
     fi
   fi
   printf '%s\n' "$backup" > "$HENUKIT_STATE_ROOT/prepared/$FAKE_RELEASE_SHA"
+  chmod 0600 "$backup" "$backup.meta" "$HENUKIT_STATE_ROOT/prepared/$FAKE_RELEASE_SHA"
 fi
 `,
   );
@@ -134,6 +155,7 @@ fi
       FAKE_RELEASE_SHA: releaseSha,
       FAKE_RUN_CONCLUSION: runConclusion,
       HENUKIT_STATE_ROOT: state,
+      HENUKIT_TRUST_ANCHOR: root,
       HENUKIT_RELEASE_ROOT: releases,
       HENUKIT_ENV_FILE: envFile,
       GH_TOKEN_FILE: tokenFile,
@@ -212,6 +234,103 @@ test("one command threads an explicit degraded-baseline recovery through both wa
   );
 });
 
+test("explicit local recovery resumes one valid unconsumed approval without preparing twice", () => {
+  const setup = fixture({ existingApproval: true });
+  const artifacts = join(setup.root, "signed-local-artifacts");
+  const previousSha = "c".repeat(40);
+  mkdirSync(artifacts);
+
+  const output = execFileSync(
+    command,
+    [
+      releaseSha,
+      "--local-artifacts", artifacts,
+      "--recover-degraded-baseline", previousSha,
+      "--execute",
+    ],
+    { encoding: "utf8", env: setup.env },
+  );
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.match(output, /resuming valid unconsumed approval/i);
+  assert.equal((calls.match(/^watcher /gm) ?? []).length, 1);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("normal activation never silently reuses an existing approval", () => {
+  const setup = fixture({ existingApproval: true });
+
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /approval already exists/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /^watcher |^ssh /m);
+});
+
+test("recovery never reuses an approval prepared for a different baseline", () => {
+  const setup = fixture({
+    existingApproval: true,
+    existingApprovalBaseline: "d".repeat(40),
+  });
+
+  const artifacts = join(setup.root, "signed-local-artifacts");
+  mkdirSync(artifacts);
+  const result = spawnSync(
+    command,
+    [
+      releaseSha,
+      "--local-artifacts", artifacts,
+      "--recover-degraded-baseline", recoveryBaselineSha,
+      "--execute",
+    ],
+    {
+    encoding: "utf8",
+    env: setup.env,
+    },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not bound to recovery baseline/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /deploy-epay|--execute/);
+});
+
+test("activation rejects a writable approval directory before reading or writing state", () => {
+  const setup = fixture();
+  chmodSync(join(setup.state, "approvals"), 0o770);
+
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /trusted private parent chain/i);
+  assert.equal(readFileSync(setup.log, "utf8"), "");
+});
+
+test("first activation safely creates missing private state directories", () => {
+  const setup = fixture();
+  rmSync(setup.state, { recursive: true, force: true });
+
+  const output = execFileSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.match(output, new RegExp(`release ${releaseSha} activated`));
+  for (const directory of [
+    setup.state,
+    join(setup.state, "approvals"),
+    join(setup.state, "prepared"),
+  ]) {
+    assert.equal(lstatSync(directory).mode & 0o777, 0o700);
+  }
+});
+
 test("one command refuses while QuizCraft cutover blocker remains open", () => {
   const setup = fixture({ blockerState: "open" });
 
@@ -262,7 +381,7 @@ test("one command rejects symlinked prepared backup metadata", () => {
   });
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /no readable metadata/i);
+  assert.match(result.stderr, /metadata is missing or untrusted/i);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
   assert.doesNotMatch(readFileSync(setup.log, "utf8"), /deploy-epay-gateway-patches/);
 });

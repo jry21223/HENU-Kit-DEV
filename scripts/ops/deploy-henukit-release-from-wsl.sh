@@ -18,6 +18,7 @@ usage: deploy-henukit-release-from-wsl.sh \
   --account-operator-role <role-code> \
   [--platform-migrations <comma-separated-reviewed-files>] \
   [--recover-degraded-baseline <full-current-sha>] \
+  [--adopt-degraded-baseline-owner <historical-owner-uid>] \
   --preflight|--execute
 
 Run this only from the WSL2 deployment identity that owns the henu-prod SSH
@@ -56,6 +57,7 @@ remote_env_file=""
 account_operator_role=""
 platform_migrations=""
 recovery_baseline_sha=""
+adopt_degraded_baseline_owner=""
 mode=""
 
 while [[ $# -gt 0 ]]; do
@@ -95,6 +97,11 @@ while [[ $# -gt 0 ]]; do
       recovery_baseline_sha="$2"
       shift 2
       ;;
+    --adopt-degraded-baseline-owner)
+      [[ $# -ge 2 ]] || { usage; exit 64; }
+      adopt_degraded_baseline_owner="$2"
+      shift 2
+      ;;
     --preflight|--execute)
       [[ -z "$mode" ]] || die "choose exactly one of --preflight or --execute"
       mode="$1"
@@ -129,6 +136,12 @@ if [[ -n "$recovery_baseline_sha" ]]; then
     die "recovery baseline and candidate SHA must differ"
   [[ "$mode" == "--execute" || "$mode" == "--preflight" ]] ||
     die "degraded-baseline recovery requires an explicit deployment mode"
+fi
+if [[ -n "$adopt_degraded_baseline_owner" ]]; then
+  [[ -n "$recovery_baseline_sha" ]] ||
+    die "--adopt-degraded-baseline-owner requires --recover-degraded-baseline"
+  [[ "$adopt_degraded_baseline_owner" =~ ^[1-9][0-9]*$ ]] ||
+    die "--adopt-degraded-baseline-owner must be a non-root numeric UID"
 fi
 
 [[ "$(uname -s)" == "Linux" && "$(uname -m)" == "x86_64" ]] ||
@@ -196,7 +209,7 @@ remote_state_file="$(mktemp "${TMPDIR:-/tmp}/henukit-remote-state.XXXXXX")"
 chmod 0600 "$remote_state_file"
 if ! ssh "${ssh_options[@]}" "$production_alias" sh -s -- \
   "$remote_env_file" "$remote_incoming_root" "$remote_release_dir" "$release_sha" \
-  "${recovery_baseline_sha:--}" \
+  "${recovery_baseline_sha:--}" "${adopt_degraded_baseline_owner:--}" \
   >"$remote_state_file" <<'REMOTE_PREFLIGHT'
 set -eu
 remote_env_file="$1"
@@ -206,6 +219,10 @@ release_sha="$4"
 case "$5" in
   -) recovery_baseline_sha="" ;;
   *) recovery_baseline_sha="$5" ;;
+esac
+case "$6" in
+  -) adopt_degraded_baseline_owner="" ;;
+  *) adopt_degraded_baseline_owner="$6" ;;
 esac
 trusted_root_file() {
   file="$1"
@@ -258,6 +275,16 @@ if test -n "$recovery_baseline_sha"; then
   test "$(basename "$(readlink -f /opt/henukit-current)")" = "$recovery_baseline_sha"
   /usr/local/sbin/activate-henukit-release --help 2>&1 |
     grep -q -- '--recover-degraded-baseline'
+fi
+if test -n "$adopt_degraded_baseline_owner"; then
+  case "$adopt_degraded_baseline_owner" in ''|0|*[!0-9]*) exit 1 ;; esac
+  trusted_root_file /usr/local/sbin/adopt-henukit-degraded-baseline
+  test -x /usr/local/sbin/adopt-henukit-degraded-baseline
+  /usr/local/sbin/adopt-henukit-degraded-baseline \
+    --sha "$recovery_baseline_sha" \
+    --candidate-sha "$release_sha" \
+    --expected-owner-uid "$adopt_degraded_baseline_owner" \
+    --preflight >/dev/null
 fi
 trusted_root_file /etc/henukit/release-signers
 trusted_root_file /etc/henukit/github-actions-read.token
@@ -402,7 +429,7 @@ remote_platform_migrations="${platform_migrations:--}"
 ssh "${ssh_options[@]}" "$production_alias" sh -s -- \
   "$release_sha" "$remote_release_dir" "$remote_env_file" \
   "$account_operator_role" "$remote_platform_migrations" \
-  "${recovery_baseline_sha:--}" <<'REMOTE_ACTIVATE'
+  "${recovery_baseline_sha:--}" "${adopt_degraded_baseline_owner:--}" <<'REMOTE_ACTIVATE'
 set -eu
 release_sha="$1"
 release_dir="$2"
@@ -415,6 +442,10 @@ esac
 case "${6-}" in
   -) recovery_baseline_sha="" ;;
   *) recovery_baseline_sha="${6-}" ;;
+esac
+case "${7-}" in
+  -) adopt_degraded_baseline_owner="" ;;
+  *) adopt_degraded_baseline_owner="${7-}" ;;
 esac
 trusted_root_file() {
   file="$1"
@@ -525,6 +556,15 @@ if test "$watcher_was_active" -eq 1; then
   done
   trusted_root_file "$quiesced_file"
   test "$(tr -d '\r\n' < "$quiesced_file")" = "$release_sha $watcher_instance $transport_nonce" || exit 75
+fi
+if test -n "$adopt_degraded_baseline_owner"; then
+  trusted_root_file /usr/local/sbin/adopt-henukit-degraded-baseline
+  test -x /usr/local/sbin/adopt-henukit-degraded-baseline
+  /usr/local/sbin/adopt-henukit-degraded-baseline \
+    --sha "$recovery_baseline_sha" \
+    --candidate-sha "$release_sha" \
+    --expected-owner-uid "$adopt_degraded_baseline_owner" \
+    --execute
 fi
 export GH_TOKEN_FILE=/etc/henukit/github-actions-read.token
 export HENUKIT_ENV_FILE="$remote_env_file"

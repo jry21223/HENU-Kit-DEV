@@ -25,6 +25,17 @@ fixed-SHA release exists.
   running or stopped containers. Completeness is proven before health is
   evaluated. The baseline must then fail the normal health check; a healthy
   baseline uses the normal path.
+- A retained release created before this trust boundary may be adopted only by
+  an explicit WSL transport argument that binds its exact historical owner UID,
+  baseline SHA, and candidate SHA. A reviewed root helper records a root-only
+  in-progress intent before changing ownership, rejects mixed or unexpected
+  owners, and atomically publishes the immutable adoption audit only after the
+  complete retained release is root-owned and non-writable. Interrupted
+  adoption resumes only from that matching intent; an unaudited root-owned
+  release is not silently trusted. The audit directory and its parent chain
+  are root-owned and non-writable, adoption is serialized, and the helper
+  rehashes all retained bytes after ownership converges before publishing the
+  terminal audit.
 - Signature verification, current `origin/main`, exact-SHA approval, production
   environment gates, restore-tested fresh backups, image inventory, Account
   permission grant, and deterministic smoke checks remain mandatory.
@@ -35,6 +46,12 @@ fixed-SHA release exists.
   recovery tuple must verify the authorization record and idempotently finish
   a missing terminal record before recording activation or permitting a new
   attempt.
+- An unconsumed exact-SHA approval may be resumed only by the same explicit
+  local recovery tuple, after the prepared marker and approval file are both
+  revalidated as root-owned, non-writable, non-symlinked, and bound to the
+  candidate and exact degraded baseline. Their state directories and parent
+  chain are trusted before any read or write. Normal activation never reuses an
+  existing approval.
 - Candidate failure invokes the retained previous helper with the pre-release
   environment snapshot. Recovery proves the current symlink and exact image
   identities but does not claim the known degraded state is healthy.

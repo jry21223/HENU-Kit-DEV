@@ -46,6 +46,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./RELEASE_SHA",
     "./bin/deploy-henukit-artifact.sh",
     "./bin/watch-henukit-actions.sh",
+    "./bin/adopt-henukit-degraded-baseline.sh",
     "./bin/henukit-release-images.sh",
     "./bin/verify-henukit-local-release.sh",
     "./docker-compose.henukit.release.yml",

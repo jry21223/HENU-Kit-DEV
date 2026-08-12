@@ -165,8 +165,21 @@ scripts/ops/deploy-henukit-release-from-wsl.sh \
   --remote-env-file /opt/henukit/.env.henukit \
   --account-operator-role operations-operator \
   --recover-degraded-baseline <exact-current-degraded-sha> \
+  --adopt-degraded-baseline-owner <exact-historical-owner-uid> \
   --preflight
 ```
+
+The ownership-adoption option is exceptional and is required only when the
+complete retained release predates ADR-0030. Determine the numeric owner from
+that exact retained release before preflight; never infer it from a username or
+change it to make a gate pass. Preflight is read-only. Execute records a
+root-only `.adopting` intent before changing ownership, then atomically
+publishes `<candidate>.baseline-adopted` under the degraded-recovery state
+directory. A matching interrupted intent is resumable; unexpected owners and
+root-owned releases without the audit fail closed. The helper serializes on
+the trusted state directory and rehashes the complete retained tree after
+ownership convergence; a mismatch leaves the intent for review and never
+publishes the terminal adoption audit.
 
 Use identical arguments with `--execute` only after preflight succeeds. The
 watcher rejects a healthy baseline, a mismatched current symlink or image set,
@@ -177,9 +190,11 @@ Root-only records remain under
 The retained release is accepted only when its root-owned current symlink,
 trusted parent chain, exact `RELEASE_SHA`, Compose contract, executable deploy
 helper, and complete container image identity all match before its known-bad
-health is considered. Re-running the same explicit tuple after an interrupted
-terminal write only completes the immutable `.activated` or `.restored`
-record; it never reloads images or silently reuses the consumed approval.
+health is considered. Re-running the same explicit tuple may resume an exact
+unconsumed approval only after its approval and prepared marker are revalidated.
+After an interrupted terminal write it only completes the immutable
+`.activated` or `.restored` record; it never reloads images or reuses a
+consumed approval. Routine activation never reuses a pre-existing approval.
 
 ### Out-of-band local trust-root bootstrap
 
@@ -193,15 +208,16 @@ bundle, including its runtime archive.
 This is an exceptional, out-of-band root-admin action performed **before** a
 local candidate is transferred. Obtain a separate clean checkout of the
 reviewed current `origin/main` SHA and an independently reviewed SHA-256 record
-for exactly these four source basenames: `watch-henukit-actions.sh`,
+for exactly these five source basenames: `watch-henukit-actions.sh`,
 `activate-henukit-release.sh`, `henukit-release-images.sh`, and
-`verify-henukit-local-release.sh`. The hash record is created and approved from
+`verify-henukit-local-release.sh`, plus
+`adopt-henukit-degraded-baseline.sh`. The hash record is created and approved from
 the reviewed commit on a separate trusted admin station; do not generate it
 from the checkout being installed or from the candidate artifact.
 
 Copy that approved record to `/etc/henukit/release-trust-root-<sha>.sha256`
 with owner `root:root` and mode `0400`, then use a root-owned staging directory
-to close the source-copy race before installing the four long-lived helpers:
+to close the source-copy race before installing the five long-lived helpers:
 
 ```bash
 tooling=/srv/henukit-release-tooling
@@ -216,11 +232,13 @@ sudo install -o root -g root -m 0555 "$tooling/scripts/ops/watch-henukit-actions
 sudo install -o root -g root -m 0555 "$tooling/scripts/ops/activate-henukit-release.sh" "$stage/activate-henukit-release.sh"
 sudo install -o root -g root -m 0555 "$tooling/scripts/ops/henukit-release-images.sh" "$stage/henukit-release-images.sh"
 sudo install -o root -g root -m 0555 "$tooling/scripts/ops/verify-henukit-local-release.sh" "$stage/verify-henukit-local-release.sh"
+sudo install -o root -g root -m 0555 "$tooling/scripts/ops/adopt-henukit-degraded-baseline.sh" "$stage/adopt-henukit-degraded-baseline.sh"
 sudo sh -c "cd '$stage' && sha256sum -c /etc/henukit/release-trust-root-$release_sha.sha256"
 sudo install -o root -g root -m 0555 "$stage/watch-henukit-actions.sh" /usr/local/sbin/watch-henukit-actions
 sudo install -o root -g root -m 0555 "$stage/activate-henukit-release.sh" /usr/local/sbin/activate-henukit-release
 sudo install -o root -g root -m 0555 "$stage/henukit-release-images.sh" /usr/local/sbin/henukit-release-images.sh
 sudo install -o root -g root -m 0555 "$stage/verify-henukit-local-release.sh" /usr/local/sbin/verify-henukit-local-release.sh
+sudo install -o root -g root -m 0555 "$stage/adopt-henukit-degraded-baseline.sh" /usr/local/sbin/adopt-henukit-degraded-baseline
 ```
 
 The local watcher rejects non-root-owned trust files or writable parent
