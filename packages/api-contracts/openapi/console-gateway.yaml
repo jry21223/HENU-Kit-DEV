@@ -514,6 +514,20 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/memberships/search:
+    post:
+      tags: [Account Portfolio]
+      operationId: searchConsoleAccountMemberships
+      summary: Search one bounded page of membership-operable accounts
+      description: Combines at most 20 Platform Core identities with Account Portfolio entitlement state. Requires account.membership.write; operator identity comes only from the verified Console Session.
+      security: [{ consoleSession: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleMembershipAccountSearchRequest" } } } }
+      responses:
+        "200": { description: Bounded account and membership page, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleMembershipAccountPage" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /account/memberships/{user_id}/grants:
     post:
       tags: [Account Portfolio]
@@ -1216,6 +1230,36 @@ components:
           then: { type: object, required: [lifetime], properties: { lifetime: { const: false } } }
         - if: { type: object, required: [plan], properties: { plan: { const: lifetime } } }
           then: { type: object, required: [lifetime], properties: { lifetime: { const: true } } }
+    ConsoleMembershipAccountSearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query, page]
+      properties:
+        query: { type: string, maxLength: 100 }
+        page: { type: integer, minimum: 1, maximum: 10000 }
+    ConsoleMembershipAccountSummary:
+      type: object
+      additionalProperties: false
+      required: [id, email, status, membership]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 320 }
+        status: { type: string, enum: [active, suspended, deleted] }
+        membership:
+          oneOf:
+            - { $ref: "#/components/schemas/ConsoleAccountMembership" }
+            - { type: "null" }
+    ConsoleMembershipAccountPage:
+      type: object
+      additionalProperties: false
+      required: [accounts, next_page]
+      properties:
+        accounts: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/ConsoleMembershipAccountSummary" } }
+        next_page:
+          oneOf:
+            - { type: integer, minimum: 2, maximum: 10000 }
+            - { type: "null" }
     ConsoleMembershipMutationRequest:
       type: object
       additionalProperties: false

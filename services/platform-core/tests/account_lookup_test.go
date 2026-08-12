@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +18,55 @@ import (
 
 	platformcore "henukit.dev/platform-core"
 )
+
+func TestMembershipAccountListIsBoundedAndSearchesDisplayNameOrEmail(t *testing.T) {
+	var logs bytes.Buffer
+	fixture := newLookupFixture(t, slog.New(slog.NewJSONHandler(&logs, nil)))
+	grantMembershipOperations(t, fixture)
+	for index := 0; index < 21; index++ {
+		seedLookupIdentity(t, fixture, fmt.Sprintf("member%02d@henu.edu.cn", index), fmt.Sprintf("会员 %02d", index))
+	}
+	seedLookupIdentity(t, fixture, "special.member@henu.edu.cn", "特别会员")
+	seedLookupIdentity(t, fixture, "at-sign-name@henu.edu.cn", "小明@HENU")
+
+	first := sendMembershipAccountsRequest(t, fixture, "", 1)
+	firstPage := decodeMembershipAccountsEnvelope(t, first, http.StatusOK)
+	if len(firstPage.Accounts) != 20 || firstPage.NextPage == nil || *firstPage.NextPage != 2 {
+		t.Fatalf("first membership account page = %d accounts, next=%v; want 20 and page 2", len(firstPage.Accounts), firstPage.NextPage)
+	}
+	for _, account := range firstPage.Accounts {
+		if account.Email == "" || account.ID == "" {
+			t.Fatalf("membership account omitted owner identity fields: %+v", account)
+		}
+	}
+
+	byName := decodeMembershipAccountsEnvelope(t, sendMembershipAccountsRequest(t, fixture, "特别", 1), http.StatusOK)
+	if len(byName.Accounts) != 1 || byName.Accounts[0].DisplayName == nil || *byName.Accounts[0].DisplayName != "特别会员" || byName.Accounts[0].Email != "special.member@henu.edu.cn" {
+		t.Fatalf("display-name search = %+v, want the special member", byName.Accounts)
+	}
+	byAtSignName := decodeMembershipAccountsEnvelope(t, sendMembershipAccountsRequest(t, fixture, "小明@HENU", 1), http.StatusOK)
+	if len(byAtSignName.Accounts) != 1 || byAtSignName.Accounts[0].DisplayName == nil || *byAtSignName.Accounts[0].DisplayName != "小明@HENU" {
+		t.Fatalf("display-name search containing @ = %+v, want 小明@HENU", byAtSignName.Accounts)
+	}
+	byEmail := decodeMembershipAccountsEnvelope(t, sendMembershipAccountsRequest(t, fixture, "SPECIAL.MEMBER@HENU.EDU.CN", 1), http.StatusOK)
+	if len(byEmail.Accounts) != 1 || byEmail.Accounts[0].Email != "special.member@henu.edu.cn" {
+		t.Fatalf("email search = %+v, want normalized exact identity", byEmail.Accounts)
+	}
+	secondEmailPage := decodeMembershipAccountsEnvelope(t, sendMembershipAccountsRequest(t, fixture, "special.member@henu.edu.cn", 2), http.StatusOK)
+	if len(secondEmailPage.Accounts) != 0 || secondEmailPage.NextPage != nil {
+		t.Fatalf("second exact-email page = %+v, want an empty terminal page", secondEmailPage)
+	}
+	if bytes.Contains(logs.Bytes(), []byte("special.member@henu.edu.cn")) || bytes.Contains(logs.Bytes(), []byte("SPECIAL.MEMBER@HENU.EDU.CN")) {
+		t.Fatalf("membership identity search leaked email into logs: %s", logs.String())
+	}
+	var auditText string
+	if err := fixture.pool.QueryRow(context.Background(), `SELECT coalesce(string_agg(value::text, ','), '') FROM (SELECT to_jsonb(t)::text AS value FROM authorization_audit_events AS t) AS rows`).Scan(&auditText); err != nil {
+		t.Fatalf("read membership authorization audit: %v", err)
+	}
+	if strings.Contains(strings.ToLower(auditText), "special.member@henu.edu.cn") {
+		t.Fatalf("membership authorization audit leaked email: %s", auditText)
+	}
+}
 
 func TestAccountLookupFindsAccountByExactEmailAndKeepsOneShapeForMisses(t *testing.T) {
 	fixture := newLookupFixture(t, slog.New(slog.NewJSONHandler(io.Discard, nil)))
@@ -177,6 +227,32 @@ type lookupEnvelope struct {
 	} `json:"account"`
 }
 
+type membershipAccountsEnvelope struct {
+	Accounts []struct {
+		ID          string  `json:"id"`
+		DisplayName *string `json:"display_name"`
+		Email       string  `json:"email"`
+		Status      string  `json:"status"`
+	} `json:"accounts"`
+	NextPage *int `json:"next_page"`
+}
+
+func decodeMembershipAccountsEnvelope(t *testing.T, response *http.Response, wantStatus int) membershipAccountsEnvelope {
+	t.Helper()
+	defer response.Body.Close()
+	payload, _ := io.ReadAll(response.Body)
+	if response.StatusCode != wantStatus {
+		t.Fatalf("membership account list = %d: %s, want %d", response.StatusCode, payload, wantStatus)
+	}
+	var envelope struct {
+		Data membershipAccountsEnvelope `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		t.Fatalf("decode membership account list: %v", err)
+	}
+	return envelope.Data
+}
+
 func decodeLookupEnvelope(t *testing.T, response *http.Response, wantStatus int) lookupEnvelope {
 	t.Helper()
 	defer response.Body.Close()
@@ -231,6 +307,12 @@ func sendLookupRequest(t *testing.T, fixture inboxFixture, email string) *http.R
 	return sendInboxRequest(t, fixture, http.MethodPost, "/api/v1/platform-operations/account-lookups", body, "", "nonce_"+uuid.NewString(), "req_lookup_"+strings.ReplaceAll(uuid.NewString(), "-", "")[:16])
 }
 
+func sendMembershipAccountsRequest(t *testing.T, fixture inboxFixture, query string, page int) *http.Response {
+	t.Helper()
+	body := fmt.Sprintf(`{"query":%s,"page":%d}`, strconvQuote(query), page)
+	return sendInboxRequest(t, fixture, http.MethodPost, "/api/v1/platform-operations/membership-accounts/search", body, "", "nonce_"+uuid.NewString(), "req_membership_accounts_"+strings.ReplaceAll(uuid.NewString(), "-", "")[:16])
+}
+
 func strconvQuote(value string) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
@@ -253,6 +335,26 @@ func seedLookupIdentity(t *testing.T, fixture inboxFixture, email, displayName s
 		t.Fatalf("seed lookup identity: %v", err)
 	}
 	return userID.String()
+}
+
+func grantMembershipOperations(t *testing.T, fixture inboxFixture) {
+	t.Helper()
+	ctx := context.Background()
+	roleID := uuid.New()
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO permission_codes (code, description) VALUES ('account.membership.write', 'Manage Account Portfolio memberships') ON CONFLICT (code) DO NOTHING`, nil},
+		{`INSERT INTO authorization_roles (id, code, display_name) VALUES ($1, 'membership-operator', 'Membership operator')`, []any{roleID}},
+		{`INSERT INTO role_permissions (role_id, permission_code) VALUES ($1, 'account.membership.write')`, []any{roleID}},
+		{`INSERT INTO user_role_grants (user_id, role_id, scope_kind, product_code) VALUES ($1, $2, 'product', 'account-portfolio')`, []any{fixture.userID, roleID}},
+	}
+	for _, statement := range statements {
+		if _, err := fixture.pool.Exec(ctx, statement.query, statement.args...); err != nil {
+			t.Fatalf("grant membership operations: %v", err)
+		}
+	}
 }
 
 func grantAccountTicketRead(t *testing.T, fixture inboxFixture) {

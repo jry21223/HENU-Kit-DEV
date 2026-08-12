@@ -29,30 +29,34 @@ import (
 )
 
 type fakePlatform struct {
-	mu                 sync.Mutex
-	exchangeCalls      int
-	checkCalls         int
-	checkErr           error
-	verifier, redirect string
-	idempotencyKey     string
-	exchange           platformcore.Exchange
-	operations         json.RawMessage
-	operationResult    json.RawMessage
-	operationToken     string
-	operationKey       string
-	libraryPermissions []string
-	foodPermissions    []string
-	accountPermissions []string
-	accountErrors      map[string]error
-	accountLookupBody  []byte
-	accountLookup      json.RawMessage
-	accountLookupErr   error
-	accountLookupCalls int
-	identityErr        error
-	identityCalls      int
-	identityPermission string
-	identityUserIDs    []string
-	missingIdentityID  string
+	mu                      sync.Mutex
+	exchangeCalls           int
+	checkCalls              int
+	checkErr                error
+	verifier, redirect      string
+	idempotencyKey          string
+	exchange                platformcore.Exchange
+	operations              json.RawMessage
+	operationResult         json.RawMessage
+	operationToken          string
+	operationKey            string
+	libraryPermissions      []string
+	foodPermissions         []string
+	accountPermissions      []string
+	accountErrors           map[string]error
+	accountLookupBody       []byte
+	accountLookup           json.RawMessage
+	accountLookupErr        error
+	accountLookupCalls      int
+	identityErr             error
+	identityCalls           int
+	identityPermission      string
+	identityUserIDs         []string
+	missingIdentityID       string
+	membershipAccountsBody  []byte
+	membershipAccounts      json.RawMessage
+	membershipAccountsErr   error
+	membershipAccountsCalls int
 }
 
 type fakeOverview struct{}
@@ -73,11 +77,15 @@ type fakeFood struct {
 }
 
 type fakeAccountPortfolio struct {
+	mu                                                   sync.Mutex
 	actor, key, membershipUserID                         string
 	queue, detail, result, membership, points            json.RawMessage
 	replyBody, transitionBody, grantBody, revokeBody     []byte
 	pointAdjustmentBody                                  []byte
 	err                                                  error
+	memberships                                          map[string]json.RawMessage
+	membershipErrors                                     map[string]error
+	membershipHang                                       bool
 	replyCalls, grantCalls, revokeCalls, membershipCalls int
 	pointAdjustmentCalls                                 int
 	orderID, refundID                                    string
@@ -102,8 +110,22 @@ func (f *fakeAccountPortfolio) Transition(_ context.Context, actor, _, key strin
 	f.actor, f.key, f.transitionBody = actor, key, append([]byte(nil), body...)
 	return f.result, f.err
 }
-func (f *fakeAccountPortfolio) Membership(_ context.Context, actor, userID string) (json.RawMessage, error) {
+func (f *fakeAccountPortfolio) Membership(ctx context.Context, actor, userID string) (json.RawMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.actor, f.membershipUserID, f.membershipCalls = actor, userID, f.membershipCalls+1
+	if f.membershipHang {
+		f.mu.Unlock()
+		<-ctx.Done()
+		f.mu.Lock()
+		return nil, ctx.Err()
+	}
+	if err, ok := f.membershipErrors[userID]; ok {
+		return nil, err
+	}
+	if membership, ok := f.memberships[userID]; ok {
+		return membership, nil
+	}
 	return f.membership, f.err
 }
 func (f *fakeAccountPortfolio) Grant(_ context.Context, actor, userID, key string, body []byte) (json.RawMessage, error) {
@@ -287,6 +309,106 @@ func (fake *fakePlatform) AccountLookup(_ context.Context, token string, body []
 	fake.accountLookupBody = append([]byte(nil), body...)
 	fake.accountLookupCalls++
 	return fake.accountLookup, fake.accountLookupErr
+}
+
+func (fake *fakePlatform) MembershipAccounts(_ context.Context, token string, body []byte) (json.RawMessage, error) {
+	fake.operationToken = token
+	fake.membershipAccountsBody = append([]byte(nil), body...)
+	fake.membershipAccountsCalls++
+	return fake.membershipAccounts, fake.membershipAccountsErr
+}
+
+func TestAccountMembershipListCombinesBoundedPlatformIdentitiesWithOwnerEntitlements(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	operatorID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	firstUserID := "33333333-3333-4333-8333-333333333333"
+	secondUserID := "44444444-4444-4444-8444-444444444444"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{
+		exchange:           platformcore.Exchange{ExchangeToken: token},
+		membershipAccounts: json.RawMessage(`{"accounts":[{"id":"` + firstUserID + `","display_name":"张同学","email":"zhang@henu.edu.cn","status":"active"},{"id":"` + secondUserID + `","email":"long-email-address@henu.edu.cn","status":"active"}],"next_page":2}`),
+	}
+	owner := &fakeAccountPortfolio{
+		memberships:      map[string]json.RawMessage{firstUserID: json.RawMessage(`{"membership":{"plan":"lifetime","lifetime":true,"version":3}}`)},
+		membershipErrors: map[string]error{secondUserID: accountportfolioapi.ErrNotFound},
+	}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: operatorID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/memberships/search", strings.NewReader(`{"query":"张","page":1}`))
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	request.Header.Set("Content-Type", "application/json")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	payload, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("membership list = %d: %s, want 200", response.StatusCode, payload)
+	}
+	var envelope struct {
+		Data struct {
+			Accounts []struct {
+				ID          string          `json:"id"`
+				DisplayName *string         `json:"display_name"`
+				Email       string          `json:"email"`
+				Membership  json.RawMessage `json:"membership"`
+			} `json:"accounts"`
+			NextPage *int `json:"next_page"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Data.Accounts) != 2 || envelope.Data.NextPage == nil || *envelope.Data.NextPage != 2 {
+		t.Fatalf("membership list payload = %s", payload)
+	}
+	if envelope.Data.Accounts[0].Email != "zhang@henu.edu.cn" || !strings.Contains(string(envelope.Data.Accounts[0].Membership), `"version":3`) {
+		t.Fatalf("initialized membership account = %+v", envelope.Data.Accounts[0])
+	}
+	if envelope.Data.Accounts[1].DisplayName != nil || string(envelope.Data.Accounts[1].Membership) != "null" {
+		t.Fatalf("legacy/uninitialized account = %+v", envelope.Data.Accounts[1])
+	}
+	var forwardedSearch map[string]any
+	_ = json.Unmarshal(platform.membershipAccountsBody, &forwardedSearch)
+	if forwardedSearch["query"] != "张" || forwardedSearch["page"] != float64(1) || platform.membershipAccountsCalls != 1 || owner.membershipCalls != 2 {
+		t.Fatalf("owner calls platform body/calls=%s/%d membership=%d", platform.membershipAccountsBody, platform.membershipAccountsCalls, owner.membershipCalls)
+	}
+	if strings.Join(platform.accountPermissions, ",") != "account.membership.write" || owner.actor != operatorID {
+		t.Fatalf("membership list permission/actor=%v/%s", platform.accountPermissions, owner.actor)
+	}
+}
+
+func TestAccountMembershipListTimesOutWhenOwnerHangs(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	operatorID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{
+		exchange:           platformcore.Exchange{ExchangeToken: token},
+		membershipAccounts: json.RawMessage(`{"accounts":[{"id":"33333333-3333-4333-8333-333333333333","display_name":"张同学","email":"zhang@henu.edu.cn","status":"active"}],"next_page":null}`),
+	}
+	owner := &fakeAccountPortfolio{membershipHang: true}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, nil, owner)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: operatorID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/account/memberships/search", strings.NewReader(`{"query":"","page":1}`))
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	request.Header.Set("Content-Type", "application/json")
+	started := time.Now()
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable || time.Since(started) > 5*time.Second {
+		t.Fatalf("hung membership owner status/elapsed=%d/%s, want bounded 503", response.StatusCode, time.Since(started))
+	}
 }
 
 func (fake *fakePlatform) RevokeSession(_ context.Context, token, _, key string, _ []byte) (json.RawMessage, error) {
