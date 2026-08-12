@@ -458,18 +458,29 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.equal(
     config.services["console-gateway"].environment.NOTICE_API_URL,
-    "",
-    "production Compose must keep the Notice owner endpoint unset so the module degrades until the env enables it",
+    "http://notice:8094",
+    "production Console must use the private Notice owner endpoint by default",
   );
   assert.equal(
     config.services["console-gateway"].environment.FOOD_API_URL,
     "http://food:8096",
     "production Console Gateway must use the private Food owner endpoint",
   );
-  const withOwnerEndpoints = renderRuntimeConfig({ NOTICE_API_URL: "http://notice:8094", FOOD_API_URL: "http://food:8096" });
+  const withoutOwnerEndpoints = renderRuntimeConfig({ NOTICE_API_URL: "", FOOD_API_URL: "" });
+  assert.equal(
+    withoutOwnerEndpoints.services["console-gateway"].environment.NOTICE_API_URL,
+    "",
+    "an explicit empty Notice owner endpoint must disable the module",
+  );
+  assert.equal(
+    withoutOwnerEndpoints.services["console-gateway"].environment.FOOD_API_URL,
+    "",
+    "an explicit empty Food owner endpoint must disable the module",
+  );
+  const withOwnerEndpoints = renderRuntimeConfig({ NOTICE_API_URL: "https://notice.internal", FOOD_API_URL: "http://food:8096" });
   assert.equal(
     withOwnerEndpoints.services["console-gateway"].environment.NOTICE_API_URL,
-    "http://notice:8094",
+    "https://notice.internal",
     "Console must use the private Notice owner endpoint when the env enables it",
   );
   assert.equal(

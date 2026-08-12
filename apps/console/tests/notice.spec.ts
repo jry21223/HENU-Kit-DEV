@@ -115,4 +115,14 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     expect(distributionCalls).toBe(0);
     await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
   });
+
+  test(`${viewport.name} Notice owner failure is not presented as an empty snapshot`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.route("**/api/v1/notices", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "DEPENDENCY_UNAVAILABLE", message: "Notice owner unavailable" }, request_id: "req_notice_unavailable" }) }));
+    await page.goto("/notices");
+    await expect(page.getByText("通知服务暂时不可用，请稍后重试。")).toBeVisible();
+    await expect(page.getByText("暂不可用", { exact: true })).toBeVisible();
+    await expect(page.getByText("0 个版本", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("当前没有待处理的通知版本。")).toHaveCount(0);
+  });
 }

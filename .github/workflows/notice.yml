@@ -5,6 +5,7 @@ on:
     paths:
       - services/notice/**
       - services/console-gateway/cmd/noticecontractgen/**
+      - services/console-gateway/integration/notice-owner/**
       - services/console-gateway/internal/notice/**
       - packages/api-contracts/openapi/notice.yaml
       - .github/workflows/notice.yml
@@ -13,6 +14,7 @@ on:
     paths:
       - services/notice/**
       - services/console-gateway/cmd/noticecontractgen/**
+      - services/console-gateway/integration/notice-owner/**
       - services/console-gateway/internal/notice/**
       - packages/api-contracts/openapi/notice.yaml
       - .github/workflows/notice.yml
@@ -99,6 +101,16 @@ jobs:
           go test -race -count=1 ./...
           go build -o /tmp/notice ./cmd/server
           go build -o /tmp/notice-worker ./cmd/worker
+      - name: Verify Console Gateway to Notice owner lifecycle
+        working-directory: services/console-gateway/integration/notice-owner
+        env:
+          NOTICE_GATEWAY_INTEGRATION_DATABASE_URL: postgres://notice:notice_test@localhost:5432/notice_gateway_integration?sslmode=disable
+          NOTICE_GATEWAY_INTEGRATION_REDIS_ADDR: localhost:6379
+        run: |
+          set -euo pipefail
+          createdb -h localhost -U notice notice_gateway_integration
+          psql -h localhost -U notice -d notice_gateway_integration -v ON_ERROR_STOP=1 -f ../../../notice/db/migrations/000001_notice.up.sql
+          go test -race -count=1 ./...
       - name: Build image
         run: |
           docker build -t henukit-notice:${{ github.sha }} services/notice

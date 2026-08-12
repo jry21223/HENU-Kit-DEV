@@ -26,6 +26,7 @@ const confirmDialog = ref<HTMLDialogElement>();
 const canManage = computed(() => props.permissions.includes("notice.manage"));
 const canReview = computed(() => props.permissions.includes("notice.review"));
 const canDistribute = computed(() => props.permissions.includes("notice.distribute"));
+const snapshotLabel = computed(() => state.value === "ready" ? `${snapshot.value?.items.length ?? 0} 个版本` : state.value === "loading" ? "加载中" : state.value === "denied" ? "无权访问" : "暂不可用");
 
 function stateLabel(state: NoticeVersion["state"]) {
   return state === "pending_review" ? "待审核" : state === "approved" ? "已通过" : state === "rejected" ? "已拒绝" : state === "distributed" ? "已分发" : state;
@@ -116,7 +117,7 @@ watch(() => props.authState, (value) => {
 
 <template>
   <section aria-labelledby="notice-heading">
-    <PageHeader eyebrow="通知流程" title="校园通知审核与分发" description="通知正文不可更改；审核与分发均由服务端记录。" title-id="notice-heading"><div class="access-context"><strong>{{ snapshot?.items.length ?? 0 }} 个版本</strong></div></PageHeader>
+    <PageHeader eyebrow="通知流程" title="校园通知审核与分发" description="通知正文不可更改；审核与分发均由服务端记录。" title-id="notice-heading"><div class="access-context"><strong>{{ snapshotLabel }}</strong></div></PageHeader>
     <p v-if="feedback" class="mt-4 rounded-lg border border-border bg-white px-4 py-3" role="status">{{ feedback }}</p>
     <div v-if="state === 'loading'" class="mt-6 rounded-lg bg-white p-6" aria-busy="true">正在读取通知数据…</div>
     <div v-else-if="state === 'denied'" class="mt-6 rounded-lg bg-white p-6">当前账户没有通知审核权限，请联系管理员。</div>
