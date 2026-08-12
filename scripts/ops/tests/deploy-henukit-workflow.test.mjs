@@ -463,8 +463,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.equal(
     config.services["console-gateway"].environment.FOOD_API_URL,
-    "",
-    "production Compose must keep the Food owner endpoint unset so the module degrades until the env enables it",
+    "http://food:8096",
+    "production Console Gateway must use the private Food owner endpoint",
   );
   const withOwnerEndpoints = renderRuntimeConfig({ NOTICE_API_URL: "http://notice:8094", FOOD_API_URL: "http://food:8096" });
   assert.equal(

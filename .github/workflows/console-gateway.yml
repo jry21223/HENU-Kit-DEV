@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - services/console-gateway/**
+      - services/food/**
       - apps/console/**
       - packages/api-contracts/openapi/console-gateway.yaml
       - packages/api-contracts/openapi/library.yaml
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - services/console-gateway/**
+      - services/food/**
       - apps/console/**
       - packages/api-contracts/openapi/console-gateway.yaml
       - packages/api-contracts/openapi/library.yaml
@@ -29,6 +31,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: food_integration
+          POSTGRES_USER: food
+          POSTGRES_PASSWORD: food_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U food -d food_integration"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
       redis:
         image: redis:7-alpine
         ports:
@@ -86,6 +101,38 @@ jobs:
           go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
           go test -race -count=1 ./...
           go build -o /tmp/console-gateway ./cmd/server
+      - name: Verify real Food owner read and review
+        env:
+          PGPASSWORD: food_test
+          FOOD_ADDR: 127.0.0.1:18096
+          FOOD_DATABASE_URL: postgres://food:food_test@localhost:5432/food_integration?sslmode=disable
+          FOOD_REDIS_URL: redis://localhost:6379/4
+          FOOD_SERVICE_CLIENT_ID: console-gateway-food
+          FOOD_SERVICE_KEY_ID: food-integration-key
+          FOOD_SERVICE_SECRET: food-integration-secret-with-32-bytes-min
+          CONSOLE_GATEWAY_TEST_REDIS_ADDR: localhost:6379
+          CONSOLE_GATEWAY_TEST_FOOD_URL: http://localhost:18096
+          CONSOLE_GATEWAY_TEST_FOOD_CLIENT_ID: console-gateway-food
+          CONSOLE_GATEWAY_TEST_FOOD_KEY_ID: food-integration-key
+          CONSOLE_GATEWAY_TEST_FOOD_CLIENT_SECRET: food-integration-secret-with-32-bytes-min
+        run: |
+          set -euo pipefail
+          psql -h localhost -U food -d food_integration -v ON_ERROR_STOP=1 -f services/food/db/migrations/000001_food_operations.up.sql
+          psql -h localhost -U food -d food_integration -v ON_ERROR_STOP=1 -f services/console-gateway/testdata/food_submission.sql
+          (cd services/food && go build -o /tmp/food-integration ./cmd/server)
+          /tmp/food-integration >/tmp/food-integration.log 2>&1 &
+          food_pid=$!
+          cleanup() { kill "$food_pid" 2>/dev/null || true; wait "$food_pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:18096/readyz >/dev/null; then ready=1; break; fi
+            if ! kill -0 "$food_pid" 2>/dev/null; then cat /tmp/food-integration.log; exit 1; fi
+            sleep 1
+          done
+          if [ "$ready" != 1 ]; then cat /tmp/food-integration.log; exit 1; fi
+          cd services/console-gateway
+          go test ./internal/httpapi -run '^TestFoodSubmissionReviewPersistsAcrossGatewayAndOwner$' -count=1
       - name: Verify Console browser behavior
         run: |
           pnpm --filter @henukit/console run lint
