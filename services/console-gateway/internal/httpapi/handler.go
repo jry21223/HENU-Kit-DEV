@@ -12,10 +12,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,10 +34,11 @@ import (
 )
 
 const (
-	sessionCookie       = "__Host-henukit_console_session"
-	oauthFlowCookie     = "__Host-henukit_console_oauth"
-	stateTTL            = 5 * time.Minute
-	maxPublicPointValue = int64(9_007_199_254_740_991)
+	sessionCookie              = "__Host-henukit_console_session"
+	oauthFlowCookie            = "__Host-henukit_console_oauth"
+	stateTTL                   = 5 * time.Minute
+	maxPublicPointValue        = int64(9_007_199_254_740_991)
+	membershipAggregateTimeout = 3 * time.Second
 )
 
 type platformClient interface {
@@ -49,6 +52,7 @@ type platformClient interface {
 	OperationStatus(context.Context, string, string, string) (json.RawMessage, error)
 	AccountLookup(context.Context, string, []byte) (json.RawMessage, error)
 	UserIdentities(context.Context, string, string, []string) (json.RawMessage, error)
+	MembershipAccounts(context.Context, string, []byte) (json.RawMessage, error)
 	CheckNotice(context.Context, string, string) error
 	CheckLibrary(context.Context, string, string) error
 	CheckFood(context.Context, string, string) error
@@ -213,6 +217,7 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Post(contract.FoodCommandRoute, handler.executeFoodCommand)
 	router.Get(contract.FoodOperationRoute, handler.getFoodOperation)
 	router.Get(contract.AccountMembershipRoute, handler.getAccountMembership)
+	router.Post(contract.SearchAccountMembershipsRoute, handler.searchAccountMemberships)
 	router.Post(contract.AccountMembershipGrantsRoute, handler.grantAccountMembership)
 	router.Post(contract.AccountMembershipRevocationsRoute, handler.revokeAccountMembership)
 	router.Post(contract.AccountPointAdjustmentsRoute, handler.adjustAccountPoints)
@@ -346,6 +351,119 @@ func (h *Handler) getAccountMembership(writer http.ResponseWriter, request *http
 	}
 	data, err := h.account.Membership(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "user_id"))
 	h.writeAccountMembershipResult(writer, request, data, err)
+}
+
+type membershipAccountIdentityPage struct {
+	Accounts []struct {
+		ID          string  `json:"id"`
+		DisplayName *string `json:"display_name"`
+		Email       string  `json:"email"`
+		Status      string  `json:"status"`
+	} `json:"accounts"`
+	NextPage *int `json:"next_page"`
+}
+
+type membershipAccountSummary struct {
+	ID          string          `json:"id"`
+	DisplayName *string         `json:"display_name,omitempty"`
+	Email       string          `json:"email"`
+	Status      string          `json:"status"`
+	Membership  json.RawMessage `json:"membership"`
+}
+
+func (h *Handler) searchAccountMemberships(writer http.ResponseWriter, request *http.Request) {
+	var input contract.ConsoleMembershipAccountSearchRequest
+	body, ok := decodeReadInput(writer, request, &input)
+	if !ok {
+		return
+	}
+	if len([]rune(input.Query)) > 100 || input.Page < 1 || input.Page > 10_000 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "会员账户搜索内容无效，请检查后重试")
+		return
+	}
+	value, ok := h.authorizeAccount(writer, request, "account.membership.write")
+	if !ok {
+		return
+	}
+	rawPage, err := h.platform.MembershipAccounts(request.Context(), value.ExchangeToken, body)
+	if err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return
+	}
+	var identities membershipAccountIdentityPage
+	if json.Unmarshal(rawPage, &identities) != nil || len(identities.Accounts) > 20 || (identities.NextPage != nil && (*identities.NextPage < 2 || *identities.NextPage > 10_000)) {
+		h.unavailable(writer, request, errors.New("invalid Platform membership account page"))
+		return
+	}
+	for _, identity := range identities.Accounts {
+		address, parseErr := mail.ParseAddress(identity.Email)
+		if _, idErr := uuid.Parse(identity.ID); idErr != nil || parseErr != nil || address.Address != identity.Email || (identity.Status != "active" && identity.Status != "suspended" && identity.Status != "deleted") || (identity.DisplayName != nil && len([]rune(*identity.DisplayName)) > 80) {
+			h.unavailable(writer, request, errors.New("invalid Platform membership account identity"))
+			return
+		}
+	}
+	ctx, cancel := context.WithTimeout(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), membershipAggregateTimeout)
+	defer cancel()
+	accounts := make([]membershipAccountSummary, len(identities.Accounts))
+	var wait sync.WaitGroup
+	var errorLock sync.Mutex
+	var firstErr error
+	for index, identity := range identities.Accounts {
+		index, identity := index, identity
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			membershipRaw, membershipErr := h.account.Membership(ctx, value.UserID, identity.ID)
+			if errors.Is(membershipErr, accountportfolioapi.ErrNotFound) {
+				membershipRaw = nil
+				membershipErr = nil
+			}
+			if membershipErr == nil && membershipRaw != nil {
+				membershipRaw, membershipErr = accountportfolioapi.ValidatedMembership(membershipRaw)
+			}
+			if membershipErr != nil {
+				errorLock.Lock()
+				if firstErr == nil {
+					firstErr = membershipErr
+					cancel()
+				}
+				errorLock.Unlock()
+				return
+			}
+			accounts[index] = membershipAccountSummary{ID: identity.ID, DisplayName: identity.DisplayName, Email: identity.Email, Status: identity.Status, Membership: membershipRaw}
+		}()
+	}
+	done := make(chan struct{})
+	go func() {
+		wait.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		h.unavailable(writer, request, errors.New("Account Portfolio membership aggregation timed out"))
+		return
+	}
+	if firstErr != nil {
+		h.writeAccountMembershipResult(writer, request, nil, firstErr)
+		return
+	}
+	writeJSON(writer, request, http.StatusOK, map[string]any{"accounts": accounts, "next_page": identities.NextPage})
+}
+
+func decodeReadInput(writer http.ResponseWriter, request *http.Request, target any) ([]byte, bool) {
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请求内容无效，请检查后重试")
+		return nil, false
+	}
+	body, err := json.Marshal(target)
+	if err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请求内容无效，请检查后重试")
+		return nil, false
+	}
+	return body, true
 }
 
 func (h *Handler) grantAccountMembership(writer http.ResponseWriter, request *http.Request) {

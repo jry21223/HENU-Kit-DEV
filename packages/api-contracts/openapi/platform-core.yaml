@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HENU Kit Platform Core API
-  version: 0.8.0
+  version: 0.9.0
   description: |
     HENU Kit 平台核心接口草案。平台核心负责统一账户、会话、授权码、事件、通知、邮件、服务认证和指标；不保存资料、题目或作答数据。
 servers:
@@ -836,6 +836,47 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  /platform-operations/membership-accounts/search:
+    post:
+      tags: [Platform Operations]
+      operationId: listPlatformOperationMembershipAccounts
+      summary: List a bounded page of identities for membership operations
+      description: >-
+        Returns at most 20 Platform Core-owned identities for an operator holding
+        account.membership.write in Account Portfolio product Scope. Search is a
+        case-insensitive Display Name substring or an exact normalized email.
+        Email plaintext is returned only in this authorized response and is never
+        written to URLs, logs, audit records, or cursors.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlatformOperationsMembershipAccountSearchRequest" }
+      responses:
+        "200":
+          description: One bounded page of Platform Core identities
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PlatformOperationsMembershipAccountPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
   /platform-operations/sessions/{session_id}/revocations:
     post:
       tags: [Platform Operations]
@@ -1595,6 +1636,43 @@ components:
           type: array
           maxItems: 100
           items: { $ref: "#/components/schemas/PlatformOperationsAccountLookupAccount" }
+
+    PlatformOperationsMembershipAccount:
+      type: object
+      additionalProperties: false
+      required: [id, email, status]
+      properties:
+        id: { type: string, format: uuid }
+        display_name:
+          type: string
+          description: Public profile label chosen at registration; may be empty for legacy rows.
+          maxLength: 80
+        email: { type: string, format: email, maxLength: 320 }
+        status: { type: string, enum: [active, suspended, deleted] }
+
+    PlatformOperationsMembershipAccountSearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query, page]
+      properties:
+        query: { type: string, maxLength: 100 }
+        page: { type: integer, minimum: 1, maximum: 10000 }
+
+    PlatformOperationsMembershipAccountPage:
+      type: object
+      additionalProperties: false
+      required: [accounts, next_page]
+      properties:
+        accounts:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/PlatformOperationsMembershipAccount" }
+        next_page:
+          oneOf:
+            - type: integer
+              minimum: 2
+              maximum: 10000
+            - type: "null"
 
     RevokePlatformSessionRequest:
       type: object

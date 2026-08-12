@@ -85,6 +85,10 @@ func (c *Client) UserIdentities(ctx context.Context, exchangeToken, permission s
 	return c.operationRequest(ctx, http.MethodPost, "/api/v1/console-user-identities/resolutions", exchangeToken, "", body)
 }
 
+func (c *Client) MembershipAccounts(ctx context.Context, exchangeToken string, body []byte) (json.RawMessage, error) {
+	return c.operationRequest(ctx, http.MethodPost, "/api/v1/platform-operations/membership-accounts/search", exchangeToken, "", body)
+}
+
 func (c *Client) operationRequest(ctx context.Context, method, path, exchangeToken, idempotencyKey string, body []byte) (json.RawMessage, error) {
 	request, err := c.signedRequest(ctx, method, path, body)
 	if err != nil {

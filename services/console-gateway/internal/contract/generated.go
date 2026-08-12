@@ -27,6 +27,7 @@ const (
 	FoodCommandRoute                    = "/api/v1/food/commands"
 	FoodOperationRoute                  = "/api/v1/food/operations/{operation}"
 	AccountMembershipRoute              = "/api/v1/account/memberships/{user_id}"
+	SearchAccountMembershipsRoute       = "/api/v1/account/memberships/search"
 	AccountMembershipGrantsRoute        = "/api/v1/account/memberships/{user_id}/grants"
 	AccountMembershipRevocationsRoute   = "/api/v1/account/memberships/{user_id}/revocations"
 	AccountPointAdjustmentsRoute        = "/api/v1/account/points/adjustments"
@@ -38,7 +39,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "c5d4824b70d42e603e77f0cd7e03f4d277a402eaa7bcba77ffb958424edb310e"
+	SourceSHA256                        = "2346d16766e6735ebfddfdb7931fd0b201bd6a3fe9b4c9cc8cdf72c8dda0f78b"
 )
 
 type ConsoleAccessContext struct {
@@ -116,6 +117,24 @@ type ConsoleLookedUpAccount struct {
 	DisplayName *string `json:"display_name,omitempty"`
 	Email       string  `json:"email"`
 	ID          string  `json:"id"`
+	Status      string  `json:"status"`
+}
+
+type ConsoleMembershipAccountPage struct {
+	Accounts []ConsoleMembershipAccountSummary `json:"accounts"`
+	NextPage any                               `json:"next_page"`
+}
+
+type ConsoleMembershipAccountSearchRequest struct {
+	Page  int64  `json:"page"`
+	Query string `json:"query"`
+}
+
+type ConsoleMembershipAccountSummary struct {
+	DisplayName *string `json:"display_name,omitempty"`
+	Email       string  `json:"email"`
+	ID          string  `json:"id"`
+	Membership  any     `json:"membership"`
 	Status      string  `json:"status"`
 }
 

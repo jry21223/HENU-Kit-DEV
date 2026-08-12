@@ -6,10 +6,10 @@ import { accountName, accountStatusLabel } from "@/lib/account-labels";
 import {
   fetchAccountMembership,
   grantAccountMembership,
-  lookupConsoleAccount,
   revokeAccountMembership,
+  searchAccountMemberships,
   type ConsoleAccountMembership,
-  type ConsoleLookedUpAccount,
+  type ConsoleMembershipAccountSummary,
   type ConsoleMembershipMutationRequest,
 } from "@/lib/console-gateway";
 
@@ -20,7 +20,7 @@ const props = defineProps<{
 }>();
 
 type WorkspaceState = "loading" | "ready" | "signed_out" | "denied" | "unavailable";
-type LookupState = "idle" | "loading" | "ready" | "not_found" | "invalid" | "unavailable";
+type ListState = "idle" | "loading" | "ready" | "empty" | "invalid" | "unavailable";
 type DetailState = "idle" | "loading" | "ready" | "not_found" | "invalid" | "unavailable";
 type PendingCommand = {
   kind: "grant" | "revoke";
@@ -32,11 +32,15 @@ type PendingCommand = {
 };
 type LoadedMembership = ConsoleAccountMembership & { userID: string };
 
-const targetEmail = ref("");
-const account = ref<ConsoleLookedUpAccount>();
+const searchQuery = ref("");
+const activeQuery = ref("");
+const accounts = ref<ConsoleMembershipAccountSummary[]>([]);
+const account = ref<ConsoleMembershipAccountSummary>();
 const membership = ref<LoadedMembership>();
+const currentPage = ref(1);
+const nextPage = ref<number | null>(null);
 const workspaceState = ref<WorkspaceState>("loading");
-const lookupState = ref<LookupState>("idle");
+const listState = ref<ListState>("idle");
 const detailState = ref<DetailState>("idle");
 const reason = ref("");
 const feedback = ref("");
@@ -45,7 +49,7 @@ const confirm = ref<PendingCommand>();
 const pendingStorageKey = "henukit.account-membership.pending-command";
 const pending = ref<PendingCommand>();
 const canWrite = computed(() => props.permissions.includes("account.membership.write"));
-let lookupToken = 0;
+let listToken = 0;
 
 function operationKey(kind: PendingCommand["kind"]) {
   return `idem_account_membership_${kind}_${crypto.randomUUID()}`;
@@ -77,12 +81,15 @@ function restorePending(operatorID: string) {
   }
 }
 
-function resetLookup() {
-  lookupToken += 1;
+function resetWorkspace() {
+  listToken += 1;
+  accounts.value = [];
   account.value = undefined;
   membership.value = undefined;
-  lookupState.value = "idle";
+  listState.value = "idle";
   detailState.value = "idle";
+  currentPage.value = 1;
+  nextPage.value = null;
   confirm.value = undefined;
 }
 
@@ -90,51 +97,63 @@ function membershipLabel(value: ConsoleAccountMembership) {
   return value.plan === "lifetime" && value.lifetime ? "终身会员" : "免费会员";
 }
 
-async function lookupAccount() {
-  const email = targetEmail.value.trim();
-  if (!email || busy.value) return;
-  const token = ++lookupToken;
-  lookupState.value = "loading";
+function accountMembershipLabel(value: ConsoleMembershipAccountSummary) {
+  return value.membership ? membershipLabel(value.membership) : "未开通会员账户";
+}
+
+function selectAccount(value: ConsoleMembershipAccountSummary) {
+  account.value = value;
+  membership.value = value.membership ? { ...value.membership, userID: value.id } : undefined;
+  detailState.value = value.membership ? "ready" : "not_found";
+  reason.value = "";
+  confirm.value = undefined;
+  feedback.value = "";
+}
+
+async function loadAccounts(page = 1) {
+  if (busy.value || workspaceState.value !== "ready") return;
+  const token = ++listToken;
+  listState.value = "loading";
   account.value = undefined;
   membership.value = undefined;
   detailState.value = "idle";
   confirm.value = undefined;
-  feedback.value = "";
-  const result = await lookupConsoleAccount(email);
-  if (token !== lookupToken || targetEmail.value.trim() !== email) return;
+  if (page === 1) activeQuery.value = searchQuery.value.trim();
+  const result = await searchAccountMemberships({ query: activeQuery.value, page });
+  if (token !== listToken) return;
   if (result.state === "authenticated") {
-    if (!result.account) {
-      lookupState.value = "not_found";
-      return;
-    }
-    account.value = result.account;
-    lookupState.value = "ready";
-    await loadMembership(result.account.id);
+    accounts.value = result.page.accounts;
+    currentPage.value = page;
+    nextPage.value = result.page.next_page;
+    listState.value = accounts.value.length === 0 ? "empty" : "ready";
     return;
   }
+  accounts.value = [];
+  nextPage.value = null;
   if (result.state === "signed_out") {
     persistPending();
     workspaceState.value = "signed_out";
-    lookupState.value = "idle";
     return;
   }
   if (result.state === "denied") {
     persistPending();
     workspaceState.value = "denied";
-    lookupState.value = "idle";
     return;
   }
-  lookupState.value = result.state === "invalid" ? "invalid" : "unavailable";
+  listState.value = result.state === "invalid" ? "invalid" : "unavailable";
 }
 
 async function loadMembership(userID: string) {
-  const token = lookupToken;
+  const selected = account.value;
+  if (!selected || selected.id !== userID) return;
   detailState.value = "loading";
   membership.value = undefined;
   const result = await fetchAccountMembership(userID);
-  if (token !== lookupToken || account.value?.id !== userID) return;
+  if (account.value?.id !== userID) return;
   if (result.state === "authenticated") {
     membership.value = { ...result.membership, userID };
+    account.value = { ...selected, membership: result.membership };
+    accounts.value = accounts.value.map((item) => item.id === userID ? { ...item, membership: result.membership } : item);
     detailState.value = "ready";
     return;
   }
@@ -168,6 +187,8 @@ async function finish(command: PendingCommand) {
   }
   if (result.state === "succeeded") {
     membership.value = { ...result.membership, userID: command.userID };
+    if (account.value?.id === command.userID) account.value = { ...account.value, membership: result.membership };
+    accounts.value = accounts.value.map((item) => item.id === command.userID ? { ...item, membership: result.membership } : item);
     detailState.value = "ready";
     reason.value = "";
     persistPending();
@@ -184,11 +205,11 @@ async function finish(command: PendingCommand) {
       ? "当前账户缺少会员权益操作权限。"
       : result.state === "signed_out"
         ? "登录状态已过期，请重新登录后再操作。"
-      : result.state === "not_found"
-        ? "该用户还未开通会员账户，无法发放权益。"
-        : result.state === "invalid"
-          ? "请求内容无效，请检查填写后重试。"
-          : "操作没有完成，请稍后刷新页面重试。";
+        : result.state === "not_found"
+          ? "该用户还未开通会员账户，无法发放权益。"
+          : result.state === "invalid"
+            ? "请求内容无效，请检查填写后重试。"
+            : "操作没有完成，请稍后刷新页面重试。";
   }
   busy.value = false;
 }
@@ -229,18 +250,20 @@ watch(
   () => [props.authState, props.operatorID, canWrite.value] as const,
   ([authState, operatorID, hasPermission]) => {
     if (authState === "authenticated" && hasPermission && operatorID) {
+      const shouldLoad = workspaceState.value !== "ready";
       workspaceState.value = "ready";
       restorePending(operatorID);
+      if (shouldLoad) void loadAccounts(1);
       return;
     }
     if (authState === "loading") {
       workspaceState.value = "loading";
-      resetLookup();
+      resetWorkspace();
       return;
     }
     persistPending();
     workspaceState.value = authState === "signed_out" ? "signed_out" : authState === "denied" || !hasPermission ? "denied" : "unavailable";
-    resetLookup();
+    resetWorkspace();
   },
   { immediate: true },
 );
@@ -251,7 +274,7 @@ watch(
     <PageHeader
       eyebrow="会员权益操作"
       title="会员权益运营"
-      description="所有操作均以当前登录身份记录。"
+      description="从用户列表选择一个账户，所有操作均以当前登录身份记录。"
       title-id="account-membership-heading"
     >
       <div class="access-context"><span>已记录审计的权益操作</span></div>
@@ -268,36 +291,61 @@ watch(
     <div v-else-if="workspaceState === 'denied'" class="operation-state">当前账户没有会员权益运营权限，请联系管理员开通。</div>
     <div v-else-if="workspaceState === 'unavailable'" class="operation-state"><p>会员权益服务暂时不可用，请稍后再试。</p></div>
 
-    <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]">
-      <form class="operation-panel !mt-0" @submit.prevent="lookupAccount">
-        <h2>按邮箱查找账户</h2>
-        <p class="mt-2 text-sm leading-6 text-muted-foreground">输入完整邮箱查找账户，核对姓名后再执行发放或撤销。</p>
-        <Label class="mt-5 grid gap-2">
-          完整邮箱
-          <Input v-model="targetEmail" required type="email" inputmode="email" autocomplete="off" placeholder="student@stu.henu.edu.cn" :disabled="busy" @input="resetLookup" />
-        </Label>
-        <Button class="mt-4" type="submit" :disabled="busy || !targetEmail.trim()">查找账户</Button>
-      </form>
+    <div v-else class="mt-6 grid gap-5 xl:grid-cols-[minmax(20rem,.9fr)_minmax(0,1.1fr)]">
+      <section class="operation-panel !mt-0" aria-labelledby="membership-account-list-heading">
+        <h2 id="membership-account-list-heading">选择用户</h2>
+        <p class="mt-2 text-sm leading-6 text-muted-foreground">默认显示一页用户；可按显示名称（Display Name）或完整邮箱缩小结果。</p>
+        <form class="mt-4 flex flex-col gap-3 sm:flex-row" @submit.prevent="loadAccounts(1)">
+          <Label class="min-w-0 flex-1 grid gap-2">
+            显示名称或邮箱
+            <Input v-model="searchQuery" autocomplete="off" placeholder="姓名或 student@henu.edu.cn" :disabled="busy" />
+          </Label>
+          <Button class="sm:self-end" type="submit" :disabled="busy || listState === 'loading'">搜索</Button>
+        </form>
 
-      <Card class="!mt-0 p-4" :data-account-lookup-state="lookupState" :data-account-membership-detail-state="detailState" aria-labelledby="account-membership-detail-heading">
-        <div v-if="lookupState === 'idle'" class="text-muted-foreground">输入完整邮箱后，这里会先回显账户姓名供核对。</div>
-        <div v-else-if="lookupState === 'loading'" aria-busy="true">正在查找账户…</div>
-        <div v-else-if="lookupState === 'not_found'" class="text-muted-foreground">没有找到该邮箱对应的账户。请核对邮箱后重试；这不是服务不可用。</div>
-        <div v-else-if="lookupState === 'invalid'" class="text-muted-foreground">邮箱格式不对，请检查后重试。</div>
-        <div v-else-if="lookupState === 'unavailable'" class="text-muted-foreground"><p>账户查找服务暂时不可用，请稍后再试。</p><Button class="mt-3" @click="lookupAccount">重新查找</Button></div>
-        <template v-else-if="account">
+        <div class="mt-4" :data-membership-list-state="listState">
+          <p v-if="listState === 'loading'" aria-busy="true">正在加载用户…</p>
+          <p v-else-if="listState === 'empty'" class="text-muted-foreground">没有匹配的用户。可以清空搜索条件后重试。</p>
+          <p v-else-if="listState === 'invalid'" class="text-muted-foreground">搜索内容无效，请检查后重试。</p>
+          <div v-else-if="listState === 'unavailable'" class="text-muted-foreground"><p>用户与会员状态暂时不可用，请稍后再试。</p><Button class="mt-3" @click="loadAccounts(currentPage)">重新加载</Button></div>
+          <div v-else-if="listState === 'ready'" class="grid gap-2">
+            <button
+              v-for="item in accounts"
+              :key="item.id"
+              type="button"
+              class="w-full min-w-0 rounded-lg border border-border p-3 text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              :class="account?.id === item.id ? 'bg-muted ring-1 ring-ring' : ''"
+              @click="selectAccount(item)"
+            >
+              <span class="block font-semibold">{{ accountName(item.display_name) }}</span>
+              <span class="mt-1 block break-all text-sm text-muted-foreground">{{ item.email }}</span>
+              <span class="mt-2 block text-sm">{{ accountMembershipLabel(item) }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="listState === 'ready'" class="mt-4 flex flex-wrap items-center justify-between gap-3" aria-label="用户分页">
+          <Button variant="outline" :disabled="currentPage <= 1" @click="loadAccounts(currentPage - 1)">上一页</Button>
+          <span class="text-sm text-muted-foreground">第 {{ currentPage }} 页</span>
+          <Button variant="outline" :disabled="nextPage === null" @click="nextPage && loadAccounts(nextPage)">下一页</Button>
+        </div>
+      </section>
+
+      <Card class="!mt-0 min-w-0 p-4" :data-account-membership-detail-state="detailState" aria-labelledby="account-membership-detail-heading">
+        <div v-if="!account" class="text-muted-foreground">从左侧列表选择一位用户后，可查看并编辑会员权益。</div>
+        <template v-else>
           <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p class="eyebrow">账户核对</p>
+            <div class="min-w-0">
+              <p class="eyebrow">已选用户</p>
               <h2 id="account-membership-detail-heading" class="mt-1 text-xl font-bold">{{ accountName(account.display_name) }}</h2>
               <p class="mt-1 break-all text-sm text-muted-foreground">{{ account.email }} · 账户状态：{{ accountStatusLabel(account.status) }}。请核对姓名和邮箱后再操作。</p>
             </div>
           </div>
 
           <div v-if="detailState === 'loading'" class="mt-4" aria-busy="true">正在读取持久化会员权益…</div>
-          <div v-else-if="detailState === 'not_found'" class="mt-4 text-muted-foreground">该账户还未开通会员账户，无法发放权益。</div>
-          <div v-else-if="detailState === 'invalid'" class="mt-4 text-muted-foreground">账户信息无效，请重新查找。</div>
-          <div v-else-if="detailState === 'unavailable'" class="mt-4 text-muted-foreground"><p>会员权益暂不可用。</p><Button class="mt-3" @click="account && loadMembership(account.id)">重新加载</Button></div>
+          <div v-else-if="detailState === 'not_found'" class="mt-4 text-muted-foreground">该用户尚未建立会员账户，暂时不能发放权益；请让用户先登录一次账户中心后重试。</div>
+          <div v-else-if="detailState === 'invalid'" class="mt-4 text-muted-foreground">账户信息无效，请重新选择。</div>
+          <div v-else-if="detailState === 'unavailable'" class="mt-4 text-muted-foreground"><p>会员权益暂不可用。</p><Button class="mt-3" @click="loadMembership(account.id)">重新加载</Button></div>
           <template v-else-if="membership && account.id === membership.userID">
             <div class="mt-4 flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -323,7 +371,7 @@ watch(
               <p class="mt-2 text-sm leading-6 text-muted-foreground">
                 将向「{{ accountName(account.display_name) }} · {{ account.email }}」{{ confirm.kind === "grant" ? "发放" : "撤销" }}终身会员权益，写入不可变审计事件并向该用户创建持久化通知；提交后立即生效，之后可通过相反操作调整。
               </p>
-              <div class="mt-3 flex gap-3">
+              <div class="mt-3 flex flex-wrap gap-3">
                 <Button :disabled="busy" @click="confirmMutation">确认执行</Button>
                 <Button variant="outline" :disabled="busy" @click="cancelMutation">取消</Button>
               </div>

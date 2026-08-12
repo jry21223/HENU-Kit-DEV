@@ -31,6 +31,17 @@ JOIN email_identities ON email_identities.user_id = users.id
 WHERE users.id = ANY($1::uuid[])
 ORDER BY users.id;
 
+-- name: ListPlatformOperationMembershipAccounts :many
+SELECT users.id, users.display_name, users.status, identities.email_ciphertext
+FROM users
+JOIN email_identities AS identities ON identities.user_id = users.id
+WHERE sqlc.arg(search)::text = ''
+   OR strpos(lower(coalesce(users.display_name, '')), lower(sqlc.arg(search)::text)) > 0
+   OR (sqlc.narg(email_lookup_hash)::bytea IS NOT NULL
+       AND identities.email_lookup_hash = sqlc.narg(email_lookup_hash)::bytea)
+ORDER BY users.created_at DESC, users.id
+LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
+
 -- name: GetPlatformOperationSession :one
 SELECT id, user_id, revoked_at, expires_at
 FROM sessions

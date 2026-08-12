@@ -23,6 +23,8 @@ import (
 	"henukit.dev/platform-core/internal/store"
 )
 
+const membershipAccountPageSize = 20
+
 type Service struct {
 	queries         *store.Queries
 	database        *pgxpool.Pool
@@ -144,6 +146,18 @@ type AccountLookupAccount struct {
 
 type IdentityResolution struct {
 	Identities []AccountLookupAccount `json:"identities"`
+}
+
+type MembershipAccountPage struct {
+	Accounts []MembershipAccount `json:"accounts"`
+	NextPage *int                `json:"next_page"`
+}
+
+type MembershipAccount struct {
+	ID          string  `json:"id"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Email       string  `json:"email"`
+	Status      string  `json:"status"`
 }
 
 type OperationResult struct {
@@ -341,6 +355,38 @@ func (s *Service) openOptionalEmail(ciphertext []byte) (string, error) {
 		return "", nil
 	}
 	return s.openEmail(ciphertext)
+}
+
+func (s *Service) ListMembershipAccounts(ctx context.Context, query string, page int) (MembershipAccountPage, error) {
+	query = strings.TrimSpace(query)
+	if len([]rune(query)) > 100 || page < 1 || page > 10_000 {
+		return MembershipAccountPage{}, ErrInvalid
+	}
+	result := MembershipAccountPage{Accounts: []MembershipAccount{}}
+	var exactEmailHash []byte
+	if normalized, normalizeErr := s.normalizeEmail(query); normalizeErr == nil {
+		exactEmailHash = emailLookupHash(s.verificationKey, normalized)
+	}
+	rows, err := s.queries.ListPlatformOperationMembershipAccounts(ctx, store.ListPlatformOperationMembershipAccountsParams{
+		Search: query, EmailLookupHash: exactEmailHash, PageLimit: membershipAccountPageSize + 1, PageOffset: int32((page - 1) * membershipAccountPageSize),
+	})
+	if err != nil {
+		return MembershipAccountPage{}, err
+	}
+	if len(rows) > membershipAccountPageSize {
+		next := page + 1
+		result.NextPage = &next
+		rows = rows[:membershipAccountPageSize]
+	}
+	for _, row := range rows {
+		email, openErr := s.openEmail(row.EmailCiphertext)
+		if openErr != nil {
+			return MembershipAccountPage{}, openErr
+		}
+		account := MembershipAccount{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), Email: email, Status: row.Status}
+		result.Accounts = append(result.Accounts, account)
+	}
+	return result, nil
 }
 
 func (s *Service) rateLimited(ctx context.Context, serviceID string) (bool, error) {

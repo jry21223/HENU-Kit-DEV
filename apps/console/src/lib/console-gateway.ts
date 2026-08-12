@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 c5d4824b70d42e603e77f0cd7e03f4d277a402eaa7bcba77ffb958424edb310e); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 2346d16766e6735ebfddfdb7931fd0b201bd6a3fe9b4c9cc8cdf72c8dda0f78b); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -74,6 +74,24 @@ export interface ConsoleLookedUpAccount {
   display_name?: string;
   email: string;
   id: string;
+  status: "active" | "suspended" | "deleted";
+}
+
+export interface ConsoleMembershipAccountPage {
+  accounts: Array<ConsoleMembershipAccountSummary>;
+  next_page: number | null;
+}
+
+export interface ConsoleMembershipAccountSearchRequest {
+  page: number;
+  query: string;
+}
+
+export interface ConsoleMembershipAccountSummary {
+  display_name?: string;
+  email: string;
+  id: string;
+  membership: ConsoleAccountMembership | null;
   status: "active" | "suspended" | "deleted";
 }
 
@@ -646,6 +664,18 @@ function isConsoleLookedUpAccount(value: unknown): value is ConsoleLookedUpAccou
   return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","email","id","status"].includes(key));
 }
 
+function isConsoleMembershipAccountPage(value: unknown): value is ConsoleMembershipAccountPage {
+  return isRecord(value) && "accounts" in value && Array.isArray(value["accounts"]) && value["accounts"].length <= 20 && value["accounts"].every((item) => isConsoleMembershipAccountSummary(item)) && "next_page" in value && true && ([(typeof value["next_page"] === "number" && Number.isSafeInteger(value["next_page"]) && value["next_page"] >= 2 && value["next_page"] <= 10000), (value["next_page"] === null)].filter(Boolean).length === 1) && Object.keys(value).every((key) => ["accounts","next_page"].includes(key));
+}
+
+function isConsoleMembershipAccountSearchRequest(value: unknown): value is ConsoleMembershipAccountSearchRequest {
+  return isRecord(value) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && value["page"] <= 10000 && "query" in value && typeof value["query"] === "string" && value["query"].length <= 100 && Object.keys(value).every((key) => ["page","query"].includes(key));
+}
+
+function isConsoleMembershipAccountSummary(value: unknown): value is ConsoleMembershipAccountSummary {
+  return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "id" in value && isUUID(value["id"]) && "membership" in value && true && ([(isConsoleAccountMembership(value["membership"])), (value["membership"] === null)].filter(Boolean).length === 1) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","email","id","membership","status"].includes(key));
+}
+
 function isConsoleMembershipMutationRequest(value: unknown): value is ConsoleMembershipMutationRequest {
   return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
 }
@@ -1174,6 +1204,23 @@ export async function resolveFoodOperation(operation: FoodCommandKind, idempoten
 export type AccountMembershipReadResult =
   | { state: "authenticated"; membership: ConsoleAccountMembership }
   | { state: "signed_out" | "denied" | "not_found" | "invalid" | "unavailable" };
+
+export type AccountMembershipPageResult =
+  | { state: "authenticated"; page: ConsoleMembershipAccountPage }
+  | { state: "signed_out" | "denied" | "invalid" | "unavailable" };
+
+export async function searchAccountMemberships(input: ConsoleMembershipAccountSearchRequest): Promise<AccountMembershipPageResult> {
+  try {
+    const response = await fetch("/api/v1/account/memberships/search", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isConsoleMembershipAccountPage(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", page: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
 
 export async function fetchAccountMembership(userID: string): Promise<AccountMembershipReadResult> {
   try {

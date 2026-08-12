@@ -94,6 +94,7 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Get(contract.PlatformOperationsRoute, handler.getPlatformOperations)
 	router.Post(contract.PlatformOperationsAccountLookupRoute, handler.lookupPlatformOperationAccount)
 	router.Post(contract.ConsoleUserIdentityResolutionRoute, handler.resolveConsoleUserIdentities)
+	router.Post(contract.PlatformOperationsMembershipAccountsRoute, handler.listPlatformOperationMembershipAccounts)
 	router.Post(contract.RevokePlatformOperationSessionRoute, handler.revokePlatformOperationSession)
 	router.Post(contract.UpdatePlatformOperationAccessRoute, handler.updatePlatformOperationAccess)
 	router.Get(contract.PlatformOperationStatusRoute, handler.getPlatformOperationStatus)
@@ -219,6 +220,29 @@ func (h *Handler) resolveConsoleUserIdentities(writer http.ResponseWriter, reque
 
 func consoleTicketIdentityPermission(permission string) bool {
 	return permission == "account.tickets.read" || permission == "account.tickets.reply" || permission == "account.tickets.transition"
+}
+
+func (h *Handler) listPlatformOperationMembershipAccounts(writer http.ResponseWriter, request *http.Request) {
+	rawBody, body, ok := decodeInboxBody[struct {
+		Query string `json:"query"`
+		Page  int    `json:"page"`
+	}](writer, request)
+	if !ok || len([]rune(body.Query)) > 100 || body.Page < 1 || body.Page > 10_000 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Membership account search is invalid")
+		return
+	}
+	decision, err := h.authorizeInbox(request, rawBody, "account.membership.write", "product", "account-portfolio", "", "")
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	result, err := h.platformOps.ListMembershipAccounts(request.Context(), body.Query, body.Page)
+	if err != nil {
+		h.writePlatformOperationError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, result)
 }
 
 func (h *Handler) revokePlatformOperationSession(writer http.ResponseWriter, request *http.Request) {

@@ -86,6 +86,16 @@ func validateMembershipEnvelope(raw json.RawMessage) error {
 	return nil
 }
 
+// ValidatedMembership is the single owner-contract seam for consumers that
+// need the validated membership payload without its transport envelope.
+func ValidatedMembership(raw json.RawMessage) (json.RawMessage, error) {
+	if err := validateMembershipEnvelope(raw); err != nil {
+		return nil, err
+	}
+	value, _ := requiredObject(raw)
+	return value["membership"], nil
+}
+
 func validatePointAdjustment(raw json.RawMessage) error {
 	value, ok := requiredObject(raw)
 	if !ok || !hasOnlyKeys(value, "balance", "entry") {
