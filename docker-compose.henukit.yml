@@ -396,7 +396,7 @@ services:
       # degrade the module to 503 (Library fails closed: ADR-0020).
       NOTICE_API_URL: ${NOTICE_API_URL:-}
       LIBRARY_API_URL: ${LIBRARY_API_URL:-}
-      FOOD_API_URL: ${FOOD_API_URL:-}
+      FOOD_API_URL: ${FOOD_API_URL:-http://food:8096}
       NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
       NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
       NOTICE_SUMMARY_KEY_ID: ${NOTICE_SUMMARY_KEY_ID:-notice-summary-key}

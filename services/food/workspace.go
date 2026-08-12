@@ -63,7 +63,7 @@ type cachedWorkspace struct {
 
 func (h *service) loadWorkspace(r *http.Request) (workspaceData, error) {
 	result := workspaceData{Submissions: []submission{}, AnomalyTickets: []anomalyTicket{}, TierAdjustments: []tierAdjustment{}}
-	rows, err := h.database.Query(r.Context(), `SELECT id,venue_name,item_name,description,status,version,submitted_at,updated_at FROM food_submissions ORDER BY submitted_at DESC LIMIT 200`)
+	rows, err := h.database.Query(r.Context(), `SELECT id,venue_name,item_name,description,status,version,submitted_at,updated_at FROM food_submissions WHERE status='pending' ORDER BY submitted_at DESC LIMIT 200`)
 	if err != nil {
 		return h.staleWorkspace(r, err)
 	}
@@ -80,7 +80,7 @@ func (h *service) loadWorkspace(r *http.Request) (workspaceData, error) {
 		return h.staleWorkspace(r, err)
 	}
 	rows.Close()
-	rows, err = h.database.Query(r.Context(), `SELECT id,venue_name,kind,details,severity,status,version,created_at,updated_at FROM food_anomaly_tickets ORDER BY created_at DESC LIMIT 200`)
+	rows, err = h.database.Query(r.Context(), `SELECT id,venue_name,kind,details,severity,status,version,created_at,updated_at FROM food_anomaly_tickets WHERE status='open' ORDER BY created_at DESC LIMIT 200`)
 	if err != nil {
 		return h.staleWorkspace(r, err)
 	}
@@ -97,7 +97,7 @@ func (h *service) loadWorkspace(r *http.Request) (workspaceData, error) {
 		return h.staleWorkspace(r, err)
 	}
 	rows.Close()
-	rows, err = h.database.Query(r.Context(), `SELECT id,venue_name,current_tier,proposed_tier,reason,status,version,created_at,updated_at FROM food_tier_adjustments ORDER BY created_at DESC LIMIT 200`)
+	rows, err = h.database.Query(r.Context(), `SELECT id,venue_name,current_tier,proposed_tier,reason,status,version,created_at,updated_at FROM food_tier_adjustments WHERE status='pending' ORDER BY created_at DESC LIMIT 200`)
 	if err != nil {
 		return h.staleWorkspace(r, err)
 	}
