@@ -69,9 +69,17 @@ release_sha="$(git rev-parse HEAD)"
 scripts/ops/build-henukit-release-local.sh \
   --sha "$release_sha" \
   --output-dir /srv/henukit-artifacts \
-  --signing-key /etc/henukit-release-builder/ed25519 \
+  --signing-key /home/henukit-builder/.ssh/henukit-release-signing.pub \
   --handoff-group henukit-release-deployers
 ```
+
+The `.pub` form is an agent-backed handle: start a fresh builder-owned
+`ssh-agent`, load the matching owner-only private key for this build, and pass
+only the public half to the builder. The builder verifies that the exact
+fingerprint is present in that agent. Remove the key with `ssh-add -d` and stop
+that agent immediately after the build, whether it succeeds or fails. Never
+place the private half below `/srv`, in a repository, in an artifact directory,
+or in a shell log.
 
 The builder fails closed unless the worktree is clean, `HEAD` equals the given
 SHA, the remote `origin/main` head still equals that SHA before and after the
@@ -196,6 +204,45 @@ After an interrupted terminal write it only completes the immutable
 `.activated` or `.restored` record; it never reloads images or reuses a
 consumed approval. Routine activation never reuses a pre-existing approval.
 
+### Release signing trust-root rotation
+
+Rotate a destroyed or retiring release signer only through
+`rotate-henukit-release-signers.sh`; never edit either allowed-signers file by
+hand. Generate one dedicated Ed25519 key under the builder account's private
+`~/.ssh` directory (directory mode `0700`, private key mode `0600`, public key
+mode `0400`). Record only its SHA-256 public fingerprint. A temporary
+builder-owned `ssh-agent` may hold the private half during the one build; the
+deployer and production host receive only the public half.
+
+The reviewed trust-root bootstrap below must first install the rotation helper.
+Stage the public key into a root-owned, non-symlinked `0700` directory on the
+local deployer and production host. On each host, run the identical exact-SHA
+preflight before execute:
+
+```bash
+sudo install -d -o root -g root -m 0700 /var/lib/henukit-release-signers
+sudo /usr/local/sbin/rotate-henukit-release-signers \
+  --allowed-signers /etc/henukit/release-signers \
+  --new-public-key /etc/henukit/release-signing-candidates/<sha>.pub \
+  --principal henukit-release \
+  --retain-fingerprint '<approved-old-SHA256-fingerprint>' \
+  --candidate-sha <reviewed-current-main-sha> \
+  --preflight
+
+# Repeat the exact tuple with --execute only after the preflight is reviewed.
+```
+
+For the WSL deployer, use its local allowed-signers path
+`/etc/henukit-release-deployer/release-signers` and a root-owned local candidate
+path. The helper refuses writable or symlinked trust paths, requires the old
+fingerprint exactly once, adds the new signer without removing the old one,
+keeps a root-only before-image, atomically replaces the file, and publishes an
+exact-SHA immutable audit under `/var/lib/henukit-release-signers/rotations/`.
+An interrupted exact rotation resumes from its `.rotating` intent; an unaudited
+pre-existing new signer or any unrelated file change fails closed. Remove the
+old signer only in a separately reviewed change after the rollback window and
+all retained artifacts signed solely by it have expired.
+
 ### Out-of-band local trust-root bootstrap
 
 Before the first local-artifact activation, a production administrator must
@@ -208,16 +255,17 @@ bundle, including its runtime archive.
 This is an exceptional, out-of-band root-admin action performed **before** a
 local candidate is transferred. Obtain a separate clean checkout of the
 reviewed current `origin/main` SHA and an independently reviewed SHA-256 record
-for exactly these five source basenames: `watch-henukit-actions.sh`,
+for exactly these six source basenames: `watch-henukit-actions.sh`,
 `activate-henukit-release.sh`, `henukit-release-images.sh`, and
 `verify-henukit-local-release.sh`, plus
-`adopt-henukit-degraded-baseline.sh`. The hash record is created and approved from
+`adopt-henukit-degraded-baseline.sh` and
+`rotate-henukit-release-signers.sh`. The hash record is created and approved from
 the reviewed commit on a separate trusted admin station; do not generate it
 from the checkout being installed or from the candidate artifact.
 
 Copy that approved record to `/etc/henukit/release-trust-root-<sha>.sha256`
 with owner `root:root` and mode `0400`, then use a root-owned staging directory
-to close the source-copy race before installing the five long-lived helpers:
+to close the source-copy race before installing the six long-lived helpers:
 
 ```bash
 tooling=/srv/henukit-release-tooling
@@ -233,12 +281,14 @@ sudo install -o root -g root -m 0555 "$tooling/scripts/ops/activate-henukit-rele
 sudo install -o root -g root -m 0555 "$tooling/scripts/ops/henukit-release-images.sh" "$stage/henukit-release-images.sh"
 sudo install -o root -g root -m 0555 "$tooling/scripts/ops/verify-henukit-local-release.sh" "$stage/verify-henukit-local-release.sh"
 sudo install -o root -g root -m 0555 "$tooling/scripts/ops/adopt-henukit-degraded-baseline.sh" "$stage/adopt-henukit-degraded-baseline.sh"
+sudo install -o root -g root -m 0555 "$tooling/scripts/ops/rotate-henukit-release-signers.sh" "$stage/rotate-henukit-release-signers.sh"
 sudo sh -c "cd '$stage' && sha256sum -c /etc/henukit/release-trust-root-$release_sha.sha256"
 sudo install -o root -g root -m 0555 "$stage/watch-henukit-actions.sh" /usr/local/sbin/watch-henukit-actions
 sudo install -o root -g root -m 0555 "$stage/activate-henukit-release.sh" /usr/local/sbin/activate-henukit-release
 sudo install -o root -g root -m 0555 "$stage/henukit-release-images.sh" /usr/local/sbin/henukit-release-images.sh
 sudo install -o root -g root -m 0555 "$stage/verify-henukit-local-release.sh" /usr/local/sbin/verify-henukit-local-release.sh
 sudo install -o root -g root -m 0555 "$stage/adopt-henukit-degraded-baseline.sh" /usr/local/sbin/adopt-henukit-degraded-baseline
+sudo install -o root -g root -m 0555 "$stage/rotate-henukit-release-signers.sh" /usr/local/sbin/rotate-henukit-release-signers
 ```
 
 The local watcher rejects non-root-owned trust files or writable parent

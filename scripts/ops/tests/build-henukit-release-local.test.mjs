@@ -37,6 +37,9 @@ test("the local builder is WSL-only and locks every artifact to the current clea
   assert.match(source, /find "\$incoming" -type f -exec chmod 0440/);
   assert.match(source, /--signing-key must remain outside the artifact handoff tree/);
   assert.match(source, /ssh-keygen -Y sign/);
+  assert.match(source, /public key[\s\S]*ssh-agent/i);
+  assert.match(source, /ssh-add -l -E sha256/);
+  assert.match(source, /signing_public_key/);
   assert.match(source, /"\$runtime_packager" --sha/);
   assert.match(source, /"\$verifier"[\s\S]*--allowed-signers/);
   assert.match(source, /refusing to overwrite existing artifact directory/);

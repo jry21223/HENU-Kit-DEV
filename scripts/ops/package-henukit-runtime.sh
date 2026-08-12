@@ -106,6 +106,7 @@ for helper in \
   watch-henukit-actions.sh \
   activate-henukit-release.sh \
   adopt-henukit-degraded-baseline.sh \
+  rotate-henukit-release-signers.sh \
   deploy-epay-gateway-patches.sh \
   henukit-release-images.sh \
   verify-henukit-local-release.sh; do
