@@ -38,7 +38,7 @@ func WithRequestID(ctx context.Context, requestID string) context.Context {
 
 func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client) (*Client, error) {
 	parsed, err := url.Parse(baseURL)
-	loopback := err == nil && clientutil.IsTrustedLoopbackHTTP(parsed, "platform-core", "portal-api")
+	loopback := err == nil && clientutil.IsTrustedLoopbackHTTP(parsed, "platform-core", "portal-api", "notice")
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !loopback) || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || clientID == "" || len(clientSecret) < 32 || keyID == "" {
 		return nil, errors.New("invalid Notice client configuration")
 	}
