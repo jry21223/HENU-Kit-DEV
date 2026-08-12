@@ -164,6 +164,13 @@ function args(setup, mode = "--preflight") {
   ];
 }
 
+function recoveryArgs(setup, mode = "--execute") {
+  return [
+    ...args(setup, mode),
+    "--recover-degraded-baseline", "c".repeat(40),
+  ];
+}
+
 function remoteSandbox() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "henukit-remote-sandbox-")));
   const bin = join(root, "bin");
@@ -486,7 +493,7 @@ test("execute safely resumes a previously verified production bundle without ret
   assert.doesNotMatch(calls, /rsync /);
   assert.match(calls, /verify-henukit-local-release\.sh/);
   assert.match(calls, /activate-henukit-release/);
-  assert.match(calls, /operations-operator - :: set -eu/);
+  assert.match(calls, /operations-operator - - :: set -eu/);
 });
 
 test("execute transfers the signed bundle directly from WSL to henu-prod and uses the guarded activation entry", () => {
@@ -502,6 +509,25 @@ test("execute transfers the signed bundle directly from WSL to henu-prod and use
   assert.match(calls, /rsync .*henu-prod:\/opt\/henukit-incoming\/\.incoming-a{40}-[0-9]+-[0-9]+\//);
   assert.match(calls, /ssh .*henu-prod.*verify-henukit-local-release\.sh/);
   assert.match(calls, /ssh .*henu-prod.*activate-henukit-release/);
-  assert.match(calls, /operations-operator - :: set -eu/);
+  assert.match(calls, /operations-operator - - :: set -eu/);
   assert.doesNotMatch(calls, /scp|jerry-wsl|henukit-rel-/);
+});
+
+test("explicit recovery is bound to one exact degraded baseline through preflight and activation", () => {
+  const setup = fixture({
+    configuredAlias: true,
+    remoteArtifactState: "verified-existing",
+  });
+  const previousSha = "c".repeat(40);
+  const result = spawnSync(script, recoveryArgs(setup), {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const calls = readFileSync(setup.log, "utf8");
+  assert.match(calls, new RegExp(`operations-operator - ${previousSha}`));
+  assert.match(calls, /--recover-degraded-baseline "\$recovery_baseline_sha"/);
+  assert.match(calls, /readlink -f \/opt\/henukit-current/);
+  assert.match(calls, /activate-henukit-release --help/);
 });

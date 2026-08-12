@@ -188,6 +188,30 @@ test("one command keeps the Account payment gates when its fixed-SHA artifacts c
   assert.match(calls, /ssh root@metaview\.top .*deploy-epay-gateway-patches\.sh.*--execute/);
 });
 
+test("one command threads an explicit degraded-baseline recovery through both watcher passes", () => {
+  const setup = fixture();
+  const artifacts = join(setup.root, "signed-local-artifacts");
+  const previousSha = "c".repeat(40);
+  mkdirSync(artifacts);
+
+  execFileSync(
+    command,
+    [
+      releaseSha,
+      "--local-artifacts", artifacts,
+      "--recover-degraded-baseline", previousSha,
+      "--execute",
+    ],
+    { encoding: "utf8", env: setup.env },
+  );
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.equal(
+    (calls.match(new RegExp(`--recover-degraded-baseline ${previousSha}`, "g")) ?? []).length,
+    2,
+  );
+});
+
 test("one command refuses while QuizCraft cutover blocker remains open", () => {
   const setup = fixture({ blockerState: "open" });
 

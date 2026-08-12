@@ -17,6 +17,7 @@ usage: deploy-henukit-release-from-wsl.sh \
   --remote-env-file <absolute-production-env-path> \
   --account-operator-role <role-code> \
   [--platform-migrations <comma-separated-reviewed-files>] \
+  [--recover-degraded-baseline <full-current-sha>] \
   --preflight|--execute
 
 Run this only from the WSL2 deployment identity that owns the henu-prod SSH
@@ -54,6 +55,7 @@ allowed_signers=""
 remote_env_file=""
 account_operator_role=""
 platform_migrations=""
+recovery_baseline_sha=""
 mode=""
 
 while [[ $# -gt 0 ]]; do
@@ -88,6 +90,11 @@ while [[ $# -gt 0 ]]; do
       platform_migrations="$2"
       shift 2
       ;;
+    --recover-degraded-baseline)
+      [[ $# -ge 2 ]] || { usage; exit 64; }
+      recovery_baseline_sha="$2"
+      shift 2
+      ;;
     --preflight|--execute)
       [[ -z "$mode" ]] || die "choose exactly one of --preflight or --execute"
       mode="$1"
@@ -114,6 +121,14 @@ done
 if [[ -n "$platform_migrations" ]]; then
   [[ "$platform_migrations" =~ ^[0-9]{6}_[a-z0-9_]+\.up\.sql(,[0-9]{6}_[a-z0-9_]+\.up\.sql)*$ ]] ||
     die "--platform-migrations must be reviewed numbered .up.sql filenames"
+fi
+if [[ -n "$recovery_baseline_sha" ]]; then
+  [[ "$recovery_baseline_sha" =~ ^[0-9a-f]{40}$ ]] ||
+    die "--recover-degraded-baseline must be a full lowercase Git SHA"
+  [[ "$recovery_baseline_sha" != "$release_sha" ]] ||
+    die "recovery baseline and candidate SHA must differ"
+  [[ "$mode" == "--execute" || "$mode" == "--preflight" ]] ||
+    die "degraded-baseline recovery requires an explicit deployment mode"
 fi
 
 [[ "$(uname -s)" == "Linux" && "$(uname -m)" == "x86_64" ]] ||
@@ -181,12 +196,17 @@ remote_state_file="$(mktemp "${TMPDIR:-/tmp}/henukit-remote-state.XXXXXX")"
 chmod 0600 "$remote_state_file"
 if ! ssh "${ssh_options[@]}" "$production_alias" sh -s -- \
   "$remote_env_file" "$remote_incoming_root" "$remote_release_dir" "$release_sha" \
+  "${recovery_baseline_sha:--}" \
   >"$remote_state_file" <<'REMOTE_PREFLIGHT'
 set -eu
 remote_env_file="$1"
 incoming_root="$2"
 remote_release_dir="$3"
 release_sha="$4"
+case "$5" in
+  -) recovery_baseline_sha="" ;;
+  *) recovery_baseline_sha="$5" ;;
+esac
 trusted_root_file() {
   file="$1"
   case "$file" in /*) ;; *) return 1 ;; esac
@@ -229,6 +249,16 @@ for helper in \
   trusted_root_file "$helper"
   test -x "$helper"
 done
+if test -n "$recovery_baseline_sha"; then
+  case "$recovery_baseline_sha" in
+    *[!0-9a-f]*|'') exit 1 ;;
+  esac
+  test "${#recovery_baseline_sha}" -eq 40
+  test -L /opt/henukit-current
+  test "$(basename "$(readlink -f /opt/henukit-current)")" = "$recovery_baseline_sha"
+  /usr/local/sbin/activate-henukit-release --help 2>&1 |
+    grep -q -- '--recover-degraded-baseline'
+fi
 trusted_root_file /etc/henukit/release-signers
 trusted_root_file /etc/henukit/github-actions-read.token
 trusted_root_file "$remote_env_file"
@@ -371,7 +401,8 @@ fi
 remote_platform_migrations="${platform_migrations:--}"
 ssh "${ssh_options[@]}" "$production_alias" sh -s -- \
   "$release_sha" "$remote_release_dir" "$remote_env_file" \
-  "$account_operator_role" "$remote_platform_migrations" <<'REMOTE_ACTIVATE'
+  "$account_operator_role" "$remote_platform_migrations" \
+  "${recovery_baseline_sha:--}" <<'REMOTE_ACTIVATE'
 set -eu
 release_sha="$1"
 release_dir="$2"
@@ -380,6 +411,10 @@ account_operator_role="$4"
 case "$5" in
   -) platform_migrations="" ;;
   *) platform_migrations="$5" ;;
+esac
+case "${6-}" in
+  -) recovery_baseline_sha="" ;;
+  *) recovery_baseline_sha="${6-}" ;;
 esac
 trusted_root_file() {
   file="$1"
@@ -495,8 +530,14 @@ export GH_TOKEN_FILE=/etc/henukit/github-actions-read.token
 export HENUKIT_ENV_FILE="$remote_env_file"
 export HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE="$account_operator_role"
 export HENUKIT_PLATFORM_MIGRATIONS="$platform_migrations"
-/usr/local/sbin/activate-henukit-release \
-  "$release_sha" --local-artifacts "$release_dir" --execute
+if test -n "$recovery_baseline_sha"; then
+  /usr/local/sbin/activate-henukit-release \
+    "$release_sha" --local-artifacts "$release_dir" \
+    --recover-degraded-baseline "$recovery_baseline_sha" --execute
+else
+  /usr/local/sbin/activate-henukit-release \
+    "$release_sha" --local-artifacts "$release_dir" --execute
+fi
 REMOTE_ACTIVATE
 
 printf '%s: release %s activated through %s\n' "$program" "$release_sha" "$production_alias"

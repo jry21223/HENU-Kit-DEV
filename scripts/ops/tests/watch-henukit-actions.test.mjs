@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -109,9 +110,12 @@ function fixture({
   failTargetFoodHealth = false,
   failTargetNoticeHealth = false,
   failTargetHealth = false,
+  failPreviousHealth = false,
+  failAccountGrant = false,
   targetLibraryStartingAttempts = 0,
   missingLibraryArtifact = false,
   nonRootTrustRoot = "",
+  incompletePreviousRelease = "",
   previousHasAccountPortfolio = true,
   previousSha = "b".repeat(40),
   portalAllowMock = false,
@@ -131,6 +135,7 @@ function fixture({
   const state = join(root, "state");
   const log = join(root, "calls.log");
   const active = join(root, "active-sha");
+  const currentLink = join(root, "current");
   const libraryHealthAttempts = join(root, "library-health-attempts");
   const token = join(root, "github.token");
   const releaseSigners = join(root, "release-signers");
@@ -206,17 +211,25 @@ fi
 format="\${2:-}"
 path="\${3:-}"
 if [[ "$format" == "%a" ]]; then
-  if [[ -d "$path" ]]; then printf '700'; else printf '600'; fi
+  if [[ -d "$path" ]]; then
+    printf '700'
+  elif [[ "$path" == "$FAKE_STATE_ROOT/degraded-recoveries/"* ]]; then
+    printf '400'
+  else
+    printf '600'
+  fi
   exit 0
 fi
 if [[ "$format" == "%u" ]]; then
-  if [[ -d "$path" ]]; then
+  if [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "current-link" && "$path" == "$FAKE_CURRENT_LINK" ]]; then
+    printf '1000'
+  elif [[ -d "$path" ]]; then
     printf '0'
   elif [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "inventory" && "$path" == "$FAKE_TRUSTED_INVENTORY" ]] ||
        [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "verifier" && "$path" == "$FAKE_TRUSTED_VERIFIER" ]] ||
        [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "signers" && "$path" == "$FAKE_TRUSTED_SIGNERS" ]]; then
     id -u
-  elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" ]]; then
+  elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" || "$path" == "$FAKE_CURRENT_LINK" || "$path" == "$FAKE_RELEASE_ROOT"/* ]]; then
     printf '0'
   else
     id -u
@@ -242,7 +255,15 @@ cat "$1/RELEASE_SHA" > "$FAKE_ACTIVE_FILE"
 printf 'deploy %s %s\\n' "$1" "$2" >> "$FAKE_CALL_LOG"
 `,
     );
+    if (incompletePreviousRelease === "marker") {
+      unlinkSync(join(previousRelease, "RELEASE_SHA"));
+    } else if (incompletePreviousRelease === "helper") {
+      unlinkSync(join(previousRelease, "bin", "deploy-henukit-artifact.sh"));
+    } else if (incompletePreviousRelease === "compose") {
+      unlinkSync(join(previousRelease, "docker-compose.henukit.release.yml"));
+    }
     writeFileSync(active, `${previousSha}\n`);
+    symlinkSync(previousRelease, currentLink, "dir");
   }
 
   writeExecutable(
@@ -360,7 +381,12 @@ if [[ "$1" == "ps" ]]; then
     fi
   fi
 elif [[ "$1" == "inspect" ]]; then
-  if [[ "$*" == *"henukit-library-1"* && -s "$FAKE_ACTIVE_FILE" &&
+  if [[ "$*" == *".Config.Image"* ]]; then
+    container="\${@: -1}"
+    image="\${container#henukit-}"
+    image="\${image%-1}"
+    printf 'henukit-%s:%s\n' "$image" "$(cat "$FAKE_ACTIVE_FILE")"
+  elif [[ "$*" == *"henukit-library-1"* && -s "$FAKE_ACTIVE_FILE" &&
         "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" ]]; then
     attempts=0
     if [[ -f "$FAKE_LIBRARY_HEALTH_ATTEMPTS" ]]; then
@@ -388,6 +414,8 @@ elif [[ "$1" == "inspect" ]]; then
   else
     printf 'healthy\\n'
   fi
+elif [[ "$1" == "exec" && "$*" == *"grant-account-operator-role"* && "$FAKE_FAIL_ACCOUNT_GRANT" == "1" ]]; then
+  exit 1
 elif [[ "$1" == "exec" && "$*" == *"pg_dump"* ]]; then
   printf 'verified-platform-backup\\n'
 elif [[ "$1" == "exec" && "$*" == *"to_regclass('public.account_portfolio_accounts')"* ]]; then
@@ -416,6 +444,11 @@ printf 'curl %s\\n' "$*" >> "$FAKE_CALL_LOG"
 if [[ "$FAKE_FAIL_TARGET_HEALTH" == "1" &&
       -s "$FAKE_ACTIVE_FILE" &&
       "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" ]]; then
+  exit 22
+fi
+if [[ "$FAKE_FAIL_PREVIOUS_HEALTH" == "1" &&
+      -s "$FAKE_ACTIVE_FILE" &&
+      "$(cat "$FAKE_ACTIVE_FILE")" != "$FAKE_RELEASE_SHA" ]]; then
   exit 22
 fi
 if [[ "$*" == *"--write-out"* ]]; then
@@ -459,22 +492,28 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
       FAKE_BRANCH_SHA: branchSha,
       FAKE_CANONICAL_QUIZ_REDIRECT: canonicalQuizRedirect ? "1" : "0",
       FAKE_CALL_LOG: log,
+      FAKE_CURRENT_LINK: currentLink,
       FAKE_FAIL_TARGET_ACCOUNT_PORTFOLIO_HEALTH: failTargetAccountPortfolioHealth ? "1" : "0",
       FAKE_FAIL_TARGET_FOOD_HEALTH: failTargetFoodHealth ? "1" : "0",
       FAKE_FAIL_TARGET_NOTICE_HEALTH: failTargetNoticeHealth ? "1" : "0",
       FAKE_FAIL_TARGET_HEALTH: failTargetHealth ? "1" : "0",
+      FAKE_FAIL_PREVIOUS_HEALTH: failPreviousHealth ? "1" : "0",
+      FAKE_FAIL_ACCOUNT_GRANT: failAccountGrant ? "1" : "0",
       FAKE_LIBRARY_HEALTH_ATTEMPTS: libraryHealthAttempts,
       FAKE_MISSING_LIBRARY_ARTIFACT: missingLibraryArtifact ? "1" : "0",
       FAKE_PREVIOUS_HAS_ACCOUNT_PORTFOLIO: previousHasAccountPortfolio ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
+      FAKE_RELEASE_ROOT: releases,
       FAKE_TARGET_LIBRARY_STARTING_ATTEMPTS: String(targetLibraryStartingAttempts),
       FAKE_NO_SUCCESS: "0",
       FAKE_RUN_CONCLUSION: runConclusion,
       FAKE_RUN_STATUS: runStatus,
+      FAKE_STATE_ROOT: state,
       GH_TOKEN_FILE: token,
       HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE: accountOperatorRole,
       HENUKIT_BACKUP_ROOT: backups,
       HENUKIT_ENV_FILE: envFile,
+      HENUKIT_CURRENT_LINK: currentLink,
       HENUKIT_IMAGE_INVENTORY: imageInventory,
       HENUKIT_RELEASE_ROOT: releases,
       HENUKIT_RELEASE_SIGNERS_FILE: releaseSigners,
@@ -797,6 +836,248 @@ test("failed public verification restores and verifies the previous fixed-SHA re
   assert.equal((calls.match(/^deploy /gm) ?? []).length, 2);
   assert.match(calls, /deploy .*henukit\.rollback\.env/);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+});
+
+test("default activation still refuses a degraded rollback baseline", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failPreviousHealth: true, previousSha });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /no healthy fixed-SHA rollback release is ready/i);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+});
+
+test("explicit recovery activates from the exact degraded baseline and records immutable evidence", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failPreviousHealth: true, previousSha });
+  const artifacts = writeLocalArtifacts(setup.root);
+
+  const output = execFileSync(
+    script,
+    [
+      "--local-artifacts", artifacts,
+      "--sha", releaseSha,
+      "--recover-degraded-baseline", previousSha,
+    ],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.match(output, /authorized degraded-baseline recovery/i);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), releaseSha);
+  const audit = readFileSync(
+    join(setup.state, "degraded-recoveries", `${releaseSha}.activated`),
+    "utf8",
+  );
+  assert.match(audit, new RegExp(`candidate_sha=${releaseSha}`));
+  assert.match(audit, new RegExp(`previous_sha=${previousSha}`));
+  assert.match(audit, /status=activated/);
+});
+
+test("explicit recovery retry repairs a missing activated terminal audit", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failPreviousHealth: true, previousSha });
+  const artifacts = writeLocalArtifacts(setup.root);
+  const args = [
+    "--local-artifacts", artifacts,
+    "--sha", releaseSha,
+    "--recover-degraded-baseline", previousSha,
+  ];
+  execFileSync(script, args, { env: setup.env });
+  const terminal = join(setup.state, "degraded-recoveries", `${releaseSha}.activated`);
+  unlinkSync(terminal);
+  unlinkSync(join(setup.state, "last-activated-sha"));
+
+  execFileSync(script, args, { env: setup.env });
+
+  assert.match(readFileSync(terminal, "utf8"), /status=activated/);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("active recovery resume does not publish terminal audit before permission grant succeeds", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failPreviousHealth: true, previousSha });
+  const artifacts = writeLocalArtifacts(setup.root);
+  const args = [
+    "--local-artifacts", artifacts,
+    "--sha", releaseSha,
+    "--recover-degraded-baseline", previousSha,
+  ];
+  execFileSync(script, args, { env: setup.env });
+  const terminal = join(setup.state, "degraded-recoveries", `${releaseSha}.activated`);
+  unlinkSync(terminal);
+  unlinkSync(join(setup.state, "last-activated-sha"));
+  setup.env.FAKE_FAIL_ACCOUNT_GRANT = "1";
+
+  const failed = spawnSync(script, args, { encoding: "utf8", env: setup.env });
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /permission grant did not converge/i);
+  assert.equal(existsSync(terminal), false);
+  assert.equal(existsSync(join(setup.state, "last-activated-sha")), false);
+
+  setup.env.FAKE_FAIL_ACCOUNT_GRANT = "0";
+  execFileSync(script, args, { env: setup.env });
+  assert.match(readFileSync(terminal, "utf8"), /status=activated/);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("explicit recovery refuses a healthy baseline instead of weakening the normal path", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ previousSha });
+  const artifacts = writeLocalArtifacts(setup.root);
+
+  const result = spawnSync(
+    script,
+    [
+      "--local-artifacts", artifacts,
+      "--sha", releaseSha,
+      "--recover-degraded-baseline", previousSha,
+    ],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /baseline is healthy/i);
+  assert.equal(existsSync(join(setup.state, "degraded-recoveries")), true);
+  assert.equal(
+    existsSync(join(setup.state, "degraded-recoveries", `${releaseSha}.authorized`)),
+    false,
+  );
+});
+
+test("explicit recovery refuses a baseline that does not own the current release link", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failPreviousHealth: true, previousSha });
+  const artifacts = writeLocalArtifacts(setup.root);
+  unlinkSync(join(setup.root, "current"));
+  symlinkSync(join(setup.root, "releases", "d".repeat(40)), join(setup.root, "current"), "dir");
+
+  const result = spawnSync(
+    script,
+    [
+      "--local-artifacts", artifacts,
+      "--sha", releaseSha,
+      "--recover-degraded-baseline", previousSha,
+    ],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not match the current release link and exact image set/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /docker load|^deploy /m);
+});
+
+for (const missing of ["marker", "helper", "compose"]) {
+  test(`explicit recovery refuses an incomplete baseline missing ${missing}`, () => {
+    const previousSha = "c".repeat(40);
+    const setup = fixture({
+      failPreviousHealth: true,
+      incompletePreviousRelease: missing,
+      previousSha,
+    });
+    const artifacts = writeLocalArtifacts(setup.root);
+
+    const result = spawnSync(
+      script,
+      [
+        "--local-artifacts", artifacts,
+        "--sha", releaseSha,
+        "--recover-degraded-baseline", previousSha,
+      ],
+      { encoding: "utf8", env: setup.env },
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /degraded baseline/i);
+    assert.doesNotMatch(readFileSync(setup.log, "utf8"), /docker load|^deploy /m);
+    assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+  });
+}
+
+test("explicit recovery refuses an untrusted current symlink before loading images", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failPreviousHealth: true,
+    nonRootTrustRoot: "current-link",
+    previousSha,
+  });
+  const artifacts = writeLocalArtifacts(setup.root);
+
+  const result = spawnSync(
+    script,
+    [
+      "--local-artifacts", artifacts,
+      "--sha", releaseSha,
+      "--recover-degraded-baseline", previousSha,
+    ],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /current link must be owned by root/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /docker load|^deploy /m);
+});
+
+test("failed recovery restores the exact known-degraded baseline without claiming health", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failPreviousHealth: true,
+    failTargetHealth: true,
+    previousSha,
+  });
+  const artifacts = writeLocalArtifacts(setup.root);
+
+  const result = spawnSync(
+    script,
+    [
+      "--local-artifacts", artifacts,
+      "--sha", releaseSha,
+      "--recover-degraded-baseline", previousSha,
+    ],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /restored known degraded baseline/i);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  const audit = readFileSync(
+    join(setup.state, "degraded-recoveries", `${releaseSha}.restored`),
+    "utf8",
+  );
+  assert.match(audit, /status=restored_known_degraded_baseline/);
+});
+
+test("explicit recovery retry repairs a missing restored terminal audit without loading again", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failPreviousHealth: true,
+    failTargetHealth: true,
+    previousSha,
+  });
+  const artifacts = writeLocalArtifacts(setup.root);
+  const args = [
+    "--local-artifacts", artifacts,
+    "--sha", releaseSha,
+    "--recover-degraded-baseline", previousSha,
+  ];
+  spawnSync(script, args, { encoding: "utf8", env: setup.env });
+  const terminal = join(setup.state, "degraded-recoveries", `${releaseSha}.restored`);
+  unlinkSync(terminal);
+  const before = readFileSync(setup.log, "utf8");
+
+  const result = spawnSync(script, args, { encoding: "utf8", env: setup.env });
+  const after = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /prior degraded recovery attempt converged/i);
+  assert.match(readFileSync(terminal, "utf8"), /status=restored_known_degraded_baseline/);
+  assert.equal((after.match(/docker load/g) ?? []).length, (before.match(/docker load/g) ?? []).length);
+  assert.equal((after.match(/^deploy /gm) ?? []).length, (before.match(/^deploy /gm) ?? []).length);
 });
 
 test("failed Account Portfolio health restores and verifies the previous fixed-SHA release", () => {

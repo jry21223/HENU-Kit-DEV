@@ -10,6 +10,8 @@ usage() {
   cat >&2 <<'EOF'
 usage: watch-henukit-actions.sh --once|--watch
        watch-henukit-actions.sh --local-artifacts <artifact-dir> --sha <full-main-sha>
+       watch-henukit-actions.sh --local-artifacts <artifact-dir> --sha <full-main-sha> \
+         --recover-degraded-baseline <full-current-sha>
 
 Required configuration:
   HENUKIT_ENV_FILE       Existing production Compose environment file
@@ -45,12 +47,19 @@ die() {
 
 local_artifact_dir=""
 local_release_sha=""
+recovery_baseline_sha=""
 if [[ $# -eq 1 && ( "$1" == "--once" || "$1" == "--watch" ) ]]; then
   mode="$1"
 elif [[ $# -eq 4 && "$1" == "--local-artifacts" && "$3" == "--sha" ]]; then
   mode="--local-artifacts"
   local_artifact_dir="$2"
   local_release_sha="$4"
+elif [[ $# -eq 6 && "$1" == "--local-artifacts" && "$3" == "--sha" &&
+        "$5" == "--recover-degraded-baseline" ]]; then
+  mode="--local-artifacts"
+  local_artifact_dir="$2"
+  local_release_sha="$4"
+  recovery_baseline_sha="$6"
 else
   usage
   exit 64
@@ -81,6 +90,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 image_inventory="${HENUKIT_IMAGE_INVENTORY:-$script_dir/henukit-release-images.sh}"
 local_artifact_verifier="${HENUKIT_LOCAL_ARTIFACT_VERIFIER:-$script_dir/verify-henukit-local-release.sh}"
 release_signers_file="${HENUKIT_RELEASE_SIGNERS_FILE:-/etc/henukit/release-signers}"
+current_release_link="${HENUKIT_CURRENT_LINK:-/opt/henukit-current}"
 
 images=()
 load_images=()
@@ -111,20 +121,11 @@ file_owner() {
   stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1"
 }
 
-trusted_root_file() {
-  local file="$1"
+trusted_root_parent_chain() {
+  local path="$1"
   local label="$2"
-  local mode owner directory
-  [[ "$file" == /* ]] || die "$label must use an absolute path: $file"
-  [[ -f "$file" && ! -L "$file" ]] ||
-    die "$label must be a regular non-symlink file: $file"
-  mode="$(file_mode "$file")"
-  owner="$(file_owner "$file")"
-  [[ "$mode" =~ ^[0-7]{3,4}$ ]] || die "could not determine $label mode: $file"
-  [[ "$owner" == "0" ]] || die "$label must be owned by root: $file"
-  (( (8#$mode & 8#022) == 0 )) || die "$label must not be group- or world-writable: $file"
-
-  directory="$(dirname "$file")"
+  local directory mode owner
+  directory="$(dirname "$path")"
   while [[ "$directory" != "/" ]]; do
     [[ -d "$directory" && ! -L "$directory" ]] ||
       die "$label parent must be a real directory: $directory"
@@ -136,6 +137,22 @@ trusted_root_file() {
       die "$label parent must not be group- or world-writable: $directory"
     directory="$(dirname "$directory")"
   done
+}
+
+trusted_root_file() {
+  local file="$1"
+  local label="$2"
+  local mode owner
+  [[ "$file" == /* ]] || die "$label must use an absolute path: $file"
+  [[ -f "$file" && ! -L "$file" ]] ||
+    die "$label must be a regular non-symlink file: $file"
+  mode="$(file_mode "$file")"
+  owner="$(file_owner "$file")"
+  [[ "$mode" =~ ^[0-7]{3,4}$ ]] || die "could not determine $label mode: $file"
+  [[ "$owner" == "0" ]] || die "$label must be owned by root: $file"
+  (( (8#$mode & 8#022) == 0 )) || die "$label must not be group- or world-writable: $file"
+
+  trusted_root_parent_chain "$file" "$label"
 }
 
 trusted_helper() {
@@ -169,6 +186,12 @@ done < <("$image_inventory" --conditional-services)
   die "image inventory is incomplete"
 if [[ "$mode" == "--local-artifacts" ]]; then
   [[ "$local_release_sha" =~ ^[0-9a-f]{40}$ ]] || die "--sha must be a full lowercase Git SHA"
+  if [[ -n "$recovery_baseline_sha" ]]; then
+    [[ "$recovery_baseline_sha" =~ ^[0-9a-f]{40}$ ]] ||
+      die "--recover-degraded-baseline must be a full lowercase Git SHA"
+    [[ "$recovery_baseline_sha" != "$local_release_sha" ]] ||
+      die "recovery baseline and candidate SHA must differ"
+  fi
   [[ "$branch" == "main" ]] || die "local artifacts may only be activated from main"
   [[ -d "$local_artifact_dir" && ! -L "$local_artifact_dir" ]] ||
     die "--local-artifacts must name a non-symlink directory"
@@ -254,7 +277,8 @@ export GH_TOKEN
 
 install -d -m 0700 \
   "$staging_root" "$release_root" "$backup_root" "$state_root" \
-  "$state_root/approvals" "$state_root/approvals/consumed" "$state_root/prepared"
+  "$state_root/approvals" "$state_root/approvals/consumed" "$state_root/prepared" \
+  "$state_root/degraded-recoveries"
 scratch_dirs=()
 restore_database=""
 restore_account_database=""
@@ -454,6 +478,51 @@ active_release_matches() {
       grep -Fqx "${conditional_images[$index]}:${release_sha}" <<<"$running" || return 1
     fi
   done
+}
+
+degraded_baseline_matches() {
+  local release_sha="$1"
+  local expected_target actual_target image index service container actual_image
+  [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  [[ -L "$current_release_link" ]] || return 1
+  expected_target="$(cd "$release_root/$release_sha" 2>/dev/null && pwd -P)" || return 1
+  actual_target="$(readlink -f "$current_release_link" 2>/dev/null)" || return 1
+  [[ "$actual_target" == "$expected_target" ]] || return 1
+  for image in "${base_images[@]}"; do
+    container="henukit-${image#henukit-}-1"
+    actual_image="$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null)" || return 1
+    [[ "$actual_image" == "${image}:${release_sha}" ]] || return 1
+  done
+  for ((index = 0; index < ${#conditional_services[@]}; index++)); do
+    service="${conditional_services[$index]}"
+    if release_has_service "$release_sha" "$service"; then
+      container="henukit-${service}-1"
+      actual_image="$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null)" || return 1
+      [[ "$actual_image" == "${conditional_images[$index]}:${release_sha}" ]] || return 1
+    fi
+  done
+}
+
+validate_degraded_baseline_authority() {
+  local release_sha="$1"
+  local previous_dir="$release_root/$release_sha"
+  local marker="$previous_dir/RELEASE_SHA"
+  local compose="$previous_dir/docker-compose.henukit.release.yml"
+  local helper="$previous_dir/bin/deploy-henukit-artifact.sh"
+  local link_owner
+  [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] ||
+    die "declared degraded baseline SHA is invalid"
+  [[ "$current_release_link" == /* && -L "$current_release_link" ]] ||
+    die "degraded baseline current link must be an absolute symlink"
+  link_owner="$(file_owner "$current_release_link")"
+  [[ "$link_owner" == "0" ]] || die "degraded baseline current link must be owned by root"
+  trusted_root_parent_chain "$current_release_link" "degraded baseline current link"
+  trusted_root_file "$marker" "degraded baseline RELEASE_SHA"
+  [[ "$(tr -d '[:space:]' < "$marker")" == "$release_sha" ]] ||
+    die "degraded baseline RELEASE_SHA does not match the declared SHA"
+  trusted_root_file "$compose" "degraded baseline Compose contract"
+  trusted_root_file "$helper" "degraded baseline deployment helper"
+  [[ -x "$helper" ]] || die "degraded baseline deployment helper must be executable"
 }
 
 release_has_service() {
@@ -769,6 +838,94 @@ rollback_release_is_ready() {
   verify_active_release "$previous_sha"
 }
 
+degraded_recovery_audit_matches() {
+  local target="$1"
+  local candidate_sha="$2"
+  local previous_sha="$3"
+  local status="$4"
+  local backup_file="${5:-}"
+  local line_count expected_count
+  [[ -f "$target" && ! -L "$target" ]] || return 1
+  [[ "$(file_owner "$target")" == "$(id -u)" ]] || return 1
+  [[ "$(file_mode "$target")" == "400" ]] || return 1
+  [[ "$(grep -Fxc "candidate_sha=$candidate_sha" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "previous_sha=$previous_sha" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "status=$status" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Ec '^recorded_at_utc=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$target" || true)" == "1" ]] || return 1
+  expected_count=4
+  if [[ "$backup_file" == "*" ]]; then
+    [[ "$(grep -Ec '^verified_backup=/[^[:cntrl:]]+$' "$target" || true)" == "1" ]] || return 1
+    expected_count=5
+  elif [[ -n "$backup_file" ]]; then
+    [[ "$(grep -Fxc "verified_backup=$backup_file" "$target" || true)" == "1" ]] || return 1
+    expected_count=5
+  else
+    ! grep -q '^verified_backup=' "$target" || return 1
+  fi
+  line_count="$(wc -l < "$target" | tr -d '[:space:]')"
+  [[ "$line_count" == "$expected_count" ]]
+}
+
+ensure_degraded_recovery_audit() {
+  local candidate_sha="$1"
+  local previous_sha="$2"
+  local status="$3"
+  local suffix="$4"
+  local backup_file="${5:-}"
+  local directory="$state_root/degraded-recoveries"
+  local target="$directory/${candidate_sha}.${suffix}"
+  local incoming="$directory/.${candidate_sha}.${suffix}.$$"
+  if [[ -e "$target" ]]; then
+    degraded_recovery_audit_matches \
+      "$target" "$candidate_sha" "$previous_sha" "$status" "$backup_file" ||
+      die "degraded recovery audit conflicts with the requested recovery: $target"
+    return
+  fi
+  umask 077
+  {
+    printf 'candidate_sha=%s\n' "$candidate_sha"
+    printf 'previous_sha=%s\n' "$previous_sha"
+    printf 'status=%s\n' "$status"
+    printf 'recorded_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    [[ -z "$backup_file" ]] || printf 'verified_backup=%s\n' "$backup_file"
+  } > "$incoming"
+  chmod 0400 "$incoming"
+  ln "$incoming" "$target" || {
+    rm -f -- "$incoming"
+    die "could not atomically publish degraded recovery audit"
+  }
+  rm -f -- "$incoming"
+}
+
+restore_degraded_baseline() {
+  local previous_sha="$1"
+  local previous_dir="$release_root/$previous_sha"
+  local previous_helper="$previous_dir/bin/deploy-henukit-artifact.sh"
+  [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  [[ "$(tr -d '[:space:]' < "$previous_dir/RELEASE_SHA" 2>/dev/null)" == "$previous_sha" ]] ||
+    return 1
+  [[ -x "$previous_helper" ]] || return 1
+  log "restoring known degraded baseline $previous_sha"
+  "$previous_helper" "$previous_dir" "$rollback_env_file" || return 1
+  degraded_baseline_matches "$previous_sha"
+}
+
+fail_candidate_activation() {
+  local phase="$1"
+  local previous_sha="$2"
+  local release_sha="$3"
+  if [[ -n "$recovery_baseline_sha" ]]; then
+    restore_degraded_baseline "$previous_sha" ||
+      die "$phase failed and restoration of degraded baseline $previous_sha also failed"
+    ensure_degraded_recovery_audit \
+      "$release_sha" "$previous_sha" restored_known_degraded_baseline restored
+    die "$phase failed; restored known degraded baseline $previous_sha"
+  fi
+  rollback_release "$previous_sha" ||
+    die "$phase failed and rollback to $previous_sha also failed"
+  die "$phase failed; rolled back to $previous_sha"
+}
+
 deploy_release() {
   local run_id="$1"
   local release_sha="$2"
@@ -781,12 +938,36 @@ deploy_release() {
 
   if active_release_matches "$release_sha"; then
     verify_active_release "$release_sha" || die "active release failed public health verification"
+    if [[ -n "$recovery_baseline_sha" ]]; then
+      degraded_recovery_audit_matches \
+        "$state_root/degraded-recoveries/${release_sha}.authorized" \
+        "$release_sha" "$recovery_baseline_sha" authorized "*" ||
+        die "active recovery candidate has no matching immutable authorization audit"
+    fi
     if release_uses_account_portfolio "$release_sha"; then
       grant_account_operator_permissions "$release_sha" || die "active release permission grant did not converge"
+    fi
+    if [[ -n "$recovery_baseline_sha" ]]; then
+      ensure_degraded_recovery_audit \
+        "$release_sha" "$recovery_baseline_sha" activated activated
     fi
     record_activation "$release_sha"
     log "release $release_sha is already active"
     return
+  fi
+
+  if [[ -n "$recovery_baseline_sha" &&
+        -e "$state_root/degraded-recoveries/${release_sha}.authorized" ]]; then
+    degraded_recovery_audit_matches \
+      "$state_root/degraded-recoveries/${release_sha}.authorized" \
+      "$release_sha" "$recovery_baseline_sha" authorized "*" ||
+      die "existing degraded recovery authorization audit is invalid"
+    validate_degraded_baseline_authority "$recovery_baseline_sha"
+    degraded_baseline_matches "$recovery_baseline_sha" ||
+      die "prior degraded recovery is neither active nor restored to its exact baseline"
+    ensure_degraded_recovery_audit \
+      "$release_sha" "$recovery_baseline_sha" restored_known_degraded_baseline restored
+    die "prior degraded recovery attempt converged to the known degraded baseline; issue a new exact-SHA approval before retrying"
   fi
 
   if [[ -n "$artifact_override" ]]; then
@@ -826,14 +1007,29 @@ deploy_release() {
     return
   fi
 
-  previous_sha="$(current_release_sha 2>/dev/null || true)"
-  rollback_release_is_ready "$previous_sha" ||
-    die "no healthy fixed-SHA rollback release is ready; refusing production activation"
+  if [[ -n "$recovery_baseline_sha" ]]; then
+    previous_sha="$recovery_baseline_sha"
+    validate_degraded_baseline_authority "$previous_sha"
+    degraded_baseline_matches "$previous_sha" ||
+      die "declared degraded baseline does not match the current release link and exact image set"
+    if rollback_release_is_ready "$previous_sha"; then
+      die "declared recovery baseline is healthy; use the normal rollback-protected activation path"
+    fi
+    log "authorized degraded-baseline recovery from exact release $previous_sha"
+  else
+    previous_sha="$(current_release_sha 2>/dev/null || true)"
+    rollback_release_is_ready "$previous_sha" ||
+      die "no healthy fixed-SHA rollback release is ready; refusing production activation"
+  fi
   prepared_backup_file=""
   prepare_backup "$release_sha" yes
   log "release $release_sha has a fresh verified pre-activation backup $prepared_backup_file"
   [[ "$(github_branch_head)" == "$release_sha" ]] ||
     die "GitHub branch head changed during preparation; refusing stale activation"
+  if [[ -n "$recovery_baseline_sha" ]]; then
+    ensure_degraded_recovery_audit \
+      "$release_sha" "$previous_sha" authorized authorized "$prepared_backup_file"
+  fi
   consume_approval "$release_sha"
   for image in "${load_images[@]}"; do
     log "loading ${image}:${release_sha}"
@@ -851,20 +1047,17 @@ deploy_release() {
   fi
   set -e
   if [[ "$activation_status" -ne 0 ]]; then
-    rollback_release "$previous_sha" ||
-      die "release activation failed and rollback to $previous_sha also failed"
-    die "release activation failed; rolled back to $previous_sha"
+    fail_candidate_activation "release activation" "$previous_sha" "$release_sha"
   fi
 
   if ! wait_for_active_release "$release_sha"; then
-    rollback_release "$previous_sha" ||
-      die "release verification failed and rollback to $previous_sha also failed"
-    die "release verification failed; rolled back to $previous_sha"
+    fail_candidate_activation "release verification" "$previous_sha" "$release_sha"
   fi
   if ! grant_account_operator_permissions "$release_sha"; then
-    rollback_release "$previous_sha" ||
-      die "permission grant failed and rollback to $previous_sha also failed"
-    die "permission grant failed; rolled back to $previous_sha"
+    fail_candidate_activation "permission grant" "$previous_sha" "$release_sha"
+  fi
+  if [[ -n "$recovery_baseline_sha" ]]; then
+    ensure_degraded_recovery_audit "$release_sha" "$previous_sha" activated activated
   fi
   record_activation "$release_sha"
   log "release $release_sha activated and deterministic smoke checks passed; manual acceptance remains"

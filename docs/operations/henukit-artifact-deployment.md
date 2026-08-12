@@ -149,6 +149,38 @@ attempt already placed the same final bundle, the next run verifies it again
 with production trust roots and resumes activation without retransferring or
 deleting it; an invalid residual bundle fails closed for administrator review.
 
+### Exact degraded-baseline recovery
+
+The default activation still requires a healthy retained fixed-SHA rollback
+release. When production is already degraded and no healthy retained release
+exists, ADR-0030 permits one explicit recovery after the recovery-aware trust
+roots have been installed through the reviewed bootstrap below. Both preflight
+and execute name the exact current degraded SHA:
+
+```bash
+scripts/ops/deploy-henukit-release-from-wsl.sh \
+  --sha "$release_sha" \
+  --artifact-dir "/srv/henukit-artifacts/henukit-release-$release_sha" \
+  --allowed-signers /etc/henukit-release-deployer/release-signers \
+  --remote-env-file /opt/henukit/.env.henukit \
+  --account-operator-role operations-operator \
+  --recover-degraded-baseline <exact-current-degraded-sha> \
+  --preflight
+```
+
+Use identical arguments with `--execute` only after preflight succeeds. The
+watcher rejects a healthy baseline, a mismatched current symlink or image set,
+an Actions-polled release, and missing backup or approval evidence. Candidate
+failure restores the exact known degraded state without reporting it healthy.
+Root-only records remain under
+`/var/lib/henukit-actions-watch/degraded-recoveries/`.
+The retained release is accepted only when its root-owned current symlink,
+trusted parent chain, exact `RELEASE_SHA`, Compose contract, executable deploy
+helper, and complete container image identity all match before its known-bad
+health is considered. Re-running the same explicit tuple after an interrupted
+terminal write only completes the immutable `.activated` or `.restored`
+record; it never reloads images or silently reuses the consumed approval.
+
 ### Out-of-band local trust-root bootstrap
 
 Before the first local-artifact activation, a production administrator must
