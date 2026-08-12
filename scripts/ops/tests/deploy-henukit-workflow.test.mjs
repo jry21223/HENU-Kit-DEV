@@ -217,6 +217,15 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "ACCOUNT_PORTFOLIO_POINT_CURSOR_KEY",
       "FOOD_SUMMARY_CLIENT_SECRET",
       "LIBRARY_DATABASE_URL",
+      "LIBRARY_DOWNLOAD_CLIENT_ID",
+      "LIBRARY_DOWNLOAD_CLIENT_SECRET",
+      "LIBRARY_DOWNLOAD_KEY_ID",
+      "LIBRARY_DOWNLOAD_URL",
+      "LIBRARY_OSS_BUCKET",
+      "LIBRARY_OSS_ECS_RAM_ROLE",
+      "LIBRARY_OSS_INTERNAL_ENDPOINT",
+      "LIBRARY_OSS_PUBLIC_ENDPOINT",
+      "LIBRARY_OSS_REGION",
       "LIBRARY_REDIS_URL",
       "LIBRARY_SUMMARY_CLIENT_ID",
       "LIBRARY_SUMMARY_CLIENT_SECRET",
@@ -281,6 +290,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
           env: {
             ...process.env,
             ...requiredEnvironment,
+            LIBRARY_API_URL: "http://library:8095",
+            LIBRARY_DOWNLOAD_URL: "http://library:8095",
             PLATFORM_CORE_DATABASE_URL: "postgres://test",
             PLATFORM_CORE_REDIS_URL: "redis://test",
             ACCOUNT_PORTFOLIO_DATABASE_URL: "postgres://test",
@@ -294,6 +305,15 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       ),
     );
   const config = renderRuntimeConfig();
+  assert.equal(
+    config.services["console-gateway"].environment.LIBRARY_API_URL,
+    "http://library:8095",
+  );
+  assert.equal(
+    renderRuntimeConfig({ LIBRARY_API_URL: "" }).services["console-gateway"]
+      .environment.LIBRARY_API_URL,
+    "",
+  );
   const expectedImages = [
     "henukit-console",
     "henukit-console-gateway",

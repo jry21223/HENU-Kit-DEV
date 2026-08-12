@@ -51,3 +51,20 @@ func TestNewRejectsAccountPortfolioConsoleSecretReusedFromPlatformCore(t *testin
 		t.Fatalf("New() rejected distinct Account Portfolio Console credentials: %v", err)
 	}
 }
+
+func TestNewAcceptsProductionLibraryServiceConfiguration(t *testing.T) {
+	redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { _ = redisClient.Close() })
+	config := Config{
+		PlatformCoreURL: "http://platform-core:8081", PlatformAccountOrigin: "https://henukit.cn/account-auth",
+		ClientID: "console-gateway", ClientSecret: "platform-oauth-secret-with-entropy", KeyID: "platform-active-key", RedirectURI: "https://console.henukit.cn/api/v1/auth/callback",
+		SessionKey: []byte("0123456789abcdef0123456789abcdef"), Redis: redisClient, HTTPClient: &http.Client{},
+		LibraryAPIURL: "http://library:8095",
+		LibraryCredentials: overview.Credentials{
+			ClientID: "console-gateway-library", ClientSecret: "library-summary-secret-with-entropy", KeyID: "library-summary-active",
+		},
+	}
+	if _, err := New(config); err != nil {
+		t.Fatalf("New() rejected the production Library service configuration: %v", err)
+	}
+}
