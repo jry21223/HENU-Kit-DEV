@@ -309,8 +309,13 @@ func TestConsoleReplyAndTransitionUseSeparateCallerAndCreateOneNotificationEach(
 		t.Fatalf("console ticket queue status = %d: %s", queue.StatusCode, responseText(t, queue))
 	}
 	queueBody := responseText(t, queue)
-	if !strings.Contains(queueBody, createdBody.Data.Ticket.ID) || strings.Contains(queueBody, ownerID) {
-		t.Fatalf("console ticket queue leaked owner identity or omitted ticket: %s", queueBody)
+	if !strings.Contains(queueBody, createdBody.Data.Ticket.ID) || !strings.Contains(queueBody, `"user_id":"`+ownerID+`"`) {
+		t.Fatalf("console ticket queue omitted ticket owner resource id: %s", queueBody)
+	}
+	portalQueue := sendOwnerJSON(t, server.URL, http.MethodGet, ownerID, "/api/v1/account/tickets", "nonce-portal-queue", "", "")
+	portalQueueBody := responseText(t, portalQueue)
+	if portalQueue.StatusCode != http.StatusOK || strings.Contains(portalQueueBody, `"user_id"`) || strings.Contains(portalQueueBody, ownerID) {
+		t.Fatalf("Portal ticket queue exposed the Console-only owner resource id: status=%d body=%s", portalQueue.StatusCode, portalQueueBody)
 	}
 
 	replyBody := `{"body":"We are looking into this.","expected_version":1}`
@@ -353,8 +358,8 @@ func TestConsoleReplyAndTransitionUseSeparateCallerAndCreateOneNotificationEach(
 		t.Fatalf("console ticket detail status = %d: %s", detail.StatusCode, responseText(t, detail))
 	}
 	detailBody := responseText(t, detail)
-	if !strings.Contains(detailBody, "operator_reply") || strings.Contains(detailBody, operatorID) || strings.Contains(detailBody, ownerID) {
-		t.Fatalf("console ticket detail leaked actor identity or omitted durable reply event: %s", detailBody)
+	if !strings.Contains(detailBody, "operator_reply") || strings.Contains(detailBody, operatorID) || !strings.Contains(detailBody, `"user_id":"`+ownerID+`"`) {
+		t.Fatalf("console ticket detail leaked operator identity, omitted owner resource id, or omitted durable reply event: %s", detailBody)
 	}
 	var messages, notifications, operatorMessages int
 	if err := pool.QueryRow(t.Context(), `

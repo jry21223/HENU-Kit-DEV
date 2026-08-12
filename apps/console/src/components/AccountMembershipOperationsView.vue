@@ -28,6 +28,7 @@ type PendingCommand = {
   userID: string;
   input: ConsoleMembershipMutationRequest;
   key: string;
+  identity: { displayName?: string; email: string };
 };
 type LoadedMembership = ConsoleAccountMembership & { userID: string };
 
@@ -62,7 +63,7 @@ function restorePending(operatorID: string) {
   feedback.value = "";
   try {
     const stored = JSON.parse(sessionStorage.getItem(pendingStorageKey) ?? "null") as Partial<PendingCommand> | null;
-    if (!stored || (stored.kind !== "grant" && stored.kind !== "revoke") || stored.operatorID !== operatorID || typeof stored.userID !== "string" || typeof stored.key !== "string" || !stored.input || typeof stored.input !== "object") {
+    if (!stored || (stored.kind !== "grant" && stored.kind !== "revoke") || stored.operatorID !== operatorID || typeof stored.userID !== "string" || typeof stored.key !== "string" || !stored.input || typeof stored.input !== "object" || !stored.identity || typeof stored.identity !== "object" || typeof stored.identity.email !== "string" || !stored.identity.email) {
       sessionStorage.removeItem(pendingStorageKey);
       return;
     }
@@ -176,7 +177,7 @@ async function finish(command: PendingCommand) {
     await loadMembership(command.userID);
     feedback.value = "会员版本已变化，已刷新最新权益；请基于最新版本重新操作。";
   } else if (result.state === "unavailable") {
-    feedback.value = "结果还没确认，可点下方按钮按原请求重试。";
+    feedback.value = "结果还没确认；可对同一已确认目标按原请求重试，系统会避免重复执行。";
   } else {
     if (result.state === "signed_out" || result.state === "denied") persistPending();
     feedback.value = result.state === "denied"
@@ -194,8 +195,8 @@ async function finish(command: PendingCommand) {
 
 // requestMutation opens the single confirmation step. Nothing is persisted or
 // written until the operator confirms; the pending retry record is created
-// only after confirmation, and it stores the resolved account id, never the
-// email used to look the account up.
+// only after confirmation, together with the exact identity snapshot the
+// operator confirmed, so an unknown result can be retried without ambiguity.
 function requestMutation() {
   const current = membership.value;
   const trimmedReason = reason.value.trim();
@@ -207,6 +208,7 @@ function requestMutation() {
     userID: current.userID,
     input: { reason: trimmedReason, expected_version: current.version },
     key: operationKey(kind),
+    identity: { displayName: account.value.display_name, email: account.value.email },
   };
 }
 
@@ -257,8 +259,8 @@ watch(
 
     <p v-if="feedback" class="operation-notice mt-5" role="status">
       {{ feedback }}
-      <span v-if="pending" class="mt-2 block text-sm">待确认操作：{{ pending.kind === "grant" ? "向" : "从" }}用户 <code>{{ pending.userID }}</code>{{ pending.kind === "grant" ? "发放" : "撤销" }}终身会员权益。</span>
-      <Button v-if="pending && !busy" class="mt-3" @click="finish(pending)">确认并按原请求重试</Button>
+      <span v-if="pending" class="mt-2 block break-all text-sm">待重试操作：为「{{ accountName(pending.identity.displayName) }} · {{ pending.identity.email }}」{{ pending.kind === "grant" ? "发放" : "撤销" }}终身会员权益。这是刚才已确认的同一目标，重试会沿用原操作请求，系统会避免重复执行。</span>
+      <Button v-if="pending && !busy" class="mt-3" @click="finish(pending)">按原请求重试</Button>
     </p>
 
     <div v-if="workspaceState === 'loading'" class="operation-state" aria-busy="true">正在验证会员操作权限…</div>
@@ -288,7 +290,7 @@ watch(
             <div>
               <p class="eyebrow">账户核对</p>
               <h2 id="account-membership-detail-heading" class="mt-1 text-xl font-bold">{{ accountName(account.display_name) }}</h2>
-              <p class="mt-1 text-sm text-muted-foreground">账户状态：{{ accountStatusLabel(account.status) }}。请核对姓名后再操作。</p>
+              <p class="mt-1 break-all text-sm text-muted-foreground">{{ account.email }} · 账户状态：{{ accountStatusLabel(account.status) }}。请核对姓名和邮箱后再操作。</p>
             </div>
           </div>
 
@@ -319,7 +321,7 @@ watch(
             <div v-else class="mt-5 border-t border-border pt-5" data-membership-confirm-step>
               <p class="font-medium">确认{{ confirm.kind === "grant" ? "发放" : "撤销" }}终身会员权益？</p>
               <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                将向「{{ accountName(account.display_name) }}」{{ confirm.kind === "grant" ? "发放" : "撤销" }}终身会员权益，写入不可变审计事件并向该用户创建持久化通知；此操作不可撤销。
+                将向「{{ accountName(account.display_name) }} · {{ account.email }}」{{ confirm.kind === "grant" ? "发放" : "撤销" }}终身会员权益，写入不可变审计事件并向该用户创建持久化通知；提交后立即生效，之后可通过相反操作调整。
               </p>
               <div class="mt-3 flex gap-3">
                 <Button :disabled="busy" @click="confirmMutation">确认执行</Button>

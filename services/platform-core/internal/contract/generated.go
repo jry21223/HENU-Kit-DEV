@@ -25,7 +25,8 @@ const (
 	UpdatePlatformOperationAccessRoute   = "/api/v1/platform-operations/users/{user_id}/access-updates"
 	PlatformOperationStatusRoute         = "/api/v1/platform-operations/operations/{operation}"
 	PlatformOperationsAccountLookupRoute = "/api/v1/platform-operations/account-lookups"
-	SourceSHA256                         = "ea0f55238699220069a6a4b5608f656143572493026d9f6ae140cf82e7cd912a"
+	ConsoleUserIdentityResolutionRoute   = "/api/v1/console-user-identities/resolutions"
+	SourceSHA256                         = "85e4df71c133c4019204356a7f63da3f1341a87926b679d5ae98bc6c5a730c17"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
@@ -283,6 +284,7 @@ type PlatformOperationsAccountLookupRequest struct {
 
 type PlatformOperationsAccountLookupAccount struct {
 	ID          string  `json:"id"`
+	Email       string  `json:"email"`
 	Status      string  `json:"status"`
 	DisplayName *string `json:"display_name,omitempty"`
 }

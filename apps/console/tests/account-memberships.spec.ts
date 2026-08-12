@@ -30,7 +30,7 @@ for (const viewport of [
     );
     await page.route("**/api/v1/operations/account-lookups", async (route) => {
       lookedUpEmails.push((await route.request().postDataJSON()).email);
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, status: "active" } }, request_id: "req_membership_lookup_gateway" }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" } }, request_id: "req_membership_lookup_gateway" }) });
     });
     await page.route(`**/api/v1/account/memberships/${targetUserID}`, (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { membership }, request_id: "req_membership_lookup" }) })
@@ -61,6 +61,8 @@ for (const viewport of [
     await page.getByLabel("操作原因").fill("核验后发放终身权益");
     await page.getByRole("button", { name: "发放终身会员" }).click();
     await expect(page.locator("[data-membership-confirm-step]")).toContainText(targetName);
+    await expect(page.getByText("提交后立即生效，之后可通过相反操作调整。")).toBeVisible();
+    await expect(page.getByText("此操作不可撤销。")).toHaveCount(0);
     await page.getByRole("button", { name: "确认执行" }).click();
     await expect(page.getByRole("status")).toContainText("终身会员权益已发放");
     await expect(page.locator('[data-account-membership-detail-state="ready"]')).toContainText("终身会员");
@@ -68,6 +70,7 @@ for (const viewport of [
     await page.getByLabel("操作原因").fill("复核后撤销终身权益");
     await page.getByRole("button", { name: "撤销终身会员" }).click();
     await expect(page.locator("[data-membership-confirm-step]")).toContainText(targetName);
+    await expect(page.getByText("提交后立即生效，之后可通过相反操作调整。")).toBeVisible();
     await page.getByRole("button", { name: "确认执行" }).click();
     await expect(page.getByRole("status")).toContainText("终身会员权益已撤销");
     await expect(page.locator('[data-account-membership-detail-state="ready"]')).toContainText("免费会员");
@@ -84,7 +87,7 @@ test("Console refreshes the durable membership after a stale-version conflict", 
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_membership_session" }) })
   );
   await page.route("**/api/v1/operations/account-lookups", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
   );
   await page.route(`**/api/v1/account/memberships/${targetUserID}`, (route) => {
     lookupCount += 1;
@@ -127,10 +130,10 @@ test("Console ignores a late account lookup after the operator changes the email
     if (email === targetEmail) {
       firstLookupStarted?.();
       await firstLookupRelease;
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, status: "active" } }, request_id: "req_membership_lookup_gateway" }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" } }, request_id: "req_membership_lookup_gateway" }) });
       return;
     }
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: secondUserID, display_name: secondName, status: "active" } }, request_id: "req_membership_lookup_gateway" }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: secondUserID, display_name: secondName, email: secondEmail, status: "active" } }, request_id: "req_membership_lookup_gateway" }) });
   });
   await page.route(`**/api/v1/account/memberships/${targetUserID}`, (route) => {
     firstUserMembershipRead = true;
@@ -162,7 +165,7 @@ test("Console writes nothing when the operator cancels the membership confirmati
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_membership_session" }) })
   );
   await page.route("**/api/v1/operations/account-lookups", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
   );
   await page.route(`**/api/v1/account/memberships/${targetUserID}`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { membership: { plan: "free", lifetime: false, version: 1 } }, request_id: "req_membership_lookup" }) })
@@ -210,7 +213,9 @@ test("Console distinguishes an unknown email from a lookup outage", async ({ pag
   expect(lookupAttempts).toBe(2);
 });
 
-test("Console retries an unknown membership result with the original idempotency key and never persists the email", async ({ page }) => {
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+test(`${viewport.name} Console retries an unknown membership result with its original identity and idempotency key`, async ({ page }) => {
+  await page.setViewportSize(viewport);
   const idempotencyKeys: string[] = [];
   const bodies: unknown[] = [];
   let mutationAttempts = 0;
@@ -219,7 +224,7 @@ test("Console retries an unknown membership result with the original idempotency
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_membership_session" }) })
   );
   await page.route("**/api/v1/operations/account-lookups", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
   );
   await page.route(`**/api/v1/account/memberships/${targetUserID}`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { membership: { plan: "free", lifetime: false, version: 1 } }, request_id: "req_membership_lookup" }) })
@@ -243,12 +248,15 @@ test("Console retries an unknown membership result with the original idempotency
   await page.getByRole("button", { name: "确认执行" }).click();
 
   await expect(page.getByRole("status")).toContainText("结果还没确认");
-  await expect(page.getByRole("status")).toContainText("待确认操作：向用户");
-  await expect(page.getByRole("status").getByText(targetUserID, { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("同一已确认目标");
+  await expect(page.getByRole("status")).toContainText(`${targetName} · ${targetEmail}`);
+  await expect(page.getByRole("status")).toContainText("沿用原操作请求，系统会避免重复执行");
+  await expect(page.getByRole("status")).not.toContainText(targetUserID);
   const stored = await page.evaluate(() => sessionStorage.getItem("henukit.account-membership.pending-command"));
   expect(stored).toContain(targetUserID);
-  expect(stored).not.toContain(targetEmail);
-  await page.getByRole("button", { name: "确认并按原请求重试" }).click();
+  expect(stored).toContain(targetName);
+  expect(stored).toContain(targetEmail);
+  await page.getByRole("button", { name: "按原请求重试" }).click();
   await expect(page.getByRole("status")).toContainText("终身会员权益已发放");
   expect(idempotencyKeys).toHaveLength(2);
   expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
@@ -257,6 +265,7 @@ test("Console retries an unknown membership result with the original idempotency
     { reason: "网关结果未确认时重试", expected_version: 1 },
   ]);
 });
+}
 
 test("Console fails closed for missing membership permission and a server denial", async ({ page }) => {
   const noMembershipPermission = {
@@ -282,7 +291,7 @@ test("Console surfaces a membership endpoint authorization denial", async ({ pag
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_membership_session" }) })
   );
   await page.route("**/api/v1/operations/account-lookups", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
   );
   await page.route(`**/api/v1/account/memberships/${targetUserID}`, (route) =>
     route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: { code: "forbidden", message: "forbidden" }, request_id: "req_membership_denied" }) })
@@ -309,7 +318,7 @@ test("Console fails closed when a membership read reports an expired session", a
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_membership_session" }) })
   );
   await page.route("**/api/v1/operations/account-lookups", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { account: { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" } }, request_id: "req_membership_lookup_gateway" }) })
   );
   await page.route(`**/api/v1/account/memberships/${targetUserID}`, (route) =>
     route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: { code: "unauthorized", message: "expired" }, request_id: "req_membership_read_signed_out" }) })
@@ -336,6 +345,6 @@ test("Console discards a persisted retry that belongs to another operator", asyn
   );
 
   await page.goto("/account/memberships");
-  await expect(page.getByRole("button", { name: "确认并按原请求重试" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "按原请求重试" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.account-membership.pending-command"))).toBeNull();
 });

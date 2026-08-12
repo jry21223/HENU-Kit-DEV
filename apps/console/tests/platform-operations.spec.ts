@@ -2,11 +2,11 @@ import { expect, test } from "@playwright/test";
 
 const operations = {
   access_context: { permissions: ["platform.operations.read", "platform.operations.write"], scopes: [{ kind: "platform" }], verified_at: "2026-07-19T00:00:00Z" },
-  accounts: [{ id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", email_verified: true, status: "active", authorization_revision: 1, created_at: "2026-07-19T00:00:00Z", grants: [{ role_code: "operations-operator", scope: { kind: "platform" } }] }],
-  sessions: [{ id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", kind: "core", last_seen_at: "2026-07-19T00:00:00Z", expires_at: "2026-07-19T01:00:00Z" }],
+  accounts: [{ id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", display_name: "张老师", email: "very.long.operator.identity@henu.edu.cn", email_verified: true, status: "active", authorization_revision: 1, created_at: "2026-07-19T00:00:00Z", grants: [{ role_code: "operations-operator", scope: { kind: "platform" } }] }],
+  sessions: [{ id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", display_name: "张老师", email: "very.long.operator.identity@henu.edu.cn", kind: "core", last_seen_at: "2026-07-19T00:00:00Z", expires_at: "2026-07-19T01:00:00Z" }],
   mail: { pending: 1, processing: 0, retry_due: 0, accepted: 0, delivered: 2, failed: 0, dead_letters: 0 },
   inbox_items: [{ id: "371f1c6f-7b10-4c92-91a2-b39bf5af5302", source_product_code: "quizcraft", source_resource_type: "submission", source_resource_id: "submission-7", priority: "normal", status: "open", version: 1, created_at: "2026-07-19T00:00:00Z", updated_at: "2026-07-19T00:00:00Z" }],
-  audit: [{ request_id: "req_operations_browser", actor_user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", permission_code: "platform.operations.read", target_kind: "platform", decision: "allowed", reason_code: "permission_granted", created_at: "2026-07-19T00:00:00Z" }],
+  audit: [{ request_id: "req_operations_browser", actor_user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", display_name: "张老师", email: "very.long.operator.identity@henu.edu.cn", permission_code: "platform.operations.read", target_kind: "platform", decision: "allowed", reason_code: "permission_granted", created_at: "2026-07-19T00:00:00Z" }],
   dependencies: { postgres: "ready", redis: "ready" }, generated_at: "2026-07-19T00:00:00Z",
 };
 
@@ -31,9 +31,9 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.goto("/operations");
     for (const heading of ["平台运营工作台", "账户、角色与权限", "登录会话", "邮件基础设施", "运营收件箱", "授权审计"]) await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     await expect(page.getByLabel("角色代码")).toHaveValue("operations-operator");
-    // 无 display_name 的账户/会话/审计发起人统一走兜底呈现：主文本 + 灰字小号「用户 #后四位」。
-    await expect(page.getByText("未设置姓名").first()).toBeVisible();
-    await expect(page.getByText(/用户 #5302/).first()).toBeVisible();
+    await expect(page.getByText("张老师").first()).toBeVisible();
+    await expect(page.getByText("very.long.operator.identity@henu.edu.cn").first()).toBeVisible();
+    await expect(page.getByText(/171f1c6f-7b10/)).toHaveCount(0);
     await page.getByRole("button", { name: "撤销登录" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
     await page.getByLabel("角色代码").fill("operations-reviewer");
@@ -107,16 +107,16 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
       ...operations,
       accounts: [{ ...operations.accounts[0], status: "deleted" }],
       audit: [
-        { request_id: "req_allowed", actor_user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", permission_code: "platform.operations.read", target_kind: "platform", decision: "allowed", reason_code: "GRANTED", created_at: "2026-07-19T00:00:00Z" },
-        { request_id: "req_denied", actor_user_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", permission_code: "quizcraft.attempt.write", target_kind: "resource", target_product_code: "quizcraft", target_resource_type: "attempt", target_resource_id: "attempt-9", decision: "denied", reason_code: "SESSION_EXPIRED", created_at: "2026-07-19T01:00:00Z" },
-        { request_id: "req_unknown_reason", actor_user_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", permission_code: "platform.operations.write", target_kind: "product", target_product_code: "notice", decision: "allowed", reason_code: "something_else", created_at: "2026-07-19T02:00:00Z" },
+        { request_id: "req_allowed", actor_user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", email: "operator@henu.edu.cn", permission_code: "platform.operations.read", target_kind: "platform", decision: "allowed", reason_code: "GRANTED", created_at: "2026-07-19T00:00:00Z" },
+        { request_id: "req_denied", actor_user_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", email: "deleted.operator@henu.edu.cn", permission_code: "quizcraft.attempt.write", target_kind: "resource", target_product_code: "quizcraft", target_resource_type: "attempt", target_resource_id: "attempt-9", decision: "denied", reason_code: "SESSION_EXPIRED", created_at: "2026-07-19T01:00:00Z" },
+        { request_id: "req_unknown_reason", actor_user_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", email: "deleted.operator@henu.edu.cn", permission_code: "platform.operations.write", target_kind: "product", target_product_code: "notice", decision: "allowed", reason_code: "something_else", created_at: "2026-07-19T02:00:00Z" },
       ],
     };
     await page.route("**/api/v1/operations", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: auditOperations, request_id: "req_audit_envelope" }) }));
     await page.goto("/operations");
 
-    // 发起人（无 display_name 时兜底）、时间（本地时区）、权限码、结果。
-    await expect(page.getByText(/未设置姓名 · 用户 #5302/).first()).toBeVisible();
+    // 发起人（无 display_name 时显示中性名称 + 邮箱）、时间（本地时区）、权限码、结果。
+    await expect(page.getByText(/未设置姓名 · operator@henu.edu.cn/).first()).toBeVisible();
     await expect(page.getByText(/2026/).first()).toBeVisible();
     await expect(page.getByText("允许 · platform.operations.read")).toBeVisible();
     await expect(page.getByText("拒绝 · quizcraft.attempt.write")).toBeVisible();
@@ -128,7 +128,8 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(page.getByText("原因：会话已过期")).toBeVisible();
     await expect(page.getByText(/原因：其他原因（something_else）/)).toBeVisible();
     // 已删除账户的审计行不消失：同一行仍渲染完整字段。
-    await expect(page.getByText(/未设置姓名 · 用户 #5302.*目标 资源/)).toBeVisible();
+    await expect(page.getByText(/未设置姓名 · deleted.operator@henu.edu.cn.*目标 资源/)).toBeVisible();
+    await expect(page.getByText(/用户 #5302/)).toHaveCount(0);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
@@ -148,21 +149,19 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
 
-  test(`${viewport.name} accounts, sessions, and audit actors render display_name when present`, async ({ page }) => {
+  test(`${viewport.name} accounts, sessions, and audit actors render neutral name plus email when display name is missing`, async ({ page }) => {
     await page.setViewportSize(viewport);
     const named = {
       ...operations,
-      accounts: [{ ...operations.accounts[0], display_name: "张老师" }],
-      sessions: [{ ...operations.sessions[0], display_name: "李老师" }],
-      audit: [{ ...operations.audit[0], display_name: "王老师", created_at: "2026-07-19T03:00:00Z" }],
+      accounts: [{ ...operations.accounts[0], display_name: undefined }],
+      sessions: [{ ...operations.sessions[0], display_name: undefined }],
+      audit: [{ ...operations.audit[0], display_name: undefined, created_at: "2026-07-19T03:00:00Z" }],
     };
     await page.route("**/api/v1/operations", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: named, request_id: "req_named_envelope" }) }));
     await page.goto("/operations");
-    await expect(page.getByText("张老师").first()).toBeVisible();
-    await expect(page.getByText("李老师").first()).toBeVisible();
-    await expect(page.getByText(/王老师.*目标 平台/)).toBeVisible();
-    // display_name 存在时不再渲染兜底「未设置姓名」或 UUID 后缀。
-    await expect(page.getByText("未设置姓名")).toHaveCount(0);
+    await expect(page.getByText("未设置姓名").first()).toBeVisible();
+    await expect(page.getByText("very.long.operator.identity@henu.edu.cn").first()).toBeVisible();
+    await expect(page.getByText(/用户 #5302/)).toHaveCount(0);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });

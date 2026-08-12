@@ -193,7 +193,7 @@ paths:
       tags: [Platform Operations]
       operationId: lookupConsoleAccount
       summary: Resolve one exact full email to the owning account identity
-      description: "Forwards the full email to Platform Core, which normalizes it exactly like the login path and returns only the resolved account id, display name, and status. The email is never echoed back, never placed in a URL or query string, and never logged. An unknown email returns account: null in the same envelope instead of a distinct error, so the response shape never distinguishes a miss from an empty lookup."
+      description: "Forwards the full email to Platform Core, which normalizes it exactly like the login path and returns the resolved account id, display name, normalized email, and status. The email stays out of URLs, query strings, and logs. An unknown email returns account: null in the same envelope instead of a distinct error, so the response shape never distinguishes a miss from an empty lookup."
       security: [{ consoleSession: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ConsoleAccountLookupRequest" } } } }
       responses:
@@ -1306,10 +1306,11 @@ components:
     ConsoleLookedUpAccount:
       type: object
       additionalProperties: false
-      required: [id, status]
+      required: [id, email, status]
       properties:
         id: { type: string, format: uuid }
         display_name: { type: string, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 320 }
         status: { type: string, enum: [active, suspended, deleted] }
     ConsolePointLedgerEntry:
       type: object
@@ -1344,6 +1345,8 @@ components:
       properties:
         id: { type: string, format: uuid }
         reference: { type: string, pattern: '^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' }
+        display_name: { type: string, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 320 }
         title: { type: string, maxLength: 160 }
         category: { type: string, maxLength: 80, pattern: '^[a-z][a-z0-9_-]*$' }
         status: { type: string, enum: [open, in_progress, resolved] }
@@ -1502,10 +1505,11 @@ components:
     PlatformOperationsAccount:
       type: object
       additionalProperties: false
-      required: [id, email_verified, status, authorization_revision, created_at, grants]
+      required: [id, email, email_verified, status, authorization_revision, created_at, grants]
       properties:
         id: { type: string, format: uuid }
         display_name: { type: string, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 320 }
         email_verified: { type: boolean }
         status: { type: string, enum: [active, suspended, deleted] }
         authorization_revision: { type: integer, format: int64, minimum: 1 }
@@ -1530,11 +1534,12 @@ components:
     PlatformOperationsSession:
       type: object
       additionalProperties: false
-      required: [id, user_id, kind, last_seen_at, expires_at]
+      required: [id, user_id, email, kind, last_seen_at, expires_at]
       properties:
         id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
         display_name: { type: string, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 320 }
         kind: { type: string, enum: [core, client_exchange] }
         client_id: { type: string }
         last_seen_at: { type: string, format: date-time }
@@ -1577,6 +1582,7 @@ components:
         request_id: { type: string }
         actor_user_id: { type: string, format: uuid }
         display_name: { type: string, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 320 }
         permission_code: { type: string }
         target_kind: { type: string, enum: [platform, product, resource] }
         target_product_code: { type: string }
