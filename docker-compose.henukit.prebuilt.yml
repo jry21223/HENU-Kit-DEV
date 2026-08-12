@@ -7,6 +7,16 @@ services:
     build: !reset null
     pull_policy: never
     mem_limit: 256m
+  portal-summary:
+    image: henukit-portal-summary:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 64m
+    environment:
+      PORTAL_SUMMARY_ACTIVE_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:?PORTAL_SUMMARY_CLIENT_SECRET is required}
+      PORTAL_VERSION: ${PORTAL_VERSION:?PORTAL_VERSION is required}
+      PORTAL_COMMIT_SHA: ${RELEASE_SHA:?RELEASE_SHA is required}
+      PORTAL_DEPLOYED_AT: ${PORTAL_DEPLOYED_AT:?PORTAL_DEPLOYED_AT is required}
   console:
     image: henukit-console:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null

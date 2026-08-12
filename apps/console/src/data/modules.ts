@@ -20,6 +20,7 @@ export interface ModuleSummary {
   description: string;
   metrics: ModuleMetric[];
   statusMessage: string;
+  unavailableReason?: "not_onboarded" | "operator_disabled";
   asOf?: string;
   lastSuccessAt?: string;
   requestId?: string;

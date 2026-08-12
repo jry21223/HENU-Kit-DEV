@@ -467,6 +467,15 @@ active_release_matches() {
   local running image index service
   running="$(docker ps --format '{{.Image}}')"
   for image in "${base_images[@]}"; do
+    if [[ "$image" == "henukit-portal-summary" ]]; then
+      if release_has_service "$release_sha" "portal-summary"; then
+        :
+      elif [[ $? -eq 1 ]]; then
+        continue
+      else
+        return 1
+      fi
+    fi
     grep -Fqx "${image}:${release_sha}" <<<"$running" || return 1
   done
   # Conditional owners are asserted only when the extracted fixed-SHA Compose
@@ -489,6 +498,15 @@ degraded_baseline_matches() {
   actual_target="$(readlink -f "$current_release_link" 2>/dev/null)" || return 1
   [[ "$actual_target" == "$expected_target" ]] || return 1
   for image in "${base_images[@]}"; do
+    if [[ "$image" == "henukit-portal-summary" ]]; then
+      if release_has_service "$release_sha" "portal-summary"; then
+        :
+      elif [[ $? -eq 1 ]]; then
+        continue
+      else
+        return 1
+      fi
+    fi
     container="henukit-${image#henukit-}-1"
     actual_image="$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null)" || return 1
     [[ "$actual_image" == "${image}:${release_sha}" ]] || return 1
@@ -555,6 +573,7 @@ current_release_sha() {
   # separately from the stable base image set using each release's extracted
   # Compose contract.
   for image in "${base_images[@]}"; do
+    [[ "$image" == "henukit-portal-summary" ]] && continue
     line="$(grep -E "^${image}:[0-9a-f]{40}$" <<<"$running" | head -n 1)" || return 1
     image_sha="${line##*:}"
     if [[ -z "$found_sha" ]]; then
@@ -563,6 +582,12 @@ current_release_sha() {
       return 1
     fi
   done
+  if release_has_service "$found_sha" "portal-summary"; then
+    line="$(grep -E '^henukit-portal-summary:[0-9a-f]{40}$' <<<"$running" | head -n 1)" || return 1
+    [[ "${line##*:}" == "$found_sha" ]] || return 1
+  elif [[ $? -ne 1 ]]; then
+    return 1
+  fi
   printf '%s\n' "$found_sha"
 }
 
@@ -590,6 +615,12 @@ verify_active_release() {
       esac
     fi
   done
+  if release_has_service "$release_sha" "portal-summary"; then
+    container_is_healthy "henukit-portal-summary-1" || return 1
+    docker exec henukit-portal-summary-1 /usr/local/bin/portal-summary verify-summary >/dev/null || return 1
+  elif [[ $? -ne 1 ]]; then
+    return 1
+  fi
   curl --fail --silent --show-error "$public_base_url/api/v1/healthz" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/practice" >/dev/null || return 1

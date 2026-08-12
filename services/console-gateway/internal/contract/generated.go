@@ -38,7 +38,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "641bbcab428cde499a48ecf940aa753592c5aab4e23a1426e14549b62917e527"
+	SourceSHA256                        = "c5d4824b70d42e603e77f0cd7e03f4d277a402eaa7bcba77ffb958424edb310e"
 )
 
 type ConsoleAccessContext struct {
@@ -161,14 +161,17 @@ type ConsoleModuleMetric struct {
 }
 
 type ConsoleModuleSummary struct {
-	AsOf          *time.Time            `json:"as_of,omitempty"`
-	ID            string                `json:"id"`
-	LastSuccessAt *time.Time            `json:"last_success_at,omitempty"`
-	Metrics       []ConsoleModuleMetric `json:"metrics"`
-	RequestID     string                `json:"request_id"`
-	Status        string                `json:"status"`
-	StatusMessage string                `json:"status_message"`
+	AsOf              *time.Time                      `json:"as_of,omitempty"`
+	ID                string                          `json:"id"`
+	LastSuccessAt     *time.Time                      `json:"last_success_at,omitempty"`
+	Metrics           []ConsoleModuleMetric           `json:"metrics"`
+	RequestID         string                          `json:"request_id"`
+	Status            string                          `json:"status"`
+	StatusMessage     string                          `json:"status_message"`
+	UnavailableReason *ConsoleModuleUnavailableReason `json:"unavailable_reason,omitempty"`
 }
+
+type ConsoleModuleUnavailableReason string
 
 type ConsoleOperatorReplyRequest struct {
 	Body            string `json:"body"`

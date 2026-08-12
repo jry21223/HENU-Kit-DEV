@@ -369,6 +369,36 @@ services:
     expose:
       - "3001"
 
+  portal-summary:
+    build:
+      context: ./services/portal-summary
+    environment:
+      LISTEN_ADDR: ${PORTAL_SUMMARY_LISTEN_ADDR:-:8083}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      PORTAL_SUMMARY_CLIENT_ID: ${PORTAL_SUMMARY_CLIENT_ID:-console-gateway-portal}
+      PORTAL_SUMMARY_ACTIVE_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:-replace-portal-summary-client-secret-32bytes-min!!}
+      PORTAL_SUMMARY_ACTIVE_KEY_ID: ${PORTAL_SUMMARY_KEY_ID:-portal-summary-key}
+      PORTAL_VERSION: ${PORTAL_VERSION:-development}
+      PORTAL_COMMIT_SHA: ${PORTAL_COMMIT_SHA:-0000000000000000000000000000000000000000}
+      PORTAL_DEPLOYED_AT: ${PORTAL_DEPLOYED_AT:-1970-01-01T00:00:00Z}
+      PORTAL_READINESS_URL: ${PORTAL_READINESS_URL:-https://henukit.cn/}
+      PORTAL_KEY_PROBES_JSON: '${PORTAL_KEY_PROBES_JSON:-[{"name":"首页","url":"https://henukit.cn/"}]}'
+      PORTAL_ENTRY_PROBES_JSON: '${PORTAL_ENTRY_PROBES_JSON:-[{"name":"资料库","url":"https://henukit.cn/library"}]}'
+      PORTAL_FEEDBACK_SUMMARY_URL: ${PORTAL_FEEDBACK_SUMMARY_URL:-}
+      PORTAL_FEEDBACK_CLIENT_ID: ${PORTAL_FEEDBACK_CLIENT_ID:-}
+      PORTAL_FEEDBACK_CLIENT_SECRET: ${PORTAL_FEEDBACK_CLIENT_SECRET:-}
+      PORTAL_FEEDBACK_KEY_ID: ${PORTAL_FEEDBACK_KEY_ID:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - "8083"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8083/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   console-gateway:
     build:
       context: ./services/console-gateway
@@ -383,7 +413,7 @@ services:
       CONSOLE_REDIRECT_URI: ${CONSOLE_REDIRECT_URI:-http://localhost:8088/console-api/v1/auth/callback}
       CONSOLE_SESSION_KEY: ${CONSOLE_SESSION_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-      PORTAL_SUMMARY_URL: ${PORTAL_SUMMARY_URL:-}
+      PORTAL_SUMMARY_URL: ${PORTAL_SUMMARY_URL-http://portal-summary:8083/api/v1/console-summary}
       PORTAL_SUMMARY_CLIENT_ID: ${PORTAL_SUMMARY_CLIENT_ID:-console-gateway-portal}
       PORTAL_SUMMARY_CLIENT_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:-replace-portal-summary-client-secret-32bytes-min!!}
       PORTAL_SUMMARY_KEY_ID: ${PORTAL_SUMMARY_KEY_ID:-portal-summary-key}
@@ -391,17 +421,15 @@ services:
       PLATFORM_SUMMARY_CLIENT_ID: ${PLATFORM_SUMMARY_CLIENT_ID:-console-gateway-platform}
       PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:-replace-platform-summary-client-secret-32bytes-min!!}
       PLATFORM_SUMMARY_KEY_ID: ${PLATFORM_SUMMARY_KEY_ID:-platform-summary-key}
-      NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-}
-      # Notice and Food use their private Compose endpoints when the variable
-      # is unset; an explicitly empty value is the operator rollback switch.
-      # Library stays closed until its production owner is activated (ADR-0020).
+      NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL-http://notice:8094/api/v1/console-summary}
+      # Onboarded summary owners use their private Compose endpoints by default.
       NOTICE_API_URL: ${NOTICE_API_URL-http://notice:8094}
       LIBRARY_API_URL: ${LIBRARY_API_URL:-}
       FOOD_API_URL: ${FOOD_API_URL-http://food:8096}
       NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
       NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
       NOTICE_SUMMARY_KEY_ID: ${NOTICE_SUMMARY_KEY_ID:-notice-summary-key}
-      LIBRARY_SUMMARY_URL: ${LIBRARY_SUMMARY_URL:-}
+      LIBRARY_SUMMARY_URL: ${LIBRARY_SUMMARY_URL-http://library:8095/api/v1/console-summary}
       LIBRARY_SUMMARY_CLIENT_ID: ${LIBRARY_SUMMARY_CLIENT_ID:-console-gateway-library}
       LIBRARY_SUMMARY_CLIENT_SECRET: ${LIBRARY_SUMMARY_CLIENT_SECRET:-replace-library-summary-client-secret-32bytes-min!!}
       LIBRARY_SUMMARY_KEY_ID: ${LIBRARY_SUMMARY_KEY_ID:-library-summary-key}
@@ -409,7 +437,7 @@ services:
       QUIZCRAFT_SUMMARY_CLIENT_ID: ${QUIZCRAFT_SUMMARY_CLIENT_ID:-console-gateway-quizcraft}
       QUIZCRAFT_SUMMARY_CLIENT_SECRET: ${QUIZCRAFT_SUMMARY_CLIENT_SECRET:-replace-quizcraft-summary-client-secret-32bytes-min!!}
       QUIZCRAFT_SUMMARY_KEY_ID: ${QUIZCRAFT_SUMMARY_KEY_ID:-quizcraft-summary-key}
-      FOOD_SUMMARY_URL: ${FOOD_SUMMARY_URL:-}
+      FOOD_SUMMARY_URL: ${FOOD_SUMMARY_URL-http://food:8096/api/v1/console-summary}
       FOOD_SUMMARY_CLIENT_ID: ${FOOD_SUMMARY_CLIENT_ID:-console-gateway-food}
       FOOD_SUMMARY_CLIENT_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:-replace-food-summary-client-secret-32bytes-min!!}
       FOOD_SUMMARY_KEY_ID: ${FOOD_SUMMARY_KEY_ID:-food-summary-key}
@@ -425,6 +453,8 @@ services:
       platform-core:
         condition: service_started
       account-portfolio:
+        condition: service_healthy
+      portal-summary:
         condition: service_healthy
       notice:
         condition: service_started

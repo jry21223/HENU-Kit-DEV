@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 641bbcab428cde499a48ecf940aa753592c5aab4e23a1426e14549b62917e527); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 c5d4824b70d42e603e77f0cd7e03f4d277a402eaa7bcba77ffb958424edb310e); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -126,7 +126,10 @@ export interface ConsoleModuleSummary {
   request_id: string;
   status: "ok" | "empty" | "partial" | "stale" | "unavailable";
   status_message: string;
+  unavailable_reason?: ConsoleModuleUnavailableReason;
 }
+
+export type ConsoleModuleUnavailableReason = "not_onboarded" | "operator_disabled";
 
 export interface ConsoleOperatorReplyRequest {
   body: string;
@@ -672,7 +675,11 @@ function isConsoleModuleMetric(value: unknown): value is ConsoleModuleMetric {
 }
 
 function isConsoleModuleSummary(value: unknown): value is ConsoleModuleSummary {
-  return isRecord(value) && (!("as_of" in value) || isDateTime(value["as_of"])) && "id" in value && typeof value["id"] === "string" && ["portal","platform","notice","library","quizcraft","food"].includes(value["id"]) && (!("last_success_at" in value) || isDateTime(value["last_success_at"])) && "metrics" in value && Array.isArray(value["metrics"]) && value["metrics"].length <= 8 && value["metrics"].every((item) => isConsoleModuleMetric(item)) && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 120 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","stale","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && Object.keys(value).every((key) => ["as_of","id","last_success_at","metrics","request_id","status","status_message"].includes(key)) && ((isRecord(value) && "as_of" in value && true && "last_success_at" in value && true) || (isRecord(value) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","unavailable"].includes(value["status"])));
+  return isRecord(value) && (!("as_of" in value) || isDateTime(value["as_of"])) && "id" in value && typeof value["id"] === "string" && ["portal","platform","notice","library","quizcraft","food"].includes(value["id"]) && (!("last_success_at" in value) || isDateTime(value["last_success_at"])) && "metrics" in value && Array.isArray(value["metrics"]) && value["metrics"].length <= 8 && value["metrics"].every((item) => isConsoleModuleMetric(item)) && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 120 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","stale","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && (!("unavailable_reason" in value) || isConsoleModuleUnavailableReason(value["unavailable_reason"])) && Object.keys(value).every((key) => ["as_of","id","last_success_at","metrics","request_id","status","status_message","unavailable_reason"].includes(key)) && true && (!(isRecord(value) && "unavailable_reason" in value && isConsoleModuleUnavailableReason(value["unavailable_reason"])) || isRecord(value) && (!("status" in value) || value["status"] === "unavailable")) && ((isRecord(value) && "as_of" in value && true && "last_success_at" in value && true) || (isRecord(value) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","unavailable"].includes(value["status"])));
+}
+
+function isConsoleModuleUnavailableReason(value: unknown): value is ConsoleModuleUnavailableReason {
+  return typeof value === "string" && ["not_onboarded","operator_disabled"].includes(value);
 }
 
 function isConsoleOperatorReplyRequest(value: unknown): value is ConsoleOperatorReplyRequest {

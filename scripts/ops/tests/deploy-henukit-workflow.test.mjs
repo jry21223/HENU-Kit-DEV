@@ -42,6 +42,7 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
     "henukit-platform-mail-worker",
     "henukit-platform-smtp-provider",
     "henukit-portal",
+    "henukit-portal-summary",
     "henukit-portal-api",
     "henukit-account-portfolio",
     "henukit-notice",
@@ -253,6 +254,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "PLATFORM_SUMMARY_CLIENT_SECRET",
       "PORTAL_SESSION_KEY",
       "PORTAL_SUMMARY_CLIENT_SECRET",
+      "PORTAL_VERSION",
+      "PORTAL_DEPLOYED_AT",
       "POSTGRES_DB",
       "POSTGRES_PASSWORD",
       "POSTGRES_USER",
@@ -321,6 +324,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-platform-mail-worker",
     "henukit-platform-smtp-provider",
     "henukit-portal",
+    "henukit-portal-summary",
     "henukit-portal-api",
     "henukit-account-portfolio",
     "henukit-portal-gateway",
@@ -490,8 +494,44 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.equal(
     config.services["console-gateway"].environment.NOTICE_SUMMARY_URL,
-    "",
-    "Notice summary stays unset until the production env enables it",
+    "http://notice:8094/api/v1/console-summary",
+    "Notice summary must use the private owner endpoint",
+  );
+  assert.equal(config.services["console-gateway"].environment.PORTAL_SUMMARY_URL, "http://portal-summary:8083/api/v1/console-summary");
+  assert.equal(config.services["console-gateway"].environment.LIBRARY_SUMMARY_URL, "http://library:8095/api/v1/console-summary");
+  assert.equal(config.services["console-gateway"].environment.FOOD_SUMMARY_URL, "http://food:8096/api/v1/console-summary");
+  assert.equal(config.services["console-gateway"].environment.PLATFORM_SUMMARY_URL, "");
+  assert.equal(config.services["console-gateway"].environment.QUIZCRAFT_SUMMARY_URL, "");
+  const withoutSummaryEndpoints = renderRuntimeConfig({
+    PORTAL_SUMMARY_URL: "",
+    NOTICE_SUMMARY_URL: "",
+    LIBRARY_SUMMARY_URL: "",
+    FOOD_SUMMARY_URL: "",
+  });
+  for (const name of [
+    "PORTAL_SUMMARY_URL",
+    "NOTICE_SUMMARY_URL",
+    "LIBRARY_SUMMARY_URL",
+    "FOOD_SUMMARY_URL",
+  ]) {
+    assert.equal(
+      withoutSummaryEndpoints.services["console-gateway"].environment[name],
+      "",
+      `an explicit empty ${name} must disable that summary owner`,
+    );
+  }
+  assert.deepEqual(
+    config.services["portal-summary"].healthcheck.test,
+    ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8083/readyz"],
+  );
+  assert.equal(
+    config.services["console-gateway"].depends_on["portal-summary"].condition,
+    "service_healthy",
+  );
+  assert.match(
+    releaseImageMatrix().include.find(({ name }) => name === "console").build_args,
+    /VITE_QUIZCRAFT_WORKSHOP_URL=$/m,
+    "production Console must not bake a retired QuizCraft workshop route",
   );
   assert.equal(
     config.services["notice"].environment.NOTICE_SERVICE_CLIENT_ID,

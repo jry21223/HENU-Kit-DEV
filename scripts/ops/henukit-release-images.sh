@@ -13,6 +13,7 @@ release_names=(
   platform-mail-worker
   platform-smtp-provider
   portal
+  portal-summary
   portal-api
   account-portfolio
   notice
@@ -28,6 +29,7 @@ release_images=(
   henukit-platform-mail-worker
   henukit-platform-smtp-provider
   henukit-portal
+  henukit-portal-summary
   henukit-portal-api
   henukit-account-portfolio
   henukit-notice
@@ -43,6 +45,7 @@ release_services=(
   platform-mail-worker
   platform-smtp-provider
   portal
+  portal-summary
   portal-api
   account-portfolio
   notice
@@ -52,6 +55,7 @@ release_services=(
   portal-gateway
 )
 release_roles=(
+  baseline
   baseline
   baseline
   baseline
@@ -73,6 +77,7 @@ release_contexts=(
   services/platform-core
   services/platform-core
   .
+  services/portal-summary
   services/portal-api
   services/account-portfolio
   services/notice
@@ -88,6 +93,7 @@ release_dockerfiles=(
   services/platform-core/Dockerfile.worker
   services/platform-core/Dockerfile.smtp-provider
   apps/portal/Dockerfile
+  services/portal-summary/Dockerfile
   services/portal-api/Dockerfile
   services/account-portfolio/Dockerfile
   services/notice/Dockerfile
@@ -103,6 +109,7 @@ release_build_args=(
   ""
   ""
   $'NEXT_PUBLIC_PORTAL_GATEWAY_URL=\nNEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL=/api\nNEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1\nNEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1\nNEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=1'
+  ""
   ""
   ""
   ""

@@ -1427,20 +1427,20 @@ components:
             status_message: 摘要可用
             as_of: "2026-07-19T01:00:00Z"
             request_id: req_portal_example
-          - { id: platform, status: empty, metrics: [], status_message: 当前无待办, as_of: "2026-07-19T01:00:00Z", request_id: req_platform_example }
+          - { id: platform, status: unavailable, unavailable_reason: not_onboarded, metrics: [], status_message: Platform Operations 摘要尚未接入，请前往平台运营工作台查看实时数据, request_id: req_platform_example }
           - { id: notice, status: unavailable, metrics: [], status_message: 摘要暂不可用, request_id: req_notice_example }
           - { id: library, status: stale, metrics: [], status_message: 展示最近成功摘要, as_of: "2026-07-19T00:58:00Z", last_success_at: "2026-07-19T00:58:05Z", request_id: req_library_example }
-          - { id: quizcraft, status: partial, metrics: [], status_message: 部分来源可用, as_of: "2026-07-19T01:00:00Z", request_id: req_quizcraft_example }
+          - { id: quizcraft, status: unavailable, unavailable_reason: not_onboarded, metrics: [], status_message: QuizCraft 摘要尚未接入, request_id: req_quizcraft_example }
           - { id: food, status: ok, metrics: [], status_message: 摘要可用, as_of: "2026-07-19T01:00:00Z", request_id: req_food_example }
         generated_at: "2026-07-19T01:00:01Z"
       x-invalid-example:
         modules:
-          - { id: portal, status: stale, metrics: [], status_message: 缺少 stale 时间戳, request_id: req_duplicate_1 }
-          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_2 }
-          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_3 }
-          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_4 }
-          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_5 }
-          - { id: portal, status: ok, metrics: [], status_message: 重复模块, as_of: "2026-07-19T01:00:00Z", request_id: req_duplicate_6 }
+          - { id: portal, status: ok, unavailable_reason: not_onboarded, metrics: [], status_message: 非 unavailable 状态不得携带原因, as_of: "2026-07-19T01:00:00Z", request_id: req_portal_invalid_reason }
+          - { id: platform, status: unavailable, unavailable_reason: not_onboarded, metrics: [], status_message: 尚未接入, request_id: req_platform_valid }
+          - { id: notice, status: ok, metrics: [], status_message: 摘要可用, as_of: "2026-07-19T01:00:00Z", request_id: req_notice_valid }
+          - { id: library, status: ok, metrics: [], status_message: 摘要可用, as_of: "2026-07-19T01:00:00Z", request_id: req_library_valid }
+          - { id: quizcraft, status: unavailable, unavailable_reason: not_onboarded, metrics: [], status_message: 尚未接入, request_id: req_quizcraft_valid }
+          - { id: food, status: ok, metrics: [], status_message: 摘要可用, as_of: "2026-07-19T01:00:00Z", request_id: req_food_valid }
         generated_at: "2026-07-19T01:00:01Z"
     ConsoleModuleSummary:
       type: object
@@ -1455,6 +1455,18 @@ components:
             status:
               type: string
               enum: [ok, empty, partial, unavailable]
+      allOf:
+        - if:
+            type: object
+            required: [unavailable_reason]
+            properties:
+              unavailable_reason:
+                $ref: "#/components/schemas/ConsoleModuleUnavailableReason"
+          then:
+            type: object
+            properties:
+              status:
+                const: unavailable
       required: [id, status, metrics, status_message, request_id]
       properties:
         id:
@@ -1463,6 +1475,8 @@ components:
         status:
           type: string
           enum: [ok, empty, partial, stale, unavailable]
+        unavailable_reason:
+          $ref: "#/components/schemas/ConsoleModuleUnavailableReason"
         metrics:
           type: array
           maxItems: 8
@@ -1481,6 +1495,9 @@ components:
           type: string
           maxLength: 120
           pattern: '^req_[A-Za-z0-9_-]+$'
+    ConsoleModuleUnavailableReason:
+      type: string
+      enum: [not_onboarded, operator_disabled]
     ConsoleModuleMetric:
       type: object
       additionalProperties: false

@@ -7,7 +7,7 @@ import StatusBadge from "@/components/ui/StatusBadge.vue";
 import { type ModuleStatus, type ModuleSummary } from "@/data/modules";
 import { localDateTime } from "@/lib/format";
 
-defineProps<{
+const props = defineProps<{
   summary: ModuleSummary;
   icon: Component;
 }>();
@@ -23,6 +23,11 @@ const statusLabels: Record<ModuleStatus, string> = {
 };
 
 const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKSHOP_URL?.trim() || "");
+const statusLabel = computed(() => props.summary.unavailableReason === "not_onboarded"
+  ? "尚未接入"
+  : props.summary.unavailableReason === "operator_disabled"
+    ? "已停用"
+    : statusLabels[props.summary.status]);
 </script>
 
 <template>
@@ -31,7 +36,7 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
     :class="summary.status === 'denied' && 'border-dashed bg-muted/40'"
     :data-module-card="summary.id"
     :data-state="summary.status"
-    :aria-label="`${summary.name}：${statusLabels[summary.status]}`"
+    :aria-label="`${summary.name}：${statusLabel}`"
   >
     <template v-if="summary.status === 'loading'">
       <div class="flex items-center gap-3">
@@ -51,7 +56,7 @@ const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKS
           <p class="text-xs text-muted-foreground">{{ summary.eyebrow }}</p>
           <h2 class="mt-0.5 truncate text-sm font-semibold tracking-tight">{{ summary.name }}</h2>
         </div>
-        <StatusBadge :status="summary.status">{{ statusLabels[summary.status] }}</StatusBadge>
+        <StatusBadge :status="summary.status">{{ statusLabel }}</StatusBadge>
       </header>
 
       <p class="mt-3 text-sm leading-6 text-muted-foreground">{{ summary.description }}</p>

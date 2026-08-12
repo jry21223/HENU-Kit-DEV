@@ -66,7 +66,7 @@ func New(endpoints map[string]string, client *http.Client, redisClient *redis.Cl
 		endpoint := strings.TrimSpace(endpoints[id])
 		if endpoint != "" {
 			parsed, err := url.Parse(endpoint)
-			loopback := err == nil && parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || net.ParseIP(parsed.Hostname()).IsLoopback())
+			loopback := err == nil && isTrustedSummaryHTTP(id, parsed)
 			if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && !loopback) || parsed.User != nil || parsed.Fragment != "" {
 				return nil, fmt.Errorf("invalid %s summary endpoint", id)
 			}
@@ -99,6 +99,21 @@ func New(endpoints map[string]string, client *http.Client, redisClient *redis.Cl
 	return &Aggregator{endpoints: validated, httpClient: client, redis: redisClient, moduleTimeout: options.ModuleTimeout, overviewTimeout: options.OverviewTimeout, cacheTTL: options.CacheTTL, retryDelay: options.RetryDelay, now: options.Now, credentials: credentials}, nil
 }
 
+func isTrustedSummaryHTTP(id string, parsed *url.URL) bool {
+	if parsed.Scheme != "http" {
+		return false
+	}
+	host := parsed.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	expectedHosts := map[string]string{"portal": "portal-summary", "notice": "notice", "library": "library", "food": "food"}
+	return expectedHosts[id] == host
+}
+
 func (a *Aggregator) Fetch(ctx context.Context, requestID string) contract.ConsoleOverview {
 	ctx, cancel := context.WithTimeout(ctx, a.overviewTimeout)
 	defer cancel()
@@ -127,6 +142,27 @@ func (a *Aggregator) fetchModule(parent context.Context, id, requestID string) c
 	ctx, cancel := context.WithTimeout(parent, a.moduleTimeout)
 	defer cancel()
 	endpoint := a.endpoints[id]
+	if endpoint == "" {
+		reasonValue := "operator_disabled"
+		if id == "platform" || id == "quizcraft" {
+			reasonValue = "not_onboarded"
+		}
+		reason := contract.ConsoleModuleUnavailableReason(reasonValue)
+		message := "Platform Operations 摘要尚未接入，请前往平台运营工作台查看实时数据"
+		switch id {
+		case "portal":
+			message = "Portal 摘要已由运营配置停用；如需恢复，请重新配置摘要地址"
+		case "notice":
+			message = "校园通知摘要已由运营配置停用；如需恢复，请重新配置摘要地址"
+		case "library":
+			message = "资料库摘要已由运营配置停用；如需恢复，请重新配置摘要地址"
+		case "quizcraft":
+			message = "QuizCraft 摘要尚未接入；题库工坊入口尚未配置"
+		case "food":
+			message = "校园美食摘要已由运营配置停用；如需恢复，请重新配置摘要地址"
+		}
+		return contract.ConsoleModuleSummary{ID: id, Status: "unavailable", UnavailableReason: &reason, Metrics: []contract.ConsoleModuleMetric{}, StatusMessage: message, RequestID: requestID}
+	}
 	if endpoint != "" {
 		for attempt := 0; attempt < 2; attempt++ {
 			summary, retry, err := a.read(ctx, id, endpoint, requestID)

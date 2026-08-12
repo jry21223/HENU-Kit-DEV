@@ -123,6 +123,7 @@ const summaries = computed<ModuleSummary[]>(() =>
                   status: live.status,
                   metrics: live.metrics,
                   statusMessage: live.status_message,
+                  unavailableReason: live.unavailable_reason,
                   asOf: live.as_of,
                   lastSuccessAt: live.last_success_at,
                   requestId: live.request_id,

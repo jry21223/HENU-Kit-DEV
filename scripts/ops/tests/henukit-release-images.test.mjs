@@ -23,6 +23,7 @@ const expected = [
   ["platform-mail-worker", "henukit-platform-mail-worker", "platform-mail-worker", "baseline"],
   ["platform-smtp-provider", "henukit-platform-smtp-provider", "platform-smtp-provider", "baseline"],
   ["portal", "henukit-portal", "portal", "baseline"],
+  ["portal-summary", "henukit-portal-summary", "portal-summary", "baseline"],
   ["portal-api", "henukit-portal-api", "portal-api", "baseline"],
   ["account-portfolio", "henukit-account-portfolio", "account-portfolio", "conditional"],
   ["notice", "henukit-notice", "notice", "conditional"],
