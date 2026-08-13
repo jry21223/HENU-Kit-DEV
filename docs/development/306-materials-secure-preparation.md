@@ -16,15 +16,16 @@ the earlier statements that activation remained future or inert are superseded.
 
 The CLI must fetch only the supplied branch ref, prove that its resolved commit
 is the supplied SHA, and use a detached checkout at that SHA. It writes a
-completion record only after all validation and derived conversion succeeds.
+completion record only after all raw-asset validation succeeds. Online preview
+conversion is disabled by ADR-0031 and is not a preparation step.
 
 Acceptance criteria:
 
 - [ ] The CLI rejects a non-full branch ref, noncanonical SHA, or resolved-SHA mismatch.
 - [ ] The CLI validates every reviewed asset's path, byte count, SHA-256, file type, duplicate path, and duplicate SHA-256 before it becomes a candidate asset.
-- [ ] `课件PPT` conversion receives the candidate mirror and candidate Slides directory, never the served public tree.
+- [ ] `课件PPT` remains an original downloadable asset; preparation has no converter or Slides output path.
 - [ ] The CLI rejects a candidate at or below every protected served root, including through a symbolic link.
-- [ ] A failed checkout, validation, or conversion leaves the existing served tree and Study catalog untouched and creates no ready marker.
+- [ ] A failed checkout or validation leaves the existing served tree and Study catalog untouched and creates no ready marker.
 - [ ] Tests use only temporary local Git repositories and local fixture files; they never contact the material source repository or production.
 
 Dependencies: none for local preparation.
@@ -119,8 +120,8 @@ Acceptance criteria:
   bytewise tree digest.
 - [ ] C0 does not traverse, open, hash, parse, copy, or otherwise consume a
   B01 candidate directory. `--attempt` is a syntax-validated audit correlation
-  token only. `课件PPT` remains a raw sealed asset; all derived Slides are
-  explicitly deferred to a later independently bounded conversion slice.
+  token only. `课件PPT` remains a raw sealed asset; derived Slides are disabled,
+  not deferred, and no later conversion slice is part of this product boundary.
 - [ ] A malformed source manifest, source/ref/SHA mismatch, unsafe source
   path/hash, or malicious pre-seeded sealed release fails closed without
   leaving a receipt or mutating public/Study sentinel state.

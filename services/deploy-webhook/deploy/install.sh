@@ -29,7 +29,7 @@ usage: sudo install.sh [options]
   --clone-url URL            clone the private repository after the read-only key is registered
   --enable-command-hook      enable the generic root-owned command hook
   --enable-study-hook        enable the existing Study artifact deployment hook
-  --enable-materials-sync    install the HENU-Final-Review materials sync webhook
+  --enable-materials-sync    retired; use the signed release runtime installer
 USAGE
 }
 
@@ -47,6 +47,11 @@ while (( "$#" )); do
     *) echo "unknown option: $1" >&2; usage >&2; exit 64 ;;
   esac
 done
+
+if (( enable_materials_sync )); then
+  echo "--enable-materials-sync is retired; deploy the signed runtime artifact with deploy-henukit-artifact.sh" >&2
+  exit 64
+fi
 
 [[ "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "invalid repository" >&2; exit 64; }
 [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "invalid branch" >&2; exit 64; }

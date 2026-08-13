@@ -29,6 +29,7 @@ jobs:
         run: |
           node --test \
             scripts/ops/tests/deploy-henukit-workflow.test.mjs \
+            scripts/ops/tests/deploy-henukit-artifact.test.mjs \
             scripts/ops/tests/account-portfolio-workflow.test.mjs \
             scripts/ops/tests/check-account-production-boundary.test.mjs \
             scripts/ops/tests/henukit-release-images.test.mjs \

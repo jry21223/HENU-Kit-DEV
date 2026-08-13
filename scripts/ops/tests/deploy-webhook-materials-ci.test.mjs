@@ -110,6 +110,10 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   assert.match(installer, /henukit-materials-publish-release-oss/);
   assert.match(installer, /materials-oss-release/);
   assert.match(installer, /materials-oss\.env/);
+  assert.match(
+    installer,
+    /--enable-materials-sync is retired; deploy the signed runtime artifact with deploy-henukit-artifact\.sh/,
+  );
   assert.doesNotMatch(installer, /materials-oss-canary/);
   assert.doesNotMatch(orchestrator, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);
   assert.doesNotMatch(materialsUnits, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);

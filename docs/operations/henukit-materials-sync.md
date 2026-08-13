@@ -30,9 +30,11 @@ root runner 不接受 payload 指定命令、路径或数据库：它核对 root
 
 ## 启用前
 
-1. 安装 Node 与 PostgreSQL client，再用 `install.sh --enable-materials-sync` 安装固定 wrapper、
-   unit 和拒绝连接的配置模板；安装器会对这些依赖失败关闭。本部署不要求、不安装也不调用
-   Python、`python3-pptx`、LibreOffice 或 Slides converter。
+1. 只使用 `docs/operations/henukit-artifact-deployment.md` 的正式流程部署签名 runtime；生产侧
+   `scripts/ops/deploy-henukit-artifact.sh` 会在验签和 SHA-256 校验后调用 artifact 内的
+   `materials-runtime/install.sh`，以预构建 Linux/amd64 binary-only 方式安装 wrapper、unit 和
+   Study migration。禁止运行已退休的 `install.sh --enable-materials-sync`，也不得在生产执行
+   `go build`、Python、`python3-pptx`、LibreOffice 或 Slides converter。
 2. 核对 `/etc/henukit-deploy/materials-seal.env` 的 repository 和 ref 与
    `materials-webhook.env` 一致。精确 SHA 只能来自已验签并入队的 push 事件；配置中没有
    可人工漂移的 `HENUKIT_MATERIALS_SOURCE_SHA`。
@@ -45,8 +47,8 @@ root runner 不接受 payload 指定命令、路径或数据库：它核对 root
    `{"version":1,"storage_keys":["科目/资料.pdf"]}`。新安装且没有旧 catalog 时保留空数组。
 5. 验证配置与 legacy inventory 均为 root-owned、不可被 group/other 写；secret 为 `root:root 0400`。
 6. 安装 `infra/nginx/henukit.conf.example`，运行 `nginx -t`。Compose 只读挂载 public root
-   到 `/srv/materials`；Nginx 只将 `/materials/releases/<release-id>/<public-path>` 映射到
-   `/srv/materials/releases/<release-id>/public/<public-path>`，不公开内部 `current` 指针。
+   到 `/srv/materials`，仅用于 Library API 激活维护围栏；Nginx 对所有 `/materials/**`（包括
+   release-prefixed 和 legacy URL）固定返回 no-store `404`，不得映射或回退到本地文件。
 7. 先保持 `henukit-materials-webhook.path` disabled；完成 schema preflight、备份和回滚演练后
    才 `systemctl enable --now henukit-materials-webhook.path`。
 

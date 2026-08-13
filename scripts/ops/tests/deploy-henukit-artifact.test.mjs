@@ -40,12 +40,19 @@ test("deployment derives Portal metadata from the fixed SHA and each real activa
   const runtime = join(root, "runtime");
   const bin = join(root, "bin");
   const log = join(root, "activations.log");
+  const materialsLog = join(root, "materials-installs.log");
   mkdirSync(runtime);
   mkdirSync(bin);
+  mkdirSync(join(runtime, "materials-runtime"));
   for (const owner of ["platform-core", "notice", "food", "library", "portal"]) mkdirSync(join(runtime, "migrations", owner), { recursive: true });
   const releaseSha = "b".repeat(40);
   writeFileSync(join(runtime, "RELEASE_SHA"), `${releaseSha}\n`);
   writeFileSync(join(runtime, "docker-compose.henukit.release.yml"), "services: {}\n");
+  writeFileSync(
+    join(runtime, "materials-runtime", "install.sh"),
+    "#!/usr/bin/env bash\nset -Eeuo pipefail\nprintf '%s\\n' \"$*\" >> \"$FAKE_MATERIALS_INSTALLS\"\n",
+    { mode: 0o755 },
+  );
   const environment = join(root, "henukit.env");
   writeFileSync(environment, "PORTAL_VERSION=operator-value\nPORTAL_DEPLOYED_AT=1970-01-01T00:00:00Z\n");
   const now = join(root, "now");
@@ -58,9 +65,19 @@ if [[ "$*" == *"up -d --remove-orphans"* ]]; then printf '%s|%s\\n' "$PORTAL_VER
 `, { mode: 0o755 });
   chmodSync(join(bin, "date"), 0o755);
   chmodSync(join(bin, "docker"), 0o755);
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_NOW: now, FAKE_ACTIVATIONS: log };
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${process.env.PATH}`,
+    FAKE_NOW: now,
+    FAKE_ACTIVATIONS: log,
+    FAKE_MATERIALS_INSTALLS: materialsLog,
+  };
   execFileSync(scriptPath, [runtime, environment], { env });
   writeFileSync(now, "2026-08-13T01:03:04Z\n");
   execFileSync(scriptPath, [runtime, environment], { env });
   assert.equal(readFileSync(log, "utf8"), `${releaseSha}|2026-08-13T01:02:03Z\n${releaseSha}|2026-08-13T01:03:04Z\n`);
+  assert.equal(
+    readFileSync(materialsLog, "utf8"),
+    `--release-sha ${releaseSha}\n--release-sha ${releaseSha}\n`,
+  );
 });
