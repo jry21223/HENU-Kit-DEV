@@ -41,6 +41,83 @@ func TestLoadSecretRequiresPrivateRegularFile(t *testing.T) {
 	}
 }
 
+func TestSafeSystemdCredentialMetadata(t *testing.T) {
+	const credentialDirectory = "/run/credentials/henukit-materials-webhook.service"
+	const credentialPath = credentialDirectory + "/webhook_secret"
+
+	if !isSafeSystemdCredential(
+		credentialPath,
+		credentialDirectory,
+		0o440,
+		0,
+		0,
+	) {
+		t.Fatal("root-owned systemd credential copy with mode 0440 was rejected")
+	}
+
+	for name, test := range map[string]struct {
+		path string
+		dir  string
+		mode os.FileMode
+		uid  uint32
+		gid  uint32
+	}{
+		"ordinary path":                {"/tmp/webhook_secret", "/tmp", 0o440, 0, 0},
+		"outside credential directory": {"/run/credentials/other.service/webhook_secret", credentialDirectory, 0o440, 0, 0},
+		"non-root owner":               {credentialPath, credentialDirectory, 0o440, 1000, 0},
+		"non-root group":               {credentialPath, credentialDirectory, 0o440, 0, 1000},
+		"group writable":               {credentialPath, credentialDirectory, 0o460, 0, 0},
+		"other readable":               {credentialPath, credentialDirectory, 0o444, 0, 0},
+		"setuid":                       {credentialPath, credentialDirectory, 0o440 | os.ModeSetuid, 0, 0},
+		"setgid":                       {credentialPath, credentialDirectory, 0o440 | os.ModeSetgid, 0, 0},
+		"sticky":                       {credentialPath, credentialDirectory, 0o440 | os.ModeSticky, 0, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if isSafeSystemdCredential(test.path, test.dir, test.mode, test.uid, test.gid) {
+				t.Fatal("unsafe credential metadata was accepted")
+			}
+		})
+	}
+}
+
+func TestLoadSecretAcceptsOnlySafeSystemdCredentialCopy(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root to exercise root-owned systemd credential metadata")
+	}
+
+	if err := os.MkdirAll("/run/credentials", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	credentialDirectory, err := os.MkdirTemp("/run/credentials", "henukit-load-secret-test-*.service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(credentialDirectory)
+	if err := os.Chmod(credentialDirectory, 0o550); err != nil {
+		t.Fatal(err)
+	}
+	secretPath := filepath.Join(credentialDirectory, "webhook_secret")
+	if err := os.WriteFile(secretPath, []byte("0123456789abcdef0123456789abcdef\n"), 0o440); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CREDENTIALS_DIRECTORY", credentialDirectory)
+
+	loaded, err := loadSecret(secretPath)
+	if err != nil {
+		t.Fatalf("safe systemd credential copy rejected: %v", err)
+	}
+	if string(loaded) != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("loaded secret = %q", loaded)
+	}
+
+	if err := os.Chmod(credentialDirectory, 0o570); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadSecret(secretPath); err == nil {
+		t.Fatal("credential inside group-writable directory was accepted")
+	}
+}
+
 func TestLoadSecretRejectsSymbolicLink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
