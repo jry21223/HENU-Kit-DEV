@@ -28,10 +28,9 @@ function createFixture() {
   mkdirSync(publicRoot, { mode: 0o700 });
   mkdirSync(ossAuditRoot, { mode: 0o700 });
   mkdirSync(activationStagingRoot, { mode: 0o700 });
-  const converter = join(root, "converter");
   const importer = join(root, "importer");
   const psql = join(root, "psql");
-  for (const tool of [converter, importer, psql]) executable(tool, "#!/bin/sh\nexit 0\n");
+  for (const tool of [importer, psql]) executable(tool, "#!/bin/sh\nexit 0\n");
   const output = join(root, "invocation.json");
   const activation = join(root, "activate-henukit-materials.mjs");
   writeFileSync(
@@ -59,7 +58,6 @@ function createFixture() {
     [
       `HENUKIT_MATERIALS_SEALED_ROOT=${sealedRoot}`,
       `HENUKIT_MATERIALS_PUBLIC_ROOT=${publicRoot}`,
-      `HENUKIT_MATERIALS_CONVERTER=${converter}`,
       `HENUKIT_MATERIALS_IMPORTER=${importer}`,
       `HENUKIT_MATERIALS_PSQL=${psql}`,
       `HENUKIT_MATERIALS_PG_SERVICE_FILE=${pgServiceFile}`,
@@ -85,7 +83,7 @@ function createFixture() {
   const wrapper = join(root, "henukit-materials-activate");
   writeFileSync(wrapper, template, { mode: 0o700 });
   chmodSync(wrapper, 0o700);
-  return { root, wrapper, output, config, activation, sealedRoot, publicRoot, converter, importer, psql, pgServiceFile, legacyInventory, ossAuditRoot, activationStagingRoot, bundleBuilder, libraryActivator };
+  return { root, wrapper, output, config, activation, sealedRoot, publicRoot, importer, psql, pgServiceFile, legacyInventory, ossAuditRoot, activationStagingRoot, bundleBuilder, libraryActivator };
 }
 
 test("root activation wrapper accepts only one approved release identity and fixes every authority-bearing input", () => {
@@ -110,7 +108,6 @@ test("root activation wrapper accepts only one approved release identity and fix
       "--receipt-sha256", receipt,
       "--sealed-root", fixture.sealedRoot,
       "--public-root", fixture.publicRoot,
-      "--converter", fixture.converter,
       "--importer", fixture.importer,
       "--psql", fixture.psql,
       "--legacy-inventory", fixture.legacyInventory,
@@ -205,7 +202,7 @@ test("root activation wrapper holds one kernel lock across the activation proces
   const container = `henukit-materials-activate-lock-${process.pid}-${Date.now()}`;
   try {
     for (const directory of ["sealed", "public", "oss-audit", "activation-staging"]) mkdirSync(join(root, directory), { mode: 0o700 });
-    for (const tool of ["converter", "importer", "psql"]) executable(join(root, tool), "#!/bin/sh\nexit 0\n");
+    for (const tool of ["importer", "psql"]) executable(join(root, tool), "#!/bin/sh\nexit 0\n");
     writeFileSync(join(root, "pg_service.conf"), "[materials]\nhost=trusted.example\ndbname=study\n", { mode: 0o600 });
     chmodSync(join(root, "pg_service.conf"), 0o600);
     writeFileSync(join(root, "legacy-inventory.json"), JSON.stringify({ version: 1, storage_keys: [] }), { mode: 0o600 });
@@ -215,7 +212,6 @@ test("root activation wrapper holds one kernel lock across the activation proces
       [
         "HENUKIT_MATERIALS_SEALED_ROOT=/fixture/sealed",
         "HENUKIT_MATERIALS_PUBLIC_ROOT=/fixture/public",
-        "HENUKIT_MATERIALS_CONVERTER=/fixture/converter",
         "HENUKIT_MATERIALS_IMPORTER=/fixture/importer",
         "HENUKIT_MATERIALS_PSQL=/fixture/psql",
         "HENUKIT_MATERIALS_PG_SERVICE_FILE=/fixture/pg_service.conf",
@@ -241,6 +237,7 @@ test("root activation wrapper holds one kernel lock across the activation proces
     executable(join(root, "library-activate-public-release"), "#!/bin/sh\nexit 0\n");
     let wrapper = readFileSync(templatePath, "utf8")
       .replace('readonly config_path="/etc/henukit-deploy/materials-activate.env"', 'readonly config_path="/fixture/materials-activate.env"')
+      .replace('readonly config_owner="0"', `readonly config_owner="${process.getuid()}"`)
       .replace('readonly lock_path="/run/henukit-materials-activate.lock"', 'readonly lock_path="/fixture/activation.lock"');
     writeFileSync(join(root, "henukit-materials-activate"), wrapper, { mode: 0o700 });
     chmodSync(join(root, "henukit-materials-activate"), 0o700);
@@ -252,11 +249,13 @@ test("root activation wrapper holds one kernel lock across the activation proces
       "/fixture/henukit-materials-activate", "--release-id", releaseID, "--receipt-sha256", receipt,
     ];
     const first = spawn("docker", dockerArgs, { stdio: ["ignore", "pipe", "pipe"] });
+    let firstStderr = "";
+    first.stderr.on("data", (chunk) => { firstStderr += chunk; });
     const deadline = Date.now() + 5000;
     while (!existsSync(join(root, "started")) && Date.now() < deadline) {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
     }
-    assert.equal(existsSync(join(root, "started")), true, "first activation did not reach the locked command");
+    assert.equal(existsSync(join(root, "started")), true, `first activation did not reach the locked command: ${firstStderr}`);
 
     const concurrent = spawnSync("docker", [
       "exec", container, "/fixture/henukit-materials-activate",
@@ -264,9 +263,7 @@ test("root activation wrapper holds one kernel lock across the activation proces
     ], { encoding: "utf8" });
     assert.notEqual(concurrent.status, 0);
     const firstResult = await new Promise((resolvePromise) => {
-      let stderr = "";
-      first.stderr.on("data", (chunk) => { stderr += chunk; });
-      first.on("close", (status) => resolvePromise({ status, stderr }));
+      first.on("close", (status) => resolvePromise({ status, stderr: firstStderr }));
     });
     assert.equal(firstResult.status, 0, firstResult.stderr);
   } finally {

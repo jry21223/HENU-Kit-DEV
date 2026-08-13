@@ -51,29 +51,13 @@ const MANIFEST = {
   ],
 };
 
-function runImport({ slidesDir, releaseID = `${"a".repeat(40)}-${"b".repeat(16)}`, manifest = MANIFEST, legacyKeys = [] } = {}) {
+function runImport({ releaseID = `${"a".repeat(40)}-${"b".repeat(16)}`, manifest = MANIFEST, legacyKeys = [] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "henukit-import-"));
   const manifestPath = join(dir, "manifest.json");
   const legacyInventoryPath = join(dir, "legacy-inventory.json");
   writeFileSync(manifestPath, JSON.stringify(manifest));
   writeFileSync(legacyInventoryPath, JSON.stringify({ version: 1, storage_keys: legacyKeys }));
   const args = ["--manifest", manifestPath];
-  if (slidesDir) {
-    const slidesPath = join(
-      slidesDir,
-      "高等数学A（二）/课件PPT/高等数学A（二）_课件_D10-1二重积分概念.ppt.json",
-    );
-    mkdirSync(dirname(slidesPath), { recursive: true });
-    writeFileSync(
-      slidesPath,
-      JSON.stringify({
-        slides: [
-          { title: "二重积分概念", blocks: ["定义", "几何意义"] },
-        ],
-      }),
-    );
-    args.push("--slides-dir", slidesDir);
-  }
   args.push("--release-id", releaseID);
   args.push("--legacy-inventory", legacyInventoryPath);
   const result = spawnSync(process.execPath, [script, ...args], {
@@ -143,12 +127,29 @@ test("quotes single quotes in text values", () => {
   assert.match(stdout, /含引号 '' 与单引号''''/);
 });
 
-test("attaches converted slides jsonb for slides assets", () => {
+test("rejects online-preview input instead of importing slide JSON", () => {
   const dir = mkdtempSync(join(tmpdir(), "henukit-slides-"));
-  const { stdout } = runImport({ slidesDir: dir });
-  assert.match(stdout, /"slides":\[\{"title":"二重积分概念".*\]\}'::jsonb/);
-  assert.match(stdout, /slides = EXCLUDED\.slides/);
+  const manifestPath = join(dir, "manifest.json");
+  const legacyInventoryPath = join(dir, "legacy-inventory.json");
+  const slidesDir = join(dir, "slides");
+  writeFileSync(manifestPath, JSON.stringify(MANIFEST));
+  writeFileSync(legacyInventoryPath, JSON.stringify({ version: 1, storage_keys: [] }));
+  mkdirSync(slidesDir);
+  const result = spawnSync(process.execPath, [script,
+    "--manifest", manifestPath, "--slides-dir", slidesDir,
+    "--release-id", `${"a".repeat(40)}-${"b".repeat(16)}`,
+    "--legacy-inventory", legacyInventoryPath,
+  ], { encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unknown option: --slides-dir/);
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("writes NULL preview data for every material and reports preview disabled", () => {
+  const { stdout, stderr } = runImport();
+  assert.match(stdout, /NULL::jsonb/);
+  assert.doesNotMatch(stdout, /"slides":\[/);
+  assert.match(stderr, /"online_preview":"disabled"/);
 });
 
 test("deactivates mirror rows no longer present in the manifest", () => {

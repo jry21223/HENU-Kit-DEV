@@ -10,6 +10,7 @@ import {
   lstatSync,
   openSync,
   readFileSync,
+  readdirSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -115,19 +116,21 @@ function validateCommit(commit, options, receiptBytes) {
 function validateDerived(installedRelease, releaseID) {
   const inventoryBytes = readRegular(join(installedRelease, "derived-inventory.json"), "derived inventory");
   const inventory = parseJSON(inventoryBytes, "derived inventory");
-  if (inventory?.version !== 1 || inventory.release_id !== releaseID || !Array.isArray(inventory.assets)) fail("derived inventory does not match the release");
-  const normalized = [];
-  let prior = null;
-  for (const asset of inventory.assets) {
-    validatePath(asset?.path);
-    if (!Number.isSafeInteger(asset.bytes) || asset.bytes < 0 || !HASH_PATTERN.test(asset.sha256 || "")) fail("derived inventory asset is invalid");
-    if (prior !== null && Buffer.compare(Buffer.from(prior), Buffer.from(asset.path)) >= 0) fail("derived inventory is not uniquely bytewise sorted");
-    const bytes = readRegular(join(installedRelease, "slides", ...asset.path.split("/")), "derived slide");
-    if (bytes.length !== asset.bytes || digest(bytes) !== asset.sha256) fail("derived slide does not match its inventory");
-    normalized.push({ path: asset.path, bytes: asset.bytes, sha256: asset.sha256 });
-    prior = asset.path;
+  const canonicalInventory = canonicalJSON({ version: 1, release_id: releaseID, assets: [] });
+  const slidesRoot = join(installedRelease, "slides");
+  const slidesMetadata = lstatSync(slidesRoot);
+  if (slidesMetadata.isSymbolicLink() || !slidesMetadata.isDirectory()) {
+    fail("disabled online preview directory must be a real directory");
   }
-  return { release_id: releaseID, slides_sha256: digest(canonicalJSON(normalized)), index_sha256: digest(inventoryBytes) };
+  if (
+    inventory?.version !== 1 ||
+    inventory.release_id !== releaseID ||
+    !Array.isArray(inventory.assets) ||
+    inventory.assets.length !== 0 ||
+    readdirSync(slidesRoot).length !== 0 ||
+    !inventoryBytes.equals(canonicalInventory)
+  ) fail("online preview is disabled; derived assets must use the canonical empty inventory");
+  return { release_id: releaseID, slides_sha256: digest(canonicalJSON([])), index_sha256: digest(canonicalInventory) };
 }
 
 function atomicWrite(path, bytes) {
@@ -163,7 +166,14 @@ function main() {
   const options = parseOptions(process.argv.slice(2));
   const receiptBytes = readRegular(options.sealedRelease, "sealed receipt");
   const receipt = parseJSON(receiptBytes, "sealed receipt");
-  if (receipt?.version !== 1 || receipt.release_id !== options.releaseID || digest(receiptBytes) !== options.receiptSHA256) fail("sealed receipt does not match the approved identity");
+  if (
+    receipt?.version !== 1 ||
+    receipt.release_id !== options.releaseID ||
+    digest(receiptBytes) !== options.receiptSHA256 ||
+    receipt?.slides?.status !== "disabled" ||
+    !Number.isSafeInteger(receipt?.slides?.source_slide_assets) ||
+    receipt.slides.source_slide_assets < 0
+  ) fail("sealed receipt does not bind a disabled online preview release");
   const manifestBytes = readRegular(join(dirname(options.sealedRelease), "manifest.json"), "sealed manifest");
   if (digest(manifestBytes) !== receipt.manifest_sha256) fail("sealed manifest does not match the receipt");
   const commitBytes = readRegular(options.ossCommit, "OSS release commit");

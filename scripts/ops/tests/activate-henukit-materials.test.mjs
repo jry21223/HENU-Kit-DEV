@@ -80,7 +80,7 @@ function createFixture({ psqlExit = 0, libraryExit = 0, sourceCharacter = "a", m
     },
     manifest_sha256: manifestSha256,
     assets: inventoryAssets,
-    slides: { status: "deferred", source_slide_assets: 0 },
+    slides: { status: "disabled", source_slide_assets: 0 },
     tree_sha256: digest(canonicalJSON(treeEntries)),
   });
   const receipt = canonicalJSON({
@@ -95,7 +95,7 @@ function createFixture({ psqlExit = 0, libraryExit = 0, sourceCharacter = "a", m
     inventory_sha256: digest(inventory),
     tree_sha256: digest(canonicalJSON(treeEntries)),
     reviewed_assets: inventoryAssets.length,
-    slides: { status: "deferred", source_slide_assets: 0 },
+    slides: { status: "disabled", source_slide_assets: 0 },
   });
   const receiptSha256 = digest(receipt);
 
@@ -205,7 +205,6 @@ function activationArgs(fixture, releaseID = fixture.releaseID, receiptSHA256 = 
     "--receipt-sha256", receiptSHA256,
     "--sealed-root", fixture.sealedRoot,
     "--public-root", fixture.publicRoot,
-    "--converter", fixture.converter,
     "--importer", importScript,
     "--psql", fixture.psql,
     "--legacy-inventory", fixture.legacyInventory,
@@ -214,7 +213,7 @@ function activationArgs(fixture, releaseID = fixture.releaseID, receiptSHA256 = 
   ];
 }
 
-test("activates one sealed release and its catalog behind the public maintenance fence", () => {
+test("activates one sealed release without generating an online preview", () => {
   const fixture = createFixture();
 
   execFileSync(
@@ -229,8 +228,6 @@ test("activates one sealed release and its catalog behind the public maintenance
       fixture.sealedRoot,
       "--public-root",
       fixture.publicRoot,
-      "--converter",
-      fixture.converter,
       "--importer",
       importScript,
       "--psql",
@@ -377,7 +374,6 @@ test("keeps an uncertain database failure fenced and recovers the same release o
     "--receipt-sha256", fixture.receiptSha256,
     "--sealed-root", fixture.sealedRoot,
     "--public-root", fixture.publicRoot,
-    "--converter", fixture.converter,
     "--importer", importScript,
     "--psql", fixture.psql,
     "--legacy-inventory", fixture.legacyInventory,
@@ -411,7 +407,6 @@ test("Library commit-then-exit remains fenced and same-release replay recovers w
     "--receipt-sha256", fixture.receiptSha256,
     "--sealed-root", fixture.sealedRoot,
     "--public-root", fixture.publicRoot,
-    "--converter", fixture.converter,
     "--importer", importScript,
     "--psql", fixture.psql,
     "--legacy-inventory", fixture.legacyInventory,
@@ -445,7 +440,6 @@ test("finishes a durable database-committed journal without running the catalog 
     "--receipt-sha256", fixture.receiptSha256,
     "--sealed-root", fixture.sealedRoot,
     "--public-root", fixture.publicRoot,
-    "--converter", fixture.converter,
     "--importer", importScript,
     "--psql", fixture.psql,
     "--legacy-inventory", fixture.legacyInventory,
@@ -479,7 +473,6 @@ test("rejects a pre-seeded release symlink without fencing or changing the activ
     "--receipt-sha256", fixture.receiptSha256,
     "--sealed-root", fixture.sealedRoot,
     "--public-root", fixture.publicRoot,
-    "--converter", fixture.converter,
     "--importer", importScript,
     "--psql", fixture.psql,
     "--legacy-inventory", fixture.legacyInventory,

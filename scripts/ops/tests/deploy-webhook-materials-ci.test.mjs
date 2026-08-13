@@ -30,7 +30,7 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
     "scripts/ops/seal-henukit-materials.mjs",
     "scripts/ops/activate-henukit-materials.mjs",
     "scripts/ops/build-henukit-library-activation-bundle.mjs",
-    "scripts/ops/convert-henukit-slides.py",
+    "services/library/db/legacy-study-migrations/000001_materials_oss_release.up.sql",
     "scripts/ops/import-henukit-materials.mjs",
     "scripts/ops/tests/prepare-henukit-materials.test.mjs",
     "scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs",
@@ -41,7 +41,7 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
     "scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs",
     "scripts/ops/tests/activate-henukit-materials.test.mjs",
     "scripts/ops/tests/build-henukit-library-activation-bundle.test.mjs",
-    "scripts/ops/tests/convert-henukit-slides.test.mjs",
+    "scripts/ops/tests/materials-study-migration.test.mjs",
     "scripts/ops/tests/import-henukit-materials.test.mjs",
     "scripts/ops/tests/henukit-materials-nginx.test.mjs",
     "scripts/ops/tests/henukit-materials-orchestrate.test.mjs",
@@ -72,7 +72,8 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-activate-wrapper\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/activate-henukit-materials\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/build-henukit-library-activation-bundle\.test\.mjs/);
-  assert.match(workflow, /scripts\/ops\/tests\/convert-henukit-slides\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/materials-study-migration\.test\.mjs/);
+  assert.doesNotMatch(workflow, /convert-henukit-slides/);
   assert.equal(
     [...workflow.matchAll(/scripts\/ops\/tests\/import-henukit-materials\.test\.mjs/g)].length,
     3,

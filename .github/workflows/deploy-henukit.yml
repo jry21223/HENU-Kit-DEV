@@ -33,6 +33,7 @@ jobs:
             scripts/ops/tests/check-account-production-boundary.test.mjs \
             scripts/ops/tests/henukit-release-images.test.mjs \
             scripts/ops/tests/import-henukit-materials-preflight.test.mjs \
+            scripts/ops/tests/materials-study-migration.test.mjs \
             scripts/ops/tests/package-henukit-runtime.test.mjs \
             scripts/ops/tests/verify-henukit-local-release.test.mjs \
             scripts/ops/tests/build-henukit-release-local.test.mjs \
@@ -152,7 +153,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Package fixed-SHA runtime configuration
+      - name: Package fixed-SHA runtime and prebuilt materials tools
         run: scripts/ops/package-henukit-runtime.sh --sha "$GITHUB_SHA" --output-dir release
 
       - name: Upload runtime artifact

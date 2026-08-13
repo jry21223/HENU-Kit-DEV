@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import {
   MATERIAL_TYPES,
@@ -32,14 +31,6 @@ export default function ItemDetail({ id }: { id: string }) {
   ).slice(0, 3);
   const toc = tocOpen ? material.toc : material.toc.slice(0, 6);
 
-  const showSlides = material.type === "slides";
-  const hasPages = material.pages.length > 0;
-  const actions: { label: string; href: string; primary: boolean }[] = [];
-  if (showSlides) {
-    actions.push({ label: "浏览幻灯片 →", href: `/library/slides/${id}`, primary: true });
-  } else if (hasPages) {
-    actions.push({ label: "立即阅读 →", href: `/library/read/${id}`, primary: true });
-  }
   const meta =
     material.fileSize
       ? `${formatBytes(material.fileSize)} · ${material.subject}`
@@ -115,40 +106,18 @@ export default function ItemDetail({ id }: { id: string }) {
           {/* 操作条 */}
           <div data-enter className="mt-8 flex flex-wrap items-center gap-3">
             {free ? (
-              actions.length > 0 ? (
-                actions.map((action) =>
-                    <Link
-                      key={action.label}
-                      href={action.href}
-                      className={
-                        action.primary
-                          ? "border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
-                          : "border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/70 transition-colors hover:border-ink"
-                      }
-                    >
-                      {action.label}
-                    </Link>
-                )
-              ) : !material.downloadAvailable ? (
+              !material.downloadAvailable ? (
                 <p className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/55">
                   下载即将开放
                 </p>
               ) : null
             ) : (
-              <>
-                <Link
-                  href={`/library/read/${id}`}
-                  className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest transition-colors hover:border-ink"
-                >
-                  免费试读 {material.previewPages} 页
-                </Link>
                 <p
                   data-library-purchase-state="unavailable"
                   className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/55"
                 >
                   积分兑换暂未开放
                 </p>
-              </>
             )}
             {free && material.downloadAvailable && (
               <MaterialDownloadButton

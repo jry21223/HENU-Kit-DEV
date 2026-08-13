@@ -469,7 +469,7 @@ function main() {
       .map((asset) => ({ path: `public/${asset.public_path}`, bytes: asset.bytes, sha256: asset.sha256 }))
       .sort((left, right) => compareBytewise(left.path, right.path));
     const treeSha256 = digest(canonicalJSON(treeEntries));
-    const slides = { status: "deferred", source_slide_assets: expected.sourceSlideAssets };
+    const slides = { status: "disabled", source_slide_assets: expected.sourceSlideAssets };
     const inventory = {
       version: 1,
       source: { repository: options.repository, ref: options.ref, sha: options.sha },

@@ -134,6 +134,5 @@ done
   --repository "$source_repository" \
   --ref "$event_ref" \
   --sha "$accepted_sha" \
-  --candidate-dir "$candidate_dir" \
-  --python /usr/bin/python3
+  --candidate-dir "$candidate_dir"
 printf 'attempt_locator=%s\n' "${attempt_dir##*/}"

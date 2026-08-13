@@ -62,43 +62,27 @@ function locationBlocks(start) {
   return blocks;
 }
 
-test("the edge exposes only immutable release-prefixed material URLs with long-lived caching", () => {
+test("the edge never serves local material bytes when OSS is the sole download owner", () => {
+  assert.doesNotMatch(nginx, /alias \/srv\/materials\//);
+  assert.doesNotMatch(nginx, /Cache-Control "public, max-age=86400, immutable"/);
+  assert.doesNotMatch(nginx, /@materials_missing/);
+  const [materials] = locationBlocks("location /materials/");
+  assert.ok(materials, "one fail-closed local materials location must exist");
+  assert.match(materials, /add_header Cache-Control "no-store" always;/);
+  assert.match(materials, /return 404 "资料文件只通过资料库的 OSS 下载入口提供。";/);
+});
+
+test("the local mount remains read-only solely for the activation maintenance fence", () => {
   assert.match(
     compose,
     /source: \$\{HENUKIT_MATERIALS_PUBLIC_ROOT:-\/opt\/henukit-materials\/public\}\n\s+target: \/srv\/materials\n\s+read_only: true/,
   );
   assert.doesNotMatch(compose, /source: .*\/current(?:\}|\s*$)/m);
-
-  const [immutableMaterials] = locationBlocks(
-    'location ~ "^/materials/releases/(?<materials_release>[a-f0-9]{40}-[a-f0-9]{16})/(?<materials_asset>.+)$"',
-  );
-  assert.ok(immutableMaterials, "immutable materials location must exist");
-  assert.match(
-    immutableMaterials,
-    /alias \/srv\/materials\/releases\/\$materials_release\/public\/\$materials_asset;/,
-  );
-  assert.match(immutableMaterials, /autoindex off;/);
-  assert.match(immutableMaterials, /add_header Cache-Control "public, max-age=86400, immutable" always;/);
-  assert.match(immutableMaterials, /add_header X-Content-Type-Options "nosniff" always;/);
-  assert.match(immutableMaterials, /add_header Content-Disposition "attachment" always;/);
-  assert.match(immutableMaterials, /add_header Content-Security-Policy "default-src 'none'; sandbox" always;/);
-  assert.doesNotMatch(nginx, /alias \/srv\/materials\/current\//);
-  assert.doesNotMatch(nginx, /location \/materials\/\s*\{[^}]*max-age=86400/s);
-  assert.match(nginx, /location ~ \^\/materials\/\(\?:\[\^\/\]\+\/\)\*\\\. \{\s*return 404;\s*\}/);
+  assert.match(nginx, /if \(-f \/srv\/materials\/\.maintenance\)/);
 });
 
 test("the activation fence returns public-ready no-store responses without server details", () => {
   assert.match(nginx, /server_tokens off;/);
-
-  const [materials] = locationBlocks(
-    'location ~ "^/materials/releases/(?<materials_release>[a-f0-9]{40}-[a-f0-9]{16})/(?<materials_asset>.+)$"',
-  );
-  assert.match(materials, /default_type text\/plain;/);
-  assert.match(materials, /charset utf-8;/);
-  assert.match(
-    materials,
-    /if \(-f \/srv\/materials\/\.maintenance\) \{\s*add_header Cache-Control "no-store" always;\s*return 503 "资料库正在更新，请稍后重试。";\s*\}/,
-  );
 
   const libraryLocations = locationBlocks("location ~ ^/api/v1/library(?:/|$)");
   assert.equal(libraryLocations.length, 2, "henukit.cn and console.henukit.cn must both fence Library API routes");
@@ -114,14 +98,13 @@ test("the activation fence returns public-ready no-store responses without serve
   assert.match(libraryLocations[1], /set \$console_gateway_upstream console-gateway:8082;/);
 });
 
-test("missing and legacy material links return actionable no-store text instead of cached attachments", () => {
-  assert.match(nginx, /这份资料暂时无法下载，请返回资料库刷新后重试。/);
-  assert.match(nginx, /这个资料链接已失效，请返回资料库重新打开。/);
-  assert.match(nginx, /if \(!-f \/srv\/materials\/releases\/\$materials_release\/public\/\$materials_asset\) \{ return 418; \}/);
-  assert.match(nginx, /location @materials_missing \{[\s\S]*types \{ \}[\s\S]*Cache-Control "no-store"[\s\S]*return 404 "这份资料暂时无法下载，请返回资料库刷新后重试。";/);
+test("all local material links return one actionable no-store response", () => {
+  assert.match(nginx, /资料文件只通过资料库的 OSS 下载入口提供。/);
+  assert.doesNotMatch(nginx, /location @materials_missing/);
+  assert.doesNotMatch(nginx, /alias \/srv\/materials\//);
 });
 
-test("the real nginx edge enforces immutable URLs and public-ready maintenance responses", async (context) => {
+test("the real nginx edge rejects all local material URLs and fences the Library API", async (context) => {
   const dockerInfo = docker(["info", "--format", "{{.ServerVersion}}"]).status;
   if (dockerInfo !== 0) {
     context.skip("Docker daemon is unavailable; CI runs this seam with Docker");
@@ -159,39 +142,23 @@ test("the real nginx edge enforces immutable URLs and public-ready maintenance r
     assert.ok(Number.isInteger(port) && port > 0, `published port is invalid: ${published.stdout}`);
     await waitForNginx(port);
 
-    const immutable = await get(port, `/materials/releases/${releaseID}/guide.txt`);
-    assert.equal(immutable.status, 200);
-    assert.equal(immutable.body, "reviewed material\n");
-    assert.equal(immutable.headers["cache-control"], "public, max-age=86400, immutable");
-    assert.equal(immutable.headers["content-disposition"], "attachment");
-    assert.doesNotMatch(immutable.headers.server || "", /nginx\/\d/);
-
-    const mutable = await get(port, "/materials/current/guide.txt");
-    assert.equal(mutable.status, 404);
-    assert.equal(mutable.body, "这个资料链接已失效，请返回资料库重新打开。");
-    assert.match(mutable.headers["content-type"] || "", /^text\/plain;.*charset=utf-8/i);
-    assert.equal(mutable.headers["cache-control"], "no-store");
-    assert.equal(mutable.headers["content-disposition"], undefined);
-
-    const missing = await get(port, `/materials/releases/${releaseID}/missing.pdf`);
-    assert.equal(missing.status, 404);
-    assert.equal(missing.body, "这份资料暂时无法下载，请返回资料库刷新后重试。");
-    assert.match(missing.headers["content-type"] || "", /^text\/plain;.*charset=utf-8/i);
-    assert.equal(missing.headers["cache-control"], "no-store");
-    assert.equal(missing.headers["content-disposition"], undefined);
-
-    const hidden = await get(port, `/materials/releases/${releaseID}/.internal`);
-    assert.equal(hidden.status, 404);
-    assert.notEqual(hidden.body, "must not be public\n");
+    for (const path of [
+      `/materials/releases/${releaseID}/guide.txt`,
+      "/materials/current/guide.txt",
+      `/materials/releases/${releaseID}/missing.pdf`,
+      `/materials/releases/${releaseID}/.internal`,
+    ]) {
+      const response = await get(port, path);
+      assert.equal(response.status, 404);
+      assert.equal(response.body, "资料文件只通过资料库的 OSS 下载入口提供。");
+      assert.match(response.headers["content-type"] || "", /^text\/plain;.*charset=utf-8/i);
+      assert.equal(response.headers["cache-control"], "no-store");
+      assert.equal(response.headers["content-disposition"], undefined);
+      assert.equal(response.headers["x-content-type-options"], "nosniff");
+      assert.doesNotMatch(response.headers.server || "", /nginx\/\d/);
+    }
 
     writeFileSync(join(materialsRoot, ".maintenance"), "");
-    const fencedMaterial = await get(port, `/materials/releases/${releaseID}/guide.txt`);
-    assert.equal(fencedMaterial.status, 503);
-    assert.equal(fencedMaterial.body, "资料库正在更新，请稍后重试。");
-    assert.match(fencedMaterial.headers["content-type"] || "", /^text\/plain;.*charset=utf-8/i);
-    assert.equal(fencedMaterial.headers["cache-control"], "no-store");
-    assert.doesNotMatch(fencedMaterial.headers.server || "", /nginx\/\d/);
-
     for (const host of ["henukit.cn", "console.henukit.cn"]) {
       const fencedAPI = await get(port, "/api/v1/library/workspace", host);
       assert.equal(fencedAPI.status, 503);

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -36,7 +35,7 @@ function gitCommit(repository, message) {
   return git(repository, ["rev-parse", "HEAD"]);
 }
 
-function runPreparation(setup, { sha = setup.commit, candidate = setup.candidate, python } = {}) {
+function runPreparation(setup, { sha = setup.commit, candidate = setup.candidate } = {}) {
   const args = [
     command,
     "--repository", setup.repository,
@@ -44,7 +43,6 @@ function runPreparation(setup, { sha = setup.commit, candidate = setup.candidate
     "--sha", sha,
     "--candidate-dir", candidate,
   ];
-  if (python) args.push("--python", python);
   return spawnSync(process.execPath, args, {
     encoding: "utf8",
     env: { ...process.env, ...(setup.env || {}) },
@@ -181,25 +179,35 @@ test("rejects unsafe paths, incorrect hashes, and duplicate reviewed content at 
   }
 });
 
-test("passes only candidate paths to the Slides converter", () => {
+test("prepares raw slide assets without deriving an online preview", () => {
   const setup = fixture();
   try {
-    const converterLog = join(setup.root, "converter.log");
-    const fakePython = join(setup.root, "fake-python");
-    writeFileSync(
-      fakePython,
-      "#!/usr/bin/env sh\nprintf '%s\\n' \"$@\" > \"$HENUKIT_TEST_CONVERTER_LOG\"\n",
-      { mode: 0o755 },
-    );
-    chmodSync(fakePython, 0o755);
-    setup.env = { HENUKIT_TEST_CONVERTER_LOG: converterLog };
+    const originalPath = join(setup.repository, "materials", "outline.pdf");
+    const publicPath = "materials/lecture.pptx";
+    const bytes = Buffer.from("reviewed raw slide asset\n");
+    rmSync(originalPath);
+    writeFileSync(join(setup.repository, publicPath), bytes);
+    const manifestPath = join(setup.repository, "manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.subjects[0].assets[0] = {
+      role: "课件PPT",
+      title: "离散数学_课件_第一章.pptx",
+      publicPath,
+      bytes: bytes.length,
+      sha256: sha256(bytes),
+    };
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const accepted = gitCommit(setup.repository, "raw slide asset");
 
-    const result = runPreparation(setup, { python: fakePython });
+    const result = runPreparation(setup, { sha: accepted });
     assert.equal(result.status, 0, result.stderr);
-    const argumentsPassed = readFileSync(converterLog, "utf8");
-    assert.match(argumentsPassed, new RegExp(`^--mirror\\n${setup.candidate.replaceAll("/", "\\/")}\\/public$`, "m"));
-    assert.match(argumentsPassed, new RegExp(`^--out\\n${setup.candidate.replaceAll("/", "\\/")}\\/slides$`, "m"));
-    assert.doesNotMatch(argumentsPassed, /served-public|study-catalog/);
+    assert.deepEqual(
+      readFileSync(join(setup.candidate, "public", publicPath)),
+      bytes,
+    );
+    assert.equal(existsSync(join(setup.candidate, "slides")), false);
+    const release = JSON.parse(readFileSync(join(setup.candidate, "release.json"), "utf8"));
+    assert.equal(Object.hasOwn(release, "slides_root"), false);
   } finally {
     rmSync(setup.root, { recursive: true, force: true });
   }

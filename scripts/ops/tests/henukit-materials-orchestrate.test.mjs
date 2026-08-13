@@ -122,10 +122,10 @@ test("materials installer replaces retired sync scripts with the fixed orchestra
     "materials-seal.env",
     "materials-activate.env",
   ]) assert.match(installer, new RegExp(required.replaceAll(".", "\\.")), required);
-  assert.match(installer, /python3 -c 'import pptx'/);
-  assert.match(installer, /command -v soffice/);
-  assert.match(installer, /command -v libreoffice/);
+  assert.doesNotMatch(installer, /python3-pptx|import pptx|command -v (?:soffice|libreoffice)/);
+  assert.doesNotMatch(installer, /install .*convert-henukit-slides\.py/);
+  assert.doesNotMatch(installer, /HENUKIT_MATERIALS_CONVERTER=/);
   assert.doesNotMatch(installer, /scripts\/ops\/(?:sync-henukit-materials\.sh|henukit-materials-sync\.sh)/);
-  assert.match(installer, /if \(\( enable_materials_sync \)\); then\n  for command in node python3 psql;/);
+  assert.match(installer, /if \(\( enable_materials_sync \)\); then\n  for command in node psql;/);
   assert.match(installer, /systemctl disable --now henukit-materials-webhook\.path/);
 });

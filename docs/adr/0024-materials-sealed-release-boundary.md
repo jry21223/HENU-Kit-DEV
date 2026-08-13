@@ -2,6 +2,7 @@
 status: accepted
 amends: 0022, 0023
 superseded_by: 0025
+amended_by: 0031
 ---
 
 # Materials source sealing is a root-owned, non-activating boundary

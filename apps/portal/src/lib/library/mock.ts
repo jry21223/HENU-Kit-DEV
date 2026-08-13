@@ -1,8 +1,7 @@
 /**
- * 资料库静态展示数据。
- * 字面量数据，SSR/客户端一致；不保存任何用户拥有、收藏或购买状态。
- * 付费资料的积分兑换必须等 Account Portfolio 的真实写接口落地后再开放；
- * 当前只允许免费阅读和付费资料试读，绝不把本地状态当作购买结果。
+ * 开发环境用的资料库静态元数据。没有资料正文、幻灯片或在线预览；
+ * 生产环境必须从 Library owner 加载目录并通过 owner 下载入口走 OSS。
+ * 不保存任何用户拥有、收藏或购买状态。
  */
 
 // ---------------------------------------------------------------- 类型
@@ -18,7 +17,7 @@ export const MATERIAL_TYPES: Record<MaterialType, { name: string; code: string }
   slides: { name: "课件幻灯片", code: "SLIDES" },
 };
 
-/** 转换后的 PPT 单页 */
+/** 遗留类型占位；OSS-only 资料永远不填充在线幻灯片。 */
 export interface Slide {
   title: string;
   blocks?: string[];
@@ -32,24 +31,19 @@ export interface Material {
   author: string; // 上传学长
   intro: string;
   toc: string[];
-  // Paid static entries retain only preview pages. Full pages belong to the
-  // future entitlement-aware Library owner and must never be bundled here.
-  pages: string[][]; // 已发布的每页 = 段落数组
-  pageCount?: number; // 完整资料页数元数据；付费静态资料只保留试读正文
+  pages: string[][]; // OSS-only contract: always empty
+  pageCount?: number; // 原文件历史页数元数据，不代表可在线阅读
   price: number; // 0 = 免费（积分）
-  previewPages: number; // 收费资料的免费试读页数
+  previewPages: number; // OSS-only contract: always 0
   rating?: number; // 0-5；owner 未提供时不展示伪造评分
   downloads: number;
   favs?: number;
   /** 是否展示 owner 下载入口；静态 mock 不构造下载地址或授权 */
   downloadAvailable: boolean;
   fileSize?: number;
-  /** 已转换的 PPT 页(详情接口返回) */
+  /** OSS-only contract: absent/empty */
   slides?: Slide[];
 }
-
-/** 页工厂：每页 2-3 段 */
-const pg = (...paras: string[]) => paras;
 
 // ---------------------------------------------------------------- mock 资料
 
@@ -60,23 +54,7 @@ const MATERIALS: Material[] = [
     title: "极限与连续 · 学霸笔记", author: "21 级-李学长",
     intro: "期末 92 分学长的一轮复习笔记：两个重要极限、等价无穷小替换表、连续与间断点判定的全部套路，附 12 道易错例题。",
     toc: ["极限的定义与运算法则", "两个重要极限", "等价无穷小替换表", "连续性判定", "间断点分类", "易错例题 12 则"],
-    pages: [
-      pg("§1 极限的定义：∀ε>0，∃δ>0，当 0<|x-x₀|<δ 时 |f(x)-A|<ε。考试不考 ε-δ 证明大题，但选择常考概念辨析。",
-         "运算法则核心一条：和差积商的极限 = 极限的和差积商，前提是各部分极限都存在（分母不为 0）。"),
-      pg("§2 两个重要极限：lim(x→0) sin x / x = 1；lim(x→∞) (1+1/x)^x = e。",
-         "使用要点：必须凑出完全一致的形式。sin(2x)/x 要先配系数 2；(1+2/x)^x 要凑成 [(1+2/x)^(x/2)]² → e²。"),
-      pg("§3 常用等价无穷小（x→0）：sin x ~ x，tan x ~ x，1-cos x ~ x²/2，ln(1+x) ~ x，e^x-1 ~ x，(1+x)^a-1 ~ ax。",
-         "替换原则：乘除因子可直接换，加减项不能乱换（精度不够时改用泰勒）。"),
-      pg("§4 连续性：f 在 x₀ 连续 ⟺ lim(x→x₀) f(x) = f(x₀)。分段函数重点看分段点：分别求左右极限再与函数值比对。"),
-      pg("§5 间断点分类：左右极限都存在为第一类（相等=可去，不等=跳跃）；至少一个不存在为第二类（无穷/振荡）。",
-         "真题套路：给出含参函数求 a、b 使函数连续——列'左极限=右极限=函数值'两个方程解两个参数。"),
-      pg("§6 易错例：lim(x→0) (tan x - sin x)/x³。错解：tan x ~ x、sin x ~ x 得 0。",
-         "正解：tan x - sin x = sin x(1-cos x)/cos x ~ x · x²/2 = x³/2，答案 1/2。加减项直接替换必错。"),
-      pg("§7 易错例：求 lim(x→∞) (√(x²+x) - x)。有理化：分子乘共轭得 x/(√(x²+x)+x) → 1/2。",
-         "∞-∞ 型先有理化或通分，是期末填空高频。"),
-      pg("§8 考前 checklist：重要极限 2 个、等价无穷小 6 组、连续性定义 1 条、间断点 4 类。",
-         "本章在全卷占 15-20 分，性价比最高，务必拿满。"),
-    ],
+    pages: [],
     price: 0, previewPages: 0, rating: 4.8, downloads: 2103, favs: 486, downloadAvailable: false,
   },
   {
@@ -84,28 +62,7 @@ const MATERIALS: Material[] = [
     title: "数据结构 · 2024 期末试卷 A 卷", author: "王助教",
     intro: "2024 秋季学期真题（含参考答案要点）：选择 20 分、填空 20 分、应用题 40 分、算法设计 20 分。树与图占比最高。",
     toc: ["一、选择题", "二、填空题", "三、应用题", "四、算法设计题", "参考答案要点"],
-    pages: [
-      pg("一、选择题（每题 2 分，共 20 分）",
-         "1. 下列结构中属于非线性结构的是（ ）。A. 栈 B. 队列 C. 二叉树 D. 串",
-         "2. 长度为 n 的顺序表，在等概率情况下删除一个元素的平均移动次数为（ ）。A. n/2 B. (n-1)/2 C. n D. n-1"),
-      pg("3. 一个栈的入栈序列为 1,2,3,4,5，不可能的出栈序列是（ ）。A. 5,4,3,2,1 B. 4,5,3,2,1 C. 4,3,5,1,2 D. 3,5,4,2,1",
-         "4. 循环队列存放在 A[0..m-1] 中，队头指针 front、队尾 rear，则队列长度为（ ）。",
-         "5. 具有 n 个顶点的无向完全图，边的条数为（ ）。"),
-      pg("二、填空题（每空 2 分，共 20 分）",
-         "1. 含 n 个结点的二叉链表中有 ____ 个空指针域。",
-         "2. 深度为 k 的完全二叉树至少有 ____ 个结点，至多有 ____ 个结点。",
-         "3. 对 n 个记录进行快速排序，平均时间复杂度为 ____，最坏为 ____。"),
-      pg("三、应用题（共 40 分）",
-         "1.（10 分）已知某二叉树先序遍历为 ABDGCEHF，中序遍历为 DGBAHECF，画出该二叉树并写出后序序列。",
-         "2.（10 分）给定关键字序列 {49,38,65,97,76,13,27,49}，写出直接插入排序前 3 趟的结果。"),
-      pg("3.（10 分）用 Dijkstra 算法求下图中顶点 v1 到其余各顶点的最短路径（图略），写出每一步的 dist 数组变化。",
-         "4.（10 分）设哈希表长 11，哈希函数 H(key)=key%11，用线性探测法处理冲突，依次插入 22,41,53,46,30,13，画出哈希表并求 ASL。"),
-      pg("四、算法设计题（共 20 分）",
-         "1.（10 分）设计算法判断单链表是否递增有序，给出 C 语言实现并分析时间复杂度。",
-         "2.（10 分）编写递归算法，统计二叉树中叶子结点的个数。"),
-      pg("参考答案要点：选择 1.C 2.B 3.C；填空 1. n+1 2. 2^(k-1), 2^k-1 3. O(n log n), O(n²)。",
-         "应用题 1. 后序：GDBHEFCA。算法题评分点：边界条件 4 分、正确性 4 分、复杂度分析 2 分。"),
-    ],
+    pages: [],
     price: 0, previewPages: 0, rating: 4.9, downloads: 3567, favs: 812, downloadAvailable: false,
   },
   {
@@ -113,19 +70,7 @@ const MATERIALS: Material[] = [
     title: "矩阵运算公式手卡", author: "22 级-赵同学",
     intro: "A4 单页可打印：矩阵乘法、转置、逆、伴随、秩的全部高频公式与 6 个经典反例。",
     toc: ["乘法规则", "转置与逆", "伴随矩阵", "秩的不等式", "经典反例"],
-    pages: [
-      pg("乘法规则：AB 的第 (i,j) 元 = A 第 i 行 · B 第 j 列。前提：A 的列数 = B 的行数。",
-         "(AB)C = A(BC) 结合律成立；AB ≠ BA 一般；A(B+C) = AB+AC。"),
-      pg("转置：(AB)ᵀ = BᵀAᵀ（顺序反转）。逆：(AB)⁻¹ = B⁻¹A⁻¹。",
-         "A 可逆 ⟺ |A| ≠ 0。A⁻¹ = A*/|A|（A* 为伴随矩阵）。"),
-      pg("伴随矩阵：AA* = A*A = |A|E。推论：|A*| = |A|^(n-1)。",
-         "二阶特例：[[a,b],[c,d]] 的伴随 = [[d,-b],[-c,a]]（主换位、副变号）。"),
-      pg("秩的不等式：r(A+B) ≤ r(A)+r(B)；r(AB) ≤ min{r(A),r(B)}。",
-         "若 A 为 m×n，则 r(A) ≤ min(m,n)；P、Q 可逆时 r(PAQ) = r(A)。"),
-      pg("经典反例：AB=0 推不出 A=0 或 B=0；A²=A 推不出 A=E 或 A=0；AB=AC 且 A≠0 推不出 B=C。",
-         "这 6 个反例覆盖历年选择题 80% 的坑。"),
-      pg("考前默写清单：(AB)ᵀ、(AB)⁻¹、AA*、|A*|、r(AB) 上限，共 5 条，进考场前再背一遍。"),
-    ],
+    pages: [],
     price: 0, previewPages: 0, rating: 4.6, downloads: 1588, favs: 302, downloadAvailable: false,
   },
   {
@@ -133,19 +78,7 @@ const MATERIALS: Material[] = [
     title: "四级 30 天备考路径", author: "20 级-陈学姐",
     intro: "四级 612 分学姐的 30 天冲刺日程表：每天 2 小时的单词/听力/阅读/写译分配，含各题型提分技巧与资料清单。",
     toc: ["第 1-10 天：单词+听力筑基", "第 11-20 天：阅读专项", "第 21-26 天：写译模板", "第 27-30 天：整卷模考", "资料清单"],
-    pages: [
-      pg("总原则：四级是排位赛，听力与阅读占 70%，先保大头。每天 2 小时 = 40min 听力 + 40min 阅读 + 40min 单词写译。",
-         "工具：真题为王（2019 年至今 12 套），不刷模拟题。"),
-      pg("第 1-10 天：高频词 800 过两轮（早 20min 新词 + 晚 20min 复习）；听力每天精听 1 篇 Section B：第一遍盲听做题，第二遍逐句听写，第三遍对照原文划连读。"),
-      pg("第 11-20 天：阅读专项。仔细阅读先题后文定位；段落匹配划独特词（数字、大写、连字符）回文定位；选词填空最后做，先标词性。",
-         "每篇限时 10 分钟，错题归因到'定位错/词义错/长难句错'三类。"),
-      pg("第 21-26 天：写作背 3 套框架（现象解释/观点对比/问题解决）+ 20 个万能句；翻译每天 1 段中国文化主题，先自己译再对照改。",
-         "写作三段式：引出主题 2 句 → 主体 4-5 句 → 总结 1-2 句，字数 120-180。"),
-      pg("第 27-30 天：每天一套整卷限时 125 分钟，严格按考试流程。晚上复盘：听力错的段落重听 3 遍，阅读错的题型重做同类型 2 篇。",
-         "考前 3 天不再学新内容，保持手感即可。"),
-      pg("资料清单：近 6 年真题 12 套、高频词表 800 词、写作模板 3 套（本页笔记末页附）。",
-         "祝各位一次过。"),
-    ],
+    pages: [],
     price: 0, previewPages: 0, rating: 4.7, downloads: 1921, favs: 445, downloadAvailable: false,
   },
   {
@@ -153,20 +86,7 @@ const MATERIALS: Material[] = [
     title: "力学实验报告：单摆测重力加速度", author: "23 级-周同学",
     intro: "得分 95 的实验报告模板：实验原理、数据表格、不确定度计算完整过程，附教师批注过的易扣分点。",
     toc: ["实验目的", "实验原理", "数据记录", "数据处理", "误差分析", "易扣分点"],
-    pages: [
-      pg("实验目的：用单摆测定本地重力加速度 g，练习累计计时法减小测量误差。",
-         "器材：单摆装置、米尺、游标卡尺、秒表。"),
-      pg("实验原理：单摆周期 T = 2π√(L/g)，故 g = 4π²L/T²。",
-         "摆长 L = 摆线长 l + 摆球半径 r（r 用游标卡尺测直径取半）。为减小偶然误差，测 50 个全振动时间 t，T = t/50。"),
-      pg("数据记录：摆线长 l = 98.56 cm；摆球直径 d = 2.000 cm，故 L = 99.56 cm。",
-         "三次测 50T：91.20s / 91.18s / 91.22s，平均 t̄ = 91.20s，T = 1.824s。"),
-      pg("数据处理：g = 4π² × 0.9956 / 1.824² = 9.81 m/s²。",
-         "不确定度：u(L) ≈ 0.05 cm，u(t) ≈ 0.1s，合成相对不确定度约 0.3%，结果 (9.81 ± 0.03) m/s²。"),
-      pg("误差分析：摆角应小于 5°，过大使周期公式失效；摆球应在竖直平面内摆动，避免圆锥摆。",
-         "秒表启停的人为反应误差通过累计计时（50T）有效稀释。"),
-      pg("教师批注的易扣分点：① 有效数字位数 ② 单位必须随数据给出 ③ 不确定度保留 1-2 位 ④ 结论要带 ± 区间。",
-         "本报告格式可直接套用其他力学实验。"),
-    ],
+    pages: [],
     price: 0, previewPages: 0, rating: 4.5, downloads: 986, favs: 158, downloadAvailable: false,
   },
   {
@@ -174,21 +94,7 @@ const MATERIALS: Material[] = [
     title: "树与图知识图谱笔记", author: "21 级-李学长",
     intro: "把树和图揉成一张网：二叉树 5 个性质、三种遍历互推、图的两种存储、DFS/BFS、最小生成树双算法、最短路径。",
     toc: ["二叉树性质", "遍历互推", "图的存储", "DFS/BFS", "最小生成树", "最短路径"],
-    pages: [
-      pg("二叉树性质速记：① 第 i 层至多 2^(i-1) 个结点 ② 深度 k 至多 2^k-1 个 ③ n₀ = n₂+1 ④ n 结点完全二叉树深度 ⌊log₂n⌋+1 ⑤ 编号 i 的双亲为 ⌊i/2⌋。",
-         "③ 是填空常客：由 n₀=n₂+1 可推叶子数。"),
-      pg("遍历互推：先序+中序、后序+中序都能唯一确定二叉树；先序+后序不能。",
-         "套路：先序第一个/后序最后一个是根 → 在中序里定位根 → 分左右子树递归。"),
-      pg("图的存储：邻接矩阵适合稠密图（O(n²) 空间），邻接表适合稀疏图。",
-         "无向图邻接表有 2e 个边结点，有向图 e 个。"),
-      pg("DFS 用栈（递归），BFS 用队列。DFS 生成树与 BFS 生成树一般不同。",
-         "应用：DFS 判连通性/求连通分量；BFS 求无权图最短路径。"),
-      pg("最小生成树：Prim 选点（适合稠密），Kruskal 选边（适合稀疏，先排序+并查集判环）。",
-         "两算法结果在边权互不相同时唯一。"),
-      pg("最短路径：Dijkstra 单源（边权非负），Floyd 多源（可负权但无负环）。",
-         "Dijkstra 每一步把 dist 最小且未确定的点加入 S 集合并松弛其邻边——手算题画表格。"),
-      pg("考前自测：给一个邻接矩阵，能 3 分钟写出 Prim 全过程；给先序中序能 2 分钟画出树。达不到就回到第 2、5 页。"),
-    ],
+    pages: [],
     price: 0, previewPages: 0, rating: 4.8, downloads: 1754, favs: 398, downloadAvailable: false,
   },
   {
@@ -196,26 +102,7 @@ const MATERIALS: Material[] = [
     title: "期中模拟卷（一）", author: "数学学习小组",
     intro: "按近三年期中真题风格命制：极限 30%、导数与微分 40%、微分中值定理 30%，附评分标准。",
     toc: ["一、填空题", "二、计算题", "三、证明题", "评分标准"],
-    pages: [
-      pg("一、填空题（每题 4 分，共 24 分）",
-         "1. lim(x→0) (e^x - 1 - x)/x² = ____。",
-         "2. 设 y = x·sin x，则 dy = ____。"),
-      pg("3. 曲线 y = x³ - 3x 的拐点为 ____。",
-         "4. 函数 f(x) = x + 2sin x 在 [0, 2π] 上的最大值为 ____。",
-         "5. 设 f(x) 在 x=1 处可导且 f′(1)=2，则 lim(h→0) [f(1+2h)-f(1)]/h = ____。"),
-      pg("二、计算题（每题 8 分，共 48 分）",
-         "1. 求 lim(x→0) (tan x - x)/(x - sin x)。",
-         "2. 设 y = (1+x²)^(sin x)，求 y′（对数求导法）。",
-         "3. 求函数 y = x - ln(1+x) 的单调区间与极值。"),
-      pg("4. 验证拉格朗日中值定理对 f(x)=x² 在 [1,2] 上的正确性，求出 ξ。",
-         "5. 求曲线 y = ln x 在点 (1,0) 处的切线方程。",
-         "6. 用洛必达法则求 lim(x→0⁺) x·ln x。"),
-      pg("三、证明题（每题 14 分，共 28 分）",
-         "1. 证明：x>0 时，ln(1+x) < x。",
-         "2. 设 f(x) 在 [a,b] 上连续、(a,b) 内可导且 f(a)=f(b)=0，证明存在 ξ∈(a,b) 使 f′(ξ)+f(ξ)=0。"),
-      pg("评分标准：填空每题 4 分；计算题按步骤给分，结果错扣 2 分；证明题构造函数 6 分、应用定理 6 分、结论 2 分。",
-         "第 2 题提示：构造 F(x) = e^x·f(x)，应用罗尔定理。"),
-    ],
+    pages: [],
     price: 0, previewPages: 0, rating: 4.4, downloads: 1245, favs: 211, downloadAvailable: false,
   },
   {
@@ -223,139 +110,75 @@ const MATERIALS: Material[] = [
     title: "数据结构：从入门到期末", author: "21 级-李学长",
     intro: "12 周学习路线：每周章节+刷题量+自测点，配套本库真题，适合期初收藏期末救命。",
     toc: ["第 1-2 周 线性表", "第 3-4 周 栈与队列", "第 5-7 周 树", "第 8-9 周 图", "第 10-11 周 查找与排序", "第 12 周 总复习"],
-    pages: [
-      pg("使用方法：每周一看章节，周三前做完课后题，周末用本库试卷自测并记录错题。",
-         "全书重点排序：树 > 图 > 排序 > 查找 > 线性表 > 栈队列。"),
-      pg("第 1-2 周 线性表：顺序表与链表的 12 个基本操作手写一遍；自测点：单链表逆置、合并两个有序表。",
-         "刷题：课后习题 2.1-2.12，代码题全部上机。"),
-      pg("第 3-4 周 栈与队列：栈的出栈序列合法性判断、循环队列的队空队满条件、后缀表达式求值手算。",
-         "自测点：用两个栈实现队列。"),
-      pg("第 5-7 周 树（重点）：性质证明、遍历互推、哈夫曼树构造、AVL 旋转四种情形画图。",
-         "第 7 周末做 2023 真题应用题部分，正确率低于 60% 就重学遍历互推。"),
-      pg("第 8-9 周 图：邻接矩阵与邻接表互转、DFS/BFS 序列、Prim/Kruskal 全过程、Dijkstra 表格法。",
-         "自测点：给一个 6 顶点图，15 分钟写完 Dijkstra 全表。"),
-      pg("第 10-11 周 查找与排序：哈希冲突两种处理、七种排序的时间/空间/稳定性对照表默写。",
-         "快排与堆排的手算过程各练 3 遍。"),
-      pg("第 12 周 总复习：用本库 2023-2025 三年真题模考三遍，错题回到对应章节笔记。",
-         "考试当天带一张 A4 默写纸：树 5 性质 + 排序对照表 + Dijkstra 步骤。"),
-    ],
+    pages: [],
     price: 0, previewPages: 0, rating: 4.7, downloads: 1432, favs: 366, downloadAvailable: false,
   },
 
   // ---- 收费 ----
-  // Static catalog entries deliberately contain preview-only body text. The
-  // metadata retains their real page count so the reader can present a lock
-  // wall without shipping content that has no server-side entitlement owner.
+  // Legacy paid metadata is non-downloadable and contains no preview body.
   {
     id: "paid-math-exam25", type: "exam", subject: "高等数学A",
     title: "高等数学A · 2025 期末试卷 + 逐题详解", author: "刘助教",
     intro: "2025 春季期末真题，每题附完整解题过程与评分点标注：积分应用与级数是本轮重点，压轴题为旋转体体积。",
     toc: ["一、填空题", "二、计算题", "三、应用题", "四、证明题", "逐题详解"],
-    pages: [
-      pg("一、填空题（每题 4 分，共 20 分）",
-         "1. lim(x→0) (1-cos x)·ln(1+x²)/x⁴ = ____。",
-         "2. ∫ x·e^x dx = ____。"),
-      pg("3. 反常积分 ∫(1→+∞) 1/x² dx = ____。",
-         "4. 级数 Σ(n=1→∞) 1/(n²+n) 的和为 ____。",
-         "5. 曲线 y = x² 与 y = 2 - x² 围成图形的面积为 ____。"),
-    ],
-    pageCount: 8, price: 60, previewPages: 2, rating: 4.9, downloads: 2876, favs: 924, downloadAvailable: false,
+    pages: [],
+    pageCount: 8, price: 60, previewPages: 0, rating: 4.9, downloads: 2876, favs: 924, downloadAvailable: false,
   },
   {
     id: "paid-ds-3years", type: "exam", subject: "数据结构",
     title: "数据结构 · 2023-2025 三年真题合集", author: "王助教",
     intro: "三年 6 套真题 + 答案要点，树与图应用题逐年对比分析：2025 年图占比首次超过树，AVL 旋转连续三年出现。",
     toc: ["2023 A/B 卷", "2024 A/B 卷", "2025 A/B 卷", "三年考点对比", "答案要点"],
-    pages: [
-      pg("合集说明：2023-2025 共 6 套试卷，题型稳定为选择 20 + 填空 20 + 应用 40 + 算法 20。",
-         "使用建议：按年份倒序模考，2025 卷留到最后一周。"),
-      pg("2023 A 卷（节选）：应用题 1. 已知先序 ABDECF、中序 DBEAFC，画出二叉树。",
-         "应用题 2. 对序列 {38,65,97,76,13,27} 建堆并写出初始大顶堆。"),
-      pg("2024 A 卷见本库免费页（free-ds-exam24）。",
-         "2024 B 卷考点：BFS 生成树、折半查找判定树、希尔排序增量序列。"),
-    ],
-    pageCount: 7, price: 80, previewPages: 3, rating: 4.9, downloads: 3122, favs: 1105, downloadAvailable: false,
+    pages: [],
+    pageCount: 7, price: 80, previewPages: 0, rating: 4.9, downloads: 3122, favs: 1105, downloadAvailable: false,
   },
   {
     id: "paid-la-eigen", type: "note", subject: "线性代数",
     title: "特征值专题突破笔记", author: "22 级-赵同学",
     intro: "线代最难一章的 20 页攻坚：特征值/特征向量求法、相似对角化条件、实对称矩阵三大性质，含 8 道阶梯训练。",
     toc: ["定义与求法", "相似与对角化", "实对称矩阵", "阶梯训练 8 题"],
-    pages: [
-      pg("定义：Aα = λα（α≠0）。求法两步：|λE - A| = 0 求 λ；(λE - A)x = 0 求特征向量。",
-         "高频结论：Σλᵢ = tr(A)，∏λᵢ = |A|。"),
-      pg("相似：B = P⁻¹AP 则 A、B 有相同特征值/迹/行列式/秩。",
-         "A 可对角化 ⟺ A 有 n 个线性无关特征向量 ⟺ 每个特征值的代数重数 = 几何重数。"),
-    ],
-    pageCount: 6, price: 45, previewPages: 2, rating: 4.7, downloads: 1654, favs: 431, downloadAvailable: false,
+    pages: [],
+    pageCount: 6, price: 45, previewPages: 0, rating: 4.7, downloads: 1654, favs: 431, downloadAvailable: false,
   },
   {
     id: "paid-phy-em-labs", type: "lab", subject: "大学物理",
     title: "电磁学实验报告合集（4 篇）", author: "23 级-周同学",
     intro: "霍尔效应、示波器使用、螺线管磁场测定、RLC 稳态四篇 90+ 报告，数据表格与不确定度计算齐全。",
     toc: ["霍尔效应测磁场", "示波器的使用", "螺线管磁场分布", "RLC 稳态特性"],
-    pages: [
-      pg("篇一 霍尔效应：霍尔电压 U_H = K_H·I·B，保持工作电流 I 不变测 U_H-B 曲线，斜率求 K_H。",
-         "对称测量法消除副效应：分别测 +I+B、+I-B、-I-B、-I+B 四组取平均。"),
-      pg("数据（节选）：I = 10.00 mA，B 从 0 到 300 mT 每 50 mT 一点，U_H 线性度 R² = 0.9998。",
-         "不确定度主要来自电压表分辨率，合成约 1.2%。"),
-    ],
-    pageCount: 5, price: 50, previewPages: 2, rating: 4.6, downloads: 987, favs: 203, downloadAvailable: false,
+    pages: [],
+    pageCount: 5, price: 50, previewPages: 0, rating: 4.6, downloads: 987, favs: 203, downloadAvailable: false,
   },
   {
     id: "paid-math-5mocks", type: "mock", subject: "高等数学A",
     title: "期末冲刺模拟卷（五套）", author: "数学学习小组",
     intro: "五套全真模拟：覆盖极限、微分、积分、级数全部题型，每套附答案与难度标注，适合考前两周每天一套。",
     toc: ["卷一（基础）", "卷二（基础+）", "卷三（中等）", "卷四（中等+）", "卷五（拔高）", "答案速查"],
-    pages: [
-      pg("使用说明：五套难度递增，卷一卷二保及格，卷三卷四冲 80，卷五冲 95。",
-         "每套限时 120 分钟，做完立即对答案并把错题归入对应章节。"),
-      pg("卷一（基础）填空节选：1. lim(x→∞) (1+2/x)^x = ____。2. ∫ cos 2x dx = ____。",
-         "计算节选：求 y = x²·ln x 的二阶导数。"),
-      pg("卷二（基础+）节选：求 lim(x→0) (sin 3x)/(tan 5x)；计算 ∫₀¹ x/(1+x²) dx。",
-         "应用：求 y = x³ - 3x² + 2 的极值与拐点。"),
-    ],
-    pageCount: 6, price: 70, previewPages: 3, rating: 4.8, downloads: 2210, favs: 687, downloadAvailable: false,
+    pages: [],
+    pageCount: 6, price: 70, previewPages: 0, rating: 4.8, downloads: 2210, favs: 687, downloadAvailable: false,
   },
   {
     id: "paid-la-sprint", type: "path", subject: "线性代数",
     title: "线代一周速成路线", author: "22 级-赵同学",
     intro: "给只剩 7 天的人：每天一章 + 对应真题，舍小保大——行列式与矩阵计算必须全对，证明题背 4 个模板。",
     toc: ["D1 行列式", "D2 矩阵", "D3 向量组", "D4 方程组", "D5 特征值", "D6 二次型", "D7 模考"],
-    pages: [
-      pg("总策略：线代 70% 是计算题，计算全对 = 75 分起步。证明题只背 4 个模板（线性无关、可对角化、正定、秩不等式）。",
-         "每天投入 4 小时：2h 知识点 + 1.5h 真题 + 0.5h 错题。"),
-      pg("D1 行列式：性质 5 条（换行变号、提公因子、拆行、倍加不变、三角形=对角积）；三阶对角线法则；含参行列式因式分解套路。"),
-    ],
-    pageCount: 6, price: 30, previewPages: 2, rating: 4.5, downloads: 1308, favs: 296, downloadAvailable: false,
+    pages: [],
+    pageCount: 6, price: 30, previewPages: 0, rating: 4.5, downloads: 1308, favs: 296, downloadAvailable: false,
   },
   {
     id: "paid-cet6-writing", type: "note", subject: "大学英语",
     title: "六级写作模板 50 句", author: "20 级-陈学姐",
     intro: "六级 588 分学姐的写作弹药库：开头 10 句、论证 20 句、结尾 10 句、闪光替换词 10 组，覆盖近五年全部题型。",
     toc: ["开头段 10 句", "主体论证 20 句", "结尾段 10 句", "闪光替换 10 组"],
-    pages: [
-      pg("开头段（现象引入）：In recent years, the issue of ... has aroused wide public concern. ",
-         "（数据引入）A recent survey indicates that over 70% of college students... （设问引入）When it comes to ..., opinions vary widely."),
-      pg("主体论证（分层）：To begin with, ... More importantly, ... Last but not least, ...",
-         "（举例）A case in point is that ...（对比）Unlike A, B ...（因果）Consequently, ..."),
-      pg("主体论证（高分句式）：It is universally acknowledged that ...（强调句）It is not the load that breaks you down, but the way you carry it.",
-         "（倒装）Only in this way can we ...（独立主格）All things considered, ..."),
-    ],
-    pageCount: 5, price: 40, previewPages: 3, rating: 4.6, downloads: 1517, favs: 354, downloadAvailable: false,
+    pages: [],
+    pageCount: 5, price: 40, previewPages: 0, rating: 4.6, downloads: 1517, favs: 354, downloadAvailable: false,
   },
   {
     id: "paid-ds-lab", type: "lab", subject: "数据结构",
     title: "上机实验报告：链表与栈", author: "21 级-吴学长",
     intro: "数据结构前两次上机的满分报告：单链表基本操作集 + 顺序栈与表达式求值，代码、测试用例、复杂度分析齐全。",
     toc: ["实验一 单链表", "代码与注释", "实验二 顺序栈", "表达式求值", "测试与结论"],
-    pages: [
-      pg("实验一要求：实现带头结点单链表的创建（头插/尾插）、按值查找、插入、删除、逆置与销毁。",
-         "评分点：内存释放完整、边界（空表/单结点）处理正确。"),
-      pg("核心代码（节选）：逆置——p = L->next; L->next = NULL; while(p){ q = p->next; p->next = L->next; L->next = p; p = q; }",
-         "注意先断链再逐个前插，避免成环。"),
-    ],
-    pageCount: 5, price: 35, previewPages: 2, rating: 4.7, downloads: 876, favs: 167, downloadAvailable: false,
+    pages: [],
+    pageCount: 5, price: 35, previewPages: 0, rating: 4.7, downloads: 876, favs: 167, downloadAvailable: false,
   },
 ];
 

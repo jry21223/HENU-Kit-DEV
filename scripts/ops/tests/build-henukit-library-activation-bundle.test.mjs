@@ -15,7 +15,7 @@ function fixture() {
   const sealed = join(root, "sealed");
   const installed = join(root, "installed");
   const audit = join(root, "audit");
-  mkdirSync(join(installed, "slides", "软件工程"), { recursive: true });
+  mkdirSync(join(installed, "slides"), { recursive: true });
   mkdirSync(sealed, { recursive: true });
   mkdirSync(audit, { recursive: true });
   const sourceSHA = "1".repeat(40);
@@ -23,14 +23,13 @@ function fixture() {
   const assetSHA = hash(assetBody);
   const manifest = Buffer.from(JSON.stringify({ version: 1, subjects: [{ name: "软件工程", assets: [{ role: "复习讲义", title: "期末复习", publicPath: "软件工程/讲义.pdf", bytes: assetBody.length, sha256: assetSHA }] }] }));
   const releaseID = `${sourceSHA}-${hash(manifest).slice(0, 16)}`;
-  const receipt = Buffer.from(JSON.stringify({ version: 1, release_id: releaseID, manifest_sha256: hash(manifest), inventory_sha256: "2".repeat(64), tree_sha256: "3".repeat(64), reviewed_assets: 1 }));
+  const receipt = Buffer.from(JSON.stringify({ version: 1, release_id: releaseID, manifest_sha256: hash(manifest), inventory_sha256: "2".repeat(64), tree_sha256: "3".repeat(64), reviewed_assets: 1, slides: { status: "disabled", source_slide_assets: 0 } }));
   const receiptSHA = hash(receipt);
-  const slide = Buffer.from("slide\n");
-  const derivedAssets = [{ path: "软件工程/1.svg", bytes: slide.length, sha256: hash(slide) }];
+  const derivedAssets = [];
   const derived = canonical({ version: 1, release_id: releaseID, assets: derivedAssets });
   const key = `releases/${releaseID}/receipts/${receiptSHA}/objects/${assetSHA}/软件工程/讲义.pdf`;
   const commit = Buffer.from(JSON.stringify({ version: 1, state: "release_committed_not_activated", release_id: releaseID, receipt_sha256: receiptSHA, manifest_sha256: hash(manifest), inventory_sha256: "2".repeat(64), tree_sha256: "3".repeat(64), asset_count: 1, assets: [{ public_path: "软件工程/讲义.pdf", sha256: assetSHA, bytes: assetBody.length, object_key: key, object_version_id: "version-1" }] }));
-  for (const [path, bytes] of [[join(sealed, "manifest.json"), manifest], [join(sealed, "sealed-release.json"), receipt], [join(installed, "derived-inventory.json"), derived], [join(installed, "slides", "软件工程", "1.svg"), slide], [join(audit, "release-commit.json"), commit]]) {
+  for (const [path, bytes] of [[join(sealed, "manifest.json"), manifest], [join(sealed, "sealed-release.json"), receipt], [join(installed, "derived-inventory.json"), derived], [join(audit, "release-commit.json"), commit]]) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, bytes, { mode: 0o400 });
     chmodSync(path, 0o400);
@@ -77,10 +76,42 @@ test("mismatched or incomplete OSS identity fails without an activation package"
 test("derived release drift fails without an activation package", () => {
   const f = fixture();
   const slide = join(f.installed, "slides", "软件工程", "1.svg");
-  chmodSync(slide, 0o600);
+  mkdirSync(dirname(slide), { recursive: true });
   writeFileSync(slide, "drift", { mode: 0o400 });
-  chmodSync(slide, 0o400);
   const { result, output } = run(f);
   assert.notEqual(result.status, 0);
+  assert.equal(existsSync(output), false);
+});
+
+test("non-canonical empty derived inventory fails without an activation package", () => {
+  const f = fixture();
+  const inventoryPath = join(f.installed, "derived-inventory.json");
+  chmodSync(inventoryPath, 0o600);
+  writeFileSync(
+    inventoryPath,
+    canonical({ version: 1, release_id: f.releaseID, assets: [], unexpected: true }),
+    { mode: 0o400 },
+  );
+  chmodSync(inventoryPath, 0o400);
+  const { result, output } = run(f);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /canonical empty inventory/);
+  assert.equal(existsSync(output), false);
+});
+
+test("derived online-preview assets fail when preview is disabled", () => {
+  const f = fixture();
+  const slide = Buffer.from("slide\n");
+  const slidePath = join(f.installed, "slides", "软件工程", "1.svg");
+  mkdirSync(dirname(slidePath), { recursive: true });
+  writeFileSync(slidePath, slide, { mode: 0o400 });
+  const inventoryPath = join(f.installed, "derived-inventory.json");
+  chmodSync(inventoryPath, 0o600);
+  writeFileSync(inventoryPath, canonical({ version: 1, release_id: f.releaseID, assets: [{ path: "软件工程/1.svg", bytes: slide.length, sha256: hash(slide) }] }), { mode: 0o400 });
+  chmodSync(inventoryPath, 0o400);
+
+  const { result, output } = run(f);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /online preview is disabled/);
   assert.equal(existsSync(output), false);
 });
