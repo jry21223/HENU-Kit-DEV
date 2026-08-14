@@ -783,12 +783,11 @@ test("notifications render and mark the server-returned notification as read at 
   expect(markReadCount).toBe(1);
 });
 
-test("paid Library materials never use Account session mocks as a purchase or shelf result", async ({ page }) => {
-  // Detail and reader views fetch the owner material by id from the real
-  // detail contract instead of reading bundled static entries. Stub the
-  // exact payload: a paid material carries its full pages plus a preview
-  // window, so the reader locks after previewPages and the detail page
-  // never offers purchase.
+test("paid Library materials never use Account session mocks as purchase, preview, or shelf results", async ({ page }) => {
+  // Detail fetches the owner material by id from the real contract instead
+  // of reading bundled static entries. Paid material remains unavailable for
+  // purchase and all online-reader routes return to the OSS-download detail
+  // boundary; Account session mocks must not manufacture either capability.
   const paidMaterial = {
     id: "paid-math-exam25",
     type: "exam",
@@ -820,16 +819,13 @@ test("paid Library materials never use Account session mocks as a purchase or sh
   await expect(page.locator('[data-library-purchase-state="unavailable"]')).toBeVisible();
   await expect(page.locator('[data-library-favorite-state="unavailable"]')).toBeVisible();
   await expect(page.getByRole("button", { name: /积分购买|登录后购买/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /立即阅读|免费试读/ })).toHaveCount(0);
 
   await page.goto("/library/read/paid-math-exam25", { waitUntil: "domcontentloaded" });
-  const nextPage = page.getByRole("button", { name: "下一页 →" });
-  await expect(nextPage).toBeEnabled();
-  await nextPage.click();
-  await nextPage.click();
-  await expect(page.getByText("3 / 8", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/library\/item\/paid-math-exam25$/);
   await expect(page.locator('[data-library-purchase-state="unavailable"]')).toBeVisible();
-  await expect(page.getByText("积分兑换暂未开放")).toBeVisible();
-  await expect(page.getByRole("button", { name: /积分购买|登录后购买/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "下一页 →" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /立即阅读|免费试读/ })).toHaveCount(0);
 
   await page.goto("/library/shelf", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-library-shelf-state="unavailable"]')).toBeVisible();

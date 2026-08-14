@@ -1,7 +1,4 @@
-import type { Metadata } from "next";
-import SlidesPage from "@/components/library/slides-page";
-
-export const metadata: Metadata = { title: "课件幻灯片 — henukit 资料库" };
+import { redirect } from "next/navigation";
 
 export default async function SlidesRoute({
   params,
@@ -9,5 +6,5 @@ export default async function SlidesRoute({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <SlidesPage id={id} />;
+  redirect(`/library/item/${encodeURIComponent(id)}`);
 }

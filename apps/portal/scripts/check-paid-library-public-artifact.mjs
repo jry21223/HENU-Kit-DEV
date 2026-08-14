@@ -22,6 +22,14 @@ const paidFullTextMarkers = [
   "实验二要求",
 ];
 
+// Download-only releases must not ship an online-preview call to action in
+// either browser assets or server-rendered route payloads. The legacy route
+// handlers themselves contain only redirects and therefore do not need these
+// labels.
+const materialBodyMarkers = ["§1 极限的定义", ...paidFullTextMarkers];
+const onlinePreviewMarkers = ["立即阅读", "免费试读", "可试读", "浏览幻灯片"];
+const forbiddenMarkers = [...materialBodyMarkers, ...onlinePreviewMarkers];
+
 for (const root of publicArtifactRoots) {
   if (!existsSync(root)) {
     throw new Error(`Expected production artifact directory: ${root}`);
@@ -40,7 +48,7 @@ const leaked = [];
 for (const root of publicArtifactRoots) {
   for (const file of filesIn(root)) {
     const contents = readFileSync(file);
-    for (const marker of paidFullTextMarkers) {
+    for (const marker of forbiddenMarkers) {
       if (contents.includes(Buffer.from(marker))) {
         leaked.push(`${relative(appRoot, file)} contains ${JSON.stringify(marker)}`);
       }
@@ -50,8 +58,8 @@ for (const root of publicArtifactRoots) {
 
 if (leaked.length > 0) {
   throw new Error(
-    `Paid Library full text leaked into a public production artifact:\n${leaked.join("\n")}`
+    `Library online-preview content leaked into a production artifact:\n${leaked.join("\n")}`
   );
 }
 
-console.log("Paid Library public artifacts contain preview-only paid material.");
+console.log("Library production artifacts contain no online-preview action or post-preview paid material.");

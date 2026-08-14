@@ -29,7 +29,7 @@ usage: sudo install.sh [options]
   --clone-url URL            clone the private repository after the read-only key is registered
   --enable-command-hook      enable the generic root-owned command hook
   --enable-study-hook        enable the existing Study artifact deployment hook
-  --enable-materials-sync    install the HENU-Final-Review materials sync webhook
+  --enable-materials-sync    retired; use the signed release runtime installer
 USAGE
 }
 
@@ -47,6 +47,11 @@ while (( "$#" )); do
     *) echo "unknown option: $1" >&2; usage >&2; exit 64 ;;
   esac
 done
+
+if (( enable_materials_sync )); then
+  echo "--enable-materials-sync is retired; deploy the signed runtime artifact with deploy-henukit-artifact.sh" >&2
+  exit 64
+fi
 
 [[ "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "invalid repository" >&2; exit 64; }
 [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "invalid branch" >&2; exit 64; }
@@ -159,14 +164,9 @@ systemctl enable --now henukit-deploy-webhook.service
 systemctl disable --now henukit-deploy-webhook.path >/dev/null 2>&1 || true
 
 if (( enable_materials_sync )); then
-  for command in node python3 psql; do
+  for command in node psql; do
     command -v "$command" >/dev/null || { echo "missing required materials command: $command" >&2; exit 69; }
   done
-  python3 -c 'import pptx' >/dev/null 2>&1 || { echo "missing required Python module: python3-pptx" >&2; exit 69; }
-  if ! command -v soffice >/dev/null && ! command -v libreoffice >/dev/null; then
-    echo "missing required materials command: soffice or libreoffice" >&2
-    exit 69
-  fi
   # Materials webhook receiver remains unprivileged. The queue runner is a
   # confined root service whose binary can invoke only this fixed chain.
   repo_root="$(cd -- "$source_dir/../.." && pwd)"
@@ -184,7 +184,6 @@ if (( enable_materials_sync )); then
   install -o root -g root -m 0600 "$repo_root/scripts/ops/seal-henukit-materials.mjs" /usr/local/libexec/henukit/seal-henukit-materials.mjs
   install -o root -g root -m 0600 "$repo_root/scripts/ops/activate-henukit-materials.mjs" /usr/local/libexec/henukit/activate-henukit-materials.mjs
   install -o root -g root -m 0600 "$repo_root/scripts/ops/build-henukit-library-activation-bundle.mjs" /usr/local/libexec/henukit/build-henukit-library-activation-bundle.mjs
-  install -o root -g root -m 0755 "$repo_root/scripts/ops/convert-henukit-slides.py" /usr/local/libexec/henukit/convert-henukit-slides.py
   install -o root -g root -m 0755 "$repo_root/scripts/ops/import-henukit-materials.mjs" /usr/local/libexec/henukit/import-henukit-materials.mjs
   materials_release_binary="$(mktemp)"
   library_activation_binary="$(mktemp)"
@@ -223,7 +222,6 @@ MATERIALS_SEAL_ENV
     cat > /etc/henukit-deploy/materials-activate.env <<'MATERIALS_ACTIVATE_ENV'
 HENUKIT_MATERIALS_SEALED_ROOT=/opt/henukit-materials/sealed
 HENUKIT_MATERIALS_PUBLIC_ROOT=/opt/henukit-materials/public
-HENUKIT_MATERIALS_CONVERTER=/usr/local/libexec/henukit/convert-henukit-slides.py
 HENUKIT_MATERIALS_IMPORTER=/usr/local/libexec/henukit/import-henukit-materials.mjs
 HENUKIT_MATERIALS_PSQL=/usr/bin/psql
 HENUKIT_MATERIALS_PG_SERVICE_FILE=/etc/henukit-deploy/materials-postgresql.conf

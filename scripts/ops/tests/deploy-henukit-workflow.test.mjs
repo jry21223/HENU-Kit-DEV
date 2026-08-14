@@ -85,6 +85,13 @@ test("release artifacts carry an exact-SHA Account mock-free boundary manifest",
   );
 });
 
+test("release-contract CI exercises the production artifact deployment seam", () => {
+  assert.match(
+    workflow,
+    /scripts\/ops\/tests\/deploy-henukit-artifact\.test\.mjs/,
+  );
+});
+
 test("Portal V2 cutover flags are enabled in production artifacts after HC-166", () => {
   assert.match(
     portalDockerfile,

@@ -199,6 +199,12 @@ func TestActivatePublicReleaseRejectsMalformedMetadataWithoutTouchingOSSOrCatalo
 			receipt["source"].(map[string]any)["repository"] = "https://example.invalid/foreign.git"
 			bundle.SealedReceiptJSON, _ = json.Marshal(receipt)
 		}},
+		{name: "online preview digest", mutate: func(bundle *library.PublicReleaseActivation) {
+			bundle.Derived.SlidesSHA256 = strings.Repeat("d", 64)
+		}},
+		{name: "non-canonical derived inventory digest", mutate: func(bundle *library.PublicReleaseActivation) {
+			bundle.Derived.IndexSHA256 = strings.Repeat("e", 64)
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pool := activationPool(t)
@@ -479,15 +485,18 @@ func activationBundle(t *testing.T, assets []manifestAsset, store *activationSto
 		"source":           map[string]any{"repository": "https://github.com/jry21223/HENU-Final-Review.git", "ref": "refs/heads/main", "sha": sourceSHA},
 		"manifest_sha256":  hex.EncodeToString(manifestDigest[:]),
 		"inventory_sha256": strings.Repeat("b", 64), "tree_sha256": strings.Repeat("c", 64), "reviewed_assets": reviewed,
-		"slides": map[string]any{"status": "deferred", "source_slide_assets": 0},
+		"slides": map[string]any{"status": "disabled", "source_slide_assets": 0},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	receiptDigest := sha256.Sum256(receipt)
+	emptySlidesDigest := sha256.Sum256([]byte("[]\n"))
+	emptyIndex := []byte(fmt.Sprintf("{\n  \"version\": 1,\n  \"release_id\": %q,\n  \"assets\": []\n}\n", releaseID))
+	emptyIndexDigest := sha256.Sum256(emptyIndex)
 	bundle := library.PublicReleaseActivation{
 		Version: 1, ReleaseID: releaseID, ManifestJSON: manifest, SealedReceiptJSON: receipt,
-		Derived: library.PublicReleaseDerivedArtifacts{ReleaseID: releaseID, SlidesSHA256: strings.Repeat("d", 64), IndexSHA256: strings.Repeat("e", 64)},
+		Derived: library.PublicReleaseDerivedArtifacts{ReleaseID: releaseID, SlidesSHA256: hex.EncodeToString(emptySlidesDigest[:]), IndexSHA256: hex.EncodeToString(emptyIndexDigest[:])},
 	}
 	commitAssets := make([]map[string]any, 0, reviewed)
 	for _, asset := range assets {

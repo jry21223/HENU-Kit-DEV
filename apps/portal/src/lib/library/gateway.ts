@@ -34,16 +34,16 @@ function toMaterial(m: ApiMaterial): Material {
     author: m.author,
     intro: m.intro,
     toc: m.toc ?? [],
-    pages: m.pages ?? [],
-    pageCount: m.pages?.length ?? 0,
+    pages: [],
+    pageCount: 0,
     price: m.price,
-    previewPages: m.previewPages,
+    previewPages: 0,
     rating: m.rating,
     downloads: m.downloads,
     favs: m.favs,
     downloadAvailable: m.downloadAvailable,
     fileSize: m.fileSize,
-    slides: m.slides,
+    slides: [],
   };
 }
 

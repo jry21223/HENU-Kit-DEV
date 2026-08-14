@@ -15,6 +15,14 @@
 | Public root | `/opt/henukit-materials/public` |
 | Sealed root | `/opt/henukit-materials/sealed` |
 
+本轮产品边界是 **OSS 原文件下载 only**：prepare/seal/activate 不调用 Python、LibreOffice 或
+Slides converter，不生成在线预览页。`slides/` 必须为空，`derived-inventory.json` 必须是空
+`assets`，Study 的 `materials.slides` 写为 `NULL`。Portal 详情页只导航到同源 owner façade
+`/api/v1/library/materials/<id>/download`；Gateway 从 Library 获取最长 60 秒、固定 OSS public
+host 的 grant 后返回 `303`。浏览器页面不接收、不保存也不拼接 OSS URL，不提供任何资料的
+在线 reader、Slides viewer、“立即阅读”或“免费试读”。旧 `/library/read/<id>` 与
+`/library/slides/<id>` 路由只重定向回资料详情。
+
 接收器以 `henukit-deploy` 运行，恒定时间校验 GitHub HMAC，并只接受配置仓库与目标 ref。
 root runner 不接受 payload 指定命令、路径或数据库：它核对 root-owned 配置后，将准备步骤
 降权给 `henukit-deploy`，再依次 seal 和 activate。不要运行退休的
@@ -22,9 +30,11 @@ root runner 不接受 payload 指定命令、路径或数据库：它核对 root
 
 ## 启用前
 
-1. 安装 Node、Python 3、`python3-pptx`、PostgreSQL client 与 LibreOffice（`soffice`），再用
-   `install.sh --enable-materials-sync` 安装固定 wrapper、unit 和拒绝连接的配置模板；安装器会
-   对这些依赖失败关闭。
+1. 只使用 `docs/operations/henukit-artifact-deployment.md` 的正式流程部署签名 runtime；生产侧
+   `scripts/ops/deploy-henukit-artifact.sh` 会在验签和 SHA-256 校验后调用 artifact 内的
+   `materials-runtime/install.sh`，以预构建 Linux/amd64 binary-only 方式安装 wrapper、unit 和
+   Study migration。禁止运行已退休的 `install.sh --enable-materials-sync`，也不得在生产执行
+   `go build`、Python、`python3-pptx`、LibreOffice 或 Slides converter。
 2. 核对 `/etc/henukit-deploy/materials-seal.env` 的 repository 和 ref 与
    `materials-webhook.env` 一致。精确 SHA 只能来自已验签并入队的 push 事件；配置中没有
    可人工漂移的 `HENUKIT_MATERIALS_SOURCE_SHA`。
@@ -37,8 +47,8 @@ root runner 不接受 payload 指定命令、路径或数据库：它核对 root
    `{"version":1,"storage_keys":["科目/资料.pdf"]}`。新安装且没有旧 catalog 时保留空数组。
 5. 验证配置与 legacy inventory 均为 root-owned、不可被 group/other 写；secret 为 `root:root 0400`。
 6. 安装 `infra/nginx/henukit.conf.example`，运行 `nginx -t`。Compose 只读挂载 public root
-   到 `/srv/materials`；Nginx 只将 `/materials/releases/<release-id>/<public-path>` 映射到
-   `/srv/materials/releases/<release-id>/public/<public-path>`，不公开内部 `current` 指针。
+   到 `/srv/materials`，仅用于 Library API 激活维护围栏；Nginx 对所有 `/materials/**`（包括
+   release-prefixed 和 legacy URL）固定返回 no-store `404`，不得映射或回退到本地文件。
 7. 先保持 `henukit-materials-webhook.path` disabled；完成 schema preflight、备份和回滚演练后
    才 `systemctl enable --now henukit-materials-webhook.path`。
 
@@ -58,6 +68,10 @@ Console Library API 均返回 503。随后 `activation-journal.json` 依次记�
 保持 503：确认数据库可用后，用同一 release ID 和 receipt digest 重试；导入是幂等的。
 `database_committed` 重试不会再次执行 catalog SQL。不要手工删除 fence、journal 或修改
 `current`，否则会丢失恢复依据。
+
+激活前必须验证 sealed receipt 的 `slides.status` 为 `disabled`，派生目录为空且 canonical
+digest 等于空列表；任一派生预览资产、converter 参数或旧 `--slides-dir` 参数都必须失败关闭。
+这不是“转换失败后降级”，而是明确不提供在线预览的发布契约。
 
 Catalog 的 `storage_key` 带不可变 release 前缀，因此浏览器的一天缓存不会把旧文件伪装成
 新 catalog 内容。数据库凭据只在 root-only PostgreSQL service file 中，client 通过
@@ -93,6 +107,12 @@ docker run --rm \
   -v "$PWD/infra/nginx/henukit.conf.example:/etc/nginx/conf.d/default.conf:ro" \
   nginx:1.27-alpine nginx -t
 ```
+
+下载 smoke 必须从 Portal 资料详情的同源 download URL 开始，先观察 `303`，只记录重定向的
+host、path、TTL/状态而不输出完整 query，再跟随 grant 下载并将 bytes/SHA-256 与 sealed
+manifest 对账。同时确认页面没有“浏览幻灯片”动作、旧 slides URL 回到详情页、数据库
+`materials.slides IS NOT NULL` 计数为 0。直接公开 Bucket/Object URL、在 Portal 注入签名 URL、
+或用本地 `/materials/` 作为成功证据均不合格。
 
 生产完成证据还必须包含 webhook delivery、queue drain、runner 日志、目标 SHA/release/receipt、
 无 fence/journal 残留、真实资料下载、两侧 Library API 和 rollback 演练结果。

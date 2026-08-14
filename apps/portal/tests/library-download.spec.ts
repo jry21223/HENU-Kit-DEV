@@ -120,19 +120,64 @@ for (const viewport of [
   });
 }
 
+test("all materials are OSS-download-only and expose no online reader", async ({ page }) => {
+  const readableNote = {
+    ...MATERIAL,
+    pages: [["content that must not be exposed through an online reader"]],
+    pageCount: 1,
+    downloadAvailable: true,
+  };
+  await page.route("**/api/v1/library/materials/mat-01", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ material: readableNote, request_id: "req_material" }) })
+  );
+
+  await page.goto("/library/item/mat-01", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("link", { name: /下载资料/ })).toHaveAttribute("href", "/api/v1/library/materials/mat-01/download");
+  await expect(page.getByRole("link", { name: /立即阅读|免费试读/ })).toHaveCount(0);
+  await expect(page.locator('a[href="/library/read/mat-01"]')).toHaveCount(0);
+
+  await page.goto("/library/read/mat-01", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/library\/item\/mat-01$/);
+  await expect(page.getByRole("link", { name: /下载资料/ })).toBeVisible();
+  await expect(page.getByText(/PAGE 01/)).toHaveCount(0);
+});
+
+test("slides detail is OSS-download-only and exposes no online preview action", async ({ page }) => {
+  const slides = { ...MATERIAL, type: "slides", price: 0, downloadAvailable: true, slides: [] };
+  await page.route("**/api/v1/library/materials/mat-01", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ material: slides, request_id: "req_material" }) })
+  );
+
+  await page.goto("/library/item/mat-01", { waitUntil: "domcontentloaded" });
+  const download = page.getByRole("link", { name: /下载资料/ });
+  await expect(download).toBeVisible();
+  await expect(download).toHaveAttribute("href", "/api/v1/library/materials/mat-01/download");
+  await expect(page.getByRole("link", { name: /浏览幻灯片/ })).toHaveCount(0);
+  await expect(page.locator('a[href="/library/slides/mat-01"]')).toHaveCount(0);
+
+  await page.goto("/library/read/mat-01", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/library\/item\/mat-01$/);
+  await expect(page.getByRole("link", { name: /下载资料/ })).toBeVisible();
+  await expect(page.getByText(/PAGE 01/)).toHaveCount(0);
+});
+
 test("unavailable slides do not promise or expose an original-file download", async ({ page }) => {
-  const unavailableSlides = { ...MATERIAL, type: "slides", price: 50, downloadAvailable: false, slides: [] };
+  const unavailableSlides = { ...MATERIAL, type: "slides", price: 50, previewPages: 6, downloadAvailable: false, slides: [] };
   await page.route("**/api/v1/library/materials/mat-01", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify({ material: unavailableSlides, request_id: "req_material" }) })
   );
 
   await page.goto("/library/slides/mat-01", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("原文件暂时无法下载，请返回详情查看其他内容。")).toBeVisible();
-  await expect(page.getByText("可直接下载原文件查看完整内容。")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/library\/item\/mat-01$/);
+  await expect(page.getByText("积分兑换暂未开放")).toBeVisible();
+  await expect(page.getByRole("link", { name: /免费试读/ })).toHaveCount(0);
+  await expect(page.locator('a[href="/library/read/mat-01"]')).toHaveCount(0);
   await expect(page.locator('a[href="/api/v1/library/materials/mat-01/download"]')).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /浏览幻灯片/ })).toHaveCount(0);
+  await expect(page.locator('a[href="/library/slides/mat-01"]')).toHaveCount(0);
 });
 
-test("slides owner failure stays retryable and never masquerades as a 404", async ({ page }) => {
+test("legacy slides route redirects to a retryable download-only detail", async ({ page }) => {
   const slides = { ...MATERIAL, type: "slides", price: 0, downloadAvailable: false, slides: [] };
   let unavailable = true;
   await page.route("**/api/v1/library/materials/mat-01", (route) =>
@@ -142,9 +187,11 @@ test("slides owner failure stays retryable and never masquerades as a 404", asyn
   );
 
   await page.goto("/library/slides/mat-01", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/library\/item\/mat-01$/);
   await expect(page.locator('[role="alert"]').filter({ hasText: "资料详情暂时无法加载" })).toBeVisible();
   await expect(page.getByText("404 / NOT FOUND")).toHaveCount(0);
   unavailable = false;
   await page.getByRole("button", { name: "重试" }).click();
-  await expect(page.getByText("原文件暂时无法下载，请返回详情查看其他内容。")).toBeVisible();
+  await expect(page.getByText("下载即将开放")).toBeVisible();
+  await expect(page.locator('a[href^="/library/slides/"]')).toHaveCount(0);
 });

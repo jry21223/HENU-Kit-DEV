@@ -181,7 +181,10 @@ func preparePublicReleaseActivation(bundle PublicReleaseActivation) (preparedAct
 		return preparedActivation{}, errors.New("reviewed manifest is invalid")
 	}
 	var receipt sealedReceipt
-	if err := decodeSingleJSON(bundle.SealedReceiptJSON, &receipt); err != nil || receipt.Version != 1 || receipt.ReleaseID != bundle.ReleaseID || receipt.Source.Repository != "https://github.com/jry21223/HENU-Final-Review.git" || receipt.Source.Ref != "refs/heads/main" || receipt.Source.SHA != bundle.ReleaseID[:40] || receipt.ManifestSHA256 != manifestDigest || !digestPattern.MatchString(receipt.InventorySHA256) || !digestPattern.MatchString(receipt.TreeSHA256) || receipt.Slides.Status != "deferred" || receipt.Slides.SourceSlideAssets < 0 {
+	emptySlidesHash := sha256.Sum256([]byte("[]\n"))
+	emptyIndex := []byte(fmt.Sprintf("{\n  \"version\": 1,\n  \"release_id\": %q,\n  \"assets\": []\n}\n", bundle.ReleaseID))
+	emptyIndexHash := sha256.Sum256(emptyIndex)
+	if err := decodeSingleJSON(bundle.SealedReceiptJSON, &receipt); err != nil || receipt.Version != 1 || receipt.ReleaseID != bundle.ReleaseID || receipt.Source.Repository != "https://github.com/jry21223/HENU-Final-Review.git" || receipt.Source.Ref != "refs/heads/main" || receipt.Source.SHA != bundle.ReleaseID[:40] || receipt.ManifestSHA256 != manifestDigest || !digestPattern.MatchString(receipt.InventorySHA256) || !digestPattern.MatchString(receipt.TreeSHA256) || receipt.Slides.Status != "disabled" || receipt.Slides.SourceSlideAssets < 0 || bundle.Derived.SlidesSHA256 != hex.EncodeToString(emptySlidesHash[:]) || bundle.Derived.IndexSHA256 != hex.EncodeToString(emptyIndexHash[:]) {
 		return preparedActivation{}, errors.New("sealed receipt does not bind the release")
 	}
 	receiptHash := sha256.Sum256(bundle.SealedReceiptJSON)

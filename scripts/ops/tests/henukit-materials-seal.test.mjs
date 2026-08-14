@@ -37,7 +37,7 @@ function commit(repository) {
 }
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "henukit-materials-seal-"));
+  const root = mkdtempSync(join(repositoryRoot, ".henukit-materials-seal-test-"));
   const repository = join(root, "source");
   const attempt = ".attempt.Ab1Cd2Ef3G";
   const candidate = join(root, "untrusted-candidates", attempt, "candidate");
@@ -205,7 +205,7 @@ test("seals source-derived raw assets through the constrained attempt CLI", () =
         attempt_locator: setup.attempt,
       },
     );
-    assert.deepEqual(inventory.slides, { status: "deferred", source_slide_assets: 0 });
+    assert.deepEqual(inventory.slides, { status: "disabled", source_slide_assets: 0 });
     assert.equal(existsSync(join(release, "slides")), false);
     assert.equal(readFileSync(setup.publicSentinel, "utf8"), "served sentinel");
     assert.equal(readFileSync(setup.studySentinel, "utf8"), "study sentinel");
@@ -511,7 +511,7 @@ test("canonical inventory order is UTF-8 bytewise and does not depend on caller 
   }
 });
 
-test("source slide decks remain raw assets and derived Slides are explicitly deferred", () => {
+test("source slide decks remain raw assets while online preview stays disabled", () => {
   const setup = fixture();
   try {
     const pptxPath = "materials/outline.pptx";
@@ -544,7 +544,7 @@ test("source slide decks remain raw assets and derived Slides are explicitly def
     const output = JSON.parse(result.stdout);
     const release = join(setup.sealedRoot, output.release_id);
     const inventory = JSON.parse(readFileSync(join(release, "inventory.json"), "utf8"));
-    assert.deepEqual(inventory.slides, { status: "deferred", source_slide_assets: 1 });
+    assert.deepEqual(inventory.slides, { status: "disabled", source_slide_assets: 1 });
     assert.equal(existsSync(join(release, "slides")), false);
     assert.deepEqual(readFileSync(join(release, "public", "materials", "outline.pptx")), pptx);
     assert.equal(readFileSync(setup.publicSentinel, "utf8"), "served sentinel");

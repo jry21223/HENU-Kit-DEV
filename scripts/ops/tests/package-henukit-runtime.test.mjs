@@ -28,7 +28,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   const docker = join(binDirectory, "docker");
   writeFileSync(
     docker,
-    "#!/usr/bin/env bash\nset -Eeuo pipefail\n[[ \"$1\" == \"compose\" ]]\nprintf 'services:\\n  portal:\\n    image: henukit-portal:test\\n'\n",
+    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then printf 'services:\\n  portal:\\n    image: henukit-portal:test\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nwhile [[ $# -gt 0 ]]; do if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; break; fi; shift; done\n[[ -n \"$output\" ]]\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\n",
     { mode: 0o755 },
   );
   chmodSync(docker, 0o755);
@@ -52,8 +52,35 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./bin/verify-henukit-local-release.sh",
     "./docker-compose.henukit.release.yml",
     "./release-gates/account-production-boundary.env",
+    "./materials-runtime/install.sh",
+    "./materials-runtime/SHA256SUMS",
+    "./materials-runtime/bin/henukit-deploy-webhook",
+    "./materials-runtime/bin/materials-oss-canary",
+    "./materials-runtime/bin/materials-oss-release",
+    "./materials-runtime/bin/library-activate-public-release",
+    "./materials-runtime/libexec/henukit-materials-activate",
+    "./materials-runtime/libexec/activate-henukit-materials.mjs",
+    "./materials-runtime/libexec/import-henukit-materials.mjs",
+    "./materials-runtime/migrations/study/000001_materials_oss_release.up.sql",
+    "./materials-runtime/systemd/henukit-materials-webhook.service",
+    "./materials-runtime/systemd/henukit-materials-webhook.path",
+    "./materials-runtime/systemd/henukit-materials-runner.service",
   ]) {
     assert.match(files, new RegExp(`^${file.replaceAll(".", "\\.").replaceAll("/", "\\/")}$`, "m"));
+  }
+  assert.doesNotMatch(files, /convert-henukit-slides/);
+  const materialsChecksums = execFileSync(
+    "tar",
+    ["-xOzf", runtimeArchive, "./materials-runtime/SHA256SUMS"],
+    { encoding: "utf8" },
+  );
+  for (const path of [
+    "bin/henukit-deploy-webhook",
+    "bin/materials-oss-release",
+    "install.sh",
+    "migrations/study/000001_materials_oss_release.up.sql",
+  ]) {
+    assert.match(materialsChecksums, new RegExp(`^[0-9a-f]{64}  ${path.replaceAll(".", "\\.")}$`, "m"));
   }
   assert.equal(
     execFileSync("tar", ["-xOzf", runtimeArchive, "./RELEASE_SHA"], { encoding: "utf8" }).trim(),

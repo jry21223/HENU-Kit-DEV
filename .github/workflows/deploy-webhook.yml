@@ -11,7 +11,7 @@ on:
       - scripts/ops/activate-henukit-materials.mjs
       - scripts/ops/build-henukit-library-activation-bundle.mjs
       - scripts/ops/import-henukit-materials.mjs
-      - scripts/ops/convert-henukit-slides.py
+      - services/library/db/legacy-study-migrations/000001_materials_oss_release.up.sql
       - scripts/ops/tests/prepare-henukit-materials.test.mjs
       - scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs
       - scripts/ops/tests/henukit-materials-systemd.test.mjs
@@ -21,7 +21,7 @@ on:
       - scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs
       - scripts/ops/tests/activate-henukit-materials.test.mjs
       - scripts/ops/tests/build-henukit-library-activation-bundle.test.mjs
-      - scripts/ops/tests/convert-henukit-slides.test.mjs
+      - scripts/ops/tests/materials-study-migration.test.mjs
       - scripts/ops/tests/import-henukit-materials.test.mjs
       - scripts/ops/tests/henukit-materials-nginx.test.mjs
       - scripts/ops/tests/henukit-materials-orchestrate.test.mjs
@@ -56,7 +56,7 @@ on:
       - scripts/ops/activate-henukit-materials.mjs
       - scripts/ops/build-henukit-library-activation-bundle.mjs
       - scripts/ops/import-henukit-materials.mjs
-      - scripts/ops/convert-henukit-slides.py
+      - services/library/db/legacy-study-migrations/000001_materials_oss_release.up.sql
       - scripts/ops/tests/prepare-henukit-materials.test.mjs
       - scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs
       - scripts/ops/tests/henukit-materials-systemd.test.mjs
@@ -66,7 +66,7 @@ on:
       - scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs
       - scripts/ops/tests/activate-henukit-materials.test.mjs
       - scripts/ops/tests/build-henukit-library-activation-bundle.test.mjs
-      - scripts/ops/tests/convert-henukit-slides.test.mjs
+      - scripts/ops/tests/materials-study-migration.test.mjs
       - scripts/ops/tests/import-henukit-materials.test.mjs
       - scripts/ops/tests/henukit-materials-nginx.test.mjs
       - scripts/ops/tests/henukit-materials-orchestrate.test.mjs
@@ -151,6 +151,7 @@ jobs:
             services/deploy-webhook/deploy/henukit-materials-publish-oss \
             services/deploy-webhook/deploy/henukit-materials-publish-release-oss \
             services/deploy-webhook/deploy/install.sh \
+            services/deploy-webhook/deploy/install-materials-runtime.sh \
             services/deploy-webhook/deploy/hooks/10-command.example \
             services/deploy-webhook/deploy/hooks/20-study.example
           bash -n services/deploy-webhook/deploy/henukit-deploy
@@ -163,6 +164,7 @@ jobs:
           sh -n services/deploy-webhook/deploy/henukit-materials-publish-release-oss
           bash -n services/deploy-webhook/deploy/henukit-materials-seal
           bash -n services/deploy-webhook/deploy/install.sh
+          bash -n services/deploy-webhook/deploy/install-materials-runtime.sh
           bash -n services/deploy-webhook/deploy/hooks/10-command.example
           bash -n services/deploy-webhook/deploy/hooks/20-study.example
       - name: Validate systemd units
@@ -185,7 +187,7 @@ jobs:
             scripts/ops/tests/henukit-materials-activate-wrapper.test.mjs \
             scripts/ops/tests/activate-henukit-materials.test.mjs \
             scripts/ops/tests/build-henukit-library-activation-bundle.test.mjs \
-            scripts/ops/tests/convert-henukit-slides.test.mjs \
+            scripts/ops/tests/materials-study-migration.test.mjs \
             scripts/ops/tests/import-henukit-materials.test.mjs \
             scripts/ops/tests/henukit-materials-nginx.test.mjs \
             scripts/ops/tests/henukit-materials-orchestrate.test.mjs \

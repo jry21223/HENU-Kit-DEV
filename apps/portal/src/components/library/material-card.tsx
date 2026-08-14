@@ -36,11 +36,6 @@ export default function MaterialCard({ material }: { material: Material }) {
           )}
           <span className="shrink-0">↓ {material.downloads}</span>
         </div>
-        {!free && material.previewPages > 0 && (
-          <span className="mt-3 inline-block border border-accent/60 px-1.5 py-0.5 font-mono text-[10px] text-accent">
-            可试读 {material.previewPages} 页
-          </span>
-        )}
       </div>
     </Link>
   );

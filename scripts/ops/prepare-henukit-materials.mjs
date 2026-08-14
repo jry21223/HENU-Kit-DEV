@@ -3,9 +3,9 @@
  * Prepare one immutable materials candidate without publishing it.
  *
  * The command deliberately has no public-root, database, or activation option.
- * It fetches one accepted ref/SHA, validates the reviewed manifest assets, and
- * converts Slides into a newly-created candidate directory for a later,
- * separately-reviewed activation step.
+ * It fetches one accepted ref/SHA and validates the reviewed manifest assets
+ * into a newly-created candidate directory. Online preview derivation is not
+ * part of the OSS-only release boundary.
  */
 
 import { spawnSync } from "node:child_process";
@@ -25,10 +25,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, resolve, relative, sep } from "node:path";
-import { fileURLToPath } from "node:url";
-
 const REVIEW_MARKER = "待复核";
-const SLIDE_ROLE = "课件PPT";
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const FILE_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const DEFAULT_SERVED_PUBLIC_ROOT = "/opt/henukit-materials/public";
@@ -38,7 +35,7 @@ function usage() {
   --repository <source-repository> \\
   --ref <refs/heads/name> \\
   --sha <40-lowercase-hex> \\
-  --candidate-dir <new-absolute-directory> [--python <python3>]
+  --candidate-dir <new-absolute-directory>
 
 Prepares a detached, validated materials candidate only. It never changes a
 served public tree, the Study catalog, or a production configuration.`);
@@ -54,14 +51,12 @@ function parseOptions(argv) {
     ref: "",
     sha: "",
     candidateDir: "",
-    python: process.env.HENUKIT_MATERIALS_PYTHON || "python3",
   };
   const names = new Map([
     ["--repository", "repository"],
     ["--ref", "ref"],
     ["--sha", "sha"],
     ["--candidate-dir", "candidateDir"],
-    ["--python", "python"],
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -131,7 +126,6 @@ function validateSource(options) {
       fail("--candidate-dir must be outside every served public tree");
     }
   }
-  if (!options.python.trim()) fail("--python must not be empty");
 }
 
 function run(command, args, { cwd } = {}) {
@@ -258,16 +252,6 @@ function copyAssets(assets, publicRoot) {
   }
 }
 
-function runSlideConversion(options, publicRoot, slidesRoot, manifestPath) {
-  const converter = fileURLToPath(new URL("./convert-henukit-slides.py", import.meta.url));
-  run(options.python, [
-    converter,
-    "--mirror", publicRoot,
-    "--out", slidesRoot,
-    "--manifest", manifestPath,
-  ]);
-}
-
 function main() {
   const options = parseOptions(process.argv.slice(2));
   if (typeof process.getuid === "function" && process.getuid() === 0) {
@@ -278,7 +262,6 @@ function main() {
   const candidate = resolve(options.candidateDir);
   const checkout = join(candidate, "checkout");
   const publicRoot = join(candidate, "public");
-  const slidesRoot = join(candidate, "slides");
   mkdirSync(candidate, { recursive: false, mode: 0o700 });
 
   run("git", ["init", "--quiet", checkout]);
@@ -294,7 +277,6 @@ function main() {
 
   const prepared = loadReviewedAssets(checkout);
   copyAssets(prepared.assets, publicRoot);
-  runSlideConversion(options, publicRoot, slidesRoot, prepared.manifestPath);
 
   const release = {
     version: 1,
@@ -307,7 +289,6 @@ function main() {
     reviewed_assets: prepared.assets.length,
     skipped_pending_review: prepared.skippedPending,
     public_root: "public",
-    slides_root: "slides",
   };
   writeFileSync(join(candidate, "release.json"), `${JSON.stringify(release, null, 2)}\n`, { mode: 0o600 });
   writeFileSync(join(candidate, "READY"), `${options.sha}\n`, { mode: 0o600 });

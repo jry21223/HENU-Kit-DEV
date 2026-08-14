@@ -34,6 +34,11 @@ owner façade for the selected material ID. It never constructs `/materials/`
 or OSS URLs from `storage_key`, stores a signed URL in component state, counts a
 click locally, or treats a failed grant as a successful download.
 
+ADR-0031 keeps the complete public materials UI download-only. Portal renders
+no online reader, Slides viewer, or preview action; both legacy `/library/read/`
+and `/library/slides/` routes return users to the material detail, whose only
+file capability is the owner download route.
+
 The Library homepage reads one complete active owner snapshot through Portal
 Gateway. Its collection count comes from that full snapshot and its cumulative
 download count comes from Library's append-only Download Start ledger; browser

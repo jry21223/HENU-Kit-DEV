@@ -54,59 +54,17 @@ server {
     proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
-  # Course materials mirrored from the public HENU-Final-Review repository.
-  #
-  # The mirror root holds only reviewed subject directories. The git checkout,
-  # repository tooling and the 待复核 directories are deliberately kept outside
-  # it, so a mistake here cannot expose repository internals or unreviewed
-  # material. Serving is read-only and nothing under this root is ever executed.
-  #
-  # A dotfile must never be reachable even if one is mirrored by accident; this
-  # regex location outranks the prefix location below.
-  location ~ ^/materials/(?:[^/]+/)*\. {
-    return 404;
-  }
-
-  location ~ "^/materials/releases/(?<materials_release>[a-f0-9]{40}-[a-f0-9]{16})/(?<materials_asset>.+)$" {
-    default_type text/plain;
-    charset utf-8;
-    if (-f /srv/materials/.maintenance) {
-      add_header Cache-Control "no-store" always;
-      return 503 "资料库正在更新，请稍后重试。";
-    }
-    error_page 418 = @materials_missing;
-    if (!-f /srv/materials/releases/$materials_release/public/$materials_asset) { return 418; }
-    alias /srv/materials/releases/$materials_release/public/$materials_asset;
-    # No directory listing: the catalogue is the Library, not the file tree.
-    autoindex off;
-    # Materials only change when the sync replaces a whole file, and Cloudflare
-    # caches these extensions by default. A long TTL keeps the origin's narrow
-    # uplink out of the read path for repeat downloads.
-    add_header Cache-Control "public, max-age=86400, immutable" always;
-    # These are third-party documents: never sniff them, never let one render
-    # as markup in our origin, and always hand them over as a download.
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Content-Disposition "attachment" always;
-    add_header Content-Security-Policy "default-src 'none'; sandbox" always;
-  }
-
-  location @materials_missing {
-    internal;
-    types { }
-    default_type text/plain;
-    charset utf-8;
-    add_header Cache-Control "no-store" always;
-    return 404 "这份资料暂时无法下载，请返回资料库刷新后重试。";
-  }
-
-  # Mutable pointers and legacy unversioned paths are activation internals, not
-  # public URLs. The catalogue issues only release-prefixed storage keys.
+  # Material bytes have one public owner: the authenticated Library download
+  # endpoint, which issues an OSS redirect and records the download. The local
+  # release mount remains solely as an activation maintenance fence. It must
+  # never become a public fallback, including for legacy or release-prefixed URLs.
   location /materials/ {
     types { }
     default_type text/plain;
     charset utf-8;
     add_header Cache-Control "no-store" always;
-    return 404 "这个资料链接已失效，请返回资料库重新打开。";
+    add_header X-Content-Type-Options "nosniff" always;
+    return 404 "资料文件只通过资料库的 OSS 下载入口提供。";
   }
 
   # Keep the public Library catalogue on the same release boundary as its

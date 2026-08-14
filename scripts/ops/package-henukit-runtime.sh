@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Package the fixed-SHA runtime payload shared by GitHub Actions and the
-# controlled Linux/amd64 local builder. This script packages configuration and
-# operator code only; it never compiles application source.
+# controlled Linux/amd64 local builder. Application services remain images;
+# small host-side materials tools are compiled here, never on production.
 set -Eeuo pipefail
 
 program="package-henukit-runtime"
@@ -56,7 +56,7 @@ done
 install -d -m 0700 "$output_dir"
 output_dir="$(cd "$output_dir" && pwd -P)"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-command -v docker >/dev/null 2>&1 || die "docker compose is required"
+command -v docker >/dev/null 2>&1 || die "Docker is required"
 command -v node >/dev/null 2>&1 || die "node is required for production-boundary validation"
 
 archive="henukit-runtime-${release_sha}.tar.gz"
@@ -82,7 +82,11 @@ install -d \
   "$runtime/migrations/food" \
   "$runtime/migrations/library" \
   "$runtime/migrations/portal" \
-  "$runtime/release-gates"
+  "$runtime/release-gates" \
+  "$runtime/materials-runtime/bin" \
+  "$runtime/materials-runtime/libexec" \
+  "$runtime/materials-runtime/migrations/study" \
+  "$runtime/materials-runtime/systemd"
 
 docker compose \
   -f "$repo_root/docker-compose.henukit.yml" \
@@ -100,6 +104,61 @@ cp "$repo_root"/services/library/db/migrations/*.up.sql "$runtime/migrations/lib
 # Portal API keeps a MySQL variant beside PostgreSQL; production only runs the
 # PostgreSQL migration stream.
 cp "$repo_root"/services/portal-api/db/migrations/postgres/*.up.sql "$runtime/migrations/portal/"
+
+docker run --rm --platform linux/amd64 \
+  --user "$(id -u):$(id -g)" \
+  --env CGO_ENABLED=0 --env GOOS=linux --env GOARCH=amd64 \
+  --env GOCACHE=/tmp/go-cache --env GOMODCACHE=/tmp/go-mod \
+  --volume "$repo_root:/src:ro" \
+  --volume "$runtime/materials-runtime/bin:/out" \
+  --workdir /src \
+  golang:1.26.5-alpine \
+  sh -ceu '
+    cd /src/services/deploy-webhook
+    go build -trimpath -ldflags="-s -w" -o /out/henukit-deploy-webhook ./cmd/server
+    go build -trimpath -ldflags="-s -w" -o /out/materials-oss-canary ./cmd/materials-oss-canary
+    go build -trimpath -ldflags="-s -w" -o /out/materials-oss-release ./cmd/materials-oss-release
+    cd /src/services/library
+    go build -trimpath -ldflags="-s -w" -o /out/library-activate-public-release ./cmd/activate-public-release
+  '
+chmod 0555 "$runtime/materials-runtime/bin"/*
+
+for helper in \
+  henukit-materials-orchestrate \
+  henukit-materials-prepare \
+  henukit-materials-seal \
+  henukit-materials-activate \
+  henukit-materials-publish-oss \
+  henukit-materials-publish-release-oss; do
+  install -m 0555 "$repo_root/services/deploy-webhook/deploy/$helper" \
+    "$runtime/materials-runtime/libexec/$helper"
+done
+for helper in \
+  prepare-henukit-materials.mjs \
+  seal-henukit-materials.mjs \
+  activate-henukit-materials.mjs \
+  build-henukit-library-activation-bundle.mjs \
+  import-henukit-materials.mjs; do
+  install -m 0444 "$repo_root/scripts/ops/$helper" "$runtime/materials-runtime/libexec/$helper"
+done
+install -m 0555 "$repo_root/services/deploy-webhook/deploy/install-materials-runtime.sh" \
+  "$runtime/materials-runtime/install.sh"
+install -m 0444 "$repo_root"/services/deploy-webhook/deploy/systemd/henukit-materials-* \
+  "$runtime/materials-runtime/systemd/"
+install -m 0444 \
+  "$repo_root/services/library/db/legacy-study-migrations/000001_materials_oss_release.up.sql" \
+  "$runtime/materials-runtime/migrations/study/"
+(
+  cd "$runtime/materials-runtime"
+  while IFS= read -r -d '' path; do
+    sha256sum "$path"
+  done < <(
+    { find bin libexec migrations systemd -type f -printf '%p\0'; printf 'install.sh\0'; } |
+      LC_ALL=C sort -z
+  ) > SHA256SUMS
+  [[ -s SHA256SUMS ]] || die "materials runtime checksum manifest is empty"
+  chmod 0444 SHA256SUMS
+)
 
 for helper in \
   deploy-henukit-artifact.sh \

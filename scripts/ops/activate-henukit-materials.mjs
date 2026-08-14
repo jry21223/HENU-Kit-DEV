@@ -46,7 +46,6 @@ function parseOptions(argv) {
     ["--receipt-sha256", "receiptSha256"],
     ["--sealed-root", "sealedRoot"],
     ["--public-root", "publicRoot"],
-    ["--converter", "converter"],
     ["--importer", "importer"],
     ["--psql", "psql"],
     ["--legacy-inventory", "legacyInventory"],
@@ -56,7 +55,7 @@ function parseOptions(argv) {
     ["--bundle-builder", "bundleBuilder"],
     ["--library-activator", "libraryActivator"],
   ]);
-  if (argv.length !== names.size * 2) fail("expected exactly thirteen fixed activation options");
+  if (argv.length !== names.size * 2) fail("expected exactly twelve fixed activation options");
   const options = {};
   for (let index = 0; index < argv.length; index += 2) {
     const name = names.get(argv[index]);
@@ -74,7 +73,7 @@ function validateOptions(options) {
   options.pgService = process.env.PGSERVICE || "";
   if (!RELEASE_PATTERN.test(options.releaseID || "")) fail("release ID is invalid");
   if (!HASH_PATTERN.test(options.receiptSha256 || "")) fail("receipt SHA-256 is invalid");
-  for (const key of ["sealedRoot", "publicRoot", "converter", "importer", "psql", "legacyInventory", "ossAuditRoot", "activationStagingRoot", "bundleBuilder", "libraryActivator"]) {
+  for (const key of ["sealedRoot", "publicRoot", "importer", "psql", "legacyInventory", "ossAuditRoot", "activationStagingRoot", "bundleBuilder", "libraryActivator"]) {
     if (!isAbsolute(options[key] || "") || resolve(options[key]) === sep || options[key].includes("\0")) {
       fail(`${key} must be a non-root absolute path`);
     }
@@ -479,7 +478,7 @@ function main() {
   assertDirectory(options.publicRoot, "public root", options.activationOwner);
   assertDirectory(options.ossAuditRoot, "OSS audit root", options.activationOwner);
   assertDirectory(options.activationStagingRoot, "activation staging root", options.activationOwner);
-  for (const [path, label] of [[options.converter, "converter"], [options.importer, "importer"], [options.psql, "psql"], [options.bundleBuilder, "bundle builder"], [options.libraryActivator, "Library activator"]]) {
+  for (const [path, label] of [[options.importer, "importer"], [options.psql, "psql"], [options.bundleBuilder, "bundle builder"], [options.libraryActivator, "Library activator"]]) {
     const metadata = lstatSync(path);
     if (metadata.isSymbolicLink() || !metadata.isFile()) fail(`${label} must be a regular file`);
     if (metadata.uid !== options.activationOwner && metadata.uid !== 0) fail(`${label} has an unexpected owner`);
@@ -502,14 +501,13 @@ function main() {
     let installed = false;
     try {
       copyRelease(stage, sealed);
-      mkdirSync(join(stage, "slides"), { recursive: true, mode: 0o755 });
-      run(options.converter, ["--mirror", join(stage, "public"), "--out", join(stage, "slides"), "--manifest", join(stage, "manifest.json")]);
+      mkdirSync(join(stage, "slides"), { mode: 0o755 });
       normalizeReadOnlyTree(join(stage, "slides"), "derived slides");
       normalizeReadOnlyTree(join(stage, "public"), "installed public tree");
       const derivedInventory = canonicalJSON({
         version: 1,
         release_id: options.releaseID,
-        assets: collectDerivedAssets(join(stage, "slides"), options.activationOwner),
+        assets: [],
       });
       writeFileSync(join(stage, "derived-inventory.json"), derivedInventory, { mode: 0o400 });
       chmodSync(join(stage, "public"), 0o555);
@@ -593,7 +591,6 @@ function main() {
       const sql = run(process.execPath, [
         options.importer,
         "--manifest", join(finalRelease, "manifest.json"),
-        "--slides-dir", join(finalRelease, "slides"),
         "--release-id", options.releaseID,
         "--legacy-inventory", options.legacyInventory,
       ]);

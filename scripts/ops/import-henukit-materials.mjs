@@ -7,7 +7,7 @@
  * 管道给 psql:
  *
  *   node import-henukit-materials.mjs --manifest manifest.json \
- *     --slides-dir ./slides --release-id <approved-release-id> | \
+ *     --release-id <approved-release-id> | \
  *     PGSERVICEFILE=/etc/henukit-deploy/materials-postgresql.conf \
  *     PGSERVICE=henukit-materials psql -v ON_ERROR_STOP=1 -f -
  *
@@ -18,16 +18,15 @@
  *   - 标题去掉 "{科目}_{类型标记}_" 前缀和扩展名;
  *   - 描述优先取资产的 sourceNote,否则取科目的 note;
  *   - 同一 storage_key 的资产幂等 upsert(局部唯一索引,deleted_at IS NULL);
- *   - 幻灯片:课件PPT 资产若 --slides-dir 下有 <storage_key>.json,写入
- *     materials.slides(jsonb);
+ *   - 在线预览关闭:所有资料（包括课件PPT）的 materials.slides 写为 NULL;
  *   - 受审 legacy inventory 与不再出现在新 release 中的镜像资料置为 archived。
  *
  * 依赖仅 Node 内置模块;数据库写入由调用方负责(psql / 驱动脚本)。
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { join, basename, extname } from "node:path";
+import { readFileSync } from "node:fs";
+import { basename, extname } from "node:path";
 
 const DEFAULT_SCHOOL = "河南大学";
 const DEFAULT_COLLEGE = "软件学院";
@@ -61,7 +60,6 @@ const TITLE_MARKERS = [
 const args = process.argv.slice(2);
 const options = {
   manifest: process.env.HENUKIT_MATERIALS_MANIFEST || "",
-  slidesDir: "",
   releaseId: "",
   legacyInventory: "",
   school: DEFAULT_SCHOOL,
@@ -74,7 +72,6 @@ function usage() {
   console.error(`usage: import-henukit-materials.mjs --manifest <manifest.json> [options]
 
   --manifest PATH   HENU-Final-Review manifest.json (or HENUKIT_MATERIALS_MANIFEST)
-  --slides-dir DIR  幻灯片 JSON 目录(可选,课件PPT 资产按 <storage_key>.json 取)
   --release-id ID   已批准的不可变发布 ID（写入公开 storage_key 时必需）
   --legacy-inventory PATH  首切前审核的旧镜像 storage_key inventory
   --school NAME     规范学校名(默认: ${DEFAULT_SCHOOL})
@@ -92,14 +89,14 @@ for (let i = 0; i < args.length; i += 1) {
     usage();
     process.exit(0);
   }
-  if (arg === "--manifest" || arg === "--slides-dir" || arg === "--release-id" || arg === "--legacy-inventory" || arg === "--school" || arg === "--college" || arg === "--major" || arg === "--grade") {
+  if (arg === "--manifest" || arg === "--release-id" || arg === "--legacy-inventory" || arg === "--school" || arg === "--college" || arg === "--major" || arg === "--grade") {
     const value = args[i + 1];
     if (value === undefined) {
       console.error(`missing value for ${arg}`);
       usage();
       process.exit(2);
     }
-    const key = arg === "--slides-dir" ? "slidesDir" : arg === "--release-id" ? "releaseId" : arg === "--legacy-inventory" ? "legacyInventory" : arg.slice(2);
+    const key = arg === "--release-id" ? "releaseId" : arg === "--legacy-inventory" ? "legacyInventory" : arg.slice(2);
     options[key] = value;
     i += 1;
     continue;
@@ -181,28 +178,6 @@ function loadManifest(path) {
   return manifest;
 }
 
-function loadSlidesIndex(slidesDir) {
-  const index = new Map();
-  if (!slidesDir) return index;
-  const walk = (dir) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(path);
-      } else if (entry.name.endsWith(".json")) {
-        try {
-          // 文件名是 <storage_key>.json,内容键按 publicPath 命中。
-          const key = path.slice(slidesDir.length + 1, -5);
-          index.set(key, JSON.parse(readFileSync(path, "utf8")));
-        } catch {
-          // 单个幻灯片文件损坏不影响整体导入。
-        }
-      }
-    }
-  };
-  walk(slidesDir);
-  return index;
-}
 
 function appendReviewedSchemaPreflight(lines) {
   // This is deliberately outside BEGIN: a missing prerequisite must stop psql
@@ -234,7 +209,6 @@ function appendReviewedSchemaPreflight(lines) {
 
 function main() {
   const manifest = loadManifest(options.manifest);
-  const slidesIndex = loadSlidesIndex(options.slidesDir);
 
   const schoolSlug = slugOf(`school:${options.school}`);
   const collegeKey = `${schoolSlug}:${options.college}`;
@@ -270,7 +244,6 @@ function main() {
         duplicateSha.set(asset.sha256, [publicPath]);
       }
 
-      const slides = slidesIndex.get(publicPath);
       rows.push({
         subject: subject.name,
         courseDescription: subject.note || "",
@@ -283,7 +256,6 @@ function main() {
         fileName: basename(publicPath),
         fileSize: asset.bytes,
         sha256: asset.sha256,
-        slides: slides || null,
         reviewReason: asset.reviewStatus || "mirrored from HENU-Final-Review manifest",
       });
     }
@@ -321,9 +293,8 @@ function main() {
   lines.push("");
 
   for (const row of rows) {
-    const slidesSql = row.slides ? q(JSON.stringify(row.slides)) : "NULL";
     lines.push(
-      `INSERT INTO materials (id, course_id, title, type, description, storage_key, file_name, file_size, sha256, slides, access_level, status, reviewed_at, review_reason, created_at, updated_at) SELECT gen_random_uuid(), c.id, ${q(row.title)}, ${q(row.type)}, ${q(row.description)}, ${q(row.storageKey)}, ${q(row.fileName)}, ${row.fileSize}, ${q(row.sha256)}, ${slidesSql}::jsonb, 'free', 'published', now(), ${q(row.reviewReason)}, now(), now() FROM courses c WHERE c.name = ${q(row.subject)} AND c.deleted_at IS NULL ON CONFLICT (storage_key) WHERE deleted_at IS NULL DO UPDATE SET title = EXCLUDED.title, type = EXCLUDED.type, description = EXCLUDED.description, file_name = EXCLUDED.file_name, file_size = EXCLUDED.file_size, sha256 = EXCLUDED.sha256, slides = EXCLUDED.slides, access_level = EXCLUDED.access_level, status = EXCLUDED.status, updated_at = now();`,
+      `INSERT INTO materials (id, course_id, title, type, description, storage_key, file_name, file_size, sha256, slides, access_level, status, reviewed_at, review_reason, created_at, updated_at) SELECT gen_random_uuid(), c.id, ${q(row.title)}, ${q(row.type)}, ${q(row.description)}, ${q(row.storageKey)}, ${q(row.fileName)}, ${row.fileSize}, ${q(row.sha256)}, NULL::jsonb, 'free', 'published', now(), ${q(row.reviewReason)}, now(), now() FROM courses c WHERE c.name = ${q(row.subject)} AND c.deleted_at IS NULL ON CONFLICT (storage_key) WHERE deleted_at IS NULL DO UPDATE SET title = EXCLUDED.title, type = EXCLUDED.type, description = EXCLUDED.description, file_name = EXCLUDED.file_name, file_size = EXCLUDED.file_size, sha256 = EXCLUDED.sha256, slides = EXCLUDED.slides, access_level = EXCLUDED.access_level, status = EXCLUDED.status, updated_at = now();`,
     );
   }
   lines.push("");
@@ -357,7 +328,7 @@ function main() {
       total_assets: totalAssets,
       skipped_pending_review: skippedPending,
       imported: rows.length,
-      slides_converted: rows.filter((row) => row.slides).length,
+      online_preview: "disabled",
       duplicate_sha256: dupes.map(([sha, paths]) => ({ sha256: sha, paths })),
     }),
   );

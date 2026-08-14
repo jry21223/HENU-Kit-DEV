@@ -18,6 +18,10 @@ _Avoid_: storage_key 直链、当前路径、OSS 目录项
 Library 对一个 Active Public Material 成功校验后签发的精确版本、仅 GET、最长 60 秒的临时下载能力；它不是文件已下载完成的证明。
 _Avoid_: OSS 公共直链、永久下载地址、下载完成
 
+**Download-only Material**:
+活动资料只提供经 Library owner 验证并签发的 OSS 原文件下载；`slides` 派生数据为空且不存在在线预览能力。
+_Avoid_: Slides viewer、转换降级、本地 `/materials/` 下载
+
 **Download Start**:
 Library 已持久化一个成功签发 grant 的不可变业务事实；重复成功请求分别计数，失败请求不计数。
 _Avoid_: OSS 请求数、SLS 下载数、唯一下载人数
@@ -61,3 +65,5 @@ production download and rollback evidence.
 ADR-0029 makes the complete verified owner catalog and its unfiltered aggregate
 read atomic. Its activation command remains unwired to a public HTTP route;
 passing local tests is not production activation evidence.
+ADR-0031 keeps every activated material download-only: activation rejects any
+derived preview asset and imports `materials.slides` as `NULL`.

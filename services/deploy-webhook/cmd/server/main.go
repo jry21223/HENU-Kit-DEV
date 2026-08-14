@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -280,7 +281,13 @@ func loadSecret(path string) ([]byte, error) {
 		return nil, errors.New("webhook secret path must be a regular file")
 	}
 	if info.Mode().Perm()&0o077 != 0 {
-		return nil, errors.New("webhook secret file must not be readable or writable by group/other")
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		credentialDirectory := os.Getenv("CREDENTIALS_DIRECTORY")
+		if !ok ||
+			!isSafeSystemdCredential(path, credentialDirectory, info.Mode(), stat.Uid, stat.Gid) ||
+			!isSafeSystemdCredentialDirectory(credentialDirectory) {
+			return nil, errors.New("webhook secret file must not be readable or writable by group/other")
+		}
 	}
 	value, err := os.ReadFile(path)
 	if err != nil {
@@ -291,6 +298,39 @@ func loadSecret(path string) ([]byte, error) {
 		return nil, errors.New("webhook secret must contain at least 32 bytes")
 	}
 	return value, nil
+}
+
+func isSafeSystemdCredential(path, credentialDirectory string, mode os.FileMode, uid, gid uint32) bool {
+	const credentialsRoot = "/run/credentials"
+
+	if credentialDirectory == "" || !filepath.IsAbs(credentialDirectory) {
+		return false
+	}
+	cleanDirectory := filepath.Clean(credentialDirectory)
+	relativeDirectory, err := filepath.Rel(credentialsRoot, cleanDirectory)
+	if err != nil ||
+		relativeDirectory == "." ||
+		relativeDirectory == ".." ||
+		strings.HasPrefix(relativeDirectory, ".."+string(filepath.Separator)) ||
+		strings.ContainsRune(relativeDirectory, filepath.Separator) ||
+		!strings.HasSuffix(relativeDirectory, ".service") {
+		return false
+	}
+	if filepath.Clean(path) != filepath.Join(cleanDirectory, "webhook_secret") {
+		return false
+	}
+	return mode.IsRegular() && mode.Perm() == 0o440 &&
+		mode&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0 && uid == 0 && gid == 0
+}
+
+func isSafeSystemdCredentialDirectory(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm() != 0o550 {
+		return false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0 &&
+		stat.Uid == 0 && stat.Gid == 0
 }
 
 func requiredEnv(name string) (string, error) {

@@ -33,6 +33,8 @@ migration_arg="${3:-}"
 [[ -r "$env_file" ]] || die "environment file is not readable"
 [[ -r "$runtime_dir/RELEASE_SHA" ]] || die "runtime artifact has no RELEASE_SHA"
 [[ -r "$runtime_dir/docker-compose.henukit.release.yml" ]] || die "runtime artifact has no release Compose file"
+[[ -x "$runtime_dir/materials-runtime/install.sh" ]] ||
+  die "runtime artifact has no executable binary-only materials installer"
 
 release_sha="$(tr -d '[:space:]' < "$runtime_dir/RELEASE_SHA")"
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "RELEASE_SHA is not a full lowercase Git SHA"
@@ -118,6 +120,9 @@ apply_owner_migrations notice
 apply_owner_migrations food
 apply_owner_migrations library
 apply_owner_migrations portal
+
+echo "Installing signed binary-only materials runtime for $release_sha"
+"$runtime_dir/materials-runtime/install.sh" --release-sha "$release_sha"
 
 echo "Ensuring Account Portfolio database exists"
 ensure_account_portfolio_database
