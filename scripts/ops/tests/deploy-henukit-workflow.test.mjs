@@ -27,6 +27,8 @@ const runtimePackager = readFileSync(
 const imageInventory = fileURLToPath(
   new URL("../henukit-release-images.sh", import.meta.url),
 );
+const foodDeskURL =
+  "https://henu-campus-guide.cocoa-brush-7952.chatgpt.site/#food-submit";
 
 function releaseImageMatrix() {
   return JSON.parse(
@@ -111,9 +113,6 @@ test("Portal V2 cutover flags are enabled in production artifacts after HC-166",
 });
 
 test("production Portal artifacts enable the persisted Student Food Desk handoff", () => {
-  const foodDeskURL =
-    "https://henu-campus-guide.cocoa-brush-7952.chatgpt.site/#food-submit";
-
   assert.ok(
     portalDockerfile.includes(`ARG NEXT_PUBLIC_FOOD_DESK_URL=${foodDeskURL}`),
   );
@@ -162,6 +161,11 @@ test("development Compose forwards an explicit Portal V2 read build flag", () =>
   assert.equal(
     config.services.portal.build.args.NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS,
     "1",
+  );
+  assert.equal(
+    config.services.portal.build.args.NEXT_PUBLIC_FOOD_DESK_URL,
+    foodDeskURL,
+    "Compose must not treat the URL fragment as a comment",
   );
 });
 

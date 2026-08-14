@@ -29,6 +29,9 @@ test("the local builder is WSL-only and locks every artifact to the current clea
     "the exact clean source tree is rechecked before signing and publishing",
   );
   assert.match(source, /docker build[\s\S]*--platform linux\/amd64/);
+  assert.match(source, /done < <\("\$inventory" --field "\$name" build_args\)/);
+  assert.match(source, /build_args\+=\(--build-arg "\$argument"\)/);
+  assert.match(source, /docker build[\s\S]*"\$\{build_args\[@\]\}"/);
   assert.match(source, /Docker server must be linux\/amd64/);
   assert.match(source, /--output-dir must not be group- or world-writable/);
   assert.match(source, /--handoff-group <deployment-reader-group>/);
