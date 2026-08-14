@@ -71,12 +71,24 @@ type manifestSubject struct {
 }
 
 type manifestAsset struct {
-	Subject    string `json:"subject"`
-	Role       string `json:"role"`
-	Title      string `json:"title"`
-	PublicPath string `json:"publicPath"`
-	Bytes      int64  `json:"bytes"`
-	SHA256     string `json:"sha256"`
+	Subject     string `json:"subject"`
+	Role        string `json:"role"`
+	Title       string `json:"title"`
+	PublicPath  string `json:"publicPath"`
+	Bytes       int64  `json:"bytes"`
+	SHA256      string `json:"sha256"`
+	Attribution struct {
+		Authors    []string `json:"authors"`
+		Collectors []string `json:"collectors"`
+	} `json:"attribution"`
+	College              string `json:"college"`
+	ContainsPersonalInfo bool   `json:"containsPersonalInfo"`
+	LicenseStatus        string `json:"licenseStatus"`
+	ReviewStatus         string `json:"reviewStatus"`
+	SourceNote           string `json:"sourceNote"`
+	SourceType           string `json:"sourceType"`
+	Uncertainty          string `json:"uncertainty"`
+	Year                 string `json:"year"`
 }
 
 type sealedReceipt struct {
