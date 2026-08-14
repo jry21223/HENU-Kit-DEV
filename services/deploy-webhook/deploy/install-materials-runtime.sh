@@ -45,7 +45,7 @@ release_marker="$payload_dir/../RELEASE_SHA"
 [[ "$(tr -d '[:space:]' < "$release_marker")" == "$release_sha" ]] ||
   die "payload release SHA does not match --release-sha"
 
-for command in awk cp find grep install mktemp mv pg_dump pg_restore psql sha256sum sort stat systemctl; do
+for command in awk cp docker find grep install mktemp mv psql sha256sum sort stat systemctl; do
   command -v "$command" >/dev/null 2>&1 || die "missing required command: $command"
 done
 
@@ -160,6 +160,13 @@ backup_existing_target() {
 pg_service_file="/etc/henukit-deploy/materials-postgresql.conf"
 pg_service="henukit-materials"
 require_root_file "$pg_service_file" "materials PostgreSQL service file" "600"
+server_version_num="$(PGSERVICEFILE="$pg_service_file" psql -Atqc 'SHOW server_version_num' "service=$pg_service")"
+[[ "$server_version_num" =~ ^[0-9]+$ && "$server_version_num" -ge 100000 ]] ||
+  die "Study PostgreSQL server returned an unsupported version"
+server_major="$((server_version_num / 10000))"
+pg_client_image="postgres:${server_major}-alpine"
+docker image inspect "$pg_client_image" >/dev/null 2>&1 ||
+  die "matching PostgreSQL client image is unavailable: $pg_client_image"
 study_backup_dir="/opt/henukit-backups/materials-study"
 study_backup="$study_backup_dir/study-before-$release_sha.dump"
 study_checksum="$study_backup.sha256"
@@ -172,7 +179,11 @@ if [[ -e "$study_backup" || -e "$study_checksum" ]]; then
 else
   study_incoming="$(mktemp "$study_backup_dir/.materials-study-${release_sha}.XXXXXX")"
   incoming_paths+=("$study_incoming")
-  PGSERVICEFILE="$pg_service_file" pg_dump --format=custom --file="$study_incoming" "service=$pg_service"
+  docker run --rm --pull=never --network host \
+    --mount "type=bind,source=$pg_service_file,target=/run/henukit-materials-pgservice.conf,readonly" \
+    --env PGSERVICEFILE=/run/henukit-materials-pgservice.conf \
+    "$pg_client_image" \
+    pg_dump --format=custom "service=$pg_service" > "$study_incoming"
   [[ -s "$study_incoming" ]] || die "Study backup is empty"
   chmod 0600 "$study_incoming"
   mv -T "$study_incoming" "$study_backup"
@@ -182,7 +193,10 @@ else
   chmod 0600 "$checksum_incoming"
   mv -T "$checksum_incoming" "$study_checksum"
 fi
-pg_restore --list "$study_backup" >/dev/null || die "Study backup cannot be enumerated"
+docker run --rm --pull=never \
+  --mount "type=bind,source=$study_backup,target=/run/study-backup.dump,readonly" \
+  "$pg_client_image" \
+  pg_restore --list /run/study-backup.dump >/dev/null || die "Study backup cannot be enumerated"
 
 for migration in "$payload_dir"/migrations/study/*.up.sql; do
   [[ -f "$migration" && ! -L "$migration" ]] || die "Study migration set is missing or unsafe"
