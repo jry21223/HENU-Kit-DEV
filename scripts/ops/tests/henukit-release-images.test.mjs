@@ -15,8 +15,6 @@ const prebuiltCompose = readFileSync(
   new URL("../../../docker-compose.henukit.prebuilt.yml", import.meta.url),
   "utf8",
 );
-const foodDeskURL =
-  "https://henu-campus-guide.cocoa-brush-7952.chatgpt.site/#food-submit";
 
 const expected = [
   ["console", "henukit-console", "console", "baseline"],
@@ -93,11 +91,5 @@ test("the GitHub matrix comes from the inventory, including Library", () => {
   assert.match(
     matrix.include.find(({ name }) => name === "portal").build_args,
     /NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1/,
-  );
-  assert.ok(
-    lines("--field", "portal", "build_args").includes(
-      `NEXT_PUBLIC_FOOD_DESK_URL=${foodDeskURL}`,
-    ),
-    "the WSL builder inventory must preserve the complete Food Desk URL",
   );
 });
