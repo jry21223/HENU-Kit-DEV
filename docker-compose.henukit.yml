@@ -360,6 +360,7 @@ services:
         # This public Next.js value is baked into the Portal image. #166 must
         # rebuild the fixed-SHA Portal artifact when enabling the V2 read path.
         NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS: ${NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS:-0}
+        NEXT_PUBLIC_FOOD_DESK_URL: ${NEXT_PUBLIC_FOOD_DESK_URL:-https://henu-campus-guide.cocoa-brush-7952.chatgpt.site/#food-submit}
     environment:
       NODE_ENV: production
       PORT: 3001
