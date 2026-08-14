@@ -129,9 +129,10 @@ test("production Portal artifacts enable the persisted Student Food Desk handoff
     /NEXT_PUBLIC_FOOD_DESK_URL=https:\/\/henu-campus-guide\.cocoa-brush-7952\.chatgpt\.site\/#food-submit/,
   );
   const portal = releaseImageMatrix().include.find(({ name }) => name === "portal");
-  assert.match(
+  assert.doesNotMatch(
     portal.build_args,
-    /NEXT_PUBLIC_FOOD_DESK_URL=https:\/\/henu-campus-guide\.cocoa-brush-7952\.chatgpt\.site\/#food-submit/,
+    /NEXT_PUBLIC_FOOD_DESK_URL/,
+    "the Dockerfile default must not require a production trust-root inventory change",
   );
 });
 
