@@ -82,6 +82,26 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   ]) {
     assert.match(materialsChecksums, new RegExp(`^[0-9a-f]{64}  ${path.replaceAll(".", "\\.")}$`, "m"));
   }
+  const materialsInstaller = execFileSync(
+    "tar",
+    ["-xOzf", runtimeArchive, "./materials-runtime/install.sh"],
+    { encoding: "utf8" },
+  );
+  assert.match(
+    materialsInstaller,
+    /SHOW server_version_num/,
+    "Study backup must discover the PostgreSQL server major version",
+  );
+  assert.match(
+    materialsInstaller,
+    /postgres:\$\{server_major\}-alpine/,
+    "Study backup must select a matching PostgreSQL client image",
+  );
+  assert.doesNotMatch(
+    materialsInstaller,
+    /PGSERVICEFILE="\$pg_service_file" pg_dump/,
+    "Study backup must not use the potentially older host pg_dump",
+  );
   assert.equal(
     execFileSync("tar", ["-xOzf", runtimeArchive, "./RELEASE_SHA"], { encoding: "utf8" }).trim(),
     releaseSha,
