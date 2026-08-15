@@ -25,10 +25,10 @@ export default function SectionCareer() {
             ))}
           </ul>
           <MagneticButton href="/career" className="mt-8">
-            进入求职雷达
+            查看交互预览
           </MagneticButton>
           <p className="mt-5 font-mono text-[10px] tracking-[0.18em] text-ink/40">
-            UI PROTOTYPE · LIFETIME VIP BENEFIT
+            INTERACTION PREVIEW · LIFETIME VIP BENEFIT
           </p>
         </div>
 
