@@ -61,7 +61,7 @@ export default function CareerPrototypePage() {
             ← HENU KIT<span className="text-accent">®</span>
           </Link>
           <p className="font-mono text-[10px] tracking-[0.22em] text-ink/45">
-            05 / WORK RADAR / UI PROTOTYPE
+            05 / WORK RADAR / INTERACTION PREVIEW
           </p>
         </div>
       </header>
@@ -87,7 +87,7 @@ export default function CareerPrototypePage() {
               上传简历，让求职雷达替你扫描大厂招聘官网。
             </p>
             <p className="max-w-sm text-sm leading-6 text-ink/60">
-              当前 PR 只演示网页视觉与异步任务状态。真实会员鉴权、GetWork 与邮件发送后续接入。
+              当前为交互预览。正式上线后，扫描将连接真实岗位数据、会员权限与完成邮件提醒。
             </p>
           </div>
         </div>
@@ -104,15 +104,15 @@ export default function CareerPrototypePage() {
 
         <aside className="flex flex-col border border-ink bg-paper p-5 md:p-6">
           <p className="font-mono text-[10px] tracking-[0.22em] text-ink/45">MISSION CONTROL</p>
-          <h2 className="mt-3 font-display text-3xl font-bold">开始一次岗位扫描</h2>
+          <h2 className="mt-3 font-display text-3xl font-bold">体验一次岗位扫描</h2>
           <p className="mt-3 text-sm leading-6 text-ink/60">
-            正式版点击后会立即创建后台任务。你可以离开页面，完成后再回来查看，同时收到邮件提醒。
+            正式上线后，点击扫描会立即创建后台任务。你可以离开页面，任务完成后再回来查看，并收到邮件提醒。
           </p>
 
           <dl className="mt-8 space-y-3 border-y border-ink py-5 font-mono text-[10px] tracking-[0.12em]">
             <div className="flex justify-between gap-4"><dt className="text-ink/40">TARGET</dt><dd>AI / 后端 / 全栈</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-ink/40">LOCATION</dt><dd>北京 / 上海 / 杭州</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-ink/40">MEMBERSHIP</dt><dd>LIFETIME VIP</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-ink/40">ACCESS</dt><dd>LIFETIME VIP</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-ink/40">MAIL</dt><dd>ON COMPLETE</dd></div>
           </dl>
 
@@ -132,7 +132,7 @@ export default function CareerPrototypePage() {
                 {status === "queued" ? "QUEUED" : "SCANNING"}
               </p>
               <p className="mt-2 text-sm leading-6 text-ink/65">
-                雷达正在扫描。真实版本不要求你停留在页面，任务会在后台继续运行。
+                雷达正在扫描。正式上线后，你不需要停留在页面，任务会在后台继续运行。
               </p>
             </div>
           ) : null}
@@ -148,7 +148,7 @@ export default function CareerPrototypePage() {
                 onClick={reset}
                 className="mt-3 inline-flex min-h-11 w-full items-center justify-center border border-ink px-4 font-mono text-xs tracking-[0.16em] transition-colors hover:bg-ink hover:text-paper"
               >
-                RESET DEMO
+                再次体验
               </button>
             </div>
           ) : null}
@@ -158,7 +158,7 @@ export default function CareerPrototypePage() {
             onClick={() => setStatus("failed")}
             className="mt-auto pt-8 text-left font-mono text-[9px] tracking-[0.16em] text-ink/35 transition-colors hover:text-accent"
           >
-            PREVIEW FAULT STATE
+            查看扫描异常状态
           </button>
         </aside>
       </section>
@@ -168,10 +168,10 @@ export default function CareerPrototypePage() {
           <div className="border-t border-ink pt-8">
             <div className="flex items-end justify-between gap-6">
               <div>
-                <p className="font-mono text-[10px] tracking-[0.22em] text-ink/45">DEMO RESULTS</p>
+                <p className="font-mono text-[10px] tracking-[0.22em] text-ink/45">EXAMPLE RESULTS</p>
                 <h2 className="mt-2 font-display text-4xl font-bold">高匹配岗位</h2>
               </div>
-              <p className="font-mono text-[10px] tracking-[0.16em] text-ink/40">STATIC PROTOTYPE DATA</p>
+              <p className="font-mono text-[10px] tracking-[0.16em] text-ink/40">示例岗位 · 非实时数据</p>
             </div>
 
             <div className="mt-6 border-t border-ink">
@@ -183,7 +183,7 @@ export default function CareerPrototypePage() {
                     <strong className="block font-display text-xl">{job.company} · {job.title}</strong>
                     <span className="mt-1 block text-sm text-ink/55">{job.meta}</span>
                   </span>
-                  <span className="font-mono text-xs tracking-[0.14em] text-ink/45">VIEW →</span>
+                  <span className="font-mono text-xs tracking-[0.14em] text-ink/45">EXAMPLE</span>
                 </article>
               ))}
             </div>
@@ -193,7 +193,7 @@ export default function CareerPrototypePage() {
 
       <footer className="border-t border-ink bg-ink px-5 py-5 text-paper md:px-8">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-2 font-mono text-[10px] tracking-[0.2em] sm:flex-row sm:items-center sm:justify-between">
-          <span>UI PROTOTYPE · ISSUE #395</span>
+          <span>INTERACTION PREVIEW</span>
           <span className="text-accent">LIFETIME VIP · WORK RADAR</span>
         </div>
       </footer>
