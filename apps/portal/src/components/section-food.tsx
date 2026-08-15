@@ -165,7 +165,7 @@ export default function SectionFood() {
           )}
           {loadState === "ready" && rows.length === 0 && (
             <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/45">
-              还没有已审核的榜单条目。
+              还没有上榜条目。
             </li>
           )}
           {loadState === "ready" &&

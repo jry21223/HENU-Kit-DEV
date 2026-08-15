@@ -173,13 +173,13 @@ export default function PostDetail({ id }: { id: string }) {
               {
                 index: "02",
                 label: "价格参考",
-                value: detail.priceReference ?? "待核验",
+                value: detail.priceReference ?? "未填写",
               },
               {
                 index: "03",
                 label: "营业参考",
                 value:
-                  detail.hoursReference ?? "待核验 · 出发前请查地图",
+                  detail.hoursReference ?? "未填写 · 出发前请查地图",
               },
             ].map((item) => (
               <div
@@ -227,7 +227,7 @@ export default function PostDetail({ id }: { id: string }) {
                 ))}
               </ol>
             ) : (
-              <EmptyBlock label="推荐理由待核验" />
+              <EmptyBlock label="投稿未附推荐理由" />
             )}
           </section>
 
@@ -354,7 +354,7 @@ export default function PostDetail({ id }: { id: string }) {
                     资料状态
                   </dt>
                   <dd className="mt-1 text-sm leading-6">
-                    社区稿件 · 公开来源待核验
+                    社区稿件 · 投稿人提供
                   </dd>
                 </div>
                 <div>
@@ -389,7 +389,7 @@ export default function PostDetail({ id }: { id: string }) {
               你也有一家想抬上榜？
             </h2>
             <p className="mt-3 text-sm leading-6 text-ink/65">
-              推荐会进入待审核队列，核验地址、图片和信息后再决定是否上榜。
+              提交后立即公开到五档榜，同校区同学马上能看到。
             </p>
             <Link
               href="/food/publish"

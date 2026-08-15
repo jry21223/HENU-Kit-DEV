@@ -8,14 +8,17 @@ import (
 	"henukit.dev/portal-gateway/internal/config"
 )
 
-// Food photos are served as image bytes by the Portal API. The proxy used to
-// stamp application/json on every response it forwarded, which left a browser
-// unable to render them.
-func TestProxyForwardsFoodImageContentTypeAndCacheHeaders(t *testing.T) {
+// The exact food photo paths moved to the Food Post boundary (#386): they are
+// forwarded to the Food service and never reach this proxy. The remaining
+// legacy food wildcard paths (for example a post's comments) still exercise
+// the generic portal-api proxy, which must keep forwarding upstream bytes,
+// content types, and cache headers instead of assuming a single JSON shape.
+
+func TestProxyForwardsUpstreamContentTypeAndCacheHeaders(t *testing.T) {
 	const body = "\x89PNG\r\n\x1a\nfake-bytes"
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/food/posts/survey-01/images/0" {
+		if r.URL.Path != "/api/v1/food/posts/survey-01/comments" {
 			t.Errorf("upstream path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "image/png")
@@ -33,7 +36,7 @@ func TestProxyForwardsFoodImageContentTypeAndCacheHeaders(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(
 		recorder,
-		httptest.NewRequest(http.MethodGet, "/api/v1/food/posts/survey-01/images/0", nil),
+		httptest.NewRequest(http.MethodGet, "/api/v1/food/posts/survey-01/comments", nil),
 	)
 
 	if recorder.Code != http.StatusOK {
@@ -57,8 +60,8 @@ func TestProxyForwardsFoodImageContentTypeAndCacheHeaders(t *testing.T) {
 }
 
 // Without the conditional request reaching the owner, every viewport would
-// refetch the full photo instead of revalidating it.
-func TestProxyForwardsConditionalRequestForFoodImage(t *testing.T) {
+// refetch the full response instead of revalidating it.
+func TestProxyForwardsConditionalRequest(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("If-None-Match") != `"abc123"` {
 			t.Errorf("upstream If-None-Match = %q", r.Header.Get("If-None-Match"))
@@ -70,7 +73,7 @@ func TestProxyForwardsConditionalRequestForFoodImage(t *testing.T) {
 
 	handler := newFoodImageHandler(t, upstream.URL)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/food/posts/survey-01/images/0", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/food/posts/survey-01/comments", nil)
 	request.Header.Set("If-None-Match", `"abc123"`)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -94,7 +97,7 @@ func TestProxyDefaultsToJSONWhenUpstreamOmitsContentType(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(
 		recorder,
-		httptest.NewRequest(http.MethodGet, "/api/v1/food/posts", nil),
+		httptest.NewRequest(http.MethodGet, "/api/v1/food/posts/survey-01/comments", nil),
 	)
 
 	if got := recorder.Header().Get("Content-Type"); got != "application/json" {

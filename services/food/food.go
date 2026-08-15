@@ -23,6 +23,16 @@ type Config struct {
 	Redis    redis.UniversalClient
 	ClientID string
 	Keys     map[string]string
+
+	// PostCreate/PostRead are the dedicated Food Post credential pairs
+	// (see tmp/food-post-seam.md §1). Each pair must be fully configured
+	// (non-empty client ID plus a 1-2 key ring with secrets ≥32 bytes) or
+	// left entirely empty; an empty pair leaves the new routes answering
+	// 401 to every caller while the service still starts.
+	PostCreateClientID string
+	PostCreateKeys     map[string]string
+	PostReadClientID   string
+	PostReadKeys       map[string]string
 }
 
 type service struct {
@@ -30,7 +40,12 @@ type service struct {
 	redis    redis.UniversalClient
 	clientID string
 	keys     map[string]string
-	now      func() time.Time
+
+	postCreateClientID string
+	postCreateKeys     map[string]string
+	postReadClientID   string
+	postReadKeys       map[string]string
+	now                func() time.Time
 }
 
 type actor struct{ userID, permission string }
@@ -50,7 +65,13 @@ func New(config Config) (http.Handler, error) {
 			return nil, errors.New("food service key ring is invalid")
 		}
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, now: time.Now}
+	if err := validatePostCredentialPair("post create", config.PostCreateClientID, config.PostCreateKeys); err != nil {
+		return nil, err
+	}
+	if err := validatePostCredentialPair("post read", config.PostReadClientID, config.PostReadKeys); err != nil {
+		return nil, err
+	}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, postCreateClientID: config.PostCreateClientID, postCreateKeys: config.PostCreateKeys, postReadClientID: config.PostReadClientID, postReadKeys: config.PostReadKeys, now: time.Now}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +84,38 @@ func New(config Config) (http.Handler, error) {
 		protected.Post(contract.CommandRoute, h.command)
 		protected.Get(contract.OperationRoute, h.operationStatus)
 	})
+	router.Group(func(posts chi.Router) {
+		posts.Use(h.postAuthenticate(postRoleCreate))
+		posts.Post(contract.CreatePostRoute, h.createPost)
+	})
+	router.Group(func(posts chi.Router) {
+		posts.Use(h.postAuthenticate(postRoleRead))
+		posts.Get(contract.ListPostsRoute, h.listPosts)
+		posts.Get(contract.PostRoute, h.getPost)
+		posts.Get(contract.PostImageRoute, h.getPostImage)
+		posts.Get(contract.VenuesRoute, h.listVenues)
+	})
+	router.Group(func(posts chi.Router) {
+		posts.Use(h.postAuthenticate(postRoleRead))
+		posts.Use(h.postActorRequired)
+		posts.Get(contract.MyPostsRoute, h.myPosts)
+	})
 	return router, nil
+}
+
+func validatePostCredentialPair(label, clientID string, keys map[string]string) error {
+	if clientID == "" && len(keys) == 0 {
+		return nil
+	}
+	if clientID == "" || len(keys) == 0 || len(keys) > 2 {
+		return errors.New("food " + label + " credentials are incomplete")
+	}
+	for keyID, secret := range keys {
+		if keyID == "" || len(secret) < 32 {
+			return errors.New("food " + label + " key ring is invalid")
+		}
+	}
+	return nil
 }
 
 func (h *service) require(w http.ResponseWriter, r *http.Request, permission string) (actor, bool) {

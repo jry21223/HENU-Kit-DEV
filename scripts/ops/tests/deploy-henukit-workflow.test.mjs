@@ -27,8 +27,6 @@ const runtimePackager = readFileSync(
 const imageInventory = fileURLToPath(
   new URL("../henukit-release-images.sh", import.meta.url),
 );
-const foodDeskURL =
-  "https://henu-campus-guide.cocoa-brush-7952.chatgpt.site/#food-submit";
 
 function releaseImageMatrix() {
   return JSON.parse(
@@ -112,30 +110,6 @@ test("Portal V2 cutover flags are enabled in production artifacts after HC-166",
   assert.match(portal.build_args, /NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=1/);
 });
 
-test("production Portal artifacts enable the persisted Student Food Desk handoff", () => {
-  assert.ok(
-    portalDockerfile.includes(`ARG NEXT_PUBLIC_FOOD_DESK_URL=${foodDeskURL}`),
-  );
-  assert.match(
-    portalDockerfile,
-    /ENV NEXT_PUBLIC_FOOD_DESK_URL=\$NEXT_PUBLIC_FOOD_DESK_URL/,
-  );
-  assert.match(
-    developmentCompose,
-    /NEXT_PUBLIC_FOOD_DESK_URL:\s+\$\{NEXT_PUBLIC_FOOD_DESK_URL:-https:\/\/henu-campus-guide\.cocoa-brush-7952\.chatgpt\.site\/#food-submit\}/,
-  );
-  assert.match(
-    exampleEnvironment,
-    /NEXT_PUBLIC_FOOD_DESK_URL=https:\/\/henu-campus-guide\.cocoa-brush-7952\.chatgpt\.site\/#food-submit/,
-  );
-  const portal = releaseImageMatrix().include.find(({ name }) => name === "portal");
-  assert.doesNotMatch(
-    portal.build_args,
-    /NEXT_PUBLIC_FOOD_DESK_URL/,
-    "the Dockerfile default must not require a production trust-root inventory change",
-  );
-});
-
 test("development Compose forwards an explicit Portal V2 read build flag", () => {
   const config = JSON.parse(
     execFileSync(
@@ -162,11 +136,6 @@ test("development Compose forwards an explicit Portal V2 read build flag", () =>
   assert.equal(
     config.services.portal.build.args.NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS,
     "1",
-  );
-  assert.equal(
-    config.services.portal.build.args.NEXT_PUBLIC_FOOD_DESK_URL,
-    foodDeskURL,
-    "Compose must not treat the URL fragment as a comment",
   );
 });
 

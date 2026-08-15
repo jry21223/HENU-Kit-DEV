@@ -31,6 +31,12 @@ routes for the active OSS catalog. Portal API's legacy mock/Study projections
 are not a fallback catalog and their historical `downloads` fields are not a
 source for homepage totals.
 
+The Food Post boundary (#385/#386) also shadows the Portal API food read
+routes: Portal Gateway forwards `/api/v1/food/posts*` and `/api/v1/food/venues`
+to the Food service. `portal_food_posts` and the legacy food projections are
+frozen legacy data — this feature does not read, merge, or migrate them, and
+Portal API must not serve them as a fallback for the Food Post routes.
+
 ## Key terms
 
 - **Material**: A library resource (note, exam, mock paper, learning path, lab report) with full content pages.

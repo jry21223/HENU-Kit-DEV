@@ -26,6 +26,7 @@ import (
 	"henukit.dev/portal-gateway/internal/accountportfolio"
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
+	"henukit.dev/portal-gateway/internal/foodposts"
 	"henukit.dev/portal-gateway/internal/librarydownload"
 	"henukit.dev/portal-gateway/internal/platformcore"
 	"henukit.dev/portal-gateway/internal/practice"
@@ -41,6 +42,7 @@ type Handler struct {
 	portalAPIURL       string
 	libraryDownloads   *librarydownload.Client
 	accountPortfolio   *accountportfolio.Client
+	foodPosts          *foodposts.Client
 	practiceCommands   *practice.CommandClient
 	quizCraftCatalog   *practice.Client
 	redis              *redis.Client
@@ -99,6 +101,17 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			return nil, fmt.Errorf("librarydownload.NewClient: %w", err)
 		}
 	}
+	var foodPosts *foodposts.Client
+	if strings.TrimSpace(cfg.FoodPostsURL) != "" {
+		foodPosts, err = foodposts.NewClient(
+			cfg.FoodPostsURL,
+			cfg.FoodPostCreateAuth.ClientID, cfg.FoodPostCreateAuth.ClientSecret, cfg.FoodPostCreateAuth.KeyID,
+			cfg.FoodPostReadAuth.ClientID, cfg.FoodPostReadAuth.ClientSecret, cfg.FoodPostReadAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("foodposts.NewClient: %w", err)
+		}
+	}
 	var practiceCommands *practice.CommandClient
 	if cfg.PracticeCommandsEnabled {
 		practiceCommands, err = practice.NewCommandClient(
@@ -143,6 +156,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		portalAPIURL:       cfg.PortalAPIURL,
 		libraryDownloads:   libraryDownloads,
 		accountPortfolio:   portfolio,
+		foodPosts:          foodPosts,
 		practiceCommands:   practiceCommands,
 		quizCraftCatalog:   quizCraftCatalog,
 		redis:              rdb,
@@ -220,6 +234,16 @@ func (h *Handler) Router() chi.Router {
 
 	// Product data — proxy to portal-api (public, no auth required)
 	r.Get("/api/v1/library/*", h.proxyToPortalAPI)
+	// The Food Post boundary shadows the legacy food wildcard: public reads and
+	// the signed-in create command go to the Food service with independent
+	// credentials and never fall back to the Portal API proxy. The exact routes
+	// are registered before the wildcard, and /posts/mine before /posts/{post_id}.
+	r.Post("/api/v1/food/posts", h.createFoodPost)
+	r.Get("/api/v1/food/posts", h.listFoodPosts)
+	r.Get("/api/v1/food/posts/mine", h.myFoodPosts)
+	r.Get("/api/v1/food/posts/{post_id}", h.foodPostDetail)
+	r.Get("/api/v1/food/posts/{post_id}/images/{position}", h.foodPostImage)
+	r.Get("/api/v1/food/venues", h.foodVenues)
 	r.Get("/api/v1/food/*", h.proxyToPortalAPI)
 	// This private V2 route is never proxied to legacy Portal API data. Before
 	// #166 enables the V2 client it returns an honest unavailable response.
@@ -1046,6 +1070,160 @@ func (h *Handler) writePracticeReadPermissionError(w http.ResponseWriter, r *htt
 	default:
 		writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
 	}
+}
+
+// --- Food Posts ---
+
+// createFoodPost forwards a signed-in actor's create command. The actor and
+// display-name snapshot come exclusively from the verified Portal Session; a
+// missing session is a 401, never an anonymous downgrade. The browser body is
+// re-signed byte-for-byte with the independent create credential.
+func (h *Handler) createFoodPost(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	if h.foodPosts == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "投稿服务暂时不可用，请稍后再试")
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if !foodposts.ValidIdempotencyKey(idempotencyKey) {
+		writeError(w, r, http.StatusBadRequest, "food_post_idempotency_key_invalid", "请求内容不完整，请检查后重试")
+		return
+	}
+	raw, err := readFoodPostBody(r)
+	if err != nil {
+		if errors.Is(err, errFoodPostBodyTooLarge) {
+			writeError(w, r, http.StatusRequestEntityTooLarge, "food_post_body_too_large", "投稿内容过大，请减少或压缩图片后重试")
+			return
+		}
+		writeError(w, r, http.StatusBadRequest, "food_post_invalid", "请求内容不完整，请检查后重试")
+		return
+	}
+	data, err := h.foodPosts.CreatePost(r.Context(), value.UserID, value.DisplayName, requestIDOf(w, r), idempotencyKey, raw)
+	if err != nil {
+		h.writeFoodPostsFailure(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func (h *Handler) listFoodPosts(w http.ResponseWriter, r *http.Request) {
+	h.foodPostsRead(w, r, func(ctx context.Context, requestID string) (json.RawMessage, error) {
+		return h.foodPosts.ListPosts(ctx, requestID, r.URL.RawQuery)
+	})
+}
+
+func (h *Handler) myFoodPosts(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	h.foodPostsRead(w, r, func(ctx context.Context, requestID string) (json.RawMessage, error) {
+		return h.foodPosts.MyPosts(ctx, value.UserID, requestID)
+	})
+}
+
+func (h *Handler) foodPostDetail(w http.ResponseWriter, r *http.Request) {
+	h.foodPostsRead(w, r, func(ctx context.Context, requestID string) (json.RawMessage, error) {
+		return h.foodPosts.Post(ctx, requestID, chi.URLParam(r, "post_id"))
+	})
+}
+
+// foodPostImage relays one stored photo's bytes and cache headers. Food's 404
+// and error body pass through unchanged, like every other Food Post read.
+func (h *Handler) foodPostImage(w http.ResponseWriter, r *http.Request) {
+	if h.foodPosts == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "投稿服务暂时不可用，请稍后再试")
+		return
+	}
+	image, err := h.foodPosts.PostImage(r.Context(), requestIDOf(w, r), chi.URLParam(r, "post_id"), chi.URLParam(r, "position"))
+	if err != nil {
+		h.writeFoodPostsFailure(w, r, err)
+		return
+	}
+	if image.ContentType != "" {
+		w.Header().Set("Content-Type", image.ContentType)
+	}
+	if image.ETag != "" {
+		w.Header().Set("ETag", image.ETag)
+	}
+	if image.CacheControl != "" {
+		w.Header().Set("Cache-Control", image.CacheControl)
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(image.Bytes)
+}
+
+func (h *Handler) foodVenues(w http.ResponseWriter, r *http.Request) {
+	h.foodPostsRead(w, r, func(ctx context.Context, requestID string) (json.RawMessage, error) {
+		return h.foodPosts.Venues(ctx, requestID, r.URL.RawQuery)
+	})
+}
+
+// foodPostsRead is the shared public-read skeleton: an unconfigured client is
+// an honest 503 and a Food failure is never replaced by the legacy wildcard.
+func (h *Handler) foodPostsRead(w http.ResponseWriter, r *http.Request, read func(ctx context.Context, requestID string) (json.RawMessage, error)) {
+	if h.foodPosts == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "投稿服务暂时不可用，请稍后再试")
+		return
+	}
+	data, err := read(r.Context(), requestIDOf(w, r))
+	if err != nil {
+		h.writeFoodPostsFailure(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+// writeFoodPostsFailure forwards a Food non-2xx verbatim and otherwise writes
+// an honest Gateway error. It never falls back to the Portal API proxy.
+func (h *Handler) writeFoodPostsFailure(w http.ResponseWriter, r *http.Request, err error) {
+	var upstream *foodposts.UpstreamError
+	switch {
+	case errors.As(err, &upstream):
+		contentType := upstream.ContentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(upstream.StatusCode)
+		_, _ = w.Write(upstream.Body)
+	case errors.Is(err, foodposts.ErrUnconfigured):
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "投稿服务暂时不可用，请稍后再试")
+	case errors.Is(err, foodposts.ErrBadRequest):
+		writeError(w, r, http.StatusBadRequest, "food_post_invalid", "请求内容不完整，请检查后重试")
+	default:
+		writeError(w, r, http.StatusBadGateway, "food_service_unavailable", "服务暂时不可用，请稍后再来")
+	}
+}
+
+var errFoodPostBodyTooLarge = errors.New("food post body exceeds the gateway cap")
+
+// readFoodPostBody reads the raw create body byte-for-byte, capping it at
+// 20MiB (six 2MiB photos plus base64 overhead). It deliberately does not
+// parse the JSON: Food owns the shape validation.
+func readFoodPostBody(r *http.Request) ([]byte, error) {
+	if r.Body == nil {
+		return nil, errors.New("food post body is required")
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 20<<20+1))
+	if err != nil || len(raw) == 0 {
+		return nil, errors.New("food post body is invalid")
+	}
+	if len(raw) > 20<<20 {
+		return nil, errFoodPostBodyTooLarge
+	}
+	return raw, nil
 }
 
 // --- Proxy to portal-api ---

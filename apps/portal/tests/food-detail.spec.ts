@@ -61,7 +61,7 @@ for (const viewport of [
     await expect(page.getByText("34.7972, 114.3073")).toBeVisible();
     await expect(page.getByText("人均 ¥25–50", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("待核验 · 出发前请查地图")
+      page.getByText("未填写 · 出发前请查地图")
     ).toBeVisible();
     await expect(
       page.getByText("学生编辑部 · 社区稿件")

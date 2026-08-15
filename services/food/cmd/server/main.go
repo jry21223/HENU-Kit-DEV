@@ -32,7 +32,13 @@ func main() {
 	}
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
-	handler, err := food.New(food.Config{Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret}})
+	handler, err := food.New(food.Config{
+		Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret},
+		PostCreateClientID: os.Getenv("FOOD_POST_CREATE_CLIENT_ID"),
+		PostCreateKeys:     optionalKeyRing("FOOD_POST_CREATE_KEY_ID", "FOOD_POST_CREATE_SECRET"),
+		PostReadClientID:   os.Getenv("FOOD_POST_READ_CLIENT_ID"),
+		PostReadKeys:       optionalKeyRing("FOOD_POST_READ_KEY_ID", "FOOD_POST_READ_SECRET"),
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,4 +59,16 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// optionalKeyRing builds an all-or-nothing Food Post key ring from a key id
+// and secret environment variable pair. A fully absent pair yields nil, which
+// leaves the corresponding routes answering 401 while the service still
+// starts (fail closed without a hard crash).
+func optionalKeyRing(keyIDEnv, secretEnv string) map[string]string {
+	keyID, secret := os.Getenv(keyIDEnv), os.Getenv(secretEnv)
+	if keyID == "" && secret == "" {
+		return nil
+	}
+	return map[string]string{keyID: secret}
 }

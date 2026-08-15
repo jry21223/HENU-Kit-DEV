@@ -226,7 +226,7 @@ async function apiFetch<T>(
 }
 
 /** Strict fetch — always throws when data cannot be loaded (no null success). */
-async function apiFetchRequired<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetchRequired<T>(path: string, init?: RequestInit): Promise<T> {
   // Ensure config assert runs even if URL empty under require mode
   if (requireGateway()) resolveBaseUrl();
   const data = await apiFetch<T>(path, init);

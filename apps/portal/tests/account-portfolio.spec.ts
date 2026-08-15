@@ -354,16 +354,14 @@ test("account owner failures remain recoverable with 44px controls at 360px", as
   await expect(page.getByRole("link", { name: "小河同学的账户概览" })).toHaveCSS("min-height", "44px");
 });
 
-test("unshipped posts and deals have no account-console entry or placeholder page", async ({ page }) => {
+test("unshipped deals have no account-console entry or placeholder page", async ({ page }) => {
   await mockSession(page);
   await page.goto("/account", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("link", { name: /我的文章|我的交易/ })).toHaveCount(0);
 
-  for (const path of ["/account/posts", "/account/deals"]) {
-    const response = await page.goto(path, { waitUntil: "domcontentloaded" });
-    expect(response?.status()).toBe(404);
-    await expect(page.locator('[data-account-capability-state="unavailable"]')).toHaveCount(0);
-  }
+  const response = await page.goto("/account/deals", { waitUntil: "domcontentloaded" });
+  expect(response?.status()).toBe(404);
+  await expect(page.locator('[data-account-capability-state="unavailable"]')).toHaveCount(0);
 });
 
 test("ticket state survives refresh and a fresh browser context through the Gateway", async ({ browser }) => {

@@ -28,8 +28,6 @@ export default defineConfig({
         NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY: "1",
         NEXT_PUBLIC_PORTAL_ALLOW_MOCK: "0",
         NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS: quizCraftV2Reads,
-        NEXT_PUBLIC_FOOD_DESK_URL:
-          "https://henu-campus-guide.cocoa-brush-7952.chatgpt.site/#food-submit",
       },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

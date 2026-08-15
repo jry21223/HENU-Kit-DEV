@@ -28,6 +28,13 @@ import (
 
 const serviceSecret = "food-gateway-secret-at-least-32-bytes"
 
+const (
+	postCreateClientID = "portal-gateway-create"
+	postCreateSecret   = "food-post-create-secret-at-least-32-bytes"
+	postReadClientID   = "portal-gateway-read"
+	postReadSecret     = "food-post-read-secret-at-least-32-bytes"
+)
+
 var (
 	submissionID = "11111111-1111-4111-8111-111111111111"
 	anomalyID    = "22222222-2222-4222-8222-222222222222"
@@ -187,7 +194,11 @@ func newFoodServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	handler, err := food.New(food.Config{Database: pool, Redis: redisClient, ClientID: "console-gateway", Keys: map[string]string{"active": serviceSecret}})
+	handler, err := food.New(food.Config{
+		Database: pool, Redis: redisClient, ClientID: "console-gateway", Keys: map[string]string{"active": serviceSecret},
+		PostCreateClientID: postCreateClientID, PostCreateKeys: map[string]string{"active": postCreateSecret},
+		PostReadClientID: postReadClientID, PostReadKeys: map[string]string{"active": postReadSecret},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

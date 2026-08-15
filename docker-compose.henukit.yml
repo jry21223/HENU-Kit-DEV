@@ -236,6 +236,14 @@ services:
       FOOD_SERVICE_CLIENT_ID: ${FOOD_SUMMARY_CLIENT_ID:-console-gateway-food}
       FOOD_SERVICE_KEY_ID: ${FOOD_SUMMARY_KEY_ID:-food-summary-key}
       FOOD_SERVICE_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:-replace-food-summary-client-secret-32bytes-min!!}
+      # Food Post rings (ADR-0032): create/read are independent of each other
+      # and of the Console FOOD_SUMMARY_* credential above.
+      FOOD_POST_CREATE_CLIENT_ID: ${FOOD_POST_CREATE_CLIENT_ID:-portal-gateway-food-post-create}
+      FOOD_POST_CREATE_KEY_ID: ${FOOD_POST_CREATE_KEY_ID:-food-post-create-key}
+      FOOD_POST_CREATE_SECRET: ${FOOD_POST_CREATE_SECRET:-replace-food-post-create-secret-32bytes!!}
+      FOOD_POST_READ_CLIENT_ID: ${FOOD_POST_READ_CLIENT_ID:-portal-gateway-food-post-read}
+      FOOD_POST_READ_KEY_ID: ${FOOD_POST_READ_KEY_ID:-food-post-read-key}
+      FOOD_POST_READ_SECRET: ${FOOD_POST_READ_SECRET:-replace-food-post-read-secret-32bytes!!}
     depends_on:
       postgres:
         condition: service_healthy
@@ -332,6 +340,16 @@ services:
       PRACTICE_COMMAND_CLIENT_ID: ${PRACTICE_COMMAND_CLIENT_ID:-}
       PRACTICE_COMMAND_CLIENT_SECRET: ${PRACTICE_COMMAND_CLIENT_SECRET:-}
       PRACTICE_COMMAND_KEY_ID: ${PRACTICE_COMMAND_KEY_ID:-}
+      # Food Post forwarding (ADR-0032): the third read-only-proxy exception.
+      # Empty FOOD_POSTS_URL fails closed with an honest 503, never falling
+      # back to the portal-api wildcard.
+      FOOD_POSTS_URL: ${FOOD_POSTS_URL:-http://food:8096}
+      FOOD_POST_CREATE_CLIENT_ID: ${FOOD_POST_CREATE_CLIENT_ID:-portal-gateway-food-post-create}
+      FOOD_POST_CREATE_SECRET: ${FOOD_POST_CREATE_SECRET:-replace-food-post-create-secret-32bytes!!}
+      FOOD_POST_CREATE_KEY_ID: ${FOOD_POST_CREATE_KEY_ID:-food-post-create-key}
+      FOOD_POST_READ_CLIENT_ID: ${FOOD_POST_READ_CLIENT_ID:-portal-gateway-food-post-read}
+      FOOD_POST_READ_SECRET: ${FOOD_POST_READ_SECRET:-replace-food-post-read-secret-32bytes!!}
+      FOOD_POST_READ_KEY_ID: ${FOOD_POST_READ_KEY_ID:-food-post-read-key}
       PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
     depends_on:
       redis:
@@ -340,6 +358,8 @@ services:
         condition: service_started
       platform-core:
         condition: service_started
+      food:
+        condition: service_healthy
       account-portfolio:
         condition: service_healthy
       library:
@@ -360,7 +380,6 @@ services:
         # This public Next.js value is baked into the Portal image. #166 must
         # rebuild the fixed-SHA Portal artifact when enabling the V2 read path.
         NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS: ${NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS:-0}
-        NEXT_PUBLIC_FOOD_DESK_URL: ${NEXT_PUBLIC_FOOD_DESK_URL:-https://henu-campus-guide.cocoa-brush-7952.chatgpt.site/#food-submit}
     environment:
       NODE_ENV: production
       PORT: 3001

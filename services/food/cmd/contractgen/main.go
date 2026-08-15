@@ -26,7 +26,19 @@ func main() {
 			routes[operation.OperationID] = path
 		}
 	}
-	required := map[string]string{"HealthRoute": "getFoodHealth", "SummaryRoute": "getFoodConsoleSummary", "WorkspaceRoute": "getFoodWorkspace", "CommandRoute": "executeFoodCommand", "OperationRoute": "getFoodOperation"}
+	required := map[string]string{
+		"HealthRoute":     "getFoodHealth",
+		"SummaryRoute":    "getFoodConsoleSummary",
+		"WorkspaceRoute":  "getFoodWorkspace",
+		"CommandRoute":    "executeFoodCommand",
+		"OperationRoute":  "getFoodOperation",
+		"CreatePostRoute": "createFoodPost",
+		"ListPostsRoute":  "listFoodPosts",
+		"MyPostsRoute":    "listMyFoodPosts",
+		"PostRoute":       "getFoodPost",
+		"PostImageRoute":  "getFoodPostImage",
+		"VenuesRoute":     "listFoodVenues",
+	}
 	for _, operationID := range required {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required Food operation %s is missing", operationID))
@@ -42,8 +54,14 @@ const (
 	WorkspaceRoute = %q
 	CommandRoute = %q
 	OperationRoute = %q
+	CreatePostRoute = %q
+	ListPostsRoute = %q
+	MyPostsRoute = %q
+	PostRoute = %q
+	PostImageRoute = %q
+	VenuesRoute = %q
 )
-`, digest, routes["getFoodHealth"], routes["getFoodConsoleSummary"], routes["getFoodWorkspace"], routes["executeFoodCommand"], routes["getFoodOperation"])
+`, digest, routes["getFoodHealth"], routes["getFoodConsoleSummary"], routes["getFoodWorkspace"], routes["executeFoodCommand"], routes["getFoodOperation"], routes["createFoodPost"], routes["listFoodPosts"], routes["listMyFoodPosts"], routes["getFoodPost"], routes["getFoodPostImage"], routes["listFoodVenues"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/contract", 0o755))

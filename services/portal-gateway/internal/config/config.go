@@ -54,6 +54,13 @@ type Config struct {
 	// window allowed to enable browser-visible QuizCraft writes.
 	PracticeCommandsEnabled bool
 
+	// FoodPostsURL and its two independent credential triples are optional.
+	// An empty URL leaves the Food Post boundary unconfigured and every Food
+	// Post route fails closed with an honest 503; there is no _ENABLED flag.
+	FoodPostsURL       string
+	FoodPostCreateAuth ServiceAuth
+	FoodPostReadAuth   ServiceAuth
+
 	PortalOrigin           string
 	LocalOAuthCookieName   string
 	LocalSessionCookieName string
@@ -109,6 +116,17 @@ func FromEnv() (Config, error) {
 			ClientID:     strings.TrimSpace(os.Getenv("LIBRARY_DOWNLOAD_CLIENT_ID")),
 			ClientSecret: os.Getenv("LIBRARY_DOWNLOAD_CLIENT_SECRET"),
 			KeyID:        strings.TrimSpace(os.Getenv("LIBRARY_DOWNLOAD_KEY_ID")),
+		},
+		FoodPostsURL: strings.TrimSpace(os.Getenv("FOOD_POSTS_URL")),
+		FoodPostCreateAuth: ServiceAuth{
+			ClientID:     strings.TrimSpace(os.Getenv("FOOD_POST_CREATE_CLIENT_ID")),
+			ClientSecret: os.Getenv("FOOD_POST_CREATE_SECRET"),
+			KeyID:        strings.TrimSpace(os.Getenv("FOOD_POST_CREATE_KEY_ID")),
+		},
+		FoodPostReadAuth: ServiceAuth{
+			ClientID:     strings.TrimSpace(os.Getenv("FOOD_POST_READ_CLIENT_ID")),
+			ClientSecret: os.Getenv("FOOD_POST_READ_SECRET"),
+			KeyID:        strings.TrimSpace(os.Getenv("FOOD_POST_READ_KEY_ID")),
 		},
 		PortalOrigin:           mustEnv("PORTAL_ORIGIN"),
 		LocalOAuthCookieName:   envOrDefault("PORTAL_LOCAL_OAUTH_COOKIE_NAME", "henukit_portal_oauth_local"),

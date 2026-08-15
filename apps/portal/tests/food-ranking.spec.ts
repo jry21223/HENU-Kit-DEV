@@ -136,5 +136,5 @@ test("an empty real response keeps the fixed five-tier frame", async ({
     "NPC",
     "拉完了",
   ]);
-  await expect(page.getByText("暂无已审核条目", { exact: true })).toHaveCount(5);
+  await expect(page.getByText("暂无上榜条目", { exact: true })).toHaveCount(5);
 });

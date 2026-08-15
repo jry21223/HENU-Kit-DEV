@@ -172,7 +172,7 @@ export default function FoodBoardPage() {
                       data-enter
                       className="border-t border-dashed border-line py-8 font-mono text-xs tracking-[0.18em] text-ink/35"
                     >
-                      暂无已审核条目
+                      暂无上榜条目
                     </p>
                   ) : (
                     <ol className="border-t border-ink">

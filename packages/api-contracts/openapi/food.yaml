@@ -102,6 +102,125 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/food/posts:
+    post:
+      tags: [Food]
+      operationId: createFoodPost
+      summary: Create one public Food Post for a signed-in actor
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - $ref: "#/components/parameters/ActorDisplayName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FoodPostCreateInput" } } } }
+      responses:
+        "200": { description: Post created or its original result replayed, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodPostCreateResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { description: The actor reached the daily submission cap, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    get:
+      tags: [Food]
+      operationId: listFoodPosts
+      summary: Read all public Food Posts, optionally filtered by campus
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/CampusFilter"
+      responses:
+        "200": { description: Public Food Posts, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodPostList" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/food/posts/mine:
+    get:
+      tags: [Food]
+      operationId: listMyFoodPosts
+      summary: Read the signed-in actor's own Food Posts
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+      responses:
+        "200": { description: The actor's own Food Posts, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodPostList" } } }] } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/food/posts/{id}:
+    get:
+      tags: [Food]
+      operationId: getFoodPost
+      summary: Read one public Food Post
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      responses:
+        "200": { description: One public Food Post with an empty comment list, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodPostDetail" } } }] } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/food/posts/{id}/images/{position}:
+    get:
+      tags: [Food]
+      operationId: getFoodPostImage
+      summary: Read one stored Food Post photo
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: position, in: path, required: true, schema: { type: integer, minimum: 0, maximum: 5 } }
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      responses:
+        "200": { description: Photo bytes, content: { image/jpeg: { schema: { type: string, format: binary } }, image/png: { schema: { type: string, format: binary } }, image/webp: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/food/venues:
+    get:
+      tags: [Food]
+      operationId: listFoodVenues
+      summary: Read venue summaries derived from public Food Posts
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/CampusFilter"
+      responses:
+        "200": { description: Venue summaries for one campus, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodVenueList" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 components:
   securitySchemes:
     serviceBasic: { type: http, scheme: basic }
@@ -118,6 +237,8 @@ components:
     ScopeKind: { name: X-Scope-Kind, in: header, required: true, schema: { type: string, const: product } }
     ProductScope: { name: X-Product-Code, in: header, required: true, schema: { type: string, const: food } }
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
+    ActorDisplayName: { name: X-Actor-Display-Name, in: header, required: true, description: Display Name snapshot bound by the signing client, schema: { type: string, minLength: 1, maxLength: 120 } }
+    CampusFilter: { name: campus, in: query, required: false, schema: { $ref: "#/components/schemas/FoodCampus" } }
   schemas:
     SuccessEnvelope:
       type: object
@@ -243,9 +364,120 @@ components:
         resource_id: { type: string, format: uuid }
         state: { type: string, enum: [succeeded, unknown] }
         version: { type: integer, minimum: 1 }
+    FoodCampus:
+      type: string
+      enum: [minglun, jinming, longzihu]
+    FoodTierKey:
+      type: string
+      description: Self-chosen five-tier position; the wire never carries an editorial tier.
+      enum: [hang, top, elite, npc, bad]
+    FoodPostCreateInput:
+      type: object
+      additionalProperties: false
+      required: [venue_name, campus, tier, review_text]
+      properties:
+        venue_name: { type: string, minLength: 1, maxLength: 160 }
+        campus: { $ref: "#/components/schemas/FoodCampus" }
+        tier: { $ref: "#/components/schemas/FoodTierKey" }
+        review_text: { type: string, minLength: 2, maxLength: 2000 }
+        price_reference: { type: string, maxLength: 200 }
+        hours_reference: { type: string, maxLength: 200 }
+        dishes:
+          type: array
+          maxItems: 6
+          items: { $ref: "#/components/schemas/FoodPostDishInput" }
+        images:
+          type: array
+          maxItems: 6
+          items: { $ref: "#/components/schemas/FoodPostImageInput" }
+    FoodPostDishInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        price: { type: string, maxLength: 40 }
+        reason: { type: string, maxLength: 200 }
+    FoodPostImageInput:
+      type: object
+      additionalProperties: false
+      required: [content_type, data]
+      properties:
+        content_type: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        data: { type: string, description: "Base64-encoded photo bytes, at most 2MiB decoded", maxLength: 2800000 }
+    FoodPostBlockWire:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: { type: string, enum: [h2, p, quote, list, img] }
+        text: { type: string }
+        items: { type: array, items: { type: string } }
+        src: { type: string }
+    FoodPostShopWire:
+      type: object
+      additionalProperties: false
+      required: [name, lat, lng]
+      properties:
+        name: { type: string }
+        lat: { type: number }
+        lng: { type: number }
+    FoodPostWire:
+      type: object
+      additionalProperties: false
+      required: [id, campus, title, excerpt, blocks, author, likes, stars, tags, shop, time, hidden, images]
+      properties:
+        id: { type: string, format: uuid }
+        campus: { $ref: "#/components/schemas/FoodCampus" }
+        title: { type: string, maxLength: 160 }
+        excerpt: { type: string, maxLength: 2000 }
+        blocks: { type: array, items: { $ref: "#/components/schemas/FoodPostBlockWire" } }
+        author: { type: string, maxLength: 120 }
+        likes: { type: integer, minimum: 0 }
+        stars: { type: number, minimum: 0 }
+        tags: { type: array, items: { type: string } }
+        shop: { $ref: "#/components/schemas/FoodPostShopWire" }
+        time: { type: string, format: date-time }
+        hidden: { type: boolean, const: false }
+        images: { type: array, items: { type: string } }
+    FoodPostCreateResult:
+      type: object
+      additionalProperties: false
+      required: [post]
+      properties: { post: { $ref: "#/components/schemas/FoodPostWire" } }
+    FoodPostList:
+      type: object
+      additionalProperties: false
+      required: [posts]
+      properties: { posts: { type: array, items: { $ref: "#/components/schemas/FoodPostWire" } } }
+    FoodPostDetail:
+      type: object
+      additionalProperties: false
+      required: [post, comments]
+      properties:
+        post: { $ref: "#/components/schemas/FoodPostWire" }
+        comments: { type: array, maxItems: 0 }
+    FoodVenueSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, rating, tier, campus]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        rating: { type: number, minimum: 0 }
+        tier: { type: string, enum: [featured, recommended, standard] }
+        campus: { $ref: "#/components/schemas/FoodCampus" }
+    FoodVenueList:
+      type: object
+      additionalProperties: false
+      required: [campus, venues]
+      properties:
+        campus: { $ref: "#/components/schemas/FoodCampus" }
+        venues: { type: array, items: { $ref: "#/components/schemas/FoodVenueSummary" } }
   responses:
     BadRequest: { description: Invalid Food request, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
     Unauthorized: { description: Invalid service or actor identity, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
     Forbidden: { description: Required Food permission or Scope is missing, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
     Conflict: { description: Idempotency or optimistic version conflict, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+    NotFound: { description: Food resource does not exist, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
     ServiceUnavailable: { description: Food dependency or operation result is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
