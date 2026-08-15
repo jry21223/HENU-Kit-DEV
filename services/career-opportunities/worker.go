@@ -16,9 +16,18 @@ import (
 // between claiming and finishing.
 const staleClaimAfter = 15 * time.Minute
 
+const (
+	workerIdleDelay   = time.Second
+	workerRetryMin    = 250 * time.Millisecond
+	workerRetryMax    = 5 * time.Second
+)
+
 type worker struct {
 	h *service
 }
+
+type workerStepFunc func(context.Context) (bool, error)
+type workerSleepFunc func(context.Context, time.Duration) error
 
 // WorkResult is what a WorkFunc returns for one completed search.
 type WorkResult struct {
@@ -43,19 +52,50 @@ func (w *worker) Step(ctx context.Context) (bool, error) {
 }
 
 // Run drives queued searches to completion forever until ctx is cancelled.
+// A transient dependency or transaction failure must not permanently kill the
+// background worker while the HTTP service continues to accept new searches.
+// Retry delay grows exponentially to a small cap and resets after any
+// successful Step so recovery is prompt without creating a hot error loop.
 func (w *worker) Run(ctx context.Context) error {
+	return runWorkerLoop(ctx, w.Step, sleepWorker)
+}
+
+func runWorkerLoop(ctx context.Context, step workerStepFunc, sleep workerSleepFunc) error {
+	retryDelay := workerRetryMin
 	for {
-		done, err := w.Step(ctx)
+		done, err := step(ctx)
 		if err != nil {
-			return err
-		}
-		if !done {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil {
 				return ctx.Err()
-			case <-time.After(time.Second):
+			}
+			log.Printf("career worker step failed; retrying in %s: %v", retryDelay, err)
+			if err := sleep(ctx, retryDelay); err != nil {
+				return err
+			}
+			retryDelay *= 2
+			if retryDelay > workerRetryMax {
+				retryDelay = workerRetryMax
+			}
+			continue
+		}
+
+		retryDelay = workerRetryMin
+		if !done {
+			if err := sleep(ctx, workerIdleDelay); err != nil {
+				return err
 			}
 		}
+	}
+}
+
+func sleepWorker(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
