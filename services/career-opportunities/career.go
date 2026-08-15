@@ -69,7 +69,7 @@ func New(config Config) (*Service, error) {
 	}
 	work := config.Work
 	if work == nil {
-		work = defaultWork
+		work = NewGetWorkWork(GetWorkConfig{})
 	}
 	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, now: time.Now}
 	router := chi.NewRouter()
@@ -100,15 +100,6 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.router.S
 // Claims returns the worker that drives queued searches to completion. The
 // server starts it in the background; tests drive it one step at a time.
 func (s *Service) Claims() *worker { return &worker{h: s.h} }
-
-// defaultWork is the #392 placeholder: it deterministically turns any frozen
-// snapshot into an empty normalized result without touching a real crawler.
-// It never errors, so the failed path is exercised only by an injected Work in
-// tests or the future crawler.
-func defaultWork(ctx context.Context, profile any) (WorkResult, error) {
-	_ = ctx
-	return WorkResult{Payload: map[string]any{"profile": profile}}, nil
-}
 
 func (h *service) requireActor(w http.ResponseWriter, r *http.Request) (actor, bool) {
 	value, ok := r.Context().Value(actorKey).(actor)
