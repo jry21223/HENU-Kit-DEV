@@ -2,7 +2,7 @@
 
 > HENU Kit 是学生自主运营的非官方项目，不代表河南大学或任何学院。涉及政策、资格、截止时间和办事要求时，河南大学及各学院官方来源优先。
 
-HENU Kit 是面向河南大学学生的校园工具系统，公开入口包括资料库、智能刷题、美食榜和校园互助。站点主要使用简体中文。
+HENU Kit 是面向河南大学学生的校园工具系统，公开入口包括资料库、智能刷题、美食榜、校园互助和求职雷达。站点主要使用简体中文。
 
 ## Public entry points
 
@@ -11,6 +11,7 @@ HENU Kit 是面向河南大学学生的校园工具系统，公开入口包括�
 - Practice: https://henukit.cn/practice
 - Food board: https://henukit.cn/food
 - Campus mutual aid: https://henukit.cn/campus
+- Work Radar: https://henukit.cn/career
 - Sitemap: https://henukit.cn/sitemap.xml
 
 ## Citation boundaries

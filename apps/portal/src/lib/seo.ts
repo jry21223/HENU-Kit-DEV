@@ -4,7 +4,7 @@ export const DEFAULT_SITE_ORIGIN = "https://henukit.cn";
 export const SITE_NAME = "HENU Kit";
 export const SITE_TITLE = "HENU Kit — 河南大学校园工具";
 export const SITE_DESCRIPTION =
-  "HENU Kit 是学生自主运营的非官方河南大学校园工具，提供资料库、智能刷题、美食榜和校园互助入口；信息以河南大学及各学院官方来源为准。";
+  "HENU Kit 是学生自主运营的非官方河南大学校园工具，提供资料库、智能刷题、美食榜、校园互助和求职雷达入口；信息以河南大学及各学院官方来源为准。";
 
 export function siteOrigin(
   configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL
@@ -56,6 +56,7 @@ export const siteMetadata: Metadata = {
     "学习资料",
     "智能刷题",
     "校园互助",
+    "求职雷达",
   ],
   creator: "HENU Kit 社区维护者",
   publisher: "HENU Kit 社区维护者",

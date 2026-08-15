@@ -10,6 +10,7 @@ const LINKS = [
   { index: "02", label: "智能刷题", href: "/practice" },
   { index: "03", label: "美食榜", href: "/food" },
   { index: "04", label: "互助平台", href: "/campus" },
+  { index: "05", label: "求职雷达", href: "/career" },
 ];
 
 export default function Footer() {
