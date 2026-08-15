@@ -176,10 +176,79 @@ test("a failed profile read is a recoverable error, never a local profile", asyn
   await expect(page.getByRole("button", { name: "重新加载" })).toHaveCSS("min-height", "44px");
 });
 
-test("/career links back to the account profile settings", async ({ page }) => {
+test("/career branches on membership and profile state", async ({ page }) => {
   await mockSession(page);
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        profile: { user_id: sessionUserID, updated_at: "2026-08-15T00:00:00Z" },
+        request_id: "req_empty_profile",
+      }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches: [], request_id: "req_searches" }),
+    });
+  });
+
   await page.goto("/career", { waitUntil: "domcontentloaded" });
-  const link = page.getByRole("link", { name: "设置求职画像 →" });
+  await expect(page.locator('[data-career-state="lifetime-no-profile"]')).toBeVisible();
+  const link = page.getByRole("link", { name: "去设置求职画像 →" });
   await expect(link).toHaveAttribute("href", "/account/profile");
   await expect(link).toHaveCSS("min-height", "44px");
+});
+
+test("/career keeps free members off the scan entry and points at ¥9.9 membership", async ({ page }) => {
+  await mockSession(page);
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "free", lifetime: false }, request_id: "req_membership" }),
+    });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-state="free"]')).toBeVisible();
+  await expect(page.getByText("¥9.9 开通 Lifetime VIP →")).toBeVisible();
+  const buy = page.getByRole("link", { name: "¥9.9 开通 Lifetime VIP →" });
+  await expect(buy).toHaveAttribute("href", "/account/membership");
+  await expect(page.getByRole("button", { name: /开始扫描/ })).toHaveCount(0);
+});
+
+test("/career renders the ready view for a lifetime member with a complete profile", async ({ page }) => {
+  await mockSession(page);
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches: [], request_id: "req_searches" }),
+    });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-state="lifetime-ready"]')).toBeVisible();
+  await expect(page.getByText("后端开发")).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始扫描 →" })).toBeVisible();
+  const history = page.getByRole("link", { name: "全部历史 →" });
+  await expect(history).toHaveAttribute("href", "/career/history");
 });
