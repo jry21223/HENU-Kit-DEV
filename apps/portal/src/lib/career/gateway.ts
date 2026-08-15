@@ -23,6 +23,7 @@ import type {
   CareerProfileResponse,
   CareerSearch,
   CareerSearchResponse,
+  CareerSearchesResponse,
 } from "../api/types";
 
 // ---- Lifetime 会员门 ----
@@ -190,6 +191,14 @@ export async function requestCareerSearchStatus(
     };
   }
   return getCareerSearchStatus(searchID);
+}
+
+/** 实时读取当前用户的历史搜索（不走读缓存，供历史页与重开恢复用）。 */
+export async function requestCareerSearches(): Promise<CareerSearchesResponse> {
+  if (!hasGateway && mockAllowed) {
+    return { searches: [], request_id: "mock-career-searches" };
+  }
+  return listCareerSearches();
 }
 
 /** 全量替换求职画像。 */

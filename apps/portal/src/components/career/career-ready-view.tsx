@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useReveal } from "@/components/account/use-reveal";
+import CareerScanStatusPanel from "@/components/career/career-scan-status-panel";
 import { formatPortalError } from "@/lib/api/client";
 import type { CareerJobType, CareerProfile, CareerSearch } from "@/lib/api/types";
+import { careerSearchStatusLabel, formatCareerSearchTime } from "@/lib/career/career-scan-state";
 import {
   careerLifetimeRequiredMessage,
   isCareerLifetimeRequiredError,
   requestCareerSearch,
 } from "@/lib/career/gateway";
+import { useCareerSearchPolling } from "@/lib/career/use-career-search-polling";
 
 const JOB_TYPE_LABELS: Record<CareerJobType, string> = {
   "": "不限",
@@ -18,31 +21,12 @@ const JOB_TYPE_LABELS: Record<CareerJobType, string> = {
   campus_recruit: "校招",
 };
 
-const STATUS_LABELS: Record<CareerSearch["status"], string> = {
-  queued: "排队中",
-  running: "扫描中",
-  completed: "已完成",
-  failed: "失败",
-};
-
 type ScanState =
   | { kind: "idle" }
   | { kind: "starting" }
-  | { kind: "created"; search: CareerSearch }
   | { kind: "error"; message: string };
 
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-/** Lifetime 且画像就绪：画像摘要 + 开始扫描 + 历史入口；状态区为 #402 异步状态机预留。 */
+/** Lifetime 且画像就绪：画像摘要 + 开始扫描 + 异步状态跟踪（#402）+ 历史入口。 */
 export default function CareerReadyView({
   profile,
   searches,
@@ -52,13 +36,21 @@ export default function CareerReadyView({
 }) {
   useReveal();
   const [scan, setScan] = useState<ScanState>({ kind: "idle" });
-  // 保留 key：重试复用同一幂等键，网关只创建一次。
+  // 幂等键：创建成功即消费置空；失败保留供重试复用，网关只会创建一次任务。
   const idempotencyKey = useRef<string | null>(null);
+  const { state: pollState, isPolling, start: startPolling } = useCareerSearchPolling();
 
   const latest = searches[0] ?? null;
 
+  // 刷新 / 重开恢复：本地无进行中任务时，取最近一条搜索恢复状态跟踪。
+  // runner 的 start 幂等：终态直接落展示、进行中恢复轮询，重复调用不会叠加循环。
+  useEffect(() => {
+    if (latest) startPolling(latest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const startScan = useCallback(async () => {
-    if (scan.kind === "starting" || scan.kind === "created") return;
+    if (scan.kind === "starting" || isPolling) return;
     setScan({ kind: "starting" });
     if (!idempotencyKey.current) {
       idempotencyKey.current = `career:scan-${crypto.randomUUID()}`;
@@ -76,8 +68,12 @@ export default function CareerReadyView({
         },
         idempotencyKey.current
       );
-      setScan({ kind: "created", search: response.search });
+      // 创建成功即消费幂等键：之后的重试 / 重新扫描会生成新键，创建新任务。
+      idempotencyKey.current = null;
+      setScan({ kind: "idle" });
+      startPolling(response.search);
     } catch (error) {
+      // 创建失败保留幂等键：网关只会创建一次，重试不会产生重复任务。
       setScan({
         kind: "error",
         message: isCareerLifetimeRequiredError(error)
@@ -85,7 +81,7 @@ export default function CareerReadyView({
           : formatPortalError(error),
       });
     }
-  }, [profile, scan.kind]);
+  }, [profile, scan.kind, isPolling, startPolling]);
 
   return (
     <section data-career-state="lifetime-ready" className="mt-10">
@@ -124,14 +120,14 @@ export default function CareerReadyView({
           <div data-enter className="mt-8 flex flex-wrap items-center gap-4">
             <button
               type="button"
-              disabled={scan.kind === "starting" || scan.kind === "created"}
+              disabled={scan.kind === "starting" || isPolling}
               onClick={() => void startScan()}
               className="inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
             >
               {scan.kind === "starting"
                 ? "正在创建任务…"
-                : scan.kind === "created"
-                  ? "扫描任务已创建"
+                : isPolling
+                  ? "扫描进行中…"
                   : "开始扫描 →"}
             </button>
             <Link
@@ -152,20 +148,13 @@ export default function CareerReadyView({
             </p>
           ) : null}
 
-          {scan.kind === "created" ? (
-            <div
-              data-career-scan-status="created"
-              aria-live="polite"
-              className="mt-6 max-w-xl border border-ink px-4 py-4"
-            >
-              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">TASK CREATED</p>
-              <p className="mt-2 text-sm leading-6 text-ink/75">
-                扫描任务已创建（{STATUS_LABELS[scan.search.status]}）。
-                任务在后台异步执行，完成后会向账户邮箱发送结果简报。
-              </p>
-              <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/40">
-                #{scan.search.id.slice(0, 8)}
-              </p>
+          {pollState ? (
+            <div data-enter>
+              <CareerScanStatusPanel
+                state={pollState}
+                emailEnabled={profile.email_notification_enabled ?? false}
+                onRetry={() => void startScan()}
+              />
             </div>
           ) : null}
         </div>
@@ -185,11 +174,11 @@ export default function CareerReadyView({
                     最近一次
                   </span>
                   <span className="border border-ink/30 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/60">
-                    {STATUS_LABELS[latest.status]}
+                    {careerSearchStatusLabel(latest.status)}
                   </span>
                 </div>
                 <p className="mt-2 text-xs leading-5 text-ink/55">
-                  {formatTime(latest.created_at)}
+                  {formatCareerSearchTime(latest.created_at)}
                   {latest.has_email ? " · 邮件简报已开启" : ""}
                 </p>
               </div>
