@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -28,6 +29,81 @@ var (
 	releaseIDPattern = regexp.MustCompile(`^[a-f0-9]{40}-[a-f0-9]{16}$`)
 	digestPattern    = regexp.MustCompile(`^[a-f0-9]{64}$`)
 )
+
+// Publication provenance policy. HENU Kit activation is an independent
+// fail-closed publication boundary: it does not trust the upstream
+// source-repository validator to have applied the publication policy
+// correctly. These allowlists are synchronized with HENU-Final-Review's
+// PUBLICATION_POLICY.md, docs/manifest.md, and scripts/validate-materials.mjs;
+// contract tests pin them so drift is caught (see activation_manifest_test.go).
+//
+// A manifest asset that reaches activation must satisfy every rule:
+//   - containsPersonalInfo must not be true.
+//   - reviewStatus, when present, must be a canonical publishable state.
+//   - licenseStatus, when present, must be a canonical allowlisted value,
+//     except teacher_shared_exception which is further restricted to the
+//     approved historical whitelist below (path + SHA-256, matching the
+//     upstream APPROVED_CONTACT_EXCEPTIONS map).
+//   - uncertainty, when present, must not be a review-only state: the source
+//     policy requires those assets to live under a 待复核 role, which Library
+//     never activates.
+//
+// Absent (empty) provenance fields are tolerated for backward compatibility:
+// HENU-Final-Review treats them as "建议字段…逐步补充" and the sealed
+// production manifest predates the metadata backfill. The boundary rejects
+// disallowed VALUES, never silently accepts them.
+var (
+	publishableReviewStatuses = map[string]bool{
+		"verified":         true,
+		"basic-reviewed":   true,
+		"community_review": true,
+	}
+	publishableLicenseStatuses = map[string]bool{
+		"learning-reference": true,
+		"public_review_only": true,
+		"public-review-only": true,
+	}
+	reviewOnlyUncertainties = map[string]bool{
+		"source_uncertain":          true,
+		"year_uncertain":            true,
+		"course_uncertain":          true,
+		"public_boundary_uncertain": true,
+	}
+	approvedTeacherSharedExceptions = map[string]string{
+		"思想道德与法治/复习讲义/思想道德与法治_复习讲义_2025年冬最新考试重点.pdf":                        "bfda62a15cfefb53c1413a244a4ff9f95e11a9fc959032f4ebff83adc1b8530c",
+		"思想道德与法治/复习讲义/思想道德与法治_复习讲义_2026年夏最新考试重点.pdf":                        "62605c70458a8da91a90e38f88fb9a628ba4283233262e3554b9085ab0acee73",
+		"思想道德与法治/题库练习/思想道德与法治_题库练习_2025年冬最新考试习题库.pdf":                       "863593807fb03560c9fd351faa33176fbe38e5063897d1efe0d2df657bb65aeb",
+		"思想道德与法治/题库练习/思想道德与法治_题库练习_2026年夏最新考试习题库.pdf":                       "2202c6481c4e20484d2dee269d40203b3ce297903d81ccfa3b9e30d17ad1df2c",
+		"习近平新时代中国特色社会主义思想概论/复习讲义/习近平新时代中国特色社会主义思想概论_复习讲义_2025年冬最新教材重点.pdf":  "9a9b0b52a35fbee614b33e0fb231ef5df982e9cb460d7ece0d09faaf4c266bd7",
+		"习近平新时代中国特色社会主义思想概论/题库练习/习近平新时代中国特色社会主义思想概论_题库练习_2025年冬最新教材习题库.pdf": "b53770144dc0db848f00036d593689ef12339002cc1ab24df856213fe03944ca",
+	}
+)
+
+// provenanceViolation reports the first publication-policy violation for one
+// manifest asset, or "" when the asset is publishable. It implements the
+// independent fail-closed activation boundary; see the policy block above.
+func provenanceViolation(asset manifestAsset) string {
+	if asset.ContainsPersonalInfo {
+		return "containsPersonalInfo=true"
+	}
+	if asset.ReviewStatus != "" && !publishableReviewStatuses[asset.ReviewStatus] {
+		return "reviewStatus " + strconv.Quote(asset.ReviewStatus) + " is not publishable"
+	}
+	if asset.LicenseStatus != "" {
+		if asset.LicenseStatus == "teacher_shared_exception" {
+			approved, ok := approvedTeacherSharedExceptions[asset.PublicPath]
+			if !ok || approved != asset.SHA256 {
+				return "teacher_shared_exception is restricted to the approved historical files"
+			}
+		} else if !publishableLicenseStatuses[asset.LicenseStatus] {
+			return "licenseStatus " + strconv.Quote(asset.LicenseStatus) + " is not publishable"
+		}
+	}
+	if asset.Uncertainty != "" && reviewOnlyUncertainties[asset.Uncertainty] {
+		return "uncertainty " + strconv.Quote(asset.Uncertainty) + " requires a review role"
+	}
+	return ""
+}
 
 type PublicReleaseActivation struct {
 	Version           int                           `json:"version"`
@@ -234,6 +310,9 @@ func preparePublicReleaseActivation(bundle PublicReleaseActivation) (preparedAct
 		for _, asset := range subject.Assets {
 			if strings.HasPrefix(asset.Role, "待复核") {
 				continue
+			}
+			if violation := provenanceViolation(asset); violation != "" {
+				return preparedActivation{}, fmt.Errorf("publication provenance is not publishable for %s: %s", asset.PublicPath, violation)
 			}
 			if (asset.Subject != "" && asset.Subject != subject.Name) || !safeText(asset.Role, 160) || !safeText(asset.Title, 255) || !safePublicPath(asset.PublicPath) || !digestPattern.MatchString(asset.SHA256) || asset.Bytes < 0 || seenPaths[asset.PublicPath] {
 				return preparedActivation{}, fmt.Errorf("reviewed manifest asset is invalid: %s", asset.PublicPath)

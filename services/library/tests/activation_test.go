@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -221,6 +222,84 @@ func TestActivatePublicReleaseRejectsMalformedMetadataWithoutTouchingOSSOrCatalo
 	}
 }
 
+func TestActivatePublicReleaseRejectsProvenanceViolationsBeforeOSSOrCatalog(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*manifestAsset)
+	}{
+		{name: "contains personal info", mutate: func(asset *manifestAsset) {
+			asset.ContainsPersonalInfo = true
+		}},
+		{name: "unreviewed reviewStatus", mutate: func(asset *manifestAsset) {
+			asset.ReviewStatus = "needs_review"
+		}},
+		{name: "pending maintainer review", mutate: func(asset *manifestAsset) {
+			asset.ReviewStatus = "待维护者复核"
+		}},
+		{name: "unknown reviewStatus", mutate: func(asset *manifestAsset) {
+			asset.ReviewStatus = "totally-made-up"
+		}},
+		{name: "disallowed licenseStatus", mutate: func(asset *manifestAsset) {
+			asset.LicenseStatus = "贡献者自有学习笔记，提交后可按仓库公开资料协议共享。"
+		}},
+		{name: "unknown licenseStatus", mutate: func(asset *manifestAsset) {
+			asset.LicenseStatus = "made-up-license"
+		}},
+		{name: "teacher_shared_exception not whitelisted", mutate: func(asset *manifestAsset) {
+			asset.LicenseStatus = "teacher_shared_exception"
+		}},
+		{name: "review-only uncertainty", mutate: func(asset *manifestAsset) {
+			asset.Uncertainty = "source_uncertain"
+		}},
+		{name: "year uncertainty", mutate: func(asset *manifestAsset) {
+			asset.Uncertainty = "year_uncertain"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := activationPool(t)
+			store := &activationStore{objects: map[string]library.DownloadObjectState{}}
+			asset := manifestAsset{Subject: "数学", Role: "讲义", Title: "安全标题.pdf", PublicPath: "safe.pdf", Body: "safe",
+				ReviewStatus: "basic-reviewed", LicenseStatus: "learning-reference"}
+			tc.mutate(&asset)
+			bundle := activationBundle(t, []manifestAsset{asset}, store)
+			if _, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now); err == nil {
+				t.Fatal("provenance-violating activation bundle was accepted")
+			}
+			if store.headCalls != 0 || store.anonymousCalls != 0 {
+				t.Fatalf("provenance violation reached OSS: head=%d anonymous=%d", store.headCalls, store.anonymousCalls)
+			}
+			var releases int
+			if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM library_public_releases WHERE release_id=$1`, bundle.ReleaseID).Scan(&releases); err != nil {
+				t.Fatal(err)
+			}
+			if releases != 0 {
+				t.Fatalf("provenance violation reached the activation transaction: releases=%d", releases)
+			}
+		})
+	}
+}
+
+func TestActivatePublicReleaseAcceptsCanonicalProvenanceAndApprovedTeacherException(t *testing.T) {
+	pool := activationPool(t)
+	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
+	approvedPath := "思想道德与法治/复习讲义/思想道德与法治_复习讲义_2025年冬最新考试重点.pdf"
+	approvedSHA := "bfda62a15cfefb53c1413a244a4ff9f95e11a9fc959032f4ebff83adc1b8530c"
+	bundle := activationBundle(t, []manifestAsset{
+		{Subject: "数学", Role: "讲义", Title: "讲义.pdf", PublicPath: "note.pdf", Body: "note",
+			ReviewStatus: "verified", LicenseStatus: "public_review_only", Uncertainty: "format_lossy"},
+		{Subject: "思想道德与法治", Role: "复习讲义", Title: "白名单讲义.pdf", PublicPath: approvedPath, Body: "approved",
+			ReviewStatus: "basic-reviewed", LicenseStatus: "teacher_shared_exception",
+			SHA256Override: approvedSHA, BytesOverride: "12345"},
+	}, store)
+	result, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now)
+	if err != nil {
+		t.Fatalf("canonical provenance activation failed: %v", err)
+	}
+	if result.MaterialCount != 2 {
+		t.Fatalf("material count=%d, want 2", result.MaterialCount)
+	}
+}
+
 func TestActivatePublicReleaseDerivesSafeFileNameFromReviewedPath(t *testing.T) {
 	pool := activationPool(t)
 	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
@@ -409,7 +488,23 @@ func TestPublicCatalogReturnsOneReleaseSnapshotWithStableAggregates(t *testing.T
 }
 
 type manifestAsset struct {
-	Subject, Role, Title, PublicPath, Body string
+	Subject, Role, Title, PublicPath, Body   string
+	ContainsPersonalInfo                     bool
+	LicenseStatus, ReviewStatus, Uncertainty string
+	SHA256Override, BytesOverride            string
+}
+
+// bytesValue returns the asset's manifest byte count, honoring the override
+// used by the approved teacher_shared_exception fixture (whose stored SHA must
+// match the upstream whitelist even though the object bytes differ).
+func (a manifestAsset) bytesValue() int {
+	if a.BytesOverride != "" {
+		n, err := strconv.Atoi(a.BytesOverride)
+		if err == nil {
+			return n
+		}
+	}
+	return len(a.Body)
 }
 
 type activationStore struct {
@@ -456,12 +551,18 @@ func activationBundle(t *testing.T, assets []manifestAsset, store *activationSto
 	for _, asset := range assets {
 		body := []byte(asset.Body)
 		digest := sha256.Sum256(body)
+		sha := hex.EncodeToString(digest[:])
+		if asset.SHA256Override != "" {
+			sha = asset.SHA256Override
+		}
 		if _, ok := grouped[asset.Subject]; !ok {
 			order = append(order, asset.Subject)
 		}
 		grouped[asset.Subject] = append(grouped[asset.Subject], map[string]any{
 			"subject": asset.Subject, "role": asset.Role, "title": asset.Title, "publicPath": asset.PublicPath,
-			"bytes": len(body), "sha256": hex.EncodeToString(digest[:]),
+			"bytes": asset.bytesValue(), "sha256": sha,
+			"containsPersonalInfo": asset.ContainsPersonalInfo, "licenseStatus": asset.LicenseStatus,
+			"reviewStatus": asset.ReviewStatus, "uncertainty": asset.Uncertainty,
 		})
 	}
 	for _, subject := range order {
@@ -505,11 +606,14 @@ func activationBundle(t *testing.T, assets []manifestAsset, store *activationSto
 		}
 		bodyDigest := sha256.Sum256([]byte(asset.Body))
 		sha := hex.EncodeToString(bodyDigest[:])
+		if asset.SHA256Override != "" {
+			sha = asset.SHA256Override
+		}
 		key := "releases/" + releaseID + "/receipts/" + hex.EncodeToString(receiptDigest[:]) + "/objects/" + sha + "/" + asset.PublicPath
 		version := "version-" + sha[:16]
 		bundle.Objects = append(bundle.Objects, library.PublicReleaseObject{PublicPath: asset.PublicPath, ObjectKey: key, ObjectVersionID: version})
-		commitAssets = append(commitAssets, map[string]any{"public_path": asset.PublicPath, "sha256": sha, "bytes": len(asset.Body), "object_key": key, "object_version_id": version})
-		store.objects[key] = library.DownloadObjectState{Bytes: int64(len(asset.Body)), SHA256: sha, Encryption: "AES256", VersionID: version}
+		commitAssets = append(commitAssets, map[string]any{"public_path": asset.PublicPath, "sha256": sha, "bytes": asset.bytesValue(), "object_key": key, "object_version_id": version})
+		store.objects[key] = library.DownloadObjectState{Bytes: int64(asset.bytesValue()), SHA256: sha, Encryption: "AES256", VersionID: version}
 	}
 	bundle.ReleaseCommitJSON, err = json.Marshal(map[string]any{
 		"version": 1, "state": "release_committed_not_activated", "release_id": releaseID,

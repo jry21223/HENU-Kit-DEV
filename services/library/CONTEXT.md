@@ -67,3 +67,20 @@ read atomic. Its activation command remains unwired to a public HTTP route;
 passing local tests is not production activation evidence.
 ADR-0031 keeps every activated material download-only: activation rejects any
 derived preview asset and imports `materials.slides` as `NULL`.
+
+Library activation is an **independent fail-closed publication boundary**, not
+merely a consumer of the upstream source-repository validator. The activation
+boundary re-checks publication provenance on every reviewed asset and rejects
+content the upstream validator would have blocked or left unresolved:
+`containsPersonalInfo=true`, a `reviewStatus` outside the canonical publishable
+states (`verified`/`basic-reviewed`/`community_review`), a `licenseStatus`
+outside the allowlist (`learning-reference`/`public_review_only`/
+`public-review-only`, plus `teacher_shared_exception` restricted to the
+approved historical whitelist), or a review-only `uncertainty`
+(`source_uncertain`/`year_uncertain`/`course_uncertain`/
+`public_boundary_uncertain`) on an asset that is not under a 待复核 role.
+Absent provenance fields remain tolerated for legacy sealed releases, but a
+present disallowed value always fails activation before any OSS or catalog
+write. The allowlists are synchronized with HENU-Final-Review's
+PUBLICATION_POLICY.md / docs/manifest.md / validate-materials.mjs and pinned
+by contract tests.
