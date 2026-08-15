@@ -1,3 +1,4 @@
+import Link from "next/link";
 import SectionHeading from "@/components/ui/section-heading";
 
 export default function CareerPage() {
@@ -8,6 +9,12 @@ export default function CareerPage() {
         设定求职画像，后台异步扫描受控招聘来源，匹配结果与命中原因一目了然，
         完成后自动发送结果简报至当前账户邮箱。本模块正在接入，即将上线。
       </p>
+      <Link
+        href="/account/profile"
+        className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-5 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+      >
+        设置求职画像 →
+      </Link>
     </main>
   );
 }

@@ -22,6 +22,7 @@ const MENU = [
   { href: "/account/tickets", index: "A-05", label: "工单" },
   { href: "/account/notifications", index: "A-06", label: "系统通知" },
   { href: "/account/posts", index: "A-07", label: "我的投稿" },
+  { href: "/account/profile", index: "A-08", label: "求职画像" },
 ];
 
 type SessionState =
