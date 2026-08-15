@@ -66,7 +66,15 @@ export default function WorkRadar({
     status === "completed"
       ? TARGETS.length
       : status === "running"
-        ? Math.max(1, Math.min(TARGETS.length, Math.ceil((sourcesCompleted / Math.max(sourcesTotal, 1)) * TARGETS.length)))
+        ? sourcesCompleted <= 0
+          ? 0
+          : Math.max(
+              1,
+              Math.min(
+                TARGETS.length,
+                Math.ceil((sourcesCompleted / Math.max(sourcesTotal, 1)) * TARGETS.length)
+              )
+            )
         : status === "failed"
           ? Math.min(3, TARGETS.length)
           : 0;
@@ -189,7 +197,7 @@ export default function WorkRadar({
                   {selected ? (
                     <circle cx={target.x} cy={target.y} r="14" fill="none" stroke="#ff4d00" strokeWidth="2" strokeDasharray="5 4" />
                   ) : null}
-                  <circle cx={target.x} cy={target.y} r={detected ? 5.5 : 4.5} fill={detected ? "#161513" : "#161513"} />
+                  <circle cx={target.x} cy={target.y} r={detected ? 5.5 : 4.5} fill="#161513" />
                   {selected ? (
                     <>
                       <path d={`M${target.x + 16} ${target.y - 2} h28`} stroke="#ff4d00" strokeWidth="1.5" />
