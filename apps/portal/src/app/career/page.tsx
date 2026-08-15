@@ -79,7 +79,7 @@ export default function CareerPrototypePage() {
             <span>HENU KIT // COMMUNITY UPDATE — 05</span>
             <span>N34.79 E114.30</span>
           </div>
-          <h1 className="mt-4 font-display text-[clamp(4rem,13vw,11rem)] font-bold leading-[0.82] tracking-[-0.075em]">
+          <h1 className="mt-4 font-display text-[clamp(3.25rem,13vw,11rem)] font-bold leading-[0.82] tracking-[-0.075em]">
             WORK RADAR
           </h1>
           <div className="mt-5 flex flex-col gap-6 border-t border-ink pt-5 md:flex-row md:items-end md:justify-between">
@@ -116,18 +116,27 @@ export default function CareerPrototypePage() {
             <div className="flex justify-between gap-4"><dt className="text-ink/40">MAIL</dt><dd>ON COMPLETE</dd></div>
           </dl>
 
+          {status === "failed" ? (
+            <div role="alert" className="mt-6 border border-accent p-4">
+              <p className="font-mono text-xs tracking-[0.18em] text-accent">SCAN INTERRUPTED</p>
+              <p className="mt-2 text-sm leading-6 text-ink/65">
+                本次扫描预览已中断。你可以重新开始，体验恢复后的扫描状态。
+              </p>
+            </div>
+          ) : null}
+
           {status === "idle" || status === "failed" ? (
             <button
               type="button"
               onClick={startScan}
               className="mt-6 inline-flex min-h-12 items-center justify-center border border-ink bg-ink px-5 font-mono text-xs tracking-[0.18em] text-paper transition-colors hover:border-accent hover:bg-accent"
             >
-              START SCAN →
+              {status === "failed" ? "RETRY SCAN →" : "START SCAN →"}
             </button>
           ) : null}
 
           {status === "queued" || status === "running" ? (
-            <div className="mt-6 border border-accent p-4">
+            <div role="status" aria-live="polite" className="mt-6 border border-accent p-4">
               <p className="font-mono text-xs tracking-[0.18em] text-accent">
                 {status === "queued" ? "QUEUED" : "SCANNING"}
               </p>
@@ -138,7 +147,7 @@ export default function CareerPrototypePage() {
           ) : null}
 
           {status === "completed" ? (
-            <div className="mt-6">
+            <div role="status" aria-live="polite" className="mt-6">
               <div className="border border-ink bg-ink p-4 text-paper">
                 <p className="font-mono text-xs tracking-[0.18em] text-accent">SCAN COMPLETE</p>
                 <p className="mt-2 font-display text-3xl font-bold">发现 {metrics.matched} 个匹配岗位</p>
@@ -153,13 +162,15 @@ export default function CareerPrototypePage() {
             </div>
           ) : null}
 
-          <button
-            type="button"
-            onClick={() => setStatus("failed")}
-            className="mt-auto pt-8 text-left font-mono text-[9px] tracking-[0.16em] text-ink/35 transition-colors hover:text-accent"
-          >
-            查看扫描异常状态
-          </button>
+          {status !== "failed" ? (
+            <button
+              type="button"
+              onClick={() => setStatus("failed")}
+              className="mt-auto pt-8 text-left font-mono text-[9px] tracking-[0.16em] text-ink/35 transition-colors hover:text-accent"
+            >
+              查看扫描异常状态
+            </button>
+          ) : null}
         </aside>
       </section>
 
