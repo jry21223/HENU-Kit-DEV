@@ -84,7 +84,7 @@ export default function CareerPrototypePage() {
           </h1>
           <div className="mt-5 flex flex-col gap-6 border-t border-ink pt-5 md:flex-row md:items-end md:justify-between">
             <p className="max-w-3xl font-display text-2xl font-bold leading-tight md:text-4xl">
-              上传简历，让求职雷达替你扫描大厂招聘官网。
+              完善求职画像，让求职雷达替你扫描大厂招聘官网。
             </p>
             <p className="max-w-sm text-sm leading-6 text-ink/60">
               当前为交互预览。正式上线后，扫描将连接真实岗位数据、会员权限与完成邮件提醒。
@@ -112,7 +112,7 @@ export default function CareerPrototypePage() {
           <dl className="mt-8 space-y-3 border-y border-ink py-5 font-mono text-[10px] tracking-[0.12em]">
             <div className="flex justify-between gap-4"><dt className="text-ink/40">TARGET</dt><dd>AI / 后端 / 全栈</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-ink/40">LOCATION</dt><dd>北京 / 上海 / 杭州</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-ink/40">ACCESS</dt><dd>LIFETIME VIP</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-ink/40">BENEFIT</dt><dd>LIFETIME VIP</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-ink/40">MAIL</dt><dd>ON COMPLETE</dd></div>
           </dl>
 
