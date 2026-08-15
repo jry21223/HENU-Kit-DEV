@@ -577,3 +577,70 @@ export interface NoticeListResponse {
   notices: NoticeSummary[];
   request_id: string;
 }
+
+// ---- Career (Work Radar) ----
+
+/** 一次异步求职搜索的当前状态（网关原样透传 Career 服务枚举）。 */
+export type CareerSearchStatus = "queued" | "running" | "completed" | "failed";
+
+/** 搜索执行阶段（status=running 时存在）。 */
+export type CareerSearchStage = "crawling" | "matching" | "rendering";
+
+/** 求职岗位类型；空串 = 未选择。 */
+export type CareerJobType = "" | "daily_intern" | "summer_intern" | "campus_recruit";
+
+export interface CareerSearch {
+  id: string;
+  status: CareerSearchStatus;
+  stage?: CareerSearchStage;
+  user_id: string;
+  has_email: boolean;
+  error_code?: string;
+  error_message?: string;
+  created_at: string;
+}
+
+/**
+ * 求职画像。除 user_id / updated_at 外均为可选：从未设置时网关返回
+ * 仅含必填字段的空画像，读取方按缺省值展示。
+ */
+export interface CareerProfile {
+  user_id: string;
+  target_roles?: string;
+  tech_stack?: string;
+  locations?: string;
+  job_type?: CareerJobType;
+  graduation_year?: number | null;
+  resume_text?: string;
+  email_notification_enabled?: boolean;
+  updated_at: string;
+}
+
+/** 写画像的输入；浏览器侧不传 user_id，actor 由网关从 Session 绑定。 */
+export interface CareerProfileInput {
+  target_roles?: string;
+  tech_stack?: string;
+  locations?: string;
+  job_type?: CareerJobType;
+  graduation_year?: number | null;
+  resume_text?: string;
+  email_notification_enabled?: boolean;
+}
+
+/** 网关解包后的创建 / 单次状态响应。 */
+export interface CareerSearchResponse {
+  search: CareerSearch;
+  request_id: string;
+}
+
+/** 网关解包后的历史响应。 */
+export interface CareerSearchesResponse {
+  searches: CareerSearch[];
+  request_id: string;
+}
+
+/** 网关解包后的画像响应。 */
+export interface CareerProfileResponse {
+  profile: CareerProfile;
+  request_id: string;
+}

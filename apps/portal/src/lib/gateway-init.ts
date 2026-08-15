@@ -7,6 +7,7 @@
 
 import { hasGateway, mockAllowed } from "@/lib/api/client";
 import { initCampusGateway } from "@/lib/campus/gateway";
+import { initCareerGateway } from "@/lib/career/gateway";
 import { initFoodGateway } from "@/lib/food/gateway";
 import { initGateway } from "@/lib/library/gateway";
 import { quizCraftCatalogEnabled } from "@/lib/api/env";
@@ -39,6 +40,7 @@ export async function initAllGateways(): Promise<void> {
       initFoodGateway(),
       ...practiceInitializer,
       initCampusGateway(),
+      initCareerGateway(),
     ]);
     initialized = true;
     inflight = null;

@@ -57,6 +57,10 @@ import type {
   QuizCraftRankingPeriod,
   QuizCraftRankingResponse,
   SchoolListResponse,
+  CareerProfileInput,
+  CareerProfileResponse,
+  CareerSearchResponse,
+  CareerSearchesResponse,
 } from "./types";
 
 // ---- Error types ----
@@ -129,6 +133,26 @@ export class PortalUnauthorizedError extends PortalHttpError {
   }
 }
 
+/**
+ * 403 语义由 Gateway error envelope 的 error 码区分（如 career 的
+ * lifetime_required），errorCode 保留该码供调用方分支。
+ */
+export class PortalForbiddenError extends PortalHttpError {
+  readonly errorCode?: string;
+
+  constructor(
+    path: string,
+    message: string,
+    requestId?: string,
+    errorCode?: string
+  ) {
+    super(path, 403, message, requestId);
+    this.name = "PortalForbiddenError";
+    this.errorCode = errorCode;
+    (this as { code: string }).code = "PORTAL_FORBIDDEN";
+  }
+}
+
 /** Whether the real gateway URL is configured (build-safe). */
 export const hasGateway = hasGatewayConfigured();
 
@@ -154,12 +178,13 @@ function baseUrlOrEmpty(): string {
 
 async function parseErrorBody(
   res: Response
-): Promise<{ message: string; requestId?: string }> {
+): Promise<{ message: string; requestId?: string; errorCode?: string }> {
   try {
     const body = (await res.json()) as ErrorEnvelope;
     return {
       message: body.error || res.statusText || `HTTP ${res.status}`,
       requestId: body.request_id,
+      errorCode: body.error,
     };
   } catch {
     return { message: res.statusText || `HTTP ${res.status}` };
@@ -207,6 +232,11 @@ async function apiFetch<T>(
     // Session endpoints: 401 means logged out (not a hard failure).
     if (path === "/api/v1/session") return null;
     throw new PortalUnauthorizedError(path, requestId);
+  }
+
+  if (res.status === 403) {
+    const { message, requestId, errorCode } = await parseErrorBody(res);
+    throw new PortalForbiddenError(path, message, requestId, errorCode);
   }
 
   if (!res.ok) {
@@ -671,6 +701,88 @@ export async function fetchCampusCategories(): Promise<CategoryListResponse> {
 
 export async function fetchNotices(): Promise<NoticeListResponse | null> {
   return apiFetch<NoticeListResponse>("/api/v1/notices");
+}
+
+// ---- Career (Work Radar) ----
+
+/**
+ * Career create 命令 init：POST + Idempotency-Key（网关契约要求头必填）。
+ * key 校验区间对齐 food submit 的 8..200。
+ */
+function careerCommandInit(idempotencyKey: string, body: unknown): RequestInit {
+  const key = idempotencyKey.trim();
+  if (key.length < 8 || key.length > 200) {
+    throw new PortalApiError("Invalid Career idempotency key", {
+      code: "PORTAL_INVALID_CAREER_IDEMPOTENCY_KEY",
+    });
+  }
+  return {
+    method: "POST",
+    cache: "no-store",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": key,
+    },
+    body: JSON.stringify(body),
+  };
+}
+
+/**
+ * 创建一次异步求职搜索。Gateway 从 Session 绑定 actor，浏览器侧不传
+ * user_id。调用方必须保留 idempotencyKey 供双击/重试复用。非 Lifetime
+ * 会员 → PortalForbiddenError（errorCode = "lifetime_required"）。
+ */
+export async function createCareerSearch(
+  profile: CareerProfileInput,
+  idempotencyKey: string
+): Promise<CareerSearchResponse> {
+  return apiFetchRequired<CareerSearchResponse>(
+    "/api/v1/career/searches",
+    careerCommandInit(idempotencyKey, { profile })
+  );
+}
+
+/** 读取当前用户的历史搜索。 */
+export async function listCareerSearches(): Promise<CareerSearchesResponse> {
+  return apiFetchRequired<CareerSearchesResponse>("/api/v1/career/searches", {
+    cache: "no-store",
+  });
+}
+
+/** 读取单次搜索的当前状态（轮询用）。 */
+export async function getCareerSearchStatus(
+  searchID: string
+): Promise<CareerSearchResponse> {
+  if (!searchID.trim()) {
+    throw new PortalApiError("Invalid Career search id", {
+      code: "PORTAL_INVALID_CAREER_SEARCH_ID",
+    });
+  }
+  return apiFetchRequired<CareerSearchResponse>(
+    `/api/v1/career/searches/${encodeURIComponent(searchID)}`,
+    { cache: "no-store" }
+  );
+}
+
+/** 读取当前用户的求职画像；从未设置时返回仅含必填字段的空画像。 */
+export async function getCareerProfile(): Promise<CareerProfileResponse> {
+  return apiFetchRequired<CareerProfileResponse>("/api/v1/career/profile", {
+    cache: "no-store",
+  });
+}
+
+/** 全量替换当前用户的求职画像；浏览器侧不传 user_id。 */
+export async function updateCareerProfile(
+  profile: CareerProfileInput
+): Promise<CareerProfileResponse> {
+  return apiFetchRequired<CareerProfileResponse>("/api/v1/career/profile", {
+    method: "PUT",
+    cache: "no-store",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
 }
 
 /** Human-readable error for UI banners. */
