@@ -139,6 +139,72 @@ func TestNewRejectsInvalidMessageIDDomains(t *testing.T) {
 	}
 }
 
+type captureDigestMailer struct {
+	calls int
+	mails []Mail
+}
+
+func (mailer *captureDigestMailer) Send(_ context.Context, message Mail) error {
+	mailer.calls++
+	mailer.mails = append(mailer.mails, message)
+	if message.Recipient != "student@henu.edu.cn" || message.Digest == nil || message.MessageID == "" {
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestProviderAcceptsCareerDigestTemplate(t *testing.T) {
+	mailer := &captureDigestMailer{}
+	handler, err := newTestProvider(filepath.Join(t.TempDir(), "ledger"), mailer, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+	body := []byte(`{"recipient":"student@henu.edu.cn","template":"henukit_career_digest","variables":{"search_id":"search-001","completed_at":"2026-08-15T06:30:00Z","source_count":2,"job_count":3,"matched_count":1,"summary":"已扫描 2 个来源，发现 3 个岗位，1 个推荐","career_url":"https://portal.henukit.cn/career?search=search-001","top_jobs":[{"company":"测试公司","title":"后端开发实习生","location":"郑州","url":"https://example.test/jobs/1","match_score":90,"match_reasons":["匹配目标岗位 后端开发"]}]},"request_id":"req_digest_001","idempotency_key":"career_search_completed:search-001"}`)
+	request := httptest.NewRequest(http.MethodPost, "/internal/send", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer provider-token-at-least-32-characters")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "career_search_completed:search-001")
+	request.Header.Set("X-Request-ID", "req_digest_001")
+	request.Header.Set("X-Mail-Attempt", "1")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("career digest = %d body=%q, want 200", response.Code, response.Body.String())
+	}
+	if mailer.calls != 1 {
+		t.Fatalf("career digest sent %d messages, want 1", mailer.calls)
+	}
+	delivered := mailer.mails[0]
+	if delivered.Digest == nil || delivered.Digest.SearchID != "search-001" || delivered.Digest.SourceCount != 2 {
+		t.Fatalf("mailer received no digest payload: %+v", delivered)
+	}
+	if delivered.Code != "" || delivered.Purpose != "" {
+		t.Fatalf("career digest mail carried verification fields: %+v", delivered)
+	}
+}
+
+func TestProviderRejectsCareerDigestWithVerificationFields(t *testing.T) {
+	mailer := &captureMailer{}
+	handler, err := newTestProvider(filepath.Join(t.TempDir(), "ledger"), mailer, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+	body := []byte(`{"recipient":"student@henu.edu.cn","template":"henukit_career_digest","variables":{"code":"123456"},"request_id":"req_digest_bad","idempotency_key":"career_search_completed:search-bad"}`)
+	request := httptest.NewRequest(http.MethodPost, "/internal/send", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer provider-token-at-least-32-characters")
+	request.Header.Set("Idempotency-Key", "career_search_completed:search-bad")
+	request.Header.Set("X-Request-ID", "req_digest_bad")
+	request.Header.Set("X-Mail-Attempt", "1")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("incomplete digest = %d, want 400", response.Code)
+	}
+	if mailer.calls != 0 {
+		t.Fatalf("invalid digest sent %d messages, want 0", mailer.calls)
+	}
+}
+
 func TestProviderAcceptsRegisterPurpose(t *testing.T) {
 	mailer := &captureMailer{}
 	handler, err := newTestProvider(filepath.Join(t.TempDir(), "ledger"), mailer, &bytes.Buffer{})

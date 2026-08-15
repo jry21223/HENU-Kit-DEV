@@ -145,7 +145,7 @@ WITH candidate AS (
         locked_at = now(), locked_by = $2, updated_at = now()
     FROM candidate
     WHERE job.id = candidate.id
-    RETURNING job.id, job.dedupe_key, job.request_id, job.recipient_ciphertext, job.payload_ciphertext,
+    RETURNING job.id, job.dedupe_key, job.request_id, job.kind, job.recipient_ciphertext, job.payload_ciphertext,
               job.attempt_count, job.max_attempts
 ), audited AS (
     INSERT INTO mail_outbox_audit_events (
@@ -156,7 +156,7 @@ WITH candidate AS (
     RETURNING outbox_id
 )
 SELECT claimed.id, claimed.dedupe_key, claimed.request_id,
-       claimed.recipient_ciphertext, claimed.payload_ciphertext,
+       claimed.kind, claimed.recipient_ciphertext, claimed.payload_ciphertext,
        claimed.attempt_count, claimed.max_attempts
 FROM claimed
 JOIN audited ON audited.outbox_id = claimed.id
@@ -171,6 +171,7 @@ type ClaimMailOutboxRow struct {
 	ID                  pgtype.UUID `json:"id"`
 	DedupeKey           string      `json:"dedupe_key"`
 	RequestID           string      `json:"request_id"`
+	Kind                string      `json:"kind"`
 	RecipientCiphertext []byte      `json:"recipient_ciphertext"`
 	PayloadCiphertext   []byte      `json:"payload_ciphertext"`
 	AttemptCount        int32       `json:"attempt_count"`
@@ -184,6 +185,7 @@ func (q *Queries) ClaimMailOutbox(ctx context.Context, arg ClaimMailOutboxParams
 		&i.ID,
 		&i.DedupeKey,
 		&i.RequestID,
+		&i.Kind,
 		&i.RecipientCiphertext,
 		&i.PayloadCiphertext,
 		&i.AttemptCount,
@@ -210,6 +212,35 @@ func (q *Queries) ConsumeVerificationCode(ctx context.Context, arg ConsumeVerifi
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const createCareerDigestMailOutbox = `-- name: CreateCareerDigestMailOutbox :one
+INSERT INTO mail_outbox (
+    verification_code_id, dedupe_key, request_id, kind, priority,
+    recipient_user_id, recipient_ciphertext, payload_ciphertext
+) VALUES (NULL, $1, $2, 'career_digest', 'bulk', $3, $4, $5)
+RETURNING id
+`
+
+type CreateCareerDigestMailOutboxParams struct {
+	DedupeKey           string      `json:"dedupe_key"`
+	RequestID           string      `json:"request_id"`
+	RecipientUserID     pgtype.UUID `json:"recipient_user_id"`
+	RecipientCiphertext []byte      `json:"recipient_ciphertext"`
+	PayloadCiphertext   []byte      `json:"payload_ciphertext"`
+}
+
+func (q *Queries) CreateCareerDigestMailOutbox(ctx context.Context, arg CreateCareerDigestMailOutboxParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createCareerDigestMailOutbox,
+		arg.DedupeKey,
+		arg.RequestID,
+		arg.RecipientUserID,
+		arg.RecipientCiphertext,
+		arg.PayloadCiphertext,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const createCoreSession = `-- name: CreateCoreSession :one
@@ -731,6 +762,26 @@ func (q *Queries) GetVerificationRequestByKey(ctx context.Context, requestKey pg
 		&i.ExpiresAt,
 		&i.CreatedAt,
 	)
+	return i, err
+}
+
+const getVerifiedEmailByUserID = `-- name: GetVerifiedEmailByUserID :one
+SELECT identity.email_ciphertext, users.email_verified
+FROM email_identities AS identity
+JOIN users ON users.id = identity.user_id
+WHERE identity.user_id = $1
+LIMIT 1
+`
+
+type GetVerifiedEmailByUserIDRow struct {
+	EmailCiphertext []byte `json:"email_ciphertext"`
+	EmailVerified   bool   `json:"email_verified"`
+}
+
+func (q *Queries) GetVerifiedEmailByUserID(ctx context.Context, userID pgtype.UUID) (GetVerifiedEmailByUserIDRow, error) {
+	row := q.db.QueryRow(ctx, getVerifiedEmailByUserID, userID)
+	var i GetVerifiedEmailByUserIDRow
+	err := row.Scan(&i.EmailCiphertext, &i.EmailVerified)
 	return i, err
 }
 

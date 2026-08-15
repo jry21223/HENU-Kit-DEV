@@ -16,11 +16,13 @@ import (
 type Message struct {
 	IdempotencyKey string
 	Recipient      string
+	Template       string // "henukit_verification_code" or "henukit_career_digest"
 	Code           string
 	Purpose        string
 	ExpiresAt      time.Time
 	RequestID      string
 	AttemptCount   int32
+	Digest         *verificationmail.CareerDigest
 }
 
 type Sender interface {
@@ -45,6 +47,7 @@ type Worker struct {
 	sender            Sender
 	workerID          string
 	mailCodec         *verificationmail.Codec
+	digestCodec       *verificationmail.DigestCodec
 	leaseTimeout      time.Duration
 	sendTimeout       time.Duration
 	now               func() time.Time
@@ -70,9 +73,14 @@ func New(queries *store.Queries, sender Sender, workerID string, masterKey []byt
 	if err != nil {
 		return nil, err
 	}
+	digestCodec, err := verificationmail.NewDigestCodec(masterKey)
+	if err != nil {
+		return nil, err
+	}
 	return &Worker{
 		queries: queries, sender: sender, workerID: workerID,
 		mailCodec:    mailCodec,
+		digestCodec:  digestCodec,
 		leaseTimeout: leaseTimeout, sendTimeout: sendTimeout, now: func() time.Time { return time.Now().UTC() },
 		reconcileInterval: 5 * time.Second,
 	}, nil
@@ -106,21 +114,35 @@ func (w *Worker) ProcessOne(ctx context.Context) (outcome Outcome, err error) {
 	outcome.OutboxID = uuidString(job.ID)
 	outcome.RequestID = job.RequestID
 	outcome.AttemptCount = job.AttemptCount
-	recipient, content, err := w.mailCodec.Decode(job.RecipientCiphertext, job.PayloadCiphertext)
-	if err != nil {
-		outcome.Result, outcome.ErrorCode = "failed", "PAYLOAD_INVALID"
-		return outcome, w.fail(ctx, job.ID, outcome.ErrorCode)
-	}
-	if !w.now().Before(content.ExpiresAt) {
-		outcome.Result, outcome.ErrorCode = "failed", "VERIFICATION_EXPIRED"
-		return outcome, w.fail(ctx, job.ID, outcome.ErrorCode)
+	var message Message
+	if job.Kind == "career_digest" {
+		recipient, digest, err := w.digestCodec.Decode(job.RecipientCiphertext, job.PayloadCiphertext)
+		if err != nil {
+			outcome.Result, outcome.ErrorCode = "failed", "PAYLOAD_INVALID"
+			return outcome, w.fail(ctx, job.ID, outcome.ErrorCode)
+		}
+		message = Message{
+			IdempotencyKey: job.DedupeKey, Recipient: recipient, Template: "henukit_career_digest",
+			RequestID: job.RequestID, AttemptCount: job.AttemptCount, Digest: &digest,
+		}
+	} else {
+		recipient, content, err := w.mailCodec.Decode(job.RecipientCiphertext, job.PayloadCiphertext)
+		if err != nil {
+			outcome.Result, outcome.ErrorCode = "failed", "PAYLOAD_INVALID"
+			return outcome, w.fail(ctx, job.ID, outcome.ErrorCode)
+		}
+		if !w.now().Before(content.ExpiresAt) {
+			outcome.Result, outcome.ErrorCode = "failed", "VERIFICATION_EXPIRED"
+			return outcome, w.fail(ctx, job.ID, outcome.ErrorCode)
+		}
+		message = Message{
+			IdempotencyKey: job.DedupeKey, Recipient: recipient, Template: "henukit_verification_code",
+			Code: content.Code, Purpose: content.Purpose, ExpiresAt: content.ExpiresAt,
+			RequestID: job.RequestID, AttemptCount: job.AttemptCount,
+		}
 	}
 	sendContext, cancel := context.WithTimeout(ctx, w.sendTimeout)
-	providerMessageID, sendErr := w.sender.Send(sendContext, Message{
-		IdempotencyKey: job.DedupeKey,
-		Recipient:      recipient, Code: content.Code, Purpose: content.Purpose,
-		ExpiresAt: content.ExpiresAt, RequestID: job.RequestID, AttemptCount: job.AttemptCount,
-	})
+	providerMessageID, sendErr := w.sender.Send(sendContext, message)
 	cancel()
 	if sendErr == nil && providerMessageID != "" {
 		rows, err := w.queries.AcceptMailOutbox(ctx, store.AcceptMailOutboxParams{

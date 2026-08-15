@@ -114,6 +114,7 @@ type MailOutbox struct {
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 	PayloadClearedAt    pgtype.Timestamptz `json:"payload_cleared_at"`
+	RecipientUserID     pgtype.UUID        `json:"recipient_user_id"`
 }
 
 type MailOutboxAuditEvent struct {

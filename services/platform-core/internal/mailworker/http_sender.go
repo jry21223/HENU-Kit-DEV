@@ -12,6 +12,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"henukit.dev/platform-core/internal/verificationmail"
 )
 
 type HTTPSender struct {
@@ -47,24 +49,49 @@ func allowInsecureMailProviderHost(host string) bool {
 	return false
 }
 
+// providerVariables is the provider wire shape shared by the verification_code
+// and career_digest templates. The verification fields keep their exact names
+// and emit order; the digest fields are omitted entirely for verification mail
+// so the verification request body stays byte-identical.
+type providerVariables struct {
+	Code      string `json:"code,omitempty"`
+	Purpose   string `json:"purpose,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+
+	SearchID     string                 `json:"search_id,omitempty"`
+	CompletedAt  string                 `json:"completed_at,omitempty"`
+	SourceCount  int                    `json:"source_count,omitempty"`
+	JobCount     int                    `json:"job_count,omitempty"`
+	MatchedCount int                    `json:"matched_count,omitempty"`
+	Summary      string                 `json:"summary,omitempty"`
+	CareerURL    string                 `json:"career_url,omitempty"`
+	TopJobs      []verificationmail.Job `json:"top_jobs,omitempty"`
+}
+
 func (s *HTTPSender) Send(ctx context.Context, message Message) (string, error) {
+	template := "henukit_verification_code"
+	variables := providerVariables{
+		Code: message.Code, Purpose: message.Purpose,
+		ExpiresAt: message.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if message.Template == "henukit_career_digest" && message.Digest != nil {
+		template = "henukit_career_digest"
+		variables = providerVariables{
+			SearchID: message.Digest.SearchID, CompletedAt: message.Digest.CompletedAt,
+			SourceCount: message.Digest.SourceCount, JobCount: message.Digest.JobCount,
+			MatchedCount: message.Digest.MatchedCount, Summary: message.Digest.Summary,
+			CareerURL: message.Digest.CareerURL, TopJobs: message.Digest.TopJobs,
+		}
+	}
 	payload, err := json.Marshal(struct {
-		Recipient string `json:"recipient"`
-		Template  string `json:"template"`
-		Variables struct {
-			Code      string `json:"code"`
-			Purpose   string `json:"purpose"`
-			ExpiresAt string `json:"expires_at"`
-		} `json:"variables"`
-		RequestID      string `json:"request_id"`
-		IdempotencyKey string `json:"idempotency_key"`
+		Recipient      string            `json:"recipient"`
+		Template       string            `json:"template"`
+		Variables      providerVariables `json:"variables"`
+		RequestID      string            `json:"request_id"`
+		IdempotencyKey string            `json:"idempotency_key"`
 	}{
-		Recipient: message.Recipient, Template: "henukit_verification_code", RequestID: message.RequestID, IdempotencyKey: message.IdempotencyKey,
-		Variables: struct {
-			Code      string `json:"code"`
-			Purpose   string `json:"purpose"`
-			ExpiresAt string `json:"expires_at"`
-		}{Code: message.Code, Purpose: message.Purpose, ExpiresAt: message.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00")},
+		Recipient: message.Recipient, Template: template, RequestID: message.RequestID, IdempotencyKey: message.IdempotencyKey,
+		Variables: variables,
 	})
 	if err != nil {
 		return "", err

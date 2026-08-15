@@ -23,34 +23,40 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/platform-core/internal/careerdigestmail"
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/identity"
 	"henukit.dev/platform-core/internal/operationsinbox"
 	"henukit.dev/platform-core/internal/platformoperations"
 	"henukit.dev/platform-core/internal/store"
 	"henukit.dev/platform-core/internal/verification"
+	"henukit.dev/platform-core/internal/verificationmail"
 )
 
 type Handler struct {
-	publicPathPrefix string
-	flow             *identity.Service
-	verification     *verification.Service
-	inbox            *operationsinbox.Service
-	platformOps      *platformoperations.Service
-	queries          *store.Queries
-	database         *pgxpool.Pool
-	redis            *redis.Client
-	cookieName       string
-	localCookieName  string
-	coreSessionTTL   time.Duration
-	logger           *slog.Logger
-	deliveryKeys     map[string][]byte
-	deviceKey        []byte
-	trustedProxies   []*net.IPNet
+	publicPathPrefix     string
+	flow                 *identity.Service
+	verification         *verification.Service
+	inbox                *operationsinbox.Service
+	platformOps          *platformoperations.Service
+	queries              *store.Queries
+	database             *pgxpool.Pool
+	redis                *redis.Client
+	cookieName           string
+	localCookieName      string
+	coreSessionTTL       time.Duration
+	logger               *slog.Logger
+	deliveryKeys         map[string][]byte
+	deviceKey            []byte
+	trustedProxies       []*net.IPNet
+	digestMail           *careerdigestmail.Service
+	careerDigestClientID string
+	careerDigestKeys     map[string][]byte
 }
 
 type browserCookieProfile struct {
@@ -60,8 +66,8 @@ type browserCookieProfile struct {
 
 const explicitFormResponseHeader = "X-Henukit-Form-Response"
 
-func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, coreSessionTTL time.Duration, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, logger *slog.Logger) http.Handler {
-	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, coreSessionTTL: coreSessionTTL, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, logger: logger}
+func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, coreSessionTTL time.Duration, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, digestMail *careerdigestmail.Service, careerDigestClientID string, careerDigestKeys map[string][]byte, logger *slog.Logger) http.Handler {
+	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, coreSessionTTL: coreSessionTTL, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, digestMail: digestMail, careerDigestClientID: careerDigestClientID, careerDigestKeys: careerDigestKeys, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -98,6 +104,7 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Post(contract.RevokePlatformOperationSessionRoute, handler.revokePlatformOperationSession)
 	router.Post(contract.UpdatePlatformOperationAccessRoute, handler.updatePlatformOperationAccess)
 	router.Get(contract.PlatformOperationStatusRoute, handler.getPlatformOperationStatus)
+	router.Post(contract.CareerDigestMailEnqueueRoute, handler.enqueueCareerDigestMail)
 	return router
 }
 
@@ -616,6 +623,128 @@ func (h *Handler) recordMailDelivery(writer http.ResponseWriter, request *http.R
 		return
 	}
 	writeSuccess(writer, request, http.StatusAccepted, contract.MailDeliveryAccepted{Accepted: true})
+}
+
+// enqueueCareerDigestMail is the #397 internal boundary: the Career worker
+// enqueues one Opportunity Digest per completed search. The caller authenticates
+// with the shared career-digest service credential (Basic + the five-line HMAC
+// canonical form used across the repo); the browser never reaches this route
+// and never supplies a recipient. The verified email is resolved and sealed
+// server-side, and a replay for the same search is an idempotent no-op.
+func (h *Handler) enqueueCareerDigestMail(writer http.ResponseWriter, request *http.Request) {
+	if h.digestMail == nil {
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		return
+	}
+	audit := auditFrom(request.Context())
+	audit.serviceID, audit.keyID = request.Header.Get(contract.ServiceIDHeader), request.Header.Get(contract.KeyIDHeader)
+	clientID, clientSecret, basic := request.BasicAuth()
+	secret, knownKey := h.careerDigestKeys[audit.keyID]
+	rawTimestamp := request.Header.Get(contract.TimestampHeader)
+	timestamp, parseErr := strconv.ParseInt(rawTimestamp, 10, 64)
+	nonce := request.Header.Get(contract.NonceHeader)
+	if !basic || clientID == "" || clientID != h.careerDigestClientID || audit.serviceID != clientID || !knownKey || parseErr != nil || !hmac.Equal([]byte(clientSecret), secret) || time.Since(time.Unix(timestamp, 0)).Abs() > 5*time.Minute {
+		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "career digest authentication failed")
+		return
+	}
+	decodedNonce, decodeErr := base64.RawURLEncoding.DecodeString(nonce)
+	if decodeErr != nil || len(decodedNonce) != 24 {
+		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "career digest authentication failed")
+		return
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, 32<<10)
+	rawBody, readErr := io.ReadAll(request.Body)
+	if readErr != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "career digest request is invalid")
+		return
+	}
+	bodyHash := sha256.Sum256(rawBody)
+	canonical := fmt.Sprintf("%s\n%s\n%s\n%s\n%s", request.Method, request.URL.RequestURI(), rawTimestamp, nonce, hex.EncodeToString(bodyHash[:]))
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(canonical))
+	providedSignature, decodeErr := base64.RawURLEncoding.DecodeString(request.Header.Get(contract.SignatureHeader))
+	if decodeErr != nil || !hmac.Equal(providedSignature, mac.Sum(nil)) {
+		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "career digest authentication failed")
+		return
+	}
+	stored, err := h.redis.SetNX(request.Context(), "platform-core:career-digest:nonce:"+audit.keyID+":"+nonce, "1", 10*time.Minute).Result()
+	if err != nil {
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		return
+	}
+	if !stored {
+		writeError(writer, request, http.StatusConflict, "NONCE_ALREADY_USED", "career digest request was already submitted")
+		return
+	}
+	var body contract.CareerDigestMailEnqueueRequest
+	decoder := json.NewDecoder(bytes.NewReader(rawBody))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil || decoder.Decode(&struct{}{}) != io.EOF || !validCareerDigestEnqueue(body) {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "career digest request is invalid")
+		return
+	}
+	userID, err := uuid.Parse(body.UserID)
+	if err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "career digest request is invalid")
+		return
+	}
+	topJobs := make([]verificationmail.Job, 0, len(body.TopJobs))
+	for _, job := range body.TopJobs {
+		topJobs = append(topJobs, verificationmail.Job{
+			Company: job.Company, Title: job.Title, Location: job.Location,
+			URL: job.URL, MatchScore: job.MatchScore, MatchReasons: job.MatchReasons,
+		})
+	}
+	_, err = h.digestMail.Enqueue(request.Context(), careerdigestmail.EnqueueInput{
+		UserID: userID, RequestID: requestIDFrom(request.Context()), SearchID: body.SearchID,
+		CompletedAt: body.CompletedAt, SourceCount: body.SourceCount, JobCount: body.JobCount,
+		MatchedCount: body.MatchedCount, Summary: body.Summary, CareerURL: body.CareerURL, TopJobs: topJobs,
+	})
+	if errors.Is(err, careerdigestmail.ErrNoVerifiedEmail) {
+		writeError(writer, request, http.StatusNotFound, "VERIFIED_EMAIL_NOT_FOUND", "user has no verified email identity")
+		return
+	}
+	if err != nil {
+		h.logger.Error("career_digest_enqueue_error", "request_id", requestIDFrom(request.Context()), "error", err)
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(body.UserID)
+	writeSuccess(writer, request, http.StatusAccepted, contract.CareerDigestMailEnqueued{Enqueued: true})
+}
+
+func validCareerDigestEnqueue(body contract.CareerDigestMailEnqueueRequest) bool {
+	if body.UserID == "" || body.SearchID == "" || len(body.SearchID) > 100 || body.CompletedAt == "" ||
+		body.Summary == "" || len(body.Summary) > 4000 ||
+		body.SourceCount < 0 || body.JobCount < 0 || body.MatchedCount < 0 ||
+		len(body.TopJobs) > 20 {
+		return false
+	}
+	if _, err := time.Parse(time.RFC3339, body.CompletedAt); err != nil {
+		return false
+	}
+	if body.CareerURL != "" && !validCareerDigestWebURL(body.CareerURL) {
+		return false
+	}
+	for _, job := range body.TopJobs {
+		if job.MatchScore < 0 || job.MatchScore > 100 ||
+			len(job.Company) > 200 || len(job.Title) > 200 || len(job.Location) > 200 ||
+			len(job.URL) > 1000 || len(job.MatchReasons) > 10 ||
+			(job.URL != "" && !validCareerDigestWebURL(job.URL)) {
+			return false
+		}
+		for _, reason := range job.MatchReasons {
+			if len(reason) > 200 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validCareerDigestWebURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
 }
 
 var accountLoginTemplate = template.Must(template.New("account-login").Parse(`<!doctype html>

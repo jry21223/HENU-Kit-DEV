@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/mail"
 	"net/textproto"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,11 +20,42 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"henukit.dev/platform-core/internal/verificationmail"
 )
 
 var idempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9:._-]{8,200}$`)
 var auditIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
 var messageIDDomainLabelPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
+
+// sendVariables is the exact provider wire shape shared by the
+// verification_code and career_digest templates. The verification fields stay
+// exactly as they were; the digest fields are only ever present for
+// career_digest mail and carry the browser-safe search summary, never a raw
+// profile.
+type sendVariables struct {
+	Code      string `json:"code"`
+	Purpose   string `json:"purpose"`
+	ExpiresAt string `json:"expires_at"`
+
+	SearchID     string                 `json:"search_id"`
+	CompletedAt  string                 `json:"completed_at"`
+	SourceCount  int                    `json:"source_count"`
+	JobCount     int                    `json:"job_count"`
+	MatchedCount int                    `json:"matched_count"`
+	Summary      string                 `json:"summary"`
+	CareerURL    string                 `json:"career_url"`
+	TopJobs      []verificationmail.Job `json:"top_jobs"`
+}
+
+// sendPayload is the complete provider request body.
+type sendPayload struct {
+	Recipient      string        `json:"recipient"`
+	Template       string        `json:"template"`
+	Variables      sendVariables `json:"variables"`
+	RequestID      string        `json:"request_id"`
+	IdempotencyKey string        `json:"idempotency_key"`
+}
 
 type Mail struct {
 	Recipient string
@@ -32,6 +64,9 @@ type Mail struct {
 	ExpiresAt time.Time
 	RequestID string
 	MessageID string
+	// Digest is set only for career_digest mail: the browser-safe summary of a
+	// completed Career search. It is never a raw profile.
+	Digest *verificationmail.CareerDigest
 }
 
 type Mailer interface {
@@ -103,17 +138,7 @@ func (provider *Provider) ServeHTTP(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
-	var payload struct {
-		Recipient string `json:"recipient"`
-		Template  string `json:"template"`
-		Variables struct {
-			Code      string `json:"code"`
-			Purpose   string `json:"purpose"`
-			ExpiresAt string `json:"expires_at"`
-		} `json:"variables"`
-		RequestID      string `json:"request_id"`
-		IdempotencyKey string `json:"idempotency_key"`
-	}
+	var payload sendPayload
 	decoder := json.NewDecoder(io.LimitReader(request.Body, 16<<10))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&payload); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
@@ -128,12 +153,16 @@ func (provider *Provider) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	address, addressErr := mail.ParseAddress(payload.Recipient)
 	headerKey := request.Header.Get("Idempotency-Key")
 	validPurpose := payload.Variables.Purpose == "register" || payload.Variables.Purpose == "login" || payload.Variables.Purpose == "bind_email" || payload.Variables.Purpose == "security"
-	if parseErr != nil || addressErr != nil || address.Address != payload.Recipient || payload.Template != "henukit_verification_code" || len(payload.Variables.Code) != 6 || !validPurpose || !auditIdentifierPattern.MatchString(payload.RequestID) || (requestID != "" && payload.RequestID != requestID) || payload.IdempotencyKey != headerKey || !idempotencyPattern.MatchString(headerKey) {
+	validRequest := addressErr == nil && address.Address == payload.Recipient &&
+		auditIdentifierPattern.MatchString(payload.RequestID) &&
+		(requestID == "" || payload.RequestID == requestID) &&
+		payload.IdempotencyKey == headerKey && idempotencyPattern.MatchString(headerKey)
+	if !validRequest || !validTemplatePayload(payload, parseErr, validPurpose) {
 		provider.audit(requestID, "rejected", "INVALID_REQUEST", attempt, startedAt)
 		writeProviderError(writer, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	if !time.Now().UTC().Before(expiresAt) {
+	if payload.Template == "henukit_verification_code" && !time.Now().UTC().Before(expiresAt) {
 		provider.audit(requestID, "rejected", "VERIFICATION_EXPIRED", attempt, startedAt)
 		writeProviderError(writer, http.StatusGone, "verification_expired")
 		return
@@ -193,7 +222,8 @@ func (provider *Provider) ServeHTTP(writer http.ResponseWriter, request *http.Re
 			_ = os.Remove(pendingPath)
 		}
 	}()
-	if err := provider.mailer.Send(request.Context(), Mail{Recipient: payload.Recipient, Code: payload.Variables.Code, Purpose: payload.Variables.Purpose, ExpiresAt: expiresAt, RequestID: payload.RequestID, MessageID: messageID}); err != nil {
+	mailDigest := payload.Variables.Digest()
+	if err := provider.mailer.Send(request.Context(), Mail{Recipient: payload.Recipient, Code: payload.Variables.Code, Purpose: payload.Variables.Purpose, ExpiresAt: expiresAt, RequestID: payload.RequestID, MessageID: messageID, Digest: mailDigest}); err != nil {
 		status, result, errorCode, responseCode := classifySMTPFailure(err)
 		provider.audit(requestID, result, errorCode, attempt, startedAt)
 		writeProviderError(writer, status, responseCode)
@@ -212,6 +242,69 @@ func (provider *Provider) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	writer.Header().Set("Content-Type", "application/json")
 	provider.audit(requestID, "succeeded", "NONE", attempt, startedAt)
 	_, _ = writer.Write(accepted)
+}
+
+// Digest assembles the career_digest payload from the flat provider variables.
+// It returns nil for verification_code mail, which never carries digest fields.
+func (variables sendVariables) Digest() *verificationmail.CareerDigest {
+	if variables.SearchID == "" && variables.Summary == "" && len(variables.TopJobs) == 0 {
+		return nil
+	}
+	return &verificationmail.CareerDigest{
+		SearchID: variables.SearchID, CompletedAt: variables.CompletedAt,
+		SourceCount: variables.SourceCount, JobCount: variables.JobCount,
+		MatchedCount: variables.MatchedCount, Summary: variables.Summary,
+		CareerURL: variables.CareerURL, TopJobs: variables.TopJobs,
+	}
+}
+
+// validTemplatePayload accepts exactly the two registered templates. The
+// verification_code path keeps its original code/purpose/expiry contract
+// byte-for-byte; the career_digest path only accepts a bounded, browser-safe
+// digest payload and never touches verification fields.
+func validTemplatePayload(payload sendPayload, parseErr error, validPurpose bool) bool {
+	switch payload.Template {
+	case "henukit_verification_code":
+		return parseErr == nil && len(payload.Variables.Code) == 6 && validPurpose
+	case "henukit_career_digest":
+		digest := payload.Variables.Digest()
+		return digest != nil && validCareerDigestPayload(*digest)
+	}
+	return false
+}
+
+func validCareerDigestPayload(digest verificationmail.CareerDigest) bool {
+	if digest.SearchID == "" || len(digest.SearchID) > 100 || digest.CompletedAt == "" ||
+		digest.Summary == "" || len(digest.Summary) > 4000 ||
+		digest.SourceCount < 0 || digest.JobCount < 0 || digest.MatchedCount < 0 ||
+		len(digest.TopJobs) > 20 {
+		return false
+	}
+	if _, err := time.Parse(time.RFC3339, digest.CompletedAt); err != nil {
+		return false
+	}
+	if digest.CareerURL != "" && !validWebURL(digest.CareerURL) {
+		return false
+	}
+	for _, job := range digest.TopJobs {
+		if job.MatchScore < 0 || job.MatchScore > 100 ||
+			len(job.Company) > 200 || len(job.Title) > 200 || len(job.Location) > 200 ||
+			len(job.URL) > 1000 || len(job.MatchReasons) > 10 ||
+			(job.URL != "" && !validWebURL(job.URL)) {
+			return false
+		}
+		for _, reason := range job.MatchReasons {
+			if len(reason) > 200 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validWebURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
 }
 
 func persistAcceptedMarker(pendingPath, acceptedPath string, accepted []byte) error {

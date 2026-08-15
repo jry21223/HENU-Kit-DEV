@@ -39,6 +39,9 @@ type Config struct {
 	MailDeliveryActiveKeyID     string
 	MailDeliveryRetiringToken   string
 	MailDeliveryRetiringKeyID   string
+	CareerDigestClientID        string
+	CareerDigestKeyID           string
+	CareerDigestSecret          string
 	TrustedProxyCIDRs           []string
 	PasswordMemoryKiB           uint32
 	PasswordIterations          uint32
@@ -68,6 +71,9 @@ func Load() (Config, error) {
 		MailDeliveryActiveKeyID:     env("PLATFORM_CORE_MAIL_DELIVERY_KEY_ID", "mail-provider-active"),
 		MailDeliveryRetiringToken:   os.Getenv("PLATFORM_CORE_MAIL_DELIVERY_RETIRING_TOKEN"),
 		MailDeliveryRetiringKeyID:   os.Getenv("PLATFORM_CORE_MAIL_DELIVERY_RETIRING_KEY_ID"),
+		CareerDigestClientID:        os.Getenv("PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID"),
+		CareerDigestKeyID:           os.Getenv("PLATFORM_CORE_CAREER_DIGEST_KEY_ID"),
+		CareerDigestSecret:          os.Getenv("PLATFORM_CORE_CAREER_DIGEST_SECRET"),
 		TrustedProxyCIDRs:           splitNonEmpty(os.Getenv("PLATFORM_CORE_TRUSTED_PROXY_CIDRS")),
 		PasswordMemoryKiB:           uint32(passwordMemoryKiB),
 		PasswordIterations:          uint32(passwordIterations),
@@ -122,6 +128,11 @@ func Load() (Config, error) {
 	}
 	if (config.MailDeliveryRetiringToken == "") != (config.MailDeliveryRetiringKeyID == "") || (config.MailDeliveryRetiringToken != "" && len(config.MailDeliveryRetiringToken) < 32) {
 		return Config{}, errors.New("retiring mail delivery key id and 32-character token must be configured together")
+	}
+	if (config.CareerDigestSecret == "") != (config.CareerDigestClientID == "") ||
+		(config.CareerDigestSecret == "") != (config.CareerDigestKeyID == "") ||
+		(config.CareerDigestSecret != "" && len(config.CareerDigestSecret) < 32) {
+		return Config{}, errors.New("career digest client id, key id, and 32-character secret must be configured together")
 	}
 	if passwordMemoryKiB < 32*1024 || passwordMemoryKiB > 1024*1024 ||
 		passwordIterations < 1 || passwordIterations > 10 ||

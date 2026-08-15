@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"henukit.dev/platform-core/internal/careerdigestmail"
 	configpkg "henukit.dev/platform-core/internal/config"
 	"henukit.dev/platform-core/internal/coordination"
 	"henukit.dev/platform-core/internal/httpapi"
@@ -46,6 +47,9 @@ type Config struct {
 	MailDeliveryActiveKeyID     string
 	MailDeliveryRetiringToken   string
 	MailDeliveryRetiringKeyID   string
+	CareerDigestClientID        string
+	CareerDigestKeyID           string
+	CareerDigestSecret          string
 	TrustedProxyCIDRs           []string
 	PasswordMemoryKiB           uint32
 	PasswordIterations          uint32
@@ -140,6 +144,19 @@ func New(config Config) (http.Handler, error) {
 		return nil, errors.New("retiring mail delivery key must be distinct and contain at least 32 characters")
 	}
 	queries := store.New(config.Database)
+	careerDigestKeys := map[string][]byte{}
+	var digestMail *careerdigestmail.Service
+	if config.CareerDigestSecret != "" || config.CareerDigestClientID != "" || config.CareerDigestKeyID != "" {
+		if config.CareerDigestClientID == "" || config.CareerDigestKeyID == "" || len(config.CareerDigestSecret) < 32 {
+			return nil, errors.New("career digest client id, key id, and 32-character secret must be configured together")
+		}
+		careerDigestKeys[config.CareerDigestKeyID] = []byte(config.CareerDigestSecret)
+		digest, digestErr := careerdigestmail.New(queries, config.VerificationEncryptionKey)
+		if digestErr != nil {
+			return nil, digestErr
+		}
+		digestMail = digest
+	}
 	trustedProxies := make([]*net.IPNet, 0, len(config.TrustedProxyCIDRs))
 	for _, value := range config.TrustedProxyCIDRs {
 		_, network, err := net.ParseCIDR(value)
@@ -180,5 +197,5 @@ func New(config Config) (http.Handler, error) {
 	if config.MailDeliveryRetiringToken != "" {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
-	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, config.CoreSessionTTL, deliveryKeys, deviceKey, trustedProxies, config.Logger), nil
+	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, config.CoreSessionTTL, deliveryKeys, deviceKey, trustedProxies, digestMail, config.CareerDigestClientID, careerDigestKeys, config.Logger), nil
 }

@@ -37,15 +37,24 @@ type Config struct {
 	ClientID string
 	Keys     map[string]string
 	Work     WorkFunc
+	// DigestSender is the #397 enqueue boundary: the worker posts one
+	// Opportunity Digest per completed search through this seam. Nil disables
+	// digest mail entirely (production-safe off state).
+	DigestSender DigestSender
+	// DigestResultURL is the public Career result page base URL used in digest
+	// mail; when empty, digests omit the result link.
+	DigestResultURL string
 }
 
 type service struct {
-	database *pgxpool.Pool
-	redis    redis.UniversalClient
-	clientID string
-	keys     map[string]string
-	work     WorkFunc
-	now      func() time.Time
+	database        *pgxpool.Pool
+	redis           redis.UniversalClient
+	clientID        string
+	keys            map[string]string
+	work            WorkFunc
+	now             func() time.Time
+	digestSender    DigestSender
+	digestResultURL string
 }
 
 type actor struct{ userID string }
@@ -71,7 +80,10 @@ func New(config Config) (*Service, error) {
 	if work == nil {
 		work = NewGetWorkWork(GetWorkConfig{})
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, now: time.Now}
+	if config.DigestResultURL != "" && !validDigestResultURL(config.DigestResultURL) {
+		return nil, errors.New("career digest result URL must be an http(s) URL")
+	}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {

@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net/url"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -160,7 +163,112 @@ func (h *service) finish(ctx context.Context, searchID string, profile any) erro
 	if err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	// The result is durable. The digest mail is best-effort after commit: a
+	// failure must never roll back the search result, and email_sent_at stays
+	// NULL so a later pass could retry.
+	h.enqueueDigest(ctx, searchID, result)
+	return nil
+}
+
+// enqueueDigest posts one Opportunity Digest for a completed search when the
+// owner enabled email notifications. It is best-effort: every failure is
+// logged and the search result is untouched. The email_sent_at guard plus the
+// Platform Core dedupe key make replays idempotent.
+func (h *service) enqueueDigest(ctx context.Context, searchID string, result WorkResult) {
+	if h.digestSender == nil {
+		return
+	}
+	var userID string
+	var completedAt any
+	if err := h.database.QueryRow(ctx, `SELECT user_id,to_char(completed_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM career_searches WHERE id=$1`, searchID).Scan(&userID, &completedAt); err != nil {
+		log.Printf("career digest: cannot read search %s: %v", searchID, err)
+		return
+	}
+	var enabled bool
+	if err := h.database.QueryRow(ctx, `SELECT COALESCE((SELECT email_notification_enabled FROM career_profiles WHERE user_id=$1), true)`, userID).Scan(&enabled); err != nil {
+		log.Printf("career digest: cannot read profile for search %s: %v", searchID, err)
+		return
+	}
+	if !enabled {
+		return
+	}
+	var emailSentAt any
+	if err := h.database.QueryRow(ctx, `SELECT email_sent_at FROM career_searches WHERE id=$1`, searchID).Scan(&emailSentAt); err != nil {
+		log.Printf("career digest: cannot read email guard for search %s: %v", searchID, err)
+		return
+	}
+	if emailSentAt != nil {
+		return
+	}
+	digest := DigestRequest{
+		UserID: userID, SearchID: searchID,
+		CompletedAt:  completedAt.(string),
+		SourceCount:  result.SourceCount,
+		JobCount:     result.JobCount,
+		MatchedCount: result.MatchedCount,
+		Summary:      result.Summary,
+		TopJobs:      digestTopJobs(result.Payload, 5),
+		RequestID:    "req_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+	}
+	if h.digestResultURL != "" {
+		digest.CareerURL = strings.TrimRight(h.digestResultURL, "/") + "?search=" + searchID
+	}
+	if err := h.digestSender.SendDigest(ctx, digest); err != nil {
+		// Best-effort by design: the search result stays completed and
+		// email_sent_at stays NULL so a later pass could retry.
+		log.Printf("career digest enqueue failed for search %s: %v", searchID, err)
+		return
+	}
+	if _, err := h.database.Exec(ctx, `UPDATE career_searches SET email_sent_at=now() WHERE id=$1 AND email_sent_at IS NULL`, searchID); err != nil {
+		log.Printf("career digest sent for search %s but the guard could not be recorded: %v", searchID, err)
+	}
+}
+
+// digestTopJobs extracts the top N matches by score from the persisted payload
+// and maps them to the browser-safe digest subset. Unknown payload shapes yield
+// an empty list instead of an error.
+func digestTopJobs(payload any, top int) []DigestJob {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	var result struct {
+		Jobs []Job `json:"jobs"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil
+	}
+	order := make([]int, 0, len(result.Jobs))
+	for index := range result.Jobs {
+		order = append(order, index)
+	}
+	// Stable selection by descending match score.
+	for first := 0; first < len(order) && first < top; first++ {
+		best := first
+		for candidate := first + 1; candidate < len(order); candidate++ {
+			if result.Jobs[order[candidate]].MatchScore > result.Jobs[order[best]].MatchScore {
+				best = candidate
+			}
+		}
+		order[first], order[best] = order[best], order[first]
+	}
+	jobs := make([]DigestJob, 0, min(len(order), top))
+	for _, index := range order[:min(len(order), top)] {
+		job := result.Jobs[index]
+		jobs = append(jobs, DigestJob{
+			Company: job.Company, Title: job.Title, Location: job.Location,
+			URL: job.URL, MatchScore: job.MatchScore, MatchReasons: job.MatchReasons,
+		})
+	}
+	return jobs
+}
+
+func validDigestResultURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
 }
 
 // fail moves a claimed search to failed with a stable browser-safe code and

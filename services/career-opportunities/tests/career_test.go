@@ -15,6 +15,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,6 +41,10 @@ type injectedError struct{}
 func (e *injectedError) Error() string { return "injected crawler failure" }
 
 func newCareerServer(t *testing.T, work career.WorkFunc) (*httptest.Server, *pgxpool.Pool) {
+	return newCareerServerWithDigest(t, work, nil, "")
+}
+
+func newCareerServerWithDigest(t *testing.T, work career.WorkFunc, sender career.DigestSender, resultURL string) (*httptest.Server, *pgxpool.Pool) {
 	t.Helper()
 	pool, err := pgxpool.New(context.Background(), os.Getenv("CAREER_TEST_DATABASE_URL"))
 	if err != nil {
@@ -49,11 +54,12 @@ func newCareerServer(t *testing.T, work career.WorkFunc) (*httptest.Server, *pgx
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(context.Background(), `TRUNCATE career_search_operations, career_search_results, career_searches`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE career_search_operations, career_search_results, career_searches, career_profiles`); err != nil {
 		t.Fatal(err)
 	}
 	service, err := career.New(career.Config{
 		Database: pool, Redis: redisClient, ClientID: careerClientID, Keys: map[string]string{"active": careerSecret}, Work: work,
+		DigestSender: sender, DigestResultURL: resultURL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -453,6 +459,189 @@ func TestWorkerReclaimsStaleRunningSearch(t *testing.T) {
 	}
 	if resultCount != 1 {
 		t.Fatalf("result rows = %d, want 1", resultCount)
+	}
+}
+
+// --- Seam 8: completed search enqueues the #397 digest mail ----------------
+
+type digestRecorder struct {
+	mu       sync.Mutex
+	requests []career.DigestRequest
+	err      error
+}
+
+func (recorder *digestRecorder) SendDigest(_ context.Context, request career.DigestRequest) error {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	recorder.requests = append(recorder.requests, request)
+	return recorder.err
+}
+
+func (recorder *digestRecorder) count() int {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	return len(recorder.requests)
+}
+
+func (recorder *digestRecorder) last() career.DigestRequest {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if len(recorder.requests) == 0 {
+		return career.DigestRequest{}
+	}
+	return recorder.requests[len(recorder.requests)-1]
+}
+
+func seedProfileNotifications(t *testing.T, pool *pgxpool.Pool, userID string, enabled bool) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `INSERT INTO career_profiles(user_id,email_notification_enabled) VALUES($1,$2)`, userID, enabled); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func digestWork() career.WorkFunc {
+	return func(ctx context.Context, profile any) (career.WorkResult, error) {
+		return career.WorkResult{
+			Payload: map[string]any{"jobs": []career.Job{
+				{SourceKey: "fake.a", Company: "测试公司", Title: "后端开发实习生", Location: "郑州", URL: "https://example.test/jobs/1", MatchScore: 90, MatchReasons: []string{"匹配目标岗位 后端开发"}},
+				{SourceKey: "fake.b", Company: "内推科技", Title: "前端实习生", Location: "远程", URL: "https://example.test/jobs/2", MatchScore: 70, MatchReasons: nil},
+				{SourceKey: "fake.a", Company: "测试公司", Title: "数据实习生", Location: "郑州", URL: "https://example.test/jobs/3", MatchScore: 55, MatchReasons: nil},
+			}},
+			SourceCount: 2, JobCount: 3, MatchedCount: 2,
+			Summary: "已扫描 2 个来源，发现 3 个岗位，2 个推荐",
+		}, nil
+	}
+}
+
+func TestCompletedSearchEnqueuesDigestWhenNotificationsEnabled(t *testing.T) {
+	recorder := &digestRecorder{}
+	server, pool := newCareerServerWithDigest(t, digestWork(), recorder, "https://portal.henukit.cn/career")
+	defer server.Close()
+	defer pool.Close()
+	seedProfileNotifications(t, pool, actorA, true)
+
+	create := readBody(t, send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_digest_on"))
+	id := decodeData(t, create)["search"].(map[string]any)["id"].(string)
+
+	worker := server.Config.Handler.(*career.Service).Claims()
+	if _, err := worker.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.count() != 1 {
+		t.Fatalf("digest enqueues = %d, want 1", recorder.count())
+	}
+	digest := recorder.last()
+	if digest.UserID != actorA || digest.SearchID != id || digest.SourceCount != 2 || digest.JobCount != 3 || digest.MatchedCount != 2 {
+		t.Fatalf("unexpected digest request: %+v", digest)
+	}
+	if digest.Summary != "已扫描 2 个来源，发现 3 个岗位，2 个推荐" || digest.CompletedAt == "" {
+		t.Fatalf("digest summary/time missing: %+v", digest)
+	}
+	if digest.CareerURL != "https://portal.henukit.cn/career?search="+id {
+		t.Fatalf("digest career URL = %q", digest.CareerURL)
+	}
+	if digest.RequestID == "" || !strings.HasPrefix(digest.RequestID, "req_") {
+		t.Fatalf("digest request id missing: %+v", digest)
+	}
+	if len(digest.TopJobs) != 3 || digest.TopJobs[0].Title != "后端开发实习生" || digest.TopJobs[1].Title != "前端实习生" {
+		t.Fatalf("digest top jobs not score-ordered: %+v", digest.TopJobs)
+	}
+	if digest.TopJobs[0].Company != "测试公司" || len(digest.TopJobs[0].MatchReasons) != 1 {
+		t.Fatalf("digest job fields missing: %+v", digest.TopJobs[0])
+	}
+	rawDigest, _ := json.Marshal(digest)
+	for _, internal := range []string{"source_key", "description", "requirements", "job_type", "profile_snapshot"} {
+		if strings.Contains(string(rawDigest), internal) {
+			t.Fatalf("digest request leaked internal field %q: %s", internal, rawDigest)
+		}
+	}
+	var emailSentAt any
+	if err := pool.QueryRow(context.Background(), `SELECT email_sent_at FROM career_searches WHERE id=$1`, id).Scan(&emailSentAt); err != nil {
+		t.Fatal(err)
+	}
+	if emailSentAt == nil {
+		t.Fatal("email_sent_at was not recorded after a successful enqueue")
+	}
+}
+
+func TestCompletedSearchSkipsDigestWhenNotificationsDisabled(t *testing.T) {
+	recorder := &digestRecorder{}
+	server, pool := newCareerServerWithDigest(t, digestWork(), recorder, "")
+	defer server.Close()
+	defer pool.Close()
+	seedProfileNotifications(t, pool, actorA, false)
+
+	create := readBody(t, send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_digest_off"))
+	id := decodeData(t, create)["search"].(map[string]any)["id"].(string)
+
+	worker := server.Config.Handler.(*career.Service).Claims()
+	if _, err := worker.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.count() != 0 {
+		t.Fatalf("digest enqueues = %d, want 0", recorder.count())
+	}
+	var emailSentAt any
+	if err := pool.QueryRow(context.Background(), `SELECT email_sent_at FROM career_searches WHERE id=$1`, id).Scan(&emailSentAt); err != nil {
+		t.Fatal(err)
+	}
+	if emailSentAt != nil {
+		t.Fatal("email_sent_at set for a disabled digest")
+	}
+}
+
+func TestCompletedSearchDefaultsToNotificationsEnabled(t *testing.T) {
+	recorder := &digestRecorder{}
+	server, pool := newCareerServerWithDigest(t, digestWork(), recorder, "")
+	defer server.Close()
+	defer pool.Close()
+
+	create := readBody(t, send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_digest_default"))
+	id := decodeData(t, create)["search"].(map[string]any)["id"].(string)
+
+	worker := server.Config.Handler.(*career.Service).Claims()
+	if _, err := worker.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.count() != 1 || recorder.last().SearchID != id {
+		t.Fatalf("digest enqueues = %d, want 1 for the default-enabled profile", recorder.count())
+	}
+}
+
+func TestDigestEnqueueFailureDoesNotRollBackSearch(t *testing.T) {
+	recorder := &digestRecorder{err: errors.New("platform core rejected the digest enqueue")}
+	server, pool := newCareerServerWithDigest(t, digestWork(), recorder, "")
+	defer server.Close()
+	defer pool.Close()
+	seedProfileNotifications(t, pool, actorA, true)
+
+	create := readBody(t, send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_digest_fail"))
+	id := decodeData(t, create)["search"].(map[string]any)["id"].(string)
+
+	worker := server.Config.Handler.(*career.Service).Claims()
+	if _, err := worker.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	var resultCount int
+	var emailSentAt any
+	if err := pool.QueryRow(context.Background(), `SELECT status FROM career_searches WHERE id=$1`, id).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "completed" {
+		t.Fatalf("status after digest failure = %s, want completed (best-effort)", status)
+	}
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM career_search_results WHERE search_id=$1`, id).Scan(&resultCount); err != nil {
+		t.Fatal(err)
+	}
+	if resultCount != 1 {
+		t.Fatalf("result rows after digest failure = %d, want 1", resultCount)
+	}
+	if err := pool.QueryRow(context.Background(), `SELECT email_sent_at FROM career_searches WHERE id=$1`, id).Scan(&emailSentAt); err != nil {
+		t.Fatal(err)
+	}
+	if emailSentAt != nil {
+		t.Fatal("email_sent_at set despite a failed enqueue; a later retry must be possible")
 	}
 }
 

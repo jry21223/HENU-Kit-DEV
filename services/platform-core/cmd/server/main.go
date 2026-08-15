@@ -47,6 +47,7 @@ func main() {
 		VerificationCodeTTL: settings.VerificationCodeTTL, VerificationResendDelay: settings.VerificationResendDelay,
 		MailDeliveryWebhookToken: settings.MailDeliveryWebhookToken,
 		MailDeliveryActiveKeyID:  settings.MailDeliveryActiveKeyID, MailDeliveryRetiringToken: settings.MailDeliveryRetiringToken, MailDeliveryRetiringKeyID: settings.MailDeliveryRetiringKeyID,
+		CareerDigestClientID: settings.CareerDigestClientID, CareerDigestKeyID: settings.CareerDigestKeyID, CareerDigestSecret: settings.CareerDigestSecret,
 		TrustedProxyCIDRs: settings.TrustedProxyCIDRs,
 		PasswordMemoryKiB: settings.PasswordMemoryKiB, PasswordIterations: settings.PasswordIterations,
 		PasswordParallelism: settings.PasswordParallelism, PasswordHashConcurrency: settings.PasswordHashConcurrency,

@@ -21,6 +21,8 @@ tags:
     description: Cross-product work coordination metadata and immutable source-resource references.
   - name: Platform Operations
     description: Bounded account, Session, mail, Inbox, audit, and dependency operations for HENUKit Console.
+  - name: Career Digest
+    description: Internal mail enqueue boundary for the Career Opportunities Opportunity Digest.
   - name: Internal Events
 
 paths:
@@ -210,6 +212,51 @@ paths:
           $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+
+  /career-digest-mails:
+    post:
+      tags: [Career Digest]
+      operationId: enqueueCareerDigestMail
+      summary: Enqueue the Opportunity Digest for one completed Career search
+      description: >-
+        Career Opportunities' background worker enqueues one digest per
+        completed search through this signed service boundary. The recipient is
+        resolved server-side from the Platform user's verified Email Identity
+        and sealed into the encrypted mail Outbox; this endpoint never returns
+        the email address, any ciphertext, or internal delivery facts. The
+        caller signs with the shared career-digest service credential and the
+        browser never supplies a recipient. Replaying the same search is
+        idempotent: the second call is accepted without a duplicate Outbox row.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CareerDigestMailEnqueueRequest" }
+      responses:
+        "202":
+          description: Accepted for queued processing, or already accepted for the same search
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/CareerDigestMailEnqueued" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /oauth/token:
     post:
@@ -1710,6 +1757,63 @@ components:
         status: { type: string, enum: [succeeded, unknown] }
         resource_id: { type: string, format: uuid }
         resource_version: { type: integer, format: int64, minimum: 1 }
+
+    CareerDigestMailEnqueueRequest:
+      type: object
+      additionalProperties: false
+      required: [user_id, search_id, completed_at, source_count, job_count, matched_count, summary]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: The Platform user whose verified Email Identity receives the digest; resolved server-side.
+        search_id:
+          type: string
+          minLength: 1
+          maxLength: 100
+        completed_at:
+          type: string
+          format: date-time
+        source_count: { type: integer, minimum: 0 }
+        job_count: { type: integer, minimum: 0 }
+        matched_count: { type: integer, minimum: 0 }
+        summary:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        career_url:
+          type: string
+          format: uri
+          maxLength: 1000
+          description: Public Career result page link; omitted when the service has no public URL configured.
+        top_jobs:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/CareerDigestJob" }
+
+    CareerDigestJob:
+      type: object
+      additionalProperties: false
+      required: [company, title, location, url, match_score]
+      properties:
+        company: { type: string, maxLength: 200 }
+        title: { type: string, maxLength: 200 }
+        location: { type: string, maxLength: 200 }
+        url: { type: string, format: uri, maxLength: 1000 }
+        match_score: { type: integer, minimum: 0, maximum: 100 }
+        match_reasons:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 200 }
+
+    CareerDigestMailEnqueued:
+      type: object
+      additionalProperties: false
+      required: [enqueued]
+      properties:
+        enqueued:
+          type: boolean
+          const: true
 
     EventEnvelope:
       type: object

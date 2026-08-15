@@ -27,6 +27,20 @@ INSERT INTO mail_outbox (
 ) VALUES ($1, $2, $3, 'verification_code', 'critical', $4, $5)
 RETURNING id;
 
+-- name: CreateCareerDigestMailOutbox :one
+INSERT INTO mail_outbox (
+    verification_code_id, dedupe_key, request_id, kind, priority,
+    recipient_user_id, recipient_ciphertext, payload_ciphertext
+) VALUES (NULL, $1, $2, 'career_digest', 'bulk', $3, $4, $5)
+RETURNING id;
+
+-- name: GetVerifiedEmailByUserID :one
+SELECT identity.email_ciphertext, users.email_verified
+FROM email_identities AS identity
+JOIN users ON users.id = identity.user_id
+WHERE identity.user_id = $1
+LIMIT 1;
+
 -- name: GetVerificationCodeForUpdate :one
 SELECT id, code_nonce, code_hash, expires_at, used_at, revoked_at, failed_attempts,
        consumed_request_key, consumed_request_fingerprint
@@ -194,7 +208,7 @@ WITH candidate AS (
         locked_at = now(), locked_by = sqlc.arg(worker_id), updated_at = now()
     FROM candidate
     WHERE job.id = candidate.id
-    RETURNING job.id, job.dedupe_key, job.request_id, job.recipient_ciphertext, job.payload_ciphertext,
+    RETURNING job.id, job.dedupe_key, job.request_id, job.kind, job.recipient_ciphertext, job.payload_ciphertext,
               job.attempt_count, job.max_attempts
 ), audited AS (
     INSERT INTO mail_outbox_audit_events (
@@ -205,7 +219,7 @@ WITH candidate AS (
     RETURNING outbox_id
 )
 SELECT claimed.id, claimed.dedupe_key, claimed.request_id,
-       claimed.recipient_ciphertext, claimed.payload_ciphertext,
+       claimed.kind, claimed.recipient_ciphertext, claimed.payload_ciphertext,
        claimed.attempt_count, claimed.max_attempts
 FROM claimed
 JOIN audited ON audited.outbox_id = claimed.id;

@@ -34,6 +34,8 @@ func main() {
 	defer redisClient.Close()
 	service, err := career.New(career.Config{
 		Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret},
+		DigestSender:    digestSender(),
+		DigestResultURL: strings.TrimSpace(os.Getenv("CAREER_RESULT_URL")),
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -60,4 +62,23 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// digestSender builds the #397 Platform Core digest client from the shared
+// credential triple. An endpoint without credentials fails closed at startup;
+// with no endpoint at all the digest seam stays disabled and no digest mail is
+// enqueued.
+func digestSender() career.DigestSender {
+	endpoint := strings.TrimSpace(os.Getenv("PLATFORM_CORE_CAREER_DIGEST_URL"))
+	if endpoint == "" {
+		return nil
+	}
+	clientID := os.Getenv("PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID")
+	keyID := os.Getenv("PLATFORM_CORE_CAREER_DIGEST_KEY_ID")
+	secret := os.Getenv("PLATFORM_CORE_CAREER_DIGEST_SECRET")
+	sender, err := career.NewHTTPDigestSender(endpoint, clientID, secret, keyID, &http.Client{Timeout: 10 * time.Second})
+	if err != nil {
+		log.Fatalf("career digest sender configuration is invalid: %v", err)
+	}
+	return sender
 }
