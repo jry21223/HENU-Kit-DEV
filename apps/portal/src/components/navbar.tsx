@@ -11,6 +11,7 @@ const LINKS = [
   { index: "02", label: "智能刷题", href: "/practice" },
   { index: "03", label: "美食榜", href: "/food" },
   { index: "04", label: "互助平台", href: "/campus" },
+  { index: "05", label: "求职雷达", href: "/career" },
 ];
 
 export default function Navbar() {
@@ -80,7 +81,7 @@ export default function Navbar() {
         </Link>
 
         {/* 桌面导航 */}
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="hidden items-center gap-7 md:flex">
           {LINKS.map((link) => (
             <Link
               key={link.href}
