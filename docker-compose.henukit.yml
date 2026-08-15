@@ -258,6 +258,28 @@ services:
       retries: 12
       start_period: 5s
 
+  # Food Post MCP (ADR-0033): exposes the ADR-0032 Food Post capability to
+  # remote AI agents over Streamable HTTP. Reuses the same Food Post rings as
+  # portal-gateway; fails closed without FOOD_MCP_ACCESS_TOKEN.
+  food-mcp:
+    build:
+      context: ./services/food-mcp
+    environment:
+      FOOD_MCP_ADDR: ${FOOD_MCP_ADDR:-:8098}
+      FOOD_MCP_ACCESS_TOKEN: ${FOOD_MCP_ACCESS_TOKEN:-}
+      FOOD_POSTS_URL: ${FOOD_POSTS_URL:-http://food:8096}
+      FOOD_POST_CREATE_CLIENT_ID: ${FOOD_POST_CREATE_CLIENT_ID:-portal-gateway-food-post-create}
+      FOOD_POST_CREATE_KEY_ID: ${FOOD_POST_CREATE_KEY_ID:-food-post-create-key}
+      FOOD_POST_CREATE_SECRET: ${FOOD_POST_CREATE_SECRET:-replace-food-post-create-secret-32bytes!!}
+      FOOD_POST_READ_CLIENT_ID: ${FOOD_POST_READ_CLIENT_ID:-portal-gateway-food-post-read}
+      FOOD_POST_READ_KEY_ID: ${FOOD_POST_READ_KEY_ID:-food-post-read-key}
+      FOOD_POST_READ_SECRET: ${FOOD_POST_READ_SECRET:-replace-food-post-read-secret-32bytes!!}
+    depends_on:
+      food:
+        condition: service_healthy
+    expose:
+      - "8098"
+
   # Library owns the Console materials operation surface over the retired
   # Study admin API and fails closed without the credentials below (ADR-0020).
   library:

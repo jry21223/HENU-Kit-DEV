@@ -36,6 +36,7 @@
 30. [`0030-degraded-baseline-production-recovery.md`](./0030-degraded-baseline-production-recovery.md) — 无健康回滚基线时的显式、精确 SHA 生产恢复边界。
 31. [`0031-materials-oss-download-only.md`](./0031-materials-oss-download-only.md) — 资料原文件只经 Library owner 的短期 OSS grant 下载，在线预览及派生转换保持关闭。
 32. [`0032-food-owns-post-creation-and-reads.md`](./0032-food-owns-post-creation-and-reads.md) — Food 服务独立拥有 Food Post 创建与公开读，Portal Gateway 第三条默认只读代理例外与立即公开语义。
+33. [`0033-food-posts-mcp.md`](./0033-food-posts-mcp.md) — Food Post 投稿能力封装为远程 Streamable HTTP MCP 服务，调用方自报 actor，Food 仍是唯一数据与策略所有者。
 
 ## 使用规则
 
