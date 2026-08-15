@@ -55,25 +55,46 @@ type Client struct {
 	readSigner   *signing.Signer
 }
 
-// NewClient validates the base URL and credential triples. A credential triple
-// counts as configured only when all three parts are present; an operation
-// that needs a missing credential fails closed.
+// NewClient validates the base URL and both credential triples. food-mcp
+// exposes create and read tools in the same remote service, so a partially
+// configured ring must fail startup rather than leaving individual tools to
+// fail later. Public deployment placeholders are rejected at this remote
+// boundary so copying an example Compose value cannot become working auth.
 func NewClient(baseURL, createClientID, createSecret, createKeyID, readClientID, readSecret, readKeyID string) (*Client, error) {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, errors.New("invalid Food client configuration")
 	}
-	client := &Client{
-		baseURL:    strings.TrimRight(parsed.String(), "/"),
-		httpClient: &http.Client{Timeout: 15 * time.Second},
+	if err := validateCredential("create", createClientID, createSecret, createKeyID); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(createClientID) != "" && createSecret != "" && strings.TrimSpace(createKeyID) != "" {
-		client.createSigner = signing.NewSigner(createClientID, createSecret, createKeyID)
+	if err := validateCredential("read", readClientID, readSecret, readKeyID); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(readClientID) != "" && readSecret != "" && strings.TrimSpace(readKeyID) != "" {
-		client.readSigner = signing.NewSigner(readClientID, readSecret, readKeyID)
+	return &Client{
+		baseURL:      strings.TrimRight(parsed.String(), "/"),
+		httpClient:   &http.Client{Timeout: 15 * time.Second},
+		createSigner: signing.NewSigner(strings.TrimSpace(createClientID), createSecret, strings.TrimSpace(createKeyID)),
+		readSigner:   signing.NewSigner(strings.TrimSpace(readClientID), readSecret, strings.TrimSpace(readKeyID)),
+	}, nil
+}
+
+func validateCredential(name, clientID, secret, keyID string) error {
+	if strings.TrimSpace(clientID) == "" || secret == "" || strings.TrimSpace(keyID) == "" {
+		return fmt.Errorf("Food %s credential is incomplete", name)
 	}
-	return client, nil
+	if len(secret) < 32 || isPlaceholderSecret(secret) {
+		return fmt.Errorf("Food %s credential secret is not deployment-safe", name)
+	}
+	return nil
+}
+
+func isPlaceholderSecret(secret string) bool {
+	value := strings.ToLower(strings.TrimSpace(secret))
+	return strings.HasPrefix(value, "replace-") ||
+		strings.HasPrefix(value, "change-me") ||
+		strings.HasPrefix(value, "example-") ||
+		strings.Contains(value, "placeholder")
 }
 
 // CreatePost submits one signed-in actor's create command and returns the
