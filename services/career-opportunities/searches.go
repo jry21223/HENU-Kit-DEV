@@ -169,10 +169,13 @@ func (h *service) listSearches(w http.ResponseWriter, r *http.Request) {
 
 func (h *service) loadSearch(r *http.Request, id, userID string) (searchWire, bool, error) {
 	item, found, err := h.querySearch(r, id, userID)
+	if err != nil {
+		return searchWire{}, false, err
+	}
 	if !found {
 		return searchWire{}, false, nil
 	}
-	return item, true, err
+	return item, true, nil
 }
 
 func (h *service) loadSearchByID(r *http.Request, id string) (searchWire, error) {

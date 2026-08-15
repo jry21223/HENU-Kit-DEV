@@ -668,6 +668,147 @@ func TestFailureErrorMessageIsBrowserSafe(t *testing.T) {
 	}
 }
 
+// --- Seam 9: database unavailable fails closed ------------------------------
+
+// newCareerServerWithBrokenDatabase serves the API against a pool that can
+// never connect. The Redis nonce store stays healthy, so the request passes
+// service authentication and the fail-closed behavior is observed at the
+// database boundary rather than earlier in the chain.
+func newCareerServerWithBrokenDatabase(t *testing.T, work career.WorkFunc) *httptest.Server {
+	t.Helper()
+	pool, err := pgxpool.New(context.Background(), "postgres://career:career@127.0.0.1:1/career_test?sslmode=disable&connect_timeout=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	redisClient := redis.NewClient(&redis.Options{Addr: os.Getenv("CAREER_TEST_REDIS_ADDR")})
+	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
+		t.Fatal(err)
+	}
+	service, err := career.New(career.Config{
+		Database: pool, Redis: redisClient, ClientID: careerClientID, Keys: map[string]string{"active": careerSecret}, Work: work,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		pool.Close()
+		_ = redisClient.Close()
+	})
+	return httptest.NewServer(service)
+}
+
+func TestDatabaseUnavailableFailsClosed(t *testing.T) {
+	server := newCareerServerWithBrokenDatabase(t, nil)
+	defer server.Close()
+
+	// Create cannot begin its transaction: 503, never a partial row.
+	create := readBody(t, send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_db_down"))
+	if code := decodeErrorCode(t, create); code != "DEPENDENCY_UNAVAILABLE" {
+		t.Fatalf("create with dead database error = %v, want DEPENDENCY_UNAVAILABLE: %s", code, create)
+	}
+
+	// List and status reads fail the same way instead of serving empty data.
+	if code := decodeErrorCode(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches", nil, ""))); code != "DEPENDENCY_UNAVAILABLE" {
+		t.Fatalf("list with dead database did not fail closed")
+	}
+	status := readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", nil, ""))
+	if code := decodeErrorCode(t, status); code != "DEPENDENCY_UNAVAILABLE" {
+		t.Fatalf("status with dead database error = %v, want DEPENDENCY_UNAVAILABLE: %s", code, status)
+	}
+}
+
+func decodeErrorCode(t *testing.T, payload []byte) string {
+	t.Helper()
+	var envelope struct {
+		Error map[string]string `json:"error"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		t.Fatalf("decode error envelope %s: %v", payload, err)
+	}
+	return envelope.Error["code"]
+}
+
+// --- Seam 10: oversized payload is rejected before any write ----------------
+
+func TestCreateSearchRejectsOversizedPayload(t *testing.T) {
+	server, pool := newCareerServer(t, nil)
+	defer server.Close()
+	defer pool.Close()
+
+	// The request body cap is 512 KiB; a larger profile must fail browser-safe
+	// without creating a row.
+	big := []byte(`{"profile":{"pad":"`)
+	big = append(big, bytes.Repeat([]byte("x"), 600<<10)...)
+	big = append(big, []byte(`"}}`)...)
+	response := send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", big, "idem_big")
+	payload := readBody(t, response)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("oversized create = %d, want 400: %s", response.StatusCode, payload)
+	}
+	if code := decodeErrorCode(t, payload); code != "INVALID_REQUEST" {
+		t.Fatalf("oversized create error = %v, want INVALID_REQUEST", code)
+	}
+	var count int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM career_searches`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("oversized create wrote %d rows, want 0", count)
+	}
+}
+
+// --- Smoke: one named journey covering the whole lifetime loop --------------
+
+// TestSmokeLifetimeSearchJourney walks the #404 acceptance loop in one test so
+// scripts/dev/career-smoke.sh can point -run Smoke at a single named journey:
+// configure profile -> create search -> worker completes -> results persist ->
+// digest enqueued -> status/history readable.
+func TestSmokeLifetimeSearchJourney(t *testing.T) {
+	recorder := &digestRecorder{}
+	server, pool := newCareerServerWithDigest(t, digestWork(), recorder, "https://portal.henukit.cn/career")
+	defer server.Close()
+	defer pool.Close()
+
+	put := send(t, server.URL, actorA, http.MethodPut, "/api/v1/career/profile", []byte(`{"target_roles":"后端开发","tech_stack":"go","email_notification_enabled":true}`), "")
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("smoke profile put = %d", put.StatusCode)
+	}
+
+	create := readBody(t, send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_smoke"))
+	if createStatus := decodeErrorCode(t, create); createStatus != "" {
+		t.Fatalf("smoke create failed: %s", create)
+	}
+	id := decodeData(t, create)["search"].(map[string]any)["id"].(string)
+
+	worker := server.Config.Handler.(*career.Service).Claims()
+	if _, err := worker.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	var resultCount int
+	if err := pool.QueryRow(context.Background(), `SELECT status FROM career_searches WHERE id=$1`, id).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "completed" {
+		t.Fatalf("smoke status = %s, want completed", status)
+	}
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM career_search_results WHERE search_id=$1`, id).Scan(&resultCount); err != nil {
+		t.Fatal(err)
+	}
+	if resultCount != 1 {
+		t.Fatalf("smoke result rows = %d, want 1", resultCount)
+	}
+	if recorder.count() != 1 || recorder.last().SearchID != id {
+		t.Fatalf("smoke digest enqueues = %d, want 1 for search %s", recorder.count(), id)
+	}
+	if statusPayload := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches/"+id, nil, "")))["search"].(map[string]any); statusPayload["status"] != "completed" {
+		t.Fatalf("smoke status read = %v", statusPayload["status"])
+	}
+	if history := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches", nil, "")))["searches"].([]any); len(history) != 1 {
+		t.Fatalf("smoke history len = %d, want 1", len(history))
+	}
+}
+
 func readStatus(t *testing.T, pool *pgxpool.Pool, id string) string {
 	t.Helper()
 	var status string

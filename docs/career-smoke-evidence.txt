@@ -1,0 +1,49 @@
+# Career smoke evidence — #404 端到端验收
+
+运行时间：2026-08-15T17:30:15Z
+运行方式：go test -count=1 -v -run=TestSmoke ./tests/
+覆盖闭环：画像 PUT → search 创建(queued) → worker Step → completed → 结果落库 → digest 入队 → 状态/历史读取
+
+2026/08/16 01:30:17 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 28.5.1
+  API Version: 1.51
+  Operating System: Docker Desktop
+  Total Memory: 7837 MB
+  Labels:
+    com.docker.desktop.address=unix:///Users/jerry/Library/Containers/com.docker.docker/Data/docker-cli.sock
+  Testcontainers for Go Version: v0.44.0
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 64f85ef059c93aa09c9f63ecbbb4484ae5ebb73b249fadca7db45816b0d1656c
+  Test ProcessID: 52d0547a-49a1-4b1a-9b53-452e3bdb1573
+2026/08/16 01:30:17 🐳 Creating container for image postgres:16-alpine
+2026/08/16 01:30:17 🐳 Creating container for image testcontainers/ryuk:0.14.0
+2026/08/16 01:30:18 ✅ Container created: 2dc251cc1b41
+2026/08/16 01:30:18 🐳 Starting container: 2dc251cc1b41
+2026/08/16 01:30:18 ✅ Container started: 2dc251cc1b41
+2026/08/16 01:30:18 ⏳ Waiting for container id 2dc251cc1b41 image: testcontainers/ryuk:0.14.0. Waiting for: all of: [log message "Started", port 8080/tcp to be listening]
+2026/08/16 01:30:18 Shell not found in container
+2026/08/16 01:30:18 🔔 Container is ready: 2dc251cc1b41
+2026/08/16 01:30:18 ✅ Container created: ea53c01b7e86
+2026/08/16 01:30:18 🐳 Starting container: ea53c01b7e86
+2026/08/16 01:30:18 ✅ Container started: ea53c01b7e86
+2026/08/16 01:30:18 ⏳ Waiting for container id ea53c01b7e86 image: postgres:16-alpine. Waiting for: all of: [log message "database system is ready to accept connections" (occurrence: 2)]
+2026/08/16 01:30:19 🔔 Container is ready: ea53c01b7e86
+2026/08/16 01:30:19 🐳 Creating container for image redis:7-alpine
+2026/08/16 01:30:19 ✅ Container created: 5d91948b6597
+2026/08/16 01:30:19 🐳 Starting container: 5d91948b6597
+2026/08/16 01:30:19 ✅ Container started: 5d91948b6597
+2026/08/16 01:30:19 ⏳ Waiting for container id 5d91948b6597 image: redis:7-alpine. Waiting for: all of: [log message "Ready to accept connections"]
+2026/08/16 01:30:20 🔔 Container is ready: 5d91948b6597
+=== RUN   TestSmokeLifetimeSearchJourney
+--- PASS: TestSmokeLifetimeSearchJourney (0.04s)
+PASS
+2026/08/16 01:30:20 🐳 Stopping container: 5d91948b6597
+2026/08/16 01:30:20 ✅ Container stopped: 5d91948b6597
+2026/08/16 01:30:20 🐳 Terminating container: 5d91948b6597
+2026/08/16 01:30:20 🚫 Container terminated: 5d91948b6597
+2026/08/16 01:30:20 🐳 Stopping container: ea53c01b7e86
+2026/08/16 01:30:20 ✅ Container stopped: ea53c01b7e86
+2026/08/16 01:30:20 🐳 Terminating container: ea53c01b7e86
+2026/08/16 01:30:20 🚫 Container terminated: ea53c01b7e86
+ok  	henukit.dev/career/tests	3.559s
