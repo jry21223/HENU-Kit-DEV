@@ -24,6 +24,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/portal-gateway/internal/accountportfolio"
+	"henukit.dev/portal-gateway/internal/career"
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/foodposts"
@@ -43,6 +44,7 @@ type Handler struct {
 	libraryDownloads   *librarydownload.Client
 	accountPortfolio   *accountportfolio.Client
 	foodPosts          *foodposts.Client
+	career             *career.Client
 	practiceCommands   *practice.CommandClient
 	quizCraftCatalog   *practice.Client
 	redis              *redis.Client
@@ -112,6 +114,16 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			return nil, fmt.Errorf("foodposts.NewClient: %w", err)
 		}
 	}
+	var careerClient *career.Client
+	if strings.TrimSpace(cfg.CareerURL) != "" {
+		careerClient, err = career.NewClient(
+			cfg.CareerURL,
+			cfg.CareerAuth.ClientID, cfg.CareerAuth.ClientSecret, cfg.CareerAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("career.NewClient: %w", err)
+		}
+	}
 	var practiceCommands *practice.CommandClient
 	if cfg.PracticeCommandsEnabled {
 		practiceCommands, err = practice.NewCommandClient(
@@ -157,6 +169,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		libraryDownloads:   libraryDownloads,
 		accountPortfolio:   portfolio,
 		foodPosts:          foodPosts,
+		career:             careerClient,
 		practiceCommands:   practiceCommands,
 		quizCraftCatalog:   quizCraftCatalog,
 		redis:              rdb,
@@ -245,6 +258,14 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/food/posts/{post_id}/images/{position}", h.foodPostImage)
 	r.Get("/api/v1/food/venues", h.foodVenues)
 	r.Get("/api/v1/food/*", h.proxyToPortalAPI)
+	// The Career boundary shadows any future legacy career wildcard: exact
+	// actor-bound routes to the Career service, gated on Account Portfolio
+	// lifetime membership. Never proxied to the Portal API.
+	r.Post("/api/v1/career/searches", h.createCareerSearch)
+	r.Get("/api/v1/career/searches", h.listCareerSearches)
+	r.Get("/api/v1/career/searches/{search_id}", h.careerSearchStatus)
+	r.Get("/api/v1/career/profile", h.getCareerProfile)
+	r.Put("/api/v1/career/profile", h.updateCareerProfile)
 	// This private V2 route is never proxied to legacy Portal API data. Before
 	// #166 enables the V2 client it returns an honest unavailable response.
 	r.Get("/api/v1/practice/stats", h.personalPracticeStats)
@@ -1208,6 +1229,177 @@ func (h *Handler) writeFoodPostsFailure(w http.ResponseWriter, r *http.Request, 
 }
 
 var errFoodPostBodyTooLarge = errors.New("food post body exceeds the gateway cap")
+
+// createCareerSearch forwards a signed-in Lifetime actor's create command.
+func (h *Handler) createCareerSearch(w http.ResponseWriter, r *http.Request) {
+	h.careerWrite(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+		return h.career.CreateSearch(ctx, actorUserID, requestID, idempotencyKey, raw)
+	})
+}
+
+func (h *Handler) listCareerSearches(w http.ResponseWriter, r *http.Request) {
+	h.careerRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.career.ListSearches(ctx, actorUserID, requestID)
+	})
+}
+
+func (h *Handler) careerSearchStatus(w http.ResponseWriter, r *http.Request) {
+	searchID := chi.URLParam(r, "search_id")
+	h.careerRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.career.Search(ctx, actorUserID, requestID, searchID)
+	})
+}
+
+func (h *Handler) getCareerProfile(w http.ResponseWriter, r *http.Request) {
+	h.careerRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.career.Profile(ctx, actorUserID, requestID)
+	})
+}
+
+func (h *Handler) updateCareerProfile(w http.ResponseWriter, r *http.Request) {
+	h.careerProfileWrite(w, r, func(ctx context.Context, actorUserID, requestID string, raw []byte) (json.RawMessage, error) {
+		return h.career.UpdateProfile(ctx, actorUserID, requestID, raw)
+	})
+}
+
+// careerRead gates a Career read on a verified Lifetime membership. An
+// anonymous caller is a 401; a signed-in free user is a 403; a membership
+// dependency failure fails closed (503) rather than downgrading to allow.
+func (h *Handler) careerRead(w http.ResponseWriter, r *http.Request, read func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error)) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if !h.requireLifetime(w, r, value.UserID) {
+		return
+	}
+	if h.career == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "career_unavailable", Message: "求职雷达服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	data, err := read(r.Context(), value.UserID, requestIDOf(w, r))
+	if err != nil {
+		h.writeCareerFailure(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+// careerWrite is careerRead plus create-command handling: it requires a
+// validated Idempotency-Key and re-signs the browser body byte-for-byte.
+func (h *Handler) careerWrite(w http.ResponseWriter, r *http.Request, write func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error)) {
+	h.careerWriteNoKey(w, r, false, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+		return write(ctx, actorUserID, requestID, idempotencyKey, raw)
+	})
+}
+
+// careerProfileWrite is like careerWrite but does not require an
+// Idempotency-Key: a profile PUT is a full replace and is naturally idempotent.
+func (h *Handler) careerProfileWrite(w http.ResponseWriter, r *http.Request, write func(ctx context.Context, actorUserID, requestID string, raw []byte) (json.RawMessage, error)) {
+	h.careerWriteNoKey(w, r, true, func(ctx context.Context, actorUserID, requestID, _ string, raw []byte) (json.RawMessage, error) {
+		return write(ctx, actorUserID, requestID, raw)
+	})
+}
+
+func (h *Handler) careerWriteNoKey(w http.ResponseWriter, r *http.Request, skipIdempotencyKey bool, write func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error)) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if !h.requireLifetime(w, r, value.UserID) {
+		return
+	}
+	if h.career == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "career_unavailable", Message: "求职雷达服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if !skipIdempotencyKey && !career.ValidIdempotencyKey(idempotencyKey) {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "career_idempotency_key_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 128<<10+1))
+	if err != nil || len(raw) == 0 {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "career_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if len(raw) > 128<<10 {
+		writeJSON(w, http.StatusRequestEntityTooLarge, contract.ErrorEnvelope{Error: "career_body_too_large", Message: "请求内容过大，请精简后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	data, err := write(r.Context(), value.UserID, requestIDOf(w, r), idempotencyKey, raw)
+	if err != nil {
+		h.writeCareerFailure(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+// requireLifetime checks the current Account Portfolio membership for the
+// actor and returns whether they may use Career benefits. It fails closed: a
+// membership dependency failure is a 503, never an allow. The authoritative
+// check happens server-side on every protected request, even when the Portal
+// UI already shows VIP.
+func (h *Handler) requireLifetime(w http.ResponseWriter, r *http.Request, actorUserID string) bool {
+	if h.accountPortfolio == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_unavailable", Message: "会员服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
+		return false
+	}
+	data, err := h.accountPortfolio.Membership(r.Context(), actorUserID, requestIDOf(w, r))
+	if err != nil {
+		if errors.Is(err, accountportfolio.ErrUnauthorized) || errors.Is(err, accountportfolio.ErrNotFound) {
+			// No valid membership for this actor: not a Lifetime member.
+			writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要 Lifetime VIP 会员", RequestID: requestIDOf(w, r)})
+			return false
+		}
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_unavailable", Message: "会员服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
+		return false
+	}
+	// The Account Portfolio client already unwraps the owner's {data,...}
+	// envelope, so `data` is the membership payload {plan, lifetime}.
+	var membership struct {
+		Lifetime bool `json:"lifetime"`
+	}
+	if err := json.Unmarshal(data, &membership); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_unavailable", Message: "会员服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
+		return false
+	}
+	if !membership.Lifetime {
+		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要 Lifetime VIP 会员", RequestID: requestIDOf(w, r)})
+		return false
+	}
+	return true
+}
+
+// writeCareerFailure forwards a Career non-2xx verbatim and otherwise writes
+// an honest Gateway error. It never falls back to the Portal API proxy.
+func (h *Handler) writeCareerFailure(w http.ResponseWriter, r *http.Request, err error) {
+	var upstream *career.UpstreamError
+	switch {
+	case errors.As(err, &upstream):
+		contentType := upstream.ContentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(upstream.StatusCode)
+		_, _ = w.Write(upstream.Body)
+	case errors.Is(err, career.ErrUnconfigured):
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "career_unavailable", Message: "求职雷达服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
+	case errors.Is(err, career.ErrBadRequest):
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "career_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+	default:
+		writeJSON(w, http.StatusBadGateway, contract.ErrorEnvelope{Error: "career_service_unavailable", Message: "服务暂时不可用，请稍后再来", RequestID: requestIDOf(w, r)})
+	}
+}
 
 // readFoodPostBody reads the raw create body byte-for-byte, capping it at
 // 20MiB (six 2MiB photos plus base64 overhead). It deliberately does not

@@ -356,12 +356,67 @@ func TestMigrationAppliesTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	up, err := os.ReadFile("../db/migrations/000001_career_searches.up.sql")
-	if err != nil {
+	for _, name := range []string{"000001_career_searches", "000002_career_profiles"} {
+		up, err := os.ReadFile("../db/migrations/" + name + ".up.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(context.Background(), string(up)); err != nil {
+			t.Fatalf("reapplying %s failed: %v", name, err)
+		}
+	}
+}
+
+// --- Seam 7: Career profile is actor-scoped and validated -------------------
+
+func TestProfileRoundTripAndActorIsolation(t *testing.T) {
+	server, pool := newCareerServer(t, nil)
+	defer server.Close()
+	defer pool.Close()
+
+	body := []byte(`{"target_roles":"后端开发","tech_stack":"go,postgres","locations":"郑州","job_type":"daily_intern","graduation_year":2027,"resume_text":"校内项目经历","email_notification_enabled":true}`)
+	put := send(t, server.URL, actorA, http.MethodPut, "/api/v1/career/profile", body, "")
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("put status = %d: %s", put.StatusCode, readBody(t, put))
+	}
+	got := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/profile", nil, "")))
+	profile := got["profile"].(map[string]any)
+	if profile["target_roles"] != "后端开发" || profile["tech_stack"] != "go,postgres" {
+		t.Fatalf("profile round trip wrong: %v", profile)
+	}
+	if profile["graduation_year"] != float64(2027) {
+		t.Fatalf("graduation_year = %v, want 2027", profile["graduation_year"])
+	}
+
+	// Actor B must not see A's profile.
+	other := decodeData(t, readBody(t, send(t, server.URL, actorB, http.MethodGet, "/api/v1/career/profile", nil, "")))
+	if otherProfile := other["profile"].(map[string]any); otherProfile["target_roles"] != "" {
+		t.Fatalf("actor B saw A's profile: %v", otherProfile)
+	}
+
+	var storedInCareer int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM career_profiles WHERE user_id=$1`, actorA).Scan(&storedInCareer); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(context.Background(), string(up)); err != nil {
-		t.Fatalf("reapplying migration failed: %v", err)
+	if storedInCareer != 1 {
+		t.Fatalf("profile rows in career = %d, want 1", storedInCareer)
+	}
+}
+
+func TestProfileRejectsInvalidJobTypeAndYear(t *testing.T) {
+	server, _ := newCareerServer(t, nil)
+	defer server.Close()
+
+	cases := []string{
+		`{"job_type":"bogus"}`,
+		`{"graduation_year":1800}`,
+		`{"graduation_year":2999}`,
+	}
+	for _, body := range cases {
+		response := send(t, server.URL, actorA, http.MethodPut, "/api/v1/career/profile", []byte(body), "")
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("invalid profile %s got status %d", body, response.StatusCode)
+		}
 	}
 }
 

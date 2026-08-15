@@ -575,6 +575,150 @@ paths:
         "502":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/career/searches:
+    post:
+      operationId: createCareerSearch
+      summary: Create an async Work Radar search (Lifetime members only)
+      security:
+        - portalSession: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile]
+              properties:
+                profile:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: The queued search
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerSearchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+    get:
+      operationId: listCareerSearches
+      summary: List the signed-in Lifetime user's Work Radar search history
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Search history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerSearchesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/career/searches/{search_id}:
+    get:
+      operationId: getCareerSearch
+      summary: Read one signed-in Lifetime user's search status
+      security:
+        - portalSession: []
+      parameters:
+        - name: search_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Search status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerSearchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/career/profile:
+    get:
+      operationId: getCareerProfile
+      summary: Read the signed-in Lifetime user's Career profile
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: The actor's profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+    put:
+      operationId: updateCareerProfile
+      summary: Replace the signed-in Lifetime user's Career profile
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_roles:
+                  type: string
+                tech_stack:
+                  type: string
+                locations:
+                  type: string
+                job_type:
+                  type: string
+                  enum: ["", daily_intern, summer_intern, campus_recruit]
+                graduation_year:
+                  type: [integer, "null"]
+                resume_text:
+                  type: string
+                email_notification_enabled:
+                  type: boolean
+      responses:
+        "200":
+          description: The stored profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/practice/banks:
     get:
       operationId: practiceBanks
@@ -1302,6 +1446,87 @@ components:
             $ref: "#/components/schemas/VenueSummary"
         request_id:
           type: string
+
+    CareerSearchResponse:
+      type: object
+      required: [search, request_id]
+      properties:
+        search:
+          $ref: "#/components/schemas/CareerSearch"
+        request_id:
+          type: string
+
+    CareerSearchesResponse:
+      type: object
+      required: [searches, request_id]
+      properties:
+        searches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CareerSearch"
+        request_id:
+          type: string
+
+    CareerSearch:
+      type: object
+      required: [id, status, user_id, has_email, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        stage:
+          type: string
+          enum: [crawling, matching, rendering]
+        user_id:
+          type: string
+          format: uuid
+        has_email:
+          type: boolean
+        error_code:
+          type: string
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CareerProfileResponse:
+      type: object
+      required: [profile, request_id]
+      properties:
+        profile:
+          $ref: "#/components/schemas/CareerProfile"
+        request_id:
+          type: string
+
+    CareerProfile:
+      type: object
+      required: [user_id, updated_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        target_roles:
+          type: string
+        tech_stack:
+          type: string
+        locations:
+          type: string
+        job_type:
+          type: string
+          enum: ["", daily_intern, summer_intern, campus_recruit]
+        graduation_year:
+          type: [integer, "null"]
+        resume_text:
+          type: string
+        email_notification_enabled:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
 
     VenueSummary:
       type: object

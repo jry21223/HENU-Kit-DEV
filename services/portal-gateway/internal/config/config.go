@@ -61,6 +61,12 @@ type Config struct {
 	FoodPostCreateAuth ServiceAuth
 	FoodPostReadAuth   ServiceAuth
 
+	// CareerURL and its actor-bound credential triple are optional. An empty
+	// URL leaves the Career boundary unconfigured and every Career route fails
+	// closed with an honest 503; there is no _ENABLED flag.
+	CareerURL  string
+	CareerAuth ServiceAuth
+
 	PortalOrigin           string
 	LocalOAuthCookieName   string
 	LocalSessionCookieName string
@@ -127,6 +133,12 @@ func FromEnv() (Config, error) {
 			ClientID:     strings.TrimSpace(os.Getenv("FOOD_POST_READ_CLIENT_ID")),
 			ClientSecret: os.Getenv("FOOD_POST_READ_SECRET"),
 			KeyID:        strings.TrimSpace(os.Getenv("FOOD_POST_READ_KEY_ID")),
+		},
+		CareerURL: strings.TrimSpace(os.Getenv("CAREER_URL")),
+		CareerAuth: ServiceAuth{
+			ClientID:     strings.TrimSpace(os.Getenv("CAREER_CLIENT_ID")),
+			ClientSecret: os.Getenv("CAREER_CLIENT_SECRET"),
+			KeyID:        strings.TrimSpace(os.Getenv("CAREER_KEY_ID")),
 		},
 		PortalOrigin:           mustEnv("PORTAL_ORIGIN"),
 		LocalOAuthCookieName:   envOrDefault("PORTAL_LOCAL_OAUTH_COOKIE_NAME", "henukit_portal_oauth_local"),

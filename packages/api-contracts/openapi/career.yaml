@@ -1,0 +1,365 @@
+openapi: 3.1.0
+info:
+  title: HENU Kit Career Opportunities API
+  version: 0.1.0
+  description: Career-owned Work Radar search jobs, frozen profile snapshots, and normalized results.
+  license: { name: MIT, identifier: MIT }
+servers: [{ url: "https://career.internal" }]
+security:
+  - serviceBasic: []
+    serviceSignature: []
+    serviceActor: []
+tags: [{ name: Career, description: Career-owned search jobs and results }]
+paths:
+  /healthz:
+    get:
+      tags: [Career]
+      operationId: getCareerHealth
+      summary: Check the Career process liveness
+      security: []
+      responses:
+        "200": { description: Process is alive, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /api/v1/career/searches:
+    post:
+      tags: [Career]
+      operationId: createCareerSearch
+      summary: Create an async Work Radar search and return its id without waiting for crawling
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile]
+              properties:
+                profile:
+                  type: object
+                  description: The frozen career profile snapshot
+                  additionalProperties: true
+      responses:
+        "200":
+          description: The queued search
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [search]
+                        properties:
+                          search: { $ref: "#/components/schemas/CareerSearch" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    get:
+      tags: [Career]
+      operationId: listCareerSearches
+      summary: List the signed-in actor's Work Radar search history
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+      responses:
+        "200":
+          description: The actor's searches
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [searches]
+                        properties:
+                          searches:
+                            type: array
+                            items: { $ref: "#/components/schemas/CareerSearch" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/career/searches/{search_id}:
+    get:
+      tags: [Career]
+      operationId: getCareerSearch
+      summary: Read one signed-in actor's Work Radar search status
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - in: path
+          name: search_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The search status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [search]
+                        properties:
+                          search: { $ref: "#/components/schemas/CareerSearch" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/career/profile:
+    get:
+      tags: [Career]
+      operationId: getCareerProfile
+      summary: Read the signed-in actor's Career profile
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+      responses:
+        "200":
+          description: The actor's profile, empty if never set
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [profile]
+                        properties:
+                          profile: { $ref: "#/components/schemas/CareerProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    put:
+      tags: [Career]
+      operationId: updateCareerProfile
+      summary: Replace the signed-in actor's Career profile
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CareerProfileInput" }
+      responses:
+        "200":
+          description: The stored profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [profile]
+                        properties:
+                          profile: { $ref: "#/components/schemas/CareerProfile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+components:
+  securitySchemes:
+    serviceBasic:
+      type: http
+      scheme: basic
+    serviceSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+    serviceActor:
+      type: apiKey
+      in: header
+      name: X-Actor-User-Id
+  parameters:
+    ServiceID:
+      in: header
+      name: X-Service-Id
+      schema: { type: string }
+    KeyID:
+      in: header
+      name: X-Key-Id
+      schema: { type: string }
+    Timestamp:
+      in: header
+      name: X-Timestamp
+      schema: { type: string }
+    Nonce:
+      in: header
+      name: X-Nonce
+      schema: { type: string }
+    ActorUserID:
+      in: header
+      name: X-Actor-User-Id
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unauthorized:
+      description: Missing or invalid service or actor authentication
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: The resource does not exist for this actor
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Conflict:
+      description: The request conflicted with stored state or an idempotency key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ServiceUnavailable:
+      description: The Career service or a dependency is unavailable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+        request_id:
+          type: string
+    ErrorEnvelope:
+      type: object
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        request_id:
+          type: string
+    CareerSearch:
+      type: object
+      required: [id, status, user_id, has_email, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        stage:
+          type: string
+          enum: [crawling, matching, rendering]
+        user_id:
+          type: string
+          format: uuid
+        has_email:
+          type: boolean
+        error_code:
+          type: string
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CareerProfile:
+      type: object
+      required: [user_id, updated_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        target_roles:
+          type: string
+        tech_stack:
+          type: string
+        locations:
+          type: string
+        job_type:
+          type: string
+          enum: ["", daily_intern, summer_intern, campus_recruit]
+        graduation_year:
+          type: [integer, "null"]
+        resume_text:
+          type: string
+        email_notification_enabled:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+    CareerProfileInput:
+      type: object
+      properties:
+        target_roles:
+          type: string
+        tech_stack:
+          type: string
+        locations:
+          type: string
+        job_type:
+          type: string
+          enum: ["", daily_intern, summer_intern, campus_recruit]
+        graduation_year:
+          type: [integer, "null"]
+        resume_text:
+          type: string
+        email_notification_enabled:
+          type: boolean

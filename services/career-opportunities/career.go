@@ -82,6 +82,8 @@ func New(config Config) (*Service, error) {
 		protected.Post(contract.CreateSearchRoute, h.createSearch)
 		protected.Get(contract.SearchRoute, h.searchStatus)
 		protected.Get(contract.ListSearchesRoute, h.listSearches)
+		protected.Get(contract.ProfileRoute, h.getProfile)
+		protected.Put(contract.UpdateProfileRoute, h.updateProfile)
 	})
 	return &Service{h: h, router: router}, nil
 }

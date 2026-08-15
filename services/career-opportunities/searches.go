@@ -16,8 +16,6 @@ import (
 	"henukit.dev/career/internal/contract"
 )
 
-const maxProfileBytes = 64 << 10
-
 var errCreateIdempotencyConflict = errors.New("career create idempotency conflict")
 
 type createSearchInput struct {
@@ -68,10 +66,7 @@ func (h *service) createSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func validProfile(profile map[string]any) bool {
-	if len(profile) == 0 {
-		return false
-	}
-	return true
+	return len(profile) != 0
 }
 
 // storeSearch creates one queued search inside a transaction. The advisory
@@ -121,7 +116,7 @@ func (h *service) searchStatus(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "search_id")
 	if _, err := uuid.Parse(id); err != nil {
 		writeError(w, r, http.StatusNotFound, "SEARCH_NOT_FOUND", "career search does not exist")
 		return

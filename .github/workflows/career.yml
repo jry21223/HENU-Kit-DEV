@@ -1,0 +1,86 @@
+name: Career
+
+on:
+  pull_request:
+    paths:
+      - services/career-opportunities/**
+      - packages/api-contracts/openapi/career.yaml
+      - .github/workflows/career.yml
+  push:
+    branches: [main]
+    paths:
+      - services/career-opportunities/**
+      - packages/api-contracts/openapi/career.yaml
+      - .github/workflows/career.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PGPASSWORD: career_test
+      CAREER_TEST_DATABASE_URL: postgres://career:career_test@localhost:5432/career_test?sslmode=disable
+      CAREER_TEST_REDIS_ADDR: localhost:6379
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_DB: career_test, POSTGRES_USER: career, POSTGRES_PASSWORD: career_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U career -d career_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/career-opportunities/go.mod
+          cache-dependency-path: services/career-opportunities/go.sum
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Verify migration round trip
+        run: |
+          set -euo pipefail
+          psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f services/career-opportunities/db/migrations/000001_career_searches.up.sql
+          psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f services/career-opportunities/db/migrations/000001_career_searches.up.sql
+          psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f services/career-opportunities/db/migrations/000002_career_profiles.up.sql
+          psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f services/career-opportunities/db/migrations/000002_career_profiles.up.sql
+          test "$(psql -h localhost -U career -d career_test -Atc "SELECT to_regclass('public.career_searches') IS NOT NULL AND to_regclass('public.career_profiles') IS NOT NULL")" = t
+      - name: Verify Career contract
+        run: |
+          set -euo pipefail
+          cd services/career-opportunities
+          go run ./cmd/contractgen
+          cd ../..
+          git diff --exit-code -- services/career-opportunities/internal/contract/generated.go
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/career.yaml
+          if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/career.yaml" 2>/dev/null; then
+            git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/career.yaml" > /tmp/career-base.yaml
+            cd services/career-opportunities
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/career-base.yaml ../../packages/api-contracts/openapi/career.yaml
+          fi
+      - name: Vet, test, and build
+        working-directory: services/career-opportunities
+        run: |
+          set -euo pipefail
+          gofmt -d . | tee /tmp/gofmt.diff
+          test ! -s /tmp/gofmt.diff
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
+          go test -race -count=1 ./...
+          go build -o /tmp/career ./cmd/server
+      - name: Build image
+        run: docker build -t henukit-career:${{ github.sha }} services/career-opportunities

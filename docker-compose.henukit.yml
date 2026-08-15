@@ -280,6 +280,33 @@ services:
     expose:
       - "8098"
 
+  # Career Opportunities owns the Work Radar async search core (#392): the
+  # Portal Gateway signs the verified actor in; the worker drives queued
+  # searches to completion. Fails closed without credentials.
+  career-opportunities:
+    build:
+      context: ./services/career-opportunities
+    environment:
+      CAREER_ADDR: ${CAREER_ADDR:-:8097}
+      CAREER_DATABASE_URL: ${CAREER_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/career?sslmode=disable}
+      CAREER_REDIS_URL: ${CAREER_REDIS_URL:-redis://redis:6379/6}
+      CAREER_SERVICE_CLIENT_ID: ${CAREER_CLIENT_ID:-portal-gateway-career}
+      CAREER_SERVICE_KEY_ID: ${CAREER_KEY_ID:-career-key-1}
+      CAREER_SERVICE_SECRET: ${CAREER_CLIENT_SECRET:-replace-career-service-secret-32bytes!!}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8097"
+    healthcheck:
+      test: ["CMD", "/career-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
   # Library owns the Console materials operation surface over the retired
   # Study admin API and fails closed without the credentials below (ADR-0020).
   library:
@@ -372,6 +399,13 @@ services:
       FOOD_POST_READ_CLIENT_ID: ${FOOD_POST_READ_CLIENT_ID:-portal-gateway-food-post-read}
       FOOD_POST_READ_SECRET: ${FOOD_POST_READ_SECRET:-replace-food-post-read-secret-32bytes!!}
       FOOD_POST_READ_KEY_ID: ${FOOD_POST_READ_KEY_ID:-food-post-read-key}
+      # Career Opportunities forwarding (#393): the 05 求职雷达 boundary. Empty
+      # CAREER_URL fails closed with an honest 503 and never falls back to the
+      # portal-api wildcard.
+      CAREER_URL: ${CAREER_URL:-http://career-opportunities:8097}
+      CAREER_CLIENT_ID: ${CAREER_CLIENT_ID:-portal-gateway-career}
+      CAREER_CLIENT_SECRET: ${CAREER_CLIENT_SECRET:-replace-career-service-secret-32bytes!!}
+      CAREER_KEY_ID: ${CAREER_KEY_ID:-career-key-1}
       PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
     depends_on:
       redis:
@@ -385,6 +419,8 @@ services:
       account-portfolio:
         condition: service_healthy
       library:
+        condition: service_healthy
+      career-opportunities:
         condition: service_healthy
     expose:
       - "8084"

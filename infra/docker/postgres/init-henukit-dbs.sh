@@ -24,6 +24,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
   SELECT 'CREATE DATABASE food'
   WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'food')\gexec
 
+  SELECT 'CREATE DATABASE career'
+  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'career')\gexec
+
   SELECT 'CREATE DATABASE portal'
   WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'portal')\gexec
 EOSQL
