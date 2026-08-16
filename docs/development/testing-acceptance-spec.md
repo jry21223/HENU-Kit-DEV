@@ -53,7 +53,7 @@
 | AUTH-003 | 同一正确 Code 20 并发 | 仅一个成功，单个 Session/Used 标记 |
 | AUTH-004 | 同邮箱/IP 高频请求 | 429；无新增 Code/Outbox |
 | AUTH-005 | 未登记 Callback | 安全错误页，不重定向 |
-| AUTH-006 | State 篡改或重放 | 业务站 400，无本地 Session |
+| AUTH-006 | State 篡改或重放 | 业务站 302 回登录入口重新发起流程，无本地 Session；日志区分 `expired_state` 与 `replayed_callback` |
 | AUTH-007 | 同一授权码并发交换 | 仅一个成功，Code 消费一次 |
 | AUTH-008 | 错误 PKCE Verifier | 400，日志不记录 Verifier |
 | AUTH-009 | 全局退出 | Core 与业务站 Session 最终全部撤销 |

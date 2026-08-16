@@ -106,6 +106,7 @@
 - 统一账户域使用 HttpOnly、Secure、SameSite=Lax 的 Core Session Cookie。
 - 各业务站建立自己的本地 Session；不同主域不得共享 Cookie。
 - 业务站登录流程：`state + PKCE -> exact callback -> single-use authorization code -> server-side token exchange -> local session`。
+- 登录回调失败（oauth cookie 缺失/过期、state 无效/已消费/过期、Redis 依赖故障）时，业务站不回 JSON 错误体：cookie/state 类失败 302 回登录入口重新发起流程，网关按 `missing_oauth_cookie`、`invalid_oauth_cookie`、`invalid_state`、`expired_state`、`replayed_callback`、`corrupt_state` 分类记录脱敏日志（仅 request_id + 分类）；依赖故障返回 503 `STATE_UNAVAILABLE`。
 - `return_to` 只允许站内路径，由业务站后端存入 Redis State；Core 只重定向到预登记 Callback。
 - 长期 Token 不得进入 URL、浏览器 LocalStorage 或前端日志。
 

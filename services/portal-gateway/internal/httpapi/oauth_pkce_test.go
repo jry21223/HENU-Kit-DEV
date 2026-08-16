@@ -159,28 +159,25 @@ func TestOAuthPKCEChallengeMatchesVerifierAndSetsSession(t *testing.T) {
 		t.Fatalf("session display_name = %v, want exchange display name", portalSession.DisplayName)
 	}
 
-	// Replay the same state/cookie: Redis state was GetDel'd — must fail closed without a second token call.
+	// Replay the same state/cookie: Redis state was GetDel'd — must fail closed
+	// without a second token call, recovering through a fresh login flow.
 	replay := httptest.NewRequest(http.MethodGet, callbackURL, nil)
 	replay.TLS = &tls.ConnectionState{}
 	replay.AddCookie(oauthCookie)
 	replayRecorder := httptest.NewRecorder()
 	handler.Router().ServeHTTP(replayRecorder, replay)
-	if replayRecorder.Code == http.StatusFound {
-		t.Fatal("replayed OAuth state must not succeed")
+	if replayRecorder.Code != http.StatusFound {
+		t.Fatalf("replayed OAuth state must redirect to login, status=%d body=%s", replayRecorder.Code, strings.TrimSpace(replayRecorder.Body.String()))
 	}
-	var envelope contract.ErrorEnvelope
-	if err := json.Unmarshal(replayRecorder.Body.Bytes(), &envelope); err != nil {
-		t.Fatalf("replay body: %v", err)
-	}
-	if envelope.RequestID == "" {
-		t.Fatal("replay error must include non-empty request_id")
+	if got := replayRecorder.Header().Get("Location"); got != wantLoginRecoveryLocation {
+		t.Fatalf("replay Location = %q, want %q", got, wantLoginRecoveryLocation)
 	}
 	if tokenCalls.Load() != 1 {
 		t.Fatalf("token endpoint calls after replay = %d, want still 1", tokenCalls.Load())
 	}
 }
 
-func TestOAuthCallbackErrorsIncludeRequestID(t *testing.T) {
+func TestOAuthCallbackRedirectDoesNotExposeOAuthSecrets(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 	t.Cleanup(func() { _ = redisClient.Close() })
@@ -198,27 +195,20 @@ func TestOAuthCallbackErrorsIncludeRequestID(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// A direct hit on the callback (no code/state) is a navigation failure: it
+	// must redirect into the login entry, never render an error JSON body.
 	req := httptest.NewRequest(http.MethodGet, "https://portal.example/api/v1/auth/callback", nil)
 	req.Header.Set("X-Request-Id", "req_callback_missing")
 	req.TLS = &tls.ConnectionState{}
 	rec := httptest.NewRecorder()
 	handler.Router().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d", rec.Code)
+	assertLoginRecoveryRedirect(t, rec)
+	if rec.Header().Get("X-Request-Id") != "req_callback_missing" {
+		t.Fatalf("X-Request-Id = %q, want req_callback_missing", rec.Header().Get("X-Request-Id"))
 	}
-	var envelope contract.ErrorEnvelope
-	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	if envelope.Error != "missing code or state" {
-		t.Fatalf("error = %q", envelope.Error)
-	}
-	if envelope.RequestID != "req_callback_missing" {
-		t.Fatalf("request_id = %q, want req_callback_missing", envelope.RequestID)
-	}
-	if strings.Contains(rec.Body.String(), "code_verifier") || strings.Contains(rec.Body.String(), "authorization") {
-		t.Fatalf("error body must not leak OAuth secrets: %s", rec.Body.String())
+	if strings.Contains(rec.Body.String(), "code_verifier") || strings.Contains(rec.Body.String(), "authorization") || strings.Contains(rec.Body.String(), "error") {
+		t.Fatalf("redirect body must not leak OAuth secrets or errors: %s", rec.Body.String())
 	}
 }
 

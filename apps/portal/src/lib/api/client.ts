@@ -298,6 +298,31 @@ export async function logout(): Promise<void> {
     method: "POST",
     cache: "no-store",
   });
+  // Best-effort Platform Core session revocation (SSO logout): the Core
+  // session cookie lives on the same origin (/account-auth, proxied to
+  // Platform Core), and a failed revoke must never block the local logout —
+  // it degrades to local-only sign-out and the next login simply requires the
+  // email code again. Multi-origin gateway setups where /account-auth is not
+  // served on the portal origin fail the same way and stay harmless. The
+  // bounded timeout keeps a hung Core from stalling the sign-out redirect.
+  try {
+    const response = await fetch("/account-auth/api/v1/sessions/revoke", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ all_sessions: false }),
+      signal: AbortSignal.timeout(3000),
+    });
+    // 401/404 mean there was no Core session to revoke (already signed out,
+    // or a multi-origin setup without /account-auth) — expected silence.
+    // A 5xx is a real revocation failure worth knowing about.
+    if (response.status >= 500) {
+      console.warn(`Core session revocation failed with status ${response.status}`);
+    }
+  } catch (error) {
+    console.warn("Core session revocation failed", error);
+  }
 }
 
 // ---- Account Portfolio ----

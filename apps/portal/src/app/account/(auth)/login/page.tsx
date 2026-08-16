@@ -28,6 +28,7 @@ import {
   requestRegistrationCode,
   verifyLoginCode,
 } from "@/lib/auth/account-center";
+import { fetchSession, hasGateway } from "@/lib/api/client";
 import {
   isValidHenuLocalPart,
   toHenuEmail,
@@ -108,7 +109,32 @@ function LoginForm() {
   const passwordLength = Array.from(pwd).length;
 
   useEffect(() => {
-    if (ready && user) router.replace(nextPath);
+    if (!ready || !user) return;
+    // The cached user can be stale: signed out, session expired, or a fresh
+    // module copy re-initialised from a server session. Only bounce to the
+    // account console when the Gateway still reports this session; otherwise
+    // drop the stale cache and stay put (the #412 loop).
+    if (!hasGateway) {
+      router.replace(nextPath);
+      return;
+    }
+    let cancelled = false;
+    void fetchSession().then(
+      (session) => {
+        if (cancelled) return;
+        if (session) {
+          router.replace(nextPath);
+        } else {
+          authStore.clear();
+        }
+      },
+      () => {
+        // Gateway unreachable: keep the login page as-is.
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [ready, user, nextPath, router]);
 
   useEffect(() => {

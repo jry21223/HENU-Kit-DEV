@@ -65,6 +65,16 @@ var (
 
 const quizCraftCatalogPath = "/api/v1/practice/catalog"
 
+// oauthFlowTTL is the OAuth flow window shared by the Redis state and the
+// oauth cookie MaxAge. The flow must survive the full email-code login: a
+// signed-out browser lands on Platform Core's own login page after authorize,
+// then the user reads the code from mail and enters it. A 5-minute window made
+// the callback fail with missing oauth cookie for slow users; 30 minutes
+// covers the verification code TTL plus reading mail while staying short
+// enough to keep replay exposure bounded. The consumed marker written by a
+// successful callback lives for the same window so replays stay classifiable.
+const oauthFlowTTL = 30 * time.Minute
+
 // New creates a Handler from config.
 func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 	codec, err := session.NewCodec(cfg.SessionKey)
@@ -436,7 +446,6 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	// the callback fail with missing oauth cookie for slow users; 30 minutes
 	// covers the verification code TTL plus reading mail while staying short
 	// enough to keep replay exposure bounded.
-	const oauthFlowTTL = 30 * time.Minute
 	key := fmt.Sprintf("portal:oauth-state:%s:%s", stateHash, browserHash)
 	h.redis.Set(r.Context(), key, payload, oauthFlowTTL)
 
@@ -466,24 +475,24 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 	if code == "" || state == "" {
-		writeError(w, r, http.StatusBadRequest, "missing code or state", "登录没有成功，请重新登录；如果反复失败请稍后再试")
+		h.failCallbackToLogin(w, r, "missing_code_or_state")
 		return
 	}
 
 	cookies := h.browserCookies(r)
 	cookie, err := r.Cookie(cookies.oauth)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "missing oauth cookie", "登录没有成功，请重新登录；如果反复失败请稍后再试")
+		h.failCallbackToLogin(w, r, "missing_oauth_cookie")
 		return
 	}
 	browserNonce, err := base64.RawURLEncoding.DecodeString(cookie.Value)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid oauth cookie", "登录没有成功，请重新登录；如果反复失败请稍后再试")
+		h.failCallbackToLogin(w, r, "invalid_oauth_cookie")
 		return
 	}
 	stateBytes, err := base64.RawURLEncoding.DecodeString(state)
 	if err != nil || len(stateBytes) != 32 {
-		writeError(w, r, http.StatusBadRequest, "invalid or expired state", "登录没有成功，请重新登录；如果反复失败请稍后再试")
+		h.failCallbackToLogin(w, r, "invalid_state")
 		return
 	}
 
@@ -493,15 +502,36 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 
 	data, err := h.redis.GetDel(r.Context(), key).Bytes()
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid or expired state", "登录没有成功，请重新登录；如果反复失败请稍后再试")
+		if !errors.Is(err, redis.Nil) {
+			// Redis going down is a dependency failure, not an expired or replayed
+			// flow: fail closed with the honest service error.
+			log.Printf("portal-gateway oauth state lookup failed request_id=%s", requestIDOf(w, r))
+			writeError(w, r, http.StatusServiceUnavailable, "STATE_UNAVAILABLE", "登录暂时不可用，请稍后再试")
+			return
+		}
+		// The single-use state is gone. A successful callback leaves a consumed
+		// marker behind, so a miss with a marker present is a replay; a miss
+		// without one is an expired flow window. This is what lets production
+		// logs answer "slow email login" vs "back-button replay".
+		markerKey := fmt.Sprintf("portal:oauth-consumed:%s", stateHash)
+		if _, markerErr := h.redis.Get(r.Context(), markerKey).Result(); markerErr == nil {
+			h.failCallbackToLogin(w, r, "replayed_callback")
+			return
+		}
+		h.failCallbackToLogin(w, r, "expired_state")
 		return
 	}
 
 	var stored map[string]string
 	if err := json.Unmarshal(data, &stored); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "corrupt state", "登录没有成功，请重新登录；如果反复失败请稍后再试")
+		h.failCallbackToLogin(w, r, "corrupt_state")
 		return
 	}
+
+	// Best-effort consumed marker: a later replay of this state (back-button,
+	// double navigation) classifies as replayed_callback instead of masking as
+	// expired_state. Failure to write only degrades the classification.
+	h.redis.Set(r.Context(), fmt.Sprintf("portal:oauth-consumed:%s", stateHash), "1", oauthFlowTTL)
 
 	http.SetCookie(w, &http.Cookie{
 		Name: cookies.oauth, Value: "", Path: "/",
@@ -543,6 +573,17 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		returnTo = "/"
 	}
 	http.Redirect(w, r, h.portalOrigin+returnTo, http.StatusFound)
+}
+
+// failCallbackToLogin redirects a failed or replayed OAuth callback back into
+// the login entry so the browser recovers through a fresh flow instead of a
+// raw JSON error page. The category is logged (redacted, with the request id)
+// so production failures can be classified as flow-expiry vs callback-replay.
+func (h *Handler) failCallbackToLogin(w http.ResponseWriter, r *http.Request, category string) {
+	log.Printf("portal-gateway oauth callback failed request_id=%s category=%s", requestIDOf(w, r), category)
+	// Relative Location keeps the browser on its current host and scheme; the
+	// login entry defaults return_to to "/" and issues a fresh flow.
+	http.Redirect(w, r, "/api/v1/auth/login?return_to="+url.QueryEscape("/"), http.StatusFound)
 }
 
 func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {

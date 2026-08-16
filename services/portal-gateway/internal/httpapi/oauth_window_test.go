@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/portal-gateway/internal/config"
-	"henukit.dev/portal-gateway/internal/contract"
 )
 
 // The OAuth flow window (Redis state TTL and oauth cookie MaxAge) must stay in
@@ -132,71 +130,6 @@ func assertOAuthCookieAttributes(t *testing.T, cookie *http.Cookie, secure bool)
 	}
 	if cookie.MaxAge != wantOAuthCookieMaxAge {
 		t.Fatalf("oauth cookie MaxAge = %d, want %d (matches oauthFlowTTL so the Redis state and cookie expire together)", cookie.MaxAge, wantOAuthCookieMaxAge)
-	}
-}
-
-func TestOAuthCallbackMissingOAuthCookieFailsCleanly(t *testing.T) {
-	handler, _ := newTestHandler(t, "http://127.0.0.1:9")
-
-	// The production symptom of #264: callback arrives with code+state but the
-	// oauth cookie is gone (the browser deleted it after MaxAge expired while
-	// the user was reading the mail code). It must fail as a clean 400 with the
-	// honest error, echo the request id, and never reach the exchange endpoint.
-	request := httptest.NewRequest(http.MethodGet,
-		"https://portal.example/api/v1/auth/callback?code=test-code&state="+url.QueryEscape("c2hhMTI4Ynl0ZXNvZnN0YXRlbGVuZ3RodGhpcnR5dHdv"),
-		nil)
-	request.TLS = &tls.ConnectionState{}
-	request.Header.Set("X-Request-Id", "req_oauth_cookie_missing")
-	recorder := httptest.NewRecorder()
-	handler.Router().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("callback status = %d body=%s, want 400", recorder.Code, strings.TrimSpace(recorder.Body.String()))
-	}
-	var envelope contract.ErrorEnvelope
-	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode error body: %v body=%s", err, recorder.Body.String())
-	}
-	if envelope.Error != "missing oauth cookie" {
-		t.Fatalf("error = %q, want missing oauth cookie", envelope.Error)
-	}
-	if envelope.RequestID != "req_oauth_cookie_missing" {
-		t.Fatalf("request_id = %q, want req_oauth_cookie_missing", envelope.RequestID)
-	}
-}
-
-func TestOAuthFlowWindowExpiryFailsCleanly(t *testing.T) {
-	var tokenCalls atomic.Int32
-	platformCore := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		tokenCalls.Add(1)
-		t.Fatalf("expired OAuth flow must never reach the token endpoint, path=%q", request.URL.Path)
-	}))
-	t.Cleanup(platformCore.Close)
-
-	handler, redisServer := newTestHandler(t, platformCore.URL)
-
-	state, oauthCookie := startOAuthFlow(t, handler, "https://portal.example/api/v1/auth/login")
-
-	// The Redis state and the cookie share the same 30-minute window. Simulate
-	// a slow email-code login that outlives it: the state expires server-side,
-	// so the callback must fail closed even if the browser still holds the
-	// cookie.
-	redisServer.FastForward(31 * time.Minute)
-
-	callbackRecorder := completeOAuthCallback(t, handler, state, oauthCookie)
-
-	if callbackRecorder.Code != http.StatusBadRequest {
-		t.Fatalf("callback status = %d body=%s, want clean 400", callbackRecorder.Code, strings.TrimSpace(callbackRecorder.Body.String()))
-	}
-	var envelope contract.ErrorEnvelope
-	if err := json.Unmarshal(callbackRecorder.Body.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode error body: %v", err)
-	}
-	if envelope.Error != "invalid or expired state" {
-		t.Fatalf("error = %q, want invalid or expired state", envelope.Error)
-	}
-	if tokenCalls.Load() != 0 {
-		t.Fatalf("token endpoint calls = %d, want 0", tokenCalls.Load())
 	}
 }
 

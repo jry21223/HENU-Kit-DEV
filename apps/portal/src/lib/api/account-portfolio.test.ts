@@ -333,6 +333,56 @@ describe("logout", () => {
     );
   });
 
+  it("revokes the Platform Core session after the Gateway cookie-clear", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ status: "signed_out" }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ revoked: true }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+    );
+
+    const { logout } = await import("./client");
+    await expect(logout()).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/account-auth/api/v1/sessions/revoke",
+      expect.objectContaining({
+        method: "POST",
+        cache: "no-store",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all_sessions: false }),
+      })
+    );
+  });
+
+  it("still completes local logout when Core revocation fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ status: "signed_out" }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+        .mockRejectedValueOnce(new TypeError("core revoke network failure"))
+    );
+
+    const { logout } = await import("./client");
+    await expect(logout()).resolves.toBeUndefined();
+  });
+
   it("does not report logout success when the Gateway is unavailable", async () => {
     vi.stubGlobal(
       "fetch",

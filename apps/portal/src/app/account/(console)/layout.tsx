@@ -8,10 +8,10 @@ import { cn } from "@/lib/cn";
 import {
   fetchSession,
   formatPortalError,
-  logout,
   PortalUnauthorizedError,
 } from "@/lib/api/client";
 import type { PortalSession } from "@/lib/api/types";
+import { authStore } from "@/lib/auth/store";
 import { publicDisplayName } from "@/lib/auth/display-name";
 
 const MENU = [
@@ -76,6 +76,9 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
   const requireLogin = useCallback(() => {
     requestVersion.current += 1;
     setSessionState({ kind: "anonymous" });
+    // The cached user must go too, or the login page bounces straight back
+    // into the account console (the #412 loop).
+    authStore.clear();
     redirectToAccountLogin();
   }, [redirectToAccountLogin]);
 
@@ -99,7 +102,9 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
     setSigningOut(true);
     setLogoutError("");
     try {
-      await logout();
+      // Clears the Gateway session (including the Core session revocation)
+      // and the cached local user, so the login page stays put.
+      await authStore.logout();
       router.replace("/account/login");
     } catch (error) {
       if (error instanceof PortalUnauthorizedError) {

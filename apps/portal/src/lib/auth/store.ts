@@ -151,11 +151,16 @@ export const authStore = {
     setUser({ name, uid: uidOf(name), email });
   },
 
-  /** 登出 */
+  /** 登出：网关模式先清 Gateway Session（含 Core 会话撤销），再清本地缓存 */
   async logout() {
     if (hasGateway) {
       await apiLogout();
     }
+    setUser(null);
+  },
+
+  /** 仅清空本地缓存用户（不调用任何远端接口）；会话已知失效或已登出时使用 */
+  clear() {
     setUser(null);
   },
 };

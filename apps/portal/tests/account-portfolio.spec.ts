@@ -193,6 +193,51 @@ test("an owner 401 requires a fresh Portal login instead of offering a retry loo
   await expect(page.locator('[data-account-summary-state="error"]')).toHaveCount(0);
 });
 
+test("signing out stays on the login page instead of bouncing back to the account", async ({ page }) => {
+  let signedOut = false;
+  await page.route("**/api/v1/session", async (route) => {
+    await route.fulfill(signedOut
+      ? {
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "not_authenticated", request_id: "req_signed_out" }),
+        }
+      : {
+          contentType: "application/json",
+          body: JSON.stringify({
+            user_id: sessionUserID,
+            display_name: "小河同学",
+            expires_at: "2030-01-01T00:00:00Z",
+          }),
+        });
+  });
+  await page.route("**/api/v1/session/logout", async (route) => {
+    signedOut = true;
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+  let revokeCalls = 0;
+  await page.route("**/account-auth/api/v1/sessions/revoke", async (route) => {
+    revokeCalls += 1;
+    expect(await route.request().postDataJSON()).toEqual({ all_sessions: false });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ revoked: true }) });
+  });
+
+  await page.goto("/account", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: "退出登录" })).toBeVisible();
+  await page.getByRole("button", { name: "退出登录" }).click();
+
+  // The login page renders and stays put: the stale cached user must not
+  // bounce the browser straight back to /account (the #412 loop). Poll the
+  // URL for the settle window so a bounce fails this assertion.
+  await expect(page).toHaveURL(/\/account\/login/);
+  await expect(page.getByRole("heading", { name: "登录" })).toBeVisible();
+  await expect
+    .poll(() => page.url(), { timeout: 1500 })
+    .toMatch(/\/account\/login/);
+  expect(revokeCalls).toBe(1);
+  await expect(page.getByRole("button", { name: "退出登录" })).toHaveCount(0);
+});
+
 test("all Account Portfolio views expose loading before their Gateway result", async ({ page }) => {
   const views = [
     {
