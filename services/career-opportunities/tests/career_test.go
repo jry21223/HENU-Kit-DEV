@@ -85,7 +85,11 @@ func send(t *testing.T, baseURL, actorID, method, path string, body []byte, idem
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	nonce := base64.RawURLEncoding.EncodeToString([]byte(uuid.NewString()[:24]))
 	digest := sha256.Sum256(body)
-	canonical := strings.Join([]string{method, path, timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
+	// The actor UUID is the sixth canonical line: Career binds the actor into
+	// the signature exactly like Account Portfolio, matching Portal Gateway's
+	// SignWithActor. A signed request whose actor was not bound could be
+	// replayed with a different X-Actor-User-Id.
+	canonical := strings.Join([]string{method, path, timestamp, nonce, hex.EncodeToString(digest[:]), actorID}, "\n")
 	mac := hmac.New(sha256.New, []byte(careerSecret))
 	_, _ = mac.Write([]byte(canonical))
 	request.Header.Set("X-Timestamp", timestamp)
