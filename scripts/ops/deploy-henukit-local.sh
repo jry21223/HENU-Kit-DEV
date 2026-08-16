@@ -107,7 +107,8 @@ if [[ "$skip_build" -eq 0 ]]; then
   ' || die "repo is not clean after mode fix"
 
   log "building signed 16-image release in container (this takes a while)"
-  cat > /tmp/henukit-build-once.sh <<'SCRIPT'
+  build_script="$(mktemp "${TMPDIR:-/tmp}/henukit-build-once.XXXXXX")"
+  cat > "$build_script" <<'SCRIPT'
 #!/bin/sh
 apk add --no-cache bash git openssh docker-cli gzip coreutils shadow nodejs npm findutils >/dev/null 2>&1
 addgroup -S henukit-release-deployers 2>/dev/null
@@ -118,25 +119,30 @@ git config --global credential.https://github.com.helper "!/usr/local/bin/gh aut
 cd /repo
 export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890
 export DOCKER_BUILDKIT=1
-su root -c "bash scripts/ops/build-henukit-release-local.sh --sha \$(git rev-parse HEAD) --output-dir /artifacts --signing-key /keys/ed25519 --handoff-group henukit-release-deployers"
+su root -c "bash scripts/ops/build-henukit-release-local.sh --sha \$(git rev-parse HEAD) --output-dir $ARTIFACTS_HOST_PATH --signing-key /keys/ed25519 --handoff-group henukit-release-deployers"
 SCRIPT
-  chmod +x /tmp/henukit-build-once.sh
+  chmod +x "$build_script"
   mkdir -p "$artifacts_dir"
   docker run --rm \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$repo_dir:/home/jerry/HENU-Kit-DEV-career-radar-364" \
     -v "$repo_dir:/repo" \
     -v "$signing_key_dir:/keys:ro" \
-    -v "$artifacts_dir:/artifacts" \
+    -v "$artifacts_dir:$artifacts_dir" \
     -v "$HOME/.local/bin/gh:/usr/local/bin/gh:ro" \
     -v "$HOME/.config/gh:/root/.config/gh:ro" \
     -v /usr/libexec/docker/cli-plugins/docker-buildx:/usr/local/libexec/docker/cli-plugins/docker-buildx:ro \
     -v "$HOME/.docker/cli-plugins:/root/.docker/cli-plugins:ro" \
     --network host \
     -e http_proxy="$proxy" -e https_proxy="$proxy" \
-    -v /tmp/henukit-build-once.sh:/build.sh:ro \
-    alpine sh /build.sh 2>&1 | grep -E "BUILD_EXIT|die|error|fatal" | tail -5
-  [[ -d "$bundle_dir" ]] || die "signed bundle not produced at $bundle_dir"
+    -e ARTIFACTS_HOST_PATH="$artifacts_dir" \
+    -v "$build_script:/build.sh:ro" \
+    alpine sh /build.sh 2>&1 | grep -E "BUILD_EXIT|die|refusing|error|fatal" | tail -5
+  if [[ -d "$bundle_dir" ]]; then
+    log "reusing existing bundle at $bundle_dir"
+  else
+    die "signed bundle not produced at $bundle_dir (see build output above)"
+  fi
   log "signed bundle ready: $bundle_dir"
 fi
 
@@ -144,14 +150,16 @@ fi
 
 # ---- deployment SSH config (KEX fix) ----
 log "preparing KEX-fixed ssh config"
+kex_config="$(mktemp "${TMPDIR:-/tmp}/henu-prod-config-fixed.XXXXXX")"
 docker run --rm -v "$deployer_ssh_dir:/hs:ro" alpine sh -c \
   "sed 's/KexAlgorithms curve25519-sha256/KexAlgorithms diffie-hellman-group14-sha256/' /hs/config" \
-  > /tmp/henu-prod-config-fixed.txt 2>/dev/null
-grep -q "diffie-hellman-group14-sha256" /tmp/henu-prod-config-fixed.txt || \
+  > "$kex_config" 2>/dev/null
+grep -q "diffie-hellman-group14-sha256" "$kex_config" || \
   die "could not prepare KEX-fixed ssh config"
 
 # ---- deployment (with retries) ----
-cat > /tmp/henukit-deploy-once.sh <<'SCRIPT'
+deploy_script="$(mktemp "${TMPDIR:-/tmp}/henukit-deploy-once.XXXXXX")"
+cat > "$deploy_script" <<'SCRIPT'
 #!/bin/sh
 apk add --no-cache bash git rsync openssh >/dev/null 2>&1
 export HOME=/root
@@ -179,7 +187,7 @@ done
 echo "=== ALL ATTEMPTS FAILED ==="
 exit 1
 SCRIPT
-chmod +x /tmp/henukit-deploy-once.sh
+chmod +x "$deploy_script"
 
 deploy_mode="--execute"
 [[ "$preflight_only" -eq 1 ]] && deploy_mode="--preflight-only"
@@ -188,7 +196,7 @@ log "deploying $release_sha (${deploy_mode})"
 docker run --rm \
   -v "$repo_dir:/repo:ro" \
   -v "$artifacts_dir:/srv/artifacts:ro" \
-  -v /tmp/henu-prod-config-fixed.txt:/root/.ssh/config \
+  -v "$kex_config:/root/.ssh/config" \
   -v "$deployer_ssh_dir/id_ed25519_henu_prod:/home/henukit-deployer/.ssh/id_ed25519_henu_prod" \
   -v "$deployer_ssh_dir/known_hosts:/home/henukit-deployer/.ssh/known_hosts" \
   -v "$allowed_signers:/etc/henukit-release-deployer/release-signers:ro" \
@@ -197,7 +205,7 @@ docker run --rm \
   --network host \
   -e http_proxy="$proxy" -e https_proxy="$proxy" \
   -e SHA="$release_sha" \
-  -v /tmp/henukit-deploy-once.sh:/dep.sh:ro \
+  -v "$deploy_script:/dep.sh:ro" \
   alpine sh -c "
     chown root:root /root/.ssh/config /home/henukit-deployer/.ssh/id_ed25519_henu_prod /home/henukit-deployer/.ssh/known_hosts 2>/dev/null
     chmod 600 /root/.ssh/config /home/henukit-deployer/.ssh/id_ed25519_henu_prod 2>/dev/null
