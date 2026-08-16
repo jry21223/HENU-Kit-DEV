@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -136,6 +138,145 @@ func assertCareerSignature(t *testing.T, request *http.Request, actor string) {
 	}
 	if request.Header.Get("X-Signature") == "" {
 		t.Fatalf("career signature missing")
+	}
+}
+
+// careerMultipartRequest builds a browser multipart upload request with the
+// session cookie, mirroring how the Portal form posts a resume.
+func careerMultipartRequest(t *testing.T, handler *Handler, withSession bool, actorUserID, path, fileName string, content []byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", fileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "https://portal.test"+path, &body)
+	request.TLS = &tls.ConnectionState{}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if withSession {
+		encoded, err := handler.sessionCodec.Encode(session.Value{
+			UserID:        actorUserID,
+			DisplayName:   "测试同学",
+			ExchangeToken: strings.Repeat("x", 32),
+			ExpiresAt:     time.Now().Add(time.Hour),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.AddCookie(&http.Cookie{Name: "__Host-henukit_portal_session", Value: encoded})
+	}
+	return request
+}
+
+func TestCareerExtractionUploadForwardsMultipart(t *testing.T) {
+	const fileName = "resume.txt"
+	const fileContent = "姓名：测试同学\n目标：后端开发"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/career/profile/extractions" {
+			t.Fatalf("unexpected upstream request %s %s", r.Method, r.URL.Path)
+		}
+		assertCareerSignature(t, r, careerSessionUserID)
+		if contentType := r.Header.Get("Content-Type"); !strings.HasPrefix(contentType, "multipart/form-data") {
+			t.Fatalf("upstream Content-Type = %q, want multipart/form-data", contentType)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		if !bytes.Contains(raw, []byte(fileContent)) {
+			t.Fatalf("upstream lost the file bytes")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"extraction":{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","status":"queued","user_id":"` + careerSessionUserID + `","file_name":"` + fileName + `","created_at":"2026-08-16T00:00:00Z"}},"request_id":"req_career_extract"}`))
+	}))
+	defer upstream.Close()
+	mem := membershipServer(t, careerSessionUserID, false)
+	defer mem.Close()
+	handler := newCareerHandler(t, upstream.URL, mem.URL)
+
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, careerMultipartRequest(t, handler, true, careerSessionUserID, "/api/v1/career/profile/extractions", fileName, []byte(fileContent)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("upload status = %d: %s", response.Code, response.Body.String())
+	}
+	var envelope struct {
+		Extraction struct {
+			ID       string `json:"id"`
+			Status   string `json:"status"`
+			FileName string `json:"file_name"`
+		} `json:"extraction"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Extraction.Status != "queued" || envelope.Extraction.FileName != fileName {
+		t.Fatalf("extraction response = %+v", envelope.Extraction)
+	}
+}
+
+func TestCareerExtractionUploadRequiresSessionAndLifetime(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("upstream contacted without auth gate")
+	}))
+	defer upstream.Close()
+	mem := membershipServer(t, careerSessionUserID, false)
+	defer mem.Close()
+	handler := newCareerHandler(t, upstream.URL, mem.URL)
+
+	anon := httptest.NewRecorder()
+	handler.Router().ServeHTTP(anon, careerMultipartRequest(t, handler, false, "", "/api/v1/career/profile/extractions", "resume.txt", []byte("x")))
+	if anon.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous upload status = %d, want 401", anon.Code)
+	}
+	free := httptest.NewRecorder()
+	handler.Router().ServeHTTP(free, careerMultipartRequest(t, handler, true, careerSessionFreeUserID, "/api/v1/career/profile/extractions", "resume.txt", []byte("x")))
+	if free.Code != http.StatusForbidden {
+		t.Fatalf("free user upload status = %d, want 403", free.Code)
+	}
+}
+
+func TestCareerExtractionUploadBodyTooLarge(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("upstream contacted for an oversized body")
+	}))
+	defer upstream.Close()
+	mem := membershipServer(t, careerSessionUserID, false)
+	defer mem.Close()
+	handler := newCareerHandler(t, upstream.URL, mem.URL)
+
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, careerMultipartRequest(t, handler, true, careerSessionUserID, "/api/v1/career/profile/extractions", "resume.txt", bytes.Repeat([]byte("a"), 11<<20+1)))
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized upload status = %d, want 413", response.Code)
+	}
+}
+
+func TestCareerExtractionStatusForwards(t *testing.T) {
+	const extractionID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/career/profile/extractions/"+extractionID {
+			t.Fatalf("unexpected upstream request %s %s", r.Method, r.URL.Path)
+		}
+		assertCareerSignature(t, r, careerSessionUserID)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"extraction":{"id":"` + extractionID + `","status":"completed","user_id":"` + careerSessionUserID + `","file_name":"resume.txt","extracted":{"target_roles":"后端开发"},"created_at":"2026-08-16T00:00:00Z"}},"request_id":"req_career_extract"}`))
+	}))
+	defer upstream.Close()
+	mem := membershipServer(t, careerSessionUserID, false)
+	defer mem.Close()
+	handler := newCareerHandler(t, upstream.URL, mem.URL)
+
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, careerRequest(t, handler, true, careerSessionUserID, http.MethodGet, "/api/v1/career/profile/extractions/"+extractionID, "", ""))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"status":"completed"`) {
+		t.Fatalf("status body lost the extraction: %s", response.Body.String())
 	}
 }
 

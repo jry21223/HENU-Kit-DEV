@@ -7,6 +7,7 @@
 - [Study Legacy Admin](./apps/study-legacy-admin/CONTEXT.md) — preserved legacy behavior, rollback entrypoint, and retirement boundary.
 - [Platform Core](./services/platform-core/CONTEXT.md) — platform identity ownership, Core Session, OAuth client, Authorization Code, and Redis coordination boundaries.
 - [Account Portfolio](./services/account-portfolio/CONTEXT.md) — durable user points, membership, orders, notifications, and support-ticket ownership.
+- [Career Opportunities](./services/career-opportunities/CONTEXT.md) — public job opportunities, member-owned career preferences, matching, tracking, and digest ownership.
 - [Console Gateway](./services/console-gateway/CONTEXT.md) — Console-local authorization callback, Session cookie, and verified access-context boundary.
 - [Library Compatibility](./services/library/CONTEXT.md) — Library Module terms, bounded legacy translation, idempotency, and degradation semantics.
 - [Food Operations](./services/food/CONTEXT.md) — Food-owned submissions, anomaly tickets, tier adjustments, idempotency, and stale semantics.
@@ -29,6 +30,7 @@ Do not create empty context files. Move a term when its owning implementation co
 - **Console Gateway → Platform Core and product services**: the Gateway validates Console access, aggregates summaries, and forwards controlled operations without owning business data.
 - **Platform Core → all products**: supplies identity, permission codes, scopes, sessions, mail infrastructure, audit, and Operations Inbox references.
 - **Portal Gateway → Account Portfolio**: forwards only a verified Portal Session actor through signed service requests; Account Portfolio remains the durable account-data owner.
+- **Portal Gateway → Career Opportunities**: forwards public catalog reads and verified Portal actors for member-owned career capabilities; Career Opportunities owns job and career data, while Account Portfolio remains the Membership Entitlement owner.
 - **Portal Gateway → QuizCraft**: ADR-0018 permits only dark, signed create-session and submit-answer commands; QuizCraft retains question, scoring, attempt, and anonymous-identity ownership.
 - **Notice, Library, QuizCraft, and Food → Console Gateway**: each remains the sole data owner and exposes versioned contracts.
 - **Study Legacy Admin → Study Legacy API**: remains physically separate from HENUKit Console during migration and retirement.

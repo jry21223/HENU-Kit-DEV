@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -41,9 +42,35 @@ type injectedError struct{}
 func (e *injectedError) Error() string { return "injected crawler failure" }
 
 func newCareerServer(t *testing.T, work career.WorkFunc) (*httptest.Server, *pgxpool.Pool) {
-	return newCareerServerWithDigest(t, work, nil, "")
+	return newCareerServerWithExtract(t, work, nil, 0)
 }
 
+func newCareerServerWithExtract(t *testing.T, work career.WorkFunc, extract career.ExtractFunc, rateLimit int) (*httptest.Server, *pgxpool.Pool) {
+	t.Helper()
+	pool, err := pgxpool.New(context.Background(), os.Getenv("CAREER_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	redisClient := redis.NewClient(&redis.Options{Addr: os.Getenv("CAREER_TEST_REDIS_ADDR")})
+	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(context.Background(), `TRUNCATE career_search_operations, career_search_results, career_searches, career_profiles, career_resume_extractions`); err != nil {
+		t.Fatal(err)
+	}
+	service, err := career.New(career.Config{
+		Database: pool, Redis: redisClient, ClientID: careerClientID, Keys: map[string]string{"active": careerSecret}, Work: work,
+		Extract: extract, ExtractRateLimit: rateLimit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = redisClient.Close() })
+	return httptest.NewServer(service), pool
+}
+
+// newCareerServerWithDigest is the digest-enabled variant used by the search
+// digest tests.
 func newCareerServerWithDigest(t *testing.T, work career.WorkFunc, sender career.DigestSender, resultURL string) (*httptest.Server, *pgxpool.Pool) {
 	t.Helper()
 	pool, err := pgxpool.New(context.Background(), os.Getenv("CAREER_TEST_DATABASE_URL"))
@@ -54,7 +81,7 @@ func newCareerServerWithDigest(t *testing.T, work career.WorkFunc, sender career
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(context.Background(), `TRUNCATE career_search_operations, career_search_results, career_searches, career_profiles`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE career_search_operations, career_search_results, career_searches, career_profiles, career_resume_extractions`); err != nil {
 		t.Fatal(err)
 	}
 	service, err := career.New(career.Config{
@@ -70,11 +97,35 @@ func newCareerServerWithDigest(t *testing.T, work career.WorkFunc, sender career
 
 func send(t *testing.T, baseURL, actorID, method, path string, body []byte, idempotencyKey string) *http.Response {
 	t.Helper()
+	return sendSigned(t, baseURL, actorID, method, path, body, "application/json", idempotencyKey)
+}
+
+// sendMultipart signs and sends a raw multipart body the same way the Portal
+// Gateway forwards an upload: the multipart bytes are the signed body.
+func sendMultipart(t *testing.T, baseURL, actorID, path, fileName string, content []byte) *http.Response {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", fileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return sendSigned(t, baseURL, actorID, http.MethodPost, path, body.Bytes(), writer.FormDataContentType(), "")
+}
+
+func sendSigned(t *testing.T, baseURL, actorID, method, path string, body []byte, contentType, idempotencyKey string) *http.Response {
+	t.Helper()
 	request, err := http.NewRequest(method, baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Type", contentType)
 	request.Header.Set("X-Service-Id", careerClientID)
 	request.Header.Set("X-Key-Id", "active")
 	request.Header.Set("X-Actor-User-Id", actorID)

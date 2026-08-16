@@ -51,6 +51,7 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
     "henukit-food-mcp",
     "henukit-library",
     "henukit-career-opportunities",
+    "henukit-career-mcp",
     "henukit-portal-gateway",
   ];
 
@@ -348,6 +349,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-food",
     "henukit-food-mcp",
     "henukit-career-opportunities",
+    "henukit-career-mcp",
     "henukit-library",
   ];
 

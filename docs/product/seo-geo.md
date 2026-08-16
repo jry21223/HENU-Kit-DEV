@@ -8,9 +8,10 @@
 |---|---|
 | `/robots.txt` | 允许公开 HTML 抓取，仅排除 API；非公开 HTML 必须可被爬虫读取 `X-Robots-Tag` |
 | `X-Robots-Tag` | 账户、发布、交易、阅读器及个性化练习页面返回 `noindex, nofollow` |
-| `/sitemap.xml` | 仅包含首页、资料库、刷题、美食榜和校园互助五个稳定入口 |
-| `/llms.txt` | 声明项目定位、公开入口、非官方身份、官方来源优先与引用限制 |
+| `/sitemap.xml` | 仅包含首页、资料库、刷题、美食榜、校园互助和求职雷达六个稳定入口 |
+| `/llms.txt` | 声明项目定位、公开入口（含每个入口的一句话摘要）、非官方身份、官方来源优先与引用限制 |
 | `/` HTML metadata | 提供 canonical、描述、Open Graph 和 Twitter Card |
+| 顶层页面 HTML metadata | 资料库、刷题、美食榜、互助平台和求职雷达五个页面分别提供页面级 canonical、描述、Open Graph 和 Twitter Card |
 | `/` JSON-LD | 使用 `WebSite` 和社区维护者 `Organization`；不把河南大学声明为发布者或关联组织 |
 
 `OAI-SearchBot`、Googlebot、Bingbot 和 Baiduspider 均适用 `User-agent: *` 的公开抓取规则。`GPTBot` 是否用于模型训练与搜索曝光不是同一决策；本实现没有为训练型爬虫设置特殊授权。
@@ -25,7 +26,7 @@ NEXT_PUBLIC_SITE_URL=https://henukit.cn
 
 该值必须是一个 HTTP(S) origin，不得包含用户名、密码、路径、查询或片段。未配置时回退到仓库已确认的生产主站 `https://henukit.cn`。它是构建时值；域名变化后必须重建 Portal 制品，不能只重启容器。
 
-当前只有首页发布 canonical。其余顶层页面仍是 Client Component，动态详情又依赖 owner 数据；在它们具备逐页、可验证的服务端 metadata 之前，不用父级 layout 批量写 canonical，避免把不同详情错误规范到同一个列表页。
+当前首页和五个顶层页面（资料库、刷题、美食榜、互助平台、求职雷达）各发布自己的 canonical。六个页面全部是稳定的公开列表页；canonical 只挂在这些页面自己的 page 级 metadata 上，不写在父级 layout 上。详情页和动态内容仍是 Client Component 且依赖 owner 数据，在它们具备逐页、可验证的服务端 metadata 之前，不用父级 layout 批量写 canonical，避免把不同详情错误规范到同一个列表页。
 
 ## Sitemap 纳入门槛
 

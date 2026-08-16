@@ -1,11 +1,13 @@
-// Code generated from career.yaml (SHA256 6247ca94925615b9ef78a50b6912cff0e447936f3ea464542f475194fb1f7ea6); DO NOT EDIT.
+// Code generated from career.yaml (SHA256 156fcc025dc6973eb62e4f38501505cf2c62a3c8f05f5b3d53233cf44a711f25); DO NOT EDIT.
 package contract
 
 const (
-	HealthRoute        = "/healthz"
-	CreateSearchRoute  = "/api/v1/career/searches"
-	ListSearchesRoute  = "/api/v1/career/searches"
-	SearchRoute        = "/api/v1/career/searches/{search_id}"
-	ProfileRoute       = "/api/v1/career/profile"
-	UpdateProfileRoute = "/api/v1/career/profile"
+	HealthRoute           = "/healthz"
+	CreateSearchRoute     = "/api/v1/career/searches"
+	ListSearchesRoute     = "/api/v1/career/searches"
+	SearchRoute           = "/api/v1/career/searches/{search_id}"
+	ProfileRoute          = "/api/v1/career/profile"
+	UpdateProfileRoute    = "/api/v1/career/profile"
+	CreateExtractionRoute = "/api/v1/career/profile/extractions"
+	ExtractionRoute       = "/api/v1/career/profile/extractions/{extraction_id}"
 )

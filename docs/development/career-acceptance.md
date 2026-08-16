@@ -55,6 +55,24 @@ cd services/career-opportunities && go test -count=1 -run GetWork -v .
 | 单来源超时/失败降级，成功来源结果保留 | `TestGetWorkSingleSourceFailureDegrades` |
 | **全部来源失败仍正常完成（空结果 + 全 failed）** | `TestGetWorkAllSourcesFailedStillCompletes`（#404 补） |
 
+### 1.2.1 后端 · 简历上传 AI 提取（上传 → 识别 → 回填）
+
+```bash
+cd services/career-opportunities && go test -count=1 -run Extraction -v ./tests/
+```
+
+| 验收点 | 用例 |
+|---|---|
+| AI 未配置 = 生产安全关闭态（503 `AI_UNCONFIGURED`，不假装成功） | `TestCreateExtractionRejectsUnconfiguredAI` |
+| 上传校验：缺文件/非法扩展名/伪造内容/空文件（400，零写入） | `TestCreateExtractionValidatesUpload` |
+| 超大文件 413 `FILE_TOO_LARGE` | `TestCreateExtractionRejectsOversizedFile` |
+| 每人每小时限流（429 `EXTRACT_RATE_LIMITED`，不同 actor 独立预算） | `TestCreateExtractionRateLimitsPerActor` |
+| 完整闭环：queued → worker → completed，提取结果可读、文件字节已清除 | `TestExtractionLifecycleCompletesAndPurgesFile` |
+| 失败落 failed + 稳定错误码，内部原因不外泄、文件字节清除 | `TestExtractionFailureLandsOnFailedWithStableCode` |
+| actor 隔离（他人读取 404） | `TestExtractionIsActorScoped` |
+| worker 崩溃恢复（stale running 回收） | `TestExtractionStaleRunningIsReclaimed` |
+| OpenAI 兼容提取器：解析/围栏 JSON/截断/非法输出拒绝 | `extract_test.go`（同模块单测） |
+
 ### 1.3 后端 · platform-core（digest 邮件）
 
 ```bash

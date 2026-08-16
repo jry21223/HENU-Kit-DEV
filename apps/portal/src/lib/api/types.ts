@@ -12,7 +12,7 @@ export type {
 } from "./portal-session.generated";
 
 export interface ErrorEnvelope {
-  error: string;
+  error: string | { code: string; message: string };
   detail?: string;
   request_id?: string;
 }
@@ -642,5 +642,29 @@ export interface CareerSearchesResponse {
 /** 网关解包后的画像响应。 */
 export interface CareerProfileResponse {
   profile: CareerProfile;
+  request_id: string;
+}
+
+/** 一次异步简历提取任务的当前状态（网关原样透传 Career 服务枚举）。 */
+export type CareerExtractionStatus = "queued" | "running" | "completed" | "failed";
+
+/**
+ * 简历提取任务。文件字节解析后即弃，只保留提取出的文字字段；
+ * completed 时 extracted 为可回填表单的画像草稿。
+ */
+export interface CareerResumeExtraction {
+  id: string;
+  status: CareerExtractionStatus;
+  user_id: string;
+  file_name: string;
+  error_code?: string;
+  error_message?: string;
+  extracted?: CareerProfileInput;
+  created_at: string;
+}
+
+/** 网关解包后的提取创建 / 状态响应。 */
+export interface CareerResumeExtractionResponse {
+  extraction: CareerResumeExtraction;
   request_id: string;
 }

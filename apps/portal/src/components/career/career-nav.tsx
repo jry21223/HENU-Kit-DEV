@@ -52,6 +52,10 @@ export default function CareerNav() {
               </Link>
             );
           })}
+          <span aria-hidden className="hidden h-4 w-px bg-ink/20 md:block" />
+          <span className="hidden md:block">
+            <AccountEntry compact />
+          </span>
         </nav>
       </div>
     </header>

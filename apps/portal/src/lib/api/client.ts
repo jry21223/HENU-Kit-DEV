@@ -59,6 +59,7 @@ import type {
   SchoolListResponse,
   CareerProfileInput,
   CareerProfileResponse,
+  CareerResumeExtractionResponse,
   CareerSearchResponse,
   CareerSearchesResponse,
 } from "./types";
@@ -109,11 +110,14 @@ export class PortalNetworkError extends PortalApiError {
 }
 
 export class PortalHttpError extends PortalApiError {
+  readonly errorCode?: string;
+
   constructor(
     path: string,
     status: number,
     message: string,
-    requestId?: string
+    requestId?: string,
+    errorCode?: string
   ) {
     super(message, {
       code: "PORTAL_HTTP_ERROR",
@@ -122,6 +126,7 @@ export class PortalHttpError extends PortalApiError {
       requestId,
     });
     this.name = "PortalHttpError";
+    this.errorCode = errorCode;
   }
 }
 
@@ -181,10 +186,17 @@ async function parseErrorBody(
 ): Promise<{ message: string; requestId?: string; errorCode?: string }> {
   try {
     const body = (await res.json()) as ErrorEnvelope;
+    // Gateway errors are a flat string; Career upstream errors are forwarded
+    // verbatim as {code, message}. Both carry the stable code the caller
+    // branches on (lifetime_required, AI_UNCONFIGURED, EXTRACT_RATE_LIMITED…).
+    const raw = body.error;
+    const errorCode = typeof raw === "string" ? raw : raw?.code;
+    const message =
+      typeof raw === "string" ? raw : (raw?.message ?? res.statusText) || `HTTP ${res.status}`;
     return {
-      message: body.error || res.statusText || `HTTP ${res.status}`,
+      message,
       requestId: body.request_id,
-      errorCode: body.error,
+      errorCode,
     };
   } catch {
     return { message: res.statusText || `HTTP ${res.status}` };
@@ -240,8 +252,8 @@ async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    const { message, requestId } = await parseErrorBody(res);
-    throw new PortalHttpError(path, res.status, message, requestId);
+    const { message, requestId, errorCode } = await parseErrorBody(res);
+    throw new PortalHttpError(path, res.status, message, requestId, errorCode);
   }
 
   try {
@@ -808,6 +820,41 @@ export async function updateCareerProfile(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(profile),
   });
+}
+
+/**
+ * 上传简历并创建后台 AI 提取任务（异步：任务入队后立即返回，轮询状态）。
+ * FormData 由浏览器自动带 boundary，绝不手写 Content-Type。
+ */
+export async function createCareerResumeExtraction(
+  file: File
+): Promise<CareerResumeExtractionResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetchRequired<CareerResumeExtractionResponse>(
+    "/api/v1/career/profile/extractions",
+    {
+      method: "POST",
+      cache: "no-store",
+      credentials: "include",
+      body: form,
+    }
+  );
+}
+
+/** 读取一次简历提取任务的状态与提取结果。 */
+export async function getCareerResumeExtraction(
+  extractionID: string
+): Promise<CareerResumeExtractionResponse> {
+  if (!extractionID.trim()) {
+    throw new PortalApiError("Invalid Career extraction id", {
+      code: "PORTAL_INVALID_CAREER_EXTRACTION_ID",
+    });
+  }
+  return apiFetchRequired<CareerResumeExtractionResponse>(
+    `/api/v1/career/profile/extractions/${encodeURIComponent(extractionID)}`,
+    { cache: "no-store" }
+  );
 }
 
 /** Human-readable error for UI banners. */

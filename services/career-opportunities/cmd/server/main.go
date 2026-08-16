@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -34,8 +35,10 @@ func main() {
 	defer redisClient.Close()
 	service, err := career.New(career.Config{
 		Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret},
-		DigestSender:    digestSender(),
-		DigestResultURL: strings.TrimSpace(os.Getenv("CAREER_RESULT_URL")),
+		Extract:          buildExtractor(),
+		ExtractRateLimit: intEnv("CAREER_EXTRACT_RATE_LIMIT", 5),
+		DigestSender:     digestSender(),
+		DigestResultURL:  strings.TrimSpace(os.Getenv("CAREER_RESULT_URL")),
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -62,6 +65,43 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// buildExtractor wires the resume AI extraction seam from the operator's
+// environment. CAREER_AI_MODE=mock selects the deterministic test extractor;
+// otherwise CAREER_AI_BASE_URL / CAREER_AI_API_KEY / CAREER_AI_MODEL configure
+// a custom OpenAI-compatible provider. With neither set the seam stays nil
+// (production-safe off state): uploads are rejected with a clear error instead
+// of pretending to work.
+func buildExtractor() career.ExtractFunc {
+	if strings.TrimSpace(os.Getenv("CAREER_AI_MODE")) == "mock" {
+		return career.NewMockExtractor()
+	}
+	baseURL := strings.TrimSpace(os.Getenv("CAREER_AI_BASE_URL"))
+	apiKey := os.Getenv("CAREER_AI_API_KEY")
+	model := os.Getenv("CAREER_AI_MODEL")
+	if baseURL == "" && strings.TrimSpace(apiKey) == "" && strings.TrimSpace(model) == "" {
+		return nil
+	}
+	extractor, err := career.NewOpenAICompatibleExtractor(career.ExtractConfig{
+		BaseURL: baseURL, APIKey: apiKey, Model: model,
+	})
+	if err != nil {
+		log.Fatalf("career AI extractor configuration is invalid: %v", err)
+	}
+	return extractor
+}
+
+func intEnv(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		log.Fatalf("%s must be a non-negative integer", name)
+	}
+	return parsed
 }
 
 // digestSender builds the #397 Platform Core digest client from the shared

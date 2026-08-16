@@ -280,6 +280,26 @@ services:
     expose:
       - "8098"
 
+  # Career Resume MCP: exposes the resume AI-extraction capability (upload →
+  # AI extract → profile prefill draft) to remote AI agents over Streamable
+  # HTTP. Fails closed without CAREER_MCP_ACCESS_TOKEN; the actor is
+  # caller-declared with no membership check, matching food-mcp (ADR-0033).
+  career-mcp:
+    build:
+      context: ./services/career-mcp
+    environment:
+      CAREER_MCP_ADDR: ${CAREER_MCP_ADDR:-:8099}
+      CAREER_MCP_ACCESS_TOKEN: ${CAREER_MCP_ACCESS_TOKEN:-}
+      CAREER_URL: ${CAREER_URL:-http://career-opportunities:8097}
+      CAREER_CLIENT_ID: ${CAREER_CLIENT_ID:-portal-gateway-career}
+      CAREER_CLIENT_SECRET: ${CAREER_CLIENT_SECRET:-replace-career-service-secret-32bytes!!}
+      CAREER_KEY_ID: ${CAREER_KEY_ID:-career-key-1}
+    depends_on:
+      career-opportunities:
+        condition: service_healthy
+    expose:
+      - "8099"
+
   # Career Opportunities owns the Work Radar async search core (#392): the
   # Portal Gateway signs the verified actor in; the worker drives queued
   # searches to completion. Fails closed without credentials.
@@ -293,6 +313,14 @@ services:
       CAREER_SERVICE_CLIENT_ID: ${CAREER_CLIENT_ID:-portal-gateway-career}
       CAREER_SERVICE_KEY_ID: ${CAREER_KEY_ID:-career-key-1}
       CAREER_SERVICE_SECRET: ${CAREER_CLIENT_SECRET:-replace-career-service-secret-32bytes!!}
+      # Resume AI extraction (#resume-upload): leave the AI vars empty for the
+      # production-safe off state, or fill in a custom OpenAI-compatible
+      # provider (CAREER_AI_MODE=mock selects the deterministic dev extractor).
+      CAREER_AI_MODE: ${CAREER_AI_MODE:-}
+      CAREER_AI_BASE_URL: ${CAREER_AI_BASE_URL:-}
+      CAREER_AI_API_KEY: ${CAREER_AI_API_KEY:-}
+      CAREER_AI_MODEL: ${CAREER_AI_MODEL:-}
+      CAREER_EXTRACT_RATE_LIMIT: ${CAREER_EXTRACT_RATE_LIMIT:-5}
     depends_on:
       postgres:
         condition: service_healthy

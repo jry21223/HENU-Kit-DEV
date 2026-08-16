@@ -20,9 +20,9 @@ import (
 const staleClaimAfter = 15 * time.Minute
 
 const (
-	workerIdleDelay   = time.Second
-	workerRetryMin    = 250 * time.Millisecond
-	workerRetryMax    = 5 * time.Second
+	workerIdleDelay = time.Second
+	workerRetryMin  = 250 * time.Millisecond
+	workerRetryMax  = 5 * time.Second
 )
 
 type worker struct {
@@ -41,17 +41,24 @@ type WorkResult struct {
 	Summary      string
 }
 
-// Step claims and completes at most one queued search, returning false when
-// nothing was queued. It is safe to call concurrently: only one caller wins
-// the claim for a given row (FOR UPDATE SKIP LOCKED), and a replayed completion
-// on an already-finished search is a no-op that never writes a second result.
+// Step claims and completes at most one queued job (a search or a resume
+// extraction), returning false when nothing was queued. It is safe to call
+// concurrently: only one caller wins the claim for a given row (FOR UPDATE
+// SKIP LOCKED), and a replayed completion on an already-finished job is a
+// no-op that never writes a second result.
 func (w *worker) Step(ctx context.Context) (bool, error) {
 	searchID, profile, found, err := w.h.claimOne(ctx)
+	if err != nil {
+		return found, err
+	}
+	if found {
+		return true, w.h.finish(ctx, searchID, profile)
+	}
+	extractionID, fileName, content, found, err := w.h.claimOneExtraction(ctx)
 	if err != nil || !found {
 		return found, err
 	}
-	err = w.h.finish(ctx, searchID, profile)
-	return true, err
+	return true, w.h.finishExtraction(ctx, extractionID, fileName, content)
 }
 
 // Run drives queued searches to completion forever until ctx is cancelled.
@@ -171,6 +178,75 @@ func (h *service) finish(ctx context.Context, searchID string, profile any) erro
 	// NULL so a later pass could retry.
 	h.enqueueDigest(ctx, searchID, result)
 	return nil
+}
+
+// claimOneExtraction atomically moves one queued resume extraction (or one
+// stale 'running' row left by a crashed attempt) to running and returns its
+// transient file bytes. FOR UPDATE SKIP LOCKED lets concurrent workers claim
+// different rows without blocking.
+func (h *service) claimOneExtraction(ctx context.Context) (string, string, []byte, bool, error) {
+	var id, fileName string
+	var content []byte
+	err := h.database.QueryRow(ctx, `
+		WITH claimed AS (
+			SELECT id FROM career_resume_extractions
+			WHERE status = 'queued'
+			   OR (status = 'running' AND started_at < now() - $1::interval)
+			ORDER BY created_at
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		UPDATE career_resume_extractions e
+		SET status = 'running', started_at = now()
+		FROM claimed WHERE e.id = claimed.id
+		RETURNING e.id, e.file_name, e.file_content`, staleClaimAfter.String()).Scan(&id, &fileName, &content)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", nil, false, nil
+	}
+	if err != nil {
+		return "", "", nil, false, err
+	}
+	return id, fileName, content, true, nil
+}
+
+// finishExtraction runs the AI extraction for one claimed job, records the
+// outcome, and purges the transient file bytes in the same transaction, so the
+// "只保存文字信息，不存储简历文件" promise holds end to end. The transition
+// guard makes a replayed completion a no-op.
+func (h *service) finishExtraction(ctx context.Context, extractionID, fileName string, content []byte) error {
+	profile, err := h.extract(ctx, fileName, content)
+	if err != nil {
+		code := "EXTRACT_FAILED"
+		if errors.Is(err, ErrAIUnconfigured) {
+			code = "EXTRACT_AI_UNCONFIGURED"
+		}
+		return h.failExtraction(ctx, extractionID, code, err)
+	}
+	extracted, _ := json.Marshal(profile)
+	tx, err := h.database.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `UPDATE career_resume_extractions SET status='completed',extracted=$2,file_content=NULL,failed_at=NULL,completed_at=now() WHERE id=$1 AND status='running'`, extractionID, extracted)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		// The job already left 'running' (a replayed completion): leave it
+		// exactly as-is and never overwrite a second result.
+		return tx.Commit(ctx)
+	}
+	return tx.Commit(ctx)
+}
+
+// failExtraction moves a claimed extraction to failed with a stable
+// browser-safe code. The underlying cause is never surfaced to the browser
+// (it may leak provider internals); it is only written to the server log.
+func (h *service) failExtraction(ctx context.Context, extractionID, code string, cause error) error {
+	log.Printf("career extraction %s failed (%s): %v", extractionID, code, cause)
+	_, err := h.database.Exec(ctx, `UPDATE career_resume_extractions SET status='failed',file_content=NULL,completed_at=NULL,failed_at=now(),error_code=$2,error_message='resume extraction failed' WHERE id=$1 AND status='running'`, extractionID, code)
+	return err
 }
 
 // enqueueDigest posts one Opportunity Digest for a completed search when the

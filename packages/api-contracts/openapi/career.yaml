@@ -208,6 +208,94 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/career/profile/extractions:
+    post:
+      tags: [Career]
+      operationId: createCareerResumeExtraction
+      summary: Upload a resume file and create an async AI extraction job
+      description: >-
+        Accepts a multipart form upload of a PDF, DOCX, or TXT resume (10 MiB
+        cap). The file bytes are held transiently and purged once the job is
+        processed; only the extracted text fields remain durable.
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The resume file (.pdf / .docx / .txt, up to 10 MiB)
+      responses:
+        "200":
+          description: The queued extraction
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [extraction]
+                        properties:
+                          extraction: { $ref: "#/components/schemas/CareerResumeExtraction" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/career/profile/extractions/{extraction_id}:
+    get:
+      tags: [Career]
+      operationId: getCareerResumeExtraction
+      summary: Read one signed-in actor's resume extraction status and result
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - in: path
+          name: extraction_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The extraction status (extracted fields when completed)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [extraction]
+                        properties:
+                          extraction: { $ref: "#/components/schemas/CareerResumeExtraction" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 components:
   securitySchemes:
     serviceBasic:
@@ -267,6 +355,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    RateLimited:
+      description: The request exceeded the actor's rate limit
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
     ServiceUnavailable:
       description: The Career service or a dependency is unavailable
       content:
@@ -317,6 +410,44 @@ components:
           type: string
         error_message:
           type: string
+        created_at:
+          type: string
+          format: date-time
+    CareerResumeExtraction:
+      type: object
+      required: [id, status, user_id, file_name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        user_id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        error_code:
+          type: string
+        error_message:
+          type: string
+        extracted:
+          type: object
+          nullable: true
+          properties:
+            target_roles:
+              type: string
+            tech_stack:
+              type: string
+            locations:
+              type: string
+            job_type:
+              type: string
+            graduation_year:
+              type: [integer, "null"]
+            resume_text:
+              type: string
         created_at:
           type: string
           format: date-time

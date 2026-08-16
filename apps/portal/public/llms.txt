@@ -6,12 +6,12 @@ HENU Kit 是面向河南大学学生的校园工具系统，公开入口包括�
 
 ## Public entry points
 
-- Home: https://henukit.cn/
-- Library: https://henukit.cn/library
-- Practice: https://henukit.cn/practice
-- Food board: https://henukit.cn/food
-- Campus mutual aid: https://henukit.cn/campus
-- Work Radar: https://henukit.cn/career
+- Home: https://henukit.cn/ — 主站首页，聚合五个校园工具模块的入口与品牌说明。
+- Library: https://henukit.cn/library — 资料库：河南大学公开免费学习资料，可按科目和类型浏览与搜索。
+- Practice: https://henukit.cn/practice — 智能刷题：按学校、专业和科目组织的题库与题单。
+- Food board: https://henukit.cn/food — 美食榜：学生视角的校园美食五档榜单，按点赞排序。
+- Campus mutual aid: https://henukit.cn/campus — 互助平台：代取快递、搬行李、小项目、出闲置等同校互助市场。
+- Work Radar: https://henukit.cn/career — 求职雷达：设定求职画像后异步扫描受控招聘来源并返回匹配结果。
 - Sitemap: https://henukit.cn/sitemap.xml
 
 ## Citation boundaries

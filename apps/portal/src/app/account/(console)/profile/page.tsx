@@ -5,9 +5,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
 import { useReveal } from "@/components/account/use-reveal";
-import { formatPortalError, getCareerProfile, updateCareerProfile } from "@/lib/api/client";
-import type { CareerJobType, CareerProfile, CareerProfileInput } from "@/lib/api/types";
+import {
+  createCareerResumeExtraction,
+  formatPortalError,
+  getCareerProfile,
+  getCareerResumeExtraction,
+  PortalHttpError,
+  updateCareerProfile,
+} from "@/lib/api/client";
+import type {
+  CareerJobType,
+  CareerProfile,
+  CareerProfileInput,
+  CareerResumeExtraction,
+} from "@/lib/api/types";
 import { isCareerLifetimeRequiredError } from "@/lib/career/gateway";
+import {
+  createExtractionRunner,
+  extractionFailedMessage,
+  extractionStatusLabel,
+} from "@/lib/career/career-extraction-state";
 
 const FIELD_LIMITS = {
   target_roles: 500,
@@ -22,6 +39,9 @@ const JOB_TYPE_OPTIONS: Array<{ value: CareerJobType; label: string }> = [
   { value: "summer_intern", label: "暑期实习" },
   { value: "campus_recruit", label: "校招" },
 ];
+
+const RESUME_MAX_BYTES = 10 * 1024 * 1024;
+const RESUME_EXTENSIONS = ["pdf", "docx", "txt"] as const;
 
 type ProfileState =
   | { kind: "loading" }
@@ -39,6 +59,13 @@ type ProfileForm = {
   resume_text: string;
   email_notification_enabled: boolean;
 };
+
+type UploadState =
+  | { kind: "idle" }
+  | { kind: "uploading" }
+  | { kind: "active"; extraction: CareerResumeExtraction; label: string }
+  | { kind: "done"; extraction: CareerResumeExtraction }
+  | { kind: "error"; message: string };
 
 function emptyInput(profile: CareerProfile): ProfileForm {
   return {
@@ -68,13 +95,35 @@ export default function CareerProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [upload, setUpload] = useState<UploadState>({ kind: "idle" });
   const requestVersion = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const handleUnauthorized = useAccountConsoleUnauthorizedHandler();
   useReveal();
 
   const applyProfile = useCallback((profile: CareerProfile) => {
     setForm(emptyInput(profile));
     setYearValue(profile.graduation_year == null ? "" : String(profile.graduation_year));
+  }, []);
+
+  /** 提取结果回填表单；画像仍是可编辑草稿，用户确认后才保存。 */
+  const applyExtracted = useCallback((profile: CareerProfileInput) => {
+    setForm((current) =>
+      current
+        ? {
+            ...current,
+            target_roles: profile.target_roles ?? current.target_roles,
+            tech_stack: profile.tech_stack ?? current.tech_stack,
+            locations: profile.locations ?? current.locations,
+            job_type: profile.job_type ?? current.job_type,
+            resume_text: profile.resume_text ?? current.resume_text,
+          }
+        : current
+    );
+    setYearValue(
+      profile.graduation_year == null ? "" : String(profile.graduation_year)
+    );
   }, []);
 
   const loadProfile = useCallback(() => {
@@ -114,6 +163,89 @@ export default function CareerProfilePage() {
     },
     []
   );
+
+  /** 轮询识别任务直到终态；完成即回填表单，失败给出可读中文错误。 */
+  const activeExtraction =
+    upload.kind === "active" ? upload.extraction : null;
+  useEffect(() => {
+    if (!activeExtraction) return;
+    const runner = createExtractionRunner({
+      fetchStatus: async (id) => (await getCareerResumeExtraction(id)).extraction,
+      onState: (next) => {
+        if (next.kind === "completed") {
+          if (next.extraction.extracted) applyExtracted(next.extraction.extracted);
+          setUpload({ kind: "done", extraction: next.extraction });
+          return;
+        }
+        if (next.kind === "failed") {
+          setUpload({
+            kind: "error",
+            message: extractionFailedMessage(next.extraction.error_code),
+          });
+          return;
+        }
+        setUpload({
+          kind: "active",
+          extraction: next.extraction,
+          label: extractionStatusLabel(next.extraction.status),
+        });
+      },
+    });
+    runner.start(activeExtraction);
+    return () => runner.stop();
+  }, [activeExtraction, applyExtracted]);
+
+  const handleFilePick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    // 允许连续选择同一个文件。
+    event.target.value = "";
+    if (!file) return;
+    const ext = file.name.toLowerCase().split(".").pop() ?? "";
+    if (!(RESUME_EXTENSIONS as readonly string[]).includes(ext)) {
+      setSelectedFile(null);
+      setUpload({
+        kind: "error",
+        message: "简历文件无法识别，请上传 PDF、DOCX 或 TXT 格式",
+      });
+      return;
+    }
+    if (file.size > RESUME_MAX_BYTES) {
+      setSelectedFile(null);
+      setUpload({
+        kind: "error",
+        message: "简历文件超过 10 MB 上限，请压缩后重试",
+      });
+      return;
+    }
+    setSelectedFile(file);
+    setUpload({ kind: "idle" });
+    setSaveSuccess(false);
+    setSaveError("");
+  };
+
+  const uploadResume = async () => {
+    if (!selectedFile || upload.kind === "uploading" || upload.kind === "active") return;
+    setUpload({ kind: "uploading" });
+    setSaveError("");
+    setSaveSuccess(false);
+    try {
+      const response = await createCareerResumeExtraction(selectedFile);
+      setUpload({
+        kind: "active",
+        extraction: response.extraction,
+        label: extractionStatusLabel(response.extraction.status),
+      });
+    } catch (error) {
+      if (handleUnauthorized(error)) return;
+      if (isCareerLifetimeRequiredError(error)) {
+        setState({ kind: "locked" });
+        return;
+      }
+      const code =
+        error instanceof PortalHttpError ? error.errorCode : undefined;
+      setUpload({ kind: "error", message: extractionFailedMessage(code) });
+    }
+  };
 
   const save = async () => {
     if (!form || saving) return;
@@ -212,6 +344,67 @@ export default function CareerProfilePage() {
               void save();
             }}
           >
+            <div data-account-career-extraction className="border border-ink/20 px-5 py-6 md:px-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                  上传简历 · 自动识别填写（默认方式）
+                </p>
+                <p className="font-mono text-[10px] text-ink/40">PDF / DOCX / TXT · ≤10 MB</p>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-ink/55">
+                上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；文件解析后即弃，只保存提取出的文字信息。
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <input
+                  ref={fileInputRef}
+                  id="career-resume-upload"
+                  type="file"
+                  accept=".pdf,.docx,.txt"
+                  className="hidden"
+                  onChange={handleFilePick}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+                >
+                  选择简历文件
+                </button>
+                {selectedFile ? (
+                  <span className="max-w-56 truncate font-mono text-xs text-ink/70">
+                    {selectedFile.name}
+                  </span>
+                ) : (
+                  <span className="font-mono text-[10px] tracking-[0.15em] text-ink/35">
+                    未选择文件
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={!selectedFile || upload.kind === "uploading" || upload.kind === "active"}
+                  onClick={() => void uploadResume()}
+                  className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:bg-paper hover:text-ink disabled:cursor-wait disabled:opacity-50"
+                >
+                  {upload.kind === "uploading" ? "上传中…" : "上传并识别"}
+                </button>
+              </div>
+              {upload.kind === "active" ? (
+                <p data-account-career-extraction="active" aria-live="polite" className="mt-4 border border-line px-4 py-3 text-sm leading-6 text-ink/70">
+                  识别任务{upload.label}…通常几十秒，识别完成自动填入表单
+                </p>
+              ) : null}
+              {upload.kind === "done" ? (
+                <p data-account-career-extraction="done" aria-live="polite" className="mt-4 border border-ink px-4 py-3 text-sm leading-6 text-ink/75">
+                  已识别并填入画像字段，请核对修改后点击「保存画像」。
+                </p>
+              ) : null}
+              {upload.kind === "error" ? (
+                <p data-account-career-extraction="error" role="alert" className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-ink/75">
+                  {upload.message}
+                </p>
+              ) : null}
+            </div>
+
             <div className="grid gap-10 border-t border-ink pt-8 md:grid-cols-2">
               <div className="space-y-8 md:col-span-2">
                 <div>

@@ -77,6 +77,58 @@ export const homeMetadata: Metadata = {
   },
 };
 
+function pageMetadata(path: string, title: string, description: string): Metadata {
+  // Next.js does not apply the siteMetadata title template to og:title, so the
+  // `| SITE_NAME` suffix is repeated here to keep search snippets and share
+  // cards consistent with the document title template.
+  return {
+    title,
+    description,
+    alternates: { canonical: path },
+    openGraph: {
+      ...HOME_OPEN_GRAPH,
+      title: `${title} | ${SITE_NAME}`,
+      description,
+      url: path,
+    },
+    twitter: {
+      card: "summary",
+      title: `${title} | ${SITE_NAME}`,
+      description,
+    },
+  };
+}
+
+export const libraryMetadata: Metadata = pageMetadata(
+  "/library",
+  "资料库",
+  "HENU Kit 资料库收录河南大学公开免费学习资料，可按科目和类型浏览、搜索与筛选；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+);
+
+export const practiceMetadata: Metadata = pageMetadata(
+  "/practice",
+  "智能刷题",
+  "HENU Kit 智能刷题提供按学校、专业和科目组织的题库与题单，支持搜索与练习；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+);
+
+export const foodMetadata: Metadata = pageMetadata(
+  "/food",
+  "美食榜",
+  "HENU Kit 美食榜是学生视角的河南大学校园美食五档榜单，档内按点赞排序，不接受充值，不接受公关；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+);
+
+export const campusMetadata: Metadata = pageMetadata(
+  "/campus",
+  "互助平台",
+  "HENU Kit 互助平台提供同校互助市场：代取快递、搬行李、小项目、出闲置，发单有人接；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+);
+
+export const careerMetadata: Metadata = pageMetadata(
+  "/career",
+  "求职雷达",
+  "HENU Kit 求职雷达设定求职画像后，后台异步扫描受控招聘来源，匹配结果与命中原因一目了然；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+);
+
 export function websiteStructuredData() {
   const origin = siteOrigin();
 

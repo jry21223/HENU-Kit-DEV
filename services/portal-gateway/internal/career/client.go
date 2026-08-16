@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -26,7 +27,12 @@ import (
 const (
 	SearchesPath = "/api/v1/career/searches"
 	ProfilePath  = "/api/v1/career/profile"
-	maxBodyBytes = 128 << 10 // career profile snapshots stay small
+	// ExtractionsPath is the resume upload boundary. The browser body may be a
+	// 10 MiB file plus multipart framing, so this route alone gets a larger
+	// cap; every other Career route keeps the small JSON cap.
+	ExtractionsPath     = "/api/v1/career/profile/extractions"
+	maxBodyBytes        = 128 << 10 // career profile snapshots stay small
+	maxExtractBodyBytes = (10 << 20) + (1 << 20)
 )
 
 var (
@@ -90,7 +96,7 @@ func (c *Client) CreateSearch(ctx context.Context, actorUserID, requestID, idemp
 	if strings.TrimSpace(actorUserID) == "" || !ValidIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > maxBodyBytes {
 		return nil, ErrBadRequest
 	}
-	body, _, _, err := c.call(ctx, http.MethodPost, SearchesPath, actorUserID, requestID, raw, func(request *http.Request) {
+	body, _, _, err := c.call(ctx, http.MethodPost, SearchesPath, actorUserID, requestID, raw, "application/json", func(request *http.Request) {
 		request.Header.Set("X-Actor-User-Id", actorUserID)
 		request.Header.Set("Idempotency-Key", idempotencyKey)
 	})
@@ -113,6 +119,45 @@ func (c *Client) Search(ctx context.Context, actorUserID, requestID, searchID st
 	return c.read(ctx, SearchPath(searchID), actorUserID, requestID)
 }
 
+// ExtractionPath builds the signed request path for one extraction status.
+func ExtractionPath(extractionID string) string {
+	return ExtractionsPath + "/" + url.PathEscape(extractionID)
+}
+
+// CreateExtraction forwards a signed-in actor's resume upload. The multipart
+// body is built here and re-signed byte-for-byte with the service credential,
+// exactly like the JSON commands; the file bytes never touch the Gateway disk.
+func (c *Client) CreateExtraction(ctx context.Context, actorUserID, requestID, fileName string, content []byte) (json.RawMessage, error) {
+	if strings.TrimSpace(actorUserID) == "" || strings.TrimSpace(fileName) == "" || len(content) == 0 || len(content) > maxExtractBodyBytes {
+		return nil, ErrBadRequest
+	}
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", fileName)
+	if err != nil {
+		return nil, ErrBadRequest
+	}
+	if _, err := part.Write(content); err != nil {
+		return nil, ErrBadRequest
+	}
+	if err := writer.Close(); err != nil {
+		return nil, ErrBadRequest
+	}
+	raw, _, _, err := c.call(ctx, http.MethodPost, ExtractionsPath, actorUserID, requestID, body.Bytes(), writer.FormDataContentType(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return unwrapEnvelope(raw)
+}
+
+// Extraction forwards one extraction's status, binding only the actor user ID.
+func (c *Client) Extraction(ctx context.Context, actorUserID, requestID, extractionID string) (json.RawMessage, error) {
+	if strings.TrimSpace(extractionID) == "" {
+		return nil, ErrBadRequest
+	}
+	return c.read(ctx, ExtractionPath(extractionID), actorUserID, requestID)
+}
+
 // Profile forwards the signed-in actor's Career profile read.
 func (c *Client) Profile(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
 	return c.read(ctx, ProfilePath, actorUserID, requestID)
@@ -123,7 +168,7 @@ func (c *Client) UpdateProfile(ctx context.Context, actorUserID, requestID strin
 	if strings.TrimSpace(actorUserID) == "" || len(raw) == 0 || len(raw) > maxBodyBytes {
 		return nil, ErrBadRequest
 	}
-	body, _, _, err := c.call(ctx, http.MethodPut, ProfilePath, actorUserID, requestID, raw, nil)
+	body, _, _, err := c.call(ctx, http.MethodPut, ProfilePath, actorUserID, requestID, raw, "application/json", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -131,14 +176,14 @@ func (c *Client) UpdateProfile(ctx context.Context, actorUserID, requestID strin
 }
 
 func (c *Client) read(ctx context.Context, requestPath, actorUserID, requestID string) (json.RawMessage, error) {
-	body, _, _, err := c.call(ctx, http.MethodGet, requestPath, actorUserID, requestID, nil, nil)
+	body, _, _, err := c.call(ctx, http.MethodGet, requestPath, actorUserID, requestID, nil, "", nil)
 	if err != nil {
 		return nil, err
 	}
 	return unwrapEnvelope(body)
 }
 
-func (c *Client) call(ctx context.Context, method, requestPath, actorUserID, requestID string, raw []byte, setHeaders func(*http.Request)) ([]byte, int, http.Header, error) {
+func (c *Client) call(ctx context.Context, method, requestPath, actorUserID, requestID string, raw []byte, contentType string, setHeaders func(*http.Request)) ([]byte, int, http.Header, error) {
 	if c == nil || c.httpClient == nil {
 		return nil, 0, nil, ErrUnconfigured
 	}
@@ -154,8 +199,8 @@ func (c *Client) call(ctx context.Context, method, requestPath, actorUserID, req
 		return nil, 0, nil, fmt.Errorf("create Career request: %w", ErrUnavailable)
 	}
 	request.Header.Set("X-Request-Id", requestID)
-	if raw != nil {
-		request.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		request.Header.Set("Content-Type", contentType)
 	}
 	if setHeaders != nil {
 		setHeaders(request)

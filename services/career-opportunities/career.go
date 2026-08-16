@@ -37,6 +37,13 @@ type Config struct {
 	ClientID string
 	Keys     map[string]string
 	Work     WorkFunc
+	// Extract runs the resume AI extraction seam. Nil is the production-safe
+	// off state: uploads are rejected with a clear error until an operator
+	// configures a provider (or mock mode).
+	Extract ExtractFunc
+	// ExtractRateLimit bounds how many resume extractions one actor may start
+	// per rolling hour. Zero uses the default of 5.
+	ExtractRateLimit int
 	// DigestSender is the #397 enqueue boundary: the worker posts one
 	// Opportunity Digest per completed search through this seam. Nil disables
 	// digest mail entirely (production-safe off state).
@@ -47,14 +54,16 @@ type Config struct {
 }
 
 type service struct {
-	database        *pgxpool.Pool
-	redis           redis.UniversalClient
-	clientID        string
-	keys            map[string]string
-	work            WorkFunc
-	now             func() time.Time
-	digestSender    DigestSender
-	digestResultURL string
+	database         *pgxpool.Pool
+	redis            redis.UniversalClient
+	clientID         string
+	keys             map[string]string
+	work             WorkFunc
+	extract          ExtractFunc
+	extractRateLimit int
+	now              func() time.Time
+	digestSender     DigestSender
+	digestResultURL  string
 }
 
 type actor struct{ userID string }
@@ -80,10 +89,14 @@ func New(config Config) (*Service, error) {
 	if work == nil {
 		work = NewGetWorkWork(GetWorkConfig{})
 	}
+	rateLimit := config.ExtractRateLimit
+	if rateLimit <= 0 {
+		rateLimit = defaultExtractRateLimit
+	}
 	if config.DigestResultURL != "" && !validDigestResultURL(config.DigestResultURL) {
 		return nil, errors.New("career digest result URL must be an http(s) URL")
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, extract: config.Extract, extractRateLimit: rateLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +109,8 @@ func New(config Config) (*Service, error) {
 		protected.Get(contract.ListSearchesRoute, h.listSearches)
 		protected.Get(contract.ProfileRoute, h.getProfile)
 		protected.Put(contract.UpdateProfileRoute, h.updateProfile)
+		protected.Post(contract.CreateExtractionRoute, h.createExtraction)
+		protected.Get(contract.ExtractionRoute, h.extractionStatus)
 	})
 	return &Service{h: h, router: router}, nil
 }
@@ -193,7 +208,7 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service nonce is invalid")
 			return
 		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 512<<10))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, int64(maxSignedBody(r.URL.Path))))
 		if err != nil {
 			writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "request body is too large")
 			return
@@ -221,6 +236,16 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID})))
 	})
+}
+
+// maxSignedBody is the authentication body cap per route. Everything except
+// the resume upload keeps the small JSON cap; the multipart extraction route
+// allows the file plus framing overhead.
+func maxSignedBody(requestPath string) int {
+	if requestPath == contract.CreateExtractionRoute {
+		return maxResumeBytes + 1<<20
+	}
+	return 512 << 10
 }
 
 func abs(value int64) int64 {

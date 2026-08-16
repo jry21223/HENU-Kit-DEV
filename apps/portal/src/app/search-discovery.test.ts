@@ -5,7 +5,12 @@ import robots from "./robots";
 import sitemap from "./sitemap";
 import nextConfig from "../../next.config";
 import {
+  campusMetadata,
+  careerMetadata,
+  foodMetadata,
   homeMetadata,
+  libraryMetadata,
+  practiceMetadata,
   siteMetadata,
   websiteStructuredData,
 } from "../lib/seo";
@@ -18,6 +23,7 @@ describe("Portal search discovery routes", () => {
       { url: "https://henukit.cn/practice", changeFrequency: "weekly", priority: 0.9 },
       { url: "https://henukit.cn/food", changeFrequency: "daily", priority: 0.8 },
       { url: "https://henukit.cn/campus", changeFrequency: "daily", priority: 0.8 },
+      { url: "https://henukit.cn/career", changeFrequency: "weekly", priority: 0.7 },
     ]);
   });
 
@@ -86,6 +92,45 @@ describe("Portal search discovery routes", () => {
     expect(llms).toContain("https://henukit.cn/sitemap.xml");
   });
 
+  it("publishes page-level canonical and description metadata for every stable top-level route", () => {
+    expect(libraryMetadata).toMatchObject({
+      alternates: { canonical: "/library" },
+      description: expect.stringContaining("公开免费"),
+    });
+    expect(practiceMetadata).toMatchObject({
+      alternates: { canonical: "/practice" },
+      description: expect.stringContaining("刷题"),
+    });
+    expect(foodMetadata).toMatchObject({
+      alternates: { canonical: "/food" },
+      description: expect.stringContaining("美食"),
+    });
+    expect(campusMetadata).toMatchObject({
+      alternates: { canonical: "/campus" },
+      description: expect.stringContaining("互助"),
+    });
+    expect(careerMetadata).toMatchObject({
+      alternates: { canonical: "/career" },
+      description: expect.stringContaining("求职"),
+    });
+  });
+
+  it("keeps page-level share cards honest and page-specific instead of inheriting the home card", () => {
+    for (const meta of [
+      libraryMetadata,
+      practiceMetadata,
+      foodMetadata,
+      campusMetadata,
+      careerMetadata,
+    ]) {
+      expect(meta.twitter).toMatchObject({ card: "summary" });
+      expect(meta.openGraph?.title).toBe(meta.twitter?.title);
+      expect(meta.openGraph?.description).toBe(meta.twitter?.description);
+    }
+    expect(careerMetadata.twitter?.title).toContain("求职雷达");
+    expect(careerMetadata.openGraph?.url).toBe("/career");
+  });
+
   it("identifies the site and its non-official publisher without inventing an official affiliation", () => {
     expect(websiteStructuredData()).toEqual({
       "@context": "https://schema.org",
@@ -104,7 +149,7 @@ describe("Portal search discovery routes", () => {
           name: "HENU Kit",
           alternateName: "河南大学校园工具",
           description:
-            "HENU Kit 是学生自主运营的非官方河南大学校园工具，提供资料库、智能刷题、美食榜和校园互助入口；信息以河南大学及各学院官方来源为准。",
+            "HENU Kit 是学生自主运营的非官方河南大学校园工具，提供资料库、智能刷题、美食榜、校园互助和求职雷达入口；信息以河南大学及各学院官方来源为准。",
           inLanguage: "zh-CN",
           isAccessibleForFree: true,
           publisher: { "@id": "https://henukit.cn/#community" },

@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -276,6 +278,8 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/career/searches/{search_id}", h.careerSearchStatus)
 	r.Get("/api/v1/career/profile", h.getCareerProfile)
 	r.Put("/api/v1/career/profile", h.updateCareerProfile)
+	r.Post("/api/v1/career/profile/extractions", h.createCareerExtraction)
+	r.Get("/api/v1/career/profile/extractions/{extraction_id}", h.careerExtractionStatus)
 	// This private V2 route is never proxied to legacy Portal API data. Before
 	// #166 enables the V2 client it returns an honest unavailable response.
 	r.Get("/api/v1/practice/stats", h.personalPracticeStats)
@@ -1303,6 +1307,22 @@ func (h *Handler) updateCareerProfile(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// createCareerExtraction forwards a signed-in Lifetime actor's resume upload.
+// The multipart body is passed through byte-for-byte; Career owns the file
+// validation, so the Gateway only enforces the upload-sized body cap.
+func (h *Handler) createCareerExtraction(w http.ResponseWriter, r *http.Request) {
+	h.careerExtractionUpload(w, r, func(ctx context.Context, actorUserID, requestID string, raw []byte) (json.RawMessage, error) {
+		return h.career.CreateExtraction(ctx, actorUserID, requestID, careerUploadFileName(raw, r.Header.Get("Content-Type")), raw)
+	})
+}
+
+func (h *Handler) careerExtractionStatus(w http.ResponseWriter, r *http.Request) {
+	extractionID := chi.URLParam(r, "extraction_id")
+	h.careerRead(w, r, func(ctx context.Context, actorUserID, requestID string) (json.RawMessage, error) {
+		return h.career.Extraction(ctx, actorUserID, requestID, extractionID)
+	})
+}
+
 // careerRead gates a Career read on a verified Lifetime membership. An
 // anonymous caller is a 401; a signed-in free user is a 403; a membership
 // dependency failure fails closed (503) rather than downgrading to allow.
@@ -1382,6 +1402,64 @@ func (h *Handler) careerWriteNoKey(w http.ResponseWriter, r *http.Request, skipI
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+}
+
+// careerExtractionUpload gates and forwards one resume upload with the
+// extraction-sized body cap, mirroring careerWriteNoKey without an
+// Idempotency-Key: each upload is a distinct file, so replays are harmless.
+func (h *Handler) careerExtractionUpload(w http.ResponseWriter, r *http.Request, write func(ctx context.Context, actorUserID, requestID string, raw []byte) (json.RawMessage, error)) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, contract.ErrorEnvelope{Error: "not authenticated", Message: "登录已过期，请重新登录", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if !h.requireLifetime(w, r, value.UserID) {
+		return
+	}
+	if h.career == nil {
+		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "career_unavailable", Message: "求职雷达服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 11<<20+1))
+	if err != nil || len(raw) == 0 {
+		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "career_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	if len(raw) > 11<<20 {
+		writeJSON(w, http.StatusRequestEntityTooLarge, contract.ErrorEnvelope{Error: "career_body_too_large", Message: "请求内容过大，请精简后重试", RequestID: requestIDOf(w, r)})
+		return
+	}
+	data, err := write(r.Context(), value.UserID, requestIDOf(w, r), raw)
+	if err != nil {
+		h.writeCareerFailure(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+// careerUploadFileName reads the original file name from the raw multipart
+// body, touching only the part headers (never the file bytes). An absent or
+// unparseable name yields an empty string and Career rejects the upload with
+// INVALID_FILE.
+func careerUploadFileName(raw []byte, contentType string) string {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil || params["boundary"] == "" {
+		return ""
+	}
+	reader := multipart.NewReader(bytes.NewReader(raw), params["boundary"])
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			return ""
+		}
+		if part.FormName() == "file" {
+			return part.FileName()
+		}
+		_ = part.Close()
+	}
 }
 
 // requireLifetime checks the current Account Portfolio membership for the
