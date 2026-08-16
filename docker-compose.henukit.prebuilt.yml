@@ -113,6 +113,20 @@ services:
       FOOD_SERVICE_CLIENT_ID: ${FOOD_SUMMARY_CLIENT_ID:?FOOD_SUMMARY_CLIENT_ID is required}
       FOOD_SERVICE_KEY_ID: ${FOOD_SUMMARY_KEY_ID:?FOOD_SUMMARY_KEY_ID is required}
       FOOD_SERVICE_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:?FOOD_SUMMARY_CLIENT_SECRET is required}
+  food-mcp:
+    image: henukit-food-mcp:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    environment:
+      FOOD_MCP_ADDR: ${FOOD_MCP_ADDR:-:8098}
+      FOOD_MCP_ACCESS_TOKEN: ${FOOD_MCP_ACCESS_TOKEN:-}
+      FOOD_POSTS_URL: ${FOOD_POSTS_URL:-http://food:8096}
+      FOOD_POST_CREATE_CLIENT_ID: ${FOOD_POST_CREATE_CLIENT_ID:-portal-gateway-food-post-create}
+      FOOD_POST_CREATE_KEY_ID: ${FOOD_POST_CREATE_KEY_ID:-food-post-create-key}
+      FOOD_POST_CREATE_SECRET: ${FOOD_POST_CREATE_SECRET:-replace-food-post-create-secret-32bytes!!}
+      FOOD_POST_READ_CLIENT_ID: ${FOOD_POST_READ_CLIENT_ID:-portal-gateway-food-post-read}
+      FOOD_POST_READ_KEY_ID: ${FOOD_POST_READ_KEY_ID:-food-post-read-key}
+      FOOD_POST_READ_SECRET: ${FOOD_POST_READ_SECRET:-replace-food-post-read-secret-32bytes!!}
   library:
     image: henukit-library:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null
@@ -135,6 +149,17 @@ services:
       ALIBABA_CLOUD_IMDSV1_DISABLE: "true"
       STUDY_LEGACY_API_URL: ${STUDY_LEGACY_API_URL:?STUDY_LEGACY_API_URL is required}
       STUDY_LEGACY_ADMIN_TOKEN: ${STUDY_LEGACY_ADMIN_TOKEN:?STUDY_LEGACY_ADMIN_TOKEN is required}
+  career-opportunities:
+    image: henukit-career-opportunities:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    environment:
+      CAREER_ADDR: ${CAREER_ADDR:-:8097}
+      CAREER_DATABASE_URL: ${CAREER_DATABASE_URL:?CAREER_DATABASE_URL is required}
+      CAREER_REDIS_URL: ${CAREER_REDIS_URL:-redis://redis:6379/6}
+      CAREER_SERVICE_CLIENT_ID: ${CAREER_CLIENT_ID:-portal-gateway-career}
+      CAREER_SERVICE_KEY_ID: ${CAREER_KEY_ID:-career-key-1}
+      CAREER_SERVICE_SECRET: ${CAREER_CLIENT_SECRET:?CAREER_CLIENT_SECRET is required}
   portal-gateway:
     image: henukit-portal-gateway:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null

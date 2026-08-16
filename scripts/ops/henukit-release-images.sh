@@ -19,7 +19,9 @@ release_names=(
   notice
   notice-worker
   food
+  food-mcp
   library
+  career-opportunities
   portal-gateway
 )
 release_images=(
@@ -35,7 +37,9 @@ release_images=(
   henukit-notice
   henukit-notice-worker
   henukit-food
+  henukit-food-mcp
   henukit-library
+  henukit-career-opportunities
   henukit-portal-gateway
 )
 release_services=(
@@ -51,7 +55,9 @@ release_services=(
   notice
   notice-worker
   food
+  food-mcp
   library
+  career-opportunities
   portal-gateway
 )
 release_roles=(
@@ -68,6 +74,8 @@ release_roles=(
   conditional
   conditional
   conditional
+  conditional
+  baseline
   baseline
 )
 release_contexts=(
@@ -83,7 +91,9 @@ release_contexts=(
   services/notice
   services/notice
   services/food
+  services/food-mcp
   services/library
+  services/career-opportunities
   services/portal-gateway
 )
 release_dockerfiles=(
@@ -99,7 +109,9 @@ release_dockerfiles=(
   services/notice/Dockerfile
   services/notice/Dockerfile.worker
   services/food/Dockerfile
+  services/food-mcp/Dockerfile
   services/library/Dockerfile
+  services/career-opportunities/Dockerfile
   services/portal-gateway/Dockerfile
 )
 release_build_args=(
@@ -109,6 +121,8 @@ release_build_args=(
   ""
   ""
   $'NEXT_PUBLIC_PORTAL_GATEWAY_URL=\nNEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL=/api\nNEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1\nNEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1\nNEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=1'
+  ""
+  ""
   ""
   ""
   ""
