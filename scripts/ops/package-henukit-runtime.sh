@@ -81,6 +81,7 @@ install -d \
   "$runtime/migrations/notice" \
   "$runtime/migrations/food" \
   "$runtime/migrations/library" \
+  "$runtime/migrations/career" \
   "$runtime/migrations/portal" \
   "$runtime/release-gates" \
   "$runtime/materials-runtime/bin" \
@@ -101,6 +102,7 @@ cp "$repo_root"/services/account-portfolio/db/migrations/*.up.sql "$runtime/migr
 cp "$repo_root"/services/notice/db/migrations/*.up.sql "$runtime/migrations/notice/"
 cp "$repo_root"/services/food/db/migrations/*.up.sql "$runtime/migrations/food/"
 cp "$repo_root"/services/library/db/migrations/*.up.sql "$runtime/migrations/library/"
+cp "$repo_root"/services/career-opportunities/db/migrations/*.up.sql "$runtime/migrations/career/"
 # Portal API keeps a MySQL variant beside PostgreSQL; production only runs the
 # PostgreSQL migration stream.
 cp "$repo_root"/services/portal-api/db/migrations/postgres/*.up.sql "$runtime/migrations/portal/"

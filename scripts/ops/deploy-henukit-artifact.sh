@@ -119,6 +119,7 @@ fi
 apply_owner_migrations notice
 apply_owner_migrations food
 apply_owner_migrations library
+apply_owner_migrations career
 apply_owner_migrations portal
 
 echo "Installing signed binary-only materials runtime for $release_sha"
