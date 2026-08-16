@@ -31,7 +31,7 @@ const expected = [
   ["food", "henukit-food", "food", "conditional"],
   ["food-mcp", "henukit-food-mcp", "food-mcp", "conditional"],
   ["library", "henukit-library", "library", "conditional"],
-  ["career-opportunities", "henukit-career-opportunities", "career-opportunities", "baseline"],
+  ["career-opportunities", "henukit-career-opportunities", "career-opportunities", "conditional"],
   ["portal-gateway", "henukit-portal-gateway", "portal-gateway", "baseline"],
 ];
 

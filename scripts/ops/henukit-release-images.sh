@@ -75,7 +75,7 @@ release_roles=(
   conditional
   conditional
   conditional
-  baseline
+  conditional
   baseline
 )
 release_contexts=(
