@@ -8,6 +8,12 @@
 #
 # Output matches the CI artifact layout so the existing production activation
 # and watcher flows can consume it unchanged.
+#
+# WARNING: the bundle produced here is NOT signed and will be rejected by the
+# production verifier. Use it only to validate the build pipeline locally.
+# For an actual production deployment, use deploy-henukit-local.sh (signed
+# container build + KEX-fixed transport), see
+# docs/operations/henukit-local-deploy.md.
 set -Eeuo pipefail
 
 program="build-henukit-release-quick"

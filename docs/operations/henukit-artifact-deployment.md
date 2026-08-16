@@ -91,7 +91,7 @@ root to `0750`, completed bundle directories to `0550`, and bundle files to
 `0440`, all group-owned by `henukit-release-deployers`. The deployment identity
 can therefore read but not modify the bundle, while the signing key remains
 owner-only outside that tree. It emits one
-flat `henukit-release-<sha>` directory containing all thirteen image archives,
+flat `henukit-release-<sha>` directory containing all sixteen image archives,
 the runtime archive, checksums, `RELEASE_SHA`, and a signed manifest.
 
 ### Direct WSL2-to-production transport
@@ -156,6 +156,58 @@ the release sequence completed. If a prior
 attempt already placed the same final bundle, the next run verifies it again
 with production trust roots and resumes activation without retransferring or
 deleting it; an invalid residual bundle fails closed for administrator review.
+
+### Single-operator WSL deployment pitfalls (verified 2026-08-16)
+
+The controlled path above was exercised end to end when Actions minutes were
+exhausted. A single operator can run the whole chain from one WSL2 host, but
+the following pitfalls were hit and must be checked first. The companion
+runbook `henukit-local-deploy.md` and the one-command wrapper
+`scripts/ops/deploy-henukit-local.sh` automate all of these.
+
+1. **Direct SSH to production is KEX-interfered.** `ssh henu-prod` can hang at
+   `expecting SSH2_MSG_KEX_ECDH_REPLY` because a middle device interferes with
+   the default `sntrup761x25519-sha512@openssh.com` key exchange. Fix the
+   deployment alias with `KexAlgorithms diffie-hellman-group14-sha256` in the
+   deployer's `~/.ssh/config` (the deployer alias currently has
+   `KexAlgorithms curve25519-sha256`; replace that value). TCP to
+   `8.146.200.82:22222` stays reachable, and the KEX fix restores direct
+   authentication. Do not switch the alias to a proxy: the transport rejects
+   `ProxyJump`/`ProxyCommand`.
+2. **WSL checkouts land 775, which fails the verifier.** `git status` records
+   `henukit-materials-sync.sh` as `100644` and most `scripts/ops/*.sh` as
+   `100755`. After `git reset --hard origin/main` the files can be `775`
+   (group-writable), so `verify-henukit-local-release.sh` dies with
+   `trusted file must not be group- or world-writable`. Before building, chmod
+   executable scripts to `755` and `henukit-materials-sync.sh` to `644`, then
+   confirm `git status --porcelain --untracked-files=all` is empty.
+3. **Production inventory lags new images.** `henukit-release-images.sh` at
+   `/usr/local/sbin/` is a root-owned trust root installed from a past release.
+   When the repository adds images (food-mcp, career-opportunities), the
+   production inventory must be updated from the new runtime payload before
+   activation, or verify dies with `unexpected artifact file
+   henukit-...-<sha>.docker.tar.gz`. Extract `bin/henukit-release-images.sh`
+   from the new runtime tarball and install it to `/usr/local/sbin/`, then
+   `chmod 555`.
+4. **Production `.env.henukit` needs every required variable.** The fixed-SHA
+   Compose contract uses `${VAR:?VAR is required}` interpolation. When the
+   release adds services, the production environment file must be extended
+   (career DB URL/secret, food-post secrets, food-mcp token,
+   `PORTAL_DEPLOYED_AT`, `PORTAL_VERSION`, ...) and the `career` PostgreSQL
+   database must exist. Validate with
+   `docker compose --env-file /opt/henukit/.env.henukit -f <release>/docker-compose.henukit.release.yml config --quiet`
+   until it exits 0. See `henukit-local-deploy.md` section 7 for the exact
+   variable block.
+5. **A stale approval blocks re-activation.** A failed activation consumes its
+   approval; a partially-prepared run can leave one behind. If the transport
+   reports `an approval already exists for release <sha>`, remove
+   `/var/lib/henukit-actions-watch/approvals/<sha>` on production before
+   retrying.
+6. **Production disk fills fast.** The release bundle is ~240 MB and backups
+   accumulate. Before activation check `df -h /`; clean old
+   `/opt/henukit-incoming/henukit-release-<old-sha>` bundles and pre-current
+   release directories when under ~1.5 GB free, and re-point
+   `/opt/henukit/current` to the active baseline if it dangles.
 
 ### Exact degraded-baseline recovery
 
@@ -342,11 +394,11 @@ It deploys only the newest completed, successful `push` run of
    into isolated temporary databases with key-table and Account durable-fact
    count checks. On the first Account Portfolio release it records and
    restores an explicit empty-database baseline before schema creation;
-5. loads all thirteen fixed-SHA Docker images;
+5. loads all sixteen fixed-SHA Docker images;
 6. calls the existing `deploy-henukit-artifact.sh`, then invokes Platform
    Core's owner-defined command to grant all eight Account Console permissions,
    bump the role revision, and append an immutable grant audit;
-7. verifies all thirteen running image tags, Account Portfolio health, and the public health routes, rolling
+7. verifies all sixteen running image tags, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
 
@@ -426,9 +478,17 @@ only when that baseline's already-extracted
 `docker-compose.henukit.release.yml` explicitly lacks `account-portfolio`; it
 still requires all nine images and a healthy Account Portfolio container for
 the candidate. This prevents a partially broken new release from being treated
-as a legacy baseline. Current releases carry thirteen images: the nine above plus
-`notice`, `notice-worker`, `food`, and `library` (see
-`notice-food-production-onboarding.md`).
+as a legacy baseline. Current releases carry sixteen images: the nine above plus
+`notice`, `notice-worker`, `food`, `library`, `food-mcp` (ADR-0033), and
+`career-opportunities` (#392) (see
+`notice-food-production-onboarding.md` and `henukit-local-deploy.md`).
+`career-opportunities` is intentionally a `conditional` inventory role, not a
+`baseline` role: baseline roles are required from every retained rollback
+release, so adding it as baseline would make older fourteen-image releases fail
+rollback verification. The inventory at
+`scripts/ops/henukit-release-images.sh` is the single source of truth; every
+service in `docker-compose.henukit.yml` must also appear there and in
+`docker-compose.henukit.prebuilt.yml` with a fixed-SHA `image:` pin.
 
 The initial `--once` run creates and restore-tests an empty
 `account_portfolio` database if the old PostgreSQL volume does not contain one.
@@ -478,7 +538,7 @@ manifest, securely copies the existing MetaView HENU tenant identity into the
 Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017` and `000018`, deploys all thirteen fixed-SHA images, grants the eight
+`000017` and `000018`, deploys all sixteen fixed-SHA images, grants the eight
 Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
@@ -525,7 +585,7 @@ requires a new explicit approval before the failed SHA can be attempted again.
 
 The process polls every 60 seconds by default and uses a kernel `flock` to
 prevent overlapping deployments; the lock is released even after a crash or
-power loss. A release already active on all thirteen image tags is an idempotent
+power loss. A release already active on all sixteen image tags is an idempotent
 health-checked no-op. During the one-time 8-to-9 transition, the explicitly
 legacy eight-image baseline remains a valid rollback target. A failed check exits the process, and Systemd retries it
 after 30 seconds. Activation or public verification failure invokes the
