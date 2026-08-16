@@ -8,7 +8,7 @@ import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import Img from "@/components/ui/img";
 import { useScrollRestoration } from "@/components/use-scroll-restoration";
 import { cn } from "@/lib/cn";
-import { CAMPUSES, CAMPUS_KEYS, type CampusKey } from "@/lib/food/mock";
+import { CAMPUSES, CAMPUS_KEYS, type CampusKey } from "@/lib/food/campuses";
 import { HANG_TIER_KEY, groupFoodPostsByTier } from "@/lib/food/ranking";
 import { useFoodPosts } from "@/lib/food/use-food-posts";
 

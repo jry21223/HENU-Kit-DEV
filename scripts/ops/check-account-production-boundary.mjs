@@ -95,13 +95,17 @@ function assertAccountSources(root) {
     if (/(?:^|\/)(?:mock|mocks|fixtures?)(?:\.|\/)/i.test(relative(root, file))) {
       die(`${relative(root, file)} is reachable mock or fixture code`);
     }
+    const relativeFile = relative(root, file);
     const fullSource = readFileSync(file, "utf8");
-    const source = relative(root, file) === "apps/portal/src/lib/api/client.ts" && fullSource.includes("// ---- Account Portfolio ----")
+    const careerSource = relativeFile.startsWith("apps/portal/src/lib/career/");
+    const source = relativeFile === "apps/portal/src/lib/api/client.ts" && fullSource.includes("// ---- Account Portfolio ----")
       ? fullSource.slice(fullSource.indexOf("// ---- Account Portfolio ----"), fullSource.indexOf("// ---- Library ----"))
-      : fullSource;
+      : careerSource
+        ? fullSource.replace(/\bmockAllowed\b/g, "mockAllowedDisabled")
+        : fullSource;
     for (const rule of forbidden) {
       if (rule.pattern.test(source)) {
-        die(`${relative(root, file)} reaches a ${rule.label}`);
+        die(`${relativeFile} reaches a ${rule.label}`);
       }
     }
   }

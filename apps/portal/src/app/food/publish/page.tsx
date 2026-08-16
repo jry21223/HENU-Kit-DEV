@@ -13,7 +13,7 @@ import {
 } from "@/lib/api/client";
 import { authStore } from "@/lib/auth/store";
 import { cn } from "@/lib/cn";
-import { CAMPUSES, CAMPUS_KEYS } from "@/lib/food/mock";
+import { CAMPUSES, CAMPUS_KEYS } from "@/lib/food/campuses";
 import { FOOD_TIERS, type FoodTierKey } from "@/lib/food/ranking";
 import {
   createFoodPost,

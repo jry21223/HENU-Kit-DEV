@@ -6,7 +6,7 @@ import { useAccountConsoleUnauthorizedHandler } from "@/components/account/accou
 import { useReveal } from "@/components/account/use-reveal";
 import { formatPortalError } from "@/lib/api/client";
 import type { FoodPostListResponse } from "@/lib/api/types";
-import { CAMPUSES } from "@/lib/food/mock";
+import { CAMPUSES } from "@/lib/food/campuses";
 import { fetchMyFoodPosts } from "@/lib/food/myposts";
 import { FOOD_TIERS, resolveFoodTier } from "@/lib/food/ranking";
 

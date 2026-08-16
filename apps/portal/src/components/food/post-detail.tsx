@@ -10,7 +10,8 @@ import {
 } from "@/lib/api/client";
 import type { FoodComment, FoodPost } from "@/lib/api/types";
 import { buildFoodVenueDetail } from "@/lib/food/detail";
-import { CAMPUSES, foodStore } from "@/lib/food/mock";
+import { CAMPUSES } from "@/lib/food/campuses";
+import { foodStore } from "@/lib/food/mock";
 import PostBlocks from "@/components/food/post-blocks";
 import Img from "@/components/ui/img";
 import {
