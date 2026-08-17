@@ -77,7 +77,7 @@ func validBearer(header, expected string) bool {
 }
 
 func (h *Handler) registerTools(server *mcpsdk.Server) {
-	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "create_food_post", Description: "发布一条校园美食投稿（创建即公开，无审核环节）。必填：venue_name 店铺名、campus（minglun/jinming/longzihu）、tier（hang/top/elite/npc/bad）、review_text 锐评正文、actor_user_id、actor_display_name。可选：price_reference、hours_reference、dishes（至多 6 道）、images（至多 6 张，单张 ≤2MiB，base64 无前缀，仅 image/jpeg|image/png|image/webp）。同一 actor 每自然日至多 3 条，超限返回 DAILY_POST_CAP_REACHED。"}, h.createPost)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "create_food_post", Description: "发布一条校园美食投稿（创建即公开，无审核环节）。必填：venue_name 店铺名、campus（minglun/jinming/longzihu）、tier（hang 夯|top 顶级|elite 人上人|npc NPC|bad 拉完了）、review_text 锐评正文、actor_user_id、actor_display_name。可选：price_reference、hours_reference、dishes（至多 6 道）、images（至多 6 张，单张 ≤2MiB，base64 无前缀，仅 image/jpeg|image/png|image/webp）。同一 actor 每自然日至多 3 条，超限返回 DAILY_POST_CAP_REACHED。"}, h.createPost)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_food_posts", Description: "读取公开美食投稿列表，可选按 campus 过滤。无需登录。"}, h.listPosts)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "get_food_post", Description: "读取单条公开美食投稿详情。"}, h.getPost)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_food_venues", Description: "读取指定校区的场所汇总。campus 必填（minglun/jinming/longzihu）。"}, h.listVenues)
@@ -87,7 +87,7 @@ func (h *Handler) registerTools(server *mcpsdk.Server) {
 type createPostInput struct {
 	VenueName      string           `json:"venue_name" jsonschema:"店铺名，1-160 字"`
 	Campus         string           `json:"campus" jsonschema:"校区：minglun|jinming|longzihu"`
-	Tier           string           `json:"tier" jsonschema:"五档定位：hang|top|elite|npc|bad"`
+	Tier           string           `json:"tier" jsonschema:"五档定位：hang(夯)|top(顶级)|elite(人上人)|npc(NPC)|bad(拉完了)"`
 	ReviewText     string           `json:"review_text" jsonschema:"锐评正文，2-2000 字"`
 	PriceReference string           `json:"price_reference,omitempty" jsonschema:"价格参考（可选）"`
 	HoursReference string           `json:"hours_reference,omitempty" jsonschema:"营业参考（可选）"`
