@@ -127,6 +127,10 @@ services:
       FOOD_POST_READ_CLIENT_ID: ${FOOD_POST_READ_CLIENT_ID:-portal-gateway-food-post-read}
       FOOD_POST_READ_KEY_ID: ${FOOD_POST_READ_KEY_ID:-food-post-read-key}
       FOOD_POST_READ_SECRET: ${FOOD_POST_READ_SECRET:-replace-food-post-read-secret-32bytes!!}
+    ports:
+      # Host loopback publish so the host nginx (henukit.cn/mcp/food) and
+      # same-host MCP clients (LangBot) can reach the MCP entry.
+      - "127.0.0.1:8098:8098"
   career-mcp:
     image: henukit-career-mcp:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null
@@ -138,6 +142,10 @@ services:
       CAREER_CLIENT_ID: ${CAREER_CLIENT_ID:-portal-gateway-career}
       CAREER_CLIENT_SECRET: ${CAREER_CLIENT_SECRET:?CAREER_CLIENT_SECRET is required}
       CAREER_KEY_ID: ${CAREER_KEY_ID:-career-key-1}
+    ports:
+      # Host loopback publish so the host nginx (henukit.cn/mcp/career) and
+      # same-host MCP clients (LangBot) can reach the MCP entry.
+      - "127.0.0.1:8099:8099"
   library:
     image: henukit-library:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null
