@@ -6,12 +6,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { AccountConsoleSessionProvider } from "@/components/account/account-console-session";
 import { cn } from "@/lib/cn";
 import {
+  clearCachedSession,
   fetchSession,
   formatPortalError,
+  logout,
   PortalUnauthorizedError,
 } from "@/lib/api/client";
 import type { PortalSession } from "@/lib/api/types";
-import { authStore } from "@/lib/auth/store";
 import { publicDisplayName } from "@/lib/auth/display-name";
 
 const MENU = [
@@ -78,7 +79,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
     setSessionState({ kind: "anonymous" });
     // The cached user must go too, or the login page bounces straight back
     // into the account console (the #412 loop).
-    authStore.clear();
+    clearCachedSession();
     redirectToAccountLogin();
   }, [redirectToAccountLogin]);
 
@@ -104,7 +105,8 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
     try {
       // Clears the Gateway session (including the Core session revocation)
       // and the cached local user, so the login page stays put.
-      await authStore.logout();
+      await logout();
+      clearCachedSession();
       router.replace("/account/login");
     } catch (error) {
       if (error instanceof PortalUnauthorizedError) {

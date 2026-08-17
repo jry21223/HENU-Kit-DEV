@@ -337,6 +337,21 @@ export async function logout(): Promise<void> {
   }
 }
 
+/**
+ * Clears the legacy cached auth session (henukit.session) written by the old
+ * mock-era auth store. In require-Gateway builds the real session lives in the
+ * Gateway cookie, so this cache is only ever stale state left behind by older
+ * portal versions; clearing it on logout and on session-expiry keeps the OAuth
+ * login entry from bouncing straight back into the account console (#412).
+ */
+export function clearCachedSession(): void {
+  try {
+    localStorage.removeItem("henukit.session");
+  } catch {
+    /* private-mode / storage-unavailable contexts: nothing to clear */
+  }
+}
+
 // ---- Account Portfolio ----
 
 /**
