@@ -45,6 +45,16 @@ var (
 
 var postTierLabels = map[string]string{"hang": "夯", "top": "顶级", "elite": "人上人", "npc": "NPC", "bad": "拉完了"}
 
+// postTierWireLabels reverses the stored Chinese labels back to the wire
+// keys, so governance views and edit commands speak the same tier language.
+var postTierWireLabels = func() map[string]string {
+	reverse := make(map[string]string, len(postTierLabels))
+	for wire, label := range postTierLabels {
+		reverse[label] = wire
+	}
+	return reverse
+}()
+
 type foodPostBlockWire struct {
 	Type  string   `json:"type"`
 	Text  string   `json:"text,omitempty"`

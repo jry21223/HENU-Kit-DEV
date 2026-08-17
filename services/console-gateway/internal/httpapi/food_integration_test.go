@@ -70,14 +70,70 @@ func TestFoodSubmissionReviewPersistsAcrossGatewayAndOwner(t *testing.T) {
 	assertFoodSubmissionState(t, before, integrationFoodApproveID, "pending", 1)
 	assertFoodSubmissionState(t, before, integrationFoodRejectID, "pending", 1)
 
-	sendFoodReviewCommand(t, server, cookie, "submission_approve", integrationFoodApproveID, 1, "idem_food_gateway_owner_approve", http.StatusOK)
-	sendFoodReviewCommand(t, server, cookie, "submission_approve", integrationFoodApproveID, 1, "idem_food_gateway_owner_approve", http.StatusOK)
+	sendFoodEditCommand(t, server, cookie, "submission_edit", integrationFoodApproveID, 1, "idem_food_gateway_owner_edit", http.StatusOK, map[string]string{"note": "Gateway to Food Owner integration", "campus": "minglun"})
+	scoped := readFoodWorkspaceFromGatewayCampus(t, server, cookie, "minglun")
+	assertFoodSubmissionState(t, scoped, integrationFoodApproveID, "pending", 2)
+	assertFoodSubmissionAbsent(t, scoped, integrationFoodRejectID)
+	otherCampus := readFoodWorkspaceFromGatewayCampus(t, server, cookie, "jinming")
+	assertFoodSubmissionAbsent(t, otherCampus, integrationFoodApproveID)
+
+	sendFoodReviewCommand(t, server, cookie, "submission_approve", integrationFoodApproveID, 2, "idem_food_gateway_owner_approve", http.StatusOK)
+	sendFoodReviewCommand(t, server, cookie, "submission_approve", integrationFoodApproveID, 2, "idem_food_gateway_owner_approve", http.StatusOK)
 	sendFoodReviewCommand(t, server, cookie, "submission_reject", integrationFoodRejectID, 1, "idem_food_gateway_owner_reject", http.StatusOK)
 	sendFoodReviewCommand(t, server, cookie, "submission_reject", integrationFoodApproveID, 1, "idem_food_gateway_owner_stale", http.StatusConflict)
 
 	after := readFoodWorkspaceFromGateway(t, server, cookie)
 	assertFoodSubmissionAbsent(t, after, integrationFoodApproveID)
 	assertFoodSubmissionAbsent(t, after, integrationFoodRejectID)
+}
+
+func sendFoodEditCommand(t *testing.T, server *httptest.Server, cookie *http.Cookie, kind, resourceID string, expectedVersion int, key string, expectedStatus int, payload map[string]string) {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"kind": kind, "resource_id": resourceID, "expected_version": expectedVersion,
+		"payload": payload,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/food/commands", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	command.AddCookie(cookie)
+	command.Header.Set("Content-Type", "application/json")
+	command.Header.Set("Idempotency-Key", key)
+	response, err := server.Client().Do(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	responseBody, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != expectedStatus {
+		t.Fatalf("%s through Gateway status=%d body=%s, want %d", kind, response.StatusCode, responseBody, expectedStatus)
+	}
+}
+
+func readFoodWorkspaceFromGatewayCampus(t *testing.T, server *httptest.Server, cookie *http.Cookie, campus string) foodWorkspaceEnvelope {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/food?campus="+campus, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(cookie)
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var envelope foodWorkspaceEnvelope
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode Food workspace: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("read Food workspace status=%d", response.StatusCode)
+	}
+	return envelope
 }
 
 func sendFoodReviewCommand(t *testing.T, server *httptest.Server, cookie *http.Cookie, kind, resourceID string, expectedVersion int, key string, expectedStatus int) {

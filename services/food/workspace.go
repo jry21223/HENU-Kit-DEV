@@ -7,13 +7,21 @@ import (
 	"time"
 )
 
-const workspaceCacheKey = "food:workspace:last-success"
+const workspaceCacheKeyBase = "food:workspace:last-success"
+
+func workspaceCacheKey(campus string) string {
+	if campus == "" {
+		return workspaceCacheKeyBase
+	}
+	return workspaceCacheKeyBase + ":" + campus
+}
 
 type submission struct {
 	ID          string    `json:"id"`
 	VenueName   string    `json:"venue_name"`
 	ItemName    string    `json:"item_name"`
 	Description string    `json:"description"`
+	Campus      *string   `json:"campus"`
 	Status      string    `json:"status"`
 	Version     int       `json:"version"`
 	SubmittedAt time.Time `json:"submitted_at"`
@@ -41,6 +49,20 @@ type tierAdjustment struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
+type foodPost struct {
+	ID                string    `json:"id"`
+	VenueName         string    `json:"venue_name"`
+	Campus            string    `json:"campus"`
+	Tier              string    `json:"tier"`
+	ReviewText        string    `json:"review_text"`
+	PriceReference    string    `json:"price_reference"`
+	HoursReference    string    `json:"hours_reference"`
+	AuthorDisplayName string    `json:"author_display_name"`
+	Hidden            bool      `json:"hidden"`
+	Version           int       `json:"version"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
 type workspaceData struct {
 	Status             string           `json:"status"`
 	StatusMessage      string           `json:"status_message"`
@@ -49,6 +71,7 @@ type workspaceData struct {
 	Submissions        []submission     `json:"submissions"`
 	AnomalyTickets     []anomalyTicket  `json:"anomaly_tickets"`
 	TierAdjustments    []tierAdjustment `json:"tier_adjustments"`
+	Posts              []foodPost       `json:"posts"`
 	PendingSubmissions int              `json:"-"`
 	OpenAnomalies      int              `json:"-"`
 	PendingTiers       int              `json:"-"`
@@ -61,75 +84,109 @@ type cachedWorkspace struct {
 	PendingTiers       int           `json:"pending_tiers"`
 }
 
-func (h *service) loadWorkspace(r *http.Request) (workspaceData, error) {
-	result := workspaceData{Submissions: []submission{}, AnomalyTickets: []anomalyTicket{}, TierAdjustments: []tierAdjustment{}}
-	rows, err := h.database.Query(r.Context(), `SELECT id,venue_name,item_name,description,status,version,submitted_at,updated_at FROM food_submissions WHERE status='pending' ORDER BY submitted_at DESC LIMIT 200`)
+func (h *service) loadWorkspace(r *http.Request, campus string) (workspaceData, error) {
+	result := workspaceData{Submissions: []submission{}, AnomalyTickets: []anomalyTicket{}, TierAdjustments: []tierAdjustment{}, Posts: []foodPost{}}
+	submissionQuery := `SELECT id,venue_name,item_name,description,status,version,submitted_at,updated_at,campus FROM food_submissions WHERE status='pending'`
+	queryArgs := []any{}
+	if campus != "" {
+		submissionQuery += ` AND campus=$1`
+		queryArgs = append(queryArgs, campus)
+	}
+	submissionQuery += ` ORDER BY submitted_at DESC LIMIT 200`
+	rows, err := h.database.Query(r.Context(), submissionQuery, queryArgs...)
 	if err != nil {
-		return h.staleWorkspace(r, err)
+		return h.staleWorkspace(r, campus, err)
 	}
 	for rows.Next() {
 		var item submission
-		if err := rows.Scan(&item.ID, &item.VenueName, &item.ItemName, &item.Description, &item.Status, &item.Version, &item.SubmittedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.VenueName, &item.ItemName, &item.Description, &item.Status, &item.Version, &item.SubmittedAt, &item.UpdatedAt, &item.Campus); err != nil {
 			rows.Close()
-			return h.staleWorkspace(r, err)
+			return h.staleWorkspace(r, campus, err)
 		}
 		result.Submissions = append(result.Submissions, item)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return h.staleWorkspace(r, err)
+		return h.staleWorkspace(r, campus, err)
 	}
 	rows.Close()
 	rows, err = h.database.Query(r.Context(), `SELECT id,venue_name,kind,details,severity,status,version,created_at,updated_at FROM food_anomaly_tickets WHERE status='open' ORDER BY created_at DESC LIMIT 200`)
 	if err != nil {
-		return h.staleWorkspace(r, err)
+		return h.staleWorkspace(r, campus, err)
 	}
 	for rows.Next() {
 		var item anomalyTicket
 		if err := rows.Scan(&item.ID, &item.VenueName, &item.Kind, &item.Details, &item.Severity, &item.Status, &item.Version, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			rows.Close()
-			return h.staleWorkspace(r, err)
+			return h.staleWorkspace(r, campus, err)
 		}
 		result.AnomalyTickets = append(result.AnomalyTickets, item)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return h.staleWorkspace(r, err)
+		return h.staleWorkspace(r, campus, err)
 	}
 	rows.Close()
 	rows, err = h.database.Query(r.Context(), `SELECT id,venue_name,current_tier,proposed_tier,reason,status,version,created_at,updated_at FROM food_tier_adjustments WHERE status='pending' ORDER BY created_at DESC LIMIT 200`)
 	if err != nil {
-		return h.staleWorkspace(r, err)
+		return h.staleWorkspace(r, campus, err)
 	}
 	for rows.Next() {
 		var item tierAdjustment
 		if err := rows.Scan(&item.ID, &item.VenueName, &item.CurrentTier, &item.ProposedTier, &item.Reason, &item.Status, &item.Version, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			rows.Close()
-			return h.staleWorkspace(r, err)
+			return h.staleWorkspace(r, campus, err)
 		}
 		result.TierAdjustments = append(result.TierAdjustments, item)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return h.staleWorkspace(r, err)
+		return h.staleWorkspace(r, campus, err)
+	}
+	rows.Close()
+	postQuery := `SELECT id,venue_name,campus,tier,review_text,price_reference,hours_reference,author_display_name,hidden,version,created_at,updated_at FROM food_posts`
+	postArgs := []any{}
+	if campus != "" {
+		postQuery += ` WHERE campus=$1`
+		postArgs = append(postArgs, campus)
+	}
+	postQuery += ` ORDER BY created_at DESC LIMIT 200`
+	rows, err = h.database.Query(r.Context(), postQuery, postArgs...)
+	if err != nil {
+		return h.staleWorkspace(r, campus, err)
+	}
+	for rows.Next() {
+		var item foodPost
+		if err := rows.Scan(&item.ID, &item.VenueName, &item.Campus, &item.Tier, &item.ReviewText, &item.PriceReference, &item.HoursReference, &item.AuthorDisplayName, &item.Hidden, &item.Version, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			rows.Close()
+			return h.staleWorkspace(r, campus, err)
+		}
+		if wire, ok := postTierWireLabels[item.Tier]; ok {
+			item.Tier = wire
+		}
+		result.Posts = append(result.Posts, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return h.staleWorkspace(r, campus, err)
 	}
 	rows.Close()
 	if err := h.database.QueryRow(r.Context(), `SELECT (SELECT count(*) FROM food_submissions WHERE status='pending'),(SELECT count(*) FROM food_anomaly_tickets WHERE status='open'),(SELECT count(*) FROM food_tier_adjustments WHERE status='pending')`).Scan(&result.PendingSubmissions, &result.OpenAnomalies, &result.PendingTiers); err != nil {
-		return h.staleWorkspace(r, err)
+		return h.staleWorkspace(r, campus, err)
 	}
 	result.AsOf = h.now().UTC()
-	if len(result.Submissions)+len(result.AnomalyTickets)+len(result.TierAdjustments) == 0 {
+	if len(result.Submissions)+len(result.AnomalyTickets)+len(result.TierAdjustments)+len(result.Posts) == 0 {
 		result.Status, result.StatusMessage = "empty", "暂无 Food 待处理事项"
 	} else {
 		result.Status, result.StatusMessage = "ok", "Food 数据正常"
 	}
 	encoded, _ := json.Marshal(cachedWorkspace{Workspace: result, CachedAt: result.AsOf, PendingSubmissions: result.PendingSubmissions, OpenAnomalies: result.OpenAnomalies, PendingTiers: result.PendingTiers})
-	_ = h.redis.Set(r.Context(), workspaceCacheKey, encoded, 24*time.Hour).Err()
+	_ = h.redis.Set(r.Context(), workspaceCacheKey(campus), encoded, 24*time.Hour).Err()
 	return result, nil
 }
 
-func (h *service) staleWorkspace(r *http.Request, cause error) (workspaceData, error) {
-	encoded, err := h.redis.Get(r.Context(), workspaceCacheKey).Bytes()
+func (h *service) staleWorkspace(r *http.Request, campus string, cause error) (workspaceData, error) {
+	encoded, err := h.redis.Get(r.Context(), workspaceCacheKey(campus)).Bytes()
 	if err != nil {
 		return workspaceData{}, cause
 	}
@@ -151,7 +208,12 @@ func (h *service) workspace(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.require(w, r, "food.read"); !ok {
 		return
 	}
-	data, err := h.loadWorkspace(r)
+	campus := r.URL.Query().Get("campus")
+	if campus != "" && !validCampus(campus) {
+		writeError(w, r, http.StatusBadRequest, "INVALID_CAMPUS", "campus is invalid")
+		return
+	}
+	data, err := h.loadWorkspace(r, campus)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Food workspace is unavailable")
 		return
@@ -159,7 +221,7 @@ func (h *service) workspace(w http.ResponseWriter, r *http.Request) {
 	writeData(w, r, http.StatusOK, data)
 }
 func (h *service) consoleSummary(w http.ResponseWriter, r *http.Request) {
-	data, err := h.loadWorkspace(r)
+	data, err := h.loadWorkspace(r, "")
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Food summary is unavailable")
 		return

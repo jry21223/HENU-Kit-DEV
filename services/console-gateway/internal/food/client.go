@@ -51,8 +51,12 @@ func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client)
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), signer: signer, httpClient: httpClient}, nil
 }
 
-func (c *Client) Workspace(ctx context.Context, actorID string) (json.RawMessage, error) {
-	return c.request(ctx, http.MethodGet, WorkspacePath, actorID, "food.read", "", nil)
+func (c *Client) Workspace(ctx context.Context, actorID, campus string) (json.RawMessage, error) {
+	path := WorkspacePath
+	if campus != "" {
+		path += "?campus=" + url.QueryEscape(campus)
+	}
+	return c.request(ctx, http.MethodGet, path, actorID, "food.read", "", nil)
 }
 func (c *Client) Command(ctx context.Context, actorID, key string, body []byte) (json.RawMessage, error) {
 	return c.request(ctx, http.MethodPost, CommandPath, actorID, permissionForCommand(body), key, body)
@@ -70,13 +74,16 @@ func permissionForCommand(body []byte) string {
 }
 
 func permissionForOperation(operation string) string {
-	if strings.HasPrefix(operation, "submission_") {
+	if strings.HasPrefix(operation, "submission_") || strings.HasPrefix(operation, "post_") {
 		return "food.review"
 	}
 	if strings.HasPrefix(operation, "anomaly_") {
 		return "food.anomaly"
 	}
-	return "food.tier_adjust"
+	if strings.HasPrefix(operation, "tier_adjustment_") {
+		return "food.tier_adjust"
+	}
+	return ""
 }
 
 func (c *Client) request(ctx context.Context, method, path, actorID, permission, key string, body []byte) (json.RawMessage, error) {

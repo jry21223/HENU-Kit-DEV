@@ -183,6 +183,17 @@ export default function BankHero({
     () => false
   );
 
+  // 知识体 3D 只对桌面端渲染（与 lg:grid-cols-2 布局一致）；移动端统一用静态 SVG
+  const isDesktop = useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia("(min-width: 1024px)");
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(min-width: 1024px)").matches,
+    () => false
+  );
+
   return (
     <section
       ref={sectionRef}
@@ -313,7 +324,7 @@ export default function BankHero({
             </ul>
           </div>
 
-          {reduced ? (
+          {!isDesktop || reduced ? (
             <div className="absolute inset-0 p-14 opacity-70">
               <StaticKnowledgeMesh mastery={mastery} />
             </div>

@@ -39,6 +39,7 @@ var (
 	submissionID = "11111111-1111-4111-8111-111111111111"
 	anomalyID    = "22222222-2222-4222-8222-222222222222"
 	tierID       = "33333333-3333-4333-8333-333333333333"
+	postID       = "44444444-4444-4444-8444-444444444444"
 )
 
 func TestWorkspaceIsBoundedAndRepresentsStaleOwnerData(t *testing.T) {
@@ -52,7 +53,7 @@ func TestWorkspaceIsBoundedAndRepresentsStaleOwnerData(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("workspace status = %d: %s", response.StatusCode, payload)
 	}
-	for _, expected := range []string{`"status":"ok"`, `"submissions"`, `"anomaly_tickets"`, `"tier_adjustments"`, `"venue_name":"北苑餐厅"`} {
+	for _, expected := range []string{`"status":"ok"`, `"submissions"`, `"anomaly_tickets"`, `"tier_adjustments"`, `"posts"`, `"venue_name":"北苑餐厅"`} {
 		if !bytes.Contains(payload, []byte(expected)) {
 			t.Fatalf("workspace omitted %s: %s", expected, payload)
 		}
@@ -155,6 +156,200 @@ func TestThreeOperationClassesAreScopedVersionedIdempotentAndAudited(t *testing.
 	}
 }
 
+func TestSubmissionEditIsScopedVersionedIdempotentAndAudited(t *testing.T) {
+	server, pool := newFoodServer(t)
+	defer server.Close()
+	defer pool.Close()
+	seedWorkspace(t, pool)
+
+	body := []byte(fmt.Sprintf(`{"kind":"submission_edit","resource_id":%q,"expected_version":1,"payload":{"note":"修正信息","venue_name":"北苑餐厅（一餐）","campus":"minglun"}}`, submissionID))
+	key := "idem_food_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	responses := make([][]byte, 2)
+	statuses := make([]int, 2)
+	var wait sync.WaitGroup
+	for index := range responses {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			response := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", body, key)
+			statuses[index] = response.StatusCode
+			responses[index] = readBody(t, response)
+		}()
+	}
+	wait.Wait()
+	if statuses[0] != http.StatusOK || statuses[1] != http.StatusOK || fmt.Sprint(decodeData(t, responses[0])) != fmt.Sprint(decodeData(t, responses[1])) {
+		t.Fatalf("idempotent results differ: %d %s / %d %s", statuses[0], responses[0], statuses[1], responses[1])
+	}
+	if !bytes.Contains(responses[0], []byte(`"state":"succeeded"`)) || !bytes.Contains(responses[0], []byte(`"version":2`)) {
+		t.Fatalf("command result = %s", responses[0])
+	}
+	var venueName, status string
+	var campus *string
+	var version int
+	if err := pool.QueryRow(context.Background(), `SELECT venue_name,status,version,campus FROM food_submissions WHERE id=$1`, submissionID).Scan(&venueName, &status, &version, &campus); err != nil {
+		t.Fatal(err)
+	}
+	if venueName != "北苑餐厅（一餐）" || status != "pending" || version != 2 || campus == nil || *campus != "minglun" {
+		t.Fatalf("submission = %q %q v%d campus=%v", venueName, status, version, campus)
+	}
+	var successAudits int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM food_audit_events a JOIN food_operations o ON o.id=a.operation_id WHERE o.idempotency_key=$1 AND a.outcome='succeeded'`, key).Scan(&successAudits); err != nil || successAudits != 1 {
+		t.Fatalf("success audits = %d, %v", successAudits, err)
+	}
+	lookup := readBody(t, send(t, server.URL, "food.review", http.MethodGet, "/api/v1/operations/submission_edit", nil, key))
+	if !bytes.Contains(lookup, []byte(`"state":"succeeded"`)) {
+		t.Fatalf("operation lookup = %s", lookup)
+	}
+	otherActor := readBody(t, sendAs(t, server.URL, "88888888-8888-4888-8888-888888888888", "food.review", http.MethodGet, "/api/v1/operations/submission_edit", nil, key))
+	if !bytes.Contains(otherActor, []byte(`"state":"unknown"`)) {
+		t.Fatalf("cross-actor lookup leaked result: %s", otherActor)
+	}
+	workspace := readBody(t, send(t, server.URL, "food.read", http.MethodGet, "/api/v1/workspace", nil, ""))
+	if !bytes.Contains(workspace, []byte(`"campus":"minglun"`)) {
+		t.Fatalf("workspace omitted edited campus: %s", workspace)
+	}
+}
+
+func TestSubmissionEditRejectsInvalidFieldValuesAndStaleVersion(t *testing.T) {
+	server, pool := newFoodServer(t)
+	defer server.Close()
+	defer pool.Close()
+	seedWorkspace(t, pool)
+
+	badCampus := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", []byte(fmt.Sprintf(`{"kind":"submission_edit","resource_id":%q,"expected_version":1,"payload":{"note":"修正信息","campus":"north"}}`, submissionID)), "idem_bad_campus")
+	if badCampus.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad campus status = %d", badCampus.StatusCode)
+	}
+	emptyEdit := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", []byte(fmt.Sprintf(`{"kind":"submission_edit","resource_id":%q,"expected_version":1,"payload":{"note":"修正信息"}}`, submissionID)), "idem_empty_edit")
+	if emptyEdit.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty edit status = %d", emptyEdit.StatusCode)
+	}
+	overlongVenue := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", []byte(fmt.Sprintf(`{"kind":"submission_edit","resource_id":%q,"expected_version":1,"payload":{"note":"修正信息","venue_name":%q}}`, submissionID, strings.Repeat("长", 161))), "idem_long_venue")
+	if overlongVenue.StatusCode != http.StatusBadRequest {
+		t.Fatalf("overlong venue status = %d", overlongVenue.StatusCode)
+	}
+	stale := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", []byte(fmt.Sprintf(`{"kind":"submission_edit","resource_id":%q,"expected_version":99,"payload":{"note":"修正信息","campus":"jinming"}}`, submissionID)), "idem_stale_edit")
+	if stale.StatusCode != http.StatusConflict {
+		t.Fatalf("stale edit status = %d", stale.StatusCode)
+	}
+	var failedAudits int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM food_audit_events a JOIN food_operations o ON o.id=a.operation_id WHERE o.idempotency_key='idem_stale_edit' AND a.outcome='failed'`).Scan(&failedAudits); err != nil || failedAudits != 1 {
+		t.Fatalf("stale edit audit count = %d, %v", failedAudits, err)
+	}
+	var version int
+	if err := pool.QueryRow(context.Background(), `SELECT version FROM food_submissions WHERE id=$1`, submissionID).Scan(&version); err != nil || version != 1 {
+		t.Fatalf("stale edit mutated version = %d, %v", version, err)
+	}
+}
+
+func TestPostEditIsScopedVersionedIdempotentAndAudited(t *testing.T) {
+	server, pool := newFoodServer(t)
+	defer server.Close()
+	defer pool.Close()
+	seedWorkspace(t, pool)
+
+	body := []byte(fmt.Sprintf(`{"kind":"post_edit","resource_id":%q,"expected_version":1,"payload":{"note":"修正校区与档位","campus":"minglun","tier":"top","hidden":true}}`, postID))
+	key := "idem_food_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	responses := make([][]byte, 2)
+	statuses := make([]int, 2)
+	var wait sync.WaitGroup
+	for index := range responses {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			response := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", body, key)
+			statuses[index] = response.StatusCode
+			responses[index] = readBody(t, response)
+		}()
+	}
+	wait.Wait()
+	if statuses[0] != http.StatusOK || statuses[1] != http.StatusOK || fmt.Sprint(decodeData(t, responses[0])) != fmt.Sprint(decodeData(t, responses[1])) {
+		t.Fatalf("idempotent results differ: %d %s / %d %s", statuses[0], responses[0], statuses[1], responses[1])
+	}
+	if !bytes.Contains(responses[0], []byte(`"state":"succeeded"`)) || !bytes.Contains(responses[0], []byte(`"version":2`)) {
+		t.Fatalf("command result = %s", responses[0])
+	}
+	var venueName, campus, tier string
+	var hidden bool
+	var version int
+	if err := pool.QueryRow(context.Background(), `SELECT venue_name,campus,tier,hidden,version FROM food_posts WHERE id=$1`, postID).Scan(&venueName, &campus, &tier, &hidden, &version); err != nil {
+		t.Fatal(err)
+	}
+	if venueName != "南苑餐厅" || campus != "minglun" || tier != "顶级" || !hidden || version != 2 {
+		t.Fatalf("post = %q %q %q hidden=%v v%d", venueName, campus, tier, hidden, version)
+	}
+	var successAudits int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM food_audit_events a JOIN food_operations o ON o.id=a.operation_id WHERE o.idempotency_key=$1 AND a.outcome='succeeded'`, key).Scan(&successAudits); err != nil || successAudits != 1 {
+		t.Fatalf("success audits = %d, %v", successAudits, err)
+	}
+	lookup := readBody(t, send(t, server.URL, "food.review", http.MethodGet, "/api/v1/operations/post_edit", nil, key))
+	if !bytes.Contains(lookup, []byte(`"state":"succeeded"`)) {
+		t.Fatalf("operation lookup = %s", lookup)
+	}
+	otherActor := readBody(t, sendAs(t, server.URL, "88888888-8888-4888-8888-888888888888", "food.review", http.MethodGet, "/api/v1/operations/post_edit", nil, key))
+	if !bytes.Contains(otherActor, []byte(`"state":"unknown"`)) {
+		t.Fatalf("cross-actor lookup leaked result: %s", otherActor)
+	}
+	workspace := readBody(t, send(t, server.URL, "food.read", http.MethodGet, "/api/v1/workspace", nil, ""))
+	if !bytes.Contains(workspace, []byte(`"campus":"minglun"`)) || !bytes.Contains(workspace, []byte(`"tier":"top"`)) || !bytes.Contains(workspace, []byte(`"hidden":true`)) {
+		t.Fatalf("workspace omitted edited post governance fields: %s", workspace)
+	}
+}
+
+func TestPostEditRejectsInvalidFieldValuesAndStaleVersion(t *testing.T) {
+	server, pool := newFoodServer(t)
+	defer server.Close()
+	defer pool.Close()
+	seedWorkspace(t, pool)
+
+	badTier := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", []byte(fmt.Sprintf(`{"kind":"post_edit","resource_id":%q,"expected_version":1,"payload":{"note":"修正档位","tier":"legendary"}}`, postID)), "idem_bad_tier")
+	if badTier.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad tier status = %d", badTier.StatusCode)
+	}
+	emptyEdit := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", []byte(fmt.Sprintf(`{"kind":"post_edit","resource_id":%q,"expected_version":1,"payload":{"note":"修正档位"}}`, postID)), "idem_empty_post_edit")
+	if emptyEdit.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty post edit status = %d", emptyEdit.StatusCode)
+	}
+	stale := send(t, server.URL, "food.review", http.MethodPost, "/api/v1/commands", []byte(fmt.Sprintf(`{"kind":"post_edit","resource_id":%q,"expected_version":99,"payload":{"note":"修正档位","campus":"longzihu"}}`, postID)), "idem_stale_post_edit")
+	if stale.StatusCode != http.StatusConflict {
+		t.Fatalf("stale post edit status = %d", stale.StatusCode)
+	}
+	var failedAudits int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM food_audit_events a JOIN food_operations o ON o.id=a.operation_id WHERE o.idempotency_key='idem_stale_post_edit' AND a.outcome='failed'`).Scan(&failedAudits); err != nil || failedAudits != 1 {
+		t.Fatalf("stale post edit audit count = %d, %v", failedAudits, err)
+	}
+	var version int
+	if err := pool.QueryRow(context.Background(), `SELECT version FROM food_posts WHERE id=$1`, postID).Scan(&version); err != nil || version != 1 {
+		t.Fatalf("stale post edit mutated version = %d, %v", version, err)
+	}
+}
+
+func TestWorkspaceCampusFilterScopesSubmissionsAndPosts(t *testing.T) {
+	server, pool := newFoodServer(t)
+	defer server.Close()
+	defer pool.Close()
+	seedWorkspace(t, pool)
+	if _, err := pool.Exec(context.Background(), `UPDATE food_submissions SET campus='minglun' WHERE id=$1`, submissionID); err != nil {
+		t.Fatal(err)
+	}
+	all := readBody(t, send(t, server.URL, "food.read", http.MethodGet, "/api/v1/workspace", nil, ""))
+	if !bytes.Contains(all, []byte(`"description":"早餐窗口"`)) || !bytes.Contains(all, []byte(`"review_text":"学生推荐"`)) {
+		t.Fatalf("unfiltered workspace missing rows: %s", all)
+	}
+	minglun := readBody(t, send(t, server.URL, "food.read", http.MethodGet, "/api/v1/workspace?campus=minglun", nil, ""))
+	if !bytes.Contains(minglun, []byte(`"description":"早餐窗口"`)) || bytes.Contains(minglun, []byte(`"review_text":"学生推荐"`)) {
+		t.Fatalf("minglun filter = %s", minglun)
+	}
+	jinming := readBody(t, send(t, server.URL, "food.read", http.MethodGet, "/api/v1/workspace?campus=jinming", nil, ""))
+	if bytes.Contains(jinming, []byte(`"description":"早餐窗口"`)) || !bytes.Contains(jinming, []byte(`"review_text":"学生推荐"`)) {
+		t.Fatalf("jinming filter = %s", jinming)
+	}
+	invalid := send(t, server.URL, "food.read", http.MethodGet, "/api/v1/workspace?campus=north", nil, "")
+	if invalid.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid campus status = %d", invalid.StatusCode)
+	}
+}
+
 func TestCommandsDefaultDenyInvalidScopePayloadAndStaleVersion(t *testing.T) {
 	server, pool := newFoodServer(t)
 	defer server.Close()
@@ -210,9 +405,10 @@ func seedWorkspace(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
 	statements := []string{
-		`INSERT INTO food_submissions(id,venue_name,item_name,description,status,version,submitted_at) VALUES('11111111-1111-4111-8111-111111111111','北苑餐厅','胡辣汤','早餐窗口','pending',1,now()) ON CONFLICT(id) DO UPDATE SET status='pending',version=1,updated_at=now()`,
+		`INSERT INTO food_submissions(id,venue_name,item_name,description,status,version,submitted_at) VALUES('11111111-1111-4111-8111-111111111111','北苑餐厅','胡辣汤','早餐窗口','pending',1,now()) ON CONFLICT(id) DO UPDATE SET venue_name='北苑餐厅',item_name='胡辣汤',description='早餐窗口',status='pending',version=1,updated_at=now()`,
 		`INSERT INTO food_anomaly_tickets(id,venue_name,kind,details,severity,status,version) VALUES('22222222-2222-4222-8222-222222222222','北苑餐厅','duplicate','重复地点','medium','open',1) ON CONFLICT(id) DO UPDATE SET status='open',version=1,updated_at=now()`,
 		`INSERT INTO food_tier_adjustments(id,venue_name,current_tier,proposed_tier,reason,status,version) VALUES('33333333-3333-4333-8333-333333333333','北苑餐厅','standard','recommended','近期评分稳定','pending',1) ON CONFLICT(id) DO UPDATE SET status='pending',version=1,updated_at=now()`,
+		`INSERT INTO food_posts(id,venue_name,campus,tier,review_text,price_reference,hours_reference,author_user_id,author_display_name,hidden,version) VALUES('44444444-4444-4444-8444-444444444444','南苑餐厅','jinming','夯','学生推荐','¥12','10:00-20:00','99999999-9999-4999-8999-999999999999','张三',false,1) ON CONFLICT(id) DO UPDATE SET venue_name='南苑餐厅',campus='jinming',tier='夯',review_text='学生推荐',price_reference='¥12',hours_reference='10:00-20:00',author_display_name='张三',hidden=false,version=1,updated_at=now()`,
 	}
 	for _, statement := range statements {
 		if _, err := pool.Exec(ctx, statement); err != nil {

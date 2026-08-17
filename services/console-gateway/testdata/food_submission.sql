@@ -10,4 +10,4 @@ INSERT INTO food_submissions (
     '2026-08-09T00:00:00Z', '2026-08-09T00:00:00Z'
 )
 ON CONFLICT (id) DO UPDATE SET
-    status = 'pending', version = 1, updated_at = EXCLUDED.updated_at;
+    status = 'pending', version = 1, campus = EXCLUDED.campus, updated_at = EXCLUDED.updated_at;

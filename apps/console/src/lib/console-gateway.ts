@@ -278,16 +278,31 @@ export interface FoodAnomalyTicket {
   version: number;
 }
 
+export type FoodCampus = "minglun" | "jinming" | "longzihu";
+
+export type FoodPostTier = "hang" | "top" | "elite" | "npc" | "bad";
+
+export interface FoodCommandPayload {
+  campus?: FoodCampus;
+  description?: string;
+  hidden?: boolean;
+  hours_reference?: string;
+  item_name?: string;
+  note: string;
+  price_reference?: string;
+  review_text?: string;
+  tier?: FoodPostTier;
+  venue_name?: string;
+}
+
 export interface FoodCommand {
   expected_version: number;
   kind: FoodCommandKind;
-  payload: {
-  note: string;
-};
+  payload: FoodCommandPayload;
   resource_id: string;
 }
 
-export type FoodCommandKind = "submission_approve" | "submission_reject" | "anomaly_resolve" | "anomaly_dismiss" | "tier_adjustment_confirm" | "tier_adjustment_reject";
+export type FoodCommandKind = "submission_approve" | "submission_reject" | "submission_edit" | "post_edit" | "anomaly_resolve" | "anomaly_dismiss" | "tier_adjustment_confirm" | "tier_adjustment_reject";
 
 export interface FoodOperationResult {
   operation: FoodCommandKind;
@@ -296,7 +311,23 @@ export interface FoodOperationResult {
   version?: number;
 }
 
+export interface FoodPost {
+  author_display_name: string;
+  campus: FoodCampus;
+  created_at: string;
+  hidden: boolean;
+  hours_reference: string;
+  id: string;
+  price_reference: string;
+  review_text: string;
+  tier: FoodPostTier;
+  updated_at: string;
+  venue_name: string;
+  version: number;
+}
+
 export interface FoodSubmission {
+  campus: FoodCampus | null;
   description: string;
   id: string;
   item_name: string;
@@ -322,6 +353,7 @@ export interface FoodTierAdjustment {
 export interface FoodWorkspace {
   anomaly_tickets: Array<FoodAnomalyTicket>;
   as_of: string;
+  posts: Array<FoodPost>;
   stale: boolean;
   status: "ok" | "empty" | "stale";
   status_message: string;
@@ -789,19 +821,27 @@ function isFoodAnomalyTicket(value: unknown): value is FoodAnomalyTicket {
 }
 
 function isFoodCommand(value: unknown): value is FoodCommand {
-  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "kind" in value && isFoodCommandKind(value["kind"]) && "payload" in value && isRecord(value["payload"]) && "note" in value["payload"] && typeof value["payload"]["note"] === "string" && value["payload"]["note"].length >= 2 && value["payload"]["note"].length <= 1000 && Object.keys(value["payload"]).every((key) => ["note"].includes(key)) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "kind" in value && isFoodCommandKind(value["kind"]) && "payload" in value && isFoodCommandPayload(value["payload"]) && "resource_id" in value && isUUID(value["resource_id"]) && Object.keys(value).every((key) => ["expected_version","kind","payload","resource_id"].includes(key));
 }
 
 function isFoodCommandKind(value: unknown): value is FoodCommandKind {
-  return typeof value === "string" && ["submission_approve","submission_reject","anomaly_resolve","anomaly_dismiss","tier_adjustment_confirm","tier_adjustment_reject"].includes(value);
+  return typeof value === "string" && ["submission_approve","submission_reject","submission_edit","post_edit","anomaly_resolve","anomaly_dismiss","tier_adjustment_confirm","tier_adjustment_reject"].includes(value);
+}
+
+function isFoodCommandPayload(value: unknown): value is FoodCommandPayload {
+  return isRecord(value) && "note" in value && typeof value["note"] === "string" && value["note"].length >= 2 && value["note"].length <= 1000 && (!("venue_name" in value) || typeof value["venue_name"] === "string" && value["venue_name"].length >= 1 && value["venue_name"].length <= 160) && (!("item_name" in value) || typeof value["item_name"] === "string" && value["item_name"].length >= 1 && value["item_name"].length <= 160) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 2000) && (!("campus" in value) || typeof value["campus"] === "string" && ["minglun","jinming","longzihu"].includes(value["campus"])) && (!("tier" in value) || typeof value["tier"] === "string" && ["hang","top","elite","npc","bad"].includes(value["tier"])) && (!("review_text" in value) || typeof value["review_text"] === "string" && value["review_text"].length >= 2 && value["review_text"].length <= 2000) && (!("price_reference" in value) || typeof value["price_reference"] === "string" && value["price_reference"].length <= 200) && (!("hours_reference" in value) || typeof value["hours_reference"] === "string" && value["hours_reference"].length <= 200) && (!("hidden" in value) || typeof value["hidden"] === "boolean") && Object.keys(value).every((key) => ["note","venue_name","item_name","description","campus","tier","review_text","price_reference","hours_reference","hidden"].includes(key));
 }
 
 function isFoodOperationResult(value: unknown): value is FoodOperationResult {
   return isRecord(value) && "operation" in value && isFoodCommandKind(value["operation"]) && (!("resource_id" in value) || isUUID(value["resource_id"])) && "state" in value && typeof value["state"] === "string" && ["succeeded","unknown"].includes(value["state"]) && (!("version" in value) || typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1) && Object.keys(value).every((key) => ["operation","resource_id","state","version"].includes(key));
 }
 
+function isFoodPost(value: unknown): value is FoodPost {
+  return isRecord(value) && "author_display_name" in value && typeof value["author_display_name"] === "string" && value["author_display_name"].length >= 1 && value["author_display_name"].length <= 120 && "campus" in value && typeof value["campus"] === "string" && ["minglun","jinming","longzihu"].includes(value["campus"]) && "created_at" in value && isDateTime(value["created_at"]) && "hidden" in value && typeof value["hidden"] === "boolean" && "hours_reference" in value && typeof value["hours_reference"] === "string" && value["hours_reference"].length <= 200 && "id" in value && isUUID(value["id"]) && "price_reference" in value && typeof value["price_reference"] === "string" && value["price_reference"].length <= 200 && "review_text" in value && typeof value["review_text"] === "string" && value["review_text"].length >= 2 && value["review_text"].length <= 2000 && "tier" in value && typeof value["tier"] === "string" && ["hang","top","elite","npc","bad"].includes(value["tier"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["author_display_name","campus","created_at","hidden","hours_reference","id","price_reference","review_text","tier","updated_at","venue_name","version"].includes(key));
+}
+
 function isFoodSubmission(value: unknown): value is FoodSubmission {
-  return isRecord(value) && "description" in value && typeof value["description"] === "string" && value["description"].length <= 2000 && "id" in value && isUUID(value["id"]) && "item_name" in value && typeof value["item_name"] === "string" && value["item_name"].length <= 160 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "submitted_at" in value && isDateTime(value["submitted_at"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["description","id","item_name","status","submitted_at","updated_at","venue_name","version"].includes(key));
+  return isRecord(value) && "campus" in value && (value["campus"] === null || typeof value["campus"] === "string" && ["minglun","jinming","longzihu"].includes(value["campus"])) && "description" in value && typeof value["description"] === "string" && value["description"].length <= 2000 && "id" in value && isUUID(value["id"]) && "item_name" in value && typeof value["item_name"] === "string" && value["item_name"].length <= 160 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "submitted_at" in value && isDateTime(value["submitted_at"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["campus","description","id","item_name","status","submitted_at","updated_at","venue_name","version"].includes(key));
 }
 
 function isFoodTierAdjustment(value: unknown): value is FoodTierAdjustment {
@@ -809,7 +849,7 @@ function isFoodTierAdjustment(value: unknown): value is FoodTierAdjustment {
 }
 
 function isFoodWorkspace(value: unknown): value is FoodWorkspace {
-  return isRecord(value) && "anomaly_tickets" in value && Array.isArray(value["anomaly_tickets"]) && value["anomaly_tickets"].length <= 200 && value["anomaly_tickets"].every((item) => isFoodAnomalyTicket(item)) && "as_of" in value && isDateTime(value["as_of"]) && "stale" in value && typeof value["stale"] === "boolean" && "status" in value && typeof value["status"] === "string" && ["ok","empty","stale"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && "submissions" in value && Array.isArray(value["submissions"]) && value["submissions"].length <= 200 && value["submissions"].every((item) => isFoodSubmission(item)) && "tier_adjustments" in value && Array.isArray(value["tier_adjustments"]) && value["tier_adjustments"].length <= 200 && value["tier_adjustments"].every((item) => isFoodTierAdjustment(item)) && Object.keys(value).every((key) => ["anomaly_tickets","as_of","stale","status","status_message","submissions","tier_adjustments"].includes(key));
+  return isRecord(value) && "anomaly_tickets" in value && Array.isArray(value["anomaly_tickets"]) && value["anomaly_tickets"].length <= 200 && value["anomaly_tickets"].every((item) => isFoodAnomalyTicket(item)) && "as_of" in value && isDateTime(value["as_of"]) && "posts" in value && Array.isArray(value["posts"]) && value["posts"].length <= 200 && value["posts"].every((item) => isFoodPost(item)) && "stale" in value && typeof value["stale"] === "boolean" && "status" in value && typeof value["status"] === "string" && ["ok","empty","stale"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && "submissions" in value && Array.isArray(value["submissions"]) && value["submissions"].length <= 200 && value["submissions"].every((item) => isFoodSubmission(item)) && "tier_adjustments" in value && Array.isArray(value["tier_adjustments"]) && value["tier_adjustments"].length <= 200 && value["tier_adjustments"].every((item) => isFoodTierAdjustment(item)) && Object.keys(value).every((key) => ["anomaly_tickets","as_of","posts","stale","status","status_message","submissions","tier_adjustments"].includes(key));
 }
 
 function isLibraryCommand(value: unknown): value is LibraryCommand {
@@ -1160,9 +1200,9 @@ export async function resolveLibraryOperation(operation: LibraryCommandKind, ide
 
 export type FoodWorkspaceResult = { state: "authenticated"; workspace: FoodWorkspace } | { state: "signed_out" | "denied" | "unavailable" };
 
-export async function fetchFoodWorkspace(): Promise<FoodWorkspaceResult> {
+export async function fetchFoodWorkspace(campus?: FoodCampus): Promise<FoodWorkspaceResult> {
   try {
-    const response = await fetch("/api/v1/food", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await fetch(`/api/v1/food${campus ? `?campus=${campus}` : ""}`, { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };

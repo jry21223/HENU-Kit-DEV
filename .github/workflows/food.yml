@@ -57,10 +57,19 @@ jobs:
           psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -c "CREATE TABLE baseline_probe(id integer PRIMARY KEY); INSERT INTO baseline_probe VALUES(1)"
           psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000001_food_operations.up.sql
           psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000001_food_operations.up.sql
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000002_food_posts.up.sql
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000003_food_submission_campus.up.sql
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000004_food_post_version.up.sql
           test "$(psql -h localhost -U food -d food_test -Atc "SELECT to_regclass('public.food_operations') IS NOT NULL AND to_regclass('public.food_submissions') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
           pg_dump -h localhost -U food -d food_test --format=custom --file=/tmp/food-recovery.dump
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000004_food_post_version.down.sql
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000003_food_submission_campus.down.sql
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000002_food_posts.down.sql
           psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000001_food_operations.down.sql
           psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000001_food_operations.up.sql
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000002_food_posts.up.sql
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000003_food_submission_campus.up.sql
+          psql -h localhost -U food -d food_test -v ON_ERROR_STOP=1 -f services/food/db/migrations/000004_food_post_version.up.sql
           createdb -h localhost -U food food_recovery
           pg_restore -h localhost -U food -d food_recovery --no-owner /tmp/food-recovery.dump
           test "$(psql -h localhost -U food -d food_recovery -Atc "SELECT to_regclass('public.food_audit_events') IS NOT NULL")" = t

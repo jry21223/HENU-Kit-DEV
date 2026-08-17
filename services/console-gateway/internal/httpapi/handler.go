@@ -75,7 +75,7 @@ type libraryClient interface {
 }
 
 type foodClient interface {
-	Workspace(context.Context, string) (json.RawMessage, error)
+	Workspace(context.Context, string, string) (json.RawMessage, error)
 	Command(context.Context, string, string, []byte) (json.RawMessage, error)
 	Operation(context.Context, string, string, string) (json.RawMessage, error)
 }
@@ -234,7 +234,7 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 
 func foodPermission(operation string) (string, bool) {
 	switch {
-	case operation == "submission_approve" || operation == "submission_reject":
+	case operation == "submission_approve" || operation == "submission_reject" || operation == "submission_edit" || operation == "post_edit":
 		return "food.review", true
 	case operation == "anomaly_resolve" || operation == "anomaly_dismiss":
 		return "food.anomaly", true
@@ -250,7 +250,7 @@ func (h *Handler) getFoodWorkspace(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
-	data, err := h.food.Workspace(foodapi.WithRequestID(request.Context(), requestID(request)), value.UserID)
+	data, err := h.food.Workspace(foodapi.WithRequestID(request.Context(), requestID(request)), value.UserID, request.URL.Query().Get("campus"))
 	h.writeFoodResult(writer, request, data, err)
 }
 
@@ -441,7 +441,7 @@ func (h *Handler) searchAccountMemberships(writer http.ResponseWriter, request *
 	select {
 	case <-done:
 	case <-ctx.Done():
-		h.unavailable(writer, request, errors.New("Account Portfolio membership aggregation timed out"))
+		h.unavailable(writer, request, errors.New("account portfolio membership aggregation timed out"))
 		return
 	}
 	if firstErr != nil {

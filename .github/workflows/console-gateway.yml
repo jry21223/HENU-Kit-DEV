@@ -118,6 +118,9 @@ jobs:
         run: |
           set -euo pipefail
           psql -h localhost -U food -d food_integration -v ON_ERROR_STOP=1 -f services/food/db/migrations/000001_food_operations.up.sql
+          psql -h localhost -U food -d food_integration -v ON_ERROR_STOP=1 -f services/food/db/migrations/000002_food_posts.up.sql
+          psql -h localhost -U food -d food_integration -v ON_ERROR_STOP=1 -f services/food/db/migrations/000003_food_submission_campus.up.sql
+          psql -h localhost -U food -d food_integration -v ON_ERROR_STOP=1 -f services/food/db/migrations/000004_food_post_version.up.sql
           psql -h localhost -U food -d food_integration -v ON_ERROR_STOP=1 -f services/console-gateway/testdata/food_submission.sql
           (cd services/food && go build -o /tmp/food-integration ./cmd/server)
           /tmp/food-integration >/tmp/food-integration.log 2>&1 &

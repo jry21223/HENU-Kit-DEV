@@ -4,22 +4,32 @@ const session = { user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" }, access_c
 let approved = false;
 let anomalyResolved = false;
 let tierConfirmed = false;
+let submissionEdited = false;
+let postEdited = false;
 let lookupCalls = 0;
 let submissionCommandCount = 0;
 
 function workspace() {
   return { status: "stale", status_message: "Food 数据可能已过期", stale: true, as_of: "2026-07-19T22:00:00Z",
-    submissions: approved ? [] : [{ id: "11111111-1111-4111-8111-111111111111", venue_name: "北苑餐厅", item_name: "胡辣汤", description: "早餐窗口", status: "pending", version: 1, submitted_at: "2026-07-20T00:00:00Z", updated_at: "2026-07-20T00:00:00Z" }],
+    submissions: approved ? [] : [{ id: "11111111-1111-4111-8111-111111111111", venue_name: submissionEdited ? "北苑餐厅（一餐）" : "北苑餐厅", item_name: "胡辣汤", description: "早餐窗口", campus: submissionEdited ? "minglun" : null, status: "pending", version: submissionEdited ? 2 : 1, submitted_at: "2026-07-20T00:00:00Z", updated_at: "2026-07-20T00:00:00Z" }],
     anomaly_tickets: anomalyResolved ? [] : [{ id: "22222222-2222-4222-8222-222222222222", venue_name: "北苑餐厅", kind: "duplicate", details: "重复地点", severity: "medium", status: "open", version: 1, created_at: "2026-07-20T00:00:00Z", updated_at: "2026-07-20T00:00:00Z" }],
-    tier_adjustments: tierConfirmed ? [] : [{ id: "33333333-3333-4333-8333-333333333333", venue_name: "北苑餐厅", current_tier: "standard", proposed_tier: "recommended", reason: "近期评分稳定", status: "pending", version: 1, created_at: "2026-07-20T00:00:00Z", updated_at: "2026-07-20T00:00:00Z" }] };
+    tier_adjustments: tierConfirmed ? [] : [{ id: "33333333-3333-4333-8333-333333333333", venue_name: "北苑餐厅", current_tier: "standard", proposed_tier: "recommended", reason: "近期评分稳定", status: "pending", version: 1, created_at: "2026-07-20T00:00:00Z", updated_at: "2026-07-20T00:00:00Z" }],
+    posts: [{ id: "44444444-4444-4444-8444-444444444444", venue_name: postEdited ? "南苑餐厅（一餐）" : "南苑餐厅", campus: postEdited ? "minglun" : "jinming", tier: postEdited ? "top" : "hang", review_text: "学生推荐", price_reference: "¥12", hours_reference: "10:00-20:00", author_display_name: "张三", hidden: postEdited, version: postEdited ? 2 : 1, created_at: "2026-07-19T10:00:00Z", updated_at: "2026-07-19T10:00:00Z" }] };
 }
 
 test.beforeEach(async ({ page }) => {
-  approved = anomalyResolved = tierConfirmed = false;
+  approved = anomalyResolved = tierConfirmed = submissionEdited = postEdited = false;
   lookupCalls = 0;
   submissionCommandCount = 0;
   await page.route("**/api/v1/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_food_session" }) }));
-  await page.route("**/api/v1/food", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: workspace(), request_id: "req_food_workspace" }) }));
+  await page.route(new RegExp("^.*/api/v1/food(\\?.*)?$"), (route) => {
+    const campus = new URL(route.request().url()).searchParams.get("campus") ?? "";
+    let data = workspace();
+    if (campus) {
+      data = { ...data, submissions: data.submissions.filter((item) => item.campus === campus), posts: data.posts.filter((item) => item.campus === campus) };
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data, request_id: "req_food_workspace" }) });
+  });
   await page.route("**/api/v1/food/commands", async (route) => {
     const input = await route.request().postDataJSON();
     expect(route.request().headers()["idempotency-key"]).toMatch(new RegExp(`^idem_food_${input.kind}_`));
@@ -29,6 +39,19 @@ test.beforeEach(async ({ page }) => {
       submissionCommandCount += 1;
       await new Promise((resolve) => setTimeout(resolve, 150));
       return route.abort("connectionreset");
+    }
+    if (input.kind === "submission_edit") {
+      expect(input.payload.venue_name).toBe("北苑餐厅（一餐）");
+      expect(input.payload.campus).toBe("minglun");
+      expect(input.payload.note).toBe("修正店名并分配校区");
+      submissionEdited = true;
+    }
+    if (input.kind === "post_edit") {
+      expect(input.payload.campus).toBe("minglun");
+      expect(input.payload.tier).toBe("top");
+      expect(input.payload.hidden).toBe(true);
+      expect(input.payload.note).toBe("修正校区档位并隐藏");
+      postEdited = true;
     }
     if (input.kind === "anomaly_resolve") anomalyResolved = true;
     if (input.kind === "tier_adjustment_confirm") tierConfirmed = true;
@@ -97,3 +120,59 @@ test("Food review retry reuses the original idempotency key", async ({ page }) =
   expect(keys[0]).toBeTruthy();
   expect(keys[1]).toBe(keys[0]);
 });
+
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+  test(`${viewport.name} Food ops edit a pending submission with campus`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/food");
+    await expect(page.getByText("早餐窗口 · 未分配 · v1")).toBeVisible();
+    await page.getByRole("button", { name: "编辑投稿" }).click();
+    await page.getByLabel("店名").fill("北苑餐厅（一餐）");
+    await page.getByLabel("投稿校区").selectOption("minglun");
+    await page.getByLabel("操作理由").fill("修正店名并分配校区");
+    await page.getByRole("button", { name: "保存修改" }).click();
+    await expect(page.getByText("投稿信息已更新。", { exact: true })).toBeVisible();
+    await expect(page.getByText("北苑餐厅（一餐） · 胡辣汤")).toBeVisible();
+    await expect(page.getByText("早餐窗口 · 明伦 · v2")).toBeVisible();
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+}
+
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+  test(`${viewport.name} Food ops edit a published post with campus tier and hidden`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/food");
+    await expect(page.getByText("南苑餐厅 · 金明 · 夯")).toBeVisible();
+    await page.getByRole("button", { name: "编辑已发布投稿" }).click();
+    await page.getByLabel("投稿校区").selectOption("minglun");
+    await page.getByLabel("档位").selectOption("top");
+    await page.getByLabel("隐藏此投稿（公开榜单不再展示）").check();
+    await page.getByLabel("操作理由").fill("修正校区档位并隐藏");
+    await page.getByRole("button", { name: "保存修改" }).click();
+    await expect(page.getByText("投稿信息已更新。", { exact: true })).toBeVisible();
+    await expect(page.getByText("南苑餐厅（一餐） · 明伦 · 顶级")).toBeVisible();
+    await expect(page.getByText("学生推荐 · 张三 · 已隐藏 · v2")).toBeVisible();
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+}
+
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+  test(`${viewport.name} Food ops filter workspace by campus`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/food");
+    await expect(page.getByText("早餐窗口 · 未分配 · v1")).toBeVisible();
+    await expect(page.getByText("南苑餐厅 · 金明 · 夯")).toBeVisible();
+    await page.getByLabel("校区筛选").selectOption("minglun");
+    await expect(page.getByText("暂无待审核投稿")).toBeVisible();
+    await expect(page.getByText("暂无已发布投稿")).toBeVisible();
+    await page.getByLabel("校区筛选").selectOption("jinming");
+    await expect(page.getByText("南苑餐厅 · 金明 · 夯")).toBeVisible();
+    await expect(page.getByText("暂无待审核投稿")).toBeVisible();
+    await page.getByLabel("校区筛选").selectOption("");
+    await expect(page.getByText("早餐窗口 · 未分配 · v1")).toBeVisible();
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+  });
+}

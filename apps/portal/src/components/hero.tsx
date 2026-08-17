@@ -30,6 +30,19 @@ function useReducedMotion() {
   );
 }
 
+/** 订阅桌面端视口（与 3D 场景容器的 md: 断点一致；SSR 首屏按移动端处理，避免 3D 闪现） */
+function useDesktop() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia("(min-width: 768px)");
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(min-width: 768px)").matches,
+    () => false
+  );
+}
+
 /** reduced-motion 时替代 3D 场景的静态 SVG 图纸网格 */
 function StaticBlueprint() {
   return (
@@ -55,6 +68,7 @@ export default function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
+  const isDesktop = useDesktop();
   // Hero 有任何一部分在视窗内才驱动 3D 渲染循环
   const [inView, setInView] = useState(true);
 
@@ -130,12 +144,12 @@ export default function Hero() {
       <span aria-hidden className="absolute bottom-24 left-6 font-mono text-lg text-ink/40">+</span>
       <span aria-hidden className="absolute bottom-24 right-6 font-mono text-lg text-accent">+</span>
 
-      {/* 3D 场景 / 静态替代：常驻 Hero，不做滚动淡出 */}
+      {/* 3D 场景 / 静态替代：常驻 Hero，不做滚动淡出。WebGL 只对桌面端渲染，移动端统一用静态图纸 SVG */}
       <div
         ref={sceneRef}
         className="pointer-events-none absolute inset-y-0 right-0 w-full md:w-[55%]"
       >
-        {reduced ? (
+        {!isDesktop || reduced ? (
           <div className="h-full w-full p-16 opacity-60">
             <StaticBlueprint />
           </div>
