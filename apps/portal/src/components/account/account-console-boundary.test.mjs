@@ -41,7 +41,12 @@ test("account navigation exposes only delivered Account Portfolio capabilities",
   const layout = await readConsoleSource("layout.tsx");
 
   assert.match(layout, /href: "\/account\/membership"/);
-  assert.doesNotMatch(layout, /href: "\/account\/(posts|deals)"/);
+  // "我的投稿" was delivered with the Food submission loop (#384), so the nav is
+  // expected to expose it; src/lib/food/myposts.test.ts and
+  // tests/account-food-posts.spec.ts cover the capability behind it.
+  assert.match(layout, /href: "\/account\/posts"/);
+  // Deals remain undelivered and must not be advertised in the account nav.
+  assert.doesNotMatch(layout, /href: "\/account\/deals"/);
 });
 
 test("legacy auth helpers retain no account dashboard fixtures", async () => {

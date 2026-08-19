@@ -17,12 +17,16 @@
     "build:quizcraft": "pnpm --filter quiz-app run build",
     "lint": "pnpm --filter @final-review/web run lint && pnpm --filter @henukit/portal run lint && pnpm --filter @henukit/console run lint && pnpm --filter quiz-app run lint",
     "lint:all": "pnpm run lint && pnpm --filter @henukit/study-legacy-admin run lint",
-    "test": "pnpm run test:libraryctl && pnpm run test:ops && pnpm run test:web-ui && pnpm run test:console && pnpm run test:quizcraft",
+    "test": "pnpm run test:libraryctl && pnpm run test:ops && pnpm run test:portal && pnpm run test:console && pnpm run test:quizcraft",
     "test:libraryctl": "node --test scripts/libraryctl/tests/*.test.mjs",
     "test:ops": "node --test scripts/ops/tests/*.test.mjs",
     "test:web-ui": "pnpm --filter @final-review/web run test:e2e:ui",
     "test:console": "pnpm --filter @henukit/console run test && pnpm --filter @henukit/console run test:e2e",
-    "test:quizcraft": "pnpm --filter quiz-app run test:syntax"
+    "test:quizcraft": "pnpm --filter quiz-app run test:syntax",
+    "test:portal": "pnpm --filter @henukit/portal run test && pnpm --filter @henukit/portal run test:unit",
+    "test:go": "for module in services/*/; do (cd \"$module\" && go test -count=1 ./...) || exit 1; done",
+    "test:py": "(cd products/quizcraft && PYTHONPATH=. python3 -m pytest -q tests/) && (cd integrations/langbot-sales-agent && PYTHONPATH=. python3 -m pytest -q tests/)",
+    "test:all": "pnpm run test && pnpm run test:go && pnpm run test:py"
   },
   "devDependencies": {
     "typescript": "5.9.3"

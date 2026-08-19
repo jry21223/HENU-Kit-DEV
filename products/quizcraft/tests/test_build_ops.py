@@ -10,8 +10,8 @@ import pytest
 def test_build_ops_rejects_unapproved_static_dir_with_portable_error(tmp_path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    fake_npm = fake_bin / "npm"
-    fake_npm.write_text(
+    fake_pnpm = fake_bin / "pnpm"
+    fake_pnpm.write_text(
         """#!/bin/sh
 mkdir -p dist/assets
 printf '<html></html>\\n' > dist/index.html
@@ -19,7 +19,7 @@ printf 'bundle\\n' > dist/assets/index.js
 """,
         encoding="utf-8",
     )
-    fake_npm.chmod(fake_npm.stat().st_mode | stat.S_IXUSR)
+    fake_pnpm.chmod(fake_pnpm.stat().st_mode | stat.S_IXUSR)
 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
@@ -45,8 +45,8 @@ def test_build_ops_accepts_documented_static_root_before_directory_check(tmp_pat
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    fake_npm = fake_bin / "npm"
-    fake_npm.write_text(
+    fake_pnpm = fake_bin / "pnpm"
+    fake_pnpm.write_text(
         """#!/bin/sh
 mkdir -p dist/assets
 printf '<html></html>\\n' > dist/index.html
@@ -54,7 +54,7 @@ printf 'bundle\\n' > dist/assets/index.js
 """,
         encoding="utf-8",
     )
-    fake_npm.chmod(fake_npm.stat().st_mode | stat.S_IXUSR)
+    fake_pnpm.chmod(fake_pnpm.stat().st_mode | stat.S_IXUSR)
 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
@@ -77,8 +77,8 @@ printf 'bundle\\n' > dist/assets/index.js
 def test_build_ops_static_dir_validation_does_not_require_python(tmp_path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    fake_npm = fake_bin / "npm"
-    fake_npm.write_text(
+    fake_pnpm = fake_bin / "pnpm"
+    fake_pnpm.write_text(
         """#!/bin/sh
 mkdir -p dist/assets
 printf '<html></html>\\n' > dist/index.html
@@ -86,7 +86,7 @@ printf 'bundle\\n' > dist/assets/index.js
 """,
         encoding="utf-8",
     )
-    fake_npm.chmod(fake_npm.stat().st_mode | stat.S_IXUSR)
+    fake_pnpm.chmod(fake_pnpm.stat().st_mode | stat.S_IXUSR)
 
     for tool in ("bash", "cat", "cp", "dirname", "mkdir", "pwd", "rm"):
         source = shutil.which(tool)

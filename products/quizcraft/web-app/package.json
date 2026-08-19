@@ -11,9 +11,10 @@
     "preview": "vite preview",
     "preview:ops": "vite preview --mode ops",
     "lint": "eslint . --ext ts,tsx",
-    "test:syntax": "node scripts/check-admin-session.mjs && node scripts/check-answer-submission.mjs && node scripts/check-code-syntax-scope.mjs && node scripts/check-cutover-rollout.mjs && node scripts/check-favorites-no-local-fallback.mjs && node scripts/check-feedback-no-legacy-fallback.mjs && node scripts/check-quiz-auto-advance.mjs && node scripts/check-option-layout.mjs && node scripts/check-quiz-visual-states.mjs",
+    "test:syntax": "node scripts/check-admin-session.mjs && node scripts/check-answer-submission.mjs && node scripts/check-code-syntax-scope.mjs && node scripts/check-cutover-rollout.mjs && node scripts/check-favorites-no-local-fallback.mjs && node scripts/check-feedback-no-legacy-fallback.mjs && node scripts/check-quiz-auto-advance.mjs && node scripts/check-option-layout.mjs && node scripts/check-quiz-visual-states.mjs && pnpm run test:unit",
     "test:browser:practice": "playwright test tests/browser/practice-shadow.spec.ts",
-    "test:browser:legacy-ranking": "QUIZCRAFT_E2E_RANKING_DARK=1 playwright test tests/browser/legacy-ranking.spec.ts"
+    "test:browser:legacy-ranking": "QUIZCRAFT_E2E_RANKING_DARK=1 playwright test tests/browser/legacy-ranking.spec.ts",
+    "test:unit": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "axios": "^1.18.1",

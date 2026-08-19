@@ -157,7 +157,7 @@ jobs:
           python -m pip install -r products/quizcraft/requirements.txt pytest
           python -m py_compile products/quizcraft/server.py products/quizcraft/db_storage.py
           cd products/quizcraft
-          PYTHONPATH=. python -m pytest -q tests/test_shadow_compare.py tests/test_migration_event_outbox.py tests/test_feedback_migration_boundary.py tests/test_cutover_read_only.py tests/test_ranking_privacy.py
+          PYTHONPATH=. python -m pytest -q tests/
       - name: Verify React generated-client shadow flow
         run: |
           set -euo pipefail

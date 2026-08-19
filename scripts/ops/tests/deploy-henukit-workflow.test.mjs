@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -88,10 +88,14 @@ test("release artifacts carry an exact-SHA Account mock-free boundary manifest",
   );
 });
 
-test("release-contract CI exercises the production artifact deployment seam", () => {
-  assert.match(
-    workflow,
-    /scripts\/ops\/tests\/deploy-henukit-artifact\.test\.mjs/,
+test("release-contract CI exercises every ops test, including the artifact deployment seam", () => {
+  // The run list is globbed rather than enumerated so a newly added ops test can
+  // never be silently excluded from CI. A glob strictly implies that the artifact
+  // deployment seam test runs, so assert the glob and the file's existence.
+  assert.match(workflow, /node --test scripts\/ops\/tests\/\*\.test\.mjs/);
+  assert.ok(
+    existsSync(new URL("./deploy-henukit-artifact.test.mjs", import.meta.url)),
+    "the artifact deployment seam test must exist for the glob to cover it",
   );
 });
 

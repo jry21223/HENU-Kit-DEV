@@ -1,0 +1,136 @@
+name: Nightly regression
+
+# Per-service workflows are aggressively path-filtered, so a change outside a
+# service's own subtree (a shared contract, a lockfile, a base image) never
+# triggers its tests. docs/DEVELOPMENT.md documents a daily full regression as
+# the safety net that makes those path filters legitimate; this workflow is it.
+#
+# It also runs the suites no pull-request workflow covers at all:
+# services/api, services/worker, services/career-mcp, services/food-mcp and
+# integrations/langbot-sales-agent.
+#
+# Coverage profiles are collected here rather than on the pull-request path so
+# they never slow a review down. They are published as artifacts, not gates —
+# there is no baseline to ratchet against yet.
+
+on:
+  schedule:
+    # 02:00 China Standard Time (UTC+8).
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go-${{ matrix.service }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - account-portfolio
+          - api
+          - career-mcp
+          - career-opportunities
+          - console-gateway
+          - deploy-webhook
+          - food
+          - food-mcp
+          - library
+          - notice
+          - platform-core
+          - portal-api
+          - portal-gateway
+          - portal-summary
+          - worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/${{ matrix.service }}/go.mod
+          cache-dependency-path: services/${{ matrix.service }}/go.sum
+      # Services that need PostgreSQL or Redis start their own containers via
+      # testcontainers, which uses the runner's Docker daemon. No service block
+      # is needed here.
+      - name: Test with coverage
+        working-directory: services/${{ matrix.service }}
+        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Summarize coverage
+        working-directory: services/${{ matrix.service }}
+        run: go tool cover -func=coverage.out | tail -1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-go-${{ matrix.service }}
+          path: services/${{ matrix.service }}/coverage.out
+          if-no-files-found: warn
+
+  python:
+    name: python-${{ matrix.suite.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: quizcraft
+            directory: products/quizcraft
+            package: .
+          - name: langbot-sales-agent
+            directory: integrations/langbot-sales-agent
+            package: final_review_sales
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ${{ matrix.suite.directory }}/requirements.txt
+      - name: Install dependencies
+        working-directory: ${{ matrix.suite.directory }}
+        run: python -m pip install -r requirements.txt pytest pytest-cov
+      - name: Test with coverage
+        working-directory: ${{ matrix.suite.directory }}
+        run: PYTHONPATH=. python -m pytest -q tests/ --cov=${{ matrix.suite.package }} --cov-report=term --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-${{ matrix.suite.name }}
+          path: ${{ matrix.suite.directory }}/coverage.xml
+          if-no-files-found: warn
+
+  node:
+    name: node-unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.9.0 --activate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify ops and libraryctl scripts
+        run: |
+          node --test scripts/ops/tests/*.test.mjs
+          node --test scripts/libraryctl/tests/*.test.mjs
+      - name: Verify Portal unit behavior with coverage
+        run: pnpm --filter @henukit/portal run test:coverage
+      - name: Verify Portal unit contracts
+        run: pnpm --filter @henukit/portal run test:unit
+      - name: Verify Console unit behavior with coverage
+        run: pnpm --filter @henukit/console run test:coverage
+      - name: Verify QuizCraft web-app unit behavior
+        run: pnpm --filter quiz-app run test:unit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-node
+          path: |
+            apps/portal/coverage/**
+            apps/console/coverage/**
+          if-no-files-found: warn

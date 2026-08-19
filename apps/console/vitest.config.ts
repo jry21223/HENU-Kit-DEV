@@ -8,5 +8,13 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.spec.ts"],
+    coverage: {
+      // The environment is jsdom, so components are reachable as well as the
+      // lib modules. An explicit include is required or files no test imports
+      // are left out of the report entirely.
+      include: ["src/**/*.ts", "src/**/*.vue"],
+      exclude: ["**/*.spec.ts", "src/main.ts", "src/vite-env.d.ts"],
+      reporter: ["text", "json-summary", "html"],
+    },
   },
 });
