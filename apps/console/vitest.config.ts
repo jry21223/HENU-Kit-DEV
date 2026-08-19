@@ -13,7 +13,16 @@ export default defineConfig({
       // lib modules. An explicit include is required or files no test imports
       // are left out of the report entirely.
       include: ["src/**/*.ts", "src/**/*.vue"],
-      exclude: ["**/*.spec.ts", "src/main.ts", "src/vite-env.d.ts"],
+      exclude: [
+        "**/*.spec.ts",
+        "src/main.ts",
+        "src/vite-env.d.ts",
+        // Generated from console-gateway.yaml. Its correctness is guaranteed by
+        // codegen plus the regenerate-and-diff gate in console-gateway.yml, not
+        // by hand-written tests, and 1,300 lines of generated type guards would
+        // otherwise dominate the percentage.
+        "src/lib/console-gateway.ts",
+      ],
       reporter: ["text", "json-summary", "html"],
     },
   },
