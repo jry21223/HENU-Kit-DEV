@@ -27,6 +27,20 @@ jobs:
     name: go-${{ matrix.service }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # Only services/portal-api reads this; the others provision their own
+      # containers through testcontainers or need no database at all.
+      PORTAL_API_TEST_DATABASE_URL: postgres://portal:portal@localhost:5432/portal_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_DB: portal_test, POSTGRES_USER: portal, POSTGRES_PASSWORD: portal }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U portal -d portal_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
     strategy:
       fail-fast: false
       matrix:
