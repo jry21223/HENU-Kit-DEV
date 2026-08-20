@@ -265,8 +265,8 @@ const consoleNav = computed(() =>
       <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <PlatformOperationsView v-if="isPlatformOperations" :auth-state="authState" />
         <NoticeOperationsView v-else-if="isNoticeOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
-        <LibraryOperationsView v-else-if="isLibraryOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
-        <FoodOperationsView v-else-if="isFoodOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
+        <LibraryOperationsView v-else-if="isLibraryOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
+        <FoodOperationsView v-else-if="isFoodOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountMembershipOperationsView v-else-if="isAccountMembershipOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountPointOperationsView v-else-if="isAccountPointOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountTicketOperationsView v-else-if="isAccountTicketOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />

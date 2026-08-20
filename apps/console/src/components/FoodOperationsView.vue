@@ -4,13 +4,13 @@ import { computed, ref, watch } from "vue";
 import { Button, Card, Input, Label, PageHeader, Textarea } from "@/components/ui";
 import { executeFoodCommand, fetchFoodWorkspace, resolveFoodOperation, type FoodAnomalyTicket, type FoodCampus, type FoodCommand, type FoodCommandKind, type FoodCommandPayload, type FoodPost, type FoodPostTier, type FoodSubmission, type FoodTierAdjustment, type FoodWorkspace, type FoodWriteResult } from "@/lib/console-gateway";
 
-const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; permissions: string[] }>();
+const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; operatorID?: string; permissions: string[] }>();
 const workspace = ref<FoodWorkspace>();
 const state = ref<"loading" | "ready" | "denied" | "unavailable">("loading");
 const feedback = ref("");
 const busy = ref(false);
 const campusFilter = ref<FoodCampus | "">("");
-type PendingOperation = { kind: FoodCommandKind; key: string; input: FoodCommand; success: string };
+type PendingOperation = { kind: FoodCommandKind; operatorID: string; key: string; input: FoodCommand; success: string };
 type ConfirmTarget = { kind: FoodCommandKind; resourceID: string; version: number; title: string; confirmLabel: string; success: string; requireReason: boolean; extraPayload?: Partial<FoodCommandPayload> };
 type EditTarget = { resourceID: string; version: number; original: { venueName: string; itemName: string; description: string; campus: FoodCampus | "" } };
 type PostEditTarget = { resourceID: string; version: number; original: { venueName: string; campus: FoodCampus; tier: FoodPostTier; reviewText: string; priceReference: string; hoursReference: string; hidden: boolean } };
@@ -43,10 +43,22 @@ function persistPending(value?: PendingOperation) {
   pending.value = value;
   if (value) sessionStorage.setItem(pendingStorageKey, JSON.stringify(value)); else sessionStorage.removeItem(pendingStorageKey);
 }
-try {
-  const stored = JSON.parse(sessionStorage.getItem(pendingStorageKey) ?? "null") as Partial<PendingOperation> | null;
-  if (stored && typeof stored.kind === "string" && foodCommandKinds.includes(stored.kind as FoodCommandKind) && typeof stored.key === "string" && typeof stored.success === "string" && !!stored.input && typeof stored.input === "object" && (stored.input as FoodCommand).kind === stored.kind) pending.value = stored as PendingOperation;
-} catch { sessionStorage.removeItem(pendingStorageKey); }
+// sessionStorage survives a same-tab account switch, so an unconfirmed command
+// left behind by one operator must never be offered to the next one: replaying
+// it would apply their decision under this session and attribute it to them in
+// the audit trail. Mirrors restorePending in AccountMembershipOperationsView.
+function restorePending(operatorID: string) {
+  if (pending.value?.operatorID === operatorID) return;
+  pending.value = undefined;
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(pendingStorageKey) ?? "null") as Partial<PendingOperation> | null;
+    if (!stored || typeof stored.kind !== "string" || !foodCommandKinds.includes(stored.kind as FoodCommandKind) || stored.operatorID !== operatorID || typeof stored.key !== "string" || typeof stored.success !== "string" || !stored.input || typeof stored.input !== "object" || (stored.input as FoodCommand).kind !== stored.kind) {
+      sessionStorage.removeItem(pendingStorageKey);
+      return;
+    }
+    pending.value = stored as PendingOperation;
+  } catch { sessionStorage.removeItem(pendingStorageKey); }
+}
 
 async function refresh() {
   if (props.authState !== "authenticated") { state.value = props.authState === "denied" ? "denied" : "unavailable"; return; }
@@ -80,7 +92,7 @@ async function finish(kind: FoodCommandKind, key: string, input: FoodCommand, su
   let result = await executeFoodCommand(input, key);
   if (result.state === "unknown") {
     feedback.value = "操作结果待确认，正在核对…";
-    persistPending({ kind, key, input, success });
+    persistPending({ kind, operatorID: props.operatorID ?? "", key, input, success });
     result = await pollOperation(kind, key);
   }
   if (result.state === "succeeded") { persistPending(); feedback.value = success; await refresh(); }
@@ -88,7 +100,7 @@ async function finish(kind: FoodCommandKind, key: string, input: FoodCommand, su
   else if (result.state === "denied") { persistPending(); feedback.value = "当前账户缺少对应操作权限。"; }
   else if (result.state === "invalid") { persistPending(); feedback.value = "操作内容无效，请检查填写后重试。"; }
   else if (result.state === "signed_out") { persistPending(); feedback.value = "登录状态已过期，请重新登录后再操作。"; }
-  else { persistPending({ kind, key, input, success }); feedback.value = "结果还没确认，可点下方按钮按原请求重试。"; }
+  else { persistPending({ kind, operatorID: props.operatorID ?? "", key, input, success }); feedback.value = "结果还没确认，可点下方按钮按原请求重试。"; }
   busy.value = false;
   confirmTarget.value = undefined;
   confirmReason.value = "";
@@ -292,7 +304,7 @@ function workspaceStatusLabel(status: string) {
 }
 
 watch(() => props.authState, (value) => {
-  if (value === "authenticated") { void refresh().then(() => { if (pending.value) feedback.value = "发现一项结果未确认的操作；可按原请求重试。"; }); return; }
+  if (value === "authenticated") { restorePending(props.operatorID ?? ""); void refresh().then(() => { if (pending.value) feedback.value = "发现一项结果未确认的操作；可按原请求重试。"; }); return; }
   workspace.value = undefined;
   state.value = value === "denied" ? "denied" : value === "loading" ? "loading" : "unavailable";
 }, { immediate: true });

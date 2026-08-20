@@ -4,7 +4,7 @@ import { computed, ref, watch } from "vue";
 import { Button, Card, Input, Label, PageHeader, Textarea } from "@/components/ui";
 import { executeLibraryCommand, fetchLibraryWorkspace, resolveLibraryOperation, type LibraryCommand, type LibraryCommandKind, type LibraryCorrection, type LibraryMaterial, type LibraryWorkspace, type LibraryWriteResult } from "@/lib/console-gateway";
 
-const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; permissions: string[] }>();
+const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; operatorID?: string; permissions: string[] }>();
 const workspace = ref<LibraryWorkspace>();
 const state = ref<"loading" | "ready" | "denied" | "unavailable">("loading");
 const feedback = ref("");
@@ -23,7 +23,7 @@ const materialTitle = ref("");
 const materialFileName = ref("");
 const materialStorageKey = ref("");
 const materialEdits = ref<Record<string, string>>({});
-type PendingOperation = { kind: LibraryCommandKind; key: string; input: LibraryCommand; success: string };
+type PendingOperation = { kind: LibraryCommandKind; operatorID: string; key: string; input: LibraryCommand; success: string };
 type ConfirmKind = "submission_approve" | "submission_reject" | "correction_resolve" | "correction_reject" | "course_archive" | "material_archive";
 type ConfirmTarget = { kind: ConfirmKind; resourceID: string; version: string; title: string; confirmLabel: string; success: string; requireReason: boolean };
 const pendingStorageKey = "henukit.library.pending-operation";
@@ -38,10 +38,22 @@ function persistPending(value?: PendingOperation) {
   pending.value = value;
   if (value) sessionStorage.setItem(pendingStorageKey, JSON.stringify(value)); else sessionStorage.removeItem(pendingStorageKey);
 }
-try {
-  const stored = JSON.parse(sessionStorage.getItem(pendingStorageKey) ?? "null") as Partial<PendingOperation> | null;
-  if (stored && typeof stored.kind === "string" && libraryCommandKinds.includes(stored.kind as LibraryCommandKind) && typeof stored.key === "string" && typeof stored.success === "string" && !!stored.input && typeof stored.input === "object" && (stored.input as LibraryCommand).kind === stored.kind) pending.value = stored as PendingOperation;
-} catch { sessionStorage.removeItem(pendingStorageKey); }
+// sessionStorage survives a same-tab account switch, so an unconfirmed command
+// left behind by one operator must never be offered to the next one: replaying
+// it would apply their decision under this session and attribute it to them in
+// the audit trail. Mirrors restorePending in AccountMembershipOperationsView.
+function restorePending(operatorID: string) {
+  if (pending.value?.operatorID === operatorID) return;
+  pending.value = undefined;
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(pendingStorageKey) ?? "null") as Partial<PendingOperation> | null;
+    if (!stored || typeof stored.kind !== "string" || !libraryCommandKinds.includes(stored.kind as LibraryCommandKind) || stored.operatorID !== operatorID || typeof stored.key !== "string" || typeof stored.success !== "string" || !stored.input || typeof stored.input !== "object" || (stored.input as LibraryCommand).kind !== stored.kind) {
+      sessionStorage.removeItem(pendingStorageKey);
+      return;
+    }
+    pending.value = stored as PendingOperation;
+  } catch { sessionStorage.removeItem(pendingStorageKey); }
+}
 
 async function refresh() {
   if (props.authState !== "authenticated") { state.value = props.authState === "denied" ? "denied" : "unavailable"; return; }
@@ -61,7 +73,7 @@ async function finish(kind: LibraryCommandKind, key: string, input: LibraryComma
   let result = await executeLibraryCommand(input, key);
   if (result.state === "unknown") {
     feedback.value = "操作结果待确认，正在核对…";
-    persistPending({ kind, key, input, success });
+    persistPending({ kind, operatorID: props.operatorID ?? "", key, input, success });
     result = await resolveLibraryOperation(kind, key);
   }
   if (result.state === "succeeded") { persistPending(); feedback.value = success; await refresh(); }
@@ -69,7 +81,7 @@ async function finish(kind: LibraryCommandKind, key: string, input: LibraryComma
   else if (result.state === "denied") { persistPending(); feedback.value = "当前账户缺少资料库操作权限。"; }
   else if (result.state === "invalid") { persistPending(); feedback.value = "该操作暂不支持，请检查内容后重试。"; }
   else if (result.state === "signed_out") { persistPending(); feedback.value = "登录状态已过期，请重新登录后再操作。"; }
-  else { persistPending({ kind, key, input, success }); feedback.value = "结果还没确认，可点下方按钮按原请求重试。"; }
+  else { persistPending({ kind, operatorID: props.operatorID ?? "", key, input, success }); feedback.value = "结果还没确认，可点下方按钮按原请求重试。"; }
   busy.value = false;
   confirmTarget.value = undefined;
   confirmReason.value = "";
@@ -197,7 +209,7 @@ function updateMaterial(item: LibraryMaterial) {
 }
 
 watch(() => props.authState, (value) => {
-  if (value === "authenticated") { void refresh().then(() => { if (pending.value) feedback.value = "发现一项结果未确认的操作；可按原请求重试。"; }); return; }
+  if (value === "authenticated") { restorePending(props.operatorID ?? ""); void refresh().then(() => { if (pending.value) feedback.value = "发现一项结果未确认的操作；可按原请求重试。"; }); return; }
   workspace.value = undefined;
   state.value = value === "denied" ? "denied" : value === "loading" ? "loading" : "unavailable";
 }, { immediate: true });
