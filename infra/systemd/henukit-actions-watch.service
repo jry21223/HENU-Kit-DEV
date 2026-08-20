@@ -20,7 +20,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/opt/henukit-staging /opt/henukit-releases /opt/henukit-backups /var/lib/henukit-actions-watch
+ReadWritePaths=/opt/henukit-staging /opt/henukit-releases /opt/henukit-backups /var/lib/henukit-actions-watch /opt/henukit-materials /usr/local/bin /usr/local/libexec /etc/systemd/system
 
 [Install]
 WantedBy=multi-user.target
