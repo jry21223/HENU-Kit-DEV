@@ -51,11 +51,38 @@ jobs:
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/portal-api.yaml" > /tmp/portal-api-base.yaml
             go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/portal-api-base.yaml packages/api-contracts/openapi/portal-api.yaml
           fi
-      - name: Vet and test
+      # Portal API was the only service without a migration round trip, and the
+      # only one shipping no .down.sql at all — the two were self-consistent,
+      # since the gate cannot run without downs. Mirrors notice.yml: a baseline
+      # probe proves the down drops only what its up created, the ups are applied
+      # twice to prove idempotency, and the dump is restored into a fresh
+      # database to prove the data survives a rollback.
+      - name: Verify migration round trip
+        run: |
+          set -euo pipefail
+          psql -h localhost -U portal -d portal_test -v ON_ERROR_STOP=1 -c "CREATE TABLE baseline_probe (id integer PRIMARY KEY); INSERT INTO baseline_probe VALUES (1)"
+          for migration in services/portal-api/db/migrations/postgres/*.up.sql; do psql -h localhost -U portal -d portal_test -v ON_ERROR_STOP=1 -f "$migration"; done
+          for migration in services/portal-api/db/migrations/postgres/*.up.sql; do psql -h localhost -U portal -d portal_test -v ON_ERROR_STOP=1 -f "$migration"; done
+          test "$(psql -h localhost -U portal -d portal_test -Atc "SELECT to_regclass('public.portal_food_posts') IS NOT NULL AND to_regclass('public.portal_food_post_images') IS NOT NULL AND to_regclass('public.portal_campus_items') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
+          psql -h localhost -U portal -d portal_test -v ON_ERROR_STOP=1 -c "INSERT INTO portal_food_posts(id,campus,title) VALUES ('recovery-probe','minglun','Recovery probe')"
+          psql -h localhost -U portal -d portal_test -v ON_ERROR_STOP=1 -c "INSERT INTO portal_food_post_images(id,post_id,position,content_type,byte_size,sha256,bytes) VALUES ('img-probe','recovery-probe',0,'image/jpeg',1,repeat('a',64),'\x00'::bytea)"
+          pg_dump -h localhost -U portal -d portal_test --format=custom --file=/tmp/portal-api-recovery.dump
+          psql -h localhost -U portal -d portal_test -v ON_ERROR_STOP=1 -f services/portal-api/db/migrations/postgres/000002_food_post_images.down.sql
+          psql -h localhost -U portal -d portal_test -v ON_ERROR_STOP=1 -f services/portal-api/db/migrations/postgres/000001_portal_content.down.sql
+          test "$(psql -h localhost -U portal -d portal_test -Atc "SELECT to_regclass('public.portal_food_posts') IS NULL AND to_regclass('public.portal_food_comments') IS NULL AND to_regclass('public.portal_campus_items') IS NULL AND to_regclass('public.portal_campus_messages') IS NULL AND to_regclass('public.portal_food_post_images') IS NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
+          for migration in services/portal-api/db/migrations/postgres/*.up.sql; do psql -h localhost -U portal -d portal_test -v ON_ERROR_STOP=1 -f "$migration"; done
+          createdb -h localhost -U portal portal_recovery
+          pg_restore -h localhost -U portal -d portal_recovery --no-owner /tmp/portal-api-recovery.dump
+          test "$(psql -h localhost -U portal -d portal_recovery -Atc "SELECT (SELECT count(*) FROM portal_food_posts WHERE id='recovery-probe')=1 AND (SELECT count(*) FROM portal_food_post_images WHERE id='img-probe')=1")" = t
+          dropdb -h localhost -U portal portal_recovery
+      - name: Vet, lint, and test
         working-directory: services/portal-api
         run: |
           set -euo pipefail
           gofmt -d . | tee /tmp/gofmt.diff
           test ! -s /tmp/gofmt.diff
           go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
           go test -race -count=1 ./...
+      - name: Build image
+        run: docker build -t henukit-portal-api:${{ github.sha }} services/portal-api
