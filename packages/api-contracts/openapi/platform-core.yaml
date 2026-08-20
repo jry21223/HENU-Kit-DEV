@@ -23,6 +23,8 @@ tags:
     description: Bounded account, Session, mail, Inbox, audit, and dependency operations for HENUKit Console.
   - name: Career Digest
     description: Internal mail enqueue boundary for the Career Opportunities Opportunity Digest.
+  - name: Users
+    description: Bounded platform user identity lookups for authorized internal service reads. Responses expose display names only and never email, status, or other account fields.
   - name: Internal Events
 
 paths:
@@ -883,6 +885,51 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  /users/display-names:
+    post:
+      tags: [Users]
+      operationId: resolveUserDisplayNames
+      summary: Resolve a bounded batch of user display names for an authenticated product service
+      description: >-
+        Internal read-only boundary for ranking nickname resolution (ADR-0038).
+        Accepts at most 100 user ids and returns one entry per requested id:
+        the display name when set (1-80 characters), otherwise null. Unknown ids
+        resolve to null rather than a 404 so callers can batch-degrade. The
+        response never carries email, status, or any account field beyond
+        display_name.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveUserDisplayNamesRequest" }
+      responses:
+        "200":
+          description: display_name is null when unset or when the id is unknown; missing ids are not omitted.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties:
+                          type: [string, "null"]
+                          maxLength: 80
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/ServiceReplay" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
   /platform-operations/membership-accounts/search:
     post:
       tags: [Platform Operations]
@@ -1674,6 +1721,18 @@ components:
           type: string
           enum: [account.tickets.read, account.tickets.reply, account.tickets.transition]
 
+    ResolveUserDisplayNamesRequest:
+      type: object
+      additionalProperties: false
+      required: [user_ids]
+      properties:
+        user_ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string, format: uuid }
+
     ConsoleUserIdentityResolutionResult:
       type: object
       additionalProperties: false
@@ -1881,6 +1940,12 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
     Conflict:
       description: State conflict or replay
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ServiceReplay:
+      description: Dedicated service request nonce was already used
       content:
         application/json:
           schema:

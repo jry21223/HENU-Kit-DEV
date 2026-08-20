@@ -55,6 +55,7 @@ type requestBody struct {
 }
 type apiResponse struct {
 	Content map[string]mediaType `yaml:"content"`
+	Ref     string               `yaml:"$ref"`
 }
 type mediaType struct {
 	Schema *schema `yaml:"schema"`
@@ -102,7 +103,8 @@ func main() {
 	accountLookupPath, accountLookup := findOperation(spec.Paths, "lookupPlatformOperationAccount")
 	consoleIdentityResolutionPath, consoleIdentityResolution := findOperation(spec.Paths, "resolveConsoleUserIdentities")
 	membershipAccountsPath, membershipAccounts := findOperation(spec.Paths, "listPlatformOperationMembershipAccounts")
-	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil || platformOperations == nil || revokePlatformSession == nil || updatePlatformAccess == nil || platformOperationStatus == nil || accountLookup == nil || consoleIdentityResolution == nil || membershipAccounts == nil {
+	displayNamesPath, displayNames := findOperation(spec.Paths, "resolveUserDisplayNames")
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil || platformOperations == nil || revokePlatformSession == nil || updatePlatformAccess == nil || platformOperationStatus == nil || accountLookup == nil || consoleIdentityResolution == nil || membershipAccounts == nil || displayNames == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
@@ -122,6 +124,7 @@ func main() {
 	validateInboxOperation(accountLookup, spec.Components.Parameters, false, true)
 	validateInboxOperation(consoleIdentityResolution, spec.Components.Parameters, false, false)
 	validateInboxOperation(membershipAccounts, spec.Components.Parameters, false, true)
+	validateDisplayNamesOperation(displayNames, spec.Components.Parameters)
 	requestSchema := token.RequestBody.Content["application/json"].Schema
 	if requestSchema == nil {
 		fail(fmt.Errorf("token request application/json schema is missing"))
@@ -199,6 +202,7 @@ const (
 	PlatformOperationsAccountLookupRoute = %q
 	ConsoleUserIdentityResolutionRoute = %q
 	PlatformOperationsMembershipAccountsRoute = %q
+	DisplayNamesRoute = %q
 	SourceSHA256 = %q
 )
 
@@ -253,7 +257,7 @@ const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 %s
 `, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath,
 		listInboxPath, getInboxPath, createInboxPath, updateInboxPath, operationStatusPath,
-		platformOperationsPath, revokePlatformSessionPath, updatePlatformAccessPath, platformOperationStatusPath, accountLookupPath, consoleIdentityResolutionPath, membershipAccountsPath, fmt.Sprintf("%x", digest),
+		platformOperationsPath, revokePlatformSessionPath, updatePlatformAccessPath, platformOperationStatusPath, accountLookupPath, consoleIdentityResolutionPath, membershipAccountsPath, displayNamesPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),
@@ -498,6 +502,50 @@ func validateInboxOperation(operation *operation, parameters map[string]paramete
 	}
 	if requireBody && !operation.RequestBody.Required {
 		fail(fmt.Errorf("%s request body must be required", operation.OperationID))
+	}
+}
+
+// validateDisplayNamesOperation pins the read-only display-name resolution
+// boundary (ADR-0038): product service authentication without a session token,
+// a required batch body, and the honest error responses.
+func validateDisplayNamesOperation(operation *operation, parameters map[string]parameter) {
+	validSecurity := false
+	for _, requirement := range operation.Security {
+		_, basic := requirement["clientSecret"]
+		_, hmac := requirement["serviceHmac"]
+		validSecurity = validSecurity || basic && hmac
+	}
+	if !validSecurity {
+		fail(fmt.Errorf("resolveUserDisplayNames must require clientSecret and serviceHmac together"))
+	}
+	required := map[string]bool{
+		"#/components/parameters/ServiceId": false,
+		"#/components/parameters/KeyId":     false,
+		"#/components/parameters/Timestamp": false,
+		"#/components/parameters/Nonce":     false,
+	}
+	for _, candidate := range operation.Parameters {
+		if _, ok := required[candidate.Ref]; ok {
+			required[candidate.Ref] = true
+		}
+		if candidate.Ref == "#/components/parameters/SessionExchangeToken" {
+			fail(fmt.Errorf("resolveUserDisplayNames must not require a session exchange token"))
+		}
+	}
+	for reference, present := range required {
+		name := strings.TrimPrefix(reference, "#/components/parameters/")
+		definition, ok := parameters[name]
+		if !present || !ok || definition.In != "header" || !definition.Required {
+			fail(fmt.Errorf("resolveUserDisplayNames is missing required header %s", reference))
+		}
+	}
+	if !operation.RequestBody.Required {
+		fail(fmt.Errorf("resolveUserDisplayNames request body must be required"))
+	}
+	if operation.Responses["400"].Ref != "#/components/responses/BadRequest" ||
+		operation.Responses["401"].Ref != "#/components/responses/Unauthorized" ||
+		operation.Responses["409"].Ref != "#/components/responses/ServiceReplay" {
+		fail(fmt.Errorf("resolveUserDisplayNames must document 400 BadRequest, 401 Unauthorized, and 409 ServiceReplay"))
 	}
 }
 

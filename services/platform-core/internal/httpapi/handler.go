@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
@@ -100,6 +101,7 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Get(contract.PlatformOperationsRoute, handler.getPlatformOperations)
 	router.Post(contract.PlatformOperationsAccountLookupRoute, handler.lookupPlatformOperationAccount)
 	router.Post(contract.ConsoleUserIdentityResolutionRoute, handler.resolveConsoleUserIdentities)
+	router.Post(contract.DisplayNamesRoute, handler.resolveUserDisplayNames)
 	router.Post(contract.PlatformOperationsMembershipAccountsRoute, handler.listPlatformOperationMembershipAccounts)
 	router.Post(contract.RevokePlatformOperationSessionRoute, handler.revokePlatformOperationSession)
 	router.Post(contract.UpdatePlatformOperationAccessRoute, handler.updatePlatformOperationAccess)
@@ -227,6 +229,80 @@ func (h *Handler) resolveConsoleUserIdentities(writer http.ResponseWriter, reque
 
 func consoleTicketIdentityPermission(permission string) bool {
 	return permission == "account.tickets.read" || permission == "account.tickets.reply" || permission == "account.tickets.transition"
+}
+
+// resolveUserDisplayNames is the ADR-0038 read-only boundary that resolves a
+// bounded batch of display names for an authenticated product service (the
+// Portal Gateway's ranking nickname synthesis). It authenticates the calling
+// service with the five-line HMAC credential — no session token, no browser
+// identity — and returns only display names; email, status, and every other
+// account field stay inside Platform Core. Unknown or unset ids resolve to
+// null so the caller can batch-degrade without a 404.
+func (h *Handler) resolveUserDisplayNames(writer http.ResponseWriter, request *http.Request) {
+	audit := auditFrom(request.Context())
+	audit.serviceID, audit.keyID = request.Header.Get(contract.ServiceIDHeader), request.Header.Get(contract.KeyIDHeader)
+	rawBody, body, ok := decodeInboxBody[contract.ResolveUserDisplayNamesRequest](writer, request)
+	if !ok || len(body.UserIDs) == 0 || len(body.UserIDs) > 100 {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_BATCH_SIZE", "display-name batch must contain 1 to 100 user ids")
+		return
+	}
+	clientID, clientSecret, ok := request.BasicAuth()
+	if !ok || clientID != audit.serviceID {
+		writeError(writer, request, http.StatusUnauthorized, "CLIENT_AUTH_FAILED", "client authentication failed")
+		return
+	}
+	ids := make([]pgtype.UUID, 0, len(body.UserIDs))
+	seen := make(map[uuid.UUID]struct{}, len(body.UserIDs))
+	for _, rawID := range body.UserIDs {
+		id, err := uuid.Parse(rawID)
+		if err != nil {
+			writeError(writer, request, http.StatusBadRequest, "INVALID_BATCH_SIZE", "display-name batch must contain only user ids")
+			return
+		}
+		if _, exists := seen[id]; exists {
+			writeError(writer, request, http.StatusBadRequest, "INVALID_BATCH_SIZE", "display-name batch must not repeat a user id")
+			return
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, pgtype.UUID{Bytes: id, Valid: true})
+	}
+	bodyHash := sha256.Sum256(rawBody)
+	pathAndQuery := request.URL.EscapedPath()
+	if request.URL.RawQuery != "" {
+		pathAndQuery += "?" + request.URL.RawQuery
+	}
+	if err := h.flow.AuthenticateServiceRequest(request.Context(), identity.ServiceRequestCredentials{
+		HTTPMethod: request.Method, ClientID: audit.serviceID, ClientSecret: clientSecret, KeyID: audit.keyID,
+		Timestamp: request.Header.Get(contract.TimestampHeader), Nonce: request.Header.Get(contract.NonceHeader),
+		Signature: request.Header.Get(contract.SignatureHeader), BodyHash: bodyHash[:], PathAndQuery: pathAndQuery,
+		NonceNamespace: "display-names",
+	}); err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	rows, err := h.queries.ListUserDisplayNames(request.Context(), ids)
+	if err != nil {
+		h.logger.Error("display_names_query_error", "request_id", requestIDFrom(request.Context()), "error", err)
+		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		return
+	}
+	found := make(map[string]string, len(rows))
+	for _, row := range rows {
+		if row.DisplayName.Valid {
+			if name := strings.TrimSpace(row.DisplayName.String); name != "" {
+				found[row.ID.String()] = name
+			}
+		}
+	}
+	result := make(contract.DisplayNameMap, len(ids))
+	for _, id := range ids {
+		var name *string
+		if value, exists := found[id.String()]; exists {
+			name = &value
+		}
+		result[id.String()] = name
+	}
+	writeSuccess(writer, request, http.StatusOK, result)
 }
 
 func (h *Handler) listPlatformOperationMembershipAccounts(writer http.ResponseWriter, request *http.Request) {

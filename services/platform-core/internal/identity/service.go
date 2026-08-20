@@ -142,6 +142,34 @@ type serviceRequestCredentials struct {
 	NonceNamespace string
 }
 
+// ServiceRequestCredentials carries the five-line HMAC service credential for
+// an internal read-only product boundary (e.g. display-name resolution) that
+// authenticates the calling service without binding a browser session.
+type ServiceRequestCredentials struct {
+	HTTPMethod     string
+	ClientID       string
+	ClientSecret   string
+	KeyID          string
+	Timestamp      string
+	Nonce          string
+	Signature      string
+	BodyHash       []byte
+	PathAndQuery   string
+	NonceNamespace string
+}
+
+// AuthenticateServiceRequest validates a caller-supplied five-line HMAC
+// service credential. It is the exported entry point for handlers that need
+// service authentication without an actor-bound session (ADR-0038).
+func (s *Service) AuthenticateServiceRequest(ctx context.Context, credentials ServiceRequestCredentials) error {
+	return s.authenticateServiceRequest(ctx, serviceRequestCredentials{
+		HTTPMethod: credentials.HTTPMethod, ClientID: credentials.ClientID, ClientSecret: credentials.ClientSecret,
+		KeyID: credentials.KeyID, Timestamp: credentials.Timestamp, Nonce: credentials.Nonce,
+		Signature: credentials.Signature, BodyHash: credentials.BodyHash, PathAndQuery: credentials.PathAndQuery,
+		NonceNamespace: credentials.NonceNamespace,
+	})
+}
+
 func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL time.Duration, exchangeSessionTTLByClientID map[string]time.Duration, idempotencyTTL time.Duration) *Service {
 	return &Service{queries: queries, database: database, coordinator: coordinator, authorizationTTL: authorizationTTL, exchangeSessionTTL: exchangeSessionTTL, exchangeSessionTTLByClientID: exchangeSessionTTLByClientID, idempotencyTTL: idempotencyTTL}
 }

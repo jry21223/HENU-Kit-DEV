@@ -441,6 +441,35 @@ func (q *Queries) GetPlatformUser(ctx context.Context, id pgtype.UUID) (GetPlatf
 	return i, err
 }
 
+const listUserDisplayNames = `-- name: ListUserDisplayNames :many
+SELECT id, display_name FROM users WHERE id = ANY($1::uuid[])
+`
+
+type ListUserDisplayNamesRow struct {
+	ID          pgtype.UUID `json:"id"`
+	DisplayName pgtype.Text `json:"display_name"`
+}
+
+func (q *Queries) ListUserDisplayNames(ctx context.Context, dollar_1 []pgtype.UUID) ([]ListUserDisplayNamesRow, error) {
+	rows, err := q.db.Query(ctx, listUserDisplayNames, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserDisplayNamesRow{}
+	for rows.Next() {
+		var i ListUserDisplayNamesRow
+		if err := rows.Scan(&i.ID, &i.DisplayName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markAuthorizationCodeUsed = `-- name: MarkAuthorizationCodeUsed :execrows
 UPDATE authorization_codes SET used_at = now() WHERE id = $1 AND used_at IS NULL
 `

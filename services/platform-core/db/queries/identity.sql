@@ -54,6 +54,9 @@ RETURNING id, expires_at;
 -- name: GetPlatformUser :one
 SELECT id, email_verified, status, created_at, display_name FROM users WHERE id = $1;
 
+-- name: ListUserDisplayNames :many
+SELECT id, display_name FROM users WHERE id = ANY($1::uuid[]);
+
 -- name: GetExchangeSessionAuthorizationContext :one
 SELECT s.id, s.user_id, s.client_id,
        s.revoked_at AS session_revoked_at, s.expires_at AS session_expires_at,

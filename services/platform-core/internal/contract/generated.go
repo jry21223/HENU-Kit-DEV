@@ -27,7 +27,8 @@ const (
 	PlatformOperationsAccountLookupRoute      = "/api/v1/platform-operations/account-lookups"
 	ConsoleUserIdentityResolutionRoute        = "/api/v1/console-user-identities/resolutions"
 	PlatformOperationsMembershipAccountsRoute = "/api/v1/platform-operations/membership-accounts/search"
-	SourceSHA256                              = "c5b173aac40e32c844248585baca5b0ebd6f217d446cbea68be0d781986d814c"
+	DisplayNamesRoute                         = "/api/v1/users/display-names"
+	SourceSHA256                              = "4dfd36d6747e4b00390f8b980111119e82ded6cc6c4ecca61c0bfaa1d1ba705a"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
