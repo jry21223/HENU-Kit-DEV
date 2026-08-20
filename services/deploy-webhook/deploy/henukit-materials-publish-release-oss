@@ -36,7 +36,7 @@ owner_and_mode() {
 require_fixed_regular_file() {
   path="$1"
   label="$2"
-  [ ! -L "$path" ] && [ -f "$path" ] || fail "$label must be a regular file"
+  [[ -f "$path" && ! -L "$path" ]] || fail "$label must be a regular file"
   owner_mode="$(owner_and_mode "$path")"
   [ "${owner_mode%%:*}" = "$config_owner" ] || fail "$label must be owned by root"
   file_mode="${owner_mode#*:}"
@@ -51,7 +51,7 @@ require_fixed_regular_file() {
 require_fixed_directory() {
   path="$1"
   label="$2"
-  [ ! -L "$path" ] && [ -d "$path" ] || fail "$label must be a real directory"
+  [[ -d "$path" && ! -L "$path" ]] || fail "$label must be a real directory"
   owner_mode="$(owner_and_mode "$path")"
   [ "${owner_mode%%:*}" = "$config_owner" ] || fail "$label must be owned by root"
   directory_mode="${owner_mode#*:}"
