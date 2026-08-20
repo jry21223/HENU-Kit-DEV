@@ -31,14 +31,22 @@ type Config struct {
 	LibraryDownloadAuth ServiceAuth
 
 	PracticeURL string
-	// #160 catalog uses its established default-off flag and anonymous Banks
-	// read client. It must remain independent of account-bound stats.
+	// QuizCraftCatalogEnabled controls only the catalog read client's
+	// existence, not the route: /api/v1/practice/catalog is registered
+	// unconditionally (ADR-0036) and fails closed with an honest 404 while the
+	// client is nil. It stays default-off and independent of account-bound
+	// stats, and keeps its own read credential pair (PracticeAuth) distinct
+	// from the V2 read pair (QuizCraftCoreAuth).
 	QuizCraftCatalogEnabled bool
 	NoticeURL               string
 	AccountPortfolioURL     string
 
-	// QuizCraftV2ReadsEnabled is deliberately false unless the deployment
-	// supplies an explicit "1". #166 owns enabling this V2 read path.
+	// QuizCraftV2ReadsEnabled is the single V2 read gate for the Core-derived
+	// rankings, personal stats, favorites, and feedback-status clients. The
+	// routes themselves are registered unconditionally (ADR-0036) and fail
+	// closed while the client is nil. It is deliberately false unless the
+	// deployment supplies an explicit "1"; #166 owns enabling this V2 read
+	// path together with the browser bake flags.
 	QuizCraftV2ReadsEnabled bool
 	QuizCraftCoreURL        string
 	QuizCraftCoreAuth       ServiceAuth
@@ -92,8 +100,14 @@ func FromEnv() (Config, error) {
 		PortalAPIURL:          envOrDefault("PORTAL_API_URL", "http://127.0.0.1:8085"),
 		LibraryDownloadURL:    strings.TrimSpace(os.Getenv("LIBRARY_DOWNLOAD_URL")),
 		PracticeURL:           mustEnv("PRACTICE_SERVICE_URL"),
-		// This remains dark by default. #166 is the only production cutover
-		// that may set it to 1 alongside the Portal UI flag.
+		// This remains dark by default and is aligned with the Portal build's
+		// NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG flag: both default to 0
+		// and both are set to 1 together in the #166 cutover bundle (see
+		// scripts/ops/henukit-release-images.sh, which bakes 1 only for that
+		// release build — never a default). The baked 1 without this server
+		// flag is a deliberate fail-closed mismatch: the browser may render
+		// the catalog surface, but the Gateway answers an honest 404/503 until
+		// PORTAL_ENABLE_QUIZCRAFT_CATALOG is enabled server-side.
 		QuizCraftCatalogEnabled: os.Getenv("PORTAL_ENABLE_QUIZCRAFT_CATALOG") == "1",
 		NoticeURL:               mustEnv("NOTICE_SERVICE_URL"),
 		AccountPortfolioURL:     mustEnv("ACCOUNT_PORTFOLIO_URL"),

@@ -1,24 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-function stubPracticeCatalog(page: import("@playwright/test").Page) {
-  return Promise.all([
-    page.route("**/api/v1/practice/banks", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ banks: [], request_id: "req_banks_transition" }),
-      }),
-    ),
-    page.route("**/api/v1/practice/schools", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ schools: [], request_id: "req_schools_transition" }),
-      }),
-    ),
-  ]);
-}
-
 // TransitionLink plays an exit tween before pushing the route. When the current
 // page has no [data-block] elements it animates the [data-transition-page]
 // wrapper instead — and that wrapper lives in practice/layout, so it survives
@@ -29,8 +10,6 @@ function stubPracticeCatalog(page: import("@playwright/test").Page) {
 // The quiz route without a bank selection renders PracticeState, which carries
 // only [data-enter] and is therefore exactly that block-less case.
 test("Practice keeps the shell visible after leaving a page without animated blocks", async ({ page }) => {
-  await stubPracticeCatalog(page);
-
   await page.goto("/practice/quiz");
 
   const shell = page.locator("[data-transition-page]");
@@ -53,8 +32,6 @@ test("Practice keeps the shell visible after leaving a page without animated blo
 // freezes it mid-flight and onComplete never runs. Navigation must not be lost
 // with it. Stalling rAF reproduces that without backgrounding the tab.
 test("Practice still navigates when the exit animation never completes", async ({ page }) => {
-  await stubPracticeCatalog(page);
-
   // GSAP captures requestAnimationFrame when its module initialises, so the
   // stub has to be installed before any page script runs.
   await page.addInitScript(() => {

@@ -11,7 +11,6 @@ func TestNewRouterLiveMissingDSN(t *testing.T) {
 	t.Setenv("PORTAL_API_MODE", "live")
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("PORTAL_ORIGIN", "https://portal.example.com")
-	t.Setenv("QUIZCRAFT_DATABASE_URL", "")
 	t.Setenv("STUDY_DATABASE_URL", "")
 	t.Setenv("PORTAL_DATABASE_URL", "")
 
@@ -28,7 +27,6 @@ func TestNewRouterLiveMissingOrigin(t *testing.T) {
 	t.Setenv("PORTAL_API_MODE", "live")
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("PORTAL_ORIGIN", "")
-	t.Setenv("QUIZCRAFT_DATABASE_URL", "postgres://x")
 	t.Setenv("STUDY_DATABASE_URL", "postgres://x")
 	t.Setenv("PORTAL_DATABASE_URL", "mysql://x")
 
@@ -42,7 +40,6 @@ func TestNewRouterMockNoDSN(t *testing.T) {
 	t.Setenv("PORTAL_API_MODE", "mock")
 	t.Setenv("APP_ENV", "development")
 	t.Setenv("PORTAL_ORIGIN", "")
-	t.Setenv("QUIZCRAFT_DATABASE_URL", "")
 	t.Setenv("STUDY_DATABASE_URL", "")
 	t.Setenv("PORTAL_DATABASE_URL", "")
 
@@ -69,19 +66,20 @@ func TestNewRouterMockNoDSN(t *testing.T) {
 		t.Fatalf("expected empty notices, got %#v", notices)
 	}
 
-	// live-only paths still work in mock with fixtures where allowed
+	// Practice reads were removed with ADR-0036: the legacy stats route no
+	// longer exists on portal-api and fails closed with a 404 instead of a
+	// mock success body.
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/practice/stats", nil)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("mock stats should return 200, got %d", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("removed practice stats route = %d, want 404", rec.Code)
 	}
 }
 
 func TestCORSNeverStarWithCredentials(t *testing.T) {
 	t.Setenv("PORTAL_API_MODE", "mock")
 	t.Setenv("PORTAL_ORIGIN", "")
-	t.Setenv("QUIZCRAFT_DATABASE_URL", "")
 	t.Setenv("STUDY_DATABASE_URL", "")
 	t.Setenv("PORTAL_DATABASE_URL", "")
 

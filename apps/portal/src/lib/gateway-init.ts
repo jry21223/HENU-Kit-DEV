@@ -10,8 +10,6 @@ import { initCampusGateway } from "@/lib/campus/gateway";
 import { initCareerGateway } from "@/lib/career/gateway";
 import { initFoodGateway } from "@/lib/food/gateway";
 import { initGateway } from "@/lib/library/gateway";
-import { quizCraftCatalogEnabled } from "@/lib/api/env";
-import { initPracticeGateway } from "@/lib/practice/gateway";
 
 let initialized = false;
 let inflight: Promise<void> | null = null;
@@ -29,16 +27,12 @@ export async function initAllGateways(): Promise<void> {
   if (inflight) return inflight;
 
   inflight = (async () => {
-    // The controlled QuizCraft catalog is an authoritative data cutover. Do
-    // not let the root warm-up issue legacy Practice reads behind its back;
-    // the catalog page owns its only permitted Practice request in this mode.
-    const practiceInitializer = quizCraftCatalogEnabled()
-      ? []
-      : [initPracticeGateway()];
+    // Practice has no root warm-up: legacy practice reads were removed with
+    // ADR-0036, and the catalog page owns the only permitted Practice request
+    // (the V2 catalog read) in every mode.
     await Promise.allSettled([
       initGateway(),
       initFoodGateway(),
-      ...practiceInitializer,
       initCampusGateway(),
       initCareerGateway(),
     ]);

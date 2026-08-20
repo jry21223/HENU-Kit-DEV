@@ -333,13 +333,17 @@ func validateRankingSchema(schemas map[string]schema) {
 	}
 	entries, ok := page.Properties["entries"]
 	if !ok || entries.Type != "array" || entries.Items == nil || entries.Items.Type != "object" {
-		fail(fmt.Errorf("RankingPage.entries must be an array of public ranking entries"))
+		fail(fmt.Errorf("RankingPage.entries must be an array of internal ranking entries"))
 	}
-	requireSchemaObject(*entries.Items, "RankingPage.entries[]", []string{"rank", "nickname", "system_avatar", "correct_answer_count"})
+	requireSchemaObject(*entries.Items, "RankingPage.entries[]", []string{"rank", "user_id", "correct_answer_count"})
 	requireClosedObject(*entries.Items, "RankingPage.entries[]")
 	requireProperty(*entries.Items, "rank", "integer")
-	requireProperty(*entries.Items, "nickname", "string")
-	requireProperty(*entries.Items, "system_avatar", "string")
+	if userID, ok := entries.Items.Properties["user_id"]; !ok || userID.Type == "" || userID.Format != "uuid" {
+		fail(fmt.Errorf("RankingPage.entries[].user_id must be a nullable uuid string"))
+	}
+	if guestKey, ok := entries.Items.Properties["guest_key"]; !ok || guestKey.Type == "" || guestKey.Format != "" {
+		fail(fmt.Errorf("RankingPage.entries[].guest_key must be a nullable string"))
+	}
 	requireProperty(*entries.Items, "correct_answer_count", "integer")
 
 	period, ok := schemas["RankingPeriod"]
@@ -488,8 +492,11 @@ const (
 	RankingPeriodLifetime RankingPeriod = "lifetime"
 )
 
-// RankingEnvelope contains public fields only; internal account identifiers are
-// deliberately absent from the Portal read contract.
+// RankingEnvelope is the generated internal Portal read contract. Entries
+// carry a nullable user_id plus a nullable guest_key (the stable anonymous
+// identity for guest learners) that the Portal Gateway MUST strip before any
+// external response and MUST NOT render as a nickname (ADR-0038; ADR-0036
+// privacy contract unchanged).
 type RankingEnvelope struct {
 	RequestID string      `+"`json:\"request_id\"`"+`
 	Data      RankingPage `+"`json:\"data\"`"+`
@@ -504,10 +511,10 @@ type RankingPage struct {
 }
 
 type RankingEntry struct {
-	Rank               int64  `+"`json:\"rank\"`"+`
-	Nickname           string `+"`json:\"nickname\"`"+`
-	SystemAvatar       string `+"`json:\"system_avatar\"`"+`
-	CorrectAnswerCount int64  `+"`json:\"correct_answer_count\"`"+`
+	Rank               int64   `+"`json:\"rank\"`"+`
+	UserID             *string `+"`json:\"user_id\"`"+`
+	GuestKey           *string `+"`json:\"guest_key\"`"+`
+	CorrectAnswerCount int64   `+"`json:\"correct_answer_count\"`"+`
 }
 // PersonalPracticeStatsEnvelope is one authenticated Portal user's
 // fact-derived QuizCraft statistics. It never represents a mock response.

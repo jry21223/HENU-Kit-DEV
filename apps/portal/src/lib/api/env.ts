@@ -32,8 +32,15 @@ export function allowMock(): boolean {
 
 /**
  * The QuizCraft V2 catalog is a coordinated, cutover-only surface. This
- * browser flag intentionally defaults to false; the Gateway must also opt in
- * with PORTAL_ENABLE_QUIZCRAFT_CATALOG=1 before any real catalog can load.
+ * browser flag intentionally defaults to 0; the Gateway must also opt in with
+ * PORTAL_ENABLE_QUIZCRAFT_CATALOG=1 before any real catalog can load.
+ *
+ * Default alignment (ADR-0036): every server gate and browser flag defaults to
+ * 0 (fail-closed). The release-image inventory bakes these browser flags to 1
+ * for the #166 cutover build only — see scripts/ops/henukit-release-images.sh.
+ * A baked 1 without the matching server-side flag is deliberate: the Gateway
+ * answers an honest 404/503 until the whole bundle is switched together,
+ * never a mock/legacy fallback.
  */
 export function quizCraftCatalogEnabled(): boolean {
   return process.env.NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG === "1";
@@ -42,7 +49,9 @@ export function quizCraftCatalogEnabled(): boolean {
 /**
  * QuizCraft V2 personal-data reads are dark until the server-side Gateway flag
  * is enabled in the #166 cutover window. This client flag never enables a
- * server route by itself; it only prevents the browser from probing it early.
+ * server route by itself; it only prevents the browser from probing it early;
+ * the same default-0 / cutover-bake-1 alignment as quizCraftCatalogEnabled()
+ * applies.
  */
 export function quizCraftV2ReadsEnabled(): boolean {
   return process.env.NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS === "1";

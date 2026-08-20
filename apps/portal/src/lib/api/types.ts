@@ -320,11 +320,6 @@ export interface BankSummary {
   question_count: number;
 }
 
-export interface PracticeBanksResponse {
-  banks: BankSummary[];
-  request_id: string;
-}
-
 /** Browser input for one real QuizCraft session. The API selects questions. */
 export interface PortalPracticeSessionInput {
   bank_id: string;
@@ -486,29 +481,6 @@ export interface QuizListMeta {
   poolKey: string;
   count: number;
   completion: number;
-}
-
-export interface PracticeSubject {
-  id: string;
-  name: string;
-  lists: QuizListMeta[];
-}
-
-export interface PracticeMajor {
-  id: string;
-  name: string;
-  subjects: PracticeSubject[];
-}
-
-export interface PracticeSchool {
-  id: string;
-  name: string;
-  majors: PracticeMajor[];
-}
-
-export interface SchoolListResponse {
-  schools: PracticeSchool[];
-  request_id: string;
 }
 
 // ---- Campus ----

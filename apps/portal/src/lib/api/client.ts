@@ -52,11 +52,9 @@ import type {
 	PortalPracticeFeedbackStatusResponse,
 	PortalPracticeSessionInput,
 	PortalPracticeSessionResponse,
-  PracticeBanksResponse,
 	QuizCraftCatalogResponse,
   QuizCraftRankingPeriod,
   QuizCraftRankingResponse,
-  SchoolListResponse,
   CareerProfileInput,
   CareerProfileResponse,
   CareerResumeExtractionResponse,
@@ -536,10 +534,6 @@ export async function fetchFoodPost(id: string): Promise<FoodPostDetailResponse>
 
 // ---- Practice ----
 
-export async function fetchPracticeBanks(): Promise<PracticeBanksResponse | null> {
-  return apiFetch<PracticeBanksResponse>("/api/v1/practice/banks");
-}
-
 /**
  * Reads the Gateway's cutover-only QuizCraft V2 catalog. It intentionally
  * uses the strict boundary: an unavailable or disabled route is an error,
@@ -564,10 +558,6 @@ export async function fetchQuizCraftOverallRanking(
  */
 export async function fetchPersonalPracticeStats(): Promise<PersonalPracticeStatsEnvelope> {
   return apiFetchRequired<PersonalPracticeStatsEnvelope>("/api/v1/practice/stats");
-}
-
-export async function fetchPracticeSchools(): Promise<SchoolListResponse> {
-  return apiFetchRequired<SchoolListResponse>("/api/v1/practice/schools");
 }
 
 function practiceCommandInit(idempotencyKey: string, body: unknown): RequestInit {

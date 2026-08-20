@@ -60,6 +60,7 @@ func TestBanksUsesGeneratedQuizCraftCatalogContract(t *testing.T) {
 
 func TestRankingsUseGeneratedQuizCraftContract(t *testing.T) {
 	const bankID = "10ca9b18-c303-4b7a-ab14-1241e41b665a"
+	userID := "5f03dac8-7f7f-4513-9dcd-e4cc5f592c85"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case OverallRankingPath:
@@ -67,7 +68,7 @@ func TestRankingsUseGeneratedQuizCraftContract(t *testing.T) {
 			if request.URL.RawQuery != "period=weekly" {
 				t.Fatalf("overall ranking query = %q", request.URL.RawQuery)
 			}
-			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_overall", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, Nickname: "认真刷题", SystemAvatar: "scholar-blue", CorrectAnswerCount: 12}}}})
+			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_overall", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, UserID: &userID, CorrectAnswerCount: 12}}}})
 		case strings.Replace(BankRankingPath, "{bank_id}", bankID, 1):
 			assertPortalReadRequest(t, request, "user-123", "req_ranking_bank", strings.Replace(BankRankingPath, "{bank_id}", bankID, 1))
 			if request.URL.RawQuery != "period=lifetime" {
@@ -85,7 +86,7 @@ func TestRankingsUseGeneratedQuizCraftContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OverallRanking() error = %v", err)
 	}
-	if overall.RequestID != "req_core_overall" || overall.Data.Scope != "overall" || len(overall.Data.Entries) != 1 || overall.Data.Entries[0].Nickname != "认真刷题" || overall.Data.Entries[0].CorrectAnswerCount != 12 {
+	if overall.RequestID != "req_core_overall" || overall.Data.Scope != "overall" || len(overall.Data.Entries) != 1 || overall.Data.Entries[0].UserID == nil || *overall.Data.Entries[0].UserID != userID || overall.Data.Entries[0].GuestKey != nil || overall.Data.Entries[0].CorrectAnswerCount != 12 {
 		t.Fatalf("overall ranking = %+v", overall)
 	}
 
@@ -177,48 +178,109 @@ func TestRankingsRejectAnUpstreamPeriodMismatch(t *testing.T) {
 	}
 }
 
-func TestRankingsRejectAnUpstreamIdentifierField(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_identifier", OverallRankingPath)
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"request_id":"req_core_identifier","data":{"scope":"overall","period":"weekly","metric":"correct_answer_count","entries":[{"rank":1,"nickname":"匿名学习者","system_avatar":"scholar-blue","correct_answer_count":3,"user_id":"must-not-cross-gateway"}]}}`))
-	}))
-	defer server.Close()
-
-	result, err := testCatalogClient(t, server).OverallRanking(context.Background(), "", "req_ranking_identifier", RankingPeriodWeekly)
-	if !errors.Is(err, ErrInvalidRanking) {
-		t.Fatalf("OverallRanking() error = %v, want ErrInvalidRanking", err)
+func TestRankingsRejectEntryWithoutUserIDOrLegacyShape(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			// An old-contract Core response (nickname/system_avatar, no
+			// user_id) is a contract violation, never a guest entry.
+			name: "legacy profile shape is rejected",
+			body: `{"request_id":"req_core_legacy","data":{"scope":"overall","period":"weekly","metric":"correct_answer_count","entries":[{"rank":1,"nickname":"认真刷题","system_avatar":"scholar-blue","correct_answer_count":3}]}}`,
+		},
+		{
+			// A new-contract entry that omits user_id entirely is rejected:
+			// the Gateway must not treat it as a guest learner.
+			name: "missing user_id field is rejected",
+			body: `{"request_id":"req_core_missing","data":{"scope":"overall","period":"weekly","metric":"correct_answer_count","entries":[{"rank":1,"correct_answer_count":3}]}}`,
+		},
+		{
+			// A guest entry (user_id null) that omits guest_key is rejected:
+			// without it every guest would collapse into one 游客x label
+			// (ADR-0038 stable guest numbering).
+			name: "guest entry missing guest_key is rejected",
+			body: `{"request_id":"req_core_no_guest_key","data":{"scope":"overall","period":"weekly","metric":"correct_answer_count","entries":[{"rank":1,"user_id":null,"correct_answer_count":3}]}}`,
+		},
+		{
+			name: "non-uuid user_id is rejected",
+			body: `{"request_id":"req_core_bad_id","data":{"scope":"overall","period":"weekly","metric":"correct_answer_count","entries":[{"rank":1,"user_id":"must-not-cross-gateway","correct_answer_count":3}]}}`,
+		},
 	}
-	if result.RequestID != "" || result.Data.Entries != nil {
-		t.Fatalf("ranking client accepted an identifier-bearing response: %+v", result)
-	}
-}
-
-func TestRankingsRejectIdentifierShapedNickname(t *testing.T) {
-	for _, nickname := range []string{
-		"123e4567-e89b-12d3-a456-426614174000",
-		"123e4567 e89b 12d3 a456 426614174000",
-		"123e4567_e89b_12d3_a456_426614174000",
-		"123e4567.e89b.12d3.a456.426614174000",
-		"１２３ｅ４５６７ｅ８９ｂ１２ｄ３ａ４５６４２６６１４１７４０００",
-		"learner@example.test",
-		"learner＠example．test",
-	} {
-		t.Run(nickname, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_identifier_nickname", OverallRankingPath)
-				_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_identifier_nickname", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, Nickname: nickname, SystemAvatar: "scholar-blue", CorrectAnswerCount: 3}}}})
+				assertPortalReadRequest(t, request, AnonymousCatalogActor, "req_ranking_invalid_"+strings.ReplaceAll(test.name, " ", "_"), OverallRankingPath)
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = writer.Write([]byte(test.body))
 			}))
 			defer server.Close()
 
-			result, err := testCatalogClient(t, server).OverallRanking(context.Background(), "", "req_ranking_identifier_nickname", RankingPeriodWeekly)
+			result, err := testCatalogClient(t, server).OverallRanking(context.Background(), "", "req_ranking_invalid_"+strings.ReplaceAll(test.name, " ", "_"), RankingPeriodWeekly)
 			if !errors.Is(err, ErrInvalidRanking) {
 				t.Fatalf("OverallRanking() error = %v, want ErrInvalidRanking", err)
 			}
 			if result.RequestID != "" || result.Data.Entries != nil {
-				t.Fatalf("ranking client accepted identifier-shaped nickname: %+v", result)
+				t.Fatalf("ranking client accepted a contract-violating response: %+v", result)
 			}
 		})
+	}
+}
+
+func TestRankingsAcceptNullableUserIDAndRejectDuplicates(t *testing.T) {
+	userA := "5f03dac8-7f7f-4513-9dcd-e4cc5f592c85"
+	userB := "10ca9b18-c303-4b7a-ab14-1241e41b665a"
+	guestKey := "guest:0b2c3d4e-5f60-4718-8290-1a2b3c4d5e6f"
+	otherGuestKey := "guest:9f8e7d6c-5b4a-4321-809a-bcdef0123456"
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assertPortalReadRequest(t, request, AnonymousCatalogActor, request.Header.Get("X-Request-Id"), OverallRankingPath)
+		switch request.Header.Get("X-Request-Id") {
+		case "req_ranking_nullable_ok":
+			// A guest entry (user_id null, non-empty guest_key) and two
+			// distinct users are valid.
+			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_nullable", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, UserID: &userA, CorrectAnswerCount: 12}, {Rank: 2, UserID: nil, GuestKey: &guestKey, CorrectAnswerCount: 5}, {Rank: 3, UserID: &userB, CorrectAnswerCount: 2}}}})
+		case "req_ranking_duplicate":
+			// The same user_id appearing twice breaks the identity contract.
+			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_duplicate", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, UserID: &userA, CorrectAnswerCount: 12}, {Rank: 2, UserID: &userA, CorrectAnswerCount: 5}}}})
+		case "req_ranking_guest_duplicate_key":
+			// Two distinct guests sharing one guest_key would share one 游客x
+			// label: the identity contract is broken.
+			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_dup_guest", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, UserID: nil, GuestKey: &guestKey, CorrectAnswerCount: 5}, {Rank: 2, UserID: nil, GuestKey: &guestKey, CorrectAnswerCount: 3}}}})
+		case "req_ranking_signed_with_guest_key":
+			// A signed-in entry carrying a non-null guest_key is contradictory.
+			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_bad_guest", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, UserID: &userA, GuestKey: &guestKey, CorrectAnswerCount: 5}}}})
+		case "req_ranking_two_guests_ok":
+			// Two distinct guests with distinct guest_keys are valid.
+			_ = json.NewEncoder(writer).Encode(RankingEnvelope{RequestID: "req_core_two_guests", Data: RankingPage{Scope: "overall", Period: RankingPeriodWeekly, Metric: "correct_answer_count", Entries: []RankingEntry{{Rank: 1, UserID: nil, GuestKey: &guestKey, CorrectAnswerCount: 5}, {Rank: 2, UserID: nil, GuestKey: &otherGuestKey, CorrectAnswerCount: 3}}}})
+		default:
+			t.Fatalf("unexpected request id %q", request.Header.Get("X-Request-Id"))
+		}
+	}))
+	defer server.Close()
+
+	client := testCatalogClient(t, server)
+	ok, err := client.OverallRanking(context.Background(), "", "req_ranking_nullable_ok", RankingPeriodWeekly)
+	if err != nil {
+		t.Fatalf("OverallRanking() nullable = %v", err)
+	}
+	if len(ok.Data.Entries) != 3 || ok.Data.Entries[0].UserID == nil || *ok.Data.Entries[0].UserID != userA || ok.Data.Entries[1].UserID != nil || ok.Data.Entries[1].GuestKey == nil || *ok.Data.Entries[1].GuestKey != guestKey || ok.Data.Entries[2].UserID == nil || *ok.Data.Entries[2].UserID != userB {
+		t.Fatalf("nullable ranking entries = %+v", ok.Data.Entries)
+	}
+
+	for _, requestID := range []string{"req_ranking_duplicate", "req_ranking_guest_duplicate_key", "req_ranking_signed_with_guest_key"} {
+		result, err := client.OverallRanking(context.Background(), "", requestID, RankingPeriodWeekly)
+		if !errors.Is(err, ErrInvalidRanking) || result.Data.Entries != nil {
+			t.Fatalf("%s = %+v, %v; want ErrInvalidRanking", requestID, result, err)
+		}
+	}
+
+	twoGuests, err := client.OverallRanking(context.Background(), "", "req_ranking_two_guests_ok", RankingPeriodWeekly)
+	if err != nil {
+		t.Fatalf("OverallRanking() two guests = %v", err)
+	}
+	if len(twoGuests.Data.Entries) != 2 || twoGuests.Data.Entries[0].GuestKey == nil || twoGuests.Data.Entries[1].GuestKey == nil || *twoGuests.Data.Entries[0].GuestKey == *twoGuests.Data.Entries[1].GuestKey {
+		t.Fatalf("distinct guest keys = %+v", twoGuests.Data.Entries)
 	}
 }
 

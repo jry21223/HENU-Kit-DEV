@@ -719,25 +719,11 @@ paths:
         "502":
           $ref: "#/components/responses/ServiceUnavailable"
 
-  /api/v1/practice/banks:
-    get:
-      operationId: practiceBanks
-      summary: List available question banks
-      security:
-        - portalSession: []
-      responses:
-        "200":
-          description: Bank list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PracticeBanksResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "502":
-          $ref: "#/components/responses/ServiceUnavailable"
+  # Legacy practice reads (/api/v1/practice/banks, /schools, /lists/{id},
+  # /leaderboard) were removed with ADR-0036: Portal Gateway routes every
+  # practice read to the QuizCraft Go core contract instead, and the removed
+  # paths fail closed with an honest 404. See /api/v1/practice/catalog and
+  # /api/v1/rankings/*.
 
   /api/v1/practice/sessions:
     post:
@@ -1544,30 +1530,6 @@ components:
         campus:
           type: string
 
-    PracticeBanksResponse:
-      type: object
-      required: [banks, request_id]
-      properties:
-        banks:
-          type: array
-          items:
-            $ref: "#/components/schemas/BankSummary"
-        request_id:
-          type: string
-
-    BankSummary:
-      type: object
-      required: [id, name, subject, question_count]
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        subject:
-          type: string
-        question_count:
-          type: integer
-
     PortalPracticeSessionRequest:
       type: object
       additionalProperties: false
@@ -1817,9 +1779,12 @@ components:
                   nickname:
                     type: string
                     minLength: 1
+                    maxLength: 80
+                    description: The platform users.display_name, or the neutral 游客x label derived from the internal identity key when the name is unset or the learner is a guest (ADR-0038). Never a user id.
                   system_avatar:
                     type: string
                     enum: [scholar-blue, coder-green, reader-amber, owl-purple]
+                    description: Deterministically derived from the internal identity key (ADR-0038); not user-controlled and carries no personal data.
                   correct_answer_count:
                     type: integer
                     format: int64

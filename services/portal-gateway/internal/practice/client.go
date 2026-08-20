@@ -1,6 +1,7 @@
 package practice
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,8 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"golang.org/x/text/unicode/norm"
 
 	"henukit.dev/portal-gateway/internal/serviceauth"
 )
@@ -48,7 +47,10 @@ var (
 )
 
 // Client is an internal, read-only client for QuizCraft catalog and ranking
-// facts. It is not registered on Portal Gateway's public router until #166.
+// facts. The Portal Gateway routes for it are registered unconditionally
+// (ADR-0036); the client itself is only constructed when the matching
+// PORTAL_ENABLE_QUIZCRAFT_* gate is on, so an unconfigured deployment fails
+// closed at the handler instead of exposing a mock or legacy fallback.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
@@ -137,8 +139,25 @@ func (c *Client) ranking(ctx context.Context, actorUserID, requestID, path, scop
 		return RankingEnvelope{}, err
 	}
 	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return RankingEnvelope{}, fmt.Errorf("ranking read: %w", ErrInvalidRanking)
+	}
+	// The internal ranking contract carries a nullable user_id. The shadow
+	// decode keeps user_id as raw JSON so the validator can tell a present
+	// null (guest learner) from an absent field (old-contract Core response),
+	// which is a contract violation, not a guest.
+	var shadow rankingShadowEnvelope
+	shadowDecoder := json.NewDecoder(bytes.NewReader(body))
+	shadowDecoder.DisallowUnknownFields()
+	if err := shadowDecoder.Decode(&shadow); err != nil {
+		return RankingEnvelope{}, fmt.Errorf("ranking decode: %w", ErrInvalidRanking)
+	}
+	if err := shadowDecoder.Decode(&struct{}{}); err != io.EOF {
+		return RankingEnvelope{}, fmt.Errorf("ranking decode: %w", ErrInvalidRanking)
+	}
 	var result RankingEnvelope
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
+	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
 		return RankingEnvelope{}, fmt.Errorf("ranking decode: %w", ErrInvalidRanking)
@@ -146,10 +165,33 @@ func (c *Client) ranking(ctx context.Context, actorUserID, requestID, path, scop
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return RankingEnvelope{}, fmt.Errorf("ranking decode: %w", ErrInvalidRanking)
 	}
-	if err := validateRanking(result, scope, bankID, period); err != nil {
+	if err := validateRanking(result, shadow, scope, bankID, period); err != nil {
 		return RankingEnvelope{}, err
 	}
 	return result, nil
+}
+
+// rankingShadowEnvelope mirrors the internal ranking contract (quizcraft.yaml
+// RankingPage) with entries decoded into raw JSON so user_id presence can be
+// validated independently of the typed *string decode.
+type rankingShadowEnvelope struct {
+	RequestID string            `json:"request_id"`
+	Data      rankingShadowPage `json:"data"`
+}
+
+type rankingShadowPage struct {
+	Scope   string               `json:"scope"`
+	BankID  string               `json:"bank_id,omitempty"`
+	Period  RankingPeriod        `json:"period"`
+	Metric  string               `json:"metric"`
+	Entries []rankingShadowEntry `json:"entries"`
+}
+
+type rankingShadowEntry struct {
+	Rank               int64           `json:"rank"`
+	UserID             json.RawMessage `json:"user_id"`
+	GuestKey           json.RawMessage `json:"guest_key"`
+	CorrectAnswerCount int64           `json:"correct_answer_count"`
 }
 
 func (c *Client) portalRead(ctx context.Context, actorUserID, requestID, path string) (*http.Response, error) {
@@ -462,12 +504,23 @@ func normalizeRankingPeriod(period RankingPeriod) (RankingPeriod, error) {
 	return period, nil
 }
 
-func validateRanking(result RankingEnvelope, expectedScope, expectedBankID string, expectedPeriod RankingPeriod) error {
+// validateRanking validates the internal ranking contract (ADR-0038): every
+// entry must carry user_id and guest_key fields (present but nullable — a
+// missing field is an old-contract Core response, never a guest), non-null
+// user ids must be unique valid uuids, guest entries (user_id null) must carry
+// a non-empty guest_key (their stable anonymous identity key) that is also
+// unique, signed-in entries must carry guest_key null, ranks are
+// non-decreasing, and correct-answer counts are monotone non-increasing.
+// nickname/system_avatar are no longer part of the internal contract: the
+// Gateway derives them and must never trust or forward an upstream label.
+func validateRanking(result RankingEnvelope, shadow rankingShadowEnvelope, expectedScope, expectedBankID string, expectedPeriod RankingPeriod) error {
 	if strings.TrimSpace(result.RequestID) == "" ||
 		result.Data.Scope != expectedScope ||
 		result.Data.Period != expectedPeriod ||
 		result.Data.Metric != "correct_answer_count" ||
-		result.Data.Entries == nil {
+		result.Data.Entries == nil ||
+		len(result.Data.Entries) > 100 ||
+		len(shadow.Data.Entries) != len(result.Data.Entries) {
 		return ErrInvalidRanking
 	}
 	if expectedScope == "bank" && result.Data.BankID != expectedBankID {
@@ -478,43 +531,40 @@ func validateRanking(result RankingEnvelope, expectedScope, expectedBankID strin
 	}
 	previousRank := int64(0)
 	previousCount := int64(-1)
-	for _, entry := range result.Data.Entries {
-		if entry.Rank < 1 || entry.Rank < previousRank || strings.TrimSpace(entry.Nickname) == "" || looksLikeRankingIdentifier(entry.Nickname) || !validRankingAvatar(entry.SystemAvatar) || entry.CorrectAnswerCount < 0 || previousCount >= 0 && entry.CorrectAnswerCount > previousCount {
+	seenUserIDs := make(map[string]struct{}, len(result.Data.Entries))
+	seenGuestKeys := make(map[string]struct{}, len(result.Data.Entries))
+	for index, entry := range result.Data.Entries {
+		shadowEntry := shadow.Data.Entries[index]
+		if entry.Rank < 1 || entry.Rank < previousRank || len(shadowEntry.UserID) == 0 || len(shadowEntry.GuestKey) == 0 || entry.CorrectAnswerCount < 0 || previousCount >= 0 && entry.CorrectAnswerCount > previousCount {
 			return ErrInvalidRanking
+		}
+		userIDNull := string(shadowEntry.UserID) == "null"
+		guestKeyNull := string(shadowEntry.GuestKey) == "null"
+		if userIDNull {
+			// Guest learner: no user_id and a non-empty, unique guest_key
+			// (the stable anonymous identity used to derive 游客x).
+			if entry.UserID != nil || guestKeyNull || entry.GuestKey == nil || strings.TrimSpace(*entry.GuestKey) == "" {
+				return ErrInvalidRanking
+			}
+			if _, exists := seenGuestKeys[*entry.GuestKey]; exists {
+				return ErrInvalidRanking
+			}
+			seenGuestKeys[*entry.GuestKey] = struct{}{}
+		} else {
+			if entry.UserID == nil || !validUUID(*entry.UserID) {
+				return ErrInvalidRanking
+			}
+			// Signed-in learner: guest_key must be present but null.
+			if !guestKeyNull || entry.GuestKey != nil {
+				return ErrInvalidRanking
+			}
+			if _, exists := seenUserIDs[*entry.UserID]; exists {
+				return ErrInvalidRanking
+			}
+			seenUserIDs[*entry.UserID] = struct{}{}
 		}
 		previousRank = entry.Rank
 		previousCount = entry.CorrectAnswerCount
 	}
 	return nil
-}
-
-func looksLikeRankingIdentifier(value string) bool {
-	value = strings.TrimSpace(norm.NFKC.String(value))
-	if strings.Contains(value, "@") {
-		return true
-	}
-	compact := strings.Map(func(r rune) rune {
-		if strings.ContainsRune(" _-.", r) {
-			return -1
-		}
-		return r
-	}, value)
-	if len(compact) != 32 {
-		return false
-	}
-	for _, r := range compact {
-		if !('0' <= r && r <= '9') && !('a' <= r && r <= 'f') && !('A' <= r && r <= 'F') {
-			return false
-		}
-	}
-	return true
-}
-
-func validRankingAvatar(value string) bool {
-	switch value {
-	case "scholar-blue", "coder-green", "reader-amber", "owl-purple":
-		return true
-	default:
-		return false
-	}
 }

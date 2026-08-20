@@ -40,6 +40,7 @@ import (
 type Handler struct {
 	sessionCodec       *session.Codec
 	platform           *platformcore.Client
+	displayNames       *practice.DisplayNamesResolver
 	quizCraft          *practice.Client
 	portalAPI          *http.Client
 	portalAPIURL       string
@@ -64,8 +65,6 @@ var (
 	accountIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 	portalRequestIDPattern       = regexp.MustCompile(`^req_[A-Za-z0-9_-]{1,116}$`)
 )
-
-const quizCraftCatalogPath = "/api/v1/practice/catalog"
 
 // oauthFlowTTL is the OAuth flow window shared by the Redis state and the
 // oauth cookie MaxAge. The flow must survive the full email-code login: a
@@ -172,9 +171,18 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			return nil, fmt.Errorf("QuizCraft V2 read client: %w", err)
 		}
 	}
+	platform := platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID)
+	// The ranking nickname synthesis resolves display names through Platform
+	// Core's read-only boundary with a process-internal TTL cache and
+	// singleflight (ADR-0038); a Platform Core outage degrades ranking
+	// nicknames to 游客x instead of failing the read.
+	displayNames := practice.NewDisplayNamesResolver(func(ctx context.Context, requestID string, userIDs []string) (map[string]string, error) {
+		return platform.DisplayNames(ctx, userIDs, requestID)
+	})
 	return &Handler{
 		sessionCodec:       codec,
-		platform:           platformcore.NewClient(cfg.PlatformCoreURL, cfg.PortalRedirectURI, cfg.PlatformClientID, cfg.PlatformSecret, cfg.PlatformKeyID),
+		platform:           platform,
+		displayNames:       displayNames,
 		quizCraft:          quizCraft,
 		portalAPI:          &http.Client{Timeout: 10 * time.Second},
 		portalAPIURL:       cfg.PortalAPIURL,
@@ -217,18 +225,16 @@ func (h *Handler) Router() chi.Router {
 	r.Post("/api/v1/account/tickets/{ticket_id}/follow-ups", h.accountTicketFollowUp)
 	r.Get("/api/v1/account/membership-orders", h.accountMembershipOrders)
 	r.Post("/api/v1/account/membership-orders", h.accountMembershipOrderCreate)
-	if h.quizCraftCatalog != nil {
-		// This exact handler is registered only for a local or explicitly
-		// coordinated cutover configuration. The default wildcard path below
-		// still fails closed for this exact V2 route.
-		r.Get(quizCraftCatalogPath, h.getQuizCraftCatalog)
-	}
-	if h.quizCraft != nil {
-		// #164 prepared these clients behind the V2 read gate. #166 is the
-		// only release allowed to make the public read routes reachable.
-		r.Get(practice.OverallRankingPath, h.getQuizCraftOverallRanking)
-		r.Get(practice.BankRankingPath, h.getQuizCraftBankRanking)
-	}
+	// QuizCraft V2 read routes are registered unconditionally (ADR-0036). The
+	// PORTAL_ENABLE_QUIZCRAFT_* flags no longer decide whether a route exists —
+	// they decide whether the matching read client exists. Each handler fails
+	// closed on its own when its client is nil: public reads (catalog,
+	// rankings) answer an honest 404 and actor-bound reads (stats, favorites,
+	// feedback status) answer an honest 503, never a legacy portal-api or mock
+	// fallback.
+	r.Get("/api/v1/practice/catalog", h.getQuizCraftCatalog)
+	r.Get(practice.OverallRankingPath, h.getQuizCraftOverallRanking)
+	r.Get(practice.BankRankingPath, h.getQuizCraftBankRanking)
 
 	// This is the sole browser-visible QuizCraft write boundary. It is not a
 	// generic proxy and stays unavailable until the explicit #166 cutover gate
@@ -283,6 +289,16 @@ func (h *Handler) Router() chi.Router {
 	// This private V2 route is never proxied to legacy Portal API data. Before
 	// #166 enables the V2 client it returns an honest unavailable response.
 	r.Get("/api/v1/practice/stats", h.personalPracticeStats)
+	// Legacy practice read endpoints removed by ADR-0036 no longer proxy to
+	// portal-api and have no mock/legacy fallback: the Portal UI has migrated
+	// to the V2 catalog (/api/v1/practice/catalog) and the Core ranking
+	// contract (/api/v1/rankings/*). These exact routes fail closed with an
+	// honest 404 plus a migration hint so a stale client never receives a
+	// fabricated success response.
+	r.Get("/api/v1/practice/banks", h.practiceLegacyGone)
+	r.Get("/api/v1/practice/schools", h.practiceLegacyGone)
+	r.Get("/api/v1/practice/lists/{list_id}", h.practiceLegacyGone)
+	r.Get("/api/v1/practice/leaderboard", h.practiceLegacyGone)
 	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/notices", h.proxyToPortalAPI)
@@ -1027,6 +1043,18 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// practiceLegacyGone answers the practice read endpoints portal-api used to
+// own (banks/schools/lists/leaderboard). ADR-0036 routes every Portal
+// practice read to the QuizCraft Core contract instead; a stale caller gets
+// an honest 404 with a migration hint, never a mock or legacy fallback.
+func (h *Handler) practiceLegacyGone(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{
+		Error:     "not found",
+		Message:   "练习目录与排行榜已迁移到新数据源，请刷新页面或升级客户端。",
+		RequestID: requestIDOf(w, r),
+	})
+}
+
 // getPracticeFeedbackStatus reads one signed-in user's persisted correction
 // status. It is a narrow actor-bound read like personalPracticeStats, never
 // the generic practice proxy: the wildcard read stays public product data.
@@ -1540,13 +1568,6 @@ func readFoodPostBody(r *http.Request) ([]byte, error) {
 // --- Proxy to portal-api ---
 
 func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
-	// The legacy wildcard must not accidentally make a successful V2 catalog
-	// route public before #166. Keep the path externally indistinguishable
-	// from an unregistered route and do not contact either upstream.
-	if r.URL.Path == quizCraftCatalogPath {
-		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "not found", Message: "内容不存在或已下架", RequestID: requestIDOf(w, r)})
-		return
-	}
 	targetURL := h.portalAPIURL + r.URL.Path
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery

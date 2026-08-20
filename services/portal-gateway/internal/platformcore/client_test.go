@@ -112,6 +112,92 @@ func TestExchangeCodeRejectsFlatJSONAndShortToken(t *testing.T) {
 	}
 }
 
+func TestDisplayNamesSendsSignedBatchAndDecodesNameMap(t *testing.T) {
+	const secret = "portal-client-secret-with-enough-entropy"
+	const clientID = "portal-gateway"
+	const keyID = "active-key"
+	namedID := "11111111-1111-4111-8111-111111111111"
+	unnamedID := "22222222-2222-4222-8222-222222222222"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/users/display-names" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("X-Request-Id") != "req_display_names" {
+			t.Errorf("X-Request-Id = %q", r.Header.Get("X-Request-Id"))
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload struct {
+			UserIDs []string `json:"user_ids"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil || len(payload.UserIDs) != 2 || payload.UserIDs[0] != namedID {
+			t.Errorf("invalid display-names body: %s", body)
+		}
+		digest := sha256.Sum256(body)
+		canonical := strings.Join([]string{
+			r.Method,
+			r.URL.RequestURI(),
+			r.Header.Get("X-Timestamp"),
+			r.Header.Get("X-Nonce"),
+			hex.EncodeToString(digest[:]),
+		}, "\n")
+		mac := hmac.New(sha256.New, []byte(secret))
+		_, _ = mac.Write([]byte(canonical))
+		wantSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != clientID || pass != secret ||
+			r.Header.Get("X-Service-Id") != clientID ||
+			r.Header.Get("X-Key-Id") != keyID ||
+			r.Header.Get("X-Signature") != wantSig {
+			t.Errorf("invalid authenticated display-names request")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]*string{
+				namedID:   stringPointer("认真刷题"),
+				unnamedID: nil,
+			},
+			"request_id": "req_core_display_names",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "https://portal.example/callback", clientID, secret, keyID)
+	client.httpClient = server.Client()
+	names, err := client.DisplayNames(t.Context(), []string{namedID, unnamedID}, "req_display_names")
+	if err != nil {
+		t.Fatalf("DisplayNames error: %v", err)
+	}
+	if names[namedID] != "认真刷题" || names[unnamedID] != "" {
+		t.Fatalf("DisplayNames = %v", names)
+	}
+}
+
+func TestDisplayNamesRejectsUnauthorizedAndNonJSONResponses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Request-Id") == "req_display_names_unauthorized" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "https://portal.example/callback", "portal-gateway", "portal-client-secret-with-enough-entropy", "active-key")
+	client.httpClient = server.Client()
+	if _, err := client.DisplayNames(t.Context(), []string{"11111111-1111-4111-8111-111111111111"}, "req_display_names_unauthorized"); err != ErrUnauthorized {
+		t.Fatalf("DisplayNames unauthorized = %v, want ErrUnauthorized", err)
+	}
+	if _, err := client.DisplayNames(t.Context(), []string{"11111111-1111-4111-8111-111111111111"}, "req_display_names_bad"); err == nil {
+		t.Fatal("DisplayNames accepted a non-object data payload")
+	}
+	if _, err := client.DisplayNames(t.Context(), nil, "req_display_names_empty"); err == nil {
+		t.Fatal("DisplayNames accepted an empty batch")
+	}
+}
+
+func stringPointer(value string) *string { return &value }
+
 func TestCheckPermissionStatusMapping(t *testing.T) {
 	for status, want := range map[int]error{
 		http.StatusUnauthorized: ErrUnauthorized,

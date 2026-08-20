@@ -3,26 +3,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  fetchPracticeBanks,
-  fetchPracticeSchools,
   fetchQuizCraftCatalog,
-  formatPortalError,
-  mockAllowed,
 } from "@/lib/api/client";
 import { quizCraftCatalogEnabled } from "@/lib/api/env";
 import type {
   BankSummary,
-  PracticeSchool,
   QuizCraftCatalogBank,
 } from "@/lib/api/types";
-import { SCHOOLS, QuizListMeta, type School } from "@/lib/practice/mock";
+import { QuizListMeta, type School } from "@/lib/practice/mock";
 import { PRACTICE_COMING_SOON_COPY } from "@/lib/practice/coming-soon";
-import {
-  getGatewayBanks,
-  getGatewaySchools,
-  getPracticeGatewayError,
-  initPracticeGateway,
-} from "@/lib/practice/gateway";
 import { usePersonalPracticeStats } from "@/lib/practice/personal-stats";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
@@ -136,10 +125,6 @@ function QuizCraftCatalogCard({
   );
 }
 
-function asLocalSchools(api: PracticeSchool[]): School[] {
-  return api as unknown as School[];
-}
-
 type LoadState = "loading" | "ready" | "error";
 
 export default function PracticeBankPage() {
@@ -161,104 +146,29 @@ export default function PracticeBankPage() {
   const load = useCallback(async () => {
     setLoadState("loading");
     setError(null);
-    if (quizCraftCatalogIsEnabled) {
-      try {
-        const response = await fetchQuizCraftCatalog();
-        setSchools([]);
-        setBanks([]);
-        setQuizCraftBanks(response.banks);
-        setLoadState("ready");
-      } catch {
-        // The flag is a real-data cutover seam. Never replace a failed Core
-        // read with legacy Portal API, cached, or local mock catalog data.
-        setSchools([]);
-        setBanks([]);
-        setQuizCraftBanks([]);
-        setError("题库暂时加载不出来，请检查网络后重试。");
-        setLoadState("error");
-      }
+    if (!quizCraftCatalogIsEnabled) {
+      // Browser flag off: render an empty, non-probing state. ADR-0036 removed
+      // the legacy schools/banks → gateway cache → mock fallback chain, so
+      // there is no other data source to try and nothing to probe.
+      setSchools([]);
+      setBanks([]);
+      setQuizCraftBanks([]);
+      setLoadState("ready");
       return;
     }
     try {
-      try {
-        const resp = await fetchPracticeSchools();
-        const next = asLocalSchools(resp.schools);
-        setSchools(next);
-        setBanks([]);
-        setQuizCraftBanks([]);
-        if (next[0]) {
-          setSchoolId(next[0].id);
-          setMajorId(next[0].majors[0]?.id ?? "");
-          setSubjectId(next[0].majors[0]?.subjects[0]?.id ?? "");
-        }
-        setLoadState("ready");
-        return;
-      } catch {
-        // try banks, then gateway cache / mock
-      }
-
-      try {
-        const banksResp = await fetchPracticeBanks();
-        if (banksResp?.banks?.length) {
-          setSchools([]);
-          setBanks(banksResp.banks);
-          setQuizCraftBanks([]);
-          setLoadState("ready");
-          return;
-        }
-      } catch {
-        /* continue */
-      }
-
-      await initPracticeGateway();
-      const cachedSchools = getGatewaySchools();
-      const cachedBanks = getGatewayBanks();
-      if (cachedSchools?.length) {
-        const next = asLocalSchools(cachedSchools);
-        setSchools(next);
-        setBanks([]);
-        setQuizCraftBanks([]);
-        if (next[0]) {
-          setSchoolId(next[0].id);
-          setMajorId(next[0].majors[0]?.id ?? "");
-          setSubjectId(next[0].majors[0]?.subjects[0]?.id ?? "");
-        }
-        setLoadState("ready");
-        return;
-      }
-      if (cachedBanks?.length) {
-        setSchools([]);
-        setBanks(cachedBanks);
-        setQuizCraftBanks([]);
-        setLoadState("ready");
-        return;
-      }
-      if (mockAllowed) {
-        setSchools(SCHOOLS);
-        setBanks([]);
-        setQuizCraftBanks([]);
-        setSchoolId(SCHOOLS[0].id);
-        setMajorId(SCHOOLS[0].majors[0].id);
-        setSubjectId(SCHOOLS[0].majors[0].subjects[0].id);
-        setLoadState("ready");
-        return;
-      }
-      setError(
-        getPracticeGatewayError() ||
-          "题库暂时加载不出来，请检查网络后重试。"
-      );
-      setLoadState("error");
-    } catch (e) {
-      if (mockAllowed) {
-        setSchools(SCHOOLS);
-        setQuizCraftBanks([]);
-        setSchoolId(SCHOOLS[0].id);
-        setMajorId(SCHOOLS[0].majors[0].id);
-        setSubjectId(SCHOOLS[0].majors[0].subjects[0].id);
-        setLoadState("ready");
-        return;
-      }
-      setError(formatPortalError(e));
+      const response = await fetchQuizCraftCatalog();
+      setSchools([]);
+      setBanks([]);
+      setQuizCraftBanks(response.banks);
+      setLoadState("ready");
+    } catch {
+      // The flag is a real-data cutover seam. Never replace a failed Core
+      // read with legacy Portal API, cached, or local mock catalog data.
+      setSchools([]);
+      setBanks([]);
+      setQuizCraftBanks([]);
+      setError("题库暂时加载不出来，请检查网络后重试。");
       setLoadState("error");
     }
   }, []);

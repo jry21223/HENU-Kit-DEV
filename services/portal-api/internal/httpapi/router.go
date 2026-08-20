@@ -17,7 +17,6 @@ import (
 	"henukit.dev/portal-api/internal/db"
 	"henukit.dev/portal-api/internal/food"
 	"henukit.dev/portal-api/internal/library"
-	"henukit.dev/portal-api/internal/practice"
 )
 
 // NewRouter builds the chi router with all Portal API routes.
@@ -33,10 +32,6 @@ func NewRouter() (http.Handler, error) {
 		}
 	}
 
-	quizcraftConn, err := db.Connect("QUIZCRAFT_DATABASE_URL")
-	if err != nil {
-		return nil, fmt.Errorf("quizcraft db: %w", err)
-	}
 	studyConn, err := db.Connect("STUDY_DATABASE_URL")
 	if err != nil {
 		return nil, fmt.Errorf("study db: %w", err)
@@ -44,11 +39,6 @@ func NewRouter() (http.Handler, error) {
 	portalConn, err := db.Connect("PORTAL_DATABASE_URL")
 	if err != nil {
 		return nil, fmt.Errorf("portal db: %w", err)
-	}
-
-	var practiceSource practiceSource
-	if quizcraftConn != nil {
-		practiceSource.quizcraftDB = practice.NewQuizCraftDB(quizcraftConn)
 	}
 
 	var librarySource librarySource
@@ -99,22 +89,9 @@ func NewRouter() (http.Handler, error) {
 		getFoodPostImage(w, req, foodSource)
 	})
 
-	// Practice
-	r.Get("/api/v1/practice/banks", func(w http.ResponseWriter, req *http.Request) {
-		listBanks(w, req, practiceSource, mode)
-	})
-	r.Get("/api/v1/practice/schools", func(w http.ResponseWriter, req *http.Request) {
-		listSchools(w, req, practiceSource, mode)
-	})
-	r.Get("/api/v1/practice/lists/{id}", func(w http.ResponseWriter, req *http.Request) {
-		getQuizList(w, req, practiceSource, mode)
-	})
-	r.Get("/api/v1/practice/leaderboard", func(w http.ResponseWriter, req *http.Request) {
-		getLeaderboard(w, req, practiceSource, mode)
-	})
-	r.Get("/api/v1/practice/stats", func(w http.ResponseWriter, req *http.Request) {
-		getUserStats(w, req, mode)
-	})
+	// Practice reads were removed by ADR-0036: the Portal read path now runs
+	// through Portal Gateway's exact routes to the QuizCraft Go core contract.
+	// portal-api no longer connects to the quizcraft database.
 
 	// Campus
 	r.Get("/api/v1/campus/items", func(w http.ResponseWriter, req *http.Request) {
@@ -136,10 +113,6 @@ func NewRouter() (http.Handler, error) {
 }
 
 // --- Data sources (nil = mock only when mode=mock) ---
-
-type practiceSource struct {
-	quizcraftDB *practice.QuizCraftDB
-}
 
 type librarySource struct {
 	studyDB *library.StudyDB
@@ -477,145 +450,9 @@ func listFoodComments(w http.ResponseWriter, r *http.Request, src foodSource, mo
 }
 
 // --- Practice handlers ---
-
-func listBanks(w http.ResponseWriter, r *http.Request, src practiceSource, mode string) {
-	if src.quizcraftDB != nil {
-		banks, err := src.quizcraftDB.GetBanks()
-		if err != nil {
-			writeServiceUnavailable(w, "quizcraft_database_error", err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"banks": banks, "request_id": requestIDOf(w)})
-		return
-	}
-	if mode == db.ModeLive {
-		writeServiceUnavailable(w, "quizcraft_database_unavailable", "QUIZCRAFT_DATABASE_URL not connected")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"banks": practice.MockBanks(), "request_id": requestIDOf(w)})
-}
-
-func listSchools(w http.ResponseWriter, r *http.Request, src practiceSource, mode string) {
-	if src.quizcraftDB != nil {
-		schools, err := src.quizcraftDB.GetSchools()
-		if err != nil {
-			writeServiceUnavailable(w, "quizcraft_database_error", err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"schools": schools, "request_id": requestIDOf(w)})
-		return
-	}
-	if mode == db.ModeLive {
-		writeServiceUnavailable(w, "quizcraft_database_unavailable", "QUIZCRAFT_DATABASE_URL not connected")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"schools": practice.MockSchools(), "request_id": requestIDOf(w)})
-}
-
-func getQuizList(w http.ResponseWriter, r *http.Request, src practiceSource, mode string) {
-	id := chi.URLParam(r, "id")
-
-	if src.quizcraftDB != nil {
-		questions, err := src.quizcraftDB.GetQuestions(id)
-		if err != nil {
-			writeServiceUnavailable(w, "quizcraft_database_error", err.Error())
-			return
-		}
-		schools, err := src.quizcraftDB.GetSchools()
-		if err != nil {
-			writeServiceUnavailable(w, "quizcraft_database_error", err.Error())
-			return
-		}
-		for _, s := range schools {
-			for _, m := range s.Majors {
-				for _, sub := range m.Subjects {
-					for _, l := range sub.Lists {
-						if l.ID == id {
-							writeJSON(w, http.StatusOK, map[string]any{"list": l, "questions": questions, "request_id": requestIDOf(w)})
-							return
-						}
-					}
-				}
-			}
-		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
-		return
-	}
-
-	if mode == db.ModeLive {
-		writeServiceUnavailable(w, "quizcraft_database_unavailable", "QUIZCRAFT_DATABASE_URL not connected")
-		return
-	}
-
-	for _, school := range practice.MockSchools() {
-		for _, major := range school.Majors {
-			for _, subject := range major.Subjects {
-				for _, list := range subject.Lists {
-					if list.ID == id {
-						questions := practice.MockQuestions(list.PoolKey)
-						if list.Count < len(questions) {
-							questions = questions[:list.Count]
-						}
-						writeJSON(w, http.StatusOK, map[string]any{"list": list, "questions": questions, "request_id": requestIDOf(w)})
-						return
-					}
-				}
-			}
-		}
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "内容不存在或已下架"})
-}
-
-func getLeaderboard(w http.ResponseWriter, r *http.Request, src practiceSource, mode string) {
-	period := r.URL.Query().Get("period")
-	if period == "" {
-		period = "week"
-	}
-
-	if src.quizcraftDB != nil {
-		rows, err := src.quizcraftDB.GetLeaderboard(period)
-		if err != nil {
-			writeServiceUnavailable(w, "quizcraft_database_error", err.Error())
-			return
-		}
-		if rows == nil {
-			rows = []practice.LeaderboardRow{}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"rows": rows, "request_id": requestIDOf(w)})
-		return
-	}
-	if mode == db.ModeLive {
-		writeServiceUnavailable(w, "quizcraft_database_unavailable", "QUIZCRAFT_DATABASE_URL not connected")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"rows": practice.MockLeaderboard(period), "request_id": requestIDOf(w)})
-}
-
-func getUserStats(w http.ResponseWriter, r *http.Request, mode string) {
-	// No real user-stats source is wired yet. Live must not invent metrics.
-	if mode == db.ModeLive {
-		log.Printf("portal-api user stats source is not configured")
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error":      "stats_unavailable",
-			"message":    "学习统计暂时不可用，请稍后再来",
-			"request_id": requestIDOf(w),
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"totalQuestions": 486, "accuracy": 76, "streakDays": 12, "beatPercent": 83,
-		"mastery": []map[string]any{
-			{"label": "数据结构", "value": 81}, {"label": "高等数学A", "value": 78},
-			{"label": "操作系统", "value": 64}, {"label": "线性代数", "value": 52},
-		},
-		"weakTop5": []map[string]any{
-			{"topic": "特征值与特征向量", "subject": "线性代数", "wrong": 18},
-			{"topic": "泰勒展开", "subject": "高等数学A", "wrong": 15},
-			{"topic": "页面置换算法", "subject": "操作系统", "wrong": 12},
-		},
-		"request_id": requestIDOf(w),
-	})
-}
+// Removed with ADR-0036: practice reads are owned by the QuizCraft Go core
+// and reach the browser through Portal Gateway exact routes. portal-api no
+// longer serves /api/v1/practice/{banks,schools,lists,leaderboard,stats}.
 
 // --- Campus handlers ---
 

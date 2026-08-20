@@ -100,6 +100,60 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, idempotencyKe
 	}, nil
 }
 
+// DisplayNames resolves a bounded batch of display names through Platform
+// Core's read-only display-name boundary (ADR-0038). It authenticates with
+// the shared five-line HMAC service credential — no session token — and maps
+// every requested id to its display name, or "" when unset or unknown.
+func (c *Client) DisplayNames(ctx context.Context, userIDs []string, requestID string) (map[string]string, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || len(userIDs) == 0 || len(userIDs) > 100 {
+		return nil, fmt.Errorf("invalid display-name batch")
+	}
+	body, _ := json.Marshal(map[string]any{"user_ids": userIDs})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/api/v1/users/display-names", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("NewRequest: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(requestID) != "" {
+		req.Header.Set("X-Request-Id", requestID)
+	}
+	if err := c.signer.Sign(req); err != nil {
+		return nil, fmt.Errorf("sign: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, ErrUnauthorized
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("display-names: status %d", resp.StatusCode)
+	}
+	var envelope struct {
+		Data map[string]*string `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	if envelope.Data == nil {
+		return nil, fmt.Errorf("invalid display-names response")
+	}
+	result := make(map[string]string, len(envelope.Data))
+	for id, name := range envelope.Data {
+		if name != nil {
+			result[id] = strings.TrimSpace(*name)
+		} else {
+			result[id] = ""
+		}
+	}
+	return result, nil
+}
+
 // CheckPermission verifies a permission against Platform Core.
 func (c *Client) CheckPermission(ctx context.Context, exchangeToken, permissionCode string) error {
 	body, _ := json.Marshal(map[string]string{
