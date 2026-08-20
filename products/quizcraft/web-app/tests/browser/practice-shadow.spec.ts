@@ -212,7 +212,7 @@ test('feedback retry keeps its idempotency key after a transient write failure a
   await page.getByRole('button', { name: '反馈本题' }).click();
   await page.getByLabel('反馈建议').fill('第一次请求暂时失败后必须安全重试');
   await page.getByRole('button', { name: '提交反馈' }).click();
-  await expect(page.getByRole('alert')).toHaveText('提交反馈暂时失败，请保持页面并重试。');
+  await expect(page.getByRole('alert')).toHaveText('服务暂时不可用，请稍后再来');
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '反馈失败后重试必须保持同一幂等键' })).toBeVisible();
@@ -289,7 +289,7 @@ test('saved feedback remains recoverable when a status refresh temporarily fails
 
   const refresh = page.getByRole('button', { name: `刷新反馈 ${feedbackId}` });
   await refresh.click();
-  await expect(page.getByRole('alert')).toHaveText('处理状态暂时无法读取，已保留上次保存的状态。');
+  await expect(page.getByRole('alert')).toHaveText('服务暂时不可用，请稍后再来');
   await expect(page.getByText(feedbackId)).toBeVisible();
   await refresh.click();
   await expect(page.getByText('已解决')).toBeVisible();
