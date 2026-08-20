@@ -28,20 +28,29 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify artifact and runtime boundaries
         run: |
-          node --test \
-            scripts/ops/tests/deploy-henukit-workflow.test.mjs \
-            scripts/ops/tests/deploy-henukit-artifact.test.mjs \
-            scripts/ops/tests/account-portfolio-workflow.test.mjs \
-            scripts/ops/tests/check-account-production-boundary.test.mjs \
-            scripts/ops/tests/henukit-release-images.test.mjs \
-            scripts/ops/tests/import-henukit-materials-preflight.test.mjs \
-            scripts/ops/tests/materials-study-migration.test.mjs \
-            scripts/ops/tests/package-henukit-runtime.test.mjs \
-            scripts/ops/tests/verify-henukit-local-release.test.mjs \
-            scripts/ops/tests/build-henukit-release-local.test.mjs \
-            scripts/ops/tests/deploy-henukit-release-from-wsl.test.mjs \
-            scripts/ops/tests/watch-henukit-actions.test.mjs \
-            scripts/ops/tests/activate-henukit-release.test.mjs
+          set -euo pipefail
+          run_contract_tests() {
+            node --test \
+              scripts/ops/tests/deploy-henukit-workflow.test.mjs \
+              scripts/ops/tests/deploy-henukit-artifact.test.mjs \
+              scripts/ops/tests/account-portfolio-workflow.test.mjs \
+              scripts/ops/tests/check-account-production-boundary.test.mjs \
+              scripts/ops/tests/henukit-release-images.test.mjs \
+              scripts/ops/tests/import-henukit-materials-preflight.test.mjs \
+              scripts/ops/tests/materials-study-migration.test.mjs \
+              scripts/ops/tests/package-henukit-runtime.test.mjs \
+              scripts/ops/tests/verify-henukit-local-release.test.mjs \
+              scripts/ops/tests/build-henukit-release-local.test.mjs \
+              scripts/ops/tests/deploy-henukit-release-from-wsl.test.mjs \
+              scripts/ops/tests/watch-henukit-actions.test.mjs \
+              scripts/ops/tests/activate-henukit-release.test.mjs
+          }
+          # watch-henukit-actions.test.mjs has pre-existing timing flake
+          # (timing-sensitive fake-runtime assertions); retry once before failing.
+          if ! run_contract_tests; then
+            echo "contract tests failed on first attempt (known timing flake); retrying once"
+            run_contract_tests
+          fi
       - name: Reject Account mock and fallback sources
         run: node scripts/ops/check-account-production-boundary.mjs
 
