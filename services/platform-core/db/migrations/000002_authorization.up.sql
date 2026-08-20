@@ -1,5 +1,5 @@
 ALTER TABLE users
-ADD COLUMN authorization_revision bigint NOT NULL DEFAULT 1 CHECK (authorization_revision > 0);
+ADD COLUMN IF NOT EXISTS authorization_revision bigint NOT NULL DEFAULT 1 CHECK (authorization_revision > 0);
 
 CREATE TABLE permission_codes (
     code text PRIMARY KEY CHECK (code ~ '^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$'),

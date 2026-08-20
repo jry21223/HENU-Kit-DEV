@@ -5,4 +5,4 @@
 -- Food Post campus values (minglun/jinming/longzihu).
 
 ALTER TABLE food_submissions
-    ADD COLUMN campus text CHECK (campus IN ('minglun','jinming','longzihu'));
+    ADD COLUMN IF NOT EXISTS campus text CHECK (campus IN ('minglun','jinming','longzihu'));

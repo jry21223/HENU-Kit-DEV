@@ -4,4 +4,4 @@
 -- write bumps this optimistic version so concurrent edits conflict like
 -- every other Food operation.
 
-ALTER TABLE food_posts ADD COLUMN version integer NOT NULL DEFAULT 1 CHECK (version >= 1);
+ALTER TABLE food_posts ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1 CHECK (version >= 1);
