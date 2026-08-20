@@ -363,7 +363,6 @@ func TestDownloadCapabilityIsIndependentFromConsoleActorAuth(t *testing.T) {
 		Database: pool, Redis: redisClient,
 		ClientID: "console-gateway", Keys: map[string]string{"console": serviceSecret},
 		DownloadClientID: "portal-gateway", DownloadKeys: map[string]string{"download": serviceSecret}, DownloadStore: &fakeDownloadStore{},
-		LegacyBaseURL: "http://127.0.0.1:1", LegacyToken: "legacy-token",
 	}); err == nil {
 		t.Fatal("Library accepted overlapping Console and download HMAC secrets")
 	}
@@ -500,13 +499,11 @@ func newLibraryDownloadServer(t *testing.T, store library.DownloadObjectStore) (
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	legacy := newLegacyServer(t)
-	t.Cleanup(legacy.Close)
 	handler, err := library.New(library.Config{
 		Database: pool, Redis: redisClient,
 		ClientID: "console-gateway", Keys: map[string]string{"active": serviceSecret},
 		DownloadClientID: "portal-gateway", DownloadKeys: map[string]string{"active": downloadServiceSecret}, DownloadStore: store,
-		LegacyBaseURL: legacy.URL, LegacyToken: "legacy-admin-token", HTTPClient: http.DefaultClient,
+		HTTPClient: http.DefaultClient,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@ _Avoid_: Study Legacy Admin、学习平台后台
 
 **Compatibility Adapter**:
 迁移期连接 Study Legacy API 的受限兼容层；它支撑连续运营与回滚，但不是 HENUKit Console 的导航概念，也不能扩展 Library 的产品边界。
+> 2026-08-19 更新：**adapter 已移除（ADR-0037）**——legacy services/api 已物理退役，`/api/v1/commands` 与 `/api/v1/operations/*` 返回诚实 503，workspace/console-summary 降级为 partial；courses/materials 数据由 T1 迁移（`library_courses`/`library_materials`）恢复。
 _Avoid_: 旧功能入口、临时新功能、旧数据库直连
 
 **Active Public Material**:

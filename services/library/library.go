@@ -4,7 +4,6 @@ import (
 	"crypto/hmac"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -25,8 +24,6 @@ type Config struct {
 	Redis            redis.UniversalClient
 	ClientID         string
 	Keys             map[string]string
-	LegacyBaseURL    string
-	LegacyToken      string
 	HTTPClient       *http.Client
 	DownloadClientID string
 	DownloadKeys     map[string]string
@@ -39,7 +36,6 @@ type service struct {
 	clientID         string
 	keys             map[string]string
 	now              func() time.Time
-	legacy           *legacyAdapter
 	downloadClientID string
 	downloadKeys     map[string]string
 	downloadStore    DownloadObjectStore
@@ -60,17 +56,13 @@ func New(config Config) (http.Handler, error) {
 	if !validKeyRing(config.Keys) || !validKeyRing(config.DownloadKeys) {
 		return nil, errors.New("library service key ring is invalid")
 	}
-	legacy, err := newLegacyAdapter(config.LegacyBaseURL, config.LegacyToken, config.HTTPClient)
-	if err != nil {
-		return nil, err
-	}
 	if config.DownloadClientID == config.ClientID {
 		return nil, errors.New("library download service capability must be independent")
 	}
 	if keyRingsOverlap(config.Keys, config.DownloadKeys) {
 		return nil, errors.New("library download service secret must be independent")
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, now: time.Now, legacy: legacy, downloadClientID: config.DownloadClientID, downloadKeys: config.DownloadKeys, downloadStore: config.DownloadStore}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, now: time.Now, downloadClientID: config.DownloadClientID, downloadKeys: config.DownloadKeys, downloadStore: config.DownloadStore}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {
@@ -126,12 +118,29 @@ func (h *service) workspace(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.require(w, r, "library.read"); !ok {
 		return
 	}
-	writeData(w, r, http.StatusOK, h.legacy.workspace(r.Context()))
+	writeData(w, r, http.StatusOK, degradedWorkspace(h.now()))
 }
 
 func (h *service) consoleSummary(w http.ResponseWriter, r *http.Request) {
-	workspace := h.legacy.workspace(r.Context())
-	writeData(w, r, http.StatusOK, map[string]any{"id": "library", "status": workspace.Status, "status_message": workspace.StatusMessage, "as_of": workspace.GeneratedAt, "metrics": []map[string]string{{"label": "课程", "value": fmt.Sprint(len(workspace.Courses))}, {"label": "资料", "value": fmt.Sprint(len(workspace.Materials))}, {"label": "待审核", "value": fmt.Sprint(len(workspace.Submissions))}, {"label": "纠错", "value": fmt.Sprint(len(workspace.Corrections))}}})
+	workspace := degradedWorkspace(h.now())
+	writeData(w, r, http.StatusOK, map[string]any{"id": "library", "status": workspace.Status, "status_message": workspace.StatusMessage, "as_of": workspace.GeneratedAt, "metrics": []map[string]string{}})
+}
+
+// degradedWorkspace is the honest state after ADR-0037 removed the Study
+// Legacy adapter: catalog data (courses/materials) is owned by the legacy
+// study database until the T1 migration moves it into library's own tables.
+func degradedWorkspace(now time.Time) Workspace {
+	return Workspace{
+		Status:        "partial",
+		StatusMessage: "legacy Study API adapter removed (ADR-0037); catalog migration (T1) pending",
+		Degraded:      true,
+		Courses:       []Course{},
+		Materials:     []Material{},
+		Downloads:     []Download{},
+		Submissions:   []Material{},
+		Corrections:   []Correction{},
+		GeneratedAt:   now,
+	}
 }
 
 func decode(w http.ResponseWriter, r *http.Request, target any) ([]byte, bool) {
