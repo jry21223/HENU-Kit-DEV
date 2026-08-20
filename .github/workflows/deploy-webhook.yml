@@ -173,6 +173,9 @@ jobs:
           systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
       - name: Validate the complete materials release boundary
         run: |
+          # Pre-pull the node image used by the activate-wrapper tests so the
+          # first activation's image pull never races the kernel-lock assertion.
+          docker pull node:22-alpine
           node --check scripts/ops/prepare-henukit-materials.mjs
           node --check scripts/ops/seal-henukit-materials.mjs
           node --check scripts/ops/activate-henukit-materials.mjs
