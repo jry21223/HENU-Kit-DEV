@@ -9,7 +9,7 @@ test('ranking stays fail-closed before #166 even when the V2 write flag is set',
   });
 
   await page.goto('/ranking');
-  await expect(page.getByRole('alert')).toHaveText('旧排行榜正在迁移，暂不可用');
+  await expect(page.getByRole('alert')).toHaveText('排行榜正在升级中，预计很快恢复，请稍后再来');
   expect(v2RankingRequests).toBe(0);
 });
 
@@ -22,6 +22,6 @@ test('ranking stays explicit and sends no V2 ranking request at a narrow viewpor
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/ranking');
-  await expect(page.getByRole('alert')).toHaveText('旧排行榜正在迁移，暂不可用');
+  await expect(page.getByRole('alert')).toHaveText('排行榜正在升级中，预计很快恢复，请稍后再来');
   expect(v2RankingRequests).toBe(0);
 });
