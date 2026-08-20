@@ -81,6 +81,23 @@ jobs:
           path: services/${{ matrix.service }}/coverage.out
           if-no-files-found: warn
 
+  rowserrcheck:
+    name: rowserrcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: scripts/ops/rowserrcheck/go.mod
+      # A `for rows.Next()` loop with no rows.Err() returns a truncated result
+      # set with a nil error, which a handler then serves as a success. The
+      # off-the-shelf linters cannot run here — upstream rowserrcheck does not
+      # parse Go 1.26, and golangci-lint's release is built with an older Go
+      # than these modules target — so the check is a small stdlib program.
+      - name: Verify every query loop consults rows.Err()
+        run: go run ./scripts/ops/rowserrcheck services products
+
   python:
     name: python-${{ matrix.suite.name }}
     runs-on: ubuntu-24.04

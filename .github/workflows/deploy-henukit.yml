@@ -30,6 +30,14 @@ jobs:
           node --test scripts/ops/tests/*.test.mjs
       - name: Verify libraryctl path-containment guards
         run: node --test scripts/libraryctl/tests/*.test.mjs
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: scripts/ops/rowserrcheck/go.mod
+      # Cheap enough to gate every pull request: a query loop with no rows.Err()
+      # returns a truncated result set with a nil error, which a handler serves
+      # as a success.
+      - name: Verify every query loop consults rows.Err()
+        run: go run ./scripts/ops/rowserrcheck services products
       - name: Reject Account mock and fallback sources
         run: node scripts/ops/check-account-production-boundary.mjs
 

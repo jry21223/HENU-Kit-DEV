@@ -263,6 +263,11 @@ func (service *practiceHTTP) listWorkshopCatalog(writer http.ResponseWriter, req
 			}
 			versions = append(versions, item)
 		}
+		if versionRows.Err() != nil {
+			versionRows.Close()
+			writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft Workshop is temporarily unavailable")
+			return
+		}
 		versionRows.Close()
 		bank := map[string]any{"bank_id": bankID, "bank_key": bankKey, "name": name, "lifecycle_version": lifecycleVersion, "versions": versions}
 		if activeVersionID.Valid {
