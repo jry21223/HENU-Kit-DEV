@@ -32,11 +32,11 @@
 
 | 项 | 状态 |
 |---|---|
-| **Go core** | **容器化完成（方案 2，仓库配置层 2026-08-20）**：compose 服务 `quizcraft`（`docker-compose.henukit.yml` + `henukit-quizcraft` 镜像）替代宿主机 systemd `quizcraft-go.service`；服务器**尚未部署**——当前仍运行 systemd（`quizcraft-server`，`172.17.0.1:10089`，8-14 起）；宿主机 postgres 16 的 `quizcraft_v2` 经 `host.docker.internal` 访问（切流过渡拓扑）；`QUIZCRAFT_WRITES_ENABLED=1`、`QUIZCRAFT_PORTAL_COMMANDS_ENABLED=1`、portal catalog/command 凭据齐备 |
-| **数据** | `quizcraft_v2`：**12 题库 / 3457 题 / 45 个真实 practice session**；迁移表齐（migration_runs/exceptions/receipts、legacy_ranking_snapshots、legacy_feedback_archives） |
-| **排行** | `quizcraft_ranking_settlement_events` **0 条**（从未结算过；settleranking 未跑） |
+| **Go core** | **容器化完成并已部署（2026-08-20，release `8b018a27`）**：compose 服务 `quizcraft`（`henukit-quizcraft` 镜像，`Up` 稳定运行）；宿主机 systemd `quizcraft-go.service` **已停用**（宿主 10089 无监听）；`QUIZCRAFT_V2_DATABASE_URL` 指向 `host.docker.internal:5432`（宿主机 postgres 16 `quizcraft_v2`，切流过渡拓扑）；宿主机 postgres 已开 `listen_addresses=localhost,172.17.0.1` + pg_hba 放行 172.17.0.0/16 与 172.19.0.0/16（docker 网段，scram-sha-256） |
+| **数据** | `quizcraft_v2`：**12 题库 / 3457 题 / 45+ 个真实 practice session**；迁移表齐（migration_runs/exceptions/receipts、legacy_ranking_snapshots、legacy_feedback_archives） |
+| **排行** | `quizcraft_ranking_settlement_events` **3 条**（2026-08-19 首次结算，settleranking 已运行；公开排行 entries 暂空——需用户练习产生数据） |
 | **FastAPI** | 已停（10086 无监听，无 uvicorn 进程）；`LEGACY_BASE_URL=http://127.0.0.1:10086` 为历史配置残留 |
-| **portal 读** | `/api/v1/practice/catalog`、`/api/v1/rankings/overall` 均 200（走 Go core）；`/api/v1/practice/banks` 200 但**空列表**（portal-api 直读 docker quizcraft 库无 Go 表 → 静默空，已知缺陷） |
+| **portal 读** | `/api/v1/practice/catalog`、`/api/v1/rankings/overall` 均 200（走容器内 Go core）；`/api/v1/practice/banks` **404**（ADR-0036/0038 已部署：legacy 幽灵直读路径关闭） |
 | **结论** | ADR-0013 切流**已执行**（8-14 起），但仓库文档（README 8-08「FastAPI live」、本文件旧版「未切流」）**全部过时**；无在库 cutover 证据文档 |
 
 ## 4. 接线缺口（服务器实测后缩小为 4 项）
