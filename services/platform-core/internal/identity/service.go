@@ -162,12 +162,7 @@ type ServiceRequestCredentials struct {
 // service credential. It is the exported entry point for handlers that need
 // service authentication without an actor-bound session (ADR-0038).
 func (s *Service) AuthenticateServiceRequest(ctx context.Context, credentials ServiceRequestCredentials) error {
-	return s.authenticateServiceRequest(ctx, serviceRequestCredentials{
-		HTTPMethod: credentials.HTTPMethod, ClientID: credentials.ClientID, ClientSecret: credentials.ClientSecret,
-		KeyID: credentials.KeyID, Timestamp: credentials.Timestamp, Nonce: credentials.Nonce,
-		Signature: credentials.Signature, BodyHash: credentials.BodyHash, PathAndQuery: credentials.PathAndQuery,
-		NonceNamespace: credentials.NonceNamespace,
-	})
+	return s.authenticateServiceRequest(ctx, serviceRequestCredentials(credentials))
 }
 
 func New(queries *store.Queries, database *pgxpool.Pool, coordinator Coordinator, authorizationTTL, exchangeSessionTTL time.Duration, exchangeSessionTTLByClientID map[string]time.Duration, idempotencyTTL time.Duration) *Service {

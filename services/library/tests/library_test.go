@@ -7,8 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -178,13 +176,3 @@ func readBody(t *testing.T, response *http.Response) []byte {
 	return body
 }
 
-func decodeData(t *testing.T, payload []byte) map[string]any {
-	t.Helper()
-	var envelope struct {
-		Data map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(payload, &envelope); err != nil {
-		t.Fatal(fmt.Errorf("decode %s: %w", payload, err))
-	}
-	return envelope.Data
-}

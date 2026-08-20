@@ -561,7 +561,7 @@ services:
       CONSOLE_REDIRECT_URI: ${CONSOLE_REDIRECT_URI:-http://localhost:8088/console-api/v1/auth/callback}
       CONSOLE_SESSION_KEY: ${CONSOLE_SESSION_KEY:-cUUpjiEH+E5FD5YBx3ZKWN7qS7tyWHo24/HCXs+OIGI=}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-      PORTAL_SUMMARY_URL: ${PORTAL_SUMMARY_URL:-http://portal-summary:8083/api/v1/console-summary}
+      PORTAL_SUMMARY_URL: ${PORTAL_SUMMARY_URL-http://portal-summary:8083/api/v1/console-summary}
       PORTAL_SUMMARY_CLIENT_ID: ${PORTAL_SUMMARY_CLIENT_ID:-console-gateway-portal}
       PORTAL_SUMMARY_CLIENT_SECRET: ${PORTAL_SUMMARY_CLIENT_SECRET:-replace-portal-summary-client-secret-32bytes-min!!}
       PORTAL_SUMMARY_KEY_ID: ${PORTAL_SUMMARY_KEY_ID:-portal-summary-key}
@@ -569,15 +569,16 @@ services:
       PLATFORM_SUMMARY_CLIENT_ID: ${PLATFORM_SUMMARY_CLIENT_ID:-console-gateway-platform}
       PLATFORM_SUMMARY_CLIENT_SECRET: ${PLATFORM_SUMMARY_CLIENT_SECRET:-replace-platform-summary-client-secret-32bytes-min!!}
       PLATFORM_SUMMARY_KEY_ID: ${PLATFORM_SUMMARY_KEY_ID:-platform-summary-key}
-      NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL:-http://notice:8094/api/v1/console-summary}
+      NOTICE_SUMMARY_URL: ${NOTICE_SUMMARY_URL-http://notice:8094/api/v1/console-summary}
       # Onboarded summary owners use their private Compose endpoints by default.
-      NOTICE_API_URL: ${NOTICE_API_URL:-http://notice:8094}
+      # `-` (not `:-`) so an explicit empty value disables the module.
+      NOTICE_API_URL: ${NOTICE_API_URL-http://notice:8094}
       LIBRARY_API_URL: ${LIBRARY_API_URL:-}
-      FOOD_API_URL: ${FOOD_API_URL:-http://food:8096}
+      FOOD_API_URL: ${FOOD_API_URL-http://food:8096}
       NOTICE_SUMMARY_CLIENT_ID: ${NOTICE_SUMMARY_CLIENT_ID:-console-gateway-notice}
       NOTICE_SUMMARY_CLIENT_SECRET: ${NOTICE_SUMMARY_CLIENT_SECRET:-replace-notice-summary-client-secret-32bytes-min!!}
       NOTICE_SUMMARY_KEY_ID: ${NOTICE_SUMMARY_KEY_ID:-notice-summary-key}
-      LIBRARY_SUMMARY_URL: ${LIBRARY_SUMMARY_URL:-http://library:8095/api/v1/console-summary}
+      LIBRARY_SUMMARY_URL: ${LIBRARY_SUMMARY_URL-http://library:8095/api/v1/console-summary}
       LIBRARY_SUMMARY_CLIENT_ID: ${LIBRARY_SUMMARY_CLIENT_ID:-console-gateway-library}
       LIBRARY_SUMMARY_CLIENT_SECRET: ${LIBRARY_SUMMARY_CLIENT_SECRET:-replace-library-summary-client-secret-32bytes-min!!}
       LIBRARY_SUMMARY_KEY_ID: ${LIBRARY_SUMMARY_KEY_ID:-library-summary-key}
@@ -585,7 +586,7 @@ services:
       QUIZCRAFT_SUMMARY_CLIENT_ID: ${QUIZCRAFT_SUMMARY_CLIENT_ID:-console-gateway-quizcraft}
       QUIZCRAFT_SUMMARY_CLIENT_SECRET: ${QUIZCRAFT_SUMMARY_CLIENT_SECRET:-replace-quizcraft-summary-client-secret-32bytes-min!!}
       QUIZCRAFT_SUMMARY_KEY_ID: ${QUIZCRAFT_SUMMARY_KEY_ID:-quizcraft-summary-key}
-      FOOD_SUMMARY_URL: ${FOOD_SUMMARY_URL:-http://food:8096/api/v1/console-summary}
+      FOOD_SUMMARY_URL: ${FOOD_SUMMARY_URL-http://food:8096/api/v1/console-summary}
       FOOD_SUMMARY_CLIENT_ID: ${FOOD_SUMMARY_CLIENT_ID:-console-gateway-food}
       FOOD_SUMMARY_CLIENT_SECRET: ${FOOD_SUMMARY_CLIENT_SECRET:-replace-food-summary-client-secret-32bytes-min!!}
       FOOD_SUMMARY_KEY_ID: ${FOOD_SUMMARY_KEY_ID:-food-summary-key}
