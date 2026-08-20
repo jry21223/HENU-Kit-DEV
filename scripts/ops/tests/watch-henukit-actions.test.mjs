@@ -35,8 +35,12 @@ const releaseImages = [
   "henukit-notice",
   "henukit-notice-worker",
   "henukit-food",
+  "henukit-food-mcp",
   "henukit-library",
+  "henukit-career-opportunities",
+  "henukit-career-mcp",
   "henukit-portal-gateway",
+  "henukit-quizcraft",
 ];
 
 function writeExecutable(path, body) {

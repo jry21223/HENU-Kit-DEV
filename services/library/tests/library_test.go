@@ -175,4 +175,3 @@ func readBody(t *testing.T, response *http.Response) []byte {
 	}
 	return body
 }
-
