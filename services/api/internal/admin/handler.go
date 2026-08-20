@@ -26,6 +26,7 @@ import (
 	"final-review-platform/services/api/internal/paymentincident"
 	"final-review-platform/services/api/internal/platform/model"
 	"final-review-platform/services/api/pkg/config"
+	"final-review-platform/services/api/pkg/database"
 	"final-review-platform/services/api/pkg/response"
 )
 
@@ -303,7 +304,7 @@ type packageItemRow struct {
 func (h Handler) ListUsers(ctx *gin.Context) {
 	query := h.db.Model(&model.User{})
 	if email := strings.TrimSpace(ctx.Query("email")); email != "" {
-		query = query.Where("email LIKE ?", "%"+email+"%")
+		query = query.Where("email LIKE ? ESCAPE '\\'", database.LikeContains(email))
 	}
 	if role := strings.TrimSpace(ctx.Query("role")); role != "" {
 		normalized, ok := normalizeUserRole(role, "")
@@ -439,7 +440,7 @@ func (h Handler) ListMediaAssets(ctx *gin.Context) {
 	}
 	if ownerEmail := strings.TrimSpace(ctx.Query("ownerEmail")); ownerEmail != "" {
 		var owners []model.User
-		if err := h.db.Where("email LIKE ?", "%"+ownerEmail+"%").Limit(200).Find(&owners).Error; err != nil {
+		if err := h.db.Where("email LIKE ? ESCAPE '\\'", database.LikeContains(ownerEmail)).Limit(200).Find(&owners).Error; err != nil {
 			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 			return
 		}
@@ -720,21 +721,21 @@ func (h Handler) ListOrders(ctx *gin.Context) {
 		query = query.Where("user_id = ?", userID)
 	}
 	if outTradeNo := strings.TrimSpace(ctx.Query("outTradeNo")); outTradeNo != "" {
-		query = query.Where("out_trade_no LIKE ?", "%"+outTradeNo+"%")
+		query = query.Where("out_trade_no LIKE ? ESCAPE '\\'", database.LikeContains(outTradeNo))
 	}
 	if riskFlag := strings.TrimSpace(ctx.Query("riskFlag")); riskFlag != "" {
 		if len(riskFlag) > 120 {
 			response.Error(ctx, http.StatusBadRequest, response.CodeBadRequest, "invalid_risk_flag", nil)
 			return
 		}
-		query = query.Where("risk_flag LIKE ?", "%"+riskFlag+"%")
+		query = query.Where("risk_flag LIKE ? ESCAPE '\\'", database.LikeContains(riskFlag))
 	}
 	if strings.EqualFold(strings.TrimSpace(ctx.Query("riskOnly")), "true") {
 		query = query.Where("risk_flag <> ''")
 	}
 	if userEmail := strings.TrimSpace(ctx.Query("userEmail")); userEmail != "" {
 		var users []model.User
-		if err := h.db.Where("email LIKE ?", "%"+userEmail+"%").Limit(200).Find(&users).Error; err != nil {
+		if err := h.db.Where("email LIKE ? ESCAPE '\\'", database.LikeContains(userEmail)).Limit(200).Find(&users).Error; err != nil {
 			response.Error(ctx, http.StatusInternalServerError, response.CodeInternalServer, "query_failed", nil)
 			return
 		}
@@ -821,10 +822,10 @@ func (h Handler) ListPaymentIncidents(ctx *gin.Context) {
 		query = query.Where("order_id = ?", orderID)
 	}
 	if outTradeNo := strings.TrimSpace(ctx.Query("outTradeNo")); outTradeNo != "" {
-		query = query.Where("out_trade_no LIKE ?", "%"+outTradeNo+"%")
+		query = query.Where("out_trade_no LIKE ? ESCAPE '\\'", database.LikeContains(outTradeNo))
 	}
 	if transactionID := strings.TrimSpace(ctx.Query("transactionId")); transactionID != "" {
-		query = query.Where("transaction_id LIKE ?", "%"+transactionID+"%")
+		query = query.Where("transaction_id LIKE ? ESCAPE '\\'", database.LikeContains(transactionID))
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

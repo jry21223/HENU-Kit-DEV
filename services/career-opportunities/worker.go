@@ -279,9 +279,17 @@ func (h *service) enqueueDigest(ctx context.Context, searchID string, result Wor
 	if emailSentAt != nil {
 		return
 	}
+	// career_searches.completed_at is nullable, so to_char returns NULL and pgx
+	// scans it into `any` as nil. A bare assertion would panic here — on a
+	// background worker goroutine with no recover(), taking down the process
+	// rather than one request. The current writers cannot produce that state
+	// (fail() only nulls the column while status='running', and finish() has
+	// already moved the row to 'completed'), but an out-of-band UPDATE or a new
+	// failure path that forgets the status guard would.
+	completedAtText, _ := completedAt.(string)
 	digest := DigestRequest{
 		UserID: userID, SearchID: searchID,
-		CompletedAt:  completedAt.(string),
+		CompletedAt:  completedAtText,
 		SourceCount:  result.SourceCount,
 		JobCount:     result.JobCount,
 		MatchedCount: result.MatchedCount,
