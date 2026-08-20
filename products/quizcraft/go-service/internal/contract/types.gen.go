@@ -235,7 +235,6 @@ const (
 	OperationKindSubmitPracticeAnswer   OperationKind = "submit_practice_answer"
 	OperationKindUnfavoriteQuestion     OperationKind = "unfavorite_question"
 	OperationKindUnpublishVersion       OperationKind = "unpublish_version"
-	OperationKindUpdateRankingProfile   OperationKind = "update_ranking_profile"
 	OperationKindValidateVersion        OperationKind = "validate_version"
 )
 
@@ -265,8 +264,6 @@ func (e OperationKind) Valid() bool {
 	case OperationKindUnfavoriteQuestion:
 		return true
 	case OperationKindUnpublishVersion:
-		return true
-	case OperationKindUpdateRankingProfile:
 		return true
 	case OperationKindValidateVersion:
 		return true
@@ -1010,10 +1007,14 @@ type RankingEnvelope struct {
 type RankingPage struct {
 	BankId  *openapi_types.UUID `json:"bank_id,omitempty"`
 	Entries []struct {
-		CorrectAnswerCount int    `json:"correct_answer_count"`
-		Nickname           string `json:"nickname"`
-		Rank               int    `json:"rank"`
-		SystemAvatar       string `json:"system_avatar"`
+		CorrectAnswerCount int `json:"correct_answer_count"`
+
+		// GuestKey Internal-only stable anonymous identity key (the session's immutable actor_key text) for guest learners; null for signed-in learners. Portal Gateway uses it only to derive a stable 游客x display label and MUST never expose it before any external response (ADR-0038).
+		GuestKey *string `json:"guest_key,omitempty"`
+		Rank     int     `json:"rank"`
+
+		// UserId Internal-only stable actor key; null for guest learners. Portal Gateway MUST strip this field before any external response (ADR-0036 privacy contract).
+		UserId *openapi_types.UUID `json:"user_id"`
 	} `json:"entries"`
 	Metric RankingPageMetric `json:"metric"`
 	Period RankingPeriod     `json:"period"`
@@ -1028,14 +1029,6 @@ type RankingPageScope string
 
 // RankingPeriod defines model for RankingPeriod.
 type RankingPeriod string
-
-// RankingProfileUpdate defines model for RankingProfileUpdate.
-type RankingProfileUpdate struct {
-	// Nickname Leave empty to use the neutral anonymous public label.
-	Nickname     string `json:"nickname"`
-	SystemAvatar string `json:"system_avatar"`
-	Visible      bool   `json:"visible"`
-}
 
 // ReadinessEnvelope defines model for ReadinessEnvelope.
 type ReadinessEnvelope struct {
@@ -1227,6 +1220,44 @@ type GetQuizCraftOperationParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// ListPortalFavoriteQuestionsParams defines parameters for ListPortalFavoriteQuestions.
+type ListPortalFavoriteQuestionsParams struct {
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
+}
+
+// CreatePortalFavoritesSessionParams defines parameters for CreatePortalFavoritesSession.
+type CreatePortalFavoritesSessionParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// UnfavoritePortalQuestionParams defines parameters for UnfavoritePortalQuestion.
+type UnfavoritePortalQuestionParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// FavoritePortalQuestionParams defines parameters for FavoritePortalQuestion.
+type FavoritePortalQuestionParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// GetPortalFavoritesOverviewParams defines parameters for GetPortalFavoritesOverview.
+type GetPortalFavoritesOverviewParams struct {
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
+}
+
+// CreatePortalPracticeFeedbackParams defines parameters for CreatePortalPracticeFeedback.
+type CreatePortalPracticeFeedbackParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// GetPortalPracticeFeedbackStatusParams defines parameters for GetPortalPracticeFeedbackStatus.
+type GetPortalPracticeFeedbackStatusParams struct {
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
+}
+
 // CreatePortalPracticeSessionParams defines parameters for CreatePortalPracticeSession.
 type CreatePortalPracticeSessionParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -1244,11 +1275,6 @@ type CreatePracticeSessionParams struct {
 
 // SubmitPracticeAnswerParams defines parameters for SubmitPracticeAnswer.
 type SubmitPracticeAnswerParams struct {
-	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
-}
-
-// UpdateRankingProfileParams defines parameters for UpdateRankingProfile.
-type UpdateRankingProfileParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
@@ -1315,6 +1341,9 @@ type StartQuizCraftPlatformLoginParams struct {
 // CreateQuestionFeedbackJSONRequestBody defines body for CreateQuestionFeedback for application/json ContentType.
 type CreateQuestionFeedbackJSONRequestBody = QuestionFeedback
 
+// CreatePortalPracticeFeedbackJSONRequestBody defines body for CreatePortalPracticeFeedback for application/json ContentType.
+type CreatePortalPracticeFeedbackJSONRequestBody = QuestionFeedback
+
 // CreatePortalPracticeSessionJSONRequestBody defines body for CreatePortalPracticeSession for application/json ContentType.
 type CreatePortalPracticeSessionJSONRequestBody = CreatePracticeSession
 
@@ -1326,9 +1355,6 @@ type CreatePracticeSessionJSONRequestBody = CreatePracticeSession
 
 // SubmitPracticeAnswerJSONRequestBody defines body for SubmitPracticeAnswer for application/json ContentType.
 type SubmitPracticeAnswerJSONRequestBody = AnswerSubmission
-
-// UpdateRankingProfileJSONRequestBody defines body for UpdateRankingProfile for application/json ContentType.
-type UpdateRankingProfileJSONRequestBody = RankingProfileUpdate
 
 // CreateWorkshopBankJSONRequestBody defines body for CreateWorkshopBank for application/json ContentType.
 type CreateWorkshopBankJSONRequestBody = CreateWorkshopBank

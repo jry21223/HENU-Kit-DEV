@@ -64,7 +64,6 @@ export type { RankingEnvelope } from './models/RankingEnvelope';
 export type { RankingPage } from './models/RankingPage';
 export type { RankingPeriod } from './models/RankingPeriod';
 export type { RankingPeriodParam } from './models/RankingPeriodParam';
-export type { RankingProfileUpdate } from './models/RankingProfileUpdate';
 export type { ReadinessEnvelope } from './models/ReadinessEnvelope';
 export type { RequestID } from './models/RequestID';
 export type { RollbackCommand } from './models/RollbackCommand';

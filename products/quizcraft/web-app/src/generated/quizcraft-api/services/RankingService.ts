@@ -3,9 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { LegacyRankingEnvelope } from '../models/LegacyRankingEnvelope';
-import type { OperationEnvelope } from '../models/OperationEnvelope';
 import type { RankingEnvelope } from '../models/RankingEnvelope';
-import type { RankingProfileUpdate } from '../models/RankingProfileUpdate';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -75,34 +73,6 @@ export class RankingService {
                 401: `Missing or invalid actor credentials`,
                 403: `Permission code or product Scope denied`,
                 409: `Dedicated service request nonce was already used`,
-                503: `PostgreSQL or a required service is unavailable`,
-            },
-        });
-    }
-    /**
-     * Set controlled public nickname, system avatar, and ranking visibility
-     * @returns OperationEnvelope Profile write result
-     * @throws ApiError
-     */
-    public static updateRankingProfile({
-        idempotencyKey,
-        requestBody,
-    }: {
-        idempotencyKey: string,
-        requestBody: RankingProfileUpdate,
-    }): CancelablePromise<OperationEnvelope> {
-        return __request(OpenAPI, {
-            method: 'PATCH',
-            url: '/api/v1/ranking-profile',
-            headers: {
-                'Idempotency-Key': idempotencyKey,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                400: `Invalid request`,
-                401: `Missing or invalid actor credentials`,
-                409: `Idempotency payload or optimistic version conflict`,
                 503: `PostgreSQL or a required service is unavailable`,
             },
         });

@@ -30,11 +30,13 @@ QuizCraft CN 是一个面向中文课程题库的刷题系统。它用 React + T
 
 ## Go 并行基线
 
+> 2026-08-19 更新（服务器实测）：**Go 已接管生产**——宿主机 systemd `quizcraft-go.service`（`quizcraft-server`，8-14 起）运行中，`QUIZCRAFT_WRITES_ENABLED=1`、`QUIZCRAFT_PORTAL_COMMANDS_ENABLED=1`，Go 契约库 `quizcraft_v2` 已有 **12 题库 / 3457 题 / 45 个真实 practice session**；FastAPI 已停服（10086 无监听）。本节标题与下文描述的是「并行基线/影子」的设计初衷与历史状态，不再是生产现状；技术栈表中「后端 FastAPI」与「生产部署」节的 10086/systemd FastAPI 口径均为仓库代码栈/独立部署模板，生产后端现为 Go 服务。
+
 `go-service/` 是 HC-16 建立的并行契约与导入基线：它冻结 Practice、Favorites、Ranking、Feedback 和 Question Bank Workshop 的 OpenAPI，并用 PostgreSQL 保存稳定 Bank/Question ID 与不可变版本。JSON 只允许通过显式 `importbank --file` 命令导入，Go 路径不会在启动时扫描或回退到文件。
 
-HC-17 在同一目录增加了 Go Practice Core 影子进程：访客通过业务站签发的安全匿名 Cookie 练习，只有服务端完成 Platform 身份交换后签发的 QuizCraft 本地 Session 才会持久化错题与学习状态；四种题型都在服务端判题，每次建会话和提交都要求幂等键并落不可变事实。设置 `VITE_QUIZCRAFT_GO_SHADOW=1` 后，React 才会改用生成客户端；默认关闭时仍走现有 FastAPI。可选的新旧比较只调用带共享密钥、不会写旧统计的 `/api/practice/shadow-compare`，不影响主响应。
+HC-17 在同一目录增加了 Go Practice Core 影子进程：访客通过业务站签发的安全匿名 Cookie 练习，只有服务端完成 Platform 身份交换后签发的 QuizCraft 本地 Session 才会持久化错题与学习状态；四种题型都在服务端判题，每次建会话和提交都要求幂等键并落不可变事实。web-app 侧切流开关现名为 `VITE_QUIZCRAFT_GO_WRITES`（`web-app/src/api/quizcraftRollout.ts`，web-app 构建侧独立事实）：置 1 时 React 全部读写走 Go 生成客户端；未置时仍走旧客户端路径（生产 FastAPI 已停服，见上注）。可选的新旧比较只调用带共享密钥、不会写旧统计的 `/api/practice/shadow-compare`，不影响主响应。
 
-当前 FastAPI 仍是实际运行后端；Go 影子服务尚未接管生产路由或流量。后续迁移必须单独验证和切换，不能把本目录的存在视为已部署。
+当前（2026-08-19 服务器实测）：FastAPI 已停服（10086 无监听），Go 已接管生产路由与流量（quizcraft-go.service，8-14 起），「影子未切流」状态已结束。后续运维与回滚仍须单独验证和切换，不能把本目录的存在视为已部署。
 
 ## 项目结构
 

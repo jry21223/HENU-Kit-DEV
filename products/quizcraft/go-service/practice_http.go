@@ -24,7 +24,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/text/unicode/norm"
 	"henukit.dev/quizcraft/internal/store"
 )
 
@@ -112,12 +111,6 @@ type answerSubmissionRequest struct {
 	QuestionID        uuid.UUID `json:"question_id"`
 	QuestionVersionID uuid.UUID `json:"question_version_id"`
 	Answer            any       `json:"answer"`
-}
-
-type rankingProfileRequest struct {
-	Visible      bool   `json:"visible"`
-	Nickname     string `json:"nickname"`
-	SystemAvatar string `json:"system_avatar"`
 }
 
 type practiceQuestion struct {
@@ -321,7 +314,6 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	writes.Delete("/api/v1/banks/{bank_id}/favorites/{question_id}", service.unfavoriteQuestion)
 	writes.Post("/api/v1/banks/{bank_id}/favorites/practice-sessions", service.createFavoritesSession)
 	router.Get("/api/v1/rankings/legacy", service.legacyRanking)
-	writes.Patch("/api/v1/ranking-profile", service.updateRankingProfile)
 	writes.Post("/api/v1/practice/sessions", service.createSession)
 	writes.Post("/api/v1/practice/sessions/{session_id}/answers", service.submitAnswer)
 	// Portal is the sole browser-facing caller for these narrow command routes.
@@ -360,7 +352,7 @@ func (service *practiceHTTP) operationStatus(writer http.ResponseWriter, request
 		return
 	}
 	kind := chi.URLParam(request, "operation_kind")
-	if kind != "create_practice_session" && kind != "submit_practice_answer" && kind != "favorite_question" && kind != "unfavorite_question" && kind != "create_favorites_session" && kind != "update_ranking_profile" && kind != "create_feedback" && kind != "create_workshop_bank" && kind != "create_bank_version" && kind != "import_bank" && kind != "validate_version" && kind != "publish_version" && kind != "unpublish_version" && kind != "rollback_bank" {
+	if kind != "create_practice_session" && kind != "submit_practice_answer" && kind != "favorite_question" && kind != "unfavorite_question" && kind != "create_favorites_session" && kind != "create_feedback" && kind != "create_workshop_bank" && kind != "create_bank_version" && kind != "import_bank" && kind != "validate_version" && kind != "publish_version" && kind != "unpublish_version" && kind != "rollback_bank" {
 		writeError(writer, http.StatusNotFound, "operation_unknown", "operation is not implemented by Practice Core")
 		return
 	}
@@ -429,7 +421,7 @@ func (service *practiceHTTP) writeRanking(writer http.ResponseWriter, request *h
 			return
 		}
 		for _, row := range rows {
-			entries = append(entries, map[string]any{"rank": row.Rank, "nickname": row.Nickname, "system_avatar": row.SystemAvatar, "correct_answer_count": row.CorrectAnswerCount})
+			entries = append(entries, rankingEntry(row.Rank, row.UserID, row.GuestKey, row.CorrectAnswerCount))
 		}
 	} else {
 		rows, err := service.queries.ListBankRanking(request.Context(), store.ListBankRankingParams{BankID: bankID, SubmittedAt: pgtype.Timestamptz{Time: start, Valid: true}})
@@ -438,7 +430,7 @@ func (service *practiceHTTP) writeRanking(writer http.ResponseWriter, request *h
 			return
 		}
 		for _, row := range rows {
-			entries = append(entries, map[string]any{"rank": row.Rank, "nickname": row.Nickname, "system_avatar": row.SystemAvatar, "correct_answer_count": row.CorrectAnswerCount})
+			entries = append(entries, rankingEntry(row.Rank, row.UserID, row.GuestKey, row.CorrectAnswerCount))
 		}
 	}
 	data := map[string]any{"scope": "overall", "period": period, "metric": "correct_answer_count", "entries": entries}
@@ -449,119 +441,22 @@ func (service *practiceHTTP) writeRanking(writer http.ResponseWriter, request *h
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: data})
 }
 
-func (service *practiceHTTP) updateRankingProfile(writer http.ResponseWriter, request *http.Request) {
-	actor, ok := service.requireUser(writer, request)
-	if !ok {
-		return
+// rankingEntry renders one internal ranking row as
+// {rank, user_id, guest_key, correct_answer_count}. user_id is null for guest
+// learners; guest_key carries their stable anonymous identity key (the empty
+// string for signed-in learners is normalized to JSON null). Both are
+// x-internal: the Portal Gateway is the sole consumer and MUST strip them
+// before any external response (ADR-0036 privacy contract, ADR-0038).
+func rankingEntry(rank int64, userID uuid.NullUUID, guestKey string, correctAnswerCount int64) map[string]any {
+	var id any
+	if userID.Valid {
+		id = userID.UUID
 	}
-	idempotencyKey, ok := requiredIdempotencyKey(writer, request)
-	if !ok {
-		return
+	var key any
+	if guestKey != "" {
+		key = guestKey
 	}
-	var input rankingProfileRequest
-	raw, err := decodeBody(request, &input)
-	nickname, validNickname := normalizeRankingNickname(input.Nickname)
-	if err != nil || !jsonStringFieldPresent(raw, "nickname") || !validNickname || !validSystemAvatar(input.SystemAvatar) {
-		writeError(writer, http.StatusBadRequest, "invalid_ranking_profile", "nickname or system avatar is not allowed")
-		return
-	}
-	requestHash := hashCanonical(raw)
-	tx, err := service.database.BeginTx(request.Context(), pgx.TxOptions{})
-	if err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft ranking is temporarily unavailable")
-		return
-	}
-	defer func() { _ = tx.Rollback(request.Context()) }()
-	queries := store.New(tx)
-	if err := queries.LockRankingProfileMutation(request.Context(), actor.userID.String()); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft ranking is temporarily unavailable")
-		return
-	}
-	if err := lockIdempotency(request.Context(), queries, actor.key, "update_ranking_profile", idempotencyKey); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft ranking is temporarily unavailable")
-		return
-	}
-	if storedStatus, storedBody, found, conflict, err := loadIdempotency(request.Context(), queries, actor.key, "update_ranking_profile", idempotencyKey, requestHash); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft ranking is temporarily unavailable")
-		return
-	} else if conflict {
-		writeError(writer, http.StatusConflict, "idempotency_conflict", "idempotency key was already used with another request")
-		return
-	} else if found {
-		writeRawJSON(writer, storedStatus, storedBody)
-		return
-	}
-	if err := queries.UpsertRankingProfile(request.Context(), store.UpsertRankingProfileParams{UserID: *actor.userID, Nickname: nickname, SystemAvatar: input.SystemAvatar, Visible: input.Visible}); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft ranking is temporarily unavailable")
-		return
-	}
-	outerRequestID := requestID()
-	response := responseEnvelope{RequestID: outerRequestID, Data: map[string]any{"operation_id": uuid.NewSHA1(*actor.userID, []byte("update_ranking_profile:"+idempotencyKey)), "state": "succeeded", "idempotency_key": idempotencyKey, "request_id": outerRequestID, "resource_id": *actor.userID}}
-	encoded, _ := json.Marshal(response)
-	if err := storeIdempotency(request.Context(), queries, actor.key, "update_ranking_profile", idempotencyKey, requestHash, http.StatusOK, encoded, *actor.userID); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft ranking is temporarily unavailable")
-		return
-	}
-	if err := tx.Commit(request.Context()); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft ranking is temporarily unavailable")
-		return
-	}
-	writeRawJSON(writer, http.StatusOK, encoded)
-}
-
-func normalizeRankingNickname(value string) (string, bool) {
-	value = strings.TrimSpace(norm.NFKC.String(value))
-	if value == "" {
-		return "匿名学习者", true
-	}
-	if looksLikeRankingIdentifier(value) {
-		return "", false
-	}
-	length := len([]rune(value))
-	if length < 1 || length > 32 {
-		return "", false
-	}
-	var skeleton strings.Builder
-	for _, r := range value {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || (unicode.Is(unicode.Latin, r) && r > unicode.MaxASCII) || (!unicode.Is(unicode.Han, r) && !unicode.Is(unicode.Latin, r) && !unicode.IsDigit(r) && !strings.ContainsRune(" _-.", r)) {
-			return "", false
-		}
-		if !strings.ContainsRune(" _-.", r) {
-			skeleton.WriteRune(unicode.ToLower(r))
-		}
-	}
-	lower := skeleton.String()
-	for _, forbidden := range []string{"admin", "administrator", "henukit", "quizcraft", "官方", "管理员", "管理員", "官网", "官網"} {
-		if strings.Contains(lower, forbidden) {
-			return "", false
-		}
-	}
-	return value, true
-}
-
-func looksLikeRankingIdentifier(value string) bool {
-	if strings.Contains(value, "@") {
-		return true
-	}
-	compact := strings.Map(func(r rune) rune {
-		if strings.ContainsRune(" _-.", r) {
-			return -1
-		}
-		return r
-	}, value)
-	if len(compact) != 32 {
-		return false
-	}
-	for _, r := range compact {
-		if !('0' <= r && r <= '9') && !('a' <= r && r <= 'f') && !('A' <= r && r <= 'F') {
-			return false
-		}
-	}
-	return true
-}
-
-func validSystemAvatar(value string) bool {
-	return value == "scholar-blue" || value == "coder-green" || value == "reader-amber" || value == "owl-purple"
+	return map[string]any{"rank": rank, "user_id": id, "guest_key": key, "correct_answer_count": correctAnswerCount}
 }
 
 func (service *practiceHTTP) requireUser(writer http.ResponseWriter, request *http.Request) (practiceActor, bool) {
@@ -1714,23 +1609,6 @@ func jsonFieldPresent(raw []byte, field string) bool {
 	}
 	_, present := object[field]
 	return present
-}
-
-func jsonStringFieldPresent(raw []byte, field string) bool {
-	var object map[string]json.RawMessage
-	if json.Unmarshal(raw, &object) != nil {
-		return false
-	}
-	value, present := object[field]
-	if !present {
-		return false
-	}
-	var decoded any
-	if json.Unmarshal(value, &decoded) != nil {
-		return false
-	}
-	_, isString := decoded.(string)
-	return isString
 }
 
 func hashCanonical(raw []byte) string {

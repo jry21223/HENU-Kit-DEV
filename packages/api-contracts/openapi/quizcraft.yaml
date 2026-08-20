@@ -9,7 +9,7 @@ servers:
 tags:
   - { name: Practice, description: Guest-capable practice against immutable bank and question versions. }
   - { name: Favorites, description: Signed-in learning state grouped by stable bank identity. }
-  - { name: Ranking, description: Public auditable rankings and private ranking profile controls. }
+  - { name: Ranking, description: Public auditable rankings for signed-in learners and guests. }
   - { name: Feedback, description: Corrections linked to stable bank and question identity. }
   - { name: Workshop, description: Scoped QuizCraft-owned bank lifecycle administration. }
 paths:
@@ -463,20 +463,6 @@ paths:
         '409': { $ref: '#/components/responses/ServiceReplay' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
-  /api/v1/ranking-profile:
-    patch:
-      summary: Set controlled public nickname, system avatar, and ranking visibility
-      tags: [Ranking]
-      operationId: updateRankingProfile
-      security: [{ userSession: [] }, { userSessionCookie: [] }]
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RankingProfileUpdate' } } } }
-      responses:
-        '200': { description: Profile write result, content: { application/json: { schema: { $ref: '#/components/schemas/OperationEnvelope' } } } }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/feedback:
     get:
       summary: List the caller-owned correction processing statuses
@@ -802,7 +788,7 @@ components:
     PracticeSessionMode: { type: string, enum: [random, difficult, chapter, favorites] }
     OperationKind:
       type: string
-      enum: [create_practice_session, submit_practice_answer, favorite_question, unfavorite_question, create_favorites_session, update_ranking_profile, create_feedback, create_workshop_bank, create_bank_version, import_bank, validate_version, publish_version, unpublish_version, rollback_bank]
+      enum: [create_practice_session, submit_practice_answer, favorite_question, unfavorite_question, create_favorites_session, create_feedback, create_workshop_bank, create_bank_version, import_bank, validate_version, publish_version, unpublish_version, rollback_bank]
     BankVersion:
       type: object
       required: [bank_id, bank_version_id, bank_key, name, content_sha256, question_count, chapters]
@@ -969,22 +955,31 @@ components:
         metric: { type: string, const: correct_answer_count }
         entries:
           type: array
+          maxItems: 100
           items:
             type: object
             additionalProperties: false
-            required: [rank, nickname, system_avatar, correct_answer_count]
+            required: [rank, user_id, correct_answer_count]
             properties:
               rank: { type: integer, minimum: 1 }
-              nickname: { type: string, minLength: 1, maxLength: 32 }
-              system_avatar: { type: string, pattern: '^[a-z0-9_-]+$' }
+              user_id:
+                type: [string, 'null']
+                format: uuid
+                x-internal: true
+                description: >
+                  Internal-only stable actor key; null for guest learners.
+                  Portal Gateway MUST strip this field before any external
+                  response (ADR-0036 privacy contract).
+              guest_key:
+                type: [string, 'null']
+                x-internal: true
+                description: >
+                  Internal-only stable anonymous identity key (the session's
+                  immutable actor_key text) for guest learners; null for
+                  signed-in learners. Portal Gateway uses it only to derive a
+                  stable 游客x display label and MUST never expose it before
+                  any external response (ADR-0038).
               correct_answer_count: { type: integer, minimum: 0 }
-    RankingProfileUpdate:
-      type: object
-      required: [visible, nickname, system_avatar]
-      properties:
-        visible: { type: boolean }
-        nickname: { type: string, minLength: 0, maxLength: 32, description: Leave empty to use the neutral anonymous public label. }
-        system_avatar: { type: string, pattern: '^[a-z0-9_-]+$' }
     LegacyRankingPage:
       type: object
       additionalProperties: false

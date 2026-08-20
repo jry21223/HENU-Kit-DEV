@@ -16,7 +16,11 @@ import (
 	quizcraft "henukit.dev/quizcraft"
 )
 
-func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T) {
+// TestRankingHTTPCountsNewSessionsOnceAndCarriesInternalUserID verifies the
+// internal Portal-read ranking contract: every correct answer counts once per
+// session/question, tied scores share a rank, and each entry carries the
+// signed-in learner's user_id (the Portal Gateway must strip it externally).
+func TestRankingHTTPCountsNewSessionsOnceAndCarriesInternalUserID(t *testing.T) {
 	pool := practicePool(t)
 	report := importPracticeBank(t, pool, "ranking-"+uuid.NewString())
 	handler, _ := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), CatalogClientID: portalCatalogClientID, CatalogKeys: map[string]string{portalCatalogKeyID: portalCatalogSecret}})
@@ -24,25 +28,6 @@ func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T)
 	defer server.Close()
 	userID := uuid.NewString()
 	auth := "quizcraft_session=" + practiceToken(t, userID)
-	profile := map[string]any{"visible": true, "nickname": "认真刷题", "system_avatar": "scholar-blue"}
-	guestStatus, _ := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Idempotency-Key": "guest-ranking-profile"}, profile)
-	if guestStatus != http.StatusUnauthorized {
-		t.Fatalf("guest profile update = %d", guestStatus)
-	}
-	status, body := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-profile-key-001"}, profile)
-	if status != http.StatusOK {
-		t.Fatalf("profile = %d %s", status, body)
-	}
-	replayStatus, replayBody := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-profile-key-001"}, profile)
-	if replayStatus != status || !bytes.Equal(replayBody, body) {
-		t.Fatalf("profile replay changed = %d %s", replayStatus, replayBody)
-	}
-	for _, invalid := range []map[string]any{{"visible": true, "nickname": "HENUKit官方", "system_avatar": "scholar-blue"}, {"visible": true, "nickname": "HENU\u200BKit", "system_avatar": "scholar-blue"}, {"visible": true, "nickname": "ＱｕｉｚＣｒａｆｔ", "system_avatar": "scholar-blue"}, {"visible": true, "nickname": "аdmin", "system_avatar": "scholar-blue"}, {"visible": true, "nickname": "admın", "system_avatar": "scholar-blue"}, {"visible": true, "nickname": "正常昵称", "system_avatar": "uploaded-url"}} {
-		invalidStatus, _ := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "invalid-ranking-" + uuid.NewString()}, invalid)
-		if invalidStatus != http.StatusBadRequest {
-			t.Fatalf("invalid profile accepted = %d", invalidStatus)
-		}
-	}
 
 	firstSession, firstQuestion := createRankingSession(t, server.URL, auth, report, "ranking-session-first")
 	const workers = 10
@@ -82,7 +67,6 @@ func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T)
 	}
 	secondUserID := uuid.NewString()
 	secondAuth := "quizcraft_session=" + practiceToken(t, secondUserID)
-	_, _ = requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": secondAuth, "Idempotency-Key": "ranking-second-profile"}, map[string]any{"visible": true, "nickname": "并列用户", "system_avatar": "coder-green"})
 	for index := 0; index < 2; index++ {
 		sessionID, question := createRankingSession(t, server.URL, secondAuth, report, fmt.Sprintf("ranking-tie-session-%02d", index))
 		status, _ := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, sessionID), map[string]string{"Cookie": secondAuth, "Idempotency-Key": fmt.Sprintf("ranking-tie-answer-%03d", index)}, map[string]any{"question_id": question.QuestionID, "question_version_id": question.QuestionVersionID, "answer": 1})
@@ -91,14 +75,19 @@ func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T)
 		}
 	}
 
-	for index, path := range []string{"/api/v1/rankings/overall", fmt.Sprintf("/api/v1/banks/%s/rankings?period=lifetime", report.BankID)} {
-		rankStatus, rankBody := requestPortalRead(t, server.URL, path, "portal.practice.read", fmt.Sprintf("req_ranking_public_%d", index))
-		if rankStatus != http.StatusOK || !bytes.Contains(rankBody, []byte(`"nickname":"认真刷题"`)) || !bytes.Contains(rankBody, []byte(`"system_avatar":"scholar-blue"`)) || !bytes.Contains(rankBody, []byte(`"correct_answer_count":2`)) || bytes.Contains(rankBody, []byte(userID)) || bytes.Contains(rankBody, []byte(`"user_id"`)) {
-			t.Fatalf("public ranking = %d %s", rankStatus, rankBody)
-		}
-		if bytes.Count(rankBody, []byte(`"rank":1`)) != 2 {
-			t.Fatalf("equal scores are not tied: %s", rankBody)
-		}
+	// The per-bank ranking is isolated to this test's bank, so exact rank and
+	// count assertions are safe there. The overall ranking is shared with every
+	// other test in the package; assert only presence and the internal shape.
+	bankStatus, bankBody := requestPortalRead(t, server.URL, fmt.Sprintf("/api/v1/banks/%s/rankings?period=lifetime", report.BankID), "portal.practice.read", "req_ranking_bank_isolated")
+	if bankStatus != http.StatusOK || !bytes.Contains(bankBody, []byte(`"user_id":"`+userID+`"`)) || !bytes.Contains(bankBody, []byte(`"user_id":"`+secondUserID+`"`)) || bytes.Contains(bankBody, []byte(`"guest_key":"guest:`)) || !bytes.Contains(bankBody, []byte(`"guest_key":null`)) || bytes.Contains(bankBody, []byte(`"nickname"`)) || bytes.Contains(bankBody, []byte(`"system_avatar"`)) || bytes.Count(bankBody, []byte(`"correct_answer_count":2`)) != 2 {
+		t.Fatalf("internal bank ranking = %d %s", bankStatus, bankBody)
+	}
+	if bytes.Count(bankBody, []byte(`"rank":1`)) != 2 {
+		t.Fatalf("equal scores are not tied: %s", bankBody)
+	}
+	overallStatus, overallBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall", "portal.practice.read", "req_ranking_overall_shape")
+	if overallStatus != http.StatusOK || !bytes.Contains(overallBody, []byte(`"user_id":"`+userID+`"`)) || !bytes.Contains(overallBody, []byte(`"user_id":"`+secondUserID+`"`)) || bytes.Contains(overallBody, []byte(`"nickname"`)) || bytes.Contains(overallBody, []byte(`"system_avatar"`)) {
+		t.Fatalf("internal overall ranking = %d %s", overallStatus, overallBody)
 	}
 	invalidPeriod, _ := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=monthly", "portal.practice.read", "req_ranking_invalid_period")
 	if invalidPeriod != http.StatusBadRequest {
@@ -111,97 +100,16 @@ func TestRankingHTTPCountsNewSessionsOnceAndProtectsPublicIdentity(t *testing.T)
 	defer future.Close()
 	_, weeklyBody := requestPortalReadAt(t, future.URL, "/api/v1/rankings/overall", "portal.practice.read", "req_ranking_future_weekly", futureNow)
 	_, lifetimeBody := requestPortalReadAt(t, future.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_future_lifetime", futureNow)
-	if bytes.Contains(weeklyBody, []byte("认真刷题")) || !bytes.Contains(lifetimeBody, []byte("认真刷题")) {
+	if bytes.Contains(weeklyBody, []byte(userID)) || !bytes.Contains(lifetimeBody, []byte(userID)) {
 		t.Fatalf("weekly/lifetime boundary = %s / %s", weeklyBody, lifetimeBody)
 	}
-
-	optOutStatus, _ := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-profile-optout"}, map[string]any{"visible": false, "nickname": "认真刷题", "system_avatar": "scholar-blue"})
-	_, hiddenBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_hidden")
-	if optOutStatus != http.StatusOK || bytes.Contains(hiddenBody, []byte("认真刷题")) {
-		t.Fatalf("ranking opt out = %d %s", optOutStatus, hiddenBody)
-	}
 }
 
-func TestRankingProfileRejectsOmittedNicknameWithoutOverwritingExistingProfile(t *testing.T) {
-	pool := practicePool(t)
-	report := importPracticeBank(t, pool, "ranking-nickname-required-"+uuid.NewString())
-	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
-		Database:        pool,
-		AuthHMACSecret:  []byte(practiceAuthSecret),
-		CatalogClientID: portalCatalogClientID,
-		CatalogKeys:     map[string]string{portalCatalogKeyID: portalCatalogSecret},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	auth := "quizcraft_session=" + practiceToken(t, uuid.NewString())
-	sessionID, question := createRankingSession(t, server.URL, auth, report, "ranking-nickname-required-session")
-	answerStatus, answerBody := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, sessionID), map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-nickname-required-answer"}, map[string]any{"question_id": question.QuestionID, "question_version_id": question.QuestionVersionID, "answer": 1})
-	if answerStatus != http.StatusOK || !bytes.Contains(answerBody, []byte(`"correct":true`)) {
-		t.Fatalf("ranking answer = %d %s", answerStatus, answerBody)
-	}
-
-	initialStatus, initialBody := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-nickname-required-initial"}, map[string]any{"visible": true, "nickname": "保留昵称", "system_avatar": "scholar-blue"})
-	if initialStatus != http.StatusOK {
-		t.Fatalf("initial ranking profile = %d %s", initialStatus, initialBody)
-	}
-
-	for _, test := range []struct {
-		name  string
-		input map[string]any
-	}{
-		{name: "omitted", input: map[string]any{"visible": false, "system_avatar": "scholar-blue"}},
-		{name: "null", input: map[string]any{"visible": false, "nickname": nil, "system_avatar": "scholar-blue"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			status, body := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-nickname-required-" + test.name}, test.input)
-			if status != http.StatusBadRequest || !bytes.Contains(body, []byte(`"code":"invalid_ranking_profile"`)) {
-				t.Fatalf("nickname-%s ranking profile = %d %s", test.name, status, body)
-			}
-		})
-	}
-
-	rankingStatus, rankingBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_nickname_required")
-	if rankingStatus != http.StatusOK || !bytes.Contains(rankingBody, []byte(`"nickname":"保留昵称"`)) {
-		t.Fatalf("invalid nickname profile overwrote existing public identity = %d %s", rankingStatus, rankingBody)
-	}
-}
-
-func TestRankingProfileRejectsIdentifierShapedNicknames(t *testing.T) {
-	pool := practicePool(t)
-	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := httptest.NewServer(handler)
-	defer server.Close()
-	userID := uuid.NewString()
-	auth := "quizcraft_session=" + practiceToken(t, userID)
-
-	for _, nickname := range []string{
-		"123e4567e89b12d3a456426614174000",
-		"１２３ｅ４５６７ｅ８９ｂ１２ｄ３ａ４５６４２６６１４１７４０００",
-		"123e4567 e89b 12d3 a456 426614174000",
-		"123e4567_e89b_12d3_a456_426614174000",
-		"123e4567.e89b.12d3.a456.426614174000",
-		"learner@example.test",
-	} {
-		status, body := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "identifier-nickname-" + uuid.NewString()}, map[string]any{"visible": true, "nickname": nickname, "system_avatar": "scholar-blue"})
-		if status != http.StatusBadRequest {
-			t.Fatalf("identifier-shaped nickname %q accepted = %d %s", nickname, status, body)
-		}
-	}
-
-	var profileCount int
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_ranking_profiles WHERE user_id=$1`, userID).Scan(&profileCount); err != nil || profileCount != 0 {
-		t.Fatalf("identifier-shaped nickname persisted profile count = %d err=%v", profileCount, err)
-	}
-}
-
-func TestRankingHTTPStaysDarkUntilPortalGatewayAndUsesNeutralAnonymousProfile(t *testing.T) {
+// TestRankingHTTPStaysDarkUntilPortalGatewayAndRanksUsersAndGuests verifies the
+// ranking routes stay dark until the Portal read identity is configured, then
+// shows that both a signed-in learner (user_id set, no profile needed) and a
+// guest (user_id null) enter the internal ranking.
+func TestRankingHTTPStaysDarkUntilPortalGatewayAndRanksUsersAndGuests(t *testing.T) {
 	pool := practicePool(t)
 	report := importPracticeBank(t, pool, "ranking-dark-"+uuid.NewString())
 
@@ -240,132 +148,111 @@ func TestRankingHTTPStaysDarkUntilPortalGatewayAndUsesNeutralAnonymousProfile(t 
 		t.Fatalf("forbidden V2 ranking = %d %s", forbiddenStatus, forbiddenBody)
 	}
 
+	// A signed-in learner with no ranking profile still ranks, carrying user_id.
 	userID := uuid.NewString()
 	auth := "quizcraft_session=" + practiceToken(t, userID)
-	sessionID, question := createRankingSession(t, server.URL, auth, report, "ranking-anonymous-session")
-	answerStatus, answerBody := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, sessionID), map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-anonymous-answer"}, map[string]any{"question_id": question.QuestionID, "question_version_id": question.QuestionVersionID, "answer": 1})
+	sessionID, question := createRankingSession(t, server.URL, auth, report, "ranking-user-session")
+	answerStatus, answerBody := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, sessionID), map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-user-answer"}, map[string]any{"question_id": question.QuestionID, "question_version_id": question.QuestionVersionID, "answer": 1})
 	if answerStatus != http.StatusOK || !bytes.Contains(answerBody, []byte(`"correct":true`)) {
-		t.Fatalf("anonymous ranking answer = %d %s", answerStatus, answerBody)
+		t.Fatalf("user ranking answer = %d %s", answerStatus, answerBody)
 	}
 
-	noProfileStatus, noProfileBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_without_profile")
-	if noProfileStatus != http.StatusOK || bytes.Contains(noProfileBody, []byte(`"nickname":"匿名学习者"`)) || bytes.Contains(noProfileBody, []byte(userID)) || bytes.Contains(noProfileBody, []byte(`"user_id"`)) {
-		t.Fatalf("ranking without visible profile = %d %s", noProfileStatus, noProfileBody)
+	// A guest (anonymous cookie) ranks with user_id null.
+	guestSessionID, guestQuestion := createRankingSession(t, server.URL, "", report, "ranking-guest-session")
+	guestAnswerStatus, guestAnswerBody := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, guestSessionID), map[string]string{"Idempotency-Key": "ranking-guest-answer"}, map[string]any{"question_id": guestQuestion.QuestionID, "question_version_id": guestQuestion.QuestionVersionID, "answer": 1})
+	if guestAnswerStatus != http.StatusOK || !bytes.Contains(guestAnswerBody, []byte(`"correct":true`)) {
+		t.Fatalf("guest ranking answer = %d %s", guestAnswerStatus, guestAnswerBody)
 	}
 
-	profileStatus, profileBody := requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "ranking-anonymous-profile"}, map[string]any{"visible": true, "nickname": "", "system_avatar": "scholar-blue"})
-	if profileStatus != http.StatusOK {
-		t.Fatalf("anonymous profile = %d %s", profileStatus, profileBody)
+	status, body := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_users_and_guests")
+	if status != http.StatusOK || !bytes.Contains(body, []byte(`"user_id":"`+userID+`"`)) || !bytes.Contains(body, []byte(`"user_id":null`)) || !bytes.Contains(body, []byte(`"guest_key":null`)) || !bytes.Contains(body, []byte(`"guest_key":"guest:`)) || bytes.Contains(body, []byte(`"nickname"`)) || bytes.Contains(body, []byte(`"system_avatar"`)) {
+		t.Fatalf("internal ranking with user and guest = %d %s", status, body)
 	}
-
-	rankingStatus, rankingBody := requestPortalRead(t, server.URL, "/api/v1/rankings/overall?period=lifetime", "portal.practice.read", "req_ranking_anonymous")
-	if rankingStatus != http.StatusOK || !bytes.Contains(rankingBody, []byte(`"nickname":"匿名学习者"`)) || !bytes.Contains(rankingBody, []byte(`"system_avatar":"scholar-blue"`)) || bytes.Contains(rankingBody, []byte(userID)) || bytes.Contains(rankingBody, []byte(`"user_id"`)) {
-		t.Fatalf("anonymous public ranking = %d %s", rankingStatus, rankingBody)
+	// The guest entry's guest_key is the session's immutable actor_key
+	// ("guest:<anonymous subject>"), distinct from the signed-in user's null.
+	guestSubject := uuid.NewSHA1(uuid.NameSpaceOID, []byte(t.Name())).String()
+	if !bytes.Contains(body, []byte(`"guest_key":"guest:`+guestSubject+`"`)) {
+		t.Fatalf("guest ranking lacks the stable guest_key: %s", body)
+	}
+	bankStatus, bankBody := requestPortalRead(t, server.URL, fmt.Sprintf("/api/v1/banks/%s/rankings?period=lifetime", report.BankID), "portal.practice.read", "req_ranking_bank_users_and_guests")
+	if bankStatus != http.StatusOK || !bytes.Contains(bankBody, []byte(`"user_id":"`+userID+`"`)) || !bytes.Contains(bankBody, []byte(`"user_id":null`)) || !bytes.Contains(bankBody, []byte(`"guest_key":null`)) || !bytes.Contains(bankBody, []byte(`"guest_key":"guest:`+guestSubject+`"`)) || bytes.Count(bankBody, []byte(`"correct_answer_count":1`)) != 2 {
+		t.Fatalf("internal bank ranking with user and guest = %d %s", bankStatus, bankBody)
 	}
 }
 
-func TestRankingProfileMutationsAreSerializedPerUser(t *testing.T) {
+// TestRankingAttributesGuestsViaImmutableSessionActorKey verifies the guest
+// attribution path: a guest identity (immutable sessions.actor_key) aggregates
+// correct answers across multiple sessions under user_id null, and mixed
+// guest/signed-in entries share one ranking.
+func TestRankingAttributesGuestsViaImmutableSessionActorKey(t *testing.T) {
 	pool := practicePool(t)
-	handler, _ := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
+	report := importPracticeBank(t, pool, "ranking-guest-dedup-"+uuid.NewString())
+	handler, _ := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), CatalogClientID: portalCatalogClientID, CatalogKeys: map[string]string{portalCatalogKeyID: portalCatalogSecret}})
 	server := httptest.NewServer(handler)
 	defer server.Close()
+
+	// The same guest answers the same question across two separate sessions;
+	// UNIQUE(session_id, question_id) dedupes within a session, so the guest
+	// identity accumulates one count per session.
+	firstSession, firstQuestion := createRankingSession(t, server.URL, "", report, "guest-dedup-session-first")
+	firstStatus, _ := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, firstSession), map[string]string{"Idempotency-Key": "guest-dedup-answer-first"}, map[string]any{"question_id": firstQuestion.QuestionID, "question_version_id": firstQuestion.QuestionVersionID, "answer": 1})
+	if firstStatus != http.StatusOK {
+		t.Fatalf("guest first answer = %d", firstStatus)
+	}
+	secondSession, secondQuestion := createRankingSession(t, server.URL, "", report, "guest-dedup-session-second")
+	if secondQuestion.QuestionID != firstQuestion.QuestionID {
+		t.Fatalf("expected stable repeated question: %s / %s", firstQuestion.QuestionID, secondQuestion.QuestionID)
+	}
+	secondStatus, _ := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, secondSession), map[string]string{"Idempotency-Key": "guest-dedup-answer-second"}, map[string]any{"question_id": secondQuestion.QuestionID, "question_version_id": secondQuestion.QuestionVersionID, "answer": 1})
+	if secondStatus != http.StatusOK {
+		t.Fatalf("guest second answer = %d", secondStatus)
+	}
+
+	// A signed-in learner on the same bank provides a mixed-identity ranking.
 	userID := uuid.NewString()
 	auth := "quizcraft_session=" + practiceToken(t, userID)
-	blocker, err := pool.Begin(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	userSession, userQuestion := createRankingSession(t, server.URL, auth, report, "guest-dedup-user-session")
+	userStatus, _ := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, userSession), map[string]string{"Cookie": auth, "Idempotency-Key": "guest-dedup-user-answer"}, map[string]any{"question_id": userQuestion.QuestionID, "question_version_id": userQuestion.QuestionVersionID, "answer": 1})
+	if userStatus != http.StatusOK {
+		t.Fatalf("user answer = %d", userStatus)
 	}
-	defer func() { _ = blocker.Rollback(context.Background()) }()
-	if _, err := blocker.Exec(context.Background(), `SELECT pg_advisory_xact_lock(hashtextextended('ranking-profile-user:' || $1::text,0))`, userID); err != nil {
-		t.Fatal(err)
-	}
-	type result struct {
-		status int
-		err    error
-	}
-	send := func(key, nickname string, visible bool, results chan<- result) {
-		request, err := http.NewRequest(http.MethodPatch, server.URL+"/api/v1/ranking-profile", bytes.NewReader(mustJSON(map[string]any{"visible": visible, "nickname": nickname, "system_avatar": "scholar-blue"})))
-		if err != nil {
-			results <- result{err: err}
-			return
-		}
-		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("Cookie", auth)
-		request.Header.Set("Idempotency-Key", key)
-		response, err := http.DefaultClient.Do(request)
-		if err != nil {
-			results <- result{err: err}
-			return
-		}
-		_ = response.Body.Close()
-		results <- result{status: response.StatusCode}
-	}
-	results := make(chan result, 2)
-	go send("profile-older-visible", "较早公开", true, results)
-	waitForAdvisoryWaiters(t, pool, 1)
-	go send("profile-newer-hidden", "最新退出", false, results)
-	waitForAdvisoryWaiters(t, pool, 2)
-	if err := blocker.Commit(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		outcome := <-results
-		if outcome.err != nil || outcome.status != http.StatusOK {
-			t.Fatalf("serialized profile mutation = %d err=%v", outcome.status, outcome.err)
-		}
-	}
-	var nickname string
-	var visible bool
-	if err := pool.QueryRow(context.Background(), `SELECT nickname,visible FROM quizcraft_ranking_profiles WHERE user_id=$1`, userID).Scan(&nickname, &visible); err != nil || nickname != "最新退出" || visible {
-		t.Fatalf("latest profile mutation did not win: %q visible=%v err=%v", nickname, visible, err)
-	}
-}
 
-func waitForAdvisoryWaiters(t *testing.T, pool *pgxpool.Pool, expected int) {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		var count int
-		if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory'`).Scan(&count); err != nil {
-			t.Fatal(err)
-		}
-		if count >= expected {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("advisory waiters = %d, want >= %d", count, expected)
-		}
-		time.Sleep(10 * time.Millisecond)
+	// A second, distinct guest (a different anonymous subject) ranks too, so
+	// the test can pin that different guests get different guest_keys.
+	otherGuestSubject := uuid.NewSHA1(uuid.NameSpaceOID, []byte(t.Name()+"-other-guest")).String()
+	otherGuestAuth := "quizcraft_anonymous=" + practiceAnonymousTokenForSubject(t, otherGuestSubject)
+	otherSession, otherQuestion := createRankingSession(t, server.URL, otherGuestAuth, report, "guest-other-session")
+	otherStatus, _ := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, otherSession), map[string]string{"Cookie": otherGuestAuth, "Idempotency-Key": "guest-other-answer"}, map[string]any{"question_id": otherQuestion.QuestionID, "question_version_id": otherQuestion.QuestionVersionID, "answer": 1})
+	if otherStatus != http.StatusOK {
+		t.Fatalf("other guest answer = %d", otherStatus)
+	}
+
+	// The repeated guest aggregates across sessions under one stable guest_key
+	// ("guest:<anonymous subject>"); the other guest and the signed-in user
+	// keep their own keys, and the signed-in user's guest_key is null.
+	guestSubject := uuid.NewSHA1(uuid.NameSpaceOID, []byte(t.Name())).String()
+	bankStatus, bankBody := requestPortalRead(t, server.URL, fmt.Sprintf("/api/v1/banks/%s/rankings?period=lifetime", report.BankID), "portal.practice.read", "req_ranking_guest_dedup")
+	if bankStatus != http.StatusOK || !bytes.Contains(bankBody, []byte(`"user_id":null`)) || !bytes.Contains(bankBody, []byte(`"user_id":"`+userID+`"`)) || !bytes.Contains(bankBody, []byte(`"guest_key":"guest:`+guestSubject+`"`)) || !bytes.Contains(bankBody, []byte(`"guest_key":"guest:`+otherGuestSubject+`"`)) || !bytes.Contains(bankBody, []byte(`"guest_key":null`)) || !bytes.Contains(bankBody, []byte(`"correct_answer_count":2`)) || !bytes.Contains(bankBody, []byte(`"correct_answer_count":1`)) || bytes.Contains(bankBody, []byte(`"nickname"`)) || bytes.Contains(bankBody, []byte(`"system_avatar"`)) {
+		t.Fatalf("mixed guest/user bank ranking = %d %s", bankStatus, bankBody)
 	}
 }
 
 func TestRankingSettlementFactsAreImmutableAndRewardFree(t *testing.T) {
 	pool := practicePool(t)
 	report := importPracticeBank(t, pool, "ranking-settlement-"+uuid.NewString())
-	hiddenReport := importPracticeBank(t, pool, "ranking-settlement-hidden-"+uuid.NewString())
+	emptyReport := importPracticeBank(t, pool, "ranking-settlement-empty-"+uuid.NewString())
 	handler, _ := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret)})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	userID := uuid.NewString()
 	auth := "quizcraft_session=" + practiceToken(t, userID)
-	_, _ = requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": auth, "Idempotency-Key": "settlement-profile-key"}, map[string]any{"visible": true, "nickname": "结算用户", "system_avatar": "owl-purple"})
 	sessionID, question := createRankingSession(t, server.URL, auth, report, "settlement-session-key")
 	answerStatus, _ := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, sessionID), map[string]string{"Cookie": auth, "Idempotency-Key": "settlement-answer-key"}, map[string]any{"question_id": question.QuestionID, "question_version_id": question.QuestionVersionID, "answer": 1})
 	if answerStatus != http.StatusOK {
 		t.Fatalf("settlement source answer = %d", answerStatus)
 	}
-	hiddenUserID := uuid.NewString()
-	hiddenAuth := "quizcraft_session=" + practiceToken(t, hiddenUserID)
-	_, _ = requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": hiddenAuth, "Idempotency-Key": "settlement-hidden-profile"}, map[string]any{"visible": true, "nickname": "隐身用户", "system_avatar": "reader-amber"})
-	hiddenSessionID, hiddenQuestion := createRankingSession(t, server.URL, hiddenAuth, hiddenReport, "settlement-hidden-session")
-	hiddenAnswerStatus, _ := requestJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/practice/sessions/%s/answers", server.URL, hiddenSessionID), map[string]string{"Cookie": hiddenAuth, "Idempotency-Key": "settlement-hidden-answer"}, map[string]any{"question_id": hiddenQuestion.QuestionID, "question_version_id": hiddenQuestion.QuestionVersionID, "answer": 1})
-	if hiddenAnswerStatus != http.StatusOK {
-		t.Fatalf("hidden settlement source answer = %d", hiddenAnswerStatus)
-	}
-	_, _ = requestJSON(t, http.MethodPatch, server.URL+"/api/v1/ranking-profile", map[string]string{"Cookie": hiddenAuth, "Idempotency-Key": "settlement-hidden-optout"}, map[string]any{"visible": false, "nickname": "隐身用户", "system_avatar": "reader-amber"})
-	if _, err := pool.Exec(context.Background(), `UPDATE quizcraft_banks SET active_version_id=NULL WHERE id=$1`, report.BankID); err != nil {
-		t.Fatal(err)
-	}
+	// emptyReport receives no answers: with no profile mechanism there is no
+	// "opted-out" state, so an unscored bank simply gets no settlement event.
 	columns, err := pool.Query(context.Background(), `SELECT column_name FROM information_schema.columns WHERE table_name='quizcraft_ranking_settlement_events' ORDER BY column_name`)
 	if err != nil {
 		t.Fatal(err)
@@ -403,11 +290,11 @@ func TestRankingSettlementFactsAreImmutableAndRewardFree(t *testing.T) {
 	}
 	var bankEvents int
 	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_ranking_settlement_events WHERE scope='bank' AND bank_id=$1 AND period_end=$2`, report.BankID, at).Scan(&bankEvents); err != nil || bankEvents != 1 {
-		t.Fatalf("unpublished bank settlement events = %d err=%v", bankEvents, err)
+		t.Fatalf("scored bank settlement events = %d err=%v", bankEvents, err)
 	}
-	var hiddenStandings string
-	if err := pool.QueryRow(context.Background(), `SELECT standings::text FROM quizcraft_ranking_settlement_events WHERE scope='bank' AND bank_id=$1 AND period_end=$2`, hiddenReport.BankID, at).Scan(&hiddenStandings); err != nil || hiddenStandings != "[]" {
-		t.Fatalf("fully opted-out bank settlement = %s err=%v", hiddenStandings, err)
+	var emptyBankEvents int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM quizcraft_ranking_settlement_events WHERE scope='bank' AND bank_id=$1 AND period_end=$2`, emptyReport.BankID, at).Scan(&emptyBankEvents); err != nil || emptyBankEvents != 0 {
+		t.Fatalf("unscored bank settlement events = %d err=%v", emptyBankEvents, err)
 	}
 	for _, mutation := range []string{`UPDATE quizcraft_ranking_settlement_events SET standings='[]' WHERE id=$1`, `DELETE FROM quizcraft_ranking_settlement_events WHERE id=$1`} {
 		if _, err := pool.Exec(context.Background(), mutation, id); err == nil {
@@ -431,4 +318,23 @@ func createRankingSession(t *testing.T, baseURL, auth string, report quizcraft.I
 	}
 	t.Fatal("ranking session contains no single-choice question")
 	return "", practiceQuestionResponse{}
+}
+
+// waitForAdvisoryWaiters is shared with practice_test.go's serialization test.
+func waitForAdvisoryWaiters(t *testing.T, pool *pgxpool.Pool, expected int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var count int
+		if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count >= expected {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("advisory waiters = %d, want >= %d", count, expected)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

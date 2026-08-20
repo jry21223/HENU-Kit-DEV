@@ -502,18 +502,19 @@ func (q *Queries) IsQuestionInBank(ctx context.Context, arg IsQuestionInBankPara
 
 const listBankRanking = `-- name: ListBankRanking :many
 WITH totals AS (
-  SELECT a.user_id,
-         COALESCE(p.nickname,'匿名学习者') AS nickname,
-         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+  SELECT COALESCE(a.user_id::text,s.actor_key) AS identity_key,
+         a.user_id,
          count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
-  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
-  WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2
-  GROUP BY a.user_id,p.nickname,p.system_avatar
+  LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
+  WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2
+  GROUP BY identity_key,a.user_id
 )
-SELECT rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
-FROM totals
-ORDER BY correct_answer_count DESC,user_id
+SELECT rank() OVER (ORDER BY t.correct_answer_count DESC)::bigint AS rank, t.user_id,
+       CASE WHEN t.user_id IS NULL THEN t.identity_key ELSE '' END AS guest_key,
+       t.correct_answer_count
+FROM totals t
+ORDER BY t.correct_answer_count DESC, t.identity_key
 LIMIT 100
 `
 
@@ -523,10 +524,10 @@ type ListBankRankingParams struct {
 }
 
 type ListBankRankingRow struct {
-	Rank               int64  `json:"rank"`
-	Nickname           string `json:"nickname"`
-	SystemAvatar       string `json:"system_avatar"`
-	CorrectAnswerCount int64  `json:"correct_answer_count"`
+	Rank               int64         `json:"rank"`
+	UserID             uuid.NullUUID `json:"user_id"`
+	GuestKey           string        `json:"guest_key"`
+	CorrectAnswerCount int64         `json:"correct_answer_count"`
 }
 
 func (q *Queries) ListBankRanking(ctx context.Context, arg ListBankRankingParams) ([]ListBankRankingRow, error) {
@@ -540,8 +541,8 @@ func (q *Queries) ListBankRanking(ctx context.Context, arg ListBankRankingParams
 		var i ListBankRankingRow
 		if err := rows.Scan(
 			&i.Rank,
-			&i.Nickname,
-			&i.SystemAvatar,
+			&i.UserID,
+			&i.GuestKey,
 			&i.CorrectAnswerCount,
 		); err != nil {
 			return nil, err
@@ -556,17 +557,16 @@ func (q *Queries) ListBankRanking(ctx context.Context, arg ListBankRankingParams
 
 const listBankRankingWindow = `-- name: ListBankRankingWindow :many
 WITH totals AS (
-  SELECT a.user_id,
-         COALESCE(p.nickname,'匿名学习者') AS nickname,
-         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+  SELECT COALESCE(a.user_id::text,s.actor_key) AS identity_key,
+         a.user_id,
          count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
-  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
-  WHERE a.correct AND a.user_id IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2 AND a.submitted_at < $3
-  GROUP BY a.user_id,p.nickname,p.system_avatar
+  LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
+  WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2 AND a.submitted_at < $3
+  GROUP BY identity_key,a.user_id
 )
-SELECT user_id,rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
-FROM totals ORDER BY correct_answer_count DESC,user_id LIMIT 100
+SELECT user_id,rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,correct_answer_count
+FROM totals ORDER BY correct_answer_count DESC,identity_key LIMIT 100
 `
 
 type ListBankRankingWindowParams struct {
@@ -578,8 +578,6 @@ type ListBankRankingWindowParams struct {
 type ListBankRankingWindowRow struct {
 	UserID             uuid.NullUUID `json:"user_id"`
 	Rank               int64         `json:"rank"`
-	Nickname           string        `json:"nickname"`
-	SystemAvatar       string        `json:"system_avatar"`
 	CorrectAnswerCount int64         `json:"correct_answer_count"`
 }
 
@@ -592,13 +590,7 @@ func (q *Queries) ListBankRankingWindow(ctx context.Context, arg ListBankRanking
 	items := []ListBankRankingWindowRow{}
 	for rows.Next() {
 		var i ListBankRankingWindowRow
-		if err := rows.Scan(
-			&i.UserID,
-			&i.Rank,
-			&i.Nickname,
-			&i.SystemAvatar,
-			&i.CorrectAnswerCount,
-		); err != nil {
+		if err := rows.Scan(&i.UserID, &i.Rank, &i.CorrectAnswerCount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -797,28 +789,39 @@ func (q *Queries) ListLearningState(ctx context.Context, userID uuid.UUID) ([]Li
 
 const listOverallRanking = `-- name: ListOverallRanking :many
 WITH totals AS (
-  SELECT a.user_id,
-         COALESCE(p.nickname,'匿名学习者') AS nickname,
-         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+  SELECT COALESCE(a.user_id::text,s.actor_key) AS identity_key,
+         a.user_id,
          count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
-  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
-  WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1
-  GROUP BY a.user_id,p.nickname,p.system_avatar
+  LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
+  WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.submitted_at >= $1
+  GROUP BY identity_key,a.user_id
 )
-SELECT rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
-FROM totals
-ORDER BY correct_answer_count DESC,user_id
+SELECT rank() OVER (ORDER BY t.correct_answer_count DESC)::bigint AS rank, t.user_id,
+       CASE WHEN t.user_id IS NULL THEN t.identity_key ELSE '' END AS guest_key,
+       t.correct_answer_count
+FROM totals t
+ORDER BY t.correct_answer_count DESC, t.identity_key
 LIMIT 100
 `
 
 type ListOverallRankingRow struct {
-	Rank               int64  `json:"rank"`
-	Nickname           string `json:"nickname"`
-	SystemAvatar       string `json:"system_avatar"`
-	CorrectAnswerCount int64  `json:"correct_answer_count"`
+	Rank               int64         `json:"rank"`
+	UserID             uuid.NullUUID `json:"user_id"`
+	GuestKey           string        `json:"guest_key"`
+	CorrectAnswerCount int64         `json:"correct_answer_count"`
 }
 
+// Identity is the immutable per-attempt attribution key: the signed-in
+// learner's user_id, or the session's immutable actor_key for guests
+// (COALESCE(a.user_id::text, s.actor_key)). Rows with no attributable
+// identity are excluded. Entries expose only the nullable user_id plus
+// rank/count; display-name synthesis is the Portal Gateway's job.
+// guest_key carries the stable anonymous identity key for guest learners
+// (user_id null -> the text identity key; signed-in learners -> the empty
+// string, which practice_http.go serializes as JSON null). It is an
+// x-internal field: Portal Gateway uses it only to derive a stable 游客x
+// display label and MUST never expose it (ADR-0038).
 func (q *Queries) ListOverallRanking(ctx context.Context, submittedAt pgtype.Timestamptz) ([]ListOverallRankingRow, error) {
 	rows, err := q.db.Query(ctx, listOverallRanking, submittedAt)
 	if err != nil {
@@ -830,8 +833,8 @@ func (q *Queries) ListOverallRanking(ctx context.Context, submittedAt pgtype.Tim
 		var i ListOverallRankingRow
 		if err := rows.Scan(
 			&i.Rank,
-			&i.Nickname,
-			&i.SystemAvatar,
+			&i.UserID,
+			&i.GuestKey,
 			&i.CorrectAnswerCount,
 		); err != nil {
 			return nil, err
@@ -846,17 +849,16 @@ func (q *Queries) ListOverallRanking(ctx context.Context, submittedAt pgtype.Tim
 
 const listOverallRankingWindow = `-- name: ListOverallRankingWindow :many
 WITH totals AS (
-  SELECT a.user_id,
-         COALESCE(p.nickname,'匿名学习者') AS nickname,
-         COALESCE(p.system_avatar,'scholar-blue') AS system_avatar,
+  SELECT COALESCE(a.user_id::text,s.actor_key) AS identity_key,
+         a.user_id,
          count(*)::bigint AS correct_answer_count
   FROM quizcraft_practice_attempts a
-  JOIN quizcraft_ranking_profiles p ON p.user_id=a.user_id AND p.visible
-  WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
-  GROUP BY a.user_id,p.nickname,p.system_avatar
+  LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
+  WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
+  GROUP BY identity_key,a.user_id
 )
-SELECT user_id,rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,nickname,system_avatar,correct_answer_count
-FROM totals ORDER BY correct_answer_count DESC,user_id LIMIT 100
+SELECT user_id,rank() OVER (ORDER BY correct_answer_count DESC)::bigint AS rank,correct_answer_count
+FROM totals ORDER BY correct_answer_count DESC,identity_key LIMIT 100
 `
 
 type ListOverallRankingWindowParams struct {
@@ -867,8 +869,6 @@ type ListOverallRankingWindowParams struct {
 type ListOverallRankingWindowRow struct {
 	UserID             uuid.NullUUID `json:"user_id"`
 	Rank               int64         `json:"rank"`
-	Nickname           string        `json:"nickname"`
-	SystemAvatar       string        `json:"system_avatar"`
 	CorrectAnswerCount int64         `json:"correct_answer_count"`
 }
 
@@ -881,13 +881,7 @@ func (q *Queries) ListOverallRankingWindow(ctx context.Context, arg ListOverallR
 	items := []ListOverallRankingWindowRow{}
 	for rows.Next() {
 		var i ListOverallRankingWindowRow
-		if err := rows.Scan(
-			&i.UserID,
-			&i.Rank,
-			&i.Nickname,
-			&i.SystemAvatar,
-			&i.CorrectAnswerCount,
-		); err != nil {
+		if err := rows.Scan(&i.UserID, &i.Rank, &i.CorrectAnswerCount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1101,7 +1095,8 @@ func (q *Queries) ListPublishedBanks(ctx context.Context) ([]ListPublishedBanksR
 const listScoredBankIDsWindow = `-- name: ListScoredBankIDsWindow :many
 SELECT DISTINCT a.bank_id
 FROM quizcraft_practice_attempts a
-WHERE a.correct AND a.user_id IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
+LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
+WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
 ORDER BY a.bank_id
 `
 
@@ -1145,15 +1140,6 @@ SELECT pg_advisory_xact_lock(hashtextextended($1,0))
 
 func (q *Queries) LockIdempotency(ctx context.Context, hashtextextended string) error {
 	_, err := q.db.Exec(ctx, lockIdempotency, hashtextextended)
-	return err
-}
-
-const lockRankingProfileMutation = `-- name: LockRankingProfileMutation :exec
-SELECT pg_advisory_xact_lock(hashtextextended('ranking-profile-user:' || $1::text,0))
-`
-
-func (q *Queries) LockRankingProfileMutation(ctx context.Context, dollar_1 string) error {
-	_, err := q.db.Exec(ctx, lockRankingProfileMutation, dollar_1)
 	return err
 }
 
@@ -1304,28 +1290,5 @@ type UpdateQuestionStatsParams struct {
 
 func (q *Queries) UpdateQuestionStats(ctx context.Context, arg UpdateQuestionStatsParams) error {
 	_, err := q.db.Exec(ctx, updateQuestionStats, arg.QuestionID, arg.CorrectCount)
-	return err
-}
-
-const upsertRankingProfile = `-- name: UpsertRankingProfile :exec
-INSERT INTO quizcraft_ranking_profiles(user_id,nickname,system_avatar,visible)
-VALUES($1,$2,$3,$4)
-ON CONFLICT(user_id) DO UPDATE SET nickname=EXCLUDED.nickname,system_avatar=EXCLUDED.system_avatar,visible=EXCLUDED.visible,updated_at=now()
-`
-
-type UpsertRankingProfileParams struct {
-	UserID       uuid.UUID `json:"user_id"`
-	Nickname     string    `json:"nickname"`
-	SystemAvatar string    `json:"system_avatar"`
-	Visible      bool      `json:"visible"`
-}
-
-func (q *Queries) UpsertRankingProfile(ctx context.Context, arg UpsertRankingProfileParams) error {
-	_, err := q.db.Exec(ctx, upsertRankingProfile,
-		arg.UserID,
-		arg.Nickname,
-		arg.SystemAvatar,
-		arg.Visible,
-	)
 	return err
 }
