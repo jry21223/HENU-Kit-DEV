@@ -24,6 +24,7 @@ release_names=(
   career-opportunities
   career-mcp
   portal-gateway
+  quizcraft
 )
 release_images=(
   henukit-console
@@ -43,6 +44,7 @@ release_images=(
   henukit-career-opportunities
   henukit-career-mcp
   henukit-portal-gateway
+  henukit-quizcraft
 )
 release_services=(
   console
@@ -62,6 +64,7 @@ release_services=(
   career-opportunities
   career-mcp
   portal-gateway
+  quizcraft
 )
 release_roles=(
   baseline
@@ -81,6 +84,7 @@ release_roles=(
   conditional
   conditional
   baseline
+  conditional
 )
 release_contexts=(
   .
@@ -100,6 +104,7 @@ release_contexts=(
   services/career-opportunities
   services/career-mcp
   services/portal-gateway
+  products/quizcraft/go-service
 )
 release_dockerfiles=(
   apps/console/Dockerfile
@@ -119,7 +124,15 @@ release_dockerfiles=(
   services/career-opportunities/Dockerfile
   services/career-mcp/Dockerfile
   services/portal-gateway/Dockerfile
+  products/quizcraft/go-service/Dockerfile
 )
+# The Portal bake flags below are deliberately 1: this inventory describes the
+# #166 cutover release build only (see docs/operations/practice-wiring-matrix.md,
+# ADR-0036). Every default in the repo stays 0 (fail-closed); a release built
+# from this inventory MUST be deployed with the server-side gates
+# (PORTAL_ENABLE_QUIZCRAFT_CATALOG / PORTAL_ENABLE_QUIZCRAFT_V2_READS /
+# PORTAL_PRACTICE_COMMANDS_ENABLED) enabled in the same bundle, or the browser
+# surfaces render honest 404/503s — never a mock/legacy fallback.
 release_build_args=(
   $'VITE_BASE_PATH=/\nVITE_QUIZCRAFT_WORKSHOP_URL='
   ""
@@ -127,6 +140,7 @@ release_build_args=(
   ""
   ""
   $'NEXT_PUBLIC_PORTAL_GATEWAY_URL=\nNEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL=/api\nNEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1\nNEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1\nNEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=1'
+  ""
   ""
   ""
   ""

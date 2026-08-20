@@ -132,7 +132,6 @@ services:
       # Production defaults to durable PostgreSQL-backed product data.
       PORTAL_API_MODE: ${PORTAL_API_MODE:-live}
       PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:8088}
-      QUIZCRAFT_DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/quizcraft?sslmode=disable}
       STUDY_DATABASE_URL: ${STUDY_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/study?sslmode=disable}
       PORTAL_DATABASE_URL: ${PORTAL_DATABASE_URL:-}
     depends_on:
@@ -356,8 +355,6 @@ services:
       LIBRARY_OSS_PUBLIC_ENDPOINT: ${LIBRARY_OSS_PUBLIC_ENDPOINT:-https://oss-cn-beijing.aliyuncs.com}
       LIBRARY_OSS_ECS_RAM_ROLE: ${LIBRARY_OSS_ECS_RAM_ROLE:-henukit-library-download}
       ALIBABA_CLOUD_IMDSV1_DISABLE: "true"
-      STUDY_LEGACY_API_URL: ${STUDY_LEGACY_API_URL:-}
-      STUDY_LEGACY_ADMIN_TOKEN: ${STUDY_LEGACY_ADMIN_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -409,6 +406,8 @@ services:
       LIBRARY_DOWNLOAD_KEY_ID: ${LIBRARY_DOWNLOAD_KEY_ID:-library-download-key-1}
       # Keep QuizCraft V2 personal-data reads dark until the #166 cutover.
       PORTAL_ENABLE_QUIZCRAFT_V2_READS: ${PORTAL_ENABLE_QUIZCRAFT_V2_READS:-0}
+      # 容器化后（方案 2）应指向 http://quizcraft:10089（compose 服务名）；
+      # 历史 env 值 host.docker.internal:10089 仅对尚未迁移的旧 env 兼容。
       QUIZCRAFT_CORE_URL: ${QUIZCRAFT_CORE_URL:-}
       QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID: ${QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID:-}
       QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET: ${QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET:-}
@@ -452,6 +451,49 @@ services:
         condition: service_healthy
     expose:
       - "8084"
+
+  # QuizCraft Go core（方案 2：容器化纳入主栈，替代宿主机 systemd
+  # quizcraft-go.service）。它是 Portal /practice 的读写数据 owner，只被
+  # portal-gateway 经 compose 网络调用（PRACTICE_SERVICE_URL /
+  # QUIZCRAFT_CORE_URL 指向 http://quizcraft:10089）。
+  # 切流过渡拓扑：DATABASE_URL 默认连宿主机 postgres 16 的 quizcraft_v2 库
+  # （经 host.docker.internal:host-gateway）；quizcraft_v2 迁入 docker
+  # postgres 后移除 extra_hosts 并改用 compose 内数据库地址。
+  # 镜像为 distroless（无 shell/wget），不设容器级 healthcheck：就绪探测由
+  # portal-gateway 请求时 fail-closed（503）承担；如需容器级探针，后续可仿照
+  # services/food 增加 cmd/healthcheck 静态二进制（不在本任务范围）。
+  quizcraft:
+    build:
+      context: ./products/quizcraft/go-service
+    environment:
+      QUIZCRAFT_HTTP_ADDR: ":10089"
+      # 兼容键（FastAPI 时代遗留；Go core 实际读取 QUIZCRAFT_HTTP_ADDR）。
+      QUIZCRAFT_APP_HOST: ${QUIZCRAFT_APP_HOST:-0.0.0.0}
+      QUIZCRAFT_WRITES_ENABLED: ${QUIZCRAFT_WRITES_ENABLED:-0}
+      QUIZCRAFT_PORTAL_COMMANDS_ENABLED: ${QUIZCRAFT_PORTAL_COMMANDS_ENABLED:-0}
+      QUIZCRAFT_AUTH_HMAC_SECRET: ${QUIZCRAFT_AUTH_HMAC_SECRET:-replace-quizcraft-hmac-secret-32bytes-min!!}
+      QUIZCRAFT_CUTOVER_EVIDENCE_SECRET: ${QUIZCRAFT_CUTOVER_EVIDENCE_SECRET:-replace-quizcraft-cutover-evidence-secret-32bytes-min!!}
+      QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID: ${QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID:-}
+      QUIZCRAFT_PORTAL_CATALOG_KEY_ID: ${QUIZCRAFT_PORTAL_CATALOG_KEY_ID:-}
+      QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET: ${QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET:-}
+      QUIZCRAFT_PORTAL_COMMAND_CLIENT_ID: ${QUIZCRAFT_PORTAL_COMMAND_CLIENT_ID:-}
+      QUIZCRAFT_PORTAL_COMMAND_KEY_ID: ${QUIZCRAFT_PORTAL_COMMAND_KEY_ID:-}
+      QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET: ${QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET:-}
+      QUIZCRAFT_SUMMARY_CLIENT_ID: ${QUIZCRAFT_SUMMARY_CLIENT_ID:-}
+      QUIZCRAFT_SUMMARY_KEY_ID: ${QUIZCRAFT_SUMMARY_KEY_ID:-}
+      QUIZCRAFT_SUMMARY_CLIENT_SECRET: ${QUIZCRAFT_SUMMARY_CLIENT_SECRET:-}
+      # 宿主机 postgres 16（127.0.0.1:5432）的 quizcraft_v2 库；切流过渡拓扑见上注释。
+      DATABASE_URL: ${QUIZCRAFT_V2_DATABASE_URL:-postgres://quizcraft_v2:change-me@host.docker.internal:5432/quizcraft_v2?sslmode=disable}
+      # Legacy 比对源（FastAPI 已退役，留空即关闭 legacy 比对路径）。
+      QUIZCRAFT_LEGACY_BASE_URL: ${QUIZCRAFT_LEGACY_BASE_URL:-}
+      QUIZCRAFT_LEGACY_COMPARE_SECRET: ${QUIZCRAFT_LEGACY_COMPARE_SECRET:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # 连宿主机 postgres，不依赖 docker postgres / redis，故无 depends_on。
+    # 不暴露公网端口；仅 compose 网络内可达（portal-gateway 调用）。
+    expose:
+      - "10089"
+    restart: unless-stopped
 
   portal:
     build:

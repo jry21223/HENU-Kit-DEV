@@ -34,7 +34,7 @@ function releaseImageMatrix() {
   );
 }
 
-test("CI builds the primary HENU runtime without legacy Study or QuizCraft images", () => {
+test("CI builds the primary HENU runtime without legacy Study or standalone QuizCraft images", () => {
   const expectedImages = [
     "henukit-console",
     "henukit-console-gateway",
@@ -53,6 +53,7 @@ test("CI builds the primary HENU runtime without legacy Study or QuizCraft image
     "henukit-career-opportunities",
     "henukit-career-mcp",
     "henukit-portal-gateway",
+    "henukit-quizcraft",
   ];
 
   assert.match(workflow, /release-image-matrix:/);
@@ -283,6 +284,16 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET",
       "QUIZCRAFT_PORTAL_CATALOG_KEY_ID",
       "QUIZCRAFT_SUMMARY_CLIENT_SECRET",
+      "QUIZCRAFT_SUMMARY_CLIENT_ID",
+      "QUIZCRAFT_SUMMARY_KEY_ID",
+      "QUIZCRAFT_V2_DATABASE_URL",
+      "QUIZCRAFT_AUTH_HMAC_SECRET",
+      "QUIZCRAFT_CUTOVER_EVIDENCE_SECRET",
+      "QUIZCRAFT_WRITES_ENABLED",
+      "QUIZCRAFT_PORTAL_COMMANDS_ENABLED",
+      "QUIZCRAFT_PORTAL_COMMAND_CLIENT_ID",
+      "QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET",
+      "QUIZCRAFT_PORTAL_COMMAND_KEY_ID",
       "STUDY_LEGACY_ADMIN_TOKEN",
       "STUDY_LEGACY_API_URL",
     ].map((name) => [name, "test-required-value"]),
@@ -313,8 +324,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
             PLATFORM_CORE_DATABASE_URL: "postgres://test",
             PLATFORM_CORE_REDIS_URL: "redis://test",
             ACCOUNT_PORTFOLIO_DATABASE_URL: "postgres://test",
-            QUIZCRAFT_CORE_URL: "http://host.docker.internal:10089",
-            QUIZCRAFT_DATABASE_URL: "postgres://test",
+            QUIZCRAFT_CORE_URL: "http://quizcraft:10089",
             CAREER_DATABASE_URL: "postgres://test",
             RELEASE_SHA: releaseSha,
             STUDY_DATABASE_URL: "postgres://test",
@@ -351,6 +361,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-career-opportunities",
     "henukit-career-mcp",
     "henukit-library",
+    "henukit-quizcraft",
   ];
 
   for (const image of expectedImages) {
@@ -363,11 +374,26 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     );
   }
   assert.equal(
+    config.services.quizcraft.environment.DATABASE_URL,
+    "test-required-value",
+    "the containerized Core must read the V2 database URL from QUIZCRAFT_V2_DATABASE_URL",
+  );
+  assert.equal(
+    config.services.quizcraft.environment.QUIZCRAFT_HTTP_ADDR,
+    ":10089",
+    "the containerized Core must listen on the port the Gateway seam addresses",
+  );
+  assert.deepEqual(
+    config.services.quizcraft.extra_hosts,
+    ["host.docker.internal=host-gateway"],
+    "the containerized Core needs the host-gateway mapping until quizcraft_v2 moves into the Docker postgres",
+  );
+  assert.equal(
     Object.values(config.services).some((service) => "build" in service),
     false,
   );
   assert.equal(
-    Object.keys(config.services).some((service) => /^(study|quizcraft)/.test(service)),
+    Object.keys(config.services).some((service) => /^study/.test(service)),
     false,
   );
   assert.equal(
@@ -401,13 +427,13 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.equal(
     config.services["portal-gateway"].environment.PRACTICE_SERVICE_URL,
-    "http://host.docker.internal:10089",
-    "the fixed-SHA Gateway catalog seam must call QuizCraft Core, not legacy Portal API",
+    "http://quizcraft:10089",
+    "the fixed-SHA Gateway catalog seam must call the containerized QuizCraft Core service, not legacy Portal API",
   );
   assert.deepEqual(
     config.services["portal-gateway"].extra_hosts,
     ["host.docker.internal=host-gateway"],
-    "the containerized Gateway must have an explicit private route to the host Core",
+    "the containerized Gateway keeps the host-gateway mapping for legacy env values that still use host.docker.internal:10089",
   );
   assert.equal(
     config.services["portal-gateway"].environment.PRACTICE_CLIENT_SECRET,

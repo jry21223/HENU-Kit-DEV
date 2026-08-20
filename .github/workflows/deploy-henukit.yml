@@ -2,8 +2,9 @@ name: Build HENU Kit release artifacts
 
 # Compile production Docker images in GitHub Actions. Production hosts consume
 # these fixed-SHA artifacts with docker load and never compile source in place.
-# Legacy Study and standalone QuizCraft runtimes are intentionally excluded;
-# Portal consumes their preserved databases through its integrated APIs.
+# Legacy Study runtime is intentionally excluded; the QuizCraft Go core is now
+# a first-class stack image (henukit-quizcraft, 方案 2 containerization) and
+# Portal consumes the preserved QuizCraft/Study databases through the Gateway.
 
 on:
   pull_request:

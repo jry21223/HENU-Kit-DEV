@@ -34,6 +34,7 @@ const expected = [
   ["career-opportunities", "henukit-career-opportunities", "career-opportunities", "conditional"],
   ["career-mcp", "henukit-career-mcp", "career-mcp", "conditional"],
   ["portal-gateway", "henukit-portal-gateway", "portal-gateway", "baseline"],
+  ["quizcraft", "henukit-quizcraft", "quizcraft", "conditional"],
 ];
 
 function lines(...args) {

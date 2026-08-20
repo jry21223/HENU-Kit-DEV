@@ -59,7 +59,6 @@ services:
     pull_policy: never
     mem_limit: 96m
     environment:
-      QUIZCRAFT_DATABASE_URL: ${QUIZCRAFT_DATABASE_URL:?QUIZCRAFT_DATABASE_URL is required}
       STUDY_DATABASE_URL: ${STUDY_DATABASE_URL:?STUDY_DATABASE_URL is required}
   account-portfolio:
     image: henukit-account-portfolio:${RELEASE_SHA:?RELEASE_SHA is required}
@@ -201,6 +200,10 @@ services:
       # The fixed-SHA cutover catalog must call the internal QuizCraft Core.
       # Reusing the development Portal API defaults makes the public catalog
       # fail with 503 even while Core and its dedicated credentials are valid.
+      # After containerization (方案 2) the production value of
+      # QUIZCRAFT_CORE_URL must be http://quizcraft:10089 (compose service);
+      # the host.docker.internal:10089 form is retained only for legacy env
+      # files that have not migrated yet.
       PRACTICE_SERVICE_URL: ${QUIZCRAFT_CORE_URL:?QUIZCRAFT_CORE_URL is required}
       PRACTICE_CLIENT_ID: ${QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID:?QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID is required}
       PRACTICE_CLIENT_SECRET: ${QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET:?QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET is required}
@@ -211,6 +214,37 @@ services:
       NOTICE_CLIENT_SECRET: ${NOTICE_CLIENT_SECRET:?NOTICE_CLIENT_SECRET is required}
       ACCOUNT_PORTFOLIO_CLIENT_SECRET: ${ACCOUNT_PORTFOLIO_CLIENT_SECRET:?ACCOUNT_PORTFOLIO_CLIENT_SECRET is required}
       ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET: "1"
+  # QuizCraft Go core fixed-SHA pin (方案 2 containerized core, replacing the
+  # host systemd quizcraft-go.service). Every credential is mandatory (`:?`):
+  # the Go entrypoint requires DATABASE_URL / QUIZCRAFT_AUTH_HMAC_SECRET /
+  # QUIZCRAFT_WRITES_ENABLED / QUIZCRAFT_CUTOVER_EVIDENCE_SECRET, and the
+  # portal-gateway read/command rings are provisioned per environment.
+  quizcraft:
+    image: henukit-quizcraft:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 128m
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      QUIZCRAFT_HTTP_ADDR: ":10089"
+      QUIZCRAFT_WRITES_ENABLED: ${QUIZCRAFT_WRITES_ENABLED:?QUIZCRAFT_WRITES_ENABLED is required}
+      QUIZCRAFT_PORTAL_COMMANDS_ENABLED: ${QUIZCRAFT_PORTAL_COMMANDS_ENABLED:?QUIZCRAFT_PORTAL_COMMANDS_ENABLED is required}
+      QUIZCRAFT_AUTH_HMAC_SECRET: ${QUIZCRAFT_AUTH_HMAC_SECRET:?QUIZCRAFT_AUTH_HMAC_SECRET is required}
+      QUIZCRAFT_CUTOVER_EVIDENCE_SECRET: ${QUIZCRAFT_CUTOVER_EVIDENCE_SECRET:?QUIZCRAFT_CUTOVER_EVIDENCE_SECRET is required}
+      QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID: ${QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID:?QUIZCRAFT_PORTAL_CATALOG_CLIENT_ID is required}
+      QUIZCRAFT_PORTAL_CATALOG_KEY_ID: ${QUIZCRAFT_PORTAL_CATALOG_KEY_ID:?QUIZCRAFT_PORTAL_CATALOG_KEY_ID is required}
+      QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET: ${QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET:?QUIZCRAFT_PORTAL_CATALOG_CLIENT_SECRET is required}
+      QUIZCRAFT_PORTAL_COMMAND_CLIENT_ID: ${QUIZCRAFT_PORTAL_COMMAND_CLIENT_ID:?QUIZCRAFT_PORTAL_COMMAND_CLIENT_ID is required}
+      QUIZCRAFT_PORTAL_COMMAND_KEY_ID: ${QUIZCRAFT_PORTAL_COMMAND_KEY_ID:?QUIZCRAFT_PORTAL_COMMAND_KEY_ID is required}
+      QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET: ${QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET:?QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET is required}
+      QUIZCRAFT_SUMMARY_CLIENT_ID: ${QUIZCRAFT_SUMMARY_CLIENT_ID:?QUIZCRAFT_SUMMARY_CLIENT_ID is required}
+      QUIZCRAFT_SUMMARY_KEY_ID: ${QUIZCRAFT_SUMMARY_KEY_ID:?QUIZCRAFT_SUMMARY_KEY_ID is required}
+      QUIZCRAFT_SUMMARY_CLIENT_SECRET: ${QUIZCRAFT_SUMMARY_CLIENT_SECRET:?QUIZCRAFT_SUMMARY_CLIENT_SECRET is required}
+      # Transition topology: the V2 database stays on the host postgres 16
+      # until quizcraft_v2 is migrated into the Docker postgres; the
+      # host.docker.internal:host-gateway mapping keeps that path working.
+      DATABASE_URL: ${QUIZCRAFT_V2_DATABASE_URL:?QUIZCRAFT_V2_DATABASE_URL is required}
   console-gateway:
     image: henukit-console-gateway:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null
