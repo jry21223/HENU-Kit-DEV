@@ -35,10 +35,10 @@ HENU Kit 对用户提供统一品牌、入口、导航、账户状态和跨产�
 - **Console 管理入口**（`apps/console`）：**唯一**运营/管理后台；经 Console Gateway 访问受权限保护的运营接口。
 - **Portal 集成刷题与资料库**（`apps/portal` + `services/portal-api`）：`/practice` 与 `/library` 是默认用户入口，分别读取保留的 QuizCraft/Study 数据库。
 - **QuizCraft 与 Study 源码/数据库**（`products/quizcraft`、`services/api`）：作为迁移与数据 owner 保留，但不再由 HENU Kit 主运行时启动独立 Web/API 服务。
-- **校园生活**：美食榜单等轻量校园工具（Portal 内模块）。
+- **校园生活**：美食榜单等轻量校园工具——Food 是独立数据 owner 服务（`services/food`）；Account Portfolio / Career / Notice / Library 均为独立服务，Portal 提供入口（经 Portal Gateway 访问业务数据）。
 - **平台核心**（`services/platform-core`）：统一账户、邮件、通知、事件、用户统计、服务间认证和 API 契约，不作为首页一级入口。
 
-**生产 admin 仅 Console。** `apps/study-legacy-admin` 已从产品入口与默认构建路径退役（`retired_keep_source`），仅保留紧急回滚；`pnpm run build` 不再包含它，需要时使用 `pnpm run build:study-legacy-admin` 或 `pnpm run build:all`。Study 专用发布见 `deploy-study.yml`；HENU Kit 全栈见 `docker-compose.henukit.yml`。
+**生产 admin 仅 Console。** `apps/study-legacy-admin` 已从产品入口与默认构建路径退役（`retired_keep_source`），仅保留紧急回滚；`pnpm run build` 不再包含它，需要时使用 `pnpm run build:study-legacy-admin` 或 `pnpm run build:all`。Study 遗留栈不再有独立发布 workflow（原 `deploy-study.yml` 已不在工作树）；生产实际状态以 [`docs/operations/CURRENT_PRODUCTION_STATE.md`](docs/operations/CURRENT_PRODUCTION_STATE.md) 为准。HENU Kit 全栈见 `docker-compose.henukit.yml`。
 
 资料库不再开发或展示第二套刷题流程。资料页中的“去刷题”只负责携带课程上下文跳转到 Portal 的 `/practice`。
 

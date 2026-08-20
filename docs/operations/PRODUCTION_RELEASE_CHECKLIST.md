@@ -47,7 +47,7 @@
 - [ ] 记录最终 `main` 完整 SHA：`________________________________________`
 - [ ] 记录最终 PR、Required Checks、当前 SHA 的 Standards / Spec 双轴 Review 与人工批准证据。
 - [ ] 每个部署单元的 Artifact/Image 均绑定精确 SHA，不使用 `latest` 作为发布证据。
-- [ ] 记录 Portal、Console、Platform Core、Platform Worker、Study Web、Study Admin、Study API、Study Worker、Quiz Web、Quiz API/Go Service、Notice、Food、Library、Portal API、Portal Gateway、Account Portfolio 的实际部署版本。
+- [ ] 记录 Portal、Console、Platform Core、Platform Mail Worker（platform-mail-worker）、Study Web、Study Admin、Study API、Study Worker、Quiz Web、Quiz API/Go Service、Notice、Food、Library、Portal API、Portal Gateway、Account Portfolio 的实际部署版本。
 - [ ] 发布说明列出本次包含与不包含的模块、Migration、Feature Flag、切流顺序和回滚边界。
 - [ ] “代码已可发布”和“生产已部署”分别记录，CI 成功不能替代服务器部署证据。
 

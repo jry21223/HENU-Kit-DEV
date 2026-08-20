@@ -24,8 +24,7 @@ HENUKitDev/
 │   ├── study-legacy-admin/
 │   └── quiz-web/
 ├── services/
-│   ├── platform-core/
-│   ├── platform-worker/
+│   ├── platform-core/        # 模块化单体 API；worker 在 core 内（cmd/mail-worker，即 platform-mail-worker）
 │   ├── study-api/
 │   ├── study-worker/
 │   └── quiz-api-legacy/

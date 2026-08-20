@@ -40,6 +40,8 @@ secrets from the release artifact.
    test "$(curl --location --max-redirs 3 -s -o /dev/null -w '%{http_code}' https://superhuazai.me/study-api/healthz)" = 404
    ```
 
+> 2026-08-19 更新（服务器实测）：superhuazai.me 现已全站 **301 到 henukit.cn 栈**；旧 smoke 预期 404 的 `/quiz/` 现为 **308 跳转**（`--location` 跟随后最终落到 henukit.cn 栈目标）。命令主体未改；验收主域口径统一见 `ALL_NEW_STACK_CUTOVER.md` M4 §6。
+
    Retirement probes follow at most three canonical redirects and require the
    final response to be `404`; an intermediate redirect is not itself a pass.
 
@@ -91,7 +93,7 @@ root to `0750`, completed bundle directories to `0550`, and bundle files to
 `0440`, all group-owned by `henukit-release-deployers`. The deployment identity
 can therefore read but not modify the bundle, while the signing key remains
 owner-only outside that tree. It emits one
-flat `henukit-release-<sha>` directory containing all seventeen image archives,
+flat `henukit-release-<sha>` directory containing all eighteen image archives,
 the runtime archive, checksums, `RELEASE_SHA`, and a signed manifest.
 
 ### Direct WSL2-to-production transport
@@ -394,11 +396,11 @@ It deploys only the newest completed, successful `push` run of
    into isolated temporary databases with key-table and Account durable-fact
    count checks. On the first Account Portfolio release it records and
    restores an explicit empty-database baseline before schema creation;
-5. loads all seventeen fixed-SHA Docker images;
+5. loads all eighteen fixed-SHA Docker images;
 6. calls the existing `deploy-henukit-artifact.sh`, then invokes Platform
    Core's owner-defined command to grant all eight Account Console permissions,
    bump the role revision, and append an immutable grant audit;
-7. verifies all seventeen running image tags, Account Portfolio health, and the public health routes, rolling
+7. verifies all eighteen running image tags, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
 
@@ -478,11 +480,12 @@ only when that baseline's already-extracted
 `docker-compose.henukit.release.yml` explicitly lacks `account-portfolio`; it
 still requires all nine images and a healthy Account Portfolio container for
 the candidate. This prevents a partially broken new release from being treated
-as a legacy baseline. Current releases carry seventeen images: the nine above plus
+as a legacy baseline. Current releases carry eighteen images: the nine above plus
 `notice`, `notice-worker`, `food`, `library`, `food-mcp` (ADR-0033),
-`career-opportunities` (#392), and `career-mcp` (ADR-0034) (see
+`career-opportunities` (#392), `career-mcp` (ADR-0034), and
+`quizcraft` (方案 2 containerized Go core, `products/quizcraft/go-service`) (see
 `notice-food-production-onboarding.md` and `henukit-local-deploy.md`).
-`career-opportunities` and `career-mcp` are intentionally `conditional` inventory
+`career-opportunities`, `career-mcp`, and `quizcraft` are intentionally `conditional` inventory
 roles, not `baseline` roles: baseline roles are required from every retained
 rollback release, so adding them as baseline would make older fourteen-image
 releases fail rollback verification. The inventory at
@@ -538,7 +541,7 @@ manifest, securely copies the existing MetaView HENU tenant identity into the
 Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017` and `000018`, deploys all seventeen fixed-SHA images, grants the eight
+`000017` and `000018`, deploys all eighteen fixed-SHA images, grants the eight
 Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
@@ -585,7 +588,7 @@ requires a new explicit approval before the failed SHA can be attempted again.
 
 The process polls every 60 seconds by default and uses a kernel `flock` to
 prevent overlapping deployments; the lock is released even after a crash or
-power loss. A release already active on all seventeen image tags is an idempotent
+power loss. A release already active on all eighteen image tags is an idempotent
 health-checked no-op. During the one-time 8-to-9 transition, the explicitly
 legacy eight-image baseline remains a valid rollback target. A failed check exits the process, and Systemd retries it
 after 30 seconds. Activation or public verification failure invokes the

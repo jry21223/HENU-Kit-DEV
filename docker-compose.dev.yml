@@ -1,4 +1,5 @@
-# LEGACY Study-only local stack. Prefer docker-compose.henukit.yml for the
+# ⚠️ 已废弃：LEGACY Study-only local stack（旧栈已物理退役，2026-08-19 实测）。
+# Prefer docker-compose.henukit.yml for the
 # full HENU Kit public+ops surface (pnpm run dev:henukit).
 name: final-review-platform-v2
 

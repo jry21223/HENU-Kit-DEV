@@ -1,5 +1,7 @@
 # HENUKit Console 与 QuizCraft 重构执行规格
 
+> 更新日期：2026-08-17
+
 ## Problem Statement
 
 当前仓库的管理后台源自期末复习平台，其路由、权限、组件和业务模型仍混合着大量旧代码，但现在真正需要服务的是整个 HENU Kit 产品族。继续修补旧 Admin 会把 Study Legacy Admin 的产品边界、Element Plus、单一管理员判断和混合 API 带入新系统，使 Portal、Platform Operations、Notice、Library、QuizCraft 与 Food 无法按各自的数据所有权、安全边界和发布节奏演进。
@@ -18,10 +20,12 @@ QuizCraft 保留 React 用户端并用 Go 重构后端，以稳定题库和题�
 
 | 状态 | 能力 |
 |---|---|
-| Current | 当前仓库仍运行原 Web、物理隔离后的 Study Legacy Admin、Study Legacy API 与 Worker；Web、Study Legacy Admin、Console 与现有 QuizCraft 前端已统一到 pnpm Workspace。Console 已交付使用 Mock 数据的响应式六模块 Overview。Platform Core 已交付已有 Core Session 的 S256 授权码签发、Basic + HMAC 服务端交换、Redis Nonce 防重放、幂等响应和 PostgreSQL exchange Session，并交付服务端 permission code + platform/product/resource Scope 默认拒绝判定、下一请求撤销传播和事务审计；同时已交付验证码 Hash/有效期/单次消费、加密邮件 Outbox、Redis 重发限流，以及可独立部署并支持领取、超时、重试、失败、provider accepted 与 delivered 区分的邮件 Worker。验证码成功后创建账户/Core Session、权限管理 UI/API、provider delivery webhook、Console Gateway 和真实产品数据接入尚未交付。 |
+| Current | Console Gateway 已交付并经生产验证（2026-08-03 GO，console.henukit.cn）；Console 六模块真实摘要/运营视图已接线（Library/Food/Notice/Account 等）；Portal 已入 pnpm Workspace；Platform Core 邮箱账户/验证码/Outbox/邮件 Worker 已交付；materials OSS 系列（ADR-0022~0031）已交付。 |
 | Current documentation baseline | Context、ADR、替代计划、执行规格和验收 Gate 已成为后续工作的决策基线；这些文档本身不证明运行时、数据库迁移或生产切流已经交付。 |
-| Planned | 后续 Portal 包接入现有 pnpm Workspace；并在现有验证码事实与 Outbox 上补齐 Platform Core 邮箱账户/bootstrap Session、provider delivery webhook、角色/Scope 管理与会话管理 API，交付 Console Gateway、六个 Active Product Module 的真实接入，以及 QuizCraft React + Go 重构与可回滚迁移。 |
+| Planned | QuizCraft Go 切流与 ADR-0013 门禁执行、Console QuizCraft 摘要接线、provider delivery webhook、真实邮箱登录 Smoke 人工项。 |
 | Out of scope for V1 | Portal CMS/部署控制、积分、会员、排行奖励、QuizCraft Electron/Android、AI 生成解析、旧身份自动绑定、跨题库自定义收藏夹和 QuizCraft 美食转盘。 |
+
+> 2026-08-19 更新（服务器实测）：上表 Planned 行中「QuizCraft Go 切流与 ADR-0013 门禁执行」条目（即 QuizCraft React + Go 重构与可回滚迁移的收尾部分）**已实际执行**——quizcraft-go.service 8-14 起运行、writes/portal commands 开启、quizcraft_v2 12 题库/3457 题、FastAPI 已停服；剩余收尾：**排行结算（settlements=0）、补 cutover 证据文档**。
 
 下文 Implementation Decisions 均描述 Planned 目标态，除非某条明确标记为 Current 或 Out of scope。实际交付状态只能由已验证代码、契约、Migration 和运行证据更新，不能由现在时措辞推断。
 

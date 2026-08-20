@@ -90,8 +90,8 @@ bin/
 *.test
 .tools/
 
-# Root leftovers from the pre-monorepo plugin location.
-final-review-sales-agent/
+# LangBot sales-agent plugin (moved from the pre-monorepo root plugin location).
+integrations/langbot-sales-agent/
 
 # OS files
 .DS_Store

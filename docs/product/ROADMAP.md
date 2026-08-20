@@ -42,7 +42,7 @@
 
 ### 范围
 
-- `services/platform-core` 和 `services/platform-worker`。
+- `services/platform-core`（worker 实为其内 cmd/mail-worker，即 platform-mail-worker，已交付）。
 - Go 1.26.x 固定补丁版本。
 - PostgreSQL、Redis、OpenAPI 3.1。
 - 版本化 Migration。

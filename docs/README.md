@@ -42,6 +42,7 @@
 ### 运行维护
 
 - [`operations/PRODUCTION_RELEASE_CHECKLIST.md`](./operations/PRODUCTION_RELEASE_CHECKLIST.md)
+- [`operations/CURRENT_PRODUCTION_STATE.md`](./operations/CURRENT_PRODUCTION_STATE.md)：生产当前实际状态（证据记录，先读它再读检查表）。
 - [`operations/README.md`](./operations/README.md)
 - [`operations/deployment.md`](./operations/deployment.md)
 - [`operations/internal-smoke.md`](./operations/internal-smoke.md)

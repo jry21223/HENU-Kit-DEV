@@ -7,6 +7,7 @@
 - [`notice-food-production-onboarding.md`](./notice-food-production-onboarding.md)：Notice / Food 服务生产编排接入、配置、发布、回滚与验证。
 - [`github-webhook-deploy.md`](./github-webhook-deploy.md)：Monorepo GitHub Webhook 自动同步、精确 SHA 发布、Systemd/Nginx、批准与回滚 Runbook。
 - [`PRODUCTION_RELEASE_CHECKLIST.md`](./PRODUCTION_RELEASE_CHECKLIST.md)：整套服务生产发布唯一 Go/No-Go 汇总入口。
+- [`CURRENT_PRODUCTION_STATE.md`](./CURRENT_PRODUCTION_STATE.md)：**生产现状记录**——按证据记录当前实际运行状态与数据依赖，与检查表配套使用。
 - [`PRODUCTION_RELEASE_REPORT-2026-07-24.md`](./PRODUCTION_RELEASE_REPORT-2026-07-24.md)：本次 Webhook 交付与最终生产发布证据审计，当前结论按证据更新。
 - [`internal-smoke.md`](./internal-smoke.md)：内部测试和部署后 Smoke Runbook。
 - [`henukit-materials-oss-canary.md`](./henukit-materials-oss-canary.md)：单对象私有 OSS canary 的验证与精确版本清理边界。

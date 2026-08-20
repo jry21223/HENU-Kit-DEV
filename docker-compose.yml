@@ -1,3 +1,8 @@
+# ⚠️ 已废弃：旧 Study-only 兼容栈（library web + study-legacy-admin）。
+# 生产已全量运行 docker-compose.henukit.yml（2026-08-19 实测，20 服务）；
+# 旧栈（apps/web、apps/study-legacy-admin、services/api、services/worker）已物理退役。
+# 本文件仅保留供历史排障/紧急回滚，默认 `docker compose up` 会误命中本栈，请勿启动。
+# 兼容开发请使用 docker-compose.dev.yml。
 # LEGACY Study-only stack (library web + study-legacy-admin).
 # Primary public+ops surface is docker-compose.henukit.yml
 # (Portal / Console / QuizCraft / Study API as library backend).

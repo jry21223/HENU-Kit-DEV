@@ -58,7 +58,7 @@ flowchart LR
 | `services/platform-core` | 账户、权限、Scope、Session、Operations Inbox、邮件与平台审计 | 平台公共能力 |
 | `services/notice` | 通知来源、版本、审核、受众和分发 | Notice Module API 与 Worker |
 | `services/library` | 课程、资料、下载、投稿、审核和纠错 | 从 Study Legacy API 渐进提取 |
-| `services/quizcraft` | 题库、题目版本、Practice Session、答题事实、收藏、排行和反馈 | 替换 FastAPI 后端 |
+| `products/quizcraft/go-service` | 题库、题目版本、Practice Session、答题事实、收藏、排行和反馈 | 替换 FastAPI 后端（modules.yaml 中 `services/quiz-api-legacy` 目标路径未落地） |
 | `services/food` | 美食投稿、条目、校准轮次、票、异常与调档 | Food Module API |
 | `services/api` | 旧学习平台存量数据 | Study Legacy API；冻结新增平台能力 |
 

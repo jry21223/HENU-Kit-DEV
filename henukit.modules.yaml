@@ -122,11 +122,99 @@ modules:
 
   - id: platform_worker
     kind: go_worker
-    current_path: services/platform-worker
-    target_path: services/platform-worker
+    current_path: services/platform-core
+    target_path: services/platform-core
     owner: platform
-    deploy_unit: platform-core-worker
-    status: planned
+    deploy_unit: platform-mail-worker
+    status: active
+    notes:
+      - 邮件/通知 outbox worker：services/platform-core/cmd/mail-worker + Dockerfile.worker，compose 服务名 platform-mail-worker
+
+  - id: account_portfolio
+    kind: go_service
+    current_path: services/account-portfolio
+    target_path: services/account-portfolio
+    owner: platform
+    deploy_unit: account-portfolio
+    status: active
+    notes:
+      - 积分、会员、会员订单、账户通知与客服工单的独立持久化数据 Owner
+
+  - id: notice
+    kind: go_service
+    current_path: services/notice
+    target_path: services/notice
+    owner: notice
+    deploy_unit: notice
+    status: active
+    notes:
+      - Notice Module API：通知来源、不可变版本、审核、受众与分发
+
+  - id: notice_worker
+    kind: go_worker
+    current_path: services/notice
+    target_path: services/notice
+    owner: notice
+    deploy_unit: notice-worker
+    status: active
+    notes:
+      - services/notice 的 Dockerfile.worker，compose 服务名 notice-worker
+
+  - id: food
+    kind: go_service
+    current_path: services/food
+    target_path: services/food
+    owner: food
+    deploy_unit: food
+    status: active
+    notes:
+      - Food Module API：美食投稿、条目、校准轮次、票、异常与调档
+
+  - id: library
+    kind: go_service
+    current_path: services/library
+    target_path: services/library
+    owner: library
+    deploy_unit: library
+    status: active
+    notes:
+      - Library Module：课程、资料、下载、投稿、审核与纠错
+
+  - id: career_opportunities
+    kind: go_service
+    current_path: services/career-opportunities
+    target_path: services/career-opportunities
+    owner: career
+    deploy_unit: career-opportunities
+    status: active
+    notes:
+      - 公开职位机会与会员职业偏好、匹配、追踪和摘要
+
+  - id: portal_summary
+    kind: go_service
+    current_path: services/portal-summary
+    target_path: services/portal-summary
+    owner: portal
+    deploy_unit: portal-summary
+    status: active
+    notes:
+      - Portal 摘要服务（release baseline 镜像之一）
+
+  - id: food_mcp
+    kind: go_service
+    current_path: services/food-mcp
+    target_path: services/food-mcp
+    owner: food
+    deploy_unit: food-mcp
+    status: active
+
+  - id: career_mcp
+    kind: go_service
+    current_path: services/career-mcp
+    target_path: services/career-mcp
+    owner: career
+    deploy_unit: career-mcp
+    status: active
 
   - id: deploy_webhook
     kind: deployment_service
@@ -173,5 +261,5 @@ data_owners:
   attempts: quizcraft_product
   wrong_questions: quizcraft_product
   rankings: quizcraft_product
-  food_rankings: campus_life
+  food_rankings: food
   tool_catalog: portal

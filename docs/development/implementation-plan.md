@@ -76,7 +76,7 @@
 
 **交付物**
 
-- `services/platform-core`、`services/platform-worker` 可独立启动。
+- `services/platform-core` 可独立启动（worker 为其内 cmd/mail-worker，即 platform-mail-worker，已交付）。
 - `/api/v1/healthz`、`/api/v1/readyz` 可测试。
 - `packages/api-contracts` 成为新 Core 契约唯一来源。
 - 共享包改动能触发所有消费方 CI。

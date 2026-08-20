@@ -1,4 +1,5 @@
-# LEGACY Study-only production example (web + study-legacy-admin).
+# ⚠️ 已废弃：LEGACY Study-only production example (web + study-legacy-admin)。
+# 生产已全量运行 docker-compose.henukit.yml（2026-08-19 实测，20 服务），旧栈已物理退役。
 # Primary HENU Kit full-stack compose is docker-compose.henukit.yml.
 # Prefer that file for Portal public + Console admin + QuizCraft + Study API.
 name: final-review-platform-prod

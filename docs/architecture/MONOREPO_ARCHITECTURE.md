@@ -81,8 +81,7 @@ HENUKitDev/
 │   ├── study-legacy-admin/        # 物理隔离的旧 Study 后台，迁移期保留回滚
 │   └── quiz-web/                  # quiz.henukit.cn，React/Vite
 ├── services/
-│   ├── platform-core/             # Go 模块化单体 API
-│   ├── platform-worker/           # 邮件、通知、统计、Outbox
+│   ├── platform-core/             # Go 模块化单体 API；worker 在 core 内（cmd/mail-worker，即 platform-mail-worker）
 │   ├── study-api/                 # 资料库业务 API
 │   ├── study-worker/              # 资料处理任务
 │   └── quiz-api-legacy/           # FastAPI，逐接口迁移期间保留
@@ -162,7 +161,7 @@ VIP 是权益，不是权限角色。一个用户可以同时拥有多个有作�
 | 事件、通知、邮件、用户指标 | Platform Core |
 | 课程、资料文件、下载记录 | Study API |
 | 题库、题目、作答、错题、排行 | QuizCraft |
-| 餐厅和榜单 | Campus Life |
+| 餐厅和榜单 | food（services/food） |
 | 工具目录 | Portal |
 
 平台核心不保存题目、作答、资料文件、餐厅或工具正文。
