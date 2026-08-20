@@ -62,6 +62,9 @@ func (db *PortalDB) GetPosts(campusFilter string) ([]Post, error) {
 		}
 		posts = append(posts, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate posts: %w", err)
+	}
 
 	if posts == nil {
 		posts = []Post{}
@@ -205,6 +208,9 @@ func (db *PortalDB) GetComments(postID string) ([]Comment, error) {
 			return nil, fmt.Errorf("scan comment: %w", err)
 		}
 		comments = append(comments, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate comments: %w", err)
 	}
 	if comments == nil {
 		comments = []Comment{}

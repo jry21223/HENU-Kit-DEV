@@ -119,6 +119,9 @@ func (db *StudyDB) GetMaterials() ([]Material, error) {
 			FileSize:          fileSize.Int64,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate materials: %w", err)
+	}
 
 	if materials == nil {
 		materials = []Material{}

@@ -270,6 +270,10 @@ func (service *practiceHTTP) listWorkshopCatalog(writer http.ResponseWriter, req
 		}
 		banks = append(banks, bank)
 	}
+	if err := rows.Err(); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft Workshop is temporarily unavailable")
+		return
+	}
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: banks})
 }
 
@@ -332,6 +336,10 @@ func (service *practiceHTTP) getWorkshopVersion(writer http.ResponseWriter, requ
 		_ = json.Unmarshal(optionsJSON, &options)
 		_ = json.Unmarshal(answerJSON, &answer)
 		questions = append(questions, map[string]any{"question_id": questionID, "question_version_id": questionVersionID, "source_question_id": sourceID, "type": questionType, "chapter_id": chapterID, "chapter": chapter, "content": content, "options": options, "answer": answer, "analysis": analysis, "position": position})
+	}
+	if err := rows.Err(); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft Workshop is temporarily unavailable")
+		return
 	}
 	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: map[string]any{"bank_id": bankID, "bank_version_id": versionID, "state": state, "content_sha256": contentSHA, "questions": questions}})
 }

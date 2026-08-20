@@ -46,7 +46,14 @@ func (service *practiceHTTP) drainInbox(ctx context.Context) {
 func (service *practiceHTTP) dispatchInboxBatch(parent context.Context) int {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	rows, err := service.database.Query(ctx, `SELECT o.id,o.source_product_code,o.source_resource_type,o.source_resource_id,o.source_resource_url,o.priority FROM quizcraft_feedback_inbox_outbox o JOIN quizcraft_feedback_inbox_deliveries d ON d.outbox_id=o.id WHERE d.delivered_at IS NULL AND d.next_attempt_at<=now() ORDER BY o.created_at LIMIT 20 FOR UPDATE OF d SKIP LOCKED`)
+	// No row lock is taken here on purpose. The previous FOR UPDATE OF d SKIP
+	// LOCKED was decorative: this Query runs on the pool rather than inside a
+	// transaction, so the locks were released by rows.Close() below — before any
+	// delivery was attempted. Holding a real transaction open across the outbound
+	// HTTP calls would keep DB locks for the length of a network round trip, so
+	// the idempotency key passed to createInboxItem is, and remains, the actual
+	// guard against duplicate delivery.
+	rows, err := service.database.Query(ctx, `SELECT o.id,o.source_product_code,o.source_resource_type,o.source_resource_id,o.source_resource_url,o.priority FROM quizcraft_feedback_inbox_outbox o JOIN quizcraft_feedback_inbox_deliveries d ON d.outbox_id=o.id WHERE d.delivered_at IS NULL AND d.next_attempt_at<=now() ORDER BY o.created_at LIMIT 20`)
 	if err != nil {
 		return 0
 	}
@@ -57,9 +64,24 @@ func (service *practiceHTTP) dispatchInboxBatch(parent context.Context) int {
 	items := make([]item, 0)
 	for rows.Next() {
 		var value item
-		if rows.Scan(&value.id, &value.product, &value.resourceType, &value.resourceID, &value.resourceURL, &value.priority) == nil {
-			items = append(items, value)
+		if scanErr := rows.Scan(&value.id, &value.product, &value.resourceType, &value.resourceID, &value.resourceURL, &value.priority); scanErr != nil {
+			// A row that will not scan used to be skipped silently. Its delivery
+			// row keeps delivered_at IS NULL, so it was re-selected and dropped
+			// again on every tick — a permanently stuck item with no error
+			// surface and no backoff, since attempts was never incremented.
+			// Abandon the batch instead: returning 0 stops the drain loop rather
+			// than reporting progress that did not happen.
+			rows.Close()
+			return 0
 		}
+		items = append(items, value)
+	}
+	// Iteration that stops early leaves a short batch that is indistinguishable
+	// from an exhausted queue, and the caller uses the returned count to decide
+	// whether to keep draining.
+	if rows.Err() != nil {
+		rows.Close()
+		return 0
 	}
 	rows.Close()
 	for _, value := range items {

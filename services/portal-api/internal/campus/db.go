@@ -67,6 +67,9 @@ func (db *PortalDB) GetItems(typeFilter, categoryFilter, qFilter string) ([]Item
 		_ = json.Unmarshal(imagesJSON, &it.Images)
 		items = append(items, it)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate items: %w", err)
+	}
 	if items == nil {
 		items = []Item{}
 	}
@@ -114,6 +117,9 @@ func (db *PortalDB) GetMessages(itemID string) ([]DealMessage, error) {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
 		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate messages: %w", err)
 	}
 	if msgs == nil {
 		msgs = []DealMessage{}

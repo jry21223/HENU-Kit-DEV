@@ -210,3 +210,42 @@ func TestGetMessagesOnEmptyItemReturnsEmptyList(t *testing.T) {
 		t.Fatalf("GetMessages() = %+v, want an empty slice", messages)
 	}
 }
+
+// A dead pool must surface as an error, never as an empty-but-successful read —
+// the same "never serve incomplete data as success" rule the empty-list tests
+// above cover from the other direction.
+//
+// Note on scope: this exercises the Query() failure path, not the mid-iteration
+// one that rows.Err() guards. A fault landing *between* rows (backend
+// termination or statement_timeout while the result streams) is not reachable
+// from a test today: these methods take no context.Context, and SET
+// statement_timeout does not follow a pooled *sql.DB to the connection the next
+// Query borrows. The rows.Err() checks are therefore held by the rowserrcheck
+// linter rather than by a test — see .golangci.yml.
+func TestGetItemsReportsADeadPoolInsteadOfAnEmptyRead(t *testing.T) {
+	conn := dbtest.Open(t)
+	db := NewPortalDB(conn)
+
+	insertItem(t, conn, "item-1", "sell", "book", "Textbook", "", "open")
+
+	// Confirm the healthy read first, so the failure below is unambiguously the
+	// injected one rather than an empty table.
+	healthy, err := db.GetItems("", "", "")
+	if err != nil {
+		t.Fatalf("GetItems(): %v", err)
+	}
+	if len(healthy) != 1 {
+		t.Fatalf("GetItems() = %d items, want 1 before the fault is injected", len(healthy))
+	}
+
+	conn.Close()
+
+	items, err := db.GetItems("", "", "")
+	if err == nil {
+		t.Fatalf("GetItems() on a closed pool = %d items, nil error; "+
+			"an unreadable table must not be reported as an empty success", len(items))
+	}
+	if items != nil {
+		t.Errorf("GetItems() returned %d items alongside an error, want nil", len(items))
+	}
+}
