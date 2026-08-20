@@ -41,7 +41,9 @@ test("account navigation exposes only delivered Account Portfolio capabilities",
   const layout = await readConsoleSource("layout.tsx");
 
   assert.match(layout, /href: "\/account\/membership"/);
-  assert.doesNotMatch(layout, /href: "\/account\/(posts|deals)"/);
+  // /account/posts (我的投稿, Food Post owner, ADR-0032) is delivered;
+  // /account/deals (campus marketplace) is not.
+  assert.doesNotMatch(layout, /href: "\/account\/deals"/);
 });
 
 test("legacy auth helpers retain no account dashboard fixtures", async () => {
