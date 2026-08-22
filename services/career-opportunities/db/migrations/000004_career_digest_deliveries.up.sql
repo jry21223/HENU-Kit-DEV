@@ -11,10 +11,11 @@ CREATE TABLE IF NOT EXISTS career_digest_deliveries (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Searches completed before this ledger existed cannot be replayed safely:
--- email_sent_at proves an accepted legacy enqueue, while a missing timestamp
--- has no durable evidence that mail was requested. Record both cases honestly
--- so old rows never appear to be permanently sending.
+-- For searches completed before this ledger existed, email_sent_at is the
+-- only durable evidence that a digest was requested and accepted. Preserve
+-- those accepted enqueues as sent. Leave NULL legacy rows without a ledger so
+-- the UI reports an unknown historical status instead of inventing intent or
+-- flooding one user with old searches after deployment.
 INSERT INTO career_digest_deliveries (
     search_id,
     status,
@@ -25,13 +26,13 @@ INSERT INTO career_digest_deliveries (
 )
 SELECT
     id,
-    CASE WHEN email_sent_at IS NOT NULL THEN 'sent' ELSE 'skipped' END,
+    'sent',
     COALESCE(completed_at, created_at),
     email_sent_at,
     COALESCE(completed_at, created_at),
     now()
 FROM career_searches
-WHERE status = 'completed'
+WHERE status = 'completed' AND email_sent_at IS NOT NULL
 ON CONFLICT (search_id) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_career_digest_deliveries_retry
