@@ -16,6 +16,10 @@ const developmentCompose = readFileSync(
   new URL("../../../docker-compose.henukit.yml", import.meta.url),
   "utf8",
 );
+const prebuiltCompose = readFileSync(
+  new URL("../../../docker-compose.henukit.prebuilt.yml", import.meta.url),
+  "utf8",
+);
 const exampleEnvironment = readFileSync(
   new URL("../../../.env.henukit.example", import.meta.url),
   "utf8",
@@ -214,6 +218,8 @@ test("every Docker image artifact includes an independent SHA-256 checksum", () 
 });
 
 test("runtime artifact starts HENU images without compiling or replacing Study", () => {
+  assert.doesNotMatch(prebuiltCompose, /STUDY_LEGACY_API_URL/);
+  assert.doesNotMatch(prebuiltCompose, /STUDY_LEGACY_ADMIN_TOKEN/);
   const repoRoot = new URL("../../../", import.meta.url);
   const releaseSha = "a".repeat(40);
   const requiredEnvironment = Object.fromEntries(
@@ -301,8 +307,6 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "QUIZCRAFT_PORTAL_COMMAND_CLIENT_ID",
       "QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET",
       "QUIZCRAFT_PORTAL_COMMAND_KEY_ID",
-      "STUDY_LEGACY_ADMIN_TOKEN",
-      "STUDY_LEGACY_API_URL",
     ].map((name) => [name, "test-required-value"]),
   );
   const renderRuntimeConfig = (overrides = {}) =>
