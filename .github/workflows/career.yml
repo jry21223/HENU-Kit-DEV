@@ -51,14 +51,27 @@ jobs:
           cache-dependency-path: services/career-opportunities/go.sum
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Install bounded PDF tools
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - name: Verify migration round trip
         run: |
           set -euo pipefail
-          psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f services/career-opportunities/db/migrations/000001_career_searches.up.sql
-          psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f services/career-opportunities/db/migrations/000001_career_searches.up.sql
-          psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f services/career-opportunities/db/migrations/000002_career_profiles.up.sql
-          psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f services/career-opportunities/db/migrations/000002_career_profiles.up.sql
-          test "$(psql -h localhost -U career -d career_test -Atc "SELECT to_regclass('public.career_searches') IS NOT NULL AND to_regclass('public.career_profiles') IS NOT NULL")" = t
+          for migration in services/career-opportunities/db/migrations/*.up.sql; do
+            if [[ "$migration" == *"000004_career_digest_deliveries.up.sql" ]]; then
+              psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO career_searches(id,user_id,status,profile_snapshot,completed_at,email_sent_at)
+          VALUES
+            ('00000000-0000-0000-0000-000000000041','00000000-0000-0000-0000-000000000141','completed','{}',now(),now()),
+            ('00000000-0000-0000-0000-000000000042','00000000-0000-0000-0000-000000000142','completed','{}',now(),NULL)
+          ON CONFLICT (id) DO NOTHING;
+          SQL
+            fi
+            psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f "$migration"
+            psql -h localhost -U career -d career_test -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          test "$(psql -h localhost -U career -d career_test -Atc "SELECT to_regclass('public.career_searches') IS NOT NULL AND to_regclass('public.career_profiles') IS NOT NULL AND to_regclass('public.career_digest_deliveries') IS NOT NULL")" = t
+          test "$(psql -h localhost -U career -d career_test -Atc "SELECT status FROM career_digest_deliveries WHERE search_id='00000000-0000-0000-0000-000000000041'")" = sent
+          test "$(psql -h localhost -U career -d career_test -Atc "SELECT count(*) FROM career_digest_deliveries WHERE search_id='00000000-0000-0000-0000-000000000042'")" = 0
       - name: Verify Career contract
         run: |
           set -euo pipefail

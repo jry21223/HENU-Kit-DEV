@@ -45,6 +45,30 @@ func newCareerServer(t *testing.T, work career.WorkFunc) (*httptest.Server, *pgx
 	return newCareerServerWithExtract(t, work, nil, 0)
 }
 
+func newCareerServerWithSearchLimits(t *testing.T, rateLimit, activeLimit int) (*httptest.Server, *pgxpool.Pool) {
+	t.Helper()
+	pool, err := pgxpool.New(context.Background(), os.Getenv("CAREER_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	redisClient := redis.NewClient(&redis.Options{Addr: os.Getenv("CAREER_TEST_REDIS_ADDR")})
+	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(context.Background(), `TRUNCATE career_digest_deliveries, career_search_operations, career_search_results, career_searches, career_profiles, career_resume_extractions`); err != nil {
+		t.Fatal(err)
+	}
+	service, err := career.New(career.Config{
+		Database: pool, Redis: redisClient, ClientID: careerClientID, Keys: map[string]string{"active": careerSecret},
+		SearchRateLimit: rateLimit, SearchActiveLimit: activeLimit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = redisClient.Close() })
+	return httptest.NewServer(service), pool
+}
+
 func newCareerServerWithExtract(t *testing.T, work career.WorkFunc, extract career.ExtractFunc, rateLimit int) (*httptest.Server, *pgxpool.Pool) {
 	t.Helper()
 	pool, err := pgxpool.New(context.Background(), os.Getenv("CAREER_TEST_DATABASE_URL"))
@@ -55,7 +79,7 @@ func newCareerServerWithExtract(t *testing.T, work career.WorkFunc, extract care
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(context.Background(), `TRUNCATE career_search_operations, career_search_results, career_searches, career_profiles, career_resume_extractions`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE career_digest_deliveries, career_search_operations, career_search_results, career_searches, career_profiles, career_resume_extractions`); err != nil {
 		t.Fatal(err)
 	}
 	service, err := career.New(career.Config{
@@ -81,7 +105,7 @@ func newCareerServerWithDigest(t *testing.T, work career.WorkFunc, sender career
 	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(context.Background(), `TRUNCATE career_search_operations, career_search_results, career_searches, career_profiles, career_resume_extractions`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE career_digest_deliveries, career_search_operations, career_search_results, career_searches, career_profiles, career_resume_extractions`); err != nil {
 		t.Fatal(err)
 	}
 	service, err := career.New(career.Config{
@@ -288,7 +312,18 @@ func TestStatusNotFoundForUnknownID(t *testing.T) {
 // --- Seam 3: worker advances queued -> running -> completed -----------------
 
 func TestWorkerAdvancesSearchToCompleted(t *testing.T) {
-	server, pool := newCareerServer(t, nil)
+	server, pool := newCareerServer(t, func(context.Context, any) (career.WorkResult, error) {
+		return career.WorkResult{
+			Payload: map[string]any{"jobs": []career.Job{{
+				SourceKey: "official.meituan", Company: "美团", Title: "Go 后端开发实习生",
+				Location: "北京市", URL: "https://zhaopin.meituan.com/jobs/1",
+				Description: strings.Repeat("internal duty ", 2_000), Requirements: []string{strings.Repeat("internal requirement ", 2_000)},
+				MatchScore: 90, MatchReasons: []string{"匹配目标岗位 后端开发"},
+			}}},
+			SourceCount: 1, JobCount: 1, MatchedCount: 1,
+			Summary: "已扫描 1 个来源，发现 1 个岗位，1 个推荐",
+		}, nil
+	})
 	defer server.Close()
 	defer pool.Close()
 
@@ -321,6 +356,36 @@ func TestWorkerAdvancesSearchToCompleted(t *testing.T) {
 	status = readStatus(t, pool, id)
 	if status != "completed" {
 		t.Fatalf("re-read status = %s", status)
+	}
+
+	statusPayload := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches/"+id, nil, "")))
+	search := statusPayload["search"].(map[string]any)
+	result, ok := search["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("completed search response has no durable result: %v", search)
+	}
+	if result["source_count"] != float64(1) || result["job_count"] != float64(1) || result["matched_count"] != float64(1) {
+		t.Fatalf("result counts = %v", result)
+	}
+	jobs := result["jobs"].([]any)
+	if len(jobs) != 1 || jobs[0].(map[string]any)["title"] != "Go 后端开发实习生" {
+		t.Fatalf("result jobs = %v", jobs)
+	}
+	if _, exposed := jobs[0].(map[string]any)["description"]; exposed {
+		t.Fatalf("browser result exposed full job description: %v", jobs[0])
+	}
+	if _, exposed := jobs[0].(map[string]any)["requirements"]; exposed {
+		t.Fatalf("browser result exposed full job requirements: %v", jobs[0])
+	}
+
+	history := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches", nil, "")))
+	historySearch := history["searches"].([]any)[0].(map[string]any)
+	historyResult, ok := historySearch["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("completed history row has no durable result: %v", historySearch)
+	}
+	if historyResult["job_count"] != float64(1) || len(historyResult["jobs"].([]any)) != 0 {
+		t.Fatalf("history must carry bounded result counts without full jobs: %v", historyResult)
 	}
 }
 
@@ -409,6 +474,62 @@ func TestIdempotencyKeyReplayReturnsSameSearch(t *testing.T) {
 	}
 }
 
+func TestCreateSearchRateLimitIsFailClosedButExactReplayStillWorks(t *testing.T) {
+	server, pool := newCareerServerWithSearchLimits(t, 2, 10)
+	defer server.Close()
+	defer pool.Close()
+
+	for _, key := range []string{"idem_rate_first", "idem_rate_second"} {
+		response := send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), key)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("create %s = %d: %s", key, response.StatusCode, readBody(t, response))
+		}
+	}
+	limited := send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_rate_third")
+	limitedBody := readBody(t, limited)
+	if limited.StatusCode != http.StatusTooManyRequests || decodeErrorCode(t, limitedBody) != "SEARCH_RATE_LIMITED" {
+		t.Fatalf("rate limited create = %d %s", limited.StatusCode, limitedBody)
+	}
+
+	// A network retry of an accepted command is a ledger read, not a new task,
+	// and must remain available after the quota is exhausted.
+	replay := send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_rate_first")
+	if replay.StatusCode != http.StatusOK {
+		t.Fatalf("idempotent replay after limit = %d: %s", replay.StatusCode, readBody(t, replay))
+	}
+	var count int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM career_searches`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("rate limit persisted %d searches, want 2", count)
+	}
+}
+
+func TestCreateSearchRejectsASecondActiveTaskPerActor(t *testing.T) {
+	server, pool := newCareerServerWithSearchLimits(t, 10, 1)
+	defer server.Close()
+	defer pool.Close()
+
+	first := send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_active_first")
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first create = %d: %s", first.StatusCode, readBody(t, first))
+	}
+	second := send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_active_second")
+	secondBody := readBody(t, second)
+	if second.StatusCode != http.StatusTooManyRequests || decodeErrorCode(t, secondBody) != "SEARCH_ALREADY_ACTIVE" {
+		t.Fatalf("active limited create = %d %s", second.StatusCode, secondBody)
+	}
+
+	if _, err := pool.Exec(context.Background(), `UPDATE career_searches SET status='failed',failed_at=now() WHERE user_id=$1`, actorA); err != nil {
+		t.Fatal(err)
+	}
+	after := send(t, server.URL, actorA, http.MethodPost, "/api/v1/career/searches", profileBody(actorA), "idem_active_after")
+	if after.StatusCode != http.StatusOK {
+		t.Fatalf("create after active task finished = %d: %s", after.StatusCode, readBody(t, after))
+	}
+}
+
 // --- Seam 6: migration applies twice without error --------------------------
 
 func TestMigrationAppliesTwice(t *testing.T) {
@@ -417,7 +538,7 @@ func TestMigrationAppliesTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	for _, name := range []string{"000001_career_searches", "000002_career_profiles"} {
+	for _, name := range []string{"000001_career_searches", "000002_career_profiles", "000003_career_resume_extractions", "000004_career_digest_deliveries"} {
 		up, err := os.ReadFile("../db/migrations/" + name + ".up.sql")
 		if err != nil {
 			t.Fatal(err)
@@ -560,7 +681,7 @@ func digestWork() career.WorkFunc {
 			Payload: map[string]any{"jobs": []career.Job{
 				{SourceKey: "fake.a", Company: "测试公司", Title: "后端开发实习生", Location: "郑州", URL: "https://example.test/jobs/1", MatchScore: 90, MatchReasons: []string{"匹配目标岗位 后端开发"}},
 				{SourceKey: "fake.b", Company: "内推科技", Title: "前端实习生", Location: "远程", URL: "https://example.test/jobs/2", MatchScore: 70, MatchReasons: nil},
-				{SourceKey: "fake.a", Company: "测试公司", Title: "数据实习生", Location: "郑州", URL: "https://example.test/jobs/3", MatchScore: 55, MatchReasons: nil},
+				{SourceKey: "fake.a", Company: "测试公司", Title: "数据实习生", Location: "郑州", URL: "https://example.test/jobs/3", MatchScore: 40, MatchReasons: nil},
 			}},
 			SourceCount: 2, JobCount: 3, MatchedCount: 2,
 			Summary: "已扫描 2 个来源，发现 3 个岗位，2 个推荐",
@@ -598,7 +719,7 @@ func TestCompletedSearchEnqueuesDigestWhenNotificationsEnabled(t *testing.T) {
 	if digest.RequestID == "" || !strings.HasPrefix(digest.RequestID, "req_") {
 		t.Fatalf("digest request id missing: %+v", digest)
 	}
-	if len(digest.TopJobs) != 3 || digest.TopJobs[0].Title != "后端开发实习生" || digest.TopJobs[1].Title != "前端实习生" {
+	if len(digest.TopJobs) != 2 || digest.TopJobs[0].Title != "后端开发实习生" || digest.TopJobs[1].Title != "前端实习生" {
 		t.Fatalf("digest top jobs not score-ordered: %+v", digest.TopJobs)
 	}
 	if digest.TopJobs[0].Company != "测试公司" || len(digest.TopJobs[0].MatchReasons) != 1 {
@@ -616,6 +737,10 @@ func TestCompletedSearchEnqueuesDigestWhenNotificationsEnabled(t *testing.T) {
 	}
 	if emailSentAt == nil {
 		t.Fatal("email_sent_at was not recorded after a successful enqueue")
+	}
+	statusPayload := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches/"+id, nil, "")))["search"].(map[string]any)
+	if statusPayload["digest_status"] != "sent" || statusPayload["has_email"] != true {
+		t.Fatalf("successful digest browser state = %v", statusPayload)
 	}
 }
 
@@ -697,6 +822,37 @@ func TestDigestEnqueueFailureDoesNotRollBackSearch(t *testing.T) {
 	}
 	if emailSentAt != nil {
 		t.Fatal("email_sent_at set despite a failed enqueue; a later retry must be possible")
+	}
+	var digestState string
+	if err := pool.QueryRow(context.Background(), `SELECT status FROM career_digest_deliveries WHERE search_id=$1`, id).Scan(&digestState); err != nil {
+		t.Fatal(err)
+	}
+	if digestState != "retry" {
+		t.Fatalf("digest state = %q, want retry", digestState)
+	}
+	retrying := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches/"+id, nil, "")))["search"].(map[string]any)
+	if retrying["digest_status"] != "retry" || retrying["has_email"] != false {
+		t.Fatalf("retry digest browser state = %v", retrying)
+	}
+	recorder.err = nil
+	if _, err := pool.Exec(context.Background(), `UPDATE career_digest_deliveries SET attempted_at=now()-interval '2 minutes' WHERE search_id=$1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if worked, err := worker.Step(context.Background()); err != nil || !worked {
+		t.Fatalf("digest retry worked=%v err=%v", worked, err)
+	}
+	if recorder.count() != 2 {
+		t.Fatalf("digest attempts = %d, want 2", recorder.count())
+	}
+	if err := pool.QueryRow(context.Background(), `SELECT email_sent_at FROM career_searches WHERE id=$1`, id).Scan(&emailSentAt); err != nil {
+		t.Fatal(err)
+	}
+	if emailSentAt == nil {
+		t.Fatal("successful digest retry did not record the enqueue")
+	}
+	sent := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/searches/"+id, nil, "")))["search"].(map[string]any)
+	if sent["digest_status"] != "sent" || sent["has_email"] != true {
+		t.Fatalf("retried digest browser state = %v", sent)
 	}
 }
 

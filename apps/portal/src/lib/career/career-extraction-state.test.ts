@@ -44,7 +44,10 @@ describe("extraction status helpers", () => {
     expect(extractionFailedMessage("EXTRACT_RATE_LIMITED")).toContain("上限");
     expect(extractionFailedMessage("INVALID_FILE")).toContain("PDF、DOCX");
     expect(extractionFailedMessage("FILE_TOO_LARGE")).toContain("10 MB");
-    expect(extractionFailedMessage("EXTRACT_FAILED")).toContain("重试");
+    expect(extractionFailedMessage("EXTRACT_FAILED")).toContain("稍后重试");
+    expect(extractionFailedMessage("EXTRACT_FAILED")).toContain("PDF");
+    expect(extractionFailedMessage("EXTRACT_FAILED")).toContain("不超过 10 页");
+    expect(extractionFailedMessage("EXTRACT_FAILED")).toContain("压缩或删页");
     expect(extractionFailedMessage("UNKNOWN_WEIRD")).toContain("稍后重试");
   });
 });

@@ -499,9 +499,19 @@ test('shadow bank failure does not fall back to browser-owned mock banks', async
 });
 
 test('favorites use the generated server client and never merge guest browser state', async ({ page }) => {
+  const existingQuestionId = '77777777-7777-5777-8777-777777777777';
+  const existingQuestionVersionId = '88888888-8888-5888-8888-888888888888';
   let favoriteWrites = 0;
+  let favoriteListReads = 0;
   const favoriteMethods: string[] = [];
   let authenticated = false;
+  let mutationAccepted = false;
+  let postWriteRefreshStarted = false;
+  let releasePostWriteRefresh = () => {};
+  const postWriteRefreshGate = new Promise<void>((resolve) => {
+    releasePostWriteRefresh = resolve;
+  });
+  const serverFavorites = new Set([existingQuestionId]);
   await page.context().addCookies([{ name: 'quizcraft_anonymous', value: 'server-issued-anonymous-session', domain: '127.0.0.1', path: '/', httpOnly: true, secure: false, sameSite: 'Lax' }]);
   await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
     const request = route.request();
@@ -510,11 +520,16 @@ test('favorites use the generated server client and never merge guest browser st
       return;
     }
     if (request.url().endsWith('/api/v1/practice/sessions')) {
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ request_id: 'session', data: { session_id: sessionId, bank_id: bankId, bank_version_id: bankVersionId, mode: 'random', excluded_unavailable_count: 0, questions: [{ question_id: questionId, question_version_id: questionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '需要登录收藏的问题', options: ['是', '否'] }] } }) });
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ request_id: 'session', data: { session_id: sessionId, bank_id: bankId, bank_version_id: bankVersionId, mode: 'random', excluded_unavailable_count: 0, questions: [{ question_id: questionId, question_version_id: questionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '需要登录收藏的问题', options: ['是', '否'] }, { question_id: existingQuestionId, question_version_id: existingQuestionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '已收藏的另一道题', options: ['是', '否'] }] } }) });
       return;
     }
     if (request.url().endsWith(`/api/v1/banks/${bankId}/favorites`)) {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'list', data: [] }) });
+      favoriteListReads += 1;
+      if (mutationAccepted) {
+        postWriteRefreshStarted = true;
+        await postWriteRefreshGate;
+      }
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'list', data: Array.from(serverFavorites, (favoriteQuestionId) => ({ bank_id: bankId, question_id: favoriteQuestionId, available: true, question_version_id: favoriteQuestionId === questionId ? questionVersionId : existingQuestionVersionId })) }) });
       return;
     }
     if (request.url().endsWith(`/api/v1/banks/${bankId}/favorites/${questionId}`)) {
@@ -524,6 +539,10 @@ test('favorites use the generated server client and never merge guest browser st
         await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'auth', error: { code: 'authentication_required', message: 'sign in' } }) });
         return;
       }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (request.method() === 'PUT') serverFavorites.add(questionId);
+      if (request.method() === 'DELETE') serverFavorites.delete(questionId);
+      mutationAccepted = true;
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'favorite', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'favorite', resource_id: questionId } }) });
       return;
     }
@@ -547,7 +566,12 @@ test('favorites use the generated server client and never merge guest browser st
   await page.getByRole('button', { name: '收藏本题' }).click();
   await expect(page).toHaveURL(/\/quiz$/);
   await expect(page.getByRole('button', { name: '取消收藏本题' })).toBeVisible();
-  await page.getByRole('button', { name: /B.*否/ }).click();
+  await expect.poll(() => postWriteRefreshStarted).toBe(true);
+  releasePostWriteRefresh();
+  await page.getByRole('button', { name: '下一题' }).click();
+  await expect(page.getByRole('button', { name: '取消收藏本题' })).toBeVisible();
+  await page.getByRole('button', { name: '上一题' }).click();
+  await page.getByRole('button', { name: /B.*否/ }).first().click();
   await page.getByRole('button', { name: '提交答案' }).click();
   await expect(page.getByText('登录回跳后仍可作答')).toBeVisible();
 
@@ -555,6 +579,7 @@ test('favorites use the generated server client and never merge guest browser st
   await page.getByRole('button', { name: '取消收藏本题' }).click();
   await expect(page).toHaveURL(/\/quiz$/);
   await expect.poll(() => favoriteWrites).toBe(4);
+  expect(favoriteListReads).toBeGreaterThanOrEqual(2);
   await expect(page.getByRole('button', { name: '收藏本题' })).toBeVisible();
   expect(favoriteMethods).toEqual(['PUT', 'PUT', 'DELETE', 'DELETE']);
   const persistedStars = await page.evaluate(() => JSON.parse(localStorage.getItem('quiz-storage') || '{}')?.state?.starredQuestions || []);

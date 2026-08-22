@@ -15,6 +15,6 @@ docker run --rm `
   -v henukit-go-mod:/go/pkg/mod `
   -v henukit-go-build:/root/.cache/go-build `
   -w /workspace/services/console-gateway `
-  mirror.gcr.io/library/golang:1.26.5 `
+  mirror.gcr.io/library/golang:1.26.6 `
   sh -lc 'export PATH=/usr/local/go/bin:$PATH; go test ./...'
 if ($LASTEXITCODE -ne 0) { throw "Console Gateway verification failed" }

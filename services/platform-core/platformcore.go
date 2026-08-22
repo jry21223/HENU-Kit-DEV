@@ -147,7 +147,7 @@ func New(config Config) (http.Handler, error) {
 	careerDigestKeys := map[string][]byte{}
 	var digestMail *careerdigestmail.Service
 	if config.CareerDigestSecret != "" || config.CareerDigestClientID != "" || config.CareerDigestKeyID != "" {
-		if config.CareerDigestClientID == "" || config.CareerDigestKeyID == "" || len(config.CareerDigestSecret) < 32 {
+		if config.CareerDigestClientID == "" || config.CareerDigestKeyID == "" || len(config.CareerDigestSecret) < 32 || credentialPlaceholder(config.CareerDigestSecret) {
 			return nil, errors.New("career digest client id, key id, and 32-character secret must be configured together")
 		}
 		careerDigestKeys[config.CareerDigestKeyID] = []byte(config.CareerDigestSecret)
@@ -198,4 +198,17 @@ func New(config Config) (http.Handler, error) {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
 	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, config.CoreSessionTTL, deliveryKeys, deviceKey, trustedProxies, digestMail, config.CareerDigestClientID, careerDigestKeys, config.Logger), nil
+}
+
+func credentialPlaceholder(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "local-career-digest-secret-32bytes-only!" {
+		return true
+	}
+	for _, marker := range []string{"replace", "example", "change-me", "changeme", "test-secret", "for-test", "test-only"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }

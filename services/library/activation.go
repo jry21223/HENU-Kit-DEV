@@ -521,6 +521,8 @@ func safePublicPath(value string) bool {
 
 func manifestMaterialType(role string) string {
 	switch {
+	case strings.Contains(role, "电子版教材") || strings.Contains(role, "电子教材"):
+		return "textbook"
 	case strings.Contains(role, "PPT") || strings.Contains(role, "课件"):
 		return "slides"
 	case strings.Contains(role, "真题") || strings.Contains(role, "试卷"):

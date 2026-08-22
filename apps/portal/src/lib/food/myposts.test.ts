@@ -10,7 +10,7 @@ const MY_POST = {
   likes: 0,
   stars: 0,
   tags: ["食堂", "NPC"],
-  shop: { name: "西门鸡腿饭", lat: 0, lng: 0 },
+  shop: { name: "西门鸡腿饭" },
   time: "2030-01-02T03:04:05Z",
   hidden: false,
   images: [],

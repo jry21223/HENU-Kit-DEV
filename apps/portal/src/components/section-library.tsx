@@ -21,7 +21,7 @@ import {
 } from "@/lib/library/gateway";
 import { ErrorBanner } from "@/components/data-state";
 
-const FEATURES = ["往年试卷持续更新", "学长笔记免费下载", "按课程与专业分类检索"];
+const FEATURES = ["往年试卷持续更新", "支持电子版教材分类", "按课程与专业分类检索"];
 
 type LibraryCard = { id: string; title: string; meta: string; size: string };
 
@@ -32,6 +32,7 @@ const CARD_DEFS = [
   { type: "mock", title: "模拟卷", meta: "教研组命制 / 考前自测", unit: "套" },
   { type: "lab", title: "实验报告", meta: "模板 + 优秀范例", unit: "份" },
   { type: "path", title: "学习路径", meta: "按专业整理 / 从入门到期末", unit: "条" },
+  { type: "textbook", title: "电子版教材", meta: "按课程归档 / 原文件下载", unit: "本" },
 ] as const;
 
 function buildCards(materials: ApiMaterial[], courses: CourseSummary[]): LibraryCard[] {

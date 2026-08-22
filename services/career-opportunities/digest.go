@@ -79,13 +79,26 @@ func NewHTTPDigestSender(endpoint, clientID, secret, keyID string, client *http.
 	parsed, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
 		(parsed.Scheme != "http" && parsed.Scheme != "https") ||
-		clientID == "" || keyID == "" || len(secret) < 32 || client == nil {
+		clientID == "" || keyID == "" || len(secret) < 32 || credentialPlaceholder(secret) || client == nil {
 		return nil, errors.New("career digest endpoint and service credentials are required")
 	}
 	return &HTTPDigestSender{
 		endpoint: strings.TrimRight(parsed.String(), "/") + digestEnqueuePath,
 		clientID: clientID, secret: secret, keyID: keyID, client: client,
 	}, nil
+}
+
+func credentialPlaceholder(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "local-career-digest-secret-32bytes-only!" {
+		return true
+	}
+	for _, marker := range []string{"replace", "example", "change-me", "changeme", "test-secret", "for-test", "test-only"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // SendDigest signs and posts one digest enqueue. The Idempotency-Key is the

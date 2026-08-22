@@ -129,7 +129,7 @@ jobs:
           trap cleanup EXIT
           ready=0
           for _ in $(seq 1 60); do
-            if curl --fail --silent --show-error http://127.0.0.1:18096/readyz >/dev/null; then ready=1; break; fi
+            if curl --fail --silent --show-error http://127.0.0.1:18096/healthz >/dev/null; then ready=1; break; fi
             if ! kill -0 "$food_pid" 2>/dev/null; then cat /tmp/food-integration.log; exit 1; fi
             sleep 1
           done

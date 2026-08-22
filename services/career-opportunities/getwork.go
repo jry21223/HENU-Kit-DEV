@@ -2,6 +2,7 @@ package career
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -21,14 +22,13 @@ type Job struct {
 	URL          string   `json:"url"`
 	PublishedAt  string   `json:"published_at,omitempty"`
 	FetchedAt    string   `json:"fetched_at,omitempty"`
-	MatchScore   int      `json:"match_score"`             // 0..100
-	MatchReasons []string `json:"match_reasons,omitempty"` // stable, displayable
+	MatchScore   int      `json:"match_score"`   // 0..100
+	MatchReasons []string `json:"match_reasons"` // stable, displayable
 }
 
-// Source is the GetWork decoupling seam. #372/#374 settle whether real sources
-// reuse GetWork Core, fork it, or stay independent; until then only a fake
-// source (or an allowlisted real source) may implement it. The crawler must
-// accept an external profile snapshot, never a shared per-user config file.
+// Source is the opportunity-source decoupling seam. Every implementation must
+// be independently registered and explicitly allowlisted by the operator. A
+// source accepts the frozen profile snapshot, never shared per-user config.
 type Source interface {
 	// Key is the stable allowlist key (e.g. "getwork.liepin").
 	Key() string
@@ -41,7 +41,7 @@ type Source interface {
 // GetWorkConfig builds the Work seam from a source allowlist. Only source keys
 // present in the allowlist are ever consulted; the browser can never add a
 // source, URL, selector, or platform config. An empty allowlist is the safe
-// default and yields zero jobs until #372/#374 authorize real sources.
+// default and yields zero jobs when the emergency kill switch is active.
 type GetWorkConfig struct {
 	// AllowSources is the set of authorized source keys. A nil/empty set runs
 	// no source at all (production-safe off state).
@@ -77,6 +77,7 @@ func NewGetWorkWork(config GetWorkConfig) WorkFunc {
 		all := make([]Job, 0, 64)
 		sourceState := map[string]any{}
 		matched := 0
+		succeeded := 0
 		for _, source := range enabled {
 			jobs, err := source.Fetch(ctx, profile)
 			if err != nil {
@@ -85,12 +86,16 @@ func NewGetWorkWork(config GetWorkConfig) WorkFunc {
 				continue
 			}
 			sourceState[source.Key()] = map[string]any{"status": "success", "found": len(jobs)}
+			succeeded++
 			for _, job := range jobs {
 				if job.MatchScore >= 50 {
 					matched++
 				}
 			}
 			all = append(all, jobs...)
+		}
+		if succeeded == 0 {
+			return WorkResult{}, errors.New("all authorized career sources failed")
 		}
 		return WorkResult{
 			Payload:      map[string]any{"jobs": all, "sources": sourceState},
@@ -102,9 +107,8 @@ func NewGetWorkWork(config GetWorkConfig) WorkFunc {
 	}
 }
 
-// fakeSource is the #396 test-only source: deterministic, allowlist-gated, no
-// network, no shared config. It proves the adapter path end-to-end before any
-// real GetWork source is authorized.
+// fakeSource is test-only: deterministic, allowlist-gated, no network or
+// shared config.
 type fakeSource struct {
 	key string
 }

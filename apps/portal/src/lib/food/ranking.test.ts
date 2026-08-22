@@ -28,7 +28,7 @@ describe("food ranking", () => {
     expect(resolveFoodTier({ tags: ["尚未定档"] })).toBeNull();
   });
 
-  it("filters hidden and off-campus posts, then sorts within each tier by likes", () => {
+  it("filters hidden and off-campus posts while preserving the owner response order", () => {
     const groups = groupFoodPostsByTier(
       [
         {
@@ -78,8 +78,8 @@ describe("food ranking", () => {
       "拉完了",
     ]);
     expect(groups.find(({ tier }) => tier.key === "hang")?.posts.map(({ id }) => id)).toEqual([
-      "hang-high",
       "hang-low",
+      "hang-high",
     ]);
     expect(groups.find(({ tier }) => tier.key === "npc")?.posts).toEqual([]);
     expect(groups.flatMap(({ posts }) => posts).map(({ id }) => id)).not.toContain(

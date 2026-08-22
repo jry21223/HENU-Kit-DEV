@@ -131,7 +131,7 @@ func Load() (Config, error) {
 	}
 	if (config.CareerDigestSecret == "") != (config.CareerDigestClientID == "") ||
 		(config.CareerDigestSecret == "") != (config.CareerDigestKeyID == "") ||
-		(config.CareerDigestSecret != "" && len(config.CareerDigestSecret) < 32) {
+		(config.CareerDigestSecret != "" && (len(config.CareerDigestSecret) < 32 || credentialPlaceholder(config.CareerDigestSecret))) {
 		return Config{}, errors.New("career digest client id, key id, and 32-character secret must be configured together")
 	}
 	if passwordMemoryKiB < 32*1024 || passwordMemoryKiB > 1024*1024 ||
@@ -141,6 +141,19 @@ func Load() (Config, error) {
 		return Config{}, errors.New("password Argon2id parameters are outside the accepted security bounds")
 	}
 	return config, nil
+}
+
+func credentialPlaceholder(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "local-career-digest-secret-32bytes-only!" {
+		return true
+	}
+	for _, marker := range []string{"replace", "example", "change-me", "changeme", "test-secret", "for-test", "test-only"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func env(key, fallback string) string {

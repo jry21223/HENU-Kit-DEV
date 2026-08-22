@@ -13,6 +13,7 @@
     "lint": "eslint . --ext ts,tsx",
     "test:syntax": "node scripts/check-admin-session.mjs && node scripts/check-answer-submission.mjs && node scripts/check-code-syntax-scope.mjs && node scripts/check-cutover-rollout.mjs && node scripts/check-favorites-no-local-fallback.mjs && node scripts/check-feedback-no-legacy-fallback.mjs && node scripts/check-quiz-auto-advance.mjs && node scripts/check-option-layout.mjs && node scripts/check-quiz-visual-states.mjs",
     "test:browser:practice": "playwright test tests/browser/practice-shadow.spec.ts",
+    "test:browser:practice:production": "VITE_QUIZCRAFT_GO_WRITES=1 VITE_QUIZCRAFT_WORKSHOP=1 VITE_QUIZCRAFT_GO_API_BASE_URL=http://127.0.0.1:18080 VITE_QUIZCRAFT_LOGIN_URL=http://127.0.0.1:18080/auth/login vite build && QUIZCRAFT_E2E_PREVIEW=1 playwright test tests/browser/practice-shadow.spec.ts --grep 'favorites use the generated'",
     "test:browser:legacy-ranking": "QUIZCRAFT_E2E_RANKING_DARK=1 playwright test tests/browser/legacy-ranking.spec.ts"
   },
   "dependencies": {
@@ -22,7 +23,8 @@
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.21.0",
+    "react-router": "7.18.2",
+    "react-router-dom": "7.18.2",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
@@ -37,7 +39,7 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
     "playwright": "^1.61.1",
-    "postcss": "^8.4.32",
+    "postcss": "^8.5.23",
     "tailwindcss": "^3.3.6",
     "typescript": "^5.2.2",
     "vite": "^8.1.0"

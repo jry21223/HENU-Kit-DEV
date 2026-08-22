@@ -316,6 +316,25 @@ func TestActivatePublicReleaseDerivesSafeFileNameFromReviewedPath(t *testing.T) 
 	}
 }
 
+func TestActivatePublicReleaseStoresElectronicTextbookType(t *testing.T) {
+	pool := activationPool(t)
+	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
+	bundle := activationBundle(t, []manifestAsset{{
+		Subject: "高等数学", Role: "电子版教材", Title: "高等数学电子版教材.pdf",
+		PublicPath: "高等数学/电子版教材/高等数学电子版教材.pdf", Body: "textbook",
+	}}, store)
+	if _, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	var materialType string
+	if err := pool.QueryRow(context.Background(), `SELECT material_type FROM library_public_material_snapshots WHERE release_id=$1`, bundle.ReleaseID).Scan(&materialType); err != nil {
+		t.Fatal(err)
+	}
+	if materialType != "textbook" {
+		t.Fatalf("stored material type = %q, want textbook", materialType)
+	}
+}
+
 func TestActivatePublicReleaseIsIdempotentConcurrentAndSupportsAuditedRollback(t *testing.T) {
 	pool := activationPool(t)
 	var eventsBefore int

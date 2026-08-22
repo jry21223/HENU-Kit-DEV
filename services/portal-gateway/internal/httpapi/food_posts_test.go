@@ -567,7 +567,7 @@ func foodPostWireFixture() map[string]any {
 		"likes":   0,
 		"stars":   0,
 		"tags":    []any{"顶级"},
-		"shop":    map[string]any{"name": "老干妈拌饭", "lat": 0, "lng": 0},
+		"shop":    map[string]any{"name": "老干妈拌饭"},
 		"time":    "2026-08-15T08:00:00Z",
 		"hidden":  false,
 		"images":  []any{"/api/v1/food/posts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/images/0"},

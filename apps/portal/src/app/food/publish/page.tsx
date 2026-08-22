@@ -14,12 +14,15 @@ import {
 import { authStore } from "@/lib/auth/store";
 import { cn } from "@/lib/cn";
 import { CAMPUSES, CAMPUS_KEYS } from "@/lib/food/campuses";
+import { rememberCreatedFoodPost } from "@/lib/food/gateway";
 import { FOOD_TIERS, type FoodTierKey } from "@/lib/food/ranking";
 import {
   createFoodPost,
   foodPostDailyCapMessage,
+  foodPostPlaceholderMessage,
   foodPostImageFromFile,
   isFoodPostDailyCapError,
+  isFoodPostPlaceholderError,
   type FoodPostCampus,
   type FoodPostImageInput,
 } from "@/lib/food/submit";
@@ -37,6 +40,10 @@ interface DishDraft {
 interface ImageDraft {
   file: File;
   preview: string;
+}
+
+function textLength(value: string): number {
+  return Array.from(value.trim()).length;
 }
 
 function commandKey(prefix: string): string {
@@ -160,6 +167,30 @@ export default function FoodPublishPage() {
       return;
     }
 
+    const venueError = textLength(cleanedVenue) > 160 ? "店铺名不能超过 160 字" : undefined;
+    const reviewLength = textLength(cleanedReview);
+    const reviewError = reviewLength < 2
+      ? "锐评正文至少填写 2 个字"
+      : reviewLength > 2000
+        ? "锐评正文不能超过 2000 字"
+        : undefined;
+    const detailError = textLength(price) > 200
+      ? "价格参考不能超过 200 字"
+      : textLength(hours) > 200
+        ? "营业参考不能超过 200 字"
+        : dishes.find((dish) => textLength(dish.name) > 80)
+          ? "菜名不能超过 80 字"
+          : dishes.find((dish) => textLength(dish.price) > 40)
+            ? "菜品价格不能超过 40 字"
+            : dishes.find((dish) => textLength(dish.reason) > 200)
+              ? "菜品理由不能超过 200 字"
+              : undefined;
+    if (venueError || reviewError || detailError) {
+      setFieldErrors({ venue: venueError, review: reviewError });
+      setError(venueError ?? reviewError ?? detailError ?? "请检查投稿内容后重试。");
+      return;
+    }
+
     setPending(true);
     setError("");
     const idempotencyKey =
@@ -192,6 +223,7 @@ export default function FoodPublishPage() {
         idempotencyKey
       );
       submitKeyRef.current = null;
+      rememberCreatedFoodPost(response.post);
       router.push(`/food/post/${response.post.id}`);
     } catch (err) {
       if (err instanceof PortalUnauthorizedError) {
@@ -203,6 +235,10 @@ export default function FoodPublishPage() {
       }
       if (isFoodPostDailyCapError(err)) {
         setError(foodPostDailyCapMessage());
+        return;
+      }
+      if (isFoodPostPlaceholderError(err)) {
+        setError(foodPostPlaceholderMessage());
         return;
       }
       if (err instanceof PortalApiError) {
@@ -270,6 +306,7 @@ export default function FoodPublishPage() {
               </label>
               <input
                 id="food-venue"
+                maxLength={160}
                 value={venue}
                 onChange={(event) => {
                   setVenue(event.target.value);
@@ -371,6 +408,7 @@ export default function FoodPublishPage() {
               </label>
               <textarea
                 id="food-review"
+                maxLength={2000}
                 value={review}
                 onChange={(event) => {
                   setReview(event.target.value);
@@ -402,6 +440,7 @@ export default function FoodPublishPage() {
                 </label>
                 <input
                   id="food-price"
+                  maxLength={200}
                   value={price}
                   onChange={(event) => {
                     setPrice(event.target.value);
@@ -420,6 +459,7 @@ export default function FoodPublishPage() {
                 </label>
                 <input
                   id="food-hours"
+                  maxLength={200}
                   value={hours}
                   onChange={(event) => {
                     setHours(event.target.value);
@@ -459,6 +499,7 @@ export default function FoodPublishPage() {
                   >
                     <input
                       aria-label={`菜品 ${index + 1} 名称`}
+                      maxLength={80}
                       value={dish.name}
                       onChange={(event) =>
                         updateDish(index, { name: event.target.value })
@@ -468,6 +509,7 @@ export default function FoodPublishPage() {
                     />
                     <input
                       aria-label={`菜品 ${index + 1} 价格`}
+                      maxLength={40}
                       value={dish.price}
                       onChange={(event) =>
                         updateDish(index, { price: event.target.value })
@@ -477,6 +519,7 @@ export default function FoodPublishPage() {
                     />
                     <input
                       aria-label={`菜品 ${index + 1} 理由`}
+                      maxLength={200}
                       value={dish.reason}
                       onChange={(event) =>
                         updateDish(index, { reason: event.target.value })

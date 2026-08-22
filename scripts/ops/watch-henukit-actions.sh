@@ -110,6 +110,7 @@ conditional_images=()
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v flock >/dev/null 2>&1 || die "flock is required"
+command -v jq >/dev/null 2>&1 || die "jq is required"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
 
@@ -223,6 +224,8 @@ environment_value() {
 verify_production_data_boundary() {
   local portal_api_mode portal_allow_mock easypay_enabled easypay_pid easypay_key
   local easypay_base_url easypay_notify_url easypay_return_url
+  local career_sources career_ai_base career_ai_key career_ai_model career_ai_insecure career_digest_secret
+  local career_digest_client career_digest_key normalized_secret normalized_ai
   portal_api_mode="$(environment_value PORTAL_API_MODE)"
   portal_allow_mock="$(environment_value NEXT_PUBLIC_PORTAL_ALLOW_MOCK)"
   [[ "$portal_api_mode" == "live" ]] ||
@@ -242,6 +245,35 @@ verify_production_data_boundary() {
   [[ "$easypay_base_url" == "https://metaview.top/epay" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL must use the production MetaView EasyPay gateway"
   [[ "$easypay_notify_url" == "https://henukit.cn/api/v1/payment-providers/easypay/notifications" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL must use the exact public callback ingress"
   [[ "$easypay_return_url" == "https://henukit.cn/account/membership" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL must use the public membership route"
+  career_sources="$(environment_value CAREER_SOURCE_ALLOWLIST)"
+  career_ai_base="$(environment_value CAREER_AI_BASE_URL)"
+  career_ai_key="$(environment_value CAREER_AI_API_KEY)"
+  career_ai_model="$(environment_value CAREER_AI_MODEL)"
+  career_ai_insecure="$(environment_value CAREER_ALLOW_INSECURE_AI_HTTP)"
+  career_digest_client="$(environment_value PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID)"
+  career_digest_key="$(environment_value PLATFORM_CORE_CAREER_DIGEST_KEY_ID)"
+  career_digest_secret="$(environment_value PLATFORM_CORE_CAREER_DIGEST_SECRET)"
+  [[ "$career_sources" == "official.meituan" ]] || die "CAREER_SOURCE_ALLOWLIST must enable only official.meituan"
+  if [[ "$career_ai_base" == "http://125.46.96.207:30000/v1" ]]; then
+    [[ "$career_ai_insecure" == "1" ]] || die "the approved plaintext Career LLM requires CAREER_ALLOW_INSECURE_AI_HTTP=1"
+  else
+    [[ "$career_ai_base" == https://* || "$career_ai_base" == http://127.0.0.1* || "$career_ai_base" == http://localhost* ]] ||
+      die "CAREER_AI_BASE_URL must use HTTPS, loopback, or the exact approved HTTP endpoint"
+    [[ -z "$career_ai_insecure" || "$career_ai_insecure" == "0" ]] ||
+      die "CAREER_ALLOW_INSECURE_AI_HTTP=1 is valid only for the exact approved HTTP endpoint"
+  fi
+  [[ ${#career_ai_key} -ge 16 && "$career_ai_key" != *[[:space:]]* && -n "$career_ai_model" ]] ||
+    die "Career extraction LLM credentials are missing or invalid"
+  normalized_ai="$(printf '%s\n%s\n%s' "$career_ai_base" "$career_ai_key" "$career_ai_model" | tr '[:upper:]' '[:lower:]')"
+  [[ ! "$normalized_ai" =~ (replace|example|change-me|changeme|test-secret|test-only) ]] ||
+    die "Career extraction LLM configuration contains a deployment placeholder"
+  [[ -n "$career_digest_client" && -n "$career_digest_key" && ${#career_digest_secret} -ge 32 && "$career_digest_secret" != *[[:space:]]* ]] ||
+    die "Career digest credentials are missing or invalid"
+  normalized_secret="$(printf '%s' "$career_digest_secret" | tr '[:upper:]' '[:lower:]')"
+  [[ "$normalized_secret" != "local-career-digest-secret-32bytes-only!" ]] ||
+    die "Career digest secret contains a deployment placeholder"
+  [[ ! "$normalized_secret" =~ (replace|example|change-me|changeme|test-secret|for-test|test-only) ]] ||
+    die "Career digest secret contains a deployment placeholder"
 }
 
 verify_account_boundary_manifest() {
@@ -591,9 +623,36 @@ current_release_sha() {
   printf '%s\n' "$found_sha"
 }
 
+verify_practice_flow() {
+  local release_sha="$1"
+  local catalog bank_id bank_version_id session_status answer_status probe_id
+  catalog="$(curl --fail --silent --show-error "$public_base_url/api/v1/practice/catalog")" || return 1
+  bank_id="$(jq -r '[.banks[] | select(.available == true and .question_count > 0)][0].bank_id // empty' <<<"$catalog")" || return 1
+  bank_version_id="$(jq -r '[.banks[] | select(.available == true and .question_count > 0)][0].bank_version_id // empty' <<<"$catalog")" || return 1
+  [[ "$bank_id" =~ ^[0-9a-f-]{36}$ && "$bank_version_id" =~ ^[0-9a-f-]{36}$ ]] || return 1
+  # These malformed/nonexistent-resource probes cannot persist facts, but they
+  # prove that both public command routes are present and reachable rather
+  # than being stale 404s. The container probe below exercises real selection,
+  # scoring, attempt, and statistics statements inside an explicit rollback.
+  probe_id="11111111-1111-4111-8111-111111111111"
+  session_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --request POST --header 'Content-Type: application/json' \
+    --header "Idempotency-Key: release-practice-route-session-${release_sha}" \
+    --data "{\"bank_id\":\"$probe_id\",\"bank_version_id\":\"$probe_id\",\"mode\":\"random\",\"question_count\":1}" \
+    "$public_base_url/api/v1/practice/sessions")" || return 1
+  [[ "$session_status" == "400" ]] || return 1
+  answer_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --request POST --header 'Content-Type: application/json' \
+    --header "Idempotency-Key: release-practice-route-answer-${release_sha}" \
+    --data "{\"question_id\":\"$probe_id\",\"question_version_id\":\"$probe_id\",\"answer\":false}" \
+    "$public_base_url/api/v1/practice/sessions/$probe_id/answers")" || return 1
+  [[ "$answer_status" == "404" ]] || return 1
+  docker exec henukit-quizcraft-1 /quizcraft verify-practice >/dev/null
+}
+
 verify_active_release() {
   local release_sha="$1"
-  local account_portfolio_state account_status callback_status service index
+  local account_portfolio_state account_status callback_status practice_state service index
   active_release_matches "$release_sha" || return 1
   if release_uses_account_portfolio "$release_sha"; then
     account_portfolio_state=0
@@ -624,6 +683,16 @@ verify_active_release() {
   curl --fail --silent --show-error "$public_base_url/api/v1/healthz" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/" >/dev/null || return 1
   curl --fail --silent --show-error "$public_base_url/practice" >/dev/null || return 1
+  if release_has_service "$release_sha" "quizcraft"; then
+    practice_state=0
+  else
+    practice_state=$?
+  fi
+  case "$practice_state" in
+    0) verify_practice_flow "$release_sha" || return 1 ;;
+    1) ;;
+    *) return 1 ;;
+  esac
   curl --fail --silent --show-error "$public_base_url/library" >/dev/null || return 1
   if [[ "$account_portfolio_state" -eq 0 ]]; then
     account_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$account_public_origin/api/v1/account/summary")" || return 1

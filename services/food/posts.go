@@ -29,10 +29,9 @@ const (
 	postRoleCreate = "food-post-create"
 	postRoleRead   = "food-post-read"
 
-	postBodyLimit     = 20 << 20
-	maxPostImages     = 6
-	maxPostImageBytes = 2 << 20
-	dailyPostCap      = 3
+	postBodyLimit = 20 << 20
+	maxPostImages = 6
+	dailyPostCap  = 3
 
 	postImagePathFormat = "/api/v1/food/posts/%s/images/%d"
 	postImageCache      = "public, max-age=31536000, immutable"
@@ -62,9 +61,7 @@ type foodPostBlockWire struct {
 	Src   string   `json:"src,omitempty"`
 }
 type foodPostShopWire struct {
-	Name string  `json:"name"`
-	Lat  float64 `json:"lat"`
-	Lng  float64 `json:"lng"`
+	Name string `json:"name"`
 }
 type foodPostWire struct {
 	ID      string              `json:"id"`
@@ -103,15 +100,6 @@ type postDishInput struct {
 	Name   string `json:"name"`
 	Price  string `json:"price"`
 	Reason string `json:"reason"`
-}
-type postImageInput struct {
-	ContentType string `json:"content_type"`
-	Data        string `json:"data"`
-}
-type decodedPostImage struct {
-	ContentType string
-	Bytes       []byte
-	SHA256      string
 }
 
 // postCredentials returns the key ring bound to one Food Post role.
@@ -232,6 +220,11 @@ func (h *service) createPost(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	normalizePostInput(&input)
+	if obviousPlaceholder(input.VenueName) || obviousPlaceholder(input.ReviewText) {
+		writeError(w, r, http.StatusBadRequest, "PLACEHOLDER_POST", "Replace the test placeholder with a real venue and review")
+		return
+	}
 	if !validPostFields(input) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_POST", "Food post input is invalid")
 		return
@@ -289,26 +282,27 @@ func validPostFields(input postCreateInput) bool {
 	return true
 }
 
-func decodePostImages(w http.ResponseWriter, r *http.Request, inputs []postImageInput) ([]decodedPostImage, bool) {
-	if len(inputs) > maxPostImages {
-		writeError(w, r, http.StatusBadRequest, "INVALID_POST", "Food post image count exceeds the limit")
-		return nil, false
+func normalizePostInput(input *postCreateInput) {
+	input.VenueName = strings.TrimSpace(input.VenueName)
+	input.Campus = strings.TrimSpace(input.Campus)
+	input.Tier = strings.TrimSpace(input.Tier)
+	input.ReviewText = strings.TrimSpace(input.ReviewText)
+	input.PriceReference = strings.TrimSpace(input.PriceReference)
+	input.HoursReference = strings.TrimSpace(input.HoursReference)
+	for index := range input.Dishes {
+		input.Dishes[index].Name = strings.TrimSpace(input.Dishes[index].Name)
+		input.Dishes[index].Price = strings.TrimSpace(input.Dishes[index].Price)
+		input.Dishes[index].Reason = strings.TrimSpace(input.Dishes[index].Reason)
 	}
-	images := make([]decodedPostImage, 0, len(inputs))
-	for _, item := range inputs {
-		if item.ContentType != "image/jpeg" && item.ContentType != "image/png" && item.ContentType != "image/webp" {
-			writeError(w, r, http.StatusBadRequest, "INVALID_POST", "Food post image content type is invalid")
-			return nil, false
-		}
-		bytes, err := base64.StdEncoding.DecodeString(item.Data)
-		if err != nil || len(bytes) == 0 || len(bytes) > maxPostImageBytes {
-			writeError(w, r, http.StatusBadRequest, "INVALID_POST", "Food post image bytes are invalid")
-			return nil, false
-		}
-		sum := sha256.Sum256(bytes)
-		images = append(images, decodedPostImage{ContentType: item.ContentType, Bytes: bytes, SHA256: hex.EncodeToString(sum[:])})
+}
+
+func obviousPlaceholder(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "test", "testing", "测试", "测试内容", "测试店铺":
+		return true
+	default:
+		return false
 	}
-	return images, true
 }
 
 // storePost creates one public post inside a transaction. The advisory lock is
@@ -387,7 +381,7 @@ func (h *service) storePost(r *http.Request, value actor, key string, input post
 func buildPostWire(id uuid.UUID, input postCreateInput, displayName string, createdAt time.Time, imageCount int) foodPostWire {
 	blocks := make([]foodPostBlockWire, 0, 4)
 	if input.PriceReference != "" {
-		blocks = append(blocks, foodPostBlockWire{Type: "p", Text: input.PriceReference})
+		blocks = append(blocks, foodPostBlockWire{Type: "p", Text: "价格参考：" + input.PriceReference})
 	}
 	if input.HoursReference != "" {
 		blocks = append(blocks, foodPostBlockWire{Type: "p", Text: "营业时间参考：" + input.HoursReference})
@@ -421,7 +415,7 @@ func buildPostWire(id uuid.UUID, input postCreateInput, displayName string, crea
 		Likes:   0,
 		Stars:   0,
 		Tags:    []string{postTierLabels[input.Tier]},
-		Shop:    foodPostShopWire{Name: input.VenueName, Lat: 0, Lng: 0},
+		Shop:    foodPostShopWire{Name: input.VenueName},
 		Time:    createdAt.UTC().Format(time.RFC3339),
 		Hidden:  false,
 		Images:  imagePaths,
@@ -486,7 +480,7 @@ func (h *service) loadPosts(r *http.Request, campus, authorUserID string) ([]foo
 		}
 		blocks := make([]foodPostBlockWire, 0, 4)
 		if item.priceReference != "" {
-			blocks = append(blocks, foodPostBlockWire{Type: "p", Text: item.priceReference})
+			blocks = append(blocks, foodPostBlockWire{Type: "p", Text: "价格参考：" + item.priceReference})
 		}
 		if item.hoursReference != "" {
 			blocks = append(blocks, foodPostBlockWire{Type: "p", Text: "营业时间参考：" + item.hoursReference})
@@ -501,7 +495,7 @@ func (h *service) loadPosts(r *http.Request, campus, authorUserID string) ([]foo
 			Likes:   0,
 			Stars:   0,
 			Tags:    []string{item.tier},
-			Shop:    foodPostShopWire{Name: item.venueName, Lat: 0, Lng: 0},
+			Shop:    foodPostShopWire{Name: item.venueName},
 			Time:    item.createdAt.UTC().Format(time.RFC3339),
 			Hidden:  false,
 			Images:  []string{},
@@ -602,7 +596,7 @@ func (h *service) loadPost(r *http.Request, id string) (foodPostWire, bool, erro
 	}
 	blocks := make([]foodPostBlockWire, 0, 4)
 	if priceReference != "" {
-		blocks = append(blocks, foodPostBlockWire{Type: "p", Text: priceReference})
+		blocks = append(blocks, foodPostBlockWire{Type: "p", Text: "价格参考：" + priceReference})
 	}
 	if hoursReference != "" {
 		blocks = append(blocks, foodPostBlockWire{Type: "p", Text: "营业时间参考：" + hoursReference})
@@ -663,7 +657,7 @@ func (h *service) loadPost(r *http.Request, id string) (foodPostWire, bool, erro
 		Likes:   0,
 		Stars:   0,
 		Tags:    []string{tier},
-		Shop:    foodPostShopWire{Name: venueName, Lat: 0, Lng: 0},
+		Shop:    foodPostShopWire{Name: venueName},
 		Time:    createdAt.UTC().Format(time.RFC3339),
 		Hidden:  false,
 		Images:  imagePaths,

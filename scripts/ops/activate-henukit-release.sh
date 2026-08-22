@@ -282,6 +282,7 @@ set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL "https://metaview.top/e
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL "https://henukit.cn/api/v1/payment-providers/easypay/notifications" || die "could not configure the EasyPay callback"
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL "https://henukit.cn/account/membership" || die "could not configure the EasyPay return URL"
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_ENABLED 1 || die "could not atomically enable Account Portfolio EasyPay"
+set_account_env_value QUIZCRAFT_CORE_URL "http://quizcraft:10089" || die "could not configure the containerized QuizCraft Core URL"
 
 # With no approval, the first pass can only verify artifacts and restore-test
 # backups. An exact local recovery may resume an approval left unconsumed by a

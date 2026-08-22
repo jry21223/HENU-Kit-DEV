@@ -30,9 +30,10 @@ const (
 	// ExtractionsPath is the resume upload boundary. The browser body may be a
 	// 10 MiB file plus multipart framing, so this route alone gets a larger
 	// cap; every other Career route keeps the small JSON cap.
-	ExtractionsPath     = "/api/v1/career/profile/extractions"
-	maxBodyBytes        = 128 << 10 // career profile snapshots stay small
-	maxExtractBodyBytes = (10 << 20) + (1 << 20)
+	ExtractionsPath      = "/api/v1/career/profile/extractions"
+	maxRequestBodyBytes  = 128 << 10 // career profile snapshots stay small
+	maxResponseBodyBytes = 1 << 20   // up to 150 bounded display-only job rows
+	maxExtractBodyBytes  = (10 << 20) + (1 << 20)
 )
 
 var (
@@ -93,7 +94,7 @@ func NewClient(baseURL, clientID, clientSecret, keyID string) (*Client, error) {
 // exclusively from the verified Portal Session and the body is re-signed
 // byte-for-byte with the service credential.
 func (c *Client) CreateSearch(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
-	if strings.TrimSpace(actorUserID) == "" || !ValidIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > maxBodyBytes {
+	if strings.TrimSpace(actorUserID) == "" || !ValidIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > maxRequestBodyBytes {
 		return nil, ErrBadRequest
 	}
 	body, _, _, err := c.call(ctx, http.MethodPost, SearchesPath, actorUserID, requestID, raw, "application/json", func(request *http.Request) {
@@ -165,7 +166,7 @@ func (c *Client) Profile(ctx context.Context, actorUserID, requestID string) (js
 
 // UpdateProfile forwards the signed-in actor's profile replacement.
 func (c *Client) UpdateProfile(ctx context.Context, actorUserID, requestID string, raw []byte) (json.RawMessage, error) {
-	if strings.TrimSpace(actorUserID) == "" || len(raw) == 0 || len(raw) > maxBodyBytes {
+	if strings.TrimSpace(actorUserID) == "" || len(raw) == 0 || len(raw) > maxRequestBodyBytes {
 		return nil, ErrBadRequest
 	}
 	body, _, _, err := c.call(ctx, http.MethodPut, ProfilePath, actorUserID, requestID, raw, "application/json", nil)
@@ -214,11 +215,11 @@ func (c *Client) call(ctx context.Context, method, requestPath, actorUserID, req
 		return nil, 0, nil, fmt.Errorf("call Career service: %w", ErrUnavailable)
 	}
 	defer response.Body.Close()
-	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxBodyBytes+1))
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("read Career service response: %w", ErrUnavailable)
 	}
-	if len(responseBody) > maxBodyBytes {
+	if len(responseBody) > maxResponseBodyBytes {
 		return nil, 0, nil, ErrInvalid
 	}
 	if response.StatusCode < 200 || response.StatusCode > 299 {

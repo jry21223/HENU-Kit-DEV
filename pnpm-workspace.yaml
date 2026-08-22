@@ -2,6 +2,19 @@ packages:
   - "apps/*"
   - "products/quizcraft/web-app"
 
+overrides:
+  "nanoid@3": "3.3.18"
+  postcss: "8.5.23"
+
+packageExtensions:
+  "element-plus@2.13.0":
+    dependencies:
+      "@vue/shared": "3.5.25"
+  "@vue/test-utils@2.4.6":
+    dependencies:
+      "@vue/compiler-dom": "3.5.41"
+      "@vue/server-renderer": "3.5.41"
+
 allowBuilds:
   esbuild: true
   sharp: true

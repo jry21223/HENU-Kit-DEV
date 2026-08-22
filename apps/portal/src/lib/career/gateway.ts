@@ -8,6 +8,7 @@
 import {
   PortalConfigError,
   PortalForbiddenError,
+  PortalHttpError,
   createCareerSearch,
   formatPortalError,
   getCareerProfile,
@@ -42,6 +43,18 @@ export function isCareerLifetimeRequiredError(error: unknown): boolean {
 /** 命中 Lifetime 门时的引导文案，直接展示给用户。 */
 export function careerLifetimeRequiredMessage(): string {
   return "求职雷达需要 Lifetime VIP 会员，开通后即可使用";
+}
+
+export function careerSearchCreateErrorMessage(error: unknown): string {
+  if (error instanceof PortalHttpError) {
+    if (error.errorCode === "SEARCH_ALREADY_ACTIVE") {
+      return "已有扫描任务正在进行，请等待完成后再试。";
+    }
+    if (error.errorCode === "SEARCH_RATE_LIMITED") {
+      return "本小时扫描次数已用完，请稍后再试。";
+    }
+  }
+  return formatPortalError(error);
 }
 
 // ---- mock 最小占位 ----

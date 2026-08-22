@@ -7,8 +7,8 @@ import (
 
 func TestValidateFoodPostDeploymentSecretsAllowsLoopbackExample(t *testing.T) {
 	env := map[string]string{
-		"FOOD_POSTS_URL":         "http://food:8096",
-		"PORTAL_ORIGIN":          "http://localhost:8088",
+		"FOOD_POSTS_URL":          "http://food:8096",
+		"PORTAL_ORIGIN":           "http://localhost:8088",
 		"FOOD_POST_CREATE_SECRET": "replace-food-post-create-secret-32bytes!!",
 		"FOOD_POST_READ_SECRET":   "replace-food-post-read-secret-32bytes!!",
 	}

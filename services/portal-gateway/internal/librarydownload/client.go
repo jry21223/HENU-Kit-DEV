@@ -301,7 +301,7 @@ func (c *Client) Catalog(ctx context.Context, requestID string) (Catalog, error)
 }
 
 func validPublicMaterial(material PublicMaterial) bool {
-	allowedTypes := map[string]bool{"note": true, "exam": true, "mock": true, "path": true, "lab": true, "slides": true}
+	allowedTypes := map[string]bool{"note": true, "exam": true, "mock": true, "path": true, "lab": true, "slides": true, "textbook": true}
 	if !ownerUUIDPattern.MatchString(material.ID) || !allowedTypes[material.Type] || material.FileSize < 0 || material.Downloads < 0 || !material.DownloadAvailable {
 		return false
 	}

@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -19,17 +18,6 @@ import {
   ErrorBanner,
   LoadingBlock,
 } from "@/components/data-state";
-
-const ShopMap = dynamic(() => import("@/components/food/map"), {
-  ssr: false,
-  loading: () => (
-    <div className="bg-blueprint flex h-[280px] items-center justify-center border-t border-line">
-      <p className="font-mono text-[10px] tracking-[0.3em] text-ink/40">
-        MAP LOADING…
-      </p>
-    </div>
-  ),
-});
 
 type LoadState = "loading" | "ready" | "error" | "missing";
 
@@ -147,7 +135,7 @@ export default function PostDetail({ id }: { id: string }) {
             </span>
             <span>{campus.name}</span>
             <span aria-hidden>/</span>
-            <span>{post.time}</span>
+            <span>{detail.source.publishedAt}</span>
           </div>
 
           <h1 className="mt-5 max-w-[18ch] font-display text-4xl font-bold leading-[0.95] tracking-[-0.04em] md:text-6xl">
@@ -180,7 +168,7 @@ export default function PostDetail({ id }: { id: string }) {
                 index: "03",
                 label: "营业参考",
                 value:
-                  detail.hoursReference ?? "未填写 · 出发前请查地图",
+                  detail.hoursReference ?? "未填写",
               },
             ].map((item) => (
               <div
@@ -299,7 +287,7 @@ export default function PostDetail({ id }: { id: string }) {
               <PostBlocks blocks={post.blocks} />
             </article>
             <p className="mt-5 font-mono text-[10px] leading-5 text-ink/45">
-              投稿人 / {post.author} · ▲ {post.likes} · ★ {post.stars}
+              投稿人 / {post.author}
             </p>
           </section>
 
@@ -345,9 +333,6 @@ export default function PostDetail({ id }: { id: string }) {
                   </dt>
                   <dd className="mt-1 text-sm leading-6">
                     {detail.location}
-                    <span className="mt-1 block font-mono text-[10px] text-ink/45">
-                      {detail.coordinates}
-                    </span>
                   </dd>
                 </div>
                 <div>
@@ -370,16 +355,7 @@ export default function PostDetail({ id }: { id: string }) {
                   </dd>
                 </div>
               </dl>
-              <a
-                href={detail.mapUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-6 block border border-ink px-4 py-3 text-center font-mono text-xs tracking-[0.12em] transition-colors hover:bg-ink hover:text-paper"
-              >
-                在高德地图打开 ↗
-              </a>
             </div>
-            <ShopMap shop={post.shop} />
           </section>
 
           <section className="mt-5 border border-accent bg-accent/5 p-5">
@@ -403,7 +379,7 @@ export default function PostDetail({ id }: { id: string }) {
       </div>
 
       <p className="mt-12 border-t border-line pt-5 font-mono text-[10px] leading-5 text-ink/45">
-        图片可能为菜品或环境参考图；营业时间、价格与门店状态可能变化，请以地图和现场信息为准。
+        图片可能为菜品或环境参考图；营业时间、价格与门店状态可能变化，请以门店现场信息为准。
       </p>
     </main>
   );

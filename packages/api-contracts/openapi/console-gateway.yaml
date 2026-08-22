@@ -462,6 +462,8 @@ paths:
       operationId: getConsoleFoodWorkspace
       summary: Read the bounded Food operations workspace
       security: [{ consoleSession: [] }]
+      parameters:
+        - { name: campus, in: query, required: false, schema: { $ref: "#/components/schemas/FoodCampus" } }
       responses:
         "200": { description: Food-owned operation data, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodWorkspace" } } }] } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -910,7 +912,7 @@ components:
     FoodWorkspace:
       type: object
       additionalProperties: false
-      required: [status, status_message, stale, as_of, submissions, anomaly_tickets, tier_adjustments]
+      required: [status, status_message, stale, as_of, submissions, anomaly_tickets, tier_adjustments, posts]
       properties:
         status: { type: string, enum: [ok, empty, stale] }
         status_message: { type: string, maxLength: 240 }
@@ -919,15 +921,17 @@ components:
         submissions: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodSubmission" } }
         anomaly_tickets: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodAnomalyTicket" } }
         tier_adjustments: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodTierAdjustment" } }
+        posts: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodPost" } }
     FoodSubmission:
       type: object
       additionalProperties: false
-      required: [id, venue_name, item_name, description, status, version, submitted_at, updated_at]
+      required: [id, venue_name, item_name, description, campus, status, version, submitted_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         venue_name: { type: string, maxLength: 160 }
         item_name: { type: string, maxLength: 160 }
         description: { type: string, maxLength: 2000 }
+        campus: { oneOf: [{ $ref: "#/components/schemas/FoodCampus" }, { type: "null" }] }
         status: { type: string, enum: [pending, approved, rejected] }
         version: { type: integer, minimum: 1 }
         submitted_at: { type: string, format: date-time }
@@ -962,7 +966,28 @@ components:
         updated_at: { type: string, format: date-time }
     FoodCommandKind:
       type: string
-      enum: [submission_approve, submission_reject, anomaly_resolve, anomaly_dismiss, tier_adjustment_confirm, tier_adjustment_reject]
+      enum: [submission_approve, submission_reject, submission_edit, post_edit, anomaly_resolve, anomaly_dismiss, tier_adjustment_confirm, tier_adjustment_reject]
+    FoodCampus:
+      type: string
+      enum: [minglun, jinming, longzihu]
+    FoodPostTier:
+      type: string
+      enum: [hang, top, elite, npc, bad]
+    FoodCommandPayload:
+      type: object
+      additionalProperties: false
+      required: [note]
+      properties:
+        note: { type: string, minLength: 2, maxLength: 1000 }
+        venue_name: { type: string, minLength: 1, maxLength: 160 }
+        item_name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        campus: { $ref: "#/components/schemas/FoodCampus" }
+        tier: { $ref: "#/components/schemas/FoodPostTier" }
+        review_text: { type: string, minLength: 2, maxLength: 2000 }
+        price_reference: { type: string, maxLength: 200 }
+        hours_reference: { type: string, maxLength: 200 }
+        hidden: { type: boolean }
     FoodCommand:
       type: object
       additionalProperties: false
@@ -971,13 +996,26 @@ components:
         kind: { $ref: "#/components/schemas/FoodCommandKind" }
         resource_id: { type: string, format: uuid }
         expected_version: { type: integer, minimum: 1 }
-        payload:
-          type: object
-          additionalProperties: false
-          required: [note]
-          properties: { note: { type: string, minLength: 2, maxLength: 1000 } }
+        payload: { $ref: "#/components/schemas/FoodCommandPayload" }
       example: { kind: submission_approve, resource_id: 11111111-1111-4111-8111-111111111111, expected_version: 1, payload: { note: checked } }
       x-invalid-example: { kind: submission_approve, resource_id: 11111111-1111-4111-8111-111111111111, expected_version: 1, payload: { paymentId: hidden } }
+    FoodPost:
+      type: object
+      additionalProperties: false
+      required: [id, venue_name, campus, tier, review_text, price_reference, hours_reference, author_display_name, hidden, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        venue_name: { type: string, maxLength: 160 }
+        campus: { $ref: "#/components/schemas/FoodCampus" }
+        tier: { $ref: "#/components/schemas/FoodPostTier" }
+        review_text: { type: string, minLength: 2, maxLength: 2000 }
+        price_reference: { type: string, maxLength: 200 }
+        hours_reference: { type: string, maxLength: 200 }
+        author_display_name: { type: string, minLength: 1, maxLength: 120 }
+        hidden: { type: boolean }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     FoodOperationResult:
       type: object
       additionalProperties: false

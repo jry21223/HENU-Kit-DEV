@@ -77,8 +77,7 @@ function RankRow({ item }: { item: RankRowItem }) {
 }
 
 function toRankRows(posts: FoodPost[]): RankRowItem[] {
-  // groupFoodPostsByTier 保证档位按 FOOD_TIERS 顺序、档内按点赞降序 + id 升序；
-  // 展平即「档位 → 点赞 → id」的全局榜单顺序，tier 结构上必然存在。
+  // groupFoodPostsByTier 保证档位按 FOOD_TIERS 顺序，并保留 owner 的新到旧顺序。
   // 注意：这是档位优先的局部 TOP 5，序号是全局序——首档条数 ≥5 时
   // 会出现 01-05 全为同一档的情况，属预期行为。
   return groupFoodPostsByTier(posts)
@@ -132,7 +131,7 @@ export default function SectionFood() {
             「从夯到拉，只说人话。」
           </p>
           <p className="mt-4 max-w-sm text-sm leading-7 text-ink/70">
-            学生视角分档，档内按点赞排序；不接受充值，不接受公关，
+            学生视角分档，档内按最新投稿展示；不接受充值，不接受公关，
             难吃就是难吃。
           </p>
           <MagneticButton href="/food" className="mt-8">

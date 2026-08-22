@@ -16,7 +16,7 @@ import {
   unfavoriteQuestion,
 } from "@/lib/api/client";
 import type { FavoriteQuestion } from "@/lib/api/types";
-import { FetchState, useFetchState } from "@/lib/api/use-fetch-state";
+import { useFetchState } from "@/lib/api/use-fetch-state";
 import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
 import { writePracticeSessionHandoff } from "@/lib/practice/session-handoff";
 import { cn } from "@/lib/cn";
@@ -100,7 +100,9 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
   }, []);
 
   useEffect(() => {
-    if (state.status === "loading") setRemoveError(null);
+    if (state.status !== "loading") return;
+    const timer = window.setTimeout(() => setRemoveError(null), 0);
+    return () => window.clearTimeout(timer);
   }, [state.status]);
 
   const removeFavorite = async (item: FavoriteQuestion) => {

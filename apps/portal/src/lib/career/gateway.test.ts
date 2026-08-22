@@ -94,6 +94,21 @@ describe("Career client", () => {
     expect(isCareerLifetimeRequiredError(null)).toBe(false);
   });
 
+  it("renders actionable messages for Career search limits", async () => {
+    const { PortalHttpError } = await import("../api/client");
+    const { careerSearchCreateErrorMessage } = await import("./gateway");
+    expect(
+      careerSearchCreateErrorMessage(
+        new PortalHttpError("/api/v1/career/searches", 429, "limited", "req_limit", "SEARCH_ALREADY_ACTIVE")
+      )
+    ).toContain("已有扫描任务正在进行");
+    expect(
+      careerSearchCreateErrorMessage(
+        new PortalHttpError("/api/v1/career/searches", 429, "limited", "req_limit", "SEARCH_RATE_LIMITED")
+      )
+    ).toContain("本小时扫描次数已用完");
+  });
+
   it("maps 401 to PortalUnauthorizedError for profile reads", async () => {
     vi.stubGlobal(
       "fetch",

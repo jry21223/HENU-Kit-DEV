@@ -13,7 +13,6 @@
 | 样式 | Tailwind CSS v4 |
 | 动画 | GSAP (ScrollTrigger / Observer / ScrollTo) |
 | 3D | Three.js + React Three Fiber（仅首页 Hero 与题库页 Hero） |
-| 地图 | Leaflet + OSM（仅美食详情页） |
 | 字体 | Space Grotesk（展示）/ IBM Plex Mono（标签）/ 中文系统栈 |
 
 ## 快速开始
@@ -65,7 +64,7 @@ npm run dev
 |---|---|
 | `/food` | 三校区入口（明伦 / 金明 / 龙子湖） |
 | `/food/campus/[campus]` | 校区美食列表 |
-| `/food/post/[id]` | 文章详情 + Leaflet 地图 |
+| `/food/post/[id]` | 美食投稿详情 |
 | `/food/publish` | 发布 / 编辑（需登录） |
 | `/food/leaderboard` | 必吃排行榜 |
 

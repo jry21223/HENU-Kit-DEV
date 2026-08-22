@@ -16,6 +16,7 @@ import type { FoodPost, VenueSummary } from "@/lib/api/types";
 import { foodStore } from "@/lib/food/mock";
 
 const gatewayVenues = new Map<string, VenueSummary[]>();
+const pendingCreatedPosts = new Map<string, FoodPost>();
 let gatewayPosts: FoodPost[] | null = null;
 let lastError: unknown = null;
 let loaded = false;
@@ -35,7 +36,10 @@ export async function initFoodGateway(): Promise<void> {
 
   try {
     const postsResp = await fetchFoodPosts();
-    gatewayPosts = postsResp.posts;
+    gatewayPosts = [
+      ...pendingCreatedPosts.values(),
+      ...postsResp.posts.filter((post) => !pendingCreatedPosts.has(post.id)),
+    ];
 
     for (const campus of ["minglun", "jinming", "longzihu"]) {
       try {
@@ -64,6 +68,17 @@ export function getVenues(campus: string): VenueSummary[] | null {
 
 export function getGatewayPosts(): FoodPost[] | null {
   return gatewayPosts;
+}
+
+/** Keep the shared board cache coherent after a successful public create. */
+export function rememberCreatedFoodPost(post: FoodPost): void {
+  pendingCreatedPosts.set(post.id, post);
+  if (gatewayPosts === null) {
+    loaded = false;
+    lastError = null;
+    return;
+  }
+  gatewayPosts = [post, ...gatewayPosts.filter((item) => item.id !== post.id)];
 }
 
 export function isFoodReady(): boolean {

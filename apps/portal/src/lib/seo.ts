@@ -114,7 +114,7 @@ export const practiceMetadata: Metadata = pageMetadata(
 export const foodMetadata: Metadata = pageMetadata(
   "/food",
   "美食榜",
-  "HENU Kit 美食榜是学生视角的河南大学校园美食五档榜单，档内按点赞排序，不接受充值，不接受公关；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+  "HENU Kit 美食榜是学生视角的河南大学校园美食五档榜单，档内按最新投稿展示，不接受充值，不接受公关；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
 );
 
 export const campusMetadata: Metadata = pageMetadata(

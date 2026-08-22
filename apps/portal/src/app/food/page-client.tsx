@@ -40,7 +40,7 @@ export default function FoodBoardPage() {
                 从夯到拉
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-paper/65 md:text-base">
-                夯、顶级、人上人、NPC、拉完了。学生视角分档，档内按点赞排序；
+                夯、顶级、人上人、NPC、拉完了。学生视角分档，档内按最新投稿展示；
                 不接受充值，不接受公关。
               </p>
             </div>
@@ -211,7 +211,6 @@ export default function FoodBoardPage() {
                               </span>
                             </span>
                             <span className="col-start-2 flex items-center gap-4 font-mono text-xs text-ink/50 md:col-start-auto">
-                              <span>▲ {post.likes}</span>
                               <span className="transition-transform group-hover:translate-x-1" aria-hidden>
                                 →
                               </span>

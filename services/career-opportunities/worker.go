@@ -18,6 +18,8 @@ import (
 // guarantee "never permanently stuck in running" even when the process dies
 // between claiming and finishing.
 const staleClaimAfter = 15 * time.Minute
+const digestRetryAfter = time.Minute
+const resumeExtractionTimeout = 60 * time.Second
 
 const (
 	workerIdleDelay = time.Second
@@ -55,10 +57,17 @@ func (w *worker) Step(ctx context.Context) (bool, error) {
 		return true, w.h.finish(ctx, searchID, profile)
 	}
 	extractionID, fileName, content, found, err := w.h.claimOneExtraction(ctx)
+	if err != nil {
+		return found, err
+	}
+	if found {
+		return true, w.h.finishExtraction(ctx, extractionID, fileName, content)
+	}
+	digestID, result, found, err := w.h.claimOneDigest(ctx)
 	if err != nil || !found {
 		return found, err
 	}
-	return true, w.h.finishExtraction(ctx, extractionID, fileName, content)
+	return true, w.h.retryDigest(ctx, digestID, result)
 }
 
 // Run drives queued searches to completion forever until ctx is cancelled.
@@ -157,7 +166,7 @@ func (h *service) finish(ctx context.Context, searchID string, profile any) erro
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	tag, err := tx.Exec(ctx, `UPDATE career_searches SET status='completed',stage='rendering',completed_at=now(),failed_at=NULL WHERE id=$1 AND status='running'`, searchID)
+	tag, err := tx.Exec(ctx, `UPDATE career_searches SET status='completed',stage=NULL,error_code=NULL,error_message=NULL,completed_at=now(),failed_at=NULL WHERE id=$1 AND status='running'`, searchID)
 	if err != nil {
 		return err
 	}
@@ -170,14 +179,73 @@ func (h *service) finish(ctx context.Context, searchID string, profile any) erro
 	if err != nil {
 		return err
 	}
+	if _, err = tx.Exec(ctx, `INSERT INTO career_digest_deliveries(search_id,status) VALUES($1,'sending')`, searchID); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	// The result is durable. The digest mail is best-effort after commit: a
-	// failure must never roll back the search result, and email_sent_at stays
-	// NULL so a later pass could retry.
-	h.enqueueDigest(ctx, searchID, result)
+	// The result is durable. Digest enqueue happens after commit and is retried
+	// independently; a transient mail failure never rolls the search back.
+	if err := h.deliverDigest(ctx, searchID, result); err != nil {
+		log.Printf("career digest enqueue failed for search %s: %v", searchID, err)
+		if markErr := h.markDigestRetry(ctx, searchID); markErr != nil {
+			log.Printf("career digest retry could not be recorded for search %s: %v", searchID, markErr)
+		}
+	}
 	return nil
+}
+
+// claimOneDigest durably claims one completed search whose digest enqueue
+// failed. A crashed sending claim is reclaimed after the same bounded
+// delay. Platform Core's search-scoped idempotency key makes every replay safe.
+func (h *service) claimOneDigest(ctx context.Context) (string, WorkResult, bool, error) {
+	var id string
+	var payload []byte
+	var result WorkResult
+	err := h.database.QueryRow(ctx, `
+		WITH claimed AS (
+			SELECT d.search_id FROM career_digest_deliveries d
+			JOIN career_searches s ON s.id=d.search_id
+			WHERE s.status='completed' AND s.email_sent_at IS NULL
+			  AND d.status IN ('retry','sending')
+			  AND d.attempted_at < now() - $1::interval
+			ORDER BY s.completed_at
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		UPDATE career_digest_deliveries d SET status='sending',attempted_at=now(),updated_at=now()
+		FROM claimed
+		JOIN career_search_results r ON r.search_id=claimed.search_id
+		WHERE d.search_id=claimed.search_id
+		RETURNING d.search_id,r.payload,r.source_count,r.job_count,r.matched_count,r.summary`, digestRetryAfter.String()).Scan(
+		&id, &payload, &result.SourceCount, &result.JobCount, &result.MatchedCount, &result.Summary,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", WorkResult{}, false, nil
+	}
+	if err != nil {
+		return "", WorkResult{}, false, err
+	}
+	if err := json.Unmarshal(payload, &result.Payload); err != nil {
+		return "", WorkResult{}, false, err
+	}
+	return id, result, true, nil
+}
+
+func (h *service) retryDigest(ctx context.Context, searchID string, result WorkResult) error {
+	if err := h.deliverDigest(ctx, searchID, result); err != nil {
+		if markErr := h.markDigestRetry(ctx, searchID); markErr != nil {
+			return errors.Join(err, markErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (h *service) markDigestRetry(ctx context.Context, searchID string) error {
+	_, err := h.database.Exec(ctx, `UPDATE career_digest_deliveries SET status='retry',attempted_at=now(),updated_at=now() WHERE search_id=$1 AND status <> 'sent'`, searchID)
+	return err
 }
 
 // claimOneExtraction atomically moves one queued resume extraction (or one
@@ -210,11 +278,14 @@ func (h *service) claimOneExtraction(ctx context.Context) (string, string, []byt
 }
 
 // finishExtraction runs the AI extraction for one claimed job, records the
-// outcome, and purges the transient file bytes in the same transaction, so the
-// "只保存文字信息，不存储简历文件" promise holds end to end. The transition
-// guard makes a replayed completion a no-op.
+// outcome, and purges the transient file bytes in the same transaction. A
+// task-wide deadline bounds PDF rendering plus the provider call so one
+// adversarial document cannot monopolize the shared worker indefinitely. The
+// transition guard makes a replayed completion a no-op.
 func (h *service) finishExtraction(ctx context.Context, extractionID, fileName string, content []byte) error {
-	profile, err := h.extract(ctx, fileName, content)
+	extractionContext, cancel := context.WithTimeout(ctx, resumeExtractionTimeout)
+	profile, err := h.extract(extractionContext, fileName, content)
+	cancel()
 	if err != nil {
 		code := "EXTRACT_FAILED"
 		if errors.Is(err, ErrAIUnconfigured) {
@@ -249,39 +320,38 @@ func (h *service) failExtraction(ctx context.Context, extractionID, code string,
 	return err
 }
 
-// enqueueDigest posts one Opportunity Digest for a completed search when the
-// owner enabled email notifications. It is best-effort: every failure is
-// logged and the search result is untouched. The email_sent_at guard plus the
-// Platform Core dedupe key make replays idempotent.
-func (h *service) enqueueDigest(ctx context.Context, searchID string, result WorkResult) {
+// deliverDigest posts one Opportunity Digest for a completed search when the
+// owner enabled email notifications. The email_sent_at guard plus Platform
+// Core's dedupe key make retries idempotent.
+func (h *service) deliverDigest(ctx context.Context, searchID string, result WorkResult) error {
 	if h.digestSender == nil {
-		return
+		_, err := h.database.Exec(ctx, `UPDATE career_digest_deliveries SET status='skipped',updated_at=now() WHERE search_id=$1`, searchID)
+		return err
 	}
 	var userID string
-	var completedAt any
+	var completedAt string
 	if err := h.database.QueryRow(ctx, `SELECT user_id,to_char(completed_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM career_searches WHERE id=$1`, searchID).Scan(&userID, &completedAt); err != nil {
-		log.Printf("career digest: cannot read search %s: %v", searchID, err)
-		return
+		return err
 	}
 	var enabled bool
 	if err := h.database.QueryRow(ctx, `SELECT COALESCE((SELECT email_notification_enabled FROM career_profiles WHERE user_id=$1), true)`, userID).Scan(&enabled); err != nil {
-		log.Printf("career digest: cannot read profile for search %s: %v", searchID, err)
-		return
+		return err
 	}
 	if !enabled {
-		return
+		_, err := h.database.Exec(ctx, `UPDATE career_digest_deliveries SET status='skipped',updated_at=now() WHERE search_id=$1`, searchID)
+		return err
 	}
 	var emailSentAt any
 	if err := h.database.QueryRow(ctx, `SELECT email_sent_at FROM career_searches WHERE id=$1`, searchID).Scan(&emailSentAt); err != nil {
-		log.Printf("career digest: cannot read email guard for search %s: %v", searchID, err)
-		return
+		return err
 	}
 	if emailSentAt != nil {
-		return
+		_, err := h.database.Exec(ctx, `UPDATE career_digest_deliveries SET status='sent',enqueued_at=COALESCE(enqueued_at,now()),updated_at=now() WHERE search_id=$1`, searchID)
+		return err
 	}
 	digest := DigestRequest{
 		UserID: userID, SearchID: searchID,
-		CompletedAt:  completedAt.(string),
+		CompletedAt:  completedAt,
 		SourceCount:  result.SourceCount,
 		JobCount:     result.JobCount,
 		MatchedCount: result.MatchedCount,
@@ -293,14 +363,20 @@ func (h *service) enqueueDigest(ctx context.Context, searchID string, result Wor
 		digest.CareerURL = strings.TrimRight(h.digestResultURL, "/") + "?search=" + searchID
 	}
 	if err := h.digestSender.SendDigest(ctx, digest); err != nil {
-		// Best-effort by design: the search result stays completed and
-		// email_sent_at stays NULL so a later pass could retry.
-		log.Printf("career digest enqueue failed for search %s: %v", searchID, err)
-		return
+		return err
 	}
-	if _, err := h.database.Exec(ctx, `UPDATE career_searches SET email_sent_at=now() WHERE id=$1 AND email_sent_at IS NULL`, searchID); err != nil {
-		log.Printf("career digest sent for search %s but the guard could not be recorded: %v", searchID, err)
+	tx, err := h.database.Begin(ctx)
+	if err != nil {
+		return err
 	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `UPDATE career_searches SET email_sent_at=now() WHERE id=$1 AND email_sent_at IS NULL`, searchID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE career_digest_deliveries SET status='sent',enqueued_at=COALESCE(enqueued_at,now()),updated_at=now() WHERE search_id=$1`, searchID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // digestTopJobs extracts the top N matches by score from the persisted payload
@@ -319,7 +395,9 @@ func digestTopJobs(payload any, top int) []DigestJob {
 	}
 	order := make([]int, 0, len(result.Jobs))
 	for index := range result.Jobs {
-		order = append(order, index)
+		if result.Jobs[index].MatchScore >= 50 {
+			order = append(order, index)
+		}
 	}
 	// Stable selection by descending match score.
 	for first := 0; first < len(order) && first < top; first++ {

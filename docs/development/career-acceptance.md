@@ -53,7 +53,7 @@ cd services/career-opportunities && go test -count=1 -run GetWork -v .
 | 空 allowlist = 生产安全关闭态（0 来源，正常完成空结果） | `TestGetWorkEmptyAllowlistYieldsNoJobs` |
 | allowlist 门控（未授权来源不执行） | `TestGetWorkAllowlistGatesSources` |
 | 单来源超时/失败降级，成功来源结果保留 | `TestGetWorkSingleSourceFailureDegrades` |
-| **全部来源失败仍正常完成（空结果 + 全 failed）** | `TestGetWorkAllSourcesFailedStillCompletes`（#404 补） |
+| **全部已授权来源失败则任务失败，不把空结果伪装为成功** | `TestGetWorkAllSourcesFailedReturnsError` |
 
 ### 1.2.1 后端 · 简历上传 AI 提取（上传 → 识别 → 回填）
 
@@ -131,7 +131,7 @@ cd apps/portal && pnpm test && pnpm typecheck
 | Career DB 不可用 | create / list / status 一律 503 `DEPENDENCY_UNAVAILABLE`，不误报 404、不返回空数据 | `TestDatabaseUnavailableFailsClosed` | **#404 补齐** |
 | worker 领取后崩溃 | stale running 超窗回收，重新完成且只写一份结果 | `TestWorkerReclaimsStaleRunningSearch` + `worker_run_test.go`（#409） | 已覆盖 |
 | 单来源超时/失败 | 该来源 failed，成功来源结果与 `sources` 状态保留 | `TestGetWorkSingleSourceFailureDegrades` | 已覆盖（#396） |
-| 全部来源失败 | search 仍 completed，空结果 + 全部 `failed` 状态 | `TestGetWorkAllSourcesFailedStillCompletes` | **#404 补齐** |
+| 全部来源失败 | worker 将 search 标记为 failed，不生成虚假的成功空结果 | `TestGetWorkAllSourcesFailedReturnsError` + `TestWorkerFailureLandsOnFailedWithStableCode` | 已覆盖 |
 | GetWork 非法/超大 payload | 512 KiB 上限，400 `INVALID_REQUEST`，零写入 | `TestCreateSearchRejectsOversizedPayload` | **#404 补齐** |
 | 结果已写但邮件失败 | search 保持 completed，`email_sent_at` 不置位 → 后续可重试 | `TestDigestEnqueueFailureDoesNotRollBackSearch` | 已覆盖（#397） |
 | 邮件 dispatcher 重试 | 失败进 `retry_due` + 指数退避，到期重投 | platform-core mailworker/verification_mail 测试 | 已覆盖 |
@@ -177,12 +177,12 @@ DeliversThroughMailWorker` / `TestCareerDigestEnqueueIsIdempotentPerSearch`
 
 ### 5.1 source allowlist 授权状态
 
-- **当前生产默认关闭**：`GetWorkConfig.AllowSources` 为空 → 0 来源执行，搜索
-  正常完成并返回空结果（`Summary: 暂无可用的岗位来源`），绝不 hard-fail。
-- 真实 GetWork 来源（#372/#374 定夺）**未满足前保持关闭**；只有 allowlist 中
-  的 key 会被执行，浏览器无法新增来源/URL/选择器。
-- 启用即显式配置 `AllowSources`（如 `getwork.liepin`）并注册对应实现；未注册
-  实现的 allowlist key 启动时打日志跳过。
+- **生产启用**：`CAREER_SOURCE_ALLOWLIST=official.meituan` 注册独立编写的美团
+  官方校招接口适配器；浏览器不能新增来源、URL 或选择器。
+- 未注册的 allowlist key 会令服务启动失败，避免健康服务静默返回 0 来源。
+- 空 allowlist 仅保留为本地开发和事故 kill switch；正式发布的 prebuilt
+  Compose 要求该变量非空。
+- 已启用来源全部失败时搜索进入稳定失败态，不把上游故障伪装成“0 岗位”。
 
 ### 5.2 kill switch
 

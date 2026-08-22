@@ -29,7 +29,7 @@ function createdPost() {
     likes: 0,
     stars: 0,
     tags: ["夯"],
-    shop: { name: CREATE_INPUT.venue_name, lat: 0, lng: 0 },
+    shop: { name: CREATE_INPUT.venue_name },
     time: "2030-01-01T00:00:00Z",
     hidden: false,
     images: [],
@@ -119,6 +119,19 @@ describe("createFoodPost", () => {
       code: "PORTAL_INVALID_FOOD_POST_IDEMPOTENCY_KEY",
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("maps placeholder content to an actionable correction message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        error: { code: "PLACEHOLDER_POST", message: "replace placeholder" },
+        request_id: "req_food_placeholder",
+      }), { status: 400, headers: { "Content-Type": "application/json" } })
+    ));
+    const { createFoodPost, foodPostPlaceholderMessage, isFoodPostPlaceholderError } = await import("./submit");
+    const error = await createFoodPost(CREATE_INPUT, IDEMPOTENCY_KEY).catch((cause: unknown) => cause);
+    expect(isFoodPostPlaceholderError(error)).toBe(true);
+    expect(foodPostPlaceholderMessage()).toContain("真实的店铺与体验");
   });
 
   it("passes through other HTTP failures as PortalHttpError without cap mapping", async () => {

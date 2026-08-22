@@ -255,6 +255,13 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "FOOD_SUMMARY_KEY_ID",
       "CAREER_DATABASE_URL",
       "CAREER_CLIENT_SECRET",
+      "CAREER_SOURCE_ALLOWLIST",
+      "CAREER_AI_BASE_URL",
+      "CAREER_AI_API_KEY",
+      "CAREER_AI_MODEL",
+      "PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID",
+      "PLATFORM_CORE_CAREER_DIGEST_KEY_ID",
+      "PLATFORM_CORE_CAREER_DIGEST_SECRET",
       "FOOD_POST_CREATE_SECRET",
       "FOOD_POST_READ_SECRET",
       "FOOD_MCP_ACCESS_TOKEN",
@@ -430,6 +437,33 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "http://quizcraft:10089",
     "the fixed-SHA Gateway catalog seam must call the containerized QuizCraft Core service, not legacy Portal API",
   );
+  assert.equal(
+    config.services["career-opportunities"].environment.CAREER_SOURCE_ALLOWLIST,
+    "test-required-value",
+    "production Career must require an explicit authorized source allowlist",
+  );
+  assert.equal(
+    config.services["career-opportunities"].environment.PLATFORM_CORE_CAREER_DIGEST_URL,
+    "http://platform-core:8081",
+    "completed searches must enqueue their digest through the internal Platform Core service",
+  );
+  assert.equal(
+    config.services["career-opportunities"].environment.PLATFORM_CORE_CAREER_DIGEST_SECRET,
+    config.services["platform-core"].environment.PLATFORM_CORE_CAREER_DIGEST_SECRET,
+    "Career and Platform Core must receive the same dedicated digest credential",
+  );
+  assert.equal(
+    config.services["career-opportunities"].environment.CAREER_REQUIRE_AI,
+    "1",
+    "production Career must refuse startup without a real extraction LLM",
+  );
+  for (const key of ["CAREER_AI_BASE_URL", "CAREER_AI_API_KEY", "CAREER_AI_MODEL"]) {
+    assert.equal(
+      config.services["career-opportunities"].environment[key],
+      "test-required-value",
+      `${key} must be injected into the production Career container`,
+    );
+  }
   assert.deepEqual(
     config.services["portal-gateway"].extra_hosts,
     ["host.docker.internal=host-gateway"],

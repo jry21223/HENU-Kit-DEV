@@ -72,7 +72,7 @@ function writeLocalArtifacts(root) {
   writeFileSync(join(runtimeTree, "RELEASE_SHA"), `${releaseSha}\n`);
   writeFileSync(
     join(runtimeTree, "docker-compose.henukit.release.yml"),
-    "services:\n  portal-summary:\n  account-portfolio:\n  notice:\n  notice-worker:\n  food:\n  library:\n",
+    "services:\n  portal-summary:\n  account-portfolio:\n  notice:\n  notice-worker:\n  food:\n  library:\n  quizcraft:\n",
   );
   writeFileSync(
     join(runtimeTree, "release-gates", "account-production-boundary.env"),
@@ -114,6 +114,7 @@ function fixture({
   failTargetAccountPortfolioHealth = false,
   failTargetFoodHealth = false,
   failTargetNoticeHealth = false,
+  failTargetPracticeFlow = false,
   failTargetHealth = false,
   failPreviousHealth = false,
   failAccountGrant = false,
@@ -126,6 +127,10 @@ function fixture({
   portalAllowMock = false,
   portalApiMode = "live",
   easypayEnabled = true,
+  careerAIBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  careerAIKey = "sk-live-fixture-credential-32bytes",
+  careerAllowInsecureAIHTTP = false,
+  careerDigestSecret = "fixture-career-digest-random-credential-48bytes",
   runConclusion = "success",
   runStatus = "completed",
 } = {}) {
@@ -162,7 +167,7 @@ function fixture({
   chmodSync(token, 0o600);
   writeFileSync(
     envFile,
-    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\n`,
+    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nCAREER_SOURCE_ALLOWLIST=official.meituan\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
   );
   writeFileSync(rollbackEnvFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
   writeFileSync(log, "");
@@ -235,7 +240,7 @@ if [[ "$format" == "%u" ]]; then
        [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "verifier" && "$path" == "$FAKE_TRUSTED_VERIFIER" ]] ||
        [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "signers" && "$path" == "$FAKE_TRUSTED_SIGNERS" ]]; then
     id -u
-  elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" || "$path" == "$FAKE_CURRENT_LINK" || "$path" == "$FAKE_RELEASE_ROOT"/* ]]; then
+  elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" || "$path" == "$FAKE_CURRENT_LINK" || "$path" == "$FAKE_RELEASE_ROOT"/* || "$path" == "$FAKE_STATE_ROOT/practice-smoke-"* ]]; then
     printf '0'
   else
     id -u
@@ -332,7 +337,7 @@ runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
 mkdir -p "$runtime_artifact" "$runtime_tree/bin" "$runtime_tree/release-gates"
 printf '%s\\n' "$FAKE_RELEASE_SHA" > "$runtime_tree/RELEASE_SHA"
-printf 'services:\\n  portal-summary:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n  library:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
+printf 'services:\\n  portal-summary:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n  library:\\n  quizcraft:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
 cat > "$runtime_tree/release-gates/account-production-boundary.env" <<EOF
 release_sha=$FAKE_RELEASE_SHA
 status=$([[ "$FAKE_BAD_ACCOUNT_BOUNDARY" == "1" ]] && printf fail || printf pass)
@@ -461,6 +466,24 @@ if [[ "$FAKE_FAIL_PREVIOUS_HEALTH" == "1" &&
       "$(cat "$FAKE_ACTIVE_FILE")" != "$FAKE_RELEASE_SHA" ]]; then
   exit 22
 fi
+if [[ "$FAKE_FAIL_TARGET_PRACTICE_FLOW" == "1" &&
+      -s "$FAKE_ACTIVE_FILE" &&
+      "$(cat "$FAKE_ACTIVE_FILE")" == "$FAKE_RELEASE_SHA" &&
+      "$*" == *"/api/v1/practice/catalog"* ]]; then
+  exit 22
+fi
+if [[ "$*" == *"/api/v1/practice/catalog"* ]]; then
+  printf '{"banks":[{"bank_id":"11111111-1111-4111-8111-111111111111","bank_version_id":"22222222-2222-4222-8222-222222222222","available":true,"question_count":1}]}'
+  exit 0
+fi
+if [[ "$*" == *"/api/v1/practice/sessions/"*"/answers"* ]]; then
+  if [[ "$*" == *"--write-out"* ]]; then printf '404'; fi
+  exit 0
+fi
+if [[ "$*" == *"/api/v1/practice/sessions"* ]]; then
+  if [[ "$*" == *"--write-out"* ]]; then printf '400'; fi
+  exit 0
+fi
 if [[ "$*" == *"--write-out"* ]]; then
   if [[ "$*" == *"https://henukit.cn/api/v1/account/summary"* ]]; then
     printf '401'
@@ -506,6 +529,7 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
       FAKE_FAIL_TARGET_ACCOUNT_PORTFOLIO_HEALTH: failTargetAccountPortfolioHealth ? "1" : "0",
       FAKE_FAIL_TARGET_FOOD_HEALTH: failTargetFoodHealth ? "1" : "0",
       FAKE_FAIL_TARGET_NOTICE_HEALTH: failTargetNoticeHealth ? "1" : "0",
+      FAKE_FAIL_TARGET_PRACTICE_FLOW: failTargetPracticeFlow ? "1" : "0",
       FAKE_FAIL_TARGET_HEALTH: failTargetHealth ? "1" : "0",
       FAKE_FAIL_PREVIOUS_HEALTH: failPreviousHealth ? "1" : "0",
       FAKE_FAIL_ACCOUNT_GRANT: failAccountGrant ? "1" : "0",
@@ -560,6 +584,9 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
   assert.match(calls, /grant-account-operator-role/);
   assert.match(calls, /operations-operator/);
   assert.match(calls, /curl .*https:\/\/example\.test\/api\/v1\/healthz/);
+  assert.match(calls, /curl .*\/api\/v1\/practice\/catalog/);
+  assert.match(calls, /curl .*\/api\/v1\/practice\/sessions/);
+  assert.match(calls, /curl .*\/answers/);
   assert.match(calls, /curl .*https:\/\/henukit\.cn\/api\/v1\/account\/summary/);
   assert.match(calls, /curl .*https:\/\/henukit\.cn\/api\/v1\/payment-providers\/easypay\/notifications/);
   assert.equal(
@@ -848,6 +875,22 @@ test("failed public verification restores and verifies the previous fixed-SHA re
   assert.equal((calls.match(/^deploy /gm) ?? []).length, 2);
   assert.match(calls, /deploy .*henukit\.rollback\.env/);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+});
+
+test("failed Practice catalog-session-answer verification rolls back the candidate", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failTargetPracticeFlow: true, previousSha });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /rolled back/);
+  assert.match(calls, /\/api\/v1\/practice\/catalog/);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
 });
 
 test("default activation still refuses a degraded rollback baseline", () => {
@@ -1208,6 +1251,61 @@ test("one-shot refuses an environment that opts Portal into mock mode", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /NEXT_PUBLIC_PORTAL_ALLOW_MOCK must be 0 or absent/i);
   assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot refuses a plaintext non-loopback Career extraction LLM", () => {
+  const setup = fixture({ careerAIBaseURL: "http://10.0.0.8:30000/v1" });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /CAREER_AI_BASE_URL must use HTTPS, loopback, or the exact approved HTTP endpoint/i);
+  assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot accepts only the explicitly approved plaintext Career extraction LLM", () => {
+  const approved = fixture({
+    careerAIBaseURL: "http://125.46.96.207:30000/v1",
+    careerAllowInsecureAIHTTP: true,
+  });
+  const approvedResult = spawnSync(script, ["--once"], { encoding: "utf8", env: approved.env });
+  assert.equal(approvedResult.status, 0, approvedResult.stderr);
+
+  const missingFlag = fixture({ careerAIBaseURL: "http://125.46.96.207:30000/v1" });
+  const missingFlagResult = spawnSync(script, ["--once"], { encoding: "utf8", env: missingFlag.env });
+  assert.notEqual(missingFlagResult.status, 0);
+  assert.match(missingFlagResult.stderr, /CAREER_ALLOW_INSECURE_AI_HTTP=1/i);
+
+  const wrongHost = fixture({
+    careerAIBaseURL: "http://125.46.96.208:30000/v1",
+    careerAllowInsecureAIHTTP: true,
+  });
+  const wrongHostResult = spawnSync(script, ["--once"], { encoding: "utf8", env: wrongHost.env });
+  assert.notEqual(wrongHostResult.status, 0);
+  assert.doesNotMatch(readFileSync(wrongHost.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot refuses Career LLM and digest placeholder credentials", () => {
+  for (const options of [
+    { careerAIKey: "replace-career-ai-key-32bytes-minimum" },
+    { careerDigestSecret: "replace-career-digest-secret-32bytes-minimum" },
+    { careerDigestSecret: "local-career-digest-secret-32bytes-only!" },
+  ]) {
+    const setup = fixture(options);
+    const result = spawnSync(script, ["--once"], {
+      encoding: "utf8",
+      env: setup.env,
+    });
+    const calls = readFileSync(setup.log, "utf8");
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /placeholder/i);
+    assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
+  }
 });
 
 test("one-shot requires an explicit Account operator role before backup or activation", () => {

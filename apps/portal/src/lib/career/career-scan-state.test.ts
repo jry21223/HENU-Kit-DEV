@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CareerSearch } from "../api/types";
 import {
   CAREER_POLL_INTERVAL_MS,
+  careerDigestStatusLabel,
   careerScanFailedMessage,
   careerScanStageLabel,
   careerSearchStatusLabel,
@@ -99,6 +100,44 @@ describe("career scan state machine", () => {
     expect(fetchStatus.mock.calls.length).toBe(callsAfterStop);
   });
 
+  it("discards an obsolete in-flight response after polling is restarted for another search", async () => {
+    const oldID = "33333333-3333-4333-8333-333333333333";
+    const newID = "44444444-4444-4444-8444-444444444444";
+    let resolveOld!: (value: CareerSearch) => void;
+    const oldResponse = new Promise<CareerSearch>((resolve) => {
+      resolveOld = resolve;
+    });
+    const fetchStatus = vi.fn((searchID: string) =>
+      searchID === oldID
+        ? oldResponse
+        : Promise.resolve(search({ id: newID, status: "running" }))
+    );
+    const onState = vi.fn();
+    const runner = createCareerScanRunner({ fetchStatus, onState });
+
+    runner.start(search({ id: oldID, status: "running" }));
+    vi.advanceTimersByTime(CAREER_POLL_INTERVAL_MS);
+    await Promise.resolve();
+    expect(fetchStatus).toHaveBeenCalledWith(oldID);
+
+    runner.start(search({ id: newID, status: "queued" }));
+    resolveOld(search({ id: oldID, status: "completed" }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(runner.getState()).toEqual(
+      expect.objectContaining({
+        kind: "active",
+        search: expect.objectContaining({ id: newID, status: "queued" }),
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(CAREER_POLL_INTERVAL_MS);
+    expect(fetchStatus).toHaveBeenCalledWith(newID);
+    expect(onState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: expect.objectContaining({ id: newID }) })
+    );
+  });
+
   it("never starts a second loop when start() is called again", async () => {
     const fetchStatus = vi.fn(async () => search({ status: "running" }));
     const onState = vi.fn();
@@ -149,6 +188,50 @@ describe("career scan state machine", () => {
 
     await vi.advanceTimersByTimeAsync(CAREER_POLL_INTERVAL_MS * 10);
     expect(fetchStatus).not.toHaveBeenCalled();
+  });
+
+  it("keeps a completed search fresh until digest enqueue reaches a durable outcome", async () => {
+    const fetchStatus = vi.fn(async () =>
+      search({ status: "completed", digest_status: "sent", has_email: true })
+    );
+    const onState = vi.fn();
+    const runner = createCareerScanRunner({ fetchStatus, onState });
+
+    runner.start(search({ status: "completed", digest_status: "sending" }));
+    expect(onState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: "completed", search: expect.objectContaining({ digest_status: "sending" }) })
+    );
+    await vi.advanceTimersByTimeAsync(CAREER_POLL_INTERVAL_MS);
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+    expect(onState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: "completed", search: expect.objectContaining({ digest_status: "sent" }) })
+    );
+    await vi.advanceTimersByTimeAsync(CAREER_POLL_INTERVAL_MS * 3);
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps following a retrying digest until the worker recovers and enqueues it", async () => {
+    const statuses: CareerSearch["digest_status"][] = ["sending", "sent"];
+    const fetchStatus = vi.fn(async () =>
+      search({
+        status: "completed",
+        digest_status: statuses.shift() ?? "sent",
+        has_email: true,
+      })
+    );
+    const onState = vi.fn();
+    const runner = createCareerScanRunner({ fetchStatus, onState });
+
+    runner.start(search({ status: "completed", digest_status: "retry", has_email: true }));
+    await vi.advanceTimersByTimeAsync(CAREER_POLL_INTERVAL_MS * 2);
+
+    expect(fetchStatus).toHaveBeenCalledTimes(2);
+    expect(onState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: "completed",
+        search: expect.objectContaining({ digest_status: "sent" }),
+      })
+    );
   });
 
   it("keeps polling across transient fetch errors and surfaces a readable notice", async () => {
@@ -213,6 +296,20 @@ describe("career scan labels", () => {
 
   it("returns a stable failure copy without internal details", () => {
     expect(careerScanFailedMessage()).toBe("扫描未能完成，请稍后重试");
+  });
+
+  it("describes digest enqueue and retry states without claiming inbox delivery", () => {
+    expect(careerDigestStatusLabel(search({ digest_status: "sent", has_email: true }))).toBe(
+      "邮件简报已进入发送队列"
+    );
+    expect(careerDigestStatusLabel(search({ digest_status: "retry" }))).toContain("正在重试");
+    expect(careerDigestStatusLabel(search({ digest_status: "sending" }))).toContain("加入发送队列");
+    expect(careerDigestStatusLabel(search({ digest_status: "skipped" }))).toBe("未启用邮件简报");
+    expect(careerDigestStatusLabel(search({ status: "completed", digest_status: undefined, has_email: false }))).toBe(
+      "历史任务无邮件状态"
+    );
+    expect(careerDigestStatusLabel(search({ status: "queued", digest_status: undefined, has_email: false }))).toBeNull();
+    expect(careerDigestStatusLabel(search({ status: "running", digest_status: undefined, has_email: false }))).toBeNull();
   });
 
   it("formats ISO timestamps and falls back to the raw value", () => {

@@ -26,8 +26,6 @@ const DETAIL = {
     tags: ["夜市", "夯"],
     shop: {
       name: "鼓楼夜市",
-      lat: 34.7972,
-      lng: 114.3073,
     },
     time: "2026-07-16",
     hidden: false,
@@ -58,11 +56,11 @@ for (const viewport of [
 
     await expect(page.getByRole("heading", { name: "鼓楼夜市" })).toBeVisible();
     await expect(page.getByText("夯", { exact: true })).toBeVisible();
-    await expect(page.getByText("34.7972, 114.3073")).toBeVisible();
+    await expect(page.getByText("34.7972, 114.3073")).toHaveCount(0);
+    await expect(page.getByText("0.0000, 0.0000")).toHaveCount(0);
     await expect(page.getByText("人均 ¥25–50", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("未填写 · 出发前请查地图")
-    ).toBeVisible();
+    await expect(page.getByText("未填写", { exact: true })).toBeVisible();
+    await expect(page.getByText(/地图/)).toHaveCount(0);
     await expect(
       page.getByText("学生编辑部 · 社区稿件")
     ).toBeVisible();
@@ -71,10 +69,7 @@ for (const viewport of [
     ).toBeVisible();
     await expect(page.getByText("灌汤包", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "图片与环境" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "在高德地图打开" })).toHaveAttribute(
-      "href",
-      /uri\.amap\.com\/search/
-    );
+    await expect(page.getByRole("link", { name: "在高德地图打开" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "投稿一家好店" })).toBeVisible();
 
     const width = await page.evaluate(() => ({
